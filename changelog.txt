@@ -1,3 +1,10 @@
+2.6.1
+- Fix deer crash
+
+2.6.0
+- Be compatible with both Crate 0.5.x and 6.0.x
+- Fix various Deer AI bugs
+
 2.5.9
 - Shrines now only spawn in flat land
 - Fix Cirno name in structure
@@ -9,6 +16,7 @@
 
 2.5.7
 - Fix bamboo dupe in cuisine table
+
 
 2.5.6
 - Add glass bottle to shaved ice

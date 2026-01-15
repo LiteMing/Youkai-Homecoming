@@ -184,7 +184,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		bomb = GrazeHelper.getInitialResource(player) * SHARD;
 		return HitType.LIFE;
 	}
-
+	public void setWeak(int duration) {
+		weak = duration;
+		dirty = true;
+	}
 	public boolean useBomb() {
 		if (bomb < SHARD) return false;
 		bomb -= SHARD;

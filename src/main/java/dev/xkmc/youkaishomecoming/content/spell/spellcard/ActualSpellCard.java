@@ -22,7 +22,9 @@ public class ActualSpellCard extends SpellCard {
 		tick++;
 		tickers.removeIf(t -> t.tick(holder, Wrappers.cast(this)));
 	}
-
+	protected ArrayList<Ticker<?>> getTickers() {
+		return tickers;
+	}
 	public void reset() {
 		tick = 0;
 		hit = 0;

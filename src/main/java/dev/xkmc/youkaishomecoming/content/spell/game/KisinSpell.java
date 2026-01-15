@@ -6,131 +6,67 @@ import dev.xkmc.youkaishomecoming.content.spell.mover.RectMover;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.ActualSpellCard;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.StagedSpellCard;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.Ticker;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
-
 @SerialClass
-public class KisinSpell extends ActualSpellCard {
+public class KisinSpell extends StagedSpellCard {
 
 	@SerialClass.SerialField
 	private int cooldown;
 
 	@Override
-	public void tick(CardHolder holder) {
-		super.tick(holder);
+	protected int getStageCount() {
+		return 3; // SummonNear, Wing, SummonFar
+	}
+
+	@Override
+	protected void tickStaged(CardHolder holder, int stage) {
+		if (cooldown > 0) {
+			cooldown--;
+			return;
+		}
+
+		switch (stage) {
+			case 0 -> {
+				addTicker(new SummonNear());
+				cooldown = 60;
+			}
+			case 1 -> {
+				addTicker(new Wing());
+				cooldown = 60;
+			}
+			case 2 -> {
+				addTicker(new SummonFar());
+				cooldown = 80;
+			}
+		}
+	}
+
+	@Override
+	protected void tickTraditional(CardHolder holder) {
+		// 保持原有逻辑
 		if (cooldown > 0) cooldown--;
 		if (cooldown > 0) return;
+
 		var target = holder.target();
 		if (target == null) return;
 		var center = holder.center();
 		double dist = center.distanceTo(target);
+
 		if (dist < 10) {
 			addTicker(new SummonNear());
 			cooldown = 60;
-			return;
-		}
-		if (dist < 40 && holder.random().nextBoolean()) {
+		} else if (dist < 40 && holder.random().nextBoolean()) {
 			addTicker(new Wing());
 			cooldown = 60;
-			return;
-		}
-		addTicker(new SphereShooters());
-		cooldown = 80;
-	}
-	@SerialClass
-	public static class SphereShooters extends Ticker<KisinSpell> {
-
-		@SerialClass.SerialField
-		private DyeColor color;
-
-		@SerialClass.SerialField
-		private int shooterCount = 0; // 当前已生成的shooter数量
-		@SerialClass.SerialField
-		private final int maxShooters = 32; // shooter总量上限
-
-		@Override
-		public boolean tick(CardHolder holder, KisinSpell card) {
-			super.tick(holder, card);
-			var target = holder.target();
-			if (target == null) return true;
-			if (color == null) color = holder.random().nextBoolean() ? DyeColor.GREEN : DyeColor.CYAN;
-
-			double speed = 0.5; // shooter的飞行速度
-			int life = 60; // shooter的生命周期
-
-			Vec3 center = holder.center();
-			Vec3 direction = target.subtract(center).normalize();
-
-			// 每10 tick生成一个shooter，直到达到上限
-			if (tick % 3 == 0 && shooterCount < maxShooters) {
-				// 生成球状分布的shooter
-				double theta = Math.random() * Math.PI * 2; // 随机角度
-				double phi = Math.acos(2 * Math.random() - 1); // 随机仰角
-				double radius = 3.0; // 初始半径
-
-				Vec3 offset = new Vec3(
-						Math.sin(phi) * Math.cos(theta) * radius,
-						Math.sin(phi) * Math.sin(theta) * radius,
-						Math.cos(phi) * radius
-				);
-				Vec3 pos = center.add(offset);
-
-				// 创建shooter
-				var e = holder.prepareShooter(
-						new ShooterData(40, holder.getDamage(YHDanmaku.Bullet.CIRCLE), life),
-						new SubSpell().init(life, color, direction)
-				);
-				e.setPos(pos);
-				e.mover = new RectMover(pos, offset.normalize().scale(speed), Vec3.ZERO);
-				holder.shoot(e);
-
-				shooterCount++;
-			}
-
-			return shooterCount >= maxShooters && tick > 40;
-		}
-
-		@SerialClass
-		public static class SubSpell extends ActualSpellCard {
-
-			@SerialClass.SerialField
-			private int life;
-			@SerialClass.SerialField
-			private DyeColor color;
-			@SerialClass.SerialField
-			private Vec3 direction;
-
-			public SubSpell init(int life, DyeColor color, Vec3 direction) {
-				this.life = life;
-				this.color = color;
-				this.direction = direction;
-				return this;
-			}
-
-			@Override
-			public void tick(CardHolder holder) {
-				super.tick(holder);
-				if (direction == null) return;
-
-				int bulletLife = 80;
-				double bulletSpeed = 0.6;
-
-				life--;
-				if (life > 0) {
-					// 每tick发射一个追踪玩家方向的弹幕
-					var target = holder.target();
-					if (target != null) {
-						Vec3 bulletDirection = target.subtract(holder.center()).normalize();
-						holder.shoot(holder.prepareDanmaku(bulletLife, bulletDirection.scale(bulletSpeed),
-								YHDanmaku.Bullet.CIRCLE, color));
-					}
-				}
-			}
+		} else {
+			addTicker(new SummonFar());
+			cooldown = 80;
 		}
 	}
-
 
 	@SerialClass
 	public static class SummonNear extends Ticker<KisinSpell> {
@@ -144,15 +80,22 @@ public class KisinSpell extends ActualSpellCard {
 			int life = 60;
 
 			if (tick % 2 == 0) {
-				var o = DanmakuHelper.getOrientation(target.subtract(holder.center()).normalize());
+				var center = holder.center();
+				var targetDir = target.subtract(center).normalize();
+				var o = DanmakuHelper.getOrientation(targetDir);
 				var x = holder.random().nextDouble() * 60 - 30;
 				var y = holder.random().nextDouble() * 60 - 30;
 				var dir = o.rotateDegrees(x, y);
+
+				// 确保生成位置相对于当前中心点
+				var spawnPos = center.add(dir.scale(2.0)); // 稍微偏移避免重叠
+
 				var e = holder.prepareShooter(
 						new ShooterData(40, holder.getDamage(YHDanmaku.Bullet.CIRCLE), life),
-						new SubSpell().init(dir, life, tick / 2 % 2 == 0 ? DyeColor.YELLOW : DyeColor.ORANGE)
+						new SubSpell().init(dir, life, tick / 2 % 2 == 0 ? DyeColor.YELLOW : DyeColor.ORANGE, center)
 				);
-				e.mover = new RectMover(holder.center(), dir.scale(0.5), Vec3.ZERO);
+				e.setPos(spawnPos);
+				e.mover = new RectMover(spawnPos, dir.scale(0.5), Vec3.ZERO);
 				holder.shoot(e);
 			}
 			return tick > 40;
@@ -167,11 +110,14 @@ public class KisinSpell extends ActualSpellCard {
 			private int life;
 			@SerialClass.SerialField
 			private DyeColor color;
+			@SerialClass.SerialField
+			private Vec3 originCenter; // 添加原点记录
 
-			public SubSpell init(Vec3 dir, int life, DyeColor color) {
-				this.dir = dir;
+			public SubSpell init(Vec3 dir, int life, DyeColor color, Vec3 originCenter) {
+				this.dir = dir.normalize(); // 确保方向向量标准化
 				this.life = life;
 				this.color = color;
+				this.originCenter = originCenter;
 				return this;
 			}
 
@@ -185,15 +131,23 @@ public class KisinSpell extends ActualSpellCard {
 
 				life--;
 				if (life > 0) {
-					holder.shoot(holder.prepareDanmaku(bulletLife, dir.scale(forward),
-							YHDanmaku.Bullet.CIRCLE, color));
-					holder.shoot(holder.prepareDanmaku(bulletLife, dir.scale(backward),
-							YHDanmaku.Bullet.CIRCLE, color));
+					// 使用当前holder的center而不是originCenter，确保弹幕从正确位置发射
+					var currentCenter = holder.center();
+
+					// 前向弹幕
+					var forwardBullet = holder.prepareDanmaku(bulletLife, dir.scale(forward),
+							YHDanmaku.Bullet.CIRCLE, color);
+					forwardBullet.setPos(currentCenter);
+					holder.shoot(forwardBullet);
+
+					// 后向弹幕
+					var backwardBullet = holder.prepareDanmaku(bulletLife, dir.scale(backward),
+							YHDanmaku.Bullet.CIRCLE, color);
+					backwardBullet.setPos(currentCenter);
+					holder.shoot(backwardBullet);
 				}
 			}
-
 		}
-
 	}
 
 	@SerialClass
@@ -280,13 +234,13 @@ public class KisinSpell extends ActualSpellCard {
 					double speed = 1;
 					if (tick == 0) {
 						var e = holder.prepareDanmaku(l, Vec3.ZERO,
-								YHDanmaku.Bullet.SPARK, color);
+								YHDanmaku.Bullet.CIRCLE, color);
 						e.setPos(pos);
 						holder.shoot(e);
 					} else if (tick == life) {
 						var dir = target.subtract(pos).normalize();
 						var e = holder.prepareDanmaku(l, dir.scale(speed),
-								YHDanmaku.Bullet.SPARK, color);
+								YHDanmaku.Bullet.CIRCLE, color);
 						e.setPos(pos);
 						holder.shoot(e);
 						return true;
@@ -295,9 +249,7 @@ public class KisinSpell extends ActualSpellCard {
 					return false;
 				}
 			}
-
 		}
-
 	}
 
 	@SerialClass
@@ -339,9 +291,5 @@ public class KisinSpell extends ActualSpellCard {
 			tick++;
 			return tick > 40;
 		}
-
 	}
-
 }
-
-

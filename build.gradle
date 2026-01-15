@@ -193,7 +193,7 @@ dependencies {
     implementation fg.deobf("curse.maven:botany-pots-353928:4793076")
     compileOnly fg.deobf("curse.maven:serene-seasons-291874:4761603")
     compileOnly fg.deobf("curse.maven:diet-443570:4813904")
-    implementation fg.deobf("curse.maven:forgery-434087:6522707")
+    //implementation fg.deobf("curse.maven:forgery-434087:6522707")
     compileOnly fg.deobf("curse.maven:thirst-was-taken-679270:5568703")
 
     implementation fg.deobf("curse.maven:better-advancements-272515:6010300")
@@ -205,7 +205,7 @@ dependencies {
     implementation fg.deobf("curse.maven:gateways-to-eternity-417802:5188310")
     implementation fg.deobf("curse.maven:configured-457570:5180900")
     implementation fg.deobf("curse.maven:composite-material-982540:6310307")
-    implementation fg.deobf("curse.maven:framework-549225:4590795")
+    implementation fg.deobf("curse.maven:framework-549225:6531428")
     implementation fg.deobf("curse.maven:slashblade-resharped-1022428:6548163")
 
 }

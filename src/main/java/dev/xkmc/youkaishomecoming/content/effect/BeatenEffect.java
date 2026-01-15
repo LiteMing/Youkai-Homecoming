@@ -1,7 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.effect;
 
-import dev.xkmc.l2library.base.effects.EffectUtil;
 import dev.xkmc.l2library.util.math.MathHelper;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectCategory;
@@ -34,31 +34,40 @@ public class BeatenEffect extends MobEffect {
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         if (entity instanceof Player player) {
+            player.getAbilities().mayfly = false;
+            player.getAbilities().flying = false;
+
             // Force player to crouch (1.20.1 compatible way)
-            if(player.getHealth()>=5) {
-                player.setHealth(player.getMaxHealth()/2);
+            if (player.getHealth() >= 5) {
+                player.setHealth(player.getMaxHealth() / 2);
             }
-            if(Objects.requireNonNull(player.getEffect(YHEffects.BEATEN.get())).getDuration()>=600) {
+
+            MobEffectInstance beatenEffect = Objects.requireNonNull(player.getEffect(YHEffects.BEATEN.get()));
+
+            // Apply weak state for the same duration as beaten effect
+            player.getCapability(GrazeCapability.CAPABILITY).ifPresent(grazeCapability -> {
+                // Set weak duration to match beaten effect duration
+                grazeCapability.setWeak(beatenEffect.getDuration());
+            });
+
+            if (beatenEffect.getDuration() >= 600) {
                 player.setSwimming(true);
-}
-            else{
+            } else {
                 player.setSprinting(false);
                 player.setForcedPose(null);
-                }
-        }else if (entity instanceof Mob mob) {
-            if(Objects.requireNonNull(mob.getEffect(YHEffects.BEATEN.get())).getDuration()>20){
+            }
+        } else if (entity instanceof Mob mob) {
+            if (Objects.requireNonNull(mob.getEffect(YHEffects.BEATEN.get())).getDuration() > 20) {
                 entity.setPose(Pose.SLEEPING);
                 mob.setNoAi(true);
-            }
-            else {
-                if(Objects.requireNonNull(mob.getEffect(YHEffects.BEATEN.get())).getDuration()>1){
+            } else {
+                if (Objects.requireNonNull(mob.getEffect(YHEffects.BEATEN.get())).getDuration() > 1) {
                     mob.setPose(Pose.STANDING);
+                } else {
+                    mob.setNoAi(false);
                 }
-                else{
-                mob.setNoAi(false);
-                }
-            }}
-
+            }
+        }
     }
 
     @Override
@@ -102,25 +111,25 @@ public class BeatenEffect extends MobEffect {
                 }
             }
         }
-        if (entity instanceof Player player ){
-            if(player.getHealth()>=0.5*player.getMaxHealth()&&player.getEffect(YHEffects.BEATEN.get())!=null){
-
-                event.setAmount(0);}
+        if (entity instanceof Player player) {
+            if (player.getHealth() >= 0.5 * player.getMaxHealth() && player.getEffect(YHEffects.BEATEN.get()) != null) {
+                event.setAmount(0);
             }
-
-
-
+        }
     }
 
     @SubscribeEvent
     public static void onMobEffectRemoved(MobEffectEvent.Remove event) {
         if (event.getEffect() == YHEffects.BEATEN.get() && event.getEntity() instanceof Player player) {
             // 当效果被移除时，重置玩家姿态
-
             player.setForcedPose(null);
 
+            // Remove weak state when beaten effect is removed
+            player.getCapability(GrazeCapability.CAPABILITY).ifPresent(grazeCapability -> {
+                grazeCapability.setWeak(0);
+            });
         }
-        if (event.getEffect() == YHEffects.BEATEN.get() &&event.getEntity() instanceof Mob mob) {
+        if (event.getEffect() == YHEffects.BEATEN.get() && event.getEntity() instanceof Mob mob) {
             // 当效果被移除时，恢复非玩家实体的 AI
             mob.setNoAi(false);
             mob.setPose(Pose.STANDING);

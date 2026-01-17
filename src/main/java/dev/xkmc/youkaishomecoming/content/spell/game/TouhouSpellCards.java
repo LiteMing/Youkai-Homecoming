@@ -42,13 +42,15 @@ public class TouhouSpellCards {
 		registerSpell("touhou_little_maid:remilia_scarlet", RemiliaSpell::new);
 		registerSpell("touhou_little_maid:eternity_larva", LarvaSpell::new);
 		registerSpell("touhou_little_maid:clownpiece", ClownSpell::new);
+		registerSpell("touhou_little_maid:izayoi_sakuya", SakuyaSpell::new);
 	}
 
 	public static void setSpell(GeneralYoukaiEntity e, String id) {
 		e.spellCard = new SpellCardWrapper();
 		e.spellCard.modelId = id;
 		var sup = MAP.get(id);
-		if (sup != null) e.spellCard.card = sup.get();
+		if (sup != null)
+			e.spellCard.card = sup.get();
 		e.syncModel();
 		if (ModList.get().isLoaded(TouhouLittleMaid.MOD_ID) && id.startsWith(TouhouLittleMaid.MOD_ID)) {
 			var rl = new ResourceLocation(id);

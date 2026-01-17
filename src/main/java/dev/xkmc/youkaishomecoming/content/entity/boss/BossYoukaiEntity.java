@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.boss;
 
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.entity.movement.*;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
@@ -32,7 +33,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 
 @SerialClass
-public class BossYoukaiEntity extends GeneralYoukaiEntity {
+public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementControlled {
 
 	public static AttributeSupplier.Builder createAttributes() {
 		return YoukaiEntity.createAttributes()
@@ -41,20 +42,162 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 				.add(Attributes.FOLLOW_RANGE, 128);
 	}
 
-	protected final ServerBossEvent bossEvent = new ServerBossEvent(getDisplayName(), BossEvent.BossBarColor.RED, BossEvent.BossBarOverlay.NOTCHED_20);
+	protected final ServerBossEvent bossEvent = new ServerBossEvent(getDisplayName(), BossEvent.BossBarColor.RED,
+			BossEvent.BossBarOverlay.NOTCHED_20);
 	private boolean ticking = false;
+
+	// 移动控制器
+	private final CompositeMovementController movementController = new CompositeMovementController();
+	private boolean movementInitialized = false;
+
+	// 移动功能开关的标志位 (使用 YoukaiEntity 的 DATA_FLAGS_ID)
+	// 已使用: 1, 2, 4, 32
+	private static final int FLAG_DODGE = 64; // 闪避功能
+	private static final int FLAG_CHASE_FLEE = 128; // 追逐/逃跑功能
+	private static final int FLAG_STRAFE = 256; // 斜向移动功能
 
 	@SerialClass.SerialField
 	private ResourceLocation spawnDimension;
+
+	// 用于检测标志位变化
+	private int lastMovementFlags = 0;
 
 	public BossYoukaiEntity(EntityType<? extends BossYoukaiEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
 		setPersistenceRequired();
 	}
 
+	// ========== 移动功能开关 ==========
+
+	/**
+	 * 获取闪避功能是否启用
+	 */
+	public boolean isDodgeEnabled() {
+		return getFlag(FLAG_DODGE);
+	}
+
+	/**
+	 * 设置闪避功能开关
+	 */
+	public void setDodgeEnabled(boolean enabled) {
+		setFlag(FLAG_DODGE, enabled);
+		onMovementFlagsChanged();
+	}
+
+	/**
+	 * 获取追逐/逃跑功能是否启用
+	 */
+	public boolean isChaseFleeEnabled() {
+		return getFlag(FLAG_CHASE_FLEE);
+	}
+
+	/**
+	 * 设置追逐/逃跑功能开关
+	 */
+	public void setChaseFleeEnabled(boolean enabled) {
+		setFlag(FLAG_CHASE_FLEE, enabled);
+		onMovementFlagsChanged();
+	}
+
+	/**
+	 * 获取斜向移动功能是否启用
+	 */
+	public boolean isStrafeEnabled() {
+		return getFlag(FLAG_STRAFE);
+	}
+
+	/**
+	 * 设置斜向移动功能开关
+	 */
+	public void setStrafeEnabled(boolean enabled) {
+		setFlag(FLAG_STRAFE, enabled);
+		onMovementFlagsChanged();
+	}
+
+	/**
+	 * 一次性设置所有移动功能开关
+	 */
+	public void setAllMovementEnabled(boolean enabled) {
+		setFlag(FLAG_DODGE, enabled);
+		setFlag(FLAG_CHASE_FLEE, enabled);
+		setFlag(FLAG_STRAFE, enabled);
+		onMovementFlagsChanged();
+	}
+
+	/**
+	 * 当移动标志位改变时调用
+	 */
+	private void onMovementFlagsChanged() {
+		movementController.clear();
+		movementInitialized = false;
+	}
+
+	/**
+	 * 刷新移动控制器 (当开关改变时调用)
+	 */
+	private void refreshMovementControllers() {
+		movementController.clear();
+		movementInitialized = false;
+	}
+
+	/**
+	 * 检查移动标志位是否发生变化
+	 */
+	private void checkMovementFlagsChange() {
+		int currentFlags = (isDodgeEnabled() ? FLAG_DODGE : 0)
+				| (isChaseFleeEnabled() ? FLAG_CHASE_FLEE : 0)
+				| (isStrafeEnabled() ? FLAG_STRAFE : 0);
+		if (currentFlags != lastMovementFlags) {
+			lastMovementFlags = currentFlags;
+			refreshMovementControllers();
+		}
+	}
+
+	@Override
+	public CompositeMovementController getMovementController() {
+		// 检查标志位变化 (支持 /data merge 实时修改)
+		checkMovementFlagsChange();
+		if (!movementInitialized) {
+			initMovementControllers();
+			movementInitialized = true;
+		}
+		return movementController;
+	}
+
+	@Override
+	public void initMovementControllers() {
+		// 根据标志位开关添加控制器 (按优先级排序)
+
+		// 1. 闪避控制器 - 最高优先级
+		if (isDodgeEnabled()) {
+			movementController.add(new DodgeController(this)
+					.setScanRadius(10.0)
+					.setDangerRadius(5.0)
+					.setSpeedMultiplier(1.5));
+		}
+
+		// 2. 追逐/逃跑控制器
+		if (isChaseFleeEnabled()) {
+			movementController.add(new ChaseFleeController(this)
+					.setIdealDistance(25.0)
+					.setChaseThreshold(40.0)
+					.setFleeThreshold(10.0)
+					.setDiagonalFactor(0.4));
+		}
+
+		// 3. 斜向移动控制器
+		if (isStrafeEnabled()) {
+			movementController.add(new StrafeController(this)
+					.setSpeedMultiplier(0.7)
+					.setDirectionChangePeriod(80)
+					.setVerticalWave(0.25, 0.08));
+		}
+	}
+
 	@Override
 	public boolean shouldHurt(LivingEntity le) {
-		if (shouldIgnore(le)) return false;
+		if (shouldIgnore(le))
+			return false;
 		return le instanceof Enemy || super.shouldHurt(le);
 	}
 
@@ -63,8 +206,9 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 		// 允许 beaten 效果影响boss，其他效果依然免疫
 		if (ins.getEffect() == YHEffects.BEATEN.get()) {
 			return true;
-		}else{
-		return false;}
+		} else {
+			return false;
+		}
 	}
 
 	@Override
@@ -87,7 +231,8 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 
 	@Override
 	public void aiStep() {
-		if (hurtCD < 1000) hurtCD++;
+		if (hurtCD < 1000)
+			hurtCD++;
 		super.aiStep();
 
 		// 移除所有效果，但保留 beaten 效果
@@ -135,7 +280,8 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 				}
 			}
 		}
-		if (getTarget() instanceof Player && !(source.getEntity() instanceof Player)) return false;
+		if (getTarget() instanceof Player && !(source.getEntity() instanceof Player))
+			return false;
 		if (source.getEntity() instanceof LivingEntity le) {
 			setLastHurtByMob(le);
 			targets.checkTarget();
@@ -145,7 +291,8 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 					!(source.getEntity() instanceof LivingEntity))
 				return false;
 			if (source.getEntity() instanceof LivingEntity le) {
-				if (shouldIgnore(le)) return false;
+				if (shouldIgnore(le))
+					return false;
 			}
 			int cd = getCD(source);
 			if (hurtCD < cd) {
@@ -231,15 +378,18 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 
 	@Override
 	protected void hurtFinal(DamageSource source, float amount) {
-		if (!Float.isFinite(amount)) return;
+		if (!Float.isFinite(amount))
+			return;
 		amount = clampDamage(source, amount);
-		if (amount <= 0) return;
+		if (amount <= 0)
+			return;
 		super.hurtFinal(source, amount);
 	}
 
 	@Override
 	public void setHealth(float val) {
-		if (!Float.isFinite(val)) return;
+		if (!Float.isFinite(val))
+			return;
 		if (level().isClientSide()) {
 			setCombatProgress(val);
 		}
@@ -269,7 +419,8 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 	public void heal(float original) {
 		var heal = ForgeEventFactory.onLivingHeal(this, original);
 		heal = Math.max(original, heal);
-		if (heal <= 0) return;
+		if (heal <= 0)
+			return;
 		float f = getCombatProgress();
 		if (f > 0) {
 			setHealth(f + heal);
@@ -282,6 +433,31 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 		if (hasCustomName()) {
 			bossEvent.setName(getDisplayName());
 		}
+
+		// 显式读取移动开关 NBT (支持 /data merge 命令)
+		// 使用 setFlag 直接设置，避免触发 refreshMovementControllers 多次
+		if (tag.contains("enableDodge")) {
+			setFlag(FLAG_DODGE, tag.getBoolean("enableDodge"));
+		}
+		if (tag.contains("enableChaseFlee")) {
+			setFlag(FLAG_CHASE_FLEE, tag.getBoolean("enableChaseFlee"));
+		}
+		if (tag.contains("enableStrafe")) {
+			setFlag(FLAG_STRAFE, tag.getBoolean("enableStrafe"));
+		}
+
+		// 刷新移动控制器
+		refreshMovementControllers();
+	}
+
+	@Override
+	public void addAdditionalSaveData(CompoundTag tag) {
+		super.addAdditionalSaveData(tag);
+
+		// 显式写入移动开关 NBT
+		tag.putBoolean("enableDodge", isDodgeEnabled());
+		tag.putBoolean("enableChaseFlee", isChaseFleeEnabled());
+		tag.putBoolean("enableStrafe", isStrafeEnabled());
 	}
 
 	public void setCustomName(@Nullable Component pName) {

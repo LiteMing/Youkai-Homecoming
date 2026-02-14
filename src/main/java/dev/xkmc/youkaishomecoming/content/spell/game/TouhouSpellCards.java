@@ -43,6 +43,7 @@ public class TouhouSpellCards {
 		registerSpell("touhou_little_maid:eternity_larva", LarvaSpell::new);
 		registerSpell("touhou_little_maid:clownpiece", ClownSpell::new);
 		registerSpell("touhou_little_maid:izayoi_sakuya", SakuyaSpell::new);
+		registerSpell("touhou_little_maid:konpaku_youmu", YoumuSpell::new);
 	}
 
 	public static void setSpell(GeneralYoukaiEntity e, String id) {

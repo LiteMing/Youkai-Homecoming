@@ -50,86 +50,75 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 	private final CompositeMovementController movementController = new CompositeMovementController();
 	private boolean movementInitialized = false;
 
-	// 移动功能开关的标志位 (使用 YoukaiEntity 的 DATA_FLAGS_ID)
-	// 已使用: 1, 2, 4, 32
-	private static final int FLAG_DODGE = 64; // 闪避功能
-	private static final int FLAG_CHASE_FLEE = 128; // 追逐/逃跑功能
-	private static final int FLAG_STRAFE = 256; // 斜向移动功能
+	// NBT 键名常量
+	private static final String NBT_DODGE = "enableDodge";
+	private static final String NBT_CHASE_FLEE = "enableChaseFlee";
+	private static final String NBT_STRAFE = "enableStrafe";
+
+	// 缓存的标志状态 (用于检测变化)
+	private boolean cachedDodge = false;
+	private boolean cachedChaseFlee = false;
+	private boolean cachedStrafe = false;
 
 	@SerialClass.SerialField
 	private ResourceLocation spawnDimension;
-
-	// 用于检测标志位变化
-	private int lastMovementFlags = 0;
 
 	public BossYoukaiEntity(EntityType<? extends BossYoukaiEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
 		setPersistenceRequired();
 	}
 
-	// ========== 移动功能开关 ==========
+	// ========== 移动功能开关 (使用 PersistentData) ==========
 
 	/**
 	 * 获取闪避功能是否启用
 	 */
 	public boolean isDodgeEnabled() {
-		return getFlag(FLAG_DODGE);
+		return getPersistentData().getBoolean(NBT_DODGE);
 	}
 
 	/**
 	 * 设置闪避功能开关
 	 */
 	public void setDodgeEnabled(boolean enabled) {
-		setFlag(FLAG_DODGE, enabled);
-		onMovementFlagsChanged();
+		getPersistentData().putBoolean(NBT_DODGE, enabled);
 	}
 
 	/**
 	 * 获取追逐/逃跑功能是否启用
 	 */
 	public boolean isChaseFleeEnabled() {
-		return getFlag(FLAG_CHASE_FLEE);
+		return getPersistentData().getBoolean(NBT_CHASE_FLEE);
 	}
 
 	/**
 	 * 设置追逐/逃跑功能开关
 	 */
 	public void setChaseFleeEnabled(boolean enabled) {
-		setFlag(FLAG_CHASE_FLEE, enabled);
-		onMovementFlagsChanged();
+		getPersistentData().putBoolean(NBT_CHASE_FLEE, enabled);
 	}
 
 	/**
 	 * 获取斜向移动功能是否启用
 	 */
 	public boolean isStrafeEnabled() {
-		return getFlag(FLAG_STRAFE);
+		return getPersistentData().getBoolean(NBT_STRAFE);
 	}
 
 	/**
 	 * 设置斜向移动功能开关
 	 */
 	public void setStrafeEnabled(boolean enabled) {
-		setFlag(FLAG_STRAFE, enabled);
-		onMovementFlagsChanged();
+		getPersistentData().putBoolean(NBT_STRAFE, enabled);
 	}
 
 	/**
 	 * 一次性设置所有移动功能开关
 	 */
 	public void setAllMovementEnabled(boolean enabled) {
-		setFlag(FLAG_DODGE, enabled);
-		setFlag(FLAG_CHASE_FLEE, enabled);
-		setFlag(FLAG_STRAFE, enabled);
-		onMovementFlagsChanged();
-	}
-
-	/**
-	 * 当移动标志位改变时调用
-	 */
-	private void onMovementFlagsChanged() {
-		movementController.clear();
-		movementInitialized = false;
+		setDodgeEnabled(enabled);
+		setChaseFleeEnabled(enabled);
+		setStrafeEnabled(enabled);
 	}
 
 	/**
@@ -141,14 +130,19 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 	}
 
 	/**
-	 * 检查移动标志位是否发生变化
+	 * 检查移动标志位是否发生变化 (支持 /data merge 实时修改)
 	 */
 	private void checkMovementFlagsChange() {
-		int currentFlags = (isDodgeEnabled() ? FLAG_DODGE : 0)
-				| (isChaseFleeEnabled() ? FLAG_CHASE_FLEE : 0)
-				| (isStrafeEnabled() ? FLAG_STRAFE : 0);
-		if (currentFlags != lastMovementFlags) {
-			lastMovementFlags = currentFlags;
+		boolean currentDodge = isDodgeEnabled();
+		boolean currentChaseFlee = isChaseFleeEnabled();
+		boolean currentStrafe = isStrafeEnabled();
+
+		if (currentDodge != cachedDodge ||
+				currentChaseFlee != cachedChaseFlee ||
+				currentStrafe != cachedStrafe) {
+			cachedDodge = currentDodge;
+			cachedChaseFlee = currentChaseFlee;
+			cachedStrafe = currentStrafe;
 			refreshMovementControllers();
 		}
 	}
@@ -434,16 +428,16 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 			bossEvent.setName(getDisplayName());
 		}
 
-		// 显式读取移动开关 NBT (支持 /data merge 命令)
-		// 使用 setFlag 直接设置，避免触发 refreshMovementControllers 多次
-		if (tag.contains("enableDodge")) {
-			setFlag(FLAG_DODGE, tag.getBoolean("enableDodge"));
+		// 读取移动开关 NBT 到 PersistentData
+		// PersistentData 会自动从 ForgeData 标签读取，这里处理旧版本兼容
+		if (tag.contains(NBT_DODGE)) {
+			setDodgeEnabled(tag.getBoolean(NBT_DODGE));
 		}
-		if (tag.contains("enableChaseFlee")) {
-			setFlag(FLAG_CHASE_FLEE, tag.getBoolean("enableChaseFlee"));
+		if (tag.contains(NBT_CHASE_FLEE)) {
+			setChaseFleeEnabled(tag.getBoolean(NBT_CHASE_FLEE));
 		}
-		if (tag.contains("enableStrafe")) {
-			setFlag(FLAG_STRAFE, tag.getBoolean("enableStrafe"));
+		if (tag.contains(NBT_STRAFE)) {
+			setStrafeEnabled(tag.getBoolean(NBT_STRAFE));
 		}
 
 		// 刷新移动控制器
@@ -454,10 +448,11 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 	public void addAdditionalSaveData(CompoundTag tag) {
 		super.addAdditionalSaveData(tag);
 
-		// 显式写入移动开关 NBT
-		tag.putBoolean("enableDodge", isDodgeEnabled());
-		tag.putBoolean("enableChaseFlee", isChaseFleeEnabled());
-		tag.putBoolean("enableStrafe", isStrafeEnabled());
+		// PersistentData 会自动保存到 ForgeData 标签
+		// 这里我们仍然写入顶级 NBT 以便使用 /data merge
+		tag.putBoolean(NBT_DODGE, isDodgeEnabled());
+		tag.putBoolean(NBT_CHASE_FLEE, isChaseFleeEnabled());
+		tag.putBoolean(NBT_STRAFE, isStrafeEnabled());
 	}
 
 	public void setCustomName(@Nullable Component pName) {

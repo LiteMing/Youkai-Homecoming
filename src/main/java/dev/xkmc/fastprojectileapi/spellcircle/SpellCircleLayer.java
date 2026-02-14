@@ -23,20 +23,22 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 
 	@Override
 	public void render(PoseStack pose, MultiBufferSource buffer, int light, T entity,
-					   float swing, float swingAmp, float pTick, float age,
-					   float yaw, float pitch) {
+			float swing, float swingAmp, float pTick, float age,
+			float yaw, float pitch) {
 		renderImpl(pose, buffer, light, entity, pTick, null);
 	}
 
 	public static <T extends Entity> void renderImpl(
 			PoseStack pose, MultiBufferSource buffer, int light, T entity,
-			float pTick, @Nullable Quaternionf front
-	) {
-		if (!(entity instanceof SpellCircleHolder e)) return;
+			float pTick, @Nullable Quaternionf front) {
+		if (!(entity instanceof SpellCircleHolder e))
+			return;
 		ResourceLocation rl = e.getSpellCircle();
-		if (rl == null) return;
+		if (rl == null)
+			return;
 		SpellComponent component = SpellCircleConfig.getFromConfig(rl);
-		if (component == null) return;
+		if (component == null)
+			return;
 		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(pose,
 				buffer.getBuffer(SpellRenderState.getSpell(SPELL)),
 				entity.tickCount + pTick, light);

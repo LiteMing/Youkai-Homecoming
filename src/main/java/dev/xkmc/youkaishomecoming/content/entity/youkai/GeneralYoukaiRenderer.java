@@ -17,11 +17,11 @@ public class GeneralYoukaiRenderer<T extends GeneralYoukaiEntity> extends MobRen
 
 	public GeneralYoukaiRenderer(EntityRendererProvider.Context ctx) {
 		super(ctx, new PlaceHolderModel<>(ctx.bakeLayer(RumiaModel.LAYER_LOCATION)), 0.2f);
-		addLayer(new SpellCircleLayer<>(this));
 	}
 
 	@Override
 	public void render(T e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
+		SpellCircleLayer.renderImpl(pose, buffer, light, e, pTick, entityRenderDispatcher.cameraOrientation());
 		if (TLMClientCompat.delegateRender(e, yaw, pTick, pose, buffer, light)) {
 			return;
 		}

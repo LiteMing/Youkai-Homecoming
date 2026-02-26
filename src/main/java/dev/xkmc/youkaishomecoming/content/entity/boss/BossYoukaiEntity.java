@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.movement.*;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
@@ -12,6 +13,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.BossEvent;
@@ -25,10 +27,14 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.fluids.FluidType;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 
@@ -41,6 +47,8 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 				.add(Attributes.ATTACK_DAMAGE, 10)
 				.add(Attributes.FOLLOW_RANGE, 128);
 	}
+
+	private static final Logger BOSS_LOGGER = LoggerFactory.getLogger("YH-BossChunkForce");
 
 	protected final ServerBossEvent bossEvent = new ServerBossEvent(getDisplayName(), BossEvent.BossBarColor.RED,
 			BossEvent.BossBarOverlay.NOTCHED_20);
@@ -62,6 +70,20 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 
 	@SerialClass.SerialField
 	private ResourceLocation spawnDimension;
+
+	// ========== 区块强加载 (防止战斗中 Boss 被卸载) ==========
+	private ChunkPos forcedChunkPos = null; // 当前强加载的区块位置，null 表示未强加载
+	/**
+	 * 强加载宽限tick。Boss 目标超出范围后，短暂保持区块加载，
+	 * 让脱战回血流程完成，避免在脱战瞬间被区块卸载。
+	 */
+	private static final int COMBAT_GRACE_TICKS = 60; // 3秒宽限期
+	/**
+	 * 独立的超距离计数器。因为 YoukaiTargetContainer 不检查距离，
+	 * getTarget() 只要玩家存活就的返回非 null，所以 noTargetTime 永远为 0。
+	 * 必须用这个独立计数器来追踪目标超出范围的时间。
+	 */
+	private int outOfRangeTicks = 0;
 
 	public BossYoukaiEntity(EntityType<? extends BossYoukaiEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -221,6 +243,11 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 		validateData();
 		super.tick();
 		ticking = false;
+
+		// 区块强加载逻辑：战斗状态下强制加载 Boss 所在区块
+		if (!level().isClientSide()) {
+			updateChunkForcing();
+		}
 	}
 
 	@Override
@@ -509,6 +536,117 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 	@Override
 	public boolean canChangeDimensions() {
 		return YHModConfig.COMMON.canReimuTeleportToOtherDimension.get();
+	}
+
+	// ========== 区块强加载管理 ==========
+
+	/**
+	 * 判断是否应该保持区块强加载。
+	 * 1. 有存活目标且在合理范围内 → 强加载（防止战斗中区块卸载）
+	 * 2. 目标超出范围或无目标 + 宽限期内 → 短暂保持（让脱战回血流程完成）
+	 * 宽限期结束后释放，允许 Boss 自然脱战。
+	 *
+	 * 注意：YoukaiTargetContainer 不检查距离，只要玩家存活 getTarget() 就返回非 null，
+	 * 因此不能依赖 noTargetTime，必须用独立的 outOfRangeTicks 计数。
+	 */
+	private boolean shouldForceLoadChunk() {
+		LivingEntity target = getTarget();
+		double maxRange = getAttributeValue(Attributes.FOLLOW_RANGE) * 1.5; // 128 * 1.5 = 192
+		boolean targetInRange = target != null && target.isAlive()
+				&& distanceToSqr(target) <= maxRange * maxRange;
+
+		if (targetInRange) {
+			outOfRangeTicks = 0; // 目标在范围内，重置计数器
+			return true;
+		}
+
+		// 目标不在范围内（超距离或无目标），递增计数器
+		outOfRangeTicks++;
+
+		// 已经在强加载中且宽限期未过 → 继续保持
+		if (forcedChunkPos != null && outOfRangeTicks < COMBAT_GRACE_TICKS) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * 更新区块强加载状态。
+	 * - 满足强加载条件时，强制加载当前区块
+	 * - 跨区块移动时，更新强加载的区块
+	 * - 条件不再满足时，释放强加载
+	 */
+	private void updateChunkForcing() {
+		if (!(level() instanceof ServerLevel serverLevel))
+			return;
+
+		if (shouldForceLoadChunk()) {
+			ChunkPos currentChunk = new ChunkPos(blockPosition());
+			if (forcedChunkPos == null) {
+				// 进入战斗，开始强加载
+				boolean success = forceChunk(serverLevel, currentChunk, true);
+				forcedChunkPos = currentChunk;
+				BOSS_LOGGER.info("Boss {} 开始强加载区块 [{}, {}], 成功={}",
+						getUUID().toString().substring(0, 8), currentChunk.x, currentChunk.z, success);
+			} else if (!forcedChunkPos.equals(currentChunk)) {
+				// 跨区块移动，更新强加载
+				forceChunk(serverLevel, forcedChunkPos, false);
+				boolean success = forceChunk(serverLevel, currentChunk, true);
+				BOSS_LOGGER.debug("Boss {} 跨区块: [{}, {}] -> [{}, {}], 成功={}",
+						getUUID().toString().substring(0, 8),
+						forcedChunkPos.x, forcedChunkPos.z,
+						currentChunk.x, currentChunk.z, success);
+				forcedChunkPos = currentChunk;
+			}
+		} else {
+			// 条件不再满足，释放强加载
+			if (forcedChunkPos != null) {
+				BOSS_LOGGER.info("Boss {} 释放区块强加载 [{}, {}], noTargetTime={}",
+						getUUID().toString().substring(0, 8),
+						forcedChunkPos.x, forcedChunkPos.z, noTargetTime);
+			}
+			releaseForcing();
+		}
+	}
+
+	/**
+	 * 释放当前强加载的区块
+	 */
+	private void releaseForcing() {
+		if (forcedChunkPos != null && level() instanceof ServerLevel serverLevel) {
+			forceChunk(serverLevel, forcedChunkPos, false);
+			forcedChunkPos = null;
+		}
+	}
+
+	/**
+	 * 执行区块强加载/取消强加载
+	 * 
+	 * @param level 服务端世界
+	 * @param chunk 目标区块坐标
+	 * @param add   true=强加载, false=取消
+	 * @return 操作是否成功
+	 */
+	private boolean forceChunk(ServerLevel level, ChunkPos chunk, boolean add) {
+		return ForgeChunkManager.forceChunk(level, YoukaisHomecoming.MODID, this, chunk.x, chunk.z, add, true);
+	}
+
+	@Override
+	public void checkDespawn() {
+		// Boss 永远不应被原版远距离清除机制移除
+		this.noActionTime = 0;
+	}
+
+	@Override
+	public void remove(RemovalReason reason) {
+		// 实体被移除时（死亡、discard、维度切换等），确保释放强加载
+		if (forcedChunkPos != null) {
+			BOSS_LOGGER.info("Boss {} 被移除({}), 释放区块 [{}, {}]",
+					getUUID().toString().substring(0, 8), reason,
+					forcedChunkPos.x, forcedChunkPos.z);
+		}
+		releaseForcing();
+		super.remove(reason);
 	}
 
 }

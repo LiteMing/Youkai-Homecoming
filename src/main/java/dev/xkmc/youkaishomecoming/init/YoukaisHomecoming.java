@@ -57,6 +57,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.crafting.CraftingHelper;
+import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.data.event.GatherDataEvent;
 import net.minecraftforge.event.entity.EntityAttributeModificationEvent;
 import net.minecraftforge.event.entity.SpawnPlacementRegisterEvent;
@@ -88,26 +89,26 @@ public class YoukaisHomecoming {
 			e -> e.create(CombatToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(GrazeHelper.GrazeToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(DanmakuToClientPacket.class, NetworkDirection.PLAY_TO_CLIENT),
-			e -> e.create(EraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT)
-	);
+			e -> e.create(EraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT));
 
-	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle", SpellCircleConfig.class);
+	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",
+			SpellCircleConfig.class);
 
-	public static final RegistryEntry<CreativeModeTab> TAB =
-			REGISTRATE.buildModCreativeTab("block", "Youkai's Homecoming - Utensil and Tools",
-					e -> e.icon(YHBlocks.STEAMER_POT::asStack));
+	public static final RegistryEntry<CreativeModeTab> TAB = REGISTRATE.buildModCreativeTab("block",
+			"Youkai's Homecoming - Utensil and Tools",
+			e -> e.icon(YHBlocks.STEAMER_POT::asStack));
 
-	public static final RegistryEntry<CreativeModeTab> CROP =
-			REGISTRATE.buildModCreativeTab("crop", "Youkai's Homecoming - Crops",
-					e -> e.icon(YHItems.CAMELLIA::asStack));
+	public static final RegistryEntry<CreativeModeTab> CROP = REGISTRATE.buildModCreativeTab("crop",
+			"Youkai's Homecoming - Crops",
+			e -> e.icon(YHItems.CAMELLIA::asStack));
 
-	public static final RegistryEntry<CreativeModeTab> FOOD =
-			REGISTRATE.buildModCreativeTab("food", "Youkai's Homecoming - Food and Ingredients",
-					e -> e.icon(YHSushi.LORELEI_NIGIRI.item::asStack));
+	public static final RegistryEntry<CreativeModeTab> FOOD = REGISTRATE.buildModCreativeTab("food",
+			"Youkai's Homecoming - Food and Ingredients",
+			e -> e.icon(YHSushi.LORELEI_NIGIRI.item::asStack));
 
-	public static final RegistryEntry<CreativeModeTab> DECO =
-			REGISTRATE.buildModCreativeTab("deco", "Youkai's Homecoming - Furniture",
-					e -> e.icon(YHBlocks.WoodType.OAK.seat::asStack));
+	public static final RegistryEntry<CreativeModeTab> DECO = REGISTRATE.buildModCreativeTab("deco",
+			"Youkai's Homecoming - Furniture",
+			e -> e.icon(YHBlocks.WoodType.OAK.seat::asStack));
 
 	public static final RecipeBookType MOKA = RecipeBookType.create("MOKA");
 	public static final RecipeBookType KETTLE = RecipeBookType.create("KETTLE");
@@ -197,6 +198,16 @@ public class YoukaisHomecoming {
 				FairySpellCards.registerSpells();
 			}
 
+			// 注册 Boss 区块强加载的验证回调，在世界重载时清理不再有效的 tickets
+			ForgeChunkManager.setForcedChunkLoadingCallback(MODID, (level, ticketHelper) -> {
+				// 世界加载时重新验证所有实体 tickets
+				// 由于 Boss 的 forcedChunkPos 是内存状态（非持久化），重载后需要重新进入战斗才会重新强加载
+				// 所以这里直接清除所有旧的 entity tickets
+				ticketHelper.getEntityTickets().forEach((uuid, chunks) -> {
+					ticketHelper.removeAllTickets(uuid);
+				});
+			});
+
 		});
 		FastMapInit.init();
 	}
@@ -228,7 +239,8 @@ public class YoukaisHomecoming {
 
 	@SubscribeEvent
 	public static void onSpawnPlacementRegister(SpawnPlacementRegisterEvent event) {
-		event.register(YHEntities.LAMPREY.get(), SpawnPlacements.Type.IN_WATER, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+		event.register(YHEntities.LAMPREY.get(), SpawnPlacements.Type.IN_WATER,
+				Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
 				(entityType, world, reason, pos, random) -> pos.getY() >= 50 && pos.getY() <= 64,
 				SpawnPlacementRegisterEvent.Operation.REPLACE);
 	}

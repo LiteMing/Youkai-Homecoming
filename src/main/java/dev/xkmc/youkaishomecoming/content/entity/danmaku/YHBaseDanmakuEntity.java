@@ -9,6 +9,7 @@ import dev.xkmc.l2serial.serialization.codec.TagCodec;
 import dev.xkmc.l2serial.util.Wrappers;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -33,12 +34,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		super(pEntityType, pLevel);
 	}
 
-	protected YHBaseDanmakuEntity(EntityType<? extends YHBaseDanmakuEntity> pEntityType, double pX, double pY, double pZ, Level pLevel) {
+	protected YHBaseDanmakuEntity(EntityType<? extends YHBaseDanmakuEntity> pEntityType, double pX, double pY,
+			double pZ, Level pLevel) {
 		this(pEntityType, pLevel);
 		this.setPos(pX, pY, pZ);
 	}
 
-	protected YHBaseDanmakuEntity(EntityType<? extends YHBaseDanmakuEntity> pEntityType, LivingEntity pShooter, Level pLevel) {
+	protected YHBaseDanmakuEntity(EntityType<? extends YHBaseDanmakuEntity> pEntityType, LivingEntity pShooter,
+			Level pLevel) {
 		this(pEntityType, pShooter.getX(), pShooter.getEyeY() - (double) 0.1F, pShooter.getZ(), pLevel);
 		this.setOwner(pShooter);
 	}
@@ -49,7 +52,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		this.bypassWall = bypassWall;
 		this.bypassEntity = bypassEntity;
 		setDeltaMovement(initVec);
-		updateRotation(ProjectileMovement.of(initVec).rot());
+		// Directly set rotation without lerping so initial direction is correct
+		Vec3 rot = ProjectileMovement.of(initVec).rot();
+		float targetXRot = (float) (rot.x * Mth.RAD_TO_DEG);
+		float targetYRot = (float) (rot.y * Mth.RAD_TO_DEG);
+		setXRot(targetXRot);
+		setYRot(targetYRot);
+		xRotO = targetXRot;
+		yRotO = targetYRot;
 	}
 
 	@Override
@@ -111,7 +121,8 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 
 	@Override
 	public void onHitEntity(EntityHitResult result) {
-		if (level().isClientSide) return;
+		if (level().isClientSide)
+			return;
 		hurtTarget(result);
 		if (!bypassEntity) {
 			discard();

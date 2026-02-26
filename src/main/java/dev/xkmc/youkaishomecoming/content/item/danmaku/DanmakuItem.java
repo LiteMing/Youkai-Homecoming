@@ -1,10 +1,13 @@
 package dev.xkmc.youkaishomecoming.content.item.danmaku;
 
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
+import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.ButterflyProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.CrossProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RenderableProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.SwingingProjectileType;
 import dev.xkmc.l2library.util.raytrace.RayTraceUtil;
 import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
@@ -36,9 +39,28 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.List;
 
 public class DanmakuItem extends Item {
+
+	// Track all instances for render cache reset (dev hotswap support)
+	private static final List<WeakReference<DanmakuItem>> ALL_INSTANCES = new ArrayList<>();
+
+	public static void resetRenderCache() {
+		ProjTypeHolder.reset();
+		for (var ref : ALL_INSTANCES) {
+			var item = ref.get();
+			if (item != null) item.render = null;
+		}
+		// Re-initialize all render types and re-run setup
+		for (var ref : ALL_INSTANCES) {
+			var item = ref.get();
+			if (item != null) item.getTypeForRender();
+		}
+		dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper.setup();
+	}
 
 	public final YHDanmaku.Bullet type;
 	public final DyeColor color;
@@ -49,6 +71,7 @@ public class DanmakuItem extends Item {
 		this.type = type;
 		this.color = color;
 		this.size = size;
+		ALL_INSTANCES.add(new WeakReference<>(this));
 	}
 
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
@@ -60,7 +83,8 @@ public class DanmakuItem extends Item {
 		}
 		if (GrazeHelper.forbidDanmaku(player))
 			return InteractionResultHolder.fail(stack);
-		level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SNOWBALL_THROW, SoundSource.PLAYERS,
+		level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SNOWBALL_THROW,
+				SoundSource.PLAYERS,
 				0.5F, 0.4F / (level.getRandom().nextFloat() * 0.4F + 0.8F));
 		if (!level.isClientSide) {
 			ItemDanmakuEntity danmaku = new ItemDanmakuEntity(YHEntities.ITEM_DANMAKU.get(), player, level);
@@ -98,11 +122,30 @@ public class DanmakuItem extends Item {
 
 	public ProjTypeHolder<? extends RenderableProjectileType<?, ?>, ?> getTypeForRender() {
 		if (render == null) {
-			var loc = YoukaisHomecoming.loc("textures/entities/bullet/" + type.getName() + "/" + color.getName() + ".png");
+			// For special bullets, use specific texture names instead of color names
+			String textureName = switch (type) {
+				case ROSE -> "rose";
+				case MOON -> "moon";
+				case GIANT_YINYANG -> color.getName(); // red or blue
+				default -> color.getName();
+			};
+			var loc = YoukaisHomecoming
+					.loc("textures/entities/bullet/" + type.getName() + "/" + textureName + ".png");
 			RenderableProjectileType<?, ?> r = switch (type) {
 				case BUTTERFLY -> new ButterflyProjectileType(loc, type.display(), 20);
 				case SPARK -> new RotatingProjectileType(loc, type.display(), 20);
 				case STAR -> new RotatingProjectileType(loc, type.display(), 40);
+				// Animated sequence frame bullets (16 frames for gradient effect)
+				case ROSE -> new AnimatedProjectileType(loc, type.display(), 16, 2);
+				// Swinging 3D bullets (rotations per block, tilt angle in degrees, size in blocks)
+				case TALISMAN -> new SwingingProjectileType(loc, type.display(), 0.05f, 0f, 0.7f);
+				case SCALE -> new SwingingProjectileType(loc, type.display(), 0.02f, 30f, 0.5f);
+				// Cross-shaped bullets (like Minecraft saplings)
+				case KUNAI -> new CrossProjectileType(loc, type.display());
+				case KNIFE -> new CrossProjectileType(loc, type.display());
+				// Large bullets use rotating type for impressive visual effect
+				case MOON -> new RotatingProjectileType(loc, type.display(), 80);
+				case GIANT_YINYANG -> new RotatingProjectileType(loc, type.display(), 60);
 				default -> new SimpleProjectileType(loc, type.display());
 			};
 			render = ProjTypeHolder.wrap(Wrappers.cast(r));

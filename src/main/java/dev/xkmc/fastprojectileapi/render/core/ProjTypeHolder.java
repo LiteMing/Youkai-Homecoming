@@ -23,6 +23,11 @@ public class ProjTypeHolder<T extends RenderableProjectileType<T, I>, I> impleme
 		return Wrappers.cast(ans);
 	}
 
+	public static void reset() {
+		HOLDERS.clear();
+		MAP.clear();
+	}
+
 	public static void setup() {
 		HOLDERS.sort(Comparator.comparing(a -> a.type));
 		int n = HOLDERS.size();

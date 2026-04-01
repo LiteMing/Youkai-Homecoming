@@ -425,18 +425,19 @@ YHEvents.registerSpells(event => {
 3. 🔲 支持从datapack JSON加载SpellDefinition (Codec已就绪，需要DatapackRegistry加载器)
 4. 🔲 实现NBT覆盖层
 
-### Phase 3: KubeJS集成
+### Phase 3: KubeJS集成 ✅ 已完成
 
-1. 注册KJS事件
-2. 实现JS侧的builder API
-3. 支持JS回调条件和动作
+1. ✅ 注册KJS事件
+2. ✅ 实现JS侧的builder API
+3. ✅ 支持JS回调条件和动作
 
-### Phase 4: 物品自动注册
+### Phase 4: 物品自动注册 ✅ 已完成（当前实现为“注册抽象 + 通用动态物品”）
 
-1. 实现`SpellItemAutoRegister`
-2. 实现`DynamicSpellItem`
-3. 从`YHDanmaku`迁移手写SpellItem
-4. 保持物品ID向后兼容
+1. ✅ 实现`SpellItemAutoRegister`
+2. ✅ 实现`DynamicSpellItem`
+3. ✅ 从`YHDanmaku`迁移手写SpellItem
+4. ✅ 保持物品ID向后兼容
+5. ⚠️ 尚未实现“按所有`SpellDefinition`自动批量生成Forge物品”，当前继续使用一个通用`spell_dynamic`
 
 ### Phase 5: 编辑器
 

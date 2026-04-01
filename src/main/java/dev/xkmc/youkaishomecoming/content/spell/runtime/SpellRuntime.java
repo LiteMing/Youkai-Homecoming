@@ -16,8 +16,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Runtime state machine for a spell card definition.
@@ -33,6 +35,7 @@ public class SpellRuntime {
 	private int totalTick;
 	private int hitCount;
 	private final Map<String, Double> variables = new HashMap<>();
+	private final Map<Object, Object> actionState = new IdentityHashMap<>();
 
 	@Nullable
 	private Consumer<SpellRuntime> onPhaseChange;
@@ -115,18 +118,28 @@ public class SpellRuntime {
 		totalTick = 0;
 		hitCount = 0;
 		variables.clear();
-
-		// Reset any legacy ticker actions
-		resetLegacyActions(definition.getPhase(currentPhaseId));
+		resetActionState();
 	}
 
-	private void resetLegacyActions(@Nullable PhaseDefinition phase) {
-		if (phase == null) return;
-		for (SpellAction action : phase.onTick) {
-			if (action instanceof LegacyTickerAction legacy) {
-				legacy.reset();
+	public <T> T getOrCreateState(Object key, Supplier<? extends T> factory) {
+		@SuppressWarnings("unchecked")
+		T value = (T) actionState.computeIfAbsent(key, k -> factory.get());
+		return value;
+	}
+
+	@Nullable
+	public <T> T getState(Object key, Class<T> type) {
+		Object value = actionState.get(key);
+		return type.isInstance(value) ? type.cast(value) : null;
+	}
+
+	private void resetActionState() {
+		for (Object value : actionState.values()) {
+			if (value instanceof SpellCard card) {
+				card.reset();
 			}
 		}
+		actionState.clear();
 	}
 
 	private void executeTransition(SpellContext ctx, Transition trans) {
@@ -192,7 +205,7 @@ public class SpellRuntime {
 		if (phase == null) return null;
 		for (SpellAction action : phase.onTick) {
 			if (action instanceof LegacyTickerAction legacy) {
-				return legacy.getCard();
+				return legacy.getCard(this);
 			}
 		}
 		return null;

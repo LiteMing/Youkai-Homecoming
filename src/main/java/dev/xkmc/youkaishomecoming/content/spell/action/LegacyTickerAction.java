@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.action;
 
 import com.mojang.serialization.Codec;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
 
 import java.util.function.Supplier;
@@ -15,7 +16,6 @@ public class LegacyTickerAction implements SpellAction {
 	public static final Codec<LegacyTickerAction> CODEC = Codec.unit(LegacyTickerAction::new);
 
 	private Supplier<? extends SpellCard> factory;
-	private SpellCard card;
 
 	public LegacyTickerAction() {
 	}
@@ -26,23 +26,14 @@ public class LegacyTickerAction implements SpellAction {
 
 	@Override
 	public void execute(SpellContext ctx) {
-		if (card == null) {
-			if (factory != null) {
-				card = factory.get();
-			} else {
-				return;
-			}
+		if (factory == null) {
+			return;
 		}
+		SpellCard card = ctx.runtime().getOrCreateState(this, factory);
 		card.tick(ctx.holder());
 	}
 
-	public void reset() {
-		if (card != null) {
-			card.reset();
-		}
-	}
-
-	public SpellCard getCard() {
-		return card;
+	public SpellCard getCard(SpellRuntime runtime) {
+		return runtime.getState(this, SpellCard.class);
 	}
 }

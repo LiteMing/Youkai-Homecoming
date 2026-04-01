@@ -27,10 +27,17 @@ public record SpellDisplay(
 	).apply(i, SpellDisplay::new));
 
 	public Component displayName() {
-		return Component.translatable(name);
+		return isTranslationKey(name) ? Component.translatable(name) : Component.literal(name);
 	}
 
 	public Component displayDesc() {
-		return Component.translatable(description);
+		if (description.isEmpty()) {
+			return Component.empty();
+		}
+		return isTranslationKey(description) ? Component.translatable(description) : Component.literal(description);
+	}
+
+	private static boolean isTranslationKey(String text) {
+		return text.indexOf(' ') < 0 && text.indexOf('.') >= 0;
 	}
 }

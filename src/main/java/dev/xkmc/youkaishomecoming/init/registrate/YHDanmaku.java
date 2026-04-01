@@ -7,11 +7,13 @@ import dev.xkmc.fastprojectileapi.render.core.DisplayType;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuPoofParticleOptions;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.CustomSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.custom.data.HomingSpellFormData;
 import dev.xkmc.youkaishomecoming.content.spell.custom.data.RingSpellFormData;
 import dev.xkmc.youkaishomecoming.content.spell.player.*;
+import dev.xkmc.youkaishomecoming.content.spell.registry.SpellItemAutoRegister;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
 import net.minecraft.core.particles.ParticleType;
@@ -146,6 +148,7 @@ public class YHDanmaku {
 	public static final ItemEntry<SpellItem> YUKARI_SPELL_LASER;
 	public static final ItemEntry<SpellItem> YUKARI_SPELL_BUTTERFLY;
 	public static final ItemEntry<SpellItem> CLOWNPIECE_SPELL;
+	public static final ItemEntry<DynamicSpellItem> DYNAMIC_SPELL;
 	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_RING;
 	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_HOMING;
 
@@ -175,86 +178,83 @@ public class YHDanmaku {
 					.tag(YHTagGen.CUSTOM_SPELL)
 					.register();
 
-			REIMU_SPELL = YoukaisHomecoming.REGISTRATE
-					.item("spell_reimu", p -> new SpellItem(
-							p.stacksTo(1), ReimuItemSpell::new, true,
-							() -> Bullet.CIRCLE.get(DyeColor.RED).get()))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/" + ctx.getName())))
-					.tag(YHTagGen.PRESET_SPELL)
-					.lang("Reimu's Spellcard \"Innate Dream\"")
-					.register();
+			DYNAMIC_SPELL = SpellItemAutoRegister.registerDynamic(
+					"spell_dynamic",
+					null,
+					"item/spell/custom_spell",
+					"Dynamic Spellcard");
 
-			MARISA_SPELL = YoukaisHomecoming.REGISTRATE
-					.item("spell_marisa", p -> new SpellItem(
-							p.stacksTo(1), MarisaItemSpell::new, false,
-							() -> Laser.LASER.get(DyeColor.WHITE).get()))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/" + ctx.getName())))
-					.tag(YHTagGen.PRESET_SPELL)
-					.lang("Marisa's Spellcard \"Master Spark\"")
-					.register();
+			REIMU_SPELL = SpellItemAutoRegister.registerLegacy(new SpellItemAutoRegister.LegacySpellItemSpec(
+					"spell_reimu",
+					ReimuItemSpell::new,
+					true,
+					() -> Bullet.CIRCLE.get(DyeColor.RED).get(),
+					"item/spell/spell_reimu",
+					"Reimu's Spellcard \"Innate Dream\""));
 
-			SANAE_SPELL = YoukaisHomecoming.REGISTRATE
-					.item("spell_sanae", p -> new SpellItem(
-							p.stacksTo(1), SanaeItemSpell::new, false,
-							() -> Bullet.SPARK.get(DyeColor.GREEN).get()))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/" + ctx.getName())))
-					.tag(YHTagGen.PRESET_SPELL)
-					.lang("Sanae's Spellcard \"Inherited Ritual\"")
-					.register();
+			MARISA_SPELL = SpellItemAutoRegister.registerLegacy(new SpellItemAutoRegister.LegacySpellItemSpec(
+					"spell_marisa",
+					MarisaItemSpell::new,
+					false,
+					() -> Laser.LASER.get(DyeColor.WHITE).get(),
+					"item/spell/spell_marisa",
+					"Marisa's Spellcard \"Master Spark\""));
 
-			MYSTIA_SPELL = YoukaisHomecoming.REGISTRATE
-					.item("spell_mystia", p -> new SpellItem(
-							p.stacksTo(1), MystiaItemSpell::new, false,
-							() -> Bullet.MENTOS.get(DyeColor.GREEN).get()))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/" + ctx.getName())))
-					.tag(YHTagGen.PRESET_SPELL)
-					.lang("Night Sparrow \"Midnight Chorus Master\"")
-					.register();
+			SANAE_SPELL = SpellItemAutoRegister.registerLegacy(new SpellItemAutoRegister.LegacySpellItemSpec(
+					"spell_sanae",
+					SanaeItemSpell::new,
+					false,
+					() -> Bullet.SPARK.get(DyeColor.GREEN).get(),
+					"item/spell/spell_sanae",
+					"Sanae's Spellcard \"Inherited Ritual\""));
 
-			KOISHI_SPELL = YoukaisHomecoming.REGISTRATE
-					.item("spell_koishi", p -> new SpellItem(
-							p.stacksTo(1), KoishiItemSpell::new, false,
-							() -> Laser.LASER.get(DyeColor.BLUE).get()))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/" + ctx.getName())))
-					.tag(YHTagGen.PRESET_SPELL)
-					.lang("Response \"Youkai Polygraph\"")
-					.register();
+			MYSTIA_SPELL = SpellItemAutoRegister.registerLegacy(new SpellItemAutoRegister.LegacySpellItemSpec(
+					"spell_mystia",
+					MystiaItemSpell::new,
+					false,
+					() -> Bullet.MENTOS.get(DyeColor.GREEN).get(),
+					"item/spell/spell_mystia",
+					"Night Sparrow \"Midnight Chorus Master\""));
 
-			REMILIA_SPELL = YoukaisHomecoming.REGISTRATE
-					.item("spell_remilia", p -> new SpellItem(
-							p.stacksTo(1), RemiliaItemSpell::new, false,
-							() -> Bullet.BUBBLE.get(DyeColor.RED).get()))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/" + ctx.getName())))
-					.tag(YHTagGen.PRESET_SPELL)
-					.lang("Scarlet Sign \"Scarlet Meister\"")
-					.register();
+			KOISHI_SPELL = SpellItemAutoRegister.registerLegacy(new SpellItemAutoRegister.LegacySpellItemSpec(
+					"spell_koishi",
+					KoishiItemSpell::new,
+					false,
+					() -> Laser.LASER.get(DyeColor.BLUE).get(),
+					"item/spell/spell_koishi",
+					"Response \"Youkai Polygraph\""));
 
-			YUKARI_SPELL_LASER = YoukaisHomecoming.REGISTRATE
-					.item("spell_yukari_laser", p -> new SpellItem(
-							p.stacksTo(1), YukariItemSpellLaser::new, false,
-							() -> Laser.LASER.get(DyeColor.RED).get()))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/spell_yukari")))
-					.tag(YHTagGen.PRESET_SPELL)
-					.lang("Barrier \"Mesh of Light & Darkness\"")
-					.register();
+			REMILIA_SPELL = SpellItemAutoRegister.registerLegacy(new SpellItemAutoRegister.LegacySpellItemSpec(
+					"spell_remilia",
+					RemiliaItemSpell::new,
+					false,
+					() -> Bullet.BUBBLE.get(DyeColor.RED).get(),
+					"item/spell/spell_remilia",
+					"Scarlet Sign \"Scarlet Meister\""));
 
-			YUKARI_SPELL_BUTTERFLY = YoukaisHomecoming.REGISTRATE
-					.item("spell_yukari_butterfly", p -> new SpellItem(
-							p.stacksTo(1), YukariItemSpellButterfly::new, false,
-							() -> Bullet.BUTTERFLY.get(DyeColor.MAGENTA).get()))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/spell_yukari")))
-					.tag(YHTagGen.PRESET_SPELL)
-					.lang("Barrier \"Double Black Death Butterfly\"")
-					.register();
+			YUKARI_SPELL_LASER = SpellItemAutoRegister.registerLegacy(new SpellItemAutoRegister.LegacySpellItemSpec(
+					"spell_yukari_laser",
+					YukariItemSpellLaser::new,
+					false,
+					() -> Laser.LASER.get(DyeColor.RED).get(),
+					"item/spell/spell_yukari",
+					"Barrier \"Mesh of Light & Darkness\""));
 
-			CLOWNPIECE_SPELL = YoukaisHomecoming.REGISTRATE
-					.item("spell_clownpiece", p -> new SpellItem(
-							p.stacksTo(1), ClownItemSpell::new, true,
-							() -> Laser.LASER.get(DyeColor.RED).get()))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/spell_clownpiece")))
-					.tag(YHTagGen.PRESET_SPELL)
-					.lang("Hell Sign \"Star and Stripe\"")
-					.register();
+			YUKARI_SPELL_BUTTERFLY = SpellItemAutoRegister.registerLegacy(new SpellItemAutoRegister.LegacySpellItemSpec(
+					"spell_yukari_butterfly",
+					YukariItemSpellButterfly::new,
+					false,
+					() -> Bullet.BUTTERFLY.get(DyeColor.MAGENTA).get(),
+					"item/spell/spell_yukari",
+					"Barrier \"Double Black Death Butterfly\""));
+
+			CLOWNPIECE_SPELL = SpellItemAutoRegister.registerLegacy(new SpellItemAutoRegister.LegacySpellItemSpec(
+					"spell_clownpiece",
+					ClownItemSpell::new,
+					true,
+					() -> Laser.LASER.get(DyeColor.RED).get(),
+					"item/spell/spell_clownpiece",
+					"Hell Sign \"Star and Stripe\""));
 		}
 
 		DANMAKU = new ItemEntry[Bullet.values().length][DyeColor.values().length];

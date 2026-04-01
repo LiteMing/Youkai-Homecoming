@@ -16,6 +16,7 @@ import dev.xkmc.l2library.serial.config.ConfigTypeEntry;
 import dev.xkmc.l2library.serial.config.PacketHandlerWithConfig;
 import dev.xkmc.l2serial.serialization.custom_handler.Handlers;
 import dev.xkmc.youkaishomecoming.compat.gateway.GatewayEventHandlers;
+import dev.xkmc.youkaishomecoming.compat.kubejs.spell.KubeJSSpellCompat;
 import dev.xkmc.youkaishomecoming.compat.terrablender.Terrablender;
 import dev.xkmc.youkaishomecoming.compat.thirst.ThirstCompat;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMCompat;
@@ -198,6 +199,9 @@ public class YoukaisHomecoming {
 
 			if (ENABLE_TLM && ModList.get().isLoaded(TouhouLittleMaid.MOD_ID)) {
 				FairySpellCards.registerSpells();
+			}
+			if (ModList.get().isLoaded("kubejs")) {
+				KubeJSSpellCompat.registerStartupSpells();
 			}
 
 			// 注册 Boss 区块强加载的验证回调，在世界重载时清理不再有效的 tickets

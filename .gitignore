@@ -8,4 +8,7 @@ temp
 /bin/main/data/
 /tash
 /src/main/resources/
+!/src/main/resources/
+/src/main/resources/*
+!/src/main/resources/kubejs.plugins.txt
 /src/generated/

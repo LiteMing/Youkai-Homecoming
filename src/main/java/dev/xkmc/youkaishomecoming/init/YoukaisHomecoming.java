@@ -25,6 +25,7 @@ import dev.xkmc.youkaishomecoming.content.capability.*;
 import dev.xkmc.youkaishomecoming.content.entity.misc.FairyIce;
 import dev.xkmc.youkaishomecoming.content.entity.misc.FrozenFrog;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.CombatToClient;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellStateToClient;
 import dev.xkmc.youkaishomecoming.content.item.fluid.SlipBottleIngredient;
 import dev.xkmc.youkaishomecoming.content.pot.table.food.YHSushi;
 import dev.xkmc.youkaishomecoming.content.pot.table.item.TableItemManager;
@@ -89,7 +90,8 @@ public class YoukaisHomecoming {
 			e -> e.create(CombatToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(GrazeHelper.GrazeToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(DanmakuToClientPacket.class, NetworkDirection.PLAY_TO_CLIENT),
-			e -> e.create(EraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT));
+			e -> e.create(EraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(SpellStateToClient.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",
 			SpellCircleConfig.class);

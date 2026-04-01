@@ -6,24 +6,46 @@ import dev.xkmc.youkaishomecoming.content.spell.mover.RectMover;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.ActualSpellCard;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
-import dev.xkmc.youkaishomecoming.content.spell.spellcard.StagedSpellCard;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.Ticker;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 @SerialClass
-public class KisinSpell extends StagedSpellCard {
+public class KisinSpell extends ActualSpellCard {
+
+	private static final int STAGE_COUNT = 3;
 
 	@SerialClass.SerialField
 	private int cooldown;
 
+	@SerialClass.SerialField
+	private int currentStage = -1;
+
 	@Override
-	protected int getStageCount() {
-		return 3; // SummonNear, Wing, SummonFar
+	public void reset() {
+		super.reset();
+		cooldown = 0;
+		currentStage = -1;
+	}
+
+	private int calculateStage(CardHolder holder) {
+		var self = holder.self();
+		float healthRatio = self.getHealth() / self.getMaxHealth();
+		return Math.min(STAGE_COUNT - 1, (int) (STAGE_COUNT * (1 - healthRatio)));
 	}
 
 	@Override
-	protected void tickStaged(CardHolder holder, int stage) {
+	public void tick(CardHolder holder) {
+		super.tick(holder);
+		int newStage = calculateStage(holder);
+		if (newStage != currentStage) {
+			getTickers().clear();
+			currentStage = newStage;
+		}
+		tickImpl(holder, currentStage);
+	}
+
+	private void tickImpl(CardHolder holder, int stage) {
 		if (cooldown > 0) {
 			cooldown--;
 			return;
@@ -42,29 +64,6 @@ public class KisinSpell extends StagedSpellCard {
 				addTicker(new SummonFar());
 				cooldown = 80;
 			}
-		}
-	}
-
-	@Override
-	protected void tickTraditional(CardHolder holder) {
-		// 保持原有逻辑
-		if (cooldown > 0) cooldown--;
-		if (cooldown > 0) return;
-
-		var target = holder.target();
-		if (target == null) return;
-		var center = holder.center();
-		double dist = center.distanceTo(target);
-
-		if (dist < 10) {
-			addTicker(new SummonNear());
-			cooldown = 60;
-		} else if (dist < 40 && holder.random().nextBoolean()) {
-			addTicker(new Wing());
-			cooldown = 60;
-		} else {
-			addTicker(new SummonFar());
-			cooldown = 80;
 		}
 	}
 

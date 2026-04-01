@@ -15,10 +15,12 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RestrictData;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.events.YoukaiFightEvent;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
@@ -29,6 +31,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializer;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
@@ -91,6 +94,18 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@SerialClass.SerialField
 	public CombatProgress combatProgress = new CombatProgress();
+
+	// New spell runtime (coexists with legacy spellCard)
+	@Nullable
+	public SpellRuntime spellRuntime;
+
+	// Client-side spell state (set via SpellStateToClient packet)
+	@Nullable
+	public ResourceLocation clientSpellId;
+	@Nullable
+	public ResourceLocation clientPhaseId;
+	public int clientPhaseTick;
+	public boolean clientInDanmakuCombat;
 
 	public YoukaiEntity(EntityType<? extends YoukaiEntity> pEntityType, Level pLevel) {
 		this(pEntityType, pLevel, 10);
@@ -291,7 +306,17 @@ public abstract class YoukaiEntity extends PathfinderMob
 				this.setDeltaMovement(this.getDeltaMovement().multiply(1.0D, fall, 1.0D));
 			}
 			targets.tick(super.getTarget());
-			if (spellCard != null) {
+			if (spellRuntime != null) {
+				// New runtime takes priority over legacy
+				if (getTarget() != null && shouldShowSpellCircle()) {
+					spellRuntime.tick(this);
+					tickDanmaku();
+				} else {
+					spellRuntime.reset();
+					allDanmakus.clear();
+					toBeSent.clear();
+				}
+			} else if (spellCard != null) {
 				if (getTarget() != null && shouldShowSpellCircle()) {
 					spellCard.tick(this);
 					tickDanmaku();
@@ -311,6 +336,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	protected void actuallyHurt(DamageSource source, float amount) {
+		if (spellRuntime != null) spellRuntime.hurt(this, source, amount);
 		if (spellCard != null) spellCard.hurt(this, source, amount);
 		actuallyHurtImpl(source, amount);
 	}
@@ -521,6 +547,31 @@ public abstract class YoukaiEntity extends PathfinderMob
 		setTarget(null);
 		setLastHurtByMob(null);
 		setCombatProgress(combatProgress.maxProgress);
+	}
+
+	public void syncSpellState() {
+		if (level().isClientSide()) return;
+		ResourceLocation spellId = null;
+		ResourceLocation phaseId = null;
+		int phaseTick = 0;
+		boolean inCombat = getTarget() != null;
+		if (spellRuntime != null) {
+			spellId = spellRuntime.getDefinition().id;
+			phaseId = spellRuntime.getCurrentPhaseId();
+			phaseTick = spellRuntime.getPhaseTick();
+		} else if (spellCard != null && spellCard.spellId != null) {
+			spellId = spellCard.spellId;
+		}
+		YoukaisHomecoming.HANDLER.toTrackingPlayers(
+				new SpellStateToClient(getId(), spellId, phaseId, phaseTick, inCombat), this);
+	}
+
+	public void setSpellRuntime(@Nullable SpellRuntime runtime) {
+		this.spellRuntime = runtime;
+		if (runtime != null) {
+			runtime.setOnPhaseChange(r -> syncSpellState());
+		}
+		syncSpellState();
 	}
 
 	public void danmakuHitTarget(IYHDanmaku self, DamageSource source, LivingEntity target) {

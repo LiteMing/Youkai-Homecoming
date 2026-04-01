@@ -6,6 +6,8 @@ import dev.xkmc.youkaishomecoming.content.entity.boss.*;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.*;
 import dev.xkmc.youkaishomecoming.content.entity.reimu.MaidenEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.bridge.LegacySpellBridge;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
 import net.minecraft.network.chat.Component;
@@ -24,6 +26,9 @@ public class TouhouSpellCards {
 
 	public static void registerSpell(String id, Supplier<SpellCard> card) {
 		MAP.put(id, card);
+		// Also register in the new SpellRegistry via legacy bridge
+		ResourceLocation rl = new ResourceLocation(id);
+		SpellRegistry.register(rl, LegacySpellBridge.fromLegacy(rl, card, id));
 	}
 
 	public static void registerSpells() {

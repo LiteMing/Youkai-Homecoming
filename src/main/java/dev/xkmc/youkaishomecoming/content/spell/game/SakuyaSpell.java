@@ -3,8 +3,8 @@ package dev.xkmc.youkaishomecoming.content.spell.game;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.spell.mover.RectMover;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.ActualSpellCard;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
-import dev.xkmc.youkaishomecoming.content.spell.spellcard.StagedSpellCard;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.Ticker;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -27,7 +27,9 @@ import net.minecraft.world.phys.Vec3;
  * - Phase 2: 「咲夜的世界」- 全方位时停 + 飞刀风暴 + 激光
  */
 @SerialClass
-public class SakuyaSpell extends StagedSpellCard {
+public class SakuyaSpell extends ActualSpellCard {
+
+    private static final int STAGE_COUNT = 3;
 
     @SerialClass.SerialField
     private int cooldown;
@@ -35,14 +37,36 @@ public class SakuyaSpell extends StagedSpellCard {
     @SerialClass.SerialField
     private double rotationOffset = 0;
 
+    @SerialClass.SerialField
+    private int currentStage = -1;
+
     @Override
-    protected int getStageCount() {
-        return 3;
+    public void reset() {
+        super.reset();
+        cooldown = 0;
+        rotationOffset = 0;
+        currentStage = -1;
+    }
+
+    private int calculateStage(CardHolder holder) {
+        var self = holder.self();
+        float healthRatio = self.getHealth() / self.getMaxHealth();
+        return Math.min(STAGE_COUNT - 1, (int) (STAGE_COUNT * (1 - healthRatio)));
     }
 
     @Override
-    protected void tickStaged(CardHolder holder, int stage) {
-        rotationOffset += 3.0; // 螺旋旋转速度
+    public void tick(CardHolder holder) {
+        super.tick(holder);
+        int newStage = calculateStage(holder);
+        if (newStage != currentStage) {
+            getTickers().clear();
+            currentStage = newStage;
+        }
+        tickImpl(holder, currentStage);
+    }
+
+    private void tickImpl(CardHolder holder, int stage) {
+        rotationOffset += 3.0;
         if (cooldown > 0) {
             cooldown--;
             return;
@@ -55,7 +79,6 @@ public class SakuyaSpell extends StagedSpellCard {
 
         switch (stage) {
             case 0 -> {
-                // 幻想「杀人玩偶」- 密集飞刀 + 多层环形弹
                 addTicker(new KnifeRing().setDensity(24, 5, 4));
                 if (tick % 80 == 0) {
                     addTicker(new SpiralKnife().init(1).setDensity(4, 60));
@@ -63,7 +86,6 @@ public class SakuyaSpell extends StagedSpellCard {
                 cooldown = 30;
             }
             case 1 -> {
-                // 奇术「エターナルミーク」- 时停飞刀 + 追踪弹 + 扫射
                 addTicker(new TimeStopKnife().setDensity(24).setFreezeTime(30));
                 if (tick % 40 == 0) {
                     addTicker(new KnifeSweep().init(dist));
@@ -72,7 +94,6 @@ public class SakuyaSpell extends StagedSpellCard {
                 cooldown = 35;
             }
             case 2 -> {
-                // 「咲夜的世界」- 全方位时停 + 飞刀风暴 + 激光
                 addTicker(new TimeStopKnife().setIntense(true).setDensity(36).setFreezeTime(25));
                 addTicker(new SpiralKnife().init(-1).setDensity(5, 50));
                 addTicker(new SpiralKnife().init(1).setDensity(5, 50));
@@ -84,38 +105,6 @@ public class SakuyaSpell extends StagedSpellCard {
                 }
                 cooldown = 25;
             }
-        }
-    }
-
-    @Override
-    protected void tickTraditional(CardHolder holder) {
-        rotationOffset += 3.0;
-        if (cooldown > 0) {
-            cooldown--;
-            return;
-        }
-
-        var target = holder.target();
-        if (target == null)
-            return;
-        var center = holder.center();
-        double dist = center.distanceTo(target);
-
-        if (dist < 15) {
-            // 近距离：密集环形飞刀
-            addTicker(new KnifeRing().setDensity(28, 4, 3));
-            cooldown = 25;
-        } else if (dist < 35) {
-            // 中距离：时停飞刀 + 扫射
-            addTicker(new TimeStopKnife().setDensity(20));
-            addTicker(new KnifeSweep().init(dist));
-            cooldown = 40;
-        } else {
-            // 远距离：螺旋飞刀 + 时停 + 风暴
-            addTicker(new SpiralKnife().init(holder.random().nextBoolean() ? 1 : -1).setDensity(4, 50));
-            addTicker(new TimeStopKnife().setIntense(true).setDensity(28));
-            addTicker(new KnifeStorm().init(dist));
-            cooldown = 50;
         }
     }
 

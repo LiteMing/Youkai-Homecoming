@@ -15,8 +15,13 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RestrictData;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.events.YoukaiFightEvent;
@@ -28,6 +33,8 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NumericTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializer;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -67,6 +74,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 		implements SpellCircleHolder, LivingCardHolder, EntityCachingUser {
 
 	private static final int GROUND_HEIGHT = 5, ATTEMPT_ABOVE = 3;
+	private static final String NBT_SPELL_ID = "spell_id";
+	private static final String NBT_SPELL_PHASE = "spell_phase";
+	private static final String NBT_SPELL_VARIABLES = "spell_variables";
 
 	private static <T> EntityDataAccessor<T> defineId(EntityDataSerializer<T> ser) {
 		return SynchedEntityData.defineId(YoukaiEntity.class, ser);
@@ -106,6 +116,14 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public ResourceLocation clientPhaseId;
 	public int clientPhaseTick;
 	public boolean clientInDanmakuCombat;
+
+	@Nullable
+	private String cachedSpellOverrideId = null;
+	@Nullable
+	private String cachedSpellOverridePhase = null;
+	@Nullable
+	private CompoundTag cachedSpellOverrideVariables = null;
+	private boolean spellNbtOverrideActive;
 
 	public YoukaiEntity(EntityType<? extends YoukaiEntity> pEntityType, Level pLevel) {
 		this(pEntityType, pLevel, 10);
@@ -159,6 +177,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 			var data = TagCodec.valueToTag(new RestrictData(getRestrictCenter(), getRestrictRadius()));
 			if (data != null) tag.put("Restrict", data);
 		}
+		writeSpellOverrideTag(tag, NBT_SPELL_ID, Tag.TAG_STRING);
+		writeSpellOverrideTag(tag, NBT_SPELL_PHASE, Tag.TAG_STRING);
+		writeSpellOverrideTag(tag, NBT_SPELL_VARIABLES, Tag.TAG_COMPOUND);
 	}
 
 	public void readAdditionalSaveData(CompoundTag tag) {
@@ -178,6 +199,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 				restrictTo(res.center(), (int) res.radius());
 			}
 		}
+		readSpellOverrideTag(tag, NBT_SPELL_ID, Tag.TAG_STRING);
+		readSpellOverrideTag(tag, NBT_SPELL_PHASE, Tag.TAG_STRING);
+		readSpellOverrideTag(tag, NBT_SPELL_VARIABLES, Tag.TAG_COMPOUND);
 	}
 
 	public boolean getFlag(int flag) {
@@ -306,6 +330,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 				this.setDeltaMovement(this.getDeltaMovement().multiply(1.0D, fall, 1.0D));
 			}
 			targets.tick(super.getTarget());
+			checkSpellOverrides();
 			if (spellRuntime != null) {
 				// New runtime takes priority over legacy
 				if (getTarget() != null && shouldShowSpellCircle()) {
@@ -538,7 +563,16 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	public DamageSource getDanmakuDamageSource(IYHDanmaku danmaku) {
-		if (spellCard != null) return spellCard.card.getDanmakuDamageSource(danmaku);
+		SpellCard activeCard = null;
+		if (spellRuntime != null) {
+			activeCard = spellRuntime.getLegacyCard();
+		}
+		if (activeCard == null && spellCard != null) {
+			activeCard = spellCard.card;
+		}
+		if (activeCard != null) {
+			return activeCard.getDanmakuDamageSource(danmaku);
+		}
 		return YHDamageTypes.danmaku(danmaku);
 	}
 
@@ -570,6 +604,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 		this.spellRuntime = runtime;
 		if (runtime != null) {
 			runtime.setOnPhaseChange(r -> syncSpellState());
+		}
+		if (!level().isClientSide()) {
+			checkSpellOverrides();
 		}
 		syncSpellState();
 	}
@@ -651,6 +688,127 @@ public abstract class YoukaiEntity extends PathfinderMob
 	@Override
 	public UserCacheHolder entityCache() {
 		return cache;
+	}
+
+	private void checkSpellOverrides() {
+		CompoundTag data = getPersistentData();
+		String rawSpellId = readOverrideString(data, NBT_SPELL_ID);
+		String rawPhaseId = readOverrideString(data, NBT_SPELL_PHASE);
+		CompoundTag variableOverrides = data.contains(NBT_SPELL_VARIABLES, Tag.TAG_COMPOUND)
+				? data.getCompound(NBT_SPELL_VARIABLES).copy()
+				: null;
+		CompoundTag previousVariables = cachedSpellOverrideVariables == null ? null : cachedSpellOverrideVariables.copy();
+
+		boolean spellChanged = !Objects.equals(cachedSpellOverrideId, rawSpellId);
+		boolean phaseChanged = !Objects.equals(cachedSpellOverridePhase, rawPhaseId);
+		boolean variablesChanged = !Objects.equals(cachedSpellOverrideVariables, variableOverrides);
+		if (!spellChanged && !phaseChanged && !variablesChanged) {
+			return;
+		}
+
+		cachedSpellOverrideId = rawSpellId;
+		cachedSpellOverridePhase = rawPhaseId;
+		cachedSpellOverrideVariables = variableOverrides == null ? null : variableOverrides.copy();
+
+		SpellRuntime runtime = spellChanged ? applySpellIdOverride(rawSpellId) : spellRuntime;
+		if (runtime == null) {
+			return;
+		}
+		if (spellChanged || variablesChanged) {
+			applyVariableOverrides(runtime, previousVariables, variableOverrides);
+		}
+		if (spellChanged || phaseChanged) {
+			applyPhaseOverride(runtime, rawPhaseId);
+		}
+	}
+
+	@Nullable
+	private SpellRuntime applySpellIdOverride(String rawSpellId) {
+		if (rawSpellId.isEmpty()) {
+			if (spellNbtOverrideActive) {
+				spellNbtOverrideActive = false;
+				setSpellRuntime(null);
+			}
+			return spellRuntime;
+		}
+		if (!ResourceLocation.isValidResourceLocation(rawSpellId)) {
+			YoukaisHomecoming.LOGGER.warn("Ignoring invalid spell override '{}' on {}", rawSpellId, getUUID());
+			return spellRuntime;
+		}
+		ResourceLocation spellId = new ResourceLocation(rawSpellId);
+		SpellDefinition definition = SpellRegistry.get(spellId);
+		if (definition == null) {
+			YoukaisHomecoming.LOGGER.warn("Ignoring unknown spell override '{}' on {}", spellId, getUUID());
+			return spellRuntime;
+		}
+		spellNbtOverrideActive = true;
+		if (spellRuntime != null && spellRuntime.getDefinition().id.equals(spellId)) {
+			return spellRuntime;
+		}
+		SpellRuntime runtime = new SpellRuntime(definition);
+		setSpellRuntime(runtime);
+		return runtime;
+	}
+
+	private void applyPhaseOverride(SpellRuntime runtime, String rawPhaseId) {
+		if (rawPhaseId.isEmpty()) {
+			return;
+		}
+		if (!ResourceLocation.isValidResourceLocation(rawPhaseId)) {
+			YoukaisHomecoming.LOGGER.warn("Ignoring invalid spell phase override '{}' on {}", rawPhaseId, getUUID());
+			return;
+		}
+		ResourceLocation phaseId = new ResourceLocation(rawPhaseId);
+		if (runtime.getDefinition().getPhase(phaseId) == null) {
+			YoukaisHomecoming.LOGGER.warn(
+					"Ignoring unknown spell phase override '{}' for spell {} on {}",
+					phaseId, runtime.getDefinition().id, getUUID());
+			return;
+		}
+		if (!phaseId.equals(runtime.getCurrentPhaseId())) {
+			float healthRatio = getHealth() / getMaxHealth();
+			DifficultyModifiers difficulty = runtime.getDefinition().difficulty.resolve(healthRatio);
+			runtime.forceTransition(new SpellContext(this, runtime.getDefinition(), runtime, difficulty), phaseId);
+		}
+	}
+
+	private void applyVariableOverrides(SpellRuntime runtime, @Nullable CompoundTag previous, @Nullable CompoundTag current) {
+		if (previous != null) {
+			for (String key : previous.getAllKeys()) {
+				if (previous.get(key) instanceof NumericTag && (current == null || !current.contains(key))) {
+					runtime.removeVariable(key);
+				}
+			}
+		}
+		if (current == null) {
+			return;
+		}
+		for (String key : current.getAllKeys()) {
+			Tag value = current.get(key);
+			if (value instanceof NumericTag numeric) {
+				runtime.setVariable(key, numeric.getAsDouble());
+			} else if (value != null) {
+				YoukaisHomecoming.LOGGER.warn(
+						"Ignoring non-numeric spell variable override '{}' on {}", key, getUUID());
+			}
+		}
+	}
+
+	private void writeSpellOverrideTag(CompoundTag saveTag, String key, int type) {
+		CompoundTag data = getPersistentData();
+		if (data.contains(key, type)) {
+			saveTag.put(key, data.get(key).copy());
+		}
+	}
+
+	private void readSpellOverrideTag(CompoundTag loadTag, String key, int type) {
+		if (loadTag.contains(key, type)) {
+			getPersistentData().put(key, loadTag.get(key).copy());
+		}
+	}
+
+	private static String readOverrideString(CompoundTag data, String key) {
+		return data.contains(key, Tag.TAG_STRING) ? data.getString(key).trim() : "";
 	}
 
 }

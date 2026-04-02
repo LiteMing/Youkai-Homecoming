@@ -441,9 +441,10 @@ YHEvents.registerSpells(event => {
 
 ### Phase 5: 编辑器
 
-1. Phase 1列表编辑器
-2. Phase 2节点图
-3. Phase 3调试预览
+1. ⚠️ 已开始第一版 E3 骨架：`/yhspell editor`、`SpellEditorScreen`、`EditorState`、本地 project/datapack 导出
+2. ⚠️ 当前已支持顶层元数据编辑、phase 选择/新增/删除/重命名/复制、undo/redo、JSON 复制；action/condition/transition 仍未可视化编辑
+3. 🔲 Phase 2节点图
+4. 🔲 Phase 3调试预览
 
 ### Phase 6: 迁移现有符卡
 

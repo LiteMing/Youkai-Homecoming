@@ -12,6 +12,9 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.editor.OpenSpellEditorToClient;
+import dev.xkmc.youkaishomecoming.content.spell.editor.SpellEditorCodec;
+import dev.xkmc.youkaishomecoming.content.spell.editor.SpellEditorTemplates;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
@@ -21,6 +24,7 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.selector.EntitySelector;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -215,6 +219,15 @@ public class YHCommands {
 							}
 							return all.size();
 						}))
+				.then(literal("editor")
+						.then(argument("spell_id", StringArgumentType.string())
+								.suggests(SPELL_SUGGESTIONS)
+								.executes(ctx -> openEditor(ctx.getSource(),
+										StringArgumentType.getString(ctx, "spell_id"))))
+						.then(literal("new")
+								.then(argument("spell_id", StringArgumentType.string())
+										.executes(ctx -> openNewEditor(ctx.getSource(),
+												StringArgumentType.getString(ctx, "spell_id"))))))
 		);
 	}
 
@@ -236,6 +249,56 @@ public class YHCommands {
 			}
 		}
 		return builder.buildFuture();
+	}
+
+	private static int openEditor(CommandSourceStack source, String idStr) {
+		ServerPlayer player = source.getPlayer();
+		if (player == null) {
+			source.sendFailure(Component.literal("Only players can open the spell editor"));
+			return 0;
+		}
+		if (!ResourceLocation.isValidResourceLocation(idStr)) {
+			source.sendFailure(Component.literal("Invalid spell id: " + idStr));
+			return 0;
+		}
+		ResourceLocation spellId = new ResourceLocation(idStr);
+		SpellDefinition definition = SpellRegistry.get(spellId);
+		if (definition == null) {
+			source.sendFailure(Component.literal("Unknown spell: " + idStr));
+			return 0;
+		}
+		try {
+			String json = SpellEditorCodec.encodeDefinitionJson(definition);
+			YoukaisHomecoming.HANDLER.toClientPlayer(new OpenSpellEditorToClient(json), player);
+			source.sendSuccess(() -> Component.literal("Opened spell editor for " + spellId), false);
+			return 1;
+		} catch (Exception e) {
+			source.sendFailure(Component.literal(
+					"Spell cannot be opened in editor yet: " + e.getMessage()));
+			return 0;
+		}
+	}
+
+	private static int openNewEditor(CommandSourceStack source, String idStr) {
+		ServerPlayer player = source.getPlayer();
+		if (player == null) {
+			source.sendFailure(Component.literal("Only players can open the spell editor"));
+			return 0;
+		}
+		if (!ResourceLocation.isValidResourceLocation(idStr)) {
+			source.sendFailure(Component.literal("Invalid spell id: " + idStr));
+			return 0;
+		}
+		ResourceLocation spellId = new ResourceLocation(idStr);
+		try {
+			String json = SpellEditorCodec.encodeDefinitionJson(SpellEditorTemplates.createBlank(spellId));
+			YoukaisHomecoming.HANDLER.toClientPlayer(new OpenSpellEditorToClient(json), player);
+			source.sendSuccess(() -> Component.literal("Opened new spell editor for " + spellId), false);
+			return 1;
+		} catch (Exception e) {
+			source.sendFailure(Component.literal("Failed to open new spell editor: " + e.getMessage()));
+			return 0;
+		}
 	}
 
 }

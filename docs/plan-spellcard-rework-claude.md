@@ -425,18 +425,20 @@ YHEvents.registerSpells(event => {
 3. 🔲 支持从datapack JSON加载SpellDefinition (Codec已就绪，需要DatapackRegistry加载器)
 4. 🔲 实现NBT覆盖层
 
-### Phase 3: KubeJS集成
+### Phase 3: KubeJS集成 ✅ 已完成
 
-1. 注册KJS事件
-2. 实现JS侧的builder API
-3. 支持JS回调条件和动作
+1. ✅ 注册KJS事件 (`YHSpellKubeJSPlugin`, `YHSpellKubeJSEvents`, `RegisterSpellsEventJS`)
+2. ✅ 实现JS侧的builder API (`SpellDefinitionBuilderJS`, `PhaseBuilderJS`)
+3. ✅ 支持JS回调条件和动作 (`KubeJSSpellActions.JSAction`, `KubeJSSpellConditions.JSCondition`)
+4. ✅ 重构`SpellActions`/`SpellConditions`的类型分发为`CLASS_TO_TYPE` map，支持动态注册
 
-### Phase 4: 物品自动注册
+### Phase 4: 物品自动注册 ✅ 已完成
 
-1. 实现`SpellItemAutoRegister`
-2. 实现`DynamicSpellItem`
-3. 从`YHDanmaku`迁移手写SpellItem
-4. 保持物品ID向后兼容
+1. ✅ 实现`DynamicSpellItem` — 通用符卡物品，从NBT读取spell_id
+2. ✅ 实现`RuntimeItemSpell` — 驱动SpellRuntime的ItemSpell子类
+3. ✅ 实现`SpellItemAutoRegister` — 创意模式标签页自动填充
+4. ✅ 在`YHDanmaku`中注册`DYNAMIC_SPELL`物品
+5. 🔲 从`YHDanmaku`迁移手写SpellItem (保留向后兼容，后续按需迁移)
 
 ### Phase 5: 编辑器
 
@@ -459,25 +461,34 @@ YHEvents.registerSpells(event => {
 content/spell/
   spellcard/          # 保留: SpellCard, ActualSpellCard, Ticker, CardHolder 等底层
   definition/         # 新增: SpellDefinition, PhaseDefinition, SpellDisplay, SpellItemForm
-  runtime/            # 新增: SpellRuntime, SpellContext, SpellRuntimeState
+  runtime/            # 新增: SpellRuntime, SpellContext, SpellRegistry
   condition/          # 新增: SpellCondition 及所有条件实现
   action/             # 新增: SpellAction 及所有动作实现
-  difficulty/         # 新增: DifficultyProfile, DifficultyModifiers, FloatCurve
+  difficulty/         # 新增: DifficultyProfile, DifficultyModifiers
   bridge/             # 新增: LegacySpellBridge, LegacyTickerAction
-  registry/           # 新增: SpellRegistry, SpellItemAutoRegister
+  registry/           # 新增: SpellItemAutoRegister
   game/               # 保留: 现有符卡实现，逐步迁移
   mover/              # 保留: 不动
   shooter/            # 保留: 不动
-  item/               # 保留: ItemSpell, PlayerHolder 等
+  item/               # 保留+新增: ItemSpell, PlayerHolder, RuntimeItemSpell
+
+content/item/danmaku/
+  DynamicSpellItem.java  # 新增: 通用符卡物品
 
 content/entity/youkai/
   SpellStateToClient.java  # 新增
 
-init/registrate/
-  YHSpells.java        # 新增: DeferredRegister for SpellDefinition
+compat/kubejs/spell/       # 新增: KubeJS集成
+  YHSpellKubeJSPlugin.java
+  YHSpellKubeJSEvents.java
+  RegisterSpellsEventJS.java
+  SpellDefinitionBuilderJS.java
+  PhaseBuilderJS.java
+  KubeJSSpellActions.java
+  KubeJSSpellConditions.java
 
 events/
-  YHSpellCommands.java # 新增: /yhspell 指令
+  YHCommands.java      # 新增: /yhspell 指令
 ```
 
 ---

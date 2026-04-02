@@ -16,33 +16,32 @@ import java.util.Map;
 public class SpellActions {
 
 	private static final Map<String, Codec<? extends SpellAction>> REGISTRY = new HashMap<>();
+	private static final Map<Class<?>, String> CLASS_TO_TYPE = new HashMap<>();
 
 	static {
-		register("set_variable", SetVariable.CODEC);
-		register("add_variable", AddVariable.CODEC);
-		register("clear_screen", ClearScreen.CODEC);
-		register("force_phase", ForcePhase.CODEC);
-		register("play_sound", PlaySoundAction.CODEC);
-		register("conditional", ConditionalAction.CODEC);
-		register("sequence", SequenceAction.CODEC);
-		register("legacy_ticker", LegacyTickerAction.CODEC);
-		register("noop", NoopAction.CODEC);
+		register("set_variable", SetVariable.CODEC, SetVariable.class);
+		register("add_variable", AddVariable.CODEC, AddVariable.class);
+		register("clear_screen", ClearScreen.CODEC, ClearScreen.class);
+		register("force_phase", ForcePhase.CODEC, ForcePhase.class);
+		register("play_sound", PlaySoundAction.CODEC, PlaySoundAction.class);
+		register("conditional", ConditionalAction.CODEC, ConditionalAction.class);
+		register("sequence", SequenceAction.CODEC, SequenceAction.class);
+		register("legacy_ticker", LegacyTickerAction.CODEC, LegacyTickerAction.class);
+		register("noop", NoopAction.CODEC, NoopAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {
 		REGISTRY.put(id, codec);
 	}
 
+	public static void register(String id, Codec<? extends SpellAction> codec, Class<? extends SpellAction> clazz) {
+		REGISTRY.put(id, codec);
+		CLASS_TO_TYPE.put(clazz, id);
+	}
+
 	private static String getType(SpellAction action) {
-		if (action instanceof SetVariable) return "set_variable";
-		if (action instanceof AddVariable) return "add_variable";
-		if (action instanceof ClearScreen) return "clear_screen";
-		if (action instanceof ForcePhase) return "force_phase";
-		if (action instanceof PlaySoundAction) return "play_sound";
-		if (action instanceof ConditionalAction) return "conditional";
-		if (action instanceof SequenceAction) return "sequence";
-		if (action instanceof LegacyTickerAction) return "legacy_ticker";
-		if (action instanceof NoopAction) return "noop";
+		String type = CLASS_TO_TYPE.get(action.getClass());
+		if (type != null) return type;
 		throw new IllegalStateException("Unknown action type: " + action.getClass());
 	}
 

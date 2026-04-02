@@ -10,37 +10,34 @@ import java.util.Map;
 public class SpellConditions {
 
 	private static final Map<String, Codec<? extends SpellCondition>> REGISTRY = new HashMap<>();
+	private static final Map<Class<?>, String> CLASS_TO_TYPE = new HashMap<>();
 
 	static {
-		register("health_below", HealthBelow.CODEC);
-		register("health_above", HealthAbove.CODEC);
-		register("tick_elapsed", TickElapsed.CODEC);
-		register("distance_above", DistanceAbove.CODEC);
-		register("distance_below", DistanceBelow.CODEC);
-		register("hit_count", HitCountCondition.CODEC);
-		register("and", AndCondition.CODEC);
-		register("or", OrCondition.CODEC);
-		register("not", NotCondition.CODEC);
-		register("variable_check", VariableCheck.CODEC);
-		register("always", AlwaysCondition.CODEC);
+		register("health_below", HealthBelow.CODEC, HealthBelow.class);
+		register("health_above", HealthAbove.CODEC, HealthAbove.class);
+		register("tick_elapsed", TickElapsed.CODEC, TickElapsed.class);
+		register("distance_above", DistanceAbove.CODEC, DistanceAbove.class);
+		register("distance_below", DistanceBelow.CODEC, DistanceBelow.class);
+		register("hit_count", HitCountCondition.CODEC, HitCountCondition.class);
+		register("and", AndCondition.CODEC, AndCondition.class);
+		register("or", OrCondition.CODEC, OrCondition.class);
+		register("not", NotCondition.CODEC, NotCondition.class);
+		register("variable_check", VariableCheck.CODEC, VariableCheck.class);
+		register("always", AlwaysCondition.CODEC, AlwaysCondition.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellCondition> codec) {
 		REGISTRY.put(id, codec);
 	}
 
+	public static void register(String id, Codec<? extends SpellCondition> codec, Class<? extends SpellCondition> clazz) {
+		REGISTRY.put(id, codec);
+		CLASS_TO_TYPE.put(clazz, id);
+	}
+
 	private static String getType(SpellCondition condition) {
-		if (condition instanceof HealthBelow) return "health_below";
-		if (condition instanceof HealthAbove) return "health_above";
-		if (condition instanceof TickElapsed) return "tick_elapsed";
-		if (condition instanceof DistanceAbove) return "distance_above";
-		if (condition instanceof DistanceBelow) return "distance_below";
-		if (condition instanceof HitCountCondition) return "hit_count";
-		if (condition instanceof AndCondition) return "and";
-		if (condition instanceof OrCondition) return "or";
-		if (condition instanceof NotCondition) return "not";
-		if (condition instanceof VariableCheck) return "variable_check";
-		if (condition instanceof AlwaysCondition) return "always";
+		String type = CLASS_TO_TYPE.get(condition.getClass());
+		if (type != null) return type;
 		throw new IllegalStateException("Unknown condition type: " + condition.getClass());
 	}
 

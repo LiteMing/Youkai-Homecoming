@@ -16,6 +16,7 @@ import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.selector.EntitySelector;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -28,8 +29,8 @@ import net.minecraftforge.fml.loading.FMLEnvironment;
 public class YHCommands {
 
 	private static final SuggestionProvider<CommandSourceStack> SPELL_SUGGESTIONS = (ctx, builder) ->
-			SharedSuggestionProvider.suggest(
-					SpellRegistry.getAll().keySet().stream().map(ResourceLocation::toString),
+			SharedSuggestionProvider.suggestResource(
+					SpellRegistry.getAll().keySet(),
 					builder);
 
 	@SubscribeEvent
@@ -97,39 +98,37 @@ public class YHCommands {
 				.requires(e -> e.hasPermission(2))
 				.then(literal("set")
 						.then(argument("entity", EntityArgument.entity())
-								.then(argument("spell_id", StringArgumentType.string())
+								.then(argument("spell_id", ResourceLocationArgument.id())
 										.suggests(SPELL_SUGGESTIONS)
 										.executes(ctx -> {
 											var entity = EntityArgument.getEntity(ctx, "entity");
-											String idStr = StringArgumentType.getString(ctx, "spell_id");
-											ResourceLocation spellId = new ResourceLocation(idStr);
+											ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
 											if (!(entity instanceof YoukaiEntity youkai)) {
 												ctx.getSource().sendFailure(Component.literal("Entity is not a YoukaiEntity"));
 												return 0;
 											}
 											SpellDefinition def = SpellRegistry.get(spellId);
 											if (def == null) {
-												ctx.getSource().sendFailure(Component.literal("Unknown spell: " + idStr));
+												ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
 												return 0;
 											}
 											youkai.setSpellRuntime(new SpellRuntime(def));
-											ctx.getSource().sendSuccess(() -> Component.literal("Set spell to " + idStr), true);
+											ctx.getSource().sendSuccess(() -> Component.literal("Set spell to " + spellId), true);
 											return 1;
 										}))))
 				.then(literal("phase")
 						.then(argument("entity", EntityArgument.entity())
-								.then(argument("phase_id", StringArgumentType.string())
+								.then(argument("phase_id", ResourceLocationArgument.id())
 										.executes(ctx -> {
 											var entity = EntityArgument.getEntity(ctx, "entity");
-											String idStr = StringArgumentType.getString(ctx, "phase_id");
-											ResourceLocation phaseId = new ResourceLocation(idStr);
+											ResourceLocation phaseId = ResourceLocationArgument.getId(ctx, "phase_id");
 											if (!(entity instanceof YoukaiEntity youkai) || youkai.spellRuntime == null) {
 												ctx.getSource().sendFailure(Component.literal("Entity has no spell runtime"));
 												return 0;
 											}
 											var def = youkai.spellRuntime.getDefinition();
 											if (def.getPhase(phaseId) == null) {
-												ctx.getSource().sendFailure(Component.literal("Unknown phase: " + idStr));
+												ctx.getSource().sendFailure(Component.literal("Unknown phase: " + phaseId));
 												return 0;
 											}
 											youkai.spellRuntime.forceTransition(
@@ -137,7 +136,7 @@ public class YHCommands {
 															youkai, def, youkai.spellRuntime,
 															dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers.DEFAULT
 													), phaseId);
-											ctx.getSource().sendSuccess(() -> Component.literal("Forced phase to " + idStr), true);
+											ctx.getSource().sendSuccess(() -> Component.literal("Forced phase to " + phaseId), true);
 											return 1;
 										}))))
 				.then(literal("variable")
@@ -212,6 +211,25 @@ public class YHCommands {
 							}
 							return all.size();
 						}))
+				.then(literal("preview")
+						.then(argument("spell_id", ResourceLocationArgument.id())
+								.suggests(SPELL_SUGGESTIONS)
+								.executes(ctx -> {
+									ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+									SpellDefinition def = SpellRegistry.get(spellId);
+									if (def == null) {
+										ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
+										return 0;
+									}
+									if (FMLEnvironment.dist.isClient()) {
+										net.minecraft.client.Minecraft.getInstance().execute(() -> {
+											net.minecraft.client.Minecraft.getInstance().setScreen(
+													new dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen(def));
+										});
+									}
+									ctx.getSource().sendSuccess(() -> Component.literal("Opening preview for " + spellId), false);
+									return 1;
+								})))
 		);
 	}
 

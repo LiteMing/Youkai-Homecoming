@@ -440,13 +440,252 @@ YHEvents.registerSpells(event => {
 4. ✅ 在`YHDanmaku`中注册`DYNAMIC_SPELL`物品
 5. 🔲 从`YHDanmaku`迁移手写SpellItem (保留向后兼容，后续按需迁移)
 
-### Phase 5: 编辑器
+### Phase 5: 编辑器与预览
 
-1. Phase 1列表编辑器
-2. Phase 2节点图
-3. Phase 3调试预览
+#### 5.1 正交视图预览系统 ✅ 已完成 (P1-P4)
 
-### Phase 6: 迁移现有符卡
+1. ✅ `ViewAngle` — 视角枚举 (FRONT/SIDE/TOP) + 自由旋转 (右键拖拽)
+2. ✅ `ProjectileRenderHelper` — 添加 `cameraOrientationOverride` 和 `flushPreviewQueue()`
+3. ✅ `ItemDanmakuRenderer` / `ItemLaserRenderer` — 支持 camera orientation override + 预览模式跳过 fading
+4. ✅ `PreviewCardHolder` — 实现 `CardHolder` 接口，弹幕进入本地池而非真实世界；目标可拖拽移动
+5. ✅ `VirtualSpellScene` — 虚拟场景管理 (SpellRuntime驱动 + 播放控制)
+6. ✅ `OrthographicViewport` — GUI PoseStack 变换渲染 (Scissor + 网格/坐标轴 + 可配置裁切距离)
+7. ✅ `SpellPreviewScreen` — 独立预览Screen (视角切换/自由旋转/播放控制/速度/距离/HP/Phase/Range)
+8. ✅ `YHCommands` — `/yhspell preview <spell_id>` 指令 (ResourceLocationArgument)
+9. ✅ 修复 billboard 弹幕渲染 — `Math.cbrt(Math.abs(...))` 替代 `Math.pow(..., 1/3d)` 处理负行列式
+10. ✅ 修复弹幕生命周期 — 使用 `isValid()` 而非 `isRemoved()` 匹配 ClientDanmakuCache 行为
+
+#### 5.2 预览已知问题
+
+1. 🔲 追踪型弹幕不显示 — fakeCaster (ArmorStand) 未实现 CardHolder/DanmakuCommander，terminate() 时 TrailAction 无法获取 holder
+2. 🔲 billboard 弹幕不随视角旋转 — `set3x3()` 剥离了所有旋转，仅保留平移+缩放（设计如此，非 bug）
+
+#### 5.3 编辑器框架 (E3-E5)
+
+1. 🔲 `SpellEditorScreen` — 主编辑器Screen
+2. 🔲 `EditorState` — 编辑状态 + undo/redo
+3. 🔲 `PropertyPanel` — 属性面板
+4. 🔲 `PhaseGraphCanvas` — 阶段图画布 (节点+连线)
+5. 🔲 预览嵌入编辑器底部 (P5)
+
+### Phase 6: 数据驱动弹幕 Action + 预览内编辑
+
+Phase 6 的核心目标：让符卡的弹幕发射逻辑从硬编码 Java 类变为可序列化、可编辑的数据。这是编辑器可行性的关键前置条件。
+
+#### 6.0 前置：NumberProvider 参数系统
+
+所有弹幕数值参数使用 `NumberProvider` 接口而非裸 `double`/`int`，支持动态值源。
+
+```java
+public interface NumberProvider {
+    Codec<NumberProvider> CODEC = /* dispatch codec */;
+    double get(SpellContext ctx);
+}
+```
+
+内置实现（5种）：
+
+| 类型 | 说明 | JSON 示例 |
+|------|------|-----------|
+| `Constant` | 固定值 | `{"type": "constant", "value": 12}` |
+| `RandomRange` | 随机范围 | `{"type": "random", "min": 0.6, "max": 1.0}` |
+| `LerpOverTime` | 随 phaseTick 线性插值 | `{"type": "lerp_time", "start": 0.5, "end": 1.5, "duration": 200}` |
+| `ByHealthRatio` | 随血量比例插值 | `{"type": "by_health", "at_full": 0.8, "at_empty": 1.6}` |
+| `PhaseTickMod` | phaseTick 取模（用于周期性发射） | `{"type": "tick_mod", "period": 20}` |
+
+文件：`content/spell/definition/NumberProvider.java`, `NumberProviders.java`
+
+#### 6.1 核心弹幕 Action（3个）
+
+**`FireDanmaku`** — 发射弹幕
+
+```java
+record FireDanmaku(
+    YHDanmaku.Bullet bulletType,     // 弹幕类型 (CIRCLE/BALL/BUBBLE/...)
+    DyeColor color,                  // 颜色 (16种)
+    NumberProvider count,             // 数量 (每次发射几发)
+    NumberProvider speed,             // 飞行速度
+    NumberProvider lifetime,          // 存活时间 (tick)
+    NumberProvider angleOffset,       // 初始角度偏移 (度)
+    NumberProvider spread,            // 扩散角度 (度) — 0=平行, 360=全方向
+    PatternType pattern,             // 排列模式: RING(环形), LINE(直线), RANDOM(随机)
+    @Nullable Vec3 originOffset,     // 发射点偏移 (相对caster)
+    boolean aimAtTarget,             // 是否朝向目标
+    @Nullable HomingConfig homing,   // 追踪配置 (null=不追踪)
+    @Nullable MoverConfig mover      // 自定义运动 (null=直线飞行)
+) implements SpellAction
+```
+
+**`FireLaser`** — 发射激光
+
+```java
+record FireLaser(
+    YHDanmaku.Laser laserType,       // LASER / PENCIL
+    DyeColor color,
+    NumberProvider lifetime,
+    NumberProvider length,
+    NumberProvider angleOffset,
+    boolean aimAtTarget,
+    @Nullable Vec3 originOffset,
+    @Nullable MoverConfig mover
+) implements SpellAction
+```
+
+**`SpawnShooter`** — 生成子发射器
+
+```java
+record SpawnShooter(
+    ShooterData data,                // health, damage, lifetime, spell circle
+    SpellCard subSpell,              // 子发射器执行的符卡（或引用SpellDefinition）
+    @Nullable Vec3 spawnOffset,
+    @Nullable MoverConfig mover
+) implements SpellAction
+```
+
+#### 6.2 辅助数据结构
+
+**`PatternType`** — 弹幕排列模式
+
+```java
+enum PatternType {
+    RING,      // 环形均匀分布
+    LINE,      // 直线（前方扇形）
+    RANDOM,    // 随机方向
+    AIMED      // 全部朝向目标
+}
+```
+
+**`HomingConfig`** — 追踪配置
+
+```java
+record HomingConfig(
+    double strength,      // 追踪强度 (0=不追踪, 1=强追踪)
+    int delay,            // 开始追踪的延迟 tick
+    int duration          // 追踪持续时间 (-1=永久)
+)
+```
+
+**`MoverConfig`** — 运动配置（Codec 化的 DanmakuMover 参数）
+
+```java
+// 将现有 DanmakuMover 子类包装为可序列化配置
+// RectMover -> MoverConfig.rect(acceleration)
+// PolarMover -> MoverConfig.polar(angularVelocity, radialAcceleration)
+// RotateMover -> MoverConfig.rotate(degreesPerTick)
+```
+
+#### 6.3 FireDanmaku 执行逻辑
+
+```java
+public void execute(SpellContext ctx) {
+    CardHolder holder = ctx.holder();
+    DifficultyModifiers diff = ctx.difficulty();
+    int n = diff.adjustCount((int) count.get(ctx));
+    double spd = diff.adjustSpeed(speed.get(ctx));
+    int life = (int) lifetime.get(ctx);
+    double angle = angleOffset.get(ctx);
+    double spreadDeg = spread.get(ctx);
+
+    Vec3 origin = holder.center();
+    if (originOffset != null) origin = origin.add(originOffset);
+    Vec3 baseDir = aimAtTarget ? holder.forward() : new Vec3(0, 0, 1);
+    Orientation ori = DanmakuHelper.getOrientation(baseDir);
+
+    for (int i = 0; i < n; i++) {
+        double a = angle;
+        switch (pattern) {
+            case RING -> a += (360.0 / n) * i;
+            case LINE -> a += spreadDeg * (i - (n - 1) / 2.0) / Math.max(n - 1, 1);
+            case RANDOM -> a += holder.random().nextDouble() * spreadDeg - spreadDeg / 2;
+            case AIMED -> {} // all same direction
+        }
+        Vec3 dir = ori.rotateDegrees(a).scale(spd);
+        var danmaku = holder.prepareDanmaku(life, dir, bulletType, color);
+        if (homing != null) {
+            danmaku.mover = createHomingMover(holder, danmaku, homing);
+        } else if (mover != null) {
+            danmaku.mover = mover.create(origin, dir);
+        }
+        holder.shoot(danmaku);
+    }
+}
+```
+
+#### 6.4 PropertyPanel — 实时编辑面板
+
+嵌入 `SpellPreviewScreen` 右侧的属性编辑面板。选中一个 Phase 的 Action 后，显示对应字段的编辑 Widget。
+
+**编辑项与 Widget 类型映射**：
+
+| 字段 | Widget | 行为 |
+|------|--------|------|
+| `bulletType` | `DropdownWidget<Bullet>` + 图标预览 | 14种弹幕类型 |
+| `color` | 16色网格选择器 | DyeColor 枚举 |
+| `count` | `NumberProviderWidget` | 常量/随机/曲线切换 |
+| `speed` | `NumberProviderWidget` | 同上 |
+| `lifetime` | `NumberProviderWidget` | 同上 |
+| `angleOffset` | `NumberProviderWidget` + 角度可视化 | 角度盘 |
+| `spread` | `NumberProviderWidget` | 扩散角度 |
+| `pattern` | `DropdownWidget<PatternType>` | RING/LINE/RANDOM/AIMED |
+| `originOffset` | 3x `NumberField` 或视口拖拽 | Vec3 坐标 |
+| `aimAtTarget` | `BooleanToggle` | 开关 |
+| `homing` | `BooleanToggle` + 展开子面板 | strength/delay/duration |
+
+**交互流程**：
+1. 修改任意字段 → 自动更新 `workingDefinition` 中对应 Action
+2. 点击 Preview 区的 Reset → `scene.reset()` + 重新播放
+3. 可选：`Auto-Reset` 模式 — 每次参数变更自动 reset + play
+
+**NumberProviderWidget** 交互：
+```
+[▼ Constant ▼] [12.0    ]     ← 固定值模式
+[▼ Random   ▼] [0.6] ~ [1.0]  ← 随机范围模式
+[▼ By HP    ▼] [0.8] → [1.6]  ← 血量插值模式
+[▼ Lerp     ▼] [0.5] → [1.5] / [200]t  ← 时间插值
+```
+
+#### 6.5 实施步骤
+
+| 步骤 | 内容 | 前置 | 产出 |
+|------|------|------|------|
+| **6.0** | NumberProvider 接口 + 5种实现 + Codec | — | `NumberProvider`, `NumberProviders` |
+| **6.1** | FireDanmaku Action | 6.0 | 环形/直线/随机/瞄准发射, 可序列化 |
+| **6.2** | FireLaser Action | 6.0 | 激光发射 |
+| **6.3** | HomingConfig + MoverConfig | 6.1 | 追踪弹幕, Mover 可序列化 |
+| **6.4** | SpawnShooter Action | 6.3 | 子发射器 |
+| **6.5** | 修复 PreviewCardHolder 追踪问题 | 6.3 | fakeCaster 实现 CardHolder, 使 TrailAction/DanmakuCommander 在预览中工作 |
+| **6.6** | PropertyPanel 基础框架 | 6.1 | `PropertyPanel`, `NumberField`, `DropdownWidget`, `BooleanToggle` |
+| **6.7** | NumberProviderWidget | 6.0 + 6.6 | 可切换模式的数值编辑器 |
+| **6.8** | FireDanmaku 编辑器集成 | 6.1 + 6.6 | 选中 FireDanmaku Action → 右侧显示完整编辑面板 |
+| **6.9** | Preview + Editor 联动 | 6.8 + P4 | 编辑参数 → reset → 即时预览效果 |
+| **6.10** | 用 FireDanmaku 重写 LarvaSpell (验证) | 6.1 | 最简单的符卡，验证整条链路 |
+
+#### 6.6 文件结构
+
+```
+content/spell/
+  definition/
+    NumberProvider.java          # 新增: 接口
+    NumberProviders.java         # 新增: 5种实现
+    PatternType.java             # 新增: 枚举
+    HomingConfig.java            # 新增: 追踪配置
+    MoverConfig.java             # 新增: 运动配置 (Codec化)
+  action/
+    FireDanmakuAction.java       # 新增: 发射弹幕
+    FireLaserAction.java         # 新增: 发射激光
+    SpawnShooterAction.java      # 新增: 生成子发射器
+  editor/                        # 新增: 编辑器
+    PropertyPanel.java           # 属性面板
+    widget/
+      NumberField.java           # 数字输入
+      NumberProviderWidget.java  # 数值源编辑器
+      DropdownWidget.java        # 枚举下拉
+      BooleanToggle.java         # 开关
+      ColorPickerWidget.java     # 16色选择器
+      ActionListEditor.java      # Action列表编辑
+```
+
+### Phase 7: 迁移现有符卡
 
 按复杂度排序：
 1. 简单符卡(SunnySpell, LunaSpell, StarSpell, LarvaSpell) - 基本是单阶段
@@ -461,12 +700,20 @@ YHEvents.registerSpells(event => {
 content/spell/
   spellcard/          # 保留: SpellCard, ActualSpellCard, Ticker, CardHolder 等底层
   definition/         # 新增: SpellDefinition, PhaseDefinition, SpellDisplay, SpellItemForm
+                      #       NumberProvider, NumberProviders, PatternType, HomingConfig, MoverConfig
   runtime/            # 新增: SpellRuntime, SpellContext, SpellRegistry
   condition/          # 新增: SpellCondition 及所有条件实现
   action/             # 新增: SpellAction 及所有动作实现
+                      #       FireDanmakuAction, FireLaserAction, SpawnShooterAction
   difficulty/         # 新增: DifficultyProfile, DifficultyModifiers
   bridge/             # 新增: LegacySpellBridge, LegacyTickerAction
   registry/           # 新增: SpellItemAutoRegister
+  preview/            # 新增(Phase5): 正交预览系统
+                      #   ViewAngle, PreviewCardHolder, VirtualSpellScene
+                      #   OrthographicViewport, SpellPreviewScreen
+  editor/             # 新增(Phase6): 编辑器框架
+                      #   PropertyPanel, widget/NumberField, NumberProviderWidget
+                      #   DropdownWidget, BooleanToggle, ColorPickerWidget, ActionListEditor
   game/               # 保留: 现有符卡实现，逐步迁移
   mover/              # 保留: 不动
   shooter/            # 保留: 不动

@@ -29,7 +29,7 @@ public record SimpleProjectileType(ResourceLocation tex, DisplayType display)
 	@Override
 	public void create(Consumer<Ins> holder, ProjectileRenderer<?> r, SimplifiedProjectile e, PoseStack pose, float pTick) {
 		var sim4 = new Matrix4f(pose.last().pose());
-		sim4.set3x3(new Matrix4f().scale((float) Math.pow(sim4.determinant3x3(), 1 / 3d)));
+		sim4.set3x3(new Matrix4f().scale((float) Math.cbrt(Math.abs(sim4.determinant3x3()))));
 		int col = DanmakuRenderStates.fading(display, -1, r, e);
 		holder.accept(new Ins(sim4, col));
 	}

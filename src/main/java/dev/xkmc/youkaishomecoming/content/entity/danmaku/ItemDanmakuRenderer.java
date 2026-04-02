@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
@@ -32,6 +33,8 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 
 	@Override
 	public double fading(SimplifiedProjectile e) {
+		// In preview mode, always full opacity
+		if (ProjectileRenderHelper.cameraOrientationOverride != null) return 1;
 		if (entityRenderDispatcher.camera.getEntity() == e.getOwner()) {
 			double dist = entityRenderDispatcher.camera.getPosition().distanceTo(e.position());
 			double fading = YHModConfig.CLIENT.selfDanmakuFading.get();
@@ -58,7 +61,8 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 
 	@Override
 	public Quaternionf cameraOrientation() {
-		return entityRenderDispatcher.cameraOrientation();
+		var override = ProjectileRenderHelper.cameraOrientationOverride;
+		return override != null ? override : entityRenderDispatcher.cameraOrientation();
 	}
 
 	public void render(T e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {

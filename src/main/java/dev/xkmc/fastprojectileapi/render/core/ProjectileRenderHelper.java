@@ -12,6 +12,9 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import org.jetbrains.annotations.Nullable;
+import org.joml.Quaternionf;
+
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -19,6 +22,21 @@ import java.util.Collection;
 public class ProjectileRenderHelper {
 
 	private static RenderQueue QUEUE;
+
+	/**
+	 * When non-null, overrides the camera orientation used for billboard rendering.
+	 * Set this before rendering preview entities, and null it after.
+	 */
+	@Nullable
+	public static Quaternionf cameraOrientationOverride = null;
+
+	/**
+	 * Flush the render queue manually. Used by the preview viewport
+	 * which renders in the Screen pass rather than the level render pass.
+	 */
+	public static void flushPreviewQueue(MultiBufferSource.BufferSource buffer) {
+		QUEUE.flush(buffer);
+	}
 
 	public static void setup() {
 		ProjTypeHolder.setup();

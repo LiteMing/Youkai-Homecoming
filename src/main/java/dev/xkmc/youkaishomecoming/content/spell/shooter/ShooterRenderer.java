@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.shooter;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
+import dev.xkmc.youkaishomecoming.content.spell.editor.SpellPreviewRenderState;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -18,7 +19,8 @@ public class ShooterRenderer<T extends ShooterEntity> extends EntityRenderer<T> 
 
 	@Override
 	public void render(T e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
-		SpellCircleLayer.renderImpl(pose, buffer, light, e, pTick, entityRenderDispatcher.cameraOrientation());
+		var preview = SpellPreviewRenderState.orientation();
+		SpellCircleLayer.renderImpl(pose, buffer, light, e, pTick, preview == null ? entityRenderDispatcher.cameraOrientation() : preview);
 		super.render(e, yaw, pTick, pose, buffer, light);
 	}
 

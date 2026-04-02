@@ -33,6 +33,10 @@ public class ProjectileRenderHelper {
 		setOf(key).add(ins);
 	}
 
+	public static void flush(MultiBufferSource.BufferSource buffer) {
+		QUEUE.flush(buffer);
+	}
+
 	@SubscribeEvent
 	public static void clientTick(TickEvent.LevelTickEvent event) {
 		var level = Minecraft.getInstance().level;
@@ -49,12 +53,12 @@ public class ProjectileRenderHelper {
 			var buffer = Minecraft.getInstance().renderBuffers().bufferSource();
 			var cache = ClientDanmakuCache.get(level);
 			cache.renderAll(event.getCamera(), event.getFrustum(), event.getPoseStack(), event.getPartialTick(), buffer);
-			QUEUE.flush(buffer);
+			flush(buffer);
 			buffer.endLastBatch();
 		}
 		if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
 			var buffer = Minecraft.getInstance().renderBuffers().bufferSource();
-			QUEUE.flush(buffer);
+			flush(buffer);
 			buffer.endLastBatch();
 		}
 	}

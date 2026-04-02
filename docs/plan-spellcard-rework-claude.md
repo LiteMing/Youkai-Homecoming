@@ -447,7 +447,9 @@ YHEvents.registerSpells(event => {
 4. ⚠️ 当前复杂组合类型仍以摘要 + JSON fallback 为主：`conditional`、`sequence`、`not`、`and`、`or`、`legacy_ticker`
 5. ⚠️ phase 重命名/删除的引用一致性已覆盖 `transition.target_phase` 和 `force_phase`，但仍缺少图形化引用视图
 6. 🔲 Phase 5.2 节点图
-7. 🔲 Phase 5.3 调试预览
+7. ✅ 已完成 Phase 5.3 调试预览：编辑器底部新增客户端虚拟预览视口，支持 `SpellRuntime` / `legacy_ticker` / nested shooter 的本地 tick 与 bullet/laser 渲染
+8. ✅ 预览控制已覆盖播放/暂停/重置/逐步步进、速度倍率、正交 `Front/Side/Top` 视图、缩放、HP 预设、目标距离预设，以及跳转到当前选中 phase
+9. ⚠️ 当前预览仍是“运行时可视化”而非完整 dummy world；少数强依赖特殊实体状态、环境方块或特殊目标类型的老符卡，显示结果可能与实战存在偏差
 
 ### Phase 6: 迁移现有符卡
 

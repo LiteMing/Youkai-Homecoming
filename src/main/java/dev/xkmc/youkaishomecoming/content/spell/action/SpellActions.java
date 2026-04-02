@@ -112,6 +112,9 @@ public class SpellActions {
 
 		@Override
 		public void execute(SpellContext ctx) {
+			if (ctx.isPreview()) {
+				return;
+			}
 			SoundEvent sound = ForgeRegistries.SOUND_EVENTS.getValue(soundId);
 			if (sound != null) {
 				var self = ctx.self();

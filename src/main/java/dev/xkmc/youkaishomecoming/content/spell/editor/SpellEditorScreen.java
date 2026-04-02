@@ -43,6 +43,7 @@ public class SpellEditorScreen extends Screen {
 	private static final List<String> VARIABLE_OPERATORS = List.of("==", "!=", "<", "<=", ">", ">=");
 
 	private final EditorState state;
+	private final SpellPreviewScene previewScene = new SpellPreviewScene();
 	private final List<LabelSpec> staticLabels = new ArrayList<>();
 	private final List<LabelSpec> dynamicLabels = new ArrayList<>();
 	private final List<AbstractWidget> dynamicWidgets = new ArrayList<>();
@@ -90,6 +91,15 @@ public class SpellEditorScreen extends Screen {
 
 	private Button renamePhaseButton;
 	private Button setEntryPhaseButton;
+	private Button previewPlayButton;
+	private Button previewResetButton;
+	private Button previewStepButton;
+	private Button previewSpeedButton;
+	private Button previewViewButton;
+	private Button previewZoomButton;
+	private Button previewHealthButton;
+	private Button previewTargetButton;
+	private Button previewJumpButton;
 	@Nullable
 	private Button actionTypeButton;
 	@Nullable
@@ -120,6 +130,15 @@ public class SpellEditorScreen extends Screen {
 	private int propertyY;
 	private int propertyWidth;
 	private int bodyBottom;
+	private int previewX;
+	private int previewY;
+	private int previewWidth;
+	private int previewHeight;
+	private int previewViewportX;
+	private int previewViewportY;
+	private int previewViewportWidth;
+	private int previewViewportHeight;
+	private int previewReloadTicks;
 
 	public SpellEditorScreen(EditorState state) {
 		super(Component.literal("Spell Editor"));
@@ -141,9 +160,11 @@ public class SpellEditorScreen extends Screen {
 		initPhasePanel();
 		initEntryPanel();
 		initPropertyBase();
+		initPreviewPanel();
 		refreshAllLists();
 		syncWidgetsFromState();
 		rebuildPropertyWidgets();
+		rebuildPreview();
 	}
 
 	@Override
@@ -162,6 +183,13 @@ public class SpellEditorScreen extends Screen {
 				box.tick();
 			}
 		}
+		if (previewReloadTicks > 0) {
+			previewReloadTicks--;
+			if (previewReloadTicks == 0) {
+				rebuildPreview();
+			}
+		}
+		previewScene.tick();
 	}
 
 	@Override
@@ -201,6 +229,8 @@ public class SpellEditorScreen extends Screen {
 		drawPanel(graphics, phaseX, phaseY, phaseWidth, bodyBottom - phaseY, "Phases");
 		drawPanel(graphics, entryX, entryY, entryWidth, bodyBottom - entryY, selectedSection.title());
 		drawPanel(graphics, propertyX, propertyY, propertyWidth, bodyBottom - propertyY, "Properties");
+		drawPanel(graphics, previewX, previewY, previewWidth, previewHeight, "Preview");
+		renderPreviewViewport(graphics, partialTick);
 
 		super.render(graphics, mouseX, mouseY, partialTick);
 
@@ -211,6 +241,7 @@ public class SpellEditorScreen extends Screen {
 		drawPhaseInfo(graphics);
 		drawPropertyInfo(graphics);
 		drawPropertyNotes(graphics);
+		drawPreviewInfo(graphics);
 
 		if (!status.getString().isEmpty()) {
 			graphics.drawString(font, status, PANEL_MARGIN, height - 16, statusColor, false);
@@ -230,7 +261,11 @@ public class SpellEditorScreen extends Screen {
 		phaseY = metaY + metaHeight + PANEL_GAP;
 		entryY = phaseY;
 		propertyY = phaseY;
-		bodyBottom = height - 36;
+		previewHeight = Math.min(252, Math.max(196, height / 3));
+		previewX = PANEL_MARGIN;
+		previewWidth = width - PANEL_MARGIN * 2;
+		previewY = height - 36 - previewHeight;
+		bodyBottom = previewY - PANEL_GAP;
 		int bodyWidth = width - PANEL_MARGIN * 2 - PANEL_GAP * 2;
 		phaseWidth = Math.min(248, Math.max(200, bodyWidth / 4));
 		int desiredProperty = Math.min(340, Math.max(240, bodyWidth / 3));
@@ -247,6 +282,10 @@ public class SpellEditorScreen extends Screen {
 		phaseX = PANEL_MARGIN;
 		entryX = phaseX + phaseWidth + PANEL_GAP;
 		propertyX = entryX + entryWidth + PANEL_GAP;
+		previewViewportX = previewX + 8;
+		previewViewportY = previewY + 58;
+		previewViewportWidth = previewWidth - 16;
+		previewViewportHeight = previewHeight - 76;
 	}
 
 	private void initToolbar() {
@@ -431,6 +470,51 @@ public class SpellEditorScreen extends Screen {
 			onDefinitionEdited();
 			rebuildPropertyWidgets();
 		}).pos(fieldX, entryButtonY).size(Math.min(180, propertyWidth - 16 - 72), FIELD_HEIGHT).build());
+	}
+
+	private void initPreviewPanel() {
+		int innerX = previewX + 8;
+		int gap = 6;
+		int rowWidth = previewWidth - 16;
+		int row1Y = previewY + 8;
+		int row2Y = previewY + 30;
+		int row1Width = (rowWidth - gap * 4) / 5;
+		int row2Width = (rowWidth - gap * 3) / 4;
+		previewPlayButton = addRenderableWidget(new Button.Builder(Component.empty(), button -> refreshPreviewPlayback())
+				.pos(innerX, row1Y).size(row1Width, 20).build());
+		previewResetButton = addRenderableWidget(new Button.Builder(Component.literal("Reset"), button -> {
+			previewScene.reset();
+			refreshButtonState();
+		}).pos(innerX + (row1Width + gap), row1Y).size(row1Width, 20).build());
+		previewStepButton = addRenderableWidget(new Button.Builder(Component.literal("Step"), button -> {
+			previewScene.stepOnce();
+			refreshButtonState();
+		}).pos(innerX + (row1Width + gap) * 2, row1Y).size(row1Width, 20).build());
+		previewSpeedButton = addRenderableWidget(new Button.Builder(Component.empty(), button -> {
+			previewScene.cycleSpeed();
+			refreshButtonState();
+		}).pos(innerX + (row1Width + gap) * 3, row1Y).size(row1Width, 20).build());
+		previewViewButton = addRenderableWidget(new Button.Builder(Component.empty(), button -> {
+			previewScene.cycleViewMode();
+			refreshButtonState();
+		}).pos(innerX + (row1Width + gap) * 4, row1Y).size(row1Width, 20).build());
+
+		previewZoomButton = addRenderableWidget(new Button.Builder(Component.empty(), button -> {
+			previewScene.cycleZoom();
+			refreshButtonState();
+		}).pos(innerX, row2Y).size(row2Width, 20).build());
+		previewHealthButton = addRenderableWidget(new Button.Builder(Component.empty(), button -> {
+			previewScene.cycleHealth();
+			refreshButtonState();
+		}).pos(innerX + (row2Width + gap), row2Y).size(row2Width, 20).build());
+		previewTargetButton = addRenderableWidget(new Button.Builder(Component.empty(), button -> {
+			previewScene.cycleTargetPreset();
+			refreshButtonState();
+		}).pos(innerX + (row2Width + gap) * 2, row2Y).size(row2Width, 20).build());
+		previewJumpButton = addRenderableWidget(new Button.Builder(Component.literal("Jump Sel"), button -> {
+			previewScene.jumpToPhase(state.selectedPhase);
+			refreshButtonState();
+		}).pos(innerX + (row2Width + gap) * 3, row2Y).size(row2Width, 20).build());
 	}
 
 	private void rebuildPropertyWidgets() {
@@ -837,6 +921,52 @@ public class SpellEditorScreen extends Screen {
 		}
 	}
 
+	private void renderPreviewViewport(GuiGraphics graphics, float partialTick) {
+		graphics.fill(previewViewportX, previewViewportY, previewViewportX + previewViewportWidth, previewViewportY + previewViewportHeight, 0xAA101214);
+		graphics.fill(previewViewportX, previewViewportY, previewViewportX + previewViewportWidth, previewViewportY + 1, 0x553E5668);
+		graphics.fill(previewViewportX, previewViewportY + previewViewportHeight - 1, previewViewportX + previewViewportWidth, previewViewportY + previewViewportHeight, 0x553E5668);
+		graphics.enableScissor(previewViewportX, previewViewportY, previewViewportX + previewViewportWidth, previewViewportY + previewViewportHeight);
+		previewScene.render(graphics.pose(), previewViewportX, previewViewportY, previewViewportWidth, previewViewportHeight, partialTick);
+		graphics.disableScissor();
+	}
+
+	private void drawPreviewInfo(GuiGraphics graphics) {
+		int textX = previewX + 10;
+		int textY = previewY + previewHeight - 14;
+		String phase = previewScene.currentPhase() == null ? "-" : previewScene.currentPhase().toString();
+		String statusText = previewScene.isPlaying() ? "Playing" : "Paused";
+		String summary = "Tick " + previewScene.totalTick()
+				+ " | Phase " + phase
+				+ " | Danmaku " + previewScene.projectileCount()
+				+ " | Shooters " + previewScene.shooterCount()
+				+ " | " + statusText;
+		graphics.drawString(font, summary, textX, textY, 0xD8E7F0, false);
+		String extra = previewScene.healthSummary() + " | " + previewScene.targetSummary();
+		graphics.drawString(font, extra, previewX + previewWidth - 10 - font.width(extra), textY, 0xB8C7D1, false);
+
+		String overlay = previewReloadTicks > 0 ? "Updating preview..." : previewScene.error();
+		if (overlay != null && !overlay.isBlank()) {
+			int centerX = previewViewportX + previewViewportWidth / 2;
+			int centerY = previewViewportY + previewViewportHeight / 2 - 4;
+			graphics.drawCenteredString(font, overlay, centerX, centerY, 0xFFE4B3B3);
+		}
+
+		if (!previewScene.variables().isEmpty()) {
+			StringBuilder sb = new StringBuilder("Vars ");
+			int count = 0;
+			for (var entry : previewScene.variables().entrySet()) {
+				if (count++ > 0) {
+					sb.append(" | ");
+				}
+				sb.append(entry.getKey()).append('=').append(String.format(Locale.ROOT, "%.2f", entry.getValue()));
+				if (count >= 3) {
+					break;
+				}
+			}
+			graphics.drawString(font, sb.toString(), previewX + 10, previewY + 44, 0xA9C6DA, false);
+		}
+	}
+
 	private void drawPanel(GuiGraphics graphics, int x, int y, int width, int height, String title) {
 		graphics.fill(x - 2, y - 2, x + width + 2, y + height + 2, 0x55222222);
 		graphics.drawString(font, title, x + 4, y - 14, 0xE0E0E0, false);
@@ -844,6 +974,7 @@ public class SpellEditorScreen extends Screen {
 
 	private void onDefinitionEdited() {
 		state.recordSnapshot();
+		schedulePreviewRebuild();
 		refreshButtonState();
 	}
 
@@ -871,6 +1002,7 @@ public class SpellEditorScreen extends Screen {
 	private void addPhase() {
 		ResourceLocation phaseId = state.addPhase();
 		state.recordSnapshot();
+		schedulePreviewRebuild();
 		selectedEntryIndex = -1;
 		refreshAllLists();
 		syncWidgetsFromState();
@@ -886,6 +1018,7 @@ public class SpellEditorScreen extends Screen {
 		}
 		if (state.removeSelectedPhase()) {
 			state.recordSnapshot();
+			schedulePreviewRebuild();
 			selectedEntryIndex = -1;
 			refreshAllLists();
 			syncWidgetsFromState();
@@ -898,6 +1031,7 @@ public class SpellEditorScreen extends Screen {
 		try {
 			ResourceLocation renamed = state.renameSelectedPhase(phaseIdBox.getValue());
 			state.recordSnapshot();
+			schedulePreviewRebuild();
 			refreshAllLists();
 			syncWidgetsFromState();
 			rebuildPropertyWidgets();
@@ -911,6 +1045,7 @@ public class SpellEditorScreen extends Screen {
 		try {
 			ResourceLocation duplicated = state.duplicateSelectedPhase();
 			state.recordSnapshot();
+			schedulePreviewRebuild();
 			selectedEntryIndex = -1;
 			refreshAllLists();
 			syncWidgetsFromState();
@@ -925,6 +1060,7 @@ public class SpellEditorScreen extends Screen {
 		try {
 			selectedEntryIndex = state.addDefaultEntry(selectedSection);
 			state.recordSnapshot();
+			schedulePreviewRebuild();
 			refreshAllLists();
 			rebuildPropertyWidgets();
 			setStatus("Added " + selectedSection.title() + " entry", 0xFF90EE90);
@@ -940,6 +1076,7 @@ public class SpellEditorScreen extends Screen {
 		}
 		selectedEntryIndex = state.removeEntry(selectedSection, selectedEntryIndex);
 		state.recordSnapshot();
+		schedulePreviewRebuild();
 		refreshAllLists();
 		rebuildPropertyWidgets();
 		setStatus("Deleted selected entry", 0xFF90EE90);
@@ -953,6 +1090,7 @@ public class SpellEditorScreen extends Screen {
 		selectedEntryIndex = state.duplicateEntry(selectedSection, selectedEntryIndex);
 		if (selectedEntryIndex >= 0) {
 			state.recordSnapshot();
+			schedulePreviewRebuild();
 			refreshAllLists();
 			rebuildPropertyWidgets();
 			setStatus("Duplicated selected entry", 0xFF90EE90);
@@ -968,6 +1106,7 @@ public class SpellEditorScreen extends Screen {
 		if (moved != selectedEntryIndex) {
 			selectedEntryIndex = moved;
 			state.recordSnapshot();
+			schedulePreviewRebuild();
 			refreshAllLists();
 			rebuildPropertyWidgets();
 			setStatus("Moved entry " + (delta < 0 ? "up" : "down"), 0xFF90EE90);
@@ -1022,6 +1161,7 @@ public class SpellEditorScreen extends Screen {
 				}
 			}
 			state.recordSnapshot();
+			schedulePreviewRebuild();
 			refreshAllLists();
 			rebuildPropertyWidgets();
 			setStatus(asNew ? "Pasted JSON as new entry" : "Pasted JSON into selected entry", 0xFF90EE90);
@@ -1086,6 +1226,7 @@ public class SpellEditorScreen extends Screen {
 		}
 		if (state.replaceAction(selectedSection, selectedEntryIndex, editor.apply(action))) {
 			state.recordSnapshot();
+			schedulePreviewRebuild();
 			refreshEntryList();
 			if (rebuildProperty) {
 				rebuildPropertyWidgets();
@@ -1102,6 +1243,7 @@ public class SpellEditorScreen extends Screen {
 		}
 		if (state.replaceTransition(selectedEntryIndex, editor.apply(transition))) {
 			state.recordSnapshot();
+			schedulePreviewRebuild();
 			refreshEntryList();
 			if (rebuildProperty) {
 				rebuildPropertyWidgets();
@@ -1205,6 +1347,15 @@ public class SpellEditorScreen extends Screen {
 		} else {
 			setStatus(errors.get(0), 0xFFFF8080);
 		}
+		previewPlayButton.setMessage(Component.literal(previewScene.isPlaying() ? "Pause" : "Play"));
+		previewResetButton.active = true;
+		previewStepButton.active = true;
+		previewSpeedButton.setMessage(Component.literal(previewScene.speed().label));
+		previewViewButton.setMessage(Component.literal(previewScene.viewMode().label));
+		previewZoomButton.setMessage(Component.literal(previewScene.zoom().label));
+		previewHealthButton.setMessage(Component.literal(previewScene.health().label));
+		previewTargetButton.setMessage(Component.literal(previewScene.targetPreset().label));
+		previewJumpButton.active = state.selectedPhase != null;
 	}
 
 	private void updateSectionButtons() {
@@ -1224,6 +1375,7 @@ public class SpellEditorScreen extends Screen {
 
 	private void undo() {
 		state.undo();
+		schedulePreviewRebuild();
 		selectedEntryIndex = -1;
 		refreshAllLists();
 		syncWidgetsFromState();
@@ -1232,6 +1384,7 @@ public class SpellEditorScreen extends Screen {
 
 	private void redo() {
 		state.redo();
+		schedulePreviewRebuild();
 		selectedEntryIndex = -1;
 		refreshAllLists();
 		syncWidgetsFromState();
@@ -1240,6 +1393,7 @@ public class SpellEditorScreen extends Screen {
 
 	private void resetToOriginal() {
 		state.resetToOriginal();
+		schedulePreviewRebuild();
 		selectedEntryIndex = -1;
 		refreshAllLists();
 		syncWidgetsFromState();
@@ -1267,6 +1421,7 @@ public class SpellEditorScreen extends Screen {
 				return;
 			}
 			state.loadProject(loaded.get());
+			schedulePreviewRebuild();
 			selectedEntryIndex = -1;
 			refreshAllLists();
 			syncWidgetsFromState();
@@ -1309,6 +1464,24 @@ public class SpellEditorScreen extends Screen {
 	private void setStatus(String text, int color) {
 		status = Component.literal(text);
 		statusColor = color;
+	}
+
+	private void refreshPreviewPlayback() {
+		previewScene.togglePlaying();
+		refreshButtonState();
+	}
+
+	private void schedulePreviewRebuild() {
+		previewReloadTicks = 6;
+	}
+
+	private void rebuildPreview() {
+		try {
+			previewScene.rebuild(state.buildDefinition());
+		} catch (Exception e) {
+			previewScene.invalidate(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+		}
+		refreshButtonState();
 	}
 
 	private SpellAction getSelectedAction() {

@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.content.spell.editor.SpellPreviewRenderState;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -32,6 +33,9 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 
 	@Override
 	public double fading(SimplifiedProjectile e) {
+		if (SpellPreviewRenderState.isActive()) {
+			return 1;
+		}
 		if (entityRenderDispatcher.camera.getEntity() == e.getOwner()) {
 			double dist = entityRenderDispatcher.camera.getPosition().distanceTo(e.position());
 			double fading = YHModConfig.CLIENT.selfDanmakuFading.get();
@@ -48,6 +52,9 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 	}
 
 	public boolean shouldRender(T e, Frustum frustum, double camx, double camy, double camz) {
+		if (SpellPreviewRenderState.isActive()) {
+			return true;
+		}
 		Entity cam = this.entityRenderDispatcher.camera.getEntity();
 		if (e.getOwner() != cam || e.tickCount >= 40) return true;
 		double dh = e.getBbHeight() / 2;
@@ -58,6 +65,10 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 
 	@Override
 	public Quaternionf cameraOrientation() {
+		Quaternionf preview = SpellPreviewRenderState.orientation();
+		if (preview != null) {
+			return preview;
+		}
 		return entityRenderDispatcher.cameraOrientation();
 	}
 

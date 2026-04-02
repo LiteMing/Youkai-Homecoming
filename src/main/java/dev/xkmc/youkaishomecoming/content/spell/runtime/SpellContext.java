@@ -76,10 +76,18 @@ public class SpellContext {
 	}
 
 	public void clearDanmaku() {
+		if (holder instanceof SpellPreviewHost preview) {
+			preview.clearSpellPreviewDanmaku();
+			return;
+		}
 		var self = holder.self();
 		if (self instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity youkai) {
 			youkai.eraseAllDanmaku(null);
 		}
+	}
+
+	public boolean isPreview() {
+		return holder instanceof SpellPreviewHost;
 	}
 
 	public int hitCount() {

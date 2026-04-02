@@ -5,6 +5,7 @@ import com.mojang.math.Axis;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.content.spell.editor.SpellPreviewRenderState;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -37,6 +38,9 @@ public class ItemLaserRenderer<T extends ItemLaserEntity> extends EntityRenderer
 
 	@Override
 	public double fading(SimplifiedProjectile e) {
+		if (SpellPreviewRenderState.isActive()) {
+			return 1;
+		}
 		if (entityRenderDispatcher.camera.getEntity() == e.getOwner()) {
 			return YHModConfig.CLIENT.selfDanmakuFading.get();
 		}
@@ -45,6 +49,10 @@ public class ItemLaserRenderer<T extends ItemLaserEntity> extends EntityRenderer
 
 	@Override
 	public Quaternionf cameraOrientation() {
+		Quaternionf preview = SpellPreviewRenderState.orientation();
+		if (preview != null) {
+			return preview;
+		}
 		return entityRenderDispatcher.cameraOrientation();
 	}
 

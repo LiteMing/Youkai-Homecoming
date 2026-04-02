@@ -73,6 +73,10 @@ public class SpellRuntime {
 		variables.put(key, value);
 	}
 
+	public void removeVariable(String key) {
+		variables.remove(key);
+	}
+
 	public Map<String, Double> getVariables() {
 		return Collections.unmodifiableMap(variables);
 	}
@@ -125,6 +129,16 @@ public class SpellRuntime {
 		@SuppressWarnings("unchecked")
 		T value = (T) actionState.computeIfAbsent(key, k -> factory.get());
 		return value;
+	}
+
+	public SpellRuntime copyStateTo(SpellDefinition newDefinition) {
+		SpellRuntime copy = new SpellRuntime(newDefinition);
+		copy.currentPhaseId = newDefinition.getPhase(currentPhaseId) != null ? currentPhaseId : newDefinition.entryPhase;
+		copy.phaseTick = phaseTick;
+		copy.totalTick = totalTick;
+		copy.hitCount = hitCount;
+		copy.variables.putAll(variables);
+		return copy;
 	}
 
 	@Nullable

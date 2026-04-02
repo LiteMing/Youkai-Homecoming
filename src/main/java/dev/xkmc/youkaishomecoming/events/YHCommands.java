@@ -6,6 +6,8 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
@@ -24,13 +26,14 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 
+import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+
 @Mod.EventBusSubscriber(modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class YHCommands {
 
 	private static final SuggestionProvider<CommandSourceStack> SPELL_SUGGESTIONS = (ctx, builder) ->
-			SharedSuggestionProvider.suggest(
-					SpellRegistry.getAll().keySet().stream().map(ResourceLocation::toString),
-					builder);
+			suggestQuotedResources(SpellRegistry.getAll().keySet(), builder);
 
 	@SubscribeEvent
 	public static void register(RegisterCommandsEvent event) {
@@ -221,6 +224,18 @@ public class YHCommands {
 
 	protected static <T> RequiredArgumentBuilder<CommandSourceStack, T> argument(String name, ArgumentType<T> type) {
 		return RequiredArgumentBuilder.argument(name, type);
+	}
+
+	private static CompletableFuture<Suggestions> suggestQuotedResources(Iterable<ResourceLocation> ids, SuggestionsBuilder builder) {
+		String remaining = builder.getRemainingLowerCase();
+		String match = remaining.startsWith("\"") ? remaining.substring(1) : remaining;
+		for (ResourceLocation id : ids) {
+			String raw = id.toString();
+			if (match.isEmpty() || SharedSuggestionProvider.matchesSubStr(match, raw.toLowerCase(Locale.ROOT))) {
+				builder.suggest("\"" + raw + "\"");
+			}
+		}
+		return builder.buildFuture();
 	}
 
 }

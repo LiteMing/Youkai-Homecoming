@@ -422,8 +422,8 @@ YHEvents.registerSpells(event => {
 
 1. ✅ 实现`/yhspell`指令 (set, phase, variable, reset, debug, list)
 2. ✅ 实现条件/动作的Codec序列化
-3. 🔲 支持从datapack JSON加载SpellDefinition (Codec已就绪，需要DatapackRegistry加载器)
-4. 🔲 实现NBT覆盖层
+3. ✅ 支持从datapack JSON加载SpellDefinition (`spell_definitions/*.json` + `/reload`)
+4. ✅ 实现NBT覆盖层（实体 `spell_id` / `spell_phase` / `spell_variables`）
 
 ### Phase 3: KubeJS集成 ✅ 已完成
 

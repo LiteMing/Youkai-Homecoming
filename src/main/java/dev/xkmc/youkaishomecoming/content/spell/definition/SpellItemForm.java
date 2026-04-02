@@ -21,7 +21,7 @@ public record SpellItemForm(
 			Codec.INT.optionalFieldOf("cooldown", 100).forGetter(SpellItemForm::cooldown),
 			Codec.BOOL.optionalFieldOf("requires_target", false).forGetter(SpellItemForm::requiresTarget),
 			ResourceLocation.CODEC.optionalFieldOf("icon_item")
-					.xmap(o -> o.orElse(null), Optional::ofNullable)
-					.forGetter(SpellItemForm::iconItem)
-	).apply(i, SpellItemForm::new));
+					.forGetter(form -> Optional.ofNullable(form.iconItem()))
+	).apply(i, (generate, cooldown, requiresTarget, iconItem) ->
+			new SpellItemForm(generate, cooldown, requiresTarget, iconItem.orElse(null))));
 }

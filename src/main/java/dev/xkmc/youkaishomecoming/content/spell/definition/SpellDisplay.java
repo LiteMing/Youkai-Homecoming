@@ -19,12 +19,11 @@ public record SpellDisplay(
 			Codec.STRING.fieldOf("name").forGetter(SpellDisplay::name),
 			Codec.STRING.optionalFieldOf("description", "").forGetter(SpellDisplay::description),
 			ResourceLocation.CODEC.optionalFieldOf("icon")
-					.xmap(o -> o.orElse(null), Optional::ofNullable)
-					.forGetter(SpellDisplay::icon),
+					.forGetter(display -> Optional.ofNullable(display.icon())),
 			ResourceLocation.CODEC.optionalFieldOf("model_id")
-					.xmap(o -> o.orElse(null), Optional::ofNullable)
-					.forGetter(SpellDisplay::modelId)
-	).apply(i, SpellDisplay::new));
+					.forGetter(display -> Optional.ofNullable(display.modelId()))
+	).apply(i, (name, description, icon, modelId) ->
+			new SpellDisplay(name, description, icon.orElse(null), modelId.orElse(null))));
 
 	public Component displayName() {
 		return isTranslationKey(name) ? Component.translatable(name) : Component.literal(name);

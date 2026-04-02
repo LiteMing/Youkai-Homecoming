@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.editor;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 public class EditorState {
 
@@ -123,6 +125,9 @@ public class EditorState {
 						errors.add("Transition from " + phaseId + " targets missing phase " + transition.targetPhase());
 					}
 				}
+				validateActionTargets(errors, phaseId, "on_enter", phase.onEnter);
+				validateActionTargets(errors, phaseId, "on_tick", phase.onTick);
+				validateActionTargets(errors, phaseId, "on_exit", phase.onExit);
 			}
 		}
 		return errors;
@@ -270,10 +275,16 @@ public class EditorState {
 			return "Cannot delete the last phase";
 		}
 		for (var entry : phases.entrySet()) {
-			for (Transition transition : entry.getValue().transitions) {
+			PhaseDefinition phase = entry.getValue();
+			for (Transition transition : phase.transitions) {
 				if (transition.targetPhase().equals(selectedPhase)) {
 					return "Phase is still targeted by transitions";
 				}
+			}
+			if (containsPhaseReference(phase.onEnter, selectedPhase)
+					|| containsPhaseReference(phase.onTick, selectedPhase)
+					|| containsPhaseReference(phase.onExit, selectedPhase)) {
+				return "Phase is still referenced by force_phase actions";
 			}
 		}
 		return null;
@@ -346,6 +357,152 @@ public class EditorState {
 		}
 		selectedPhase = phases.keySet().iterator().next();
 		return true;
+	}
+
+	public List<SpellAction> getActions(PhaseEditorSection section) {
+		PhaseDefinition phase = requireSelectedPhase();
+		return switch (section) {
+			case ON_ENTER -> Collections.unmodifiableList(phase.onEnter);
+			case ON_TICK -> Collections.unmodifiableList(phase.onTick);
+			case ON_EXIT -> Collections.unmodifiableList(phase.onExit);
+			case TRANSITIONS -> throw new IllegalArgumentException("Transitions are not actions");
+		};
+	}
+
+	public List<Transition> getTransitions() {
+		return Collections.unmodifiableList(requireSelectedPhase().transitions);
+	}
+
+	public int getEntryCount(PhaseEditorSection section) {
+		return section.isTransitionSection() ? getTransitions().size() : getActions(section).size();
+	}
+
+	@Nullable
+	public SpellAction getAction(PhaseEditorSection section, int index) {
+		if (section.isTransitionSection()) {
+			return null;
+		}
+		List<SpellAction> actions = getActions(section);
+		return index >= 0 && index < actions.size() ? actions.get(index) : null;
+	}
+
+	@Nullable
+	public Transition getTransition(int index) {
+		List<Transition> transitions = getTransitions();
+		return index >= 0 && index < transitions.size() ? transitions.get(index) : null;
+	}
+
+	public int addDefaultEntry(PhaseEditorSection section) {
+		if (section.isTransitionSection()) {
+			return addTransition(new Transition(
+					EditorConditionType.ALWAYS.create(),
+					defaultTransitionTarget(),
+					dev.xkmc.youkaishomecoming.content.spell.definition.TransitionMode.IMMEDIATE
+			));
+		}
+		return addAction(section, new SpellActions.NoopAction());
+	}
+
+	public int addAction(PhaseEditorSection section, SpellAction action) {
+		if (section.isTransitionSection()) {
+			throw new IllegalArgumentException("Transitions are not actions");
+		}
+		List<SpellAction> actions = new ArrayList<>(getActions(section));
+		actions.add(cloneAction(action));
+		updateSelectedPhase(phase -> withActions(phase, section, actions));
+		return actions.size() - 1;
+	}
+
+	public int addTransition(Transition transition) {
+		List<Transition> transitions = new ArrayList<>(getTransitions());
+		transitions.add(cloneTransition(transition));
+		updateSelectedPhase(phase -> new PhaseDefinition(phase.id, phase.onEnter, phase.onTick, phase.onExit, transitions));
+		return transitions.size() - 1;
+	}
+
+	public boolean replaceAction(PhaseEditorSection section, int index, SpellAction action) {
+		if (section.isTransitionSection()) {
+			return false;
+		}
+		List<SpellAction> actions = new ArrayList<>(getActions(section));
+		if (index < 0 || index >= actions.size()) {
+			return false;
+		}
+		actions.set(index, cloneAction(action));
+		updateSelectedPhase(phase -> withActions(phase, section, actions));
+		return true;
+	}
+
+	public boolean replaceTransition(int index, Transition transition) {
+		List<Transition> transitions = new ArrayList<>(getTransitions());
+		if (index < 0 || index >= transitions.size()) {
+			return false;
+		}
+		transitions.set(index, cloneTransition(transition));
+		updateSelectedPhase(phase -> new PhaseDefinition(phase.id, phase.onEnter, phase.onTick, phase.onExit, transitions));
+		return true;
+	}
+
+	public int duplicateEntry(PhaseEditorSection section, int index) {
+		if (section.isTransitionSection()) {
+			Transition transition = getTransition(index);
+			if (transition == null) {
+				return -1;
+			}
+			List<Transition> transitions = new ArrayList<>(getTransitions());
+			transitions.add(index + 1, cloneTransition(transition));
+			updateSelectedPhase(phase -> new PhaseDefinition(phase.id, phase.onEnter, phase.onTick, phase.onExit, transitions));
+			return index + 1;
+		}
+		SpellAction action = getAction(section, index);
+		if (action == null) {
+			return -1;
+		}
+		List<SpellAction> actions = new ArrayList<>(getActions(section));
+		actions.add(index + 1, cloneAction(action));
+		updateSelectedPhase(phase -> withActions(phase, section, actions));
+		return index + 1;
+	}
+
+	public int removeEntry(PhaseEditorSection section, int index) {
+		if (section.isTransitionSection()) {
+			List<Transition> transitions = new ArrayList<>(getTransitions());
+			if (index < 0 || index >= transitions.size()) {
+				return -1;
+			}
+			transitions.remove(index);
+			updateSelectedPhase(phase -> new PhaseDefinition(phase.id, phase.onEnter, phase.onTick, phase.onExit, transitions));
+			return Math.min(index, transitions.size() - 1);
+		}
+		List<SpellAction> actions = new ArrayList<>(getActions(section));
+		if (index < 0 || index >= actions.size()) {
+			return -1;
+		}
+		actions.remove(index);
+		updateSelectedPhase(phase -> withActions(phase, section, actions));
+		return Math.min(index, actions.size() - 1);
+	}
+
+	public int moveEntry(PhaseEditorSection section, int index, int delta) {
+		int target = index + delta;
+		if (section.isTransitionSection()) {
+			List<Transition> transitions = new ArrayList<>(getTransitions());
+			if (index < 0 || index >= transitions.size() || target < 0 || target >= transitions.size()) {
+				return index;
+			}
+			Transition entry = transitions.remove(index);
+			transitions.add(target, entry);
+			updateSelectedPhase(phase -> new PhaseDefinition(phase.id, phase.onEnter, phase.onTick, phase.onExit, transitions));
+			return target;
+		}
+		List<SpellAction> actions = new ArrayList<>(getActions(section));
+		if (index < 0 || index >= actions.size() || target < 0 || target >= actions.size()) {
+			return index;
+		}
+		SpellAction entry = actions.remove(index);
+		actions.add(target, entry);
+		updateSelectedPhase(phase -> withActions(phase, section, actions));
+		return target;
 	}
 
 	private void applyProject(SpellEditorData data) {
@@ -431,6 +588,14 @@ public class EditorState {
 			index++;
 		}
 		return id;
+	}
+
+	private PhaseDefinition requireSelectedPhase() {
+		PhaseDefinition phase = getSelectedPhaseDefinition();
+		if (phase == null) {
+			throw new IllegalStateException("No phase selected");
+		}
+		return phase;
 	}
 
 	private void replacePhaseId(ResourceLocation oldId, ResourceLocation newId) {
@@ -527,10 +692,45 @@ public class EditorState {
 		return trimmed.isEmpty() ? null : new ResourceLocation(trimmed);
 	}
 
+	private ResourceLocation defaultTransitionTarget() {
+		if (selectedPhase != null) {
+			return selectedPhase;
+		}
+		if (!phases.isEmpty()) {
+			return phases.keySet().iterator().next();
+		}
+		return parseCurrentSpellIdOrFallback();
+	}
+
+	private void updateSelectedPhase(UnaryOperator<PhaseDefinition> updater) {
+		PhaseDefinition current = requireSelectedPhase();
+		phases.put(current.id, updater.apply(current));
+	}
+
+	private static PhaseDefinition withActions(PhaseDefinition phase, PhaseEditorSection section, List<SpellAction> actions) {
+		return switch (section) {
+			case ON_ENTER -> new PhaseDefinition(phase.id, actions, phase.onTick, phase.onExit, phase.transitions);
+			case ON_TICK -> new PhaseDefinition(phase.id, phase.onEnter, actions, phase.onExit, phase.transitions);
+			case ON_EXIT -> new PhaseDefinition(phase.id, phase.onEnter, phase.onTick, actions, phase.transitions);
+			case TRANSITIONS -> phase;
+		};
+	}
+
+	private static SpellAction cloneAction(SpellAction action) {
+		return SpellEditorCodec.decodeActionJson(SpellEditorCodec.encodeActionJson(action));
+	}
+
+	private static Transition cloneTransition(Transition transition) {
+		return SpellEditorCodec.decodeTransitionJson(SpellEditorCodec.encodeTransitionJson(transition));
+	}
+
 	private static PhaseDefinition copyPhase(PhaseDefinition phase,
 											 ResourceLocation newPhaseId,
 											 @Nullable ResourceLocation oldTarget,
 											 @Nullable ResourceLocation newTarget) {
+		List<SpellAction> onEnter = remapActions(phase.onEnter, oldTarget, newTarget);
+		List<SpellAction> onTick = remapActions(phase.onTick, oldTarget, newTarget);
+		List<SpellAction> onExit = remapActions(phase.onExit, oldTarget, newTarget);
 		List<Transition> transitions = new ArrayList<>(phase.transitions.size());
 		for (Transition transition : phase.transitions) {
 			ResourceLocation target = transition.targetPhase();
@@ -540,13 +740,95 @@ public class EditorState {
 			transitions.add(target.equals(transition.targetPhase()) ? transition
 					: new Transition(transition.condition(), target, transition.mode()));
 		}
-		return new PhaseDefinition(newPhaseId, phase.onEnter, phase.onTick, phase.onExit, transitions);
+		return new PhaseDefinition(newPhaseId, onEnter, onTick, onExit, transitions);
+	}
+
+	private static List<SpellAction> remapActions(List<SpellAction> source,
+												  @Nullable ResourceLocation oldTarget,
+												  @Nullable ResourceLocation newTarget) {
+		List<SpellAction> result = new ArrayList<>(source.size());
+		for (SpellAction action : source) {
+			result.add(remapAction(action, oldTarget, newTarget));
+		}
+		return result;
+	}
+
+	private static SpellAction remapAction(SpellAction action,
+										   @Nullable ResourceLocation oldTarget,
+										   @Nullable ResourceLocation newTarget) {
+		if (oldTarget == null || newTarget == null) {
+			return action;
+		}
+		if (action instanceof SpellActions.ForcePhase forcePhase) {
+			return forcePhase.phaseId().equals(oldTarget) ? new SpellActions.ForcePhase(newTarget) : action;
+		}
+		if (action instanceof SpellActions.ConditionalAction conditional) {
+			List<SpellAction> ifTrue = remapActions(conditional.ifTrue(), oldTarget, newTarget);
+			List<SpellAction> ifFalse = remapActions(conditional.ifFalse(), oldTarget, newTarget);
+			return ifTrue.equals(conditional.ifTrue()) && ifFalse.equals(conditional.ifFalse()) ? action
+					: new SpellActions.ConditionalAction(conditional.condition(), ifTrue, ifFalse);
+		}
+		if (action instanceof SpellActions.SequenceAction sequence) {
+			List<SpellAction> actions = remapActions(sequence.actions(), oldTarget, newTarget);
+			return actions.equals(sequence.actions()) ? action : new SpellActions.SequenceAction(actions);
+		}
+		return action;
 	}
 
 	private static void appendActionLines(List<String> lines, String group, List<SpellAction> actions) {
 		for (int i = 0; i < actions.size(); i++) {
 			lines.add(group + "[" + i + "]: " + shortName(actions.get(i)));
 		}
+	}
+
+	private void validateActionTargets(List<String> errors, ResourceLocation phaseId, String group, List<SpellAction> actions) {
+		for (int i = 0; i < actions.size(); i++) {
+			validateActionTarget(errors, phaseId, group + "[" + i + "]", actions.get(i));
+		}
+	}
+
+	private void validateActionTarget(List<String> errors, ResourceLocation phaseId, String path, SpellAction action) {
+		if (action instanceof SpellActions.ForcePhase forcePhase && !phases.containsKey(forcePhase.phaseId())) {
+			errors.add("Action " + path + " in " + phaseId + " targets missing phase " + forcePhase.phaseId());
+			return;
+		}
+		if (action instanceof SpellActions.ConditionalAction conditional) {
+			for (int i = 0; i < conditional.ifTrue().size(); i++) {
+				validateActionTarget(errors, phaseId, path + ".if_true[" + i + "]", conditional.ifTrue().get(i));
+			}
+			for (int i = 0; i < conditional.ifFalse().size(); i++) {
+				validateActionTarget(errors, phaseId, path + ".if_false[" + i + "]", conditional.ifFalse().get(i));
+			}
+			return;
+		}
+		if (action instanceof SpellActions.SequenceAction sequence) {
+			for (int i = 0; i < sequence.actions().size(); i++) {
+				validateActionTarget(errors, phaseId, path + ".actions[" + i + "]", sequence.actions().get(i));
+			}
+		}
+	}
+
+	private static boolean containsPhaseReference(List<SpellAction> actions, ResourceLocation phaseId) {
+		for (SpellAction action : actions) {
+			if (referencesPhase(action, phaseId)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean referencesPhase(SpellAction action, ResourceLocation phaseId) {
+		if (action instanceof SpellActions.ForcePhase forcePhase) {
+			return forcePhase.phaseId().equals(phaseId);
+		}
+		if (action instanceof SpellActions.ConditionalAction conditional) {
+			return containsPhaseReference(conditional.ifTrue(), phaseId)
+					|| containsPhaseReference(conditional.ifFalse(), phaseId);
+		}
+		if (action instanceof SpellActions.SequenceAction sequence) {
+			return containsPhaseReference(sequence.actions(), phaseId);
+		}
+		return false;
 	}
 
 	private static String shortName(Object value) {

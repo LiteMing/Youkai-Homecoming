@@ -441,10 +441,13 @@ YHEvents.registerSpells(event => {
 
 ### Phase 5: 编辑器
 
-1. ⚠️ 已开始第一版 E3 骨架：`/yhspell editor`、`SpellEditorScreen`、`EditorState`、本地 project/datapack 导出
-2. ⚠️ 当前已支持顶层元数据编辑、phase 选择/新增/删除/重命名/复制、undo/redo、JSON 复制；action/condition/transition 仍未可视化编辑
-3. 🔲 Phase 2节点图
-4. 🔲 Phase 3调试预览
+1. ✅ 已完成 Phase 5.1 列表编辑器骨架：`/yhspell editor`、`SpellEditorScreen`、`EditorState`、本地 project/datapack 导出、undo/redo、definition/phase JSON 复制
+2. ✅ 已支持顶层元数据编辑、phase 选择/新增/删除/重命名/复制，以及 `On Enter / On Tick / On Exit / Transitions` 四个分段的列表编辑
+3. ✅ 已支持 phase 内部条目的新增/删除/复制/上下移动、条目 JSON 复制/粘贴，以及常用简单 action/condition/transition 的结构化属性面板
+4. ⚠️ 当前复杂组合类型仍以摘要 + JSON fallback 为主：`conditional`、`sequence`、`not`、`and`、`or`、`legacy_ticker`
+5. ⚠️ phase 重命名/删除的引用一致性已覆盖 `transition.target_phase` 和 `force_phase`，但仍缺少图形化引用视图
+6. 🔲 Phase 5.2 节点图
+7. 🔲 Phase 5.3 调试预览
 
 ### Phase 6: 迁移现有符卡
 

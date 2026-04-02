@@ -6,8 +6,11 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.JsonOps;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.Transition;
 
 public class SpellEditorCodec {
 
@@ -34,6 +37,30 @@ public class SpellEditorCodec {
 
 	public static String encodePhaseJson(PhaseDefinition phase) {
 		return encode(PhaseDefinition.CODEC, phase);
+	}
+
+	public static String encodeActionJson(SpellAction action) {
+		return encode(SpellAction.CODEC, action);
+	}
+
+	public static SpellAction decodeActionJson(String json) {
+		return decode(SpellAction.CODEC, json);
+	}
+
+	public static String encodeConditionJson(SpellCondition condition) {
+		return encode(SpellCondition.CODEC, condition);
+	}
+
+	public static SpellCondition decodeConditionJson(String json) {
+		return decode(SpellCondition.CODEC, json);
+	}
+
+	public static String encodeTransitionJson(Transition transition) {
+		return encode(Transition.CODEC, transition);
+	}
+
+	public static Transition decodeTransitionJson(String json) {
+		return decode(Transition.CODEC, json);
 	}
 
 	public static <T> String encode(Codec<T> codec, T value) {

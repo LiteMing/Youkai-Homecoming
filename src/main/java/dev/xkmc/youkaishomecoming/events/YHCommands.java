@@ -270,7 +270,7 @@ public class YHCommands {
 		try {
 			String json = SpellEditorCodec.encodeDefinitionJson(definition);
 			YoukaisHomecoming.HANDLER.toClientPlayer(new OpenSpellEditorToClient(json), player);
-			source.sendSuccess(() -> Component.literal("Opened spell editor for " + spellId), false);
+			source.sendSuccess(() -> Component.literal("Sent spell editor open request for " + spellId), false);
 			return 1;
 		} catch (Exception e) {
 			source.sendFailure(Component.literal(
@@ -293,7 +293,7 @@ public class YHCommands {
 		try {
 			String json = SpellEditorCodec.encodeDefinitionJson(SpellEditorTemplates.createBlank(spellId));
 			YoukaisHomecoming.HANDLER.toClientPlayer(new OpenSpellEditorToClient(json), player);
-			source.sendSuccess(() -> Component.literal("Opened new spell editor for " + spellId), false);
+			source.sendSuccess(() -> Component.literal("Sent new spell editor open request for " + spellId), false);
 			return 1;
 		} catch (Exception e) {
 			source.sendFailure(Component.literal("Failed to open new spell editor: " + e.getMessage()));

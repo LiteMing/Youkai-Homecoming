@@ -19,6 +19,6 @@ public class OpenSpellEditorToClient extends SerialPacketBase {
 
 	@Override
 	public void handle(NetworkEvent.Context context) {
-		SpellEditorClientHelper.open(definitionJson);
+		context.enqueueWork(() -> SpellEditorClientHelper.open(definitionJson));
 	}
 }

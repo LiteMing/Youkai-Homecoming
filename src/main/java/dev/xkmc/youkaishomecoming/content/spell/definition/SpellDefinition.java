@@ -50,6 +50,6 @@ public class SpellDefinition {
 
 	@Nullable
 	public String getModelId() {
-		return display.modelId() != null ? display.modelId().toString() : null;
+		return display.modelIdOrNull() != null ? display.modelIdOrNull().toString() : null;
 	}
 }

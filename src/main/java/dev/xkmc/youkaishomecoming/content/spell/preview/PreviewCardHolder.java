@@ -32,14 +32,16 @@ import java.util.List;
 public class PreviewCardHolder implements CardHolder {
 
 	private final Level level;
-	private final ArmorStand fakeCaster;
+	private final FakeCasterEntity fakeCaster;
 	private final ArmorStand fakeTarget;
 	private final List<Entity> localEntities = new ArrayList<>();
+	private final List<Entity> pendingEntities = new ArrayList<>();
+	private boolean ticking = false;
 	private final RandomSource random = RandomSource.create();
 
 	public PreviewCardHolder(Level level) {
 		this.level = level;
-		this.fakeCaster = new ArmorStand(EntityType.ARMOR_STAND, level);
+		this.fakeCaster = new FakeCasterEntity(level, this);
 		this.fakeCaster.setPos(0, 0, 0);
 		this.fakeCaster.setInvisible(true);
 		this.fakeTarget = new ArmorStand(EntityType.ARMOR_STAND, level);
@@ -91,11 +93,22 @@ public class PreviewCardHolder implements CardHolder {
 
 	@Override
 	public ShooterEntity prepareShooter(ShooterData data, SpellCard spell) {
-		// Anonymous subclass: override shoot() to redirect bullets to our local pool
+		// Anonymous subclass: override shoot() to redirect bullets to our local pool,
+		// and override aiStep() to force serverAiStep() on client (needed for preview).
 		ShooterEntity shooter = new ShooterEntity(YHEntities.SHOOTER.get(), level) {
 			@Override
 			public void shoot(Entity danmaku) {
 				PreviewCardHolder.this.shoot(danmaku);
+			}
+
+			@Override
+			public void aiStep() {
+				super.aiStep();
+				// In preview (client-side), serverAiStep() is skipped by LivingEntity.
+				// Force it so the shooter's spell card ticks and spawns sub-danmaku.
+				if (level().isClientSide()) {
+					serverAiStep();
+				}
 			}
 		};
 		shooter.setup(fakeCaster, fakeTarget, data, spell);
@@ -104,8 +117,16 @@ public class PreviewCardHolder implements CardHolder {
 
 	@Override
 	public void shoot(Entity danmaku) {
-		// Add to local pool instead of world
-		localEntities.add(danmaku);
+		// Setup trail action so trail danmaku work in preview
+		if (danmaku instanceof ItemDanmakuEntity e && e.afterExpiry != null) {
+			e.afterExpiry.setup(this);
+		}
+		// Buffer during tick iteration to avoid ConcurrentModificationException
+		if (ticking) {
+			pendingEntities.add(danmaku);
+		} else {
+			localEntities.add(danmaku);
+		}
 	}
 
 	@Override
@@ -141,6 +162,7 @@ public class PreviewCardHolder implements CardHolder {
 	 * For ShooterEntity: manual movement + lifetime + spell tick.
 	 */
 	public void tick() {
+		ticking = true;
 		var iterator = localEntities.iterator();
 		while (iterator.hasNext()) {
 			Entity e = iterator.next();
@@ -151,6 +173,14 @@ public class PreviewCardHolder implements CardHolder {
 				++sp.tickCount;
 				sp.tick();
 				if (!sp.isValid()) {
+					// Manually trigger trail actions (terminate() only runs on ServerLevel)
+					if (e instanceof ItemDanmakuEntity danmaku && danmaku.afterExpiry != null) {
+						CardHolder trailHolder = null;
+						Entity owner = danmaku.getOwner();
+						if (owner instanceof CardHolder h) trailHolder = h;
+						if (trailHolder == null) danmaku.afterExpiry.execute(danmaku.position(), danmaku.getDeltaMovement());
+						else danmaku.afterExpiry.execute(trailHolder, danmaku.position(), danmaku.getDeltaMovement());
+					}
 					iterator.remove();
 				}
 			} else if (e instanceof ShooterEntity shooter) {
@@ -165,32 +195,23 @@ public class PreviewCardHolder implements CardHolder {
 				}
 			}
 		}
+		ticking = false;
+		// Flush entities spawned during tick (by ShooterEntity spellCard, trail actions, etc.)
+		if (!pendingEntities.isEmpty()) {
+			localEntities.addAll(pendingEntities);
+			pendingEntities.clear();
+		}
 	}
 
 	private void tickShooter(ShooterEntity shooter) {
-		// Movement (from ProjectileHealthEntity)
-		Vec3 vel = shooter.getDeltaMovement();
-		shooter.setPos(
-				shooter.getX() + vel.x,
-				shooter.getY() + vel.y,
-				shooter.getZ() + vel.z
-		);
-
-		// Lifetime check
+		// Lifetime check before tick
 		if (shooter.tickCount >= shooter.lifetime()) {
 			shooter.discard();
 			return;
 		}
 
-		// The spellcard tick (normally in serverAiStep)
-		// We use reflection-free access: ShooterEntity implements LivingCardHolder
-		// and its serverAiStep calls spellCard.tick(this)
-		// We replicate that by accessing the card through the runtime
 		try {
-			// ShooterEntity.serverAiStep() is protected, call it via tick path workaround
-			// Actually, we can just invoke the spell card logic ourselves
-			// But spellCard is private in ShooterEntity. Use getLegacyCard pattern instead.
-			// For now, call the full LivingEntity.tick() which will execute aiStep() on client too
+			// tick() handles movement, aiStep(), and serverAiStep() (via our override)
 			shooter.tick();
 		} catch (Exception ignored) {
 			// Safety net for any server-only code paths
@@ -207,6 +228,7 @@ public class PreviewCardHolder implements CardHolder {
 
 	public void clear() {
 		localEntities.clear();
+		pendingEntities.clear();
 	}
 
 	public void setTargetDistance(float distance) {
@@ -233,5 +255,88 @@ public class PreviewCardHolder implements CardHolder {
 
 	public ArmorStand getFakeTarget() {
 		return fakeTarget;
+	}
+
+	/**
+	 * A fake caster entity that implements CardHolder, so that danmaku
+	 * using {@code getOwner() instanceof CardHolder} checks (AttachedMover,
+	 * terminate trail actions, damage source) will work correctly in preview.
+	 */
+	static class FakeCasterEntity extends ArmorStand implements CardHolder {
+
+		private final PreviewCardHolder holder;
+
+		FakeCasterEntity(Level level, PreviewCardHolder holder) {
+			super(EntityType.ARMOR_STAND, level);
+			this.holder = holder;
+		}
+
+		@Override
+		public Vec3 center() {
+			return holder.center();
+		}
+
+		@Override
+		public Vec3 forward() {
+			return holder.forward();
+		}
+
+		@Nullable
+		@Override
+		public Vec3 target() {
+			return holder.target();
+		}
+
+		@Override
+		public RandomSource random() {
+			return holder.random();
+		}
+
+		@Override
+		public ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DyeColor color) {
+			return holder.prepareDanmaku(life, vec, type, color);
+		}
+
+		@Override
+		public ItemLaserEntity prepareLaser(int life, Vec3 pos, Vec3 vec, float len, YHDanmaku.Laser type, DyeColor color) {
+			return holder.prepareLaser(life, pos, vec, len, type, color);
+		}
+
+		@Override
+		public ShooterEntity prepareShooter(ShooterData data, SpellCard spell) {
+			return holder.prepareShooter(data, spell);
+		}
+
+		@Override
+		public void shoot(Entity danmaku) {
+			holder.shoot(danmaku);
+		}
+
+		@Override
+		public LivingEntity self() {
+			return this;
+		}
+
+		@Override
+		public DamageSource getDanmakuDamageSource(IYHDanmaku danmaku) {
+			return holder.getDanmakuDamageSource(danmaku);
+		}
+
+		@Nullable
+		@Override
+		public Vec3 targetVelocity() {
+			return Vec3.ZERO;
+		}
+
+		@Nullable
+		@Override
+		public LivingEntity targetEntity() {
+			return holder.targetEntity();
+		}
+
+		@Override
+		public float getDamage(YHDanmaku.IDanmakuType type) {
+			return holder.getDamage(type);
+		}
 	}
 }

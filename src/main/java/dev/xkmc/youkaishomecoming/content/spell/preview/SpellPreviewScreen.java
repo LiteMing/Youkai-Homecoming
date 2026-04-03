@@ -1,6 +1,12 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -14,7 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Standalone screen for previewing spell card effects in an orthographic viewport.
+ * Standalone screen for previewing and editing spell card effects.
+ * Left: orthographic viewport, Right: action list + property editor.
  * Opened via /yhspell preview <spell_id>.
  */
 @OnlyIn(Dist.CLIENT)
@@ -24,11 +31,19 @@ public class SpellPreviewScreen extends Screen {
 	private final VirtualSpellScene scene;
 	private final OrthographicViewport viewport;
 
-	// Control panel layout constants
+	// Layout constants
 	private static final int CONTROL_HEIGHT = 98;
 	private static final int TOP_BAR_HEIGHT = 20;
 	private static final int BUTTON_HEIGHT = 16;
 	private static final int BUTTON_SPACING = 2;
+	private static final int EDITOR_PANEL_WIDTH = 200;
+	private static final int ACTION_LIST_HEIGHT_RATIO = 40; // percent of right panel for action list
+
+	// Editor panels
+	private ActionListPanel actionListPanel;
+	private ActionEditorPanel actionEditorPanel;
+	private boolean editorVisible = true;
+	private ActionListPanel.AddTarget pendingAddTarget;
 
 	// Phase dropdown state
 	private final List<ResourceLocation> phaseList = new ArrayList<>();
@@ -50,21 +65,38 @@ public class SpellPreviewScreen extends Screen {
 	protected void init() {
 		super.init();
 
-		// Set viewport bounds (full width, minus top bar and control panel)
+		int editorW = editorVisible ? EDITOR_PANEL_WIDTH : 0;
+		int viewportW = width - editorW;
+
+		// Set viewport bounds (left side)
 		int viewportY = TOP_BAR_HEIGHT;
 		int viewportHeight = height - TOP_BAR_HEIGHT - CONTROL_HEIGHT;
-		viewport.setBounds(0, viewportY, width, viewportHeight);
+		viewport.setBounds(0, viewportY, viewportW, viewportHeight);
 
-		// --- Top bar: view angle buttons + spell name ---
+		// --- Top bar: view angle buttons + toggle editor + spell name ---
 		int bx = 4;
 		int by = 2;
-		int bw = 60;
+		int bw = 50;
 		for (ViewAngle angle : ViewAngle.values()) {
 			addRenderableWidget(Button.builder(Component.literal(angle.getLabel()), btn -> {
 				viewport.setViewAngle(angle);
 			}).bounds(bx, by, bw, BUTTON_HEIGHT).build());
 			bx += bw + BUTTON_SPACING;
 		}
+		// Toggle editor button
+		bx += 10;
+		addRenderableWidget(Button.builder(Component.literal(editorVisible ? "Editor <<" : "Editor >>"), btn -> {
+			editorVisible = !editorVisible;
+			rebuildScreen();
+		}).bounds(bx, by, 60, BUTTON_HEIGHT).build());
+		bx += 62;
+		// Apply button: re-apply edited spell to all entities using it
+		addRenderableWidget(Button.builder(Component.literal("Apply"), btn -> applyToEntities())
+				.bounds(bx, by, 40, BUTTON_HEIGHT).build());
+		bx += 42;
+		// Export button: save spell definition as JSON datapack file
+		addRenderableWidget(Button.builder(Component.literal("Export"), btn -> exportToDatapack())
+				.bounds(bx, by, 46, BUTTON_HEIGHT).build());
 
 		// --- Control panel at bottom ---
 		int panelY = height - CONTROL_HEIGHT;
@@ -96,7 +128,7 @@ public class SpellPreviewScreen extends Screen {
 			bx += 38;
 		}
 
-		// Row 3: Distance + HP presets
+		// Row 3: Distance + HP
 		bx = 4;
 		addRenderableWidget(Button.builder(Component.literal("Dist:"), btn -> {})
 				.bounds(bx, row3Y, 30, BUTTON_HEIGHT).build());
@@ -117,7 +149,7 @@ public class SpellPreviewScreen extends Screen {
 			bx += 32;
 		}
 
-		// Row 4: Phase selection (prev/next buttons + label)
+		// Row 4: Phase selection
 		bx = 4;
 		addRenderableWidget(Button.builder(Component.literal("Phase:"), btn -> {})
 				.bounds(bx, row4Y, 40, BUTTON_HEIGHT).build());
@@ -128,7 +160,7 @@ public class SpellPreviewScreen extends Screen {
 		addRenderableWidget(Button.builder(Component.literal(">"), btn -> cyclePhase(1))
 				.bounds(bx + 100, row4Y, 16, BUTTON_HEIGHT).build());
 
-		// Row 5: Range (grid extent + clip depth)
+		// Row 5: Range
 		bx = 4;
 		int[] rangeOptions = {50, 100, 200, 500};
 		addRenderableWidget(Button.builder(Component.literal("Range:"), btn -> {})
@@ -142,12 +174,169 @@ public class SpellPreviewScreen extends Screen {
 			}).bounds(bx, row5Y, 30, BUTTON_HEIGHT).build());
 			bx += 32;
 		}
+
+		// --- Editor panels (right side) ---
+		if (editorVisible) {
+			int editorX = viewportW;
+			int rightPanelY = TOP_BAR_HEIGHT;
+			int rightPanelH = height - TOP_BAR_HEIGHT - CONTROL_HEIGHT;
+			int actionListH = rightPanelH * ACTION_LIST_HEIGHT_RATIO / 100;
+			int editorH = rightPanelH - actionListH;
+
+			actionListPanel = new ActionListPanel(
+					(action, path) -> {
+						if (actionEditorPanel != null) {
+							actionEditorPanel.setAction(action, path.leafIndex());
+						}
+					},
+					this::onRequestAddAction,
+					() -> { scene.reset(); scene.play(); }
+			);
+			actionListPanel.setBounds(editorX, rightPanelY, editorW, actionListH);
+
+			actionEditorPanel = new ActionEditorPanel(
+					this::addRenderableWidget,
+					this::removeWidget,
+					this::onActionEdited,
+					this::onDeleteAction
+			);
+			actionEditorPanel.setBounds(editorX, rightPanelY + actionListH, editorW, editorH);
+
+			// Set current phase on the action list
+			updateActionListPhase();
+		} else {
+			actionListPanel = null;
+			actionEditorPanel = null;
+		}
+	}
+
+	private void rebuildScreen() {
+		this.init(minecraft, width, height);
+	}
+
+	private void onActionEdited(SpellAction newAction) {
+		if (actionListPanel != null) {
+			actionListPanel.replaceSelectedAction(newAction);
+			scene.reset();
+			scene.play();
+		}
+	}
+
+	private void onRequestAddAction(ActionListPanel.AddTarget target) {
+		pendingAddTarget = target;
+		if (actionEditorPanel != null) {
+			actionEditorPanel.showTypeSelector(this::onTypeSelected);
+		}
+	}
+
+	private void onTypeSelected(SpellAction action) {
+		if (actionListPanel != null && pendingAddTarget != null) {
+			actionListPanel.insertAction(pendingAddTarget, action);
+			pendingAddTarget = null;
+			scene.reset();
+			scene.play();
+		}
+	}
+
+	private void onDeleteAction() {
+		if (actionListPanel != null && actionListPanel.deleteSelected()) {
+			if (actionEditorPanel != null) actionEditorPanel.clearAction();
+			scene.reset();
+			scene.play();
+		}
+	}
+
+	/**
+	 * Re-apply the edited spell definition to all entities currently using it.
+	 * Works in singleplayer by directly accessing the integrated server.
+	 * Matches both new SpellRuntime entities and legacy SpellCardWrapper entities.
+	 */
+	private void applyToEntities() {
+		var mc = Minecraft.getInstance();
+		// Update the SpellRegistry so subsequent /yhspell set uses the edited definition
+		SpellRegistry.register(definition);
+		var server = mc.getSingleplayerServer();
+		if (server != null) {
+			ResourceLocation spellId = definition.id;
+			String spellIdStr = spellId.toString();
+			server.execute(() -> {
+				int count = 0;
+				for (var level : server.getAllLevels()) {
+					for (var entity : level.getAllEntities()) {
+						if (!(entity instanceof YoukaiEntity youkai)) continue;
+						boolean match = false;
+						if (youkai.spellRuntime != null
+								&& youkai.spellRuntime.getDefinition().id.equals(spellId)) {
+							match = true;
+						} else if (youkai.spellCard != null
+								&& spellIdStr.equals(youkai.spellCard.modelId)) {
+							match = true;
+						}
+						if (match) {
+							youkai.setSpellRuntime(new SpellRuntime(definition));
+							count++;
+						}
+					}
+				}
+				int finalCount = count;
+				mc.execute(() -> {
+					if (mc.player != null) {
+						mc.player.displayClientMessage(
+								Component.literal("[YH] Applied spell to " + finalCount + " entities"), true);
+					}
+				});
+			});
+		} else if (mc.player != null) {
+			mc.player.connection.sendCommand("yhspell reapply " + definition.id);
+		}
+	}
+
+	/**
+	 * Export the current spell definition to a JSON file in the game directory.
+	 * File is written to: ./youkaishomecoming_exports/<namespace>/<path>.json
+	 */
+	private void exportToDatapack() {
+		var mc = Minecraft.getInstance();
+		try {
+			com.google.gson.JsonElement json = SpellDefinition.CODEC.encodeStart(
+					com.mojang.serialization.JsonOps.INSTANCE, definition).getOrThrow(false, s -> {});
+			com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
+			String jsonStr = gson.toJson(json);
+
+			java.io.File dir = new java.io.File(mc.gameDirectory, "youkaishomecoming_exports/" + definition.id.getNamespace());
+			dir.mkdirs();
+			java.io.File file = new java.io.File(dir, definition.id.getPath().replace('/', '_') + ".json");
+			try (var writer = new java.io.FileWriter(file)) {
+				writer.write(jsonStr);
+			}
+
+			if (mc.player != null) {
+				mc.player.displayClientMessage(
+						Component.literal("[YH] Exported to " + file.getPath()), false);
+			}
+		} catch (Exception e) {
+			if (mc.player != null) {
+				mc.player.displayClientMessage(
+						Component.literal("[YH] Export failed: " + e.getMessage()), false);
+			}
+		}
+	}
+
+	private void updateActionListPhase() {
+		if (actionListPanel == null || phaseList.isEmpty()) return;
+		ResourceLocation phaseId = phaseList.get(selectedPhaseIndex);
+		PhaseDefinition phase = definition.phases.get(phaseId);
+		if (phase != null) {
+			actionListPanel.setPhase(phase);
+		}
 	}
 
 	private void cyclePhase(int delta) {
 		if (phaseList.isEmpty()) return;
 		selectedPhaseIndex = (selectedPhaseIndex + delta + phaseList.size()) % phaseList.size();
 		scene.forcePhase(phaseList.get(selectedPhaseIndex));
+		if (actionEditorPanel != null) actionEditorPanel.clearAction();
+		updateActionListPhase();
 	}
 
 	@Override
@@ -158,7 +347,10 @@ public class SpellPreviewScreen extends Screen {
 		// Sync selected phase index with runtime
 		ResourceLocation current = scene.getCurrentPhaseId();
 		int idx = phaseList.indexOf(current);
-		if (idx >= 0) selectedPhaseIndex = idx;
+		if (idx >= 0 && idx != selectedPhaseIndex) {
+			selectedPhaseIndex = idx;
+			updateActionListPhase();
+		}
 	}
 
 	@Override
@@ -173,12 +365,22 @@ public class SpellPreviewScreen extends Screen {
 		int panelY = height - CONTROL_HEIGHT;
 		guiGraphics.fill(0, panelY, width, height, 0xCC000000);
 
+		// Render editor panels (before widgets so text shows under widgets)
+		if (actionListPanel != null) {
+			actionListPanel.render(guiGraphics, mouseX, mouseY, partialTick);
+		}
+		if (actionEditorPanel != null) {
+			actionEditorPanel.render(guiGraphics, mouseX, mouseY, partialTick);
+		}
+
 		// Render widgets (buttons)
 		super.render(guiGraphics, mouseX, mouseY, partialTick);
 
 		// Status text on top bar
 		String spellName = definition.id.toString();
-		guiGraphics.drawString(font, spellName, width - font.width(spellName) - 4, 5, 0xFFAAAAAA, false);
+		int editorW = editorVisible ? EDITOR_PANEL_WIDTH : 0;
+		int nameX = width - editorW - font.width(spellName) - 4;
+		guiGraphics.drawString(font, spellName, nameX, 5, 0xFFAAAAAA, false);
 
 		// Playback info
 		int row1Y = panelY + 4;
@@ -196,10 +398,10 @@ public class SpellPreviewScreen extends Screen {
 			guiGraphics.drawString(font, phaseName, 64, row4Y + 4, 0xFFFFFF88, false);
 		}
 
-		// View angle indicator + target position
+		// View angle + target info
 		var tp = scene.getTargetPos();
-		String targetInfo = String.format("Target: (%.1f, %.1f, %.1f)  [Left-drag to move]",
-				tp.x, tp.y, tp.z);
+		String targetInfo = String.format("Target: (%.1f, %.1f, %.1f)", tp.x, tp.y, tp.z);
+		int viewportW = width - editorW;
 		guiGraphics.drawString(font, "View: " + viewport.getViewLabel(),
 				4, height - CONTROL_HEIGHT - 22, 0xFF888888, false);
 		guiGraphics.drawString(font, targetInfo,
@@ -208,28 +410,40 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// Let widgets (EditBox, Button) handle clicks first
+		if (super.mouseClicked(mouseX, mouseY, button)) {
+			return true;
+		}
+		// Then custom-drawn panels
+		if (actionListPanel != null && actionListPanel.mouseClicked(mouseX, mouseY, button)) {
+			return true;
+		}
+		if (actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
+			return true;
+		}
+
 		if (viewport.isMouseOver(mouseX, mouseY)) {
 			if (button == 0) {
-				// Left click: move target
 				movingTarget = true;
 				return true;
 			}
 			if (button == 2) {
-				// Middle click: pan
 				dragging = true;
 				return true;
 			}
 			if (button == 1) {
-				// Right click: free rotate
 				rotating = true;
 				return true;
 			}
 		}
-		return super.mouseClicked(mouseX, mouseY, button);
+		return false;
 	}
 
 	@Override
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		if (actionListPanel != null && actionListPanel.mouseReleased(mouseX, mouseY, button)) {
+			return true;
+		}
 		if (movingTarget && button == 0) {
 			movingTarget = false;
 			return true;
@@ -247,6 +461,9 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+		if (actionListPanel != null && actionListPanel.mouseDragged(mouseX, mouseY, button, dragX, dragY)) {
+			return true;
+		}
 		if (movingTarget) {
 			var delta = viewport.screenDeltaToWorldDelta((float) dragX, (float) dragY);
 			scene.moveTarget(delta);
@@ -265,6 +482,12 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+		if (actionListPanel != null && actionListPanel.mouseScrolled(mouseX, mouseY, delta)) {
+			return true;
+		}
+		if (actionEditorPanel != null && actionEditorPanel.mouseScrolled(mouseX, mouseY, delta)) {
+			return true;
+		}
 		if (viewport.isMouseOver(mouseX, mouseY)) {
 			viewport.zoom((float) delta);
 			return true;
@@ -274,18 +497,55 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		// Don't capture keys when an edit box is focused
+		if (getFocused() instanceof net.minecraft.client.gui.components.EditBox) {
+			return super.keyPressed(keyCode, scanCode, modifiers);
+		}
+
+		// Ctrl+C/X/V for action clipboard
+		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_C) {
+				if (actionListPanel.copySelected()) return true;
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_X) {
+				if (actionListPanel.cutSelected()) {
+					actionEditorPanel.clearAction();
+					scene.reset();
+					return true;
+				}
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_V) {
+				if (actionListPanel.pasteAfterSelected()) {
+					scene.reset();
+					return true;
+				}
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_UP) {
+				if (actionListPanel.moveSelectedUp()) {
+					scene.reset();
+					return true;
+				}
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN) {
+				if (actionListPanel.moveSelectedDown()) {
+					scene.reset();
+					return true;
+				}
+			}
+		}
+
 		// Space = play/pause
-		if (keyCode == 32) {
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) {
 			scene.togglePlayPause();
 			return true;
 		}
 		// R = reset
-		if (keyCode == 82) {
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_R) {
 			scene.reset();
 			return true;
 		}
 		// Right arrow = step
-		if (keyCode == 262) {
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT) {
 			scene.step();
 			return true;
 		}
@@ -295,5 +555,16 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	public boolean isPauseScreen() {
 		return false;
+	}
+
+	// Expose for ActionEditorPanel
+	public <T extends net.minecraft.client.gui.components.events.GuiEventListener &
+			net.minecraft.client.gui.components.Renderable &
+			net.minecraft.client.gui.narration.NarratableEntry> T addRenderableWidget(T widget) {
+		return super.addRenderableWidget(widget);
+	}
+
+	public void removeWidget(net.minecraft.client.gui.components.events.GuiEventListener widget) {
+		super.removeWidget(widget);
 	}
 }

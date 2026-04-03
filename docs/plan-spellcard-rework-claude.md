@@ -418,12 +418,13 @@ YHEvents.registerSpells(event => {
 5. ✅ 新增`SpellStateToClient`包
 6. ✅ 在`YoukaiEntity`中添加`SpellRuntime`字段（与旧`spellCard`并存）
 
-### Phase 2: 指令与数据化 ✅ 部分完成
+### Phase 2: 指令与数据化 ✅ 基本完成
 
-1. ✅ 实现`/yhspell`指令 (set, phase, variable, reset, debug, list)
+1. ✅ 实现`/yhspell`指令 (set, phase, variable, reset, debug, list, preview, reapply, export, import)
 2. ✅ 实现条件/动作的Codec序列化
-3. 🔲 支持从datapack JSON加载SpellDefinition (Codec已就绪，需要DatapackRegistry加载器)
-4. 🔲 实现NBT覆盖层
+3. ✅ 支持JSON导出/导入 (`/yhspell export <id>` + `/yhspell import <path>` + 预览Export按钮)
+4. 🔲 支持从datapack JSON自动加载SpellDefinition (需 DatapackRegistry 加载器)
+5. 🔲 实现NBT覆盖层
 
 ### Phase 3: KubeJS集成 ✅ 已完成
 
@@ -457,7 +458,7 @@ YHEvents.registerSpells(event => {
 
 #### 5.2 预览已知问题
 
-1. 🔲 追踪型弹幕不显示 — fakeCaster (ArmorStand) 未实现 CardHolder/DanmakuCommander，terminate() 时 TrailAction 无法获取 holder
+1. ✅ 追踪型弹幕/子弹幕不显示 — FakeCasterEntity 实现 CardHolder，ShooterEntity 匿名子类 override aiStep() 在客户端强制调用 serverAiStep()，使子发射器符卡在预览中正常 tick
 2. 🔲 billboard 弹幕不随视角旋转 — `set3x3()` 剥离了所有旋转，仅保留平移+缩放（设计如此，非 bug）
 
 #### 5.3 编辑器框架 (E3-E5)
@@ -472,7 +473,7 @@ YHEvents.registerSpells(event => {
 
 Phase 6 的核心目标：让符卡的弹幕发射逻辑从硬编码 Java 类变为可序列化、可编辑的数据。这是编辑器可行性的关键前置条件。
 
-#### 6.0 前置：NumberProvider 参数系统
+#### 6.0 前置：NumberProvider 参数系统 ✅ 已完成
 
 所有弹幕数值参数使用 `NumberProvider` 接口而非裸 `double`/`int`，支持动态值源。
 
@@ -495,7 +496,7 @@ public interface NumberProvider {
 
 文件：`content/spell/definition/NumberProvider.java`, `NumberProviders.java`
 
-#### 6.1 核心弹幕 Action（3个）
+#### 6.1 核心弹幕 Action（3个） ✅ FireDanmaku/FireLaser 已完成, 🔲 SpawnShooter 待定
 
 **`FireDanmaku`** — 发射弹幕
 
@@ -574,7 +575,7 @@ record HomingConfig(
 // RotateMover -> MoverConfig.rotate(degreesPerTick)
 ```
 
-#### 6.3 FireDanmaku 执行逻辑
+#### 6.3 FireDanmaku 执行逻辑 ✅ 已完成
 
 ```java
 public void execute(SpellContext ctx) {
@@ -611,7 +612,7 @@ public void execute(SpellContext ctx) {
 }
 ```
 
-#### 6.4 PropertyPanel — 实时编辑面板
+#### 6.4 PropertyPanel — 实时编辑面板 ✅ 已完成 (ActionEditorPanel + ActionListPanel)
 
 嵌入 `SpellPreviewScreen` 右侧的属性编辑面板。选中一个 Phase 的 Action 后，显示对应字段的编辑 Widget。
 
@@ -646,19 +647,28 @@ public void execute(SpellContext ctx) {
 
 #### 6.5 实施步骤
 
-| 步骤 | 内容 | 前置 | 产出 |
+| 步骤 | 内容 | 状态 | 产出 |
 |------|------|------|------|
-| **6.0** | NumberProvider 接口 + 5种实现 + Codec | — | `NumberProvider`, `NumberProviders` |
-| **6.1** | FireDanmaku Action | 6.0 | 环形/直线/随机/瞄准发射, 可序列化 |
-| **6.2** | FireLaser Action | 6.0 | 激光发射 |
-| **6.3** | HomingConfig + MoverConfig | 6.1 | 追踪弹幕, Mover 可序列化 |
-| **6.4** | SpawnShooter Action | 6.3 | 子发射器 |
-| **6.5** | 修复 PreviewCardHolder 追踪问题 | 6.3 | fakeCaster 实现 CardHolder, 使 TrailAction/DanmakuCommander 在预览中工作 |
-| **6.6** | PropertyPanel 基础框架 | 6.1 | `PropertyPanel`, `NumberField`, `DropdownWidget`, `BooleanToggle` |
-| **6.7** | NumberProviderWidget | 6.0 + 6.6 | 可切换模式的数值编辑器 |
-| **6.8** | FireDanmaku 编辑器集成 | 6.1 + 6.6 | 选中 FireDanmaku Action → 右侧显示完整编辑面板 |
-| **6.9** | Preview + Editor 联动 | 6.8 + P4 | 编辑参数 → reset → 即时预览效果 |
-| **6.10** | 用 FireDanmaku 重写 LarvaSpell (验证) | 6.1 | 最简单的符卡，验证整条链路 |
+| **6.0** | NumberProvider 接口 + 6种实现 + Codec | ✅ | `NumberProvider`, `NumberProviders` (Constant, RandomRange, LerpOverTime, ByHealthRatio, PhaseTickMod, Variable) |
+| **6.1** | FireDanmaku Action | ✅ | 环形/直线/随机/瞄准发射, 可序列化 |
+| **6.2** | FireLaser Action | ✅ | 激光发射 |
+| **6.3** | MoverConfig (Acceleration, Rotate) | ✅ | Mover 可序列化 |
+| **6.4** | SpawnShooter Action | 🔲 | 子发射器 (需 sub-spell 序列化) |
+| **6.5** | PreviewCardHolder 追踪/子弹幕修复 | ✅ | FakeCasterEntity 实现 CardHolder, ShooterEntity aiStep() override |
+| **6.6** | ActionEditorPanel 基础框架 | ✅ | 编辑面板, 支持 FireDanmaku/FireLaser/Conditional/Variable/Sound/Phase |
+| **6.7** | NumberProviderWidget (简化为 EditBox) | ✅ | 常量值编辑, 非常量显示 `*` 标记 |
+| **6.8** | ActionListPanel 嵌入预览 | ✅ | 递归树形显示, 支持任意深度 ConditionalAction 嵌套 |
+| **6.9** | Preview + Editor 联动 | ✅ | 编辑参数 → reset → 即时预览; Apply 按钮更新实体 |
+| **6.10** | 测试符卡 test_fire_danmaku | ✅ | TickInterval 条件, 双环弹幕验证 |
+| **6.11** | JSON 导出/导入 | ✅ | Export 按钮 + `/yhspell export` + `/yhspell import` 命令 |
+
+#### 6.6-6.11 Bug修复记录 (2026-04-03)
+
+- **ActionListPanel 条件嵌套**: ActionPath 从 `(section, index, branch, childIndex)` 改为 `List<PathEntry>` 列表式路径, 支持任意深度递归
+- **ActionEditorPanel 滚动修复**: `layoutWidgets()` 不再每次滚动重复添加 widget, 使用 `widgetsRegistered` 标记
+- **ShooterEntity 预览修复**: 匿名子类 override `aiStep()` 在客户端强制调用 `serverAiStep()`; 移除 `tickShooter()` 中多余的手动位置更新
+- **Apply 按钮修复**: 同时匹配 `spellRuntime.id` 和 `spellCard.modelId`; 调用 `SpellRegistry.register()` 更新内存注册表
+- **reapply 命令修复**: 同 Apply 按钮逻辑
 
 #### 6.6 文件结构
 
@@ -684,6 +694,126 @@ content/spell/
       ColorPickerWidget.java     # 16色选择器
       ActionListEditor.java      # Action列表编辑
 ```
+
+### Phase 6-fix: 代码审查修复 + 深化准备 ✅ 已完成 (2026-04-03)
+
+审查文档见 `code-review-phase0-6.md`，深化计划见 `plan-editor-danmaku-deepening.md`。
+
+**已修复问题 (7项)**:
+1. ✅ DYE_COLOR_CODEC / VEC3_CODEC 重复定义 → 统一使用 SpellCodecs
+2. ✅ SpellPreviewScreen 硬编码键码 → GLFW 常量
+3. ✅ FireLaserAction 缺少 originOffset/mover → 已添加，与 FireDanmakuAction 对齐
+4. ✅ ActionEditorPanel 11参数复制粘贴 → withXxx 辅助方法
+5. ✅ ActionListPanel.buildRows() 每帧重建 → dirty-flag 触发
+6. ✅ instanceof 硬编码链 → SpellActions.getTypeId() / SpellConditions.getTypeId()
+7. ✅ actionTypeName/getConditionType 手写 → 查表
+
+**遗留低优先 (2项)**:
+- 🔲 LegacyTickerAction 反序列化静默失败 (设计如此，加 warning 即可)
+- 🔲 NumberProvider 编辑降级为 Constant (Phase 6.5 解决)
+
+### Phase 6.5: 弹幕深化核心 (P0) ✅ 已完成
+
+目标：让编辑器能从零制作接近 AI-step 符卡效果的弹幕。详细设计见 `plan-editor-danmaku-deepening.md`。
+
+**已完成 (2026-04-03):**
+- 6.5.0 数学 NumberProvider: PhaseTick, TotalTick, Sin, Cos, Add, Mul
+- 6.5.1 OriginConfig: 替换 Optional<Vec3> originOffset → OriginConfig (CASTER/TARGET/ABSOLUTE/CASTER_FACING + NumberProvider xyz + rotation)
+- 6.5.2 AimMode: 替换 boolean aimAtTarget → AimMode 接口 (Target/FixedDirection/CasterFacing/AngleOffset/VariableAngle)
+- 6.5.3 MoverConfig 扩展: PolarMoverConfig, CompositeMoverConfig, ZeroMoverConfig
+- 6.5.4 RepeatAction: 单 tick 内循环 (count + indexVariable + body)
+- 6.5.5 onExpiry: DataDrivenTrailAction + TrailCardHolder 桥接底层 TrailAction
+- 6.5.6 FireDanmakuAction/FireLaserAction 签名更新: OriginConfig, AimMode, onExpiry 字段
+- 6.5.7 `/yhspell new <id>`: 从零创建空白符卡并打开编辑器
+
+### Phase 6.5-fix: Import Bug + 编辑器可用性 + 缺失能力 🔲 进行中
+
+#### A. Import NPE 修复
+
+**根因**: `SpellDisplay`/`SpellItemForm` 的 `@Nullable ResourceLocation` 字段通过 `xmap(o -> o.orElse(null), Optional::ofNullable)` 注入 null 到 DFU 的 RecordCodecBuilder 管线，触发 `Optional.of(null)` → NPE。
+
+**修复**: 改 `@Nullable ResourceLocation` 为 `Optional<ResourceLocation>`，移除 xmap null 转换。
+
+#### B. 编辑器 Mover/Origin/onExpiry 配置
+
+| 功能 | 说明 | 状态 |
+|------|------|------|
+| Mover 类型选择 | cycle: none/acceleration/rotate/polar/zero + 类型特定参数行 | ✅ |
+| OriginConfig 偏移编辑 | offsetX/Y/Z + rotation 的 NumberProvider 编辑行 | ✅ |
+| onExpiry 指示器 | 只读显示 "[onExpiry: N actions]"，完整编辑留后续阶段 | ✅ |
+| **Mover 参数 EditBox 焦点** | **修复: 参数值变更时不再触发 rebuild，保留 EditBox 焦点** | ✅ |
+| **Mover/Origin 参数闭包过期** | **修复: 闭包从 currentAction 读取最新值，而非构建时快照** | ✅ |
+
+#### C. 编辑器 Ctrl+C/X/V 和拖拽移动
+
+- ✅ Ctrl+C: 通过 Codec 序列化/反序列化深拷贝选中 action
+- ✅ Ctrl+X: 拷贝 + 删除
+- ✅ Ctrl+V: 在选中位置后粘贴
+- ✅ Ctrl+Up/Down: 在列表内上下移动 action
+- ✅ **鼠标拖拽移动**: 拖拽 action 行可在同一 section 内重排序 (带黄色指示线)
+- ✅ **拖拽进入 Conditional/Repeat**: 拖拽到 `+ if_true` / `+ if_false` / `+ body` 行可插入子分支 (绿色高亮)
+- ✅ **嵌套 action 拖出**: 嵌套 action 可拖到顶层间隙提升为顶层 action
+
+#### D. FireLaserAction setupTime + Mover
+
+- 添加 setupStart/setupPeak/setupSustain/setupEnd 参数 (激光膨胀/收缩时间)
+- 在 execute() 中应用 mover
+
+#### 6.5.1 OriginConfig — 动态发射位置
+
+替换 `FireDanmakuAction.originOffset: Optional<Vec3>` 和 `FireLaserAction.originOffset: Optional<Vec3>` 为：
+
+```java
+record OriginConfig(
+    OriginMode mode,           // CASTER / TARGET / ABSOLUTE / CASTER_FACING / ORBIT
+    NumberProvider offsetX,
+    NumberProvider offsetY,
+    NumberProvider offsetZ,
+    NumberProvider rotation     // 偏移向量绕 Y 轴旋转角度 (度)
+)
+```
+
+**改动文件**: `FireDanmakuAction.java`, `FireLaserAction.java`, `ActionEditorPanel.java`, 新增 `OriginConfig.java`
+
+#### 6.5.2 onExpiry — 弹幕到期触发子弹幕
+
+`FireDanmakuAction` 新增 `Optional<List<SpellAction>> onExpiry` 字段。桥接到底层 `ItemDanmakuEntity.afterExpiry` (TrailAction)。
+
+关键设计：onExpiry 中的 action 需要 `TrailSpellContext`，将弹幕消失位置/方向注入为 `holder.center()`/`holder.forward()`。
+
+**改动文件**: `FireDanmakuAction.java`, 新增 `TrailSpellContext.java`, `ActionEditorPanel.java`
+
+#### 6.5.3 PolarMoverConfig — 极坐标运动
+
+Codec 化已存在的 `PolarMover`:
+
+```java
+record PolarMoverConfig(
+    NumberProvider radius, NumberProvider radialSpeed, NumberProvider radialAccel,
+    NumberProvider initialAngle, NumberProvider angularSpeed, NumberProvider angularAccel
+) implements MoverConfig
+```
+
+**改动文件**: `MoverConfigs.java`
+
+#### 6.5.4 编辑器 UI 适配
+
+- `ActionEditorPanel`: 添加 OriginConfig 编辑行、onExpiry 子面板入口
+- `NumberProviderWidget` 升级: 类型下拉 (Constant/Random/LerpTime/ByHealth/Variable) + 对应参数
+
+### Phase 6.6: 弹幕深化扩展 (P1) 🔲
+
+1. CompositeMoverConfig (分段运动: 匀速 → 停顿 → 再加速)
+2. HomingMoverConfig (追踪弹)
+3. AimMode 替换 `boolean aimAtTarget` (TARGET/FORWARD/FIXED/ANGLE_OFFSET/VARIABLE_ANGLE/RANDOM)
+4. 数学 NumberProvider (Sin/Cos/Mul/Add/PhaseTick/TotalTick)
+5. RepeatAction (同一 tick 内循环, 支持嵌套环形发射)
+6. 编辑器面板适配
+
+### Phase 6.7: 子发射器 (P2) 🔲
+
+1. SpawnShooterAction 完整实现
+2. 子符卡定义的嵌套引用/序列化
 
 ### Phase 7: 迁移现有符卡
 

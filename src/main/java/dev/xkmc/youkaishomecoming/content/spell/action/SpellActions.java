@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.action;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
@@ -28,6 +29,9 @@ public class SpellActions {
 		register("sequence", SequenceAction.CODEC, SequenceAction.class);
 		register("legacy_ticker", LegacyTickerAction.CODEC, LegacyTickerAction.class);
 		register("noop", NoopAction.CODEC, NoopAction.class);
+		register("fire_danmaku", FireDanmakuAction.CODEC, FireDanmakuAction.class);
+		register("fire_laser", FireLaserAction.CODEC, FireLaserAction.class);
+		register("repeat", RepeatAction.CODEC, RepeatAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {
@@ -43,6 +47,13 @@ public class SpellActions {
 		String type = CLASS_TO_TYPE.get(action.getClass());
 		if (type != null) return type;
 		throw new IllegalStateException("Unknown action type: " + action.getClass());
+	}
+
+	/**
+	 * Returns the registered type ID for the given action, or null if unknown.
+	 */
+	public static String getTypeId(SpellAction action) {
+		return CLASS_TO_TYPE.get(action.getClass());
 	}
 
 	@SuppressWarnings("unchecked")
@@ -154,6 +165,31 @@ public class SpellActions {
 
 		@Override
 		public void execute(SpellContext ctx) {
+		}
+	}
+
+	/**
+	 * Repeats body actions count times in a single tick, setting indexVariable to the current iteration index.
+	 * Enables compound patterns like "outer ring 8 x inner ring 3".
+	 * JSON: {"type": "repeat", "count": 8, "index_variable": "i", "body": [...]}
+	 */
+	public record RepeatAction(NumberProvider count, String indexVariable,
+							   List<SpellAction> body) implements SpellAction {
+		public static final Codec<RepeatAction> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("count").forGetter(RepeatAction::count),
+				Codec.STRING.optionalFieldOf("index_variable", "i").forGetter(RepeatAction::indexVariable),
+				SpellAction.CODEC.listOf().fieldOf("body").forGetter(RepeatAction::body)
+		).apply(i, RepeatAction::new));
+
+		@Override
+		public void execute(SpellContext ctx) {
+			int n = (int) count.get(ctx);
+			for (int idx = 0; idx < n; idx++) {
+				ctx.setVariable(indexVariable, idx);
+				for (var action : body) {
+					action.execute(ctx);
+				}
+			}
 		}
 	}
 }

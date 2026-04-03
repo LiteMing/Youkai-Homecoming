@@ -24,6 +24,7 @@ public class SpellConditions {
 		register("not", NotCondition.CODEC, NotCondition.class);
 		register("variable_check", VariableCheck.CODEC, VariableCheck.class);
 		register("always", AlwaysCondition.CODEC, AlwaysCondition.class);
+		register("tick_interval", TickInterval.CODEC, TickInterval.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellCondition> codec) {
@@ -39,6 +40,13 @@ public class SpellConditions {
 		String type = CLASS_TO_TYPE.get(condition.getClass());
 		if (type != null) return type;
 		throw new IllegalStateException("Unknown condition type: " + condition.getClass());
+	}
+
+	/**
+	 * Returns the registered type ID for the given condition, or null if unknown.
+	 */
+	public static String getTypeId(SpellCondition condition) {
+		return CLASS_TO_TYPE.get(condition.getClass());
 	}
 
 	@SuppressWarnings("unchecked")
@@ -156,8 +164,8 @@ public class SpellConditions {
 		public boolean test(SpellContext ctx) {
 			double val = ctx.getVariable(key);
 			return switch (op) {
-				case "=", "==" -> val == value;
-				case "!=" -> val != value;
+				case "=", "==" -> Math.abs(val - value) < 1e-9;
+				case "!=" -> Math.abs(val - value) >= 1e-9;
 				case "<" -> val < value;
 				case "<=" -> val <= value;
 				case ">" -> val > value;
@@ -174,6 +182,22 @@ public class SpellConditions {
 		@Override
 		public boolean test(SpellContext ctx) {
 			return value;
+		}
+	}
+
+	/**
+	 * True when phaseTick % interval == offset. Default offset is 0.
+	 * Used for periodic firing (e.g., fire every 10 ticks).
+	 */
+	public record TickInterval(int interval, int offset) implements SpellCondition {
+		public static final Codec<TickInterval> CODEC = com.mojang.serialization.codecs.RecordCodecBuilder.<TickInterval>create(i -> i.group(
+				Codec.INT.fieldOf("interval").forGetter(TickInterval::interval),
+				Codec.INT.optionalFieldOf("offset", 0).forGetter(TickInterval::offset)
+		).apply(i, TickInterval::new));
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return interval > 0 && ctx.phaseTick() % interval == offset;
 		}
 	}
 }

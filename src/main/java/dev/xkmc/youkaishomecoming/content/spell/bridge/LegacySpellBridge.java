@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -26,8 +27,8 @@ public class LegacySpellBridge {
 		SpellDisplay display = new SpellDisplay(
 				id.toLanguageKey("spell") + ".name",
 				id.toLanguageKey("spell") + ".desc",
-				null,
-				new ResourceLocation(modelId)
+				Optional.empty(),
+				Optional.of(new ResourceLocation(modelId))
 		);
 
 		return new SpellDefinition(

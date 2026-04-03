@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 public class SpellDefinitionBuilderJS {
@@ -65,7 +66,7 @@ public class SpellDefinitionBuilderJS {
 	}
 
 	public SpellDefinitionBuilderJS itemForm(int cooldown, boolean requireTarget) {
-		this.itemForm = new SpellItemForm(true, cooldown, requireTarget, null);
+		this.itemForm = new SpellItemForm(true, cooldown, requireTarget, Optional.empty());
 		return this;
 	}
 
@@ -82,7 +83,7 @@ public class SpellDefinitionBuilderJS {
 			phaseDefs.put(entry.getKey(), entry.getValue().build());
 		}
 
-		SpellDisplay display = new SpellDisplay(displayName, description, icon, modelId);
+		SpellDisplay display = new SpellDisplay(displayName, description, Optional.ofNullable(icon), Optional.ofNullable(modelId));
 		return new SpellDefinition(id, display, itemForm, entryPhase, phaseDefs, difficulty);
 	}
 }

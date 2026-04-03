@@ -230,6 +230,157 @@ public class YHCommands {
 									ctx.getSource().sendSuccess(() -> Component.literal("Opening preview for " + spellId), false);
 									return 1;
 								})))
+				.then(literal("reapply")
+						.then(argument("spell_id", ResourceLocationArgument.id())
+								.suggests(SPELL_SUGGESTIONS)
+								.executes(ctx -> {
+									ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+									SpellDefinition def = SpellRegistry.get(spellId);
+									if (def == null) {
+										ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
+										return 0;
+									}
+									String spellIdStr = spellId.toString();
+									int count = 0;
+									for (var level : ctx.getSource().getServer().getAllLevels()) {
+										for (var entity : level.getAllEntities()) {
+											if (!(entity instanceof YoukaiEntity youkai)) continue;
+											boolean match = false;
+											if (youkai.spellRuntime != null
+													&& youkai.spellRuntime.getDefinition().id.equals(spellId)) {
+												match = true;
+											} else if (youkai.spellCard != null
+													&& spellIdStr.equals(youkai.spellCard.modelId)) {
+												match = true;
+											}
+											if (match) {
+												youkai.setSpellRuntime(new SpellRuntime(def));
+												count++;
+											}
+										}
+									}
+									int finalCount = count;
+									ctx.getSource().sendSuccess(
+											() -> Component.literal("Reapplied " + spellId + " to " + finalCount + " entities"), true);
+									return count;
+								})))
+				.then(literal("export")
+						.then(argument("spell_id", ResourceLocationArgument.id())
+								.suggests(SPELL_SUGGESTIONS)
+								.executes(ctx -> {
+									ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+									SpellDefinition def = SpellRegistry.get(spellId);
+									if (def == null) {
+										ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
+										return 0;
+									}
+									try {
+										com.google.gson.JsonElement json = SpellDefinition.CODEC.encodeStart(
+												com.mojang.serialization.JsonOps.INSTANCE, def).getOrThrow(false, s -> {});
+										com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
+										String jsonStr = gson.toJson(json);
+
+										java.io.File dir = new java.io.File(
+												ctx.getSource().getServer().getServerDirectory(),
+												"youkaishomecoming_exports/" + spellId.getNamespace());
+										dir.mkdirs();
+										java.io.File file = new java.io.File(dir,
+												spellId.getPath().replace('/', '_') + ".json");
+										try (var writer = new java.io.FileWriter(file)) {
+											writer.write(jsonStr);
+										}
+										ctx.getSource().sendSuccess(
+												() -> Component.literal("Exported " + spellId + " to " + file.getPath()), true);
+										return 1;
+									} catch (Exception e) {
+										ctx.getSource().sendFailure(Component.literal("Export failed: " + e.getMessage()));
+										return 0;
+									}
+								})))
+				.then(literal("import")
+						.then(argument("file_path", StringArgumentType.greedyString())
+								.executes(ctx -> {
+									String filePath = StringArgumentType.getString(ctx, "file_path");
+									try {
+										java.io.File file = new java.io.File(filePath);
+										if (!file.exists()) {
+											// Try relative to server directory
+											file = new java.io.File(
+													ctx.getSource().getServer().getServerDirectory(), filePath);
+										}
+										if (!file.exists()) {
+											// Try in exports directory
+											file = new java.io.File(
+													ctx.getSource().getServer().getServerDirectory(),
+													"youkaishomecoming_exports/" + filePath);
+										}
+										if (!file.exists()) {
+											ctx.getSource().sendFailure(Component.literal("File not found: " + filePath));
+											return 0;
+										}
+										String content = java.nio.file.Files.readString(file.toPath());
+										com.google.gson.JsonElement json = com.google.gson.JsonParser.parseString(content);
+										var parseResult = SpellDefinition.CODEC.parse(
+												com.mojang.serialization.JsonOps.INSTANCE, json);
+										if (parseResult.error().isPresent()) {
+											String errMsg = parseResult.error().get().message();
+											ctx.getSource().sendFailure(Component.literal("Parse error: " + errMsg));
+											return 0;
+										}
+										SpellDefinition def = parseResult.result().orElse(null);
+										if (def == null) {
+											ctx.getSource().sendFailure(Component.literal("Parse returned empty result"));
+											return 0;
+										}
+										SpellRegistry.register(def);
+										ctx.getSource().sendSuccess(
+												() -> Component.literal("Imported spell: " + def.id), true);
+										return 1;
+									} catch (Exception e) {
+										String msg = e.getMessage();
+										if (msg == null) msg = e.getClass().getSimpleName();
+										ctx.getSource().sendFailure(Component.literal("Import failed: " + msg));
+										e.printStackTrace();
+										return 0;
+									}
+								})))
+				.then(literal("new")
+						.then(argument("spell_id", ResourceLocationArgument.id())
+								.executes(ctx -> {
+									ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+									if (SpellRegistry.get(spellId) != null) {
+										ctx.getSource().sendFailure(Component.literal("Spell already exists: " + spellId));
+										return 0;
+									}
+									ResourceLocation phaseId = new ResourceLocation(spellId.getNamespace(), spellId.getPath() + "/main");
+									var phase = new dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition(
+											phaseId,
+											java.util.List.of(),
+											java.util.List.of(),
+											java.util.List.of(),
+											java.util.List.of()
+									);
+									var def = new SpellDefinition(
+											spellId,
+											new dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay(
+													spellId.getPath(), "", java.util.Optional.empty(), java.util.Optional.empty()),
+											dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm.NONE,
+											phaseId,
+											java.util.Map.of(phaseId, phase),
+											dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile.DEFAULT
+									);
+									SpellRegistry.register(def);
+									ctx.getSource().sendSuccess(
+											() -> Component.literal("Created new spell: " + spellId + " (use /yhspell preview to edit)"), true);
+									if (FMLEnvironment.dist.isClient()) {
+										net.minecraft.client.Minecraft.getInstance().execute(() -> {
+											net.minecraft.client.Minecraft.getInstance().setScreen(
+													new dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen(
+															SpellRegistry.get(spellId)));
+										});
+									}
+									return 1;
+								})))
 		);
 	}
 

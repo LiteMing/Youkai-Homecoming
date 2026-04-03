@@ -13,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -222,6 +223,16 @@ public class ActionListPanel {
 				cy = buildActionTree(repeat.body().get(j), childPath, indent + 1, cy, section);
 			}
 			rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
+			cy += ROW_HEIGHT;
+		}
+
+		if (action instanceof FireDanmakuAction fda) {
+			List<SpellAction> expiryActions = fda.onExpiry().orElse(List.of());
+			for (int j = 0; j < expiryActions.size(); j++) {
+				ActionPath childPath = actionPath.child("onExpiry", j);
+				cy = buildActionTree(expiryActions.get(j), childPath, indent + 1, cy, section);
+			}
+			rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onExpiry"), "+ onExpiry", indent + 1, cy));
 			cy += ROW_HEIGHT;
 		}
 		return cy;
@@ -479,13 +490,32 @@ public class ActionListPanel {
 
 		if (dragBranchTarget != null) {
 			// === Branch insert mode ===
+			// Adjust parentPath before deletion: if source is top-level and appears
+			// before the target parent, deleting it shifts the parent's index down by 1.
+			AddTarget adjustedTarget = dragBranchTarget;
+			if (!dragSourcePath.isNested() && dragBranchTarget.parentPath() != null) {
+				int srcIdx = dragSourcePath.leafIndex();
+				int parentTopIdx = dragBranchTarget.parentPath().path().get(0).index();
+				if (srcIdx < parentTopIdx) {
+					var newPath = new java.util.ArrayList<>(dragBranchTarget.parentPath().path());
+					PathEntry first = newPath.get(0);
+					newPath.set(0, new PathEntry(first.index() - 1, first.branch()));
+					var adjustedPath = new ActionPath(
+							dragBranchTarget.parentPath().section(),
+							java.util.List.copyOf(newPath)
+					);
+					adjustedTarget = new AddTarget(
+							dragBranchTarget.section(), adjustedPath, dragBranchTarget.branch());
+				}
+			}
+
 			// Remove from source
 			boolean removed = doDeleteAt(dragSourcePath);
 			if (!removed) return;
 			dirty = true;
 
 			// Insert into the branch target
-			insertAction(dragBranchTarget, action);
+			insertAction(adjustedTarget, action);
 			// selectedPath and onSelect are handled inside insertAction
 			onMoved.run();
 
@@ -592,6 +622,12 @@ public class ActionListPanel {
 			list.set(entry.index, new SpellActions.RepeatAction(repeat.count(), repeat.indexVariable(), body));
 			return true;
 		}
+		if (parent instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
+			List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
+			if (!doReplace(expiryActions, path, depth + 1, newAction)) return false;
+			list.set(entry.index, fda.withOnExpiry(Optional.of(expiryActions)));
+			return true;
+		}
 		return false;
 	}
 
@@ -618,7 +654,7 @@ public class ActionListPanel {
 		SpellAction current = list.get(entry.index);
 
 		if (depth == path.size() - 1) {
-			// This is the target ConditionalAction or RepeatAction
+			// This is the target ConditionalAction, RepeatAction, or FireDanmakuAction
 			if (current instanceof SpellActions.ConditionalAction cond) {
 				boolean isTrue = "true".equals(targetBranch);
 				List<SpellAction> branch = new ArrayList<>(isTrue ? cond.ifTrue() : cond.ifFalse());
@@ -637,6 +673,13 @@ public class ActionListPanel {
 				body.add(newAction);
 				list.set(entry.index, new SpellActions.RepeatAction(repeat.count(), repeat.indexVariable(), body));
 				selectedPath = parentPath.child(targetBranch, body.size() - 1);
+				return true;
+			}
+			if (current instanceof FireDanmakuAction fda && "onExpiry".equals(targetBranch)) {
+				List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
+				expiryActions.add(newAction);
+				list.set(entry.index, fda.withOnExpiry(Optional.of(expiryActions)));
+				selectedPath = parentPath.child(targetBranch, expiryActions.size() - 1);
 				return true;
 			}
 			return false;
@@ -658,6 +701,12 @@ public class ActionListPanel {
 			List<SpellAction> body = new ArrayList<>(repeat.body());
 			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath)) return false;
 			list.set(entry.index, new SpellActions.RepeatAction(repeat.count(), repeat.indexVariable(), body));
+			return true;
+		}
+		if (current instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
+			List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
+			if (!doInsert(expiryActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			list.set(entry.index, fda.withOnExpiry(Optional.of(expiryActions)));
 			return true;
 		}
 		return false;
@@ -701,6 +750,12 @@ public class ActionListPanel {
 			List<SpellAction> body = new ArrayList<>(repeat.body());
 			if (!doDelete(body, path, depth + 1)) return false;
 			list.set(entry.index, new SpellActions.RepeatAction(repeat.count(), repeat.indexVariable(), body));
+			return true;
+		}
+		if (parent instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
+			List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
+			if (!doDelete(expiryActions, path, depth + 1)) return false;
+			list.set(entry.index, fda.withOnExpiry(expiryActions.isEmpty() ? Optional.empty() : Optional.of(expiryActions)));
 			return true;
 		}
 		return false;
@@ -825,6 +880,9 @@ public class ActionListPanel {
 		if (action instanceof SpellActions.RepeatAction repeat && "body".equals(entry.branch)) {
 			return getActionRecursive(repeat.body(), path, depth + 1);
 		}
+		if (action instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
+			return getActionRecursive(fda.onExpiry().orElse(List.of()), path, depth + 1);
+		}
 		return null;
 	}
 
@@ -847,6 +905,8 @@ public class ActionListPanel {
 			String branch = path.path.get(path.path.size() - 2).branch;
 			if ("true".equals(branch)) prefix = "T";
 			else if ("false".equals(branch)) prefix = "F";
+			else if ("body".equals(branch)) prefix = "B";
+			else if ("onExpiry".equals(branch)) prefix = "E";
 		}
 		int index = path.path.get(path.path.size() - 1).index;
 		return prefix + getActionLabel(action, index);

@@ -67,6 +67,18 @@ public record FireLaserAction(
 		Vec3 originPos = origin.resolve(ctx);
 		Vec3 baseDir = aimMode.getBaseDirection(ctx);
 
+		// Apply origin.rotation to base direction so the entire pattern rotates together
+		double originRot = origin.rotation().get(ctx);
+		if (originRot != 0) {
+			double rad = Math.toRadians(originRot);
+			double cos = Math.cos(rad), sin = Math.sin(rad);
+			baseDir = new Vec3(
+					baseDir.x * cos - baseDir.z * sin,
+					baseDir.y,
+					baseDir.x * sin + baseDir.z * cos
+			);
+		}
+
 		Vec3 dir;
 		if (angle != 0) {
 			var ori = DanmakuHelper.getOrientation(baseDir);

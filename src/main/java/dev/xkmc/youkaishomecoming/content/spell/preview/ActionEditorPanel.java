@@ -15,6 +15,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.DyeColor;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +34,8 @@ public class ActionEditorPanel {
 	private static final int ROW_HEIGHT = 20;
 	private static final int LABEL_WIDTH = 70;
 	private static final int PADDING = 4;
+	private static final int DROPDOWN_ITEM_H = 16;
+	private static final int DROPDOWN_MAX_VISIBLE = 10;
 
 	private static final String[] CONDITION_TYPES = {
 			"tick_interval", "health_below", "health_above", "tick_elapsed",
@@ -46,10 +49,6 @@ public class ActionEditorPanel {
 
 	private static final String[] AIM_MODE_TYPES = {
 			"target", "fixed", "caster_facing", "angle_offset", "variable_angle"
-	};
-
-	private static final String[] ORIGIN_MODE_TYPES = {
-			"caster", "target", "absolute", "caster_facing"
 	};
 
 	private final Consumer<AbstractWidget> addWidget;
@@ -67,6 +66,11 @@ public class ActionEditorPanel {
 	// Type selector mode
 	private boolean typeSelectorMode = false;
 	private Consumer<SpellAction> typeSelectorCallback;
+
+	// Dropdown overlay state
+	private DropdownOverlay dropdown = null;
+	private int dropdownHoverIndex = -1;
+	private int dropdownScrollOffset = 0;
 
 	public ActionEditorPanel(Consumer<AbstractWidget> addWidget,
 							 Consumer<AbstractWidget> removeWidget,
@@ -92,23 +96,7 @@ public class ActionEditorPanel {
 		this.actionIndex = index;
 		this.scrollOffset = 0;
 		this.typeSelectorMode = false;
-		if (action instanceof FireDanmakuAction fda) {
-			buildFireDanmakuRows(fda);
-		} else if (action instanceof FireLaserAction fla) {
-			buildFireLaserRows(fla);
-		} else if (action instanceof SpellActions.ConditionalAction ca) {
-			buildConditionalRows(ca);
-		} else if (action instanceof SpellActions.SetVariable sv) {
-			buildSetVariableRows(sv);
-		} else if (action instanceof SpellActions.AddVariable av) {
-			buildAddVariableRows(av);
-		} else if (action instanceof SpellActions.PlaySoundAction ps) {
-			buildPlaySoundRows(ps);
-		} else if (action instanceof SpellActions.ForcePhase fp) {
-			buildForcePhaseRows(fp);
-		} else if (action instanceof SpellActions.RepeatAction ra) {
-			buildRepeatRows(ra);
-		}
+		buildActionRows(action);
 		layoutWidgets();
 	}
 
@@ -130,14 +118,35 @@ public class ActionEditorPanel {
 	}
 
 	private void clearWidgets() {
+		closeDropdown();
 		for (var row : rows) {
-			removeWidget.accept(row.widget);
+			removeWidget.accept(row.widget());
 		}
 		rows.clear();
 		widgetsRegistered = false;
 	}
 
 	// --- Type selector ---
+
+	private void buildActionRows(SpellAction action) {
+		if (action instanceof FireDanmakuAction fda) {
+			buildFireDanmakuRows(fda);
+		} else if (action instanceof FireLaserAction fla) {
+			buildFireLaserRows(fla);
+		} else if (action instanceof SpellActions.ConditionalAction ca) {
+			buildConditionalRows(ca);
+		} else if (action instanceof SpellActions.SetVariable sv) {
+			buildSetVariableRows(sv);
+		} else if (action instanceof SpellActions.AddVariable av) {
+			buildAddVariableRows(av);
+		} else if (action instanceof SpellActions.PlaySoundAction ps) {
+			buildPlaySoundRows(ps);
+		} else if (action instanceof SpellActions.ForcePhase fp) {
+			buildForcePhaseRows(fp);
+		} else if (action instanceof SpellActions.RepeatAction ra) {
+			buildRepeatRows(ra);
+		}
+	}
 
 	private void buildTypeSelectorRows() {
 		addFullWidthButton("Fire Danmaku", () -> selectType("fire_danmaku"));
@@ -167,7 +176,7 @@ public class ActionEditorPanel {
 					NumberProvider.constant(100), NumberProvider.constant(0),
 					NumberProvider.constant(360), PatternType.RING,
 					OriginConfig.caster(), new AimMode.AimModes.Target(),
-					Optional.empty(), Optional.empty());
+					Optional.empty(), Optional.empty(), Optional.empty());
 			case "fire_laser" -> new FireLaserAction(
 					YHDanmaku.Laser.LASER, DyeColor.WHITE,
 					NumberProvider.constant(60), NumberProvider.constant(80),
@@ -216,7 +225,14 @@ public class ActionEditorPanel {
 		addEnumRow("Pattern", PatternType.values(), a.pattern(), v ->
 				notifyDanmaku(old -> old.withPattern(v)));
 
-		// AimMode cycle
+		// NESTED_RING: show outerCount
+		if (a.pattern() == PatternType.NESTED_RING) {
+			NumberProvider outerProv = a.outerCount().orElse(NumberProvider.constant(1));
+			addNumberRow("Outer Cnt", outerProv, v ->
+					notifyDanmaku(old -> old.withOuterCount(Optional.of(v)), false));
+		}
+
+		// AimMode dropdown
 		String currentAim = getAimModeType(a.aimMode());
 		addStringCycleRow("Aim Mode", AIM_MODE_TYPES, currentAim, newType -> {
 			AimMode newMode = createDefaultAimMode(newType);
@@ -237,11 +253,6 @@ public class ActionEditorPanel {
 		buildMoverRows(a.mover(),
 				newMover -> notifyDanmaku(old -> old.withMover(newMover)),
 				newMover -> notifyDanmaku(old -> old.withMover(newMover), false));
-
-		// onExpiry indicator
-		if (a.onExpiry().isPresent()) {
-			addFullWidthButton("[onExpiry: " + a.onExpiry().get().size() + " actions]", () -> {});
-		}
 	}
 
 	// --- FireLaser rows ---
@@ -262,7 +273,7 @@ public class ActionEditorPanel {
 		addNumberRow("Angle", a.angleOffset(), v ->
 				notifyLaser(old -> old.withAngleOffset(v), false));
 
-		// AimMode cycle
+		// AimMode dropdown
 		String currentAim = getAimModeType(a.aimMode());
 		addStringCycleRow("Aim Mode", AIM_MODE_TYPES, currentAim, newType -> {
 			AimMode newMode = createDefaultAimMode(newType);
@@ -488,7 +499,7 @@ public class ActionEditorPanel {
 	}
 
 	/**
-	 * @param onTypeChanged  called when mover type is cycled — triggers rebuild (new param rows)
+	 * @param onTypeChanged  called when mover type is changed — triggers rebuild (new param rows)
 	 * @param onParamChanged called when a mover parameter EditBox value changes — no rebuild (preserves focus)
 	 */
 	private void buildMoverRows(Optional<MoverConfig> moverOpt,
@@ -581,6 +592,8 @@ public class ActionEditorPanel {
 
 	// --- Notification helpers ---
 
+	// --- Notification helpers ---
+
 	private void notifyDanmaku(Function<FireDanmakuAction, SpellAction> modifier) {
 		notifyDanmaku(modifier, true);
 	}
@@ -654,26 +667,31 @@ public class ActionEditorPanel {
 
 	private <E extends Enum<E>> void addEnumRow(String label, E[] values, E current, Consumer<E> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var btn = Button.builder(Component.literal(formatEnum(current)), b -> {
-			int idx = current.ordinal();
-			E next = values[(idx + 1) % values.length];
-			onChange.accept(next);
+		String[] displayNames = new String[values.length];
+		for (int i = 0; i < values.length; i++) {
+			displayNames[i] = formatEnum(values[i]);
+		}
+		int selectedIndex = current.ordinal();
+		int rowIndex = rows.size();
+		var btn = Button.builder(Component.literal(displayNames[selectedIndex] + " \u25BC"), b -> {
+			openDropdown(displayNames, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
 		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, false));
 	}
 
 	private void addStringCycleRow(String label, String[] values, String current, Consumer<String> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var btn = Button.builder(Component.literal(current), b -> {
-			int idx = -1;
-			for (int i = 0; i < values.length; i++) {
-				if (values[i].equals(current)) {
-					idx = i;
-					break;
-				}
+		int selectedIdx = -1;
+		for (int i = 0; i < values.length; i++) {
+			if (values[i].equals(current)) {
+				selectedIdx = i;
+				break;
 			}
-			String next = values[(idx + 1) % values.length];
-			onChange.accept(next);
+		}
+		final int selectedIndex = selectedIdx;
+		int rowIndex = rows.size();
+		var btn = Button.builder(Component.literal(current + " \u25BC"), b -> {
+			openDropdown(values, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
 		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, false));
 	}
@@ -764,21 +782,191 @@ public class ActionEditorPanel {
 		rows.add(new EditorRow("", btn, true));
 	}
 
+	private void addInlineRow(String text, Runnable onDelete) {
+		int deleteW = 20;
+		var btn = Button.builder(Component.literal("[x]"), b -> onDelete.run())
+				.bounds(0, 0, deleteW, ROW_HEIGHT - 2).build();
+		// customWidgetW > 0 means the widget should be right-aligned with this exact width
+		// The label text fills the remaining space on the left
+		rows.add(new EditorRow(text, btn, false, deleteW));
+	}
+
+	// --- Dropdown overlay ---
+
+	private record DropdownOverlay(
+			String[] options,
+			int selectedIndex,
+			Consumer<Integer> onSelect,
+			int triggerRowIndex
+	) {}
+
+	private void openDropdown(String[] options, int selected, Consumer<Integer> onSelect, int triggerRowIndex) {
+		dropdown = new DropdownOverlay(options, selected, onSelect, triggerRowIndex);
+		dropdownHoverIndex = -1;
+		// Auto-scroll to make selected item visible
+		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int maxScroll = Math.max(0, options.length - visibleItems);
+		if (selected >= visibleItems) {
+			dropdownScrollOffset = selected - visibleItems + 1;
+		} else if (selected < 0) {
+			dropdownScrollOffset = 0;
+		} else {
+			dropdownScrollOffset = 0;
+		}
+		dropdownScrollOffset = Math.max(0, Math.min(maxScroll, dropdownScrollOffset));
+		for (var row : rows) row.widget().active = false;
+	}
+
+	private void closeDropdown() {
+		dropdown = null;
+		dropdownHoverIndex = -1;
+		for (var row : rows) row.widget().active = true;
+	}
+
+	private int[] computeDropdownBounds() {
+		if (dropdown == null) return new int[]{0, 0, 0, 0, 0};
+		String[] options = dropdown.options();
+		if (options == null || options.length == 0) return new int[]{0, 0, 0, 0, 0};
+		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int totalH = visibleItems * DROPDOWN_ITEM_H;
+
+		int triggerRowY = y + PADDING + (dropdown.triggerRowIndex() + 1) * ROW_HEIGHT - scrollOffset;
+		int dropdownX = x + LABEL_WIDTH + PADDING * 2;
+		int dropdownW = w - LABEL_WIDTH - PADDING * 3;
+		if (dropdownW < 20) dropdownW = 20;
+
+		int dropdownY = triggerRowY + ROW_HEIGHT;
+		if (dropdownY + totalH > y + h) {
+			dropdownY = triggerRowY - totalH;
+		}
+		if (dropdownY < y) {
+			dropdownY = y;
+		}
+		if (dropdownY + totalH > y + h) {
+			totalH = y + h - dropdownY;
+		}
+		if (totalH < DROPDOWN_ITEM_H) totalH = DROPDOWN_ITEM_H;
+		return new int[]{dropdownX, dropdownY, dropdownW, totalH, visibleItems};
+	}
+
+	private void doRenderDropdown(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+		if (dropdown == null) return;
+		Font font = Minecraft.getInstance().font;
+		int[] bounds = computeDropdownBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+		int visibleItems = bounds[4];
+		String[] options = dropdown.options();
+		if (options == null || options.length == 0) return;
+
+		boolean needsScroll = options.length > visibleItems;
+		int scrollbarW = needsScroll ? 6 : 0;
+
+		// Render without scissor - background is fully opaque and will cover any text beneath
+		guiGraphics.pose().pushPose();
+		guiGraphics.pose().translate(0, 0, 200); // raise z to render on top of all widgets
+
+		// Shadow
+		guiGraphics.fill(dx + 3, dy + 3, dx + dw + 3, dy + dh + 3, 0x88000000);
+		// Background (fully opaque to cover any text beneath)
+		guiGraphics.fill(dx, dy, dx + dw, dy + dh, 0xFF1a1a30);
+		// Border
+		guiGraphics.fill(dx, dy, dx + dw, dy + 1, 0xFF666688);
+		guiGraphics.fill(dx, dy + dh - 1, dx + dw, dy + dh, 0xFF666688);
+		guiGraphics.fill(dx, dy, dx + 1, dy + dh, 0xFF666688);
+		guiGraphics.fill(dx + dw - 1, dy, dx + dw, dy + dh, 0xFF666688);
+
+		// Compute hover (in visible area, mapped to scrolled index)
+		dropdownHoverIndex = -1;
+		int contentW = dw - scrollbarW;
+		if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
+			int rawIdx = (mouseY - dy) / DROPDOWN_ITEM_H + dropdownScrollOffset;
+			if (rawIdx >= 0 && rawIdx < options.length) {
+				dropdownHoverIndex = rawIdx;
+			}
+		}
+
+		// Render visible items (manually clip to dropdown bounds)
+		int visCount = Math.min(options.length, dh / DROPDOWN_ITEM_H);
+		for (int i = 0; i < visCount; i++) {
+			int optIdx = i + dropdownScrollOffset;
+			if (optIdx >= options.length) break;
+			int itemY = dy + i * DROPDOWN_ITEM_H;
+			if (itemY + DROPDOWN_ITEM_H > dy + dh) break; // clip bottom
+			boolean isHovered = optIdx == dropdownHoverIndex;
+			boolean isSelected = optIdx == dropdown.selectedIndex();
+
+			if (isHovered) {
+				guiGraphics.fill(dx + 1, itemY, dx + contentW - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
+			}
+
+			// Selection marker
+			int textX = dx + 4;
+			if (isSelected) {
+				guiGraphics.drawString(font, "\u25B6", dx + 3, itemY + 4, 0xFFFFCC44, false);
+				textX = dx + 14;
+			}
+
+			int textColor = isHovered ? 0xFFFFDD66 : (isSelected ? 0xFFFFCC88 : 0xFFDDDDDD);
+			guiGraphics.drawString(font, options[optIdx], textX, itemY + 4, textColor, false);
+		}
+
+		// Scrollbar track + thumb
+		if (needsScroll) {
+			int sbX = dx + dw - scrollbarW;
+			guiGraphics.fill(sbX, dy, sbX + scrollbarW, dy + dh, 0x33FFFFFF);
+			int trackH = dh - 2;
+			int thumbH = Math.max(10, trackH * visibleItems / options.length);
+			int maxScroll = options.length - visibleItems;
+			if (maxScroll > 0) {
+				int thumbY = dy + 1 + (int) ((long) trackH * dropdownScrollOffset / maxScroll);
+				guiGraphics.fill(sbX + 1, thumbY, sbX + scrollbarW - 1, thumbY + thumbH, 0x88888888);
+			}
+		}
+
+		guiGraphics.pose().popPose();
+	}
+
+	private boolean handleDropdownClick(double mouseX, double mouseY) {
+		if (dropdown == null) return false;
+		int[] bounds = computeDropdownBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+		String[] options = dropdown.options();
+		boolean needsScroll = options.length > DROPDOWN_MAX_VISIBLE;
+		int scrollbarW = needsScroll ? 6 : 0;
+		int contentW = dw - scrollbarW;
+
+		if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
+			int visIdx = (int)((mouseY - dy) / DROPDOWN_ITEM_H);
+			int optIdx = visIdx + dropdownScrollOffset;
+			if (optIdx >= 0 && optIdx < options.length) {
+				dropdown.onSelect().accept(optIdx);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// --- Layout ---
 
 	private void layoutWidgets() {
 		for (int i = 0; i < rows.size(); i++) {
 			int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
 			var row = rows.get(i);
-			if (row.fullWidth) {
-				row.widget.setX(x + PADDING);
-				row.widget.setWidth(w - PADDING * 2);
+			if (row.fullWidth()) {
+				row.widget().setX(x + PADDING);
+				row.widget().setWidth(w - PADDING * 2);
 			} else {
-				row.widget.setX(x + LABEL_WIDTH + PADDING * 2);
+				int widgetW = row.customWidgetW() > 0 ? row.customWidgetW() : (w - LABEL_WIDTH - PADDING * 3);
+				int widgetX = x + w - PADDING - widgetW;
+				if (row.customWidgetW() <= 0) {
+					widgetX = x + LABEL_WIDTH + PADDING * 2;
+				}
+				row.widget().setX(widgetX);
+				row.widget().setWidth(widgetW);
 			}
-			row.widget.setY(rowY);
+			row.widget().setY(rowY);
 			if (!widgetsRegistered) {
-				addWidget.accept(row.widget);
+				addWidget.accept(row.widget());
 			}
 		}
 		widgetsRegistered = true;
@@ -787,6 +975,10 @@ public class ActionEditorPanel {
 	// --- Rendering ---
 
 	public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+		render(guiGraphics, mouseX, mouseY, partialTick, true);
+	}
+
+	public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick, boolean renderDropdown) {
 		Font font = Minecraft.getInstance().font;
 
 		// Panel background
@@ -797,7 +989,10 @@ public class ActionEditorPanel {
 			guiGraphics.drawString(font, "Add Action", x + PADDING, y + PADDING + 2, 0xFFFFCC44, false);
 			for (int i = 0; i < rows.size(); i++) {
 				int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
-				rows.get(i).widget.visible = rowY >= y && rowY + ROW_HEIGHT <= y + h;
+				rows.get(i).widget().visible = rowY >= y && rowY + ROW_HEIGHT <= y + h;
+			}
+			if (renderDropdown && dropdown != null) {
+				this.renderDropdown(guiGraphics, mouseX, mouseY);
 			}
 			return;
 		}
@@ -831,18 +1026,48 @@ public class ActionEditorPanel {
 			int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
 			var row = rows.get(i);
 			boolean visible = rowY >= y && rowY + ROW_HEIGHT <= y + h;
-			row.widget.visible = visible;
-			if (visible && !row.fullWidth && !row.label.isEmpty()) {
-				guiGraphics.drawString(font, row.label, x + PADDING, rowY + 4, 0xFFBBBBBB, false);
+			row.widget().visible = visible;
+			if (visible && !row.fullWidth() && !row.label().isEmpty()) {
+				guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 4, 0xFFBBBBBB, false);
 			}
+		}
+
+		// Dropdown overlay (rendered last, on top of everything)
+		if (renderDropdown && dropdown != null) {
+			doRenderDropdown(guiGraphics, mouseX, mouseY);
+		}
+	}
+
+	/**
+	 * Render only the dropdown overlay. Called from SpellPreviewScreen after super.render()
+	 * to ensure the dropdown draws on top of all widgets.
+	 */
+	public void renderDropdown(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+		if (dropdown != null) {
+			doRenderDropdown(guiGraphics, mouseX, mouseY);
 		}
 	}
 
 	// --- Mouse handling ---
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// Handle dropdown overlay first
+		if (dropdown != null) {
+			if (button == 0) {
+				if (handleDropdownClick(mouseX, mouseY)) {
+					closeDropdown();
+					return true;
+				}
+				closeDropdown();
+				return true;
+			}
+			return true; // block all clicks while dropdown is open
+		}
+
 		if (button != 0 || currentAction == null) return false;
 		Font font = Minecraft.getInstance().font;
+
+		// Handle [Delete] button
 		String deleteText = "[Delete]";
 		int deleteX = x + w - font.width(deleteText) - PADDING;
 		if (mouseX >= deleteX && mouseX < x + w
@@ -854,11 +1079,34 @@ public class ActionEditorPanel {
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+		if (dropdown != null) {
+			String[] options = dropdown.options();
+			if (options == null) return true;
+			int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+			int maxScroll = Math.max(0, options.length - visibleItems);
+			dropdownScrollOffset = Math.max(0, Math.min(maxScroll,
+					dropdownScrollOffset - (int) (delta * 3)));
+			return true;
+		}
 		if (isMouseOver(mouseX, mouseY)) {
 			int maxScroll = Math.max(0, (rows.size() + 1) * ROW_HEIGHT - h);
 			scrollOffset = (int) Math.max(0, Math.min(maxScroll, scrollOffset - delta * ROW_HEIGHT));
 			layoutWidgets();
 			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Handle key presses. Returns true if the key was consumed (e.g., Escape closes dropdown).
+	 */
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (dropdown != null) {
+			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+				closeDropdown();
+				return true;
+			}
+			return true; // block all key input when dropdown is open
 		}
 		return false;
 	}
@@ -934,9 +1182,19 @@ public class ActionEditorPanel {
 		return value.name().toLowerCase().replace('_', ' ');
 	}
 
-	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth) {
+	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW) {
 		EditorRow(String label, AbstractWidget widget) {
-			this(label, widget, false);
+			this(label, widget, false, -1);
+		}
+		EditorRow(String label, AbstractWidget widget, boolean fullWidth) {
+			this(label, widget, fullWidth, -1);
+		}
+		EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW) {
+			// Use the longest constructor to avoid infinite recursion
+			this.label = label;
+			this.widget = widget;
+			this.fullWidth = fullWidth;
+			this.customWidgetW = customWidgetW;
 		}
 	}
 

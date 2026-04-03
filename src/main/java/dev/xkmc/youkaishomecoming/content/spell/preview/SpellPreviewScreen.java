@@ -370,11 +370,16 @@ public class SpellPreviewScreen extends Screen {
 			actionListPanel.render(guiGraphics, mouseX, mouseY, partialTick);
 		}
 		if (actionEditorPanel != null) {
-			actionEditorPanel.render(guiGraphics, mouseX, mouseY, partialTick);
+			actionEditorPanel.render(guiGraphics, mouseX, mouseY, partialTick, false);
 		}
 
 		// Render widgets (buttons)
 		super.render(guiGraphics, mouseX, mouseY, partialTick);
+
+		// Render dropdown overlay ON TOP of all widgets
+		if (actionEditorPanel != null) {
+			actionEditorPanel.renderDropdown(guiGraphics, mouseX, mouseY);
+		}
 
 		// Status text on top bar
 		String spellName = definition.id.toString();
@@ -497,6 +502,10 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		// Handle editor dropdown (Escape to close, block other keys)
+		if (actionEditorPanel != null && actionEditorPanel.keyPressed(keyCode, scanCode, modifiers)) {
+			return true;
+		}
 		// Don't capture keys when an edit box is focused
 		if (getFocused() instanceof net.minecraft.client.gui.components.EditBox) {
 			return super.keyPressed(keyCode, scanCode, modifiers);

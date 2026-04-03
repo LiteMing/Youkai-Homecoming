@@ -15,7 +15,7 @@ import java.util.Optional;
 
 /**
  * Data-driven action to fire danmaku projectiles.
- * Supports ring, line, random, and aimed patterns with configurable parameters.
+ * Supports ring, line, random, aimed, and nested_ring patterns with configurable parameters.
  */
 public record FireDanmakuAction(
 		YHDanmaku.Bullet bulletType,
@@ -29,6 +29,7 @@ public record FireDanmakuAction(
 		OriginConfig origin,
 		AimMode aimMode,
 		Optional<MoverConfig> mover,
+		Optional<NumberProvider> outerCount,
 		Optional<List<SpellAction>> onExpiry
 ) implements SpellAction {
 
@@ -44,22 +45,24 @@ public record FireDanmakuAction(
 			OriginConfig.CODEC.optionalFieldOf("origin", OriginConfig.caster()).forGetter(FireDanmakuAction::origin),
 			AimMode.CODEC.optionalFieldOf("aim_mode", new AimMode.AimModes.Target()).forGetter(FireDanmakuAction::aimMode),
 			MoverConfig.CODEC.optionalFieldOf("mover").forGetter(FireDanmakuAction::mover),
+			NumberProvider.CODEC.optionalFieldOf("outer_count").forGetter(FireDanmakuAction::outerCount),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_expiry").forGetter(FireDanmakuAction::onExpiry)
 	).apply(i, FireDanmakuAction::new));
 
 	// withXxx helper methods for editor use
-	public FireDanmakuAction withBulletType(YHDanmaku.Bullet v) { return new FireDanmakuAction(v, color, count, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, onExpiry); }
-	public FireDanmakuAction withColor(DyeColor v) { return new FireDanmakuAction(bulletType, v, count, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, onExpiry); }
-	public FireDanmakuAction withCount(NumberProvider v) { return new FireDanmakuAction(bulletType, color, v, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, onExpiry); }
-	public FireDanmakuAction withSpeed(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, v, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, onExpiry); }
-	public FireDanmakuAction withLifetime(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, v, angleOffset, spread, pattern, origin, aimMode, mover, onExpiry); }
-	public FireDanmakuAction withAngleOffset(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, v, spread, pattern, origin, aimMode, mover, onExpiry); }
-	public FireDanmakuAction withSpread(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, v, pattern, origin, aimMode, mover, onExpiry); }
-	public FireDanmakuAction withPattern(PatternType v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, v, origin, aimMode, mover, onExpiry); }
-	public FireDanmakuAction withOrigin(OriginConfig v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, pattern, v, aimMode, mover, onExpiry); }
-	public FireDanmakuAction withAimMode(AimMode v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, pattern, origin, v, mover, onExpiry); }
-	public FireDanmakuAction withMover(Optional<MoverConfig> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, v, onExpiry); }
-	public FireDanmakuAction withOnExpiry(Optional<List<SpellAction>> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, v); }
+	public FireDanmakuAction withBulletType(YHDanmaku.Bullet v) { return new FireDanmakuAction(v, color, count, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withColor(DyeColor v) { return new FireDanmakuAction(bulletType, v, count, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withCount(NumberProvider v) { return new FireDanmakuAction(bulletType, color, v, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withSpeed(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, v, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withLifetime(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, v, angleOffset, spread, pattern, origin, aimMode, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withAngleOffset(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, v, spread, pattern, origin, aimMode, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withSpread(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, v, pattern, origin, aimMode, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withPattern(PatternType v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, v, origin, aimMode, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withOrigin(OriginConfig v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, pattern, v, aimMode, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withAimMode(AimMode v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, pattern, origin, v, mover, outerCount, onExpiry); }
+	public FireDanmakuAction withMover(Optional<MoverConfig> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, v, outerCount, onExpiry); }
+	public FireDanmakuAction withOuterCount(Optional<NumberProvider> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, v, onExpiry); }
+	public FireDanmakuAction withOnExpiry(Optional<List<SpellAction>> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, pattern, origin, aimMode, mover, outerCount, v); }
 
 	@Override
 	public void execute(SpellContext ctx) {
@@ -74,7 +77,36 @@ public record FireDanmakuAction(
 
 		Vec3 originPos = origin.resolve(ctx);
 		Vec3 baseDir = aimMode.getBaseDirection(ctx);
+
+		// Apply origin.rotation to base direction so the entire pattern rotates together
+		double originRot = origin.rotation().get(ctx);
+		if (originRot != 0) {
+			double rad = Math.toRadians(originRot);
+			double cos = Math.cos(rad), sin = Math.sin(rad);
+			baseDir = new Vec3(
+					baseDir.x * cos - baseDir.z * sin,
+					baseDir.y,
+					baseDir.x * sin + baseDir.z * cos
+			);
+		}
+
 		var ori = DanmakuHelper.getOrientation(baseDir);
+
+		// NESTED_RING: outer ring × inner ring (perpendicular to each outer direction)
+		if (pattern == PatternType.NESTED_RING && outerCount.isPresent()) {
+			int outer = diff.adjustCount((int) outerCount.get().get(ctx));
+			for (int o = 0; o < outer; o++) {
+				double outerAngle = (360.0 / outer) * o + angle;
+				Vec3 outerDir = ori.rotateDegrees(outerAngle);
+				var outerOri = DanmakuHelper.getOrientation(outerDir);
+				for (int j = 0; j < n; j++) {
+					double innerAngle = (360.0 / Math.max(n, 1)) * j;
+					Vec3 dir = outerOri.rotateDegrees(90, innerAngle).scale(spd);
+					emitDanmaku(holder, ctx, life, dir, originPos);
+				}
+			}
+			return;
+		}
 
 		for (int i = 0; i < n; i++) {
 			double a = angle;
@@ -86,21 +118,25 @@ public record FireDanmakuAction(
 					}
 				}
 				case RANDOM -> a += holder.random().nextDouble() * spreadDeg - spreadDeg / 2;
-				case AIMED -> {} // all same direction
+				case AIMED, NESTED_RING -> {} // NESTED_RING handled above
 			}
 			Vec3 dir = ori.rotateDegrees(a).scale(spd);
-			var danmaku = holder.prepareDanmaku(life, dir, bulletType, color);
-			danmaku.setPos(originPos);
-			if (mover.isPresent()) {
-				danmaku.mover = mover.get().create(originPos, dir);
-			}
-			if (onExpiry.isPresent()) {
-				var trail = new DataDrivenTrailAction(onExpiry.get(), ctx.runtime(), ctx.definition());
-				trail.setup(holder);
-				danmaku.afterExpiry = trail;
-			}
-			holder.shoot(danmaku);
+			emitDanmaku(holder, ctx, life, dir, originPos);
 		}
+	}
+
+	private void emitDanmaku(CardHolder holder, SpellContext ctx, int life, Vec3 dir, Vec3 originPos) {
+		var danmaku = holder.prepareDanmaku(life, dir, bulletType, color);
+		danmaku.setPos(originPos);
+		if (mover.isPresent()) {
+			danmaku.mover = mover.get().create(originPos, dir);
+		}
+		if (onExpiry.isPresent()) {
+			var trail = new DataDrivenTrailAction(onExpiry.get(), ctx.runtime(), ctx.definition());
+			trail.setup(holder);
+			danmaku.afterExpiry = trail;
+		}
+		holder.shoot(danmaku);
 	}
 
 }

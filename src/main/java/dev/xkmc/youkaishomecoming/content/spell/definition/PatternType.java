@@ -13,7 +13,9 @@ public enum PatternType {
 	/** Random directions within the spread angle */
 	RANDOM,
 	/** All projectiles aimed at the same direction */
-	AIMED;
+	AIMED,
+	/** Outer ring of groups, each group is a ring perpendicular to its outer direction */
+	NESTED_RING;
 
 	public static final Codec<PatternType> CODEC = Codec.STRING.xmap(
 			s -> PatternType.valueOf(s.toUpperCase()),

@@ -48,7 +48,7 @@ public class ActionEditorPanel {
 	};
 
 	private static final String[] AIM_MODE_TYPES = {
-			"target", "direction_to_target", "fixed", "caster_facing", "angle_offset", "variable_angle"
+			"target", "direction_to_target", "fixed", "caster_facing", "angle_offset", "variable_angle", "random_angle"
 	};
 
 	private final Consumer<AbstractWidget> addWidget;
@@ -147,6 +147,14 @@ public class ActionEditorPanel {
 			buildForcePhaseRows(fp);
 		} else if (action instanceof SpellActions.RepeatAction ra) {
 			buildRepeatRows(ra);
+		} else if (action instanceof DelayAction da) {
+			buildDelayRows(da);
+		} else if (action instanceof TeleportAction ta) {
+			buildTeleportRows(ta);
+		} else if (action instanceof SpawnShooterAction ssa) {
+			buildSpawnShooterRows(ssa);
+		} else if (action instanceof BurstAction ba) {
+			buildBurstRows(ba);
 		}
 	}
 
@@ -155,6 +163,10 @@ public class ActionEditorPanel {
 		addFullWidthButton("Fire Laser", () -> selectType("fire_laser"));
 		addFullWidthButton("Conditional", () -> selectType("conditional"));
 		addFullWidthButton("Repeat", () -> selectType("repeat"));
+		addFullWidthButton("Delay", () -> selectType("delay"));
+		addFullWidthButton("Teleport", () -> selectType("teleport"));
+		addFullWidthButton("Spawn Shooter", () -> selectType("spawn_shooter"));
+		addFullWidthButton("Burst", () -> selectType("burst"));
 		addFullWidthButton("Set Variable", () -> selectType("set_variable"));
 		addFullWidthButton("Add Variable", () -> selectType("add_variable"));
 		addFullWidthButton("Clear Screen", () -> selectType("clear_screen"));
@@ -173,12 +185,14 @@ public class ActionEditorPanel {
 	public static SpellAction createDefaultAction(String type) {
 		return switch (type) {
 			case "fire_danmaku" -> new FireDanmakuAction(
-					YHDanmaku.Bullet.CIRCLE, DyeColor.WHITE,
+					YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.WHITE),
 					NumberProvider.constant(8), NumberProvider.constant(0.5),
 					NumberProvider.constant(100), NumberProvider.constant(0),
-					NumberProvider.constant(360), PatternType.RING,
+					NumberProvider.constant(360), NumberProvider.constant(0),
+					PatternType.RING,
 					OriginConfig.caster(), new AimMode.AimModes.Target(),
-					Optional.empty(), Optional.empty(), Optional.empty());
+					Optional.empty(), Optional.empty(), Optional.empty(),
+					Optional.empty(), 1);
 			case "fire_laser" -> new FireLaserAction(
 					YHDanmaku.Laser.LASER, DyeColor.WHITE,
 					NumberProvider.constant(60), NumberProvider.constant(80),
@@ -196,6 +210,13 @@ public class ActionEditorPanel {
 					new ResourceLocation("minecraft", "entity.experience_orb.pickup"), 1f, 1f);
 			case "force_phase" -> new SpellActions.ForcePhase(
 					new ResourceLocation("youkaishomecoming", "main"));
+			case "delay" -> new DelayAction(20, new ArrayList<>());
+			case "teleport" -> new TeleportAction(OriginConfig.caster(), true);
+			case "spawn_shooter" -> new SpawnShooterAction(40, 4f, 100,
+					OriginConfig.caster(),
+					NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+					Optional.empty(), new ArrayList<>());
+			case "burst" -> new BurstAction(3, 5, new ArrayList<>());
 			default -> new SpellActions.NoopAction();
 		};
 	}
@@ -206,8 +227,15 @@ public class ActionEditorPanel {
 		addEnumRow("Bullet", YHDanmaku.Bullet.values(), a.bulletType(), v ->
 				notifyDanmaku(old -> old.withBulletType(v)));
 
-		addEnumRow("Color", DyeColor.values(), a.color(), v ->
-				notifyDanmaku(old -> old.withColor(v)));
+		// Color: if constant, show DyeColor dropdown; otherwise show type label
+		if (a.color() instanceof ColorProvider.Constant cc) {
+			addEnumRow("Color", DyeColor.values(), cc.color(), v ->
+					notifyDanmaku(old -> old.withColor(ColorProvider.constant(v))));
+		} else {
+			// For dynamic color providers (cycle, by_variable), show a read-only label
+			String colorType = ColorProvider.CLASS_TO_TYPE.getOrDefault(a.color().getClass(), "dynamic");
+			addStringRow("Color", colorType, v -> {}); // read-only display
+		}
 
 		addNumberRow("Count", a.count(), v ->
 				notifyDanmaku(old -> old.withCount(v), false));
@@ -224,13 +252,21 @@ public class ActionEditorPanel {
 		addNumberRow("Spread", a.spread(), v ->
 				notifyDanmaku(old -> old.withSpread(v), false));
 
+		addNumberRow("Elevation", a.elevation(), v ->
+				notifyDanmaku(old -> old.withElevation(v), false));
+
 		addEnumRow("Pattern", PatternType.values(), a.pattern(), v ->
 				notifyDanmaku(old -> old.withPattern(v)));
 
-		// NESTED_RING: show outerCount
-		if (a.pattern() == PatternType.NESTED_RING) {
+		// NESTED_RING, GRID, SPHERE: show outerCount
+		if (a.pattern() == PatternType.NESTED_RING || a.pattern() == PatternType.GRID || a.pattern() == PatternType.SPHERE) {
+			String label = switch (a.pattern()) {
+				case GRID -> "Cols";
+				case SPHERE -> "Longitude";
+				default -> "Outer Cnt";
+			};
 			NumberProvider outerProv = a.outerCount().orElse(NumberProvider.constant(1));
-			addNumberRow("Outer Cnt", outerProv, v ->
+			addNumberRow(label, outerProv, v ->
 					notifyDanmaku(old -> old.withOuterCount(Optional.of(v)), false));
 		}
 
@@ -255,6 +291,12 @@ public class ActionEditorPanel {
 		buildMoverRows(a.mover(),
 				newMover -> notifyDanmaku(old -> old.withMover(newMover)),
 				newMover -> notifyDanmaku(old -> old.withMover(newMover), false));
+
+		// Trail interval (only show if onTrail is used)
+		if (a.onTrail().isPresent()) {
+			addIntRow("Trail Intv", a.trailInterval(), v ->
+					notifyDanmaku(old -> old.withTrailInterval(v), false));
+		}
 	}
 
 	// --- FireLaser rows ---
@@ -457,6 +499,87 @@ public class ActionEditorPanel {
 					var r = (SpellActions.RepeatAction) old;
 					return new SpellActions.RepeatAction(r.count(), v, r.body());
 				}));
+	}
+
+	// --- Delay rows ---
+
+	private void buildDelayRows(DelayAction da) {
+		addIntRow("Delay Ticks", da.delayTicks(), v ->
+				notifySimple(old -> {
+					var d = (DelayAction) old;
+					return new DelayAction(v, d.body());
+				}));
+	}
+
+	// --- Teleport rows ---
+
+	private void buildTeleportRows(TeleportAction ta) {
+		addEnumRow("Origin", OriginConfig.OriginMode.values(), ta.destination().mode(), v -> {
+			var newDest = new OriginConfig(v, ta.destination().offsetX(), ta.destination().offsetY(),
+					ta.destination().offsetZ(), ta.destination().rotation());
+			notifySimple(old -> new TeleportAction(newDest, ((TeleportAction) old).playSound()));
+		});
+		buildOriginOffsetRows(ta.destination(), newDest ->
+				notifySimple(old -> new TeleportAction(newDest, ((TeleportAction) old).playSound())));
+		addBoolRow("Play Sound", ta.playSound(), v ->
+				notifySimple(old -> new TeleportAction(((TeleportAction) old).destination(), v)));
+	}
+
+	// --- Burst rows ---
+
+	private void buildBurstRows(BurstAction ba) {
+		addIntRow("Waves", ba.waves(), v ->
+				notifySimple(old -> {
+					var b = (BurstAction) old;
+					return new BurstAction(v, b.interval(), b.body());
+				}));
+		addIntRow("Interval", ba.interval(), v ->
+				notifySimple(old -> {
+					var b = (BurstAction) old;
+					return new BurstAction(b.waves(), v, b.body());
+				}));
+	}
+
+	// --- SpawnShooter rows ---
+
+	private void buildSpawnShooterRows(SpawnShooterAction ssa) {
+		addIntRow("Health", ssa.health(), v ->
+				notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					return new SpawnShooterAction(v, s.damage(), s.lifetime(), s.origin(),
+							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
+				}));
+		addIntRow("Lifetime", ssa.lifetime(), v ->
+				notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					return new SpawnShooterAction(s.health(), s.damage(), v, s.origin(),
+							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
+				}));
+		addNumberRow("Vel X", ssa.velocityX(), v ->
+				notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
+							v, s.velocityY(), s.velocityZ(), s.mover(), s.body());
+				}));
+		addNumberRow("Vel Y", ssa.velocityY(), v ->
+				notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
+							s.velocityX(), v, s.velocityZ(), s.mover(), s.body());
+				}));
+		addNumberRow("Vel Z", ssa.velocityZ(), v ->
+				notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
+							s.velocityX(), s.velocityY(), v, s.mover(), s.body());
+				}));
+		addEnumRow("Origin", OriginConfig.OriginMode.values(), ssa.origin().mode(), v -> {
+			var s = (SpawnShooterAction) currentAction;
+			var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
+					s.origin().offsetZ(), s.origin().rotation());
+			notifySimple(old -> new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), newOrigin,
+					s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body()));
+		});
 	}
 
 	// --- Shared Origin/Mover row builders ---
@@ -1296,6 +1419,10 @@ public class ActionEditorPanel {
 			Map.entry("fire_laser", "Fire Laser"),
 			Map.entry("conditional", "Conditional"),
 			Map.entry("repeat", "Repeat"),
+			Map.entry("delay", "Delay"),
+			Map.entry("teleport", "Teleport"),
+			Map.entry("spawn_shooter", "Spawn Shooter"),
+			Map.entry("burst", "Burst"),
 			Map.entry("set_variable", "Set Variable"),
 			Map.entry("add_variable", "Add Variable"),
 			Map.entry("clear_screen", "Clear Screen"),
@@ -1349,6 +1476,7 @@ public class ActionEditorPanel {
 			case "caster_facing" -> new AimMode.AimModes.CasterFacing();
 			case "angle_offset" -> new AimMode.AimModes.AngleOffset(NumberProvider.constant(0));
 			case "variable_angle" -> new AimMode.AimModes.VariableAngle("aim_angle");
+			case "random_angle" -> new AimMode.AimModes.RandomAngle(NumberProvider.constant(360));
 			default -> new AimMode.AimModes.Target();
 		};
 	}

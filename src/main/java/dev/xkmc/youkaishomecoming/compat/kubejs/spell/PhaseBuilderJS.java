@@ -18,6 +18,7 @@ public class PhaseBuilderJS {
 	private final List<SpellAction> onEnter = new ArrayList<>();
 	private final List<SpellAction> onTick = new ArrayList<>();
 	private final List<SpellAction> onExit = new ArrayList<>();
+	private final List<SpellAction> onDamage = new ArrayList<>();
 	private final List<Transition> transitions = new ArrayList<>();
 
 	PhaseBuilderJS(ResourceLocation id) {
@@ -36,6 +37,16 @@ public class PhaseBuilderJS {
 
 	public PhaseBuilderJS onExit(Consumer<dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext> callback) {
 		onExit.add(new KubeJSSpellActions.JSAction(callback));
+		return this;
+	}
+
+	public PhaseBuilderJS onDamage(Consumer<dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext> callback) {
+		onDamage.add(new KubeJSSpellActions.JSAction(callback));
+		return this;
+	}
+
+	public PhaseBuilderJS onDamageAction(SpellAction action) {
+		onDamage.add(action);
 		return this;
 	}
 
@@ -113,6 +124,6 @@ public class PhaseBuilderJS {
 	}
 
 	PhaseDefinition build() {
-		return new PhaseDefinition(id, onEnter, onTick, onExit, transitions);
+		return new PhaseDefinition(id, onEnter, onTick, onExit, onDamage, transitions);
 	}
 }

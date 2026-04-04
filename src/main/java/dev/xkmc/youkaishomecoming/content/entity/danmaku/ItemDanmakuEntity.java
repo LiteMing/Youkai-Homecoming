@@ -27,6 +27,12 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public DanmakuMover mover = null;
 	@SerialClass.SerialField
 	public TrailAction afterExpiry = null;
+	/**
+	 * Per-tick trail action: executed every {@link #trailInterval} ticks during flight.
+	 * Used for generating sub-danmaku along the projectile's path (e.g. StarSpell shooting stars).
+	 */
+	public TrailAction onTrail = null;
+	public int trailInterval = 1;
 	@SerialClass.SerialField
 	public ItemStack stack = ItemStack.EMPTY;
 
@@ -70,6 +76,15 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 
 	@Override
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
+		// Execute per-tick trail action
+		if (onTrail != null && tickCount > 0 && tickCount % trailInterval == 0) {
+			CardHolder holder = null;
+			Entity e = getOwner();
+			if (e instanceof CardHolder h) holder = h;
+			if (holder != null) onTrail.execute(holder, pos, vec);
+			else onTrail.execute(pos, vec);
+		}
+
 		if (mover != null) {
 			return mover.move(new MoverInfo(tickCount, pos, vec, this));
 		}

@@ -143,6 +143,14 @@ public class NumberExprParser {
 	private NumberProvider parseUnary() {
 		if (pos < len && peek() == '-') {
 			consume('-');
+			skipWhitespace();
+			// Optimization: if next token is a number literal, fold into negative constant
+			if (pos < len && (Character.isDigit(peek()) || peek() == '.')) {
+				NumberProvider num = parseNumber();
+				if (num instanceof NumberProviders.Constant c) {
+					return new NumberProviders.Constant(-c.value());
+				}
+			}
 			NumberProvider inner = parseUnary();
 			return new NumberProviders.Mul(new NumberProviders.Constant(-1), inner);
 		}

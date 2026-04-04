@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
+import dev.xkmc.youkaishomecoming.content.spell.definition.ColorProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import net.minecraft.client.Minecraft;
@@ -127,11 +128,46 @@ public class ActionListPanel {
 	private final BiConsumer<SpellAction, ActionPath> onSelect;
 	private final Consumer<AddTarget> onRequestAdd;
 	private final Runnable onMoved;
+	private final UndoManager undoManager = new UndoManager();
 
 	public ActionListPanel(BiConsumer<SpellAction, ActionPath> onSelect, Consumer<AddTarget> onRequestAdd, Runnable onMoved) {
 		this.onSelect = onSelect;
 		this.onRequestAdd = onRequestAdd;
 		this.onMoved = onMoved;
+	}
+
+	/** Save current state before a mutation. */
+	private void pushUndo() {
+		if (phase != null) undoManager.pushUndo(phase);
+	}
+
+	/** Undo last change, returning true if state was restored. */
+	public boolean undo() {
+		if (phase == null) return false;
+		var restored = undoManager.undo(phase);
+		if (restored == null) return false;
+		applyRestoredPhase(restored);
+		return true;
+	}
+
+	/** Redo last undone change, returning true if state was restored. */
+	public boolean redo() {
+		if (phase == null) return false;
+		var restored = undoManager.redo(phase);
+		if (restored == null) return false;
+		applyRestoredPhase(restored);
+		return true;
+	}
+
+	private void applyRestoredPhase(PhaseDefinition restored) {
+		// Replace the contents of the current phase with restored data
+		phase.onEnter.clear(); phase.onEnter.addAll(restored.onEnter);
+		phase.onTick.clear(); phase.onTick.addAll(restored.onTick);
+		phase.onExit.clear(); phase.onExit.addAll(restored.onExit);
+		phase.onDamage.clear(); phase.onDamage.addAll(restored.onDamage);
+		phase.transitions.clear(); phase.transitions.addAll(restored.transitions);
+		selectedPath = null;
+		dirty = true;
 	}
 
 	public void setBounds(int x, int y, int w, int h) {
@@ -175,7 +211,8 @@ public class ActionListPanel {
 		int cy = y + PADDING - scrollOffset;
 		cy = buildSection("onEnter", phase.onEnter, cy, "enter");
 		cy = buildSection("onTick", phase.onTick, cy, "tick");
-		buildSection("onExit", phase.onExit, cy, "exit");
+		cy = buildSection("onExit", phase.onExit, cy, "exit");
+		buildSection("onDamage", phase.onDamage, cy, "damage");
 	}
 
 	private int buildSection(String title, List<SpellAction> actions, int startY, String section) {
@@ -226,6 +263,24 @@ public class ActionListPanel {
 			cy += ROW_HEIGHT;
 		}
 
+		if (action instanceof DelayAction delay) {
+			for (int j = 0; j < delay.body().size(); j++) {
+				ActionPath childPath = actionPath.child("body", j);
+				cy = buildActionTree(delay.body().get(j), childPath, indent + 1, cy, section);
+			}
+			rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
+			cy += ROW_HEIGHT;
+		}
+
+		if (action instanceof BurstAction burst) {
+			for (int j = 0; j < burst.body().size(); j++) {
+				ActionPath childPath = actionPath.child("body", j);
+				cy = buildActionTree(burst.body().get(j), childPath, indent + 1, cy, section);
+			}
+			rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
+			cy += ROW_HEIGHT;
+		}
+
 		if (action instanceof FireDanmakuAction fda) {
 			List<SpellAction> expiryActions = fda.onExpiry().orElse(List.of());
 			for (int j = 0; j < expiryActions.size(); j++) {
@@ -233,6 +288,23 @@ public class ActionListPanel {
 				cy = buildActionTree(expiryActions.get(j), childPath, indent + 1, cy, section);
 			}
 			rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onExpiry"), "+ onExpiry", indent + 1, cy));
+			cy += ROW_HEIGHT;
+
+			List<SpellAction> trailActions = fda.onTrail().orElse(List.of());
+			for (int j = 0; j < trailActions.size(); j++) {
+				ActionPath childPath = actionPath.child("onTrail", j);
+				cy = buildActionTree(trailActions.get(j), childPath, indent + 1, cy, section);
+			}
+			rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onTrail"), "+ onTrail", indent + 1, cy));
+			cy += ROW_HEIGHT;
+		}
+
+		if (action instanceof SpawnShooterAction ssa) {
+			for (int j = 0; j < ssa.body().size(); j++) {
+				ActionPath childPath = actionPath.child("body", j);
+				cy = buildActionTree(ssa.body().get(j), childPath, indent + 1, cy, section);
+			}
+			rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
 			cy += ROW_HEIGHT;
 		}
 		return cy;
@@ -483,6 +555,7 @@ public class ActionListPanel {
 	 */
 	private void performDrop() {
 		if (phase == null || dragSourcePath == null) return;
+		pushUndo();
 
 		// Get the source action before removing it
 		SpellAction action = getActionAt(dragSourcePath);
@@ -584,6 +657,7 @@ public class ActionListPanel {
 
 	public void replaceSelectedAction(SpellAction newAction) {
 		if (selectedPath == null) return;
+		pushUndo();
 		replaceAction(selectedPath, newAction);
 	}
 
@@ -622,10 +696,35 @@ public class ActionListPanel {
 			list.set(entry.index, new SpellActions.RepeatAction(repeat.count(), repeat.indexVariable(), body));
 			return true;
 		}
+		if (parent instanceof DelayAction delay && "body".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(delay.body());
+			if (!doReplace(body, path, depth + 1, newAction)) return false;
+			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
+			return true;
+		}
+		if (parent instanceof BurstAction burst && "body".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(burst.body());
+			if (!doReplace(body, path, depth + 1, newAction)) return false;
+			list.set(entry.index, new BurstAction(burst.waves(), burst.interval(), body));
+			return true;
+		}
+		if (parent instanceof SpawnShooterAction ssa && "body".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(ssa.body());
+			if (!doReplace(body, path, depth + 1, newAction)) return false;
+			list.set(entry.index, new SpawnShooterAction(ssa.health(), ssa.damage(), ssa.lifetime(), ssa.origin(),
+					ssa.velocityX(), ssa.velocityY(), ssa.velocityZ(), ssa.mover(), body));
+			return true;
+		}
 		if (parent instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
 			List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
 			if (!doReplace(expiryActions, path, depth + 1, newAction)) return false;
 			list.set(entry.index, fda.withOnExpiry(Optional.of(expiryActions)));
+			return true;
+		}
+		if (parent instanceof FireDanmakuAction fda && "onTrail".equals(entry.branch)) {
+			List<SpellAction> trailActions = new ArrayList<>(fda.onTrail().orElse(new ArrayList<>()));
+			if (!doReplace(trailActions, path, depth + 1, newAction)) return false;
+			list.set(entry.index, fda.withOnTrail(Optional.of(trailActions)));
 			return true;
 		}
 		return false;
@@ -633,6 +732,7 @@ public class ActionListPanel {
 
 	public void insertAction(AddTarget target, SpellAction action) {
 		if (phase == null) return;
+		pushUndo();
 		List<SpellAction> list = getSectionList(target.section);
 		if (list == null) return;
 
@@ -675,11 +775,40 @@ public class ActionListPanel {
 				selectedPath = parentPath.child(targetBranch, body.size() - 1);
 				return true;
 			}
+			if (current instanceof DelayAction delay && "body".equals(targetBranch)) {
+				List<SpellAction> body = new ArrayList<>(delay.body());
+				body.add(newAction);
+				list.set(entry.index, new DelayAction(delay.delayTicks(), body));
+				selectedPath = parentPath.child(targetBranch, body.size() - 1);
+				return true;
+			}
+			if (current instanceof BurstAction burst && "body".equals(targetBranch)) {
+				List<SpellAction> body = new ArrayList<>(burst.body());
+				body.add(newAction);
+				list.set(entry.index, new BurstAction(burst.waves(), burst.interval(), body));
+				selectedPath = parentPath.child(targetBranch, body.size() - 1);
+				return true;
+			}
+			if (current instanceof SpawnShooterAction ssa && "body".equals(targetBranch)) {
+				List<SpellAction> body = new ArrayList<>(ssa.body());
+				body.add(newAction);
+				list.set(entry.index, new SpawnShooterAction(ssa.health(), ssa.damage(), ssa.lifetime(), ssa.origin(),
+						ssa.velocityX(), ssa.velocityY(), ssa.velocityZ(), ssa.mover(), body));
+				selectedPath = parentPath.child(targetBranch, body.size() - 1);
+				return true;
+			}
 			if (current instanceof FireDanmakuAction fda && "onExpiry".equals(targetBranch)) {
 				List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
 				expiryActions.add(newAction);
 				list.set(entry.index, fda.withOnExpiry(Optional.of(expiryActions)));
 				selectedPath = parentPath.child(targetBranch, expiryActions.size() - 1);
+				return true;
+			}
+			if (current instanceof FireDanmakuAction fda && "onTrail".equals(targetBranch)) {
+				List<SpellAction> trailActions = new ArrayList<>(fda.onTrail().orElse(new ArrayList<>()));
+				trailActions.add(newAction);
+				list.set(entry.index, fda.withOnTrail(Optional.of(trailActions)));
+				selectedPath = parentPath.child(targetBranch, trailActions.size() - 1);
 				return true;
 			}
 			return false;
@@ -703,10 +832,35 @@ public class ActionListPanel {
 			list.set(entry.index, new SpellActions.RepeatAction(repeat.count(), repeat.indexVariable(), body));
 			return true;
 		}
+		if (current instanceof DelayAction delay && "body".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(delay.body());
+			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
+			return true;
+		}
+		if (current instanceof BurstAction burst && "body".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(burst.body());
+			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			list.set(entry.index, new BurstAction(burst.waves(), burst.interval(), body));
+			return true;
+		}
+		if (current instanceof SpawnShooterAction ssa && "body".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(ssa.body());
+			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			list.set(entry.index, new SpawnShooterAction(ssa.health(), ssa.damage(), ssa.lifetime(), ssa.origin(),
+					ssa.velocityX(), ssa.velocityY(), ssa.velocityZ(), ssa.mover(), body));
+			return true;
+		}
 		if (current instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
 			List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
 			if (!doInsert(expiryActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
 			list.set(entry.index, fda.withOnExpiry(Optional.of(expiryActions)));
+			return true;
+		}
+		if (current instanceof FireDanmakuAction fda && "onTrail".equals(entry.branch)) {
+			List<SpellAction> trailActions = new ArrayList<>(fda.onTrail().orElse(new ArrayList<>()));
+			if (!doInsert(trailActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			list.set(entry.index, fda.withOnTrail(Optional.of(trailActions)));
 			return true;
 		}
 		return false;
@@ -714,6 +868,7 @@ public class ActionListPanel {
 
 	public boolean deleteSelected() {
 		if (phase == null || selectedPath == null) return false;
+		pushUndo();
 		List<SpellAction> list = getSectionList(selectedPath.section);
 		if (list == null) return false;
 
@@ -752,10 +907,35 @@ public class ActionListPanel {
 			list.set(entry.index, new SpellActions.RepeatAction(repeat.count(), repeat.indexVariable(), body));
 			return true;
 		}
+		if (parent instanceof DelayAction delay && "body".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(delay.body());
+			if (!doDelete(body, path, depth + 1)) return false;
+			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
+			return true;
+		}
+		if (parent instanceof BurstAction burst && "body".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(burst.body());
+			if (!doDelete(body, path, depth + 1)) return false;
+			list.set(entry.index, new BurstAction(burst.waves(), burst.interval(), body));
+			return true;
+		}
+		if (parent instanceof SpawnShooterAction ssa && "body".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(ssa.body());
+			if (!doDelete(body, path, depth + 1)) return false;
+			list.set(entry.index, new SpawnShooterAction(ssa.health(), ssa.damage(), ssa.lifetime(), ssa.origin(),
+					ssa.velocityX(), ssa.velocityY(), ssa.velocityZ(), ssa.mover(), body));
+			return true;
+		}
 		if (parent instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
 			List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
 			if (!doDelete(expiryActions, path, depth + 1)) return false;
 			list.set(entry.index, fda.withOnExpiry(expiryActions.isEmpty() ? Optional.empty() : Optional.of(expiryActions)));
+			return true;
+		}
+		if (parent instanceof FireDanmakuAction fda && "onTrail".equals(entry.branch)) {
+			List<SpellAction> trailActions = new ArrayList<>(fda.onTrail().orElse(new ArrayList<>()));
+			if (!doDelete(trailActions, path, depth + 1)) return false;
+			list.set(entry.index, fda.withOnTrail(trailActions.isEmpty() ? Optional.empty() : Optional.of(trailActions)));
 			return true;
 		}
 		return false;
@@ -795,6 +975,7 @@ public class ActionListPanel {
 
 	public boolean pasteAfterSelected() {
 		if (clipboard == null || phase == null) return false;
+		pushUndo();
 		// Deep copy clipboard for paste
 		SpellAction toPaste;
 		try {
@@ -839,6 +1020,7 @@ public class ActionListPanel {
 		if (list == null) return false;
 		int idx = selectedPath.leafIndex();
 		if (idx <= 0) return false;
+		pushUndo();
 		java.util.Collections.swap(list, idx, idx - 1);
 		selectedPath = ActionPath.topLevel(selectedPath.section, idx - 1);
 		dirty = true;
@@ -854,6 +1036,7 @@ public class ActionListPanel {
 		if (list == null) return false;
 		int idx = selectedPath.leafIndex();
 		if (idx >= list.size() - 1) return false;
+		pushUndo();
 		java.util.Collections.swap(list, idx, idx + 1);
 		selectedPath = ActionPath.topLevel(selectedPath.section, idx + 1);
 		dirty = true;
@@ -880,8 +1063,20 @@ public class ActionListPanel {
 		if (action instanceof SpellActions.RepeatAction repeat && "body".equals(entry.branch)) {
 			return getActionRecursive(repeat.body(), path, depth + 1);
 		}
+		if (action instanceof DelayAction delay && "body".equals(entry.branch)) {
+			return getActionRecursive(delay.body(), path, depth + 1);
+		}
+		if (action instanceof BurstAction burst && "body".equals(entry.branch)) {
+			return getActionRecursive(burst.body(), path, depth + 1);
+		}
+		if (action instanceof SpawnShooterAction ssa && "body".equals(entry.branch)) {
+			return getActionRecursive(ssa.body(), path, depth + 1);
+		}
 		if (action instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
 			return getActionRecursive(fda.onExpiry().orElse(List.of()), path, depth + 1);
+		}
+		if (action instanceof FireDanmakuAction fda && "onTrail".equals(entry.branch)) {
+			return getActionRecursive(fda.onTrail().orElse(List.of()), path, depth + 1);
 		}
 		return null;
 	}
@@ -892,6 +1087,7 @@ public class ActionListPanel {
 			case "enter" -> phase.onEnter;
 			case "tick" -> phase.onTick;
 			case "exit" -> phase.onExit;
+			case "damage" -> phase.onDamage;
 			default -> null;
 		};
 	}
@@ -914,7 +1110,8 @@ public class ActionListPanel {
 
 	private static String getActionLabel(SpellAction action, int index) {
 		if (action instanceof FireDanmakuAction fda) {
-			return index + ": fire " + fda.bulletType().name().toLowerCase() + " " + fda.color().name().toLowerCase();
+			String colorLabel = fda.color() instanceof ColorProvider.Constant cc ? cc.color().name().toLowerCase() : "dynamic";
+			return index + ": fire " + fda.bulletType().name().toLowerCase() + " " + colorLabel;
 		}
 		if (action instanceof FireLaserAction fla) {
 			return index + ": laser " + fla.laserType().name().toLowerCase() + " " + fla.color().name().toLowerCase();
@@ -931,6 +1128,10 @@ public class ActionListPanel {
 		if (action instanceof SpellActions.AddVariable av) return index + ": add " + av.key();
 		if (action instanceof SpellActions.ForcePhase fp) return index + ": force " + fp.phaseId().getPath();
 		if (action instanceof SpellActions.RepeatAction ra) return index + ": repeat(" + (int) (ra.count() instanceof NumberProviders.Constant c ? c.value() : 0) + ")";
+		if (action instanceof DelayAction da) return index + ": delay(" + da.delayTicks() + "t)";
+		if (action instanceof BurstAction ba) return index + ": burst(" + ba.waves() + "x" + ba.interval() + "t)";
+		if (action instanceof SpawnShooterAction ssa) return index + ": shooter(hp=" + ssa.health() + ")";
+		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";
 		return index + ": " + action.getClass().getSimpleName();
 	}
@@ -961,6 +1162,10 @@ public class ActionListPanel {
 		if (action instanceof FireDanmakuAction || action instanceof FireLaserAction) return 0xFFCCCCCC;
 		if (action instanceof SpellActions.ConditionalAction) return 0xFFAAAADD;
 		if (action instanceof SpellActions.RepeatAction) return 0xFFAAAADD;
+		if (action instanceof DelayAction) return 0xFFDDAAAA;
+		if (action instanceof BurstAction) return 0xFFDDAAAA;
+		if (action instanceof SpawnShooterAction) return 0xFFDDCCAA;
+		if (action instanceof TeleportAction) return 0xFFAADDAA;
 		if (action instanceof SpellActions.SequenceAction) return 0xFFAAAADD;
 		return 0xFF999999;
 	}

@@ -538,7 +538,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	public DamageSource getDanmakuDamageSource(IYHDanmaku danmaku) {
-		if (spellCard != null) return spellCard.card.getDanmakuDamageSource(danmaku);
+		if (spellCard != null && spellCard.card != null) return spellCard.card.getDanmakuDamageSource(danmaku);
 		return YHDamageTypes.danmaku(danmaku);
 	}
 

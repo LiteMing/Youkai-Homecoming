@@ -14,8 +14,10 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -33,6 +35,7 @@ public class SpellRuntime {
 	private int totalTick;
 	private int hitCount;
 	private final Map<String, Double> variables = new HashMap<>();
+	private final List<ScheduledAction> scheduledActions = new ArrayList<>();
 
 	@Nullable
 	private Consumer<SpellRuntime> onPhaseChange;
@@ -91,6 +94,9 @@ public class SpellRuntime {
 			action.execute(ctx);
 		}
 
+		// Execute scheduled delayed actions
+		executeScheduledActions(ctx);
+
 		// Evaluate transitions (priority order)
 		for (Transition trans : phase.transitions) {
 			if (trans.condition().test(ctx)) {
@@ -106,6 +112,17 @@ public class SpellRuntime {
 	public void hurt(CardHolder holder, DamageSource source, float amount) {
 		if (source.getEntity() instanceof LivingEntity && amount > 1) {
 			hitCount++;
+
+			// Execute on_damage actions for current phase
+			PhaseDefinition phase = definition.getPhase(currentPhaseId);
+			if (phase != null && !phase.onDamage.isEmpty()) {
+				float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
+				DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
+				SpellContext ctx = new SpellContext(holder, definition, this, diff);
+				for (SpellAction action : phase.onDamage) {
+					action.execute(ctx);
+				}
+			}
 		}
 	}
 
@@ -115,6 +132,7 @@ public class SpellRuntime {
 		totalTick = 0;
 		hitCount = 0;
 		variables.clear();
+		scheduledActions.clear();
 
 		// Reset any legacy ticker actions
 		resetLegacyActions(definition.getPhase(currentPhaseId));
@@ -137,13 +155,17 @@ public class SpellRuntime {
 			}
 		}
 
-		if (trans.mode() == TransitionMode.CLEAR_SCREEN) {
+		if (trans.mode() == TransitionMode.CLEAR_SCREEN || trans.mode() == TransitionMode.CLEAR_AND_RESET) {
 			ctx.clearDanmaku();
+		}
+		if (trans.mode() == TransitionMode.CLEAR_AND_RESET) {
+			variables.clear();
 		}
 
 		ResourceLocation oldPhaseId = currentPhaseId;
 		currentPhaseId = trans.targetPhase();
 		phaseTick = 0;
+		scheduledActions.clear(); // Clear delayed actions from previous phase
 
 		PhaseDefinition newPhase = definition.getPhase(currentPhaseId);
 		if (newPhase != null) {
@@ -170,6 +192,7 @@ public class SpellRuntime {
 
 		currentPhaseId = targetPhase;
 		phaseTick = 0;
+		scheduledActions.clear();
 
 		PhaseDefinition newPhase = definition.getPhase(currentPhaseId);
 		if (newPhase != null) {
@@ -181,6 +204,38 @@ public class SpellRuntime {
 		if (onPhaseChange != null) {
 			onPhaseChange.accept(this);
 		}
+	}
+
+	// --- Delayed action scheduling ---
+
+	/**
+	 * Schedule a list of actions to execute at a specific totalTick.
+	 */
+	public void scheduleDelayed(int executeAtTick, List<SpellAction> actions) {
+		scheduledActions.add(new ScheduledAction(executeAtTick, actions));
+	}
+
+	/**
+	 * Execute all delayed actions whose time has come.
+	 * Called from tick() after regular onTick actions.
+	 */
+	private void executeScheduledActions(SpellContext ctx) {
+		var iter = scheduledActions.iterator();
+		while (iter.hasNext()) {
+			var scheduled = iter.next();
+			if (totalTick >= scheduled.executeAtTick()) {
+				iter.remove();
+				for (var action : scheduled.actions()) {
+					action.execute(ctx);
+				}
+			}
+		}
+	}
+
+	/**
+	 * A delayed action entry: actions to execute when totalTick reaches executeAtTick.
+	 */
+	private record ScheduledAction(int executeAtTick, List<SpellAction> actions) {
 	}
 
 	/**

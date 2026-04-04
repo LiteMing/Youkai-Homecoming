@@ -15,7 +15,13 @@ public enum PatternType {
 	/** All projectiles aimed at the same direction */
 	AIMED,
 	/** Outer ring of groups, each group is a ring perpendicular to its outer direction */
-	NESTED_RING;
+	NESTED_RING,
+	/** 2D grid layout on a specified plane (rows × cols) */
+	GRID,
+	/** Uniform spherical distribution (latitude × longitude) */
+	SPHERE,
+	/** Spiral arrangement with configurable turns and radius growth */
+	SPIRAL;
 
 	public static final Codec<PatternType> CODEC = Codec.STRING.xmap(
 			s -> PatternType.valueOf(s.toUpperCase()),

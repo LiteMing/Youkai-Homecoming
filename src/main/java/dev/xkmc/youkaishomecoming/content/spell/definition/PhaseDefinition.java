@@ -15,6 +15,7 @@ public class PhaseDefinition {
 			SpellAction.CODEC.listOf().optionalFieldOf("on_enter", List.of()).forGetter(p -> p.onEnter),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_tick", List.of()).forGetter(p -> p.onTick),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_exit", List.of()).forGetter(p -> p.onExit),
+			SpellAction.CODEC.listOf().optionalFieldOf("on_damage", List.of()).forGetter(p -> p.onDamage),
 			Transition.CODEC.listOf().optionalFieldOf("transitions", List.of()).forGetter(p -> p.transitions)
 	).apply(i, PhaseDefinition::new));
 
@@ -22,21 +23,24 @@ public class PhaseDefinition {
 	public final List<SpellAction> onEnter;
 	public final List<SpellAction> onTick;
 	public final List<SpellAction> onExit;
+	public final List<SpellAction> onDamage;
 	public final List<Transition> transitions;
 
 	public PhaseDefinition(ResourceLocation id,
 						   List<SpellAction> onEnter,
 						   List<SpellAction> onTick,
 						   List<SpellAction> onExit,
+						   List<SpellAction> onDamage,
 						   List<Transition> transitions) {
 		this.id = id;
 		this.onEnter = new ArrayList<>(onEnter);
 		this.onTick = new ArrayList<>(onTick);
 		this.onExit = new ArrayList<>(onExit);
+		this.onDamage = new ArrayList<>(onDamage);
 		this.transitions = new ArrayList<>(transitions);
 	}
 
 	public static PhaseDefinition singlePhase(ResourceLocation id, SpellAction tickAction) {
-		return new PhaseDefinition(id, List.of(), List.of(tickAction), List.of(), List.of());
+		return new PhaseDefinition(id, List.of(), List.of(tickAction), List.of(), List.of(), List.of());
 	}
 }

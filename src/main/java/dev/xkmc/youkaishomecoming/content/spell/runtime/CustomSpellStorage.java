@@ -31,7 +31,7 @@ public class CustomSpellStorage {
 	 * Get the storage root directory for the given server's world.
 	 */
 	public static File getStorageDir(MinecraftServer server) {
-		return new File(server.getWorldPath(net.minecraft.server.level.ServerLevel.WORLD_STORAGE).toFile(), DIR_NAME);
+		return new File(server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).toFile(), DIR_NAME);
 	}
 
 	/**

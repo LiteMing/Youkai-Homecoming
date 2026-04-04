@@ -34,29 +34,54 @@ public class TouhouSpellCards {
 	public static void registerSpells() {
 		registerSpell("touhou_little_maid:hakurei_reimu", ReimuSpell::new);
 		registerSpell("touhou_little_maid:yukari_yakumo", YukariSpell::new);
-		registerSpell("touhou_little_maid:cirno", CirnoSpell::new);
 		registerSpell("touhou_little_maid:kochiya_sanae", SanaeSpell::new);
 		registerSpell("touhou_little_maid:komeiji_koishi", KoishiSpell::new);
 		registerSpell("touhou_little_maid:kirisame_marisa", MarisaSpell::new);
-		registerSpell("touhou_little_maid:mystia_lorelei", MystiaSpell::new);
-		registerSpell("touhou_little_maid:sunny_milk", SunnySpell::new);
-		registerSpell("touhou_little_maid:luna_child", LunaSpell::new);
-		registerSpell("touhou_little_maid:star_sapphire", StarSpell::new);
+		// registerSpell("touhou_little_maid:mystia_lorelei", MystiaSpell::new); // Legacy — migrated
 		registerSpell("touhou_little_maid:doremy_sweet", DoremiSpell::new);
 		registerSpell("touhou_little_maid:kisin_sagume", KisinSpell::new);
 		registerSpell("touhou_little_maid:remilia_scarlet", RemiliaSpell::new);
-		registerSpell("touhou_little_maid:eternity_larva", LarvaSpell::new);
 		registerSpell("touhou_little_maid:clownpiece", ClownSpell::new);
 		registerSpell("touhou_little_maid:izayoi_sakuya", SakuyaSpell::new);
 		registerSpell("touhou_little_maid:konpaku_youmu", YoumuSpell::new);
+
+		// Legacy — needs Ticker-driven wing spread animation to migrate
+		registerSpell("touhou_little_maid:eternity_larva", LarvaSpell::new);
+
+		// === Migrated to data-driven (Phase 7) ===
+		registerMigrated(MigratedSpellCards.sunnyMilk());
+		registerMigrated(MigratedSpellCards.lunaChild());
+		registerMigrated(MigratedSpellCards.starSapphire());
+		registerMigrated(MigratedSpellCards.cirno());
+		registerMigrated(MigratedSpellCards.mystia());
+	}
+
+	/**
+	 * Register a migrated data-driven SpellDefinition directly into SpellRegistry.
+	 * No legacy SpellCard is created — the new runtime handles everything.
+	 */
+	public static void registerMigrated(dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition def) {
+		SpellRegistry.register(def.id, def);
 	}
 
 	public static void setSpell(GeneralYoukaiEntity e, String id) {
 		e.spellCard = new SpellCardWrapper();
 		e.spellCard.modelId = id;
+
 		var sup = MAP.get(id);
-		if (sup != null)
+		if (sup != null) {
+			// Legacy path: use SpellCard subclass
 			e.spellCard.card = sup.get();
+		} else {
+			// Migrated path: lookup from SpellRegistry and create SpellRuntime
+			var rl = new ResourceLocation(id);
+			var def = SpellRegistry.get(rl);
+			if (def != null) {
+				var runtime = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime(def);
+				e.setSpellRuntime(runtime);
+			}
+		}
+
 		e.syncModel();
 		if (ModList.get().isLoaded(TouhouLittleMaid.MOD_ID) && id.startsWith(TouhouLittleMaid.MOD_ID)) {
 			var rl = new ResourceLocation(id);

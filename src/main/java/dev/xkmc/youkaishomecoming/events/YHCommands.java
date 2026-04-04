@@ -366,6 +366,7 @@ public class YHCommands {
 											java.util.List.of(),
 											java.util.List.of(),
 											java.util.List.of(),
+											java.util.List.of(),
 											java.util.List.of()
 									);
 									var def = new SpellDefinition(

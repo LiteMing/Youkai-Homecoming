@@ -19,9 +19,16 @@ import java.util.List;
 @SerialClass
 public class DataDrivenTrailAction extends TrailAction {
 
-	private final List<SpellAction> actions;
-	private final SpellRuntime runtime;
-	private final SpellDefinition definition;
+	private List<SpellAction> actions;
+	private SpellRuntime runtime;
+	private SpellDefinition definition;
+
+	/** No-arg constructor for L2Serial deserialization. Deserialized instances are non-functional (server-only logic). */
+	public DataDrivenTrailAction() {
+		this.actions = List.of();
+		this.runtime = null;
+		this.definition = null;
+	}
 
 	public DataDrivenTrailAction(List<SpellAction> actions, SpellRuntime runtime, SpellDefinition definition) {
 		this.actions = actions;
@@ -31,6 +38,7 @@ public class DataDrivenTrailAction extends TrailAction {
 
 	@Override
 	public void execute(CardHolder holder, Vec3 pos, Vec3 dir) {
+		if (runtime == null || definition == null) return; // Deserialized stub — no-op
 		var trailHolder = new TrailCardHolder(holder, pos, dir);
 		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT);
 		for (var action : actions) {

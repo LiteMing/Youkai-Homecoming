@@ -32,6 +32,10 @@ public class SpellActions {
 		register("fire_danmaku", FireDanmakuAction.CODEC, FireDanmakuAction.class);
 		register("fire_laser", FireLaserAction.CODEC, FireLaserAction.class);
 		register("repeat", RepeatAction.CODEC, RepeatAction.class);
+		register("delay", DelayAction.CODEC, DelayAction.class);
+		register("teleport", TeleportAction.CODEC, TeleportAction.class);
+		register("spawn_shooter", SpawnShooterAction.CODEC, SpawnShooterAction.class);
+		register("burst", BurstAction.CODEC, BurstAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {

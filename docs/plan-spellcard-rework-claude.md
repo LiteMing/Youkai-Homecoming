@@ -726,7 +726,7 @@ content/spell/
 - 6.5.6 FireDanmakuAction/FireLaserAction 签名更新: OriginConfig, AimMode, onExpiry 字段
 - 6.5.7 `/yhspell new <id>`: 从零创建空白符卡并打开编辑器
 
-### Phase 6.5-fix: Import Bug + 编辑器可用性 + 缺失能力 🔲 进行中
+### Phase 6.5-fix: Import Bug + 编辑器可用性 + 缺失能力 ✅ 已完成
 
 #### A. Import NPE 修复
 
@@ -801,26 +801,68 @@ record PolarMoverConfig(
 - `ActionEditorPanel`: 添加 OriginConfig 编辑行、onExpiry 子面板入口
 - `NumberProviderWidget` 升级: 类型下拉 (Constant/Random/LerpTime/ByHealth/Variable) + 对应参数
 
-### Phase 6.6: 弹幕深化扩展 (P1) 🔲
+### Phase 6.6: 弹幕深化扩展 (P1) ✅ 大部分已完成
 
-1. CompositeMoverConfig (分段运动: 匀速 → 停顿 → 再加速)
-2. HomingMoverConfig (追踪弹)
-3. AimMode 替换 `boolean aimAtTarget` (TARGET/FORWARD/FIXED/ANGLE_OFFSET/VARIABLE_ANGLE/RANDOM)
-4. 数学 NumberProvider (Sin/Cos/Mul/Add/PhaseTick/TotalTick)
-5. RepeatAction (同一 tick 内循环, 支持嵌套环形发射)
-6. 编辑器面板适配
+1. ✅ CompositeMoverConfig (分段运动: 匀速 → 停顿 → 再加速)
+2. 🔲 HomingMoverConfig (追踪弹) — 暂不需要
+3. ✅ AimMode 替换 `boolean aimAtTarget` (TARGET/FIXED/CASTER_FACING/ANGLE_OFFSET/VARIABLE_ANGLE/DIRECTION_TO_TARGET/RANDOM_ANGLE)
+4. ✅ 数学 NumberProvider (Sin/Cos/Mul/Add/PhaseTick/TotalTick) + 表达式解析器 NumberExprParser
+5. ✅ RepeatAction (同一 tick 内循环, 支持嵌套环形发射)
+6. ✅ 编辑器面板适配
 
-### Phase 6.7: 子发射器 (P2) 🔲
+### Phase 6.7: 迁移准备功能 ✅ 已完成 (2026-04-04)
 
-1. SpawnShooterAction 完整实现
-2. 子符卡定义的嵌套引用/序列化
+以下功能为迁移 legacy 符卡到可视化编辑器所需的补充：
 
-### Phase 7: 迁移现有符卡
+1. ✅ **DelayAction**: 延迟执行动作，在 SpellRuntime 中加入调度队列
+   - `{"type": "delay", "delay_ticks": 20, "body": [...]}`
+   - SpellRuntime 新增 `scheduledActions` 队列 + `scheduleDelayed()` 方法
+2. ✅ **TeleportAction**: 传送施法者到指定位置 (碰撞检测 + 事件广播 + 可选音效)
+   - `{"type": "teleport", "destination": {...}, "play_sound": true}`
+   - 复用 OriginConfig 作为目标位置系统
+3. ✅ **on_damage Phase Hook**: PhaseDefinition 新增 `on_damage` 动作列表
+   - SpellRuntime.hurt() 中触发 on_damage 动作
+   - ActionListPanel 显示 onDamage section
+   - KubeJS PhaseBuilderJS 同步更新
+4. ✅ **GRID/SPHERE/SPIRAL PatternType**: 2D/3D 排列模式
+   - GRID: rows × cols 网格排列
+   - SPHERE: latitude × longitude 球面分布
+   - SPIRAL: 螺旋排列
+5. ✅ **RandomAngle AimMode**: 每次调用随机角度 `{"type": "random_angle", "spread": 360}`
+6. ✅ **编辑器面板全面更新**: 类型选择器、属性编辑、分支管理、显示标签
 
-按复杂度排序：
-1. 简单符卡(SunnySpell, LunaSpell, StarSpell, LarvaSpell) - 基本是单阶段
-2. 中等符卡(CirnoSpell, MystiaSpell, DoremiSpell) - 有简单阶段逻辑
-3. 复杂符卡(MarisaSpell, KoishiSpell, ReimuSpell, YukariSpell) - 重度手写分支
+**未实现 (P2，仅少数符卡需要)**:
+- 🔲 Per-Action DamageSource: fire_danmaku/fire_laser 单独指定弹幕伤害类型
+- 🔲 SpawnShooterAction: 子发射器/子符卡嵌套
+- 🔲 HomingMoverConfig: 追踪弹
+
+### Phase 6.8: onTrail — 弹幕飞行中持续生成子弹幕 ✅ 已完成 (2026-04-04)
+
+1. ✅ `ItemDanmakuEntity.onTrail`: 新增 per-tick trail hook (在 updateVelocity 中触发)
+2. ✅ `FireDanmakuAction.onTrail` + `trailInterval`: 数据驱动的 onTrail 子弹幕
+3. ✅ `FireDanmakuAction.elevation`: 仰角参数，RANDOM 模式支持锥形扩散
+4. ✅ 编辑器面板: onTrail 分支完整支持 (显示/插入/删除/替换/拖拽)
+
+### Phase 7: 迁移现有符卡 — 部分完成
+
+**已迁移** (通过 `MigratedSpellCards.java`):
+
+| 符卡 | 复杂度 | 关键功能 |
+|------|--------|---------|
+| SunnySpell | 简单 | conditional + tick_interval 三色循环 |
+| LunaSpell | 简单 | AND/NOT 条件组合 4/6 间歇 |
+| StarSpell | 简单 | onTrail + elevation 锥形扩散 |
+| CirnoSpell | 中等 | onExpiry + direction_to_target 分裂追踪 |
+
+**保留 legacy** (需要更多底层支持):
+
+| 符卡 | 阻塞原因 |
+|------|---------|
+| LarvaSpell | Ticker 曲线动画 + 目标状态判断 |
+| MystiaSpell | ShooterData 子发射器 |
+| DoremiSpell | 有状态 Ticker + CompositeMover + Laser |
+| RemiliaSpell | Ticker + teleport + ray casting |
+| 其余 Boss 符卡 | 类似: Ticker / CompositeMover / 自适应逻辑 |
 
 ---
 

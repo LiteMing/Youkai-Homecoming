@@ -44,6 +44,7 @@ public interface AimMode {
 			register("angle_offset", AngleOffset.CODEC, AngleOffset.class);
 			register("variable_angle", VariableAngle.CODEC, VariableAngle.class);
 			register("direction_to_target", DirectionToTarget.CODEC, DirectionToTarget.class);
+			register("random_angle", RandomAngle.CODEC, RandomAngle.class);
 		}
 
 		public static void register(String id, Codec<? extends AimMode> codec, Class<? extends AimMode> clazz) {
@@ -182,6 +183,24 @@ public interface AimMode {
 				Vec3 dir = target.subtract(from);
 				if (dir.lengthSqr() < 1e-6) return ctx.holder().forward();
 				return dir.normalize();
+			}
+		}
+
+		/**
+		 * Random angle in [0, spread) degrees, re-evaluated each call.
+		 * Useful for per-tick random laser rotation or random spread patterns.
+		 */
+		public record RandomAngle(NumberProvider spread) implements AimMode {
+			public static final Codec<RandomAngle> CODEC = NumberProvider.CODEC
+					.fieldOf("spread").codec()
+					.xmap(RandomAngle::new, RandomAngle::spread);
+
+			@Override
+			public Vec3 getBaseDirection(SpellContext ctx) {
+				double deg = ctx.holder().random().nextDouble() * spread.get(ctx);
+				Vec3 fwd = ctx.holder().forward();
+				var ori = DanmakuHelper.getOrientation(fwd);
+				return ori.rotateDegrees(deg);
 			}
 		}
 

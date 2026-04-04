@@ -55,12 +55,18 @@ public class SpellPreviewScreen extends Screen {
 	private boolean movingTarget = false;
 	private boolean autoReplay = true;
 
+	/** Snapshot of the definition at the time the editor was opened (for custom spell reset). */
+	private final com.google.gson.JsonElement openSnapshot;
+
 	public SpellPreviewScreen(SpellDefinition definition) {
 		super(Component.literal("Spell Preview: " + definition.id));
 		this.definition = definition;
 		this.scene = new VirtualSpellScene(definition);
 		this.viewport = new OrthographicViewport();
 		this.phaseList.addAll(definition.phases.keySet());
+		// Save snapshot of current state when editor opens
+		this.openSnapshot = SpellDefinition.CODEC.encodeStart(
+				com.mojang.serialization.JsonOps.INSTANCE, definition).result().orElse(null);
 	}
 
 	@Override
@@ -100,6 +106,10 @@ public class SpellPreviewScreen extends Screen {
 		addRenderableWidget(Button.builder(Component.literal("Export"), btn -> exportToDatapack())
 				.bounds(bx, by, 46, BUTTON_HEIGHT).build());
 		bx += 48;
+		// Reset button: restore to original (built-in) or open-snapshot (custom)
+		addRenderableWidget(Button.builder(Component.literal("Reset"), btn -> resetToDefault())
+				.bounds(bx, by, 40, BUTTON_HEIGHT).build());
+		bx += 42;
 		// Auto Replay toggle
 		addRenderableWidget(Button.builder(Component.literal(autoReplay ? "Auto:ON" : "Auto:OFF"), btn -> {
 			autoReplay = !autoReplay;
@@ -331,6 +341,46 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
+	/**
+	 * Reset the spell to its original state.
+	 * Built-in spells: restored from SpellRegistry defaults (code-defined).
+	 * Custom spells: restored from the snapshot taken when the editor was opened.
+	 */
+	private void resetToDefault() {
+		// Try built-in default first
+		SpellDefinition restored = SpellRegistry.getDefault(definition.id);
+		if (restored == null && openSnapshot != null) {
+			// Custom spell: restore from open-time snapshot
+			restored = SpellDefinition.CODEC.parse(
+					com.mojang.serialization.JsonOps.INSTANCE, openSnapshot).result().orElse(null);
+		}
+		if (restored == null) return;
+
+		// Replace all phases in the current definition with restored data
+		for (var entry : restored.phases.entrySet()) {
+			var current = definition.phases.get(entry.getKey());
+			if (current != null) {
+				var src = entry.getValue();
+				current.onEnter.clear(); current.onEnter.addAll(src.onEnter);
+				current.onTick.clear(); current.onTick.addAll(src.onTick);
+				current.onExit.clear(); current.onExit.addAll(src.onExit);
+				current.onDamage.clear(); current.onDamage.addAll(src.onDamage);
+				current.transitions.clear(); current.transitions.addAll(src.transitions);
+			}
+		}
+
+		// Refresh UI
+		if (actionEditorPanel != null) actionEditorPanel.clearAction();
+		updateActionListPhase();
+		scene.reset();
+		scene.play();
+
+		var mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			mc.player.displayClientMessage(Component.literal("[YH] Spell reset to default"), true);
+		}
+	}
+
 	private void updateActionListPhase() {
 		if (actionListPanel == null || phaseList.isEmpty()) return;
 		ResourceLocation phaseId = phaseList.get(selectedPhaseIndex);
@@ -529,6 +579,24 @@ public class SpellPreviewScreen extends Screen {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) return true;
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) return true;
 			return super.keyPressed(keyCode, scanCode, modifiers);
+		}
+
+		// Ctrl+Z/Y for undo/redo
+		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && actionListPanel != null) {
+				if (actionListPanel.undo()) {
+					if (actionEditorPanel != null) actionEditorPanel.clearAction();
+					if (autoReplay) { scene.reset(); scene.play(); }
+					return true;
+				}
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y && actionListPanel != null) {
+				if (actionListPanel.redo()) {
+					if (actionEditorPanel != null) actionEditorPanel.clearAction();
+					if (autoReplay) { scene.reset(); scene.play(); }
+					return true;
+				}
+			}
 		}
 
 		// Ctrl+C/X/V for action clipboard

@@ -13,6 +13,8 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
+/** @deprecated Migrated to {@link MigratedSpellCards#mystia()}. */
+@Deprecated
 @SerialClass
 public class MystiaSpell extends ActualSpellCard {
 

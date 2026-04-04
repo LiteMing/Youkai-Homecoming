@@ -25,6 +25,9 @@ public class SpellConditions {
 		register("variable_check", VariableCheck.CODEC, VariableCheck.class);
 		register("always", AlwaysCondition.CODEC, AlwaysCondition.class);
 		register("tick_interval", TickInterval.CODEC, TickInterval.class);
+		register("target_on_ground", TargetOnGround.CODEC, TargetOnGround.class);
+		register("target_speed", TargetSpeed.CODEC, TargetSpeed.class);
+		register("random_chance", RandomChance.CODEC, RandomChance.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellCondition> codec) {
@@ -198,6 +201,56 @@ public class SpellConditions {
 		@Override
 		public boolean test(SpellContext ctx) {
 			return interval > 0 && ctx.phaseTick() % interval == offset;
+		}
+	}
+
+	/**
+	 * True when the target entity is on the ground.
+	 * Useful for ground-slam or gravity-related spell patterns.
+	 */
+	public record TargetOnGround() implements SpellCondition {
+		public static final Codec<TargetOnGround> CODEC = Codec.unit(TargetOnGround::new);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return ctx.targetOnGround();
+		}
+	}
+
+	/**
+	 * True when the target's horizontal speed is above the given threshold.
+	 * Use with NOT to check if the target is slow/stationary.
+	 */
+	public record TargetSpeed(double threshold, String op) implements SpellCondition {
+		public static final Codec<TargetSpeed> CODEC = com.mojang.serialization.codecs.RecordCodecBuilder.<TargetSpeed>create(i -> i.group(
+				Codec.DOUBLE.fieldOf("threshold").forGetter(TargetSpeed::threshold),
+				Codec.STRING.optionalFieldOf("op", ">").forGetter(TargetSpeed::op)
+		).apply(i, TargetSpeed::new));
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			double speed = ctx.targetSpeed();
+			return switch (op) {
+				case ">" -> speed > threshold;
+				case ">=" -> speed >= threshold;
+				case "<" -> speed < threshold;
+				case "<=" -> speed <= threshold;
+				default -> speed > threshold;
+			};
+		}
+	}
+
+	/**
+	 * True with the given probability each time it is evaluated.
+	 * probability should be between 0.0 (never) and 1.0 (always).
+	 */
+	public record RandomChance(float probability) implements SpellCondition {
+		public static final Codec<RandomChance> CODEC = Codec.FLOAT
+				.fieldOf("probability").codec().xmap(RandomChance::new, RandomChance::probability);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return ctx.holder().random().nextFloat() < probability;
 		}
 	}
 }

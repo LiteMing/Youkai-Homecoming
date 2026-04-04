@@ -89,4 +89,23 @@ public class SpellContext {
 	public Map<String, Double> variables() {
 		return runtime.getVariables();
 	}
+
+	/**
+	 * Returns true if the target entity is on the ground.
+	 * Returns false if there is no target.
+	 */
+	public boolean targetOnGround() {
+		var target = holder.targetEntity();
+		return target != null && target.onGround();
+	}
+
+	/**
+	 * Returns the horizontal speed of the target entity.
+	 * Returns 0 if there is no target or no velocity data.
+	 */
+	public double targetSpeed() {
+		var vel = holder.targetVelocity();
+		if (vel == null) return 0;
+		return vel.horizontalDistance();
+	}
 }

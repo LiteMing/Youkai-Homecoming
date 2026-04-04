@@ -33,10 +33,25 @@ public record FireDanmakuAction(
 		Optional<NumberProvider> outerCount,
 		Optional<List<SpellAction>> onExpiry,
 		Optional<List<SpellAction>> onTrail,
-		int trailInterval
+		int trailInterval,
+		Optional<NumberProvider> tiltAngle
 ) implements SpellAction {
 
-	public static final Codec<FireDanmakuAction> CODEC = RecordCodecBuilder.create(i -> i.group(
+	/** Backwards-compatible constructor without tiltAngle. */
+	public FireDanmakuAction(
+			YHDanmaku.Bullet bulletType, ColorProvider color,
+			NumberProvider count, NumberProvider speed, NumberProvider lifetime,
+			NumberProvider angleOffset, NumberProvider spread, NumberProvider elevation,
+			PatternType pattern, OriginConfig origin, AimMode aimMode,
+			Optional<MoverConfig> mover, Optional<NumberProvider> outerCount,
+			Optional<List<SpellAction>> onExpiry, Optional<List<SpellAction>> onTrail,
+			int trailInterval) {
+		this(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation,
+				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, Optional.empty());
+	}
+
+	// 16-field group (DFU RecordCodecBuilder limit)
+	private static final com.mojang.serialization.MapCodec<FireDanmakuAction> BASE_MAP = RecordCodecBuilder.mapCodec(i -> i.group(
 			SpellCodecs.BULLET_CODEC.fieldOf("bullet").forGetter(FireDanmakuAction::bulletType),
 			ColorProvider.CODEC.fieldOf("color").forGetter(FireDanmakuAction::color),
 			NumberProvider.CODEC.fieldOf("count").forGetter(FireDanmakuAction::count),
@@ -55,23 +70,36 @@ public record FireDanmakuAction(
 			Codec.INT.optionalFieldOf("trail_interval", 1).forGetter(FireDanmakuAction::trailInterval)
 	).apply(i, FireDanmakuAction::new));
 
-	// withXxx helper methods for editor use
-	public FireDanmakuAction withBulletType(YHDanmaku.Bullet v) { return new FireDanmakuAction(v, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withColor(ColorProvider v) { return new FireDanmakuAction(bulletType, v, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withCount(NumberProvider v) { return new FireDanmakuAction(bulletType, color, v, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withSpeed(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, v, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withLifetime(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, v, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withAngleOffset(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, v, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withSpread(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, v, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withElevation(NumberProvider v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, v, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withPattern(PatternType v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, v, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withOrigin(OriginConfig v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, v, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withAimMode(AimMode v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, v, mover, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withMover(Optional<MoverConfig> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, v, outerCount, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withOuterCount(Optional<NumberProvider> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, v, onExpiry, onTrail, trailInterval); }
-	public FireDanmakuAction withOnExpiry(Optional<List<SpellAction>> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, v, onTrail, trailInterval); }
-	public FireDanmakuAction withOnTrail(Optional<List<SpellAction>> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, v, trailInterval); }
-	public FireDanmakuAction withTrailInterval(int v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, v); }
+	// 17th field: tilt_angle (merged at same JSON level via codec composition)
+	public static final Codec<FireDanmakuAction> CODEC = RecordCodecBuilder.create(i -> i.group(
+			BASE_MAP.forGetter(fda -> fda),
+			NumberProvider.CODEC.optionalFieldOf("tilt_angle").forGetter(FireDanmakuAction::tiltAngle)
+	).apply(i, (base, tilt) -> new FireDanmakuAction(
+			base.bulletType, base.color, base.count, base.speed, base.lifetime,
+			base.angleOffset, base.spread, base.elevation, base.pattern, base.origin,
+			base.aimMode, base.mover, base.outerCount, base.onExpiry, base.onTrail,
+			base.trailInterval, tilt
+	)));
+
+	// withXxx helper methods for editor use (preserve all 17 fields)
+	private FireDanmakuAction all(YHDanmaku.Bullet bt, ColorProvider c, NumberProvider cnt, NumberProvider spd, NumberProvider lt, NumberProvider ao, NumberProvider sp, NumberProvider el, PatternType pt, OriginConfig o, AimMode am, Optional<MoverConfig> m, Optional<NumberProvider> oc, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<NumberProvider> ta) { return new FireDanmakuAction(bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti, ta); }
+	public FireDanmakuAction withBulletType(YHDanmaku.Bullet v) { return all(v, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withColor(ColorProvider v) { return all(bulletType, v, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withCount(NumberProvider v) { return all(bulletType, color, v, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withSpeed(NumberProvider v) { return all(bulletType, color, count, v, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withLifetime(NumberProvider v) { return all(bulletType, color, count, speed, v, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withAngleOffset(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, v, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withSpread(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, v, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withElevation(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, v, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withPattern(PatternType v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, v, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withOrigin(OriginConfig v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, v, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withAimMode(AimMode v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, v, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withMover(Optional<MoverConfig> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, v, outerCount, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withOuterCount(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, v, onExpiry, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withOnExpiry(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, v, onTrail, trailInterval, tiltAngle); }
+	public FireDanmakuAction withOnTrail(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, v, trailInterval, tiltAngle); }
+	public FireDanmakuAction withTrailInterval(int v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, v, tiltAngle); }
+	public FireDanmakuAction withTiltAngle(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, v); }
 
 	@Override
 	public void execute(SpellContext ctx) {
@@ -100,17 +128,35 @@ public record FireDanmakuAction(
 			);
 		}
 
-		var ori = DanmakuHelper.getOrientation(baseDir);
+		// Tilted plane: rotate the normal vector by tiltAngle degrees around baseDir
+		DanmakuHelper.Orientation ori;
+		if (tiltAngle.isPresent()) {
+			double tilt = tiltAngle.get().get(ctx);
+			var stdOri = DanmakuHelper.getOrientation(baseDir);
+			Vec3 tiltedNormal = stdOri.normal().scale(Math.cos(Math.toRadians(tilt)))
+					.add(stdOri.side().scale(Math.sin(Math.toRadians(tilt))));
+			ori = DanmakuHelper.getOrientation(baseDir, tiltedNormal);
+		} else {
+			ori = DanmakuHelper.getOrientation(baseDir);
+		}
 
 		// NESTED_RING: outer ring × inner ring (perpendicular to each outer direction)
+		// elevation controls inner ring spread angle (default 360°, i.e. full perpendicular ring)
 		if (pattern == PatternType.NESTED_RING && outerCount.isPresent()) {
 			int outer = diff.adjustCount((int) outerCount.get().get(ctx));
+			double innerSpread = elevDeg != 0 ? elevDeg : 360.0;
+			boolean innerClosed = innerSpread >= 360.0;
 			for (int o = 0; o < outer; o++) {
 				double outerAngle = (360.0 / outer) * o + angle;
 				Vec3 outerDir = ori.rotateDegrees(outerAngle);
 				var outerOri = DanmakuHelper.getOrientation(outerDir);
 				for (int j = 0; j < n; j++) {
-					double innerAngle = (360.0 / Math.max(n, 1)) * j;
+					double innerAngle;
+					if (innerClosed) {
+						innerAngle = (360.0 / Math.max(n, 1)) * j;
+					} else {
+						innerAngle = n > 1 ? -innerSpread / 2.0 + innerSpread * j / (n - 1) : 0;
+					}
 					Vec3 dir = outerOri.rotateDegrees(90, innerAngle).scale(spd);
 					emitDanmaku(holder, ctx, life, dir, originPos);
 				}
@@ -135,15 +181,27 @@ public record FireDanmakuAction(
 		}
 
 		// SPHERE: latitude_count = count, longitude_count = outerCount (default = count)
+		// spread controls longitude range (default 360°), elevation controls latitude range (default 180°)
 		// Uses ori's coordinate system so the sphere is oriented along baseDir
 		if (pattern == PatternType.SPHERE) {
 			int latCount = n;
 			int lonCount = outerCount.map(np -> (int) np.get(ctx)).orElse(n);
+			double latRange = elevDeg != 0 ? Math.abs(elevDeg) : 180.0; // total latitude range
+			double lonRange = spreadDeg != 360 ? spreadDeg : 360.0;     // total longitude range
+			boolean lonClosed = lonRange >= 360.0; // full circle: don't duplicate first/last
 			for (int lat = 0; lat < latCount; lat++) {
-				// phi: -90 to +90 (elevation)
-				double phi = latCount > 1 ? -90.0 + 180.0 * lat / (latCount - 1) : 0;
-				for (int lon = 0; lon < lonCount; lon++) {
-					double theta = (360.0 / lonCount) * lon + angle;
+				// phi: centered around 0, from -latRange/2 to +latRange/2
+				double phi = latCount > 1 ? -latRange / 2.0 + latRange * lat / (latCount - 1) : 0;
+				int effectiveLon = lonClosed ? lonCount : Math.max(lonCount, 1);
+				for (int lon = 0; lon < effectiveLon; lon++) {
+					double theta;
+					if (lonClosed) {
+						theta = (lonRange / lonCount) * lon + angle;
+					} else {
+						theta = effectiveLon > 1
+								? angle - lonRange / 2.0 + lonRange * lon / (effectiveLon - 1)
+								: angle;
+					}
 					Vec3 dir = ori.rotateDegrees(theta, phi).scale(spd);
 					emitDanmaku(holder, ctx, life, dir, originPos);
 				}

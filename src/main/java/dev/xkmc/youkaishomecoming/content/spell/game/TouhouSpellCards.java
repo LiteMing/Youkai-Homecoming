@@ -43,10 +43,8 @@ public class TouhouSpellCards {
 		registerSpell("touhou_little_maid:remilia_scarlet", RemiliaSpell::new);
 		registerSpell("touhou_little_maid:clownpiece", ClownSpell::new);
 		registerSpell("touhou_little_maid:izayoi_sakuya", SakuyaSpell::new);
-		registerSpell("touhou_little_maid:konpaku_youmu", YoumuSpell::new);
-
-		// Legacy — needs Ticker-driven wing spread animation to migrate
-		registerSpell("touhou_little_maid:eternity_larva", LarvaSpell::new);
+		// registerSpell("touhou_little_maid:konpaku_youmu", YoumuSpell::new); // Legacy — migrated
+		// registerSpell("touhou_little_maid:eternity_larva", LarvaSpell::new); // Legacy — migrated
 
 		// === Migrated to data-driven (Phase 7) ===
 		registerMigrated(MigratedSpellCards.sunnyMilk());
@@ -54,6 +52,8 @@ public class TouhouSpellCards {
 		registerMigrated(MigratedSpellCards.starSapphire());
 		registerMigrated(MigratedSpellCards.cirno());
 		registerMigrated(MigratedSpellCards.mystia());
+		registerMigrated(MigratedSpellCards.youmu());
+		registerMigrated(MigratedSpellCards.larva());
 	}
 
 	/**

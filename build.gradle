@@ -184,7 +184,6 @@ dependencies {
     runtimeOnly fg.deobf("curse.maven:architectury-api-419699:5137938")
     implementation fg.deobf("curse.maven:time-stop-clock-mod-690991:4733372")
     implementation fg.deobf("curse.maven:yacl-667299:5963252")
-    implementation fg.deobf("curse.maven:emi-580555:6205514")
     implementation fg.deobf("curse.maven:embeddium-908741:5681725")
     implementation fg.deobf("curse.maven:kubejs-238086:5853326")
     implementation fg.deobf("curse.maven:rhino-416294:6186971")
@@ -193,6 +192,7 @@ dependencies {
     implementation fg.deobf("curse.maven:botany-pots-353928:4793076")
     compileOnly fg.deobf("curse.maven:serene-seasons-291874:4761603")
     compileOnly fg.deobf("curse.maven:diet-443570:4813904")
+    implementation fg.deobf("curse.maven:chat-boost-1152722:5958888")
     //implementation fg.deobf("curse.maven:forgery-434087:6522707")
     compileOnly fg.deobf("curse.maven:thirst-was-taken-679270:5568703")
 

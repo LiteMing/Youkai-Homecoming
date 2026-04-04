@@ -11,6 +11,7 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.DyeColor;
 import net.minecraftforge.api.distmarker.Dist;
@@ -39,12 +40,16 @@ public class ActionEditorPanel {
 
 	private static final String[] CONDITION_TYPES = {
 			"tick_interval", "health_below", "health_above", "tick_elapsed",
-			"distance_above", "distance_below", "hit_count", "always", "and"
+			"distance_above", "distance_below", "hit_count",
+			"target_on_ground", "target_speed", "random_chance",
+			"always", "and"
 	};
 
 	private static final String[] SIMPLE_CONDITION_TYPES = {
 			"tick_interval", "health_below", "health_above", "tick_elapsed",
-			"distance_above", "distance_below", "hit_count", "always"
+			"distance_above", "distance_below", "hit_count",
+			"target_on_ground", "target_speed", "random_chance",
+			"always"
 	};
 
 	private static final String[] AIM_MODE_TYPES = {
@@ -131,6 +136,12 @@ public class ActionEditorPanel {
 	// --- Type selector ---
 
 	private void buildActionRows(SpellAction action) {
+		// Unwrap DisabledAction to edit the inner action
+		if (action instanceof SpellActions.DisabledAction da) {
+			addFullWidthButton("\u26A0 DISABLED (press D to enable)", () -> {});
+			buildActionRows(da.inner());
+			return;
+		}
 		if (action instanceof FireDanmakuAction fda) {
 			buildFireDanmakuRows(fda);
 		} else if (action instanceof FireLaserAction fla) {
@@ -297,6 +308,17 @@ public class ActionEditorPanel {
 			addIntRow("Trail Intv", a.trailInterval(), v ->
 					notifyDanmaku(old -> old.withTrailInterval(v), false));
 		}
+
+		// Tilt angle: tilts the orientation plane for the pattern
+		if (a.tiltAngle().isPresent()) {
+			addNumberRow("Tilt Angle", a.tiltAngle().get(), v ->
+					notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
+			addFullWidthButton("[Remove Tilt]", () ->
+					notifyDanmaku(old -> old.withTiltAngle(Optional.empty())));
+		} else {
+			addFullWidthButton("[+ Tilt Angle]", () ->
+					notifyDanmaku(old -> old.withTiltAngle(Optional.of(NumberProvider.constant(0)))));
+		}
 	}
 
 	// --- FireLaser rows ---
@@ -442,6 +464,16 @@ public class ActionEditorPanel {
 		} else if (cond instanceof SpellConditions.HitCountCondition hc) {
 			addIntRow(prefix + "Count", hc.count(), v ->
 					onChanged.accept(new SpellConditions.HitCountCondition(v)));
+		} else if (cond instanceof SpellConditions.TargetOnGround) {
+			// No parameters - just a label
+		} else if (cond instanceof SpellConditions.TargetSpeed ts) {
+			addDoubleRow(prefix + "Threshold", ts.threshold(), v ->
+					onChanged.accept(new SpellConditions.TargetSpeed(v, ts.op())));
+			addStringCycleRow(prefix + "Op", new String[]{">", ">=", "<", "<="}, ts.op(), v ->
+					onChanged.accept(new SpellConditions.TargetSpeed(ts.threshold(), v)));
+		} else if (cond instanceof SpellConditions.RandomChance rc) {
+			addFloatRow(prefix + "Probability", rc.probability(), v ->
+					onChanged.accept(new SpellConditions.RandomChance(v)));
 		}
 	}
 
@@ -450,7 +482,7 @@ public class ActionEditorPanel {
 	private void buildSetVariableRows(SpellActions.SetVariable sv) {
 		addStringRow("Key", sv.key(), v ->
 				notifySimple(old -> new SpellActions.SetVariable(v, ((SpellActions.SetVariable) old).value())));
-		addDoubleRow("Value", sv.value(), v ->
+		addNumberRow("Value", sv.value(), v ->
 				notifySimple(old -> new SpellActions.SetVariable(((SpellActions.SetVariable) old).key(), v)));
 	}
 
@@ -531,12 +563,17 @@ public class ActionEditorPanel {
 		addIntRow("Waves", ba.waves(), v ->
 				notifySimple(old -> {
 					var b = (BurstAction) old;
-					return new BurstAction(v, b.interval(), b.body());
+					return new BurstAction(v, b.interval(), b.waveVariable(), b.body());
 				}));
 		addIntRow("Interval", ba.interval(), v ->
 				notifySimple(old -> {
 					var b = (BurstAction) old;
-					return new BurstAction(b.waves(), v, b.body());
+					return new BurstAction(b.waves(), v, b.waveVariable(), b.body());
+				}));
+		addStringRow("Wave Var", ba.waveVariable(), v ->
+				notifySimple(old -> {
+					var b = (BurstAction) old;
+					return new BurstAction(b.waves(), b.interval(), v, b.body());
 				}));
 	}
 
@@ -781,7 +818,14 @@ public class ActionEditorPanel {
 	}
 
 	private void notifySimple(Function<SpellAction, SpellAction> modifier) {
-		var newAction = modifier.apply(currentAction);
+		SpellAction newAction;
+		if (currentAction instanceof SpellActions.DisabledAction da) {
+			// Unwrap, modify inner, re-wrap
+			var modified = modifier.apply(da.inner());
+			newAction = new SpellActions.DisabledAction(modified);
+		} else {
+			newAction = modifier.apply(currentAction);
+		}
 		currentAction = newAction;
 		onActionChanged.accept(newAction);
 	}
@@ -822,7 +866,7 @@ public class ActionEditorPanel {
 	// Expression autocomplete keywords
 	private static final String[] EXPR_FUNCTIONS = {
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
-			"tick_mod", "sin", "cos", "tick", "phase_tick", "total_tick", "distance"
+			"tick_mod", "sin", "cos", "sqrt", "tick", "phase_tick", "total_tick", "distance"
 	};
 
 	/** Returns the insert template for a function (with parens and commas). */
@@ -833,6 +877,7 @@ public class ActionEditorPanel {
 		if (name.equals("tick_mod")) return "tick_mod()";
 		if (name.equals("sin")) return "sin()";
 		if (name.equals("cos")) return "cos()";
+		if (name.equals("sqrt")) return "sqrt()";
 		return name; // bare keyword (tick, phase_tick, total_tick, distance)
 	}
 
@@ -844,6 +889,7 @@ public class ActionEditorPanel {
 		if (name.equals("tick_mod")) return 9;
 		if (name.equals("sin")) return 4;
 		if (name.equals("cos")) return 4;
+		if (name.equals("sqrt")) return 5;
 		return name.length(); // bare keyword
 	}
 
@@ -855,7 +901,86 @@ public class ActionEditorPanel {
 		if (name.equals("tick_mod")) return "tick_mod(period)";
 		if (name.equals("sin")) return "sin(input, amp?, phase?)";
 		if (name.equals("cos")) return "cos(input, amp?, phase?)";
+		if (name.equals("sqrt")) return "sqrt(input)";
 		return name;
+	}
+
+	// Rainbow bracket colors (cycle through these for nesting depth)
+	private static final int[] BRACKET_COLORS = {
+			0xFFDD44, // depth 0: yellow (also used for function parens)
+			0xFF6666, // depth 1: red
+			0x66FF66, // depth 2: green
+			0x6688FF, // depth 3: blue
+			0xFF66FF, // depth 4: magenta
+			0xFFAA44, // depth 5: orange
+	};
+	private static final int COLOR_VARIABLE = 0x55FFFF;  // aqua
+	private static final int COLOR_FUNCTION = 0xFFDD44;  // yellow
+	private static final int COLOR_KEYWORD = 0xFFDD44;   // yellow (tick, distance, etc.)
+	private static final java.util.Set<String> KNOWN_FUNCTIONS = java.util.Set.of(
+			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
+			"tick_mod", "sin", "cos", "sqrt"
+	);
+	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
+			"tick", "phase_tick", "total_tick", "distance"
+	);
+
+	/**
+	 * Compute per-character color array for expression syntax highlighting.
+	 * Returns 0 for default color, or an RGB int for colored characters.
+	 */
+	private static int[] computeExprColors(String text, boolean valid) {
+		int[] colors = new int[text.length()];
+		if (text.isEmpty()) return colors;
+		// Variables: $name → aqua
+		for (int i = 0; i < text.length(); i++) {
+			if (text.charAt(i) == '$') {
+				colors[i] = COLOR_VARIABLE;
+				int j = i + 1;
+				while (j < text.length() && (Character.isLetterOrDigit(text.charAt(j)) || text.charAt(j) == '_')) {
+					colors[j] = COLOR_VARIABLE;
+					j++;
+				}
+				i = j - 1;
+			}
+		}
+		// Functions and keywords: name followed by ( → yellow
+		for (int i = 0; i < text.length(); i++) {
+			if (Character.isLetter(text.charAt(i)) || text.charAt(i) == '_') {
+				int j = i;
+				while (j < text.length() && (Character.isLetterOrDigit(text.charAt(j)) || text.charAt(j) == '_')) j++;
+				String word = text.substring(i, j);
+				// Check if followed by ( → function
+				int afterWord = j;
+				while (afterWord < text.length() && text.charAt(afterWord) == ' ') afterWord++;
+				if (afterWord < text.length() && text.charAt(afterWord) == '(' && KNOWN_FUNCTIONS.contains(word)) {
+					for (int k = i; k < j; k++) colors[k] = COLOR_FUNCTION;
+				} else if (KNOWN_KEYWORDS.contains(word)) {
+					for (int k = i; k < j; k++) colors[k] = COLOR_KEYWORD;
+				}
+				i = j - 1;
+			}
+		}
+		// Rainbow brackets (only if expression is valid)
+		if (valid) {
+			int depth = 0;
+			for (int i = 0; i < text.length(); i++) {
+				char c = text.charAt(i);
+				if (c == '(') {
+					// If this ( is preceded by a function name, keep function color (yellow)
+					if (colors[i] == 0) {
+						colors[i] = BRACKET_COLORS[depth % BRACKET_COLORS.length];
+					}
+					depth++;
+				} else if (c == ')') {
+					depth = Math.max(0, depth - 1);
+					if (colors[i] == 0) {
+						colors[i] = BRACKET_COLORS[depth % BRACKET_COLORS.length];
+					}
+				}
+			}
+		}
+		return colors;
 	}
 
 	private final List<EditBox> exprEditBoxes = new ArrayList<>();
@@ -871,6 +996,7 @@ public class ActionEditorPanel {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
 				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		editBox.setMaxLength(256);
 		String unparsed = NumberExprParser.unparse(provider);
 		editBox.setValue(unparsed != null ? unparsed : formatNumber(value));
 		editBox.setResponder(text -> {
@@ -878,6 +1004,34 @@ public class ActionEditorPanel {
 			if (parsed != null) {
 				onChange.accept(parsed);
 			}
+		});
+		// Syntax-aware formatter: variables=aqua, functions=yellow, rainbow brackets
+		editBox.setFormatter((text, displayPos) -> {
+			String fullValue = editBox.getValue();
+			boolean valid = !fullValue.trim().isEmpty() && NumberExprParser.parse(fullValue.trim()) != null;
+			// Pre-compute per-character color for the full text
+			int[] colors = computeExprColors(fullValue, valid);
+			// Build FormattedCharSequence for the visible slice
+			var defaultStyle = net.minecraft.network.chat.Style.EMPTY;
+			var parts = new java.util.ArrayList<FormattedCharSequence>();
+			int end = Math.min(displayPos + text.length(), fullValue.length());
+			int runStart = displayPos;
+			for (int ci = displayPos; ci <= end; ci++) {
+				if (ci == end || (ci > runStart && colors[ci] != colors[ci - 1])) {
+					int localStart = runStart - displayPos;
+					int localEnd = ci - displayPos;
+					if (localEnd > localStart && localEnd <= text.length()) {
+						int c = colors[runStart];
+						var style = c != 0 ? defaultStyle.withColor(net.minecraft.network.chat.TextColor.fromRgb(c)) : defaultStyle;
+						parts.add(FormattedCharSequence.forward(text.substring(localStart, localEnd), style));
+					}
+					runStart = ci;
+				}
+			}
+			if (parts.isEmpty()) {
+				parts.add(FormattedCharSequence.forward(text, defaultStyle));
+			}
+			return FormattedCharSequence.composite(parts);
 		});
 		String displayLabel = label;
 		if (!(provider instanceof NumberProviders.Constant)) {
@@ -941,6 +1095,7 @@ public class ActionEditorPanel {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
 				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		editBox.setMaxLength(256);
 		editBox.setValue(value);
 		editBox.setResponder(onChange::accept);
 		rows.add(new EditorRow(label, editBox, false));
@@ -1084,13 +1239,17 @@ public class ActionEditorPanel {
 		// Scrollbar track + thumb
 		if (needsScroll) {
 			int sbX = dx + dw - scrollbarW;
+			// Track background
 			guiGraphics.fill(sbX, dy, sbX + scrollbarW, dy + dh, 0x33FFFFFF);
 			int trackH = dh - 2;
-			int thumbH = Math.max(10, trackH * visibleItems / options.length);
-			int maxScroll = options.length - visibleItems;
-			if (maxScroll > 0) {
-				int thumbY = dy + 1 + (int) ((long) trackH * dropdownScrollOffset / maxScroll);
-				guiGraphics.fill(sbX + 1, thumbY, sbX + scrollbarW - 1, thumbY + thumbH, 0x88888888);
+			// Actual visible items based on rendered dropdown height
+			int actualVisible = Math.max(1, dh / DROPDOWN_ITEM_H);
+			int thumbH = Math.max(10, trackH * actualVisible / options.length);
+			int maxScroll = Math.max(1, options.length - actualVisible);
+			int thumbTravel = trackH - thumbH;
+			if (thumbTravel > 0) {
+				int thumbY = dy + 1 + thumbTravel * dropdownScrollOffset / maxScroll;
+				guiGraphics.fill(sbX + 1, thumbY, sbX + scrollbarW - 1, thumbY + thumbH, 0xAAAAAACC);
 			}
 		}
 
@@ -1179,9 +1338,18 @@ public class ActionEditorPanel {
 			return;
 		}
 
-		// Delete button
+		// Disable/Enable + Delete buttons (top right)
+		boolean isDisabled = currentAction instanceof SpellActions.DisabledAction;
+		String toggleText = isDisabled ? "[Enable]" : "[Disable]";
 		String deleteText = "[Delete]";
 		int deleteX = x + w - font.width(deleteText) - PADDING;
+		int toggleX = deleteX - font.width(toggleText) - 6;
+
+		boolean toggleHovered = mouseX >= toggleX && mouseX < toggleX + font.width(toggleText)
+				&& mouseY >= y + PADDING && mouseY < y + PADDING + 12;
+		guiGraphics.drawString(font, toggleText, toggleX, y + PADDING + 2,
+				toggleHovered ? 0xFFFFCC44 : (isDisabled ? 0xFF44AA44 : 0xFFAAAA44), false);
+
 		boolean deleteHovered = mouseX >= deleteX && mouseX < x + w
 				&& mouseY >= y + PADDING && mouseY < y + PADDING + 12;
 		guiGraphics.drawString(font, deleteText, deleteX, y + PADDING + 2,
@@ -1213,8 +1381,22 @@ public class ActionEditorPanel {
 	 * Render only the dropdown overlay. Called from SpellPreviewScreen after super.render()
 	 * to ensure the dropdown draws on top of all widgets.
 	 */
+	/** Optional callback for variable jump (Ctrl+Click on $var). */
+	private java.util.function.Consumer<String> onVariableJump;
+	/** Optional callback for toggle disable. */
+	private Runnable onToggleDisable;
+
+	public void setVariableJumpCallback(java.util.function.Consumer<String> callback) {
+		this.onVariableJump = callback;
+	}
+
+	public void setToggleDisableCallback(Runnable callback) {
+		this.onToggleDisable = callback;
+	}
+
 	public void renderDropdown(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-		// Red underline for invalid expressions
+		Font font = Minecraft.getInstance().font;
+		// Red underline for invalid expressions, blue underline for $variables
 		for (var eb : exprEditBoxes) {
 			String text = eb.getValue().trim();
 			if (!text.isEmpty() && NumberExprParser.parse(text) == null) {
@@ -1226,6 +1408,7 @@ public class ActionEditorPanel {
 				guiGraphics.fill(ex, ey, ex + ew, ey + 2, 0xFFFF4444);
 				guiGraphics.pose().popPose();
 			}
+			// Variable highlighting is now handled by EditBox.setFormatter() — no overlay needed
 		}
 
 		if (dropdown != null) {
@@ -1237,6 +1420,39 @@ public class ActionEditorPanel {
 	// --- Mouse handling ---
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// Ctrl+Click on expression EditBox → find $variable under cursor and jump to definition
+		if (button == 0 && net.minecraft.client.gui.screens.Screen.hasControlDown() && onVariableJump != null) {
+			for (var eb : exprEditBoxes) {
+				if (mouseX >= eb.getX() && mouseX < eb.getX() + eb.getWidth()
+						&& mouseY >= eb.getY() && mouseY < eb.getY() + eb.getHeight()) {
+					// Find cursor position in text, then check if it's inside a $var token
+					String display = eb.getValue();
+					// Approximate char index from click X
+					Font font = Minecraft.getInstance().font;
+					int relX = (int) mouseX - eb.getX() - 4;
+					int charIdx = 0;
+					for (int ci = 0; ci < display.length(); ci++) {
+						if (font.width(display.substring(0, ci + 1)) > relX) break;
+						charIdx = ci + 1;
+					}
+					// Search backwards for $ sign
+					int dollar = -1;
+					for (int s = charIdx; s >= 0; s--) {
+						if (s < display.length() && display.charAt(s) == '$') { dollar = s; break; }
+					}
+					if (dollar >= 0) {
+						int nameStart = dollar + 1;
+						int nameEnd = nameStart;
+						while (nameEnd < display.length() && (Character.isLetterOrDigit(display.charAt(nameEnd)) || display.charAt(nameEnd) == '_')) nameEnd++;
+						if (nameEnd > nameStart && charIdx >= dollar && charIdx <= nameEnd) {
+							String varName = display.substring(nameStart, nameEnd);
+							onVariableJump.accept(varName);
+							return true;
+						}
+					}
+				}
+			}
+		}
 		// Handle expression completion overlay
 		if (exprCompletionItems != null) {
 			if (button == 0) {
@@ -1279,9 +1495,19 @@ public class ActionEditorPanel {
 		if (button != 0 || currentAction == null) return false;
 		Font font = Minecraft.getInstance().font;
 
-		// Handle [Delete] button
+		// Handle [Disable]/[Enable] button
+		boolean isDisabled = currentAction instanceof SpellActions.DisabledAction;
+		String toggleText = isDisabled ? "[Enable]" : "[Disable]";
 		String deleteText = "[Delete]";
 		int deleteX = x + w - font.width(deleteText) - PADDING;
+		int toggleX = deleteX - font.width(toggleText) - 6;
+		if (mouseX >= toggleX && mouseX < toggleX + font.width(toggleText)
+				&& mouseY >= y + PADDING && mouseY < y + PADDING + 12) {
+			if (onToggleDisable != null) onToggleDisable.run();
+			return true;
+		}
+
+		// Handle [Delete] button
 		if (mouseX >= deleteX && mouseX < x + w
 				&& mouseY >= y + PADDING && mouseY < y + PADDING + 12) {
 			onDeleteAction.run();
@@ -1294,8 +1520,9 @@ public class ActionEditorPanel {
 		if (dropdown != null) {
 			String[] options = dropdown.options();
 			if (options == null) return true;
-			int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
-			int maxScroll = Math.max(0, options.length - visibleItems);
+			int[] bounds = computeDropdownBounds();
+			int actualVisible = Math.max(1, bounds[3] / DROPDOWN_ITEM_H);
+			int maxScroll = Math.max(0, options.length - actualVisible);
 			dropdownScrollOffset = Math.max(0, Math.min(maxScroll,
 					dropdownScrollOffset - (int) (delta * 3)));
 			return true;
@@ -1405,6 +1632,9 @@ public class ActionEditorPanel {
 			case "distance_above" -> new SpellConditions.DistanceAbove(10);
 			case "distance_below" -> new SpellConditions.DistanceBelow(5);
 			case "hit_count" -> new SpellConditions.HitCountCondition(3);
+			case "target_on_ground" -> new SpellConditions.TargetOnGround();
+			case "target_speed" -> new SpellConditions.TargetSpeed(0.1, ">");
+			case "random_chance" -> new SpellConditions.RandomChance(0.5f);
 			case "and" -> new SpellConditions.AndCondition(List.of(
 					new SpellConditions.TickInterval(20, 0),
 					new SpellConditions.AlwaysCondition(true)));

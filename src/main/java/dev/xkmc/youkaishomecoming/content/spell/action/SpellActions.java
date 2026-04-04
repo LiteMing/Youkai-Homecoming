@@ -36,6 +36,7 @@ public class SpellActions {
 		register("teleport", TeleportAction.CODEC, TeleportAction.class);
 		register("spawn_shooter", SpawnShooterAction.CODEC, SpawnShooterAction.class);
 		register("burst", BurstAction.CODEC, BurstAction.class);
+		register("disabled", DisabledAction.CODEC, DisabledAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {
@@ -74,15 +75,20 @@ public class SpellActions {
 
 	// --- Action implementations ---
 
-	public record SetVariable(String key, double value) implements SpellAction {
+	public record SetVariable(String key, NumberProvider value) implements SpellAction {
 		public static final Codec<SetVariable> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.fieldOf("key").forGetter(SetVariable::key),
-				Codec.DOUBLE.fieldOf("value").forGetter(SetVariable::value)
+				NumberProvider.CODEC.fieldOf("value").forGetter(SetVariable::value)
 		).apply(i, SetVariable::new));
+
+		/** Convenience constructor for constant values. */
+		public SetVariable(String key, double constantValue) {
+			this(key, NumberProvider.constant(constantValue));
+		}
 
 		@Override
 		public void execute(SpellContext ctx) {
-			ctx.setVariable(key, value);
+			ctx.setVariable(key, value.get(ctx));
 		}
 	}
 
@@ -194,6 +200,20 @@ public class SpellActions {
 					action.execute(ctx);
 				}
 			}
+		}
+	}
+
+	/**
+	 * Wrapper that disables a child action. The inner action is preserved but never executed.
+	 * Used by the editor to temporarily disable nodes without deleting them.
+	 */
+	public record DisabledAction(SpellAction inner) implements SpellAction {
+		public static final Codec<DisabledAction> CODEC = SpellAction.CODEC
+				.fieldOf("inner").codec().xmap(DisabledAction::new, DisabledAction::inner);
+
+		@Override
+		public void execute(SpellContext ctx) {
+			// Intentionally empty — disabled action does nothing
 		}
 	}
 }

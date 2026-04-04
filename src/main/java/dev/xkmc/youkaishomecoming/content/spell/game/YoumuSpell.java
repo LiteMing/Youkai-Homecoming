@@ -31,6 +31,10 @@ import net.minecraft.world.phys.Vec3;
  * - 位置检测：地面用上升斩，空中用下压斩
  * - 血量检测：血量越低弹幕越密集越华丽
  */
+/**
+ * @deprecated Migrated to data-driven. See {@link MigratedSpellCards#youmu()}.
+ */
+@Deprecated
 @SerialClass
 public class YoumuSpell extends ActualSpellCard {
 

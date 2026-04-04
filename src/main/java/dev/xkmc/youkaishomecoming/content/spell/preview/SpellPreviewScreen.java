@@ -44,6 +44,8 @@ public class SpellPreviewScreen extends Screen {
 	private ActionListPanel actionListPanel;
 	private ActionEditorPanel actionEditorPanel;
 	private boolean editorVisible = true;
+	private boolean showHelp = false;
+	private int helpScroll = 0;
 	private ActionListPanel.AddTarget pendingAddTarget;
 
 	// Phase dropdown state
@@ -115,6 +117,11 @@ public class SpellPreviewScreen extends Screen {
 			autoReplay = !autoReplay;
 			rebuildScreen();
 		}).bounds(bx, by, 52, BUTTON_HEIGHT).build());
+		bx += 54;
+		// Help button
+		addRenderableWidget(Button.builder(Component.literal("Help"), btn -> {
+			showHelp = !showHelp;
+		}).bounds(bx, by, 32, BUTTON_HEIGHT).build());
 
 		// --- Control panel at bottom ---
 		int panelY = height - CONTROL_HEIGHT;
@@ -219,6 +226,17 @@ public class SpellPreviewScreen extends Screen {
 					this::onDeleteAction
 			);
 			actionEditorPanel.setBounds(editorX, rightPanelY + actionListH, editorW, editorH);
+			actionEditorPanel.setToggleDisableCallback(() -> {
+				if (actionListPanel != null && actionListPanel.toggleSelectedDisabled()) {
+					actionEditorPanel.clearAction();
+					if (autoReplay) { scene.reset(); scene.play(); }
+				}
+			});
+			actionEditorPanel.setVariableJumpCallback(varName -> {
+				if (actionListPanel != null) {
+					actionListPanel.jumpToVariableDefinition(varName);
+				}
+			});
 
 			// Set current phase on the action list
 			updateActionListPhase();
@@ -470,10 +488,130 @@ public class SpellPreviewScreen extends Screen {
 				4, height - CONTROL_HEIGHT - 22, 0xFF888888, false);
 		guiGraphics.drawString(font, targetInfo,
 				4, height - CONTROL_HEIGHT - 12, 0xFFBBBB44, false);
+
+		// Help overlay
+		if (showHelp) {
+			renderHelpOverlay(guiGraphics, mouseX, mouseY);
+		}
+	}
+
+	// --- Help overlay ---
+
+	private static final String[] HELP_LINES = {
+			"\u00A7e\u00A7l--- 快捷键 ---",
+			"",
+			"\u00A7fSpace       \u00A77播放/暂停",
+			"\u00A7fR           \u00A77重置到 tick 0",
+			"\u00A7fRight       \u00A77单步推进 1 tick",
+			"\u00A7fDel/Bksp    \u00A77删除选中节点",
+			"",
+			"\u00A7fCtrl+Z      \u00A77撤销",
+			"\u00A7fCtrl+Y      \u00A77重做",
+			"\u00A7fCtrl+C      \u00A77复制节点",
+			"\u00A7fCtrl+X      \u00A77剪切节点",
+			"\u00A7fCtrl+V      \u00A77粘贴节点",
+			"\u00A7fCtrl+Up     \u00A77上移节点",
+			"\u00A7fCtrl+Down   \u00A77下移节点",
+			"\u00A7fCtrl+D      \u00A77启用/禁用节点",
+			"\u00A7fCtrl+E      \u00A77折叠/展开子树",
+			"\u00A7fCtrl+N      \u00A77切换自定义节点名显示",
+			"",
+			"\u00A7e\u00A7l--- 鼠标操作 ---",
+			"",
+			"\u00A76节点树:",
+			"\u00A7f  单击节点    \u00A77选中，在右侧编辑",
+			"\u00A7f  双击节点    \u00A77重命名 (Enter 确认, Esc 取消)",
+			"\u00A7f  点击 \u25BC/\u25B6   \u00A77折叠/展开子树",
+			"\u00A7f  拖拽节点    \u00A77拖放重排序或移入分支",
+			"\u00A7f  点击 [+]   \u00A77添加新节点到段落/分支",
+			"",
+			"\u00A76属性面板:",
+			"\u00A7f  [Disable]  \u00A77禁用节点 (运行时跳过)",
+			"\u00A7f  [Delete]   \u00A77删除节点",
+			"\u00A7f  Ctrl+点击 \u00A7b$var\u00A7f  \u00A77跳转到变量定义节点",
+			"\u00A7f  Tab        \u00A77表达式自动补全",
+			"",
+			"\u00A763D 视口:",
+			"\u00A7f  左键拖拽    \u00A77移动目标位置",
+			"\u00A7f  中键拖拽    \u00A77平移摄像机",
+			"\u00A7f  右键拖拽    \u00A77旋转摄像机",
+			"\u00A7f  滚轮        \u00A77缩放",
+			"",
+			"\u00A7e\u00A7l--- 表达式语法 ---",
+			"",
+			"\u00A77运算符: \u00A7f+ - * / %  \u00A77括号: \u00A7f( )",
+			"\u00A77变量: \u00A7b$wave  $i  $ver",
+			"\u00A77函数: \u00A7erand\u00A7f(min,max)  \u00A7esqrt\u00A7f(x)",
+			"\u00A77       \u00A7esin\u00A7f(x,amp?,phase?)  \u00A7ecos\u00A7f(...)",
+			"\u00A77       \u00A7elerp\u00A7f(start,end,dur)",
+			"\u00A77       \u00A7ehp\u00A7f(full,empty)  \u00A7etick_mod\u00A7f(n)",
+			"\u00A77关键字: \u00A7etick  total_tick  distance",
+			"",
+			"\u00A7e\u00A7l--- 语法高亮 ---",
+			"",
+			"\u00A7b$variable      \u00A77浅蓝色",
+			"\u00A7erand() sqrt()  \u00A77函数 = 黄色",
+			"\u00A7etick distance  \u00A77关键字 = 黄色",
+			"\u00A7e(  \u00A7c(  \u00A7a(  \u00A79(  \u00A77括号 = 彩虹(仅合法时)",
+			"",
+			"\u00A78按 Esc 或 Help 关闭此面板",
+	};
+
+	private void renderHelpOverlay(GuiGraphics g, int mouseX, int mouseY) {
+		int margin = 30;
+		int hx = margin;
+		int hy = margin;
+		int hw = width - margin * 2;
+		int hh = height - margin * 2;
+
+		// Background
+		g.pose().pushPose();
+		g.pose().translate(0, 0, 400);
+		g.fill(hx, hy, hx + hw, hy + hh, 0xEE111122);
+		g.fill(hx, hy, hx + hw, hy + 1, 0xFF444488);
+		g.fill(hx, hy + hh - 1, hx + hw, hy + hh, 0xFF444488);
+		g.fill(hx, hy, hx + 1, hy + hh, 0xFF444488);
+		g.fill(hx + hw - 1, hy, hx + hw, hy + hh, 0xFF444488);
+
+		// Title
+		String title = "Spell Editor Help";
+		g.drawString(font, title, hx + (hw - font.width(title)) / 2, hy + 4, 0xFFFFFF88, false);
+
+		// Scrollable content
+		int contentY = hy + 18;
+		int contentH = hh - 22;
+		g.enableScissor(hx + 4, contentY, hx + hw - 4, contentY + contentH);
+
+		int lineH = 10;
+		int maxScroll = Math.max(0, HELP_LINES.length * lineH - contentH);
+		helpScroll = Math.max(0, Math.min(maxScroll, helpScroll));
+
+		for (int i = 0; i < HELP_LINES.length; i++) {
+			int ly = contentY + i * lineH - helpScroll;
+			if (ly + lineH < contentY || ly > contentY + contentH) continue;
+			g.drawString(font, HELP_LINES[i], hx + 8, ly, 0xFFCCCCCC, false);
+		}
+		g.disableScissor();
+
+		// Scrollbar
+		if (maxScroll > 0) {
+			int sbX = hx + hw - 6;
+			int trackH = contentH - 2;
+			int thumbH = Math.max(10, trackH * contentH / (HELP_LINES.length * lineH));
+			int thumbY = contentY + 1 + (trackH - thumbH) * helpScroll / maxScroll;
+			g.fill(sbX, contentY, sbX + 4, contentY + contentH, 0x33FFFFFF);
+			g.fill(sbX + 1, thumbY, sbX + 3, thumbY + thumbH, 0x88AAAACC);
+		}
+
+		g.pose().popPose();
 	}
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (showHelp) {
+			showHelp = false;
+			return true;
+		}
 		// Custom-drawn overlays (completion, dropdown) take priority over widgets
 		if (actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
 			return true;
@@ -546,6 +684,10 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+		if (showHelp) {
+			helpScroll -= (int) (delta * 30);
+			return true;
+		}
 		if (actionListPanel != null && actionListPanel.mouseScrolled(mouseX, mouseY, delta)) {
 			return true;
 		}
@@ -559,27 +701,49 @@ public class SpellPreviewScreen extends Screen {
 		return super.mouseScrolled(mouseX, mouseY, delta);
 	}
 
+	/**
+	 * Check if any EditBox in the screen is currently focused (user is typing text).
+	 * When true, all custom hotkeys should be suppressed to avoid conflicts.
+	 */
+	private boolean isAnyEditBoxFocused() {
+		return getFocused() instanceof net.minecraft.client.gui.components.EditBox;
+	}
+
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		// Handle editor dropdown (Escape to close, block other keys)
+		// Help overlay: any key closes
+		if (showHelp) {
+			showHelp = false;
+			return true;
+		}
+		// Handle editor dropdown/completion overlays (Escape to close, arrow keys, etc.)
 		if (actionEditorPanel != null && actionEditorPanel.keyPressed(keyCode, scanCode, modifiers)) {
 			return true;
 		}
-		// Tab in an expression editbox → open completion
-		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB && actionEditorPanel != null) {
-			if (Minecraft.getInstance().screen != null
-					&& Minecraft.getInstance().screen.getFocused() instanceof net.minecraft.client.gui.components.EditBox eb) {
-				if (actionEditorPanel.handleTabCompletion(eb)) {
-					return true;
+
+		// === EditBox focus gate ===
+		// When an EditBox is focused, ALL custom hotkeys are blocked.
+		// Only Tab (for completion) is handled specially, everything else goes to super
+		// which routes to the focused EditBox for normal text editing.
+		if (isAnyEditBoxFocused()) {
+			// Tab → expression autocomplete
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB && actionEditorPanel != null) {
+				if (getFocused() instanceof net.minecraft.client.gui.components.EditBox eb) {
+					if (actionEditorPanel.handleTabCompletion(eb)) {
+						return true;
+					}
 				}
 			}
-		}
-		// Don't capture keys when an edit box is focused (block space from triggering play/pause)
-		if (actionEditorPanel != null && actionEditorPanel.isEditingExprBox()) {
-			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) return true;
-			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) return true;
+			// Escape → unfocus the EditBox (return to normal mode)
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+				setFocused(null);
+				return true;
+			}
+			// All other keys → let EditBox handle (typing, cursor, Ctrl+A/C/V within text)
 			return super.keyPressed(keyCode, scanCode, modifiers);
 		}
+
+		// === Below: no EditBox is focused, custom hotkeys active ===
 
 		// Ctrl+Z/Y for undo/redo
 		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
@@ -596,6 +760,25 @@ public class SpellPreviewScreen extends Screen {
 					if (autoReplay) { scene.reset(); scene.play(); }
 					return true;
 				}
+			}
+		}
+
+		// Ctrl+D = toggle disable, Ctrl+N = toggle custom names, Ctrl+E = collapse/expand
+		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_D && actionListPanel != null) {
+				if (actionListPanel.toggleSelectedDisabled()) {
+					if (actionEditorPanel != null) actionEditorPanel.clearAction();
+					if (autoReplay) { scene.reset(); scene.play(); }
+					return true;
+				}
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_N && actionListPanel != null) {
+				actionListPanel.toggleCustomNames();
+				return true;
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_E && actionListPanel != null) {
+				actionListPanel.toggleSelectedCollapse();
+				return true;
 			}
 		}
 
@@ -631,6 +814,23 @@ public class SpellPreviewScreen extends Screen {
 			}
 		}
 
+		// Let action list handle key presses (e.g. rename mode)
+		if (actionListPanel != null && actionListPanel.keyPressed(keyCode, scanCode, modifiers)) {
+			return true;
+		}
+
+		// Delete / Backspace = delete selected action
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE
+				|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) {
+			if (actionListPanel != null && actionListPanel.deleteSelected()) {
+				if (actionEditorPanel != null) actionEditorPanel.clearAction();
+				if (autoReplay) { scene.reset(); scene.play(); }
+				return true;
+			}
+		}
+
+
+
 		// Space = play/pause
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) {
 			scene.togglePlayPause();
@@ -647,6 +847,14 @@ public class SpellPreviewScreen extends Screen {
 			return true;
 		}
 		return super.keyPressed(keyCode, scanCode, modifiers);
+	}
+
+	@Override
+	public boolean charTyped(char codePoint, int modifiers) {
+		if (actionListPanel != null && actionListPanel.charTyped(codePoint, modifiers)) {
+			return true;
+		}
+		return super.charTyped(codePoint, modifiers);
 	}
 
 	@Override

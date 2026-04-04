@@ -65,12 +65,31 @@ public class NumberExprParser {
 		if (p instanceof NumberProviders.Sin s) return unparseTrig("sin", s.input(), s.amplitude(), s.phase());
 		if (p instanceof NumberProviders.Cos c) return unparseTrig("cos", c.input(), c.amplitude(), c.phase());
 		if (p instanceof NumberProviders.Add a) {
+			// Special case: a + (-1 * b) → (a - b)
+			if (a.b() instanceof NumberProviders.Mul m
+					&& m.a() instanceof NumberProviders.Constant c && c.value() == -1) {
+				String as = unparse(a.a());
+				String bs = unparse(m.b());
+				if (as == null || bs == null) return null;
+				return "(" + as + " - " + bs + ")";
+			}
 			String as = unparse(a.a());
 			String bs = unparse(a.b());
 			if (as == null || bs == null) return null;
 			return "(" + as + " + " + bs + ")";
 		}
 		if (p instanceof NumberProviders.Mul m) {
+			// Special case: (-1) * x → -x (unary negation shorthand)
+			if (m.a() instanceof NumberProviders.Constant c && c.value() == -1) {
+				String bs = unparse(m.b());
+				if (bs == null) return null;
+				return "-" + bs;
+			}
+			if (m.b() instanceof NumberProviders.Constant c && c.value() == -1) {
+				String as = unparse(m.a());
+				if (as == null) return null;
+				return "-" + as;
+			}
 			String as = unparse(m.a());
 			String bs = unparse(m.b());
 			if (as == null || bs == null) return null;
@@ -88,6 +107,11 @@ public class NumberExprParser {
 			if (as == null || bs == null) return null;
 			return "(" + as + " % " + bs + ")";
 		}
+		if (p instanceof NumberProviders.Sqrt s) {
+			String inStr = unparse(s.input());
+			if (inStr == null) return null;
+			return "sqrt(" + inStr + ")";
+		}
 		if (p instanceof NumberProviders.Distance) return "distance";
 		return null;
 	}
@@ -101,6 +125,8 @@ public class NumberExprParser {
 	private NumberProvider parseAdd() {
 		NumberProvider left = parseMul();
 		while (pos < len) {
+			skipWhitespace();
+			if (pos >= len) break;
 			char c = peek();
 			if (c == '+') {
 				consume('+');
@@ -120,6 +146,8 @@ public class NumberExprParser {
 	private NumberProvider parseMul() {
 		NumberProvider left = parseUnary();
 		while (pos < len) {
+			skipWhitespace();
+			if (pos >= len) break;
 			char c = peek();
 			if (c == '*') {
 				consume('*');
@@ -141,6 +169,7 @@ public class NumberExprParser {
 	}
 
 	private NumberProvider parseUnary() {
+		skipWhitespace();
 		if (pos < len && peek() == '-') {
 			consume('-');
 			skipWhitespace();
@@ -264,6 +293,10 @@ public class NumberExprParser {
 			}
 			case "sin" -> { return parseTrigArgs(args, false); }
 			case "cos" -> { return parseTrigArgs(args, true); }
+			case "sqrt" -> {
+				if (args.size() != 1) throw new ParseException("sqrt() requires 1 argument");
+				return new NumberProviders.Sqrt(args.get(0));
+			}
 			default -> throw new ParseException("Unknown function: " + name);
 		}
 	}

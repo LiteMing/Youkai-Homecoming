@@ -32,6 +32,7 @@ public class NumberProviders {
 		register("distance", Distance.CODEC, Distance.class);
 		register("div", Div.CODEC, Div.class);
 		register("mod", Mod.CODEC, Mod.class);
+		register("sqrt", Sqrt.CODEC, Sqrt.class);
 	}
 
 	public static void register(String id, Codec<? extends NumberProvider> codec, Class<? extends NumberProvider> clazz) {
@@ -319,6 +320,21 @@ public class NumberProviders {
 		@Override
 		public double get(SpellContext ctx) {
 			return a.get(ctx) % b.get(ctx);
+		}
+	}
+
+	/**
+	 * Square root of input. Returns 0 for negative inputs.
+	 * JSON: {"type": "sqrt", "input": ...}
+	 */
+	public record Sqrt(NumberProvider input) implements NumberProvider {
+		public static final Codec<Sqrt> CODEC = NumberProvider.CODEC
+				.fieldOf("input").codec().xmap(Sqrt::new, Sqrt::input);
+
+		@Override
+		public double get(SpellContext ctx) {
+			double v = input.get(ctx);
+			return v >= 0 ? Math.sqrt(v) : 0;
 		}
 	}
 

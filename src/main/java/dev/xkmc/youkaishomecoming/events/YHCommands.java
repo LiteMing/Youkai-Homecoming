@@ -10,6 +10,7 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
@@ -21,6 +22,7 @@ import net.minecraft.commands.arguments.selector.EntitySelector;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
@@ -32,6 +34,11 @@ public class YHCommands {
 			SharedSuggestionProvider.suggestResource(
 					SpellRegistry.getAll().keySet(),
 					builder);
+
+	@SubscribeEvent
+	public static void onServerStarted(ServerStartedEvent event) {
+		CustomSpellStorage.loadAllIntoRegistry(event.getServer());
+	}
 
 	@SubscribeEvent
 	public static void register(RegisterCommandsEvent event) {
@@ -333,6 +340,7 @@ public class YHCommands {
 											return 0;
 										}
 										SpellRegistry.register(def);
+										CustomSpellStorage.saveSpell(ctx.getSource().getServer(), def);
 										ctx.getSource().sendSuccess(
 												() -> Component.literal("Imported spell: " + def.id), true);
 										return 1;
@@ -370,6 +378,7 @@ public class YHCommands {
 											dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile.DEFAULT
 									);
 									SpellRegistry.register(def);
+									CustomSpellStorage.saveSpell(ctx.getSource().getServer(), def);
 									ctx.getSource().sendSuccess(
 											() -> Component.literal("Created new spell: " + spellId + " (use /yhspell preview to edit)"), true);
 									if (FMLEnvironment.dist.isClient()) {

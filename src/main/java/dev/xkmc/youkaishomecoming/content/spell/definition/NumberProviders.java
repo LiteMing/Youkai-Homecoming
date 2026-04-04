@@ -29,6 +29,9 @@ public class NumberProviders {
 		register("cos", Cos.CODEC, Cos.class);
 		register("add", Add.CODEC, Add.class);
 		register("mul", Mul.CODEC, Mul.class);
+		register("distance", Distance.CODEC, Distance.class);
+		register("div", Div.CODEC, Div.class);
+		register("mod", Mod.CODEC, Mod.class);
 	}
 
 	public static void register(String id, Codec<? extends NumberProvider> codec, Class<? extends NumberProvider> clazz) {
@@ -270,6 +273,52 @@ public class NumberProviders {
 		@Override
 		public double get(SpellContext ctx) {
 			return a.get(ctx) * b.get(ctx);
+		}
+	}
+
+	/**
+	 * Returns the distance from holder.center() to holder.target().
+	 * In onExpiry context (TrailCardHolder), this is the distance from the danmaku's expiry position to the target.
+	 * JSON: {"type": "distance"}
+	 */
+	public record Distance() implements NumberProvider {
+		public static final Codec<Distance> CODEC = Codec.unit(Distance::new);
+
+		@Override
+		public double get(SpellContext ctx) {
+			return ctx.distanceToTarget();
+		}
+	}
+
+	/**
+	 * a / b.
+	 * JSON: {"type": "div", "a": 10, "b": 2}
+	 */
+	public record Div(NumberProvider a, NumberProvider b) implements NumberProvider {
+		public static final Codec<Div> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("a").forGetter(Div::a),
+				NumberProvider.CODEC.fieldOf("b").forGetter(Div::b)
+		).apply(i, Div::new));
+
+		@Override
+		public double get(SpellContext ctx) {
+			return a.get(ctx) / b.get(ctx);
+		}
+	}
+
+	/**
+	 * a % b (modulo).
+	 * JSON: {"type": "mod", "a": 10, "b": 3}
+	 */
+	public record Mod(NumberProvider a, NumberProvider b) implements NumberProvider {
+		public static final Codec<Mod> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("a").forGetter(Mod::a),
+				NumberProvider.CODEC.fieldOf("b").forGetter(Mod::b)
+		).apply(i, Mod::new));
+
+		@Override
+		public double get(SpellContext ctx) {
+			return a.get(ctx) % b.get(ctx);
 		}
 	}
 

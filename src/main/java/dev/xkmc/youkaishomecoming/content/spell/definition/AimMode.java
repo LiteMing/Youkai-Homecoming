@@ -43,6 +43,7 @@ public interface AimMode {
 			register("caster_facing", CasterFacing.CODEC, CasterFacing.class);
 			register("angle_offset", AngleOffset.CODEC, AngleOffset.class);
 			register("variable_angle", VariableAngle.CODEC, VariableAngle.class);
+			register("direction_to_target", DirectionToTarget.CODEC, DirectionToTarget.class);
 		}
 
 		public static void register(String id, Codec<? extends AimMode> codec, Class<? extends AimMode> clazz) {
@@ -92,6 +93,7 @@ public interface AimMode {
 					return switch (s) {
 						case "target" -> DataResult.success(Pair.of((AimMode) new Target(), ops.empty()));
 						case "caster_facing" -> DataResult.success(Pair.of((AimMode) new CasterFacing(), ops.empty()));
+						case "direction_to_target" -> DataResult.success(Pair.of((AimMode) new DirectionToTarget(), ops.empty()));
 						default -> DataResult.error(() -> "Unknown AimMode shorthand: " + s);
 					};
 				}
@@ -103,6 +105,7 @@ public interface AimMode {
 				// Encode simple modes as string shorthand
 				if (input instanceof Target) return DataResult.success(ops.createString("target"));
 				if (input instanceof CasterFacing) return DataResult.success(ops.createString("caster_facing"));
+				if (input instanceof DirectionToTarget) return DataResult.success(ops.createString("direction_to_target"));
 				return DISPATCH_CODEC.encode(input, ops, prefix);
 			}
 		};
@@ -161,6 +164,24 @@ public interface AimMode {
 				if (Math.abs(deg) < 1e-6) return fwd;
 				var ori = DanmakuHelper.getOrientation(fwd);
 				return ori.rotateDegrees(deg);
+			}
+		}
+
+		/**
+		 * Direction from holder.center() toward holder.target().
+		 * In onExpiry context (TrailCardHolder), center() is the danmaku's expiry position.
+		 */
+		public record DirectionToTarget() implements AimMode {
+			public static final Codec<DirectionToTarget> CODEC = Codec.unit(DirectionToTarget::new);
+
+			@Override
+			public Vec3 getBaseDirection(SpellContext ctx) {
+				Vec3 from = ctx.holder().center();
+				Vec3 target = ctx.holder().target();
+				if (target == null) return ctx.holder().forward();
+				Vec3 dir = target.subtract(from);
+				if (dir.lengthSqr() < 1e-6) return ctx.holder().forward();
+				return dir.normalize();
 			}
 		}
 

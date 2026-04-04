@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import net.minecraft.client.Minecraft;
@@ -52,6 +53,7 @@ public class SpellPreviewScreen extends Screen {
 	private boolean dragging = false;
 	private boolean rotating = false;
 	private boolean movingTarget = false;
+	private boolean autoReplay = true;
 
 	public SpellPreviewScreen(SpellDefinition definition) {
 		super(Component.literal("Spell Preview: " + definition.id));
@@ -97,6 +99,12 @@ public class SpellPreviewScreen extends Screen {
 		// Export button: save spell definition as JSON datapack file
 		addRenderableWidget(Button.builder(Component.literal("Export"), btn -> exportToDatapack())
 				.bounds(bx, by, 46, BUTTON_HEIGHT).build());
+		bx += 48;
+		// Auto Replay toggle
+		addRenderableWidget(Button.builder(Component.literal(autoReplay ? "Auto:ON" : "Auto:OFF"), btn -> {
+			autoReplay = !autoReplay;
+			rebuildScreen();
+		}).bounds(bx, by, 52, BUTTON_HEIGHT).build());
 
 		// --- Control panel at bottom ---
 		int panelY = height - CONTROL_HEIGHT;
@@ -217,8 +225,7 @@ public class SpellPreviewScreen extends Screen {
 	private void onActionEdited(SpellAction newAction) {
 		if (actionListPanel != null) {
 			actionListPanel.replaceSelectedAction(newAction);
-			scene.reset();
-			scene.play();
+			if (autoReplay) { scene.reset(); scene.play(); }
 		}
 	}
 
@@ -233,16 +240,14 @@ public class SpellPreviewScreen extends Screen {
 		if (actionListPanel != null && pendingAddTarget != null) {
 			actionListPanel.insertAction(pendingAddTarget, action);
 			pendingAddTarget = null;
-			scene.reset();
-			scene.play();
+			if (autoReplay) { scene.reset(); scene.play(); }
 		}
 	}
 
 	private void onDeleteAction() {
 		if (actionListPanel != null && actionListPanel.deleteSelected()) {
 			if (actionEditorPanel != null) actionEditorPanel.clearAction();
-			scene.reset();
-			scene.play();
+			if (autoReplay) { scene.reset(); scene.play(); }
 		}
 	}
 
@@ -255,7 +260,11 @@ public class SpellPreviewScreen extends Screen {
 		var mc = Minecraft.getInstance();
 		// Update the SpellRegistry so subsequent /yhspell set uses the edited definition
 		SpellRegistry.register(definition);
+		// Persist to world save data
 		var server = mc.getSingleplayerServer();
+		if (server != null) {
+			server.execute(() -> CustomSpellStorage.saveSpell(server, definition));
+		}
 		if (server != null) {
 			ResourceLocation spellId = definition.id;
 			String spellIdStr = spellId.toString();
@@ -282,7 +291,7 @@ public class SpellPreviewScreen extends Screen {
 				mc.execute(() -> {
 					if (mc.player != null) {
 						mc.player.displayClientMessage(
-								Component.literal("[YH] Applied spell to " + finalCount + " entities"), true);
+								Component.literal("[YH] Applied & saved spell to " + finalCount + " entities"), true);
 					}
 				});
 			});
@@ -415,15 +424,15 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		// Let widgets (EditBox, Button) handle clicks first
-		if (super.mouseClicked(mouseX, mouseY, button)) {
+		// Custom-drawn overlays (completion, dropdown) take priority over widgets
+		if (actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
 			return true;
 		}
-		// Then custom-drawn panels
 		if (actionListPanel != null && actionListPanel.mouseClicked(mouseX, mouseY, button)) {
 			return true;
 		}
-		if (actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
+		// Let widgets (EditBox, Button) handle clicks
+		if (super.mouseClicked(mouseX, mouseY, button)) {
 			return true;
 		}
 
@@ -506,8 +515,19 @@ public class SpellPreviewScreen extends Screen {
 		if (actionEditorPanel != null && actionEditorPanel.keyPressed(keyCode, scanCode, modifiers)) {
 			return true;
 		}
-		// Don't capture keys when an edit box is focused
-		if (getFocused() instanceof net.minecraft.client.gui.components.EditBox) {
+		// Tab in an expression editbox → open completion
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB && actionEditorPanel != null) {
+			if (Minecraft.getInstance().screen != null
+					&& Minecraft.getInstance().screen.getFocused() instanceof net.minecraft.client.gui.components.EditBox eb) {
+				if (actionEditorPanel.handleTabCompletion(eb)) {
+					return true;
+				}
+			}
+		}
+		// Don't capture keys when an edit box is focused (block space from triggering play/pause)
+		if (actionEditorPanel != null && actionEditorPanel.isEditingExprBox()) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) return true;
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) return true;
 			return super.keyPressed(keyCode, scanCode, modifiers);
 		}
 

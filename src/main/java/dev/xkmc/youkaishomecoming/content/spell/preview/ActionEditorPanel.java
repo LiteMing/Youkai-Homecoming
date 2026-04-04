@@ -48,7 +48,7 @@ public class ActionEditorPanel {
 	};
 
 	private static final String[] AIM_MODE_TYPES = {
-			"target", "fixed", "caster_facing", "angle_offset", "variable_angle"
+			"target", "direction_to_target", "fixed", "caster_facing", "angle_offset", "variable_angle"
 	};
 
 	private final Consumer<AbstractWidget> addWidget;
@@ -119,10 +119,12 @@ public class ActionEditorPanel {
 
 	private void clearWidgets() {
 		closeDropdown();
+		closeExprCompletion();
 		for (var row : rows) {
 			removeWidget.accept(row.widget());
 		}
 		rows.clear();
+		exprEditBoxes.clear();
 		widgetsRegistered = false;
 	}
 
@@ -503,8 +505,8 @@ public class ActionEditorPanel {
 	 * @param onParamChanged called when a mover parameter EditBox value changes — no rebuild (preserves focus)
 	 */
 	private void buildMoverRows(Optional<MoverConfig> moverOpt,
-								 Consumer<Optional<MoverConfig>> onTypeChanged,
-								 Consumer<Optional<MoverConfig>> onParamChanged) {
+								Consumer<Optional<MoverConfig>> onTypeChanged,
+								Consumer<Optional<MoverConfig>> onParamChanged) {
 		String currentType = getMoverType(moverOpt);
 		addStringCycleRow("Mover", MOVER_TYPES, currentType, newType -> {
 			onTypeChanged.accept(createDefaultMover(newType));
@@ -589,8 +591,6 @@ public class ActionEditorPanel {
 			default -> Optional.empty();
 		};
 	}
-
-	// --- Notification helpers ---
 
 	// --- Notification helpers ---
 
@@ -696,23 +696,71 @@ public class ActionEditorPanel {
 		rows.add(new EditorRow(label, btn, false));
 	}
 
+	// Expression autocomplete keywords
+	private static final String[] EXPR_FUNCTIONS = {
+			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
+			"tick_mod", "sin", "cos", "tick", "phase_tick", "total_tick", "distance"
+	};
+
+	/** Returns the insert template for a function (with parens and commas). */
+	private static String getFuncInsertText(String name) {
+		if (name.equals("rand") || name.equals("random")) return "rand(, )";
+		if (name.equals("lerp") || name.equals("lerp_time")) return "lerp(, , )";
+		if (name.equals("hp") || name.equals("health") || name.equals("by_health")) return "hp(, )";
+		if (name.equals("tick_mod")) return "tick_mod()";
+		if (name.equals("sin")) return "sin()";
+		if (name.equals("cos")) return "cos()";
+		return name; // bare keyword (tick, phase_tick, total_tick, distance)
+	}
+
+	/** Returns the cursor position within the template string (right after first '('). */
+	private static int getFuncCursorInTemplate(String name) {
+		if (name.equals("rand") || name.equals("random")) return 5;
+		if (name.equals("lerp") || name.equals("lerp_time")) return 5;
+		if (name.equals("hp") || name.equals("health") || name.equals("by_health")) return 3;
+		if (name.equals("tick_mod")) return 9;
+		if (name.equals("sin")) return 4;
+		if (name.equals("cos")) return 4;
+		return name.length(); // bare keyword
+	}
+
+	/** Returns the display name with signature for the completion list. */
+	private static String getFuncDisplayName(String name) {
+		if (name.equals("rand") || name.equals("random")) return "rand(min, max)";
+		if (name.equals("lerp") || name.equals("lerp_time")) return "lerp(start, end, dur)";
+		if (name.equals("hp") || name.equals("health") || name.equals("by_health")) return "hp(full, empty)";
+		if (name.equals("tick_mod")) return "tick_mod(period)";
+		if (name.equals("sin")) return "sin(input, amp?, phase?)";
+		if (name.equals("cos")) return "cos(input, amp?, phase?)";
+		return name;
+	}
+
+	private final List<EditBox> exprEditBoxes = new ArrayList<>();
+
+	// Expression completion overlay
+	private String[] exprCompletionItems = null;
+	private int exprCompletionHoverIndex = -1;
+	private EditBox exprCompletionTarget = null;
+	private int exprCompletionInsertStart = -1;
+
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange) {
 		double value = provider instanceof NumberProviders.Constant c ? c.value() : 0;
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
 				widgetW, ROW_HEIGHT - 4, Component.literal(label));
-		editBox.setValue(formatNumber(value));
+		String unparsed = NumberExprParser.unparse(provider);
+		editBox.setValue(unparsed != null ? unparsed : formatNumber(value));
 		editBox.setResponder(text -> {
-			try {
-				double v = Double.parseDouble(text);
-				onChange.accept(NumberProvider.constant(v));
-			} catch (NumberFormatException ignored) {
+			NumberProvider parsed = NumberExprParser.parse(text);
+			if (parsed != null) {
+				onChange.accept(parsed);
 			}
 		});
 		String displayLabel = label;
 		if (!(provider instanceof NumberProviders.Constant)) {
 			displayLabel = label + "*";
 		}
+		exprEditBoxes.add(editBox);
 		rows.add(new EditorRow(displayLabel, editBox, false));
 	}
 
@@ -1043,14 +1091,55 @@ public class ActionEditorPanel {
 	 * to ensure the dropdown draws on top of all widgets.
 	 */
 	public void renderDropdown(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+		// Red underline for invalid expressions
+		for (var eb : exprEditBoxes) {
+			String text = eb.getValue().trim();
+			if (!text.isEmpty() && NumberExprParser.parse(text) == null) {
+				int ex = eb.getX();
+				int ey = eb.getY() + eb.getHeight();
+				int ew = eb.getWidth();
+				guiGraphics.pose().pushPose();
+				guiGraphics.pose().translate(0, 0, 200);
+				guiGraphics.fill(ex, ey, ex + ew, ey + 2, 0xFFFF4444);
+				guiGraphics.pose().popPose();
+			}
+		}
+
 		if (dropdown != null) {
 			doRenderDropdown(guiGraphics, mouseX, mouseY);
 		}
+		doRenderExprCompletion(guiGraphics, mouseX, mouseY);
 	}
 
 	// --- Mouse handling ---
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// Handle expression completion overlay
+		if (exprCompletionItems != null) {
+			if (button == 0) {
+				// Compute hover index from click position
+				int cx = exprCompletionTarget.getX();
+				int cy = exprCompletionTarget.getY() + exprCompletionTarget.getHeight();
+				int cw = Math.max(exprCompletionTarget.getWidth(), 120);
+				int itemH = DROPDOWN_ITEM_H;
+				int itemCount = exprCompletionItems.length;
+				int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
+				if (cy + totalH > y + h) totalH = y + h - cy;
+
+				if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
+					int idx = (int) ((mouseY - cy) / itemH);
+					if (idx >= 0 && idx < itemCount) {
+						exprCompletionHoverIndex = idx;
+						applyExprCompletion();
+						return true;
+					}
+				}
+				closeExprCompletion();
+				return true;
+			}
+			return true;
+		}
+
 		// Handle dropdown overlay first
 		if (dropdown != null) {
 			if (button == 0) {
@@ -1106,9 +1195,63 @@ public class ActionEditorPanel {
 				closeDropdown();
 				return true;
 			}
-			return true; // block all key input when dropdown is open
+			return true;
 		}
+
+		// Handle expression completion overlay
+		if (exprCompletionItems != null) {
+			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+				closeExprCompletion();
+				return true;
+			}
+			if (keyCode == GLFW.GLFW_KEY_TAB || keyCode == GLFW.GLFW_KEY_ENTER) {
+				applyExprCompletion();
+				return true;
+			}
+			if (keyCode == GLFW.GLFW_KEY_UP) {
+				if (exprCompletionHoverIndex > 0) exprCompletionHoverIndex--;
+				return true;
+			}
+			if (keyCode == GLFW.GLFW_KEY_DOWN) {
+				if (exprCompletionHoverIndex < exprCompletionItems.length - 1) exprCompletionHoverIndex++;
+				return true;
+			}
+			closeExprCompletion();
+			return false;
+		}
+
+		// Tab in an expression editbox → open completion
+		if (keyCode == GLFW.GLFW_KEY_TAB && exprCompletionTarget != null) {
+			return true;
+		}
+
 		return false;
+	}
+
+	/**
+	 * Called from SpellPreviewScreen when Tab is pressed in an EditBox.
+	 */
+	public boolean handleTabCompletion(EditBox editBox) {
+		if (!exprEditBoxes.contains(editBox)) return false;
+		String text = editBox.getValue();
+		int cursor = editBox.getCursorPosition();
+		int tokenStart = cursor;
+		while (tokenStart > 0 && (Character.isLetterOrDigit(text.charAt(tokenStart - 1)) || text.charAt(tokenStart - 1) == '_')) {
+			tokenStart--;
+		}
+		String prefix = text.substring(tokenStart, cursor).toLowerCase();
+		List<String> matches = new ArrayList<>();
+		for (String fn : EXPR_FUNCTIONS) {
+			if (prefix.isEmpty() || fn.toLowerCase().startsWith(prefix)) {
+				matches.add(fn);
+			}
+		}
+		if (matches.isEmpty()) return false;
+		exprCompletionItems = matches.toArray(new String[0]);
+		exprCompletionHoverIndex = 0;
+		exprCompletionTarget = editBox;
+		exprCompletionInsertStart = tokenStart;
+		return true;
 	}
 
 	public boolean isMouseOver(double mouseX, double mouseY) {
@@ -1189,13 +1332,6 @@ public class ActionEditorPanel {
 		EditorRow(String label, AbstractWidget widget, boolean fullWidth) {
 			this(label, widget, fullWidth, -1);
 		}
-		EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW) {
-			// Use the longest constructor to avoid infinite recursion
-			this.label = label;
-			this.widget = widget;
-			this.fullWidth = fullWidth;
-			this.customWidgetW = customWidgetW;
-		}
 	}
 
 	// --- AimMode helpers ---
@@ -1208,12 +1344,93 @@ public class ActionEditorPanel {
 	private static AimMode createDefaultAimMode(String type) {
 		return switch (type) {
 			case "target" -> new AimMode.AimModes.Target();
+			case "direction_to_target" -> new AimMode.AimModes.DirectionToTarget();
 			case "fixed" -> new AimMode.AimModes.FixedDirection(new net.minecraft.world.phys.Vec3(0, 0, 1));
 			case "caster_facing" -> new AimMode.AimModes.CasterFacing();
 			case "angle_offset" -> new AimMode.AimModes.AngleOffset(NumberProvider.constant(0));
 			case "variable_angle" -> new AimMode.AimModes.VariableAngle("aim_angle");
 			default -> new AimMode.AimModes.Target();
 		};
+	}
+
+	// --- Expression completion ---
+
+	private void applyExprCompletion() {
+		if (exprCompletionItems == null || exprCompletionTarget == null) return;
+		if (exprCompletionHoverIndex < 0 || exprCompletionHoverIndex >= exprCompletionItems.length) return;
+		String chosen = exprCompletionItems[exprCompletionHoverIndex];
+		String template = getFuncInsertText(chosen);
+		int cursorInTemplate = getFuncCursorInTemplate(chosen);
+		String text = exprCompletionTarget.getValue();
+		int cursor = exprCompletionTarget.getCursorPosition();
+		String newText = text.substring(0, exprCompletionInsertStart) + template + text.substring(cursor);
+		int newPos = exprCompletionInsertStart + cursorInTemplate;
+		exprCompletionTarget.setValue(newText);
+		exprCompletionTarget.setCursorPosition(newPos);
+		try {
+			// Clear selection so only cursor moves, not a range
+			var method = net.minecraft.client.gui.components.EditBox.class.getDeclaredMethod("setHighlightPos", int.class);
+			method.setAccessible(true);
+			method.invoke(exprCompletionTarget, newPos);
+		} catch (Exception ignored) {}
+		closeExprCompletion();
+	}
+
+	private void closeExprCompletion() {
+		exprCompletionItems = null;
+		exprCompletionHoverIndex = -1;
+		exprCompletionTarget = null;
+	}
+
+	private void doRenderExprCompletion(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+		if (exprCompletionItems == null || exprCompletionTarget == null) return;
+		Font font = Minecraft.getInstance().font;
+		int itemCount = exprCompletionItems.length;
+		int itemH = DROPDOWN_ITEM_H;
+		int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
+		int cx = exprCompletionTarget.getX();
+		int cy = exprCompletionTarget.getY() + exprCompletionTarget.getHeight();
+		int cw = Math.max(exprCompletionTarget.getWidth(), 120);
+		if (cy + totalH > y + h) totalH = y + h - cy;
+		if (totalH < itemH) return;
+
+		guiGraphics.pose().pushPose();
+		guiGraphics.pose().translate(0, 0, 200);
+		guiGraphics.fill(cx + 2, cy + 2, cx + cw + 2, cy + totalH + 2, 0x88000000);
+		guiGraphics.fill(cx, cy, cx + cw, cy + totalH, 0xFF1a1a30);
+		guiGraphics.fill(cx, cy, cx + cw, cy + 1, 0xFF666688);
+		guiGraphics.fill(cx, cy + totalH - 1, cx + cw, cy + totalH, 0xFF666688);
+		guiGraphics.fill(cx, cy, cx + 1, cy + totalH, 0xFF666688);
+		guiGraphics.fill(cx + cw - 1, cy, cx + cw, cy + totalH, 0xFF666688);
+
+		exprCompletionHoverIndex = -1;
+		if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
+			int rawIdx = (mouseY - cy) / itemH;
+			if (rawIdx >= 0 && rawIdx < itemCount) exprCompletionHoverIndex = rawIdx;
+		}
+
+		int visCount = Math.min(itemCount, totalH / itemH);
+		for (int i = 0; i < visCount; i++) {
+			if (i >= itemCount) break;
+			int iy = cy + i * itemH;
+			if (iy + itemH > cy + totalH) break;
+			boolean hovered = i == exprCompletionHoverIndex;
+			if (hovered) guiGraphics.fill(cx + 1, iy, cx + cw - 1, iy + itemH, 0x44FFFFFF);
+			guiGraphics.drawString(font, getFuncDisplayName(exprCompletionItems[i]), cx + 4, iy + 4,
+					hovered ? 0xFFFFDD66 : 0xFFDDDDDD, false);
+		}
+		guiGraphics.pose().popPose();
+	}
+
+	public boolean hasExprCompletion() {
+		return exprCompletionItems != null;
+	}
+
+	public boolean isEditingExprBox() {
+		for (var eb : exprEditBoxes) {
+			if (eb.isFocused()) return true;
+		}
+		return false;
 	}
 
 }

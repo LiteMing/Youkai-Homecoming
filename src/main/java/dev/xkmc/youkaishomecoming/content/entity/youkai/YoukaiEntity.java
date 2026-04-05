@@ -319,7 +319,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 					tickDanmaku();
 				} else {
 					spellRuntime.reset();
-					allDanmakus.clear();
+					eraseAllDanmaku(null);
 					toBeSent.clear();
 				}
 			} else if (spellCard != null) {
@@ -328,7 +328,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 					tickDanmaku();
 				} else {
 					spellCard.reset();
-					allDanmakus.clear();
+					eraseAllDanmaku(null);
 					toBeSent.clear();
 				}
 			}
@@ -651,6 +651,14 @@ public abstract class YoukaiEntity extends PathfinderMob
 		}
 		allDanmakus.clear();
 		removeDanmaku = true;
+	}
+
+	@Override
+	public void remove(RemovalReason reason) {
+		if (!allDanmakus.isEmpty()) {
+			eraseAllDanmaku(null);
+		}
+		super.remove(reason);
 	}
 
 	private final UserCacheHolder cache = new UserCacheHolder();

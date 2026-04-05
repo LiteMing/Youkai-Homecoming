@@ -1567,70 +1567,28 @@ public class MigratedSpellCards {
 						new SpellConditions.CompareNumbers(stepVar, "<", NumberProvider.constant(3)))),
 				List.of(sweepInit), List.of());
 
-		// === Lasers (step == 3): 随机球面方向 + 端点分叉 ===
-		// Legacy: dir = Gaussian(3).normalize() (uniform sphere), len = random(25,40)
-		// 3 branches at endpoint: 120° apart, 45° elevation from parent axis, len=80
-		var parentLaser = new SpellActions.SequenceAction(List.of(
-				new SpellActions.SetVariable("laz", new NumberProviders.RandomRange(0, 360)),
-				new SpellActions.SetVariable("lel", new NumberProviders.RandomRange(-90, 90)),
-				new SpellActions.SetVariable("llen", new NumberProviders.RandomRange(25, 40)),
-				new SpellActions.SetVariable("lbr", new NumberProviders.RandomRange(0, 360)),
-				// Primary laser: random sphere direction
-				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
-						NumberProvider.constant(140),
-						new NumberProviders.Variable("llen"),
-						new NumberProviders.Variable("laz"),
-						new NumberProviders.Variable("lel"),
-						new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
-						OriginConfig.caster(),
-						Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty()),
-				// 3 branch lasers at endpoint: 120° apart, 45° offset from parent
-				new SpellActions.RepeatAction(NumberProvider.constant(3), "lj", List.of(
-						new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
-								NumberProvider.constant(140), NumberProvider.constant(80),
-								new NumberProviders.Add(new NumberProviders.Variable("lbr"),
-										new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(120))),
-								NumberProvider.constant(45),
-								new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
-								new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
-										new NumberProviders.Add(new NumberProviders.CasterX(),
-												new NumberProviders.Mul(
-														new NumberProviders.Mul(
-																new NumberProviders.Cos(new NumberProviders.Variable("lel"), 1, 0),
-																new NumberProviders.Sin(new NumberProviders.Variable("laz"), 1, 0)),
-														new NumberProviders.Variable("llen"))),
-										new NumberProviders.Add(new NumberProviders.CasterY(),
-												new NumberProviders.Mul(
-														new NumberProviders.Sin(new NumberProviders.Variable("lel"), 1, 0),
-														new NumberProviders.Variable("llen"))),
-										new NumberProviders.Add(new NumberProviders.CasterZ(),
-												new NumberProviders.Mul(
-														new NumberProviders.Mul(
-																new NumberProviders.Cos(new NumberProviders.Variable("lel"), 1, 0),
-																new NumberProviders.Cos(new NumberProviders.Variable("laz"), 1, 0)),
-														new NumberProviders.Variable("llen"))),
-										NumberProvider.constant(0)),
-								Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty())
-				))
-		));
-		var lasers = new SpellActions.RepeatAction(NumberProvider.constant(4), "li", List.of(parentLaser));
+		// === Lasers (step == 3): BurstAction 20tick, 每tick 4组×(主+3叉+9二级叉) ===
+		// Legacy: Lasers ticker 20tick, per tick 4 primary (random sphere) + 3 branch + 3×3 sub-branch
+		SpellAction laserBurstBody = buildRemiliaLaserGroup();
+		var laserBurst = new BurstAction(20, 1, "lt", List.<SpellAction>of(
+				new SpellActions.RepeatAction(NumberProvider.constant(4), "li", List.of(laserBurstBody))));
 		var laserAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.TickInterval(20, 0),
 						new SpellConditions.CompareNumbers(stepVar, "==", NumberProvider.constant(3)),
 						new SpellConditions.TargetIsFallFlying())),
-				List.of(lasers), List.of());
+				List.of(laserBurst), List.of());
 
-		// === Spear (step == 4): 密集长矛线 (caster→target方向的弹幕柱) ===
-		// Legacy: 4条密集弹幕线从caster沿forward方向排列, 每条沿caster→target方向飞行
+		// === Spear (step == 4): 梭形弹幕柱 (caster→target方向, 极紧密) ===
+		// 80个弹幕沿caster→target线性排列, 微小横向偏移形成梭形
 		var spearTrail = new SpellActions.RepeatAction(NumberProvider.constant(80), "si", List.of(
 				new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(1), NumberProvider.constant(3), NumberProvider.constant(30),
-						new NumberProviders.GaussianRandom(0, 3), NumberProvider.constant(0),
-						new NumberProviders.GaussianRandom(0, 3), PatternType.AIMED,
+						new NumberProviders.GaussianRandom(0, 1), NumberProvider.constant(0),
+						new NumberProviders.GaussianRandom(0, 1), PatternType.AIMED,
 						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-								new NumberProviders.GaussianRandom(0, 0.5),
-								new NumberProviders.GaussianRandom(0, 0.5),
+								new NumberProviders.GaussianRandom(0, 0.15),
+								new NumberProviders.GaussianRandom(0, 0.15),
 								new NumberProviders.Mul(
 										new NumberProviders.Div(new NumberProviders.Variable("si"), NumberProvider.constant(80)),
 										new NumberProviders.Distance()),
@@ -1944,6 +1902,76 @@ public class MigratedSpellCards {
 				List.of(lissajous, stateChange, homingRing, border, confine),
 				List.of(), List.of(), List.of());
 		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:komeiji_koishi");
+	}
+
+	/**
+	 * Remilia: 构建单组激光 (1主 + 3一级分叉 + 9二级分叉 = 13条/组)
+	 * Legacy: random sphere dir, len=25-40, 3 branches at endpoint (120° apart, 45°),
+	 *         each branch gets 3 sub-branches (120° apart, 45°), sub-branch len=40
+	 */
+	private static SpellAction buildRemiliaLaserGroup() {
+		// 端点坐标: caster + dir * len
+		// dir = (cos(el)*sin(az), sin(el), cos(el)*cos(az))
+		var epX = new NumberProviders.Add(new NumberProviders.CasterX(),
+				new NumberProviders.Mul(new NumberProviders.Mul(
+						new NumberProviders.Cos(new NumberProviders.Variable("lel"), 1, 0),
+						new NumberProviders.Sin(new NumberProviders.Variable("laz"), 1, 0)),
+						new NumberProviders.Variable("llen")));
+		var epY = new NumberProviders.Add(new NumberProviders.CasterY(),
+				new NumberProviders.Mul(
+						new NumberProviders.Sin(new NumberProviders.Variable("lel"), 1, 0),
+						new NumberProviders.Variable("llen")));
+		var epZ = new NumberProviders.Add(new NumberProviders.CasterZ(),
+				new NumberProviders.Mul(new NumberProviders.Mul(
+						new NumberProviders.Cos(new NumberProviders.Variable("lel"), 1, 0),
+						new NumberProviders.Cos(new NumberProviders.Variable("laz"), 1, 0)),
+						new NumberProviders.Variable("llen")));
+		var endpointOrigin = new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
+				epX, epY, epZ, NumberProvider.constant(0));
+
+		// 二级分叉: 从一级分叉端点再延伸, 简化为从同一端点以更大角度发射
+		var subBranch = new SpellActions.RepeatAction(NumberProvider.constant(3), "lk", List.of(
+				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+						NumberProvider.constant(140), NumberProvider.constant(40),
+						new NumberProviders.Add(new NumberProviders.Variable("lbr"),
+								new NumberProviders.Add(
+										new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(120)),
+										new NumberProviders.Mul(new NumberProviders.Variable("lk"), NumberProvider.constant(40)))),
+						NumberProvider.constant(60),
+						new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
+						endpointOrigin,
+						Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty())
+		));
+
+		// 一级分叉: 3条, 120° apart, 45° elevation
+		var branch = new SpellActions.RepeatAction(NumberProvider.constant(3), "lj", List.of(
+				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+						NumberProvider.constant(140), NumberProvider.constant(80),
+						new NumberProviders.Add(new NumberProviders.Variable("lbr"),
+								new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(120))),
+						NumberProvider.constant(45),
+						new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
+						endpointOrigin,
+						Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty()),
+				subBranch
+		));
+
+		return new SpellActions.SequenceAction(List.of(
+				new SpellActions.SetVariable("laz", new NumberProviders.RandomRange(0, 360)),
+				new SpellActions.SetVariable("lel", new NumberProviders.RandomRange(-90, 90)),
+				new SpellActions.SetVariable("llen", new NumberProviders.RandomRange(25, 40)),
+				new SpellActions.SetVariable("lbr", new NumberProviders.RandomRange(0, 360)),
+				// 主激光
+				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+						NumberProvider.constant(140),
+						new NumberProviders.Variable("llen"),
+						new NumberProviders.Variable("laz"),
+						new NumberProviders.Variable("lel"),
+						new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
+						OriginConfig.caster(),
+						Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty()),
+				branch
+		));
 	}
 
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,

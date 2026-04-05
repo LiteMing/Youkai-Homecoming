@@ -9,12 +9,16 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
@@ -423,6 +427,25 @@ public class YHCommands {
 															SpellRegistry.get(spellId)));
 										});
 									}
+									return 1;
+								})))
+				.then(literal("give")
+						.then(argument("spell_id", ResourceLocationArgument.id())
+								.suggests(SPELL_SUGGESTIONS)
+								.executes(ctx -> {
+									ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+									SpellDefinition def = SpellRegistry.get(spellId);
+									if (def == null) {
+										ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
+										return 0;
+									}
+									ServerPlayer player = ctx.getSource().getPlayerOrException();
+									ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId);
+									if (!player.getInventory().add(stack)) {
+										player.drop(stack, false);
+									}
+									ctx.getSource().sendSuccess(
+											() -> Component.literal("Gave spell item [" + spellId + "] to " + player.getName().getString()), true);
 									return 1;
 								})))
 		);

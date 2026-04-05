@@ -27,9 +27,12 @@ public record TeleportAction(OriginConfig destination, boolean playSound) implem
 	public void execute(SpellContext ctx) {
 		LivingEntity mob = ctx.self();
 		Vec3 target = destination.resolve(ctx);
-		boolean isPreview = ctx.holder() instanceof
-				dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder;
-		teleport(mob, target, playSound, isPreview);
+		if (ctx.holder() instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder) {
+			// In preview mode: directly set position, skip all world interactions
+			mob.setPos(target);
+			return;
+		}
+		teleport(mob, target, playSound, false);
 	}
 
 	/**

@@ -1567,39 +1567,53 @@ public class MigratedSpellCards {
 						new SpellConditions.CompareNumbers(stepVar, "<", NumberProvider.constant(3)))),
 				List.of(sweepInit), List.of());
 
-		// === Lasers (step == 3): 分支激光 ===
+		// === Lasers (step == 3): 随机球面方向 + 端点分叉 ===
+		// Legacy: dir = Gaussian(3).normalize() (uniform sphere), len = random(25,40)
+		// 3 branches at endpoint: 120° apart, 45° elevation from parent axis, len=80
 		var parentLaser = new SpellActions.SequenceAction(List.of(
 				new SpellActions.SetVariable("laz", new NumberProviders.RandomRange(0, 360)),
-				new SpellActions.SetVariable("lel", new NumberProviders.GaussianRandom(0, 30)),
+				new SpellActions.SetVariable("lel", new NumberProviders.RandomRange(-90, 90)),
 				new SpellActions.SetVariable("llen", new NumberProviders.RandomRange(25, 40)),
+				new SpellActions.SetVariable("lbr", new NumberProviders.RandomRange(0, 360)),
+				// Primary laser: random sphere direction
 				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
-						NumberProvider.constant(140), NumberProvider.constant(80),
+						NumberProvider.constant(140),
+						new NumberProviders.Variable("llen"),
 						new NumberProviders.Variable("laz"),
 						new NumberProviders.Variable("lel"),
-						new AimMode.AimModes.Target(), OriginConfig.caster(),
+						new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
+						OriginConfig.caster(),
 						Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty()),
-				new SpellActions.RepeatAction(NumberProvider.constant(6), "lj", List.of(
+				// 3 branch lasers at endpoint: 120° apart, 45° offset from parent
+				new SpellActions.RepeatAction(NumberProvider.constant(3), "lj", List.of(
 						new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
 								NumberProvider.constant(140), NumberProvider.constant(80),
-								new NumberProviders.Add(new NumberProviders.Variable("laz"),
-										new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(60))),
-								new NumberProviders.Add(new NumberProviders.Variable("lel"), NumberProvider.constant(45)),
-								new AimMode.AimModes.Target(),
-								new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-										new NumberProviders.Mul(
-												new NumberProviders.Sin(new NumberProviders.Variable("laz"), 1, 0),
-												new NumberProviders.Variable("llen")),
-										new NumberProviders.Mul(
-												new NumberProviders.Sin(new NumberProviders.Variable("lel"), 1, 0),
-												new NumberProviders.Variable("llen")),
-										new NumberProviders.Mul(
-												new NumberProviders.Cos(new NumberProviders.Variable("laz"), 1, 0),
-												new NumberProviders.Variable("llen")),
+								new NumberProviders.Add(new NumberProviders.Variable("lbr"),
+										new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(120))),
+								NumberProvider.constant(45),
+								new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
+								new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
+										new NumberProviders.Add(new NumberProviders.CasterX(),
+												new NumberProviders.Mul(
+														new NumberProviders.Mul(
+																new NumberProviders.Cos(new NumberProviders.Variable("lel"), 1, 0),
+																new NumberProviders.Sin(new NumberProviders.Variable("laz"), 1, 0)),
+														new NumberProviders.Variable("llen"))),
+										new NumberProviders.Add(new NumberProviders.CasterY(),
+												new NumberProviders.Mul(
+														new NumberProviders.Sin(new NumberProviders.Variable("lel"), 1, 0),
+														new NumberProviders.Variable("llen"))),
+										new NumberProviders.Add(new NumberProviders.CasterZ(),
+												new NumberProviders.Mul(
+														new NumberProviders.Mul(
+																new NumberProviders.Cos(new NumberProviders.Variable("lel"), 1, 0),
+																new NumberProviders.Cos(new NumberProviders.Variable("laz"), 1, 0)),
+														new NumberProviders.Variable("llen"))),
 										NumberProvider.constant(0)),
 								Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty())
 				))
 		));
-		var lasers = new SpellActions.RepeatAction(NumberProvider.constant(8), "li", List.of(parentLaser));
+		var lasers = new SpellActions.RepeatAction(NumberProvider.constant(4), "li", List.of(parentLaser));
 		var laserAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.TickInterval(20, 0),
@@ -1607,20 +1621,21 @@ public class MigratedSpellCards {
 						new SpellConditions.TargetIsFallFlying())),
 				List.of(lasers), List.of());
 
-		// === Spear (step == 4): 密集弹幕线 ===
+		// === Spear (step == 4): 密集长矛线 (caster→target方向的弹幕柱) ===
+		// Legacy: 4条密集弹幕线从caster沿forward方向排列, 每条沿caster→target方向飞行
 		var spearTrail = new SpellActions.RepeatAction(NumberProvider.constant(80), "si", List.of(
 				new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(1), NumberProvider.constant(3), NumberProvider.constant(30),
-						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(0),
-						NumberProvider.constant(0), PatternType.AIMED,
+						new NumberProviders.GaussianRandom(0, 3), NumberProvider.constant(0),
+						new NumberProviders.GaussianRandom(0, 3), PatternType.AIMED,
 						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-								new NumberProviders.GaussianRandom(0, 2),
-								new NumberProviders.GaussianRandom(0, 2),
+								new NumberProviders.GaussianRandom(0, 0.5),
+								new NumberProviders.GaussianRandom(0, 0.5),
 								new NumberProviders.Mul(
 										new NumberProviders.Div(new NumberProviders.Variable("si"), NumberProvider.constant(80)),
 										new NumberProviders.Distance()),
 								NumberProvider.constant(0)),
-						new AimMode.AimModes.Target(),
+						new AimMode.AimModes.DirectionToTarget(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
 		var spear = new SpellActions.SequenceAction(List.of(

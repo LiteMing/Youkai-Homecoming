@@ -199,7 +199,7 @@ public class SpellPreviewScreen extends Screen {
 		actionListDockPanel = new ActionListDockPanel(actionListPanel);
 		editorDockPanel = new EditorDockPanel(actionEditorPanel);
 		controlsDockPanel = new ControlsDockPanel(scene, viewport, this::rebuildScreen, this::cyclePhase);
-		controlsDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
+		controlsDockPanel.setWidgetCallbacks(w -> this.addRenderableWidget(w), this::removeWidget);
 
 		// --- Build dock layout tree (load from config or use default) ---
 		java.util.Map<String, DockPanel> panelMap = new java.util.LinkedHashMap<>();

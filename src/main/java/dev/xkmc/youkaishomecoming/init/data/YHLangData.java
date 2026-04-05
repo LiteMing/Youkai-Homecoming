@@ -215,7 +215,6 @@ public enum YHLangData {
 		String p = YoukaisHomecoming.MODID + ".spell_editor.help.";
 		pvd.add(p + "title", "Spell Editor Help");
 		int i = 0;
-		// --- Hotkeys ---
 		pvd.add(p + "line." + i++, "\u00A7e\u00A7l--- Hotkeys ---");
 		pvd.add(p + "line." + i++, "");
 		pvd.add(p + "line." + i++, "\u00A7fSpace       \u00A77Play / Pause");
@@ -236,12 +235,11 @@ public enum YHLangData {
 		pvd.add(p + "line." + i++, "\u00A7fCtrl+N      \u00A77Toggle custom node name display");
 		pvd.add(p + "line." + i++, "\u00A7fCtrl+B      \u00A77Toggle [+] buttons: all / selected only");
 		pvd.add(p + "line." + i++, "");
-		// --- Mouse ---
 		pvd.add(p + "line." + i++, "\u00A7e\u00A7l--- Mouse ---");
 		pvd.add(p + "line." + i++, "");
 		pvd.add(p + "line." + i++, "\u00A76Action Tree:");
 		pvd.add(p + "line." + i++, "\u00A7f  Click node      \u00A77Select & edit (shows [+] buttons)");
-		pvd.add(p + "line." + i++, "\u00A7f  Double-click     \u00A77Rename (Enter to confirm, Esc to cancel)");
+		pvd.add(p + "line." + i++, "\u00A7f  Double-click     \u00A77Rename (Enter confirm, Esc cancel)");
 		pvd.add(p + "line." + i++, "\u00A7f  Click \u25BC/\u25B6       \u00A77Collapse / Expand subtree");
 		pvd.add(p + "line." + i++, "\u00A7f  Drag node        \u00A77Drag & drop to reorder or move into branch");
 		pvd.add(p + "line." + i++, "\u00A7f  Click [+]        \u00A77Add new node to section / branch");
@@ -251,9 +249,8 @@ public enum YHLangData {
 		pvd.add(p + "line." + i++, "\u00A7f  [Delete]         \u00A77Delete node");
 		pvd.add(p + "line." + i++, "\u00A7f  Ctrl+Click \u00A7b$var\u00A7f  \u00A77Jump to variable definition");
 		pvd.add(p + "line." + i++, "\u00A7f  Tab              \u00A77Expression autocomplete");
-		pvd.add(p + "line." + i++, "\u00A7f  Scroll wheel     \u00A77Scroll property list");
+		pvd.add(p + "line." + i++, "\u00A7f  Scroll wheel     \u00A77Scroll property list (drag scrollbar)");
 		pvd.add(p + "line." + i++, "");
-		// --- 3D Viewport ---
 		pvd.add(p + "line." + i++, "\u00A763D Viewport (Orthographic):");
 		pvd.add(p + "line." + i++, "\u00A7f  Left-drag        \u00A77Move target position");
 		pvd.add(p + "line." + i++, "\u00A7f  Middle-drag      \u00A77Pan camera on view plane");
@@ -269,7 +266,6 @@ public enum YHLangData {
 		pvd.add(p + "line." + i++, "\u00A7f  Middle-drag      \u00A77Pan on view plane");
 		pvd.add(p + "line." + i++, "\u00A7f  Esc              \u00A77Exit free-look / Exit perspective");
 		pvd.add(p + "line." + i++, "");
-		// --- Toolbar ---
 		pvd.add(p + "line." + i++, "\u00A7e\u00A7l--- Toolbar ---");
 		pvd.add(p + "line." + i++, "");
 		pvd.add(p + "line." + i++, "\u00A7fTop/Front/Side    \u00A77Orthographic preset angles");
@@ -284,7 +280,6 @@ public enum YHLangData {
 		pvd.add(p + "line." + i++, "\u00A7fFocusTgt/Cstr     \u00A77Center viewport on target / caster");
 		pvd.add(p + "line." + i++, "\u00A7fRstTgtPos/CstrPos \u00A77Reset target / caster to default position");
 		pvd.add(p + "line." + i++, "");
-		// --- Mover Types ---
 		pvd.add(p + "line." + i++, "\u00A7e\u00A7l--- Mover Types ---");
 		pvd.add(p + "line." + i++, "");
 		pvd.add(p + "line." + i++, "\u00A7fnone              \u00A77Default straight flight");
@@ -294,7 +289,6 @@ public enum YHLangData {
 		pvd.add(p + "line." + i++, "\u00A7fzero              \u00A77Stationary");
 		pvd.add(p + "line." + i++, "\u00A7fbezier            \u00A77Cubic bezier curve path");
 		pvd.add(p + "line." + i++, "");
-		// --- Expression Syntax ---
 		pvd.add(p + "line." + i++, "\u00A7e\u00A7l--- Expression Syntax ---");
 		pvd.add(p + "line." + i++, "");
 		pvd.add(p + "line." + i++, "\u00A77Operators: \u00A7f+ - * / %  \u00A77Brackets: \u00A7f( )");
@@ -305,14 +299,12 @@ public enum YHLangData {
 		pvd.add(p + "line." + i++, "\u00A77           \u00A7ehp\u00A7f(full,empty)  \u00A7etick_mod\u00A7f(n)");
 		pvd.add(p + "line." + i++, "\u00A77Keywords:  \u00A7etick  total_tick  distance");
 		pvd.add(p + "line." + i++, "");
-		// --- Syntax Highlighting ---
 		pvd.add(p + "line." + i++, "\u00A7e\u00A7l--- Syntax Highlighting ---");
 		pvd.add(p + "line." + i++, "");
 		pvd.add(p + "line." + i++, "\u00A7b$variable        \u00A77Light blue");
 		pvd.add(p + "line." + i++, "\u00A7erand() sqrt()    \u00A77Functions = yellow");
 		pvd.add(p + "line." + i++, "\u00A7etick distance    \u00A77Keywords = yellow");
 		pvd.add(p + "line." + i++, "\u00A7e(  \u00A7c(  \u00A7a(  \u00A79(  \u00A77Brackets = rainbow (when valid)");
-		// i should be <= LINE_COUNT (90)
 	}
 
 }

@@ -8,10 +8,6 @@ import net.minecraft.client.resources.language.I18n;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
-/**
- * 可停靠的帮助面板。通过本地化 key 显示帮助内容，支持中英文切换。
- * 默认不显示在布局中，通过 Help 按钮打开并添加到 Tab。
- */
 @OnlyIn(Dist.CLIENT)
 public class HelpDockPanel implements DockPanel {
 
@@ -22,9 +18,21 @@ public class HelpDockPanel implements DockPanel {
 	private int scrollOffset = 0;
 	private boolean scrollbarDragging = false;
 
-	// 缓存已翻译的行，语言切换时重建
 	private String[] cachedLines = null;
 	private String cachedLang = null;
+
+	private String[] getLines() {
+		String lang = Minecraft.getInstance().getLanguageManager().getSelected();
+		if (cachedLines != null && lang.equals(cachedLang)) return cachedLines;
+		cachedLang = lang;
+		cachedLines = new String[LINE_COUNT];
+		for (int i = 0; i < LINE_COUNT; i++) {
+			String key = KEY_PREFIX + "line." + i;
+			String val = I18n.get(key);
+			cachedLines[i] = val.equals(key) ? "" : val;
+		}
+		return cachedLines;
+	}
 
 	@Override
 	public String dockTitle() {
@@ -38,65 +46,33 @@ public class HelpDockPanel implements DockPanel {
 
 	@Override
 	public void setBounds(int x, int y, int w, int h) {
-		this.x = x;
-		this.y = y;
-		this.w = w;
-		this.h = h;
+		this.x = x; this.y = y; this.w = w; this.h = h;
 	}
 
-	@Override
-	public int getX() { return x; }
-
-	@Override
-	public int getY() { return y; }
-
-	@Override
-	public int getWidth() { return w; }
-
-	@Override
-	public int getHeight() { return h; }
-
-	private String[] getLines() {
-		String currentLang = Minecraft.getInstance().getLanguageManager().getSelected();
-		if (cachedLines != null && currentLang.equals(cachedLang)) {
-			return cachedLines;
-		}
-		cachedLang = currentLang;
-		cachedLines = new String[LINE_COUNT];
-		for (int i = 0; i < LINE_COUNT; i++) {
-			String key = KEY_PREFIX + "line." + i;
-			String translated = I18n.get(key);
-			// 如果 key 没有翻译，返回空行（避免显示 raw key）
-			cachedLines[i] = translated.equals(key) ? "" : translated;
-		}
-		return cachedLines;
-	}
+	@Override public int getX() { return x; }
+	@Override public int getY() { return y; }
+	@Override public int getWidth() { return w; }
+	@Override public int getHeight() { return h; }
 
 	@Override
 	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		Font font = Minecraft.getInstance().font;
 		String[] lines = getLines();
 
-		// 背景
 		graphics.fill(x, y, x + w, y + h, 0xEE111122);
-
-		// 边框
 		graphics.fill(x, y, x + w, y + 1, 0xFF444488);
 		graphics.fill(x, y + h - 1, x + w, y + h, 0xFF444488);
 		graphics.fill(x, y, x + 1, y + h, 0xFF444488);
 		graphics.fill(x + w - 1, y, x + w, y + h, 0xFF444488);
 
-		// 标题
 		String title = I18n.get(KEY_PREFIX + "title");
 		graphics.drawString(font, title, x + (w - font.width(title)) / 2, y + 4, 0xFFFFFF88, false);
 
-		// 可滚动内容
 		int contentY = y + 18;
 		int contentH = h - 22;
 		graphics.enableScissor(x + 4, contentY, x + w - 8, contentY + contentH);
 
 		int lineH = 10;
-		// 计算实际行数（跳过末尾空行）
 		int actualLines = lines.length;
 		while (actualLines > 0 && lines[actualLines - 1].isEmpty()) actualLines--;
 
@@ -110,7 +86,6 @@ public class HelpDockPanel implements DockPanel {
 		}
 		graphics.disableScissor();
 
-		// 滚动条
 		if (maxScroll > 0) {
 			int sbX = x + w - 6;
 			int trackH = contentH - 2;
@@ -172,11 +147,11 @@ public class HelpDockPanel implements DockPanel {
 		return true;
 	}
 
-	private void updateScrollbarDrag(double mouseY, int maxScroll, int contentY, int contentH, int actualLines) {
+	private void updateScrollbarDrag(double mouseY, int maxScroll, int contentY, int contentH, int lineCount) {
 		if (maxScroll <= 0) return;
 		int trackH = contentH - 2;
 		int lineH = 10;
-		int thumbH = Math.max(10, trackH * contentH / (actualLines * lineH));
+		int thumbH = Math.max(10, trackH * contentH / (lineCount * lineH));
 		int thumbTravel = trackH - thumbH;
 		if (thumbTravel <= 0) return;
 		double relY = mouseY - (contentY + 1) - thumbH / 2.0;

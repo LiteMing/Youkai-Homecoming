@@ -201,6 +201,7 @@ public class ActionListPanel {
 		this.y = y;
 		this.w = w;
 		this.h = h;
+		this.dirty = true;
 	}
 
 	public void setPhase(PhaseDefinition phase) {

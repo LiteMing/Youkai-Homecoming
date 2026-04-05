@@ -45,7 +45,7 @@ public class ActionEditorPanel {
 			"target_on_ground", "target_speed", "random_chance",
 			"target_health_below", "target_health_above",
 			"target_is_flying", "target_is_fallflying",
-			"dynamic_tick_interval", "entity_trait", "compare", "variable_check",
+			"dynamic_tick_interval", "entity_trait", "entity_flag", "compare", "variable_check",
 			"difficulty_equals", "difficulty_above",
 			"always", "not", "and", "or"
 	};
@@ -56,7 +56,7 @@ public class ActionEditorPanel {
 			"target_on_ground", "target_speed", "random_chance",
 			"target_health_below", "target_health_above",
 			"target_is_flying", "target_is_fallflying",
-			"dynamic_tick_interval", "entity_trait", "compare", "variable_check",
+			"dynamic_tick_interval", "entity_trait", "entity_flag", "compare", "variable_check",
 			"difficulty_equals", "difficulty_above",
 			"always"
 	};
@@ -98,10 +98,14 @@ public class ActionEditorPanel {
 	}
 
 	public void setBounds(int x, int y, int w, int h) {
+		boolean changed = (this.x != x || this.y != y || this.w != w || this.h != h);
 		this.x = x;
 		this.y = y;
 		this.w = w;
 		this.h = h;
+		if (changed && widgetsRegistered) {
+			layoutWidgets();
+		}
 	}
 
 	public void setAction(SpellAction action, int index) {
@@ -189,6 +193,8 @@ public class ActionEditorPanel {
 			buildSequenceRows(sa);
 		} else if (action instanceof ConfineTargetAction cta) {
 			buildConfineTargetRows(cta);
+		} else if (action instanceof SetEntityFlagAction sefa) {
+			buildSetEntityFlagRows(sefa);
 		}
 	}
 
@@ -208,6 +214,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
 		addFullWidthButton("Confine Target", () -> selectType("confine_target"));
+		addFullWidthButton("Set Entity Flag", () -> selectType("set_entity_flag"));
 	}
 
 	private void selectType(String type) {
@@ -255,6 +262,7 @@ public class ActionEditorPanel {
 		case "burst" -> new BurstAction(3, 5, new ArrayList<>());
 		case "sequence" -> new SpellActions.SequenceAction(new ArrayList<>());
 		case "confine_target" -> new ConfineTargetAction(32, 1.0);
+		case "set_entity_flag" -> new SetEntityFlagAction(4, true);
 		default -> new SpellActions.NoopAction();
 		};
 	}
@@ -358,6 +366,19 @@ public class ActionEditorPanel {
 				notifyDanmaku(old -> old.withHitBehaviorEntity(v)));
 		addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
 				notifyDanmaku(old -> old.withHitBehaviorBlock(v)));
+
+		// Damage type override: optional, defaults to standard danmaku damage
+		if (a.damageType().isPresent()) {
+			addEnumRow("Dmg Type", dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.values(),
+					a.damageType().get(), v ->
+					notifyDanmaku(old -> old.withDamageType(Optional.of(v))));
+			addFullWidthButton("[- Remove Dmg Type]", () ->
+					notifyDanmaku(old -> old.withDamageType(Optional.empty())));
+		} else {
+			addFullWidthButton("[+ Damage Type]", () ->
+					notifyDanmaku(old -> old.withDamageType(Optional.of(
+							dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.ABYSSAL))));
+		}
 	}
 
 	// --- FireLaser rows ---
@@ -426,6 +447,19 @@ public class ActionEditorPanel {
 		} else {
 			addFullWidthButton("[- Remove Delayed]", () -> notifyLaser(old ->
 					old.withDelayedV0(Optional.empty()).withDelayedV1(Optional.empty())));
+		}
+
+		// Damage type override: optional, defaults to standard danmaku damage
+		if (a.damageType().isPresent()) {
+			addEnumRow("Dmg Type", dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.values(),
+					a.damageType().get(), v ->
+					notifyLaser(old -> old.withDamageType(Optional.of(v))));
+			addFullWidthButton("[- Remove Dmg Type]", () ->
+					notifyLaser(old -> old.withDamageType(Optional.empty())));
+		} else {
+			addFullWidthButton("[+ Damage Type]", () ->
+					notifyLaser(old -> old.withDamageType(Optional.of(
+							dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.ABYSSAL))));
 		}
 	}
 
@@ -553,6 +587,9 @@ public class ActionEditorPanel {
 		} else if (cond instanceof SpellConditions.EntityTrait et) {
 			addStringRow(prefix + "Trait", et.trait(), v ->
 					onChanged.accept(new SpellConditions.EntityTrait(v)));
+		} else if (cond instanceof SpellConditions.EntityFlagCondition ef) {
+			addIntRow(prefix + "Flag", ef.flag(), v ->
+					onChanged.accept(new SpellConditions.EntityFlagCondition(v)));
 		} else if (cond instanceof SpellConditions.CompareNumbers cn) {
 			addNumberRow(prefix + "Left", cn.left(), v ->
 					onChanged.accept(new SpellConditions.CompareNumbers(v, cn.op(), cn.right())));
@@ -697,6 +734,15 @@ public class ActionEditorPanel {
 				notifySimple(old -> new ConfineTargetAction(v, ((ConfineTargetAction) old).pushSpeed())));
 		addDoubleRow("Push Speed", cta.pushSpeed(), v ->
 				notifySimple(old -> new ConfineTargetAction(((ConfineTargetAction) old).maxDistance(), v)));
+	}
+
+	// --- Set Entity Flag rows ---
+
+	private void buildSetEntityFlagRows(SetEntityFlagAction sefa) {
+		addIntRow("Flag", sefa.flag(), v ->
+				notifySimple(old -> new SetEntityFlagAction(v, ((SetEntityFlagAction) old).enable())));
+		addStringCycleRow("Enable", new String[]{"true", "false"}, sefa.enable() ? "true" : "false", v ->
+				notifySimple(old -> new SetEntityFlagAction(((SetEntityFlagAction) old).flag(), v.equals("true"))));
 	}
 
 	// --- SpawnShooter rows ---
@@ -1961,6 +2007,7 @@ public class ActionEditorPanel {
 			case "dynamic_tick_interval" -> new SpellConditions.DynamicTickInterval(
 					NumberProvider.constant(60), NumberProvider.constant(0));
 			case "entity_trait" -> new SpellConditions.EntityTrait("is_lunatic");
+			case "entity_flag" -> new SpellConditions.EntityFlagCondition(4);
 			case "compare" -> new SpellConditions.CompareNumbers(
 					new NumberProviders.PhaseTick(), "<", NumberProvider.constant(100));
 			case "variable_check" -> new SpellConditions.VariableCheck("kind", "==", 0);
@@ -1995,6 +2042,7 @@ public class ActionEditorPanel {
 			Map.entry("force_phase", "Force Phase"),
 			Map.entry("sequence", "Sequence"),
 			Map.entry("confine_target", "Confine Target"),
+			Map.entry("set_entity_flag", "Set Entity Flag"),
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);

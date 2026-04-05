@@ -5,7 +5,9 @@ import dev.xkmc.youkaishomecoming.content.spell.preview.VirtualSpellScene;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
@@ -32,7 +34,8 @@ public class ControlsDockPanel implements DockPanel {
 
 	private int x, y, w, h;
 	private final List<Button> buttons = new ArrayList<>();
-	private Consumer<Button> addWidgetCallback;
+	private final List<EditBox> editBoxes = new ArrayList<>();
+	private Consumer<AbstractWidget> addWidgetCallback;
 	private Consumer<GuiEventListener> removeWidgetCallback;
 
 	public ControlsDockPanel(VirtualSpellScene scene,
@@ -48,7 +51,7 @@ public class ControlsDockPanel implements DockPanel {
 	/**
 	 * 设置 widget 注册/注销回调。必须在 init() 前调用。
 	 */
-	public void setWidgetCallbacks(Consumer<Button> addWidget, Consumer<GuiEventListener> removeWidget) {
+	public void setWidgetCallbacks(Consumer<AbstractWidget> addWidget, Consumer<GuiEventListener> removeWidget) {
 		this.addWidgetCallback = addWidget;
 		this.removeWidgetCallback = removeWidget;
 	}
@@ -88,13 +91,22 @@ public class ControlsDockPanel implements DockPanel {
 
 		// Row 3: Distance + HP
 		bx = x + 4;
-		bx = addButton(bx, row3Y, 30, "Dist:", btn -> {});
+		bx = addEditBox(bx, row3Y, 40, String.valueOf((int) scene.getTargetDistance()), val -> {
+			try { scene.setTargetDistance(Float.parseFloat(val)); } catch (NumberFormatException ignored) {}
+		});
 		for (float dist : VirtualSpellScene.DISTANCE_OPTIONS) {
 			final float d = dist;
 			bx = addButton(bx, row3Y, 24, String.valueOf((int) dist), btn -> scene.setTargetDistance(d));
 		}
 		bx += 10;
-		bx = addButton(bx, row3Y, 24, "HP:", btn -> {});
+		bx = addEditBox(bx, row3Y, 36, String.valueOf((int) (scene.getHealthRatio() * 100)) + "%", val -> {
+			try {
+				String s = val.replace("%", "").trim();
+				float v = Float.parseFloat(s);
+				if (v > 1) v = v / 100f;
+				scene.setHealthRatio(v);
+			} catch (NumberFormatException ignored) {}
+		});
 		for (float hp : VirtualSpellScene.HP_OPTIONS) {
 			String hpLabel = ((int) (hp * 100)) + "%";
 			final float h = hp;
@@ -148,7 +160,15 @@ public class ControlsDockPanel implements DockPanel {
 			scene.setTargetFallFlying(!scene.isTargetFallFlying());
 			rebuildCallback.run();
 		});
-		bx = addButton(bx, row6Y, 38, "TgtHP:", btn -> {});
+		bx = addEditBox(bx, row6Y, 42, ((int) (scene.getTargetHealthRatio() * 100)) + "%", val -> {
+			try {
+				String s = val.replace("%", "").trim();
+				float v = Float.parseFloat(s);
+				if (v > 1) v = v / 100f;
+				scene.setTargetHealthRatio(v);
+				rebuildCallback.run();
+			} catch (NumberFormatException ignored) {}
+		});
 		for (float hp : new float[]{0.25f, 0.5f, 0.75f, 1.0f}) {
 			String thpLabel = ((int) (hp * 100)) + "%";
 			final float h = hp;
@@ -160,7 +180,12 @@ public class ControlsDockPanel implements DockPanel {
 
 		// Row 7: Target Height
 		bx = x + 4;
-		bx = addButton(bx, row7Y, 32, "TgtY:", btn -> {});
+		bx = addEditBox(bx, row7Y, 36, String.valueOf((int) scene.getTargetHeight()), val -> {
+			try {
+				scene.setTargetHeight(Double.parseDouble(val));
+				rebuildCallback.run();
+			} catch (NumberFormatException ignored) {}
+		});
 		for (double hgt : new double[]{0, 1, 2, 5, 10, 20}) {
 			String hLabel = String.valueOf((int) hgt);
 			final double finalH = hgt;
@@ -199,13 +224,38 @@ public class ControlsDockPanel implements DockPanel {
 		return bx + bw + BUTTON_SPACING;
 	}
 
+	private int addEditBox(int bx, int by, int bw, String defaultVal, java.util.function.Consumer<String> onSubmit) {
+		EditBox box = new EditBox(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
+		box.setMaxLength(16);
+		box.setValue(defaultVal);
+		box.setResponder(val -> {}); // no live response
+		box.setFilter(s -> s.matches("[0-9.%\\-]*")); // only numbers, dot, %, minus
+		// On Enter key, apply value
+		editBoxes.add(box);
+		if (addWidgetCallback != null) {
+			addWidgetCallback.accept(box);
+		}
+		// Store onSubmit callback — we handle it in a custom keyPressed check
+		box.setResponder(val -> {}); // placeholder, actual submit on Enter
+		editBoxSubmits.put(box, onSubmit);
+		return bx + bw + BUTTON_SPACING;
+	}
+
+	// Map from EditBox to its submit callback
+	private final java.util.Map<EditBox, java.util.function.Consumer<String>> editBoxSubmits = new java.util.HashMap<>();
+
 	public void clearButtons() {
 		if (removeWidgetCallback != null) {
 			for (Button btn : buttons) {
 				removeWidgetCallback.accept(btn);
 			}
+			for (EditBox box : editBoxes) {
+				removeWidgetCallback.accept(box);
+			}
 		}
 		buttons.clear();
+		editBoxes.clear();
+		editBoxSubmits.clear();
 	}
 
 	// ---- DockPanel 基础实现 ----
@@ -266,21 +316,37 @@ public class ControlsDockPanel implements DockPanel {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		// 按钮的点击由 Screen widget 系统处理
+		// 按钮和 EditBox 的点击由 Screen widget 系统处理
+		return false;
+	}
+
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		// Enter key submits focused EditBox value
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
+			for (EditBox box : editBoxes) {
+				if (box.isFocused()) {
+					var submit = editBoxSubmits.get(box);
+					if (submit != null) {
+						submit.accept(box.getValue());
+					}
+					box.setFocused(false);
+					return true;
+				}
+			}
+		}
 		return false;
 	}
 
 	@Override
 	public void onActivated() {
-		for (Button btn : buttons) {
-			btn.visible = true;
-		}
+		for (Button btn : buttons) btn.visible = true;
+		for (EditBox box : editBoxes) box.visible = true;
 	}
 
 	@Override
 	public void onDeactivated() {
-		for (Button btn : buttons) {
-			btn.visible = false;
-		}
+		for (Button btn : buttons) btn.visible = false;
+		for (EditBox box : editBoxes) box.visible = false;
 	}
 }

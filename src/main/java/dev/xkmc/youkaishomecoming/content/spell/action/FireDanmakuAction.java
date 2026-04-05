@@ -114,7 +114,7 @@ public record FireDanmakuAction(
 		double elevDeg = elevation.get(ctx);
 
 		Vec3 originPos = origin.resolve(ctx);
-		Vec3 baseDir = aimMode.getBaseDirection(ctx);
+		Vec3 baseDir = aimMode.getBaseDirection(ctx, originPos);
 
 		// Apply origin.rotation to base direction so the entire pattern rotates together
 		double originRot = origin.rotation().get(ctx);
@@ -128,9 +128,10 @@ public record FireDanmakuAction(
 			);
 		}
 
-		// Tilted plane: rotate the normal vector by tiltAngle degrees around baseDir
+		// Tilted plane: rotate the normal vector by tiltAngle degrees around baseDir.
+		// For NESTED_RING, tilt_angle is consumed by the inner ring axis logic instead.
 		DanmakuHelper.Orientation ori;
-		if (tiltAngle.isPresent()) {
+		if (tiltAngle.isPresent() && pattern != PatternType.NESTED_RING) {
 			double tilt = tiltAngle.get().get(ctx);
 			var stdOri = DanmakuHelper.getOrientation(baseDir);
 			Vec3 tiltedNormal = stdOri.normal().scale(Math.cos(Math.toRadians(tilt)))
@@ -140,16 +141,39 @@ public record FireDanmakuAction(
 			ori = DanmakuHelper.getOrientation(baseDir);
 		}
 
-		// NESTED_RING: outer ring × inner ring (perpendicular to each outer direction)
-		// elevation controls inner ring spread angle (default 360°, i.e. full perpendicular ring)
+		// NESTED_RING: outer ring × inner ring with configurable inner axis via tilt_angle.
+		//   tilt_angle = 0° (default): inner ring in vertical plane (orange-slice / classic)
+		//   tilt_angle = 90°: inner ring perpendicular to outer dir (stacked-hoop)
+		//   Any value in between blends the two orientations.
+		// count = inner ring count, outer_count = outer ring count, elevation = inner arc range
 		if (pattern == PatternType.NESTED_RING && outerCount.isPresent()) {
 			int outer = diff.adjustCount((int) outerCount.get().get(ctx));
 			double innerSpread = elevDeg != 0 ? elevDeg : 360.0;
-			boolean innerClosed = innerSpread >= 360.0;
+			boolean innerClosed = Math.abs(innerSpread) >= 360.0;
+			double tilt = tiltAngle.isPresent() ? tiltAngle.get().get(ctx) : 0;
 			for (int o = 0; o < outer; o++) {
 				double outerAngle = (360.0 / outer) * o + angle;
 				Vec3 outerDir = ori.rotateDegrees(outerAngle);
-				var outerOri = DanmakuHelper.getOrientation(outerDir);
+				// Build inner ring orientation based on tilt:
+				//   verticalNormal = parent ori.normal (vertical plane → orange-slice)
+				//   perpNormal     = getOrientation(outerDir).normal (perpendicular plane → stacked-hoop)
+				//   Blend between the two by tilt angle (0°=vertical, 90°=perpendicular)
+				DanmakuHelper.Orientation innerOri;
+				if (Math.abs(tilt) < 1e-3) {
+					// Pure vertical (classic): inner ring in the plane of (outerDir, parent normal)
+					innerOri = DanmakuHelper.getOrientation(outerDir, ori.normal());
+				} else if (Math.abs(tilt - 90) < 1e-3 || Math.abs(tilt + 90) < 1e-3) {
+					// Pure perpendicular (stacked-hoop)
+					innerOri = DanmakuHelper.getOrientation(outerDir);
+				} else {
+					// Blend: rotate the vertical normal toward the perpendicular normal by tilt degrees
+					Vec3 vertNormal = ori.normal();
+					Vec3 perpNormal = DanmakuHelper.getOrientation(outerDir).normal();
+					double tiltRad = Math.toRadians(tilt);
+					Vec3 blendedNormal = vertNormal.scale(Math.cos(tiltRad))
+							.add(perpNormal.scale(Math.sin(tiltRad))).normalize();
+					innerOri = DanmakuHelper.getOrientation(outerDir, blendedNormal);
+				}
 				for (int j = 0; j < n; j++) {
 					double innerAngle;
 					if (innerClosed) {
@@ -157,7 +181,7 @@ public record FireDanmakuAction(
 					} else {
 						innerAngle = n > 1 ? -innerSpread / 2.0 + innerSpread * j / (n - 1) : 0;
 					}
-					Vec3 dir = outerOri.rotateDegrees(90, innerAngle).scale(spd);
+					Vec3 dir = innerOri.rotateDegrees(0, innerAngle).scale(spd);
 					emitDanmaku(holder, ctx, life, dir, originPos);
 				}
 			}
@@ -180,31 +204,48 @@ public record FireDanmakuAction(
 			return;
 		}
 
-		// SPHERE: latitude_count = count, longitude_count = outerCount (default = count)
-		// spread controls longitude range (default 360°), elevation controls latitude range (default 180°)
+		// SPHERE: Fibonacci (golden-angle) uniform distribution
+		// count = total projectiles, elevation = latitude range (default 180°), spread = longitude range (default 360°)
 		// Uses ori's coordinate system so the sphere is oriented along baseDir
 		if (pattern == PatternType.SPHERE) {
-			int latCount = n;
-			int lonCount = outerCount.map(np -> (int) np.get(ctx)).orElse(n);
-			double latRange = elevDeg != 0 ? Math.abs(elevDeg) : 180.0; // total latitude range
-			double lonRange = spreadDeg != 360 ? spreadDeg : 360.0;     // total longitude range
-			boolean lonClosed = lonRange >= 360.0; // full circle: don't duplicate first/last
-			for (int lat = 0; lat < latCount; lat++) {
-				// phi: centered around 0, from -latRange/2 to +latRange/2
-				double phi = latCount > 1 ? -latRange / 2.0 + latRange * lat / (latCount - 1) : 0;
-				int effectiveLon = lonClosed ? lonCount : Math.max(lonCount, 1);
-				for (int lon = 0; lon < effectiveLon; lon++) {
-					double theta;
-					if (lonClosed) {
-						theta = (lonRange / lonCount) * lon + angle;
-					} else {
-						theta = effectiveLon > 1
-								? angle - lonRange / 2.0 + lonRange * lon / (effectiveLon - 1)
-								: angle;
-					}
-					Vec3 dir = ori.rotateDegrees(theta, phi).scale(spd);
-					emitDanmaku(holder, ctx, life, dir, originPos);
+			double latRange = elevDeg != 0 ? Math.abs(elevDeg) : 180.0;
+			double lonRange = spreadDeg != 360 ? spreadDeg : 360.0;
+			// Golden angle in degrees
+			double goldenAngle = 360.0 / ((1 + Math.sqrt(5)) / 2);
+			// Map latitude range to sin-space for uniform area distribution
+			double sinLatMin = Math.sin(Math.toRadians(-latRange / 2.0));
+			double sinLatMax = Math.sin(Math.toRadians(latRange / 2.0));
+			for (int i = 0; i < n; i++) {
+				// Fibonacci latitude: uniform in sin(phi) space → uniform area on sphere
+				double t = n > 1 ? (double) i / (n - 1) : 0.5;
+				double sinPhi = sinLatMin + (sinLatMax - sinLatMin) * t;
+				double phi = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinPhi))));
+				// Golden-angle longitude
+				double theta = angle + (goldenAngle * i) % lonRange;
+				if (lonRange < 360.0) {
+					theta = angle - lonRange / 2.0 + (goldenAngle * i) % lonRange;
 				}
+				Vec3 dir = ori.rotateDegrees(theta, phi).scale(spd);
+				emitDanmaku(holder, ctx, life, dir, originPos);
+			}
+			return;
+		}
+
+		// SPHERE_RANDOM: random uniform distribution on sphere surface
+		// count = total projectiles, elevation = latitude range (default 180°), spread = longitude range (default 360°)
+		if (pattern == PatternType.SPHERE_RANDOM) {
+			double latRange = elevDeg != 0 ? Math.abs(elevDeg) : 180.0;
+			double lonRange = spreadDeg != 360 ? spreadDeg : 360.0;
+			double sinLatMin = Math.sin(Math.toRadians(-latRange / 2.0));
+			double sinLatMax = Math.sin(Math.toRadians(latRange / 2.0));
+			var rand = holder.random();
+			for (int i = 0; i < n; i++) {
+				// Uniform in sin(phi) space for area-correct random distribution
+				double sinPhi = sinLatMin + (sinLatMax - sinLatMin) * rand.nextDouble();
+				double phi = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinPhi))));
+				double theta = angle - lonRange / 2.0 + lonRange * rand.nextDouble();
+				Vec3 dir = ori.rotateDegrees(theta, phi).scale(spd);
+				emitDanmaku(holder, ctx, life, dir, originPos);
 			}
 			return;
 		}
@@ -217,6 +258,22 @@ public record FireDanmakuAction(
 				double a = angle + totalTurns * t;
 				// Radius grows linearly with t; elevation stays flat (horizontal spiral)
 				Vec3 dir = ori.rotateDegrees(a).scale(spd * (0.3 + 0.7 * t));
+				emitDanmaku(holder, ctx, life, dir, originPos);
+			}
+			return;
+		}
+
+		// CONE: forward as axis, elevation = cone half-angle.
+		// Equivalent to legacy asNormal().rotateDegrees(a, coneAngle):
+		//   dir = forward * sin(coneAngle) + (normal*cos(a) + side*sin(a)) * cos(coneAngle)
+		if (pattern == PatternType.CONE) {
+			double coneRad = Math.toRadians(elevDeg);
+			double sinCone = Math.sin(coneRad);
+			double cosCone = Math.cos(coneRad);
+			for (int i = 0; i < n; i++) {
+				double a = Math.toRadians(angle + (360.0 / n) * i);
+				Vec3 radial = ori.normal().scale(Math.cos(a)).add(ori.side().scale(Math.sin(a)));
+				Vec3 dir = ori.forward().scale(sinCone).add(radial.scale(cosCone)).scale(spd);
 				emitDanmaku(holder, ctx, life, dir, originPos);
 			}
 			return;

@@ -286,6 +286,19 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	/**
+	 * Safety net: ensure virtual danmaku are erased no matter how this entity is removed.
+	 * Covers: /kill, void fall (checkBelowWorld → discard), chunk unload, or any
+	 * unexpected removal path that bypasses {@link #cleanup()}.
+	 */
+	@Override
+	public void remove(RemovalReason reason) {
+		if (!allDanmakus.isEmpty()) {
+			eraseAllDanmaku(null);
+		}
+		super.remove(reason);
+	}
+
+	/**
 	 * @return true if this proxy has finished its spell and all danmaku have expired
 	 */
 	public boolean isFinished() {

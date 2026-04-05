@@ -215,6 +215,34 @@ public record FireDanmakuAction(
 			// Map latitude range to sin-space for uniform area distribution
 			double sinLatMin = Math.sin(Math.toRadians(-latRange / 2.0));
 			double sinLatMax = Math.sin(Math.toRadians(latRange / 2.0));
+			// Randomize Fibonacci spiral orientation to break the fixed asymmetric pattern.
+			// Full sphere: uniform SO(3) rotation (tilt pole axis + spin).
+			// Partial sphere: spin around forward only (preserve aiming direction).
+			var rand = holder.random();
+			boolean fullSphere = latRange >= 180.0 - 1e-3 && lonRange >= 360.0 - 1e-3;
+			if (fullSphere) {
+				// Uniform random rotation via Euler angles (Haar measure on SO(3))
+				double alpha = rand.nextDouble() * 2 * Math.PI;
+				double cosTheta = 2 * rand.nextDouble() - 1;
+				double thetaRad = Math.acos(cosTheta);
+				double gamma = rand.nextDouble() * 2 * Math.PI;
+				// Step 1: rotate normal/side around forward by alpha
+				Vec3 n1 = ori.normal().scale(Math.cos(alpha)).add(ori.side().scale(Math.sin(alpha)));
+				Vec3 s1 = ori.normal().scale(-Math.sin(alpha)).add(ori.side().scale(Math.cos(alpha)));
+				// Step 2: tilt forward toward n1 by thetaRad (pole axis randomization)
+				Vec3 f2 = ori.forward().scale(Math.cos(thetaRad)).add(n1.scale(Math.sin(thetaRad)));
+				Vec3 n2 = ori.forward().scale(-Math.sin(thetaRad)).add(n1.scale(Math.cos(thetaRad)));
+				// Step 3: rotate around new forward by gamma
+				Vec3 n3 = n2.scale(Math.cos(gamma)).add(s1.scale(Math.sin(gamma)));
+				Vec3 s3 = n2.scale(-Math.sin(gamma)).add(s1.scale(Math.cos(gamma)));
+				ori = new DanmakuHelper.Orientation(f2, n3, s3);
+			} else {
+				// Partial sphere: only spin around forward to preserve coverage direction
+				double spin = rand.nextDouble() * 2 * Math.PI;
+				Vec3 rn = ori.normal().scale(Math.cos(spin)).add(ori.side().scale(Math.sin(spin)));
+				Vec3 rs = ori.normal().scale(-Math.sin(spin)).add(ori.side().scale(Math.cos(spin)));
+				ori = new DanmakuHelper.Orientation(ori.forward(), rn, rs);
+			}
 			for (int i = 0; i < n; i++) {
 				// Fibonacci latitude: uniform in sin(phi) space → uniform area on sphere
 				double t = n > 1 ? (double) i / (n - 1) : 0.5;

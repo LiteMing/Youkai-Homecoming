@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.game;
 
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellConditions;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
@@ -1567,17 +1568,43 @@ public class MigratedSpellCards {
 						new SpellConditions.CompareNumbers(stepVar, "<", NumberProvider.constant(3)))),
 				List.of(sweepInit), List.of());
 
-		// === Lasers (step == 3): BurstAction 20tick, 每tick 4组×(主+3叉+9二级叉) ===
-		// Legacy: Lasers ticker 20tick, per tick 4 primary (random sphere) + 3 branch + 3×3 sub-branch
-		SpellAction laserBurstBody = buildRemiliaLaserGroup();
+		// === Lasers (step == 3): 80组预生成树状激光 (20tick × 4组/tick) ===
+		// 每组: 1主(random sphere) + 3分叉(endpoint, 120°@45°) = 4条
+		// 方向在Java中预计算, 避免NumberProvider无法做相对方向旋转的限制
+		var laserGroups = new ArrayList<SpellAction>();
+		for (int g = 0; g < 80; g++) {
+			laserGroups.add(buildRemiliaLaserGroup());
+		}
+		// 每tick发射4组 (laserGroups按顺序消耗, 通过变量$lt索引)
 		var laserBurst = new BurstAction(20, 1, "lt", List.<SpellAction>of(
-				new SpellActions.RepeatAction(NumberProvider.constant(4), "li", List.of(laserBurstBody))));
+				new SpellActions.SequenceAction(List.of(
+						laserGroups.get(0), laserGroups.get(1), laserGroups.get(2), laserGroups.get(3)
+				))));
+		// 上面只用了4个, 改为: 用BurstAction变量$lt来索引, 但SequenceAction不支持动态索引
+		// 简化: 直接把80组打平成20-tick burst, 每tick body含4个SequenceAction
+		var perTickActions = new ArrayList<SpellAction>();
+		for (int t = 0; t < 20; t++) {
+			var tickGroup = new ArrayList<SpellAction>();
+			for (int i = 0; i < 4; i++) {
+				tickGroup.add(laserGroups.get(t * 4 + i));
+			}
+			perTickActions.add(new SpellActions.SequenceAction(tickGroup));
+		}
+		// 用DelayAction逐tick触发
+		var laserAllActions = new ArrayList<SpellAction>();
+		for (int t = 0; t < 20; t++) {
+			if (t == 0) {
+				laserAllActions.add(perTickActions.get(0));
+			} else {
+				laserAllActions.add(new DelayAction(NumberProvider.constant(t), List.of(perTickActions.get(t))));
+			}
+		}
 		var laserAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.TickInterval(20, 0),
 						new SpellConditions.CompareNumbers(stepVar, "==", NumberProvider.constant(3)),
 						new SpellConditions.TargetIsFallFlying())),
-				List.of(laserBurst), List.of());
+				List.of(new SpellActions.SequenceAction(laserAllActions)), List.of());
 
 		// === Spear (step == 4): 梭形弹幕柱 (caster→target方向, 极紧密) ===
 		// 80个弹幕沿caster→target线性排列, 微小横向偏移形成梭形
@@ -1905,73 +1932,46 @@ public class MigratedSpellCards {
 	}
 
 	/**
-	 * Remilia: 构建单组激光 (1主 + 3一级分叉 + 9二级分叉 = 13条/组)
-	 * Legacy: random sphere dir, len=25-40, 3 branches at endpoint (120° apart, 45°),
-	 *         each branch gets 3 sub-branches (120° apart, 45°), sub-branch len=40
+	 * Remilia: 构建单组激光 (1主 + 3一级分叉 = 4条/组)
+	 * 方向在Java中用随机数直接计算, 传入FixedDirection, 避免NumberProvider无法做相对方向旋转的限制
+	 * Legacy: dir = Gaussian(3).normalize(), len=rand(25,40), 3 branches at endpoint via asNormal().rotateDegrees
 	 */
 	private static SpellAction buildRemiliaLaserGroup() {
-		// 端点坐标: caster + dir * len
-		// dir = (cos(el)*sin(az), sin(el), cos(el)*cos(az))
-		var epX = new NumberProviders.Add(new NumberProviders.CasterX(),
-				new NumberProviders.Mul(new NumberProviders.Mul(
-						new NumberProviders.Cos(new NumberProviders.Variable("lel"), 1, 0),
-						new NumberProviders.Sin(new NumberProviders.Variable("laz"), 1, 0)),
-						new NumberProviders.Variable("llen")));
-		var epY = new NumberProviders.Add(new NumberProviders.CasterY(),
-				new NumberProviders.Mul(
-						new NumberProviders.Sin(new NumberProviders.Variable("lel"), 1, 0),
-						new NumberProviders.Variable("llen")));
-		var epZ = new NumberProviders.Add(new NumberProviders.CasterZ(),
-				new NumberProviders.Mul(new NumberProviders.Mul(
-						new NumberProviders.Cos(new NumberProviders.Variable("lel"), 1, 0),
-						new NumberProviders.Cos(new NumberProviders.Variable("laz"), 1, 0)),
-						new NumberProviders.Variable("llen")));
-		var endpointOrigin = new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
-				epX, epY, epZ, NumberProvider.constant(0));
+		var rand = new java.util.Random();
+		// Primary direction: uniform sphere via Gaussian normalization
+		Vec3 dir = new Vec3(rand.nextGaussian(), rand.nextGaussian(), rand.nextGaussian()).normalize();
+		if (dir.lengthSqr() < 0.5) dir = new Vec3(0, 1, 0); // fallback
+		int len = 25 + rand.nextInt(16); // 25-40
 
-		// 二级分叉: 从一级分叉端点再延伸, 简化为从同一端点以更大角度发射
-		var subBranch = new SpellActions.RepeatAction(NumberProvider.constant(3), "lk", List.of(
-				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
-						NumberProvider.constant(140), NumberProvider.constant(40),
-						new NumberProviders.Add(new NumberProviders.Variable("lbr"),
-								new NumberProviders.Add(
-										new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(120)),
-										new NumberProviders.Mul(new NumberProviders.Variable("lk"), NumberProvider.constant(40)))),
-						NumberProvider.constant(60),
-						new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
-						endpointOrigin,
-						Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty())
-		));
+		// Primary laser
+		var primary = new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+				NumberProvider.constant(140), NumberProvider.constant(len),
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				new AimMode.AimModes.FixedDirection(dir), OriginConfig.caster(),
+				Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty());
 
-		// 一级分叉: 3条, 120° apart, 45° elevation
-		var branch = new SpellActions.RepeatAction(NumberProvider.constant(3), "lj", List.of(
-				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
-						NumberProvider.constant(140), NumberProvider.constant(80),
-						new NumberProviders.Add(new NumberProviders.Variable("lbr"),
-								new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(120))),
-						NumberProvider.constant(45),
-						new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
-						endpointOrigin,
-						Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty()),
-				subBranch
-		));
+		// Endpoint
+		Vec3 endpoint = dir.scale(len); // relative to caster center
+		var endOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER,
+				NumberProvider.constant(endpoint.x), NumberProvider.constant(endpoint.y),
+				NumberProvider.constant(endpoint.z), NumberProvider.constant(0));
 
-		return new SpellActions.SequenceAction(List.of(
-				new SpellActions.SetVariable("laz", new NumberProviders.RandomRange(0, 360)),
-				new SpellActions.SetVariable("lel", new NumberProviders.RandomRange(-90, 90)),
-				new SpellActions.SetVariable("llen", new NumberProviders.RandomRange(25, 40)),
-				new SpellActions.SetVariable("lbr", new NumberProviders.RandomRange(0, 360)),
-				// 主激光
-				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
-						NumberProvider.constant(140),
-						new NumberProviders.Variable("llen"),
-						new NumberProviders.Variable("laz"),
-						new NumberProviders.Variable("lel"),
-						new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1)),
-						OriginConfig.caster(),
-						Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty()),
-				branch
-		));
+		// 3 branches: perpendicular to primary, 120° apart, 45° cone angle
+		DanmakuHelper.Orientation ori = DanmakuHelper.getOrientation(dir).asNormal();
+		double baseAngle = rand.nextDouble() * 360;
+		var actions = new ArrayList<SpellAction>();
+		actions.add(primary);
+		for (int j = 0; j < 3; j++) {
+			double angle = (baseAngle + j * 120) / 180.0 * Math.PI;
+			double ver = 45.0 / 180.0 * Math.PI;
+			Vec3 branchDir = ori.rotate(angle, ver);
+			actions.add(new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+					NumberProvider.constant(140), NumberProvider.constant(80),
+					NumberProvider.constant(0), NumberProvider.constant(0),
+					new AimMode.AimModes.FixedDirection(branchDir), endOrigin,
+					Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty()));
+		}
+		return new SpellActions.SequenceAction(actions);
 	}
 
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,

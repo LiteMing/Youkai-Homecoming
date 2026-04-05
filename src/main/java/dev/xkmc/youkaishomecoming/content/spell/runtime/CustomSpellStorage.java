@@ -104,7 +104,16 @@ public class CustomSpellStorage {
 			var json = com.google.gson.JsonParser.parseString(content);
 			SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
 					.resultOrPartial(err -> LOGGER.warn("Failed to parse spell file {}: {}", file.getName(), err))
-					.ifPresent(SpellRegistry::register);
+					.ifPresent(def -> {
+						// Skip disk-cached versions of built-in spells — Java code is always authoritative.
+						// This prevents stale auto-saved JSONs from overriding updated Java definitions.
+						if (SpellRegistry.hasDefault(def.id)) {
+							LOGGER.info("Skipping disk-cached built-in spell {} (Java definition takes priority)", def.id);
+							file.delete();
+							return;
+						}
+						SpellRegistry.register(def);
+					});
 		} catch (Exception e) {
 			LOGGER.warn("Failed to read spell file {}: {}", file.getName(), e.getMessage());
 		}

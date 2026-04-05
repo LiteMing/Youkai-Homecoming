@@ -36,6 +36,14 @@ public class SpellRegistry {
 	}
 
 	/**
+	 * Returns true if a built-in (code-defined) default exists for this spell ID.
+	 * Used to distinguish built-in spells from user-created custom spells.
+	 */
+	public static boolean hasDefault(ResourceLocation id) {
+		return DEFAULTS.containsKey(id);
+	}
+
+	/**
 	 * Get the original default definition (before any editor changes).
 	 * Returns null for custom spells that were never registered from code.
 	 */

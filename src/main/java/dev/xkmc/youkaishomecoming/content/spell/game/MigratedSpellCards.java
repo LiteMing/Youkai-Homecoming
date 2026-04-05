@@ -1415,25 +1415,22 @@ public class MigratedSpellCards {
 		var nearShooterBody = List.<SpellAction>of(
 				new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.YELLOW),
 						NumberProvider.constant(1), NumberProvider.constant(0.8), NumberProvider.constant(40),
-						new NumberProviders.GaussianRandom(0, 30), NumberProvider.constant(0),
-						new NumberProviders.GaussianRandom(0, 30),
+						NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
 						PatternType.AIMED, OriginConfig.caster(),
-						new AimMode.AimModes.DirectionToTarget(),
+						new AimMode.AimModes.CasterFacing(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
 				new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.ORANGE),
 						NumberProvider.constant(1), NumberProvider.constant(0.3), NumberProvider.constant(40),
-						new NumberProviders.Add(NumberProvider.constant(180), new NumberProviders.GaussianRandom(0, 30)),
-						NumberProvider.constant(0),
-						new NumberProviders.GaussianRandom(0, 30),
+						NumberProvider.constant(180), NumberProvider.constant(0), NumberProvider.constant(0),
 						PatternType.AIMED, OriginConfig.caster(),
-						new AimMode.AimModes.DirectionToTarget(),
+						new AimMode.AimModes.CasterFacing(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1));
 		var nearShooter = new SpawnShooterAction(40, 4f, 60,
 				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-						new NumberProviders.GaussianRandom(0, 2),
-						NumberProvider.constant(0),
+						new NumberProviders.RandomRange(-3, 3),
+						new NumberProviders.RandomRange(-3, 3),
 						NumberProvider.constant(2),
-						NumberProvider.constant(0)),
+						new NumberProviders.RandomRange(-30, 30)),
 				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0.5),
 				Optional.empty(), nearShooterBody);
 		var summonNear = new BurstAction(20, 2, "sn", List.of(nearShooter));
@@ -1680,7 +1677,7 @@ public class MigratedSpellCards {
 												new NumberProviders.Add(
 														new NumberProviders.Mul(new NumberProviders.Variable("mj"), NumberProvider.constant(30)),
 														new NumberProviders.RandomRange(0, 360))),
-										new AimMode.AimModes.Target(),
+										new AimMode.AimModes.FixedDirection(new Vec3(1, 0, 0)),
 										new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
 												new NumberProviders.Add(new NumberProviders.Variable("maze_x"),
 														new NumberProviders.Mul(
@@ -1705,7 +1702,7 @@ public class MigratedSpellCards {
 		var mazeSpiral = new BurstAction(80, 1, "mt", List.of(
 				new FireDanmakuAction(YHDanmaku.Bullet.BALL,
 						new ColorProvider.Cycle(List.of(DyeColor.YELLOW, DyeColor.ORANGE), 1),
-						NumberProvider.constant(10), NumberProvider.constant(0.05), NumberProvider.constant(80),
+						NumberProvider.constant(10), NumberProvider.constant(0.3), NumberProvider.constant(80),
 						new NumberProviders.Add(
 								new NumberProviders.Variable("maze_init"),
 								new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))),
@@ -1866,7 +1863,7 @@ public class MigratedSpellCards {
 						NumberProvider.constant(40), NumberProvider.constant(60),
 						laserSwing,
 						NumberProvider.constant(75),
-						new AimMode.AimModes.Target(),
+						new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0)),
 						new OriginConfig(OriginConfig.OriginMode.ABSOLUTE, lissX, lissY, lissZ, NumberProvider.constant(0)),
 						Optional.empty(), 10, 4, 4, Optional.empty(), Optional.empty())
 		));

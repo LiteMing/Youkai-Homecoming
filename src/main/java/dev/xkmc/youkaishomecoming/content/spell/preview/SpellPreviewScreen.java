@@ -915,6 +915,12 @@ public class SpellPreviewScreen extends Screen {
 			helpScroll -= (int) (delta * 30);
 			return true;
 		}
+		// When perspective captured, mouse is hidden and coords may be outside viewport.
+		// Always route scroll to speed adjustment in this state.
+		if (viewport.isPerspectiveCaptured()) {
+			viewport.perspectiveAdjustSpeed((float) delta);
+			return true;
+		}
 		if (actionListPanel != null && actionListPanel.mouseScrolled(mouseX, mouseY, delta)) {
 			return true;
 		}

@@ -37,8 +37,9 @@ public class VirtualSpellScene {
 		this.runtime = new SpellRuntime(definition);
 		this.holder = new PreviewCardHolder(level);
 		// Wire hit callback: when a danmaku hits the target AABB, notify runtime
+		// Use mobAttack(fakeCaster) so source.getEntity() instanceof LivingEntity passes
 		this.holder.setOnTargetHit(() -> {
-			var ds = level.damageSources().generic();
+			var ds = level.damageSources().mobAttack(holder.getFakeCaster());
 			runtime.hurt(holder, ds, 2.0f);
 		});
 	}

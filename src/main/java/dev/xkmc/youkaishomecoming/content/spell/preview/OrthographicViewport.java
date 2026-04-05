@@ -351,6 +351,36 @@ public class OrthographicViewport {
 		viewY += dy / zoom;
 	}
 
+	/** 重置视角偏移，使原点（caster 位置）居中 */
+	public void resetPan() {
+		viewX = 0;
+		viewY = 0;
+	}
+
+	/**
+	 * 将视角偏移设置为使指定世界坐标居中显示。
+	 * 需要将世界坐标投影到视角平面空间。
+	 */
+	public void focusOnWorldPos(Vec3 worldPos) {
+		float xRot = currentXRot();
+		float yRot = currentYRot();
+		float xRad = (float) Math.toRadians(xRot);
+		float yRad = (float) Math.toRadians(yRot);
+
+		float cosX = (float) Math.cos(xRad), sinX = (float) Math.sin(xRad);
+		float cosY = (float) Math.cos(yRad), sinY = (float) Math.sin(yRad);
+
+		// View right vector (screen X) in world space
+		float rx = cosY, ry = 0, rz = sinY;
+		// View up vector (screen Y) in world space
+		float ux = sinY * sinX, uy = cosX, uz = -cosY * sinX;
+
+		// Project world position onto view axes
+		float wx = (float) worldPos.x, wy = (float) worldPos.y, wz = (float) worldPos.z;
+		viewX = rx * wx + ry * wy + rz * wz;
+		viewY = ux * wx + uy * wy + uz * wz;
+	}
+
 	public void zoom(float delta) {
 		float factor = delta > 0 ? 1.1f : 0.9f;
 		zoom = Mth.clamp(zoom * factor, MIN_ZOOM, MAX_ZOOM);

@@ -121,6 +121,22 @@ public class VirtualSpellScene {
 		holder.setTargetDistance(distance);
 	}
 
+	public Vec3 getCasterPos() {
+		return holder.getFakeCaster().position();
+	}
+
+	public void setCasterPos(Vec3 pos) {
+		holder.getFakeCaster().setPos(pos);
+	}
+
+	public void resetCasterPos() {
+		holder.getFakeCaster().setPos(0, 0, 0);
+	}
+
+	public void resetTargetPos() {
+		holder.setTargetPos(new Vec3(0, 0, -10));
+	}
+
 	public void moveTarget(Vec3 delta) {
 		Vec3 current = holder.getTargetPos();
 		holder.setTargetPos(current.add(delta));

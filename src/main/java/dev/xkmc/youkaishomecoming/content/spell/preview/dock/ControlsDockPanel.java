@@ -67,6 +67,7 @@ public class ControlsDockPanel implements DockPanel {
 		int row5Y = row4Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row6Y = row5Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row7Y = row6Y + BUTTON_HEIGHT + BUTTON_SPACING;
+		int row8Y = row7Y + BUTTON_HEIGHT + BUTTON_SPACING;
 
 		int bx;
 
@@ -168,6 +169,24 @@ public class ControlsDockPanel implements DockPanel {
 				rebuildCallback.run();
 			});
 		}
+
+		// Row 8: Focus + Reset position
+		bx = x + 4;
+		bx = addButton(bx, row8Y, 52, "FocusTgt", btn -> {
+			viewport.focusOnWorldPos(scene.getTargetPos());
+		});
+		bx = addButton(bx, row8Y, 58, "FocusCstr", btn -> {
+			viewport.focusOnWorldPos(scene.getCasterPos());
+		});
+		bx += 10;
+		bx = addButton(bx, row8Y, 52, "RstTgtPos", btn -> {
+			scene.resetTargetPos();
+			rebuildCallback.run();
+		});
+		addButton(bx, row8Y, 56, "RstCstrPos", btn -> {
+			scene.resetCasterPos();
+			rebuildCallback.run();
+		});
 	}
 
 	private int addButton(int bx, int by, int bw, String label, Button.OnPress action) {

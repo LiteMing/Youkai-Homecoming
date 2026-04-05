@@ -14,7 +14,6 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
-import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
@@ -76,11 +75,6 @@ public class DanmakuItem extends Item {
 
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
-		ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
-		if (!head.is(YHTagGen.TOUHOU_HAT) && !player.getAbilities().instabuild &&
-				!EffectEventHandlers.isCharacter(player)) {
-			return InteractionResultHolder.fail(stack);
-		}
 		if (GrazeHelper.forbidDanmaku(player))
 			return InteractionResultHolder.fail(stack);
 		level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SNOWBALL_THROW,
@@ -97,6 +91,7 @@ public class DanmakuItem extends Item {
 		}
 		player.awardStat(Stats.ITEM_USED.get(this));
 		int cooldown = YHModConfig.COMMON.playerDanmakuCooldown.get();
+		ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
 		if (head.is(YHTagGen.TOUHOU_HAT) && head.getItem() instanceof TouhouHatItem item && item.support(color)) {
 			player.getCooldowns().addCooldown(this, cooldown / 2);
 		} else {

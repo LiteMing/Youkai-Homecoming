@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.events;
 
 import dev.xkmc.l2library.base.effects.EffectBuilder;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.reimu.MaidenEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
@@ -42,6 +43,20 @@ public class EffectEventHandlers {
 		return e instanceof YoukaiEntity ||
 				e.hasEffect(YHEffects.YOUKAIFIED.get()) ||
 				e.hasEffect(YHEffects.FAIRY.get());
+	}
+
+	/**
+	 * Whether a player can participate in danmaku combat (graze, bomb, life, power, session).
+	 * Returns true if the player has youkaified/fairy effect, OR is already in an active combat session.
+	 * This allows players without effects to enter danmaku combat as long as they only use danmaku damage.
+	 */
+	public static boolean canDanmakuCombat(LivingEntity e) {
+		if (isFullCharacter(e)) return true;
+		if (e instanceof Player player) {
+			var cap = GrazeCapability.HOLDER.get(player);
+			return cap.isInSession();
+		}
+		return false;
 	}
 
 	@SubscribeEvent

@@ -38,7 +38,6 @@ public class GrazeHelper {
 
 	public static void addSession(Player player, LivingEntity target) {
 		if (player.level().isClientSide()) return;
-		if (!EffectEventHandlers.isFullCharacter(player)) return;
 		var cap = GrazeCapability.HOLDER.get(player);
 		if (!(target instanceof YoukaiEntity e)) return;
 		if (e.targets.contains(player)) return;

@@ -73,7 +73,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	@Override
 	public void tick() {
-		boolean full = EffectEventHandlers.isFullCharacter(player);
+		boolean full = EffectEventHandlers.canDanmakuCombat(player);
 		if (tempGraze > 0) {
 			tempGraze--;
 			double val = GrazeHelper.getGrazeEffectiveness(player);
@@ -115,7 +115,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public boolean graze() {
 		if (invul > 0) return false;
-		if (!EffectEventHandlers.isFullCharacter(player)) return false;
+		if (!EffectEventHandlers.canDanmakuCombat(player)) return false;
 		if (tempGraze < GRAZE_CACHE)
 			tempGraze++;
 		boolean ans = player.tickCount != lastGraze;
@@ -151,7 +151,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public HitType performErase(YoukaiEntity e) {
-		if (!EffectEventHandlers.isFullCharacter(player)) return HitType.NONE;
+		if (!EffectEventHandlers.canDanmakuCombat(player)) return HitType.NONE;
 		if (!sessions.containsKey(e.getUUID())) return HitType.ERASE;
 		if (invul > 0) return HitType.INVUL;
 		for (var s : sessions.values()) {
@@ -197,13 +197,13 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public float powerBonus() {
-		if (!EffectEventHandlers.isFullCharacter(player)) return 0;
+		if (!EffectEventHandlers.canDanmakuCombat(player)) return 0;
 		int support = power / MAX_GRAZE;
 		return support * YHModConfig.COMMON.danmakuPowerBonus.get().floatValue();
 	}
 
 	public List<InfoLine> getInfoLines() {
-		if (!EffectEventHandlers.isFullCharacter(player)) return List.of();
+		if (!EffectEventHandlers.canDanmakuCombat(player)) return List.of();
 		var icon = new InfoIcon(
 				YoukaisHomecoming.loc("textures/gui/elements.png"),
 				20, 20
@@ -230,6 +230,13 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return sessions.containsKey(uuid);
 	}
 
+	/**
+	 * Whether this player is in any active combat session.
+	 */
+	public boolean isInSession() {
+		return !sessions.isEmpty();
+	}
+
 	public void initSession(YoukaiEntity youkai) {
 		if (sessions.containsKey(youkai.getUUID())) return;
 		if (sessions.isEmpty()) initStatus();
@@ -248,7 +255,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public boolean shouldHurt(LivingEntity le) {
-		if (!EffectEventHandlers.isFullCharacter(player)) return true;
+		if (!EffectEventHandlers.canDanmakuCombat(player)) return true;
 		if (le instanceof YoukaiEntity youkai) {
 			if (weak > 0) return false;
 			if (sessions.containsKey(youkai.getUUID())) return true;

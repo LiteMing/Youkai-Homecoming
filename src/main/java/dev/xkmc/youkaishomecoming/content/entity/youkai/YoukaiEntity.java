@@ -261,7 +261,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	public void onDanmakuHit(LivingEntity e, IYHDanmaku danmaku) {
-		if (EffectEventHandlers.isFullCharacter(e)) return;
+		if (EffectEventHandlers.canDanmakuCombat(e)) return;
 		if (targets.contains(e)) {
 			double heal = YHModConfig.COMMON.danmakuHealOnHitTarget.get();
 			heal(getMaxHealth() * (float) heal);
@@ -383,7 +383,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 	protected void hurtFinalImpl(DamageSource source, float amount) {
 		if (combatProgress == null) return;
 		if (!source.is(YHDamageTypes.DANMAKU_TYPE) && source.getEntity() instanceof Player player) {
-			GrazeCapability.HOLDER.get(player).remove(getUUID());
+			// Non-danmaku damage from a player without youkai/fairy effect exits the session
+			if (!EffectEventHandlers.isFullCharacter(player)) {
+				GrazeCapability.HOLDER.get(player).stopSession(getUUID());
+			}
 		}
 		setCombatProgress(getCombatProgress() - amount);
 		if (combatProgress.progress <= 0) {
@@ -482,11 +485,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	public void setTargetAndInitSession(LivingEntity le) {
 		if (le instanceof Player player) {
-			if (EffectEventHandlers.isFullCharacter(player)) {
-				var cap = GrazeCapability.HOLDER.get(player);
-				cap.initSession(this);
-				return;
-			}
+			var cap = GrazeCapability.HOLDER.get(player);
+			cap.initSession(this);
+			return;
 		}
 		setTarget(le);
 	}

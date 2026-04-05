@@ -250,4 +250,18 @@ public class ControlsDockPanel implements DockPanel {
 		// 按钮的点击由 Screen widget 系统处理
 		return false;
 	}
+
+	@Override
+	public void onActivated() {
+		for (Button btn : buttons) {
+			btn.visible = true;
+		}
+	}
+
+	@Override
+	public void onDeactivated() {
+		for (Button btn : buttons) {
+			btn.visible = false;
+		}
+	}
 }

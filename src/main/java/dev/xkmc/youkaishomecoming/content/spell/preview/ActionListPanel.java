@@ -140,6 +140,9 @@ public class ActionListPanel {
 	private static final int DRAG_THRESHOLD = 4;
 	private boolean dragThresholdMet = false;
 
+	// Scrollbar drag state
+	private boolean scrollbarDragging = false;
+
 	// Drop target: either a gap between top-level rows or an AddTarget (branch insert)
 	private int dragIndicatorY = -1;       // Y for the indicator line (reorder mode)
 	private int dragInsertIndex = -1;      // index for reorder within section
@@ -566,6 +569,18 @@ public class ActionListPanel {
 		if (button != 0 || phase == null) return false;
 		if (mouseX < x || mouseX >= x + w || mouseY < y || mouseY >= y + h) return false;
 
+		// Scrollbar click detection
+		int maxScroll = getMaxScroll();
+		if (maxScroll > 0) {
+			int sbW = 4;
+			int sbX = x + w - sbW;
+			if (mouseX >= sbX && mouseX < sbX + sbW) {
+				scrollbarDragging = true;
+				updateScrollbarDrag(mouseY);
+				return true;
+			}
+		}
+
 		// If renaming, finish it on any click
 		if (renamingPath != null) {
 			finishRename();
@@ -634,7 +649,12 @@ public class ActionListPanel {
 	}
 
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-		if (button != 0 || dragSourcePath == null) return false;
+		if (button != 0) return false;
+		if (scrollbarDragging) {
+			updateScrollbarDrag(mouseY);
+			return true;
+		}
+		if (dragSourcePath == null) return false;
 
 		// Check drag threshold before starting visual drag
 		if (!dragThresholdMet) {
@@ -653,6 +673,10 @@ public class ActionListPanel {
 
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
 		if (button != 0) return false;
+		if (scrollbarDragging) {
+			scrollbarDragging = false;
+			return true;
+		}
 		boolean wasDragging = isDragging;
 		if (isDragging && dragSourcePath != null) {
 			performDrop();
@@ -920,6 +944,22 @@ public class ActionListPanel {
 		// Total content height = bottom of last row - top of panel
 		int contentBottom = last.y + scrollOffset + ROW_HEIGHT + PADDING - y;
 		return Math.max(0, contentBottom - h);
+	}
+
+	private void updateScrollbarDrag(double mouseY) {
+		int maxScroll = getMaxScroll();
+		if (maxScroll <= 0) return;
+		int trackH = h - 2;
+		int contentH = maxScroll + h;
+		int thumbH = Math.max(10, trackH * h / contentH);
+		int thumbTravel = trackH - thumbH;
+		if (thumbTravel <= 0) return;
+		// Map mouse Y to scroll offset
+		double relY = mouseY - (y + 1) - thumbH / 2.0;
+		double ratio = relY / thumbTravel;
+		ratio = Math.max(0, Math.min(1, ratio));
+		scrollOffset = (int) (ratio * maxScroll);
+		dirty = true;
 	}
 
 	/** Handle key presses for rename mode. */

@@ -407,11 +407,11 @@ public class OrthographicViewport {
 		// Scale: Y inverted (screen Y goes down, world Y goes up)
 		poseStack.scale(zoom, -zoom, zoom);
 
+		// Apply pan offset in view space (before rotation so it moves along screen axes)
+		poseStack.translate(-viewX, -viewY, 0);
+
 		// Apply view rotation
 		ViewAngle.applyRotation(poseStack, xRot, yRot);
-
-		// Apply pan offset in world space
-		poseStack.translate(-viewX, -viewY, 0);
 
 		// 5. Set camera orientation override for billboard rendering
 		ProjectileRenderHelper.cameraOrientationOverride = ViewAngle.computeOrientation(xRot, yRot);

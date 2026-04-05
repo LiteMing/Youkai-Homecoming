@@ -76,6 +76,7 @@ public class ActionEditorPanel {
 	private final List<EditorRow> rows = new ArrayList<>();
 	private int scrollOffset = 0;
 	private boolean widgetsRegistered = false;
+	private boolean scrollbarDragging = false;
 
 	// Type selector mode
 	private boolean typeSelectorMode = false;
@@ -140,6 +141,15 @@ public class ActionEditorPanel {
 		rows.clear();
 		exprEditBoxes.clear();
 		widgetsRegistered = false;
+	}
+
+	/**
+	 * 设置所有已注册 widget 的可见性。用于 Dock Tab 切换时隐藏/显示。
+	 */
+	public void setAllWidgetsVisible(boolean visible) {
+		for (var row : rows) {
+			row.widget().visible = visible;
+		}
 	}
 
 	// --- Type selector ---
@@ -1752,6 +1762,19 @@ public class ActionEditorPanel {
 		}
 
 		if (button != 0 || currentAction == null) return false;
+
+		// Scrollbar click detection
+		int maxScroll = getContentMaxScroll();
+		if (maxScroll > 0 && isMouseOver(mouseX, mouseY)) {
+			int sbW = 4;
+			int sbX = x + w - sbW;
+			if (mouseX >= sbX && mouseX < sbX + sbW) {
+				scrollbarDragging = true;
+				updateScrollbarDrag(mouseY);
+				return true;
+			}
+		}
+
 		Font font = Minecraft.getInstance().font;
 
 		// Handle [Disable]/[Enable] button
@@ -1799,6 +1822,37 @@ public class ActionEditorPanel {
 			return true;
 		}
 		return false;
+	}
+
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+		if (scrollbarDragging && button == 0) {
+			updateScrollbarDrag(mouseY);
+			return true;
+		}
+		return false;
+	}
+
+	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		if (scrollbarDragging && button == 0) {
+			scrollbarDragging = false;
+			return true;
+		}
+		return false;
+	}
+
+	private void updateScrollbarDrag(double mouseY) {
+		int maxScroll = getContentMaxScroll();
+		if (maxScroll <= 0) return;
+		int trackH = h - 2;
+		int contentH = maxScroll + h;
+		int thumbH = Math.max(10, trackH * h / contentH);
+		int thumbTravel = trackH - thumbH;
+		if (thumbTravel <= 0) return;
+		double relY = mouseY - (y + 1) - thumbH / 2.0;
+		double ratio = relY / thumbTravel;
+		ratio = Math.max(0, Math.min(1, ratio));
+		scrollOffset = (int) (ratio * maxScroll);
+		layoutWidgets();
 	}
 
 	/**

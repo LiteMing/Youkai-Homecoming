@@ -79,6 +79,16 @@ public class EditorDockPanel implements DockPanel {
 		return panel.keyPressed(keyCode, scanCode, modifiers);
 	}
 
+	@Override
+	public void onActivated() {
+		panel.setAllWidgetsVisible(true);
+	}
+
+	@Override
+	public void onDeactivated() {
+		panel.setAllWidgetsVisible(false);
+	}
+
 	/** 获取内部的 ActionEditorPanel 实例 */
 	public ActionEditorPanel getPanel() {
 		return panel;

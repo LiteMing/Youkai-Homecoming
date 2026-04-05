@@ -1,6 +1,10 @@
 package dev.xkmc.youkaishomecoming.content.spell.condition;
 
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.entity.fairy.ClownEntity;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 
 import java.util.HashMap;
@@ -28,6 +32,13 @@ public class SpellConditions {
 		register("target_on_ground", TargetOnGround.CODEC, TargetOnGround.class);
 		register("target_speed", TargetSpeed.CODEC, TargetSpeed.class);
 		register("random_chance", RandomChance.CODEC, RandomChance.class);
+		register("entity_trait", EntityTrait.CODEC, EntityTrait.class);
+		register("dynamic_tick_interval", DynamicTickInterval.CODEC, DynamicTickInterval.class);
+		register("compare", CompareNumbers.CODEC, CompareNumbers.class);
+		register("target_health_below", TargetHealthBelow.CODEC, TargetHealthBelow.class);
+		register("target_health_above", TargetHealthAbove.CODEC, TargetHealthAbove.class);
+		register("target_is_flying", TargetIsFlying.CODEC, TargetIsFlying.class);
+		register("target_is_fallflying", TargetIsFallFlying.CODEC, TargetIsFallFlying.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellCondition> codec) {
@@ -251,6 +262,133 @@ public class SpellConditions {
 		@Override
 		public boolean test(SpellContext ctx) {
 			return ctx.holder().random().nextFloat() < probability;
+		}
+	}
+
+	/**
+	 * Checks a named boolean trait on the caster entity.
+	 * <p>
+	 * Supported traits:
+	 * <ul>
+	 *   <li>{@code "is_lunatic"} — ClownEntity.isLunatic()</li>
+	 *   <li>{@code "is_chaotic"} — BossYoukaiEntity.isChaotic()</li>
+	 * </ul>
+	 * Returns false if the caster is not the expected entity type.
+	 */
+	public record EntityTrait(String trait) implements SpellCondition {
+		public static final Codec<EntityTrait> CODEC = Codec.STRING
+				.fieldOf("trait").codec().xmap(EntityTrait::new, EntityTrait::trait);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			var self = ctx.self();
+			return switch (trait) {
+				case "is_lunatic" -> self instanceof ClownEntity c && c.isLunatic();
+				case "is_chaotic" -> self instanceof BossYoukaiEntity b && b.isChaotic();
+				default -> false;
+			};
+		}
+	}
+
+	/**
+	 * Like TickInterval but with NumberProvider period and offset.
+	 * True when {@code floor(phaseTick) % floor(period) == floor(offset)}.
+	 * Allows difficulty-dependent timing (e.g. period=$dur).
+	 */
+	public record DynamicTickInterval(NumberProvider period, NumberProvider offset) implements SpellCondition {
+		public static final Codec<DynamicTickInterval> CODEC = RecordCodecBuilder.<DynamicTickInterval>create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("period").forGetter(DynamicTickInterval::period),
+				NumberProvider.CODEC.optionalFieldOf("offset", NumberProvider.constant(0)).forGetter(DynamicTickInterval::offset)
+		).apply(i, DynamicTickInterval::new));
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			int p = (int) period.get(ctx);
+			int o = (int) offset.get(ctx);
+			return p > 0 && ctx.phaseTick() % p == o;
+		}
+	}
+
+	/**
+	 * Compares two NumberProvider values with a given operator.
+	 * JSON: {"type": "compare", "left": ..., "op": "<", "right": 40}
+	 */
+	public record CompareNumbers(NumberProvider left, String op, NumberProvider right) implements SpellCondition {
+		public static final Codec<CompareNumbers> CODEC = RecordCodecBuilder.<CompareNumbers>create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("left").forGetter(CompareNumbers::left),
+				Codec.STRING.fieldOf("op").forGetter(CompareNumbers::op),
+				NumberProvider.CODEC.fieldOf("right").forGetter(CompareNumbers::right)
+		).apply(i, CompareNumbers::new));
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			double l = left.get(ctx);
+			double r = right.get(ctx);
+			return switch (op) {
+				case "<" -> l < r;
+				case "<=" -> l <= r;
+				case ">" -> l > r;
+				case ">=" -> l >= r;
+				case "=", "==" -> Math.abs(l - r) < 1e-9;
+				case "!=" -> Math.abs(l - r) >= 1e-9;
+				default -> false;
+			};
+		}
+	}
+
+	/**
+	 * True when the target entity's health ratio is below the threshold.
+	 * JSON: {"type": "target_health_below", "threshold": 0.5}
+	 */
+	public record TargetHealthBelow(float threshold) implements SpellCondition {
+		public static final Codec<TargetHealthBelow> CODEC = Codec.FLOAT
+				.fieldOf("threshold").codec().xmap(TargetHealthBelow::new, TargetHealthBelow::threshold);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return ctx.targetHealthRatio() < threshold;
+		}
+	}
+
+	/**
+	 * True when the target entity's health ratio is above the threshold.
+	 * JSON: {"type": "target_health_above", "threshold": 0.5}
+	 */
+	public record TargetHealthAbove(float threshold) implements SpellCondition {
+		public static final Codec<TargetHealthAbove> CODEC = Codec.FLOAT
+				.fieldOf("threshold").codec().xmap(TargetHealthAbove::new, TargetHealthAbove::threshold);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return ctx.targetHealthRatio() > threshold;
+		}
+	}
+
+	/**
+	 * True when the target entity is flying (creative flight or similar).
+	 * In preview mode this is controlled by the target properties panel.
+	 * JSON: {"type": "target_is_flying"}
+	 */
+	public record TargetIsFlying() implements SpellCondition {
+		public static final Codec<TargetIsFlying> CODEC = Codec.unit(TargetIsFlying::new);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return ctx.targetIsFlying();
+		}
+	}
+
+	/**
+	 * True when the target entity is elytra gliding (fall flying).
+	 * In preview mode this is controlled by the target properties panel.
+	 * JSON: {"type": "target_is_fallflying"}
+	 */
+	public record TargetIsFallFlying() implements SpellCondition {
+		public static final Codec<TargetIsFallFlying> CODEC = Codec.unit(TargetIsFallFlying::new);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return ctx.targetIsFallFlying();
 		}
 	}
 }

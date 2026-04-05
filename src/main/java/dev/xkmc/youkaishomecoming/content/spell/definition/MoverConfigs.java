@@ -17,10 +17,12 @@ public class MoverConfigs {
 
 	static {
 		register("acceleration", AccelerationConfig.CODEC, AccelerationConfig.class);
+		register("deceleration", DecelerationConfig.CODEC, DecelerationConfig.class);
 		register("rotate", RotateConfig.CODEC, RotateConfig.class);
 		register("polar", PolarMoverConfig.CODEC, PolarMoverConfig.class);
 		register("composite", CompositeMoverConfig.CODEC, CompositeMoverConfig.class);
 		register("zero", ZeroMoverConfig.CODEC, ZeroMoverConfig.class);
+		register("bezier", BezierMoverConfig.CODEC, BezierMoverConfig.class);
 	}
 
 	public static void register(String id, Codec<? extends MoverConfig> codec, Class<? extends MoverConfig> clazz) {
@@ -58,6 +60,23 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
 			return new RectMover(origin, velocity, acceleration);
+		}
+	}
+
+	/**
+	 * Velocity-proportional deceleration: acceleration = -velocity * factor.
+	 * At factor=0.06, a bullet with speed=1.0 decelerates to ~0 in ~17 ticks.
+	 * JSON: {"type": "deceleration", "factor": 0.06}
+	 */
+	public record DecelerationConfig(double factor) implements MoverConfig {
+		public static final Codec<DecelerationConfig> CODEC = Codec.DOUBLE
+				.fieldOf("factor").codec()
+				.xmap(DecelerationConfig::new, DecelerationConfig::factor);
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			Vec3 acc = velocity.scale(-factor);
+			return new RectMover(origin, velocity, acc);
 		}
 	}
 
@@ -149,6 +168,57 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
 			return new RectMover(origin, Vec3.ZERO, Vec3.ZERO);
+		}
+	}
+
+	/**
+	 * Cubic Bezier curve mover. The projectile follows a cubic Bezier path.
+	 * Control points are relative offsets from origin, scaled by velocity direction.
+	 * JSON: {"type": "bezier", "cp1_forward": 5, "cp1_right": 3, "cp1_up": 0,
+	 *        "cp2_forward": 10, "cp2_right": -3, "cp2_up": 0,
+	 *        "end_forward": 15, "end_right": 0, "end_up": 0, "duration": 40}
+	 */
+	public record BezierMoverConfig(
+			double cp1Forward, double cp1Right, double cp1Up,
+			double cp2Forward, double cp2Right, double cp2Up,
+			double endForward, double endRight, double endUp,
+			int duration
+	) implements MoverConfig {
+		public static final Codec<BezierMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.optionalFieldOf("cp1_forward", 5.0).forGetter(BezierMoverConfig::cp1Forward),
+				Codec.DOUBLE.optionalFieldOf("cp1_right", 3.0).forGetter(BezierMoverConfig::cp1Right),
+				Codec.DOUBLE.optionalFieldOf("cp1_up", 0.0).forGetter(BezierMoverConfig::cp1Up),
+				Codec.DOUBLE.optionalFieldOf("cp2_forward", 10.0).forGetter(BezierMoverConfig::cp2Forward),
+				Codec.DOUBLE.optionalFieldOf("cp2_right", -3.0).forGetter(BezierMoverConfig::cp2Right),
+				Codec.DOUBLE.optionalFieldOf("cp2_up", 0.0).forGetter(BezierMoverConfig::cp2Up),
+				Codec.DOUBLE.optionalFieldOf("end_forward", 15.0).forGetter(BezierMoverConfig::endForward),
+				Codec.DOUBLE.optionalFieldOf("end_right", 0.0).forGetter(BezierMoverConfig::endRight),
+				Codec.DOUBLE.optionalFieldOf("end_up", 0.0).forGetter(BezierMoverConfig::endUp),
+				Codec.INT.optionalFieldOf("duration", 40).forGetter(BezierMoverConfig::duration)
+		).apply(i, BezierMoverConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			var ori = DanmakuHelper.getOrientation(dir);
+
+			// Build absolute control points from relative offsets
+			// forward = along velocity dir, right = ori.side(), up = ori.normal()
+			Vec3 cp1 = origin
+					.add(dir.scale(cp1Forward))
+					.add(ori.side().scale(cp1Right))
+					.add(ori.normal().scale(cp1Up));
+			Vec3 cp2 = origin
+					.add(dir.scale(cp2Forward))
+					.add(ori.side().scale(cp2Right))
+					.add(ori.normal().scale(cp2Up));
+			Vec3 end = origin
+					.add(dir.scale(endForward))
+					.add(ori.side().scale(endRight))
+					.add(ori.normal().scale(endUp));
+
+			return new dev.xkmc.youkaishomecoming.content.spell.mover.BezierMover(
+					origin, cp1, cp2, end, duration);
 		}
 	}
 

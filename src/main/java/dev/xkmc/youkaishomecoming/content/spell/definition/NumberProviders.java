@@ -33,6 +33,18 @@ public class NumberProviders {
 		register("div", Div.CODEC, Div.class);
 		register("mod", Mod.CODEC, Mod.class);
 		register("sqrt", Sqrt.CODEC, Sqrt.class);
+		register("random_choice", RandomChoice.CODEC, RandomChoice.class);
+		register("conditional", Conditional.CODEC, Conditional.class);
+		register("gaussian", GaussianRandom.CODEC, GaussianRandom.class);
+		register("max", Max.CODEC, Max.class);
+		register("min", Min.CODEC, Min.class);
+		register("clamp", Clamp.CODEC, Clamp.class);
+		register("caster_x", CasterX.CODEC, CasterX.class);
+		register("caster_y", CasterY.CODEC, CasterY.class);
+		register("caster_z", CasterZ.CODEC, CasterZ.class);
+		register("target_x", TargetX.CODEC, TargetX.class);
+		register("target_y", TargetY.CODEC, TargetY.class);
+		register("target_z", TargetZ.CODEC, TargetZ.class);
 	}
 
 	public static void register(String id, Codec<? extends NumberProvider> codec, Class<? extends NumberProvider> clazz) {
@@ -335,6 +347,141 @@ public class NumberProviders {
 		public double get(SpellContext ctx) {
 			double v = input.get(ctx);
 			return v >= 0 ? Math.sqrt(v) : 0;
+		}
+	}
+
+	/**
+	 * Pick a random value from a discrete list.
+	 * JSON: {"type": "random_choice", "values": [1, -1]}
+	 */
+	public record RandomChoice(java.util.List<Double> values) implements NumberProvider {
+		public static final Codec<RandomChoice> CODEC = Codec.DOUBLE.listOf()
+				.fieldOf("values").codec().xmap(RandomChoice::new, RandomChoice::values);
+
+		@Override
+		public double get(SpellContext ctx) {
+			if (values.isEmpty()) return 0;
+			return values.get(ctx.holder().random().nextInt(values.size()));
+		}
+	}
+
+	/**
+	 * Returns ifTrue or ifFalse based on a SpellCondition.
+	 * JSON: {"type": "conditional", "condition": {...}, "if_true": 1, "if_false": -1}
+	 */
+	public record Conditional(
+			dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition condition,
+			NumberProvider ifTrue,
+			NumberProvider ifFalse
+	) implements NumberProvider {
+		public static final Codec<Conditional> CODEC = RecordCodecBuilder.create(i -> i.group(
+				dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition.CODEC
+						.fieldOf("condition").forGetter(Conditional::condition),
+				NumberProvider.CODEC.fieldOf("if_true").forGetter(Conditional::ifTrue),
+				NumberProvider.CODEC.optionalFieldOf("if_false", NumberProvider.constant(0))
+						.forGetter(Conditional::ifFalse)
+		).apply(i, Conditional::new));
+
+		@Override
+		public double get(SpellContext ctx) {
+			return condition.test(ctx) ? ifTrue.get(ctx) : ifFalse.get(ctx);
+		}
+	}
+
+	/**
+	 * Gaussian (normal) random: mean + random.nextGaussian() * stdDev.
+	 * JSON: {"type": "gaussian", "mean": 0, "std_dev": 5}
+	 */
+	public record GaussianRandom(double mean, double stdDev) implements NumberProvider {
+		public static final Codec<GaussianRandom> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.optionalFieldOf("mean", 0.0).forGetter(GaussianRandom::mean),
+				Codec.DOUBLE.fieldOf("std_dev").forGetter(GaussianRandom::stdDev)
+		).apply(i, GaussianRandom::new));
+
+		@Override
+		public double get(SpellContext ctx) {
+			return mean + ctx.holder().random().nextGaussian() * stdDev;
+		}
+	}
+
+	/** max(a, b). JSON: {"type": "max", "a": ..., "b": ...} */
+	public record Max(NumberProvider a, NumberProvider b) implements NumberProvider {
+		public static final Codec<Max> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("a").forGetter(Max::a),
+				NumberProvider.CODEC.fieldOf("b").forGetter(Max::b)
+		).apply(i, Max::new));
+
+		@Override
+		public double get(SpellContext ctx) { return Math.max(a.get(ctx), b.get(ctx)); }
+	}
+
+	/** min(a, b). JSON: {"type": "min", "a": ..., "b": ...} */
+	public record Min(NumberProvider a, NumberProvider b) implements NumberProvider {
+		public static final Codec<Min> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("a").forGetter(Min::a),
+				NumberProvider.CODEC.fieldOf("b").forGetter(Min::b)
+		).apply(i, Min::new));
+
+		@Override
+		public double get(SpellContext ctx) { return Math.min(a.get(ctx), b.get(ctx)); }
+	}
+
+	/** clamp(value, min, max). JSON: {"type": "clamp", "value": ..., "min": 0, "max": 20} */
+	public record Clamp(NumberProvider value, NumberProvider min, NumberProvider max) implements NumberProvider {
+		public static final Codec<Clamp> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("value").forGetter(Clamp::value),
+				NumberProvider.CODEC.fieldOf("min").forGetter(Clamp::min),
+				NumberProvider.CODEC.fieldOf("max").forGetter(Clamp::max)
+		).apply(i, Clamp::new));
+
+		@Override
+		public double get(SpellContext ctx) {
+			return Mth.clamp(value.get(ctx), min.get(ctx), max.get(ctx));
+		}
+	}
+
+	/** Caster's X position. JSON: {"type": "caster_x"} */
+	public record CasterX() implements NumberProvider {
+		public static final Codec<CasterX> CODEC = Codec.unit(CasterX::new);
+		@Override public double get(SpellContext ctx) { return ctx.holder().center().x; }
+	}
+
+	/** Caster's Y position. JSON: {"type": "caster_y"} */
+	public record CasterY() implements NumberProvider {
+		public static final Codec<CasterY> CODEC = Codec.unit(CasterY::new);
+		@Override public double get(SpellContext ctx) { return ctx.holder().center().y; }
+	}
+
+	/** Caster's Z position. JSON: {"type": "caster_z"} */
+	public record CasterZ() implements NumberProvider {
+		public static final Codec<CasterZ> CODEC = Codec.unit(CasterZ::new);
+		@Override public double get(SpellContext ctx) { return ctx.holder().center().z; }
+	}
+
+	/** Target's X position (or caster X if no target). JSON: {"type": "target_x"} */
+	public record TargetX() implements NumberProvider {
+		public static final Codec<TargetX> CODEC = Codec.unit(TargetX::new);
+		@Override public double get(SpellContext ctx) {
+			var t = ctx.holder().target();
+			return t != null ? t.x : ctx.holder().center().x;
+		}
+	}
+
+	/** Target's Y position (or caster Y if no target). JSON: {"type": "target_y"} */
+	public record TargetY() implements NumberProvider {
+		public static final Codec<TargetY> CODEC = Codec.unit(TargetY::new);
+		@Override public double get(SpellContext ctx) {
+			var t = ctx.holder().target();
+			return t != null ? t.y : ctx.holder().center().y;
+		}
+	}
+
+	/** Target's Z position (or caster Z if no target). JSON: {"type": "target_z"} */
+	public record TargetZ() implements NumberProvider {
+		public static final Codec<TargetZ> CODEC = Codec.unit(TargetZ::new);
+		@Override public double get(SpellContext ctx) {
+			var t = ctx.holder().target();
+			return t != null ? t.z : ctx.holder().center().z;
 		}
 	}
 

@@ -174,6 +174,8 @@ public class ActionEditorPanel {
 			buildBurstRows(ba);
 		} else if (action instanceof SpellActions.SequenceAction sa) {
 			buildSequenceRows(sa);
+		} else if (action instanceof ConfineTargetAction cta) {
+			buildConfineTargetRows(cta);
 		}
 	}
 
@@ -192,6 +194,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Clear Screen", () -> selectType("clear_screen"));
 		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
+		addFullWidthButton("Confine Target", () -> selectType("confine_target"));
 	}
 
 	private void selectType(String type) {
@@ -238,6 +241,7 @@ public class ActionEditorPanel {
 					Optional.empty(), new ArrayList<>());
 		case "burst" -> new BurstAction(3, 5, new ArrayList<>());
 		case "sequence" -> new SpellActions.SequenceAction(new ArrayList<>());
+		case "confine_target" -> new ConfineTargetAction(32, 1.0);
 		default -> new SpellActions.NoopAction();
 		};
 	}
@@ -657,6 +661,15 @@ public class ActionEditorPanel {
 		addIntRow("Actions", sa.actions().size(), v -> {}); // read-only count display
 	}
 
+	// --- Confine Target rows ---
+
+	private void buildConfineTargetRows(ConfineTargetAction cta) {
+		addDoubleRow("Max Distance", cta.maxDistance(), v ->
+				notifySimple(old -> new ConfineTargetAction(v, ((ConfineTargetAction) old).pushSpeed())));
+		addDoubleRow("Push Speed", cta.pushSpeed(), v ->
+				notifySimple(old -> new ConfineTargetAction(((ConfineTargetAction) old).maxDistance(), v)));
+	}
+
 	// --- SpawnShooter rows ---
 
 	private void buildSpawnShooterRows(SpawnShooterAction ssa) {
@@ -701,7 +714,7 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "rotate", "polar", "zero", "bezier"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "zero", "bezier"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -776,6 +789,9 @@ public class ActionEditorPanel {
 								new net.minecraft.world.phys.Vec3(a.acceleration().x, a.acceleration().y, v))));
 					}
 				});
+			} else if (cfg instanceof MoverConfigs.DecelerationConfig dc) {
+				addDoubleRow("Factor", dc.factor(), v ->
+						onParamChanged.accept(Optional.of(new MoverConfigs.DecelerationConfig(v))));
 			} else if (cfg instanceof MoverConfigs.RotateConfig rot) {
 				addDoubleRow("Deg/tick", rot.degreesPerTick(), v ->
 						onParamChanged.accept(Optional.of(new MoverConfigs.RotateConfig(v))));
@@ -897,6 +913,7 @@ public class ActionEditorPanel {
 		if (mover.isEmpty()) return "none";
 		MoverConfig cfg = mover.get();
 		if (cfg instanceof MoverConfigs.AccelerationConfig) return "acceleration";
+		if (cfg instanceof MoverConfigs.DecelerationConfig) return "deceleration";
 		if (cfg instanceof MoverConfigs.RotateConfig) return "rotate";
 		if (cfg instanceof MoverConfigs.PolarMoverConfig) return "polar";
 		if (cfg instanceof MoverConfigs.ZeroMoverConfig) return "zero";
@@ -907,6 +924,7 @@ public class ActionEditorPanel {
 	private static Optional<MoverConfig> createDefaultMover(String type) {
 		return switch (type) {
 			case "acceleration" -> Optional.of(new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(0, -0.05, 0)));
+			case "deceleration" -> Optional.of(new MoverConfigs.DecelerationConfig(0.06));
 			case "rotate" -> Optional.of(new MoverConfigs.RotateConfig(5.0));
 			case "polar" -> Optional.of(new MoverConfigs.PolarMoverConfig(5.0, 0, 0, 0, 10.0, 0));
 			case "zero" -> Optional.of(new MoverConfigs.ZeroMoverConfig());
@@ -1863,6 +1881,7 @@ public class ActionEditorPanel {
 			Map.entry("play_sound", "Play Sound"),
 			Map.entry("force_phase", "Force Phase"),
 			Map.entry("sequence", "Sequence"),
+			Map.entry("confine_target", "Confine Target"),
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);

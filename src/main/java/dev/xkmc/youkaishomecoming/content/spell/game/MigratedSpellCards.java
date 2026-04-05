@@ -1402,6 +1402,518 @@ public class MigratedSpellCards {
 				DifficultyProfile.DEFAULT);
 	}
 
+	// ============================
+	// KisinSpell — 鬼神正邪 (3阶段, shooter弾幕+翼激光+延迟追踪)
+	// ============================
+	public static SpellDefinition kisin() {
+		var id = rl("kisin_sagume");
+		var p0id = rl("kisin_sagume/stage0");
+		var p1id = rl("kisin_sagume/stage1");
+		var p2id = rl("kisin_sagume/stage2");
+
+		// === Phase 0 (100%-67%): SummonNear ===
+		var nearForward = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE,
+				new ColorProvider.ByVariable("sn", List.of(DyeColor.YELLOW, DyeColor.ORANGE)),
+				NumberProvider.constant(1), NumberProvider.constant(0.8), NumberProvider.constant(40),
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(0),
+				new NumberProviders.GaussianRandom(0, 15),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var nearBackward = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE,
+				new ColorProvider.ByVariable("sn", List.of(DyeColor.YELLOW, DyeColor.ORANGE)),
+				NumberProvider.constant(1), NumberProvider.constant(0.3), NumberProvider.constant(40),
+				new NumberProviders.Add(new NumberProviders.RandomRange(0, 360), NumberProvider.constant(180)),
+				NumberProvider.constant(0),
+				new NumberProviders.GaussianRandom(0, 15),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var summonNear = new BurstAction(20, 2, "sn", List.of(nearForward, nearBackward));
+		var p0Action = new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(60, 0), List.of(summonNear), List.of());
+
+		// === Phase 1 (67%-33%): Wing ===
+		var wingLasers = new SpellActions.RepeatAction(NumberProvider.constant(3), "wl", List.of(
+				new FireLaserAction(
+						YHDanmaku.Laser.LASER, DyeColor.YELLOW,
+						NumberProvider.constant(80), NumberProvider.constant(80),
+						new NumberProviders.Add(
+								new NumberProviders.Mul(
+										new NumberProviders.Add(new NumberProviders.Variable("wl"), NumberProvider.constant(-1)),
+										NumberProvider.constant(30)),
+								new NumberProviders.GaussianRandom(0, 5)),
+						new NumberProviders.GaussianRandom(0, 5),
+						new AimMode.AimModes.DirectionToTarget(),
+						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+								new NumberProviders.Add(
+										new NumberProviders.Mul(new NumberProviders.Variable("wt"), NumberProvider.constant(0.7)),
+										new NumberProviders.GaussianRandom(0, 1)),
+								new NumberProviders.GaussianRandom(0, 1),
+								new NumberProviders.GaussianRandom(0, 1),
+								NumberProvider.constant(0)),
+						Optional.empty(), 5, 5, 10,
+						Optional.empty(), Optional.empty())
+		));
+		var wing = new BurstAction(40, 1, "wt", List.of(wingLasers));
+		var p1Action = new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(60, 0), List.of(wing), List.of());
+
+		// === Phase 2 (33%-0%): SummonFar ===
+		var farHoming = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE,
+				new ColorProvider.RandomChoice(List.of(DyeColor.MAGENTA, DyeColor.BLUE)),
+				NumberProvider.constant(1), NumberProvider.constant(1), NumberProvider.constant(40),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var farMarker = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE,
+				new ColorProvider.RandomChoice(List.of(DyeColor.MAGENTA, DyeColor.BLUE)),
+				NumberProvider.constant(1), NumberProvider.constant(0), NumberProvider.constant(40),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED,
+				new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
+						new NumberProviders.Add(new NumberProviders.TargetX(), new NumberProviders.GaussianRandom(0, 20)),
+						new NumberProviders.Add(new NumberProviders.TargetY(), NumberProvider.constant(20)),
+						new NumberProviders.Add(new NumberProviders.TargetZ(), new NumberProviders.GaussianRandom(0, 20)),
+						NumberProvider.constant(0)),
+				new AimMode.AimModes.Target(),
+				Optional.of(new MoverConfigs.ZeroMoverConfig()), Optional.empty(),
+				Optional.of(List.of((SpellAction) farHoming)),
+				Optional.empty(), 1);
+		var summonFar = new BurstAction(40, 1, "sf", List.of(farMarker));
+		var p2Action = new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(80, 0), List.of(summonFar), List.of());
+
+		// === Phase definitions ===
+		var phase0 = new PhaseDefinition(p0id, List.of(), List.of(p0Action),
+				List.of(new SpellActions.ClearScreen()), List.of(),
+				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), p1id, TransitionMode.IMMEDIATE)));
+		var phase1 = new PhaseDefinition(p1id, List.of(), List.of(p1Action),
+				List.of(new SpellActions.ClearScreen()), List.of(),
+				List.of(new Transition(new SpellConditions.HealthBelow(0.33f), p2id, TransitionMode.IMMEDIATE)));
+		var phase2 = new PhaseDefinition(p2id, List.of(), List.of(p2Action),
+				List.of(), List.of(), List.of());
+
+		SpellDisplay display = new SpellDisplay(
+				id.toLanguageKey("spell") + ".name", id.toLanguageKey("spell") + ".desc",
+				Optional.empty(), Optional.of(new ResourceLocation("touhou_little_maid", "kisin_sagume")));
+		return new SpellDefinition(id, display, SpellItemForm.NONE,
+				p0id, Map.of(p0id, phase0, p1id, phase1, p2id, phase2), DifficultyProfile.DEFAULT);
+	}
+
+	// ============================
+	// RemiliaSpell — 蕾米莉亚 (5步循环: 3×扫射 + 1×激光 + 1×枪突)
+	// ============================
+	public static SpellDefinition remilia() {
+		var id = rl("remilia_scarlet");
+		var mainPhase = rl("remilia_scarlet/main");
+
+		var stepVar = new NumberProviders.Mod(
+				new NumberProviders.Div(new NumberProviders.PhaseTick(), NumberProvider.constant(20)),
+				NumberProvider.constant(5));
+
+		// === Sweep (step < 3): 旋转锥形扫射 ===
+		var sweepSpeed = new NumberProviders.Clamp(
+				new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(20)),
+				NumberProvider.constant(1), NumberProvider.constant(3));
+		var sweepLife = new NumberProviders.Max(NumberProvider.constant(60),
+				new NumberProviders.Mul(new NumberProviders.Distance(), NumberProvider.constant(2)));
+		var sweepAngle = new NumberProviders.Add(new NumberProviders.RandomRange(0, 360),
+				new NumberProviders.Mul(new NumberProviders.Variable("swt"), NumberProvider.constant(18)));
+		var sweep = new BurstAction(20, 1, "swt", List.of(
+				new FireDanmakuAction(YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.RED),
+						NumberProvider.constant(12), sweepSpeed, sweepLife,
+						sweepAngle, NumberProvider.constant(30),
+						new NumberProviders.GaussianRandom(0, 8),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+				new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
+						NumberProvider.constant(12),
+						new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(0.6)),
+						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.2)),
+						sweepAngle, NumberProvider.constant(30),
+						new NumberProviders.GaussianRandom(0, 8),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+				new FireDanmakuAction(YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.RED),
+						NumberProvider.constant(12),
+						new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(0.3)),
+						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.5)),
+						sweepAngle, NumberProvider.constant(30),
+						new NumberProviders.GaussianRandom(0, 8),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+		var sweepAction = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.TickInterval(20, 0),
+						new SpellConditions.CompareNumbers(stepVar, "<", NumberProvider.constant(3)))),
+				List.of(sweep), List.of());
+
+		// === Lasers (step == 3): 分支激光 ===
+		var parentLaser = new SpellActions.SequenceAction(List.of(
+				new SpellActions.SetVariable("laz", new NumberProviders.RandomRange(0, 360)),
+				new SpellActions.SetVariable("lel", new NumberProviders.GaussianRandom(0, 30)),
+				new SpellActions.SetVariable("llen", new NumberProviders.RandomRange(25, 40)),
+				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+						NumberProvider.constant(140), NumberProvider.constant(80),
+						new NumberProviders.Variable("laz"),
+						new NumberProviders.Variable("lel"),
+						new AimMode.AimModes.Target(), OriginConfig.caster(),
+						Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty()),
+				new SpellActions.RepeatAction(NumberProvider.constant(3), "lj", List.of(
+						new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+								NumberProvider.constant(140), NumberProvider.constant(80),
+								new NumberProviders.Add(new NumberProviders.Variable("laz"),
+										new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(120))),
+								new NumberProviders.Add(new NumberProviders.Variable("lel"), NumberProvider.constant(45)),
+								new AimMode.AimModes.Target(),
+								new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+										new NumberProviders.Mul(
+												new NumberProviders.Sin(new NumberProviders.Variable("laz"), 1, 0),
+												new NumberProviders.Variable("llen")),
+										new NumberProviders.Mul(
+												new NumberProviders.Sin(new NumberProviders.Variable("lel"), 1, 0),
+												new NumberProviders.Variable("llen")),
+										new NumberProviders.Mul(
+												new NumberProviders.Cos(new NumberProviders.Variable("laz"), 1, 0),
+												new NumberProviders.Variable("llen")),
+										NumberProvider.constant(0)),
+								Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty())
+				))
+		));
+		var lasers = new SpellActions.RepeatAction(NumberProvider.constant(4), "li", List.of(parentLaser));
+		var laserAction = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.TickInterval(20, 0),
+						new SpellConditions.CompareNumbers(stepVar, "==", NumberProvider.constant(3)))),
+				List.of(lasers), List.of());
+
+		// === Spear (step == 4): 密集弹幕线 ===
+		var spearTrail = new SpellActions.RepeatAction(NumberProvider.constant(80), "si", List.of(
+				new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
+						NumberProvider.constant(1), NumberProvider.constant(3), NumberProvider.constant(30),
+						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(0),
+						NumberProvider.constant(0), PatternType.AIMED,
+						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+								new NumberProviders.GaussianRandom(0, 2),
+								new NumberProviders.GaussianRandom(0, 2),
+								new NumberProviders.Mul(
+										new NumberProviders.Div(new NumberProviders.Variable("si"), NumberProvider.constant(80)),
+										new NumberProviders.Distance()),
+								NumberProvider.constant(0)),
+						new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+		var spear = new SpellActions.SequenceAction(List.of(
+				new TeleportAction(
+						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+								NumberProvider.constant(0), NumberProvider.constant(0),
+								new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(2)),
+								NumberProvider.constant(0)),
+						true),
+				spearTrail));
+		var spearAction = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.TickInterval(20, 0),
+						new SpellConditions.CompareNumbers(stepVar, "==", NumberProvider.constant(4)),
+						new SpellConditions.DistanceAbove(40))),
+				List.of(spear), List.of());
+
+		var phase = new PhaseDefinition(mainPhase, List.of(), List.of(sweepAction, laserAction, spearAction),
+				List.of(), List.of(), List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:remilia_scarlet");
+	}
+
+	// ============================
+	// DoremiSpell — 梦子 (Maze迷宫+Madness狂乱 状态机)
+	// ============================
+	public static SpellDefinition doremi() {
+		var id = rl("doremy_sweet");
+		var mainPhase = rl("doremy_sweet/main");
+
+		// === 状态变量维护 (每tick) ===
+		var updateGt = new SpellActions.ConditionalAction(
+				new SpellConditions.TargetOnGround(),
+				List.of(new SpellActions.SetVariable("gt",
+						new NumberProviders.Clamp(
+								new NumberProviders.Add(new NumberProviders.Variable("gt"), NumberProvider.constant(1)),
+								NumberProvider.constant(0), NumberProvider.constant(20)))),
+				List.of(new SpellActions.SetVariable("gt",
+						new NumberProviders.Clamp(
+								new NumberProviders.Add(new NumberProviders.Variable("gt"), NumberProvider.constant(-1)),
+								NumberProvider.constant(0), NumberProvider.constant(20)))));
+		SpellAction decCd = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(new NumberProviders.Variable("cd"), ">", NumberProvider.constant(0)),
+				List.of(new SpellActions.AddVariable("cd", -1)), List.of());
+		SpellAction decMzt = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(new NumberProviders.Variable("mzt"), ">", NumberProvider.constant(0)),
+				List.of(new SpellActions.AddVariable("mzt", -1)), List.of());
+		SpellAction decMdt = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(new NumberProviders.Variable("mdt"), ">", NumberProvider.constant(0)),
+				List.of(new SpellActions.AddVariable("mdt", -1)), List.of());
+
+		// === Maze 激光阵列 ===
+		var mazeLasers = new SpellActions.RepeatAction(NumberProvider.constant(2), "ms", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(8), "mi", List.of(
+						new SpellActions.RepeatAction(NumberProvider.constant(12), "mj", List.of(
+								new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.RED,
+										NumberProvider.constant(120), NumberProvider.constant(40),
+										new NumberProviders.Add(
+												new NumberProviders.Mul(new NumberProviders.Variable("mi"), NumberProvider.constant(45)),
+												new NumberProviders.Add(
+														new NumberProviders.Mul(new NumberProviders.Variable("mj"), NumberProvider.constant(30)),
+														new NumberProviders.RandomRange(0, 360))),
+										new AimMode.AimModes.Target(),
+										new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
+												new NumberProviders.Add(new NumberProviders.Variable("maze_x"),
+														new NumberProviders.Mul(
+																new NumberProviders.Cos(new NumberProviders.Mul(new NumberProviders.Variable("mi"), NumberProvider.constant(45)), 1, 0),
+																NumberProvider.constant(6))),
+												new NumberProviders.Add(new NumberProviders.Variable("maze_y"),
+														new NumberProviders.Mul(
+																new NumberProviders.Add(new NumberProviders.Variable("ms"), NumberProvider.constant(-0.5)),
+																NumberProvider.constant(4))),
+												new NumberProviders.Add(new NumberProviders.Variable("maze_z"),
+														new NumberProviders.Mul(
+																new NumberProviders.Sin(new NumberProviders.Mul(new NumberProviders.Variable("mi"), NumberProvider.constant(45)), 1, 0),
+																NumberProvider.constant(6))),
+												NumberProvider.constant(0)),
+										Optional.of(new MoverConfigs.RotateConfig(3)),
+										0, 0, 20, Optional.empty(), Optional.empty())
+						))
+				))
+		));
+
+		// === Maze 弹幕螺旋 ===
+		var mazeSpiral = new BurstAction(80, 1, "mt", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(10), "mk", List.of(
+						new FireDanmakuAction(YHDanmaku.Bullet.BALL,
+								new ColorProvider.Cycle(List.of(DyeColor.YELLOW, DyeColor.ORANGE), 1),
+								NumberProvider.constant(1), NumberProvider.constant(0.05), NumberProvider.constant(80),
+								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+								PatternType.AIMED,
+								new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
+										new NumberProviders.Add(new NumberProviders.Variable("maze_x"),
+												new NumberProviders.Mul(
+														new NumberProviders.Cos(new NumberProviders.Add(
+																new NumberProviders.Variable("maze_init"),
+																new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))), 1, 0),
+														NumberProvider.constant(8))),
+										new NumberProviders.Variable("maze_y"),
+										new NumberProviders.Add(new NumberProviders.Variable("maze_z"),
+												new NumberProviders.Mul(
+														new NumberProviders.Sin(new NumberProviders.Add(
+																new NumberProviders.Variable("maze_init"),
+																new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))), 1, 0),
+														NumberProvider.constant(8))),
+										NumberProvider.constant(0)),
+								new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
+								Optional.of(new MoverConfigs.DecelerationConfig(0.02)),
+								Optional.empty(), Optional.empty(), Optional.empty(), 1)
+				))
+		));
+
+		// === Maze 触发 ===
+		var mazeTrigger = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.CompareNumbers(new NumberProviders.Variable("cd"), "<=", NumberProvider.constant(100)),
+						new SpellConditions.CompareNumbers(new NumberProviders.Variable("mzt"), "<=", NumberProvider.constant(0)),
+						new SpellConditions.VariableCheck("gt", "==", 20))),
+				List.of(new SpellActions.SequenceAction(List.of(
+						new SpellActions.SetVariable("maze_x", new NumberProviders.TargetX()),
+						new SpellActions.SetVariable("maze_y", new NumberProviders.Add(new NumberProviders.TargetY(), NumberProvider.constant(-0.3))),
+						new SpellActions.SetVariable("maze_z", new NumberProviders.TargetZ()),
+						new SpellActions.SetVariable("maze_init", new NumberProviders.RandomRange(0, 360)),
+						new SpellActions.SetVariable("mzt", new NumberProviders.Constant(100)),
+						new SpellActions.SetVariable("mdt", new NumberProviders.Constant(160)),
+						new SpellActions.AddVariable("cd", 180),
+						mazeLasers, mazeSpiral))),
+				List.of());
+
+		// === Madness 初始化42变量 + 7发射器 ===
+		var madInit = new ArrayList<SpellAction>();
+		for (int i = 0; i < 7; i++) {
+			String s = String.valueOf(i);
+			madInit.add(new SpellActions.SetVariable("mst" + s, new NumberProviders.RandomRange(0, 360)));
+			madInit.add(new SpellActions.SetVariable("msp" + s, new NumberProviders.RandomRange(2, 4)));
+			madInit.add(new SpellActions.SetVariable("mam" + s, new NumberProviders.RandomRange(0, 90)));
+			madInit.add(new SpellActions.SetVariable("mfr" + s,
+					new NumberProviders.Div(
+							new NumberProviders.Add(new NumberProviders.RandomRange(0, 20), NumberProvider.constant(10)),
+							new NumberProviders.Max(
+									new NumberProviders.Div(new NumberProviders.Variable("mam" + s), NumberProvider.constant(30)),
+									NumberProvider.constant(1)))));
+			madInit.add(new SpellActions.SetVariable("mro" + s, new NumberProviders.RandomRange(10, 20)));
+			madInit.add(new SpellActions.SetVariable("mr0" + s, new NumberProviders.RandomRange(0, 360)));
+		}
+
+		var madEmitters = new ArrayList<SpellAction>();
+		for (int i = 0; i < 7; i++) {
+			madEmitters.add(buildMadnessEmitter(i));
+		}
+		var madBurst = new BurstAction(100, 1, "mdt_t", madEmitters);
+
+		var madTrigger = new SpellActions.SequenceAction(List.of(
+				new SpellActions.SetVariable("do_mad", new NumberProviders.Constant(0)),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.AndCondition(List.of(
+								new SpellConditions.CompareNumbers(new NumberProviders.Variable("mdt"), "<=", NumberProvider.constant(0)),
+								new SpellConditions.VariableCheck("gt", "==", 0))),
+						List.of(new SpellActions.SetVariable("do_mad", new NumberProviders.Constant(1))), List.of()),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.AndCondition(List.of(
+								new SpellConditions.CompareNumbers(new NumberProviders.Variable("mdt"), "<=", NumberProvider.constant(0)),
+								new SpellConditions.CompareNumbers(new NumberProviders.Variable("mzt"), "<=", NumberProvider.constant(0)))),
+						List.of(new SpellActions.SetVariable("do_mad", new NumberProviders.Constant(1))), List.of()),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.VariableCheck("do_mad", "==", 1),
+						List.of(new SpellActions.SequenceAction(buildMadnessFullAction(madInit, madBurst))),
+						List.of())
+		));
+
+		var phase = new PhaseDefinition(mainPhase, List.of(),
+				List.of(updateGt, decCd, decMzt, decMdt, mazeTrigger, madTrigger),
+				List.of(), List.of(), List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:doremy_sweet");
+	}
+
+	/** Madness: 构建单个发射器的 per-tick 发射逻辑 */
+	private static SpellAction buildMadnessEmitter(int i) {
+		String s = String.valueOf(i);
+		var angle = new NumberProviders.Add(new NumberProviders.Variable("mst" + s),
+				new NumberProviders.Mul(new NumberProviders.Variable("msp" + s), new NumberProviders.Variable("mdt_t")));
+		var tilt = new NumberProviders.Mul(new NumberProviders.Variable("mam" + s),
+				new NumberProviders.Sin(
+						new NumberProviders.Mul(new NumberProviders.Variable("mfr" + s), new NumberProviders.Variable("mdt_t")),
+						0.5, 0.5));
+		var cosA = new NumberProviders.Cos(angle, 1, 0);
+		var sinA = new NumberProviders.Sin(angle, 1, 0);
+		var cosT = new NumberProviders.Cos(tilt, 1, 0);
+		var sinT = new NumberProviders.Sin(tilt, 1, 0);
+		var px = new NumberProviders.Add(new NumberProviders.TargetX(), new NumberProviders.Mul(new NumberProviders.Mul(cosA, cosT), NumberProvider.constant(16)));
+		var py = new NumberProviders.Add(new NumberProviders.TargetY(), new NumberProviders.Mul(sinT, NumberProvider.constant(16)));
+		var pz = new NumberProviders.Add(new NumberProviders.TargetZ(), new NumberProviders.Mul(new NumberProviders.Mul(sinA, cosT), NumberProvider.constant(16)));
+		var ringRot = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("mro" + s), new NumberProviders.Variable("mdt_t")),
+				new NumberProviders.Variable("mr0" + s));
+		var origin = new OriginConfig(OriginConfig.OriginMode.ABSOLUTE, px, py, pz, NumberProvider.constant(0));
+
+		return new SpellActions.SequenceAction(List.of(
+				new FireDanmakuAction(YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.BLUE),
+						NumberProvider.constant(1), NumberProvider.constant(0.3), NumberProvider.constant(100),
+						ringRot, NumberProvider.constant(0), NumberProvider.constant(0),
+						PatternType.AIMED, origin, new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+				new FireDanmakuAction(YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.MAGENTA),
+						NumberProvider.constant(1), NumberProvider.constant(0.3), NumberProvider.constant(100),
+						new NumberProviders.Add(ringRot, NumberProvider.constant(180)),
+						NumberProvider.constant(0), NumberProvider.constant(0),
+						PatternType.AIMED, origin, new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+	}
+
+	/** Madness: 组装完整的初始化+发射 action 列表 */
+	private static List<SpellAction> buildMadnessFullAction(List<SpellAction> init, SpellAction burst) {
+		var list = new ArrayList<>(init);
+		list.add(new SpellActions.SetVariable("mdt", new NumberProviders.Constant(100)));
+		list.add(new SpellActions.SetVariable("mzt", new NumberProviders.Constant(160)));
+		list.add(burst);
+		return list;
+	}
+
+	// ============================
+	// KoishiSpell — 恋 (Lissajous激光 + 追踪弹 + 边界限制)
+	// ============================
+	public static SpellDefinition koishi() {
+		var id = rl("komeiji_koishi");
+		var mainPhase = rl("komeiji_koishi/main");
+
+		// === Lissajous 激光 (每tick 10条) ===
+		var tDeg = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.PhaseTick(), NumberProvider.constant(1.375)),
+				new NumberProviders.Mul(new NumberProviders.Variable("li"), NumberProvider.constant(974.03)));
+		var cosInner = new NumberProviders.Cos(new NumberProviders.Mul(tDeg, NumberProvider.constant(1.47)), 1, 0);
+		var lissX = new NumberProviders.Add(new NumberProviders.CasterX(),
+				new NumberProviders.Mul(new NumberProviders.Mul(cosInner, new NumberProviders.Cos(tDeg, 1, 0)), NumberProvider.constant(32)));
+		var lissZ = new NumberProviders.Add(new NumberProviders.CasterZ(),
+				new NumberProviders.Mul(new NumberProviders.Mul(cosInner, new NumberProviders.Sin(tDeg, 1, 0)), NumberProvider.constant(32)));
+		var lissY = new NumberProviders.Min(
+				new NumberProviders.Add(new NumberProviders.CasterY(), NumberProvider.constant(-15)),
+				new NumberProviders.Add(new NumberProviders.TargetY(), NumberProvider.constant(-10)));
+		var lissajous = new SpellActions.RepeatAction(NumberProvider.constant(10), "li", List.of(
+				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
+						NumberProvider.constant(40), NumberProvider.constant(60),
+						NumberProvider.constant(0),
+						NumberProvider.constant(75),
+						new AimMode.AimModes.Target(),
+						new OriginConfig(OriginConfig.OriginMode.ABSOLUTE, lissX, lissY, lissZ, NumberProvider.constant(0)),
+						Optional.empty(), 10, 4, 4, Optional.empty(), Optional.empty())
+		));
+
+		// === Homing 弹幕 ===
+		var homingChase = new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
+				NumberProvider.constant(1), NumberProvider.constant(1), NumberProvider.constant(60),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var homingExpand = new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
+				NumberProvider.constant(1), NumberProvider.constant(0.4), NumberProvider.constant(20),
+				new NumberProviders.Mul(new NumberProviders.PhaseTick(), NumberProvider.constant(9)),
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
+				Optional.of(new MoverConfigs.DecelerationConfig(0.04)),
+				Optional.empty(),
+				Optional.of(List.of((SpellAction) homingChase)),
+				Optional.empty(), 1);
+		var stateChange = new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(4, 0), List.of(homingExpand), List.of());
+
+		// 每10tick: 24发 RING BALL RED
+		var homingRing = new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(10, 0),
+				List.of(new FireDanmakuAction(YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.RED),
+						NumberProvider.constant(24),
+						new NumberProviders.Max(NumberProvider.constant(0.6),
+								new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(40))),
+						NumberProvider.constant(40),
+						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+						PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
+				List.of());
+
+		// === Border 预测弹 (dist>26时) ===
+		var border = new SpellActions.ConditionalAction(
+				new SpellConditions.DistanceAbove(26),
+				List.of(new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.PINK),
+						NumberProvider.constant(4), NumberProvider.constant(0.1), NumberProvider.constant(40),
+						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360),
+						NumberProvider.constant(0),
+						PatternType.RANDOM,
+						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+								NumberProvider.constant(0), NumberProvider.constant(0),
+								new NumberProviders.Add(new NumberProviders.Distance(), NumberProvider.constant(-6)),
+								NumberProvider.constant(0)),
+						new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
+				List.of());
+
+		// === 边界限制 ===
+		var confine = new ConfineTargetAction(32, 1.0);
+
+		var phase = new PhaseDefinition(mainPhase, List.of(),
+				List.of(lissajous, stateChange, homingRing, border, confine),
+				List.of(), List.of(), List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:komeiji_koishi");
+	}
+
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,
 												   PhaseDefinition phase, String modelId) {
 		SpellDisplay display = new SpellDisplay(

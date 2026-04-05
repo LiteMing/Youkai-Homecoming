@@ -262,7 +262,8 @@ public class ActionListPanel {
 		if (inner instanceof DelayAction) return true;
 		if (inner instanceof BurstAction) return true;
 		if (inner instanceof FireDanmakuAction fda)
-			return fda.onExpiry().isPresent() || fda.onTrail().isPresent();
+			return fda.onExpiry().isPresent() || fda.onTrail().isPresent()
+					|| fda.onHitEntity().isPresent() || fda.onHitBlock().isPresent();
 		if (inner instanceof SpawnShooterAction) return true;
 		return false;
 	}
@@ -380,6 +381,26 @@ public class ActionListPanel {
 			}
 			if (showAdd) {
 				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onTrail"), "+ onTrail", indent + 1, cy));
+				cy += ROW_HEIGHT;
+			}
+
+			List<SpellAction> hitEntityActions = fda.onHitEntity().orElse(List.of());
+			for (int j = 0; j < hitEntityActions.size(); j++) {
+				ActionPath childPath = actionPath.child("onHitEntity", j);
+				cy = buildActionTree(hitEntityActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
+			}
+			if (showAdd) {
+				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitEntity"), "+ onHitEntity", indent + 1, cy));
+				cy += ROW_HEIGHT;
+			}
+
+			List<SpellAction> hitBlockActions = fda.onHitBlock().orElse(List.of());
+			for (int j = 0; j < hitBlockActions.size(); j++) {
+				ActionPath childPath = actionPath.child("onHitBlock", j);
+				cy = buildActionTree(hitBlockActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
+			}
+			if (showAdd) {
+				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitBlock"), "+ onHitBlock", indent + 1, cy));
 				cy += ROW_HEIGHT;
 			}
 		}
@@ -968,6 +989,18 @@ public class ActionListPanel {
 			list.set(entry.index, fda.withOnTrail(Optional.of(trailActions)));
 			return true;
 		}
+		if (parent instanceof FireDanmakuAction fda && "onHitEntity".equals(entry.branch)) {
+			List<SpellAction> hitActions = new ArrayList<>(fda.onHitEntity().orElse(new ArrayList<>()));
+			if (!doReplace(hitActions, path, depth + 1, newAction)) return false;
+			list.set(entry.index, fda.withOnHitEntity(Optional.of(hitActions)));
+			return true;
+		}
+		if (parent instanceof FireDanmakuAction fda && "onHitBlock".equals(entry.branch)) {
+			List<SpellAction> hitActions = new ArrayList<>(fda.onHitBlock().orElse(new ArrayList<>()));
+			if (!doReplace(hitActions, path, depth + 1, newAction)) return false;
+			list.set(entry.index, fda.withOnHitBlock(Optional.of(hitActions)));
+			return true;
+		}
 		if (parent instanceof SpellActions.SequenceAction seq && "actions".equals(entry.branch)) {
 			List<SpellAction> actions = new ArrayList<>(seq.actions());
 			if (!doReplace(actions, path, depth + 1, newAction)) return false;
@@ -1058,6 +1091,20 @@ public class ActionListPanel {
 				selectedPath = parentPath.child(targetBranch, trailActions.size() - 1);
 				return true;
 			}
+			if (current instanceof FireDanmakuAction fda && "onHitEntity".equals(targetBranch)) {
+				List<SpellAction> hitActions = new ArrayList<>(fda.onHitEntity().orElse(new ArrayList<>()));
+				hitActions.add(newAction);
+				list.set(entry.index, fda.withOnHitEntity(Optional.of(hitActions)));
+				selectedPath = parentPath.child(targetBranch, hitActions.size() - 1);
+				return true;
+			}
+			if (current instanceof FireDanmakuAction fda && "onHitBlock".equals(targetBranch)) {
+				List<SpellAction> hitActions = new ArrayList<>(fda.onHitBlock().orElse(new ArrayList<>()));
+				hitActions.add(newAction);
+				list.set(entry.index, fda.withOnHitBlock(Optional.of(hitActions)));
+				selectedPath = parentPath.child(targetBranch, hitActions.size() - 1);
+				return true;
+			}
 			if (current instanceof SpellActions.SequenceAction seq && "actions".equals(targetBranch)) {
 				List<SpellAction> actions = new ArrayList<>(seq.actions());
 				actions.add(newAction);
@@ -1115,6 +1162,18 @@ public class ActionListPanel {
 			List<SpellAction> trailActions = new ArrayList<>(fda.onTrail().orElse(new ArrayList<>()));
 			if (!doInsert(trailActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
 			list.set(entry.index, fda.withOnTrail(Optional.of(trailActions)));
+			return true;
+		}
+		if (current instanceof FireDanmakuAction fda && "onHitEntity".equals(entry.branch)) {
+			List<SpellAction> hitActions = new ArrayList<>(fda.onHitEntity().orElse(new ArrayList<>()));
+			if (!doInsert(hitActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			list.set(entry.index, fda.withOnHitEntity(Optional.of(hitActions)));
+			return true;
+		}
+		if (current instanceof FireDanmakuAction fda && "onHitBlock".equals(entry.branch)) {
+			List<SpellAction> hitActions = new ArrayList<>(fda.onHitBlock().orElse(new ArrayList<>()));
+			if (!doInsert(hitActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			list.set(entry.index, fda.withOnHitBlock(Optional.of(hitActions)));
 			return true;
 		}
 		if (current instanceof SpellActions.SequenceAction seq && "actions".equals(entry.branch)) {
@@ -1196,6 +1255,18 @@ public class ActionListPanel {
 			List<SpellAction> trailActions = new ArrayList<>(fda.onTrail().orElse(new ArrayList<>()));
 			if (!doDelete(trailActions, path, depth + 1)) return false;
 			list.set(entry.index, fda.withOnTrail(trailActions.isEmpty() ? Optional.empty() : Optional.of(trailActions)));
+			return true;
+		}
+		if (parent instanceof FireDanmakuAction fda && "onHitEntity".equals(entry.branch)) {
+			List<SpellAction> hitActions = new ArrayList<>(fda.onHitEntity().orElse(new ArrayList<>()));
+			if (!doDelete(hitActions, path, depth + 1)) return false;
+			list.set(entry.index, fda.withOnHitEntity(hitActions.isEmpty() ? Optional.empty() : Optional.of(hitActions)));
+			return true;
+		}
+		if (parent instanceof FireDanmakuAction fda && "onHitBlock".equals(entry.branch)) {
+			List<SpellAction> hitActions = new ArrayList<>(fda.onHitBlock().orElse(new ArrayList<>()));
+			if (!doDelete(hitActions, path, depth + 1)) return false;
+			list.set(entry.index, fda.withOnHitBlock(hitActions.isEmpty() ? Optional.empty() : Optional.of(hitActions)));
 			return true;
 		}
 		if (parent instanceof SpellActions.SequenceAction seq && "actions".equals(entry.branch)) {
@@ -1344,6 +1415,12 @@ public class ActionListPanel {
 		if (action instanceof FireDanmakuAction fda && "onTrail".equals(entry.branch)) {
 			return getActionRecursive(fda.onTrail().orElse(List.of()), path, depth + 1);
 		}
+		if (action instanceof FireDanmakuAction fda && "onHitEntity".equals(entry.branch)) {
+			return getActionRecursive(fda.onHitEntity().orElse(List.of()), path, depth + 1);
+		}
+		if (action instanceof FireDanmakuAction fda && "onHitBlock".equals(entry.branch)) {
+			return getActionRecursive(fda.onHitBlock().orElse(List.of()), path, depth + 1);
+		}
 		if (action instanceof SpellActions.SequenceAction seq && "actions".equals(entry.branch)) {
 			return getActionRecursive(seq.actions(), path, depth + 1);
 		}
@@ -1426,6 +1503,10 @@ public class ActionListPanel {
 				collapseAllRecursive(fda.onExpiry().get().get(j), path.child("onExpiry", j));
 			for (int j = 0; j < fda.onTrail().orElse(List.of()).size(); j++)
 				collapseAllRecursive(fda.onTrail().get().get(j), path.child("onTrail", j));
+			for (int j = 0; j < fda.onHitEntity().orElse(List.of()).size(); j++)
+				collapseAllRecursive(fda.onHitEntity().get().get(j), path.child("onHitEntity", j));
+			for (int j = 0; j < fda.onHitBlock().orElse(List.of()).size(); j++)
+				collapseAllRecursive(fda.onHitBlock().get().get(j), path.child("onHitBlock", j));
 		}
 		if (inner instanceof SpawnShooterAction ssa) {
 			for (int j = 0; j < ssa.body().size(); j++)
@@ -1600,6 +1681,20 @@ public class ActionListPanel {
 			list.set(entry.index, current instanceof SpellActions.DisabledAction ? new SpellActions.DisabledAction(rebuilt) : rebuilt);
 			return true;
 		}
+		if (parent instanceof FireDanmakuAction fda && "onHitEntity".equals(entry.branch)) {
+			List<SpellAction> hitActions = new ArrayList<>(fda.onHitEntity().orElse(new ArrayList<>()));
+			if (!doToggleDisabled(hitActions, path, depth + 1)) return false;
+			var rebuilt = fda.withOnHitEntity(hitActions.isEmpty() ? Optional.empty() : Optional.of(hitActions));
+			list.set(entry.index, current instanceof SpellActions.DisabledAction ? new SpellActions.DisabledAction(rebuilt) : rebuilt);
+			return true;
+		}
+		if (parent instanceof FireDanmakuAction fda && "onHitBlock".equals(entry.branch)) {
+			List<SpellAction> hitActions = new ArrayList<>(fda.onHitBlock().orElse(new ArrayList<>()));
+			if (!doToggleDisabled(hitActions, path, depth + 1)) return false;
+			var rebuilt = fda.withOnHitBlock(hitActions.isEmpty() ? Optional.empty() : Optional.of(hitActions));
+			list.set(entry.index, current instanceof SpellActions.DisabledAction ? new SpellActions.DisabledAction(rebuilt) : rebuilt);
+			return true;
+		}
 		if (parent instanceof SpellActions.SequenceAction seq && "actions".equals(entry.branch)) {
 			List<SpellAction> actions = new ArrayList<>(seq.actions());
 			if (!doToggleDisabled(actions, path, depth + 1)) return false;
@@ -1629,6 +1724,8 @@ public class ActionListPanel {
 			else if ("false".equals(branch)) prefix = "F";
 			else if ("body".equals(branch)) prefix = "B";
 			else if ("onExpiry".equals(branch)) prefix = "E";
+			else if ("onHitEntity".equals(branch)) prefix = "H";
+			else if ("onHitBlock".equals(branch)) prefix = "H";
 		}
 		int index = path.path.get(path.path.size() - 1).index;
 		return prefix + getActionLabel(action, index);

@@ -1702,7 +1702,7 @@ public class MigratedSpellCards {
 		var mazeSpiral = new BurstAction(80, 1, "mt", List.of(
 				new FireDanmakuAction(YHDanmaku.Bullet.BALL,
 						new ColorProvider.Cycle(List.of(DyeColor.YELLOW, DyeColor.ORANGE), 1),
-						NumberProvider.constant(10), NumberProvider.constant(0.3), NumberProvider.constant(80),
+						NumberProvider.constant(10), NumberProvider.constant(0.05), NumberProvider.constant(80),
 						new NumberProviders.Add(
 								new NumberProviders.Variable("maze_init"),
 								new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))),
@@ -1724,7 +1724,11 @@ public class MigratedSpellCards {
 												NumberProvider.constant(8))),
 								NumberProvider.constant(0)),
 						new AimMode.AimModes.Target(),
-						Optional.empty(),
+						Optional.of(new MoverConfigs.CompositeMoverConfig(List.of(
+								new MoverConfigs.CompositeMoverConfig.Segment(40,
+										new MoverConfigs.AccelerationConfig(Vec3.ZERO)),
+								new MoverConfigs.CompositeMoverConfig.Segment(20,
+										new MoverConfigs.DecelerationConfig(-1.4))))),
 						Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
 

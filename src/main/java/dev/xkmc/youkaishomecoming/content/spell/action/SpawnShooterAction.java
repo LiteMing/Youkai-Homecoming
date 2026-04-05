@@ -60,6 +60,17 @@ public record SpawnShooterAction(
 		Vec3 spawnPos = origin.resolve(ctx);
 		Vec3 vel = new Vec3(velocityX.get(ctx), velocityY.get(ctx), velocityZ.get(ctx));
 
+		// If velocity specifies only a speed scalar (x=0, y=0, z=speed),
+		// and origin is offset from caster, derive direction from offset.
+		// This makes the Shooter fly outward from the caster along the spawn direction.
+		if (vel.x == 0 && vel.y == 0 && vel.z != 0) {
+			Vec3 casterPos = holder.center();
+			Vec3 offset = spawnPos.subtract(casterPos);
+			if (offset.lengthSqr() > 1e-4) {
+				vel = offset.normalize().scale(vel.z);
+			}
+		}
+
 		var shooterSpell = new DataDrivenShooterSpell(body);
 		var data = new ShooterData(health, damage, lifetime);
 		var entity = holder.prepareShooter(data, shooterSpell);

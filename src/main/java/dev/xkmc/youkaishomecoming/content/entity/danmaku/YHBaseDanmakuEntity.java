@@ -14,6 +14,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -105,6 +107,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	protected void onHitBlock(BlockHitResult pResult) {
 		super.onHitBlock(pResult);
 		if (!level().isClientSide) {
+			// Execute onHitBlock callback before potential discard
+			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
+				executeHitAction(ide.onHitBlockAction);
+			}
+			if (this instanceof ItemDanmakuEntity ide && ide.hitBehavior == HitBehavior.CONTINUE) {
+				// Don't discard — let it keep flying until lifetime expires
+				return;
+			}
 			discard();
 		}
 	}
@@ -124,9 +134,26 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		if (level().isClientSide)
 			return;
 		hurtTarget(result);
+		// Execute onHitEntity callback before potential discard
+		if (this instanceof ItemDanmakuEntity ide && ide.onHitEntityAction != null) {
+			executeHitAction(ide.onHitEntityAction);
+		}
+		if (this instanceof ItemDanmakuEntity ide && ide.hitBehavior == HitBehavior.CONTINUE) {
+			// Don't discard — let it keep flying until lifetime expires
+			return;
+		}
 		if (!bypassEntity) {
 			discard();
 		}
+	}
+
+	/** Helper: execute a TrailAction at the current danmaku position/direction. */
+	private void executeHitAction(TrailAction action) {
+		CardHolder holder = null;
+		Entity e = getOwner();
+		if (e instanceof CardHolder h) holder = h;
+		if (holder != null) action.execute(holder, position(), getDeltaMovement());
+		else action.execute(position(), getDeltaMovement());
 	}
 
 }

@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
@@ -340,6 +341,12 @@ public class ActionEditorPanel {
 		} else {
 			addFullWidthButton("[+ Tilt Angle]", () ->
 					notifyDanmaku(old -> old.withTiltAngle(Optional.of(NumberProvider.constant(0)))));
+		}
+
+		// Hit behavior: what happens when the danmaku hits an entity/block
+		if (a.onHitEntity().isPresent() || a.onHitBlock().isPresent()) {
+			addEnumRow("Hit Behav", HitBehavior.values(), a.hitBehavior(), v ->
+					notifyDanmaku(old -> old.withHitBehavior(v)));
 		}
 	}
 

@@ -1619,34 +1619,65 @@ public class MigratedSpellCards {
 								new NumberProviders.Add(new NumberProviders.Variable("gung"), NumberProvider.constant(-2)),
 								NumberProvider.constant(0), NumberProvider.constant(100)))));
 
-		// 视觉: boss头顶显示冈格尼尔形态 (MENTOS RED, 静止, 大小随gung变化)
-		// 长度 = gung/100 * 4 (最大4格), 数量 = gung/10 (最大10发)
-		// 每4tick刷新一次视觉 (避免过多实体)
-		var gungVisual = new SpellActions.ConditionalAction(
+		// === 冈格尼尔视觉 ===
+		// 共用参数: 数量=gung/3 (最大30发), 长度=gung/100*12 (最大12格)
+		// 梭形: sin(t*pi)*0.25 横向抖动
+		var gungCount = new NumberProviders.Clamp(
+				new NumberProviders.Div(new NumberProviders.Variable("gung"), NumberProvider.constant(3)),
+				NumberProvider.constant(1), NumberProvider.constant(30));
+		var gungLen = new NumberProviders.Mul(
+				new NumberProviders.Div(new NumberProviders.Variable("gung"), NumberProvider.constant(100)),
+				NumberProvider.constant(12));
+		// t = gi/count (0~1), 梭形宽度 = sin(t*180°) * 0.25
+		var shuttleWidth = new NumberProviders.Mul(
+				new NumberProviders.Sin(
+						new NumberProviders.Mul(
+								new NumberProviders.Div(new NumberProviders.Variable("gi"), gungCount),
+								NumberProvider.constant(180)), 1, 0),
+				NumberProvider.constant(0.25));
+
+		// 阶段A (gung 1~89): 竖直向上, RED, boss头顶2格起向上延伸
+		var gungVisualVertical = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.TickInterval(4, 0),
-						new SpellConditions.CompareNumbers(new NumberProviders.Variable("gung"), ">", NumberProvider.constant(0)))),
-				List.of(new SpellActions.RepeatAction(
-						new NumberProviders.Clamp(
-								new NumberProviders.Div(new NumberProviders.Variable("gung"), NumberProvider.constant(10)),
-								NumberProvider.constant(1), NumberProvider.constant(10)),
-						"gi", List.of(
+						new SpellConditions.CompareNumbers(new NumberProviders.Variable("gung"), ">", NumberProvider.constant(0)),
+						new SpellConditions.CompareNumbers(new NumberProviders.Variable("gung"), "<", NumberProvider.constant(90)))),
+				List.of(new SpellActions.RepeatAction(gungCount, "gi", List.of(
 						new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
 								NumberProvider.constant(1), NumberProvider.constant(0), NumberProvider.constant(8),
 								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
 								PatternType.AIMED,
 								new OriginConfig(OriginConfig.OriginMode.CASTER,
-										new NumberProviders.GaussianRandom(0, 0.1),
-										// 高度: 2.5 + gi * (gung/100 * 4) / count
-										new NumberProviders.Add(NumberProvider.constant(2.5),
+										new NumberProviders.Mul(shuttleWidth, new NumberProviders.GaussianRandom(0, 1)),
+										new NumberProviders.Add(NumberProvider.constant(2),
 												new NumberProviders.Mul(
-														new NumberProviders.Div(new NumberProviders.Variable("gi"),
-																new NumberProviders.Max(NumberProvider.constant(1),
-																		new NumberProviders.Div(new NumberProviders.Variable("gung"), NumberProvider.constant(10)))),
-														new NumberProviders.Mul(
-																new NumberProviders.Div(new NumberProviders.Variable("gung"), NumberProvider.constant(100)),
-																NumberProvider.constant(4)))),
-										new NumberProviders.GaussianRandom(0, 0.1),
+														new NumberProviders.Div(new NumberProviders.Variable("gi"), gungCount),
+														gungLen)),
+										new NumberProviders.Mul(shuttleWidth, new NumberProviders.GaussianRandom(0, 1)),
+										NumberProvider.constant(0)),
+								new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0)),
+								Optional.of(new MoverConfigs.ZeroMoverConfig()),
+								Optional.empty(), Optional.empty(), Optional.empty(), 1)
+				))), List.of());
+
+		// 阶段B (gung 90~99): 快速转向target, MAGENTA, CASTER_FACING延伸
+		// 从头顶2格处沿forward方向延伸, 颜色品红
+		var gungVisualAim = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.TickInterval(4, 0),
+						new SpellConditions.CompareNumbers(new NumberProviders.Variable("gung"), ">=", NumberProvider.constant(90)),
+						new SpellConditions.CompareNumbers(new NumberProviders.Variable("gung"), "<", NumberProvider.constant(100)))),
+				List.of(new SpellActions.RepeatAction(gungCount, "gi", List.of(
+						new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.MAGENTA),
+								NumberProvider.constant(1), NumberProvider.constant(0), NumberProvider.constant(8),
+								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+								PatternType.AIMED,
+								new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+										new NumberProviders.Mul(shuttleWidth, new NumberProviders.GaussianRandom(0, 1)),
+										NumberProvider.constant(2),
+										new NumberProviders.Mul(
+												new NumberProviders.Div(new NumberProviders.Variable("gi"), gungCount),
+												gungLen),
 										NumberProvider.constant(0)),
 								new AimMode.AimModes.DirectionToTarget(),
 								Optional.of(new MoverConfigs.ZeroMoverConfig()),
@@ -1683,7 +1714,7 @@ public class MigratedSpellCards {
 				List.of());
 
 		var phase = new PhaseDefinition(mainPhase, List.of(),
-				List.of(sweepAction, laserAction, gungCharge, gungVisual, spearFire),
+				List.of(sweepAction, laserAction, gungCharge, gungVisualVertical, gungVisualAim, spearFire),
 				List.of(), List.of(), List.of());
 		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:remilia_scarlet");
 	}

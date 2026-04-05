@@ -260,4 +260,47 @@ public class SpellRuntime {
 		}
 		return null;
 	}
+
+	// === NBT Persistence ===
+
+	/**
+	 * Save runtime state to NBT for entity persistence across save/load.
+	 * Scheduled actions are NOT saved (they are transient burst/delay state).
+	 */
+	public net.minecraft.nbt.CompoundTag saveToTag() {
+		var tag = new net.minecraft.nbt.CompoundTag();
+		tag.putString("PhaseId", currentPhaseId.toString());
+		tag.putInt("PhaseTick", phaseTick);
+		tag.putInt("TotalTick", totalTick);
+		tag.putInt("HitCount", hitCount);
+		if (!variables.isEmpty()) {
+			var varsTag = new net.minecraft.nbt.CompoundTag();
+			for (var entry : variables.entrySet()) {
+				varsTag.putDouble(entry.getKey(), entry.getValue());
+			}
+			tag.put("Variables", varsTag);
+		}
+		return tag;
+	}
+
+	/**
+	 * Restore runtime state from NBT after entity load.
+	 * Only restores if the phase ID is still valid in the current definition.
+	 */
+	public void loadFromTag(net.minecraft.nbt.CompoundTag tag) {
+		var phaseId = ResourceLocation.tryParse(tag.getString("PhaseId"));
+		if (phaseId != null && definition.getPhase(phaseId) != null) {
+			this.currentPhaseId = phaseId;
+			this.phaseTick = tag.getInt("PhaseTick");
+			this.totalTick = tag.getInt("TotalTick");
+			this.hitCount = tag.getInt("HitCount");
+			if (tag.contains("Variables")) {
+				var varsTag = tag.getCompound("Variables");
+				for (String key : varsTag.getAllKeys()) {
+					variables.put(key, varsTag.getDouble(key));
+				}
+			}
+		}
+		// If phase ID is invalid (definition was updated), stay at entry phase (default from constructor)
+	}
 }

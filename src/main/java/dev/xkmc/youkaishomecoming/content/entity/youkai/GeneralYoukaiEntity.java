@@ -124,8 +124,15 @@ public class GeneralYoukaiEntity extends YoukaiEntity {
 	public void readAdditionalSaveData(CompoundTag tag) {
 		super.readAdditionalSaveData(tag);
 		String id = getModelId();
-		if (!id.isEmpty() && spellCard == null) {
+		// Reconstruct spell if:
+		// 1. spellCard is completely null (legacy fallback), OR
+		// 2. spellCard exists but card is null AND no spellRuntime (migrated data-driven spell lost on save/load)
+		if (!id.isEmpty() && (spellCard == null || (spellCard.card == null && spellRuntime == null))) {
 			TouhouSpellCards.setSpell(this, id);
+		}
+		// Restore SpellRuntime state AFTER reconstruction
+		if (tag.contains("SpellRuntime") && spellRuntime != null) {
+			spellRuntime.loadFromTag(tag.getCompound("SpellRuntime"));
 		}
 	}
 

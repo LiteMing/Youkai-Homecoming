@@ -159,6 +159,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 			var data = TagCodec.valueToTag(new RestrictData(getRestrictCenter(), getRestrictRadius()));
 			if (data != null) tag.put("Restrict", data);
 		}
+		// Save SpellRuntime state for data-driven spells
+		if (spellRuntime != null) {
+			tag.put("SpellRuntime", spellRuntime.saveToTag());
+		}
 	}
 
 	public void readAdditionalSaveData(CompoundTag tag) {
@@ -178,6 +182,8 @@ public abstract class YoukaiEntity extends PathfinderMob
 				restrictTo(res.center(), (int) res.radius());
 			}
 		}
+		// Note: SpellRuntime state is restored in GeneralYoukaiEntity.readAdditionalSaveData
+		// AFTER spell reconstruction, since spellRuntime is null at this point.
 	}
 
 	public boolean getFlag(int flag) {

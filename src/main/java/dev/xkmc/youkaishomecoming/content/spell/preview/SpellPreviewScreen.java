@@ -33,7 +33,7 @@ public class SpellPreviewScreen extends Screen {
 	private final OrthographicViewport viewport;
 
 	// Layout constants
-	private static final int CONTROL_HEIGHT = 118;
+	private static final int CONTROL_HEIGHT = 136;
 	private static final int TOP_BAR_HEIGHT = 20;
 	private static final int BUTTON_HEIGHT = 16;
 	private static final int BUTTON_SPACING = 2;
@@ -172,6 +172,7 @@ public class SpellPreviewScreen extends Screen {
 		int row4Y = row3Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row5Y = row4Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row6Y = row5Y + BUTTON_HEIGHT + BUTTON_SPACING;
+		int row7Y = row6Y + BUTTON_HEIGHT + BUTTON_SPACING;
 
 		// Row 1: Playback controls
 		bx = 4;
@@ -294,6 +295,21 @@ public class SpellPreviewScreen extends Screen {
 			}).bounds(bx, row6Y, 30, BUTTON_HEIGHT).build());
 			bx += 32;
 		}
+
+		// Row 7: Target Height + Hit Count display
+		bx = 4;
+		addRenderableWidget(Button.builder(Component.literal("TgtY:"), btn -> {})
+				.bounds(bx, row7Y, 32, BUTTON_HEIGHT).build());
+		bx += 34;
+		for (double h : new double[]{0, 1, 2, 5, 10, 20}) {
+			String hLabel = String.valueOf((int) h);
+			addRenderableWidget(Button.builder(Component.literal(hLabel), btn -> {
+				scene.setTargetHeight(h);
+				rebuildScreen();
+			}).bounds(bx, row7Y, 22, BUTTON_HEIGHT).build());
+			bx += 24;
+		}
+		// (Hit count is rendered dynamically in render() method)
 
 		// --- Editor panels (right side) ---
 		if (editorVisible) {
@@ -585,6 +601,7 @@ public class SpellPreviewScreen extends Screen {
 				"tick:" + scene.getTotalTick() +
 				"  phase:" + scene.getCurrentPhaseId().getPath() +
 				"  entities:" + scene.getEntityCount() +
+				"  hits:" + scene.getHitCount() +
 				"  speed:" + scene.getCurrentSpeed() + "x";
 		guiGraphics.drawString(font, status, 90, row1Y + 4, 0xFFCCCCCC, false);
 
@@ -595,14 +612,17 @@ public class SpellPreviewScreen extends Screen {
 			guiGraphics.drawString(font, phaseName, 64, row4Y + 4, 0xFFFFFF88, false);
 		}
 
-		// View angle + target info
+		// View angle + target info + hit count
 		var tp = scene.getTargetPos();
-		String targetInfo = String.format("Target: (%.1f, %.1f, %.1f)", tp.x, tp.y, tp.z);
+		String targetInfo = String.format("Target: (%.1f, %.1f, %.1f)  height:%.1f", tp.x, tp.y, tp.z, tp.y);
+		String hitInfo = "  hits:" + scene.getHitCount();
 		int viewportW = width - editorW;
 		guiGraphics.drawString(font, "View: " + viewport.getViewLabel(),
 				4, height - CONTROL_HEIGHT - 22, 0xFF888888, false);
 		guiGraphics.drawString(font, targetInfo,
 				4, height - CONTROL_HEIGHT - 12, 0xFFBBBB44, false);
+		guiGraphics.drawString(font, hitInfo,
+				4 + font.width(targetInfo), height - CONTROL_HEIGHT - 12, 0xFFFF8844, false);
 
 		// Help overlay
 		if (showHelp) {

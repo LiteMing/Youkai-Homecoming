@@ -133,6 +133,17 @@ public class VirtualSpellScene {
 		holder.setTargetPos(pos);
 	}
 
+	/** Set only the Y coordinate of the target position (target_height). */
+	public void setTargetHeight(double y) {
+		Vec3 current = holder.getTargetPos();
+		holder.setTargetPos(new Vec3(current.x, y, current.z));
+	}
+
+	/** Get the target's Y coordinate (target_height). */
+	public double getTargetHeight() {
+		return holder.getTargetPos().y;
+	}
+
 	// Target properties
 
 	public void setTargetOnGround(boolean v) { holder.setTargetOnGround(v); }
@@ -194,6 +205,10 @@ public class VirtualSpellScene {
 
 	public int getEntityCount() {
 		return holder.getEntityCount();
+	}
+
+	public int getHitCount() {
+		return runtime.getHitCount();
 	}
 
 	public Set<ResourceLocation> getPhaseIds() {

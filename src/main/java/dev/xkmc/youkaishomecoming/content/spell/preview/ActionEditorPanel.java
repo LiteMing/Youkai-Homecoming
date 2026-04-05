@@ -1047,7 +1047,8 @@ public class ActionEditorPanel {
 	// Expression autocomplete keywords
 	private static final String[] EXPR_FUNCTIONS = {
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
-			"tick_mod", "sin", "cos", "sqrt", "tick", "phase_tick", "total_tick", "distance"
+			"tick_mod", "sin", "cos", "sqrt", "tick", "phase_tick", "total_tick", "distance",
+			"target_height", "game_difficulty"
 	};
 
 	/** Returns the insert template for a function (with parens and commas). */
@@ -1103,7 +1104,7 @@ public class ActionEditorPanel {
 			"tick_mod", "sin", "cos", "sqrt"
 	);
 	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
-			"tick", "phase_tick", "total_tick", "distance"
+			"tick", "phase_tick", "total_tick", "distance", "target_height", "game_difficulty"
 	);
 
 	/**

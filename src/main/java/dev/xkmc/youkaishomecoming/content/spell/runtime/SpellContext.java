@@ -76,6 +76,10 @@ public class SpellContext {
 	}
 
 	public void clearDanmaku() {
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
+			preview.clear();
+			return;
+		}
 		var self = holder.self();
 		if (self instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity youkai) {
 			youkai.eraseAllDanmaku(null);

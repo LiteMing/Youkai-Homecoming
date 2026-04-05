@@ -113,6 +113,8 @@ public class NumberExprParser {
 			return "sqrt(" + inStr + ")";
 		}
 		if (p instanceof NumberProviders.Distance) return "distance";
+		if (p instanceof NumberProviders.TargetHeight) return "target_height";
+		if (p instanceof NumberProviders.GameDifficulty) return "game_difficulty";
 		return null;
 	}
 
@@ -306,6 +308,8 @@ public class NumberExprParser {
 			case "tick", "phase_tick" -> new NumberProviders.PhaseTick();
 			case "total_tick" -> new NumberProviders.TotalTick();
 			case "distance" -> new NumberProviders.Distance();
+			case "target_height" -> new NumberProviders.TargetHeight();
+			case "game_difficulty" -> new NumberProviders.GameDifficulty();
 			default -> throw new ParseException("Unknown keyword: " + name);
 		};
 	}

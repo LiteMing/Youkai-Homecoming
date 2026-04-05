@@ -38,6 +38,10 @@ public class PreviewCardHolder implements CardHolder {
 	private final List<Entity> pendingEntities = new ArrayList<>();
 	private boolean ticking = false;
 	private final RandomSource random = RandomSource.create();
+	/** Callback invoked when a danmaku hits the target AABB */
+	private Runnable onTargetHit = null;
+	/** Set of entity IDs that have already hit the target (prevent double-counting) */
+	private final java.util.Set<Integer> hitEntities = new java.util.HashSet<>();
 
 	// Simulated target properties for preview
 	private boolean targetOnGround = true;
@@ -207,6 +211,18 @@ public class PreviewCardHolder implements CardHolder {
 			localEntities.addAll(pendingEntities);
 			pendingEntities.clear();
 		}
+		// Check collision with target bounding box for hit counting
+		if (onTargetHit != null) {
+			var targetBB = fakeTarget.getBoundingBox().inflate(0.3); // slightly larger for forgiving hits
+			for (Entity e : localEntities) {
+				if (e instanceof SimplifiedProjectile && !hitEntities.contains(e.getId())) {
+					if (targetBB.contains(e.position()) || targetBB.intersects(e.getBoundingBox())) {
+						hitEntities.add(e.getId());
+						onTargetHit.run();
+					}
+				}
+			}
+		}
 	}
 
 	private void tickShooter(ShooterEntity shooter) {
@@ -235,6 +251,7 @@ public class PreviewCardHolder implements CardHolder {
 	public void clear() {
 		localEntities.clear();
 		pendingEntities.clear();
+		hitEntities.clear();
 	}
 
 	public void setTargetDistance(float distance) {
@@ -276,6 +293,8 @@ public class PreviewCardHolder implements CardHolder {
 
 	public void setTargetFallFlying(boolean fallFlying) { this.targetFallFlying = fallFlying; }
 	public boolean isTargetFallFlying() { return targetFallFlying; }
+
+	public void setOnTargetHit(Runnable callback) { this.onTargetHit = callback; }
 
 	/**
 	 * A fake caster entity that implements CardHolder, so that danmaku

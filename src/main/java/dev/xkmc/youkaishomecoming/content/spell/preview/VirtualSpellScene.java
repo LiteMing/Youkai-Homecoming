@@ -36,6 +36,11 @@ public class VirtualSpellScene {
 		this.definition = definition;
 		this.runtime = new SpellRuntime(definition);
 		this.holder = new PreviewCardHolder(level);
+		// Wire hit callback: when a danmaku hits the target AABB, notify runtime
+		this.holder.setOnTargetHit(() -> {
+			var ds = level.damageSources().generic();
+			runtime.hurt(holder, ds, 2.0f);
+		});
 	}
 
 	public void tick() {

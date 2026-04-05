@@ -45,6 +45,8 @@ public class NumberProviders {
 		register("target_x", TargetX.CODEC, TargetX.class);
 		register("target_y", TargetY.CODEC, TargetY.class);
 		register("target_z", TargetZ.CODEC, TargetZ.class);
+		register("target_height", TargetHeight.CODEC, TargetHeight.class);
+		register("game_difficulty", GameDifficulty.CODEC, GameDifficulty.class);
 	}
 
 	public static void register(String id, Codec<? extends NumberProvider> codec, Class<? extends NumberProvider> clazz) {
@@ -482,6 +484,37 @@ public class NumberProviders {
 		@Override public double get(SpellContext ctx) {
 			var t = ctx.holder().target();
 			return t != null ? t.z : ctx.holder().center().z;
+		}
+	}
+
+	/**
+	 * Target's Y position (height). Useful for setting horizontal-plane bullet heights.
+	 * Equivalent to target_y but named for clarity in expressions.
+	 * JSON: {"type": "target_height"}
+	 * Expression keyword: target_height
+	 */
+	public record TargetHeight() implements NumberProvider {
+		public static final Codec<TargetHeight> CODEC = Codec.unit(TargetHeight::new);
+		@Override public double get(SpellContext ctx) {
+			var t = ctx.holder().target();
+			return t != null ? t.y : ctx.holder().center().y;
+		}
+	}
+
+	/**
+	 * Returns the game difficulty as an integer: PEACEFUL=0, EASY=1, NORMAL=2, HARD=3.
+	 * Useful for scaling bullet count, speed, etc. by difficulty.
+	 * JSON: {"type": "game_difficulty"}
+	 * Expression keyword: game_difficulty
+	 *
+	 * Examples:
+	 *   count: 8 + game_difficulty * 4     (EASY=12, NORMAL=16, HARD=20)
+	 *   speed: 0.5 + game_difficulty * 0.1 (EASY=0.6, NORMAL=0.7, HARD=0.8)
+	 */
+	public record GameDifficulty() implements NumberProvider {
+		public static final Codec<GameDifficulty> CODEC = Codec.unit(GameDifficulty::new);
+		@Override public double get(SpellContext ctx) {
+			return ctx.holder().self().level().getDifficulty().getId();
 		}
 	}
 

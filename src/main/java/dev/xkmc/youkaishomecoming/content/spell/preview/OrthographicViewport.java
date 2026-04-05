@@ -551,6 +551,10 @@ public class OrthographicViewport {
 	private <E extends Entity> void renderEntity(
 			EntityRenderDispatcher dispatcher, E entity,
 			PoseStack poseStack, MultiBufferSource buffer, float partialTick) {
+		// Skip entities that haven't been ticked yet — their old/new positions are
+		// both at spawn (caster) causing a ghost frame at the origin.
+		if (entity.tickCount <= 0) return;
+
 		EntityRenderer<E> renderer = (EntityRenderer<E>) dispatcher.getRenderer(entity);
 		if (renderer == null) return;
 

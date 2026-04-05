@@ -80,6 +80,10 @@ public class SpellContext {
 			preview.clear();
 			return;
 		}
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity proxy) {
+			proxy.eraseAllDanmaku(null);
+			return;
+		}
 		var self = holder.self();
 		if (self instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity youkai) {
 			youkai.eraseAllDanmaku(null);

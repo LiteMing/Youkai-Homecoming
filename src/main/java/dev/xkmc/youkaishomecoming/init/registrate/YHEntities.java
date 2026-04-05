@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.entity.animal.lampery.LampreyRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaEntity;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.boss.*;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
@@ -67,6 +68,7 @@ public class YHEntities {
 	public static final EntityEntry<ItemLaserEntity> ITEM_LASER;
 	public static final EntityEntry<ChairEntity> CHAIR;
 	public static final EntityEntry<ShooterEntity> SHOOTER;
+	public static final EntityEntry<DanmakuProxyEntity> DANMAKU_PROXY;
 
 	static {
 
@@ -289,6 +291,13 @@ public class YHEntities {
 			CHAIR = YoukaisHomecoming.REGISTRATE
 					.<ChairEntity>entity("dining_chair", ChairEntity::new, MobCategory.MISC)
 					.properties(e -> e.sized(0.25f, 0.5f))
+					.renderer(() -> NothingRenderer::new)
+					.register();
+
+			DANMAKU_PROXY = YoukaisHomecoming.REGISTRATE
+					.<DanmakuProxyEntity>entity("danmaku_proxy", DanmakuProxyEntity::new, MobCategory.MISC)
+					.properties(e -> e.sized(0.1f, 0.1f).clientTrackingRange(10).updateInterval(2))
+					.attributes(DanmakuProxyEntity::createAttributes)
 					.renderer(() -> NothingRenderer::new)
 					.register();
 		}

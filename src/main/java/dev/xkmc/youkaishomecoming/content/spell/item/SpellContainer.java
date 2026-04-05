@@ -3,12 +3,14 @@ package dev.xkmc.youkaishomecoming.content.spell.item;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.l2library.capability.conditionals.*;
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -30,13 +32,22 @@ public class SpellContainer extends ConditionalToken {
 		for (var e : data.cache) {
 			e.markErased(true);
 		}
+		for (var proxy : data.proxies) {
+			if (!proxy.isRemoved()) proxy.cleanup();
+		}
 		data.cache.clear();
 		data.spells.clear();
+		data.proxies.clear();
 	}
 
 	public static void track(ServerPlayer sp, SimplifiedProjectile e) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		data.cache.add(e);
+	}
+
+	public static void trackProxy(ServerPlayer sp, DanmakuProxyEntity proxy) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		data.proxies.add(proxy);
 	}
 
 	public static void castSpell(ServerPlayer sp, Supplier<? extends ItemSpell> sup, @Nullable LivingEntity target) {
@@ -50,6 +61,8 @@ public class SpellContainer extends ConditionalToken {
 
 	private final List<SimplifiedProjectile> cache = new LinkedList<>();
 
+	private final List<DanmakuProxyEntity> proxies = new ArrayList<>();
+
 	@Override
 	public boolean tick(Player player) {
 		var itr = spells.iterator();
@@ -62,7 +75,8 @@ public class SpellContainer extends ConditionalToken {
 			}
 		}
 		cache.removeIf(e -> !e.isValid());
-		return spells.isEmpty() && cache.isEmpty();
+		proxies.removeIf(DanmakuProxyEntity::isRemoved);
+		return spells.isEmpty() && cache.isEmpty() && proxies.isEmpty();
 	}
 
 	private record Provider() implements TokenProvider<SpellContainer, Provider>, Context {

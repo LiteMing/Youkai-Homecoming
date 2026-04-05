@@ -3,12 +3,12 @@ package dev.xkmc.youkaishomecoming.content.item.danmaku;
 import dev.xkmc.l2library.util.raytrace.IGlowingTarget;
 import dev.xkmc.l2library.util.raytrace.RayTraceUtil;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
-import dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm;
-import dev.xkmc.youkaishomecoming.content.spell.item.RuntimeItemSpell;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -78,7 +78,11 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 		if (player instanceof ServerPlayer sp) {
 			int duration = def.itemForm.cooldown() > 0 ? def.itemForm.cooldown() : DEFAULT_DURATION;
-			SpellContainer.castSpell(sp, () -> new RuntimeItemSpell(def, duration), target);
+			DanmakuProxyEntity proxy = new DanmakuProxyEntity(
+					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
+			proxy.init(sp, def, duration, target);
+			sp.serverLevel().addFreshEntity(proxy);
+			SpellContainer.trackProxy(sp, proxy);
 			if (cooldown) {
 				int cd = def.itemForm.cooldown() > 0 ? def.itemForm.cooldown() : YHModConfig.COMMON.playerSpellCooldown.get();
 				sp.getCooldowns().addCooldown(this, cd);

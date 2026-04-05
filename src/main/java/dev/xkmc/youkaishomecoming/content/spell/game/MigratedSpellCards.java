@@ -1530,23 +1530,28 @@ public class MigratedSpellCards {
 				new NumberProviders.Variable("sweep_base"),
 				new NumberProviders.Mul(new NumberProviders.Variable("swt"), NumberProvider.constant(18)));
 		var sweep = new BurstAction(20, 1, "swt", List.of(
+				// BUBBLE: 快层 speed * [0.8, 1.2] (legacy: lowSpeed ~ highSpeed)
 				new FireDanmakuAction(YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.RED),
-						NumberProvider.constant(12), sweepSpeed, sweepLife,
+						NumberProvider.constant(12),
+						new NumberProviders.Mul(sweepSpeed, new NumberProviders.RandomRange(0.8, 1.2)),
+						sweepLife,
 						sweepAngle, NumberProvider.constant(15),
 						new NumberProviders.GaussianRandom(0, 20),
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+				// MENTOS: 中层 speed * [0.4, 0.7] (legacy: mid=0.6+0.3*rand of v0)
 				new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(12),
-						new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(0.6)),
+						new NumberProviders.Mul(sweepSpeed, new NumberProviders.RandomRange(0.4, 0.7)),
 						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.2)),
 						sweepAngle, NumberProvider.constant(15),
 						new NumberProviders.GaussianRandom(0, 20),
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+				// BALL: 慢层 speed * [0.15, 0.45] (legacy: low=0.3+0.3*rand of v0)
 				new FireDanmakuAction(YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(12),
-						new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(0.3)),
+						new NumberProviders.Mul(sweepSpeed, new NumberProviders.RandomRange(0.15, 0.45)),
 						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.5)),
 						sweepAngle, NumberProvider.constant(15),
 						new NumberProviders.GaussianRandom(0, 20),

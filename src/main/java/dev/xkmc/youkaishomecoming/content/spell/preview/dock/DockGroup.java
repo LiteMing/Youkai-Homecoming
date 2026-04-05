@@ -58,7 +58,10 @@ public final class DockGroup implements DockNode {
 
 	public void addPanel(int index, DockPanel panel) {
 		panels.add(index, panel);
-		if (activeIndex >= index && panels.size() > 1) {
+		if (panels.size() == 1) {
+			activeIndex = 0;
+			panel.onActivated();
+		} else if (activeIndex >= index) {
 			activeIndex++;
 		}
 		layoutPanelBounds();
@@ -67,12 +70,13 @@ public final class DockGroup implements DockNode {
 	public boolean removePanel(DockPanel panel) {
 		int idx = panels.indexOf(panel);
 		if (idx < 0) return false;
-		panel.onDeactivated();
+		boolean wasActive = (idx == activeIndex);
+		if (wasActive) panel.onDeactivated();
 		panels.remove(idx);
-		if (activeIndex >= panels.size()) {
-			activeIndex = Math.max(0, panels.size() - 1);
+		if (activeIndex > idx || activeIndex >= panels.size()) {
+			activeIndex = Math.max(0, Math.min(activeIndex - 1, panels.size() - 1));
 		}
-		if (!panels.isEmpty()) {
+		if (wasActive && !panels.isEmpty()) {
 			panels.get(activeIndex).onActivated();
 		}
 		return true;
@@ -96,7 +100,7 @@ public final class DockGroup implements DockNode {
 	}
 
 	public List<DockPanel> getPanels() {
-		return panels;
+		return java.util.Collections.unmodifiableList(panels);
 	}
 
 	public boolean isEmpty() {
@@ -272,7 +276,7 @@ public final class DockGroup implements DockNode {
 		if (dragTabIndex >= 0 && button == 0) {
 			dragTabIndex = -1;
 			dragInitiated = false;
-			// 释放由 DockLayout 处理
+			return true; // 拖拽释放已处理，不转发给面板
 		}
 
 		DockPanel active = getActivePanel();

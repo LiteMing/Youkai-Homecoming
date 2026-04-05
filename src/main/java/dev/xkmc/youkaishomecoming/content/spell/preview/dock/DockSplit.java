@@ -32,6 +32,10 @@ public final class DockSplit implements DockNode {
 	private boolean dividerHovered = false;
 	private boolean dividerDragging = false;
 
+	// 子节点拖拽捕获：记录 mouseClicked 时命中的子节点，确保 mouseDragged 路由一致
+	@Nullable
+	private DockNode dragChild = null;
+
 	public DockSplit(boolean horizontal, float ratio, DockNode first, DockNode second) {
 		this.horizontal = horizontal;
 		this.ratio = clampRatio(ratio);
@@ -83,18 +87,20 @@ public final class DockSplit implements DockNode {
 		this.h = h;
 
 		if (horizontal) {
-			int firstW = (int) ((w - DIVIDER_SIZE) * ratio);
-			firstW = Math.max(MIN_CHILD_SIZE, Math.min(w - DIVIDER_SIZE - MIN_CHILD_SIZE, firstW));
+			int available = Math.max(0, w - DIVIDER_SIZE);
+			int firstW = (int) (available * ratio);
+			firstW = Math.max(MIN_CHILD_SIZE, Math.min(available - MIN_CHILD_SIZE, firstW));
+			int secondW = Math.max(0, available - firstW);
 			int secondX = x + firstW + DIVIDER_SIZE;
-			int secondW = w - firstW - DIVIDER_SIZE;
 
 			first.layout(x, y, firstW, h);
 			second.layout(secondX, y, secondW, h);
 		} else {
-			int firstH = (int) ((h - DIVIDER_SIZE) * ratio);
-			firstH = Math.max(MIN_CHILD_SIZE, Math.min(h - DIVIDER_SIZE - MIN_CHILD_SIZE, firstH));
+			int available = Math.max(0, h - DIVIDER_SIZE);
+			int firstH = (int) (available * ratio);
+			firstH = Math.max(MIN_CHILD_SIZE, Math.min(available - MIN_CHILD_SIZE, firstH));
+			int secondH = Math.max(0, available - firstH);
 			int secondY = y + firstH + DIVIDER_SIZE;
-			int secondH = h - firstH - DIVIDER_SIZE;
 
 			first.layout(x, y, w, firstH);
 			second.layout(x, secondY, w, secondH);
@@ -149,12 +155,18 @@ public final class DockSplit implements DockNode {
 			return true;
 		}
 
-		// 转发给子节点
+		// 转发给子节点，并记录捕获源
 		if (first.isMouseOver(mouseX, mouseY)) {
-			return first.mouseClicked(mouseX, mouseY, button);
+			if (first.mouseClicked(mouseX, mouseY, button)) {
+				dragChild = first;
+				return true;
+			}
 		}
 		if (second.isMouseOver(mouseX, mouseY)) {
-			return second.mouseClicked(mouseX, mouseY, button);
+			if (second.mouseClicked(mouseX, mouseY, button)) {
+				dragChild = second;
+				return true;
+			}
 		}
 		return false;
 	}
@@ -173,11 +185,9 @@ public final class DockSplit implements DockNode {
 			return true;
 		}
 
-		if (first.isMouseOver(mouseX, mouseY)) {
-			return first.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
-		}
-		if (second.isMouseOver(mouseX, mouseY)) {
-			return second.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		// 始终转发给 mouseClicked 时捕获的子节点，避免跨区域拖拽丢失
+		if (dragChild != null) {
+			return dragChild.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
 		}
 		return false;
 	}
@@ -189,10 +199,16 @@ public final class DockSplit implements DockNode {
 			return true;
 		}
 
-		// 两个子节点都需要收到释放事件
+		// 释放事件发给捕获的子节点，然后清除捕获
 		boolean handled = false;
-		handled |= first.mouseReleased(mouseX, mouseY, button);
-		handled |= second.mouseReleased(mouseX, mouseY, button);
+		if (dragChild != null) {
+			handled = dragChild.mouseReleased(mouseX, mouseY, button);
+			dragChild = null;
+		} else {
+			// 无捕获时广播给两侧
+			handled |= first.mouseReleased(mouseX, mouseY, button);
+			handled |= second.mouseReleased(mouseX, mouseY, button);
+		}
 		return handled;
 	}
 

@@ -8,9 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Function;
 
@@ -115,8 +114,13 @@ public class DockSerializer {
 		boolean horizontal = json.has("horizontal") && json.get("horizontal").getAsBoolean();
 		float ratio = json.has("ratio") ? json.get("ratio").getAsFloat() : 0.5f;
 
-		DockNode first = deserialize(json.getAsJsonObject("first"), panelMap, usedIds);
-		DockNode second = deserialize(json.getAsJsonObject("second"), panelMap, usedIds);
+		// 防御性检查：确保子节点是 JsonObject
+		JsonElement firstElem = json.get("first");
+		JsonElement secondElem = json.get("second");
+		if (!firstElem.isJsonObject() || !secondElem.isJsonObject()) return null;
+
+		DockNode first = deserialize(firstElem.getAsJsonObject(), panelMap, usedIds);
+		DockNode second = deserialize(secondElem.getAsJsonObject(), panelMap, usedIds);
 
 		if (first == null && second == null) return null;
 		if (first == null) return second;
@@ -135,7 +139,7 @@ public class DockSerializer {
 			File file = getConfigFile();
 			file.getParentFile().mkdirs();
 			JsonObject json = serialize(root);
-			try (FileWriter writer = new FileWriter(file)) {
+			try (Writer writer = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8)) {
 				GSON.toJson(json, writer);
 			}
 		} catch (Exception e) {
@@ -155,7 +159,7 @@ public class DockSerializer {
 		if (!file.exists()) {
 			return defaultLayout.apply(panelMap);
 		}
-		try (FileReader reader = new FileReader(file)) {
+		try (Reader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
 			JsonObject json = GSON.fromJson(reader, JsonObject.class);
 			Set<String> usedIds = new HashSet<>();
 			DockNode node = deserialize(json, panelMap, usedIds);

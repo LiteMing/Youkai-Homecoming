@@ -23,6 +23,7 @@ public enum DockZone {
 	 * @return 停靠区域
 	 */
 	public static DockZone detect(double relX, double relY, int w, int h) {
+		if (w <= 0 || h <= 0) return CENTER;
 		double nx = relX / w;
 		double ny = relY / h;
 

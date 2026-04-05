@@ -203,10 +203,15 @@ public class ControlsDockPanel implements DockPanel {
 
 	@Override
 	public void setBounds(int x, int y, int w, int h) {
+		boolean moved = (this.x != x || this.y != y || this.w != w || this.h != h);
 		this.x = x;
 		this.y = y;
 		this.w = w;
 		this.h = h;
+		// 布局变化后重建按钮（按钮使用绝对坐标）
+		if (moved && addWidgetCallback != null && !buttons.isEmpty()) {
+			buildButtons();
+		}
 	}
 
 	@Override

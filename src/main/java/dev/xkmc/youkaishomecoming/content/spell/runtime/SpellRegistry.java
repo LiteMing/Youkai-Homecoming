@@ -60,6 +60,10 @@ public class SpellRegistry {
 		return REGISTRY.containsKey(id);
 	}
 
+	public static void remove(ResourceLocation id) {
+		REGISTRY.remove(id);
+	}
+
 	public static void clear() {
 		REGISTRY.clear();
 	}

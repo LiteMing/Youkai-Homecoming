@@ -162,19 +162,53 @@ public class YHCommands {
 													ctx.getSource().sendSuccess(() -> Component.literal("Set " + key + " = " + value), true);
 													return 1;
 												})))))
-				.then(literal("reset")
-						.then(argument("entity", EntityArgument.entity())
-								.executes(ctx -> {
-									var entity = EntityArgument.getEntity(ctx, "entity");
-									if (!(entity instanceof YoukaiEntity youkai) || youkai.spellRuntime == null) {
-										ctx.getSource().sendFailure(Component.literal("Entity has no spell runtime"));
-										return 0;
+			.then(literal("reset")
+					.then(argument("entity", EntityArgument.entity())
+							.executes(ctx -> {
+								var entity = EntityArgument.getEntity(ctx, "entity");
+								if (!(entity instanceof YoukaiEntity youkai) || youkai.spellRuntime == null) {
+									ctx.getSource().sendFailure(Component.literal("Entity has no spell runtime"));
+									return 0;
+								}
+								youkai.spellRuntime.reset();
+								youkai.syncSpellState();
+								ctx.getSource().sendSuccess(() -> Component.literal("Spell reset"), true);
+								return 1;
+							}))
+					.then(literal("all")
+							.executes(ctx -> {
+								var server = ctx.getSource().getServer();
+								int restored = 0;
+								int deleted = 0;
+								// Restore all built-in spells to their defaults
+								for (var entry : SpellRegistry.getAll().entrySet()) {
+									var id = entry.getKey();
+									var defaultDef = SpellRegistry.getDefault(id);
+									if (defaultDef != null) {
+										SpellRegistry.register(defaultDef);
+										CustomSpellStorage.deleteSpell(server, id);
+										restored++;
+									} else {
+										// Custom spell with no built-in default: delete from disk and registry
+										CustomSpellStorage.deleteSpell(server, id);
+										deleted++;
 									}
-									youkai.spellRuntime.reset();
-									youkai.syncSpellState();
-									ctx.getSource().sendSuccess(() -> Component.literal("Spell reset"), true);
-									return 1;
-								})))
+								}
+								// Remove custom-only spells from registry
+								if (deleted > 0) {
+									var allIds = new java.util.ArrayList<>(SpellRegistry.getAll().keySet());
+									for (var id : allIds) {
+										if (SpellRegistry.getDefault(id) == null) {
+											SpellRegistry.remove(id);
+										}
+									}
+								}
+								int finalRestored = restored;
+								int finalDeleted = deleted;
+								ctx.getSource().sendSuccess(() -> Component.literal(
+										"Reset all spells: " + finalRestored + " restored to default, " + finalDeleted + " custom spells removed"), true);
+								return finalRestored + finalDeleted;
+							})))
 				.then(literal("debug")
 						.then(argument("entity", EntityArgument.entity())
 								.executes(ctx -> {

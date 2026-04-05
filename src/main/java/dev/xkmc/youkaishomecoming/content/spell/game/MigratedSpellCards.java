@@ -1426,10 +1426,10 @@ public class MigratedSpellCards {
 						new AimMode.AimModes.CasterFacing(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1));
 		var nearShooter = new SpawnShooterAction(40, 4f, 60,
-				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-						new NumberProviders.RandomRange(-3, 3),
-						new NumberProviders.RandomRange(-3, 3),
-						NumberProvider.constant(2),
+				new OriginConfig(OriginConfig.OriginMode.CASTER,
+						NumberProvider.constant(0),
+						new NumberProviders.RandomRange(-30, 30),
+						NumberProvider.constant(0),
 						new NumberProviders.RandomRange(-30, 30)),
 				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0.5),
 				Optional.empty(), nearShooterBody);
@@ -1729,11 +1729,7 @@ public class MigratedSpellCards {
 												NumberProvider.constant(8))),
 								NumberProvider.constant(0)),
 						new AimMode.AimModes.Target(),
-						Optional.of(new MoverConfigs.CompositeMoverConfig(List.of(
-								new MoverConfigs.CompositeMoverConfig.Segment(40,
-										new MoverConfigs.AccelerationConfig(Vec3.ZERO)),
-								new MoverConfigs.CompositeMoverConfig.Segment(20,
-										new MoverConfigs.DecelerationConfig(-1.4))))),
+						Optional.of(new MoverConfigs.DecelerationConfig(-0.035)),
 						Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
 

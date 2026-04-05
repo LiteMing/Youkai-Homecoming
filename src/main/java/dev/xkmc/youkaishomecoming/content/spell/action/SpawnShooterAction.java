@@ -61,14 +61,27 @@ public record SpawnShooterAction(
 		Vec3 vel = new Vec3(velocityX.get(ctx), velocityY.get(ctx), velocityZ.get(ctx));
 
 		// If velocity specifies only a speed scalar (x=0, y=0, z=speed),
-		// and origin is offset from caster, derive direction from offset.
-		// This makes the Shooter fly outward from the caster along the spawn direction.
+		// derive direction toward target with angular spread from origin rotation.
+		// Legacy pattern: dir = orient(toTarget).rotateDegrees(randX, randY), vel = dir * speed.
 		if (vel.x == 0 && vel.y == 0 && vel.z != 0) {
+			double speed = vel.z;
+			Vec3 targetPos = holder.target();
 			Vec3 casterPos = holder.center();
-			Vec3 offset = spawnPos.subtract(casterPos);
-			if (offset.lengthSqr() > 1e-4) {
-				vel = offset.normalize().scale(vel.z);
+			Vec3 baseDir = null;
+			if (targetPos != null) {
+				Vec3 toTarget = targetPos.subtract(casterPos);
+				if (toTarget.lengthSqr() > 1e-4) baseDir = toTarget.normalize();
 			}
+			if (baseDir == null) baseDir = holder.forward();
+			// Apply angular spread from origin's rotation and offsets
+			double yawSpread = origin.rotation().get(ctx);
+			double pitchSpread = origin.offsetY().get(ctx);
+			if (yawSpread != 0 || pitchSpread != 0) {
+				var ori = dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper.getOrientation(baseDir);
+				baseDir = ori.rotateDegrees(yawSpread, pitchSpread);
+			}
+			vel = baseDir.scale(speed);
+			spawnPos = casterPos.add(baseDir.scale(2)); // spawn 2 blocks along direction
 		}
 
 		var shooterSpell = new DataDrivenShooterSpell(body);

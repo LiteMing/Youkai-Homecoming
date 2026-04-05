@@ -34,19 +34,19 @@ public class TouhouSpellCards {
 	public static void registerSpells() {
 		registerSpell("touhou_little_maid:hakurei_reimu", ReimuSpell::new);
 		registerSpell("touhou_little_maid:yukari_yakumo", YukariSpell::new);
-		registerSpell("touhou_little_maid:kochiya_sanae", SanaeSpell::new);
+		// registerSpell("touhou_little_maid:kochiya_sanae", SanaeSpell::new); // Legacy — migrated
 		registerSpell("touhou_little_maid:komeiji_koishi", KoishiSpell::new);
 		registerSpell("touhou_little_maid:kirisame_marisa", MarisaSpell::new);
 		// registerSpell("touhou_little_maid:mystia_lorelei", MystiaSpell::new); // Legacy — migrated
 		registerSpell("touhou_little_maid:doremy_sweet", DoremiSpell::new);
 		registerSpell("touhou_little_maid:kisin_sagume", KisinSpell::new);
 		registerSpell("touhou_little_maid:remilia_scarlet", RemiliaSpell::new);
-		registerSpell("touhou_little_maid:clownpiece", ClownSpell::new);
-		registerSpell("touhou_little_maid:izayoi_sakuya", SakuyaSpell::new);
+		// registerSpell("touhou_little_maid:clownpiece", ClownSpell::new); // Legacy — migrated
+		// registerSpell("touhou_little_maid:izayoi_sakuya", SakuyaSpell::new); // Legacy — migrated
 		// registerSpell("touhou_little_maid:konpaku_youmu", YoumuSpell::new); // Legacy — migrated
 		// registerSpell("touhou_little_maid:eternity_larva", LarvaSpell::new); // Legacy — migrated
 
-		// === Migrated to data-driven (Phase 7) ===
+		// === Migrated to data-driven ===
 		registerMigrated(MigratedSpellCards.sunnyMilk());
 		registerMigrated(MigratedSpellCards.lunaChild());
 		registerMigrated(MigratedSpellCards.starSapphire());
@@ -54,6 +54,9 @@ public class TouhouSpellCards {
 		registerMigrated(MigratedSpellCards.mystia());
 		registerMigrated(MigratedSpellCards.youmu());
 		registerMigrated(MigratedSpellCards.larva());
+		registerMigrated(MigratedSpellCards.sanae());
+		registerMigrated(MigratedSpellCards.clown());
+		registerMigrated(MigratedSpellCards.sakuya());
 	}
 
 	/**

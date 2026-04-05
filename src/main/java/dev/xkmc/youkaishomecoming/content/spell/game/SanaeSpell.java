@@ -11,6 +11,10 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
+/**
+ * @deprecated Migrated to data-driven. See {@link MigratedSpellCards#sanae()}.
+ */
+@Deprecated
 @SerialClass
 public class SanaeSpell extends ActualSpellCard {
 

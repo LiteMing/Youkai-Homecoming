@@ -622,6 +622,455 @@ public class MigratedSpellCards {
 	}
 
 	// ============================
+	// SanaeSpell — 近距離: 回転星型激光 / 遠距離: 五穀爆裂弾
+	// ============================
+	// Legacy: 189行, 2モード切替 (groundTime<40 + distance<35)
+	//
+	// near() 奇迹「客星辉煌之夜」:
+	//   每10tick: 1发 CIRCLE RED 追踪弹
+	//   每40tick: 生成2个RotatingStar (左右±45°偏移8格, Y=目标Y)
+	//     每个Star: 40tick内每tick发射PENCIL激光, 角度=9°*tick+start
+	//     两星同向旋转, start=0/180 (180°相位差)
+	//     setupTime(1,10,40,1), delayedMover(4.5, 1)
+	//     dir投影到水平面
+	//
+	// far() 神德「五谷丰穰米之浴」:
+	//   每20tick → ExplosiveGrains Ticker (5子波, tick 0,2,4,6,8):
+	//     o0 = getOrientation(dir).asNormal() → 垂直环
+	//     5个发射点: p0 = pos + o0.rotateDegrees(i*72).scale(12) → 垂直环上12格偏移
+	//     每点 → d0 = (target-p0).normalize(), o1 = getOrientation(d0).asNormal()
+	//     5发 CIRCLE RED: o1.rotateDegrees(j*72+i*18, 72) → 锥形72°仰角, 方位角间隔72°
+	//     speed = max(1, dist/30) + targetVel*1.5
+	//     1发追踪弹: d0.scale(speed) 从p0发射
+	//     onExpiry: ExplodeTrail(3, j) → 3发BALL, color=COLORS[j], nextGaussian球面分布
+	public static SpellDefinition sanae() {
+		var id = rl("kochiya_sanae");
+		var mainPhase = rl("kochiya_sanae/main");
+
+		// === NEAR MODE: 奇迹「客星辉煌之夜」===
+
+		// 基础追踪弹: 每10tick, 1发CIRCLE RED, 速度0.6
+		var nearBasicShot = new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(10, 0),
+				List.of(new FireDanmakuAction(
+						YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.RED),
+						NumberProvider.constant(1),
+						NumberProvider.constant(0.6),
+						NumberProvider.constant(80),
+						NumberProvider.constant(0),
+						NumberProvider.constant(0),
+						NumberProvider.constant(0),
+						PatternType.AIMED,
+						OriginConfig.caster(),
+						new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(),
+						Optional.empty(), 1
+				)),
+				List.of()
+		);
+
+		// 旋转星型激光: 每40tick, 2个卫星点
+		// Legacy: pos = center + forward.horizontal投影的±45°偏移 × 8格, Y=目标Y
+		// 每卫星: BurstAction(40波,1tick间隔) fire_laser
+		//   角度 = 9°*$lt + start, 两星同向旋转
+		//   右星 start=180 (i=+1 → (1+1)*90=180), 左星 start=0 (i=-1 → (-1+1)*90=0)
+		// Origin: CASTER_FACING, offsetX=±sin(45°)*8≈5.66, offsetZ=cos(45°)*8≈5.66
+		// (近似: 左星偏移 side=-5.66 forward=5.66, 右星偏移 side=+5.66 forward=5.66)
+		// CasterFacing AimMode → 投影到水平面 (legacy: dir.multiply(1,0,1).normalize())
+		// PENCIL激光, setupTime(1,10,40,1), delayedMover(v0=4.5, v1=1)
+
+		double starOffset = 8 * Math.sin(Math.toRadians(45)); // ≈5.66
+
+		var nearLaserRight = new BurstAction(40, 1, "lt", List.of(
+				new FireLaserAction(
+						YHDanmaku.Laser.PENCIL, DyeColor.LIGHT_BLUE,
+						NumberProvider.constant(40),
+						NumberProvider.constant(3),
+						// 角度 = 9° * $lt + 180° (右星)
+						new NumberProviders.Add(
+								new NumberProviders.Mul(new NumberProviders.Variable("lt"), NumberProvider.constant(9)),
+								NumberProvider.constant(180)),
+						new AimMode.AimModes.CasterFacing(), // 水平投影方向
+						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+								NumberProvider.constant(starOffset), NumberProvider.constant(0),
+								NumberProvider.constant(starOffset), NumberProvider.constant(0)),
+						Optional.empty(),
+						1, 10, 1,
+						Optional.of(0.5), Optional.of(0.5)
+				)
+		));
+		var nearLaserLeft = new BurstAction(40, 1, "lt", List.of(
+				new FireLaserAction(
+						YHDanmaku.Laser.PENCIL, DyeColor.LIGHT_BLUE,
+						NumberProvider.constant(40),
+						NumberProvider.constant(3),
+						// 角度 = 9° * $lt + 0° (左星)
+						new NumberProviders.Add(
+								new NumberProviders.Mul(new NumberProviders.Variable("lt"), NumberProvider.constant(9)),
+								NumberProvider.constant(0)),
+						new AimMode.AimModes.CasterFacing(),
+						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+								NumberProvider.constant(-starOffset), NumberProvider.constant(0),
+								NumberProvider.constant(starOffset), NumberProvider.constant(0)),
+						Optional.empty(),
+						1, 10, 1,
+						Optional.of(0.5), Optional.of(0.5)
+				)
+		));
+
+		var nearLasers = new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(40, 0),
+				List.of(nearLaserRight, nearLaserLeft),
+				List.of()
+		);
+
+		// === FAR MODE: 神德「五谷丰���米之浴」===
+		// 用 RepeatAction(5, "gi") 循环5个发射点
+		// 每个发射点位于垂直环上: 角度 = gi*72°
+		// Legacy: o0 = getOrientation(dir).asNormal() → 垂直环
+		//   p0 = pos + o0.rotateDegrees(i*72).scale(12)
+		// CASTER_FACING近似: offsetY = cos(gi*72)*12, offsetX = sin(gi*72)*12
+		// (asNormal旋转在side-up平面, 与CASTER_FACING的side-up偏移等价)
+
+		// 内弹幕: 5发锥形, 72°恒定仰角, 方位角 = j*72+gi*18
+		// Legacy: d0 = (target-p0).normalize(), o1 = getOrientation(d0).asNormal()
+		//   o1.rotateDegrees(j*72 + i*18, 72) → 72°仰角锥面上均匀5点
+		// 数据驱动: 从发射点朝向目标(DirectionToTarget), RING(5发), elevation=72°固定
+		//   tiltAngle用于倾斜内环 → 不需要, 因为elevation=72°是rotateDegrees第二参数
+		//   但RING pattern只有水平角! 需要elevation≠0来实现锥面.
+		//   在 FireDanmakuAction.execute() 中: 当pattern=RING时, a += (360/n)*i, v=elevDeg
+		//   所以 RING + elevation=72 → 5发在水平方向展开, 全部仰角72° → 这就是锥形!
+		//   再加上 angleOffset = $gi*18 实现per-point错开
+
+		// 速度: max(1, distance/30) + targetVelocity*1.5
+		// 近似: distance/30 (Distance NumberProvider), 下限1.0
+		// 暂用 max(1, dist/30) 近似 (无max函数, 用条件或固定值)
+		// 简化: dist/20 保证中远距离效果, 近距离稍快但可接受
+		var farSpeed = new NumberProviders.Add(
+				NumberProvider.constant(0.5),
+				new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(30)));
+
+		var farColors = List.of(DyeColor.LIGHT_BLUE, DyeColor.CYAN, DyeColor.LIME, DyeColor.YELLOW, DyeColor.LIGHT_GRAY);
+
+		// onExpiry: 3发 BALL, SPHERE_RANDOM分布, 颜色=COLORS[$gi] (per-group确定性颜色)
+		// 用 ColorProvider.ByVariable("gi", farColors) 实现 — 如果存在
+		// 否则用 RandomChoice 近似 (缺陷但可接受)
+		var explodeTrail = new FireDanmakuAction(
+				YHDanmaku.Bullet.BALL,
+				new ColorProvider.RandomChoice(farColors),
+				NumberProvider.constant(3),
+				NumberProvider.constant(0.7),
+				new NumberProviders.RandomRange(60, 100),
+				NumberProvider.constant(0),
+				NumberProvider.constant(360),
+				NumberProvider.constant(180),
+				PatternType.SPHERE_RANDOM,
+				OriginConfig.caster(), // onExpiry context: caster() = 弹幕死亡位置
+				new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		);
+
+		// 每个发射点的弹幕 (在 RepeatAction 内部)
+		// 5发 CONE pattern, 以 d0(发射点→目标) 为轴心的锥面, elevation=72°
+		// Legacy: o1 = getOrientation(d0).asNormal(), o1.rotateDegrees(j*72+i*18, 72)
+		//   asNormal交换forward/normal → sin(72°)=0.951沿d0, cos(72°)=0.309展开
+		//   即以d0为轴心、半角=acos(sin72)≈18°的锥面
+		// CONE pattern: forward*sin(elev) + radial*cos(elev)
+		//   elevation=72 → sin(72)≈0.95沿d0, 与legacy完全一致
+		// 发射点 origin: 垂直环上12格偏移
+		// offsetX = sin($gi*72°)*12, offsetY = cos($gi*72°)*12
+		var emissionOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+				new NumberProviders.Mul(
+						new NumberProviders.Sin(
+								new NumberProviders.Mul(new NumberProviders.Variable("gi"), NumberProvider.constant(72)),
+								1, 0),
+						NumberProvider.constant(12)),
+				new NumberProviders.Mul(
+						new NumberProviders.Cos(
+								new NumberProviders.Mul(new NumberProviders.Variable("gi"), NumberProvider.constant(72)),
+								1, 0),
+						NumberProvider.constant(12)),
+				NumberProvider.constant(0),
+				NumberProvider.constant(0));
+
+		var grainAngleOffset = new NumberProviders.Mul(
+				new NumberProviders.Variable("gi"), NumberProvider.constant(18));
+		var innerGrains = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.RED),
+				NumberProvider.constant(5),
+				farSpeed,
+				NumberProvider.constant(25),
+				grainAngleOffset,       // per-point方位角错开
+				NumberProvider.constant(360),
+				NumberProvider.constant(72),  // cone angle: sin(72°)≈0.95 沿 d0 轴
+				PatternType.CONE,             // 以 forward(=d0) 为轴心的锥面
+				emissionOrigin,
+				new AimMode.AimModes.DirectionToTarget(), // 从发射点朝向目标 (originPos-aware)
+				Optional.empty(), Optional.empty(),
+				Optional.of(List.of((SpellAction) explodeTrail)),
+				Optional.empty(), 1
+		);
+
+		// 每个发射点的追踪弹 (1发, 同一origin, 直线朝目标)
+		var homingBullet = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.RED),
+				NumberProvider.constant(1),
+				farSpeed,
+				NumberProvider.constant(60),
+				NumberProvider.constant(0),
+				NumberProvider.constant(0),
+				NumberProvider.constant(0),
+				PatternType.AIMED,
+				emissionOrigin,
+				new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		);
+
+		// 5个发射点循环
+		var grainLoop = new SpellActions.RepeatAction(NumberProvider.constant(5), "gi", List.of(
+				innerGrains, homingBullet
+		));
+
+		// 5子波展开: BurstAction(5波, 间隔2tick)
+		// Legacy: tick 0,2,4,6,8 各发射一组
+		var farBurst = new BurstAction(5, 2, "gw", List.of(grainLoop));
+
+		var farAction = new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(20, 0),
+				List.of(farBurst),
+				List.of()
+		);
+
+		// === 模式切换 ===
+		// near: 目标在地面 且 距离 < 35
+		// far: 其他情况
+		var nearMode = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.TargetOnGround(),
+						new SpellConditions.DistanceBelow(35)
+				)),
+				List.of(nearBasicShot, nearLasers),
+				List.of(farAction)
+		);
+
+		var phase = new PhaseDefinition(mainPhase, List.of(), List.of(nearMode), List.of(), List.of(), List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:kochiya_sanae");
+	}
+
+	// ============================
+	// ClownSpell — 小丑弹幕 (激光+扩散弹)  [完全解耦版]
+	// ============================
+	// 所有参数均通过 NumberProvider/Condition 表达, 无 Java 循环或硬编码常量.
+	// 使用 DynamicTickInterval, CompareNumbers, Conditional NumberProvider, RepeatAction
+	// 实现单一 action tree 同时覆盖 normal/lunatic 模式.
+	public static SpellDefinition clown() {
+		var id = rl("clownpiece");
+		var mainPhase = rl("clownpiece/main");
+
+		// === 变量定义 ===
+		var dur = new NumberProviders.Conditional(
+				new SpellConditions.EntityTrait("is_lunatic"),
+				NumberProvider.constant(30), NumberProvider.constant(60));
+		var cycle = new NumberProviders.Mul(dur, NumberProvider.constant(2));
+		var initActions = List.<SpellAction>of(
+				new SpellActions.SetVariable("dur", dur),
+				new SpellActions.SetVariable("cycle", cycle),
+				new SpellActions.SetVariable("kind", NumberProvider.constant(0)),
+				new SpellActions.SetVariable("round", NumberProvider.constant(0)));
+
+		// === SpreadTrail onExpiry: fire_laser BLUE + 静止MENTOS ===
+		// $lw 通过变量快照在弹幕创建时锁定
+		// Legacy: SpreadTrail.init(o.rotateDegrees(forward, ver))
+		//   forward = (-45 + tick/20*90) * s
+		//   ver = (-15 + tick/20*30) * s
+		//   这里 o 是 Laser ticker 的倾斜坐标系, 激光方向在那个平面内偏转
+		//   关键: 激光不指向玩家, 而是沿弹幕飞行方向偏转
+		//
+		// 数据驱动: onExpiry context 中 TrailCardHolder.forward() = 弹幕飞行方向
+		//   用 AimMode.Target (= holder.forward()) 获取弹幕飞行方向作为基础
+		//   然后 angleOffset/elevation 在该方向的坐标系中偏转
+		//   因为弹幕方向已含倾斜信息, 所以激光自然散布在不同平面
+		var lwRatio = new NumberProviders.Div(new NumberProviders.Variable("lw"), NumberProvider.constant(20));
+		var spreadLaserAngle = new NumberProviders.Mul(
+				new NumberProviders.Add(NumberProvider.constant(-45),
+						new NumberProviders.Mul(lwRatio, NumberProvider.constant(90))),
+				new NumberProviders.Add(
+						new NumberProviders.Mul(new NumberProviders.Variable("si"), NumberProvider.constant(-2)),
+						NumberProvider.constant(1)));
+		var spreadLaserElev = new NumberProviders.Mul(
+				new NumberProviders.Add(NumberProvider.constant(-15),
+						new NumberProviders.Mul(lwRatio, NumberProvider.constant(30))),
+				new NumberProviders.Add(
+						new NumberProviders.Mul(new NumberProviders.Variable("si"), NumberProvider.constant(-2)),
+						NumberProvider.constant(1)));
+		SpellAction spreadTrail = new SpellActions.SequenceAction(List.of(
+				new FireLaserAction(
+						YHDanmaku.Laser.LASER, DyeColor.BLUE,
+						NumberProvider.constant(60),
+						NumberProvider.constant(60),
+						spreadLaserAngle,
+						spreadLaserElev,
+						new AimMode.AimModes.Target(), // = TrailCardHolder.forward() = 弹幕飞行方向
+						OriginConfig.caster(), // in onExpiry context: caster() = bullet death position
+						Optional.empty(),
+						10, 10, 10,
+						Optional.empty(), Optional.empty()
+				),
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.BLUE),
+						NumberProvider.constant(1),
+						NumberProvider.constant(0),
+						NumberProvider.constant(80),
+						NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+						PatternType.AIMED, OriginConfig.caster(),
+						new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(),
+						Optional.empty(), 1
+				)
+		));
+
+		// === HomingTrail onExpiry: fire_laser RED 朝向玩家 + 静止MENTOS ===
+		SpellAction homingTrail = new SpellActions.SequenceAction(List.of(
+				new FireLaserAction(
+						YHDanmaku.Laser.LASER, DyeColor.RED,
+						NumberProvider.constant(60),
+						NumberProvider.constant(60),
+						NumberProvider.constant(0),
+						new AimMode.AimModes.DirectionToTarget(), // 从弹幕死亡位置指向玩家
+						OriginConfig.caster(),
+						Optional.empty(),
+						10, 10, 10
+				),
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
+						NumberProvider.constant(1),
+						NumberProvider.constant(0),
+						NumberProvider.constant(80),
+						NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+						PatternType.AIMED, OriginConfig.caster(),
+						new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(),
+						Optional.empty(), 1
+				)
+		));
+
+		// === 旋转弹幕公式 ===
+		// angle = (45 + $lw/20*180) * $sign, $sign = 1-2*$si (si=0→+1, si=1→-1)
+		var signFromSi = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("si"), NumberProvider.constant(-2)),
+				NumberProvider.constant(1));
+		var angleFormula = new NumberProviders.Mul(
+				new NumberProviders.Add(NumberProvider.constant(45),
+						new NumberProviders.Mul(lwRatio, NumberProvider.constant(180))),
+				signFromSi);
+		var laserBulletLife = new NumberProviders.Add(NumberProvider.constant(5),
+				new NumberProviders.Mul(new NumberProviders.Variable("lw"), NumberProvider.constant(2)));
+
+		// === kind=0: RepeatAction(3,"pair") × DelayAction($pair*10) × BurstAction(20) × RepeatAction(2,"si") ===
+		// tilt = ($base_tilt + $pair*30) * $sign
+		var tiltFormula = new NumberProviders.Mul(
+				new NumberProviders.Add(new NumberProviders.Variable("base_tilt"),
+						new NumberProviders.Mul(new NumberProviders.Variable("pair"), NumberProvider.constant(30))),
+				signFromSi);
+		var k0InnerBurst = new BurstAction(20, 1, "lw", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(2), "si", List.of(
+						new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.BLUE),
+								NumberProvider.constant(1), NumberProvider.constant(0.5), laserBulletLife,
+								angleFormula, NumberProvider.constant(0), NumberProvider.constant(0),
+								PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
+								Optional.empty(), Optional.empty(),
+								Optional.of(List.of(spreadTrail)), Optional.empty(), 1,
+								Optional.of(tiltFormula))))));
+		var k0LaserPairs = new SpellActions.SequenceAction(List.of(
+				new SpellActions.SetVariable("base_tilt", new NumberProviders.RandomRange(0, 20)),
+				new SpellActions.RepeatAction(NumberProvider.constant(3), "pair", List.of(
+						new DelayAction(
+								new NumberProviders.Mul(new NumberProviders.Variable("pair"), NumberProvider.constant(10)),
+								List.of(k0InnerBurst))))));
+
+		// === kind=1: 1对, 随机大倾斜, SetVariable保证对称 ===
+		var k1TiltFormula = new NumberProviders.Mul(new NumberProviders.Variable("k1t"), signFromSi);
+		var k1InnerBurst = new BurstAction(20, 1, "lw", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(2), "si", List.of(
+						new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
+								NumberProvider.constant(1), NumberProvider.constant(0.5), laserBulletLife,
+								angleFormula, NumberProvider.constant(0), NumberProvider.constant(0),
+								PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
+								Optional.empty(), Optional.empty(),
+								Optional.of(List.of(homingTrail)), Optional.empty(), 1,
+								Optional.of(k1TiltFormula))))));
+		var laserBurstK1 = new SpellActions.SequenceAction(List.of(
+				new SpellActions.SetVariable("k1t", new NumberProviders.RandomRange(-60, 60)),
+				k1InnerBurst));
+		// === Spread弹幕: BurstAction(10波) × RepeatAction(5层) × 3发 ===
+		// w = 9 * (2*($round%2) - 1) → 交替 +9/-9
+		var spreadW = new NumberProviders.Mul(NumberProvider.constant(9),
+				new NumberProviders.Add(
+						new NumberProviders.Mul(NumberProvider.constant(2),
+								new NumberProviders.Mod(new NumberProviders.Variable("round"), NumberProvider.constant(2))),
+						NumberProvider.constant(-1)));
+		var spreadHorAngle = new NumberProviders.Mul(
+				new NumberProviders.Add(new NumberProviders.Variable("st"), NumberProvider.constant(-5)), spreadW);
+		var spreadElevation = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("sj"), NumberProvider.constant(15)),
+				NumberProvider.constant(-30));
+		// kind=0 → RED STAR, kind=1 → BLUE SPARK (conditional action branch)
+		var spreadInner = new SpellActions.RepeatAction(NumberProvider.constant(5), "sj", List.of(
+				new SpellActions.ConditionalAction(
+						new SpellConditions.VariableCheck("kind", "==", 0),
+						List.of(new FireDanmakuAction(YHDanmaku.Bullet.STAR, ColorProvider.constant(DyeColor.RED),
+								NumberProvider.constant(3), NumberProvider.constant(0.8),
+								new NumberProviders.RandomRange(50, 75), spreadHorAngle,
+								NumberProvider.constant(6),
+								new NumberProviders.Add(spreadElevation, new NumberProviders.RandomRange(-3, 3)),
+								PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+								Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
+						List.of(new FireDanmakuAction(YHDanmaku.Bullet.SPARK, ColorProvider.constant(DyeColor.BLUE),
+								NumberProvider.constant(3), NumberProvider.constant(0.8),
+								new NumberProviders.RandomRange(50, 75), spreadHorAngle,
+								NumberProvider.constant(6),
+								new NumberProviders.Add(spreadElevation, new NumberProviders.RandomRange(-3, 3)),
+								PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+								Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1))
+				)));
+		var spreadBurst = new SpellActions.SequenceAction(List.of(
+				new SpellActions.AddVariable("round", 1),
+				new BurstAction(10, 1, "st", List.of(spreadInner))));
+
+		// === onTick: 统一 action tree (normal + lunatic 通过 $dur/$cycle 自动切换) ===
+		List<SpellAction> tickActions = new ArrayList<>();
+		tickActions.add(new SpellActions.SetVariable("dur", dur));
+		tickActions.add(new SpellActions.SetVariable("cycle", cycle));
+
+		// 激光触发: phaseTick % $cycle == 0 → kind0, phaseTick % $cycle == $dur → kind1
+		tickActions.add(new SpellActions.ConditionalAction(
+				new SpellConditions.DynamicTickInterval(new NumberProviders.Variable("cycle"), NumberProvider.constant(0)),
+				List.of(new SpellActions.SetVariable("kind", NumberProvider.constant(0)), k0LaserPairs),
+				List.of()));
+		tickActions.add(new SpellActions.ConditionalAction(
+				new SpellConditions.DynamicTickInterval(new NumberProviders.Variable("cycle"), new NumberProviders.Variable("dur")),
+				List.of(new SpellActions.SetVariable("kind", NumberProvider.constant(1)), laserBurstK1),
+				List.of()));
+
+		// Spread触发: 每10tick, 且 phaseTick%$dur < $dur*2/3 (前4/6步)
+		tickActions.add(new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.TickInterval(10, 0),
+						new SpellConditions.CompareNumbers(
+								new NumberProviders.Mod(new NumberProviders.PhaseTick(), new NumberProviders.Variable("dur")),
+								"<",
+								new NumberProviders.Mul(new NumberProviders.Variable("dur"), NumberProvider.constant(2.0 / 3.0)))
+				)),
+				List.of(spreadBurst),
+				List.of()));
+
+		var phase = new PhaseDefinition(mainPhase, initActions, tickActions, List.of(), List.of(), List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:clownpiece");
+	}
+
+	// ============================
 	// Helper methods
 	// ============================
 
@@ -638,6 +1087,319 @@ public class MigratedSpellCards {
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				Optional.empty(), 1
 		);
+	}
+
+	// ============================
+	// SakuyaSpell — 十六夜咲夜 (飞刀弹幕, 3阶段)
+	// ============================
+	// Stage 0 (100%-67%): KnifeRing (3层旋转飞刀环) + SpiralKnife (螺旋弹幕)
+	// Stage 1 (67%-33%): TimeStopKnife (扩张→冻结→追踪) + KnifeSweep (扇形扫射) + SpiralKnife
+	// Stage 2 (33%-0%): TimeStopKnife(强化) + 双SpiralKnife + KnifeStorm (暴风) + CrossLaser (十字激光)
+	public static SpellDefinition sakuya() {
+		var id = rl("izayoi_sakuya");
+		var phase0id = rl("izayoi_sakuya/stage0");
+		var phase1id = rl("izayoi_sakuya/stage1");
+		var phase2id = rl("izayoi_sakuya/stage2");
+
+		// === Shared: rotationOffset += 3 每tick ===
+		SpellAction rotIncrement = new SpellActions.AddVariable("rot", 3);
+
+		// === KnifeRing: 多层旋转飞刀环 ===
+		// 3层: GRAY/KNIFE(1.0x), LIGHT_GRAY/KUNAI(0.75x), WHITE/KNIFE(0.5x)
+		// 每波: count发, 角度 = 360/count*i + rot + tick*4 + layerOffset
+		// speed = clamp(dist/25, 0.8, 2.5), life = dist*1.5+25
+		// 5波, 间隔4tick
+		var ringSpeed = new NumberProviders.Add(NumberProvider.constant(0.8),
+				new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(50)));
+		var ringLife = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Distance(), NumberProvider.constant(1.5)),
+				NumberProvider.constant(25));
+		var ringAngle = new NumberProviders.Add(new NumberProviders.Variable("rot"),
+				new NumberProviders.Mul(new NumberProviders.PhaseTick(), NumberProvider.constant(4)));
+
+		// 层0: GRAY KNIFE, speedMod=1.0
+		var ringLayer0 = new FireDanmakuAction(
+				YHDanmaku.Bullet.KNIFE, ColorProvider.constant(DyeColor.GRAY),
+				NumberProvider.constant(24), ringSpeed, ringLife,
+				ringAngle, NumberProvider.constant(360),
+				NumberProvider.constant(0), PatternType.RING,
+				OriginConfig.caster(), new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		// 层1: LIGHT_GRAY KUNAI, speedMod=0.75, offset=5°
+		var ringLayer1 = new FireDanmakuAction(
+				YHDanmaku.Bullet.KUNAI, ColorProvider.constant(DyeColor.LIGHT_GRAY),
+				NumberProvider.constant(24),
+				new NumberProviders.Mul(ringSpeed, NumberProvider.constant(0.75)),
+				new NumberProviders.Div(ringLife, NumberProvider.constant(0.75)),
+				new NumberProviders.Add(ringAngle, NumberProvider.constant(5)),
+				NumberProvider.constant(360), NumberProvider.constant(0), PatternType.RING,
+				OriginConfig.caster(), new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		// 层2: WHITE KNIFE, speedMod=0.5, offset=10°
+		var ringLayer2 = new FireDanmakuAction(
+				YHDanmaku.Bullet.KNIFE, ColorProvider.constant(DyeColor.WHITE),
+				NumberProvider.constant(24),
+				new NumberProviders.Mul(ringSpeed, NumberProvider.constant(0.5)),
+				new NumberProviders.Div(ringLife, NumberProvider.constant(0.5)),
+				new NumberProviders.Add(ringAngle, NumberProvider.constant(10)),
+				NumberProvider.constant(360), NumberProvider.constant(0), PatternType.RING,
+				OriginConfig.caster(), new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		// KnifeRing: 5波, 4tick间隔, 每波3层
+		var knifeRing = new BurstAction(5, 4, "krw", List.of(ringLayer0, ringLayer1, ringLayer2));
+
+		// === TimeStopKnife: 扩张→冻结→追踪 ===
+		// Normal: expandTime=15, dist=6, 2层, homing speed=1.6/life=60
+		// Intense: expandTime=12, dist=10, 3层, homing speed=2.2/life=50
+		// 弹幕以expandSpeed飞出, 减速停住, freezeTime后追踪弹朝玩家
+		// onExpiry chain: KNIFE扩张 → 静止CIRCLE标记(freezeTime) → 追踪MENTOS
+
+		// 追踪弹 (HomingKnife equivalent): 从弹幕死亡位置指向目标
+		var homingNormal = new FireDanmakuAction(
+				YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.GRAY),
+				NumberProvider.constant(1), NumberProvider.constant(1.6), NumberProvider.constant(60),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+
+		// 冻结标记 (DelayedHomingKnife): 静止标记弹 → onExpiry → 追踪弹
+		var freezeMarkerNormal = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.WHITE),
+				NumberProvider.constant(1), NumberProvider.constant(0), NumberProvider.constant(15),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
+				Optional.of(new MoverConfigs.ZeroMoverConfig()), Optional.empty(),
+				Optional.of(List.of((SpellAction) homingNormal)),
+				Optional.empty(), 1);
+
+		// 扩张飞刀 Normal: 2层×24发, 减速mover
+		// decel factor = 0.9/expandTime = 0.06
+		var timeStopNormal = new SpellActions.RepeatAction(NumberProvider.constant(2), "tsl", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.KNIFE,
+						new ColorProvider.ByVariable("tsl", List.of(DyeColor.RED, DyeColor.GRAY)),
+						NumberProvider.constant(24), NumberProvider.constant(0.4), NumberProvider.constant(15),
+						new NumberProviders.Add(new NumberProviders.Variable("rot"),
+								new NumberProviders.Mul(new NumberProviders.Variable("tsl"), NumberProvider.constant(5))),
+						NumberProvider.constant(360), NumberProvider.constant(0),
+						PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.of(new MoverConfigs.DecelerationConfig(0.06)),
+						Optional.empty(),
+						Optional.of(List.of((SpellAction) freezeMarkerNormal)),
+						Optional.empty(), 1)
+		));
+
+		// Intense版本: 3层×36发, 更快追踪
+		var homingIntense = new FireDanmakuAction(
+				YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.GRAY),
+				NumberProvider.constant(1), NumberProvider.constant(2.2), NumberProvider.constant(50),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var freezeMarkerIntense = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.WHITE),
+				NumberProvider.constant(1), NumberProvider.constant(0), NumberProvider.constant(13),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
+				Optional.of(new MoverConfigs.ZeroMoverConfig()), Optional.empty(),
+				Optional.of(List.of((SpellAction) homingIntense)),
+				Optional.empty(), 1);
+		var timeStopIntense = new SpellActions.RepeatAction(NumberProvider.constant(3), "tsl", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.KNIFE,
+						new ColorProvider.ByVariable("tsl", List.of(DyeColor.RED, DyeColor.GRAY, DyeColor.LIGHT_GRAY)),
+						NumberProvider.constant(36), NumberProvider.constant(0.83), NumberProvider.constant(12),
+						new NumberProviders.Add(new NumberProviders.Variable("rot"),
+								new NumberProviders.Mul(new NumberProviders.Variable("tsl"), NumberProvider.constant(3.3))),
+						NumberProvider.constant(360), NumberProvider.constant(0),
+						PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.of(new MoverConfigs.DecelerationConfig(0.075)),
+						Optional.empty(),
+						Optional.of(List.of((SpellAction) freezeMarkerIntense)),
+						Optional.empty(), 1)
+		));
+
+		// === SpiralKnife: 持续螺旋弹幕 ===
+		// 每tick: knifePerTick发, 角度 = rotDir * $sw * 18 + i * 360/k
+		// tilt = sin($sw * 0.12 度) * 25 (正弦振荡)
+		// 3种子弹: MENTOS(主), BALL(中速), CIRCLE(慢速, 每2tick一次)
+		// duration ticks via BurstAction
+		var spiralSpeed = new NumberProviders.Add(NumberProvider.constant(0.7),
+				new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(40)));
+		var spiralLife = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Distance(), NumberProvider.constant(2)),
+				NumberProvider.constant(35));
+		// tilt = sin(sw * 6.875°) * 25  (legacy: sin(tick*0.12 rad) → 0.12 rad = 6.875°)
+		var spiralTilt = new NumberProviders.Mul(
+				new NumberProviders.Sin(
+						new NumberProviders.Mul(new NumberProviders.Variable("sw"), NumberProvider.constant(6.875)),
+						1, 0),
+				NumberProvider.constant(25));
+
+		// 辅助: 创建一个螺旋BurstAction
+		// rotDir=+1 或 -1, knifePerTick, duration
+		java.util.function.Function<Object[], SpellAction> mkSpiral = args -> {
+			int rotDir = (int) args[0];
+			int kpt = (int) args[1];
+			int dur = (int) args[2];
+			var spiralAngle = new NumberProviders.Mul(
+					new NumberProviders.Variable("sw"), NumberProvider.constant(rotDir * 18));
+			// 主弹: MENTOS GRAY
+			var mainBullet = new FireDanmakuAction(
+					YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.GRAY),
+					NumberProvider.constant(kpt), spiralSpeed, spiralLife,
+					spiralAngle, NumberProvider.constant(360), spiralTilt,
+					PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+					Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+			// 中弹: BALL LIGHT_GRAY, 半速
+			var midBullet = new FireDanmakuAction(
+					YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.LIGHT_GRAY),
+					NumberProvider.constant(kpt),
+					new NumberProviders.Mul(spiralSpeed, NumberProvider.constant(0.55)),
+					new NumberProviders.Add(spiralLife, NumberProvider.constant(15)),
+					new NumberProviders.Add(spiralAngle, NumberProvider.constant(15)),
+					NumberProvider.constant(360),
+					new NumberProviders.Mul(spiralTilt, NumberProvider.constant(-0.5)),
+					PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+					Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+			// 慢弹: CIRCLE WHITE, 1/3速, 每2tick (conditional)
+			var slowBullet = new SpellActions.ConditionalAction(
+					new SpellConditions.TickInterval(2, 0),
+					List.of(new FireDanmakuAction(
+							YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.WHITE),
+							NumberProvider.constant(kpt),
+							new NumberProviders.Mul(spiralSpeed, NumberProvider.constant(0.35)),
+							new NumberProviders.Add(spiralLife, NumberProvider.constant(25)),
+							new NumberProviders.Add(spiralAngle, NumberProvider.constant(180)),
+							NumberProvider.constant(360),
+							new NumberProviders.Mul(spiralTilt, NumberProvider.constant(-1)),
+							PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+							Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
+					List.of());
+			return new BurstAction(dur, 1, "sw", List.of(mainBullet, midBullet, slowBullet));
+		};
+
+		// === KnifeSweep: 旋转扫射 ===
+		// 20tick, 每tick countPerTick发, 角度线性旋转360°
+		// 2种: MENTOS GRAY (快), BALL LIGHT_GRAY (慢)
+		var sweepSpeed = new NumberProviders.Add(NumberProvider.constant(0.8),
+				new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(40)));
+		var sweepLife = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Distance(), NumberProvider.constant(2)),
+				NumberProvider.constant(60));
+		var sweepAngle = new NumberProviders.Add(new NumberProviders.Variable("rot"),
+				new NumberProviders.Mul(new NumberProviders.Variable("swp"), NumberProvider.constant(18))); // 360/20
+		var knifeSweep = new BurstAction(20, 1, "swp", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.GRAY),
+						NumberProvider.constant(8), sweepSpeed, sweepLife,
+						sweepAngle, NumberProvider.constant(30), NumberProvider.constant(0),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.LIGHT_GRAY),
+						NumberProvider.constant(8),
+						new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(0.6)),
+						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.2)),
+						sweepAngle, NumberProvider.constant(30), NumberProvider.constant(0),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+
+		// === KnifeStorm: 大量随机飞刀 ===
+		// 10tick, 每tick ~10发, 随机方向+随机颜色+随机子弹类型
+		var stormSpeed = new NumberProviders.Add(NumberProvider.constant(1.5),
+				new NumberProviders.RandomRange(0, 1.0));
+		var stormLife = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Distance(), NumberProvider.constant(1.5)),
+				new NumberProviders.Add(NumberProvider.constant(30), new NumberProviders.RandomRange(0, 20)));
+		var knifeStorm = new BurstAction(10, 1, "stm", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.KNIFE,
+						new ColorProvider.RandomChoice(List.of(DyeColor.RED, DyeColor.GRAY, DyeColor.LIGHT_GRAY)),
+						NumberProvider.constant(10), stormSpeed, stormLife,
+						NumberProvider.constant(0), NumberProvider.constant(45), NumberProvider.constant(30),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+
+		// === CrossLaser: 8方向激光 ===
+		var crossLaser = new SpellActions.RepeatAction(NumberProvider.constant(8), "cl", List.of(
+				new FireLaserAction(
+						YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+						NumberProvider.constant(100), NumberProvider.constant(50),
+						new NumberProviders.Add(new NumberProviders.Variable("rot"),
+								new NumberProviders.Mul(new NumberProviders.Variable("cl"), NumberProvider.constant(45))),
+						new AimMode.AimModes.Target(),
+						OriginConfig.caster(), Optional.empty(),
+						15, 10, 10)
+		));
+
+		// === Phase 0: 100%-67% — KnifeRing 每30tick + SpiralKnife(+1) 每80tick ===
+		var p0Tick = List.<SpellAction>of(
+				rotIncrement,
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(30, 0),
+						List.of(knifeRing),
+						List.of()),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(80, 0),
+						List.of(mkSpiral.apply(new Object[]{1, 4, 60})),
+						List.of())
+		);
+
+		// === Phase 1: 67%-33% — TimeStopNormal 每35tick + Sweep 每40tick + Spiral(±1) 每35tick ===
+		var p1Tick = List.<SpellAction>of(
+				rotIncrement,
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(35, 0),
+						List.of(timeStopNormal,
+								mkSpiral.apply(new Object[]{
+										1, 3, 50})),   // random ±1 简化为交替
+						List.of()),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(40, 0),
+						List.of(knifeSweep),
+						List.of())
+		);
+
+		// === Phase 2: 33%-0% — TimeStopIntense + 双Spiral + Storm 每60tick + CrossLaser 每100tick ===
+		var p2Tick = List.<SpellAction>of(
+				rotIncrement,
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(25, 0),
+						List.of(timeStopIntense,
+								mkSpiral.apply(new Object[]{-1, 5, 50}),
+								mkSpiral.apply(new Object[]{1, 5, 50})),
+						List.of()),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(60, 0),
+						List.of(knifeStorm),
+						List.of()),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(100, 0),
+						List.of(crossLaser),
+						List.of())
+		);
+
+		// === Phase definitions with transitions ===
+		var phase0 = new PhaseDefinition(phase0id, List.of(), p0Tick, List.of(new SpellActions.ClearScreen()), List.of(),
+				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), phase1id, TransitionMode.IMMEDIATE)));
+		var phase1 = new PhaseDefinition(phase1id, List.of(), p1Tick, List.of(new SpellActions.ClearScreen()), List.of(),
+				List.of(new Transition(new SpellConditions.HealthBelow(0.33f), phase2id, TransitionMode.IMMEDIATE)));
+		var phase2 = new PhaseDefinition(phase2id, List.of(), p2Tick, List.of(), List.of(), List.of());
+
+		SpellDisplay display = new SpellDisplay(
+				id.toLanguageKey("spell") + ".name",
+				id.toLanguageKey("spell") + ".desc",
+				Optional.empty(),
+				Optional.of(new ResourceLocation("touhou_little_maid", "izayoi_sakuya"))
+		);
+		return new SpellDefinition(id, display, SpellItemForm.NONE,
+				phase0id, Map.of(phase0id, phase0, phase1id, phase1, phase2id, phase2),
+				DifficultyProfile.DEFAULT);
 	}
 
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,

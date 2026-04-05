@@ -11,6 +11,10 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
+/**
+ * @deprecated Migrated to data-driven. See {@link MigratedSpellCards#clown()}.
+ */
+@Deprecated
 @SerialClass
 public class ClownSpell extends ActualSpellCard {
 

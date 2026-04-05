@@ -39,6 +39,8 @@ public class SpellConditions {
 		register("target_health_above", TargetHealthAbove.CODEC, TargetHealthAbove.class);
 		register("target_is_flying", TargetIsFlying.CODEC, TargetIsFlying.class);
 		register("target_is_fallflying", TargetIsFallFlying.CODEC, TargetIsFallFlying.class);
+		register("difficulty_equals", DifficultyEquals.CODEC, DifficultyEquals.class);
+		register("difficulty_above", DifficultyAbove.CODEC, DifficultyAbove.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellCondition> codec) {
@@ -389,6 +391,36 @@ public class SpellConditions {
 		@Override
 		public boolean test(SpellContext ctx) {
 			return ctx.targetIsFallFlying();
+		}
+	}
+
+	/**
+	 * True when the game difficulty matches exactly.
+	 * PEACEFUL=0, EASY=1, NORMAL=2, HARD=3.
+	 * JSON: {"type": "difficulty_equals", "difficulty": 3}
+	 */
+	public record DifficultyEquals(int difficultyId) implements SpellCondition {
+		public static final Codec<DifficultyEquals> CODEC = Codec.INT
+				.fieldOf("difficulty").codec().xmap(DifficultyEquals::new, DifficultyEquals::difficultyId);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return ctx.holder().self().level().getDifficulty().getId() == difficultyId;
+		}
+	}
+
+	/**
+	 * True when the game difficulty is at or above the given level.
+	 * PEACEFUL=0, EASY=1, NORMAL=2, HARD=3.
+	 * JSON: {"type": "difficulty_above", "min_difficulty": 2}
+	 */
+	public record DifficultyAbove(int minDifficultyId) implements SpellCondition {
+		public static final Codec<DifficultyAbove> CODEC = Codec.INT
+				.fieldOf("min_difficulty").codec().xmap(DifficultyAbove::new, DifficultyAbove::minDifficultyId);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return ctx.holder().self().level().getDifficulty().getId() >= minDifficultyId;
 		}
 	}
 }

@@ -44,7 +44,8 @@ public class ActionEditorPanel {
 			"target_on_ground", "target_speed", "random_chance",
 			"target_health_below", "target_health_above",
 			"target_is_flying", "target_is_fallflying",
-			"dynamic_tick_interval", "entity_trait", "compare_numbers", "variable_check",
+			"dynamic_tick_interval", "entity_trait", "compare", "variable_check",
+			"difficulty_equals", "difficulty_above",
 			"always", "not", "and"
 	};
 
@@ -54,7 +55,8 @@ public class ActionEditorPanel {
 			"target_on_ground", "target_speed", "random_chance",
 			"target_health_below", "target_health_above",
 			"target_is_flying", "target_is_fallflying",
-			"dynamic_tick_interval", "entity_trait", "compare_numbers", "variable_check",
+			"dynamic_tick_interval", "entity_trait", "compare", "variable_check",
+			"difficulty_equals", "difficulty_above",
 			"always"
 	};
 
@@ -546,6 +548,14 @@ public class ActionEditorPanel {
 					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value())));
 			addDoubleRow(prefix + "Value", vc.value(), v ->
 					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), vc.op(), v)));
+		} else if (cond instanceof SpellConditions.DifficultyEquals de) {
+			addStringCycleRow(prefix + "Difficulty", new String[]{"PEACEFUL", "EASY", "NORMAL", "HARD"},
+					difficultyName(de.difficultyId()), v ->
+					onChanged.accept(new SpellConditions.DifficultyEquals(difficultyId(v))));
+		} else if (cond instanceof SpellConditions.DifficultyAbove da) {
+			addStringCycleRow(prefix + "Min Diff", new String[]{"PEACEFUL", "EASY", "NORMAL", "HARD"},
+					difficultyName(da.minDifficultyId()), v ->
+					onChanged.accept(new SpellConditions.DifficultyAbove(difficultyId(v))));
 		} else if (cond instanceof SpellConditions.NotCondition nc) {
 			// Show inner condition type and params
 			addStringCycleRow(prefix + "Inner", SIMPLE_CONDITION_TYPES, getConditionType(nc.condition()), newType ->
@@ -1854,9 +1864,11 @@ public class ActionEditorPanel {
 			case "dynamic_tick_interval" -> new SpellConditions.DynamicTickInterval(
 					NumberProvider.constant(60), NumberProvider.constant(0));
 			case "entity_trait" -> new SpellConditions.EntityTrait("is_lunatic");
-			case "compare_numbers" -> new SpellConditions.CompareNumbers(
-					new NumberProviders.Variable("var"), "<", NumberProvider.constant(10));
+			case "compare" -> new SpellConditions.CompareNumbers(
+					new NumberProviders.PhaseTick(), "<", NumberProvider.constant(100));
 			case "variable_check" -> new SpellConditions.VariableCheck("kind", "==", 0);
+			case "difficulty_equals" -> new SpellConditions.DifficultyEquals(3);
+			case "difficulty_above" -> new SpellConditions.DifficultyAbove(2);
 			case "not" -> new SpellConditions.NotCondition(new SpellConditions.AlwaysCondition(true));
 			case "and" -> new SpellConditions.AndCondition(List.of(
 					new SpellConditions.TickInterval(20, 0),
@@ -1886,6 +1898,26 @@ public class ActionEditorPanel {
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);
+
+	private static String difficultyName(int id) {
+		return switch (id) {
+			case 0 -> "PEACEFUL";
+			case 1 -> "EASY";
+			case 2 -> "NORMAL";
+			case 3 -> "HARD";
+			default -> "NORMAL";
+		};
+	}
+
+	private static int difficultyId(String name) {
+		return switch (name) {
+			case "PEACEFUL" -> 0;
+			case "EASY" -> 1;
+			case "NORMAL" -> 2;
+			case "HARD" -> 3;
+			default -> 2;
+		};
+	}
 
 	private static String actionTypeName(SpellAction action) {
 		String id = SpellActions.getTypeId(action);

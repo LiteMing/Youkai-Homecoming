@@ -26,6 +26,17 @@ public interface AimMode {
 	Vec3 getBaseDirection(SpellContext ctx);
 
 	/**
+	 * Get the base firing direction, taking the resolved origin position into account.
+	 * <p>
+	 * Most aim modes ignore the origin position (they use the caster/target direction).
+	 * {@code DirectionToTarget} overrides this to compute the direction from the
+	 * actual emission point to the target, which is critical when origin has offsets.
+	 */
+	default Vec3 getBaseDirection(SpellContext ctx, Vec3 originPos) {
+		return getBaseDirection(ctx);
+	}
+
+	/**
 	 * Backwards-compatible factory: converts old boolean aimAtTarget to AimMode.
 	 */
 	static AimMode fromLegacy(boolean aimAtTarget) {
@@ -171,13 +182,26 @@ public interface AimMode {
 		/**
 		 * Direction from holder.center() toward holder.target().
 		 * In onExpiry context (TrailCardHolder), center() is the danmaku's expiry position.
+		 * <p>
+		 * When called with an explicit originPos (from FireDanmakuAction/FireLaserAction),
+		 * computes the direction from the actual emission point to the target. This is
+		 * critical for offset origins (e.g. ring emission points) where the emission point
+		 * differs significantly from the caster center.
 		 */
 		public record DirectionToTarget() implements AimMode {
 			public static final Codec<DirectionToTarget> CODEC = Codec.unit(DirectionToTarget::new);
 
 			@Override
 			public Vec3 getBaseDirection(SpellContext ctx) {
-				Vec3 from = ctx.holder().center();
+				return directionFrom(ctx, ctx.holder().center());
+			}
+
+			@Override
+			public Vec3 getBaseDirection(SpellContext ctx, Vec3 originPos) {
+				return directionFrom(ctx, originPos);
+			}
+
+			private Vec3 directionFrom(SpellContext ctx, Vec3 from) {
 				Vec3 target = ctx.holder().target();
 				if (target == null) return ctx.holder().forward();
 				Vec3 dir = target.subtract(from);

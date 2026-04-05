@@ -218,16 +218,24 @@ public class SpellRuntime {
 	/**
 	 * Execute all delayed actions whose time has come.
 	 * Called from tick() after regular onTick actions.
+	 * Snapshot the list first to avoid ConcurrentModificationException,
+	 * since executed actions may schedule new delayed actions.
 	 */
 	private void executeScheduledActions(SpellContext ctx) {
+		// Snapshot: collect ready actions and remove them before executing
+		var ready = new java.util.ArrayList<ScheduledAction>();
 		var iter = scheduledActions.iterator();
 		while (iter.hasNext()) {
 			var scheduled = iter.next();
 			if (totalTick >= scheduled.executeAtTick()) {
+				ready.add(scheduled);
 				iter.remove();
-				for (var action : scheduled.actions()) {
-					action.execute(ctx);
-				}
+			}
+		}
+		// Execute outside the iteration so new scheduleDelayed() calls are safe
+		for (var scheduled : ready) {
+			for (var action : scheduled.actions()) {
+				action.execute(ctx);
 			}
 		}
 	}

@@ -95,6 +95,9 @@ public class SpellContext {
 	 * Returns false if there is no target.
 	 */
 	public boolean targetOnGround() {
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
+			return preview.isTargetOnGround();
+		}
 		var target = holder.targetEntity();
 		return target != null && target.onGround();
 	}
@@ -107,5 +110,44 @@ public class SpellContext {
 		var vel = holder.targetVelocity();
 		if (vel == null) return 0;
 		return vel.horizontalDistance();
+	}
+
+	/**
+	 * Returns the health ratio of the target entity (0.0 ~ 1.0).
+	 * Returns 1.0 if there is no target.
+	 */
+	public float targetHealthRatio() {
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
+			return preview.getTargetHealthRatio();
+		}
+		var target = holder.targetEntity();
+		if (target == null) return 1.0f;
+		return target.getHealth() / target.getMaxHealth();
+	}
+
+	/**
+	 * Returns true if the target entity is flying (abilities.flying).
+	 */
+	public boolean targetIsFlying() {
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
+			return preview.isTargetFlying();
+		}
+		var target = holder.targetEntity();
+		if (target == null) return false;
+		if (target instanceof net.minecraft.world.entity.player.Player p) {
+			return p.getAbilities().flying;
+		}
+		return !target.onGround() && target.fallDistance == 0;
+	}
+
+	/**
+	 * Returns true if the target entity is elytra gliding.
+	 */
+	public boolean targetIsFallFlying() {
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
+			return preview.isTargetFallFlying();
+		}
+		var target = holder.targetEntity();
+		return target != null && target.isFallFlying();
 	}
 }

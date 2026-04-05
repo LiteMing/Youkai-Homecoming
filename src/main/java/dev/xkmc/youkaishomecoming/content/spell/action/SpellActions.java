@@ -37,6 +37,7 @@ public class SpellActions {
 		register("spawn_shooter", SpawnShooterAction.CODEC, SpawnShooterAction.class);
 		register("burst", BurstAction.CODEC, BurstAction.class);
 		register("disabled", DisabledAction.CODEC, DisabledAction.class);
+		register("confine_target", ConfineTargetAction.CODEC, ConfineTargetAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {

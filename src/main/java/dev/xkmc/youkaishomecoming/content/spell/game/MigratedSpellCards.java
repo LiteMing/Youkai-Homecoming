@@ -1415,15 +1415,18 @@ public class MigratedSpellCards {
 		var nearShooterBody = List.<SpellAction>of(
 				new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.YELLOW),
 						NumberProvider.constant(1), NumberProvider.constant(0.8), NumberProvider.constant(40),
-						NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+						new NumberProviders.GaussianRandom(0, 30), NumberProvider.constant(0),
+						new NumberProviders.GaussianRandom(0, 30),
 						PatternType.AIMED, OriginConfig.caster(),
-						new AimMode.AimModes.Target(),
+						new AimMode.AimModes.DirectionToTarget(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
 				new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.ORANGE),
 						NumberProvider.constant(1), NumberProvider.constant(0.3), NumberProvider.constant(40),
-						NumberProvider.constant(180), NumberProvider.constant(0), NumberProvider.constant(0),
+						new NumberProviders.Add(NumberProvider.constant(180), new NumberProviders.GaussianRandom(0, 30)),
+						NumberProvider.constant(0),
+						new NumberProviders.GaussianRandom(0, 30),
 						PatternType.AIMED, OriginConfig.caster(),
-						new AimMode.AimModes.Target(),
+						new AimMode.AimModes.DirectionToTarget(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1));
 		var nearShooter = new SpawnShooterAction(40, 4f, 60,
 				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
@@ -1533,7 +1536,7 @@ public class MigratedSpellCards {
 				new FireDanmakuAction(YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(12), sweepSpeed, sweepLife,
 						sweepAngle, NumberProvider.constant(15),
-						new NumberProviders.GaussianRandom(0, 8),
+						new NumberProviders.GaussianRandom(0, 20),
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
 				new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
@@ -1541,7 +1544,7 @@ public class MigratedSpellCards {
 						new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(0.6)),
 						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.2)),
 						sweepAngle, NumberProvider.constant(15),
-						new NumberProviders.GaussianRandom(0, 8),
+						new NumberProviders.GaussianRandom(0, 20),
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
 				new FireDanmakuAction(YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.RED),
@@ -1549,7 +1552,7 @@ public class MigratedSpellCards {
 						new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(0.3)),
 						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.5)),
 						sweepAngle, NumberProvider.constant(15),
-						new NumberProviders.GaussianRandom(0, 8),
+						new NumberProviders.GaussianRandom(0, 20),
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
@@ -1573,11 +1576,11 @@ public class MigratedSpellCards {
 						new NumberProviders.Variable("lel"),
 						new AimMode.AimModes.Target(), OriginConfig.caster(),
 						Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty()),
-				new SpellActions.RepeatAction(NumberProvider.constant(3), "lj", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(6), "lj", List.of(
 						new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
 								NumberProvider.constant(140), NumberProvider.constant(80),
 								new NumberProviders.Add(new NumberProviders.Variable("laz"),
-										new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(120))),
+										new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(60))),
 								new NumberProviders.Add(new NumberProviders.Variable("lel"), NumberProvider.constant(45)),
 								new AimMode.AimModes.Target(),
 								new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
@@ -1594,11 +1597,12 @@ public class MigratedSpellCards {
 								Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty())
 				))
 		));
-		var lasers = new SpellActions.RepeatAction(NumberProvider.constant(4), "li", List.of(parentLaser));
+		var lasers = new SpellActions.RepeatAction(NumberProvider.constant(8), "li", List.of(parentLaser));
 		var laserAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.TickInterval(20, 0),
-						new SpellConditions.CompareNumbers(stepVar, "==", NumberProvider.constant(3)))),
+						new SpellConditions.CompareNumbers(stepVar, "==", NumberProvider.constant(3)),
+						new SpellConditions.TargetIsFallFlying())),
 				List.of(lasers), List.of());
 
 		// === Spear (step == 4): 密集弹幕线 ===

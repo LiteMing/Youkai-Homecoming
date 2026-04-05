@@ -1606,8 +1606,54 @@ public class MigratedSpellCards {
 						new SpellConditions.TargetIsFallFlying())),
 				List.of(new SpellActions.SequenceAction(laserAllActions)), List.of());
 
-		// === Spear (step == 4): 梭形弹幕柱 (caster→target方向, 极紧密) ===
-		// 80个弹幕沿caster→target线性排列, 微小横向偏移形成梭形
+		// === 冈格尼尔 (Gungnir) 蓄力系统 ===
+		// 每tick: dist>=40 → gung+1, dist<40 → gung-2, clamp 0~100
+		var gungCharge = new SpellActions.ConditionalAction(
+				new SpellConditions.DistanceAbove(40),
+				List.of(new SpellActions.SetVariable("gung",
+						new NumberProviders.Clamp(
+								new NumberProviders.Add(new NumberProviders.Variable("gung"), NumberProvider.constant(1)),
+								NumberProvider.constant(0), NumberProvider.constant(100)))),
+				List.of(new SpellActions.SetVariable("gung",
+						new NumberProviders.Clamp(
+								new NumberProviders.Add(new NumberProviders.Variable("gung"), NumberProvider.constant(-2)),
+								NumberProvider.constant(0), NumberProvider.constant(100)))));
+
+		// 视觉: boss头顶显示冈格尼尔形态 (MENTOS RED, 静止, 大小随gung变化)
+		// 长度 = gung/100 * 4 (最大4格), 数量 = gung/10 (最大10发)
+		// 每4tick刷新一次视觉 (避免过多实体)
+		var gungVisual = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.TickInterval(4, 0),
+						new SpellConditions.CompareNumbers(new NumberProviders.Variable("gung"), ">", NumberProvider.constant(0)))),
+				List.of(new SpellActions.RepeatAction(
+						new NumberProviders.Clamp(
+								new NumberProviders.Div(new NumberProviders.Variable("gung"), NumberProvider.constant(10)),
+								NumberProvider.constant(1), NumberProvider.constant(10)),
+						"gi", List.of(
+						new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
+								NumberProvider.constant(1), NumberProvider.constant(0), NumberProvider.constant(8),
+								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+								PatternType.AIMED,
+								new OriginConfig(OriginConfig.OriginMode.CASTER,
+										new NumberProviders.GaussianRandom(0, 0.1),
+										// 高度: 2.5 + gi * (gung/100 * 4) / count
+										new NumberProviders.Add(NumberProvider.constant(2.5),
+												new NumberProviders.Mul(
+														new NumberProviders.Div(new NumberProviders.Variable("gi"),
+																new NumberProviders.Max(NumberProvider.constant(1),
+																		new NumberProviders.Div(new NumberProviders.Variable("gung"), NumberProvider.constant(10)))),
+														new NumberProviders.Mul(
+																new NumberProviders.Div(new NumberProviders.Variable("gung"), NumberProvider.constant(100)),
+																NumberProvider.constant(4)))),
+										new NumberProviders.GaussianRandom(0, 0.1),
+										NumberProvider.constant(0)),
+								new AimMode.AimModes.DirectionToTarget(),
+								Optional.of(new MoverConfigs.ZeroMoverConfig()),
+								Optional.empty(), Optional.empty(), Optional.empty(), 1)
+				))), List.of());
+
+		// 发射: gung>=100 → teleport到半程 + 发射梭形弹幕柱 + 重置gung
 		var spearTrail = new SpellActions.RepeatAction(NumberProvider.constant(80), "si", List.of(
 				new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(1), NumberProvider.constant(3), NumberProvider.constant(30),
@@ -1623,22 +1669,21 @@ public class MigratedSpellCards {
 						new AimMode.AimModes.DirectionToTarget(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
-		var spear = new SpellActions.SequenceAction(List.of(
-				new TeleportAction(
-						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-								NumberProvider.constant(0), NumberProvider.constant(0),
-								new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(2)),
-								NumberProvider.constant(0)),
-						true),
-				spearTrail));
-		var spearAction = new SpellActions.ConditionalAction(
-				new SpellConditions.AndCondition(List.of(
-						new SpellConditions.TickInterval(20, 0),
-						new SpellConditions.CompareNumbers(stepVar, "==", NumberProvider.constant(4)),
-						new SpellConditions.DistanceAbove(40))),
-				List.of(spear), List.of());
+		var spearFire = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(new NumberProviders.Variable("gung"), ">=", NumberProvider.constant(100)),
+				List.of(new SpellActions.SequenceAction(List.of(
+						new TeleportAction(
+								new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+										NumberProvider.constant(0), NumberProvider.constant(0),
+										new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(2)),
+										NumberProvider.constant(0)),
+								true),
+						spearTrail,
+						new SpellActions.SetVariable("gung", new NumberProviders.Constant(0))))),
+				List.of());
 
-		var phase = new PhaseDefinition(mainPhase, List.of(), List.of(sweepAction, laserAction, spearAction),
+		var phase = new PhaseDefinition(mainPhase, List.of(),
+				List.of(sweepAction, laserAction, gungCharge, gungVisual, spearFire),
 				List.of(), List.of(), List.of());
 		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:remilia_scarlet");
 	}

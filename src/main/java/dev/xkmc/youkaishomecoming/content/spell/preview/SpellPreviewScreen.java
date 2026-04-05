@@ -313,6 +313,7 @@ public class SpellPreviewScreen extends Screen {
 					() -> { scene.reset(); scene.play(); }
 			);
 			actionListPanel.setBounds(editorX, rightPanelY, editorW, actionListH);
+			actionListPanel.loadCustomNames(definition.customNames);
 
 			actionEditorPanel = new ActionEditorPanel(
 					this::addRenderableWidget,
@@ -1132,6 +1133,11 @@ public class SpellPreviewScreen extends Screen {
 					Minecraft.getInstance().getWindow().getWindow(),
 					org.lwjgl.glfw.GLFW.GLFW_CURSOR,
 					org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+		}
+		// Sync custom node names back to definition before saving
+		if (actionListPanel != null) {
+			definition.customNames.clear();
+			definition.customNames.putAll(actionListPanel.getCustomNames());
 		}
 		// Persist the current definition to SpellRegistry and disk
 		SpellRegistry.register(definition);

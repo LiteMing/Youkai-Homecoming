@@ -200,6 +200,17 @@ public class ActionListPanel {
 		this.dirty = true;
 	}
 
+	/** Load custom names from spell definition (called on editor open). */
+	public void loadCustomNames(java.util.Map<String, String> names) {
+		customNames.clear();
+		customNames.putAll(names);
+	}
+
+	/** Save custom names back to spell definition (called on editor close/save). */
+	public java.util.Map<String, String> getCustomNames() {
+		return new java.util.HashMap<>(customNames);
+	}
+
 	public ActionPath getSelectedPath() {
 		return selectedPath;
 	}

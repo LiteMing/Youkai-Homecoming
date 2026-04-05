@@ -46,7 +46,7 @@ public class ActionEditorPanel {
 			"target_is_flying", "target_is_fallflying",
 			"dynamic_tick_interval", "entity_trait", "compare", "variable_check",
 			"difficulty_equals", "difficulty_above",
-			"always", "not", "and"
+			"always", "not", "and", "or"
 	};
 
 	private static final String[] SIMPLE_CONDITION_TYPES = {
@@ -424,62 +424,60 @@ public class ActionEditorPanel {
 
 		SpellCondition cond = ca.condition();
 		if (cond instanceof SpellConditions.AndCondition ac) {
-			buildAndConditionRows(ac);
+			buildCompoundConditionRows(ac.conditions(), true);
+		} else if (cond instanceof SpellConditions.OrCondition oc) {
+			buildCompoundConditionRows(oc.conditions(), false);
 		} else {
 			buildConditionParamRows("", cond, newCond ->
 					notifyConditional(old -> new SpellActions.ConditionalAction(newCond, old.ifTrue(), old.ifFalse()), false));
 		}
 	}
 
-	private void buildAndConditionRows(SpellConditions.AndCondition ac) {
-		List<SpellCondition> subs = ac.conditions();
-		SpellCondition sub1 = subs.size() > 0 ? subs.get(0) : new SpellConditions.AlwaysCondition(true);
-		SpellCondition sub2 = subs.size() > 1 ? subs.get(1) : new SpellConditions.AlwaysCondition(true);
-
-		addStringCycleRow("Cond 1", SIMPLE_CONDITION_TYPES, getConditionType(sub1), newType ->
-				notifyAndSubCondition(0, createDefaultCondition(newType)));
-		buildConditionParamRows("1:", sub1, newSub -> notifyAndSubCondition(0, newSub, false));
-
-		addStringCycleRow("Cond 2", SIMPLE_CONDITION_TYPES, getConditionType(sub2), newType ->
-				notifyAndSubCondition(1, createDefaultCondition(newType)));
-		buildConditionParamRows("2:", sub2, newSub -> notifyAndSubCondition(1, newSub, false));
-
-		// Additional sub-conditions beyond the first 2
-		for (int i = 2; i < subs.size(); i++) {
+	/**
+	 * Build sub-condition editing rows for AND/OR compound conditions.
+	 * @param isAnd true = AndCondition, false = OrCondition
+	 */
+	private void buildCompoundConditionRows(List<SpellCondition> subs, boolean isAnd) {
+		for (int i = 0; i < subs.size(); i++) {
 			SpellCondition sub = subs.get(i);
 			int idx = i;
 			addStringCycleRow("Cond " + (i + 1), SIMPLE_CONDITION_TYPES, getConditionType(sub), newType ->
-					notifyAndSubCondition(idx, createDefaultCondition(newType)));
-			buildConditionParamRows((idx + 1) + ":", sub, newSub -> notifyAndSubCondition(idx, newSub, false));
+					notifyCompoundSubCondition(idx, createDefaultCondition(newType), isAnd));
+			buildConditionParamRows((idx + 1) + ":", sub, newSub ->
+					notifyCompoundSubCondition(idx, newSub, isAnd, false));
 		}
 
 		// Button to add more sub-conditions
 		addFullWidthButton("[+ Add Condition]", () -> {
 			notifyConditional(old -> {
-				if (old.condition() instanceof SpellConditions.AndCondition oldAc) {
-					List<SpellCondition> newSubs = new ArrayList<>(oldAc.conditions());
-					newSubs.add(new SpellConditions.AlwaysCondition(true));
-					return new SpellActions.ConditionalAction(new SpellConditions.AndCondition(newSubs), old.ifTrue(), old.ifFalse());
-				}
-				return old;
+				List<SpellCondition> newSubs = new ArrayList<>(extractCompoundSubs(old.condition()));
+				newSubs.add(new SpellConditions.AlwaysCondition(true));
+				SpellCondition newCond = isAnd ? new SpellConditions.AndCondition(newSubs)
+						: new SpellConditions.OrCondition(newSubs);
+				return new SpellActions.ConditionalAction(newCond, old.ifTrue(), old.ifFalse());
 			});
 		});
 	}
 
-	private void notifyAndSubCondition(int subIndex, SpellCondition newSub) {
-		notifyAndSubCondition(subIndex, newSub, true);
+	private void notifyCompoundSubCondition(int subIndex, SpellCondition newSub, boolean isAnd) {
+		notifyCompoundSubCondition(subIndex, newSub, isAnd, true);
 	}
 
-	private void notifyAndSubCondition(int subIndex, SpellCondition newSub, boolean rebuild) {
+	private void notifyCompoundSubCondition(int subIndex, SpellCondition newSub, boolean isAnd, boolean rebuild) {
 		notifyConditional(old -> {
-			if (old.condition() instanceof SpellConditions.AndCondition ac) {
-				List<SpellCondition> newSubs = new ArrayList<>(ac.conditions());
-				while (newSubs.size() <= subIndex) newSubs.add(new SpellConditions.AlwaysCondition(true));
-				newSubs.set(subIndex, newSub);
-				return new SpellActions.ConditionalAction(new SpellConditions.AndCondition(newSubs), old.ifTrue(), old.ifFalse());
-			}
-			return old;
+			List<SpellCondition> newSubs = new ArrayList<>(extractCompoundSubs(old.condition()));
+			while (newSubs.size() <= subIndex) newSubs.add(new SpellConditions.AlwaysCondition(true));
+			newSubs.set(subIndex, newSub);
+			SpellCondition newCond = isAnd ? new SpellConditions.AndCondition(newSubs)
+					: new SpellConditions.OrCondition(newSubs);
+			return new SpellActions.ConditionalAction(newCond, old.ifTrue(), old.ifFalse());
 		}, rebuild);
+	}
+
+	private static List<SpellCondition> extractCompoundSubs(SpellCondition cond) {
+		if (cond instanceof SpellConditions.AndCondition ac) return ac.conditions();
+		if (cond instanceof SpellConditions.OrCondition oc) return oc.conditions();
+		return List.of(cond);
 	}
 
 	private void buildConditionParamRows(String prefix, SpellCondition cond, Consumer<SpellCondition> onChanged) {
@@ -526,6 +524,10 @@ public class ActionEditorPanel {
 			// No parameters
 		} else if (cond instanceof SpellConditions.TargetIsFallFlying) {
 			// No parameters
+		} else if (cond instanceof SpellConditions.AlwaysCondition ac) {
+			addStringCycleRow(prefix + "Value", new String[]{"true", "false"},
+					ac.value() ? "true" : "false", v ->
+					onChanged.accept(new SpellConditions.AlwaysCondition(v.equals("true"))));
 		} else if (cond instanceof SpellConditions.DynamicTickInterval dti) {
 			addNumberRow(prefix + "Period", dti.period(), v ->
 					onChanged.accept(new SpellConditions.DynamicTickInterval(v, dti.offset())));
@@ -713,6 +715,12 @@ public class ActionEditorPanel {
 					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
 							s.velocityX(), s.velocityY(), v, s.mover(), s.body());
 				}));
+		addFloatRow("Damage", ssa.damage(), v ->
+				notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					return new SpawnShooterAction(s.health(), v, s.lifetime(), s.origin(),
+							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
+				}));
 		addEnumRow("Origin", OriginConfig.OriginMode.values(), ssa.origin().mode(), v -> {
 			var s = (SpawnShooterAction) currentAction;
 			var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
@@ -720,6 +728,25 @@ public class ActionEditorPanel {
 			notifySimple(old -> new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), newOrigin,
 					s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body()));
 		});
+		// Origin offsets
+		buildOriginOffsetRows(ssa.origin(), newOrigin ->
+				notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), newOrigin,
+							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
+				}));
+		// Mover
+		buildMoverRows(ssa.mover(),
+				newMover -> notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
+							s.velocityX(), s.velocityY(), s.velocityZ(), newMover, s.body());
+				}),
+				newMover -> notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
+							s.velocityX(), s.velocityY(), s.velocityZ(), newMover, s.body());
+				}));
 	}
 
 	// --- Shared Origin/Mover row builders ---
@@ -732,6 +759,7 @@ public class ActionEditorPanel {
 	private Optional<MoverConfig> getCurrentMover() {
 		if (currentAction instanceof FireDanmakuAction fda) return fda.mover();
 		if (currentAction instanceof FireLaserAction fla) return fla.mover();
+		if (currentAction instanceof SpawnShooterAction ssa) return ssa.mover();
 		return Optional.empty();
 	}
 
@@ -1072,7 +1100,12 @@ public class ActionEditorPanel {
 		if (name.equals("sin")) return "sin()";
 		if (name.equals("cos")) return "cos()";
 		if (name.equals("sqrt")) return "sqrt()";
-		return name; // bare keyword (tick, phase_tick, total_tick, distance)
+		if (name.equals("max")) return "max(, )";
+		if (name.equals("min")) return "min(, )";
+		if (name.equals("clamp")) return "clamp(, , )";
+		if (name.equals("gaussian")) return "gaussian(, )";
+		if (name.equals("choose")) return "choose(, )";
+		return name; // bare keyword (tick, phase_tick, total_tick, distance, caster_x, etc.)
 	}
 
 	/** Returns the cursor position within the template string (right after first '('). */
@@ -1113,7 +1146,7 @@ public class ActionEditorPanel {
 	private static final int COLOR_KEYWORD = 0xFFDD44;   // yellow (tick, distance, etc.)
 	private static final java.util.Set<String> KNOWN_FUNCTIONS = java.util.Set.of(
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
-			"tick_mod", "sin", "cos", "sqrt"
+			"tick_mod", "sin", "cos", "sqrt", "max", "min", "clamp", "gaussian", "choose"
 	);
 	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
 			"tick", "phase_tick", "total_tick", "distance", "target_height", "game_difficulty",
@@ -1876,6 +1909,9 @@ public class ActionEditorPanel {
 			case "and" -> new SpellConditions.AndCondition(List.of(
 					new SpellConditions.TickInterval(20, 0),
 					new SpellConditions.AlwaysCondition(true)));
+			case "or" -> new SpellConditions.OrCondition(List.of(
+					new SpellConditions.AlwaysCondition(true),
+					new SpellConditions.AlwaysCondition(false)));
 			default -> new SpellConditions.AlwaysCondition(true);
 		};
 	}

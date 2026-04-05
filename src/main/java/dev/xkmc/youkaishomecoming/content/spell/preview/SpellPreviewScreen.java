@@ -14,6 +14,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
+import dev.xkmc.youkaishomecoming.content.spell.preview.dock.*;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
@@ -33,14 +34,19 @@ public class SpellPreviewScreen extends Screen {
 	private final OrthographicViewport viewport;
 
 	// Layout constants
-	private static final int CONTROL_HEIGHT = 136;
 	private static final int TOP_BAR_HEIGHT = 20;
 	private static final int BUTTON_HEIGHT = 16;
 	private static final int BUTTON_SPACING = 2;
-	private static final int EDITOR_PANEL_WIDTH = 200;
-	private static final int ACTION_LIST_HEIGHT_RATIO = 40; // percent of right panel for action list
 
-	// Editor panels
+	// Dock layout system
+	private DockLayout dockLayout;
+	private ViewportDockPanel viewportPanel;
+	private ActionListDockPanel actionListDockPanel;
+	private EditorDockPanel editorDockPanel;
+	private ControlsDockPanel controlsDockPanel;
+	private HelpDockPanel helpDockPanel;
+
+	// Editor panels (direct references for hotkey access)
 	private ActionListPanel actionListPanel;
 	private ActionEditorPanel actionEditorPanel;
 	private boolean editorVisible = true;
@@ -52,11 +58,7 @@ public class SpellPreviewScreen extends Screen {
 	private final List<ResourceLocation> phaseList = new ArrayList<>();
 	private int selectedPhaseIndex = 0;
 
-	private boolean dragging = false;
-	private boolean rotating = false;
-	private boolean movingTarget = false;
 	private boolean autoReplay = true;
-	private double lastMouseX, lastMouseY; // for perspective captured mode delta tracking
 
 	/** Snapshot of the definition at the time the editor was opened (for custom spell reset). */
 	private final com.google.gson.JsonElement openSnapshot;
@@ -70,19 +72,14 @@ public class SpellPreviewScreen extends Screen {
 		// Save snapshot of current state when editor opens
 		this.openSnapshot = SpellDefinition.CODEC.encodeStart(
 				com.mojang.serialization.JsonOps.INSTANCE, definition).result().orElse(null);
+		// Create persistent dock panels
+		this.viewportPanel = new ViewportDockPanel(viewport, scene);
+		this.helpDockPanel = new HelpDockPanel();
 	}
 
 	@Override
 	protected void init() {
 		super.init();
-
-		int editorW = editorVisible ? EDITOR_PANEL_WIDTH : 0;
-		int viewportW = width - editorW;
-
-		// Set viewport bounds (left side)
-		int viewportY = TOP_BAR_HEIGHT;
-		int viewportHeight = height - TOP_BAR_HEIGHT - CONTROL_HEIGHT;
-		viewport.setBounds(0, viewportY, viewportW, viewportHeight);
 
 		// --- Top bar: view angle buttons + toggle editor + spell name ---
 		int bx = 4;
@@ -162,200 +159,87 @@ public class SpellPreviewScreen extends Screen {
 				actionListPanel.toggleShowAllAddButtons();
 				rebuildScreen();
 			}).bounds(bx, by, 42, BUTTON_HEIGHT).build());
+			bx += 44;
 		}
-
-		// --- Control panel at bottom ---
-		int panelY = height - CONTROL_HEIGHT;
-		int row1Y = panelY + 4;
-		int row2Y = row1Y + BUTTON_HEIGHT + BUTTON_SPACING;
-		int row3Y = row2Y + BUTTON_HEIGHT + BUTTON_SPACING;
-		int row4Y = row3Y + BUTTON_HEIGHT + BUTTON_SPACING;
-		int row5Y = row4Y + BUTTON_HEIGHT + BUTTON_SPACING;
-		int row6Y = row5Y + BUTTON_HEIGHT + BUTTON_SPACING;
-		int row7Y = row6Y + BUTTON_HEIGHT + BUTTON_SPACING;
-
-		// Row 1: Playback controls
-		bx = 4;
-		addRenderableWidget(Button.builder(Component.literal("\u25B6/\u275A\u275A"), btn -> scene.togglePlayPause())
-				.bounds(bx, row1Y, 40, BUTTON_HEIGHT).build());
-		bx += 42;
-		addRenderableWidget(Button.builder(Component.literal("\u25A0"), btn -> scene.reset())
-				.bounds(bx, row1Y, 20, BUTTON_HEIGHT).build());
-		bx += 22;
-		addRenderableWidget(Button.builder(Component.literal("\u25B8"), btn -> scene.step())
-				.bounds(bx, row1Y, 20, BUTTON_HEIGHT).build());
-
-		// Row 2: Speed buttons
-		bx = 4;
-		for (int i = 0; i < VirtualSpellScene.SPEED_OPTIONS.length; i++) {
-			float speed = VirtualSpellScene.SPEED_OPTIONS[i];
-			String label = speed < 1 ? speed + "x" : ((int) speed) + "x";
-			final int idx = i;
-			addRenderableWidget(Button.builder(Component.literal(label), btn -> scene.setSpeedIndex(idx))
-					.bounds(bx, row2Y, 36, BUTTON_HEIGHT).build());
-			bx += 38;
-		}
-
-		// Row 3: Distance + HP
-		bx = 4;
-		addRenderableWidget(Button.builder(Component.literal("Dist:"), btn -> {})
-				.bounds(bx, row3Y, 30, BUTTON_HEIGHT).build());
-		bx += 32;
-		for (float dist : VirtualSpellScene.DISTANCE_OPTIONS) {
-			addRenderableWidget(Button.builder(Component.literal(String.valueOf((int) dist)), btn -> scene.setTargetDistance(dist))
-					.bounds(bx, row3Y, 24, BUTTON_HEIGHT).build());
-			bx += 26;
-		}
-		bx += 10;
-		addRenderableWidget(Button.builder(Component.literal("HP:"), btn -> {})
-				.bounds(bx, row3Y, 24, BUTTON_HEIGHT).build());
-		bx += 26;
-		for (float hp : VirtualSpellScene.HP_OPTIONS) {
-			String hpLabel = ((int) (hp * 100)) + "%";
-			addRenderableWidget(Button.builder(Component.literal(hpLabel), btn -> scene.setHealthRatio(hp))
-					.bounds(bx, row3Y, 30, BUTTON_HEIGHT).build());
-			bx += 32;
-		}
-
-		// Row 4: Phase selection
-		bx = 4;
-		addRenderableWidget(Button.builder(Component.literal("Phase:"), btn -> {})
-				.bounds(bx, row4Y, 40, BUTTON_HEIGHT).build());
-		bx += 42;
-		addRenderableWidget(Button.builder(Component.literal("<"), btn -> cyclePhase(-1))
-				.bounds(bx, row4Y, 16, BUTTON_HEIGHT).build());
-		bx += 18;
-		addRenderableWidget(Button.builder(Component.literal(">"), btn -> cyclePhase(1))
-				.bounds(bx + 100, row4Y, 16, BUTTON_HEIGHT).build());
-
-		// Row 5: Range
-		bx = 4;
-		int[] rangeOptions = {50, 100, 200, 500};
-		addRenderableWidget(Button.builder(Component.literal("Range:"), btn -> {})
-				.bounds(bx, row5Y, 40, BUTTON_HEIGHT).build());
-		bx += 42;
-		for (int range : rangeOptions) {
-			final float r = range;
-			addRenderableWidget(Button.builder(Component.literal(String.valueOf(range)), btn -> {
-				viewport.setGridExtent(r);
-				viewport.setClipDepth(r * 4);
-			}).bounds(bx, row5Y, 30, BUTTON_HEIGHT).build());
-			bx += 32;
-		}
-
-		// Marker toggles (after Range on Row 5)
-		bx += 10;
-		String casterMkLabel = viewport.isShowCasterMarker() ? "Caster:\u00A7cON" : "Caster:OFF";
-		addRenderableWidget(Button.builder(Component.literal(casterMkLabel), btn -> {
-			viewport.setShowCasterMarker(!viewport.isShowCasterMarker());
+		// Reset Layout button
+		addRenderableWidget(Button.builder(Component.literal("RstLayout"), btn -> {
+			DockSerializer.deleteLayout();
 			rebuildScreen();
-		}).bounds(bx, row5Y, 52, BUTTON_HEIGHT).build());
-		bx += 54;
-		String targetMkLabel = viewport.isShowTargetMarker() ? "Target:\u00A7eON" : "Target:OFF";
-		addRenderableWidget(Button.builder(Component.literal(targetMkLabel), btn -> {
-			viewport.setShowTargetMarker(!viewport.isShowTargetMarker());
-			rebuildScreen();
-		}).bounds(bx, row5Y, 52, BUTTON_HEIGHT).build());
+		}).bounds(bx, by, 56, BUTTON_HEIGHT).build());
 
-		// Row 6: Target properties
-		bx = 4;
-		addRenderableWidget(Button.builder(Component.literal("Target:"), btn -> {})
-				.bounds(bx, row6Y, 42, BUTTON_HEIGHT).build());
-		bx += 44;
-		// On Ground toggle
-		String groundLabel = scene.isTargetOnGround() ? "Ground:Y" : "Ground:N";
-		addRenderableWidget(Button.builder(Component.literal(groundLabel), btn -> {
-			scene.setTargetOnGround(!scene.isTargetOnGround());
-			rebuildScreen();
-		}).bounds(bx, row6Y, 52, BUTTON_HEIGHT).build());
-		bx += 54;
-		// Flying toggle
-		String flyLabel = scene.isTargetFlying() ? "Fly:Y" : "Fly:N";
-		addRenderableWidget(Button.builder(Component.literal(flyLabel), btn -> {
-			scene.setTargetFlying(!scene.isTargetFlying());
-			rebuildScreen();
-		}).bounds(bx, row6Y, 36, BUTTON_HEIGHT).build());
-		bx += 38;
-		// Fall-flying (elytra) toggle
-		String elytraLabel = scene.isTargetFallFlying() ? "Elytra:Y" : "Elytra:N";
-		addRenderableWidget(Button.builder(Component.literal(elytraLabel), btn -> {
-			scene.setTargetFallFlying(!scene.isTargetFallFlying());
-			rebuildScreen();
-		}).bounds(bx, row6Y, 48, BUTTON_HEIGHT).build());
-		bx += 50;
-		// Target HP buttons
-		addRenderableWidget(Button.builder(Component.literal("TgtHP:"), btn -> {})
-				.bounds(bx, row6Y, 38, BUTTON_HEIGHT).build());
-		bx += 40;
-		for (float hp : new float[]{0.25f, 0.5f, 0.75f, 1.0f}) {
-			String thpLabel = ((int) (hp * 100)) + "%";
-			addRenderableWidget(Button.builder(Component.literal(thpLabel), btn -> {
-				scene.setTargetHealthRatio(hp);
-				rebuildScreen();
-			}).bounds(bx, row6Y, 30, BUTTON_HEIGHT).build());
-			bx += 32;
-		}
+		// --- Create editor panels ---
+		actionListPanel = new ActionListPanel(
+				(action, path) -> {
+					if (actionEditorPanel != null) {
+						actionEditorPanel.setAction(action, path.leafIndex());
+					}
+				},
+				this::onRequestAddAction,
+				() -> { scene.reset(); scene.play(); }
+		);
+		actionListPanel.loadCustomNames(definition.customNames);
 
-		// Row 7: Target Height + Hit Count display
-		bx = 4;
-		addRenderableWidget(Button.builder(Component.literal("TgtY:"), btn -> {})
-				.bounds(bx, row7Y, 32, BUTTON_HEIGHT).build());
-		bx += 34;
-		for (double h : new double[]{0, 1, 2, 5, 10, 20}) {
-			String hLabel = String.valueOf((int) h);
-			addRenderableWidget(Button.builder(Component.literal(hLabel), btn -> {
-				scene.setTargetHeight(h);
-				rebuildScreen();
-			}).bounds(bx, row7Y, 22, BUTTON_HEIGHT).build());
-			bx += 24;
-		}
-		// (Hit count is rendered dynamically in render() method)
+		actionEditorPanel = new ActionEditorPanel(
+				this::addRenderableWidget,
+				this::removeWidget,
+				this::onActionEdited,
+				this::onDeleteAction
+		);
+		actionEditorPanel.setToggleDisableCallback(() -> {
+			if (actionListPanel != null && actionListPanel.toggleSelectedDisabled()) {
+				actionEditorPanel.clearAction();
+				if (autoReplay) { scene.reset(); scene.play(); }
+			}
+		});
+		actionEditorPanel.setVariableJumpCallback(varName -> {
+			if (actionListPanel != null) {
+				actionListPanel.jumpToVariableDefinition(varName);
+			}
+		});
 
-		// --- Editor panels (right side) ---
-		if (editorVisible) {
-			int editorX = viewportW;
-			int rightPanelY = TOP_BAR_HEIGHT;
-			int rightPanelH = height - TOP_BAR_HEIGHT - CONTROL_HEIGHT;
-			int actionListH = rightPanelH * ACTION_LIST_HEIGHT_RATIO / 100;
-			int editorH = rightPanelH - actionListH;
+		// --- Wrap in dock panel adapters ---
+		actionListDockPanel = new ActionListDockPanel(actionListPanel);
+		editorDockPanel = new EditorDockPanel(actionEditorPanel);
+		controlsDockPanel = new ControlsDockPanel(scene, viewport, this::rebuildScreen, this::cyclePhase);
+		controlsDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
 
-			actionListPanel = new ActionListPanel(
-					(action, path) -> {
-						if (actionEditorPanel != null) {
-							actionEditorPanel.setAction(action, path.leafIndex());
-						}
-					},
-					this::onRequestAddAction,
-					() -> { scene.reset(); scene.play(); }
-			);
-			actionListPanel.setBounds(editorX, rightPanelY, editorW, actionListH);
-			actionListPanel.loadCustomNames(definition.customNames);
+		// --- Build dock layout tree (load from config or use default) ---
+		java.util.Map<String, DockPanel> panelMap = new java.util.LinkedHashMap<>();
+		panelMap.put(viewportPanel.dockId(), viewportPanel);
+		panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
+		panelMap.put(editorDockPanel.dockId(), editorDockPanel);
+		panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
+		panelMap.put(helpDockPanel.dockId(), helpDockPanel);
 
-			actionEditorPanel = new ActionEditorPanel(
-					this::addRenderableWidget,
-					this::removeWidget,
-					this::onActionEdited,
-					this::onDeleteAction
-			);
-			actionEditorPanel.setBounds(editorX, rightPanelY + actionListH, editorW, editorH);
-			actionEditorPanel.setToggleDisableCallback(() -> {
-				if (actionListPanel != null && actionListPanel.toggleSelectedDisabled()) {
-					actionEditorPanel.clearAction();
-					if (autoReplay) { scene.reset(); scene.play(); }
-				}
-			});
-			actionEditorPanel.setVariableJumpCallback(varName -> {
-				if (actionListPanel != null) {
-					actionListPanel.jumpToVariableDefinition(varName);
-				}
-			});
+		DockNode root = DockSerializer.loadLayout(panelMap, SpellPreviewScreen::buildDefaultLayout);
+		dockLayout = new DockLayout(root);
+		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
+		// Set active group to the one containing the viewport
+		DockGroup vpGroup = dockLayout.findGroupContaining(viewportPanel);
+		if (vpGroup != null) dockLayout.setActiveGroup(vpGroup);
 
-			// Set current phase on the action list
-			updateActionListPhase();
-		} else {
-			actionListPanel = null;
-			actionEditorPanel = null;
-		}
+		controlsDockPanel.buildButtons();
+		updateActionListPhase();
+	}
+
+	/**
+	 * 构建默认布局树。用于首次打开或布局文件损坏时的回退。
+	 */
+	static DockNode buildDefaultLayout(java.util.Map<String, DockPanel> panelMap) {
+		DockPanel viewport = panelMap.get("viewport");
+		DockPanel actions = panelMap.get("actions");
+		DockPanel properties = panelMap.get("properties");
+		DockPanel controls = panelMap.get("controls");
+
+		DockGroup viewportGroup = new DockGroup(viewport);
+		DockGroup actionListGroup = new DockGroup(actions);
+		DockGroup editorGroup = new DockGroup(properties);
+		DockGroup controlsGroup = new DockGroup(controls);
+		// Help 面板默认不显示
+
+		DockSplit rightSplit = new DockSplit(false, 0.4f, actionListGroup, editorGroup);
+		DockSplit mainSplit = new DockSplit(true, 0.6f, viewportGroup, rightSplit);
+		return new DockSplit(false, 0.8f, mainSplit, controlsGroup);
 	}
 
 	private void rebuildScreen() {
@@ -533,23 +417,9 @@ public class SpellPreviewScreen extends Screen {
 		super.tick();
 		scene.tick();
 
-		// FPS camera movement only when captured in perspective mode
-		if (viewport.isPerspectiveCaptured() && !isAnyEditBoxFocused()) {
-			long window = Minecraft.getInstance().getWindow().getWindow();
-			boolean forward = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_W) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-			boolean backward = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_S) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-			boolean left = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_A) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-			boolean right = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_D) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-			boolean up = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-			boolean down = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-			viewport.perspectiveMove(forward, backward, left, right, up, down);
-
-			// Sync target position to camera if bound
-			if (viewport.isTargetBoundToCamera()) {
-				Vec3 camPos = viewport.getCameraPos();
-				// Set target to camera position (at feet level, subtract eye height)
-				scene.setTargetPos(new Vec3(camPos.x, camPos.y - 1.6, camPos.z));
-			}
+		// Perspective camera movement (delegated to ViewportDockPanel)
+		if (viewportPanel != null) {
+			viewportPanel.tick(isAnyEditBoxFocused());
 		}
 
 		// Sync selected phase index with runtime
@@ -563,66 +433,32 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-		// Dark background
 		renderBackground(guiGraphics);
 
-		// Render the orthographic viewport
-		viewport.render(guiGraphics, scene, partialTick);
-
-		// Render control panel background
-		int panelY = height - CONTROL_HEIGHT;
-		guiGraphics.fill(0, panelY, width, height, 0xCC000000);
-
-		// Render editor panels (before widgets so text shows under widgets)
-		if (actionListPanel != null) {
-			actionListPanel.render(guiGraphics, mouseX, mouseY, partialTick);
-		}
-		if (actionEditorPanel != null) {
-			actionEditorPanel.render(guiGraphics, mouseX, mouseY, partialTick, false);
+		// Dock layout renders all panels
+		if (dockLayout != null) {
+			dockLayout.render(guiGraphics, mouseX, mouseY, partialTick);
 		}
 
-		// Render widgets (buttons)
+		// Screen widgets (top bar buttons, control panel buttons)
 		super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-		// Render dropdown overlay ON TOP of all widgets
-		if (actionEditorPanel != null) {
-			actionEditorPanel.renderDropdown(guiGraphics, mouseX, mouseY);
+		// Dropdown/completion overlay on top of everything
+		if (dockLayout != null) {
+			dockLayout.renderOverlay(guiGraphics, mouseX, mouseY);
 		}
 
-		// Status text on top bar
+		// Spell name on top bar
 		String spellName = definition.id.toString();
-		int editorW = editorVisible ? EDITOR_PANEL_WIDTH : 0;
-		int nameX = width - editorW - font.width(spellName) - 4;
+		int nameX = width - font.width(spellName) - 4;
 		guiGraphics.drawString(font, spellName, nameX, 5, 0xFFAAAAAA, false);
 
-		// Playback info
-		int row1Y = panelY + 4;
-		String status = (scene.isPlaying() ? "\u25B6 " : "\u275A\u275A ") +
-				"tick:" + scene.getTotalTick() +
-				"  phase:" + scene.getCurrentPhaseId().getPath() +
-				"  entities:" + scene.getEntityCount() +
-				"  hits:" + scene.getHitCount() +
-				"  speed:" + scene.getCurrentSpeed() + "x";
-		guiGraphics.drawString(font, status, 90, row1Y + 4, 0xFFCCCCCC, false);
-
-		// Phase name between < > buttons
-		if (!phaseList.isEmpty()) {
-			int row4Y = panelY + 4 + (BUTTON_HEIGHT + BUTTON_SPACING) * 3;
+		// Phase name (in controls area)
+		if (!phaseList.isEmpty() && controlsDockPanel != null) {
+			int row4Y = controlsDockPanel.getY() + 4 + (BUTTON_HEIGHT + BUTTON_SPACING) * 3;
 			String phaseName = phaseList.get(selectedPhaseIndex).getPath();
-			guiGraphics.drawString(font, phaseName, 64, row4Y + 4, 0xFFFFFF88, false);
+			guiGraphics.drawString(font, phaseName, controlsDockPanel.getX() + 64, row4Y + 4, 0xFFFFFF88, false);
 		}
-
-		// View angle + target info + hit count
-		var tp = scene.getTargetPos();
-		String targetInfo = String.format("Target: (%.1f, %.1f, %.1f)  height:%.1f", tp.x, tp.y, tp.z, tp.y);
-		String hitInfo = "  hits:" + scene.getHitCount();
-		int viewportW = width - editorW;
-		guiGraphics.drawString(font, "View: " + viewport.getViewLabel(),
-				4, height - CONTROL_HEIGHT - 22, 0xFF888888, false);
-		guiGraphics.drawString(font, targetInfo,
-				4, height - CONTROL_HEIGHT - 12, 0xFFBBBB44, false);
-		guiGraphics.drawString(font, hitInfo,
-				4 + font.width(targetInfo), height - CONTROL_HEIGHT - 12, 0xFFFF8844, false);
 
 		// Help overlay
 		if (showHelp) {
@@ -781,85 +617,24 @@ public class SpellPreviewScreen extends Screen {
 			showHelp = false;
 			return true;
 		}
-		// Custom-drawn overlays (completion, dropdown) take priority over widgets
+		// Editor dropdown/completion may extend beyond panel bounds — check first
 		if (actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
 			return true;
 		}
-		if (actionListPanel != null && actionListPanel.mouseClicked(mouseX, mouseY, button)) {
+		// Dock layout dispatches to panels
+		if (dockLayout != null && dockLayout.mouseClicked(mouseX, mouseY, button)) {
 			return true;
 		}
-		// Let widgets (EditBox, Button) handle clicks
+		// Screen widgets (top bar buttons, control panel buttons)
 		if (super.mouseClicked(mouseX, mouseY, button)) {
 			return true;
-		}
-
-		if (viewport.isMouseOver(mouseX, mouseY)) {
-			if (viewport.isPerspectiveMode()) {
-				if (!viewport.isPerspectiveCaptured()) {
-					// Left click in viewport = enter captured free-look mode
-					if (button == 0) {
-						viewport.setPerspectiveCaptured(true);
-						lastMouseX = mouseX;
-						lastMouseY = mouseY;
-						org.lwjgl.glfw.GLFW.glfwSetInputMode(
-								Minecraft.getInstance().getWindow().getWindow(),
-								org.lwjgl.glfw.GLFW.GLFW_CURSOR,
-								org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
-						return true;
-					}
-				}
-				// Right-drag = orbit
-				if (button == 1) {
-					viewport.setPerspectiveOrbiting(true);
-					return true;
-				}
-				// Middle-drag = pan on view plane
-				if (button == 2) {
-					viewport.setPerspectivePanning(true);
-					return true;
-				}
-			} else {
-				// Orthographic mode: original behavior
-				if (button == 0) {
-					movingTarget = true;
-					return true;
-				}
-				if (button == 2) {
-					dragging = true;
-					return true;
-				}
-				if (button == 1) {
-					rotating = true;
-					return true;
-				}
-			}
 		}
 		return false;
 	}
 
 	@Override
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
-		if (actionListPanel != null && actionListPanel.mouseReleased(mouseX, mouseY, button)) {
-			return true;
-		}
-		if (viewport.isPerspectiveOrbiting() && button == 1) {
-			viewport.setPerspectiveOrbiting(false);
-			return true;
-		}
-		if (viewport.isPerspectivePanning() && button == 2) {
-			viewport.setPerspectivePanning(false);
-			return true;
-		}
-		if (movingTarget && button == 0) {
-			movingTarget = false;
-			return true;
-		}
-		if (dragging && button == 2) {
-			dragging = false;
-			return true;
-		}
-		if (rotating && button == 1) {
-			rotating = false;
+		if (dockLayout != null && dockLayout.mouseReleased(mouseX, mouseY, button)) {
 			return true;
 		}
 		return super.mouseReleased(mouseX, mouseY, button);
@@ -867,30 +642,7 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-		if (actionListPanel != null && actionListPanel.mouseDragged(mouseX, mouseY, button, dragX, dragY)) {
-			return true;
-		}
-		// Perspective mode: right-drag = orbit
-		if (viewport.isPerspectiveOrbiting()) {
-			viewport.perspectiveOrbit((float) dragX, (float) dragY);
-			return true;
-		}
-		// Perspective mode: middle-drag = pan on view plane
-		if (viewport.isPerspectivePanning()) {
-			viewport.perspectivePan((float) dragX, (float) dragY);
-			return true;
-		}
-		if (movingTarget) {
-			var delta = viewport.screenDeltaToWorldDelta((float) dragX, (float) dragY);
-			scene.moveTarget(delta);
-			return true;
-		}
-		if (dragging) {
-			viewport.pan((float) dragX, (float) dragY);
-			return true;
-		}
-		if (rotating) {
-			viewport.rotate((float) dragX, (float) dragY);
+		if (dockLayout != null && dockLayout.mouseDragged(mouseX, mouseY, button, dragX, dragY)) {
 			return true;
 		}
 		return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -898,12 +650,7 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public void mouseMoved(double mouseX, double mouseY) {
-		if (viewport.isPerspectiveCaptured()) {
-			double dx = mouseX - lastMouseX;
-			double dy = mouseY - lastMouseY;
-			lastMouseX = mouseX;
-			lastMouseY = mouseY;
-			viewport.perspectiveLook((float) dx, (float) dy);
+		if (viewportPanel != null && viewportPanel.mouseMoved(mouseX, mouseY)) {
 			return;
 		}
 		super.mouseMoved(mouseX, mouseY);
@@ -915,25 +662,11 @@ public class SpellPreviewScreen extends Screen {
 			helpScroll -= (int) (delta * 30);
 			return true;
 		}
-		// When perspective captured, mouse is hidden and coords may be outside viewport.
-		// Always route scroll to speed adjustment in this state.
 		if (viewport.isPerspectiveCaptured()) {
 			viewport.perspectiveAdjustSpeed((float) delta);
 			return true;
 		}
-		if (actionListPanel != null && actionListPanel.mouseScrolled(mouseX, mouseY, delta)) {
-			return true;
-		}
-		if (actionEditorPanel != null && actionEditorPanel.mouseScrolled(mouseX, mouseY, delta)) {
-			return true;
-		}
-		if (viewport.isMouseOver(mouseX, mouseY)) {
-			if (viewport.isPerspectiveMode()) {
-				// In perspective mode, scroll adjusts fly speed
-				viewport.perspectiveAdjustSpeed((float) delta);
-			} else {
-				viewport.zoom((float) delta);
-			}
+		if (dockLayout != null && dockLayout.mouseScrolled(mouseX, mouseY, delta)) {
 			return true;
 		}
 		return super.mouseScrolled(mouseX, mouseY, delta);
@@ -1170,6 +903,10 @@ public class SpellPreviewScreen extends Screen {
 		var server = Minecraft.getInstance().getSingleplayerServer();
 		if (server != null) {
 			server.execute(() -> CustomSpellStorage.saveSpell(server, definition));
+		}
+		// Save dock layout
+		if (dockLayout != null) {
+			DockSerializer.saveLayout(dockLayout.getRoot());
 		}
 	}
 

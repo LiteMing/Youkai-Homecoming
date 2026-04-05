@@ -29,6 +29,9 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	private int life = 0;
 	@SerialClass.SerialField
 	private boolean bypassWall = false, bypassEntity = false;
+
+	public void setBypassWall(boolean bypass) { this.bypassWall = bypass; }
+	public void setBypassEntity(boolean bypass) { this.bypassEntity = bypass; }
 	@SerialClass.SerialField
 	public float damage = 0;
 

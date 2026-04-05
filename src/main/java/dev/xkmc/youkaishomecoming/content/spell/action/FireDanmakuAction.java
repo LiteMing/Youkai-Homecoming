@@ -386,6 +386,18 @@ public record FireDanmakuAction(
 			danmaku.onHitBlockAction = hitAction;
 		}
 		danmaku.hitBehavior = hitBehavior;
+		// Override bypassWall/bypassEntity based on onHit configuration.
+		// Default from prepareDanmaku is bypassWall=true, bypassEntity=true (boss danmaku defaults).
+		// If onHitBlock is configured, we must enable block collision detection.
+		if (onHitBlock.isPresent()) {
+			danmaku.setBypassWall(false);
+		}
+		// hitBehavior controls entity hit behavior:
+		// DISCARD = stop on entity hit (bypassEntity=false)
+		// CONTINUE = pierce through (bypassEntity=true, already the default)
+		if (hitBehavior == HitBehavior.DISCARD) {
+			danmaku.setBypassEntity(false);
+		}
 		holder.shoot(danmaku);
 	}
 

@@ -23,10 +23,11 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 /**
- * Renders the spell preview in an orthographic viewport within a Screen.
+ * Renders the spell preview in an orthographic or perspective viewport within a Screen.
  * Works within the existing GUI projection by transforming the PoseStack
  * to map world coordinates into screen pixels.
  * Supports both preset view angles (FRONT/SIDE/TOP) and free orbit rotation.
+ * Perspective mode provides FPS-style camera with WASD/Space/Shift movement + mouse look.
  */
 @OnlyIn(Dist.CLIENT)
 public class OrthographicViewport {
@@ -46,6 +47,29 @@ public class OrthographicViewport {
 	private float gridExtent = 50f;
 	private float clipDepth = 200f; // Z translate for depth range
 
+	// --- Perspective mode ---
+	private boolean perspectiveMode = false;
+	/** Camera position in world space (perspective mode) */
+	private double camX = 0, camY = 2, camZ = -15;
+	/** Camera pitch/yaw in degrees (perspective mode) */
+	private float camPitch = 0, camYaw = 0;
+	/** Whether the mouse is captured for free-look (perspective mode) */
+	private boolean perspectiveCaptured = false;
+	/** Whether right-mouse orbit is active */
+	private boolean perspectiveOrbiting = false;
+	/** Whether middle-mouse panning is active */
+	private boolean perspectivePanning = false;
+	/** Whether the target should follow the camera position in perspective mode */
+	private boolean targetBoundToCamera = false;
+	/** Marker visibility toggles */
+	private boolean showCasterMarker = true;
+	private boolean showTargetMarker = true;
+	private float moveSpeed = 0.5f;
+	private static final float MIN_MOVE_SPEED = 0.05f;
+	private static final float MAX_MOVE_SPEED = 5.0f;
+	private static final float LOOK_SENSITIVITY = 0.15f;
+	private static final float PERSP_FOV = 70f; // degrees
+
 	public void setBounds(int x, int y, int width, int height) {
 		this.x = x;
 		this.y = y;
@@ -53,12 +77,33 @@ public class OrthographicViewport {
 		this.height = height;
 	}
 
+	/** Whether the current preset is flipped (viewing from opposite side) */
+	private boolean presetFlipped = false;
+
 	public void setViewAngle(ViewAngle angle) {
+		if (this.presetAngle == angle && !presetFlipped) {
+			// Same preset clicked again without pan: flip to opposite side
+			presetFlipped = true;
+			this.freeXRot = -angle.getXRot();
+			this.freeYRot = angle.getYRot() + 180;
+		} else if (this.presetAngle == angle && presetFlipped) {
+			// Already flipped: return to normal
+			presetFlipped = false;
+			this.freeXRot = angle.getXRot();
+			this.freeYRot = angle.getYRot();
+		} else {
+			// Different preset: set normally
+			presetFlipped = false;
+			this.freeXRot = angle.getXRot();
+			this.freeYRot = angle.getYRot();
+		}
 		this.presetAngle = angle;
-		this.freeXRot = angle.getXRot();
-		this.freeYRot = angle.getYRot();
 		this.viewX = 0;
 		this.viewY = 0;
+	}
+
+	public boolean isPresetFlipped() {
+		return presetFlipped;
 	}
 
 	public void setGridExtent(float extent) {
@@ -77,16 +122,212 @@ public class OrthographicViewport {
 		return clipDepth;
 	}
 
+	// --- Perspective mode API ---
+
+	public boolean isPerspectiveMode() {
+		return perspectiveMode;
+	}
+
+	public void setPerspectiveMode(boolean perspective) {
+		if (this.perspectiveMode == perspective) return;
+		this.perspectiveMode = perspective;
+		if (perspective) {
+			// Default: place camera behind and look toward +Z (toward caster at origin)
+			this.camPitch = 0;
+			this.camYaw = 0;
+			this.camX = 0;
+			this.camY = 2;
+			this.camZ = -15;
+		}
+	}
+
+	/**
+	 * Set camera position to the dummy target position when entering perspective.
+	 * Camera looks toward the caster (at origin).
+	 */
+	public void setCameraToTarget(Vec3 targetPos) {
+		this.camX = targetPos.x;
+		this.camY = targetPos.y + 1.6; // eye height
+		this.camZ = targetPos.z;
+		// Compute yaw to look toward origin (caster position)
+		double dx = -targetPos.x;
+		double dz = -targetPos.z;
+		this.camYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+		this.camPitch = 0;
+	}
+
+	public Vec3 getCameraPos() {
+		return new Vec3(camX, camY, camZ);
+	}
+
+	/** Free-look: mouse movement rotates camera (when captured) */
+	public void perspectiveLook(float dxPixels, float dyPixels) {
+		camYaw += dxPixels * LOOK_SENSITIVITY;
+		camPitch += dyPixels * LOOK_SENSITIVITY;
+		camPitch = Mth.clamp(camPitch, -89.9f, 89.9f);
+	}
+
+	public void setPerspectiveCaptured(boolean captured) {
+		this.perspectiveCaptured = captured;
+	}
+
+	public boolean isPerspectiveCaptured() {
+		return perspectiveCaptured;
+	}
+
+	public void setPerspectiveOrbiting(boolean orbiting) {
+		this.perspectiveOrbiting = orbiting;
+	}
+
+	public boolean isPerspectiveOrbiting() {
+		return perspectiveOrbiting;
+	}
+
+	public void setPerspectivePanning(boolean panning) {
+		this.perspectivePanning = panning;
+	}
+
+	public boolean isPerspectivePanning() {
+		return perspectivePanning;
+	}
+
+	/**
+	 * Right-drag orbit: rotate yaw/pitch around a fixed point in front of camera.
+	 * Camera orbits around a point at a fixed distance along the look direction.
+	 */
+	public void perspectiveOrbit(float dxPixels, float dyPixels) {
+		float orbitDist = 10f; // distance to orbit center
+		// Compute orbit center in world space
+		float yawRad = (float) Math.toRadians(camYaw);
+		float pitchRad = (float) Math.toRadians(camPitch);
+		// Look direction (from perspectiveMove derivation)
+		double lx = -Math.sin(yawRad) * Math.cos(pitchRad);
+		double ly = -Math.sin(pitchRad);
+		double lz = Math.cos(yawRad) * Math.cos(pitchRad);
+		double cx = camX + lx * orbitDist;
+		double cy = camY + ly * orbitDist;
+		double cz = camZ + lz * orbitDist;
+
+		// Rotate angles
+		camYaw += dxPixels * LOOK_SENSITIVITY;
+		camPitch += dyPixels * LOOK_SENSITIVITY;
+		camPitch = Mth.clamp(camPitch, -89.9f, 89.9f);
+
+		// Recompute camera position to maintain orbit center
+		float newYawRad = (float) Math.toRadians(camYaw);
+		float newPitchRad = (float) Math.toRadians(camPitch);
+		double nlx = -Math.sin(newYawRad) * Math.cos(newPitchRad);
+		double nly = -Math.sin(newPitchRad);
+		double nlz = Math.cos(newYawRad) * Math.cos(newPitchRad);
+		camX = cx - nlx * orbitDist;
+		camY = cy - nly * orbitDist;
+		camZ = cz - nlz * orbitDist;
+	}
+
+	/**
+	 * Middle-drag pan: move camera on the view plane (perpendicular to look direction).
+	 */
+	public void perspectivePan(float dxPixels, float dyPixels) {
+		float yawRad = (float) Math.toRadians(camYaw);
+		float pitchRad = (float) Math.toRadians(camPitch);
+
+		// Right direction in world (view +X): from inverse view matrix
+		// R^(-1) col0 with y = camYaw+180: (-cos(camYaw), 0, -sin(camYaw))
+		double rx = -Math.cos(yawRad);
+		double rz = -Math.sin(yawRad);
+
+		// Up direction in world (view +Y): from inverse view matrix
+		float sinX = (float) Math.sin(pitchRad), cosX = (float) Math.cos(pitchRad);
+		float sinY = (float) Math.sin(Math.toRadians(camYaw + 180));
+		float cosY = (float) Math.cos(Math.toRadians(camYaw + 180));
+		double ux = sinY * sinX;
+		double uy = cosX;
+		double uz = -cosY * sinX;
+
+		float sensitivity = moveSpeed * 0.05f;
+		double ddx = dxPixels * sensitivity;
+		double ddy = -dyPixels * sensitivity; // screen Y inverted
+
+		camX += rx * ddx + ux * ddy;
+		camY += uy * ddy;
+		camZ += rz * ddx + uz * ddy;
+	}
+
+	/** Adjust fly speed with scroll wheel. */
+	public void perspectiveAdjustSpeed(float delta) {
+		float factor = delta > 0 ? 1.2f : 1.0f / 1.2f;
+		moveSpeed = Math.max(MIN_MOVE_SPEED, Math.min(MAX_MOVE_SPEED, moveSpeed * factor));
+	}
+
+	public float getMoveSpeed() {
+		return moveSpeed;
+	}
+
+	public boolean isTargetBoundToCamera() {
+		return targetBoundToCamera;
+	}
+
+	public void setTargetBoundToCamera(boolean bound) {
+		this.targetBoundToCamera = bound;
+	}
+
+	public boolean isShowCasterMarker() { return showCasterMarker; }
+	public void setShowCasterMarker(boolean show) { this.showCasterMarker = show; }
+	public boolean isShowTargetMarker() { return showTargetMarker; }
+	public void setShowTargetMarker(boolean show) { this.showTargetMarker = show; }
+
+	/**
+	 * Move the camera in perspective mode using WASD/Space/Shift keys.
+	 * Called each tick from the screen.
+	 *
+	 * Rendering applies R_x(camPitch) * R_y(camYaw+180).
+	 * The camera look direction (view -Z) in world space is:
+	 *   forward = (-sin(camYaw)*cos(camPitch), -sin(camPitch), cos(camYaw)*cos(camPitch))
+	 * The camera right direction (view +X) in world space is:
+	 *   right = (-cos(camYaw), 0, -sin(camYaw))
+	 * For horizontal WASD movement we ignore pitch in forward.
+	 */
+	public void perspectiveMove(boolean forward, boolean backward, boolean left, boolean right,
+								boolean up, boolean down) {
+		if (!perspectiveMode) return;
+		float yawRad = (float) Math.toRadians(camYaw);
+
+		// Forward direction (horizontal, where camera looks)
+		double fx = -Math.sin(yawRad);
+		double fz = Math.cos(yawRad);
+
+		// Right direction (perpendicular to forward)
+		double rx = -Math.cos(yawRad);
+		double rz = -Math.sin(yawRad);
+
+		double dx = 0, dy = 0, dz = 0;
+		if (forward) { dx += fx; dz += fz; }
+		if (backward) { dx -= fx; dz -= fz; }
+		if (left) { dx -= rx; dz -= rz; }
+		if (right) { dx += rx; dz += rz; }
+		if (up) { dy += 1; }
+		if (down) { dy -= 1; }
+
+		// Normalize horizontal movement
+		double hlen = Math.sqrt(dx * dx + dz * dz);
+		if (hlen > 1e-4) { dx /= hlen; dz /= hlen; }
+
+		camX += dx * moveSpeed;
+		camY += dy * moveSpeed;
+		camZ += dz * moveSpeed;
+	}
+
 	/**
 	 * Rotate the view freely by mouse drag delta (in screen pixels).
 	 * This exits preset mode and enters free orbit mode.
 	 */
 	public void rotate(float dxPixels, float dyPixels) {
 		if (presetAngle != null) {
-			// Initialize free rotation from current preset
-			freeXRot = presetAngle.getXRot();
-			freeYRot = presetAngle.getYRot();
+			// Initialize free rotation from current preset (respecting flip)
+			freeXRot = currentXRot();
+			freeYRot = currentYRot();
 			presetAngle = null;
+			presetFlipped = false;
 		}
 		float sensitivity = 0.5f;
 		freeYRot += dxPixels * sensitivity;
@@ -95,7 +336,13 @@ public class OrthographicViewport {
 	}
 
 	public String getViewLabel() {
-		if (presetAngle != null) return presetAngle.getLabel();
+		if (perspectiveMode) {
+			String bind = targetBoundToCamera ? " [Bind]" : "";
+			return String.format("Persp (%.1f, %.1f, %.1f) Spd:%.2f%s", camX, camY, camZ, moveSpeed, bind);
+		}
+		if (presetAngle != null) {
+			return presetFlipped ? presetAngle.getLabel() + " (Back)" : presetAngle.getLabel();
+		}
 		return String.format("Free (%.0f, %.0f)", freeXRot, freeYRot);
 	}
 
@@ -110,16 +357,30 @@ public class OrthographicViewport {
 	}
 
 	private float currentXRot() {
-		return presetAngle != null ? presetAngle.getXRot() : freeXRot;
+		if (presetAngle != null) {
+			return presetFlipped ? -presetAngle.getXRot() : presetAngle.getXRot();
+		}
+		return freeXRot;
 	}
 
 	private float currentYRot() {
-		return presetAngle != null ? presetAngle.getYRot() : freeYRot;
+		if (presetAngle != null) {
+			return presetFlipped ? presetAngle.getYRot() + 180 : presetAngle.getYRot();
+		}
+		return freeYRot;
 	}
 
 	public void render(GuiGraphics guiGraphics, VirtualSpellScene scene, float partialTick) {
 		if (width <= 0 || height <= 0) return;
 
+		if (perspectiveMode) {
+			renderPerspective(guiGraphics, scene, partialTick);
+		} else {
+			renderOrthographic(guiGraphics, scene, partialTick);
+		}
+	}
+
+	private void renderOrthographic(GuiGraphics guiGraphics, VirtualSpellScene scene, float partialTick) {
 		Minecraft mc = Minecraft.getInstance();
 		EntityRenderDispatcher dispatcher = mc.getEntityRenderDispatcher();
 		MultiBufferSource.BufferSource buffer = mc.renderBuffers().bufferSource();
@@ -182,6 +443,108 @@ public class OrthographicViewport {
 
 		poseStack.popPose();
 		guiGraphics.disableScissor();
+	}
+
+	/**
+	 * Render in perspective (FPS-style) mode.
+	 * Uses glViewport to map the perspective projection to the viewport sub-area,
+	 * clears depth in that region, then renders with a proper view matrix.
+	 */
+	private void renderPerspective(GuiGraphics guiGraphics, VirtualSpellScene scene, float partialTick) {
+		Minecraft mc = Minecraft.getInstance();
+		EntityRenderDispatcher dispatcher = mc.getEntityRenderDispatcher();
+		MultiBufferSource.BufferSource buffer = mc.renderBuffers().bufferSource();
+		var window = mc.getWindow();
+
+		// 1. Draw dark background using GUI pipeline first
+		guiGraphics.fill(x, y, x + width, y + height, 0xFF1a1a2e);
+
+		// 2. Flush all pending GUI draw calls before switching projection
+		buffer.endBatch();
+
+		// 3. Save current state
+		Matrix4f savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+
+		// 4. Set glViewport to the viewport sub-area (in framebuffer pixels)
+		double guiScale = window.getGuiScale();
+		int fbX = (int) (x * guiScale);
+		int fbY = (int) ((window.getGuiScaledHeight() - y - height) * guiScale); // flip Y
+		int fbW = (int) (width * guiScale);
+		int fbH = (int) (height * guiScale);
+		com.mojang.blaze3d.platform.GlStateManager._viewport(fbX, fbY, fbW, fbH);
+
+		// 5. Clear depth buffer in this region so 3D content isn't occluded by GUI
+		org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+		org.lwjgl.opengl.GL11.glScissor(fbX, fbY, fbW, fbH);
+		org.lwjgl.opengl.GL11.glClear(org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT);
+		org.lwjgl.opengl.GL11.glDisable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+
+		// 6. Set perspective projection
+		float aspect = (float) width / height;
+		float near = 0.05f;
+		float far = clipDepth * 4;
+		Matrix4f perspMatrix = new Matrix4f().perspective(
+				(float) Math.toRadians(PERSP_FOV), aspect, near, far);
+		RenderSystem.setProjectionMatrix(perspMatrix, com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z);
+
+		// 7. Set RenderSystem modelview to identity (we bake the view transform into vertices)
+		RenderSystem.getModelViewStack().pushPose();
+		RenderSystem.getModelViewStack().setIdentity();
+		RenderSystem.applyModelViewMatrix();
+
+		// 8. Build view matrix on a fresh PoseStack (not the GUI one)
+		PoseStack poseStack = new PoseStack();
+
+		// Camera rotation: pitch then yaw
+		poseStack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(camPitch));
+		poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(camYaw + 180));
+
+		// Translate world so camera is at origin
+		poseStack.translate(-camX, -camY, -camZ);
+
+		// 9. Camera orientation for billboard rendering
+		ProjectileRenderHelper.cameraOrientationOverride = new org.joml.Quaternionf()
+				.rotationYXZ(
+						(float) Math.toRadians(-camYaw - 180),
+						(float) Math.toRadians(camPitch),
+						0);
+
+		// 10. Enable depth testing
+		RenderSystem.enableDepthTest();
+		RenderSystem.depthMask(true);
+
+		// 11. Render grid and axes
+		renderGrid(poseStack);
+		renderAxes(poseStack);
+
+		// 12. Render markers
+		renderMarkers(poseStack, scene);
+
+		// 13. Render all entities
+		dispatcher.setRenderShadow(false);
+
+		for (Entity entity : scene.getHolder().getLocalEntities()) {
+			renderEntity(dispatcher, entity, poseStack, buffer, partialTick);
+		}
+
+		// 14. Flush
+		ProjectileRenderHelper.flushPreviewQueue(buffer);
+		buffer.endBatch();
+
+		// 15. Cleanup
+		dispatcher.setRenderShadow(true);
+		ProjectileRenderHelper.cameraOrientationOverride = null;
+
+		// 16. Restore modelview stack
+		RenderSystem.getModelViewStack().popPose();
+		RenderSystem.applyModelViewMatrix();
+
+		// 17. Restore glViewport to full window
+		com.mojang.blaze3d.platform.GlStateManager._viewport(0, 0,
+				window.getWidth(), window.getHeight());
+
+		// 18. Restore GUI projection
+		RenderSystem.setProjectionMatrix(savedProjection, com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -260,6 +623,8 @@ public class OrthographicViewport {
 	}
 
 	private void renderMarkers(PoseStack poseStack, VirtualSpellScene scene) {
+		if (!showCasterMarker && !showTargetMarker) return;
+
 		var tesselator = Tesselator.getInstance();
 		var builder = tesselator.getBuilder();
 		Matrix4f mat = poseStack.last().pose();
@@ -269,38 +634,50 @@ public class OrthographicViewport {
 
 		builder.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
 
-		// Caster marker - white cross (small)
-		Vec3 cp = scene.getHolder().getFakeCaster().position();
-		float cx = (float) cp.x, cy = (float) cp.y, cz = (float) cp.z;
-		float s = 0.5f;
-		drawCross3D(builder, mat, cx, cy, cz, s, 1f, 1f, 1f, 1f);
+		// Caster marker - red cross + diamond
+		if (showCasterMarker) {
+			Vec3 cp = scene.getHolder().getFakeCaster().position();
+			float cx = (float) cp.x, cy = (float) cp.y, cz = (float) cp.z;
+			float cs = 0.8f;
+			drawCross3D(builder, mat, cx, cy, cz, cs, 1f, 0.3f, 0.3f, 1f);
+			drawDiamond(builder, mat, cx, cy, cz, cs, 1f, 0.2f, 0.2f, 1f);
+		}
 
-		// Target marker - yellow, larger, with diamond outline for visibility
-		Vec3 tp = scene.getHolder().getFakeTarget().position();
-		float tx = (float) tp.x, ty = (float) tp.y, tz = (float) tp.z;
-		float ts = 1.0f;
-		drawCross3D(builder, mat, tx, ty, tz, ts, 1f, 1f, 0.2f, 1f);
-		// Diamond outline in XY plane
-		builder.vertex(mat, tx, ty + ts, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx + ts, ty, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx + ts, ty, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx, ty - ts, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx, ty - ts, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx - ts, ty, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx - ts, ty, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx, ty + ts, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		// Diamond in XZ plane
-		builder.vertex(mat, tx, ty, tz + ts).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx + ts, ty, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx + ts, ty, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx, ty, tz - ts).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx, ty, tz - ts).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx - ts, ty, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx - ts, ty, tz).color(1f, 0.8f, 0f, 1f).endVertex();
-		builder.vertex(mat, tx, ty, tz + ts).color(1f, 0.8f, 0f, 1f).endVertex();
+		// Target marker - yellow cross + diamond
+		if (showTargetMarker) {
+			Vec3 tp = scene.getHolder().getFakeTarget().position();
+			float tx = (float) tp.x, ty = (float) tp.y, tz = (float) tp.z;
+			float ts = 1.0f;
+			drawCross3D(builder, mat, tx, ty, tz, ts, 1f, 1f, 0.2f, 1f);
+			drawDiamond(builder, mat, tx, ty, tz, ts, 1f, 0.8f, 0f, 1f);
+		}
 
 		tesselator.end();
 		RenderSystem.lineWidth(1.0f);
+	}
+
+	/** Draw a diamond outline in both XY and XZ planes. */
+	private static void drawDiamond(BufferBuilder builder, Matrix4f mat,
+									float x, float y, float z, float s,
+									float r, float g, float b, float a) {
+		// Diamond in XY plane
+		builder.vertex(mat, x, y + s, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x + s, y, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x + s, y, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x, y - s, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x, y - s, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x - s, y, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x - s, y, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x, y + s, z).color(r, g, b, a).endVertex();
+		// Diamond in XZ plane
+		builder.vertex(mat, x, y, z + s).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x + s, y, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x + s, y, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x, y, z - s).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x, y, z - s).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x - s, y, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x - s, y, z).color(r, g, b, a).endVertex();
+		builder.vertex(mat, x, y, z + s).color(r, g, b, a).endVertex();
 	}
 
 	private static void drawCross3D(BufferBuilder builder, Matrix4f mat,
@@ -317,6 +694,11 @@ public class OrthographicViewport {
 	/**
 	 * Convert a screen-space drag delta (pixels) into a world-space delta vector.
 	 * Used for moving the target by dragging in the viewport.
+	 *
+	 * The rendering pipeline transforms world→view as: R = R_x(xRot) * R_y(yRot).
+	 * The inverse R^(-1) = R_y(-yRot) * R_x(-xRot) maps view axes back to world:
+	 *   view +X (screen right) → world (cos(y), 0, sin(y))
+	 *   view +Y (screen up)    → world (sin(y)*sin(x), cos(x), -cos(y)*sin(x))
 	 */
 	public Vec3 screenDeltaToWorldDelta(float dxPixels, float dyPixels) {
 		float xRot = currentXRot();
@@ -324,18 +706,17 @@ public class OrthographicViewport {
 		float xRad = (float) Math.toRadians(xRot);
 		float yRad = (float) Math.toRadians(yRot);
 
-		// View plane right vector in world space
-		float rx = -(float) Math.cos(yRad);
-		float ry = 0;
-		float rz = (float) Math.sin(yRad);
+		float cosX = (float) Math.cos(xRad), sinX = (float) Math.sin(xRad);
+		float cosY = (float) Math.cos(yRad), sinY = (float) Math.sin(yRad);
 
-		// View plane up vector in world space (accounts for pitch)
-		float ux = (float) (Math.sin(xRad) * Math.sin(yRad));
-		float uy = (float) Math.cos(xRad);
-		float uz = (float) (Math.sin(xRad) * Math.cos(yRad));
+		// View +X (screen right) in world space
+		float rx = cosY, ry = 0, rz = sinY;
+
+		// View +Y (screen up) in world space
+		float ux = sinY * sinX, uy = cosX, uz = -cosY * sinX;
 
 		float dx = dxPixels / zoom;
-		float dy = -dyPixels / zoom; // screen Y inverted
+		float dy = -dyPixels / zoom; // screen Y inverted (screen down = positive dyPixels)
 
 		return new Vec3(
 				rx * dx + ux * dy,

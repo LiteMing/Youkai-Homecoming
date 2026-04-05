@@ -42,13 +42,19 @@ public class ActionEditorPanel {
 			"tick_interval", "health_below", "health_above", "tick_elapsed",
 			"distance_above", "distance_below", "hit_count",
 			"target_on_ground", "target_speed", "random_chance",
-			"always", "and"
+			"target_health_below", "target_health_above",
+			"target_is_flying", "target_is_fallflying",
+			"dynamic_tick_interval", "entity_trait", "compare_numbers", "variable_check",
+			"always", "not", "and"
 	};
 
 	private static final String[] SIMPLE_CONDITION_TYPES = {
 			"tick_interval", "health_below", "health_above", "tick_elapsed",
 			"distance_above", "distance_below", "hit_count",
 			"target_on_ground", "target_speed", "random_chance",
+			"target_health_below", "target_health_above",
+			"target_is_flying", "target_is_fallflying",
+			"dynamic_tick_interval", "entity_trait", "compare_numbers", "variable_check",
 			"always"
 	};
 
@@ -166,6 +172,8 @@ public class ActionEditorPanel {
 			buildSpawnShooterRows(ssa);
 		} else if (action instanceof BurstAction ba) {
 			buildBurstRows(ba);
+		} else if (action instanceof SpellActions.SequenceAction sa) {
+			buildSequenceRows(sa);
 		}
 	}
 
@@ -180,6 +188,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Burst", () -> selectType("burst"));
 		addFullWidthButton("Set Variable", () -> selectType("set_variable"));
 		addFullWidthButton("Add Variable", () -> selectType("add_variable"));
+		addFullWidthButton("Sequence", () -> selectType("sequence"));
 		addFullWidthButton("Clear Screen", () -> selectType("clear_screen"));
 		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
@@ -227,8 +236,9 @@ public class ActionEditorPanel {
 					OriginConfig.caster(),
 					NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
 					Optional.empty(), new ArrayList<>());
-			case "burst" -> new BurstAction(3, 5, new ArrayList<>());
-			default -> new SpellActions.NoopAction();
+		case "burst" -> new BurstAction(3, 5, new ArrayList<>());
+		case "sequence" -> new SpellActions.SequenceAction(new ArrayList<>());
+		default -> new SpellActions.NoopAction();
 		};
 	}
 
@@ -269,11 +279,11 @@ public class ActionEditorPanel {
 		addEnumRow("Pattern", PatternType.values(), a.pattern(), v ->
 				notifyDanmaku(old -> old.withPattern(v)));
 
-		// NESTED_RING, GRID, SPHERE: show outerCount
-		if (a.pattern() == PatternType.NESTED_RING || a.pattern() == PatternType.GRID || a.pattern() == PatternType.SPHERE) {
+		// NESTED_RING, GRID: show outerCount row
+		// SPHERE/SPHERE_RANDOM use count as total — no outerCount needed
+		if (a.pattern() == PatternType.NESTED_RING || a.pattern() == PatternType.GRID) {
 			String label = switch (a.pattern()) {
 				case GRID -> "Cols";
-				case SPHERE -> "Longitude";
 				default -> "Outer Cnt";
 			};
 			NumberProvider outerProv = a.outerCount().orElse(NumberProvider.constant(1));
@@ -309,8 +319,14 @@ public class ActionEditorPanel {
 					notifyDanmaku(old -> old.withTrailInterval(v), false));
 		}
 
-		// Tilt angle: tilts the orientation plane for the pattern
-		if (a.tiltAngle().isPresent()) {
+		// Tilt angle: for NESTED_RING controls inner ring axis (0°=vertical, 90°=perpendicular);
+		// for other patterns tilts the entire orientation plane.
+		// NESTED_RING always shows tilt (default 0°); other patterns show add/remove toggle.
+		if (a.pattern() == PatternType.NESTED_RING) {
+			NumberProvider tiltProv = a.tiltAngle().orElse(NumberProvider.constant(0));
+			addNumberRow("Axis Tilt", tiltProv, v ->
+					notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
+		} else if (a.tiltAngle().isPresent()) {
 			addNumberRow("Tilt Angle", a.tiltAngle().get(), v ->
 					notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
 			addFullWidthButton("[Remove Tilt]", () ->
@@ -338,6 +354,9 @@ public class ActionEditorPanel {
 
 		addNumberRow("Angle", a.angleOffset(), v ->
 				notifyLaser(old -> old.withAngleOffset(v), false));
+
+		addNumberRow("Elevation", a.elevation(), v ->
+				notifyLaser(old -> old.withElevation(v), false));
 
 		// AimMode dropdown
 		String currentAim = getAimModeType(a.aimMode());
@@ -368,6 +387,23 @@ public class ActionEditorPanel {
 		buildMoverRows(a.mover(),
 				newMover -> notifyLaser(old -> old.withMover(newMover)),
 				newMover -> notifyLaser(old -> old.withMover(newMover), false));
+
+		// Delayed mover fields
+		if (a.delayedV0().isPresent()) {
+			addDoubleRow("Delayed V0", a.delayedV0().get(), v ->
+					notifyLaser(old -> old.withDelayedV0(Optional.of(v)), false));
+		}
+		if (a.delayedV1().isPresent()) {
+			addDoubleRow("Delayed V1", a.delayedV1().get(), v ->
+					notifyLaser(old -> old.withDelayedV1(Optional.of(v)), false));
+		}
+		if (a.delayedV0().isEmpty() && a.delayedV1().isEmpty()) {
+			addFullWidthButton("[+ Delayed Mover]", () -> notifyLaser(old ->
+					old.withDelayedV0(Optional.of(0.1)).withDelayedV1(Optional.of(0.5))));
+		} else {
+			addFullWidthButton("[- Remove Delayed]", () -> notifyLaser(old ->
+					old.withDelayedV0(Optional.empty()).withDelayedV1(Optional.empty())));
+		}
 	}
 
 	// --- Conditional rows ---
@@ -474,6 +510,44 @@ public class ActionEditorPanel {
 		} else if (cond instanceof SpellConditions.RandomChance rc) {
 			addFloatRow(prefix + "Probability", rc.probability(), v ->
 					onChanged.accept(new SpellConditions.RandomChance(v)));
+		} else if (cond instanceof SpellConditions.TargetHealthBelow thb) {
+			addFloatRow(prefix + "Threshold", thb.threshold(), v ->
+					onChanged.accept(new SpellConditions.TargetHealthBelow(v)));
+		} else if (cond instanceof SpellConditions.TargetHealthAbove tha) {
+			addFloatRow(prefix + "Threshold", tha.threshold(), v ->
+					onChanged.accept(new SpellConditions.TargetHealthAbove(v)));
+		} else if (cond instanceof SpellConditions.TargetIsFlying) {
+			// No parameters
+		} else if (cond instanceof SpellConditions.TargetIsFallFlying) {
+			// No parameters
+		} else if (cond instanceof SpellConditions.DynamicTickInterval dti) {
+			addNumberRow(prefix + "Period", dti.period(), v ->
+					onChanged.accept(new SpellConditions.DynamicTickInterval(v, dti.offset())));
+			addNumberRow(prefix + "Offset", dti.offset(), v ->
+					onChanged.accept(new SpellConditions.DynamicTickInterval(dti.period(), v)));
+		} else if (cond instanceof SpellConditions.EntityTrait et) {
+			addStringRow(prefix + "Trait", et.trait(), v ->
+					onChanged.accept(new SpellConditions.EntityTrait(v)));
+		} else if (cond instanceof SpellConditions.CompareNumbers cn) {
+			addNumberRow(prefix + "Left", cn.left(), v ->
+					onChanged.accept(new SpellConditions.CompareNumbers(v, cn.op(), cn.right())));
+			addStringCycleRow(prefix + "Op", new String[]{"<", ">", "==", "!=", "<=", ">="}, cn.op(), v ->
+					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), v, cn.right())));
+			addNumberRow(prefix + "Right", cn.right(), v ->
+					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), cn.op(), v)));
+		} else if (cond instanceof SpellConditions.VariableCheck vc) {
+			addStringRow(prefix + "Key", vc.key(), v ->
+					onChanged.accept(new SpellConditions.VariableCheck(v, vc.op(), vc.value())));
+			addStringCycleRow(prefix + "Op", new String[]{"==", "!=", "<", ">", "<=", ">="}, vc.op(), v ->
+					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value())));
+			addDoubleRow(prefix + "Value", vc.value(), v ->
+					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), vc.op(), v)));
+		} else if (cond instanceof SpellConditions.NotCondition nc) {
+			// Show inner condition type and params
+			addStringCycleRow(prefix + "Inner", SIMPLE_CONDITION_TYPES, getConditionType(nc.condition()), newType ->
+					onChanged.accept(new SpellConditions.NotCondition(createDefaultCondition(newType))));
+			buildConditionParamRows(prefix + "!", nc.condition(), inner ->
+					onChanged.accept(new SpellConditions.NotCondition(inner)));
 		}
 	}
 
@@ -536,7 +610,7 @@ public class ActionEditorPanel {
 	// --- Delay rows ---
 
 	private void buildDelayRows(DelayAction da) {
-		addIntRow("Delay Ticks", da.delayTicks(), v ->
+		addNumberRow("Delay Ticks", da.delayTicks(), v ->
 				notifySimple(old -> {
 					var d = (DelayAction) old;
 					return new DelayAction(v, d.body());
@@ -575,6 +649,12 @@ public class ActionEditorPanel {
 					var b = (BurstAction) old;
 					return new BurstAction(b.waves(), b.interval(), v, b.body());
 				}));
+	}
+
+	// --- Sequence rows ---
+
+	private void buildSequenceRows(SpellActions.SequenceAction sa) {
+		addIntRow("Actions", sa.actions().size(), v -> {}); // read-only count display
 	}
 
 	// --- SpawnShooter rows ---
@@ -621,7 +701,7 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "rotate", "polar", "zero"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "rotate", "polar", "zero", "bezier"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -728,6 +808,87 @@ public class ActionEditorPanel {
 								p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel())));
 					}
 				});
+			} else if (cfg instanceof MoverConfigs.BezierMoverConfig bez) {
+				addDoubleRow("CP1 Fwd", bez.cp1Forward(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								v, b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(),
+								b.endForward(), b.endRight(), b.endUp(), b.duration())));
+					}
+				});
+				addDoubleRow("CP1 Right", bez.cp1Right(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								b.cp1Forward(), v, b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(),
+								b.endForward(), b.endRight(), b.endUp(), b.duration())));
+					}
+				});
+				addDoubleRow("CP1 Up", bez.cp1Up(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								b.cp1Forward(), b.cp1Right(), v, b.cp2Forward(), b.cp2Right(), b.cp2Up(),
+								b.endForward(), b.endRight(), b.endUp(), b.duration())));
+					}
+				});
+				addDoubleRow("CP2 Fwd", bez.cp2Forward(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								b.cp1Forward(), b.cp1Right(), b.cp1Up(), v, b.cp2Right(), b.cp2Up(),
+								b.endForward(), b.endRight(), b.endUp(), b.duration())));
+					}
+				});
+				addDoubleRow("CP2 Right", bez.cp2Right(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), v, b.cp2Up(),
+								b.endForward(), b.endRight(), b.endUp(), b.duration())));
+					}
+				});
+				addDoubleRow("CP2 Up", bez.cp2Up(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), v,
+								b.endForward(), b.endRight(), b.endUp(), b.duration())));
+					}
+				});
+				addDoubleRow("End Fwd", bez.endForward(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(),
+								v, b.endRight(), b.endUp(), b.duration())));
+					}
+				});
+				addDoubleRow("End Right", bez.endRight(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(),
+								b.endForward(), v, b.endUp(), b.duration())));
+					}
+				});
+				addDoubleRow("End Up", bez.endUp(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(),
+								b.endForward(), b.endRight(), v, b.duration())));
+					}
+				});
+				addIntRow("Duration", bez.duration(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
+								b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(),
+								b.endForward(), b.endRight(), b.endUp(), v)));
+					}
+				});
 			}
 		}
 	}
@@ -739,6 +900,7 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.RotateConfig) return "rotate";
 		if (cfg instanceof MoverConfigs.PolarMoverConfig) return "polar";
 		if (cfg instanceof MoverConfigs.ZeroMoverConfig) return "zero";
+		if (cfg instanceof MoverConfigs.BezierMoverConfig) return "bezier";
 		return "none";
 	}
 
@@ -748,6 +910,7 @@ public class ActionEditorPanel {
 			case "rotate" -> Optional.of(new MoverConfigs.RotateConfig(5.0));
 			case "polar" -> Optional.of(new MoverConfigs.PolarMoverConfig(5.0, 0, 0, 0, 10.0, 0));
 			case "zero" -> Optional.of(new MoverConfigs.ZeroMoverConfig());
+			case "bezier" -> Optional.of(new MoverConfigs.BezierMoverConfig(5, 3, 0, 10, -3, 0, 15, 0, 0, 40));
 			default -> Optional.empty();
 		};
 	}
@@ -1279,6 +1442,11 @@ public class ActionEditorPanel {
 	// --- Layout ---
 
 	private void layoutWidgets() {
+		// Clamp scrollOffset after rebuild: content may have shrunk
+		int maxScroll = getContentMaxScroll();
+		if (scrollOffset > maxScroll) {
+			scrollOffset = maxScroll;
+		}
 		for (int i = 0; i < rows.size(); i++) {
 			int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
 			var row = rows.get(i);
@@ -1321,6 +1489,7 @@ public class ActionEditorPanel {
 				int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
 				rows.get(i).widget().visible = rowY >= y && rowY + ROW_HEIGHT <= y + h;
 			}
+			renderScrollbar(guiGraphics);
 			if (renderDropdown && dropdown != null) {
 				this.renderDropdown(guiGraphics, mouseX, mouseY);
 			}
@@ -1371,10 +1540,28 @@ public class ActionEditorPanel {
 			}
 		}
 
+		// Scrollbar for content area
+		renderScrollbar(guiGraphics);
+
 		// Dropdown overlay (rendered last, on top of everything)
 		if (renderDropdown && dropdown != null) {
 			doRenderDropdown(guiGraphics, mouseX, mouseY);
 		}
+	}
+
+	private void renderScrollbar(GuiGraphics g) {
+		int maxScroll = getContentMaxScroll();
+		if (maxScroll <= 0) return;
+		int sbW = 4;
+		int sbX = x + w - sbW;
+		// Track
+		g.fill(sbX, y, sbX + sbW, y + h, 0x33FFFFFF);
+		// Thumb
+		int trackH = h - 2;
+		int contentH = maxScroll + h;
+		int thumbH = Math.max(10, trackH * h / contentH);
+		int thumbY = y + 1 + (int) ((long) (trackH - thumbH) * scrollOffset / maxScroll);
+		g.fill(sbX + 1, thumbY, sbX + sbW - 1, thumbY + thumbH, 0x88AAAACC);
 	}
 
 	/**
@@ -1516,6 +1703,10 @@ public class ActionEditorPanel {
 		return false;
 	}
 
+	private int getContentMaxScroll() {
+		return Math.max(0, (rows.size() + 1) * ROW_HEIGHT - h);
+	}
+
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
 		if (dropdown != null) {
 			String[] options = dropdown.options();
@@ -1528,8 +1719,10 @@ public class ActionEditorPanel {
 			return true;
 		}
 		if (isMouseOver(mouseX, mouseY)) {
-			int maxScroll = Math.max(0, (rows.size() + 1) * ROW_HEIGHT - h);
-			scrollOffset = (int) Math.max(0, Math.min(maxScroll, scrollOffset - delta * ROW_HEIGHT));
+			int maxScroll = getContentMaxScroll();
+			// Smooth scroll: 8px per notch (matching ActionListPanel feel)
+			int step = 8;
+			scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int) (delta * step)));
 			layoutWidgets();
 			return true;
 		}
@@ -1635,6 +1828,17 @@ public class ActionEditorPanel {
 			case "target_on_ground" -> new SpellConditions.TargetOnGround();
 			case "target_speed" -> new SpellConditions.TargetSpeed(0.1, ">");
 			case "random_chance" -> new SpellConditions.RandomChance(0.5f);
+			case "target_health_below" -> new SpellConditions.TargetHealthBelow(0.5f);
+			case "target_health_above" -> new SpellConditions.TargetHealthAbove(0.5f);
+			case "target_is_flying" -> new SpellConditions.TargetIsFlying();
+			case "target_is_fallflying" -> new SpellConditions.TargetIsFallFlying();
+			case "dynamic_tick_interval" -> new SpellConditions.DynamicTickInterval(
+					NumberProvider.constant(60), NumberProvider.constant(0));
+			case "entity_trait" -> new SpellConditions.EntityTrait("is_lunatic");
+			case "compare_numbers" -> new SpellConditions.CompareNumbers(
+					new NumberProviders.Variable("var"), "<", NumberProvider.constant(10));
+			case "variable_check" -> new SpellConditions.VariableCheck("kind", "==", 0);
+			case "not" -> new SpellConditions.NotCondition(new SpellConditions.AlwaysCondition(true));
 			case "and" -> new SpellConditions.AndCondition(List.of(
 					new SpellConditions.TickInterval(20, 0),
 					new SpellConditions.AlwaysCondition(true)));

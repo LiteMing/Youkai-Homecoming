@@ -39,13 +39,19 @@ public class PreviewCardHolder implements CardHolder {
 	private boolean ticking = false;
 	private final RandomSource random = RandomSource.create();
 
+	// Simulated target properties for preview
+	private boolean targetOnGround = true;
+	private float targetHealthRatio = 1.0f;
+	private boolean targetFlying = false;
+	private boolean targetFallFlying = false;
+
 	public PreviewCardHolder(Level level) {
 		this.level = level;
 		this.fakeCaster = new FakeCasterEntity(level, this);
 		this.fakeCaster.setPos(0, 0, 0);
 		this.fakeCaster.setInvisible(true);
 		this.fakeTarget = new ArmorStand(EntityType.ARMOR_STAND, level);
-		this.fakeTarget.setPos(0, 0, 10);
+		this.fakeTarget.setPos(0, 0, -10);
 		this.fakeTarget.setInvisible(true);
 	}
 
@@ -256,6 +262,20 @@ public class PreviewCardHolder implements CardHolder {
 	public ArmorStand getFakeTarget() {
 		return fakeTarget;
 	}
+
+	// --- Target property simulation ---
+
+	public void setTargetOnGround(boolean onGround) { this.targetOnGround = onGround; }
+	public boolean isTargetOnGround() { return targetOnGround; }
+
+	public void setTargetHealthRatio(float ratio) { this.targetHealthRatio = ratio; }
+	public float getTargetHealthRatio() { return targetHealthRatio; }
+
+	public void setTargetFlying(boolean flying) { this.targetFlying = flying; }
+	public boolean isTargetFlying() { return targetFlying; }
+
+	public void setTargetFallFlying(boolean fallFlying) { this.targetFallFlying = fallFlying; }
+	public boolean isTargetFallFlying() { return targetFallFlying; }
 
 	/**
 	 * A fake caster entity that implements CardHolder, so that danmaku

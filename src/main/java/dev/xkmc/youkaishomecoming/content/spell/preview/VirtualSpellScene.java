@@ -124,6 +124,24 @@ public class VirtualSpellScene {
 		return holder.getTargetPos();
 	}
 
+	public void setTargetPos(Vec3 pos) {
+		holder.setTargetPos(pos);
+	}
+
+	// Target properties
+
+	public void setTargetOnGround(boolean v) { holder.setTargetOnGround(v); }
+	public boolean isTargetOnGround() { return holder.isTargetOnGround(); }
+
+	public void setTargetHealthRatio(float v) { holder.setTargetHealthRatio(v); }
+	public float getTargetHealthRatio() { return holder.getTargetHealthRatio(); }
+
+	public void setTargetFlying(boolean v) { holder.setTargetFlying(v); }
+	public boolean isTargetFlying() { return holder.isTargetFlying(); }
+
+	public void setTargetFallFlying(boolean v) { holder.setTargetFallFlying(v); }
+	public boolean isTargetFallFlying() { return holder.isTargetFallFlying(); }
+
 	// Health ratio
 
 	public float getHealthRatio() {

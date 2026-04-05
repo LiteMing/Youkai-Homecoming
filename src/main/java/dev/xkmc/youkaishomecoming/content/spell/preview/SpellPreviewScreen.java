@@ -33,7 +33,7 @@ public class SpellPreviewScreen extends Screen {
 	private final OrthographicViewport viewport;
 
 	// Layout constants
-	private static final int CONTROL_HEIGHT = 98;
+	private static final int CONTROL_HEIGHT = 118;
 	private static final int TOP_BAR_HEIGHT = 20;
 	private static final int BUTTON_HEIGHT = 16;
 	private static final int BUTTON_SPACING = 2;
@@ -56,6 +56,7 @@ public class SpellPreviewScreen extends Screen {
 	private boolean rotating = false;
 	private boolean movingTarget = false;
 	private boolean autoReplay = true;
+	private double lastMouseX, lastMouseY; // for perspective captured mode delta tracking
 
 	/** Snapshot of the definition at the time the editor was opened (for custom spell reset). */
 	private final com.google.gson.JsonElement openSnapshot;
@@ -89,9 +90,31 @@ public class SpellPreviewScreen extends Screen {
 		int bw = 50;
 		for (ViewAngle angle : ViewAngle.values()) {
 			addRenderableWidget(Button.builder(Component.literal(angle.getLabel()), btn -> {
+				viewport.setPerspectiveMode(false);
 				viewport.setViewAngle(angle);
 			}).bounds(bx, by, bw, BUTTON_HEIGHT).build());
 			bx += bw + BUTTON_SPACING;
+		}
+		// Perspective / Orthographic toggle
+		String perspLabel = viewport.isPerspectiveMode() ? "Ortho" : "Persp";
+		addRenderableWidget(Button.builder(Component.literal(perspLabel), btn -> {
+			boolean newPersp = !viewport.isPerspectiveMode();
+			viewport.setPerspectiveMode(newPersp);
+			if (newPersp) {
+				// Set camera to dummy target position
+				viewport.setCameraToTarget(scene.getTargetPos());
+			}
+			rebuildScreen();
+		}).bounds(bx, by, 40, BUTTON_HEIGHT).build());
+		bx += 42;
+		// Bind target toggle (only in perspective mode)
+		if (viewport.isPerspectiveMode()) {
+			String bindLabel = viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt";
+			addRenderableWidget(Button.builder(Component.literal(bindLabel), btn -> {
+				viewport.setTargetBoundToCamera(!viewport.isTargetBoundToCamera());
+				rebuildScreen();
+			}).bounds(bx, by, 48, BUTTON_HEIGHT).build());
+			bx += 50;
 		}
 		// Toggle editor button
 		bx += 10;
@@ -122,6 +145,24 @@ public class SpellPreviewScreen extends Screen {
 		addRenderableWidget(Button.builder(Component.literal("Help"), btn -> {
 			showHelp = !showHelp;
 		}).bounds(bx, by, 32, BUTTON_HEIGHT).build());
+		bx += 34;
+		// Collapse All / Expand All
+		addRenderableWidget(Button.builder(Component.literal("\u25B6All"), btn -> {
+			if (actionListPanel != null) actionListPanel.collapseAll();
+		}).bounds(bx, by, 34, BUTTON_HEIGHT).build());
+		bx += 36;
+		addRenderableWidget(Button.builder(Component.literal("\u25BCAll"), btn -> {
+			if (actionListPanel != null) actionListPanel.expandAll();
+		}).bounds(bx, by, 34, BUTTON_HEIGHT).build());
+		bx += 36;
+		// Toggle show all add-buttons
+		if (actionListPanel != null) {
+			String addLabel = actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel";
+			addRenderableWidget(Button.builder(Component.literal(addLabel), btn -> {
+				actionListPanel.toggleShowAllAddButtons();
+				rebuildScreen();
+			}).bounds(bx, by, 42, BUTTON_HEIGHT).build());
+		}
 
 		// --- Control panel at bottom ---
 		int panelY = height - CONTROL_HEIGHT;
@@ -130,6 +171,7 @@ public class SpellPreviewScreen extends Screen {
 		int row3Y = row2Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row4Y = row3Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row5Y = row4Y + BUTTON_HEIGHT + BUTTON_SPACING;
+		int row6Y = row5Y + BUTTON_HEIGHT + BUTTON_SPACING;
 
 		// Row 1: Playback controls
 		bx = 4;
@@ -197,6 +239,59 @@ public class SpellPreviewScreen extends Screen {
 				viewport.setGridExtent(r);
 				viewport.setClipDepth(r * 4);
 			}).bounds(bx, row5Y, 30, BUTTON_HEIGHT).build());
+			bx += 32;
+		}
+
+		// Marker toggles (after Range on Row 5)
+		bx += 10;
+		String casterMkLabel = viewport.isShowCasterMarker() ? "Caster:\u00A7cON" : "Caster:OFF";
+		addRenderableWidget(Button.builder(Component.literal(casterMkLabel), btn -> {
+			viewport.setShowCasterMarker(!viewport.isShowCasterMarker());
+			rebuildScreen();
+		}).bounds(bx, row5Y, 52, BUTTON_HEIGHT).build());
+		bx += 54;
+		String targetMkLabel = viewport.isShowTargetMarker() ? "Target:\u00A7eON" : "Target:OFF";
+		addRenderableWidget(Button.builder(Component.literal(targetMkLabel), btn -> {
+			viewport.setShowTargetMarker(!viewport.isShowTargetMarker());
+			rebuildScreen();
+		}).bounds(bx, row5Y, 52, BUTTON_HEIGHT).build());
+
+		// Row 6: Target properties
+		bx = 4;
+		addRenderableWidget(Button.builder(Component.literal("Target:"), btn -> {})
+				.bounds(bx, row6Y, 42, BUTTON_HEIGHT).build());
+		bx += 44;
+		// On Ground toggle
+		String groundLabel = scene.isTargetOnGround() ? "Ground:Y" : "Ground:N";
+		addRenderableWidget(Button.builder(Component.literal(groundLabel), btn -> {
+			scene.setTargetOnGround(!scene.isTargetOnGround());
+			rebuildScreen();
+		}).bounds(bx, row6Y, 52, BUTTON_HEIGHT).build());
+		bx += 54;
+		// Flying toggle
+		String flyLabel = scene.isTargetFlying() ? "Fly:Y" : "Fly:N";
+		addRenderableWidget(Button.builder(Component.literal(flyLabel), btn -> {
+			scene.setTargetFlying(!scene.isTargetFlying());
+			rebuildScreen();
+		}).bounds(bx, row6Y, 36, BUTTON_HEIGHT).build());
+		bx += 38;
+		// Fall-flying (elytra) toggle
+		String elytraLabel = scene.isTargetFallFlying() ? "Elytra:Y" : "Elytra:N";
+		addRenderableWidget(Button.builder(Component.literal(elytraLabel), btn -> {
+			scene.setTargetFallFlying(!scene.isTargetFallFlying());
+			rebuildScreen();
+		}).bounds(bx, row6Y, 48, BUTTON_HEIGHT).build());
+		bx += 50;
+		// Target HP buttons
+		addRenderableWidget(Button.builder(Component.literal("TgtHP:"), btn -> {})
+				.bounds(bx, row6Y, 38, BUTTON_HEIGHT).build());
+		bx += 40;
+		for (float hp : new float[]{0.25f, 0.5f, 0.75f, 1.0f}) {
+			String thpLabel = ((int) (hp * 100)) + "%";
+			addRenderableWidget(Button.builder(Component.literal(thpLabel), btn -> {
+				scene.setTargetHealthRatio(hp);
+				rebuildScreen();
+			}).bounds(bx, row6Y, 30, BUTTON_HEIGHT).build());
 			bx += 32;
 		}
 
@@ -421,6 +516,25 @@ public class SpellPreviewScreen extends Screen {
 		super.tick();
 		scene.tick();
 
+		// FPS camera movement only when captured in perspective mode
+		if (viewport.isPerspectiveCaptured() && !isAnyEditBoxFocused()) {
+			long window = Minecraft.getInstance().getWindow().getWindow();
+			boolean forward = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_W) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+			boolean backward = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_S) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+			boolean left = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_A) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+			boolean right = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_D) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+			boolean up = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+			boolean down = org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+			viewport.perspectiveMove(forward, backward, left, right, up, down);
+
+			// Sync target position to camera if bound
+			if (viewport.isTargetBoundToCamera()) {
+				Vec3 camPos = viewport.getCameraPos();
+				// Set target to camera position (at feet level, subtract eye height)
+				scene.setTargetPos(new Vec3(camPos.x, camPos.y - 1.6, camPos.z));
+			}
+		}
+
 		// Sync selected phase index with runtime
 		ResourceLocation current = scene.getCurrentPhaseId();
 		int idx = phaseList.indexOf(current);
@@ -513,13 +627,15 @@ public class SpellPreviewScreen extends Screen {
 			"\u00A7fCtrl+Up     \u00A77上移节点",
 			"\u00A7fCtrl+Down   \u00A77下移节点",
 			"\u00A7fCtrl+D      \u00A77启用/禁用节点",
-			"\u00A7fCtrl+E      \u00A77折叠/展开子树",
+			"\u00A7fCtrl+E      \u00A77折叠/展开选中子树",
+			"\u00A7fCtrl+Sh+E   \u00A77全部折叠/全部展开",
 			"\u00A7fCtrl+N      \u00A77切换自定义节点名显示",
+			"\u00A7fCtrl+B      \u00A77切换 +按钮 全部显示/仅选中显示",
 			"",
 			"\u00A7e\u00A7l--- 鼠标操作 ---",
 			"",
 			"\u00A76节点树:",
-			"\u00A7f  单击节点    \u00A77选中，在右侧编辑",
+			"\u00A7f  单击节点    \u00A77选中并在右侧编辑（显示该节点的 + 按钮）",
 			"\u00A7f  双击节点    \u00A77重命名 (Enter 确认, Esc 取消)",
 			"\u00A7f  点击 \u25BC/\u25B6   \u00A77折叠/展开子树",
 			"\u00A7f  拖拽节点    \u00A77拖放重排序或移入分支",
@@ -530,12 +646,43 @@ public class SpellPreviewScreen extends Screen {
 			"\u00A7f  [Delete]   \u00A77删除节点",
 			"\u00A7f  Ctrl+点击 \u00A7b$var\u00A7f  \u00A77跳转到变量定义节点",
 			"\u00A7f  Tab        \u00A77表达式自动补全",
+			"\u00A7f  滚轮       \u00A77滚动属性列表（右侧有滚动条）",
 			"",
-			"\u00A763D 视口:",
+			"\u00A763D 视口 (正交模式):",
 			"\u00A7f  左键拖拽    \u00A77移动目标位置",
 			"\u00A7f  中键拖拽    \u00A77平移摄像机",
 			"\u00A7f  右键拖拽    \u00A77旋转摄像机",
 			"\u00A7f  滚轮        \u00A77缩放",
+			"",
+			"\u00A763D 视口 (透视模式):",
+			"\u00A7f  左键单击    \u00A77进入自由视角（隐藏鼠标）",
+			"\u00A7f  WASD/空格/Shift  \u00A77移动摄像机（自由视角中）",
+			"\u00A7f  鼠标移动    \u00A77旋转视角（自由视角中）",
+			"\u00A7f  滚轮        \u00A77调节飞行速度",
+			"\u00A7f  右键拖拽    \u00A77轴心旋转（环绕前方中心）",
+			"\u00A7f  中键拖拽    \u00A77视角平面平移",
+			"\u00A7f  Esc         \u00A77退出自由视角 / 退出透视模式",
+			"",
+			"\u00A7e\u00A7l--- 工具栏按钮 ---",
+			"",
+			"\u00A7fTop/Front/Side  \u00A77切换正交预设角度",
+			"\u00A7fPersp/Ortho     \u00A77切换透视/正交模式",
+			"\u00A7fBindTgt/Unbind  \u00A77绑定/解绑目标跟随摄像机（透视）",
+			"\u00A7f\u25B6All / \u25BCAll     \u00A77全部折叠 / 全部展开节点树",
+			"\u00A7f[+]:Sel/All     \u00A77+ 按钮 仅选中显示 / 全部显示",
+			"\u00A7fApply           \u00A77应用并保存符卡到所有使用它的实体",
+			"\u00A7fExport          \u00A77导出 JSON 到 youkaishomecoming_exports/",
+			"\u00A7fReset           \u00A77恢复到内建默认值",
+			"\u00A7fAuto:ON/OFF     \u00A77编辑后自动回放预览",
+			"",
+			"\u00A7e\u00A7l--- Mover 类型 ---",
+			"",
+			"\u00A7fnone          \u00A77默认直线飞行",
+			"\u00A7facceleration  \u00A77恒定加速度",
+			"\u00A7frotate        \u00A77旋转",
+			"\u00A7fpolar         \u00A77极坐标运动",
+			"\u00A7fzero          \u00A77静止不动",
+			"\u00A7fbezier        \u00A77三次贝塞尔曲线路径",
 			"",
 			"\u00A7e\u00A7l--- 表达式语法 ---",
 			"",
@@ -555,6 +702,7 @@ public class SpellPreviewScreen extends Screen {
 			"\u00A7e(  \u00A7c(  \u00A7a(  \u00A79(  \u00A77括号 = 彩虹(仅合法时)",
 			"",
 			"\u00A78按 Esc 或 Help 关闭此面板",
+			"\u00A78关闭编辑器时自动保存符卡到存档",
 	};
 
 	private void renderHelpOverlay(GuiGraphics g, int mouseX, int mouseY) {
@@ -625,17 +773,44 @@ public class SpellPreviewScreen extends Screen {
 		}
 
 		if (viewport.isMouseOver(mouseX, mouseY)) {
-			if (button == 0) {
-				movingTarget = true;
-				return true;
-			}
-			if (button == 2) {
-				dragging = true;
-				return true;
-			}
-			if (button == 1) {
-				rotating = true;
-				return true;
+			if (viewport.isPerspectiveMode()) {
+				if (!viewport.isPerspectiveCaptured()) {
+					// Left click in viewport = enter captured free-look mode
+					if (button == 0) {
+						viewport.setPerspectiveCaptured(true);
+						lastMouseX = mouseX;
+						lastMouseY = mouseY;
+						org.lwjgl.glfw.GLFW.glfwSetInputMode(
+								Minecraft.getInstance().getWindow().getWindow(),
+								org.lwjgl.glfw.GLFW.GLFW_CURSOR,
+								org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
+						return true;
+					}
+				}
+				// Right-drag = orbit
+				if (button == 1) {
+					viewport.setPerspectiveOrbiting(true);
+					return true;
+				}
+				// Middle-drag = pan on view plane
+				if (button == 2) {
+					viewport.setPerspectivePanning(true);
+					return true;
+				}
+			} else {
+				// Orthographic mode: original behavior
+				if (button == 0) {
+					movingTarget = true;
+					return true;
+				}
+				if (button == 2) {
+					dragging = true;
+					return true;
+				}
+				if (button == 1) {
+					rotating = true;
+					return true;
+				}
 			}
 		}
 		return false;
@@ -644,6 +819,14 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
 		if (actionListPanel != null && actionListPanel.mouseReleased(mouseX, mouseY, button)) {
+			return true;
+		}
+		if (viewport.isPerspectiveOrbiting() && button == 1) {
+			viewport.setPerspectiveOrbiting(false);
+			return true;
+		}
+		if (viewport.isPerspectivePanning() && button == 2) {
+			viewport.setPerspectivePanning(false);
 			return true;
 		}
 		if (movingTarget && button == 0) {
@@ -666,6 +849,16 @@ public class SpellPreviewScreen extends Screen {
 		if (actionListPanel != null && actionListPanel.mouseDragged(mouseX, mouseY, button, dragX, dragY)) {
 			return true;
 		}
+		// Perspective mode: right-drag = orbit
+		if (viewport.isPerspectiveOrbiting()) {
+			viewport.perspectiveOrbit((float) dragX, (float) dragY);
+			return true;
+		}
+		// Perspective mode: middle-drag = pan on view plane
+		if (viewport.isPerspectivePanning()) {
+			viewport.perspectivePan((float) dragX, (float) dragY);
+			return true;
+		}
 		if (movingTarget) {
 			var delta = viewport.screenDeltaToWorldDelta((float) dragX, (float) dragY);
 			scene.moveTarget(delta);
@@ -683,6 +876,19 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	@Override
+	public void mouseMoved(double mouseX, double mouseY) {
+		if (viewport.isPerspectiveCaptured()) {
+			double dx = mouseX - lastMouseX;
+			double dy = mouseY - lastMouseY;
+			lastMouseX = mouseX;
+			lastMouseY = mouseY;
+			viewport.perspectiveLook((float) dx, (float) dy);
+			return;
+		}
+		super.mouseMoved(mouseX, mouseY);
+	}
+
+	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
 		if (showHelp) {
 			helpScroll -= (int) (delta * 30);
@@ -695,7 +901,12 @@ public class SpellPreviewScreen extends Screen {
 			return true;
 		}
 		if (viewport.isMouseOver(mouseX, mouseY)) {
-			viewport.zoom((float) delta);
+			if (viewport.isPerspectiveMode()) {
+				// In perspective mode, scroll adjusts fly speed
+				viewport.perspectiveAdjustSpeed((float) delta);
+			} else {
+				viewport.zoom((float) delta);
+			}
 			return true;
 		}
 		return super.mouseScrolled(mouseX, mouseY, delta);
@@ -716,6 +927,24 @@ public class SpellPreviewScreen extends Screen {
 			showHelp = false;
 			return true;
 		}
+
+		// ESC in perspective mode
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && viewport.isPerspectiveMode()) {
+			if (viewport.isPerspectiveCaptured()) {
+				// First ESC: exit captured free-look, restore cursor
+				viewport.setPerspectiveCaptured(false);
+				org.lwjgl.glfw.GLFW.glfwSetInputMode(
+						Minecraft.getInstance().getWindow().getWindow(),
+						org.lwjgl.glfw.GLFW.GLFW_CURSOR,
+						org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+				return true;
+			}
+			// Second ESC (not captured): exit perspective mode entirely
+			viewport.setPerspectiveMode(false);
+			rebuildScreen();
+			return true;
+		}
+
 		// Handle editor dropdown/completion overlays (Escape to close, arrow keys, etc.)
 		if (actionEditorPanel != null && actionEditorPanel.keyPressed(keyCode, scanCode, modifiers)) {
 			return true;
@@ -777,7 +1006,21 @@ public class SpellPreviewScreen extends Screen {
 				return true;
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_E && actionListPanel != null) {
-				actionListPanel.toggleSelectedCollapse();
+				if (net.minecraft.client.gui.screens.Screen.hasShiftDown()) {
+					// Ctrl+Shift+E = collapse/expand all
+					if (actionListPanel.isShowAllAddButtons()) {
+						actionListPanel.collapseAll();
+					} else {
+						actionListPanel.expandAll();
+					}
+				} else {
+					actionListPanel.toggleSelectedCollapse();
+				}
+				return true;
+			}
+			// Ctrl+B = toggle show all add-buttons
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_B && actionListPanel != null) {
+				actionListPanel.toggleShowAllAddButtons();
 				return true;
 			}
 		}
@@ -831,7 +1074,20 @@ public class SpellPreviewScreen extends Screen {
 
 
 
-		// Space = play/pause
+		// In captured perspective mode, suppress keys used for camera movement
+		// WASD, Space, Shift are consumed by perspective camera in tick()
+		if (viewport.isPerspectiveCaptured()) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_W
+					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_A
+					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S
+					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_D
+					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE
+					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) {
+				return true; // consumed by perspective camera
+			}
+		}
+
+		// Space = play/pause (orthographic mode only now)
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) {
 			scene.togglePlayPause();
 			return true;
@@ -860,6 +1116,29 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	public boolean isPauseScreen() {
 		return false;
+	}
+
+	/**
+	 * Auto-save when the editor screen is closed.
+	 * This ensures edits are persisted even if the user forgets to click Apply.
+	 */
+	@Override
+	public void removed() {
+		super.removed();
+		// Restore cursor if hidden during perspective capture
+		if (viewport.isPerspectiveCaptured()) {
+			viewport.setPerspectiveCaptured(false);
+			org.lwjgl.glfw.GLFW.glfwSetInputMode(
+					Minecraft.getInstance().getWindow().getWindow(),
+					org.lwjgl.glfw.GLFW.GLFW_CURSOR,
+					org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+		}
+		// Persist the current definition to SpellRegistry and disk
+		SpellRegistry.register(definition);
+		var server = Minecraft.getInstance().getSingleplayerServer();
+		if (server != null) {
+			server.execute(() -> CustomSpellStorage.saveSpell(server, definition));
+		}
 	}
 
 	// Expose for ActionEditorPanel

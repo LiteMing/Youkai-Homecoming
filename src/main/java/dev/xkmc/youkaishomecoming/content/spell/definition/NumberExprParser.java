@@ -115,6 +115,39 @@ public class NumberExprParser {
 		if (p instanceof NumberProviders.Distance) return "distance";
 		if (p instanceof NumberProviders.TargetHeight) return "target_height";
 		if (p instanceof NumberProviders.GameDifficulty) return "game_difficulty";
+		if (p instanceof NumberProviders.CasterX) return "caster_x";
+		if (p instanceof NumberProviders.CasterY) return "caster_y";
+		if (p instanceof NumberProviders.CasterZ) return "caster_z";
+		if (p instanceof NumberProviders.TargetX) return "target_x";
+		if (p instanceof NumberProviders.TargetY) return "target_y";
+		if (p instanceof NumberProviders.TargetZ) return "target_z";
+		if (p instanceof NumberProviders.Max m) {
+			String as = unparse(m.a()), bs = unparse(m.b());
+			if (as == null || bs == null) return null;
+			return "max(" + as + ", " + bs + ")";
+		}
+		if (p instanceof NumberProviders.Min m) {
+			String as = unparse(m.a()), bs = unparse(m.b());
+			if (as == null || bs == null) return null;
+			return "min(" + as + ", " + bs + ")";
+		}
+		if (p instanceof NumberProviders.Clamp c) {
+			String vs = unparse(c.value()), mins = unparse(c.min()), maxs = unparse(c.max());
+			if (vs == null || mins == null || maxs == null) return null;
+			return "clamp(" + vs + ", " + mins + ", " + maxs + ")";
+		}
+		if (p instanceof NumberProviders.GaussianRandom g) {
+			return "gaussian(" + formatDouble(g.mean()) + ", " + formatDouble(g.stdDev()) + ")";
+		}
+		if (p instanceof NumberProviders.RandomChoice rc) {
+			StringBuilder sb = new StringBuilder("choose(");
+			for (int i = 0; i < rc.values().size(); i++) {
+				if (i > 0) sb.append(", ");
+				sb.append(formatDouble(rc.values().get(i)));
+			}
+			sb.append(")");
+			return sb.toString();
+		}
 		return null;
 	}
 
@@ -299,6 +332,30 @@ public class NumberExprParser {
 				if (args.size() != 1) throw new ParseException("sqrt() requires 1 argument");
 				return new NumberProviders.Sqrt(args.get(0));
 			}
+			case "max" -> {
+				if (args.size() != 2) throw new ParseException("max() requires 2 arguments");
+				return new NumberProviders.Max(args.get(0), args.get(1));
+			}
+			case "min" -> {
+				if (args.size() != 2) throw new ParseException("min() requires 2 arguments");
+				return new NumberProviders.Min(args.get(0), args.get(1));
+			}
+			case "clamp" -> {
+				if (args.size() != 3) throw new ParseException("clamp() requires 3 arguments");
+				return new NumberProviders.Clamp(args.get(0), args.get(1), args.get(2));
+			}
+			case "gaussian" -> {
+				if (args.size() != 2) throw new ParseException("gaussian() requires 2 arguments");
+				return new NumberProviders.GaussianRandom(
+						resolveDoubleArg(args.get(0), "gaussian mean"),
+						resolveDoubleArg(args.get(1), "gaussian stddev"));
+			}
+			case "choose" -> {
+				if (args.isEmpty()) throw new ParseException("choose() requires at least 1 argument");
+				java.util.List<Double> values = new java.util.ArrayList<>();
+				for (var a : args) values.add(resolveDoubleArg(a, "choose value"));
+				return new NumberProviders.RandomChoice(values);
+			}
 			default -> throw new ParseException("Unknown function: " + name);
 		}
 	}
@@ -310,6 +367,12 @@ public class NumberExprParser {
 			case "distance" -> new NumberProviders.Distance();
 			case "target_height" -> new NumberProviders.TargetHeight();
 			case "game_difficulty" -> new NumberProviders.GameDifficulty();
+			case "caster_x" -> new NumberProviders.CasterX();
+			case "caster_y" -> new NumberProviders.CasterY();
+			case "caster_z" -> new NumberProviders.CasterZ();
+			case "target_x" -> new NumberProviders.TargetX();
+			case "target_y" -> new NumberProviders.TargetY();
+			case "target_z" -> new NumberProviders.TargetZ();
 			default -> throw new ParseException("Unknown keyword: " + name);
 		};
 	}

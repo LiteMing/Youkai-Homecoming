@@ -1411,27 +1411,29 @@ public class MigratedSpellCards {
 		var p1id = rl("kisin_sagume/stage1");
 		var p2id = rl("kisin_sagume/stage2");
 
-		// === Phase 0 (100%-67%): SummonNear ===
-		var nearForward = new FireDanmakuAction(
-				YHDanmaku.Bullet.CIRCLE,
-				new ColorProvider.ByVariable("sn", List.of(DyeColor.YELLOW, DyeColor.ORANGE)),
-				NumberProvider.constant(1), NumberProvider.constant(0.8), NumberProvider.constant(40),
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(0),
-				new NumberProviders.GaussianRandom(0, 15),
-				PatternType.AIMED, OriginConfig.caster(),
-				new AimMode.AimModes.Target(),
-				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var nearBackward = new FireDanmakuAction(
-				YHDanmaku.Bullet.CIRCLE,
-				new ColorProvider.ByVariable("sn", List.of(DyeColor.YELLOW, DyeColor.ORANGE)),
-				NumberProvider.constant(1), NumberProvider.constant(0.3), NumberProvider.constant(40),
-				new NumberProviders.Add(new NumberProviders.RandomRange(0, 360), NumberProvider.constant(180)),
-				NumberProvider.constant(0),
-				new NumberProviders.GaussianRandom(0, 15),
-				PatternType.AIMED, OriginConfig.caster(),
-				new AimMode.AimModes.Target(),
-				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var summonNear = new BurstAction(20, 2, "sn", List.of(nearForward, nearBackward));
+		// === Phase 0 (100%-67%): SummonNear (Shooter持续发射双向弹幕) ===
+		var nearShooterBody = List.<SpellAction>of(
+				new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.YELLOW),
+						NumberProvider.constant(1), NumberProvider.constant(0.8), NumberProvider.constant(40),
+						NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+						PatternType.AIMED, OriginConfig.caster(),
+						new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+				new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.ORANGE),
+						NumberProvider.constant(1), NumberProvider.constant(0.3), NumberProvider.constant(40),
+						NumberProvider.constant(180), NumberProvider.constant(0), NumberProvider.constant(0),
+						PatternType.AIMED, OriginConfig.caster(),
+						new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1));
+		var nearShooter = new SpawnShooterAction(40, 4f, 60,
+				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+						new NumberProviders.GaussianRandom(0, 2),
+						NumberProvider.constant(0),
+						NumberProvider.constant(2),
+						NumberProvider.constant(0)),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0.5),
+				Optional.empty(), nearShooterBody);
+		var summonNear = new BurstAction(20, 2, "sn", List.of(nearShooter));
 		var p0Action = new SpellActions.ConditionalAction(
 				new SpellConditions.TickInterval(60, 0), List.of(summonNear), List.of());
 
@@ -1461,31 +1463,32 @@ public class MigratedSpellCards {
 		var p1Action = new SpellActions.ConditionalAction(
 				new SpellConditions.TickInterval(60, 0), List.of(wing), List.of());
 
-		// === Phase 2 (33%-0%): SummonFar ===
-		var farHoming = new FireDanmakuAction(
-				YHDanmaku.Bullet.CIRCLE,
+		// === Phase 2 (33%-0%): SummonFar (下落Shooter, 每tick放标记弹→延迟追踪) ===
+		var farChase = new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE,
 				new ColorProvider.RandomChoice(List.of(DyeColor.MAGENTA, DyeColor.BLUE)),
 				NumberProvider.constant(1), NumberProvider.constant(1), NumberProvider.constant(40),
 				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
 				PatternType.AIMED, OriginConfig.caster(),
 				new AimMode.AimModes.DirectionToTarget(),
 				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var farMarker = new FireDanmakuAction(
-				YHDanmaku.Bullet.CIRCLE,
+		var farMarker = new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE,
 				new ColorProvider.RandomChoice(List.of(DyeColor.MAGENTA, DyeColor.BLUE)),
 				NumberProvider.constant(1), NumberProvider.constant(0), NumberProvider.constant(40),
 				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
-				PatternType.AIMED,
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.of(new MoverConfigs.ZeroMoverConfig()), Optional.empty(),
+				Optional.of(List.of((SpellAction) farChase)),
+				Optional.empty(), 1);
+		var farShooter = new SpawnShooterAction(40, 4f, 40,
 				new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
 						new NumberProviders.Add(new NumberProviders.TargetX(), new NumberProviders.GaussianRandom(0, 20)),
 						new NumberProviders.Add(new NumberProviders.TargetY(), NumberProvider.constant(20)),
 						new NumberProviders.Add(new NumberProviders.TargetZ(), new NumberProviders.GaussianRandom(0, 20)),
 						NumberProvider.constant(0)),
-				new AimMode.AimModes.Target(),
-				Optional.of(new MoverConfigs.ZeroMoverConfig()), Optional.empty(),
-				Optional.of(List.of((SpellAction) farHoming)),
-				Optional.empty(), 1);
-		var summonFar = new BurstAction(40, 1, "sf", List.of(farMarker));
+				NumberProvider.constant(0), NumberProvider.constant(-0.5), NumberProvider.constant(0),
+				Optional.empty(), List.of(farMarker));
+		var summonFar = new BurstAction(40, 1, "sf", List.of(farShooter));
 		var p2Action = new SpellActions.ConditionalAction(
 				new SpellConditions.TickInterval(80, 0), List.of(summonFar), List.of());
 
@@ -1523,12 +1526,13 @@ public class MigratedSpellCards {
 				NumberProvider.constant(1), NumberProvider.constant(3));
 		var sweepLife = new NumberProviders.Max(NumberProvider.constant(60),
 				new NumberProviders.Mul(new NumberProviders.Distance(), NumberProvider.constant(2)));
-		var sweepAngle = new NumberProviders.Add(new NumberProviders.RandomRange(0, 360),
+		var sweepAngle = new NumberProviders.Add(
+				new NumberProviders.Variable("sweep_base"),
 				new NumberProviders.Mul(new NumberProviders.Variable("swt"), NumberProvider.constant(18)));
 		var sweep = new BurstAction(20, 1, "swt", List.of(
 				new FireDanmakuAction(YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(12), sweepSpeed, sweepLife,
-						sweepAngle, NumberProvider.constant(30),
+						sweepAngle, NumberProvider.constant(15),
 						new NumberProviders.GaussianRandom(0, 8),
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
@@ -1536,7 +1540,7 @@ public class MigratedSpellCards {
 						NumberProvider.constant(12),
 						new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(0.6)),
 						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.2)),
-						sweepAngle, NumberProvider.constant(30),
+						sweepAngle, NumberProvider.constant(15),
 						new NumberProviders.GaussianRandom(0, 8),
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
@@ -1544,16 +1548,19 @@ public class MigratedSpellCards {
 						NumberProvider.constant(12),
 						new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(0.3)),
 						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.5)),
-						sweepAngle, NumberProvider.constant(30),
+						sweepAngle, NumberProvider.constant(15),
 						new NumberProviders.GaussianRandom(0, 8),
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
+		var sweepInit = new SpellActions.SequenceAction(List.of(
+				new SpellActions.SetVariable("sweep_base", new NumberProviders.RandomRange(0, 360)),
+				sweep));
 		var sweepAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.TickInterval(20, 0),
 						new SpellConditions.CompareNumbers(stepVar, "<", NumberProvider.constant(3)))),
-				List.of(sweep), List.of());
+				List.of(sweepInit), List.of());
 
 		// === Lasers (step == 3): 分支激光 ===
 		var parentLaser = new SpellActions.SequenceAction(List.of(
@@ -1690,33 +1697,34 @@ public class MigratedSpellCards {
 				))
 		));
 
-		// === Maze 弹幕螺旋 ===
+		// === Maze 弹幕螺旋 (环形辐射, 10发/tick) ===
 		var mazeSpiral = new BurstAction(80, 1, "mt", List.of(
-				new SpellActions.RepeatAction(NumberProvider.constant(10), "mk", List.of(
-						new FireDanmakuAction(YHDanmaku.Bullet.BALL,
-								new ColorProvider.Cycle(List.of(DyeColor.YELLOW, DyeColor.ORANGE), 1),
-								NumberProvider.constant(1), NumberProvider.constant(0.05), NumberProvider.constant(80),
-								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
-								PatternType.AIMED,
-								new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
-										new NumberProviders.Add(new NumberProviders.Variable("maze_x"),
-												new NumberProviders.Mul(
-														new NumberProviders.Cos(new NumberProviders.Add(
-																new NumberProviders.Variable("maze_init"),
-																new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))), 1, 0),
-														NumberProvider.constant(8))),
-										new NumberProviders.Variable("maze_y"),
-										new NumberProviders.Add(new NumberProviders.Variable("maze_z"),
-												new NumberProviders.Mul(
-														new NumberProviders.Sin(new NumberProviders.Add(
-																new NumberProviders.Variable("maze_init"),
-																new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))), 1, 0),
-														NumberProvider.constant(8))),
-										NumberProvider.constant(0)),
-								new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
-								Optional.of(new MoverConfigs.DecelerationConfig(0.02)),
-								Optional.empty(), Optional.empty(), Optional.empty(), 1)
-				))
+				new FireDanmakuAction(YHDanmaku.Bullet.BALL,
+						new ColorProvider.Cycle(List.of(DyeColor.YELLOW, DyeColor.ORANGE), 1),
+						NumberProvider.constant(10), NumberProvider.constant(0.05), NumberProvider.constant(80),
+						new NumberProviders.Add(
+								new NumberProviders.Variable("maze_init"),
+								new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))),
+						NumberProvider.constant(360), NumberProvider.constant(0),
+						PatternType.RING,
+						new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
+								new NumberProviders.Add(new NumberProviders.Variable("maze_x"),
+										new NumberProviders.Mul(
+												new NumberProviders.Cos(new NumberProviders.Add(
+														new NumberProviders.Variable("maze_init"),
+														new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))), 1, 0),
+												NumberProvider.constant(8))),
+								new NumberProviders.Variable("maze_y"),
+								new NumberProviders.Add(new NumberProviders.Variable("maze_z"),
+										new NumberProviders.Mul(
+												new NumberProviders.Sin(new NumberProviders.Add(
+														new NumberProviders.Variable("maze_init"),
+														new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))), 1, 0),
+												NumberProvider.constant(8))),
+								NumberProvider.constant(0)),
+						new AimMode.AimModes.Target(),
+						Optional.empty(),
+						Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
 
 		// === Maze 触发 ===
@@ -1847,10 +1855,12 @@ public class MigratedSpellCards {
 		var lissY = new NumberProviders.Min(
 				new NumberProviders.Add(new NumberProviders.CasterY(), NumberProvider.constant(-15)),
 				new NumberProviders.Add(new NumberProviders.TargetY(), NumberProvider.constant(-10)));
+		var laserSwing = new NumberProviders.Cos(
+				new NumberProviders.Mul(tDeg, NumberProvider.constant(4)), 18, 0);
 		var lissajous = new SpellActions.RepeatAction(NumberProvider.constant(10), "li", List.of(
 				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
 						NumberProvider.constant(40), NumberProvider.constant(60),
-						NumberProvider.constant(0),
+						laserSwing,
 						NumberProvider.constant(75),
 						new AimMode.AimModes.Target(),
 						new OriginConfig(OriginConfig.OriginMode.ABSOLUTE, lissX, lissY, lissZ, NumberProvider.constant(0)),
@@ -1889,17 +1899,18 @@ public class MigratedSpellCards {
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
 				List.of());
 
-		// === Border 预测弹 (dist>26时) ===
+		// === Border 预测弹 (dist>26时, 在目标后方32~40格处) ===
 		var border = new SpellActions.ConditionalAction(
 				new SpellConditions.DistanceAbove(26),
 				List.of(new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.PINK),
 						NumberProvider.constant(4), NumberProvider.constant(0.1), NumberProvider.constant(40),
 						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360),
-						NumberProvider.constant(0),
+						NumberProvider.constant(-30),
 						PatternType.RANDOM,
 						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
 								NumberProvider.constant(0), NumberProvider.constant(0),
-								new NumberProviders.Add(new NumberProviders.Distance(), NumberProvider.constant(-6)),
+								new NumberProviders.Add(NumberProvider.constant(32),
+										new NumberProviders.RandomRange(0, 8)),
 								NumberProvider.constant(0)),
 						new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),

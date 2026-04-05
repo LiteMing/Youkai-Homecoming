@@ -39,10 +39,15 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	/** Action executed when this danmaku hits a block. */
 	public TrailAction onHitBlockAction = null;
 	/**
-	 * Behavior after hitting an entity/block:
+	 * Behavior after hitting an entity:
 	 * DISCARD = remove immediately (default), CONTINUE = keep flying until lifetime expires.
 	 */
-	public HitBehavior hitBehavior = HitBehavior.DISCARD;
+	public HitBehavior hitBehaviorEntity = HitBehavior.DISCARD;
+	/**
+	 * Behavior after hitting a block:
+	 * DISCARD = remove immediately (default), CONTINUE = keep flying until lifetime expires.
+	 */
+	public HitBehavior hitBehaviorBlock = HitBehavior.DISCARD;
 	@SerialClass.SerialField
 	public ItemStack stack = ItemStack.EMPTY;
 

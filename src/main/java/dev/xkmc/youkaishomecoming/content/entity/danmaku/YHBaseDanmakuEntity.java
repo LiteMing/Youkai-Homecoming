@@ -114,7 +114,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
 				executeHitAction(ide.onHitBlockAction);
 			}
-			if (this instanceof ItemDanmakuEntity ide && ide.hitBehavior == HitBehavior.CONTINUE) {
+			if (this instanceof ItemDanmakuEntity ide && ide.hitBehaviorBlock == HitBehavior.CONTINUE) {
 				// Don't discard — let it keep flying until lifetime expires
 				return;
 			}
@@ -141,7 +141,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		if (this instanceof ItemDanmakuEntity ide && ide.onHitEntityAction != null) {
 			executeHitAction(ide.onHitEntityAction);
 		}
-		if (this instanceof ItemDanmakuEntity ide && ide.hitBehavior == HitBehavior.CONTINUE) {
+		if (this instanceof ItemDanmakuEntity ide && ide.hitBehaviorEntity == HitBehavior.CONTINUE) {
 			// Don't discard — let it keep flying until lifetime expires
 			return;
 		}

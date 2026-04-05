@@ -39,7 +39,8 @@ public record FireDanmakuAction(
 		Optional<NumberProvider> tiltAngle,
 		Optional<List<SpellAction>> onHitEntity,
 		Optional<List<SpellAction>> onHitBlock,
-		HitBehavior hitBehavior
+		HitBehavior hitBehaviorEntity,
+		HitBehavior hitBehaviorBlock
 ) implements SpellAction {
 
 	/** Backwards-compatible constructor without tiltAngle/onHit fields (16 args). */
@@ -53,7 +54,7 @@ public record FireDanmakuAction(
 			int trailInterval) {
 		this(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
-				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD);
+				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD);
 	}
 
 	/** Backwards-compatible constructor with tiltAngle but without onHit fields (17 args). */
@@ -67,7 +68,7 @@ public record FireDanmakuAction(
 			int trailInterval, Optional<NumberProvider> tiltAngle) {
 		this(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
-				tiltAngle, Optional.empty(), Optional.empty(), HitBehavior.DISCARD);
+				tiltAngle, Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD);
 	}
 
 	// 16-field group (DFU RecordCodecBuilder limit)
@@ -96,36 +97,38 @@ public record FireDanmakuAction(
 			NumberProvider.CODEC.optionalFieldOf("tilt_angle").forGetter(FireDanmakuAction::tiltAngle),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_entity").forGetter(FireDanmakuAction::onHitEntity),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_block").forGetter(FireDanmakuAction::onHitBlock),
-			HitBehavior.CODEC.optionalFieldOf("hit_behavior", HitBehavior.DISCARD).forGetter(FireDanmakuAction::hitBehavior)
-	).apply(i, (base, tilt, hitEnt, hitBlk, hitBhv) -> new FireDanmakuAction(
+			HitBehavior.CODEC.optionalFieldOf("hit_behavior_entity", HitBehavior.DISCARD).forGetter(FireDanmakuAction::hitBehaviorEntity),
+			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.DISCARD).forGetter(FireDanmakuAction::hitBehaviorBlock)
+	).apply(i, (base, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv) -> new FireDanmakuAction(
 			base.bulletType, base.color, base.count, base.speed, base.lifetime,
 			base.angleOffset, base.spread, base.elevation, base.pattern, base.origin,
 			base.aimMode, base.mover, base.outerCount, base.onExpiry, base.onTrail,
-			base.trailInterval, tilt, hitEnt, hitBlk, hitBhv
+			base.trailInterval, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv
 	)));
 
-	// withXxx helper methods for editor use (preserve all 20 fields)
-	private FireDanmakuAction all(YHDanmaku.Bullet bt, ColorProvider c, NumberProvider cnt, NumberProvider spd, NumberProvider lt, NumberProvider ao, NumberProvider sp, NumberProvider el, PatternType pt, OriginConfig o, AimMode am, Optional<MoverConfig> m, Optional<NumberProvider> oc, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<NumberProvider> ta, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hb) { return new FireDanmakuAction(bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti, ta, ohe, ohb, hb); }
-	public FireDanmakuAction withBulletType(YHDanmaku.Bullet v) { return all(v, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withColor(ColorProvider v) { return all(bulletType, v, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withCount(NumberProvider v) { return all(bulletType, color, v, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withSpeed(NumberProvider v) { return all(bulletType, color, count, v, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withLifetime(NumberProvider v) { return all(bulletType, color, count, speed, v, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withAngleOffset(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, v, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withSpread(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, v, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withElevation(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, v, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withPattern(PatternType v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, v, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withOrigin(OriginConfig v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, v, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withAimMode(AimMode v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, v, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withMover(Optional<MoverConfig> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, v, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withOuterCount(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, v, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withOnExpiry(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, v, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withOnTrail(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, v, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withTrailInterval(int v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, v, tiltAngle, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withTiltAngle(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, v, onHitEntity, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withOnHitEntity(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, v, onHitBlock, hitBehavior); }
-	public FireDanmakuAction withOnHitBlock(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, v, hitBehavior); }
-	public FireDanmakuAction withHitBehavior(HitBehavior v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, v); }
+	// withXxx helper methods for editor use (preserve all 21 fields)
+	private FireDanmakuAction all(YHDanmaku.Bullet bt, ColorProvider c, NumberProvider cnt, NumberProvider spd, NumberProvider lt, NumberProvider ao, NumberProvider sp, NumberProvider el, PatternType pt, OriginConfig o, AimMode am, Optional<MoverConfig> m, Optional<NumberProvider> oc, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<NumberProvider> ta, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hbe, HitBehavior hbb) { return new FireDanmakuAction(bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti, ta, ohe, ohb, hbe, hbb); }
+	public FireDanmakuAction withBulletType(YHDanmaku.Bullet v) { return all(v, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withColor(ColorProvider v) { return all(bulletType, v, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withCount(NumberProvider v) { return all(bulletType, color, v, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withSpeed(NumberProvider v) { return all(bulletType, color, count, v, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withLifetime(NumberProvider v) { return all(bulletType, color, count, speed, v, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withAngleOffset(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, v, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withSpread(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, v, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withElevation(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, v, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withPattern(PatternType v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, v, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withOrigin(OriginConfig v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, v, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withAimMode(AimMode v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, v, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withMover(Optional<MoverConfig> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, v, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withOuterCount(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, v, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withOnExpiry(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, v, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withOnTrail(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, v, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withTrailInterval(int v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, v, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withTiltAngle(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, v, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withOnHitEntity(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, v, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withOnHitBlock(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, v, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireDanmakuAction withHitBehaviorEntity(HitBehavior v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, v, hitBehaviorBlock); }
+	public FireDanmakuAction withHitBehaviorBlock(HitBehavior v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, v); }
 
 	@Override
 	public void execute(SpellContext ctx) {
@@ -385,17 +388,18 @@ public record FireDanmakuAction(
 			hitAction.setup(holder);
 			danmaku.onHitBlockAction = hitAction;
 		}
-		danmaku.hitBehavior = hitBehavior;
+		danmaku.hitBehaviorEntity = hitBehaviorEntity;
+		danmaku.hitBehaviorBlock = hitBehaviorBlock;
 		// Override bypassWall/bypassEntity based on onHit configuration.
 		// Default from prepareDanmaku is bypassWall=true, bypassEntity=true (boss danmaku defaults).
 		// If onHitBlock is configured, we must enable block collision detection.
 		if (onHitBlock.isPresent()) {
 			danmaku.setBypassWall(false);
 		}
-		// hitBehavior controls entity hit behavior:
+		// hitBehaviorEntity controls entity hit behavior:
 		// DISCARD = stop on entity hit (bypassEntity=false)
 		// CONTINUE = pierce through (bypassEntity=true, already the default)
-		if (hitBehavior == HitBehavior.DISCARD) {
+		if (hitBehaviorEntity == HitBehavior.DISCARD) {
 			danmaku.setBypassEntity(false);
 		}
 		holder.shoot(danmaku);

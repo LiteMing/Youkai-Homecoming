@@ -110,10 +110,16 @@ public class ActionListPanel {
 	private int scrollOffset = 0;
 	private boolean dirty = true;
 
+	// Currently selected add-button (for paste target)
+	private AddTarget selectedAddTarget = null;
+
 	// Collapse state: set of action paths that are collapsed
 	private final java.util.Set<String> collapsedPaths = new java.util.HashSet<>();
 	// When true, all add-buttons are shown (toggle with Ctrl+B); when false only selected node's add-buttons show
 	private boolean showAllAddButtons = false;
+
+	// During drag, set of action paths that are force-expanded to show their add-buttons
+	private final java.util.Set<String> dragExpandedPaths = new java.util.HashSet<>();
 
 	// Custom node names (collapseKey → display name)
 	private final java.util.Map<String, String> customNames = new java.util.HashMap<>();
@@ -183,6 +189,7 @@ public class ActionListPanel {
 		phase.onDamage.clear(); phase.onDamage.addAll(restored.onDamage);
 		phase.transitions.clear(); phase.transitions.addAll(restored.transitions);
 		selectedPath = null;
+		selectedAddTarget = null;
 		dirty = true;
 	}
 
@@ -196,6 +203,7 @@ public class ActionListPanel {
 	public void setPhase(PhaseDefinition phase) {
 		this.phase = phase;
 		this.selectedPath = null;
+		this.selectedAddTarget = null;
 		this.scrollOffset = 0;
 		this.dirty = true;
 	}
@@ -217,6 +225,7 @@ public class ActionListPanel {
 
 	public void clearSelection() {
 		selectedPath = null;
+		selectedAddTarget = null;
 	}
 
 	public void markDirty() {
@@ -285,6 +294,7 @@ public class ActionListPanel {
 	/** Whether add-buttons should be shown for the given parent action path */
 	private boolean shouldShowAddButtons(ActionPath parentPath) {
 		if (showAllAddButtons) return true;
+		if (isDragging && dragExpandedPaths.contains(collapseKey(parentPath))) return true;
 		// Only show add-buttons for the currently selected node
 		return selectedPath != null && collapseKey(selectedPath).equals(collapseKey(parentPath));
 	}
@@ -499,7 +509,12 @@ public class ActionListPanel {
 				int ix = x + PADDING + row.indent * INDENT_PX;
 				boolean hovered = mouseX >= x && mouseX < x + w
 						&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT;
-				g.drawString(font, row.addLabel, ix, row.y + 2, hovered ? 0xFFFFFF44 : 0xFF448844, false);
+				boolean selected = row.addTarget != null && row.addTarget.equals(selectedAddTarget);
+				if (selected) {
+					g.fill(x + 1, row.y, x + w, row.y + ROW_HEIGHT, 0xFF2a4a2e);
+					g.fill(x + 1, row.y, x + 3, row.y + ROW_HEIGHT, 0xFF66FF66);
+				}
+				g.drawString(font, row.addLabel, ix, row.y + 2, selected ? 0xFFFFFF88 : (hovered ? 0xFFFFFF44 : 0xFF448844), false);
 			}
 		}
 
@@ -597,6 +612,7 @@ public class ActionListPanel {
 				lastClickPath = row.path;
 
 				selectedPath = row.path;
+				selectedAddTarget = null;
 				dirty = true; // rebuild to show/hide add-buttons for newly selected node
 				onSelect.accept(row.action, row.path);
 				// Start potential drag for any action
@@ -607,6 +623,9 @@ public class ActionListPanel {
 				dragThresholdMet = false;
 				return true;
 			} else if (row.kind == RowKind.ADD_BUTTON) {
+				selectedAddTarget = row.addTarget;
+				selectedPath = row.addTarget.parentPath();
+				dirty = true;
 				onRequestAdd.accept(row.addTarget);
 				return true;
 			}
@@ -652,6 +671,10 @@ public class ActionListPanel {
 		dragBranchTarget = null;
 		dragBranchHighlightY = -1;
 		dragThresholdMet = false;
+		if (!dragExpandedPaths.isEmpty()) {
+			dragExpandedPaths.clear();
+			dirty = true;
+		}
 	}
 
 	/**
@@ -669,6 +692,25 @@ public class ActionListPanel {
 
 		String sourceSection = dragSourcePath.section;
 		double bestDist = Double.MAX_VALUE;
+
+		// === Check ACTION rows that have children (auto-expand for drag) ===
+		boolean expandedAny = false;
+		for (Row row : rows) {
+			if (row.kind == RowKind.ACTION && row.path != null && row.action != null) {
+				SpellAction inner = row.action instanceof SpellActions.DisabledAction da ? da.inner() : row.action;
+				if (hasChildren(inner) && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
+					// Auto-expand this node during drag so its add-buttons become visible
+					String key = collapseKey(row.path);
+					collapsedPaths.remove(key);
+					dragExpandedPaths.add(key);
+					expandedAny = true;
+				}
+			}
+		}
+		if (expandedAny) {
+			dirty = true;
+			buildRowsIfDirty();
+		}
 
 		// === Check ADD_BUTTON rows (branch insert targets) ===
 		for (Row row : rows) {
@@ -1022,6 +1064,7 @@ public class ActionListPanel {
 		} else {
 			doInsert(list, target.parentPath.path, 0, target.branch, action, target.parentPath);
 		}
+		selectedAddTarget = null;
 		dirty = true;
 		onSelect.accept(action, selectedPath);
 	}
@@ -1194,6 +1237,7 @@ public class ActionListPanel {
 		boolean result = doDelete(list, selectedPath.path, 0);
 		if (result) {
 			selectedPath = null;
+			selectedAddTarget = null;
 			dirty = true;
 		}
 		return result;
@@ -1312,7 +1356,6 @@ public class ActionListPanel {
 
 	public boolean pasteAfterSelected() {
 		if (clipboard == null || phase == null) return false;
-		pushUndo();
 		// Deep copy clipboard for paste
 		SpellAction toPaste;
 		try {
@@ -1324,11 +1367,19 @@ public class ActionListPanel {
 			toPaste = clipboard;
 		}
 
+		// If an add-button is selected, paste into that branch
+		if (selectedAddTarget != null) {
+			insertAction(selectedAddTarget, toPaste);
+			dirty = true;
+			return true;
+		}
+
 		if (selectedPath != null) {
 			// Insert after selected action in the same list
 			List<SpellAction> list = getSectionList(selectedPath.section);
 			if (list != null && !selectedPath.isNested()) {
 				int idx = selectedPath.leafIndex();
+				pushUndo();
 				list.add(idx + 1, toPaste);
 				selectedPath = ActionPath.topLevel(selectedPath.section, idx + 1);
 				dirty = true;
@@ -1339,6 +1390,7 @@ public class ActionListPanel {
 		// Default: add to onTick
 		var list = getSectionList("tick");
 		if (list != null) {
+			pushUndo();
 			list.add(toPaste);
 			selectedPath = ActionPath.topLevel("tick", list.size() - 1);
 			dirty = true;

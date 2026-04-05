@@ -343,11 +343,11 @@ public class ActionEditorPanel {
 					notifyDanmaku(old -> old.withTiltAngle(Optional.of(NumberProvider.constant(0)))));
 		}
 
-		// Hit behavior: what happens when the danmaku hits an entity/block
-		if (a.onHitEntity().isPresent() || a.onHitBlock().isPresent()) {
-			addEnumRow("Hit Behav", HitBehavior.values(), a.hitBehavior(), v ->
-					notifyDanmaku(old -> old.withHitBehavior(v)));
-		}
+		// Hit behavior: separate entity/block controls
+		addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
+				notifyDanmaku(old -> old.withHitBehaviorEntity(v)));
+		addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
+				notifyDanmaku(old -> old.withHitBehaviorBlock(v)));
 	}
 
 	// --- FireLaser rows ---
@@ -1776,7 +1776,7 @@ public class ActionEditorPanel {
 	}
 
 	private int getContentMaxScroll() {
-		return Math.max(0, (rows.size() + 1) * ROW_HEIGHT - h);
+		return Math.max(0, (rows.size() + 1) * ROW_HEIGHT + PADDING - h);
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {

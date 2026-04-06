@@ -36,6 +36,7 @@ public class PreviewCardHolder implements CardHolder {
 	private final ArmorStand fakeTarget;
 	private final List<Entity> localEntities = new ArrayList<>();
 	private final List<Entity> pendingEntities = new ArrayList<>();
+	private final SpatialHash spatialHash = new SpatialHash();
 	private boolean ticking = false;
 
 	/** Safety limit: maximum number of tracked entities. When exceeded, preview auto-pauses. */
@@ -234,19 +235,26 @@ public class PreviewCardHolder implements CardHolder {
 			pendingEntities.clear();
 		}
 		ticking = false;
-		// Check collision with target bounding box for hit counting
-		// Use index-based loop to tolerate concurrent additions from callbacks
+		// Check collision with target bounding box for hit counting.
+		// Uses spatial hash grid to avoid O(N) full scan — only checks nearby cells.
 		if (onTargetHit != null) {
-			var targetBB = fakeTarget.getBoundingBox().inflate(0.3); // slightly larger for forgiving hits
+			// Rebuild spatial hash with current positions (cleared + re-inserted each tick)
+			spatialHash.clear();
 			for (int i = 0, size = localEntities.size(); i < size; i++) {
 				Entity e = localEntities.get(i);
-				if (e instanceof SimplifiedProjectile && !hitEntities.contains(e.getId())) {
+				if (e instanceof SimplifiedProjectile) {
+					spatialHash.insert(e);
+				}
+			}
+			var targetBB = fakeTarget.getBoundingBox().inflate(0.3); // slightly larger for forgiving hits
+			spatialHash.query(targetBB, e -> {
+				if (!hitEntities.contains(e.getId())) {
 					if (targetBB.contains(e.position()) || targetBB.intersects(e.getBoundingBox())) {
 						hitEntities.add(e.getId());
 						onTargetHit.run();
 					}
 				}
-			}
+			});
 		}
 	}
 

@@ -9,7 +9,6 @@ import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -43,8 +42,10 @@ public class DataDrivenTrailAction extends TrailAction {
 		this.actions = actions;
 		this.runtime = runtime;
 		this.definition = definition;
-		// Snapshot all current runtime variables so onExpiry sees the values at creation time
-		this.variableSnapshot = new HashMap<>(runtime.getVariables());
+		// Snapshot all current runtime variables so onExpiry sees the values at creation time.
+		// Use Map.copyOf for compact immutable storage — avoids HashMap bucket allocation.
+		// Typical variable count is 1-5, where copyOf uses optimized small-map implementations.
+		this.variableSnapshot = Map.copyOf(runtime.getVariables());
 	}
 
 	@Override
@@ -54,7 +55,7 @@ public class DataDrivenTrailAction extends TrailAction {
 		// Temporarily restore snapshotted variables so child actions see creation-time values
 		Map<String, Double> savedVars = null;
 		if (variableSnapshot != null) {
-			savedVars = new HashMap<>(runtime.getVariables());
+			savedVars = Map.copyOf(runtime.getVariables());
 			for (var entry : variableSnapshot.entrySet()) {
 				runtime.setVariable(entry.getKey(), entry.getValue());
 			}

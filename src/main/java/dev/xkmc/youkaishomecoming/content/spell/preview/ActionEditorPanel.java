@@ -139,7 +139,22 @@ public class ActionEditorPanel {
 	private void clearWidgets() {
 		closeDropdown();
 		closeExprCompletion();
+		var screen = Minecraft.getInstance().screen;
+		var focused = screen != null ? screen.getFocused() : null;
+		boolean clearingFocusedRow = false;
 		for (var row : rows) {
+			if (row.widget() == focused) {
+				clearingFocusedRow = true;
+				break;
+			}
+		}
+		if (clearingFocusedRow && screen != null) {
+			screen.setFocused(null);
+		}
+		for (var row : rows) {
+			if (row.widget() instanceof EditBox editBox) {
+				editBox.setFocused(false);
+			}
 			removeWidget.accept(row.widget());
 		}
 		rows.clear();
@@ -1262,14 +1277,16 @@ public class ActionEditorPanel {
 
 	private void notifySimple(Function<SpellAction, SpellAction> modifier) {
 		if (currentAction == null) return;
-		SpellAction newAction;
-		if (currentAction instanceof SpellActions.DisabledAction da) {
-			// Unwrap, modify inner, re-wrap
-			var modified = modifier.apply(da.inner());
-			newAction = new SpellActions.DisabledAction(modified);
-		} else {
-			newAction = modifier.apply(currentAction);
+		boolean disabled = currentAction instanceof SpellActions.DisabledAction;
+		SpellAction baseAction = disabled ? ((SpellActions.DisabledAction) currentAction).inner() : currentAction;
+		SpellAction modified;
+		try {
+			// Stale EditBox responders can still fire during focus transitions; ignore mismatched callbacks.
+			modified = modifier.apply(baseAction);
+		} catch (ClassCastException ignored) {
+			return;
 		}
+		SpellAction newAction = disabled ? new SpellActions.DisabledAction(modified) : modified;
 		currentAction = newAction;
 		onActionChanged.accept(newAction);
 	}

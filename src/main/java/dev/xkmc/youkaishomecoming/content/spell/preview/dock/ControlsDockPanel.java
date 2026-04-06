@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
+import dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.preview.VirtualSpellScene;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -80,13 +81,30 @@ public class ControlsDockPanel implements DockPanel {
 		bx = addButton(bx, row1Y, 20, "\u25A0", btn -> scene.reset());
 		addButton(bx, row1Y, 20, "\u25B8", btn -> scene.step());
 
-		// Row 2: Speed buttons
+		// Row 2: Speed buttons + Safety limit
 		bx = x + 4;
 		for (int i = 0; i < VirtualSpellScene.SPEED_OPTIONS.length; i++) {
 			float speed = VirtualSpellScene.SPEED_OPTIONS[i];
 			String label = speed < 1 ? speed + "x" : ((int) speed) + "x";
 			final int idx = i;
 			bx = addButton(bx, row2Y, 36, label, btn -> scene.setSpeedIndex(idx));
+		}
+		bx += 10;
+		int curLimit = PreviewCardHolder.getMaxEntityCount();
+		String limitHint = curLimit >= 1000 ? "Limit:" + (curLimit / 1000) + "k" : "Limit:" + curLimit;
+		bx = addEditBox(bx, row2Y, 52, limitHint, val -> {
+			try {
+				String s = val.toLowerCase().replace("k", "000").trim();
+				PreviewCardHolder.setMaxEntityCount(Integer.parseInt(s));
+			} catch (NumberFormatException ignored) {}
+		});
+		for (int lim : new int[]{10_000, 50_000, 100_000, 500_000}) {
+			String limLabel = lim >= 1000 ? (lim / 1000) + "k" : String.valueOf(lim);
+			final int fl = lim;
+			bx = addButton(bx, row2Y, 30, limLabel, btn -> {
+				PreviewCardHolder.setMaxEntityCount(fl);
+				rebuildCallback.run();
+			});
 		}
 
 		// Row 3: Distance + HP

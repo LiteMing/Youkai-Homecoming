@@ -36,11 +36,10 @@ public class PreviewCardHolder implements CardHolder {
 	private final ArmorStand fakeTarget;
 	private final List<Entity> localEntities = new ArrayList<>();
 	private final List<Entity> pendingEntities = new ArrayList<>();
-	private final SpatialHash spatialHash = new SpatialHash();
 	private boolean ticking = false;
 
 	/** Safety limit: maximum number of tracked entities. When exceeded, preview auto-pauses. */
-	public static final int MAX_ENTITY_COUNT = 50_000;
+	private static int maxEntityCount = 50_000;
 	/** Whether the safety limit has been tripped. */
 	private boolean safetyTripped = false;
 	private final RandomSource random = RandomSource.create();
@@ -136,7 +135,7 @@ public class PreviewCardHolder implements CardHolder {
 		// Safety: refuse to spawn more entities if over limit
 		if (safetyTripped) return;
 		int total = localEntities.size() + pendingEntities.size();
-		if (total >= MAX_ENTITY_COUNT) {
+		if (total >= maxEntityCount) {
 			safetyTripped = true;
 			return;
 		}
@@ -160,6 +159,16 @@ public class PreviewCardHolder implements CardHolder {
 	/** Reset the safety flag (e.g. after user clears entities or adjusts params). */
 	public void resetSafety() {
 		safetyTripped = false;
+	}
+
+	/** Get the current entity count safety limit. */
+	public static int getMaxEntityCount() {
+		return maxEntityCount;
+	}
+
+	/** Set the entity count safety limit. */
+	public static void setMaxEntityCount(int limit) {
+		maxEntityCount = Math.max(100, limit);
 	}
 
 	@Override
@@ -195,6 +204,10 @@ public class PreviewCardHolder implements CardHolder {
 	 * For ShooterEntity: manual movement + lifetime + spell tick.
 	 */
 	public void tick() {
+		// Auto-reset safety flag when entity count drops below limit
+		if (safetyTripped && localEntities.size() + pendingEntities.size() < maxEntityCount) {
+			safetyTripped = false;
+		}
 		ticking = true;
 		var iterator = localEntities.iterator();
 		while (iterator.hasNext()) {
@@ -236,25 +249,19 @@ public class PreviewCardHolder implements CardHolder {
 		}
 		ticking = false;
 		// Check collision with target bounding box for hit counting.
-		// Uses spatial hash grid to avoid O(N) full scan — only checks nearby cells.
+		// Direct scan: spatial hash was a net negative for single-target scenarios
+		// (insert overhead 4.35% vs query savings 0.03% per spark profiling).
 		if (onTargetHit != null) {
-			// Rebuild spatial hash with current positions (cleared + re-inserted each tick)
-			spatialHash.clear();
+			var targetBB = fakeTarget.getBoundingBox().inflate(0.3); // slightly larger for forgiving hits
 			for (int i = 0, size = localEntities.size(); i < size; i++) {
 				Entity e = localEntities.get(i);
-				if (e instanceof SimplifiedProjectile) {
-					spatialHash.insert(e);
-				}
-			}
-			var targetBB = fakeTarget.getBoundingBox().inflate(0.3); // slightly larger for forgiving hits
-			spatialHash.query(targetBB, e -> {
-				if (!hitEntities.contains(e.getId())) {
+				if (e instanceof SimplifiedProjectile && !hitEntities.contains(e.getId())) {
 					if (targetBB.contains(e.position()) || targetBB.intersects(e.getBoundingBox())) {
 						hitEntities.add(e.getId());
 						onTargetHit.run();
 					}
 				}
-			});
+			}
 		}
 	}
 
@@ -285,6 +292,7 @@ public class PreviewCardHolder implements CardHolder {
 		localEntities.clear();
 		pendingEntities.clear();
 		hitEntities.clear();
+		safetyTripped = false;
 	}
 
 	public void setTargetDistance(float distance) {

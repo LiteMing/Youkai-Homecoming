@@ -20,10 +20,13 @@ public abstract class DanmakuRenderStates extends RenderType {
 	protected static final ShaderStateShard DANMAKU_SHADER = new ShaderStateShard(GameRenderer::getPositionTexColorShader);
 
 	private static RenderType create(String name, ResourceLocation tex, boolean cull, DisplayType type) {
+		// sortOnUpload=false: skip per-frame quad distance sorting for danmaku.
+		// Sorting 30,000 quads costs ~9% frame time (putSortedQuadIndices).
+		// Danmaku are small particles where depth sort order is visually negligible.
 		return create(name,
 				DefaultVertexFormat.POSITION_TEX_COLOR,
 				VertexFormat.Mode.QUADS,
-				256, true, type != DisplayType.SOLID,
+				256, true, false,
 				CompositeState.builder()
 						.setShaderState(DANMAKU_SHADER)
 						.setTextureState(new TextureStateShard(tex, false, false))

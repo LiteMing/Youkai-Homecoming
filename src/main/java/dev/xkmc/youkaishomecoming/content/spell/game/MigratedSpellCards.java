@@ -2117,7 +2117,7 @@ public class MigratedSpellCards {
 		var expandRing = new FireDanmakuAction(
 				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.LIGHT_GRAY),
 				NumberProvider.constant(20),
-				new NumberProviders.Div(new NumberProviders.Mul(r0, NumberProvider.constant(2)), t0),
+				new NumberProviders.Div(r0, t0),
 				t0,
 				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
 				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
@@ -2150,19 +2150,26 @@ public class MigratedSpellCards {
 		// Legacy behavior: bullets spawn at target's outer ring (dist=32 offset), not from caster.
 		// Only triggers when target speed > 0.5.
 		// Simplified: sphere of BUBBLE YELLOW centered at TARGET position for spherical coverage.
-		var interceptBullets = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.YELLOW),
-				NumberProvider.constant(60), NumberProvider.constant(2),
-				NumberProvider.constant(40),
-				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(180),
-				PatternType.SPHERE,
-				new OriginConfig(OriginConfig.OriginMode.TARGET,
-						NumberProvider.constant(0), NumberProvider.constant(0),
-						NumberProvider.constant(0), NumberProvider.constant(0)),
-				new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
-				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
-				Optional.empty(), Optional.empty(), Optional.empty(),
-				HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL));
+		// Intercept: legacy fires from 8 positions 32 blocks out from target, spinning outward.
+		// Data-driven: SPHERE from target, speed outward + deceleration to form expanding hollow shell.
+		// BurstAction(8, 5) for 8 waves. DecelerationConfig(0.025) = 1/40 so v=0 at lifetime.
+		// Bullets expand outward from target and stop, forming a static shell.
+		var interceptBullets = new BurstAction(8, 5, "iw", List.of(
+				(SpellAction) new FireDanmakuAction(
+						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.YELLOW),
+						NumberProvider.constant(64), NumberProvider.constant(1.5),
+						NumberProvider.constant(40),
+						NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(180),
+						PatternType.SPHERE,
+						new OriginConfig(OriginConfig.OriginMode.TARGET,
+								NumberProvider.constant(0), NumberProvider.constant(0),
+								NumberProvider.constant(0), NumberProvider.constant(0)),
+						new AimMode.AimModes.Target(),
+						Optional.of(new MoverConfigs.DecelerationConfig(0.025)),
+						Optional.empty(), Optional.empty(), Optional.empty(), 1,
+						Optional.empty(), Optional.empty(), Optional.empty(),
+						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL))
+		));
 		// Additional condition: target must be moving fast (speed > 0.5)
 		var interceptSpeedCheck = new SpellConditions.CompareNumbers(
 				new NumberProviders.TargetSpeed(), ">", NumberProvider.constant(0.5));
@@ -2217,6 +2224,7 @@ public class MigratedSpellCards {
 		// Abyss mode: 3 rotating BUBBLE BLUE sequences (each 6-step burst, delayed)
 		// Non-abyss: 1 BUBBLE sequence
 		// Use burst for the delayed steps: 6 steps, 2-tick delay each
+		// DecelerationConfig factor = 1/lifetime ensures v=0 at expiry, no reverse shrink
 		var seqBubbleNorm = new BurstAction(5, 2, "sq", List.of(
 				new FireDanmakuAction(
 						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.LIGHT_GRAY),
@@ -2227,7 +2235,7 @@ public class MigratedSpellCards {
 								new NumberProviders.Mul(new NumberProviders.Variable("sq"), NumberProvider.constant(9))),
 						NumberProvider.constant(360), NumberProvider.constant(0),
 						PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
-						Optional.of(new MoverConfigs.DecelerationConfig(0.08)),
+						Optional.of(new MoverConfigs.DecelerationConfig(0.025)),
 						Optional.empty(),
 						Optional.of(List.of((SpellAction) new FireDanmakuAction(
 								YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.PURPLE),
@@ -2250,7 +2258,7 @@ public class MigratedSpellCards {
 										new NumberProviders.Mul(new NumberProviders.Variable("sqb"), NumberProvider.constant(12))),
 								NumberProvider.constant(360), NumberProvider.constant(0),
 								PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
-								Optional.of(new MoverConfigs.DecelerationConfig(0.08)),
+								Optional.of(new MoverConfigs.DecelerationConfig(0.025)),
 								Optional.empty(),
 								Optional.of(List.of((SpellAction) new FireDanmakuAction(
 										YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.BLUE),
@@ -2342,34 +2350,39 @@ public class MigratedSpellCards {
 		// Phase 3: PolarMover with angular acceleration (0 → 3.82°/tick over 10t) → angularAccel=0.382
 		// Phase 4: PolarMover with constant angular speed 3.82°/tick for 30t (orbits ~114°)
 		// Phase 5: Convert to linear fly-off (acceleration mover with zero accel = keep velocity)
+		// DecelerationConfig(factor): acc = velocity * (-factor).
+		// To reach v=0 at exactly t0=40: factor = 1/t0 = 0.025
+		// Legacy: va = range*2/t0^2 = 24/1600 = 0.015, vr = va*t0 = 0.6
+		// factor = va/vr = 0.015/0.6 = 0.025
 		var butterflyMover = new MoverConfigs.CompositeMoverConfig(List.of(
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.035)),
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.025)),
 				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
 				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 0, 0.382)),
 				new MoverConfigs.CompositeMoverConfig.Segment(30, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 3.82, 0)),
 				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
 		var butterflyMoverRev = new MoverConfigs.CompositeMoverConfig(List.of(
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.035)),
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.025)),
 				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
 				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 0, -0.382)),
 				new MoverConfigs.CompositeMoverConfig.Segment(30, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, -3.82, 0)),
 				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
 		// Speed: legacy va*t0 = (12*2/40^2)*40 = 0.6 blocks/tick
+		// Pattern: RANDOM to give each butterfly independent vertical angle (±45°).
+		// RING only evaluates elevation once for all bullets → thin ring.
+		// Legacy: each butterfly has unique ver=(rand*2-1)*PI/4 → use RANDOM spread=360 elevation=90
 		var butterflyCyan = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
 				NumberProvider.constant(100), NumberProvider.constant(0.6),
 				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360),
-				new NumberProviders.RandomRange(-45, 45),
-				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
+				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(90),
+				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
 				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		var butterflyMagenta = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
 				NumberProvider.constant(100), NumberProvider.constant(0.6),
 				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360),
-				new NumberProviders.RandomRange(-45, 45),
-				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
+				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(90),
+				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
 				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		var butterflyAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
@@ -2403,20 +2416,36 @@ public class MigratedSpellCards {
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
 				List.of());
-		// Lasers: fixed ±45° angle, elevation=90 (perpendicular to line), random rotation via angle offset
-		// The "spiral" is each laser at a different random perpendicular angle
+		// Lasers: legacy positions each laser along ±45° axis from caster, advancing outward.
+		// step = 1 + tick*0.5, laser origin = pos + dir*step where dir = forward rotated ±45°.
+		// Laser direction = perpendicular to dir, random rotation: getOrientation(dir).rotate(PI/2, random).
+		// Data-driven: use CASTER_FACING origin with offsets along ±45° axis (x=±step*0.707, z=step*0.707).
+		// Laser direction: random angle on the perpendicular plane.
+		var stepProvider = new NumberProviders.Add(NumberProvider.constant(1),
+				new NumberProviders.Mul(new NumberProviders.Variable("lt"), NumberProvider.constant(0.5)));
+		var stepX = new NumberProviders.Mul(stepProvider, NumberProvider.constant(0.707));
 		var spiralLasers = new BurstAction(120, 1, "lt", List.<SpellAction>of(
 				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.RED,
 						NumberProvider.constant(100), NumberProvider.constant(80),
-						NumberProvider.constant(-45),
-						NumberProvider.constant(90),
-						new AimMode.AimModes.CasterFacing(), OriginConfig.caster(),
+						new NumberProviders.RandomRange(0, 360),
+						NumberProvider.constant(0),
+						new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
+						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+								new NumberProviders.Mul(stepX, NumberProvider.constant(-1)),
+								NumberProvider.constant(0),
+								stepX,
+								NumberProvider.constant(0)),
 						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
 				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
 						NumberProvider.constant(100), NumberProvider.constant(80),
-						NumberProvider.constant(45),
-						NumberProvider.constant(90),
-						new AimMode.AimModes.CasterFacing(), OriginConfig.caster(),
+						new NumberProviders.RandomRange(0, 360),
+						NumberProvider.constant(0),
+						new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
+						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+								stepX,
+								NumberProvider.constant(0),
+								stepX,
+								NumberProvider.constant(0)),
 						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
 				shootGroupRed, shootGroupBlue
 		));

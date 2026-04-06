@@ -151,8 +151,21 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
 			var composite = new CompositeMover();
+			Vec3 currentOrigin = origin;
+			Vec3 currentVelocity = velocity;
 			for (var seg : segments) {
-				composite.add(seg.duration, seg.mover.create(origin, velocity));
+				var mover = seg.mover.create(currentOrigin, currentVelocity);
+				composite.add(seg.duration, mover);
+				// Advance origin/velocity to the end of this segment for the next one
+				if (mover instanceof RectMover rect) {
+					currentOrigin = rect.pos(seg.duration);
+					currentVelocity = rect.vel(seg.duration);
+				} else if (mover instanceof dev.xkmc.youkaishomecoming.content.spell.mover.PolarMover polar) {
+					var endState = polar.stateAt(seg.duration);
+					currentOrigin = endState.pos();
+					currentVelocity = endState.vel();
+				}
+				// For other mover types, keep current origin/velocity unchanged
 			}
 			return composite;
 		}

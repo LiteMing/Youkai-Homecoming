@@ -150,31 +150,12 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			// All segments share the same origin and velocity, matching legacy CompositeMover behavior.
+			// Each sub-mover receives (global tick - segment start) as its local tick via CompositeMover.
+			// Position continuity is achieved by the mover parameters themselves (not by chaining pos/vel).
 			var composite = new CompositeMover();
-			Vec3 currentOrigin = origin;
-			Vec3 currentVelocity = velocity;
-			// Track last non-zero direction so polar movers get correct orientation
-			// even after a zero-velocity phase (e.g. ZeroMover pause).
-			Vec3 lastDirection = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
 			for (var seg : segments) {
-				// If velocity is near-zero, use lastDirection to preserve orientation
-				Vec3 effectiveVelocity = currentVelocity.lengthSqr() > 1e-8
-						? currentVelocity : lastDirection.scale(1e-4);
-				var mover = seg.mover.create(currentOrigin, effectiveVelocity);
-				composite.add(seg.duration, mover);
-				// Advance origin/velocity to the end of this segment for the next one
-				if (mover instanceof RectMover rect) {
-					currentOrigin = rect.pos(seg.duration);
-					currentVelocity = rect.vel(seg.duration);
-				} else if (mover instanceof dev.xkmc.youkaishomecoming.content.spell.mover.PolarMover polar) {
-					var endState = polar.stateAt(seg.duration);
-					currentOrigin = endState.pos();
-					currentVelocity = endState.vel();
-				}
-				// Update direction if velocity is non-zero
-				if (currentVelocity.lengthSqr() > 1e-8) {
-					lastDirection = currentVelocity.normalize();
-				}
+				composite.add(seg.duration, seg.mover.create(origin, velocity));
 			}
 			return composite;
 		}
@@ -189,7 +170,11 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			return new RectMover(origin, Vec3.ZERO, Vec3.ZERO);
+			// Use actual ZeroMover (velocity-based, not position-based) to keep bullet
+			// at its current position rather than teleporting back to origin.
+			// rot0 = rot1 = current direction → no rotation change.
+			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity : new Vec3(0, 0, 1);
+			return new ZeroMover(dir, dir, 1);
 		}
 	}
 

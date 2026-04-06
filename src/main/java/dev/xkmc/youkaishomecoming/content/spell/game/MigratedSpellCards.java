@@ -2423,6 +2423,9 @@ public class MigratedSpellCards {
 		// Each laser is perpendicular to its line direction with random rotation.
 		// Data-driven: spawn two shooters along ±45° axes. Each shooter fires 1 random-direction laser/tick.
 		// Shooter velocity: 0.5 along ±45° axis. Lifetime: 120 ticks.
+		// Laser shooters: fly along ±45° from caster forward. Each tick fire a laser perpendicular
+		// to forward (toward target). angleOffset=90 + elevation=random(0,360) gives a vertical fan
+		// perpendicular to the caster-to-target axis, approximating legacy's perpendicular-to-flight-axis.
 		var laserShooterRed = new SpawnShooterAction(
 				40, 0, 120,
 				OriginConfig.caster(),
@@ -2430,8 +2433,8 @@ public class MigratedSpellCards {
 				NumberProvider.constant(0.35), Optional.empty(),
 				List.of((SpellAction) new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.RED,
 						NumberProvider.constant(100), NumberProvider.constant(80),
-						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(0),
-						new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
+						NumberProvider.constant(90), new NumberProviders.RandomRange(0, 360),
+						new AimMode.AimModes.CasterFacing(),
 						OriginConfig.caster(),
 						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
 						shootGroupRed));
@@ -2442,8 +2445,8 @@ public class MigratedSpellCards {
 				NumberProvider.constant(0.35), Optional.empty(),
 				List.of((SpellAction) new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
 						NumberProvider.constant(100), NumberProvider.constant(80),
-						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(0),
-						new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
+						NumberProvider.constant(90), new NumberProviders.RandomRange(0, 360),
+						new AimMode.AimModes.CasterFacing(),
 						OriginConfig.caster(),
 						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
 						shootGroupBlue));

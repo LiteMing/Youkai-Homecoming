@@ -153,8 +153,14 @@ public class MoverConfigs {
 			var composite = new CompositeMover();
 			Vec3 currentOrigin = origin;
 			Vec3 currentVelocity = velocity;
+			// Track last non-zero direction so polar movers get correct orientation
+			// even after a zero-velocity phase (e.g. ZeroMover pause).
+			Vec3 lastDirection = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
 			for (var seg : segments) {
-				var mover = seg.mover.create(currentOrigin, currentVelocity);
+				// If velocity is near-zero, use lastDirection to preserve orientation
+				Vec3 effectiveVelocity = currentVelocity.lengthSqr() > 1e-8
+						? currentVelocity : lastDirection.scale(1e-4);
+				var mover = seg.mover.create(currentOrigin, effectiveVelocity);
 				composite.add(seg.duration, mover);
 				// Advance origin/velocity to the end of this segment for the next one
 				if (mover instanceof RectMover rect) {
@@ -165,7 +171,10 @@ public class MoverConfigs {
 					currentOrigin = endState.pos();
 					currentVelocity = endState.vel();
 				}
-				// For other mover types, keep current origin/velocity unchanged
+				// Update direction if velocity is non-zero
+				if (currentVelocity.lengthSqr() > 1e-8) {
+					lastDirection = currentVelocity.normalize();
+				}
 			}
 			return composite;
 		}

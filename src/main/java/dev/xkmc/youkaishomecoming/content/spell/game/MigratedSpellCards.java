@@ -2315,16 +2315,19 @@ public class MigratedSpellCards {
 						PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
+		// Legacy: i in [-3,3] (7 cols, 10° spacing horizontal), k in [-2,2] (5 rows, 10° spacing vertical)
+		// GRID: count = rows (vertical), outerCount = cols (horizontal). Spread controls angular range.
+		// 7 cols × 5 rows × 3 speed layers = 105 butterflies total
 		var hiddenButterflies = new SpellActions.RepeatAction(NumberProvider.constant(3), "bsp", List.of(
 				(SpellAction) new FireDanmakuAction(
 						YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.PURPLE),
-						NumberProvider.constant(35),
+						NumberProvider.constant(5),
 						new NumberProviders.Add(NumberProvider.constant(1.4),
 								new NumberProviders.Mul(new NumberProviders.Variable("bsp"), NumberProvider.constant(0.2))),
 						NumberProvider.constant(40), NumberProvider.constant(0),
 						NumberProvider.constant(60), NumberProvider.constant(40),
 						PatternType.GRID, OriginConfig.caster(), new AimMode.AimModes.Target(),
-						Optional.<MoverConfig>empty(), Optional.of(NumberProvider.constant(5)),
+						Optional.<MoverConfig>empty(), Optional.of(NumberProvider.constant(7)),
 						Optional.<List<SpellAction>>empty(), Optional.<List<SpellAction>>empty(), 1)
 		));
 		SpellAction hiddenFull = new SpellActions.SequenceAction(List.of(
@@ -2416,39 +2419,35 @@ public class MigratedSpellCards {
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
 				List.of());
-		// Lasers: legacy positions each laser along ±45° axis from caster, advancing outward.
-		// step = 1 + tick*0.5, laser origin = pos + dir*step where dir = forward rotated ±45°.
-		// Laser direction = perpendicular to dir, random rotation: getOrientation(dir).rotate(PI/2, random).
-		// Data-driven: use CASTER_FACING origin with offsets along ±45° axis (x=±step*0.707, z=step*0.707).
-		// Laser direction: random angle on the perpendicular plane.
-		var stepProvider = new NumberProviders.Add(NumberProvider.constant(1),
-				new NumberProviders.Mul(new NumberProviders.Variable("lt"), NumberProvider.constant(0.5)));
-		var stepX = new NumberProviders.Mul(stepProvider, NumberProvider.constant(0.707));
-		var spiralLasers = new BurstAction(120, 1, "lt", List.<SpellAction>of(
-				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.RED,
+		// Lasers: legacy fires from two lines (±45° from forward), advancing outward each tick.
+		// Each laser is perpendicular to its line direction with random rotation.
+		// Data-driven: spawn two shooters along ±45° axes. Each shooter fires 1 random-direction laser/tick.
+		// Shooter velocity: 0.5 along ±45° axis. Lifetime: 120 ticks.
+		var laserShooterRed = new SpawnShooterAction(
+				40, 0, 120,
+				OriginConfig.caster(),
+				NumberProvider.constant(-0.35), NumberProvider.constant(0),
+				NumberProvider.constant(0.35), Optional.empty(),
+				List.of((SpellAction) new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.RED,
 						NumberProvider.constant(100), NumberProvider.constant(80),
-						new NumberProviders.RandomRange(0, 360),
-						NumberProvider.constant(0),
+						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(0),
 						new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
-						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-								new NumberProviders.Mul(stepX, NumberProvider.constant(-1)),
-								NumberProvider.constant(0),
-								stepX,
-								NumberProvider.constant(0)),
+						OriginConfig.caster(),
 						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
-				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
+						shootGroupRed));
+		var laserShooterBlue = new SpawnShooterAction(
+				40, 0, 120,
+				OriginConfig.caster(),
+				NumberProvider.constant(0.35), NumberProvider.constant(0),
+				NumberProvider.constant(0.35), Optional.empty(),
+				List.of((SpellAction) new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
 						NumberProvider.constant(100), NumberProvider.constant(80),
-						new NumberProviders.RandomRange(0, 360),
-						NumberProvider.constant(0),
+						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(0),
 						new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
-						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-								stepX,
-								NumberProvider.constant(0),
-								stepX,
-								NumberProvider.constant(0)),
+						OriginConfig.caster(),
 						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
-				shootGroupRed, shootGroupBlue
-		));
+						shootGroupBlue));
+		SpellAction spiralLasers = new SpellActions.SequenceAction(List.of(laserShooterRed, laserShooterBlue));
 		var laserAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.DistanceAbove(20),

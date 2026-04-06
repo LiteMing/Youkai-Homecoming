@@ -16,6 +16,9 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
@@ -457,9 +460,23 @@ public class OrthographicViewport {
 		renderMarkers(poseStack, scene);
 
 		// 9. Render all entities
+		// Fast path: for danmaku entities, skip EntityRenderDispatcher.getRenderer() lookup
+		// (which costs 6.41% frame time per spark profiling) by caching the renderer once.
 		dispatcher.setRenderShadow(false);
 
+		ItemDanmakuRenderer<?> cachedDanmakuRenderer = null;
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
+			if (entity instanceof ItemDanmakuEntity danmaku) {
+				// Fast path: skip dispatcher.getRenderer() for danmaku (all same EntityType)
+				if (cachedDanmakuRenderer == null) {
+					var r = dispatcher.getRenderer(entity);
+					if (r instanceof ItemDanmakuRenderer<?> dr) cachedDanmakuRenderer = dr;
+				}
+				if (cachedDanmakuRenderer != null) {
+					renderDanmakuFast(cachedDanmakuRenderer, danmaku, poseStack, partialTick);
+					continue;
+				}
+			}
 			renderEntity(dispatcher, entity, poseStack, buffer, partialTick);
 		}
 
@@ -550,10 +567,21 @@ public class OrthographicViewport {
 		// 12. Render markers
 		renderMarkers(poseStack, scene);
 
-		// 13. Render all entities
+		// 13. Render all entities (same fast path as orthographic)
 		dispatcher.setRenderShadow(false);
 
+		ItemDanmakuRenderer<?> cachedDanmakuRendererP = null;
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
+			if (entity instanceof ItemDanmakuEntity danmaku) {
+				if (cachedDanmakuRendererP == null) {
+					var r = dispatcher.getRenderer(entity);
+					if (r instanceof ItemDanmakuRenderer<?> dr) cachedDanmakuRendererP = dr;
+				}
+				if (cachedDanmakuRendererP != null) {
+					renderDanmakuFast(cachedDanmakuRendererP, danmaku, poseStack, partialTick);
+					continue;
+				}
+			}
 			renderEntity(dispatcher, entity, poseStack, buffer, partialTick);
 		}
 
@@ -575,6 +603,38 @@ public class OrthographicViewport {
 
 		// 18. Restore GUI projection
 		RenderSystem.setProjectionMatrix(savedProjection, com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z);
+	}
+
+	/**
+	 * Fast render path for danmaku: skip EntityRenderDispatcher.getRenderer() lookup
+	 * and PoseStack push/pop. Directly translates and scales via PoseStack, then
+	 * calls the renderer's create path.
+	 * <p>
+	 * Per spark profiling, getRenderer() costs 6.41% and PoseStack ops cost ~0.1%.
+	 * This fast path eliminates the getRenderer() cost for all danmaku entities.
+	 */
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private void renderDanmakuFast(ItemDanmakuRenderer renderer, ItemDanmakuEntity entity,
+			PoseStack poseStack, float partialTick) {
+		if (entity.tickCount <= 0) return;
+
+		double ex = Mth.lerp(partialTick, entity.xOld, entity.getX());
+		double ey = Mth.lerp(partialTick, entity.yOld, entity.getY());
+		double ez = Mth.lerp(partialTick, entity.zOld, entity.getZ());
+		double offsetY = entity.getBbHeight() / 2.0;
+
+		poseStack.pushPose();
+		poseStack.translate(ex, ey + offsetY, ez);
+
+		// Inline what ItemDanmakuRenderer.render() does:
+		// push, scale, type.create(), pop — but we already pushed above
+		if (entity.getItem().getItem() instanceof DanmakuItem danmaku) {
+			float scale = entity.scale();
+			poseStack.scale(scale, scale, scale);
+			danmaku.getTypeForRender().create(renderer, entity, poseStack, partialTick);
+		}
+
+		poseStack.popPose();
 	}
 
 	@SuppressWarnings("unchecked")

@@ -232,6 +232,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		}
 		temp = null;
 		toBeSent.clear();
+		DanmakuManager.flushErases();
 	}
 
 	public void eraseAllDanmaku(@Nullable Player player) {
@@ -241,6 +242,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		}
 		allDanmakus.clear();
 		removeDanmaku = true;
+		DanmakuManager.flushErases();
 	}
 
 	@Override

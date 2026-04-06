@@ -4,6 +4,8 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
+import java.nio.ByteBuffer;
+
 @Mixin(BufferBuilder.class)
 public interface BufferBuilderAccessor {
 
@@ -18,5 +20,12 @@ public interface BufferBuilderAccessor {
 
 	@Accessor
 	void setVertices(int vert);
+
+	/**
+	 * Expose the underlying ByteBuffer for bulk memcpy in BulkDataWriter.
+	 * Field name: BufferBuilder.buffer (mapped name in 1.20.1)
+	 */
+	@Accessor
+	ByteBuffer getBuffer();
 
 }

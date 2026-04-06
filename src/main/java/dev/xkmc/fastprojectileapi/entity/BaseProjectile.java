@@ -70,7 +70,24 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 	}
 
 	protected void projectileMove() {
-		ProjectileMovement movement = updateVelocity(getDeltaMovement(), position());
+		ProjectileMovement movement = computeMove();
+		applyMove(movement);
+	}
+
+	/**
+	 * Compute the next movement without modifying entity state.
+	 * Thread-safe for different entities called in parallel (each entity has its own mover instance).
+	 * Used by ClientDanmakuCache for parallel tick computation.
+	 */
+	public ProjectileMovement computeMove() {
+		return updateVelocity(getDeltaMovement(), position());
+	}
+
+	/**
+	 * Apply a pre-computed movement to this entity's state.
+	 * Must be called on the main thread.
+	 */
+	public void applyMove(ProjectileMovement movement) {
 		setDeltaMovement(movement.vec());
 		updateRotation(movement.rot());
 		double d2 = getX() + movement.vec().x;

@@ -7,6 +7,7 @@ import com.tterrag.registrate.util.entry.RegistryEntry;
 import dev.ghen.thirst.Thirst;
 import dev.shadowsoffire.gateways.Gateways;
 import dev.xkmc.fastprojectileapi.collision.FastMapInit;
+import dev.xkmc.fastprojectileapi.render.virtual.BatchEraseDanmakuToClient;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuToClientPacket;
 import dev.xkmc.fastprojectileapi.render.virtual.EraseDanmakuToClient;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleConfig;
@@ -91,6 +92,7 @@ public class YoukaisHomecoming {
 			e -> e.create(GrazeHelper.GrazeToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(DanmakuToClientPacket.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(EraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+		e -> e.create(BatchEraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellStateToClient.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",

@@ -2,10 +2,19 @@ package dev.xkmc.fastprojectileapi.render.virtual;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.logging.LogUtils;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
+import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
+import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
 import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -24,10 +33,24 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+import org.slf4j.Logger;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinTask;
 
 public class ClientDanmakuCache {
+
+	private static final Logger LOGGER = LogUtils.getLogger();
+
+	/**
+	 * Minimum entity count to justify parallel tick.
+	 * Below this, single-threaded is faster due to thread scheduling overhead.
+	 */
+	private static final int PARALLEL_TICK_THRESHOLD = 2000;
+	private static final int MAX_TICK_THREADS = 4;
 
 	private static ClientDanmakuCache CACHE = null;
 	private static EntityRenderer[] RENDERERS;
@@ -72,12 +95,73 @@ public class ClientDanmakuCache {
 	}
 
 	public void tick() {
+		int size = all.size();
+		if (size == 0) return;
+
+		if (size < PARALLEL_TICK_THRESHOLD) {
+			// Single-threaded path: original behavior
+			var itr = all.iterator();
+			while (itr.hasNext()) {
+				var e = itr.next();
+				e.setOldPosAndRot();
+				++e.tickCount;
+				e.tick();
+				if (!e.isValid()) {
+					itr.remove();
+					map.remove(e.getId());
+				}
+			}
+			return;
+		}
+
+		// PE-1: Parallel tick for virtualized client danmaku.
+		// These entities are NOT in the world (isAddedToWorld() == false),
+		// so their tick() is purely self-contained:
+		//   - No level.clip() interaction (onHit is no-op on client)
+		//   - No entity collision (ServerLevel check skips it)
+		//   - setPosRaw directly assigns position (no world index update)
+		//   - Each entity's mover is its own instance (no cross-entity state)
+		// Therefore the entire tick() can safely run in parallel.
+
+		// Snapshot to ArrayList for indexed parallel access
+		List<SimplifiedProjectile> snapshot = new ArrayList<>(all);
+
+		// Parallel: full tick for each entity
+		try {
+			int threads = Math.min(MAX_TICK_THREADS, Runtime.getRuntime().availableProcessors());
+			if (threads <= 1) threads = 2;
+			int chunkSize = (size + threads - 1) / threads;
+			ForkJoinTask<?>[] tasks = new ForkJoinTask<?>[threads];
+
+			for (int t = 0; t < threads; t++) {
+				int from = t * chunkSize;
+				int to = Math.min(from + chunkSize, size);
+				if (from >= to) continue;
+				tasks[t] = ForkJoinPool.commonPool().submit(() -> {
+					for (int i = from; i < to; i++) {
+						var e = snapshot.get(i);
+						e.setOldPosAndRot();
+						++e.tickCount;
+						e.tick();
+					}
+				});
+			}
+			for (var task : tasks) {
+				if (task != null) task.join();
+			}
+		} catch (Exception ex) {
+			LOGGER.warn("Parallel client tick failed, falling back to single-threaded", ex);
+			for (var e : snapshot) {
+				e.setOldPosAndRot();
+				++e.tickCount;
+				e.tick();
+			}
+		}
+
+		// Single-threaded: remove invalid entities
 		var itr = all.iterator();
 		while (itr.hasNext()) {
 			var e = itr.next();
-			e.setOldPosAndRot();
-			++e.tickCount;
-			e.tick();
 			if (!e.isValid()) {
 				itr.remove();
 				map.remove(e.getId());
@@ -85,20 +169,80 @@ public class ClientDanmakuCache {
 		}
 	}
 
+	@SuppressWarnings({"unchecked", "rawtypes"})
 	public void renderAll(Camera cam, Frustum frustum, PoseStack pose, float pTick, MultiBufferSource.BufferSource buffer) {
 		Vec3 vec3 = cam.getPosition();
-		double d0 = vec3.x();
-		double d1 = vec3.y();
-		double d2 = vec3.z();
+		double camx = vec3.x();
+		double camy = vec3.y();
+		double camz = vec3.z();
 		EntityRenderDispatcher disp = Minecraft.getInstance().getEntityRenderDispatcher();
 		var box = disp.shouldRenderHitBoxes() && !Minecraft.getInstance().showOnlyReducedInfo() ?
 				buffer.getBuffer(RenderType.lines()) : null;
+
+		// PE-2: Extract view matrix once for billboard fast path (same idea as PB3 for preview).
+		// For billboard types, bypass PoseStack push/translate/scale/pop entirely.
+		Matrix4f viewMat = pose.last().pose();
+		float viewScale = (float) Math.cbrt(Math.abs(viewMat.determinant3x3()));
+
+		// Cache danmaku renderer (all ItemDanmakuEntity share the same EntityType → same renderer)
+		ItemDanmakuRenderer<?> cachedRenderer = null;
+
 		for (var e : all) {
-			this.maybeRenderEntity(disp, frustum, e, d0, d1, d2, pTick, pose, box);
+			// Billboard fast path for ItemDanmakuEntity
+			if (e instanceof ItemDanmakuEntity danmaku) {
+				if (cachedRenderer == null) {
+					var r = getRenderer(disp, e);
+					if (r instanceof ItemDanmakuRenderer<?> dr) cachedRenderer = dr;
+				}
+				if (cachedRenderer != null) {
+					if (!((EntityRenderer) cachedRenderer).shouldRender(danmaku, frustum, camx, camy, camz)) continue;
+					if (!(danmaku.getItem().getItem() instanceof DanmakuItem item)) continue;
+
+					var typeHolder = item.getTypeForRender();
+					var type = typeHolder.getType();
+
+					// Camera-relative world position + render offset (bbHeight/2)
+					float wx = (float) (Mth.lerp(pTick, danmaku.xOld, danmaku.getX()) - camx);
+					float wy = (float) (Mth.lerp(pTick, danmaku.yOld, danmaku.getY()) - camy + danmaku.getBbHeight() / 2.0);
+					float wz = (float) (Mth.lerp(pTick, danmaku.zOld, danmaku.getZ()) - camz);
+
+					if (type instanceof SimpleProjectileType st) {
+						float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
+						float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
+						float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
+						float scale = viewScale * danmaku.scale();
+						int col = DanmakuRenderStates.fading(st.display(), -1, cachedRenderer, danmaku);
+						((ProjTypeHolder) typeHolder).accept(new SimpleProjectileType.Ins(vx, vy, vz, scale, col));
+						continue;
+					} else if (type instanceof RotatingProjectileType rt) {
+						float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
+						float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
+						float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
+						float scale = viewScale * danmaku.scale();
+						float zAngle = (float) Math.toRadians((danmaku.tickCount + pTick) * 360f / (float) rt.rot());
+						int col = DanmakuRenderStates.fading(rt.display(), -1, cachedRenderer, danmaku);
+						((ProjTypeHolder) typeHolder).accept(new RotatingProjectileType.Ins(vx, vy, vz, scale, zAngle, col));
+						continue;
+					} else if (type instanceof AnimatedProjectileType at) {
+						float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
+						float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
+						float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
+						float scale = viewScale * danmaku.scale();
+						int frame = (danmaku.tickCount / at.ticksPerFrame()) % at.frameCount();
+						int col = DanmakuRenderStates.fading(at.display(), -1, cachedRenderer, danmaku);
+						((ProjTypeHolder) typeHolder).accept(new AnimatedProjectileType.Ins(vx, vy, vz, scale, col, frame));
+						continue;
+					}
+					// Non-billboard types: fall through to standard path
+				}
+			}
+
+			// Standard path: PoseStack-based rendering for non-billboard types and non-danmaku entities
+			this.maybeRenderEntity(disp, frustum, e, camx, camy, camz, pTick, pose, box);
 		}
 		if (box != null && cam.getEntity() instanceof Player pl && !all.isEmpty() &&
 				!Minecraft.getInstance().options.getCameraType().isFirstPerson()) {
-			renderPlayerHitbox(pose, box, pl, d0, d1, d2, pTick);
+			renderPlayerHitbox(pose, box, pl, camx, camy, camz, pTick);
 		}
 	}
 

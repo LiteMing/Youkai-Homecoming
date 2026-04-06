@@ -2,6 +2,7 @@ package dev.xkmc.fastprojectileapi.render.virtual;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.minecraft.world.entity.LivingEntity;
 
 import java.util.List;
@@ -14,6 +15,13 @@ public class DanmakuManager {
 	 * 2000 × 200 = 400KB, leaving ample headroom for l2serial overhead.
 	 */
 	private static final int MAX_PER_PACKET = 2000;
+
+	// PE-3: Erase buffer. Collects erase requests during a tick, flushed at end.
+	// Per-entity buffering is not needed because all virtual danmaku share the same
+	// owner (the LivingCardHolder), so we buffer globally per flush cycle.
+	private static final IntArrayList eraseIds = new IntArrayList();
+	private static long eraseKillMask = 0;
+	private static LivingEntity eraseUser = null;
 
 	public static void send(LivingEntity user, List<SimplifiedProjectile> proj) {
 		int size = proj.size();
@@ -29,8 +37,38 @@ public class DanmakuManager {
 		}
 	}
 
+	/**
+	 * Buffer an erase request. Call {@link #flushErases()} at end of tick to send.
+	 */
 	public static void erase(LivingEntity user, SimplifiedProjectile proj, boolean kill) {
-		YoukaisHomecoming.HANDLER.toTrackingPlayers(new EraseDanmakuToClient(proj, kill), user);
+		// If user changed (different owner entity), flush the previous batch first
+		if (eraseUser != null && eraseUser != user && !eraseIds.isEmpty()) {
+			flushErases();
+		}
+		eraseUser = user;
+		int idx = eraseIds.size();
+		eraseIds.add(proj.getId());
+		if (kill && idx < 64) {
+			eraseKillMask |= (1L << idx);
+		}
+	}
+
+	/**
+	 * Flush all buffered erase requests as a single batch packet.
+	 * Call this at the end of tickDanmaku() and eraseAllDanmaku().
+	 */
+	public static void flushErases() {
+		if (eraseIds.isEmpty() || eraseUser == null) {
+			eraseIds.clear();
+			eraseKillMask = 0;
+			eraseUser = null;
+			return;
+		}
+		YoukaisHomecoming.HANDLER.toTrackingPlayers(
+				new BatchEraseDanmakuToClient(eraseIds.toIntArray(), eraseKillMask), eraseUser);
+		eraseIds.clear();
+		eraseKillMask = 0;
+		eraseUser = null;
 	}
 
 }

@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.item;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.l2library.capability.conditionals.*;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
@@ -38,6 +39,7 @@ public class SpellContainer extends ConditionalToken {
 		data.cache.clear();
 		data.spells.clear();
 		data.proxies.clear();
+		DanmakuManager.flushErases();
 	}
 
 	public static void track(ServerPlayer sp, SimplifiedProjectile e) {

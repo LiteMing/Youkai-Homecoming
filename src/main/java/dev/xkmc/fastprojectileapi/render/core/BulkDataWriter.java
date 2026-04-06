@@ -83,6 +83,9 @@ public class BulkDataWriter {
 	/**
 	 * Bulk-copy a filled byte array into this writer's underlying BufferBuilder.
 	 * Must be called from the render thread. Advances the internal counters.
+	 * <p>
+	 * Uses direct memcpy into the underlying ByteBuffer when possible,
+	 * reducing 750万+ method calls (17万弹幕) to a single bulk copy per buffer.
 	 *
 	 * @param data         byte array containing packed vertex data
 	 * @param vertexCount  number of vertices contained in data
@@ -102,23 +105,15 @@ public class BulkDataWriter {
 				vc.vertex(x, y, z).uv(u, vv).color(col).endVertex();
 			}
 		} else {
-			// BufferBuilder.putFloat/putByte offsets are relative to current nextElementByte.
-			// Must write one vertex at a time and advance nextElementByte after each.
 			var accessor = (BufferBuilderAccessor) direct;
-			for (int i = 0; i < vertexCount; i++) {
-				int off = i * STRIDE;
-				direct.putFloat(0, getFloat(data, off));      // x
-				direct.putFloat(4, getFloat(data, off + 4));   // y
-				direct.putFloat(8, getFloat(data, off + 8));   // z
-				direct.putFloat(12, getFloat(data, off + 12)); // u
-				direct.putFloat(16, getFloat(data, off + 16)); // v
-				direct.putByte(20, data[off + 20]);            // r
-				direct.putByte(21, data[off + 21]);            // g
-				direct.putByte(22, data[off + 22]);            // b
-				direct.putByte(23, data[off + 23]);            // a
-				accessor.setNextElementByte(accessor.getNextElementByte() + STRIDE);
-				accessor.setVertices(accessor.getVertices() + 1);
-			}
+			int totalBytes = vertexCount * STRIDE;
+			int start = accessor.getNextElementByte();
+			// Direct bulk copy: byte[] → underlying ByteBuffer in one memcpy
+			java.nio.ByteBuffer underlying = accessor.getBuffer();
+			underlying.position(start);
+			underlying.put(data, 0, totalBytes);
+			accessor.setNextElementByte(start + totalBytes);
+			accessor.setVertices(accessor.getVertices() + vertexCount);
 		}
 	}
 

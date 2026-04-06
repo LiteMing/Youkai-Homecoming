@@ -642,6 +642,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 		}
 		temp = null;
 		toBeSent.clear();
+		DanmakuManager.flushErases();
 	}
 
 	public void eraseAllDanmaku(@Nullable Player player) {
@@ -651,6 +652,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 		}
 		allDanmakus.clear();
 		removeDanmaku = true;
+		DanmakuManager.flushErases();
 	}
 
 	@Override

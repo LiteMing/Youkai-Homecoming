@@ -102,12 +102,23 @@ public class BulkDataWriter {
 				vc.vertex(x, y, z).uv(u, vv).color(col).endVertex();
 			}
 		} else {
-			for (int i = 0; i < data.length; i++) {
-				direct.putByte(i, data[i]);
-			}
+			// BufferBuilder.putFloat/putByte offsets are relative to current nextElementByte.
+			// Must write one vertex at a time and advance nextElementByte after each.
 			var accessor = (BufferBuilderAccessor) direct;
-			accessor.setNextElementByte(accessor.getNextElementByte() + data.length);
-			accessor.setVertices(accessor.getVertices() + vertexCount);
+			for (int i = 0; i < vertexCount; i++) {
+				int off = i * STRIDE;
+				direct.putFloat(0, getFloat(data, off));      // x
+				direct.putFloat(4, getFloat(data, off + 4));   // y
+				direct.putFloat(8, getFloat(data, off + 8));   // z
+				direct.putFloat(12, getFloat(data, off + 12)); // u
+				direct.putFloat(16, getFloat(data, off + 16)); // v
+				direct.putByte(20, data[off + 20]);            // r
+				direct.putByte(21, data[off + 21]);            // g
+				direct.putByte(22, data[off + 22]);            // b
+				direct.putByte(23, data[off + 23]);            // a
+				accessor.setNextElementByte(accessor.getNextElementByte() + STRIDE);
+				accessor.setVertices(accessor.getVertices() + 1);
+			}
 		}
 	}
 

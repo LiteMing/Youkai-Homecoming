@@ -41,6 +41,10 @@ public class ParallelBufferFiller {
 	 *                         The function must write exactly verticesPerEntry * 24 bytes starting at byteOffset.
 	 * @param <T>              the render instance type
 	 */
+	/** Counter for diagnostic logging — logs once every N frames to avoid spam. */
+	private static int diagCounter = 0;
+	private static final int DIAG_INTERVAL = 600; // ~10 seconds at 60fps
+
 	public static <T> void fill(BulkDataWriter vc, List<T> list, int verticesPerEntry, InstanceWriter<T> writer) {
 		int size = list.size();
 		if (size == 0) return;
@@ -58,6 +62,10 @@ public class ParallelBufferFiller {
 		}
 
 		// Parallel path
+		if (++diagCounter % DIAG_INTERVAL == 1) {
+			LOGGER.info("[FastProjectileAPI] Parallel buffer fill: {} instances, {} threads",
+					size, Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors()));
+		}
 		int threads = Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors());
 		if (threads <= 1) threads = 2; // at least 2 for parallelism
 		int chunkSize = (size + threads - 1) / threads;

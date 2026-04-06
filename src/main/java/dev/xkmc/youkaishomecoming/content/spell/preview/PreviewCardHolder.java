@@ -205,16 +205,19 @@ public class PreviewCardHolder implements CardHolder {
 				}
 			}
 		}
-		ticking = false;
 		// Flush entities spawned during tick (by ShooterEntity spellCard, trail actions, etc.)
+		// Must flush BEFORE releasing ticking flag so new entities are visible to hit detection
 		if (!pendingEntities.isEmpty()) {
 			localEntities.addAll(pendingEntities);
 			pendingEntities.clear();
 		}
+		ticking = false;
 		// Check collision with target bounding box for hit counting
+		// Use index-based loop to tolerate concurrent additions from callbacks
 		if (onTargetHit != null) {
 			var targetBB = fakeTarget.getBoundingBox().inflate(0.3); // slightly larger for forgiving hits
-			for (Entity e : localEntities) {
+			for (int i = 0, size = localEntities.size(); i < size; i++) {
+				Entity e = localEntities.get(i);
 				if (e instanceof SimplifiedProjectile && !hitEntities.contains(e.getId())) {
 					if (targetBB.contains(e.position()) || targetBB.intersects(e.getBoundingBox())) {
 						hitEntities.add(e.getId());

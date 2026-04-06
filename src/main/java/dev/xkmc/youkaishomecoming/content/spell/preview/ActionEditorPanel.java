@@ -1261,6 +1261,7 @@ public class ActionEditorPanel {
 	}
 
 	private void notifySimple(Function<SpellAction, SpellAction> modifier) {
+		if (currentAction == null) return;
 		SpellAction newAction;
 		if (currentAction instanceof SpellActions.DisabledAction da) {
 			// Unwrap, modify inner, re-wrap

@@ -34,40 +34,37 @@ public record AnimatedProjectileType(ResourceLocation tex, DisplayType display, 
     @Override
     public void create(Consumer<Ins> holder, ProjectileRenderer<?> r, SimplifiedProjectile e, PoseStack pose,
             float pTick) {
-        var sim4 = new Matrix4f(pose.last().pose());
-        sim4.set3x3(new Matrix4f().scale((float) Math.cbrt(Math.abs(sim4.determinant3x3()))));
+        var m4 = pose.last().pose();
+        float scale = (float) Math.cbrt(Math.abs(m4.determinant3x3()));
         int col = DanmakuRenderStates.fading(display, -1, r, e);
         int frame = (e.tickCount / ticksPerFrame) % frameCount;
-        holder.accept(new Ins(sim4, col, frame));
+        holder.accept(new Ins(m4.m30(), m4.m31(), m4.m32(), scale, col, frame));
     }
 
-    public record Ins(Matrix4f m4, int color, int frame) {
+    public record Ins(float tx, float ty, float tz, float scale, int color, int frame) {
 
         public void tex(BulkDataWriter vc, int frameCount) {
+            var m4 = new Matrix4f().translation(tx, ty, tz).scale(scale);
             float v0 = (float) frame / frameCount;
             float v1 = (float) (frame + 1) / frameCount;
-            vertex(vc, m4, 1, 1, 1, v0, color);
-            vertex(vc, m4, 1, 0, 1, v1, color);
-            vertex(vc, m4, 0, 0, 0, v1, color);
-            vertex(vc, m4, 0, 1, 0, v0, color);
+            vc.addVertex(m4, 0.5F, 0.5F, 0.0F, 1, v0, color);
+            vc.addVertex(m4, 0.5F, -0.5F, 0.0F, 1, v1, color);
+            vc.addVertex(m4, -0.5F, -0.5F, 0.0F, 0, v1, color);
+            vc.addVertex(m4, -0.5F, 0.5F, 0.0F, 0, v0, color);
         }
 
         public void texToArray(byte[] buf, int off, int frameCount) {
             int s = BulkDataWriter.STRIDE;
             float v0 = (float) frame / frameCount;
             float v1 = (float) (frame + 1) / frameCount;
-            vertexToArray(buf, off, m4, 1, 1, 1, v0, color);
-            vertexToArray(buf, off + s, m4, 1, 0, 1, v1, color);
-            vertexToArray(buf, off + s * 2, m4, 0, 0, 0, v1, color);
-            vertexToArray(buf, off + s * 3, m4, 0, 1, 0, v0, color);
+            vertexDirect(buf, off, 0.5f, 0.5f, 1, v0);
+            vertexDirect(buf, off + s, 0.5f, -0.5f, 1, v1);
+            vertexDirect(buf, off + s * 2, -0.5f, -0.5f, 0, v1);
+            vertexDirect(buf, off + s * 3, -0.5f, 0.5f, 0, v0);
         }
 
-        private static void vertex(BulkDataWriter vc, Matrix4f m4, float x, int y, float u, float v, int color) {
-            vc.addVertex(m4, x - 0.5F, y - 0.5F, 0.0F, u, v, color);
-        }
-
-        private static void vertexToArray(byte[] buf, int off, Matrix4f m4, float x, int y, float u, float v, int color) {
-            BulkDataWriter.writeVertex(buf, off, m4, x - 0.5F, y - 0.5F, 0.0F, u, v, color);
+        private void vertexDirect(byte[] buf, int off, float lx, float ly, float u, float v) {
+            BulkDataWriter.writeVertex(buf, off, lx * scale + tx, ly * scale + ty, tz, u, v, color);
         }
 
     }

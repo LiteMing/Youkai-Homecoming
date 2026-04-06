@@ -27,17 +27,18 @@ public record RotatingProjectileType(ResourceLocation tex, DisplayType display, 
 
 	@Override
 	public void create(Consumer<Ins> holder, ProjectileRenderer<?> r, SimplifiedProjectile e, PoseStack pose, float pTick) {
-		var sim4 = new Matrix4f(pose.last().pose());
-		sim4.set3x3(new Matrix4f().scale((float) Math.cbrt(Math.abs(sim4.determinant3x3()))));
-		var q4 = Axis.ZP.rotationDegrees((e.tickCount + pTick) * 360f / (float) rot);
-		sim4.rotate(q4);
+		var m4 = pose.last().pose();
+		float scale = (float) Math.cbrt(Math.abs(m4.determinant3x3()));
+		float zAngle = (float) Math.toRadians((e.tickCount + pTick) * 360f / (float) rot);
 		int col = DanmakuRenderStates.fading(display, -1, r, e);
-		holder.accept(new Ins(sim4, col));
+		holder.accept(new Ins(m4.m30(), m4.m31(), m4.m32(), scale, zAngle, col));
 	}
 
-	public record Ins(Matrix4f m4, int color) {
+	public record Ins(float tx, float ty, float tz, float scale, float zAngle, int color) {
 
 		public void tex(BulkDataWriter vc) {
+			var m4 = new Matrix4f().translation(tx, ty, tz).scale(scale)
+					.rotate(new org.joml.Quaternionf().rotateZ(zAngle));
 			vertex(vc, m4, 1, 1, 1, 0, color);
 			vertex(vc, m4, 1, 0, 1, 1, color);
 			vertex(vc, m4, 0, 0, 0, 1, color);
@@ -46,18 +47,24 @@ public record RotatingProjectileType(ResourceLocation tex, DisplayType display, 
 
 		public void texToArray(byte[] buf, int off) {
 			int s = BulkDataWriter.STRIDE;
-			vertexToArray(buf, off, m4, 1, 1, 1, 0, color);
-			vertexToArray(buf, off + s, m4, 1, 0, 1, 1, color);
-			vertexToArray(buf, off + s * 2, m4, 0, 0, 0, 1, color);
-			vertexToArray(buf, off + s * 3, m4, 0, 1, 0, 0, color);
+			// Inline: translate + scale + rotateZ
+			float c = (float) Math.cos(zAngle);
+			float sn = (float) Math.sin(zAngle);
+			vertexRotated(buf, off, 0.5f, 0.5f, 1, 0, c, sn);
+			vertexRotated(buf, off + s, 0.5f, -0.5f, 1, 1, c, sn);
+			vertexRotated(buf, off + s * 2, -0.5f, -0.5f, 0, 1, c, sn);
+			vertexRotated(buf, off + s * 3, -0.5f, 0.5f, 0, 0, c, sn);
+		}
+
+		private void vertexRotated(byte[] buf, int off, float lx, float ly, float u, float v, float c, float sn) {
+			float rx = (lx * c - ly * sn) * scale + tx;
+			float ry = (lx * sn + ly * c) * scale + ty;
+			float rz = tz;
+			BulkDataWriter.writeVertex(buf, off, rx, ry, rz, u, v, color);
 		}
 
 		private static void vertex(BulkDataWriter vc, Matrix4f m4, float x, int y, int u, int v, int color) {
 			vc.addVertex(m4, x - 0.5F, y - 0.5F, 0.0F, u, v, color);
-		}
-
-		private static void vertexToArray(byte[] buf, int off, Matrix4f m4, float x, int y, int u, int v, int color) {
-			BulkDataWriter.writeVertex(buf, off, m4, x - 0.5F, y - 0.5F, 0.0F, u, v, color);
 		}
 
 	}

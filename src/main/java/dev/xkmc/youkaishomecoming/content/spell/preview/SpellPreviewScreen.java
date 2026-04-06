@@ -747,7 +747,9 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean isPauseScreen() {
-		return false;
+		// Pause in singleplayer like vanilla book screen.
+		// Minecraft engine automatically skips pausing in multiplayer/LAN.
+		return true;
 	}
 
 	/**

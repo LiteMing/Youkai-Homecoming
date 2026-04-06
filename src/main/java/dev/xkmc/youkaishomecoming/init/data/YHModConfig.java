@@ -71,6 +71,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue playerSpellCooldown;
 		public final ForgeConfigSpec.IntValue playerLaserDuration;
 		public final ForgeConfigSpec.BooleanValue invulFrameForDanmaku;
+		public final ForgeConfigSpec.IntValue danmakuBuffCostTicks;
 
 		public final ForgeConfigSpec.BooleanValue rumiaNaturalSpawn;
 		public final ForgeConfigSpec.BooleanValue exRumiaConversion;
@@ -190,9 +191,12 @@ public class YHModConfig {
 						.defineInRange("playerSpellCooldown", 40, 5, 1000);
 				playerLaserDuration = builder.comment("Player laser duration")
 						.defineInRange("playerLaserDuration", 100, 5, 1000);
-				invulFrameForDanmaku = builder.comment("Enable danmaku damage invulnerability frame against non-player non-youkai mobs.")
-						.comment("It's always enabled against player and youkais")
-						.define("invulFrameForDanmaku", true);
+			invulFrameForDanmaku = builder.comment("Enable danmaku damage invulnerability frame against non-player non-youkai mobs.")
+					.comment("It's always enabled against player and youkais")
+					.define("invulFrameForDanmaku", true);
+				danmakuBuffCostTicks = builder.comment("Buff duration (ticks) consumed per danmaku/laser shot when player has youkaified/fairy effect.")
+					.comment("Set to 0 to disable buff consumption. Hat bonus bypasses this cost.")
+					.defineInRange("danmakuBuffCostTicks", 40, 0, 10000);
 				danmakuMaxResource = builder.comment("Max resource obtainable from danmaku battle")
 						.defineInRange("danmakuMaxResource", 10, 4, 20);
 				danmakuMaxPower = builder.comment("Max Power player can obtain from grazing")

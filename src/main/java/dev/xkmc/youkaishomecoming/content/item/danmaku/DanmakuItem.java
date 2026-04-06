@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
+import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
@@ -93,11 +94,15 @@ public class DanmakuItem extends Item {
 		int cooldown = YHModConfig.COMMON.playerDanmakuCooldown.get();
 		ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
 		if (head.is(YHTagGen.TOUHOU_HAT) && head.getItem() instanceof TouhouHatItem item && item.support(color)) {
+			// Hat bonus: no item/buff cost, half cooldown
 			player.getCooldowns().addCooldown(this, cooldown / 2);
 		} else {
 			player.getCooldowns().addCooldown(this, cooldown);
 			if (!player.getAbilities().instabuild) {
-				stack.shrink(1);
+				// Try consuming buff duration as mana; if no buff, consume item
+				if (!EffectEventHandlers.consumeDanmakuBuffCost(player)) {
+					stack.shrink(1);
+				}
 			}
 		}
 		return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());

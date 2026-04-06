@@ -110,6 +110,9 @@ public class ActionListPanel {
 	private int scrollOffset = 0;
 	private boolean dirty = true;
 
+	// Multi-selection state: additional selected paths (always includes selectedPath if non-null)
+	private final java.util.LinkedHashSet<ActionPath> selectedPaths = new java.util.LinkedHashSet<>();
+
 	// Currently selected add-button (for paste target)
 	private AddTarget selectedAddTarget = null;
 
@@ -192,6 +195,7 @@ public class ActionListPanel {
 		phase.onDamage.clear(); phase.onDamage.addAll(restored.onDamage);
 		phase.transitions.clear(); phase.transitions.addAll(restored.transitions);
 		selectedPath = null;
+		selectedPaths.clear();
 		selectedAddTarget = null;
 		dirty = true;
 	}
@@ -207,6 +211,7 @@ public class ActionListPanel {
 	public void setPhase(PhaseDefinition phase) {
 		this.phase = phase;
 		this.selectedPath = null;
+		this.selectedPaths.clear();
 		this.selectedAddTarget = null;
 		this.scrollOffset = 0;
 		this.dirty = true;
@@ -229,7 +234,40 @@ public class ActionListPanel {
 
 	public void clearSelection() {
 		selectedPath = null;
+		selectedPaths.clear();
 		selectedAddTarget = null;
+	}
+
+	/** Whether the given path is in the multi-selection set. */
+	private boolean isSelected(ActionPath path) {
+		if (path == null) return false;
+		if (path.equals(selectedPath)) return true;
+		return selectedPaths.contains(path);
+	}
+
+	/** Select all action nodes in the current phase. */
+	public void selectAll() {
+		if (phase == null) return;
+		buildRowsIfDirty();
+		selectedPaths.clear();
+		ActionPath first = null;
+		for (Row row : rows) {
+			if (row.kind == RowKind.ACTION && row.path != null) {
+				selectedPaths.add(row.path);
+				if (first == null) first = row.path;
+			}
+		}
+		if (first != null) selectedPath = first;
+		selectedAddTarget = null;
+		dirty = true;
+	}
+
+	/** Get all currently selected paths (ordered). */
+	public java.util.List<ActionPath> getSelectedPaths() {
+		if (selectedPaths.isEmpty() && selectedPath != null) {
+			return List.of(selectedPath);
+		}
+		return new ArrayList<>(selectedPaths);
 	}
 
 	public void markDirty() {
@@ -470,15 +508,21 @@ public class ActionListPanel {
 				g.drawString(font, plus, plusX, row.y + 2, plusHovered ? 0xFFFFFF44 : 0xFF66AA66, false);
 			} else if (row.kind == RowKind.ACTION) {
 				int ix = x + PADDING + row.indent * INDENT_PX;
-				boolean selected = row.path != null && row.path.equals(selectedPath);
+				boolean isPrimary = row.path != null && row.path.equals(selectedPath);
+				boolean isMultiSelected = row.path != null && isSelected(row.path);
 				boolean hovered = mouseX >= x && mouseX < x + w
 						&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT;
 				boolean selfDisabled = row.action instanceof SpellActions.DisabledAction;
 				boolean isDisabled = selfDisabled || row.ancestorDisabled;
 				SpellAction displayAction = selfDisabled ? ((SpellActions.DisabledAction) row.action).inner() : row.action;
 
-				int bgColor = selected ? 0xFF334466 : (hovered ? 0xFF2a2a4e : 0);
+				int bgColor = isPrimary ? 0xFF334466
+						: (isMultiSelected ? 0xFF2a3a56 : (hovered ? 0xFF2a2a4e : 0));
 				if (bgColor != 0) g.fill(x + 1, row.y, x + w, row.y + ROW_HEIGHT, bgColor);
+				// Multi-selection left border indicator
+				if (isMultiSelected && !isPrimary) {
+					g.fill(x + 1, row.y, x + 3, row.y + ROW_HEIGHT, 0xFF5588BB);
+				}
 
 				// Collapse/expand indicator for nodes with children
 				SpellAction checkAction = displayAction;
@@ -501,7 +545,7 @@ public class ActionListPanel {
 					if (isDisabled) {
 						textColor = 0xFF666666; // Gray for disabled
 					} else {
-						textColor = selected ? 0xFFFFFF88 : getActionColor(displayAction);
+						textColor = (isPrimary || isMultiSelected) ? 0xFFFFFF88 : getActionColor(displayAction);
 					}
 					// Italic effect for disabled: draw slightly shifted
 					if (isDisabled) {
@@ -627,16 +671,57 @@ public class ActionListPanel {
 				lastClickTime = now;
 				lastClickPath = row.path;
 
-				selectedPath = row.path;
+				boolean ctrlDown = net.minecraft.client.gui.screens.Screen.hasControlDown();
+				boolean shiftDown = net.minecraft.client.gui.screens.Screen.hasShiftDown();
+
+				if (ctrlDown) {
+					// Ctrl+click: toggle individual selection
+					if (selectedPaths.contains(row.path)) {
+						selectedPaths.remove(row.path);
+						if (row.path.equals(selectedPath)) {
+							selectedPath = selectedPaths.isEmpty() ? null : selectedPaths.iterator().next();
+						}
+					} else {
+						selectedPaths.add(row.path);
+						if (selectedPath == null) selectedPath = row.path;
+					}
+				} else if (shiftDown && selectedPath != null) {
+					// Shift+click: range select between selectedPath and clicked row
+					selectedPaths.clear();
+					boolean inRange = false;
+					for (Row r : rows) {
+						if (r.kind != RowKind.ACTION || r.path == null) continue;
+						if (r.path.equals(selectedPath) || r.path.equals(row.path)) {
+							selectedPaths.add(r.path);
+							if (inRange) break; // reached the end of range
+							inRange = true;
+							continue;
+						}
+						if (inRange) {
+							selectedPaths.add(r.path);
+						}
+					}
+					// Ensure both endpoints are included
+					selectedPaths.add(selectedPath);
+					selectedPaths.add(row.path);
+				} else {
+					// Normal click: single select, clear multi-selection
+					selectedPaths.clear();
+					selectedPaths.add(row.path);
+					selectedPath = row.path;
+				}
+
 				selectedAddTarget = null;
 				dirty = true; // rebuild to show/hide add-buttons for newly selected node
 				onSelect.accept(row.action, row.path);
-				// Start potential drag for any action
-				dragSourcePath = row.path;
-				dragSourceSection = row.path.section;
-				dragStartX = mouseX;
-				dragStartY = mouseY;
-				dragThresholdMet = false;
+				// Start potential drag for any action (only for single selection)
+				if (!ctrlDown && !shiftDown) {
+					dragSourcePath = row.path;
+					dragSourceSection = row.path.section;
+					dragStartX = mouseX;
+					dragStartY = mouseY;
+					dragThresholdMet = false;
+				}
 				return true;
 			} else if (row.kind == RowKind.ADD_BUTTON) {
 				selectedAddTarget = row.addTarget;
@@ -1270,6 +1355,7 @@ public class ActionListPanel {
 	}
 
 	public boolean deleteSelected() {
+		if (selectedPaths.size() > 1) return deleteMultipleSelected();
 		if (phase == null || selectedPath == null) return false;
 		pushUndo();
 		List<SpellAction> list = getSectionList(selectedPath.section);
@@ -1278,6 +1364,7 @@ public class ActionListPanel {
 		boolean result = doDelete(list, selectedPath.path, 0);
 		if (result) {
 			selectedPath = null;
+			selectedPaths.clear();
 			selectedAddTarget = null;
 			dirty = true;
 		}
@@ -1388,11 +1475,68 @@ public class ActionListPanel {
 	}
 
 	public boolean cutSelected() {
+		if (selectedPaths.size() > 1) {
+			return cutMultipleSelected();
+		}
 		if (copySelected()) {
 			deleteSelected();
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Delete all multi-selected actions. Deletes from highest index to lowest
+	 * to avoid index shift issues within the same section.
+	 */
+	public boolean deleteMultipleSelected() {
+		if (phase == null || selectedPaths.size() <= 1) return deleteSelected();
+		pushUndo();
+		// Collect and sort paths: delete deepest/largest-index first to avoid shifting
+		var paths = new ArrayList<>(selectedPaths);
+		paths.sort((a, b) -> {
+			int sc = a.section().compareTo(b.section());
+			if (sc != 0) return sc;
+			// Compare by leaf index descending
+			return Integer.compare(b.leafIndex(), a.leafIndex());
+		});
+		boolean anyDeleted = false;
+		for (ActionPath path : paths) {
+			if (doDeleteAt(path)) {
+				anyDeleted = true;
+				// Rebuild is needed after each delete for nested paths
+				dirty = true;
+			}
+		}
+		if (anyDeleted) {
+			selectedPath = null;
+			selectedPaths.clear();
+			selectedAddTarget = null;
+			dirty = true;
+		}
+		return anyDeleted;
+	}
+
+	/**
+	 * Cut all multi-selected actions to clipboard (as a list).
+	 */
+	private boolean cutMultipleSelected() {
+		if (selectedPaths.size() <= 1) return false;
+		// Copy the first selected action to clipboard (for simple paste compatibility)
+		var paths = new ArrayList<>(selectedPaths);
+		SpellAction first = getActionAt(paths.get(0));
+		if (first != null) {
+			try {
+				var json = SpellAction.CODEC.encodeStart(
+						com.mojang.serialization.JsonOps.INSTANCE, first).result().orElse(null);
+				if (json != null) clipboard = SpellAction.CODEC.parse(
+						com.mojang.serialization.JsonOps.INSTANCE, json).result().orElse(first);
+				else clipboard = first;
+			} catch (Exception e) {
+				clipboard = first;
+			}
+		}
+		return deleteMultipleSelected();
 	}
 
 	public boolean pasteAfterSelected() {

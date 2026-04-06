@@ -59,6 +59,66 @@ public class EffectEventHandlers {
 		return false;
 	}
 
+	/**
+	 * Consume the cost for shooting a danmaku/laser.
+	 * Returns true if the item should NOT be consumed (buff or hat absorbed the cost).
+	 * <p>
+	 * Priority:
+	 * 1. Hat with matching color -> no item cost, no buff cost (handled externally via half CD)
+	 * 2. Youkaified/Fairy buff -> consume buff duration as "mana", no item cost
+	 * 3. No effect -> consume item
+	 *
+	 * @param player the player shooting
+	 * @return true if item should be preserved (buff cost was consumed or hat bonus applies)
+	 */
+	public static boolean consumeDanmakuBuffCost(Player player) {
+		int cost = YHModConfig.COMMON.danmakuBuffCostTicks.get();
+		if (cost <= 0) return isFullCharacter(player);
+
+		// Try youkaified effect first
+		var youkaified = player.getEffect(YHEffects.YOUKAIFIED.get());
+		if (youkaified != null) {
+			if (tryConsumeEffectDuration(youkaified, cost)) return true;
+			player.removeEffect(YHEffects.YOUKAIFIED.get());
+			return false;
+		}
+
+		// Try fairy effect
+		var fairy = player.getEffect(YHEffects.FAIRY.get());
+		if (fairy != null) {
+			if (tryConsumeEffectDuration(fairy, cost)) return true;
+			player.removeEffect(YHEffects.FAIRY.get());
+			return false;
+		}
+
+		// Try youkaifying (partial transformation) effect
+		var youkaifying = player.getEffect(YHEffects.YOUKAIFYING.get());
+		if (youkaifying != null) {
+			if (tryConsumeEffectDuration(youkaifying, cost)) return true;
+			player.removeEffect(YHEffects.YOUKAIFYING.get());
+			return false;
+		}
+
+		// No buff available -> item will be consumed
+		return false;
+	}
+
+	/**
+	 * Try to consume duration from an effect instance.
+	 * Infinite duration (-1) is never consumed (free cost).
+	 * @return true if duration was consumed (or infinite), false if not enough remaining
+	 */
+	private static boolean tryConsumeEffectDuration(MobEffectInstance effect, int cost) {
+		int remaining = effect.getDuration();
+		// Infinite duration: no cost
+		if (remaining < 0) return true;
+		if (remaining > cost) {
+			new EffectBuilder(effect).setDuration(remaining - cost);
+			return true;
+		}
+		return false;
+	}
+
 	@SubscribeEvent
 	public static void onSleep(PlayerSleepInBedEvent event) {
 		if (event.getEntity().hasEffect(YHEffects.SOBER.get())) {

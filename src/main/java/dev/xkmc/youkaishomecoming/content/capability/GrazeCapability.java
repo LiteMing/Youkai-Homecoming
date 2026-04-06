@@ -255,17 +255,19 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public boolean shouldHurt(LivingEntity le) {
-		if (!EffectEventHandlers.canDanmakuCombat(player)) return true;
 		if (le instanceof YoukaiEntity youkai) {
-			if (weak > 0) return false;
-			if (sessions.containsKey(youkai.getUUID())) return true;
-			if (youkai.targets.contains(player)) return true;
+			// Always try to establish session when hitting youkai with danmaku
 			if (sessions.isEmpty()) {
 				initSession(youkai);
 				return true;
 			}
+			if (!EffectEventHandlers.canDanmakuCombat(player)) return true;
+			if (weak > 0) return false;
+			if (sessions.containsKey(youkai.getUUID())) return true;
+			if (youkai.targets.contains(player)) return true;
 			return false;
 		}
+		if (!EffectEventHandlers.canDanmakuCombat(player)) return true;
 		return sessions.isEmpty() || le instanceof Mob mob && mob.getTarget() == player;
 	}
 

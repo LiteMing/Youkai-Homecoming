@@ -644,6 +644,14 @@ public class SpellPreviewScreen extends Screen {
 			}
 		}
 
+		// Ctrl+A for select all
+		if (net.minecraft.client.gui.screens.Screen.hasControlDown() && actionListPanel != null) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_A) {
+				actionListPanel.selectAll();
+				return true;
+			}
+		}
+
 		// Ctrl+C/X/V for action clipboard
 		if (net.minecraft.client.gui.screens.Screen.hasControlDown() && actionListPanel != null) {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_C) {

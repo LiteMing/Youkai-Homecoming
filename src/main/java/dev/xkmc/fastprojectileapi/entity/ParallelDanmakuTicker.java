@@ -1,12 +1,14 @@
 package dev.xkmc.fastprojectileapi.entity;
 
 import dev.xkmc.fastprojectileapi.collision.EntityStorageCache;
+import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.IEntityCache;
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.EntityHitResult;
@@ -22,14 +24,12 @@ import java.util.concurrent.ForkJoinTask;
 /**
  * Parallel danmaku tick utility implementing the PG optimization (4-step split).
  * <p>
- * Designed to replace the identical tickDanmaku() logic in YoukaiEntity and DanmakuProxyEntity.
- * <p>
  * Architecture:
  * <ul>
- *   <li>Step 1 (parallel): computeMove() — pure math per danmaku</li>
- *   <li>Step 2 (single-thread): applyMove + block collision (level.clip) + cache entity collision data</li>
- *   <li>Step 3 (parallel): entity collision detection using cached data (thread-safe)</li>
- *   <li>Step 4 (single-thread): onHit callbacks, list maintenance, network sync</li>
+ *   <li>Step 1 (parallel): compute collision range from the current move vector</li>
+ *   <li>Step 2 (single-thread): advance tick state, block clip, and cache entity collision data</li>
+ *   <li>Step 3 (parallel): entity collision detection using cached snapshots</li>
+ *   <li>Step 4 (single-thread): graze callbacks, onHit callbacks, and list maintenance</li>
  * </ul>
  */
 public class ParallelDanmakuTicker {
@@ -37,30 +37,35 @@ public class ParallelDanmakuTicker {
 	private static final int PARALLEL_THRESHOLD = 500;
 	private static final int MAX_THREADS = 4;
 
-	// ==================== Cached collision data (thread-safe) ====================
-
 	/**
 	 * Immutable snapshot of a target entity's collision-relevant state.
-	 * Captured once in Step 2 (single-thread), used in Step 3 (parallel).
+	 * Captured in Step 2 and read in Step 3 without touching live entity state.
 	 */
 	public record CachedTarget(Entity entity, AABB boundingBox, Vec3 deltaMovement) {
 	}
 
-	// ==================== Per-danmaku data arrays ====================
+	/** Step 1 output: computed movement and the collision search range. */
+	private record Step1Result(
+			Vec3 src,
+			Vec3 dst,
+			AABB searchBox,
+			float radius,
+			float graze,
+			boolean checkBlock
+	) {
+	}
 
-	/** Step 1 output: computed movement per danmaku */
-	private record Step1Result(ProjectileMovement movement, Vec3 src, Vec3 dst,
-	                           AABB searchBox, float radius, float graze,
-	                           boolean checkBlock, boolean reachedLifetime) {}
+	/** Step 2 output: resolved hit range and cached collision candidates. */
+	private record Step2Result(
+			@Nullable HitResult blockHit,
+			Vec3 effectiveDst,
+			List<CachedTarget> candidates
+	) {
+	}
 
-	/** Step 2 output: cached collision data per danmaku */
-	private record Step2Result(HitResult blockHit, Vec3 effectiveDst,
-	                           List<CachedTarget> candidates) {}
-
-	/** Step 3 output: collision result per danmaku */
-	private record Step3Result(@Nullable Entity hitEntity) {}
-
-	// ==================== Main entry point ====================
+	/** Step 3 output: collision result and graze callbacks to apply on the main thread. */
+	private record Step3Result(@Nullable Entity hitEntity, List<Player> grazedPlayers) {
+	}
 
 	/**
 	 * Tick all virtual danmaku with parallel optimization.
@@ -70,7 +75,7 @@ public class ParallelDanmakuTicker {
 	 * @param temp        temp list for newly spawned danmaku (set by caller, populated by shoot())
 	 * @param toBeSent    list of danmaku to send to clients this tick
 	 * @param removeFlag  shared flag: set to true by onHit side effects (eraseAllDanmaku)
-	 * @param cacheHolder entity cache holder (for PC optimization)
+	 * @param cacheHolder entity cache holder
 	 * @param self        the entity that owns the danmaku (YoukaiEntity or DanmakuProxyEntity)
 	 */
 	public static void tickAll(ServerLevel sl,
@@ -80,33 +85,38 @@ public class ParallelDanmakuTicker {
 	                           boolean[] removeFlag,
 	                           @Nullable UserCacheHolder cacheHolder,
 	                           @Nullable LivingEntity self) {
-
-		// PC: cache gameTime once per tick
-		long gameTime = sl.getGameTime();
-		if (cacheHolder != null) {
-			cacheHolder.setGameTime(gameTime);
-		}
-		// Also warm EntityStorageCache for the fallback path
-		EntityStorageCache.get(sl, gameTime);
-
-		// Collect valid virtual danmaku (not added to world)
-		List<SimplifiedProjectile> active = new ArrayList<>();
-		for (var e : allDanmakus) {
-			if (e.isAddedToWorld() && !e.isRemoved()) continue;
-			active.add(e);
+		long gameTime = warmCaches(sl, cacheHolder);
+		List<SimplifiedProjectile> active = collectActiveDanmakus(allDanmakus);
+		if (active.isEmpty()) {
+			return;
 		}
 
-		int size = active.size();
-
-		if (size >= PARALLEL_THRESHOLD) {
-			tickParallel(sl, active, size, allDanmakus, temp, toBeSent, removeFlag,
-					cacheHolder, self, gameTime);
+		if (active.size() >= PARALLEL_THRESHOLD) {
+			tickParallel(sl, active, allDanmakus, temp, toBeSent, removeFlag, cacheHolder, self, gameTime);
 		} else {
 			tickSequential(sl, active, allDanmakus, temp, toBeSent, removeFlag, self);
 		}
 	}
 
-	// ==================== Sequential fallback ====================
+	private static long warmCaches(ServerLevel sl, @Nullable UserCacheHolder cacheHolder) {
+		long gameTime = sl.getGameTime();
+		if (cacheHolder != null) {
+			cacheHolder.setGameTime(gameTime);
+		}
+		EntityStorageCache.get(sl, gameTime);
+		return gameTime;
+	}
+
+	private static List<SimplifiedProjectile> collectActiveDanmakus(List<SimplifiedProjectile> allDanmakus) {
+		List<SimplifiedProjectile> active = new ArrayList<>(allDanmakus.size());
+		for (var e : allDanmakus) {
+			if (e.isAddedToWorld() && !e.isRemoved()) {
+				continue;
+			}
+			active.add(e);
+		}
+		return active;
+	}
 
 	private static void tickSequential(ServerLevel sl,
 	                                   List<SimplifiedProjectile> active,
@@ -117,230 +127,356 @@ public class ParallelDanmakuTicker {
 	                                   @Nullable LivingEntity self) {
 		List<SimplifiedProjectile> toRemove = new ArrayList<>();
 		for (var e : active) {
+			if (e.isRemoved()) {
+				toRemove.add(e);
+				continue;
+			}
 			if (e.isValid()) {
 				e.setOldPosAndRot();
 				++e.tickCount;
 				e.tick();
 			}
-			if (removeFlag[0]) break;
+			if (removeFlag[0]) {
+				break;
+			}
 			if (!e.isValid()) {
 				toRemove.add(e);
 			}
 		}
-		if (!toRemove.isEmpty()) allDanmakus.removeAll(toRemove);
-		if (!removeFlag[0]) {
-			allDanmakus.addAll(temp);
-			DanmakuManager.send(self, toBeSent);
-		}
+		finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
 	}
 
-	// ==================== Parallel 4-step tick ====================
-
 	private static void tickParallel(ServerLevel sl,
-	                                  List<SimplifiedProjectile> active, int size,
-	                                  List<SimplifiedProjectile> allDanmakus,
-	                                  ArrayList<SimplifiedProjectile> temp,
-	                                  ArrayList<SimplifiedProjectile> toBeSent,
-	                                  boolean[] removeFlag,
-	                                  @Nullable UserCacheHolder cacheHolder,
-	                                  @Nullable LivingEntity self,
-	                                  long gameTime) {
-
-		Step1Result[] s1 = new Step1Result[size];
-
-		// ---- Step 1 (parallel): computeMove + collision range ----
-		try {
-			int threads = Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors());
-			if (threads <= 1) threads = 2;
-			int chunkSize = (size + threads - 1) / threads;
-			ForkJoinTask<?>[] tasks = new ForkJoinTask<?>[threads];
-			for (int t = 0; t < threads; t++) {
-				int from = t * chunkSize;
-				int to = Math.min(from + chunkSize, size);
-				if (from >= to) continue;
-				tasks[t] = ForkJoinPool.commonPool().submit(() -> {
-					for (int i = from; i < to; i++) {
-						var e = active.get(i);
-						if (!(e instanceof BaseProjectile bp)) {
-							s1[i] = null;
-							continue;
-						}
-						var movement = bp.computeMove();
-						Vec3 src = e.position();
-						Vec3 dst = src.add(movement.vec());
-						float radius = e.getBbWidth() / 2f;
-						float graze = e.grazeRange();
-						AABB box = e.getBoundingBox().expandTowards(movement.vec());
-						AABB searchBox = box.inflate(1 + radius + graze);
-						s1[i] = new Step1Result(movement, src, dst, searchBox,
-								radius, graze, bp.checkBlockHit(), e.tickCount >= bp.lifetime());
-					}
-				});
-			}
-			for (var task : tasks) {
-				if (task != null) task.join();
-			}
-		} catch (Exception ex) {
-			com.mojang.logging.LogUtils.getLogger().warn("Parallel danmaku tick Step 1 failed, falling back", ex);
+	                                 List<SimplifiedProjectile> active,
+	                                 List<SimplifiedProjectile> allDanmakus,
+	                                 ArrayList<SimplifiedProjectile> temp,
+	                                 ArrayList<SimplifiedProjectile> toBeSent,
+	                                 boolean[] removeFlag,
+	                                 @Nullable UserCacheHolder cacheHolder,
+	                                 @Nullable LivingEntity self,
+	                                 long gameTime) {
+		int size = active.size();
+		Step1Result[] step1 = computeStep1(active);
+		if (step1 == null) {
 			tickSequential(sl, active, allDanmakus, temp, toBeSent, removeFlag, self);
 			return;
 		}
 
-		Step2Result[] s2 = new Step2Result[size];
+		IEntityCache entityCache = resolveEntityCache(sl, cacheHolder, self, gameTime);
+		Step2Result[] step2 = computeStep2(sl, active, step1, entityCache);
+		Step3Result[] step3 = computeStep3(active, size, step1, step2);
+		finishParallelTick(sl, active, allDanmakus, temp, toBeSent, removeFlag, self, step1, step2, step3);
+	}
 
-		// ---- Step 2 (single-thread): applyMove + block clip + cache entity data ----
-		IEntityCache entityCache = null;
-		if (cacheHolder != null && self != null) {
-			entityCache = cacheHolder.get(sl, self);
-		}
-
-		for (int i = 0; i < size; i++) {
-			var e = active.get(i);
-			var d = s1[i];
-			if (d == null) {
-				// Non-BaseProjectile: fall back to sequential tick
-				e.setOldPosAndRot();
-				++e.tickCount;
-				e.tick();
-				s2[i] = null;
-				continue;
-			}
-
-			// Apply movement (must be single-thread); skip if already past lifetime
-			if (e instanceof BaseProjectile bp && !d.reachedLifetime) {
-				e.setOldPosAndRot();
-				++e.tickCount;
-				bp.applyMove(d.movement);
-				// Minimal baseTick: erase if fallen below world
-				if (e.getY() < sl.getMinBuildHeight() - 64) {
-					e.markErased(false);
-				}
-			}
-
-			// Block collision (needs Level access); skip if past lifetime
-			Vec3 effectiveDst = d.dst;
-			HitResult blockHit = null;
-			if (d.checkBlock && !d.reachedLifetime) {
-				blockHit = sl.clip(new ClipContext(d.src, d.dst,
-						ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
-				if (blockHit.getType() != HitResult.Type.MISS) {
-					effectiveDst = blockHit.getLocation();
-				}
-			}
-
-			// Entity collision data caching (already guards !reachedLifetime)
-			List<CachedTarget> candidates = List.of();
-			if (entityCache != null && !d.reachedLifetime) {
-				List<Entity> raw = entityCache.foreach(d.searchBox, e::canHitEntity);
-				if (!raw.isEmpty()) {
-					candidates = new ArrayList<>(raw.size());
-					for (Entity x : raw) {
-						candidates.add(new CachedTarget(x, x.getBoundingBox(), x.getDeltaMovement()));
-					}
-				}
-			}
-
-			s2[i] = new Step2Result(blockHit, effectiveDst, candidates);
-		}
-
-		Step3Result[] s3 = new Step3Result[size];
-
-		// ---- Step 3 (parallel): entity collision detection using cached data ----
+	@Nullable
+	private static Step1Result[] computeStep1(List<SimplifiedProjectile> active) {
+		int size = active.size();
+		Step1Result[] results = new Step1Result[size];
 		try {
-			int threads = Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors());
-			if (threads <= 1) threads = 2;
-			int chunkSize = (size + threads - 1) / threads;
-			ForkJoinTask<?>[] tasks = new ForkJoinTask<?>[threads];
-			for (int t = 0; t < threads; t++) {
-				int from = t * chunkSize;
-				int to = Math.min(from + chunkSize, size);
-				if (from >= to) continue;
-				tasks[t] = ForkJoinPool.commonPool().submit(() -> {
-					for (int i = from; i < to; i++) {
-						var d1 = s1[i];
-						var d2 = s2[i];
-						if (d1 == null || d2 == null || d1.reachedLifetime || d2.candidates.isEmpty()) {
-							s3[i] = new Step3Result(null);
-							continue;
-						}
-						double d0 = Double.MAX_VALUE;
-						Entity hitEntity = null;
-						for (var ct : d2.candidates) {
-							AABB base = ct.boundingBox().inflate(d1.radius);
-							Vec3 hpos = checkHitCached(base, d1.src, d2.effectiveDst, ct.deltaMovement());
-							if (hpos != null) {
-								double d1sq = d1.src.distanceToSqr(hpos);
-								if (d1sq < d0) {
-									hitEntity = ct.entity();
-									d0 = d1sq;
-								}
-							}
-						}
-						s3[i] = new Step3Result(hitEntity);
-					}
-				});
-			}
-			for (var task : tasks) {
-				if (task != null) task.join();
-			}
+			runParallel(size, (from, to) -> {
+				for (int i = from; i < to; i++) {
+					results[i] = computeStep1Result(active.get(i));
+				}
+			});
+			return results;
+		} catch (Exception ex) {
+			com.mojang.logging.LogUtils.getLogger().warn("Parallel danmaku tick Step 1 failed, falling back", ex);
+			return null;
+		}
+	}
+
+	@Nullable
+	private static Step1Result computeStep1Result(SimplifiedProjectile projectile) {
+		if (!(projectile instanceof BaseProjectile bp)) {
+			return null;
+		}
+		Vec3 movement = projectile.getDeltaMovement();
+		Vec3 src = projectile.position();
+		Vec3 dst = src.add(movement);
+		float radius = projectile.getBbWidth() / 2f;
+		float graze = projectile.grazeRange();
+		AABB box = projectile.getBoundingBox().expandTowards(movement);
+		AABB searchBox = box.inflate(1 + radius + graze);
+		return new Step1Result(
+				src,
+				dst,
+				searchBox,
+				radius,
+				graze,
+				bp.checkBlockHit()
+		);
+	}
+
+	@Nullable
+	private static IEntityCache resolveEntityCache(ServerLevel sl,
+	                                               @Nullable UserCacheHolder cacheHolder,
+	                                               @Nullable LivingEntity self,
+	                                               long gameTime) {
+		if (cacheHolder != null && self != null) {
+			return cacheHolder.get(sl, self);
+		}
+		return EntityStorageCache.get(sl, gameTime);
+	}
+
+	private static Step2Result[] computeStep2(ServerLevel sl,
+	                                          List<SimplifiedProjectile> active,
+	                                          Step1Result[] step1,
+	                                          @Nullable IEntityCache entityCache) {
+		int size = active.size();
+		Step2Result[] results = new Step2Result[size];
+		for (int i = 0; i < size; i++) {
+			results[i] = computeStep2Result(sl, active.get(i), step1[i], entityCache);
+		}
+		return results;
+	}
+
+	@Nullable
+	private static Step2Result computeStep2Result(ServerLevel sl,
+	                                              SimplifiedProjectile projectile,
+	                                              @Nullable Step1Result data,
+	                                              @Nullable IEntityCache entityCache) {
+		if (projectile.isRemoved() || !projectile.isValid()) {
+			return null;
+		}
+		if (data == null) {
+			sequentialTickOne(projectile);
+			return null;
+		}
+
+		prepareTickState(projectile);
+
+		Vec3 effectiveDst = data.dst;
+		HitResult blockHit = resolveBlockHit(sl, projectile, data);
+		if (blockHit != null) {
+			effectiveDst = blockHit.getLocation();
+		}
+
+		List<CachedTarget> candidates = entityCache == null
+				? List.of()
+				: snapshotCandidates(entityCache, data.searchBox, projectile);
+		return new Step2Result(blockHit, effectiveDst, candidates);
+	}
+
+	private static void sequentialTickOne(SimplifiedProjectile projectile) {
+		projectile.setOldPosAndRot();
+		++projectile.tickCount;
+		projectile.tick();
+	}
+
+	private static void prepareTickState(SimplifiedProjectile projectile) {
+		projectile.setOldPosAndRot();
+		++projectile.tickCount;
+		projectile.baseTick();
+	}
+
+	private static boolean shouldEraseAfterMove(ServerLevel sl, SimplifiedProjectile projectile) {
+		if (!projectile.level().hasChunk(projectile.blockPosition().getX() >> 4, projectile.blockPosition().getZ() >> 4)) {
+			return true;
+		}
+		return projectile.isAddedToWorld() && !EntityStorageHelper.isTicking(sl, projectile);
+	}
+
+	@Nullable
+	private static HitResult resolveBlockHit(ServerLevel sl, SimplifiedProjectile projectile, Step1Result data) {
+		if (!data.checkBlock) {
+			return null;
+		}
+		HitResult blockHit = sl.clip(new ClipContext(
+				data.src,
+				data.dst,
+				ClipContext.Block.COLLIDER,
+				ClipContext.Fluid.NONE,
+				projectile
+		));
+		return blockHit.getType() == HitResult.Type.MISS ? null : blockHit;
+	}
+
+	private static List<CachedTarget> snapshotCandidates(IEntityCache entityCache,
+	                                                     AABB searchBox,
+	                                                     SimplifiedProjectile projectile) {
+		List<Entity> raw = entityCache.foreach(searchBox, projectile::canHitEntity);
+		if (raw.isEmpty()) {
+			return List.of();
+		}
+		List<CachedTarget> snapshots = new ArrayList<>(raw.size());
+		for (Entity target : raw) {
+			snapshots.add(new CachedTarget(target, target.getBoundingBox(), target.getDeltaMovement()));
+		}
+		return snapshots;
+	}
+
+	private static Step3Result[] computeStep3(List<SimplifiedProjectile> active,
+	                                          int size,
+	                                          Step1Result[] step1,
+	                                          Step2Result[] step2) {
+		Step3Result[] results = new Step3Result[size];
+		try {
+			runParallel(size, (from, to) -> {
+				for (int i = from; i < to; i++) {
+					results[i] = computeStep3Result(active.get(i), step1[i], step2[i]);
+				}
+			});
 		} catch (Exception ex) {
 			com.mojang.logging.LogUtils.getLogger().warn("Parallel danmaku tick Step 3 failed, skipping collision", ex);
 			for (int i = 0; i < size; i++) {
-				s3[i] = new Step3Result(null);
+				results[i] = new Step3Result(null, List.of());
 			}
 		}
+		return results;
+	}
 
-		// ---- Step 4 (single-thread): onHit callbacks + list maintenance ----
+	private static Step3Result computeStep3Result(SimplifiedProjectile projectile,
+	                                              @Nullable Step1Result step1,
+	                                              @Nullable Step2Result step2) {
+		if (step1 == null || step2 == null || step2.candidates.isEmpty()) {
+			return new Step3Result(null, List.of());
+		}
+
+		double closestDistance = Double.MAX_VALUE;
+		Entity hitEntity = null;
+		List<Player> grazedPlayers = step1.graze > 0 ? new ArrayList<>() : List.of();
+		for (CachedTarget candidate : step2.candidates) {
+			Entity target = candidate.entity();
+			AABB hitBox = projectile.alterHitBox(target, step1.radius, 0);
+			Vec3 hitPos = checkHitCached(hitBox, step1.src, step2.effectiveDst, candidate.deltaMovement());
+			if (hitPos != null) {
+				double distance = step1.src.distanceToSqr(hitPos);
+				if (distance < closestDistance) {
+					closestDistance = distance;
+					hitEntity = target;
+				}
+				continue;
+			}
+			if (step1.graze > 0 && target instanceof Player player) {
+				AABB grazeBox = projectile.alterHitBox(target, step1.radius, step1.graze);
+				if (checkHitCached(grazeBox, step1.src, step2.effectiveDst, candidate.deltaMovement()) != null
+						&& !grazedPlayers.contains(player)) {
+					grazedPlayers.add(player);
+				}
+			}
+		}
+		return new Step3Result(hitEntity, grazedPlayers);
+	}
+
+	private static void finishParallelTick(ServerLevel sl,
+	                                       List<SimplifiedProjectile> active,
+	                                       List<SimplifiedProjectile> allDanmakus,
+	                                       ArrayList<SimplifiedProjectile> temp,
+	                                       ArrayList<SimplifiedProjectile> toBeSent,
+	                                       boolean[] removeFlag,
+	                                       @Nullable LivingEntity self,
+	                                       Step1Result[] step1,
+	                                       Step2Result[] step2,
+	                                       Step3Result[] step3) {
 		List<SimplifiedProjectile> toRemove = new ArrayList<>();
-		for (int i = 0; i < size; i++) {
-			if (removeFlag[0]) break;
-			var e = active.get(i);
-			var d1 = s1[i];
-			var d2 = s2[i];
-			var d3 = s3[i];
+		for (int i = 0; i < active.size(); i++) {
+			if (removeFlag[0]) {
+				break;
+			}
 
-			// Non-BaseProjectile entries were already ticked in Step 2
+			SimplifiedProjectile projectile = active.get(i);
+			Step1Result d1 = step1[i];
+			Step2Result d2 = step2[i];
+			Step3Result d3 = step3[i];
+
 			if (d2 == null) {
-				if (!e.isValid()) toRemove.add(e);
+				if (shouldRemoveFromVirtualList(projectile)) {
+					toRemove.add(projectile);
+				}
 				continue;
 			}
 
-			// Determine hit result
+			for (Player player : d3.grazedPlayers) {
+				projectile.doGraze(player);
+			}
+
 			HitResult finalHit = d2.blockHit;
-			if (d3 != null && d3.hitEntity != null) {
+			if (d3.hitEntity != null) {
 				finalHit = new EntityHitResult(d3.hitEntity);
 			}
-
-			// onHit (may trigger eraseAllDanmaku → sets removeFlag via the caller's flag field)
-			if (finalHit != null && e instanceof BaseProjectile bp) {
+			if (finalHit != null && projectile instanceof BaseProjectile bp) {
 				bp.onHit(finalHit);
 			}
-			// Break immediately if eraseAllDanmaku was called from within onHit
-			if (removeFlag[0]) break;
-
-			// Check lifetime expiry on the transition tick (tickCount just incremented to reach lifetime)
-			if (!d1.reachedLifetime && e instanceof BaseProjectile bp
-					&& e.tickCount >= bp.lifetime() && sl == e.level()) {
-				bp.terminate();
-				e.markErased(false);
+			if (removeFlag[0]) {
+				break;
 			}
 
-			if (!e.isValid()) toRemove.add(e);
+			if (projectile instanceof BaseProjectile bp) {
+				finishMovementStep(sl, projectile, bp);
+			}
+
+			if (shouldRemoveFromVirtualList(projectile)) {
+				toRemove.add(projectile);
+			}
 		}
+		finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
+	}
+
+	private static void finishMovementStep(ServerLevel sl,
+	                                       SimplifiedProjectile projectile,
+	                                       BaseProjectile bp) {
+		ProjectileMovement movement = bp.computeMove();
+		bp.applyMove(movement);
+		if (projectile.tickCount >= bp.lifetime() && sl == projectile.level()) {
+			bp.terminate();
+			projectile.markErased(false);
+			return;
+		}
+		if (shouldEraseAfterMove(sl, projectile)) {
+			projectile.markErased(false);
+		}
+	}
+
+	private static void finalizeTick(List<SimplifiedProjectile> allDanmakus,
+	                                 ArrayList<SimplifiedProjectile> temp,
+	                                 ArrayList<SimplifiedProjectile> toBeSent,
+	                                 boolean[] removeFlag,
+	                                 @Nullable LivingEntity self,
+	                                 List<SimplifiedProjectile> toRemove) {
 		if (!toRemove.isEmpty()) {
 			allDanmakus.removeAll(new java.util.HashSet<>(toRemove));
 		}
-
 		if (!removeFlag[0]) {
 			allDanmakus.addAll(temp);
 			DanmakuManager.send(self, toBeSent);
 		}
 	}
 
-	// ==================== Cached collision check ====================
+	private static boolean shouldRemoveFromVirtualList(SimplifiedProjectile projectile) {
+		return projectile.isRemoved() || !projectile.isValid();
+	}
+
+	private static void runParallel(int size, RangeTask task) {
+		int threads = Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors());
+		if (threads <= 1) {
+			threads = 2;
+		}
+		int chunkSize = (size + threads - 1) / threads;
+		ForkJoinTask<?>[] tasks = new ForkJoinTask<?>[threads];
+		for (int t = 0; t < threads; t++) {
+			int from = t * chunkSize;
+			int to = Math.min(from + chunkSize, size);
+			if (from >= to) {
+				continue;
+			}
+			int taskFrom = from;
+			int taskTo = to;
+			tasks[t] = ForkJoinPool.commonPool().submit(() -> task.run(taskFrom, taskTo));
+		}
+		for (ForkJoinTask<?> submitted : tasks) {
+			if (submitted != null) {
+				submitted.join();
+			}
+		}
+	}
+
+	@FunctionalInterface
+	private interface RangeTask {
+		void run(int from, int to);
+	}
 
 	/**
-	 * Thread-safe version of {@link ProjectileHitHelper#checkHit(Entity, AABB, Vec3, Vec3)}
+	 * Thread-safe version of {@link dev.xkmc.fastprojectileapi.collision.ProjectileHitHelper#checkHit(Entity, AABB, Vec3, Vec3)}
 	 * that uses pre-cached deltaMovement instead of reading from the entity.
 	 */
 	@Nullable
@@ -350,8 +486,9 @@ public class ParallelDanmakuTicker {
 		for (int i = 0; i <= n; i++) {
 			AABB aabb = n == 0 ? base : base.move(targetVel.scale(1d * i / n));
 			var optional = aabb.contains(src) ? java.util.Optional.of(src) : aabb.clip(src, dst);
-			if (optional.isPresent())
+			if (optional.isPresent()) {
 				return optional.get();
+			}
 		}
 		return null;
 	}

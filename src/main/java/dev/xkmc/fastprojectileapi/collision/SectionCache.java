@@ -22,11 +22,15 @@ public class SectionCache {
 		var manager = ((ServerLevelAccessor) sl).getEntityManager();
 		var storage = ((PersistentEntitySectionManagerAccessor<Entity>) manager).getSectionStorage();
 		var sect = storage.getSection(SectionPos.asLong(x, y, z));
-		if (sect != null) sect.getEntities().forEach(this::add);
+		if (sect != null) {
+			boolean ticking = sect.getStatus().isTicking();
+			sect.getEntities().forEach(e -> add(e, ticking));
+		}
 	}
 
-	private void add(Entity e) {
+	private void add(Entity e, boolean tickingSection) {
 		if (!e.isPickable()) return;
+		if (!tickingSection && !e.isAlwaysTicking()) return;
 		var ebox = e.getBoundingBox();
 		if (aabb.minX <= ebox.minX && ebox.maxX <= aabb.maxX &&
 				aabb.minY <= ebox.minY && ebox.maxY <= aabb.maxY &&

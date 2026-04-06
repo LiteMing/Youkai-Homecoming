@@ -1,9 +1,11 @@
 package dev.xkmc.fastprojectileapi.render.core;
 
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
+
 import java.util.List;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
-import java.util.function.ObjIntConsumer;
 
 /**
  * Utility for parallel vertex buffer filling.
@@ -14,6 +16,8 @@ import java.util.function.ObjIntConsumer;
  * Thread safety: each thread writes to its own byte[] — no shared mutable state.
  */
 public class ParallelBufferFiller {
+
+	private static final Logger LOGGER = LogUtils.getLogger();
 
 	/**
 	 * Minimum instance count to justify parallel execution.
@@ -61,32 +65,43 @@ public class ParallelBufferFiller {
 		byte[][] segments = new byte[threads][];
 		int[] segVertices = new int[threads];
 
-		ForkJoinTask<?>[] tasks = new ForkJoinTask<?>[threads];
-		for (int t = 0; t < threads; t++) {
-			int from = t * chunkSize;
-			int to = Math.min(from + chunkSize, size);
-			if (from >= to) {
-				segments[t] = new byte[0];
-				segVertices[t] = 0;
-				continue;
-			}
-			int count = to - from;
-			int threadIndex = t;
-			tasks[t] = ForkJoinPool.commonPool().submit(() -> {
-				byte[] seg = new byte[count * bytesPerEntry];
-				for (int i = 0; i < count; i++) {
-					writer.write(seg, i * bytesPerEntry, list.get(from + i));
+		try {
+			ForkJoinTask<?>[] tasks = new ForkJoinTask<?>[threads];
+			for (int t = 0; t < threads; t++) {
+				int from = t * chunkSize;
+				int to = Math.min(from + chunkSize, size);
+				if (from >= to) {
+					segments[t] = new byte[0];
+					segVertices[t] = 0;
+					continue;
 				}
-				segments[threadIndex] = seg;
-				segVertices[threadIndex] = count * verticesPerEntry;
-			});
-		}
-
-		// Wait for all tasks
-		for (int t = 0; t < threads; t++) {
-			if (tasks[t] != null) {
-				tasks[t].join();
+				int count = to - from;
+				int threadIndex = t;
+				tasks[t] = ForkJoinPool.commonPool().submit(() -> {
+					byte[] seg = new byte[count * bytesPerEntry];
+					for (int i = 0; i < count; i++) {
+						writer.write(seg, i * bytesPerEntry, list.get(from + i));
+					}
+					segments[threadIndex] = seg;
+					segVertices[threadIndex] = count * verticesPerEntry;
+				});
 			}
+
+			// Wait for all tasks
+			for (int t = 0; t < threads; t++) {
+				if (tasks[t] != null) {
+					tasks[t].join();
+				}
+			}
+		} catch (Exception e) {
+			// Parallel execution failed, fall back to single-threaded
+			LOGGER.warn("Parallel buffer fill failed, falling back to single-threaded", e);
+			byte[] buf = new byte[size * bytesPerEntry];
+			for (int i = 0; i < size; i++) {
+				writer.write(buf, i * bytesPerEntry, list.get(i));
+			}
+			vc.bulkWrite(buf, size * verticesPerEntry);
+			return;
 		}
 
 		// Merge segments into BulkDataWriter on render thread

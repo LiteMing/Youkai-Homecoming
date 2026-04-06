@@ -195,6 +195,8 @@ public class ActionEditorPanel {
 			buildConfineTargetRows(cta);
 		} else if (action instanceof SetEntityFlagAction sefa) {
 			buildSetEntityFlagRows(sefa);
+		} else if (action instanceof TeleportRandomAction tra) {
+			buildTeleportRandomRows(tra);
 		}
 	}
 
@@ -215,6 +217,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
 		addFullWidthButton("Confine Target", () -> selectType("confine_target"));
 		addFullWidthButton("Set Entity Flag", () -> selectType("set_entity_flag"));
+		addFullWidthButton("Teleport Random", () -> selectType("teleport_random"));
 	}
 
 	private void selectType(String type) {
@@ -263,6 +266,7 @@ public class ActionEditorPanel {
 		case "sequence" -> new SpellActions.SequenceAction(new ArrayList<>());
 		case "confine_target" -> new ConfineTargetAction(32, 1.0);
 		case "set_entity_flag" -> new SetEntityFlagAction(4, true);
+		case "teleport_random" -> new TeleportRandomAction(32, 0.8, 0.4, 16, true, true);
 		default -> new SpellActions.NoopAction();
 		};
 	}
@@ -745,6 +749,41 @@ public class ActionEditorPanel {
 				notifySimple(old -> new SetEntityFlagAction(((SetEntityFlagAction) old).flag(), v.equals("true"))));
 	}
 
+	// --- Teleport Random rows ---
+
+	private void buildTeleportRandomRows(TeleportRandomAction tra) {
+		addDoubleRow("Max Dist", tra.maxDistance(), v ->
+				notifySimple(old -> {
+					var t = (TeleportRandomAction) old;
+					return new TeleportRandomAction(v, t.minDistanceFactor(), t.distanceVariance(), t.attempts(), t.upwardBias(), t.playSound());
+				}));
+		addDoubleRow("Min Dist %", tra.minDistanceFactor(), v ->
+				notifySimple(old -> {
+					var t = (TeleportRandomAction) old;
+					return new TeleportRandomAction(t.maxDistance(), v, t.distanceVariance(), t.attempts(), t.upwardBias(), t.playSound());
+				}));
+		addDoubleRow("Dist Var", tra.distanceVariance(), v ->
+				notifySimple(old -> {
+					var t = (TeleportRandomAction) old;
+					return new TeleportRandomAction(t.maxDistance(), t.minDistanceFactor(), v, t.attempts(), t.upwardBias(), t.playSound());
+				}));
+		addIntRow("Attempts", tra.attempts(), v ->
+				notifySimple(old -> {
+					var t = (TeleportRandomAction) old;
+					return new TeleportRandomAction(t.maxDistance(), t.minDistanceFactor(), t.distanceVariance(), v, t.upwardBias(), t.playSound());
+				}));
+		addBoolRow("Up Bias", tra.upwardBias(), v ->
+				notifySimple(old -> {
+					var t = (TeleportRandomAction) old;
+					return new TeleportRandomAction(t.maxDistance(), t.minDistanceFactor(), t.distanceVariance(), t.attempts(), v, t.playSound());
+				}));
+		addBoolRow("Sound", tra.playSound(), v ->
+				notifySimple(old -> {
+					var t = (TeleportRandomAction) old;
+					return new TeleportRandomAction(t.maxDistance(), t.minDistanceFactor(), t.distanceVariance(), t.attempts(), t.upwardBias(), v);
+				}));
+	}
+
 	// --- SpawnShooter rows ---
 
 	private void buildSpawnShooterRows(SpawnShooterAction ssa) {
@@ -814,7 +853,7 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "zero", "bezier"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "zero", "bezier"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -918,14 +957,83 @@ public class ActionEditorPanel {
 								p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), v, p.angularAccel())));
 					}
 				});
-				addDoubleRow("Init Ang", polar.initialAngle(), v -> {
+			addDoubleRow("Init Ang", polar.initialAngle(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel())));
+				}
+			});
+			addDoubleRow("Rad Acc", polar.radialAccel(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), v, p.initialAngle(), p.angularSpeed(), p.angularAccel())));
+				}
+			});
+			addDoubleRow("Ang Acc", polar.angularAccel(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), v)));
+				}
+			});
+		} else if (cfg instanceof MoverConfigs.CompositeMoverConfig comp) {
+			// Display segment count and per-segment editors
+			addStringRow("Segments", String.valueOf(comp.segments().size()), v -> {});
+			for (int si = 0; si < comp.segments().size(); si++) {
+				var seg = comp.segments().get(si);
+				final int segIdx = si;
+				addIntRow("Seg " + (si + 1) + " Dur", seg.duration(), v -> {
 					var cur = getCurrentMover();
-					if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
-								p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel())));
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
+						var segs = new java.util.ArrayList<>(c.segments());
+						if (segIdx < segs.size()) {
+							segs.set(segIdx, new MoverConfigs.CompositeMoverConfig.Segment(v, segs.get(segIdx).mover()));
+							onParamChanged.accept(Optional.of(new MoverConfigs.CompositeMoverConfig(segs)));
+						}
 					}
 				});
-			} else if (cfg instanceof MoverConfigs.BezierMoverConfig bez) {
+				// Show sub-mover type as cycle selector
+				String subType = getMoverType(Optional.of(seg.mover()));
+				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "zero"}, subType, newSubType -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
+						var segs = new java.util.ArrayList<>(c.segments());
+						if (segIdx < segs.size()) {
+							var newMover = createDefaultMover(newSubType);
+							if (newMover.isPresent()) {
+								segs.set(segIdx, new MoverConfigs.CompositeMoverConfig.Segment(segs.get(segIdx).duration(), newMover.get()));
+								onTypeChanged.accept(Optional.of(new MoverConfigs.CompositeMoverConfig(segs)));
+							}
+						}
+					}
+				});
+				// Inline sub-mover parameters
+				buildCompositeSegmentParams(seg.mover(), segIdx, onTypeChanged, onParamChanged);
+			}
+			// Add/Remove segment buttons
+			addFullWidthButton("[+] Add Segment", () -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
+					var segs = new java.util.ArrayList<>(c.segments());
+					segs.add(new MoverConfigs.CompositeMoverConfig.Segment(20, new MoverConfigs.ZeroMoverConfig()));
+					onTypeChanged.accept(Optional.of(new MoverConfigs.CompositeMoverConfig(segs)));
+				}
+			});
+			if (comp.segments().size() > 1) {
+				addFullWidthButton("[-] Remove Last Segment", () -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
+						var segs = new java.util.ArrayList<>(c.segments());
+						if (segs.size() > 1) {
+							segs.remove(segs.size() - 1);
+							onTypeChanged.accept(Optional.of(new MoverConfigs.CompositeMoverConfig(segs)));
+						}
+					}
+				});
+			}
+		} else if (cfg instanceof MoverConfigs.BezierMoverConfig bez) {
 				addDoubleRow("CP1 Fwd", bez.cp1Forward(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
@@ -1017,6 +1125,7 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.DecelerationConfig) return "deceleration";
 		if (cfg instanceof MoverConfigs.RotateConfig) return "rotate";
 		if (cfg instanceof MoverConfigs.PolarMoverConfig) return "polar";
+		if (cfg instanceof MoverConfigs.CompositeMoverConfig) return "composite";
 		if (cfg instanceof MoverConfigs.ZeroMoverConfig) return "zero";
 		if (cfg instanceof MoverConfigs.BezierMoverConfig) return "bezier";
 		return "none";
@@ -1028,10 +1137,62 @@ public class ActionEditorPanel {
 			case "deceleration" -> Optional.of(new MoverConfigs.DecelerationConfig(0.06));
 			case "rotate" -> Optional.of(new MoverConfigs.RotateConfig(5.0));
 			case "polar" -> Optional.of(new MoverConfigs.PolarMoverConfig(5.0, 0, 0, 0, 10.0, 0));
+			case "composite" -> Optional.of(new MoverConfigs.CompositeMoverConfig(List.of(
+					new MoverConfigs.CompositeMoverConfig.Segment(20, new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(0, 0, 0))),
+					new MoverConfigs.CompositeMoverConfig.Segment(20, new MoverConfigs.ZeroMoverConfig())
+			)));
 			case "zero" -> Optional.of(new MoverConfigs.ZeroMoverConfig());
 			case "bezier" -> Optional.of(new MoverConfigs.BezierMoverConfig(5, 3, 0, 10, -3, 0, 15, 0, 0, 40));
 			default -> Optional.empty();
 		};
+	}
+
+	/**
+	 * Render inline parameter rows for a sub-mover within a CompositeMover segment.
+	 */
+	private void buildCompositeSegmentParams(MoverConfig subCfg, int segIdx,
+											Consumer<Optional<MoverConfig>> onTypeChanged,
+											Consumer<Optional<MoverConfig>> onParamChanged) {
+		if (subCfg instanceof MoverConfigs.AccelerationConfig acc) {
+			addDoubleRow("  Acc X", acc.acceleration().x, v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(v, acc.acceleration().y, acc.acceleration().z)), onParamChanged));
+			addDoubleRow("  Acc Y", acc.acceleration().y, v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(acc.acceleration().x, v, acc.acceleration().z)), onParamChanged));
+			addDoubleRow("  Acc Z", acc.acceleration().z, v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(acc.acceleration().x, acc.acceleration().y, v)), onParamChanged));
+		} else if (subCfg instanceof MoverConfigs.DecelerationConfig dc) {
+			addDoubleRow("  Factor", dc.factor(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.DecelerationConfig(v), onParamChanged));
+		} else if (subCfg instanceof MoverConfigs.RotateConfig rot) {
+			addDoubleRow("  Deg/t", rot.degreesPerTick(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.RotateConfig(v), onParamChanged));
+		} else if (subCfg instanceof MoverConfigs.PolarMoverConfig polar) {
+			addDoubleRow("  Radius", polar.radius(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.PolarMoverConfig(v, polar.radialSpeed(), polar.radialAccel(), polar.initialAngle(), polar.angularSpeed(), polar.angularAccel()), onParamChanged));
+			addDoubleRow("  Rad Spd", polar.radialSpeed(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.PolarMoverConfig(polar.radius(), v, polar.radialAccel(), polar.initialAngle(), polar.angularSpeed(), polar.angularAccel()), onParamChanged));
+			addDoubleRow("  Ang Spd", polar.angularSpeed(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), polar.radialAccel(), polar.initialAngle(), v, polar.angularAccel()), onParamChanged));
+			addDoubleRow("  Init Ang", polar.initialAngle(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), polar.radialAccel(), v, polar.angularSpeed(), polar.angularAccel()), onParamChanged));
+			addDoubleRow("  Rad Acc", polar.radialAccel(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), v, polar.initialAngle(), polar.angularSpeed(), polar.angularAccel()), onParamChanged));
+			addDoubleRow("  Ang Acc", polar.angularAccel(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), polar.radialAccel(), polar.initialAngle(), polar.angularSpeed(), v), onParamChanged));
+		}
+		// ZeroMoverConfig has no params
+	}
+
+	private void updateCompositeSegment(int segIdx, MoverConfig newSubMover,
+										Consumer<Optional<MoverConfig>> onParamChanged) {
+		var cur = getCurrentMover();
+		if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
+			var segs = new java.util.ArrayList<>(c.segments());
+			if (segIdx < segs.size()) {
+				segs.set(segIdx, new MoverConfigs.CompositeMoverConfig.Segment(segs.get(segIdx).duration(), newSubMover));
+				onParamChanged.accept(Optional.of(new MoverConfigs.CompositeMoverConfig(segs)));
+			}
+		}
 	}
 
 	// --- Notification helpers ---
@@ -1150,7 +1311,7 @@ public class ActionEditorPanel {
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
 			"tick_mod", "sin", "cos", "sqrt", "max", "min", "clamp", "gaussian", "choose",
 			"tick", "phase_tick", "total_tick", "distance",
-			"target_height", "game_difficulty",
+			"target_height", "target_fly_time", "target_speed", "game_difficulty",
 			"caster_x", "caster_y", "caster_z", "target_x", "target_y", "target_z"
 	};
 
@@ -1212,7 +1373,8 @@ public class ActionEditorPanel {
 			"tick_mod", "sin", "cos", "sqrt", "max", "min", "clamp", "gaussian", "choose"
 	);
 	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
-			"tick", "phase_tick", "total_tick", "distance", "target_height", "game_difficulty",
+			"tick", "phase_tick", "total_tick", "distance", "target_height", "target_fly_time",
+			"target_speed", "game_difficulty",
 			"caster_x", "caster_y", "caster_z", "target_x", "target_y", "target_z"
 	);
 

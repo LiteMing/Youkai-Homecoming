@@ -149,6 +149,15 @@ public class SpellContext {
 	}
 
 	/**
+	 * Returns how many consecutive ticks the target has been off the ground.
+	 * Tracked by {@link SpellRuntime} each tick for accuracy.
+	 * Returns 0 if there is no target or the target is on the ground.
+	 */
+	public int targetFlyTime() {
+		return runtime.getTargetFlyTime();
+	}
+
+	/**
 	 * Returns true if the target entity is elytra gliding.
 	 */
 	public boolean targetIsFallFlying() {

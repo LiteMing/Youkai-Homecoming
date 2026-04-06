@@ -121,6 +121,8 @@ public class NumberExprParser {
 		if (p instanceof NumberProviders.TargetX) return "target_x";
 		if (p instanceof NumberProviders.TargetY) return "target_y";
 		if (p instanceof NumberProviders.TargetZ) return "target_z";
+		if (p instanceof NumberProviders.TargetFlyTime) return "target_fly_time";
+		if (p instanceof NumberProviders.TargetSpeed) return "target_speed";
 		if (p instanceof NumberProviders.Max m) {
 			String as = unparse(m.a()), bs = unparse(m.b());
 			if (as == null || bs == null) return null;
@@ -373,6 +375,8 @@ public class NumberExprParser {
 			case "target_x" -> new NumberProviders.TargetX();
 			case "target_y" -> new NumberProviders.TargetY();
 			case "target_z" -> new NumberProviders.TargetZ();
+			case "target_fly_time" -> new NumberProviders.TargetFlyTime();
+			case "target_speed" -> new NumberProviders.TargetSpeed();
 			default -> throw new ParseException("Unknown keyword: " + name);
 		};
 	}

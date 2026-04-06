@@ -38,6 +38,8 @@ public class SpellActions {
 		register("burst", BurstAction.CODEC, BurstAction.class);
 		register("disabled", DisabledAction.CODEC, DisabledAction.class);
 		register("confine_target", ConfineTargetAction.CODEC, ConfineTargetAction.class);
+		register("set_entity_flag", SetEntityFlagAction.CODEC, SetEntityFlagAction.class);
+		register("teleport_random", TeleportRandomAction.CODEC, TeleportRandomAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {

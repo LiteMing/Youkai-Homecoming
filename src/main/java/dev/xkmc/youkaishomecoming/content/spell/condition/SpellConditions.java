@@ -4,6 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.ClownEntity;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 
@@ -41,6 +42,7 @@ public class SpellConditions {
 		register("target_is_fallflying", TargetIsFallFlying.CODEC, TargetIsFallFlying.class);
 		register("difficulty_equals", DifficultyEquals.CODEC, DifficultyEquals.class);
 		register("difficulty_above", DifficultyAbove.CODEC, DifficultyAbove.class);
+		register("entity_flag", EntityFlagCondition.CODEC, EntityFlagCondition.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellCondition> codec) {
@@ -287,6 +289,7 @@ public class SpellConditions {
 			return switch (trait) {
 				case "is_lunatic" -> self instanceof ClownEntity c && c.isLunatic();
 				case "is_chaotic" -> self instanceof BossYoukaiEntity b && b.isChaotic();
+				case "is_abyssal" -> self instanceof YoukaiEntity y && y.getFlag(4);
 				default -> false;
 			};
 		}
@@ -421,6 +424,32 @@ public class SpellConditions {
 		@Override
 		public boolean test(SpellContext ctx) {
 			return ctx.holder().self().level().getDifficulty().getId() >= minDifficultyId;
+		}
+	}
+
+	/**
+	 * Checks a specific entity flag on the caster ({@link YoukaiEntity}).
+	 * <p>
+	 * Entity flags are bitfield values controlling visual states and behavior:
+	 * <ul>
+	 *   <li>Flag 4: Abyssal mode (Reimu)</li>
+	 *   <li>Flag 16: Feed cooldown</li>
+	 *   <li>Flag 32: Boss rage</li>
+	 * </ul>
+	 * Returns false if the caster is not a YoukaiEntity.
+	 * <p>
+	 * JSON: {@code {"type": "entity_flag", "flag": 4}}
+	 */
+	public record EntityFlagCondition(int flag) implements SpellCondition {
+		public static final Codec<EntityFlagCondition> CODEC = Codec.INT
+				.fieldOf("flag").codec().xmap(EntityFlagCondition::new, EntityFlagCondition::flag);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			if (ctx.self() instanceof YoukaiEntity youkai) {
+				return youkai.getFlag(flag);
+			}
+			return false;
 		}
 	}
 }

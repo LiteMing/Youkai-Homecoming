@@ -5,6 +5,7 @@ import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.events.GeneralEventHandlers;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
@@ -52,7 +53,24 @@ public interface IYHDanmaku extends GrazingEntity {
 		return true;
 	}
 
+	/**
+	 * Returns the per-danmaku damage type override, or null if none is set.
+	 * Override this in subclasses that support data-driven damage type configuration.
+	 */
+	@Nullable
+	default DanmakuDamageType getDamageTypeOverride() {
+		return null;
+	}
+
 	default DamageSource source() {
+		// Per-danmaku damage type override (set by data-driven fire_danmaku/fire_laser actions)
+		DanmakuDamageType override = getDamageTypeOverride();
+		if (override != null) {
+			DamageSource dmgType = override.resolve(this);
+			if (self().getOwner() instanceof LivingEntity le)
+				dmgType = GeneralEventHandlers.modifyDamageType(le, dmgType, this);
+			return dmgType;
+		}
 		DamageSource dmgType = YHDamageTypes.danmaku(this);
 		if (self().getOwner() instanceof CardHolder youkai) {
 			dmgType = youkai.getDanmakuDamageSource(this);

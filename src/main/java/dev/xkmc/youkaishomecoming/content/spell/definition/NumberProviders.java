@@ -47,6 +47,8 @@ public class NumberProviders {
 		register("target_z", TargetZ.CODEC, TargetZ.class);
 		register("target_height", TargetHeight.CODEC, TargetHeight.class);
 		register("game_difficulty", GameDifficulty.CODEC, GameDifficulty.class);
+		register("target_fly_time", TargetFlyTime.CODEC, TargetFlyTime.class);
+		register("target_speed", TargetSpeed.CODEC, TargetSpeed.class);
 	}
 
 	public static void register(String id, Codec<? extends NumberProvider> codec, Class<? extends NumberProvider> clazz) {
@@ -515,6 +517,30 @@ public class NumberProviders {
 		public static final Codec<GameDifficulty> CODEC = Codec.unit(GameDifficulty::new);
 		@Override public double get(SpellContext ctx) {
 			return ctx.holder().self().level().getDifficulty().getId();
+		}
+	}
+
+	/**
+	 * Returns how many ticks the target has been continuously not on the ground.
+	 * Returns 0 if the target is on the ground or absent.
+	 * JSON: {"type": "target_fly_time"}
+	 */
+	public record TargetFlyTime() implements NumberProvider {
+		public static final Codec<TargetFlyTime> CODEC = Codec.unit(TargetFlyTime::new);
+		@Override public double get(SpellContext ctx) {
+			return ctx.targetFlyTime();
+		}
+	}
+
+	/**
+	 * Returns the horizontal speed of the target entity (blocks/tick).
+	 * Returns 0 if no target or no velocity data.
+	 * JSON: {"type": "target_speed"}
+	 */
+	public record TargetSpeed() implements NumberProvider {
+		public static final Codec<TargetSpeed> CODEC = Codec.unit(TargetSpeed::new);
+		@Override public double get(SpellContext ctx) {
+			return ctx.targetSpeed();
 		}
 	}
 

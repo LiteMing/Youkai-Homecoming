@@ -36,6 +36,8 @@ public class SpellRuntime {
 	private int hitCount;
 	private final Map<String, Double> variables = new HashMap<>();
 	private final List<ScheduledAction> scheduledActions = new ArrayList<>();
+	/** Tracks how many consecutive ticks the target has been off the ground. Reset on ground contact. */
+	private int targetFlyTime;
 
 	@Nullable
 	private Consumer<SpellRuntime> onPhaseChange;
@@ -65,6 +67,10 @@ public class SpellRuntime {
 		return hitCount;
 	}
 
+	public int getTargetFlyTime() {
+		return targetFlyTime;
+	}
+
 	public double getVariable(String key) {
 		return variables.getOrDefault(key, 0.0);
 	}
@@ -84,6 +90,21 @@ public class SpellRuntime {
 	public void tick(CardHolder holder) {
 		PhaseDefinition phase = definition.getPhase(currentPhaseId);
 		if (phase == null) return;
+
+		// Track target fly time — use the same logic as SpellContext.targetOnGround()
+		// so preview mode uses the simulated targetOnGround property instead of entity physics.
+		boolean onGround;
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
+			onGround = preview.isTargetOnGround();
+		} else {
+			var targetEntity = holder.targetEntity();
+			onGround = targetEntity == null || targetEntity.onGround();
+		}
+		if (!onGround) {
+			targetFlyTime++;
+		} else {
+			targetFlyTime = 0;
+		}
 
 		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
@@ -131,6 +152,7 @@ public class SpellRuntime {
 		phaseTick = 0;
 		totalTick = 0;
 		hitCount = 0;
+		targetFlyTime = 0;
 		variables.clear();
 		scheduledActions.clear();
 

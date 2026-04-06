@@ -48,10 +48,21 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	 * DISCARD = remove immediately (default), CONTINUE = keep flying until lifetime expires.
 	 */
 	public HitBehavior hitBehaviorBlock = HitBehavior.DISCARD;
+	/**
+	 * Per-danmaku damage type override. When non-null, this takes priority over
+	 * the CardHolder/SpellCard damage source resolution chain.
+	 * Set by data-driven {@code fire_danmaku} actions with a {@code damage_type} field.
+	 */
+	public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType damageTypeOverride = null;
 	@SerialClass.SerialField
 	public ItemStack stack = ItemStack.EMPTY;
 
 	private boolean isErased = false;
+
+	@Override
+	public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType getDamageTypeOverride() {
+		return damageTypeOverride;
+	}
 
 	public ItemDanmakuEntity(EntityType<? extends ItemDanmakuEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);

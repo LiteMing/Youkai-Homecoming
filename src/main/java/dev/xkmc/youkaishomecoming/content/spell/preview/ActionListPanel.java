@@ -1881,7 +1881,7 @@ public class ActionListPanel {
 		if (action instanceof DelayAction) return 0xFFDDAAAA;
 		if (action instanceof BurstAction) return 0xFFDDAAAA;
 		if (action instanceof SpawnShooterAction) return 0xFFDDCCAA;
-		if (action instanceof TeleportAction) return 0xFFAADDAA;
+		if (action instanceof TeleportAction || action instanceof TeleportRandomAction) return 0xFFAADDAA;
 		if (action instanceof SpellActions.SequenceAction) return 0xFFAAAADD;
 		return 0xFF999999;
 	}

@@ -20,6 +20,17 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	public DanmakuMover mover;
 	@SerialClass.SerialField
 	public ItemStack stack = ItemStack.EMPTY;
+	/**
+	 * Per-laser damage type override. When non-null, this takes priority over
+	 * the CardHolder/SpellCard damage source resolution chain.
+	 * Set by data-driven {@code fire_laser} actions with a {@code damage_type} field.
+	 */
+	public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType damageTypeOverride = null;
+
+	@Override
+	public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType getDamageTypeOverride() {
+		return damageTypeOverride;
+	}
 
 	public ItemLaserEntity(EntityType<? extends ItemLaserEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);

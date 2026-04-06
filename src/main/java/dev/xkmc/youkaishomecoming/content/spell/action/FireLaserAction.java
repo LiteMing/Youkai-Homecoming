@@ -10,6 +10,8 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType;
+
 import java.util.Optional;
 
 /**
@@ -37,26 +39,37 @@ public record FireLaserAction(
 		int setupStart,
 		int setupEnd,
 		Optional<Double> delayedV0,
-		Optional<Double> delayedV1
+		Optional<Double> delayedV1,
+		Optional<DanmakuDamageType> damageType
 ) implements SpellAction {
 
-	/** Backwards-compatible constructor without elevation and delayed mover fields. */
+	/** Backwards-compatible constructor without elevation, delayed mover, and damage type fields. */
 	public FireLaserAction(YHDanmaku.Laser laserType, DyeColor color,
 						   NumberProvider lifetime, NumberProvider length, NumberProvider angleOffset,
 						   AimMode aimMode, OriginConfig origin, Optional<MoverConfig> mover,
 						   int setupPrepare, int setupStart, int setupEnd) {
 		this(laserType, color, lifetime, length, angleOffset, NumberProvider.constant(0), aimMode, origin, mover,
-				setupPrepare, setupStart, setupEnd, Optional.empty(), Optional.empty());
+				setupPrepare, setupStart, setupEnd, Optional.empty(), Optional.empty(), Optional.empty());
 	}
 
-	/** Constructor with delayed mover but no elevation. */
+	/** Constructor with delayed mover but no elevation or damage type. */
 	public FireLaserAction(YHDanmaku.Laser laserType, DyeColor color,
 						   NumberProvider lifetime, NumberProvider length, NumberProvider angleOffset,
 						   AimMode aimMode, OriginConfig origin, Optional<MoverConfig> mover,
 						   int setupPrepare, int setupStart, int setupEnd,
 						   Optional<Double> delayedV0, Optional<Double> delayedV1) {
 		this(laserType, color, lifetime, length, angleOffset, NumberProvider.constant(0), aimMode, origin, mover,
-				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1);
+				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, Optional.empty());
+	}
+
+	/** Constructor with all fields except damage type (14 args). */
+	public FireLaserAction(YHDanmaku.Laser laserType, DyeColor color,
+						   NumberProvider lifetime, NumberProvider length, NumberProvider angleOffset,
+						   NumberProvider elevation, AimMode aimMode, OriginConfig origin,
+						   Optional<MoverConfig> mover, int setupPrepare, int setupStart, int setupEnd,
+						   Optional<Double> delayedV0, Optional<Double> delayedV1) {
+		this(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover,
+				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, Optional.empty());
 	}
 
 	public static final Codec<FireLaserAction> CODEC = RecordCodecBuilder.create(i -> i.group(
@@ -73,25 +86,27 @@ public record FireLaserAction(
 			Codec.INT.optionalFieldOf("setup_start", 0).forGetter(FireLaserAction::setupStart),
 			Codec.INT.optionalFieldOf("setup_end", 0).forGetter(FireLaserAction::setupEnd),
 			Codec.DOUBLE.optionalFieldOf("delayed_v0").forGetter(FireLaserAction::delayedV0),
-			Codec.DOUBLE.optionalFieldOf("delayed_v1").forGetter(FireLaserAction::delayedV1)
+			Codec.DOUBLE.optionalFieldOf("delayed_v1").forGetter(FireLaserAction::delayedV1),
+			DanmakuDamageType.CODEC.optionalFieldOf("damage_type").forGetter(FireLaserAction::damageType)
 	).apply(i, FireLaserAction::new));
 
 	// withXxx helper methods for editor use
-	private FireLaserAction all(YHDanmaku.Laser lt, DyeColor c, NumberProvider lf, NumberProvider ln, NumberProvider ao, NumberProvider el, AimMode am, OriginConfig o, Optional<MoverConfig> m, int sp, int ss, int se, Optional<Double> dv0, Optional<Double> dv1) { return new FireLaserAction(lt, c, lf, ln, ao, el, am, o, m, sp, ss, se, dv0, dv1); }
-	public FireLaserAction withLaserType(YHDanmaku.Laser v) { return all(v, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withColor(DyeColor v) { return all(laserType, v, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withLifetime(NumberProvider v) { return all(laserType, color, v, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withLength(NumberProvider v) { return all(laserType, color, lifetime, v, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withAngleOffset(NumberProvider v) { return all(laserType, color, lifetime, length, v, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withElevation(NumberProvider v) { return all(laserType, color, lifetime, length, angleOffset, v, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withAimMode(AimMode v) { return all(laserType, color, lifetime, length, angleOffset, elevation, v, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withOrigin(OriginConfig v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, v, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withMover(Optional<MoverConfig> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, v, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withSetupPrepare(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, v, setupStart, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withSetupStart(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, v, setupEnd, delayedV0, delayedV1); }
-	public FireLaserAction withSetupEnd(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, v, delayedV0, delayedV1); }
-	public FireLaserAction withDelayedV0(Optional<Double> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, v, delayedV1); }
-	public FireLaserAction withDelayedV1(Optional<Double> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, v); }
+	private FireLaserAction all(YHDanmaku.Laser lt, DyeColor c, NumberProvider lf, NumberProvider ln, NumberProvider ao, NumberProvider el, AimMode am, OriginConfig o, Optional<MoverConfig> m, int sp, int ss, int se, Optional<Double> dv0, Optional<Double> dv1, Optional<DanmakuDamageType> ddt) { return new FireLaserAction(lt, c, lf, ln, ao, el, am, o, m, sp, ss, se, dv0, dv1, ddt); }
+	public FireLaserAction withLaserType(YHDanmaku.Laser v) { return all(v, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withColor(DyeColor v) { return all(laserType, v, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withLifetime(NumberProvider v) { return all(laserType, color, v, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withLength(NumberProvider v) { return all(laserType, color, lifetime, v, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withAngleOffset(NumberProvider v) { return all(laserType, color, lifetime, length, v, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withElevation(NumberProvider v) { return all(laserType, color, lifetime, length, angleOffset, v, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withAimMode(AimMode v) { return all(laserType, color, lifetime, length, angleOffset, elevation, v, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withOrigin(OriginConfig v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, v, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withMover(Optional<MoverConfig> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, v, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withSetupPrepare(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, v, setupStart, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withSetupStart(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, v, setupEnd, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withSetupEnd(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, v, delayedV0, delayedV1, damageType); }
+	public FireLaserAction withDelayedV0(Optional<Double> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, v, delayedV1, damageType); }
+	public FireLaserAction withDelayedV1(Optional<Double> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, v, damageType); }
+	public FireLaserAction withDamageType(Optional<DanmakuDamageType> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, v); }
 
 	@Override
 	public void execute(SpellContext ctx) {
@@ -126,6 +141,10 @@ public record FireLaserAction(
 		}
 
 		var laser = holder.prepareLaser(life, originPos, dir, len, laserType, color);
+		// Apply per-action damage type override
+		if (damageType.isPresent()) {
+			laser.damageTypeOverride = damageType.get();
+		}
 		if (setupPrepare > 0 || setupStart > 0 || setupEnd > 0) {
 			laser.setupTime(setupPrepare, setupStart, life, setupEnd);
 		}

@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.game;
 
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellConditions;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
@@ -2048,6 +2049,381 @@ public class MigratedSpellCards {
 					Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty()));
 		}
 		return new SpellActions.SequenceAction(actions);
+	}
+
+	// ============================
+	// ReimuSpell — 三段追踪弹 + 拦截传送 + 边界环 + 受伤序列
+	// ============================
+	// Legacy: 5步周期(3×shoot + 2×intercept), shoot: 20发环→减速→重新瞄准→追踪
+	//         intercept: 传送到目标前方 + 8×8旋转弹, border: 每tick 8发BALL YELLOW
+	//         on_hurt: 激活border + abyss + 延迟sequence弹幕
+	//         tick > 2400: 设置abyssal flag
+	public static SpellDefinition reimu() {
+		var id = rl("hakurei_reimu");
+		var mainPhase = rl("hakurei_reimu/main");
+
+		// === Distance-adaptive parameters (perc = clamp((dist-16)/24, 0, 1)) ===
+		var dist = new NumberProviders.Distance();
+		var perc = new NumberProviders.Clamp(
+				new NumberProviders.Div(new NumberProviders.Add(dist, NumberProvider.constant(-16)), NumberProvider.constant(24)),
+				NumberProvider.constant(0), NumberProvider.constant(1));
+		// r0 = lerp(perc, 6, 20), t0 = lerp(perc, 20, 10), termSpeed = lerp(perc, 1, 3)
+		var r0 = new NumberProviders.Add(NumberProvider.constant(6), new NumberProviders.Mul(perc, NumberProvider.constant(14)));
+		var t0 = new NumberProviders.Add(NumberProvider.constant(20), new NumberProviders.Mul(perc, NumberProvider.constant(-10)));
+		var termSpeed = new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.Mul(perc, NumberProvider.constant(2)));
+
+		// === HomingTrail chain: 3-stage projectile lifecycle ===
+		// Stage 3 (final): fire 1 aimed at target, speed = termSpeed, life = 40+random(20)
+		// Color depends on abyss flag: BLUE if abyssal, RED if not
+		// Use ByVariable with "$abyss_color" set on entity_flag condition
+		var finalHomingLife = new NumberProviders.Add(NumberProvider.constant(40), new NumberProviders.RandomRange(0, 20));
+		var finalHomingRed = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.RED),
+				NumberProvider.constant(1), termSpeed, finalHomingLife,
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var finalHomingBlue = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.BLUE),
+				NumberProvider.constant(1), termSpeed, finalHomingLife,
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		SpellAction finalHoming = new SpellActions.ConditionalAction(
+				new SpellConditions.EntityFlagCondition(4),
+				List.of(finalHomingBlue), List.of(finalHomingRed));
+
+		// Stage 2 (re-aim homing): 1 CIRCLE PURPLE aimed at target, speed = r0*2/t0/t0*t0 ≈ r0*2/t0
+		// Simplified: speed accelerates from small to termSpeed. Use acceleration mover.
+		var homingTrail = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.PURPLE),
+				NumberProvider.constant(1),
+				new NumberProviders.Div(new NumberProviders.Mul(r0, NumberProvider.constant(2)), t0),
+				t0,
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(),
+				Optional.of(List.of((SpellAction) finalHoming)),
+				Optional.empty(), 1);
+
+		// Stage 1 (expanding ring): 20 CIRCLE LIGHT_GRAY, ring, deceleration mover, onExpiry → homingTrail
+		var expandRing = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.LIGHT_GRAY),
+				NumberProvider.constant(20),
+				new NumberProviders.Div(new NumberProviders.Mul(r0, NumberProvider.constant(2)), t0),
+				t0,
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+				Optional.of(new MoverConfigs.DecelerationConfig(0.1)),
+				Optional.empty(),
+				Optional.of(List.of((SpellAction) homingTrail)),
+				Optional.empty(), 1);
+
+		// === shoot() — steps 0-2 of 5-step cycle (every 10 ticks) ===
+		// tick_interval(10, 0) AND (tick/10 % 5 < 3 → tick%50 < 30)
+		var shootCondition = new SpellConditions.AndCondition(List.of(
+				new SpellConditions.TickInterval(10, 0),
+				new SpellConditions.CompareNumbers(
+						new NumberProviders.Mod(new NumberProviders.PhaseTick(), NumberProvider.constant(50)),
+						"<", NumberProvider.constant(30))
+		));
+		var shootAction = new SpellActions.ConditionalAction(shootCondition, List.of(expandRing), List.of());
+
+		// === intercept() — steps 3-4 when dist > 40 ===
+		// Simplified: teleport toward target + burst 8×8 BUBBLE YELLOW
+		// Teleport destination: target + direction_to_caster * 24 (behind target from caster's perspective)
+		var interceptCondition = new SpellConditions.AndCondition(List.of(
+				new SpellConditions.TickInterval(10, 0),
+				new SpellConditions.CompareNumbers(
+						new NumberProviders.Mod(new NumberProviders.PhaseTick(), NumberProvider.constant(50)),
+						">=", NumberProvider.constant(30)),
+				new SpellConditions.DistanceAbove(40)
+		));
+		// Teleport to 24 blocks ahead of target (along caster→target direction)
+		var interceptTeleport = new TeleportAction(
+				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+						NumberProvider.constant(0), NumberProvider.constant(0),
+						new NumberProviders.Max(NumberProvider.constant(24), dist), NumberProvider.constant(0)),
+				true);
+		// 8-ring of BUBBLE YELLOW, rotating over 80 ticks
+		// Each ring position fires 8 bullets spinning at 18 deg/tick
+		var interceptBullets = new SpellActions.RepeatAction(NumberProvider.constant(8), "ii", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.YELLOW),
+						NumberProvider.constant(8), NumberProvider.constant(2),
+						NumberProvider.constant(40),
+						new NumberProviders.Add(
+								new NumberProviders.Mul(new NumberProviders.Variable("ii"), NumberProvider.constant(45)),
+								new NumberProviders.Mul(new NumberProviders.PhaseTick(), NumberProvider.constant(18))),
+						NumberProvider.constant(360), NumberProvider.constant(0),
+						PatternType.RING,
+						new OriginConfig(OriginConfig.OriginMode.TARGET,
+								new NumberProviders.Mul(new NumberProviders.Sin(
+										new NumberProviders.Mul(new NumberProviders.Variable("ii"), NumberProvider.constant(45)), 32, 0), NumberProvider.constant(1)),
+								NumberProvider.constant(0),
+								new NumberProviders.Mul(new NumberProviders.Cos(
+										new NumberProviders.Mul(new NumberProviders.Variable("ii"), NumberProvider.constant(45)), 32, 0), NumberProvider.constant(1)),
+								NumberProvider.constant(0)),
+						new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
+						Optional.empty(), Optional.empty(), Optional.empty(),
+						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL))
+		));
+		var interceptAction = new SpellActions.ConditionalAction(interceptCondition,
+				List.of(interceptTeleport, interceptBullets), List.of());
+
+		// === border() — 8 BALL YELLOW every tick when border flag is set ===
+		// border is activated on_hurt. Use variable "$border" = 1
+		var borderSpeed = new NumberProviders.Clamp(
+				new NumberProviders.Div(dist, NumberProvider.constant(30)),
+				NumberProvider.constant(1.5), NumberProvider.constant(3));
+		var borderAction = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(new NumberProviders.Variable("border"),
+						">", NumberProvider.constant(0)),
+				List.of(new FireDanmakuAction(
+						YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.YELLOW),
+						NumberProvider.constant(8), borderSpeed,
+						NumberProvider.constant(40),
+						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+						PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
+						Optional.empty(), Optional.empty(), Optional.empty(),
+						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL))),
+				List.of());
+
+		// === tick > 2400: set abyssal flag ===
+		var abyssalTimer = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.TickElapsed(2400),
+						new SpellConditions.NotCondition(new SpellConditions.EntityFlagCondition(4))
+				)),
+				List.of(new SetEntityFlagAction(4, true)),
+				List.of());
+
+		// === on_hurt: activate border + abyss check + sequence ===
+		// Set $border = 1 (activation flag)
+		var hurtSetBorder = new SpellActions.SetVariable("border", 1);
+		// If HP < 50%: set abyssal flag
+		var hurtAbyss = new SpellActions.ConditionalAction(
+				new SpellConditions.HealthBelow(0.5f),
+				List.of(new SetEntityFlagAction(4, true)),
+				List.of());
+		// Abyss mode: 3 rotating BUBBLE BLUE sequences (each 6-step burst, delayed)
+		// Non-abyss: 1 BUBBLE sequence
+		// Use burst for the delayed steps: 6 steps, 2-tick delay each
+		var seqBubbleNorm = new BurstAction(5, 2, "sq", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.LIGHT_GRAY),
+						NumberProvider.constant(8), NumberProvider.constant(1.0),
+						NumberProvider.constant(40),
+						new NumberProviders.Add(
+								new NumberProviders.RandomRange(0, 360),
+								new NumberProviders.Mul(new NumberProviders.Variable("sq"), NumberProvider.constant(9))),
+						NumberProvider.constant(360), NumberProvider.constant(0),
+						PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.of(new MoverConfigs.DecelerationConfig(0.08)),
+						Optional.empty(),
+						Optional.of(List.of((SpellAction) new FireDanmakuAction(
+								YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.PURPLE),
+								NumberProvider.constant(1), NumberProvider.constant(1.5),
+								NumberProvider.constant(40),
+								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+								PatternType.AIMED, OriginConfig.caster(),
+								new AimMode.AimModes.DirectionToTarget(),
+								Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1))),
+						Optional.empty(), 1)
+		));
+		var seqBubbleAbyss = new SpellActions.RepeatAction(NumberProvider.constant(3), "ai", List.of(
+				new BurstAction(5, 2, "sqb", List.of(
+						new FireDanmakuAction(
+								YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.BLUE),
+								NumberProvider.constant(6), NumberProvider.constant(1.0),
+								NumberProvider.constant(40),
+								new NumberProviders.Add(
+										new NumberProviders.Mul(new NumberProviders.Variable("ai"), NumberProvider.constant(120)),
+										new NumberProviders.Mul(new NumberProviders.Variable("sqb"), NumberProvider.constant(12))),
+								NumberProvider.constant(360), NumberProvider.constant(0),
+								PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+								Optional.of(new MoverConfigs.DecelerationConfig(0.08)),
+								Optional.empty(),
+								Optional.of(List.of((SpellAction) new FireDanmakuAction(
+										YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.BLUE),
+										NumberProvider.constant(1), NumberProvider.constant(1.5),
+										NumberProvider.constant(40),
+										NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+										PatternType.AIMED, OriginConfig.caster(),
+										new AimMode.AimModes.DirectionToTarget(),
+										Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
+										Optional.empty(), Optional.empty(), Optional.empty(),
+										HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL)))),
+								Optional.empty(), 1,
+								Optional.empty(), Optional.empty(), Optional.empty(),
+								HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL))
+				))
+		));
+		var hurtSequence = new SpellActions.ConditionalAction(
+				new SpellConditions.EntityFlagCondition(4),
+				List.of((SpellAction) seqBubbleAbyss),
+				List.of((SpellAction) seqBubbleNorm));
+
+		var onDamageActions = List.<SpellAction>of(
+				hurtSetBorder, hurtAbyss, hurtSequence);
+
+		var phase = new PhaseDefinition(mainPhase, List.of(),
+				List.of(abyssalTimer, shootAction, interceptAction, borderAction),
+				List.of(), onDamageActions, List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:hakurei_reimu");
+	}
+
+	// ============================
+	// YukariSpell — 传送+激光阵+蝴蝶螺旋+受伤反击
+	// ============================
+	public static SpellDefinition yukari() {
+		var id = rl("yukari_yakumo");
+		var mainPhase = rl("yukari_yakumo/main");
+		var dist = new NumberProviders.Distance();
+
+		// === hidden() pattern: 6 lasers + 6 bubbles + 105 butterflies ===
+		var hiddenLasers = new SpellActions.RepeatAction(NumberProvider.constant(6), "hl", List.of(
+				(SpellAction) new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.MAGENTA,
+						NumberProvider.constant(120), NumberProvider.constant(80),
+						new NumberProviders.Mul(new NumberProviders.Variable("hl"), NumberProvider.constant(60)),
+						NumberProvider.constant(0),
+						new AimMode.AimModes.Target(), OriginConfig.caster(),
+						Optional.<MoverConfig>empty(), 2, 8, 10, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL))
+		));
+		var hiddenBubbles = new SpellActions.RepeatAction(NumberProvider.constant(6), "hb", List.of(
+				(SpellAction) new FireDanmakuAction(
+						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.PURPLE),
+						NumberProvider.constant(1), NumberProvider.constant(2), NumberProvider.constant(40),
+						new NumberProviders.Mul(new NumberProviders.Variable("hb"), NumberProvider.constant(60)),
+						NumberProvider.constant(0), NumberProvider.constant(0),
+						PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+		var hiddenButterflies = new SpellActions.RepeatAction(NumberProvider.constant(3), "bsp", List.of(
+				(SpellAction) new FireDanmakuAction(
+						YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.PURPLE),
+						NumberProvider.constant(35),
+						new NumberProviders.Add(NumberProvider.constant(1.4),
+								new NumberProviders.Mul(new NumberProviders.Variable("bsp"), NumberProvider.constant(0.2))),
+						NumberProvider.constant(40), NumberProvider.constant(0),
+						NumberProvider.constant(60), NumberProvider.constant(40),
+						PatternType.GRID, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						Optional.<MoverConfig>empty(), Optional.of(NumberProvider.constant(5)),
+						Optional.<List<SpellAction>>empty(), Optional.<List<SpellAction>>empty(), 1)
+		));
+		SpellAction hiddenFull = new SpellActions.SequenceAction(List.of(
+				hiddenLasers, hiddenBubbles, hiddenButterflies));
+
+		// === Teleport + hidden when dist > 40, every 5 ticks ===
+		var teleportFar = new TeleportAction(
+				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+						NumberProvider.constant(0), NumberProvider.constant(0),
+						NumberProvider.constant(32), NumberProvider.constant(0)),
+				true);
+		var teleportHiddenAction = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.DistanceAbove(40),
+						new SpellConditions.TickInterval(5, 0))),
+				List.of(teleportFar, hiddenFull), List.of());
+
+		// === Butterfly: 100 per color, CompositeMover, when dist < 20 ===
+		var butterflyMover = new MoverConfigs.CompositeMoverConfig(List.of(
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.05)),
+				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 8, 0.2)),
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
+		var butterflyMoverRev = new MoverConfigs.CompositeMoverConfig(List.of(
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.05)),
+				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, -8, -0.2)),
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
+		var butterflyCyan = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
+				NumberProvider.constant(100), NumberProvider.constant(1.6),
+				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360),
+				new NumberProviders.RandomRange(-45, 45),
+				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
+				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var butterflyMagenta = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
+				NumberProvider.constant(100), NumberProvider.constant(1.6),
+				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360),
+				new NumberProviders.RandomRange(-45, 45),
+				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
+				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var butterflyAction = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.DistanceBelow(20),
+						new SpellConditions.CompareNumbers(new NumberProviders.Variable("cd"), "<=", NumberProvider.constant(0)))),
+				List.of(butterflyCyan, butterflyMagenta,
+						new SpellActions.SetVariable("cd", 60)),
+				List.of());
+
+		// === LaserAdder: spiral lasers 120 ticks, when 20 < dist < 40 ===
+		// At lt==20: shootGroup RED (5 BUBBLE + spread), at lt==40: shootGroup BLUE
+		var shootGroupRed = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(new NumberProviders.Variable("lt"), "==", NumberProvider.constant(20)),
+				List.of(new FireDanmakuAction(
+						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.RED),
+						NumberProvider.constant(5), NumberProvider.constant(0.8), NumberProvider.constant(70),
+						NumberProvider.constant(0), NumberProvider.constant(30), NumberProvider.constant(30),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
+				List.of());
+		var shootGroupBlue = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(new NumberProviders.Variable("lt"), "==", NumberProvider.constant(40)),
+				List.of(new FireDanmakuAction(
+						YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.BLUE),
+						NumberProvider.constant(50), NumberProvider.constant(0.7), NumberProvider.constant(70),
+						NumberProvider.constant(0), NumberProvider.constant(30), NumberProvider.constant(30),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
+				List.of());
+		var spiralLasers = new BurstAction(120, 1, "lt", List.<SpellAction>of(
+				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.RED,
+						NumberProvider.constant(100), NumberProvider.constant(80),
+						new NumberProviders.Add(NumberProvider.constant(-45),
+								new NumberProviders.Mul(new NumberProviders.Variable("lt"), NumberProvider.constant(3))),
+						NumberProvider.constant(0),
+						new AimMode.AimModes.CasterFacing(), OriginConfig.caster(),
+						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
+				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
+						NumberProvider.constant(100), NumberProvider.constant(80),
+						new NumberProviders.Add(NumberProvider.constant(45),
+								new NumberProviders.Mul(new NumberProviders.Variable("lt"), NumberProvider.constant(3))),
+						NumberProvider.constant(0),
+						new AimMode.AimModes.CasterFacing(), OriginConfig.caster(),
+						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
+				shootGroupRed, shootGroupBlue
+		));
+		var laserAction = new SpellActions.ConditionalAction(
+				new SpellConditions.AndCondition(List.of(
+						new SpellConditions.DistanceAbove(20),
+						new SpellConditions.DistanceBelow(40),
+						new SpellConditions.CompareNumbers(new NumberProviders.Variable("cd"), "<=", NumberProvider.constant(0)))),
+				List.of(spiralLasers, new SpellActions.SetVariable("cd", 120)),
+				List.of());
+
+		// === Cooldown decrement ===
+		var cdDecrement = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(new NumberProviders.Variable("cd"), ">", NumberProvider.constant(0)),
+				List.of(new SpellActions.AddVariable("cd", -1)), List.of());
+
+		// === on_hurt: teleport random + hidden ===
+		var onDamageActions = List.<SpellAction>of(
+				new TeleportRandomAction(32, 0.8, 0.4, 16, true, true), hiddenFull);
+
+		var phase = new PhaseDefinition(mainPhase, List.of(),
+				List.of(cdDecrement, teleportHiddenAction, butterflyAction, laserAction),
+				List.of(), onDamageActions, List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:yukari_yakumo");
 	}
 
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,

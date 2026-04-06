@@ -248,7 +248,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	public void stopSession(UUID uuid) {
 		if (!sessions.containsKey(uuid)) return;
 		sessions.remove(uuid);
-		if (sessions.isEmpty() && player instanceof ServerPlayer sp) {
+		// Only clear spell proxies when in a full danmaku combat session (has youkai/fairy effect).
+		// Normal players using dynamic spell without effects should keep their spell proxies running.
+		if (sessions.isEmpty() && player instanceof ServerPlayer sp
+				&& EffectEventHandlers.isFullCharacter(player)) {
 			SpellContainer.clear(sp);
 		}
 		dirty = true;

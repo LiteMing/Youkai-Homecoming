@@ -16,7 +16,11 @@ public interface GrazingEntity {
 	}
 
 	default AABB alterHitBox(Entity x, float radius, float graze) {
-		return x.getBoundingBox().inflate(radius + graze);
+		return alterHitBox(x, x.getBoundingBox(), radius, graze);
+	}
+
+	default AABB alterHitBox(Entity x, AABB box, float radius, float graze) {
+		return box.inflate(radius + graze);
 	}
 
 }

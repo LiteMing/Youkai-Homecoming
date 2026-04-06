@@ -46,4 +46,20 @@ public class SectionCache {
 		return aabb.intersects(box) ? all : margin;
 	}
 
+	/**
+	 * Exposes the cached entity list for section-level snapshotting.
+	 * The list is populated during construction and treated as read-only afterwards.
+	 */
+	public List<Entity> allEntities() {
+		return all;
+	}
+
+	/**
+	 * Entities whose bounding boxes cross the section boundary.
+	 * Used when querying a neighboring section that does not directly intersect the search box.
+	 */
+	public List<Entity> marginEntities() {
+		return margin;
+	}
+
 }

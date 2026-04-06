@@ -787,31 +787,30 @@ spark 显示碰撞检测占服务端 17.36%, 其中:
 
 **当前结论**:
 - PG 这一轮已经从“代码可跑”收口到“语义基本对齐原始单线程路径, 可继续 profile”
-- 但主程序员指出的真正瓶颈仍然成立: Step 2 依旧是 `per-projectile foreach(section cache)`
-- 也就是说, PG 解决的是“骨架与并行拆分”, 还没解决“SectionCache 扫描方式本身”的结构性开销
+- PG 解决了 4 步并行拆分的语义与副作用顺序问题, 并为后续的 section 级缓存铺平了结构
+- 原先 Step 2 的 `per-projectile foreach(section cache)` 结构性开销已在后续 PD 阶段替换掉, 后续 profiling 需要以新实现为准
 
 **预期收益**: 服务端 tick 并行化, 3万弹幕时 Step 1/3 可 4 线程并行; 总体服务端 tick 开销预期降低 30-50%
 
-### PD: 服务端碰撞检测分区 (待评估)
+### PD: 服务端碰撞检测分区 (已实现)
 
 `IEntityCache.foreach()` 占 11.42%。当前碰撞检测遍历每个弹幕附近的所有实体。
 已有 `SectionCache` / `EntityStorageCache` 做空间分区, 但开销仍高。
 
-**主方向已明确**:
-- 不是继续在 Step 2 里做 `per-projectile foreach`
-- 而是改成 **section 级别的一次缓存 / 一次快照**
+**最终实现**:
+1. Step 1 (并行): 除了 `src/dst/searchBox` 之外, 还为每发弹幕记录扩边后的 section 范围 (`sectionX0..sectionZ1`)
+2. Step 2 (单线程): 先把所有弹幕触及的 sections 合并成一个 `LongOpenHashSet`, 再对每个 touched section 只读取一次 `SectionCache`
+3. Step 2 (单线程): 每个 touched section 冻结为 `SectionSnapshot(all, margin)`, 其元素是 `CachedTarget(entity, boundingBox, deltaMovement, sweepBox)`
+4. Step 2 (单线程): 每发弹幕不再调用 `IEntityCache.foreach()`, 而是只遍历自己命中的 section snapshot, 复用 `all` / `margin` 分支语义
+5. Step 3 (并行): 命中与 graze 判定改为直接使用 cached `boundingBox` / `sweepBox`, 通过 `alterHitBox(Entity, AABB, ...)` 闭合 snapshot 路径
+6. Step 4 (单线程): 继续维持 `doGraze()` / `onHit()` / `computeMove()` / 生命周期检查的主线程顺序
 
-**建议方案**:
-1. Step 1 (并行): 只计算每发弹幕将触及哪些 section, 用 `AtomicBitSet` / long-key set 记录 touched sections
-2. Step 2 (单线程): 按 touched sections 一次性读取 `SectionCache`, 冻结为本 tick 的 section/entity 快照
-3. Step 3 (并行): 每发弹幕只遍历自己命中的 section 快照, 做 AABB 碰撞检测
-4. Step 4 (单线程): 保持当前回调/移动/生命周期执行顺序不变
+**实现结果**:
+- `ParallelDanmakuTicker` 热路径已不再调用 `IEntityCache.foreach()`
+- “每发弹幕都扫一遍 section cache” 改成了 “每 tick 每个 touched section 最多 snapshot 一次”
+- `SectionCache` 新增只读访问器, 供 section 级 snapshot 复用
+- Step 3 现在不再依赖目标实体的实时包围盒读取, snapshot 语义完整
 
-**目标**:
-- 把“每发弹幕都去扫 section cache”改成“每 tick 每个 section 最多读一次”
-- 为后续主程序员提到的 `AtomicBitSet` 路线铺路
-
-**工作量**: 中-大
 **预期收益**: 服务端 ~10%, 且能显著降低 Spark 中 `IEntityCache.foreach()` 的存在感
 
 ## 当前改进状态总览
@@ -839,7 +838,7 @@ spark 显示碰撞检测占服务端 17.36%, 其中:
 | PF | 网络包拆分 | **已实现** | DanmakuManager.send() 按 2000/包拆分, 修复 8 万弹幕 1MB 崩溃 |
 | PG | 服务端 tick 4步并行拆分 | **已实现并收口** | ParallelDanmakuTicker 已拆成 step 方法, 恢复主线程副作用/移动时序/卸载语义 |
 | PC | 服务端 getGameTime 缓存 | **已实现** | EntityStorageCache/UserCacheHolder/UserMatrixCache 统一接受预取 gameTime, 消除 N 次调用 |
-| PD | 服务端碰撞分区优化 | 待评估 | 预期省服务端 ~10%, 工作量中-大 |
+| PD | 服务端碰撞分区优化 | **已实现** | touched section → `SectionSnapshot`, 每 tick 每 section 最多读取一次 |
 
 ## 提交历史
 
@@ -931,7 +930,7 @@ PB3 跳过 PoseStack 后, scale 直接从 `entity.scale()` 获取, 此 trick 不
 8. ~~**PG 服务端 tick 多线程拆分**~~: 已集成并完成语义收口, 当前可继续基于 Spark 定位 Step 2 热点
 9. ~~**PC 服务端 getGameTime 缓存**~~: 已实现 — `UserCacheHolder.setGameTime()` 每 tick 一次,
    `UserMatrixCache(sl, x, y, z, gameTime)` / `EntityStorageCache.get(sl, gameTime)` 接受预取值
-10. **PD 服务端碰撞分区优化**: 下一步优先做 section 级缓存/快照, 考虑 `AtomicBitSet`
+10. ~~**PD 服务端碰撞分区优化**~~: 已实现 — `ParallelDanmakuTicker` 改为 touched section 聚合 + section snapshot, 不再走 `per-projectile foreach`
 11. **P6 GPU 实例化 (shader)**: 大工程, 服务端优化完成后再启动
 12. **P1 轻量实体**: 解决 GC 根因, 与 P6 配合可支撑 10 万+
 

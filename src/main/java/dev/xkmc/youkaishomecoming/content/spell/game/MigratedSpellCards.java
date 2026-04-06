@@ -2109,9 +2109,11 @@ public class MigratedSpellCards {
 				Optional.of(List.of((SpellAction) finalHoming)),
 				Optional.empty(), 1);
 
-		// Stage 1 (expanding ring): 20 CIRCLE LIGHT_GRAY, tilted ring, deceleration mover, onExpiry → homingTrail
-		// Legacy: init = getOrientation(dir).rotateDegrees(90, rand*120-30), ring in tilted plane
-		// Data-driven: use tilt_angle to tilt the ring plane ~60° off horizontal
+		// Stage 1 (expanding ring): 20 CIRCLE LIGHT_GRAY, tilted ring, onExpiry → homingTrail
+		// Legacy: init = getOrientation(dir).rotateDegrees(90, tilt), tilt = 60*rand-30 → range [-30, 30]
+		// RectMover with constant deceleration: bullets expand outward then stop at t0.
+		// No shrinking — they just stop and trigger onExpiry.
+		// Data-driven: acceleration mover simulating constant deceleration (negative acc along velocity)
 		var expandRing = new FireDanmakuAction(
 				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.LIGHT_GRAY),
 				NumberProvider.constant(20),
@@ -2119,11 +2121,11 @@ public class MigratedSpellCards {
 				t0,
 				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
 				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
-				Optional.of(new MoverConfigs.DecelerationConfig(0.1)),
+				Optional.empty(),
 				Optional.empty(),
 				Optional.of(List.of((SpellAction) homingTrail)),
 				Optional.empty(), 1,
-				Optional.of(new NumberProviders.RandomRange(30, 90)));
+				Optional.of(new NumberProviders.RandomRange(-30, 30)));
 
 		// === shoot() — steps 0-2 of 5-step cycle (every 10 ticks) ===
 		// tick_interval(10, 0) AND (tick/10 % 5 < 3 → tick%50 < 30)
@@ -2138,13 +2140,6 @@ public class MigratedSpellCards {
 		// === intercept() — steps 3-4 when dist > 40 ===
 		// Simplified: teleport toward target + burst 8×8 BUBBLE YELLOW
 		// Teleport destination: target + direction_to_caster * 24 (behind target from caster's perspective)
-		var interceptCondition = new SpellConditions.AndCondition(List.of(
-				new SpellConditions.TickInterval(10, 0),
-				new SpellConditions.CompareNumbers(
-						new NumberProviders.Mod(new NumberProviders.PhaseTick(), NumberProvider.constant(50)),
-						">=", NumberProvider.constant(30)),
-				new SpellConditions.DistanceAbove(40)
-		));
 		// Teleport to 24 blocks ahead of target (along caster→target direction)
 		var interceptTeleport = new TeleportAction(
 				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
@@ -2152,23 +2147,38 @@ public class MigratedSpellCards {
 						new NumberProviders.Max(NumberProvider.constant(24), dist), NumberProvider.constant(0)),
 				true);
 		// Intercept: legacy is a Ticker running 80 ticks, 8 positions × 8 spinning bullets per tick.
-		// Simplified: single burst of BUBBLE YELLOW in SPHERE pattern for spherical coverage.
-		// 8 positions × 8 directions = 64 per tick × 80 ticks = 5120 total in legacy.
-		// Data-driven: fire a sphere of ~60 bullets per intercept to approximate the visual effect
-		// without the extreme entity count.
+		// Legacy behavior: bullets spawn at target's outer ring (dist=32 offset), not from caster.
+		// Only triggers when target speed > 0.5.
+		// Simplified: sphere of BUBBLE YELLOW centered at TARGET position for spherical coverage.
 		var interceptBullets = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.YELLOW),
 				NumberProvider.constant(60), NumberProvider.constant(2),
 				NumberProvider.constant(40),
 				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(180),
-				PatternType.SPHERE, OriginConfig.caster(), new AimMode.AimModes.Target(),
+				PatternType.SPHERE,
+				new OriginConfig(OriginConfig.OriginMode.TARGET,
+						NumberProvider.constant(0), NumberProvider.constant(0),
+						NumberProvider.constant(0), NumberProvider.constant(0)),
+				new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
 				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL));
-		var interceptAction = new SpellActions.ConditionalAction(interceptCondition,
+		// Additional condition: target must be moving fast (speed > 0.5)
+		var interceptSpeedCheck = new SpellConditions.CompareNumbers(
+				new NumberProviders.TargetSpeed(), ">", NumberProvider.constant(0.5));
+		var interceptFullCondition = new SpellConditions.AndCondition(List.of(
+				new SpellConditions.TickInterval(10, 0),
+				new SpellConditions.CompareNumbers(
+						new NumberProviders.Mod(new NumberProviders.PhaseTick(), NumberProvider.constant(50)),
+						">=", NumberProvider.constant(30)),
+				new SpellConditions.DistanceAbove(40),
+				interceptSpeedCheck
+		));
+		var interceptAction = new SpellActions.ConditionalAction(interceptFullCondition,
 				List.of(interceptTeleport, interceptBullets), List.of());
 
 		// === border() — 8 BALL YELLOW every tick when border flag is set ===
+		// Legacy: ori.rotateDegrees(360/8*i - angle), fixed ring based on caster facing
 		// border is activated on_hurt. Use variable "$border" = 1
 		var borderSpeed = new NumberProviders.Clamp(
 				new NumberProviders.Div(dist, NumberProvider.constant(30)),
@@ -2180,8 +2190,8 @@ public class MigratedSpellCards {
 						YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.YELLOW),
 						NumberProvider.constant(8), borderSpeed,
 						NumberProvider.constant(40),
-						new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-						PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						NumberProvider.constant(70), NumberProvider.constant(360), NumberProvider.constant(0),
+						PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
 						Optional.empty(), Optional.empty(), Optional.empty(),
 						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL))),

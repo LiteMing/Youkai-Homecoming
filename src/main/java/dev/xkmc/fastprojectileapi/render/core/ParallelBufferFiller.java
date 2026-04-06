@@ -31,19 +31,29 @@ public class ParallelBufferFiller {
 	private static final int MAX_THREADS = 4;
 
 	/**
-	 * Fill vertex data in parallel and write to the BulkDataWriter.
-	 *
-	 * @param vc               the BulkDataWriter to write merged results into
-	 * @param list             the list of render instances
-	 * @param verticesPerEntry number of vertices each instance writes (e.g., 4 for a quad)
-	 * @param writer           function that writes one instance's vertices into byte[] at given offset.
-	 *                         Signature: (byte[] buf, int byteOffset, T instance) → void.
-	 *                         The function must write exactly verticesPerEntry * 24 bytes starting at byteOffset.
-	 * @param <T>              the render instance type
+	 * Reusable byte[] buffers per thread slot to avoid per-frame allocation.
+	 * For 170k danmaku × 4 vertices × 24 bytes = 16MB/frame of byte[] — major GC source.
+	 * Buffers grow as needed and are retained across frames.
 	 */
-	/** Counter for diagnostic logging — logs once every N frames to avoid spam. */
-	private static int diagCounter = 0;
-	private static final int DIAG_INTERVAL = 600; // ~10 seconds at 60fps
+	private static final byte[][] threadBuffers = new byte[MAX_THREADS][];
+	/** Single-thread reusable buffer. */
+	private static byte[] singleBuffer = null;
+
+	private static byte[] ensureBuffer(byte[][] buffers, int index, int needed) {
+		byte[] buf = buffers[index];
+		if (buf == null || buf.length < needed) {
+			buffers[index] = new byte[needed];
+			return buffers[index];
+		}
+		return buf;
+	}
+
+	private static byte[] ensureSingleBuffer(int needed) {
+		if (singleBuffer == null || singleBuffer.length < needed) {
+			singleBuffer = new byte[needed];
+		}
+		return singleBuffer;
+	}
 
 	public static <T> void fill(BulkDataWriter vc, List<T> list, int verticesPerEntry, InstanceWriter<T> writer) {
 		int size = list.size();
@@ -52,8 +62,9 @@ public class ParallelBufferFiller {
 		int bytesPerEntry = verticesPerEntry * BulkDataWriter.STRIDE;
 
 		if (size < PARALLEL_THRESHOLD) {
-			// Single-threaded: write directly into one byte[]
-			byte[] buf = new byte[size * bytesPerEntry];
+			// Single-threaded: reuse buffer
+			int needed = size * bytesPerEntry;
+			byte[] buf = ensureSingleBuffer(needed);
 			for (int i = 0; i < size; i++) {
 				writer.write(buf, i * bytesPerEntry, list.get(i));
 			}
@@ -62,16 +73,12 @@ public class ParallelBufferFiller {
 		}
 
 		// Parallel path
-		if (++diagCounter % DIAG_INTERVAL == 1) {
-			LOGGER.info("[FastProjectileAPI] Parallel buffer fill: {} instances, {} threads",
-					size, Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors()));
-		}
 		int threads = Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors());
 		if (threads <= 1) threads = 2; // at least 2 for parallelism
 		int chunkSize = (size + threads - 1) / threads;
 
-		byte[][] segments = new byte[threads][];
 		int[] segVertices = new int[threads];
+		int[] segBytes = new int[threads];
 
 		try {
 			ForkJoinTask<?>[] tasks = new ForkJoinTask<?>[threads];
@@ -79,19 +86,22 @@ public class ParallelBufferFiller {
 				int from = t * chunkSize;
 				int to = Math.min(from + chunkSize, size);
 				if (from >= to) {
-					segments[t] = new byte[0];
 					segVertices[t] = 0;
+					segBytes[t] = 0;
 					continue;
 				}
 				int count = to - from;
 				int threadIndex = t;
+				int needed = count * bytesPerEntry;
+				segBytes[threadIndex] = needed;
+				segVertices[threadIndex] = count * verticesPerEntry;
+				// Ensure buffer is large enough (main thread, before submitting)
+				ensureBuffer(threadBuffers, threadIndex, needed);
 				tasks[t] = ForkJoinPool.commonPool().submit(() -> {
-					byte[] seg = new byte[count * bytesPerEntry];
+					byte[] seg = threadBuffers[threadIndex];
 					for (int i = 0; i < count; i++) {
 						writer.write(seg, i * bytesPerEntry, list.get(from + i));
 					}
-					segments[threadIndex] = seg;
-					segVertices[threadIndex] = count * verticesPerEntry;
 				});
 			}
 
@@ -104,7 +114,8 @@ public class ParallelBufferFiller {
 		} catch (Exception e) {
 			// Parallel execution failed, fall back to single-threaded
 			LOGGER.warn("Parallel buffer fill failed, falling back to single-threaded", e);
-			byte[] buf = new byte[size * bytesPerEntry];
+			int needed = size * bytesPerEntry;
+			byte[] buf = ensureSingleBuffer(needed);
 			for (int i = 0; i < size; i++) {
 				writer.write(buf, i * bytesPerEntry, list.get(i));
 			}
@@ -115,7 +126,7 @@ public class ParallelBufferFiller {
 		// Merge segments into BulkDataWriter on render thread
 		for (int t = 0; t < threads; t++) {
 			if (segVertices[t] > 0) {
-				vc.bulkWrite(segments[t], segVertices[t]);
+				vc.bulkWrite(threadBuffers[t], segVertices[t]);
 			}
 		}
 	}

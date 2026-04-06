@@ -7,12 +7,20 @@ public class EntityStorageCache implements IEntityCache {
 	private static EntityStorageCache CACHE = null;
 
 	public static EntityStorageCache get(ServerLevel sl) {
+		return get(sl, sl.getGameTime());
+	}
+
+	/**
+	 * Pre-fetched gameTime overload for PC optimization.
+	 * Avoids repeated sl.getGameTime() calls when gameTime is known.
+	 */
+	public static EntityStorageCache get(ServerLevel sl, long gameTime) {
 		if (CACHE != null) {
-			if (CACHE.sl == sl && CACHE.time == sl.getGameTime()) {
+			if (CACHE.sl == sl && CACHE.time == gameTime) {
 				return CACHE;
 			}
 		}
-		CACHE = new EntityStorageCache(sl);
+		CACHE = new EntityStorageCache(sl, gameTime);
 		return CACHE;
 	}
 
@@ -21,8 +29,12 @@ public class EntityStorageCache implements IEntityCache {
 	final FastMap<SectionCache> map = FastMapInit.createFastMap();
 
 	public EntityStorageCache(ServerLevel sl) {
+		this(sl, sl.getGameTime());
+	}
+
+	public EntityStorageCache(ServerLevel sl, long gameTime) {
 		this.sl = sl;
-		this.time = sl.getGameTime();
+		this.time = gameTime;
 	}
 
 	@Override

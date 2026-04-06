@@ -25,6 +25,14 @@ public record CrossProjectileType(ResourceLocation tex, DisplayType display)
         implements RenderableDanmakuType<CrossProjectileType, CrossProjectileType.Ins> {
 
     @Override
+    public ResourceLocation getTex() { return tex; }
+
+    @Override
+    public void writeToArray(Ins ins, byte[] buf, int off) {
+        ins.texToArray(buf, off);
+    }
+
+    @Override
     public void start(MultiBufferSource buffer, List<Ins> list) {
         // Each instance renders 2 quads (cross shape) = 8 vertices
         BulkDataWriter vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmaku(tex, display())),

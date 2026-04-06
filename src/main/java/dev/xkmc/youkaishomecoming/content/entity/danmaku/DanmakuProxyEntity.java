@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
+import dev.xkmc.fastprojectileapi.entity.ParallelDanmakuTicker;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
@@ -47,6 +48,8 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private ArrayList<SimplifiedProjectile> temp;
 	private final ArrayList<SimplifiedProjectile> toBeSent = new ArrayList<>();
 	private boolean removeDanmaku = false;
+	/** Shared with ParallelDanmakuTicker so eraseAllDanmaku() can signal early exit. */
+	private final boolean[] removeDanmakuFlag = {false};
 	private final UserCacheHolder cache = new UserCacheHolder();
 
 	// ==================== Owner binding ====================
@@ -213,24 +216,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 
 	private void tickDanmaku() {
 		removeDanmaku = false;
+		removeDanmakuFlag[0] = false;
 		temp = new ArrayList<>();
-		var itr = allDanmakus.iterator();
-		while (itr.hasNext()) {
-			var e = itr.next();
-			if (e.isAddedToWorld() && !e.isRemoved()) continue;
-			if (e.isValid()) {
-				e.setOldPosAndRot();
-				++e.tickCount;
-				e.tick();
-			}
-			if (removeDanmaku) break;
-			if (!e.isValid()) {
-				itr.remove();
-			}
-		}
-		if (!removeDanmaku) {
-			allDanmakus.addAll(temp);
-			DanmakuManager.send(this, toBeSent);
+		if (level() instanceof ServerLevel sl) {
+			ParallelDanmakuTicker.tickAll(
+					sl, allDanmakus, temp, toBeSent, removeDanmakuFlag, cache, this);
+			removeDanmaku = removeDanmakuFlag[0];
 		}
 		temp = null;
 		toBeSent.clear();
@@ -244,6 +235,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		}
 		allDanmakus.clear();
 		removeDanmaku = true;
+		removeDanmakuFlag[0] = true;
 		DanmakuManager.flushErases();
 	}
 

@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.entity.youkai;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.fastprojectileapi.entity.ParallelDanmakuTicker;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleHolder;
@@ -32,6 +33,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializer;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
@@ -618,27 +620,17 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	private boolean removeDanmaku = false;
+	/** Shared with ParallelDanmakuTicker so eraseAllDanmaku() can signal early exit. */
+	private final boolean[] removeDanmakuFlag = {false};
 
 	private void tickDanmaku() {
 		removeDanmaku = false;
+		removeDanmakuFlag[0] = false;
 		temp = new ArrayList<>();
-		var itr = allDanmakus.iterator();
-		while (itr.hasNext()) {
-			var e = itr.next();
-			if (e.isAddedToWorld() && !e.isRemoved()) continue;
-			if (e.isValid()) {
-				e.setOldPosAndRot();
-				++e.tickCount;
-				e.tick();
-			}
-			if (removeDanmaku) break;
-			if (!e.isValid()) {
-				itr.remove();
-			}
-		}
-		if (!removeDanmaku) {
-			allDanmakus.addAll(temp);
-			DanmakuManager.send(this, toBeSent);
+		if (level() instanceof ServerLevel sl) {
+			ParallelDanmakuTicker.tickAll(
+					sl, allDanmakus, temp, toBeSent, removeDanmakuFlag, cache, this);
+			removeDanmaku = removeDanmakuFlag[0];
 		}
 		temp = null;
 		toBeSent.clear();
@@ -652,6 +644,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 		}
 		allDanmakus.clear();
 		removeDanmaku = true;
+		removeDanmakuFlag[0] = true;
 		DanmakuManager.flushErases();
 	}
 

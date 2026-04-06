@@ -13,9 +13,13 @@ public class UserMatrixCache implements IEntityCache {
 	private final int x0, y0, z0;
 
 	public UserMatrixCache(ServerLevel sl, int x0, int y0, int z0) {
-		this.time = sl.getGameTime();
+		this(sl, x0, y0, z0, sl.getGameTime());
+	}
+
+	public UserMatrixCache(ServerLevel sl, int x0, int y0, int z0, long gameTime) {
+		this.time = gameTime;
 		this.sl = sl;
-		parent = EntityStorageCache.get(sl);
+		parent = EntityStorageCache.get(sl, gameTime);
 		this.x0 = x0;
 		this.y0 = y0;
 		this.z0 = z0;

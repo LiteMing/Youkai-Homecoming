@@ -32,6 +32,14 @@ public record SwingingProjectileType(ResourceLocation tex, DisplayType display, 
     }
 
     @Override
+    public ResourceLocation getTex() { return tex; }
+
+    @Override
+    public void writeToArray(Ins ins, byte[] buf, int off) {
+        ins.texToArray(buf, off);
+    }
+
+    @Override
     public void start(MultiBufferSource buffer, List<Ins> list) {
         BulkDataWriter vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmaku(tex, display())),
                 list.size());

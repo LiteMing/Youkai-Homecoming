@@ -23,6 +23,14 @@ public record AnimatedProjectileType(ResourceLocation tex, DisplayType display, 
         implements RenderableDanmakuType<AnimatedProjectileType, AnimatedProjectileType.Ins> {
 
     @Override
+    public ResourceLocation getTex() { return tex; }
+
+    @Override
+    public void writeToArray(Ins ins, byte[] buf, int off) {
+        ins.texToArray(buf, off, frameCount);
+    }
+
+    @Override
     public void start(MultiBufferSource buffer, List<Ins> list) {
         BulkDataWriter vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmaku(tex, display())),
                 list.size());

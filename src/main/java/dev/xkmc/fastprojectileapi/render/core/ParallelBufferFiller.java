@@ -146,4 +146,140 @@ public class ParallelBufferFiller {
 		void write(byte[] buf, int byteOffset, T instance);
 	}
 
+	// ==================== Submit/Join split API (P5fix2) ====================
+
+	/**
+	 * Context returned by submit(), to be passed to joinAndMerge() later.
+	 */
+	public static class FillContext {
+		final int verticesPerEntry;
+		final List<TickTask> tasks;
+
+		FillContext(int verticesPerEntry, List<TickTask> tasks) {
+			this.verticesPerEntry = verticesPerEntry;
+			this.tasks = tasks;
+		}
+	}
+
+	/**
+	 * Submit parallel fill tasks without joining.
+	 * The caller can later call joinAndMerge() to wait and merge.
+	 *
+	 * @param list  instances to fill
+	 * @param verticesPerEntry vertices per instance
+	 * @param writer instance writer
+	 * @return a FillContext, or null if list is empty or below threshold
+	 */
+	public static <T> FillContext submit(List<T> list, int verticesPerEntry, InstanceWriter<T> writer) {
+		int size = list.size();
+		if (size == 0 || size < PARALLEL_THRESHOLD) return null;
+
+		int bytesPerEntry = verticesPerEntry * BulkDataWriter.STRIDE;
+		int threads = Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors());
+		if (threads <= 1) threads = 2;
+		int chunkSize = (size + threads - 1) / threads;
+
+		List<TickTask> tasks = new java.util.ArrayList<>(threads);
+
+		for (int t = 0; t < threads; t++) {
+			int from = t * chunkSize;
+			int to = Math.min(from + chunkSize, size);
+			if (from >= to) continue;
+			int count = to - from;
+			int threadIndex = t;
+			int needed = count * bytesPerEntry;
+			// Ensure buffer is large enough (main thread, before submitting)
+			ensureBuffer(threadBuffers, threadIndex, needed);
+			tasks.add(new TickTask(from, count, threadIndex, bytesPerEntry, needed, list, writer));
+		}
+
+		return new FillContext(verticesPerEntry, tasks);
+	}
+
+	/**
+	 * Join all tasks in a single FillContext and merge results into a BulkDataWriter.
+	 */
+	public static void joinAndMerge(FillContext ctx, BulkDataWriter vc) {
+		if (ctx == null) return;
+		for (var task : ctx.tasks) {
+			task.execute();
+		}
+		for (var task : ctx.tasks) {
+			task.join();
+		}
+		for (var task : ctx.tasks) {
+			if (task.vertexCount > 0) {
+				vc.bulkWrite(threadBuffers[task.threadIndex], task.vertexCount);
+			}
+		}
+	}
+
+	/**
+	 * Join and merge all FillContexts at once (global join point for P5fix2).
+	 * All types' tasks are submitted before this call, so ForkJoinPool can
+	 * interleave work across all types.
+	 */
+	public static void joinAndMergeAll(List<FillContext> contexts, BulkDataWriter vc) {
+		// Submit all tasks
+		List<TickTask> allTasks = new java.util.ArrayList<>();
+		for (var ctx : contexts) {
+			if (ctx == null) continue;
+			for (var task : ctx.tasks) {
+				task.execute();
+				allTasks.add(task);
+			}
+		}
+		// Join all
+		for (var task : allTasks) {
+			task.join();
+		}
+		// Merge all (order-preserving within each context)
+		for (var ctx : contexts) {
+			if (ctx == null) continue;
+			for (var task : ctx.tasks) {
+				if (task.vertexCount > 0) {
+					vc.bulkWrite(threadBuffers[task.threadIndex], task.vertexCount);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Single task unit for parallel fill.
+	 */
+	static class TickTask {
+		final int from, count, threadIndex, bytesPerEntry, needed;
+		final List<?> list;
+		final InstanceWriter<?> writer;
+		volatile ForkJoinTask<?> future;
+		volatile int vertexCount;
+
+		<T> TickTask(int from, int count, int threadIndex, int bytesPerEntry, int needed,
+		             List<T> list, InstanceWriter<T> writer) {
+			this.from = from;
+			this.count = count;
+			this.threadIndex = threadIndex;
+			this.bytesPerEntry = bytesPerEntry;
+			this.needed = needed;
+			this.list = list;
+			this.writer = writer;
+		}
+
+		@SuppressWarnings("unchecked")
+		void execute() {
+			vertexCount = count * (bytesPerEntry / BulkDataWriter.STRIDE);
+			int fi = from, ci = count, bi = bytesPerEntry, ti = threadIndex;
+			future = ForkJoinPool.commonPool().submit(() -> {
+				byte[] seg = threadBuffers[ti];
+				for (int i = 0; i < ci; i++) {
+					((InstanceWriter<Object>) writer).write(seg, i * bi, list.get(fi + i));
+				}
+			});
+		}
+
+		void join() {
+			if (future != null) future.join();
+		}
+	}
+
 }

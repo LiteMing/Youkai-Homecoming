@@ -20,6 +20,14 @@ public record ButterflyProjectileType(ResourceLocation overlay, DisplayType disp
 		implements RenderableDanmakuType<ButterflyProjectileType, ButterflyProjectileType.Ins> {
 
 	@Override
+	public ResourceLocation getTex() { return overlay; }
+
+	@Override
+	public void writeToArray(Ins ins, byte[] buf, int off) {
+		ins.texToArray(buf, off);
+	}
+
+	@Override
 	public void start(MultiBufferSource buffer, List<Ins> list) {
 		BulkDataWriter vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmaku(overlay, display())), list.size());
 		ParallelBufferFiller.fill(vc, list, 4, (buf, off, ins) -> ins.texToArray(buf, off));

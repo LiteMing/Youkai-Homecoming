@@ -66,7 +66,9 @@ public class ClientDanmakuCache {
 
 	public void erase(int id, boolean kill) {
 		var e = map.get(id);
-		e.markErased(kill);
+		if (e != null) {
+			e.markErased(kill);
+		}
 	}
 
 	public void tick() {

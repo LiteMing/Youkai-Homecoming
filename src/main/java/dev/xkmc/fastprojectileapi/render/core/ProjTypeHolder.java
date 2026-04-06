@@ -47,6 +47,13 @@ public class ProjTypeHolder<T extends RenderableProjectileType<T, I>, I> impleme
 		type.create(this, r, e, pose, pTick);
 	}
 
+	/**
+	 * Expose the underlying type for external type checks (e.g., billboard detection).
+	 */
+	public RenderableProjectileType<T, I> getType() {
+		return type;
+	}
+
 	public void accept(I ins) {
 		ProjectileRenderHelper.add(this, ins);
 	}

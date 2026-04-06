@@ -3,8 +3,13 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
+import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
+import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
 import dev.xkmc.l2serial.util.Wrappers;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -464,6 +469,13 @@ public class OrthographicViewport {
 		// (which costs 6.41% frame time per spark profiling) by caching the renderer once.
 		dispatcher.setRenderShadow(false);
 
+		// PB3: Extract view matrix once for billboard types.
+		// Billboard create() only needs view-space position + scale, which we can compute
+		// directly from viewMat × worldPos without any PoseStack push/translate/scale/pop.
+		// This eliminates ~17.5% frame time spent on per-entity PoseStack operations.
+		Matrix4f viewMat = poseStack.last().pose();
+		float viewScale = (float) Math.cbrt(Math.abs(viewMat.determinant3x3()));
+
 		ItemDanmakuRenderer<?> cachedDanmakuRenderer = null;
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
 			if (entity instanceof ItemDanmakuEntity danmaku) {
@@ -473,7 +485,7 @@ public class OrthographicViewport {
 					if (r instanceof ItemDanmakuRenderer<?> dr) cachedDanmakuRenderer = dr;
 				}
 				if (cachedDanmakuRenderer != null) {
-					renderDanmakuFast(cachedDanmakuRenderer, danmaku, poseStack, partialTick);
+					renderDanmakuDirect(cachedDanmakuRenderer, danmaku, viewMat, viewScale, poseStack, partialTick);
 					continue;
 				}
 			}
@@ -570,6 +582,10 @@ public class OrthographicViewport {
 		// 13. Render all entities (same fast path as orthographic)
 		dispatcher.setRenderShadow(false);
 
+		// PB3: Extract view matrix for billboard fast path (same as orthographic)
+		Matrix4f viewMatP = poseStack.last().pose();
+		float viewScaleP = (float) Math.cbrt(Math.abs(viewMatP.determinant3x3()));
+
 		ItemDanmakuRenderer<?> cachedDanmakuRendererP = null;
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
 			if (entity instanceof ItemDanmakuEntity danmaku) {
@@ -578,7 +594,7 @@ public class OrthographicViewport {
 					if (r instanceof ItemDanmakuRenderer<?> dr) cachedDanmakuRendererP = dr;
 				}
 				if (cachedDanmakuRendererP != null) {
-					renderDanmakuFast(cachedDanmakuRendererP, danmaku, poseStack, partialTick);
+					renderDanmakuDirect(cachedDanmakuRendererP, danmaku, viewMatP, viewScaleP, poseStack, partialTick);
 					continue;
 				}
 			}
@@ -606,35 +622,86 @@ public class OrthographicViewport {
 	}
 
 	/**
-	 * Fast render path for danmaku: skip EntityRenderDispatcher.getRenderer() lookup
-	 * and PoseStack push/pop. Directly translates and scales via PoseStack, then
-	 * calls the renderer's create path.
+	 * PB3: Direct render path for danmaku — eliminates PoseStack entirely for billboard types.
 	 * <p>
-	 * Per spark profiling, getRenderer() costs 6.41% and PoseStack ops cost ~0.1%.
-	 * This fast path eliminates the getRenderer() cost for all danmaku entities.
+	 * For billboard types (Simple/Rotating/Animated), computes view-space position directly
+	 * via viewMat × worldPos and constructs Ins without any PoseStack push/translate/scale/pop
+	 * or determinant extraction. This eliminates ~17.5% frame time (per spark profiling,
+	 * renderDanmakuFast was 22.5% with create() only 4.96%).
+	 * <p>
+	 * For non-billboard types (Swinging/Cross/Butterfly), falls back to the PoseStack path
+	 * since they need full rotation chain construction in create().
+	 */
+	/**
+	 * PB3: Direct render path for danmaku — eliminates PoseStack entirely for billboard types.
+	 * <p>
+	 * For billboard types (Simple/Rotating/Animated), computes view-space position directly
+	 * via viewMat × worldPos and constructs Ins without any PoseStack push/translate/scale/pop
+	 * or determinant extraction. This eliminates ~17.5% frame time (per spark profiling,
+	 * renderDanmakuFast was 22.5% with create() only 4.96%).
+	 * <p>
+	 * For non-billboard types (Swinging/Cross/Butterfly), falls back to the PoseStack path
+	 * since they need full rotation chain construction in create().
+	 *
+	 * @param poseStack needed only for non-billboard fallback; billboard path ignores it
 	 */
 	@SuppressWarnings({"unchecked", "rawtypes"})
-	private void renderDanmakuFast(ItemDanmakuRenderer renderer, ItemDanmakuEntity entity,
-			PoseStack poseStack, float partialTick) {
+	private void renderDanmakuDirect(ItemDanmakuRenderer renderer, ItemDanmakuEntity entity,
+			Matrix4f viewMat, float viewScale, PoseStack poseStack, float partialTick) {
 		if (entity.tickCount <= 0) return;
+		if (!(entity.getItem().getItem() instanceof DanmakuItem danmaku)) return;
 
-		double ex = Mth.lerp(partialTick, entity.xOld, entity.getX());
-		double ey = Mth.lerp(partialTick, entity.yOld, entity.getY());
-		double ez = Mth.lerp(partialTick, entity.zOld, entity.getZ());
-		double offsetY = entity.getBbHeight() / 2.0;
+		var typeHolder = danmaku.getTypeForRender();
+		var type = typeHolder.getType();
 
-		poseStack.pushPose();
-		poseStack.translate(ex, ey + offsetY, ez);
-
-		// Inline what ItemDanmakuRenderer.render() does:
-		// push, scale, type.create(), pop — but we already pushed above
-		if (entity.getItem().getItem() instanceof DanmakuItem danmaku) {
+		// Billboard types: bypass PoseStack entirely, pure scalar math
+		if (type instanceof SimpleProjectileType st) {
+			float wx = (float) Mth.lerp(partialTick, entity.xOld, entity.getX());
+			float wy = (float) (Mth.lerp(partialTick, entity.yOld, entity.getY()) + entity.getBbHeight() / 2.0);
+			float wz = (float) Mth.lerp(partialTick, entity.zOld, entity.getZ());
+			// viewPos = viewMat × (wx, wy, wz, 1) — inline to avoid Vector4f allocation
+			float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
+			float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
+			float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
+			float scale = viewScale * entity.scale();
+			int col = DanmakuRenderStates.fading(st.display(), -1, renderer, entity);
+			((ProjTypeHolder) typeHolder).accept(new SimpleProjectileType.Ins(vx, vy, vz, scale, col));
+		} else if (type instanceof RotatingProjectileType rt) {
+			float wx = (float) Mth.lerp(partialTick, entity.xOld, entity.getX());
+			float wy = (float) (Mth.lerp(partialTick, entity.yOld, entity.getY()) + entity.getBbHeight() / 2.0);
+			float wz = (float) Mth.lerp(partialTick, entity.zOld, entity.getZ());
+			float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
+			float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
+			float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
+			float scale = viewScale * entity.scale();
+			float zAngle = (float) Math.toRadians((entity.tickCount + partialTick) * 360f / (float) rt.rot());
+			int col = DanmakuRenderStates.fading(rt.display(), -1, renderer, entity);
+			((ProjTypeHolder) typeHolder).accept(new RotatingProjectileType.Ins(vx, vy, vz, scale, zAngle, col));
+		} else if (type instanceof AnimatedProjectileType at) {
+			float wx = (float) Mth.lerp(partialTick, entity.xOld, entity.getX());
+			float wy = (float) (Mth.lerp(partialTick, entity.yOld, entity.getY()) + entity.getBbHeight() / 2.0);
+			float wz = (float) Mth.lerp(partialTick, entity.zOld, entity.getZ());
+			float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
+			float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
+			float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
+			float scale = viewScale * entity.scale();
+			int frame = (entity.tickCount / at.ticksPerFrame()) % at.frameCount();
+			int col = DanmakuRenderStates.fading(at.display(), -1, renderer, entity);
+			((ProjTypeHolder) typeHolder).accept(new AnimatedProjectileType.Ins(vx, vy, vz, scale, col, frame));
+		} else {
+			// Non-billboard types (Swinging/Cross/Butterfly): fall back to PoseStack path.
+			// These need full rotation chain in create() and can't be simplified to position+scale.
+			double ex = Mth.lerp(partialTick, entity.xOld, entity.getX());
+			double ey = Mth.lerp(partialTick, entity.yOld, entity.getY());
+			double ez = Mth.lerp(partialTick, entity.zOld, entity.getZ());
+			double offsetY = entity.getBbHeight() / 2.0;
+			poseStack.pushPose();
+			poseStack.translate(ex, ey + offsetY, ez);
 			float scale = entity.scale();
 			poseStack.scale(scale, scale, scale);
-			danmaku.getTypeForRender().create(renderer, entity, poseStack, partialTick);
+			typeHolder.create(renderer, entity, poseStack, partialTick);
+			poseStack.popPose();
 		}
-
-		poseStack.popPose();
 	}
 
 	@SuppressWarnings("unchecked")

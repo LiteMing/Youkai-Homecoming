@@ -192,7 +192,6 @@ dependencies {
     implementation fg.deobf("curse.maven:botany-pots-353928:4793076")
     compileOnly fg.deobf("curse.maven:serene-seasons-291874:4761603")
     compileOnly fg.deobf("curse.maven:diet-443570:4813904")
-    implementation fg.deobf("curse.maven:chat-boost-1152722:5958888")
     //implementation fg.deobf("curse.maven:forgery-434087:6522707")
     compileOnly fg.deobf("curse.maven:thirst-was-taken-679270:5568703")
 

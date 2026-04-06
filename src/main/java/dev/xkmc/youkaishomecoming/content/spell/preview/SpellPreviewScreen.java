@@ -44,6 +44,7 @@ public class SpellPreviewScreen extends Screen {
 	private ActionListDockPanel actionListDockPanel;
 	private EditorDockPanel editorDockPanel;
 	private ControlsDockPanel controlsDockPanel;
+	private PerfDockPanel perfDockPanel;
 	private HelpDockPanel helpDockPanel;
 
 	// Editor panels (direct references for hotkey access)
@@ -200,6 +201,7 @@ public class SpellPreviewScreen extends Screen {
 		editorDockPanel = new EditorDockPanel(actionEditorPanel);
 		controlsDockPanel = new ControlsDockPanel(scene, viewport, this::rebuildScreen, this::cyclePhase);
 		controlsDockPanel.setWidgetCallbacks(w -> this.addRenderableWidget(w), this::removeWidget);
+		perfDockPanel = new PerfDockPanel(scene);
 
 		// --- Build dock layout tree (load from config or use default) ---
 		java.util.Map<String, DockPanel> panelMap = new java.util.LinkedHashMap<>();
@@ -207,6 +209,7 @@ public class SpellPreviewScreen extends Screen {
 		panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
 		panelMap.put(editorDockPanel.dockId(), editorDockPanel);
 		panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
+		panelMap.put(perfDockPanel.dockId(), perfDockPanel);
 		panelMap.put(helpDockPanel.dockId(), helpDockPanel);
 
 		DockNode root = DockSerializer.loadLayout(panelMap, SpellPreviewScreen::buildDefaultLayout);
@@ -228,11 +231,13 @@ public class SpellPreviewScreen extends Screen {
 		DockPanel actions = panelMap.get("actions");
 		DockPanel properties = panelMap.get("properties");
 		DockPanel controls = panelMap.get("controls");
+		DockPanel perf = panelMap.get("perf");
 
 		DockGroup viewportGroup = new DockGroup(viewport);
 		DockGroup actionListGroup = new DockGroup(actions);
 		DockGroup editorGroup = new DockGroup(properties);
-		DockGroup controlsGroup = new DockGroup(controls);
+		// Controls and Perf share the same DockGroup as sibling tabs
+		DockGroup controlsGroup = new DockGroup(controls, perf);
 		// Help 面板默认不显示
 
 		DockSplit rightSplit = new DockSplit(false, 0.4f, actionListGroup, editorGroup);

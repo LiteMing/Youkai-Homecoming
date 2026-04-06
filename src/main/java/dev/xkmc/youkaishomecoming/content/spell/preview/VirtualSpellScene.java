@@ -26,6 +26,9 @@ public class VirtualSpellScene {
 	private float targetDistance = 10f;
 	private float healthRatio = 1.0f;
 
+	/** Duration of the last tick() call in nanoseconds. */
+	private long lastTickNanos = 0;
+
 	public static final float[] SPEED_OPTIONS = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f};
 	public static final float[] DISTANCE_OPTIONS = {5f, 10f, 15f, 20f};
 	public static final float[] HP_OPTIONS = {1.0f, 0.75f, 0.5f, 0.25f};
@@ -45,8 +48,12 @@ public class VirtualSpellScene {
 	}
 
 	public void tick() {
-		if (!playing) return;
+		if (!playing) {
+			lastTickNanos = 0;
+			return;
+		}
 
+		long t0 = System.nanoTime();
 		float speed = SPEED_OPTIONS[speedIndex];
 		if (speed >= 1.0f) {
 			int ticks = (int) speed;
@@ -61,6 +68,12 @@ public class VirtualSpellScene {
 				doTick();
 			}
 		}
+		lastTickNanos = System.nanoTime() - t0;
+	}
+
+	/** Get the duration of the last tick() call in nanoseconds. */
+	public long getLastTickNanos() {
+		return lastTickNanos;
 	}
 
 	private void doTick() {

@@ -91,7 +91,7 @@ public class ControlsDockPanel implements DockPanel {
 
 		// Row 3: Distance + HP
 		bx = x + 4;
-		bx = addEditBox(bx, row3Y, 40, String.valueOf((int) scene.getTargetDistance()), val -> {
+		bx = addEditBox(bx, row3Y, 46, "Dist:" + (int) scene.getTargetDistance(), val -> {
 			try { scene.setTargetDistance(Float.parseFloat(val)); } catch (NumberFormatException ignored) {}
 		});
 		for (float dist : VirtualSpellScene.DISTANCE_OPTIONS) {
@@ -99,7 +99,7 @@ public class ControlsDockPanel implements DockPanel {
 			bx = addButton(bx, row3Y, 24, String.valueOf((int) dist), btn -> scene.setTargetDistance(d));
 		}
 		bx += 10;
-		bx = addEditBox(bx, row3Y, 36, String.valueOf((int) (scene.getHealthRatio() * 100)) + "%", val -> {
+		bx = addEditBox(bx, row3Y, 46, "HP:" + (int) (scene.getHealthRatio() * 100) + "%", val -> {
 			try {
 				String s = val.replace("%", "").trim();
 				float v = Float.parseFloat(s);
@@ -160,7 +160,7 @@ public class ControlsDockPanel implements DockPanel {
 			scene.setTargetFallFlying(!scene.isTargetFallFlying());
 			rebuildCallback.run();
 		});
-		bx = addEditBox(bx, row6Y, 42, ((int) (scene.getTargetHealthRatio() * 100)) + "%", val -> {
+		bx = addEditBox(bx, row6Y, 48, "THP:" + (int) (scene.getTargetHealthRatio() * 100) + "%", val -> {
 			try {
 				String s = val.replace("%", "").trim();
 				float v = Float.parseFloat(s);
@@ -180,7 +180,7 @@ public class ControlsDockPanel implements DockPanel {
 
 		// Row 7: Target Height
 		bx = x + 4;
-		bx = addEditBox(bx, row7Y, 36, String.valueOf((int) scene.getTargetHeight()), val -> {
+		bx = addEditBox(bx, row7Y, 46, "Height:" + (int) scene.getTargetHeight(), val -> {
 			try {
 				scene.setTargetHeight(Double.parseDouble(val));
 				rebuildCallback.run();
@@ -224,19 +224,17 @@ public class ControlsDockPanel implements DockPanel {
 		return bx + bw + BUTTON_SPACING;
 	}
 
-	private int addEditBox(int bx, int by, int bw, String defaultVal, java.util.function.Consumer<String> onSubmit) {
+	private int addEditBox(int bx, int by, int bw, String hint, java.util.function.Consumer<String> onSubmit) {
 		EditBox box = new EditBox(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
 		box.setMaxLength(16);
-		box.setValue(defaultVal);
+		box.setValue("");
+		box.setHint(Component.literal(hint).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
 		box.setResponder(val -> {}); // no live response
 		box.setFilter(s -> s.matches("[0-9.%\\-]*")); // only numbers, dot, %, minus
-		// On Enter key, apply value
 		editBoxes.add(box);
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(box);
 		}
-		// Store onSubmit callback — we handle it in a custom keyPressed check
-		box.setResponder(val -> {}); // placeholder, actual submit on Enter
 		editBoxSubmits.put(box, onSubmit);
 		return bx + bw + BUTTON_SPACING;
 	}

@@ -2334,20 +2334,30 @@ public class MigratedSpellCards {
 						new SpellConditions.TickInterval(5, 0))),
 				List.of(teleportFar, hiddenFull), List.of());
 
-		// === Butterfly: 100 per color, CompositeMover, when dist < 20 ===
+		// === Butterfly: 100 per color, CompositeMover 5-phase, when dist < 20 ===
+		// Legacy: expand(40t,decel) → reorient(10t) → polar accel(10t) → polar orbit(30t,~114°) → fly off(40t)
+		// Key params: range=12, wvr=0.0667 rad/tick≈3.82°/tick, total=130+rand(40) ticks
+		// Phase 1: constant deceleration (RectMover), speed=0.6, decelerate to 0 over 40t
+		// Phase 2: ZeroMover (reorient to tangent) — approximate with zero mover
+		// Phase 3: PolarMover with angular acceleration (0 → 3.82°/tick over 10t) → angularAccel=0.382
+		// Phase 4: PolarMover with constant angular speed 3.82°/tick for 30t (orbits ~114°)
+		// Phase 5: Convert to linear fly-off (acceleration mover with zero accel = keep velocity)
 		var butterflyMover = new MoverConfigs.CompositeMoverConfig(List.of(
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.05)),
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.035)),
 				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 8, 0.2)),
+				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 0, 0.382)),
+				new MoverConfigs.CompositeMoverConfig.Segment(30, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 3.82, 0)),
 				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
 		var butterflyMoverRev = new MoverConfigs.CompositeMoverConfig(List.of(
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.05)),
+				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.035)),
 				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, -8, -0.2)),
+				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 0, -0.382)),
+				new MoverConfigs.CompositeMoverConfig.Segment(30, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, -3.82, 0)),
 				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
+		// Speed: legacy va*t0 = (12*2/40^2)*40 = 0.6 blocks/tick
 		var butterflyCyan = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
-				NumberProvider.constant(100), NumberProvider.constant(1.6),
+				NumberProvider.constant(100), NumberProvider.constant(0.6),
 				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
 				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360),
 				new NumberProviders.RandomRange(-45, 45),
@@ -2355,7 +2365,7 @@ public class MigratedSpellCards {
 				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		var butterflyMagenta = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
-				NumberProvider.constant(100), NumberProvider.constant(1.6),
+				NumberProvider.constant(100), NumberProvider.constant(0.6),
 				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
 				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360),
 				new NumberProviders.RandomRange(-45, 45),
@@ -2370,7 +2380,11 @@ public class MigratedSpellCards {
 				List.of());
 
 		// === LaserAdder: spiral lasers 120 ticks, when 20 < dist < 40 ===
-		// At lt==20: shootGroup RED (5 BUBBLE + spread), at lt==40: shootGroup BLUE
+		// Legacy: two lines of lasers at ±45° from forward, advancing outward each tick
+		// Each laser is perpendicular to its line direction with random rotation
+		// The spiral effect comes from progressive positioning + random perpendicular direction
+		// Data-driven: fixed ±45° base angle, elevation random for perpendicular spread
+		// At lt==20: shootGroup RED (5 BUBBLE + 50 MENTOS), at lt==40: shootGroup BLUE
 		var shootGroupRed = new SpellActions.ConditionalAction(
 				new SpellConditions.CompareNumbers(new NumberProviders.Variable("lt"), "==", NumberProvider.constant(20)),
 				List.of(new FireDanmakuAction(
@@ -2389,19 +2403,19 @@ public class MigratedSpellCards {
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
 				List.of());
+		// Lasers: fixed ±45° angle, elevation=90 (perpendicular to line), random rotation via angle offset
+		// The "spiral" is each laser at a different random perpendicular angle
 		var spiralLasers = new BurstAction(120, 1, "lt", List.<SpellAction>of(
 				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.RED,
 						NumberProvider.constant(100), NumberProvider.constant(80),
-						new NumberProviders.Add(NumberProvider.constant(-45),
-								new NumberProviders.Mul(new NumberProviders.Variable("lt"), NumberProvider.constant(3))),
-						NumberProvider.constant(0),
+						NumberProvider.constant(-45),
+						NumberProvider.constant(90),
 						new AimMode.AimModes.CasterFacing(), OriginConfig.caster(),
 						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
 				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
 						NumberProvider.constant(100), NumberProvider.constant(80),
-						new NumberProviders.Add(NumberProvider.constant(45),
-								new NumberProviders.Mul(new NumberProviders.Variable("lt"), NumberProvider.constant(3))),
-						NumberProvider.constant(0),
+						NumberProvider.constant(45),
+						NumberProvider.constant(90),
 						new AimMode.AimModes.CasterFacing(), OriginConfig.caster(),
 						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
 				shootGroupRed, shootGroupBlue

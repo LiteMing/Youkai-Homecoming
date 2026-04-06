@@ -37,6 +37,11 @@ public class PreviewCardHolder implements CardHolder {
 	private final List<Entity> localEntities = new ArrayList<>();
 	private final List<Entity> pendingEntities = new ArrayList<>();
 	private boolean ticking = false;
+
+	/** Safety limit: maximum number of tracked entities. When exceeded, preview auto-pauses. */
+	public static final int MAX_ENTITY_COUNT = 50_000;
+	/** Whether the safety limit has been tripped. */
+	private boolean safetyTripped = false;
 	private final RandomSource random = RandomSource.create();
 	/** Callback invoked when a danmaku hits the target AABB */
 	private Runnable onTargetHit = null;
@@ -127,6 +132,13 @@ public class PreviewCardHolder implements CardHolder {
 
 	@Override
 	public void shoot(Entity danmaku) {
+		// Safety: refuse to spawn more entities if over limit
+		if (safetyTripped) return;
+		int total = localEntities.size() + pendingEntities.size();
+		if (total >= MAX_ENTITY_COUNT) {
+			safetyTripped = true;
+			return;
+		}
 		// Setup trail action so trail danmaku work in preview
 		if (danmaku instanceof ItemDanmakuEntity e && e.afterExpiry != null) {
 			e.afterExpiry.setup(this);
@@ -137,6 +149,16 @@ public class PreviewCardHolder implements CardHolder {
 		} else {
 			localEntities.add(danmaku);
 		}
+	}
+
+	/** Returns true if the safety limit has been tripped and preview should pause. */
+	public boolean isSafetyTripped() {
+		return safetyTripped;
+	}
+
+	/** Reset the safety flag (e.g. after user clears entities or adjusts params). */
+	public void resetSafety() {
+		safetyTripped = false;
 	}
 
 	@Override

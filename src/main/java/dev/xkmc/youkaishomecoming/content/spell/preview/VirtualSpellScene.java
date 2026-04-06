@@ -67,6 +67,10 @@ public class VirtualSpellScene {
 		holder.setCasterHealth(healthRatio);
 		runtime.tick(holder);
 		holder.tick();
+		// Safety: auto-pause if entity count exceeds limit
+		if (holder.isSafetyTripped()) {
+			playing = false;
+		}
 	}
 
 	public void play() {
@@ -222,6 +226,10 @@ public class VirtualSpellScene {
 
 	public int getEntityCount() {
 		return holder.getEntityCount();
+	}
+
+	public boolean isSafetyTripped() {
+		return holder.isSafetyTripped();
 	}
 
 	public int getHitCount() {

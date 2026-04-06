@@ -128,11 +128,20 @@ public class SpellRuntime {
 
 		phaseTick++;
 		totalTick++;
+		if (hurtCooldownRemaining > 0) hurtCooldownRemaining--;
 	}
+
+	/** Minimum ticks between on_damage triggers to prevent feedback loops (e.g. border → hit → on_hurt → border). */
+	private static final int HURT_COOLDOWN = 20;
+	private int hurtCooldownRemaining = 0;
 
 	public void hurt(CardHolder holder, DamageSource source, float amount) {
 		if (source.getEntity() instanceof LivingEntity && amount > 1) {
 			hitCount++;
+
+			// Enforce cooldown to prevent exponential feedback from danmaku-hit → on_hurt → more danmaku
+			if (hurtCooldownRemaining > 0) return;
+			hurtCooldownRemaining = HURT_COOLDOWN;
 
 			// Execute on_damage actions for current phase
 			PhaseDefinition phase = definition.getPhase(currentPhaseId);
@@ -153,6 +162,7 @@ public class SpellRuntime {
 		totalTick = 0;
 		hitCount = 0;
 		targetFlyTime = 0;
+		hurtCooldownRemaining = 0;
 		variables.clear();
 		scheduledActions.clear();
 

@@ -2109,7 +2109,9 @@ public class MigratedSpellCards {
 				Optional.of(List.of((SpellAction) finalHoming)),
 				Optional.empty(), 1);
 
-		// Stage 1 (expanding ring): 20 CIRCLE LIGHT_GRAY, ring, deceleration mover, onExpiry → homingTrail
+		// Stage 1 (expanding ring): 20 CIRCLE LIGHT_GRAY, tilted ring, deceleration mover, onExpiry → homingTrail
+		// Legacy: init = getOrientation(dir).rotateDegrees(90, rand*120-30), ring in tilted plane
+		// Data-driven: use tilt_angle to tilt the ring plane ~60° off horizontal
 		var expandRing = new FireDanmakuAction(
 				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.LIGHT_GRAY),
 				NumberProvider.constant(20),
@@ -2120,7 +2122,8 @@ public class MigratedSpellCards {
 				Optional.of(new MoverConfigs.DecelerationConfig(0.1)),
 				Optional.empty(),
 				Optional.of(List.of((SpellAction) homingTrail)),
-				Optional.empty(), 1);
+				Optional.empty(), 1,
+				Optional.of(new NumberProviders.RandomRange(30, 90)));
 
 		// === shoot() — steps 0-2 of 5-step cycle (every 10 ticks) ===
 		// tick_interval(10, 0) AND (tick/10 % 5 < 3 → tick%50 < 30)
@@ -2148,30 +2151,20 @@ public class MigratedSpellCards {
 						NumberProvider.constant(0), NumberProvider.constant(0),
 						new NumberProviders.Max(NumberProvider.constant(24), dist), NumberProvider.constant(0)),
 				true);
-		// 8-ring of BUBBLE YELLOW, rotating over 80 ticks
-		// Each ring position fires 8 bullets spinning at 18 deg/tick
-		var interceptBullets = new SpellActions.RepeatAction(NumberProvider.constant(8), "ii", List.of(
-				new FireDanmakuAction(
-						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.YELLOW),
-						NumberProvider.constant(8), NumberProvider.constant(2),
-						NumberProvider.constant(40),
-						new NumberProviders.Add(
-								new NumberProviders.Mul(new NumberProviders.Variable("ii"), NumberProvider.constant(45)),
-								new NumberProviders.Mul(new NumberProviders.PhaseTick(), NumberProvider.constant(18))),
-						NumberProvider.constant(360), NumberProvider.constant(0),
-						PatternType.RING,
-						new OriginConfig(OriginConfig.OriginMode.TARGET,
-								new NumberProviders.Mul(new NumberProviders.Sin(
-										new NumberProviders.Mul(new NumberProviders.Variable("ii"), NumberProvider.constant(45)), 32, 0), NumberProvider.constant(1)),
-								NumberProvider.constant(0),
-								new NumberProviders.Mul(new NumberProviders.Cos(
-										new NumberProviders.Mul(new NumberProviders.Variable("ii"), NumberProvider.constant(45)), 32, 0), NumberProvider.constant(1)),
-								NumberProvider.constant(0)),
-						new AimMode.AimModes.RandomAngle(NumberProvider.constant(360)),
-						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
-						Optional.empty(), Optional.empty(), Optional.empty(),
-						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL))
-		));
+		// Intercept: legacy is a Ticker running 80 ticks, 8 positions × 8 spinning bullets per tick.
+		// Simplified: single burst of BUBBLE YELLOW in SPHERE pattern for spherical coverage.
+		// 8 positions × 8 directions = 64 per tick × 80 ticks = 5120 total in legacy.
+		// Data-driven: fire a sphere of ~60 bullets per intercept to approximate the visual effect
+		// without the extreme entity count.
+		var interceptBullets = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.YELLOW),
+				NumberProvider.constant(60), NumberProvider.constant(2),
+				NumberProvider.constant(40),
+				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(180),
+				PatternType.SPHERE, OriginConfig.caster(), new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL));
 		var interceptAction = new SpellActions.ConditionalAction(interceptCondition,
 				List.of(interceptTeleport, interceptBullets), List.of());
 

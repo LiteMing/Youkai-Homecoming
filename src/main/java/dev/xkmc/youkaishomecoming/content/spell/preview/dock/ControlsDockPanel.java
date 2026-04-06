@@ -303,12 +303,14 @@ public class ControlsDockPanel implements DockPanel {
 		// 播放状态信息
 		Font font = Minecraft.getInstance().font;
 		int row1Y = y + 4;
+		String safetyWarning = scene.isSafetyTripped() ? "  \u26A0 SAFETY LIMIT" : "";
 		String status = (scene.isPlaying() ? "\u25B6 " : "\u275A\u275A ") +
 				"tick:" + scene.getTotalTick() +
 				"  phase:" + scene.getCurrentPhaseId().getPath() +
 				"  entities:" + scene.getEntityCount() +
 				"  hits:" + scene.getHitCount() +
-				"  speed:" + scene.getCurrentSpeed() + "x";
+				"  speed:" + scene.getCurrentSpeed() + "x" +
+				safetyWarning;
 		graphics.drawString(font, status, x + 90, row1Y + 4, 0xFFCCCCCC, false);
 
 		// 注意：按钮由 Screen 的 super.render() 统一渲染

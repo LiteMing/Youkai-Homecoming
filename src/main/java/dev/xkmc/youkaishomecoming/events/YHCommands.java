@@ -429,25 +429,46 @@ public class YHCommands {
 									}
 									return 1;
 								})))
-				.then(literal("give")
-						.then(argument("spell_id", ResourceLocationArgument.id())
-								.suggests(SPELL_SUGGESTIONS)
-								.executes(ctx -> {
-									ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
-									SpellDefinition def = SpellRegistry.get(spellId);
-									if (def == null) {
-										ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
-										return 0;
-									}
-									ServerPlayer player = ctx.getSource().getPlayerOrException();
-									ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId);
-									if (!player.getInventory().add(stack)) {
-										player.drop(stack, false);
-									}
-									ctx.getSource().sendSuccess(
-											() -> Component.literal("Gave spell item [" + spellId + "] to " + player.getName().getString()), true);
-									return 1;
-								})))
+			.then(literal("give")
+					.then(argument("spell_id", ResourceLocationArgument.id())
+							.suggests(SPELL_SUGGESTIONS)
+							.executes(ctx -> {
+								// Natural end mode (default)
+								ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+								SpellDefinition def = SpellRegistry.get(spellId);
+								if (def == null) {
+									ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
+									return 0;
+								}
+								ServerPlayer player = ctx.getSource().getPlayerOrException();
+								ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId);
+								if (!player.getInventory().add(stack)) {
+									player.drop(stack, false);
+								}
+								ctx.getSource().sendSuccess(
+										() -> Component.literal("Gave spell item [" + spellId + "] to " + player.getName().getString()), true);
+								return 1;
+							})
+							.then(argument("ticks", IntegerArgumentType.integer(1))
+									.executes(ctx -> {
+										// Fixed duration mode
+										ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+										int ticks = IntegerArgumentType.getInteger(ctx, "ticks");
+										SpellDefinition def = SpellRegistry.get(spellId);
+										if (def == null) {
+											ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
+											return 0;
+										}
+										ServerPlayer player = ctx.getSource().getPlayerOrException();
+										ItemStack stack = DynamicSpellItem.createStackWithDuration(
+												YHDanmaku.DYNAMIC_SPELL.get(), spellId, ticks);
+										if (!player.getInventory().add(stack)) {
+											player.drop(stack, false);
+										}
+										ctx.getSource().sendSuccess(
+												() -> Component.literal("Gave spell item [" + spellId + "] (" + ticks + "t) to " + player.getName().getString()), true);
+										return 1;
+									}))))
 		);
 	}
 

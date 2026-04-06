@@ -150,7 +150,9 @@ public class DanmakuProxyEntity extends PathfinderMob
 
 		// Check for completion
 		spellTickCount++;
-		if (spellTickCount >= maxDuration) {
+		boolean naturalEnd = maxDuration < 0 && runtime != null && runtime.isFinished();
+		boolean timedOut = maxDuration >= 0 && spellTickCount >= maxDuration;
+		if (naturalEnd || timedOut) {
 			cleanup();
 		}
 	}

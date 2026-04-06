@@ -55,6 +55,14 @@ public class SpellRuntime {
 		return currentPhaseId;
 	}
 
+	/**
+	 * Returns true when the spell has naturally finished — i.e. the current phase
+	 * no longer exists in the definition (transitioned to a terminal/undefined phase).
+	 */
+	public boolean isFinished() {
+		return definition.getPhase(currentPhaseId) == null;
+	}
+
 	public int getPhaseTick() {
 		return phaseTick;
 	}

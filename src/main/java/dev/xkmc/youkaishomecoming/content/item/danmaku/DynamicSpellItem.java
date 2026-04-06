@@ -33,7 +33,9 @@ import java.util.List;
 public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem {
 
 	private static final String TAG_SPELL_ID = "spell_id";
-	private static final int DEFAULT_DURATION = 200; // 10 seconds
+	private static final String TAG_DURATION = "duration";
+	/** Sentinel: run until the spell naturally finishes (no fixed duration). */
+	public static final int DURATION_NATURAL = -1;
 
 	public DynamicSpellItem(Properties properties) {
 		super(properties);
@@ -51,6 +53,21 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		ItemStack stack = new ItemStack(item);
 		stack.getOrCreateTag().putString(TAG_SPELL_ID, spellId.toString());
 		return stack;
+	}
+
+	/** Create a stack with an explicit fixed duration (for /yhspell give). */
+	public static ItemStack createStackWithDuration(Item item, ResourceLocation spellId, int duration) {
+		ItemStack stack = createStack(item, spellId);
+		stack.getOrCreateTag().putInt(TAG_DURATION, duration);
+		return stack;
+	}
+
+	/** Read duration from NBT: -1 if not set (natural end mode). */
+	public static int getStackDuration(ItemStack stack) {
+		if (stack.hasTag() && stack.getTag().contains(TAG_DURATION)) {
+			return stack.getTag().getInt(TAG_DURATION);
+		}
+		return DURATION_NATURAL;
 	}
 
 	@Override
@@ -77,7 +94,11 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		}
 
 		if (player instanceof ServerPlayer sp) {
-			int duration = def.itemForm.cooldown() > 0 ? def.itemForm.cooldown() : DEFAULT_DURATION;
+			int duration = getStackDuration(stack);
+			if (duration == DURATION_NATURAL && def.itemForm.cooldown() > 0) {
+				// item_form.cooldown acts as fixed duration when set, unless overridden by NBT
+				duration = def.itemForm.cooldown();
+			}
 			DanmakuProxyEntity proxy = new DanmakuProxyEntity(
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
 			proxy.init(sp, def, duration, target);
@@ -98,6 +119,10 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			list.add(def.display.displayName().copy().withStyle(ChatFormatting.GOLD));
 			if (!def.display.description().isEmpty()) {
 				list.add(def.display.displayDesc().copy().withStyle(ChatFormatting.GRAY));
+			}
+			int dur = getStackDuration(stack);
+			if (dur > 0) {
+				list.add(Component.literal("Duration: " + dur + "t").withStyle(ChatFormatting.DARK_GRAY));
 			}
 		} else {
 			String id = stack.hasTag() ? stack.getTag().getString(TAG_SPELL_ID) : "";

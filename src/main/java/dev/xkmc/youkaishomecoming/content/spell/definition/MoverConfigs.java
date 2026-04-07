@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.definition;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.mover.*;
 import net.minecraft.world.phys.Vec3;
 
@@ -24,6 +25,7 @@ public class MoverConfigs {
 		register("zero", ZeroMoverConfig.CODEC, ZeroMoverConfig.class);
 		register("bezier", BezierMoverConfig.CODEC, BezierMoverConfig.class);
 		register("attached", AttachedMoverConfig.CODEC, AttachedMoverConfig.class);
+		register("homing", HomingMoverConfig.CODEC, HomingMoverConfig.class);
 	}
 
 	public static void register(String id, Codec<? extends MoverConfig> codec, Class<? extends MoverConfig> clazz) {
@@ -160,6 +162,15 @@ public class MoverConfigs {
 			}
 			return composite;
 		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity) {
+			var composite = new CompositeMover();
+			for (var seg : segments) {
+				composite.add(seg.duration, seg.mover.create(ctx, origin, velocity));
+			}
+			return composite;
+		}
 	}
 
 	/**
@@ -190,6 +201,32 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
 			return new AttachedMover();
+		}
+	}
+
+	/**
+	 * Homing motion that gradually turns toward the captured target while preserving speed.
+	 * JSON: {"type": "homing", "strength": 0.15, "delay": 10, "duration": -1}
+	 */
+	public record HomingMoverConfig(double strength, int delay, int duration) implements MoverConfig {
+		public static final Codec<HomingMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.optionalFieldOf("strength", 0.15).forGetter(HomingMoverConfig::strength),
+				Codec.INT.optionalFieldOf("delay", 0).forGetter(HomingMoverConfig::delay),
+				Codec.INT.optionalFieldOf("duration", -1).forGetter(HomingMoverConfig::duration)
+		).apply(i, HomingMoverConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return new HomingMover(-1, null, velocity, strength, delay, duration);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity) {
+			var holder = ctx.holder();
+			var target = holder.targetEntity();
+			int targetId = target != null ? target.getId() : -1;
+			Vec3 targetPos = holder.target();
+			return new HomingMover(targetId, targetPos, velocity, strength, delay, duration);
 		}
 	}
 

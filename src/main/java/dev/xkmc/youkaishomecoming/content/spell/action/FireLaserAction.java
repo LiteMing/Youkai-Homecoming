@@ -153,7 +153,7 @@ public record FireLaserAction(
 			laser.setDelayedMover(delayedV0.get().floatValue(), delayedV1.get().floatValue(),
 					setupPrepare, setupStart);
 		} else if (mover.isPresent()) {
-			laser.mover = mover.get().create(originPos, dir);
+			laser.mover = mover.get().create(ctx, originPos, dir);
 		}
 		holder.shoot(laser);
 	}

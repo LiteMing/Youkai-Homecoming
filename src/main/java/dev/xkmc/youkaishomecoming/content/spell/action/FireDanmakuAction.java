@@ -375,7 +375,7 @@ public record FireDanmakuAction(
 			danmaku.damageTypeOverride = damageType.get();
 		}
 		if (mover.isPresent()) {
-			danmaku.mover = mover.get().create(originPos, dir);
+			danmaku.mover = mover.get().create(ctx, originPos, dir);
 		}
 		if (onExpiry.isPresent()) {
 			var expiryAction = new DataDrivenTrailAction(onExpiry.get(), ctx.runtime(), ctx.definition());

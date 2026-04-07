@@ -801,14 +801,18 @@ record PolarMoverConfig(
 - `ActionEditorPanel`: 添加 OriginConfig 编辑行、onExpiry 子面板入口
 - `NumberProviderWidget` 升级: 类型下拉 (Constant/Random/LerpTime/ByHealth/Variable) + 对应参数
 
-### Phase 6.6: 弹幕深化扩展 (P1) ✅ 大部分已完成
+### Phase 6.6: 弹幕深化扩展 (P1) ✅ 已完成
 
 1. ✅ CompositeMoverConfig (分段运动: 匀速 → 停顿 → 再加速)
-2. 🔲 HomingMoverConfig (追踪弹) — 暂不需要
+2. ✅ HomingMoverConfig (追踪弹: strength/delay/duration + 编辑器支持)
 3. ✅ AimMode 替换 `boolean aimAtTarget` (TARGET/FIXED/CASTER_FACING/ANGLE_OFFSET/VARIABLE_ANGLE/DIRECTION_TO_TARGET/RANDOM_ANGLE)
 4. ✅ 数学 NumberProvider (Sin/Cos/Mul/Add/PhaseTick/TotalTick) + 表达式解析器 NumberExprParser
 5. ✅ RepeatAction (同一 tick 内循环, 支持嵌套环形发射)
 6. ✅ 编辑器面板适配
+
+补充说明 (2026-04-07):
+- `MoverConfig` 新增 context-aware `create(ctx, origin, velocity)` 入口，`FireDanmaku` / `FireLaser` / `SpawnShooter` 会把当前 `SpellContext` 透传给 mover。
+- `HomingMoverConfig` 在创建时捕获当前 target entity / target position，因此 boss、preview、子发射器、带 target 的动态符卡都能稳定追踪，不依赖弹幕 owner 本身实现 `CardHolder`。
 
 ### Phase 6.7: 迁移准备功能 ✅ 已完成 (2026-04-04)
 
@@ -831,10 +835,10 @@ record PolarMoverConfig(
 5. ✅ **RandomAngle AimMode**: 每次调用随机角度 `{"type": "random_angle", "spread": 360}`
 6. ✅ **编辑器面板全面更新**: 类型选择器、属性编辑、分支管理、显示标签
 
-**未实现 (P2，仅少数符卡需要)**:
-- 🔲 Per-Action DamageSource: fire_danmaku/fire_laser 单独指定弹幕伤害类型
-- 🔲 SpawnShooterAction: 子发射器/子符卡嵌套
-- 🔲 HomingMoverConfig: 追踪弹
+**已补齐的补充能力 (2026-04-07 复核)**:
+- ✅ Per-Action DamageSource: `fire_danmaku` / `fire_laser` 可单独指定伤害类型
+- ✅ SpawnShooterAction: 子发射器 body 嵌套与 mover 已可用
+- ✅ HomingMoverConfig: 追踪弹
 
 ### Phase 6.8: onTrail — 弹幕飞行中持续生成子弹幕 ✅ 已完成 (2026-04-04)
 

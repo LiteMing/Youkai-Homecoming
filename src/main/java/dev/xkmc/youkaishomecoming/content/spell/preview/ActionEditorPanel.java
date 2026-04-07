@@ -910,7 +910,7 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "zero", "bezier", "attached"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "zero", "bezier", "attached", "homing"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -992,6 +992,25 @@ public class ActionEditorPanel {
 			} else if (cfg instanceof MoverConfigs.RotateConfig rot) {
 				addDoubleRow("Deg/tick", rot.degreesPerTick(), v ->
 						onParamChanged.accept(Optional.of(new MoverConfigs.RotateConfig(v))));
+			} else if (cfg instanceof MoverConfigs.HomingMoverConfig homing) {
+				addDoubleRow("Strength", homing.strength(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.HomingMoverConfig h) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.HomingMoverConfig(v, h.delay(), h.duration())));
+					}
+				});
+				addIntRow("Delay", homing.delay(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.HomingMoverConfig h) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.HomingMoverConfig(h.strength(), v, h.duration())));
+					}
+				});
+				addIntRow("Duration", homing.duration(), v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.HomingMoverConfig h) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.HomingMoverConfig(h.strength(), h.delay(), v)));
+					}
+				});
 			} else if (cfg instanceof MoverConfigs.PolarMoverConfig polar) {
 				addDoubleRow("Radius", polar.radius(), v -> {
 					var cur = getCurrentMover();
@@ -1053,7 +1072,7 @@ public class ActionEditorPanel {
 				});
 				// Show sub-mover type as cycle selector
 				String subType = getMoverType(Optional.of(seg.mover()));
-				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "zero"}, subType, newSubType -> {
+				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "zero", "homing"}, subType, newSubType -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
 						var segs = new java.util.ArrayList<>(c.segments());
@@ -1186,6 +1205,7 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.ZeroMoverConfig) return "zero";
 		if (cfg instanceof MoverConfigs.BezierMoverConfig) return "bezier";
 		if (cfg instanceof MoverConfigs.AttachedMoverConfig) return "attached";
+		if (cfg instanceof MoverConfigs.HomingMoverConfig) return "homing";
 		return "none";
 	}
 
@@ -1202,6 +1222,7 @@ public class ActionEditorPanel {
 			case "zero" -> Optional.of(new MoverConfigs.ZeroMoverConfig());
 			case "bezier" -> Optional.of(new MoverConfigs.BezierMoverConfig(5, 3, 0, 10, -3, 0, 15, 0, 0, 40));
 			case "attached" -> Optional.of(new MoverConfigs.AttachedMoverConfig());
+			case "homing" -> Optional.of(new MoverConfigs.HomingMoverConfig(0.15, 10, -1));
 			default -> Optional.empty();
 		};
 	}
@@ -1238,6 +1259,13 @@ public class ActionEditorPanel {
 					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), v, polar.initialAngle(), polar.angularSpeed(), polar.angularAccel()), onParamChanged));
 			addDoubleRow("  Ang Acc", polar.angularAccel(), v -> updateCompositeSegment(segIdx,
 					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), polar.radialAccel(), polar.initialAngle(), polar.angularSpeed(), v), onParamChanged));
+		} else if (subCfg instanceof MoverConfigs.HomingMoverConfig homing) {
+			addDoubleRow("  Strength", homing.strength(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.HomingMoverConfig(v, homing.delay(), homing.duration()), onParamChanged));
+			addIntRow("  Delay", homing.delay(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.HomingMoverConfig(homing.strength(), v, homing.duration()), onParamChanged));
+			addIntRow("  Duration", homing.duration(), v -> updateCompositeSegment(segIdx,
+					new MoverConfigs.HomingMoverConfig(homing.strength(), homing.delay(), v), onParamChanged));
 		}
 		// ZeroMoverConfig has no params
 	}

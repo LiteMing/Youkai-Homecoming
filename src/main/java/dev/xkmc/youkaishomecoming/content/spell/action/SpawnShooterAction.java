@@ -94,7 +94,7 @@ public record SpawnShooterAction(
 		}
 
 		if (mover.isPresent()) {
-			entity.mover = mover.get().create(spawnPos, vel);
+			entity.mover = mover.get().create(ctx, spawnPos, vel);
 		}
 
 		holder.shoot(entity);

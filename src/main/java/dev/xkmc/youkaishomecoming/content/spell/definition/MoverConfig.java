@@ -4,13 +4,9 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.datafixers.util.Pair;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
-import dev.xkmc.youkaishomecoming.content.spell.mover.RectMover;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import net.minecraft.world.phys.Vec3;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Codec-serializable wrapper that produces a DanmakuMover instance at runtime.
@@ -34,5 +30,13 @@ public interface MoverConfig {
 	 * Create a DanmakuMover for a projectile starting at the given origin with the given velocity.
 	 */
 	DanmakuMover create(Vec3 origin, Vec3 velocity);
+
+	/**
+	 * Context-aware mover creation hook.
+	 * Movers that need runtime target data can override this while older movers keep the simple path.
+	 */
+	default DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity) {
+		return create(origin, velocity);
+	}
 
 }

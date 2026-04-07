@@ -409,13 +409,19 @@
 - `/yhspell give <player> <spell_id> [ticks]` 可直接发放指定 spell 物品
 
 但它仍未完成正式物品化：
-- 所有 5 个已迁移符卡的 `SpellItemForm` 均为 `NONE`（`generate = false`）
+- 第一批 5 个简单已迁移符卡已配置 `SpellItemForm`
+  - `sunny_milk`: `generate=true`, `cooldown=100`, `requiresTarget=false`
+  - `luna_child`: `generate=true`, `cooldown=120`, `requiresTarget=false`
+  - `star_sapphire`: `generate=true`, `cooldown=80`, `requiresTarget=true`
+  - `cirno`: `generate=true`, `cooldown=100`, `requiresTarget=true`
+  - `mystia_lorelei`: `generate=true`, `cooldown=140`, `requiresTarget=false`
+- `SpellItemForm` 已新增独立 `duration` 字段；`DynamicSpellItem` 优先使用 `duration`，旧数据未填写时回退到 `cooldown`
 - 所有 12 个 legacy 符卡也是 `NONE`（`LegacySpellBridge.fromLegacy` 硬编码）
 - 当前创造标签页走的是 testing path：展示全部注册 spell，而不是仅 `itemForm.generate()==true` 的正式列表
 
 ### 实装需要的改动（按依赖顺序）
 
-#### 步骤 1: 为已迁移符卡配置 SpellItemForm
+#### 步骤 1: 为已迁移符卡配置 SpellItemForm ⏳ 已部分完成
 
 **文件:** `MigratedSpellCards.java`
 
@@ -426,7 +432,7 @@ private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLoca
     PhaseDefinition phase, String modelId, SpellItemForm itemForm) { ... }
 ```
 
-为每个已迁移符卡配置合理的 `cooldown` 和 `requiresTarget`：
+首批已落地：
 
 | 符卡 | cooldown (tick) | requiresTarget | 理由 |
 |------|----------------|----------------|------|
@@ -435,6 +441,8 @@ private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLoca
 | star_sapphire | 80 (4s) | true | 锥形扩散需要方向 |
 | cirno | 100 (5s) | true | direction_to_target 分裂 |
 | mystia | 140 (7s) | false | Shooter + Burst 持续较长 |
+
+剩余 migrated spell 仍需逐个验证是否适合玩家物品上下文，尤其是带 boss 自移动、受伤回调、强制位移或复杂 arena 逻辑的符卡。
 
 #### 步骤 2: 接入 SpellItemAutoRegister ✅ 已完成（测试模式）
 
@@ -502,11 +510,17 @@ legacy 符卡通过 `LegacySpellBridge` 也在 `SpellRegistry` 中。它们的 `
 - 使用 `ItemPropertyFunction` 根据 NBT `spell_id` 切换模型
 - 或直接使用 tooltip 颜色/名称区分（最简单）
 
-#### 步骤 6: 持续时间问题
+#### 步骤 6: 持续时间问题 ✅ 已完成基础拆分
 
-`RuntimeItemSpell` 使用 `DEFAULT_DURATION = 200` (10s)。
-已迁移符卡需要根据实际 phase 时长配置合理的 `maxDuration`。
-建议在 `SpellItemForm` 增加 `duration` 字段，或从 phase transition 的 `tick_elapsed` 条件推算。
+`SpellItemForm.duration` 已加入并接入 `DynamicSpellItem`。
+当前解析优先级：
+1. stack NBT `duration`
+2. `SpellItemForm.duration`
+3. 兼容回退到 `SpellItemForm.cooldown`
+4. 否则 natural end
+
+首批 5 个 simple migrated spell 已显式配置 `duration`。
+剩余 spell 仍需按具体 phase 时长逐个校准。
 
 ### 实施优先级（已修订）
 
@@ -514,7 +528,7 @@ legacy 符卡通过 `LegacySpellBridge` 也在 `SpellRegistry` 中。它们的 `
 2. **P1: 创造模式测试调用** — ✅ 已完成
    - `/yhspell give <player> <spell_id> [ticks]`
    - `SpellItemAutoRegister.populateTestingTab()` 已接入 `Youkai's Danmaku` 创造标签页
-3. **P2: dynamic_spell 基础物品化** — SpellItemForm 配置、cooldown/duration 等
+3. **P2: dynamic_spell 基础物品化** — 进行中（首批 5 个 simple migrated spell 已配置）
 4. **P3: 生存模式自定义符卡系统** — 见下文
 
 ### P3 构想: 生存玩家自定义符卡

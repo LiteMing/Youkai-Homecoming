@@ -6,6 +6,7 @@ import com.mojang.serialization.DynamicOps;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 
 import java.util.HashMap;
@@ -45,6 +46,7 @@ public class NumberProviders {
 		register("target_x", TargetX.CODEC, TargetX.class);
 		register("target_y", TargetY.CODEC, TargetY.class);
 		register("target_z", TargetZ.CODEC, TargetZ.class);
+		register("heightmap_y", HeightmapY.CODEC, HeightmapY.class);
 		register("target_height", TargetHeight.CODEC, TargetHeight.class);
 		register("game_difficulty", GameDifficulty.CODEC, GameDifficulty.class);
 		register("target_fly_time", TargetFlyTime.CODEC, TargetFlyTime.class);
@@ -486,6 +488,28 @@ public class NumberProviders {
 		@Override public double get(SpellContext ctx) {
 			var t = ctx.holder().target();
 			return t != null ? t.z : ctx.holder().center().z;
+		}
+	}
+
+	/**
+	 * Query world terrain height at a dynamic X/Z position using MOTION_BLOCKING_NO_LEAVES.
+	 * JSON: {"type": "heightmap_y", "x": ..., "z": ...}
+	 * Expression: heightmap_y(x, z)
+	 */
+	public record HeightmapY(NumberProvider x, NumberProvider z) implements NumberProvider {
+		public static final Codec<HeightmapY> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("x").forGetter(HeightmapY::x),
+				NumberProvider.CODEC.fieldOf("z").forGetter(HeightmapY::z)
+		).apply(i, HeightmapY::new));
+
+		@Override public double get(SpellContext ctx) {
+			int px = Mth.floor(x.get(ctx));
+			int pz = Mth.floor(z.get(ctx));
+			BlockPos pos = ctx.self().level().getHeightmapPos(
+					net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+					new BlockPos(px, 0, pz)
+			);
+			return pos.getY();
 		}
 	}
 

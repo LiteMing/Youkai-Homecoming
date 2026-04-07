@@ -121,6 +121,11 @@ public class NumberExprParser {
 		if (p instanceof NumberProviders.TargetX) return "target_x";
 		if (p instanceof NumberProviders.TargetY) return "target_y";
 		if (p instanceof NumberProviders.TargetZ) return "target_z";
+		if (p instanceof NumberProviders.HeightmapY h) {
+			String xs = unparse(h.x()), zs = unparse(h.z());
+			if (xs == null || zs == null) return null;
+			return "heightmap_y(" + xs + ", " + zs + ")";
+		}
 		if (p instanceof NumberProviders.TargetFlyTime) return "target_fly_time";
 		if (p instanceof NumberProviders.TargetSpeed) return "target_speed";
 		if (p instanceof NumberProviders.Max m) {
@@ -357,6 +362,10 @@ public class NumberExprParser {
 				java.util.List<Double> values = new java.util.ArrayList<>();
 				for (var a : args) values.add(resolveDoubleArg(a, "choose value"));
 				return new NumberProviders.RandomChoice(values);
+			}
+			case "heightmap_y" -> {
+				if (args.size() != 2) throw new ParseException("heightmap_y() requires 2 arguments");
+				return new NumberProviders.HeightmapY(args.get(0), args.get(1));
 			}
 			default -> throw new ParseException("Unknown function: " + name);
 		}

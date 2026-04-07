@@ -843,26 +843,18 @@ record PolarMoverConfig(
 3. ✅ `FireDanmakuAction.elevation`: 仰角参数，RANDOM 模式支持锥形扩散
 4. ✅ 编辑器面板: onTrail 分支完整支持 (显示/插入/删除/替换/拖拽)
 
-### Phase 7: 迁移现有符卡 — 部分完成
+### Phase 7: 迁移现有符卡 — 已完成 (2026-04-07)
 
-**已迁移** (通过 `MigratedSpellCards.java`):
+所有 17 个 TLM 符卡现在都已通过 `MigratedSpellCards.java` 接入数据驱动 `SpellDefinition`。
 
-| 符卡 | 复杂度 | 关键功能 |
-|------|--------|---------|
-| SunnySpell | 简单 | conditional + tick_interval 三色循环 |
-| LunaSpell | 简单 | AND/NOT 条件组合 4/6 间歇 |
-| StarSpell | 简单 | onTrail + elevation 锥形扩散 |
-| CirnoSpell | 中等 | onExpiry + direction_to_target 分裂追踪 |
+最终补齐的底层能力:
+- `set_velocity` — 施法者自身移动 / dash
+- `heightmap_y(x, z)` — 地形高度查询
+- `attached` mover — 激光跟随施法者
 
-**保留 legacy** (需要更多底层支持):
+最后完成迁移的 `MarisaSpell` 使用 9 个 phase 复现 legacy 的 `DashStar / EarthLight / MasterSpark / BlackHole` 组合逻辑。
 
-| 符卡 | 阻塞原因 |
-|------|---------|
-| LarvaSpell | Ticker 曲线动画 + 目标状态判断 |
-| MystiaSpell | ShooterData 子发射器 |
-| DoremiSpell | 有状态 Ticker + CompositeMover + Laser |
-| RemiliaSpell | Ticker + teleport + ray casting |
-| 其余 Boss 符卡 | 类似: Ticker / CompositeMover / 自适应逻辑 |
+`LegacySpellBridge` 仍保留作为兼容层，但现有 17 张符卡不再默认依赖 legacy 运行路径。
 
 ---
 

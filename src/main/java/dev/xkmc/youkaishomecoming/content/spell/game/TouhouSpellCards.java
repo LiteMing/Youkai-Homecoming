@@ -36,7 +36,7 @@ public class TouhouSpellCards {
 		// registerSpell("touhou_little_maid:yukari_yakumo", YukariSpell::new); // Legacy — migrated
 		// registerSpell("touhou_little_maid:kochiya_sanae", SanaeSpell::new); // Legacy — migrated
 		// registerSpell("touhou_little_maid:komeiji_koishi", KoishiSpell::new); // Legacy — migrated
-		registerSpell("touhou_little_maid:kirisame_marisa", MarisaSpell::new);
+		// registerSpell("touhou_little_maid:kirisame_marisa", MarisaSpell::new); // Legacy — migrated
 		// registerSpell("touhou_little_maid:mystia_lorelei", MystiaSpell::new); // Legacy — migrated
 		// registerSpell("touhou_little_maid:doremy_sweet", DoremiSpell::new); // Legacy — migrated
 		// registerSpell("touhou_little_maid:kisin_sagume", KisinSpell::new); // Legacy — migrated
@@ -63,6 +63,7 @@ public class TouhouSpellCards {
 		registerMigrated(MigratedSpellCards.koishi());
 		registerMigrated(MigratedSpellCards.reimu());
 		registerMigrated(MigratedSpellCards.yukari());
+		registerMigrated(MigratedSpellCards.marisa());
 	}
 
 	/**

@@ -263,6 +263,13 @@ public class PreviewCardHolder implements CardHolder {
 				}
 			}
 		}
+		tickFakeCaster();
+	}
+
+	private void tickFakeCaster() {
+		Vec3 vel = fakeCaster.getDeltaMovement();
+		if (vel.lengthSqr() < 1e-8) return;
+		fakeCaster.setPos(fakeCaster.position().add(vel));
 	}
 
 	private void tickShooter(ShooterEntity shooter) {

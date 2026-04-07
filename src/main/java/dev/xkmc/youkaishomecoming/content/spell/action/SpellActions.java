@@ -40,6 +40,7 @@ public class SpellActions {
 		register("confine_target", ConfineTargetAction.CODEC, ConfineTargetAction.class);
 		register("set_entity_flag", SetEntityFlagAction.CODEC, SetEntityFlagAction.class);
 		register("teleport_random", TeleportRandomAction.CODEC, TeleportRandomAction.class);
+		register("set_velocity", SetVelocityAction.CODEC, SetVelocityAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {

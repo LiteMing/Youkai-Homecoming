@@ -2474,6 +2474,358 @@ public class MigratedSpellCards {
 		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:yukari_yakumo");
 	}
 
+	// ============================
+	// MarisaSpell — 最后一个 legacy boss 符卡
+	// ============================
+	public static SpellDefinition marisa() {
+		var id = rl("kirisame_marisa");
+		var selectId = rl("kirisame_marisa/select");
+		var introId = rl("kirisame_marisa/phase3_intro");
+		var dashId = rl("kirisame_marisa/dash_star");
+		var blackHoleId = rl("kirisame_marisa/black_hole");
+		var earthLightId = rl("kirisame_marisa/earth_light");
+		var masterSparkId = rl("kirisame_marisa/master_spark");
+		var comboEarthSparkId = rl("kirisame_marisa/combo_earth_spark");
+		var comboDashHoleId = rl("kirisame_marisa/combo_dash_hole");
+		var comboPhase3Id = rl("kirisame_marisa/combo_phase3");
+
+		var phaseTick = new NumberProviders.PhaseTick();
+		var targetX = new NumberProviders.TargetX();
+		var targetY = new NumberProviders.TargetY();
+		var targetZ = new NumberProviders.TargetZ();
+		var dashEnd = new NumberProviders.Variable("dash_end");
+		var dashCount = new NumberProviders.Variable("dash_count");
+		var dashTotal = new NumberProviders.Variable("dash_total");
+
+		List<Double> random30 = List.of(1d, 1d, 1d, 0d, 0d, 0d, 0d, 0d, 0d, 0d);
+		List<Double> random40 = List.of(1d, 1d, 1d, 1d, 0d, 0d, 0d, 0d, 0d, 0d);
+		List<DyeColor> dashColors = Arrays.asList(DyeColor.values());
+		List<DyeColor> holeColors = List.of(DyeColor.RED, DyeColor.YELLOW, DyeColor.GREEN, DyeColor.CYAN, DyeColor.BLUE);
+
+		var stopCaster = new SetVelocityAction(NumberProvider.constant(0), new AimMode.AimModes.Target());
+		var fixedUp = new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0));
+
+		// --- Earth Light ---
+		var elOffsetX = new NumberProviders.Variable("el_x");
+		var elOffsetZ = new NumberProviders.Variable("el_z");
+		var elPosX = new NumberProviders.Add(targetX, elOffsetX);
+		var elPosZ = new NumberProviders.Add(targetZ, elOffsetZ);
+		var elGround = new NumberProviders.HeightmapY(elPosX, elPosZ);
+		var elPosY = new NumberProviders.Min(targetY,
+				new NumberProviders.Max(
+						new NumberProviders.Add(elGround, NumberProvider.constant(-1)),
+						new NumberProviders.Add(targetY, NumberProvider.constant(-20))
+				));
+		var earthOrigin = new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
+				elPosX, elPosY, elPosZ, NumberProvider.constant(0));
+		var earthLaserRed = new FireLaserAction(
+				YHDanmaku.Laser.LASER, DyeColor.RED,
+				NumberProvider.constant(60), NumberProvider.constant(80),
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				fixedUp, earthOrigin,
+				Optional.empty(), 0, 0, 0,
+				Optional.empty(), Optional.empty());
+		var earthLaserBlue = new FireLaserAction(
+				YHDanmaku.Laser.LASER, DyeColor.BLUE,
+				NumberProvider.constant(60), NumberProvider.constant(80),
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				fixedUp, earthOrigin,
+				Optional.empty(), 0, 0, 0,
+				Optional.empty(), Optional.empty());
+		SpellAction earthLightTick = new SpellActions.RepeatAction(NumberProvider.constant(2), "eli", List.of(
+				new SpellActions.SetVariable("el_x", new NumberProviders.GaussianRandom(0, 10)),
+				new SpellActions.SetVariable("el_z", new NumberProviders.GaussianRandom(0, 10)),
+				new SpellActions.SetVariable("el_color", new NumberProviders.RandomChoice(List.of(0d, 1d))),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.VariableCheck("el_color", "==", 0),
+						List.of(earthLaserRed),
+						List.of(earthLaserBlue))
+		));
+
+		// --- Dash Star ---
+		var dashTrailOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				new NumberProviders.Variable("di"), NumberProvider.constant(0));
+		var dashTrail = new SpellActions.RepeatAction(NumberProvider.constant(5), "di", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.STAR, new ColorProvider.RandomChoice(dashColors),
+						NumberProvider.constant(1), new NumberProviders.RandomRange(0.5, 1.0),
+						NumberProvider.constant(80), NumberProvider.constant(0),
+						NumberProvider.constant(60), NumberProvider.constant(60),
+						PatternType.RANDOM, dashTrailOrigin, new AimMode.AimModes.Target(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+		SpellAction dashTick = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(phaseTick, "<", dashEnd),
+				List.of(new SetVelocityAction(NumberProvider.constant(2.5), new AimMode.AimModes.Target()), dashTrail),
+				List.of());
+		SpellAction dashBoundary = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(phaseTick, "==", dashEnd),
+				List.of(
+						stopCaster,
+						new SpellActions.AddVariable("dash_count", 1),
+						new SpellActions.ConditionalAction(
+								new SpellConditions.CompareNumbers(dashCount, "<", dashTotal),
+								List.of(new SpellActions.AddVariable("dash_end", 40)),
+								List.of())
+				),
+				List.of());
+
+		// --- Black Hole ---
+		var bhRingAngle = new NumberProviders.Add(
+				new NumberProviders.Add(
+						new NumberProviders.Mul(phaseTick, NumberProvider.constant(7)),
+						new NumberProviders.Mul(new NumberProviders.Variable("bhc"), NumberProvider.constant(72))),
+				new NumberProviders.Mul(new NumberProviders.Variable("bht"), NumberProvider.constant(24)));
+		var bhAngle = new NumberProviders.Add(
+				new NumberProviders.Add(
+						new NumberProviders.Mul(phaseTick, NumberProvider.constant(-4)),
+						new NumberProviders.Mul(new NumberProviders.Variable("bhj"), NumberProvider.constant(72))),
+				new NumberProviders.Mul(new NumberProviders.Variable("bht"), NumberProvider.constant(24)));
+		var bhRadius = new NumberProviders.Mul(phaseTick, NumberProvider.constant(0.2));
+		var bhOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+				new NumberProviders.Mul(new NumberProviders.Sin(bhRingAngle, 1, 0), bhRadius),
+				new NumberProviders.Mul(new NumberProviders.Cos(bhRingAngle, 1, 0), bhRadius),
+				NumberProvider.constant(-24), NumberProvider.constant(0));
+		var bhSpeedScale = new NumberProviders.Conditional(
+				new SpellConditions.CompareNumbers(phaseTick, "<", NumberProvider.constant(40)),
+				NumberProvider.constant(0.1), NumberProvider.constant(0.8));
+		var bhPhase3Scale = new NumberProviders.Conditional(
+				new SpellConditions.HealthBelow(0.05f),
+				NumberProvider.constant(0.5), NumberProvider.constant(1.0));
+		var bhSin = new NumberProviders.Sin(
+				new NumberProviders.Add(
+						new NumberProviders.Mul(phaseTick, NumberProvider.constant(5.729577951)),
+						new NumberProviders.Mul(new NumberProviders.Variable("bhc"), NumberProvider.constant(57.295779513))),
+				0.15, 0);
+		var bhBaseSpeed = new NumberProviders.Add(
+				new NumberProviders.Add(NumberProvider.constant(0.35),
+						new NumberProviders.Mul(new NumberProviders.Variable("bht"), NumberProvider.constant(0.2))),
+				bhSin);
+		var bhSpeed = new NumberProviders.Mul(
+				new NumberProviders.Mul(new NumberProviders.Mul(bhBaseSpeed, NumberProvider.constant(0.8)), bhSpeedScale),
+				bhPhase3Scale);
+		var blackHoleBullet = new FireDanmakuAction(
+				YHDanmaku.Bullet.SPARK, new ColorProvider.ByVariable("bhc", holeColors),
+				NumberProvider.constant(1), bhSpeed, NumberProvider.constant(80),
+				bhAngle, NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, bhOrigin, new AimMode.AimModes.CasterFacing(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		SpellAction blackHoleTick = new SpellActions.RepeatAction(NumberProvider.constant(5), "bhc", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(2), "bht", List.of(
+						new SpellActions.RepeatAction(NumberProvider.constant(2), "bhj", List.of(blackHoleBullet))
+				))
+		));
+
+		// --- Master Spark ---
+		var masterLaser = new FireLaserAction(
+				YHDanmaku.Laser.LASER, DyeColor.YELLOW,
+				NumberProvider.constant(1), NumberProvider.constant(80),
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				new AimMode.AimModes.DirectionToTarget(),
+				OriginConfig.caster(),
+				Optional.of(new MoverConfigs.AttachedMoverConfig()),
+				20, 1, 1,
+				Optional.empty(), Optional.empty());
+		var msForwardOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				new NumberProviders.Add(
+						new NumberProviders.Mul(new NumberProviders.Variable("mi"), NumberProvider.constant(1.4)),
+						NumberProvider.constant(2)),
+				NumberProvider.constant(0));
+		var msReverseOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				new NumberProviders.Add(
+						new NumberProviders.Mul(new NumberProviders.Variable("mi"), NumberProvider.constant(-1.4)),
+						NumberProvider.constant(-2)),
+				NumberProvider.constant(0));
+		var masterStarsNormal = new SpellActions.RepeatAction(NumberProvider.constant(20), "mi", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.STAR, ColorProvider.constant(DyeColor.WHITE),
+						NumberProvider.constant(1), new NumberProviders.RandomRange(2.0, 3.0),
+						NumberProvider.constant(40), NumberProvider.constant(0),
+						NumberProvider.constant(30), NumberProvider.constant(30),
+						PatternType.RANDOM, msForwardOrigin, new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+		var masterStarsLow = new SpellActions.RepeatAction(NumberProvider.constant(20), "mi", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.STAR, ColorProvider.constant(DyeColor.WHITE),
+						NumberProvider.constant(1), new NumberProviders.RandomRange(1.0, 1.5),
+						NumberProvider.constant(40), NumberProvider.constant(0),
+						NumberProvider.constant(60), NumberProvider.constant(60),
+						PatternType.RANDOM, msForwardOrigin, new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+		var masterStarsReverse = new SpellActions.RepeatAction(NumberProvider.constant(20), "mi", List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.STAR, ColorProvider.constant(DyeColor.WHITE),
+						NumberProvider.constant(1), new NumberProviders.RandomRange(2.0, 3.0),
+						NumberProvider.constant(40), NumberProvider.constant(180),
+						NumberProvider.constant(30), NumberProvider.constant(30),
+						PatternType.RANDOM, msReverseOrigin, new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+		var masterSparksNormal = new FireDanmakuAction(
+				YHDanmaku.Bullet.SPARK, ColorProvider.constant(DyeColor.YELLOW),
+				NumberProvider.constant(10), new NumberProviders.RandomRange(0.6, 0.9),
+				NumberProvider.constant(40), NumberProvider.constant(0),
+				NumberProvider.constant(120), NumberProvider.constant(120),
+				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var masterSparksReverse = new FireDanmakuAction(
+				YHDanmaku.Bullet.SPARK, ColorProvider.constant(DyeColor.YELLOW),
+				NumberProvider.constant(10), new NumberProviders.RandomRange(0.6, 0.9),
+				NumberProvider.constant(40), NumberProvider.constant(180),
+				NumberProvider.constant(120), NumberProvider.constant(120),
+				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var halfButNotLow = new SpellConditions.AndCondition(List.of(
+				new SpellConditions.HealthBelow(0.5f),
+				new SpellConditions.NotCondition(new SpellConditions.HealthBelow(0.1f))));
+		SpellAction masterSparkTick = new SpellActions.ConditionalAction(
+				new SpellConditions.CompareNumbers(phaseTick, ">", NumberProvider.constant(20)),
+				List.of(new SpellActions.ConditionalAction(
+						new SpellConditions.HealthBelow(0.1f),
+						List.of(masterStarsLow),
+						List.of(
+								masterStarsNormal,
+								masterSparksNormal,
+								new SpellActions.ConditionalAction(
+										halfButNotLow,
+										List.of(masterStarsReverse, masterSparksReverse),
+										List.of())
+						))),
+				List.of());
+
+		// --- Phase selection ---
+		var farAndFast = new SpellConditions.AndCondition(List.of(
+				new SpellConditions.DistanceAbove(32),
+				new SpellConditions.TargetSpeed(0.7, ">")));
+		var farAndSlow = new SpellConditions.AndCondition(List.of(
+				new SpellConditions.DistanceAbove(32),
+				new SpellConditions.NotCondition(new SpellConditions.TargetSpeed(0.7, ">"))));
+		var phase1Master = new SpellConditions.AndCondition(List.of(
+				new SpellConditions.HealthAbove(0.5f),
+				new SpellConditions.VariableCheck("r0", "==", 0),
+				new SpellConditions.OrCondition(List.of(
+						new SpellConditions.DistanceBelow(12),
+						new SpellConditions.VariableCheck("r1", "==", 1),
+						farAndSlow
+				))));
+		var phase1Earth = new SpellConditions.AndCondition(List.of(
+				new SpellConditions.HealthAbove(0.5f),
+				new SpellConditions.CompareNumbers(new NumberProviders.Variable("earth_active"), "<", NumberProvider.constant(0.5)),
+				new SpellConditions.OrCondition(List.of(
+						farAndFast,
+						new SpellConditions.VariableCheck("r0", "==", 1)
+				))));
+		var phase2Combo = new SpellConditions.AndCondition(List.of(
+				new SpellConditions.HealthAbove(0.1f),
+				new SpellConditions.VariableCheck("r2", "==", 1)));
+
+		var selectPhase = new PhaseDefinition(selectId, List.of(), List.of(
+				stopCaster,
+				new SpellActions.SetVariable("r0", new NumberProviders.RandomChoice(random30)),
+				new SpellActions.SetVariable("r1", new NumberProviders.RandomChoice(random30)),
+				new SpellActions.SetVariable("r2", new NumberProviders.RandomChoice(random40))
+		), List.of(), List.of(), List.of(
+				new Transition(new SpellConditions.AndCondition(List.of(
+						new SpellConditions.HealthBelow(0.1f),
+						new SpellConditions.VariableCheck("phase3_seen", "==", 0))), introId, TransitionMode.IMMEDIATE),
+				new Transition(new SpellConditions.AndCondition(List.of(
+						new SpellConditions.HealthAbove(0.5f),
+						new SpellConditions.DistanceAbove(56))), dashId, TransitionMode.IMMEDIATE),
+				new Transition(phase1Master, masterSparkId, TransitionMode.IMMEDIATE),
+				new Transition(phase1Earth, earthLightId, TransitionMode.IMMEDIATE),
+				new Transition(new SpellConditions.HealthAbove(0.5f), blackHoleId, TransitionMode.IMMEDIATE),
+				new Transition(phase2Combo, comboEarthSparkId, TransitionMode.IMMEDIATE),
+				new Transition(new SpellConditions.HealthAbove(0.1f), comboDashHoleId, TransitionMode.IMMEDIATE),
+				new Transition(new SpellConditions.HealthBelow(0.1000001f), comboPhase3Id, TransitionMode.IMMEDIATE)
+		));
+
+		var introPhase = new PhaseDefinition(introId,
+				List.of(
+						stopCaster,
+						new SpellActions.SetVariable("phase3_seen", 1)),
+				List.of(), List.of(), List.of(),
+				List.of(new Transition(new SpellConditions.TickElapsed(50), selectId, TransitionMode.IMMEDIATE)));
+
+		var dashPhase = new PhaseDefinition(dashId,
+				List.of(
+						new SpellActions.SetVariable("dash_total", new NumberProviders.RandomChoice(List.of(1d, 2d))),
+						new SpellActions.SetVariable("dash_count", 0),
+						new SpellActions.SetVariable("dash_end", 40)),
+				List.of(dashTick, dashBoundary), List.of(stopCaster), List.of(),
+				List.of(new Transition(new SpellConditions.AndCondition(List.of(
+						new SpellConditions.CompareNumbers(phaseTick, ">=", dashEnd),
+						new SpellConditions.CompareNumbers(dashCount, ">=", dashTotal))),
+						selectId, TransitionMode.IMMEDIATE)));
+
+		var blackHolePhase = new PhaseDefinition(blackHoleId,
+				List.of(new SpellActions.SetVariable("earth_active", 0)),
+				List.of(blackHoleTick), List.of(), List.of(),
+				List.of(new Transition(new SpellConditions.TickElapsed(120), selectId, TransitionMode.IMMEDIATE)));
+
+		var earthLightPhase = new PhaseDefinition(earthLightId,
+				List.of(new SpellActions.SetVariable("earth_active", 1)),
+				List.of(earthLightTick), List.of(), List.of(),
+				List.of(new Transition(new SpellConditions.TickElapsed(100), selectId, TransitionMode.IMMEDIATE)));
+
+		var masterSparkPhase = new PhaseDefinition(masterSparkId,
+				List.of(
+						new SpellActions.SetVariable("earth_active", 0),
+						masterLaser),
+				List.of(masterSparkTick), List.of(), List.of(),
+				List.of(new Transition(new SpellConditions.TickElapsed(100), selectId, TransitionMode.IMMEDIATE)));
+
+		var comboEarthSparkPhase = new PhaseDefinition(comboEarthSparkId,
+				List.of(
+						new SpellActions.SetVariable("earth_active", 0),
+						masterLaser),
+				List.of(earthLightTick, masterSparkTick), List.of(), List.of(),
+				List.of(new Transition(new SpellConditions.TickElapsed(100), selectId, TransitionMode.IMMEDIATE)));
+
+		var comboDashHolePhase = new PhaseDefinition(comboDashHoleId,
+				List.of(
+						new SpellActions.SetVariable("earth_active", 0),
+						new SpellActions.SetVariable("dash_total", new NumberProviders.RandomChoice(List.of(1d, 2d))),
+						new SpellActions.SetVariable("dash_count", 0),
+						new SpellActions.SetVariable("dash_end", 40)),
+				List.of(dashTick, dashBoundary, blackHoleTick), List.of(stopCaster), List.of(),
+				List.of(new Transition(new SpellConditions.TickElapsed(150), selectId, TransitionMode.IMMEDIATE)));
+
+		var comboPhase3 = new PhaseDefinition(comboPhase3Id,
+				List.of(
+						new SpellActions.SetVariable("earth_active", 0),
+						masterLaser),
+				List.of(blackHoleTick, masterSparkTick), List.of(), List.of(),
+				List.of(new Transition(new SpellConditions.TickElapsed(150), selectId, TransitionMode.IMMEDIATE)));
+
+		SpellDisplay display = new SpellDisplay(
+				id.toLanguageKey("spell") + ".name",
+				id.toLanguageKey("spell") + ".desc",
+				Optional.empty(),
+				Optional.of(new ResourceLocation("touhou_little_maid", "kirisame_marisa"))
+		);
+		return new SpellDefinition(
+				id, display, SpellItemForm.NONE,
+				selectId,
+				Map.of(
+						selectId, selectPhase,
+						introId, introPhase,
+						dashId, dashPhase,
+						blackHoleId, blackHolePhase,
+						earthLightId, earthLightPhase,
+						masterSparkId, masterSparkPhase,
+						comboEarthSparkId, comboEarthSparkPhase,
+						comboDashHoleId, comboDashHolePhase,
+						comboPhase3Id, comboPhase3
+				),
+				DifficultyProfile.DEFAULT
+		);
+	}
+
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,
 												   PhaseDefinition phase, String modelId) {
 		SpellDisplay display = new SpellDisplay(

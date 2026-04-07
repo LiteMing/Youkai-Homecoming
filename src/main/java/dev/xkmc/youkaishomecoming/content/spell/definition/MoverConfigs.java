@@ -23,6 +23,7 @@ public class MoverConfigs {
 		register("composite", CompositeMoverConfig.CODEC, CompositeMoverConfig.class);
 		register("zero", ZeroMoverConfig.CODEC, ZeroMoverConfig.class);
 		register("bezier", BezierMoverConfig.CODEC, BezierMoverConfig.class);
+		register("attached", AttachedMoverConfig.CODEC, AttachedMoverConfig.class);
 	}
 
 	public static void register(String id, Codec<? extends MoverConfig> codec, Class<? extends MoverConfig> clazz) {
@@ -175,6 +176,20 @@ public class MoverConfigs {
 			// rot0 = rot1 = current direction → no rotation change.
 			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity : new Vec3(0, 0, 1);
 			return new ZeroMover(dir, dir, 1);
+		}
+	}
+
+	/**
+	 * Keeps the projectile attached to its owner/caster position.
+	 * Primarily used by follow-caster lasers such as Marisa's Master Spark.
+	 * JSON: {"type": "attached"}
+	 */
+	public record AttachedMoverConfig() implements MoverConfig {
+		public static final Codec<AttachedMoverConfig> CODEC = Codec.unit(AttachedMoverConfig::new);
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return new AttachedMover();
 		}
 	}
 

@@ -212,6 +212,8 @@ public class ActionEditorPanel {
 			buildSetEntityFlagRows(sefa);
 		} else if (action instanceof TeleportRandomAction tra) {
 			buildTeleportRandomRows(tra);
+		} else if (action instanceof SetVelocityAction sva) {
+			buildSetVelocityRows(sva);
 		}
 	}
 
@@ -233,6 +235,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Confine Target", () -> selectType("confine_target"));
 		addFullWidthButton("Set Entity Flag", () -> selectType("set_entity_flag"));
 		addFullWidthButton("Teleport Random", () -> selectType("teleport_random"));
+		addFullWidthButton("Set Velocity", () -> selectType("set_velocity"));
 	}
 
 	private void selectType(String type) {
@@ -282,6 +285,12 @@ public class ActionEditorPanel {
 		case "confine_target" -> new ConfineTargetAction(32, 1.0);
 		case "set_entity_flag" -> new SetEntityFlagAction(4, true);
 		case "teleport_random" -> new TeleportRandomAction(32, 0.8, 0.4, 16, true, true);
+		case "set_velocity" -> new SetVelocityAction(
+				NumberProvider.constant(1.0),
+				NumberProvider.constant(0),
+				NumberProvider.constant(0),
+				new AimMode.AimModes.Target(),
+				false);
 		default -> new SpellActions.NoopAction();
 		};
 	}
@@ -799,6 +808,39 @@ public class ActionEditorPanel {
 				}));
 	}
 
+	// --- Set Velocity rows ---
+
+	private void buildSetVelocityRows(SetVelocityAction sva) {
+		addNumberRow("Speed", sva.speed(), v ->
+				notifySimple(old -> {
+					var s = (SetVelocityAction) old;
+					return new SetVelocityAction(v, s.angleOffset(), s.elevation(), s.aimMode(), s.additive());
+				}, false));
+		addNumberRow("Angle", sva.angleOffset(), v ->
+				notifySimple(old -> {
+					var s = (SetVelocityAction) old;
+					return new SetVelocityAction(s.speed(), v, s.elevation(), s.aimMode(), s.additive());
+				}, false));
+		addNumberRow("Elevation", sva.elevation(), v ->
+				notifySimple(old -> {
+					var s = (SetVelocityAction) old;
+					return new SetVelocityAction(s.speed(), s.angleOffset(), v, s.aimMode(), s.additive());
+				}, false));
+		String currentAim = getAimModeType(sva.aimMode());
+		addStringCycleRow("Aim Mode", AIM_MODE_TYPES, currentAim, newType -> {
+			AimMode newMode = createDefaultAimMode(newType);
+			notifySimple(old -> {
+				var s = (SetVelocityAction) old;
+				return new SetVelocityAction(s.speed(), s.angleOffset(), s.elevation(), newMode, s.additive());
+			});
+		});
+		addBoolRow("Additive", sva.additive(), v ->
+				notifySimple(old -> {
+					var s = (SetVelocityAction) old;
+					return new SetVelocityAction(s.speed(), s.angleOffset(), s.elevation(), s.aimMode(), v);
+				}));
+	}
+
 	// --- SpawnShooter rows ---
 
 	private void buildSpawnShooterRows(SpawnShooterAction ssa) {
@@ -868,7 +910,7 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "zero", "bezier"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "zero", "bezier", "attached"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -1143,6 +1185,7 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.CompositeMoverConfig) return "composite";
 		if (cfg instanceof MoverConfigs.ZeroMoverConfig) return "zero";
 		if (cfg instanceof MoverConfigs.BezierMoverConfig) return "bezier";
+		if (cfg instanceof MoverConfigs.AttachedMoverConfig) return "attached";
 		return "none";
 	}
 
@@ -1158,6 +1201,7 @@ public class ActionEditorPanel {
 			)));
 			case "zero" -> Optional.of(new MoverConfigs.ZeroMoverConfig());
 			case "bezier" -> Optional.of(new MoverConfigs.BezierMoverConfig(5, 3, 0, 10, -3, 0, 15, 0, 0, 40));
+			case "attached" -> Optional.of(new MoverConfigs.AttachedMoverConfig());
 			default -> Optional.empty();
 		};
 	}
@@ -1276,6 +1320,10 @@ public class ActionEditorPanel {
 	}
 
 	private void notifySimple(Function<SpellAction, SpellAction> modifier) {
+		notifySimple(modifier, false);
+	}
+
+	private void notifySimple(Function<SpellAction, SpellAction> modifier, boolean rebuild) {
 		if (currentAction == null) return;
 		boolean disabled = currentAction instanceof SpellActions.DisabledAction;
 		SpellAction baseAction = disabled ? ((SpellActions.DisabledAction) currentAction).inner() : currentAction;
@@ -1289,6 +1337,13 @@ public class ActionEditorPanel {
 		SpellAction newAction = disabled ? new SpellActions.DisabledAction(modified) : modified;
 		currentAction = newAction;
 		onActionChanged.accept(newAction);
+		if (rebuild) {
+			int idx = actionIndex;
+			clearWidgets();
+			buildActionRows(newAction);
+			actionIndex = idx;
+			layoutWidgets();
+		}
 	}
 
 	// --- Row builders ---
@@ -1327,7 +1382,7 @@ public class ActionEditorPanel {
 	// Expression autocomplete keywords
 	private static final String[] EXPR_FUNCTIONS = {
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
-			"tick_mod", "sin", "cos", "sqrt", "max", "min", "clamp", "gaussian", "choose",
+			"tick_mod", "sin", "cos", "sqrt", "max", "min", "clamp", "gaussian", "choose", "heightmap_y",
 			"tick", "phase_tick", "total_tick", "distance",
 			"target_height", "target_fly_time", "target_speed", "game_difficulty",
 			"caster_x", "caster_y", "caster_z", "target_x", "target_y", "target_z"
@@ -1347,6 +1402,7 @@ public class ActionEditorPanel {
 		if (name.equals("clamp")) return "clamp(, , )";
 		if (name.equals("gaussian")) return "gaussian(, )";
 		if (name.equals("choose")) return "choose(, )";
+		if (name.equals("heightmap_y")) return "heightmap_y(, )";
 		return name; // bare keyword (tick, phase_tick, total_tick, distance, caster_x, etc.)
 	}
 
@@ -1359,6 +1415,7 @@ public class ActionEditorPanel {
 		if (name.equals("sin")) return 4;
 		if (name.equals("cos")) return 4;
 		if (name.equals("sqrt")) return 5;
+		if (name.equals("heightmap_y")) return 12;
 		return name.length(); // bare keyword
 	}
 
@@ -1371,6 +1428,7 @@ public class ActionEditorPanel {
 		if (name.equals("sin")) return "sin(input, amp?, phase?)";
 		if (name.equals("cos")) return "cos(input, amp?, phase?)";
 		if (name.equals("sqrt")) return "sqrt(input)";
+		if (name.equals("heightmap_y")) return "heightmap_y(x, z)";
 		return name;
 	}
 
@@ -1388,7 +1446,7 @@ public class ActionEditorPanel {
 	private static final int COLOR_KEYWORD = 0xFFDD44;   // yellow (tick, distance, etc.)
 	private static final java.util.Set<String> KNOWN_FUNCTIONS = java.util.Set.of(
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
-			"tick_mod", "sin", "cos", "sqrt", "max", "min", "clamp", "gaussian", "choose"
+			"tick_mod", "sin", "cos", "sqrt", "max", "min", "clamp", "gaussian", "choose", "heightmap_y"
 	);
 	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
 			"tick", "phase_tick", "total_tick", "distance", "target_height", "target_fly_time",
@@ -2223,6 +2281,8 @@ public class ActionEditorPanel {
 			Map.entry("sequence", "Sequence"),
 			Map.entry("confine_target", "Confine Target"),
 			Map.entry("set_entity_flag", "Set Entity Flag"),
+			Map.entry("teleport_random", "Teleport Random"),
+			Map.entry("set_velocity", "Set Velocity"),
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);

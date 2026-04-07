@@ -21,6 +21,12 @@ import java.util.*;
  */
 public class MigratedSpellCards {
 
+	private static final SpellItemForm ITEM_SUNNY = new SpellItemForm(true, 100, false, 100, Optional.empty());
+	private static final SpellItemForm ITEM_LUNA = new SpellItemForm(true, 120, false, 120, Optional.empty());
+	private static final SpellItemForm ITEM_STAR = new SpellItemForm(true, 80, true, 80, Optional.empty());
+	private static final SpellItemForm ITEM_CIRNO = new SpellItemForm(true, 100, true, 100, Optional.empty());
+	private static final SpellItemForm ITEM_MYSTIA = new SpellItemForm(true, 140, false, 140, Optional.empty());
+
 	// ============================
 	// SunnySpell — 三色环形弹幕
 	// ============================
@@ -53,7 +59,7 @@ public class MigratedSpellCards {
 		);
 
 		var phase = new PhaseDefinition(mainPhase, List.of(), tickActions, List.of(), List.of(), List.of());
-		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:sunny_milk");
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:sunny_milk", ITEM_SUNNY);
 	}
 
 	// ============================
@@ -91,7 +97,7 @@ public class MigratedSpellCards {
 		);
 
 		var phase = new PhaseDefinition(mainPhase, List.of(), tickActions, List.of(), List.of(), List.of());
-		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:luna_child");
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:luna_child", ITEM_LUNA);
 	}
 
 	// ============================
@@ -150,7 +156,7 @@ public class MigratedSpellCards {
 		);
 
 		var phase = new PhaseDefinition(mainPhase, List.of(), tickActions, List.of(), List.of(), List.of());
-		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:star_sapphire");
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:star_sapphire", ITEM_STAR);
 	}
 
 	// ============================
@@ -199,7 +205,7 @@ public class MigratedSpellCards {
 		);
 
 		var phase = new PhaseDefinition(mainPhase, List.of(), tickActions, List.of(), List.of(), List.of());
-		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:cirno");
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:cirno", ITEM_CIRNO);
 	}
 
 	// ============================
@@ -258,7 +264,7 @@ public class MigratedSpellCards {
 		);
 
 		var phase = new PhaseDefinition(mainPhase, List.of(), tickActions, List.of(), List.of(), List.of());
-		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:mystia_lorelei");
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:mystia_lorelei", ITEM_MYSTIA);
 	}
 
 	// ============================
@@ -2828,6 +2834,11 @@ public class MigratedSpellCards {
 
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,
 												   PhaseDefinition phase, String modelId) {
+		return buildDefinition(id, mainPhase, phase, modelId, SpellItemForm.NONE);
+	}
+
+	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,
+												   PhaseDefinition phase, String modelId, SpellItemForm itemForm) {
 		SpellDisplay display = new SpellDisplay(
 				id.toLanguageKey("spell") + ".name",
 				id.toLanguageKey("spell") + ".desc",
@@ -2836,7 +2847,7 @@ public class MigratedSpellCards {
 		);
 
 		return new SpellDefinition(
-				id, display, SpellItemForm.NONE,
+				id, display, itemForm,
 				mainPhase, Map.of(mainPhase, phase),
 				DifficultyProfile.DEFAULT
 		);

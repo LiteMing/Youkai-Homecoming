@@ -66,7 +66,12 @@ public class SpellDefinitionBuilderJS {
 	}
 
 	public SpellDefinitionBuilderJS itemForm(int cooldown, boolean requireTarget) {
-		this.itemForm = new SpellItemForm(true, cooldown, requireTarget, Optional.empty());
+		this.itemForm = new SpellItemForm(true, cooldown, requireTarget, cooldown, Optional.empty());
+		return this;
+	}
+
+	public SpellDefinitionBuilderJS itemForm(int cooldown, boolean requireTarget, int duration) {
+		this.itemForm = new SpellItemForm(true, cooldown, requireTarget, duration, Optional.empty());
 		return this;
 	}
 

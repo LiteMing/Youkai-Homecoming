@@ -11,15 +11,21 @@ public record SpellItemForm(
 		boolean generate,
 		int cooldown,
 		boolean requiresTarget,
+		int duration,
 		Optional<ResourceLocation> iconItem
 ) {
 
-	public static final SpellItemForm NONE = new SpellItemForm(false, 0, false, Optional.empty());
+	public static final SpellItemForm NONE = new SpellItemForm(false, 0, false, 0, Optional.empty());
+
+	public SpellItemForm(boolean generate, int cooldown, boolean requiresTarget, Optional<ResourceLocation> iconItem) {
+		this(generate, cooldown, requiresTarget, 0, iconItem);
+	}
 
 	public static final Codec<SpellItemForm> CODEC = RecordCodecBuilder.create(i -> i.group(
 			Codec.BOOL.optionalFieldOf("generate", false).forGetter(SpellItemForm::generate),
 			Codec.INT.optionalFieldOf("cooldown", 100).forGetter(SpellItemForm::cooldown),
 			Codec.BOOL.optionalFieldOf("requires_target", false).forGetter(SpellItemForm::requiresTarget),
+			Codec.INT.optionalFieldOf("duration", 0).forGetter(SpellItemForm::duration),
 			ResourceLocation.CODEC.optionalFieldOf("icon_item").forGetter(SpellItemForm::iconItem)
 	).apply(i, SpellItemForm::new));
 

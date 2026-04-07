@@ -95,9 +95,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 		if (player instanceof ServerPlayer sp) {
 			int duration = getStackDuration(stack);
-			if (duration == DURATION_NATURAL && def.itemForm.cooldown() > 0) {
-				// item_form.cooldown acts as fixed duration when set, unless overridden by NBT
-				duration = def.itemForm.cooldown();
+			if (duration == DURATION_NATURAL) {
+				duration = resolveSpellDuration(def.itemForm);
 			}
 			DanmakuProxyEntity proxy = new DanmakuProxyEntity(
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
@@ -121,6 +120,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 				list.add(def.display.displayDesc().copy().withStyle(ChatFormatting.GRAY));
 			}
 			int dur = getStackDuration(stack);
+			if (dur == DURATION_NATURAL) {
+				dur = resolveSpellDuration(def.itemForm);
+			}
 			if (dur > 0) {
 				list.add(Component.literal("Duration: " + dur + "t").withStyle(ChatFormatting.DARK_GRAY));
 			}
@@ -151,5 +153,15 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	@Override
 	public int getDistance(ItemStack itemStack) {
 		return 64;
+	}
+
+	private static int resolveSpellDuration(dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm itemForm) {
+		if (itemForm.duration() > 0) {
+			return itemForm.duration();
+		}
+		if (itemForm.cooldown() > 0) {
+			return itemForm.cooldown();
+		}
+		return DURATION_NATURAL;
 	}
 }

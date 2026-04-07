@@ -348,7 +348,7 @@ public class DifficultyProfile {
 /yhspell reset <entity>                   - 重置符卡状态
 /yhspell debug <entity>                   - 输出当前状态
 /yhspell give <player> <spell_id> [ticks] - 发放 dynamic_spell 测试物品
-/yhspell reload                           - 重载datapack定义
+/yhspell reload                           - 重载datapack定义并刷新 spell registry
 ```
 
 ### 十二、KubeJS接入
@@ -424,7 +424,7 @@ YHEvents.registerSpells(event => {
 1. ✅ 实现`/yhspell`指令 (set, phase, variable, reset, debug, list, preview, reapply, export, import)
 2. ✅ 实现条件/动作的Codec序列化
 3. ✅ 支持JSON导出/导入 (`/yhspell export <id>` + `/yhspell import <path>` + 预览Export按钮)
-4. 🔲 支持从datapack JSON自动加载SpellDefinition (需 DatapackRegistry 加载器)
+4. ✅ 支持从datapack JSON自动加载SpellDefinition (`data/<ns>/spell_definitions/*.json` + reload listener，2026-04-07)
 5. 🔲 实现NBT覆盖层
 
 ### Phase 3: KubeJS集成 ✅ 已完成

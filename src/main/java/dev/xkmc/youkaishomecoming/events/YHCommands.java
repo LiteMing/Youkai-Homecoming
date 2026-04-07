@@ -392,6 +392,22 @@ public class YHCommands {
 										return 0;
 									}
 								})))
+				.then(literal("reload")
+						.executes(ctx -> {
+							var server = ctx.getSource().getServer();
+							var source = ctx.getSource();
+							var selectedPacks = java.util.List.copyOf(server.getPackRepository().getSelectedIds());
+							source.sendSuccess(() -> Component.literal("Reloading datapacks and spell definitions..."), true);
+							server.reloadResources(selectedPacks).whenComplete((unused, error) -> server.execute(() -> {
+								if (error != null) {
+									Throwable cause = error.getCause() != null ? error.getCause() : error;
+									source.sendFailure(Component.literal("Reload failed: " + cause.getMessage()));
+								} else {
+									source.sendSuccess(() -> Component.literal("Reload complete"), true);
+								}
+							}));
+							return 1;
+						}))
 				.then(literal("new")
 						.then(argument("spell_id", ResourceLocationArgument.id())
 								.executes(ctx -> {

@@ -28,7 +28,7 @@ public class TouhouSpellCards {
 		MAP.put(id, card);
 		// Also register in the new SpellRegistry via legacy bridge
 		ResourceLocation rl = new ResourceLocation(id);
-		SpellRegistry.register(rl, LegacySpellBridge.fromLegacy(rl, card, id));
+		SpellRegistry.registerBuiltin(rl, LegacySpellBridge.fromLegacy(rl, card, id));
 	}
 
 	public static void registerSpells() {
@@ -71,7 +71,7 @@ public class TouhouSpellCards {
 	 * No legacy SpellCard is created — the new runtime handles everything.
 	 */
 	public static void registerMigrated(dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition def) {
-		SpellRegistry.register(def.id, def);
+		SpellRegistry.registerBuiltin(def.id, def);
 	}
 
 	public static void setSpell(GeneralYoukaiEntity e, String id) {

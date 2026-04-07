@@ -14,6 +14,10 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.entity.Mob;
 
+/**
+ * Legacy reference implementation only.
+ * Boss runtime registration now uses {@code MigratedSpellCards.marisa()}.
+ */
 @SerialClass
 public class MarisaSpell extends ActualSpellCard {
 

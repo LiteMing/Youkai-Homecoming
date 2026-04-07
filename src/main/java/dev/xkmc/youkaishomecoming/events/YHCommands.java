@@ -31,6 +31,8 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 
+import java.util.Collection;
+
 @Mod.EventBusSubscriber(modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class YHCommands {
 
@@ -430,45 +432,20 @@ public class YHCommands {
 									return 1;
 								})))
 			.then(literal("give")
-					.then(argument("spell_id", ResourceLocationArgument.id())
-							.suggests(SPELL_SUGGESTIONS)
-							.executes(ctx -> {
-								// Natural end mode (default)
-								ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
-								SpellDefinition def = SpellRegistry.get(spellId);
-								if (def == null) {
-									ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
-									return 0;
-								}
-								ServerPlayer player = ctx.getSource().getPlayerOrException();
-								ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId);
-								if (!player.getInventory().add(stack)) {
-									player.drop(stack, false);
-								}
-								ctx.getSource().sendSuccess(
-										() -> Component.literal("Gave spell item [" + spellId + "] to " + player.getName().getString()), true);
-								return 1;
-							})
-							.then(argument("ticks", IntegerArgumentType.integer(1))
-									.executes(ctx -> {
-										// Fixed duration mode
-										ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
-										int ticks = IntegerArgumentType.getInteger(ctx, "ticks");
-										SpellDefinition def = SpellRegistry.get(spellId);
-										if (def == null) {
-											ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
-											return 0;
-										}
-										ServerPlayer player = ctx.getSource().getPlayerOrException();
-										ItemStack stack = DynamicSpellItem.createStackWithDuration(
-												YHDanmaku.DYNAMIC_SPELL.get(), spellId, ticks);
-										if (!player.getInventory().add(stack)) {
-											player.drop(stack, false);
-										}
-										ctx.getSource().sendSuccess(
-												() -> Component.literal("Gave spell item [" + spellId + "] (" + ticks + "t) to " + player.getName().getString()), true);
-										return 1;
-									}))))
+					.then(argument("player", EntityArgument.players())
+							.then(argument("spell_id", ResourceLocationArgument.id())
+									.suggests(SPELL_SUGGESTIONS)
+									.executes(ctx -> giveSpellItem(
+											ctx.getSource(),
+											EntityArgument.getPlayers(ctx, "player"),
+											ResourceLocationArgument.getId(ctx, "spell_id"),
+											null))
+									.then(argument("ticks", IntegerArgumentType.integer(1))
+											.executes(ctx -> giveSpellItem(
+													ctx.getSource(),
+													EntityArgument.getPlayers(ctx, "player"),
+													ResourceLocationArgument.getId(ctx, "spell_id"),
+													IntegerArgumentType.getInteger(ctx, "ticks")))))))
 		);
 	}
 
@@ -478,6 +455,37 @@ public class YHCommands {
 
 	protected static <T> RequiredArgumentBuilder<CommandSourceStack, T> argument(String name, ArgumentType<T> type) {
 		return RequiredArgumentBuilder.argument(name, type);
+	}
+
+	private static int giveSpellItem(CommandSourceStack source, Collection<ServerPlayer> players,
+									 ResourceLocation spellId, Integer ticks) {
+		SpellDefinition def = SpellRegistry.get(spellId);
+		if (def == null) {
+			source.sendFailure(Component.literal("Unknown spell: " + spellId));
+			return 0;
+		}
+
+		for (ServerPlayer player : players) {
+			ItemStack stack = ticks == null
+					? DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId)
+					: DynamicSpellItem.createStackWithDuration(YHDanmaku.DYNAMIC_SPELL.get(), spellId, ticks);
+			if (!player.getInventory().add(stack)) {
+				player.drop(stack, false);
+			}
+		}
+
+		String suffix = ticks == null ? "" : " (" + ticks + "t)";
+		if (players.size() == 1) {
+			ServerPlayer player = players.iterator().next();
+			source.sendSuccess(
+					() -> Component.literal("Gave spell item [" + spellId + "]" + suffix + " to " + player.getName().getString()),
+					true);
+		} else {
+			source.sendSuccess(
+					() -> Component.literal("Gave spell item [" + spellId + "]" + suffix + " to " + players.size() + " players"),
+					true);
+		}
+		return players.size();
 	}
 
 }

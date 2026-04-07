@@ -30,6 +30,7 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellStateToClient;
 import dev.xkmc.youkaishomecoming.content.item.fluid.SlipBottleIngredient;
 import dev.xkmc.youkaishomecoming.content.pot.table.food.YHSushi;
 import dev.xkmc.youkaishomecoming.content.pot.table.item.TableItemManager;
+import dev.xkmc.youkaishomecoming.content.spell.registry.SpellItemAutoRegister;
 import dev.xkmc.youkaishomecoming.content.spell.custom.screen.SpellSetToServer;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
 import dev.xkmc.youkaishomecoming.events.YHAttackListener;
@@ -61,6 +62,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.crafting.CraftingHelper;
 import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.data.event.GatherDataEvent;
+import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.entity.EntityAttributeModificationEvent;
 import net.minecraftforge.event.entity.SpawnPlacementRegisterEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -247,6 +249,13 @@ public class YoukaisHomecoming {
 				Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
 				(entityType, world, reason, pos, random) -> pos.getY() >= 50 && pos.getY() <= 64,
 				SpawnPlacementRegisterEvent.Operation.REPLACE);
+	}
+
+	@SubscribeEvent
+	public static void buildCreativeTabContents(BuildCreativeModeTabContentsEvent event) {
+		if (event.getTabKey().equals(YHDanmaku.TAB.getKey())) {
+			SpellItemAutoRegister.populateTestingTab(event);
+		}
 	}
 
 	public static ResourceLocation loc(String id) {

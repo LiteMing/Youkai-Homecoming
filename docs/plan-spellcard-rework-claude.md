@@ -347,6 +347,7 @@ public class DifficultyProfile {
 /yhspell variable <entity> <key> <value>  - 设置运行时变量
 /yhspell reset <entity>                   - 重置符卡状态
 /yhspell debug <entity>                   - 输出当前状态
+/yhspell give <player> <spell_id> [ticks] - 发放 dynamic_spell 测试物品
 /yhspell reload                           - 重载datapack定义
 ```
 
@@ -437,7 +438,7 @@ YHEvents.registerSpells(event => {
 
 1. ✅ 实现`DynamicSpellItem` — 通用符卡物品，从NBT读取spell_id
 2. ✅ 实现`RuntimeItemSpell` — 驱动SpellRuntime的ItemSpell子类
-3. ✅ 实现`SpellItemAutoRegister` — 创意模式标签页自动填充
+3. ✅ 实现`SpellItemAutoRegister` — 创意模式标签页自动填充（2026-04-07 已接入 `Youkai's Danmaku` testing tab）
 4. ✅ 在`YHDanmaku`中注册`DYNAMIC_SPELL`物品
 5. 🔲 从`YHDanmaku`迁移手写SpellItem (保留向后兼容，后续按需迁移)
 

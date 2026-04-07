@@ -404,11 +404,14 @@
 ### 当前状态
 
 `DynamicSpellItem` 代码已完整实现（castSpell、RuntimeItemSpell 驱动、NBT spell_id 解析、tooltip 显示），
-但目前实际上是**不可见占位符**：
+目前已具备**开发/测试可用**的入口：
+- `Youkai's Danmaku` 创造标签页会自动加入所有已注册 spell 的 `dynamic_spell` 测试栈
+- `/yhspell give <player> <spell_id> [ticks]` 可直接发放指定 spell 物品
+
+但它仍未完成正式物品化：
 - 所有 5 个已迁移符卡的 `SpellItemForm` 均为 `NONE`（`generate = false`）
 - 所有 12 个 legacy 符卡也是 `NONE`（`LegacySpellBridge.fromLegacy` 硬编码）
-- `SpellItemAutoRegister.populateCreativeTab()` 未接入任何创造标签页事件
-- 玩家只能通过 `/give @s youkaishomecoming:dynamic_spell{spell_id:"..."}` 获取
+- 当前创造标签页走的是 testing path：展示全部注册 spell，而不是仅 `itemForm.generate()==true` 的正式列表
 
 ### 实装需要的改动（按依赖顺序）
 
@@ -433,12 +436,14 @@ private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLoca
 | cirno | 100 (5s) | true | direction_to_target 分裂 |
 | mystia | 140 (7s) | false | Shooter + Burst 持续较长 |
 
-#### 步骤 2: 接入 SpellItemAutoRegister
+#### 步骤 2: 接入 SpellItemAutoRegister ✅ 已完成（测试模式）
 
 **文件:** `YHDanmaku.java` 或创建一个事件监听器
 
-在创造标签页构建事件中调用 `SpellItemAutoRegister.populateCreativeTab()`。
-需要找到项目中创造标签页注册的位置，添加类似：
+已在 `YoukaisHomecoming.buildCreativeTabContents()` 中接入创造标签页事件。
+当前调用的是 `SpellItemAutoRegister.populateTestingTab()`，会把所有已注册 spell 加入 `Youkai's Danmaku` 标签页，方便调试。
+
+正式物品化时仍建议改回只展示 `itemForm.generate()==true` 的列表，例如：
 
 ```java
 // 在 YHDanmaku 的创造标签页构建回调中:
@@ -448,22 +453,24 @@ SpellItemAutoRegister.populateCreativeTab(output);
 注意：创造标签页事件在客户端触发时，`SpellRegistry` 需要已被填充。
 `TouhouSpellCards.registerSpells()` 在 `commonSetup` 阶段调用，应在标签页事件之前。
 
-#### 步骤 3: 添加 /yhspell give 命令
+#### 步骤 3: 添加 /yhspell give 命令 ✅ 已完成
 
 **文件:** `YHCommands.java`
 
-新增子命令：
-```
-/yhspell give <player> <spell_id>
+现有命令：
+``` 
+/yhspell give <player> <spell_id> [ticks]
 ```
 
-实现：
+行为：
 ```java
+// natural duration
 DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId);
-player.getInventory().add(stack);
+// fixed duration
+DynamicSpellItem.createStackWithDuration(YHDanmaku.DYNAMIC_SPELL.get(), spellId, ticks);
 ```
 
-提供命令补全（从 `SpellRegistry.getAll().keySet()`）。
+支持 spell ID 补全；`player` 可用单人名或选择器（如 `@s`, `@a`）。
 
 #### 步骤 4: 对 legacy 符卡的物品化决策
 
@@ -504,9 +511,9 @@ legacy 符卡通过 `LegacySpellBridge` 也在 `SpellRegistry` 中。它们的 `
 ### 实施优先级（已修订）
 
 1. **P0: Legacy 符卡数据驱动迁移** — 最高优先，在条件系统补全后逐个迁移
-2. **P1: 创造模式测试调用** — 让创造玩家可随意调用任意已注册符卡查看效果
-   - `/yhspell give` 命令 + SpellItemAutoRegister 接入创造标签页
-   - 目的是方便开发和调试，不涉及生存玩法
+2. **P1: 创造模式测试调用** — ✅ 已完成
+   - `/yhspell give <player> <spell_id> [ticks]`
+   - `SpellItemAutoRegister.populateTestingTab()` 已接入 `Youkai's Danmaku` 创造标签页
 3. **P2: dynamic_spell 基础物品化** — SpellItemForm 配置、cooldown/duration 等
 4. **P3: 生存模式自定义符卡系统** — 见下文
 

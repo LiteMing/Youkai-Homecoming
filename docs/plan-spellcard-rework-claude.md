@@ -709,8 +709,7 @@ content/spell/
 6. ✅ instanceof 硬编码链 → SpellActions.getTypeId() / SpellConditions.getTypeId()
 7. ✅ actionTypeName/getConditionType 手写 → 查表
 
-**遗留低优先 (2项)**:
-- 🔲 LegacyTickerAction 反序列化静默失败 (设计如此，加 warning 即可)
+**遗留低优先 (1项)**:
 - 🔲 NumberProvider 编辑降级为 Constant (Phase 6.5 解决)
 
 ### Phase 6.5: 弹幕深化核心 (P0) ✅ 已完成

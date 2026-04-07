@@ -3,8 +3,10 @@ package dev.xkmc.youkaishomecoming.content.spell.action;
 import com.mojang.serialization.Codec;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 
 import java.util.function.Supplier;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Bridge action that wraps a legacy ActualSpellCard as a SpellAction.
@@ -13,6 +15,7 @@ import java.util.function.Supplier;
 public class LegacyTickerAction implements SpellAction {
 
 	public static final Codec<LegacyTickerAction> CODEC = Codec.unit(LegacyTickerAction::new);
+	private static final AtomicBoolean WARNED_MISSING_FACTORY = new AtomicBoolean(false);
 
 	private Supplier<? extends SpellCard> factory;
 	private SpellCard card;
@@ -30,6 +33,11 @@ public class LegacyTickerAction implements SpellAction {
 			if (factory != null) {
 				card = factory.get();
 			} else {
+				if (WARNED_MISSING_FACTORY.compareAndSet(false, true)) {
+					YoukaisHomecoming.LOGGER.warn(
+							"Encountered deserialized legacy_ticker action without a factory. " +
+							"It will no-op at runtime; prefer data-driven actions or LegacySpellBridge-registered definitions.");
+				}
 				return;
 			}
 		}

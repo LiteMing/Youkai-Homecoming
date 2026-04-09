@@ -508,9 +508,14 @@ public class NumberProviders {
 		@Override public double get(SpellContext ctx) {
 			int px = Mth.floor(x.get(ctx));
 			int pz = Mth.floor(z.get(ctx));
+			BlockPos queryPos = new BlockPos(px, 0, pz);
+			if (!ctx.self().level().hasChunkAt(queryPos)) {
+				var target = ctx.holder().target();
+				return target != null ? target.y : ctx.holder().center().y;
+			}
 			BlockPos pos = ctx.self().level().getHeightmapPos(
 					net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-					new BlockPos(px, 0, pz)
+					queryPos
 			);
 			return pos.getY();
 		}

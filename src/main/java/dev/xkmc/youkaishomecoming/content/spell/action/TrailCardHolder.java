@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.action;
 
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
@@ -30,7 +31,7 @@ public class TrailCardHolder implements CardHolder {
 	public TrailCardHolder(CardHolder delegate, Vec3 position, Vec3 direction) {
 		this.delegate = delegate;
 		this.position = position;
-		this.direction = direction.lengthSqr() > 1e-8 ? direction.normalize() : new Vec3(0, 0, 1);
+		this.direction = DanmakuHelper.safeDirection(direction, new Vec3(0, 0, 1));
 	}
 
 	@Override

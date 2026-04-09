@@ -145,7 +145,7 @@ public interface AimMode {
 
 			@Override
 			public Vec3 getBaseDirection(SpellContext ctx) {
-				return direction.normalize();
+				return DanmakuHelper.safeDirection(direction, new Vec3(0, 0, 1));
 			}
 		}
 
@@ -157,7 +157,7 @@ public interface AimMode {
 
 			@Override
 			public Vec3 getBaseDirection(SpellContext ctx) {
-				return ctx.self().getLookAngle();
+				return DanmakuHelper.safeDirection(ctx.self().getLookAngle(), ctx.holder().forward());
 			}
 		}
 
@@ -206,8 +206,7 @@ public interface AimMode {
 				Vec3 target = ctx.holder().target();
 				if (target == null) return ctx.holder().forward();
 				Vec3 dir = target.subtract(from);
-				if (dir.lengthSqr() < 1e-6) return ctx.holder().forward();
-				return dir.normalize();
+				return DanmakuHelper.safeDirection(dir, ctx.holder().forward());
 			}
 		}
 
@@ -264,9 +263,7 @@ public interface AimMode {
 				double dx = ctx.getVariable(xKey);
 				double dy = ctx.getVariable(yKey);
 				double dz = ctx.getVariable(zKey);
-				Vec3 dir = new Vec3(dx, dy, dz);
-				if (dir.lengthSqr() < 1e-8) return new Vec3(0, 0, 1);
-				return dir.normalize();
+				return DanmakuHelper.safeDirection(new Vec3(dx, dy, dz), new Vec3(0, 0, 1));
 			}
 		}
 	}

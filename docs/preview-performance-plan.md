@@ -188,13 +188,19 @@ class EntityPool<T extends Entity> {
 
 **效果**: 所有类型的 ForkJoin 任务在同一个 join 点统一等待, ForkJoinPool 可以在所有类型间交错调度工作。
 
-### PH: 渲染前置 fill + 延迟 join (已实现)
+### PH: 渲染前置 fill + 延迟 join (待实施)
 
-**思路**: 在 `AFTER_SKY` 阶段调用 `renderAll()` + `submitFills()` 启动并行计算,
+**原计划**: 在 `AFTER_SKY` 阶段调用 `renderAll()` + `submitFills()` 启动并行计算,
 ForkJoinPool 线程立即开始工作, 与 render thread 后续的 solid blocks/cutouts/entities 渲染并行进行。
 到 `AFTER_ENTITIES` 阶段时 `joinAndFlush()` 等待完成并上传。
 
-**实现**:
+**当前代码状态**:
+1. `ProjectileRenderHelper.renderLate()` 仍只监听 `AFTER_ENTITIES` / `AFTER_PARTICLES`
+2. `RenderQueue` 仍只有同步 `flush()`, 没有 `submitFills()` / `joinAndFlush()` 分离接口
+3. 因此当前并没有 `AFTER_SKY` 提前提交、`AFTER_ENTITIES` 延迟 join 的实现
+4. 预览模式 (`flushPreviewQueue`) 也仍走同步 `flush()`
+
+**后续实现目标**:
 1. `RenderLevelStageEvent` 监听从 `AFTER_ENTITIES` 扩展到 `AFTER_SKY`
 2. `AFTER_SKY`: `ClientDanmakuCache.renderAll()` 收集 Ins → `RenderQueue.submitFills()` 提交并行任务
 3. `AFTER_ENTITIES`: `RenderQueue.joinAndFlush()` 等待并合并 SOLID/TRANSPARENT 结果
@@ -825,7 +831,7 @@ spark 显示碰撞检测占服务端 17.36%, 其中:
 | P5 | 多线程 buffer 填充 | **已完成** (见 P5fix2) | 占帧时间 7.26%, 有效但非主瓶颈 |
 | P5fix | bulkWrite 崩溃修复 | **已完成** | putByte offset 语义错误导致崩溃, 改为逐顶点写入 |
 | P5fix2 | 全局统一并行 fill | **已实现** | 所有类型统一 submit + 全局 joinAndMergeAll |
-| PH | 渲染前置 fill + 延迟 join | **已实现** | AFTER_SKY 启动 fill, AFTER_ENTITIES join |
+| PH | 渲染前置 fill + 延迟 join | 待实施 | 设计已明确，当前代码仍是 AFTER_ENTITIES/AFTER_PARTICLES 同步 flush |
 | P6 | GPU 实例化 | 待实施 | 可绕过 MC 渲染管线, 消除排序/查找/上传开销 |
 | P7 | 其他渲染优化 | 待实施 | LOD + 视锥剔除 |
 | PA | 关闭透明排序 | **已完成** | 省 ~9% 帧时间 (最大单项优化, 关闭 sortOnUpload) |
@@ -926,7 +932,7 @@ PB3 跳过 PoseStack 后, scale 直接从 `entity.scale()` 获取, 此 trick 不
 4. ~~**PE-2 客户端渲染 PoseStack 跳过**: 已实现 (renderAll billboard 直接构造 Ins)~~
 5. ~~**PE-3 批量 erase 包**: 已实现 (BatchEraseDanmakuToClient)~~
 6. ~~**P5fix2 全局统一并行 fill**: 已实现~~
-7. ~~**PH 渲染前置 fill + 延迟 join**: 已实现~~
+7. **PH 渲染前置 fill + 延迟 join**: 待实施 — 当前 `ProjectileRenderHelper` 尚未接入 `AFTER_SKY` 提前提交
 8. ~~**PG 服务端 tick 多线程拆分**~~: 已集成并完成语义收口, 当前可继续基于 Spark 定位 Step 2 热点
 9. ~~**PC 服务端 getGameTime 缓存**~~: 已实现 — `UserCacheHolder.setGameTime()` 每 tick 一次,
    `UserMatrixCache(sl, x, y, z, gameTime)` / `EntityStorageCache.get(sl, gameTime)` 接受预取值

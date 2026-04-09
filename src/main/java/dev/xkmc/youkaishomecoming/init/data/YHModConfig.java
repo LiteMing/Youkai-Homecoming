@@ -96,6 +96,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue customSpellMaxDuration;
 		public final ForgeConfigSpec.IntValue ringSpellDanmakuPerItemCost;
 		public final ForgeConfigSpec.IntValue homingSpellDanmakuPerItemCost;
+		public final ForgeConfigSpec.BooleanValue enableTestingSpellTab;
 
 		public final ForgeConfigSpec.BooleanValue smallFairyReplacement;
 		public final ForgeConfigSpec.DoubleValue smallFairySummonReinforcement;
@@ -177,6 +178,9 @@ public class YHModConfig {
 
 			builder.push("danmaku_battle");
 			{
+				enableTestingSpellTab = builder.comment("Expose every registered spell in the danmaku creative tab for internal testing.")
+						.comment("Disable in normal gameplay so only itemForm.generate() spells are visible.")
+						.define("enableTestingSpellTab", false);
 				danmakuMinPHPDamage = builder.comment("Minimum damage youkai danmaku will deal against non-player")
 						.defineInRange("danmakuMinPHPDamage", 0.02, 0, 1);
 				danmakuPlayerPHPDamage = builder.comment("Minimum damage youkai danmaku will deal against player")

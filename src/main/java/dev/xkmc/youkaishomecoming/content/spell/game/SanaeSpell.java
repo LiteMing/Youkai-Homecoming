@@ -48,8 +48,7 @@ public class SanaeSpell extends ActualSpellCard {
 			holder.shoot(holder.prepareDanmaku(80, dir, YHDanmaku.Bullet.CIRCLE, DyeColor.RED));
 		}
 		if (tick % 40 == 0) {
-			var dir = holder.forward().multiply(1, 0, 1).normalize();
-			if (dir.length() < 0.1) return;
+			var dir = DanmakuHelper.safeHorizontalDirection(holder.forward(), new Vec3(0, 0, 1));
 			var pos = holder.center();
 			pos = new Vec3(pos.x, le.y, pos.z);
 			var o0 = DanmakuHelper.getOrientation(dir);

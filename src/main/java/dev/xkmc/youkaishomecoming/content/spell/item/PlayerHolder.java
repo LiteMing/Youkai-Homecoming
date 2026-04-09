@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.item;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -37,8 +38,8 @@ public record PlayerHolder(
 	@Override
 	public Vec3 forward() {
 		var target = target();
-		if (target == null) return spell.dir;
-		return target.subtract(center()).normalize();
+		if (target == null) return DanmakuHelper.safeDirection(spell.dir, player.getForward());
+		return DanmakuHelper.safeDirection(target.subtract(center()), spell.dir);
 	}
 
 	@Override

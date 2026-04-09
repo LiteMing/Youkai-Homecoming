@@ -315,9 +315,13 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 				if (shouldIgnore(le))
 					return false;
 			}
-			int cd = getCD(source);
-			if (hurtCD < cd) {
-				return false;
+			// Danmaku damage should flow into DamageThrottleTracker instead of being
+			// short-circuited by the legacy binary hurt cooldown.
+			if (!source.is(YHDamageTypes.DANMAKU_TYPE)) {
+				int cd = getCD(source);
+				if (hurtCD < cd) {
+					return false;
+				}
 			}
 		}
 		hurtCD = 0;

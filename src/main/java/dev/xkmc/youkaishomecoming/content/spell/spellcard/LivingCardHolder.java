@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.spellcard;
 
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
@@ -30,9 +31,9 @@ public interface LivingCardHolder extends CardHolder {
 	default Vec3 forward() {
 		var target = target();
 		if (target != null) {
-			return target.subtract(center()).normalize();
+			return DanmakuHelper.safeDirection(target.subtract(center()), self().getForward());
 		}
-		return self().getForward();
+		return DanmakuHelper.safeDirection(self().getForward(), new Vec3(0, 0, 1));
 	}
 
 	@Override

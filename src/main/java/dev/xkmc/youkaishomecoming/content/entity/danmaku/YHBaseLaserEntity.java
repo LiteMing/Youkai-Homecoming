@@ -53,10 +53,11 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	public void setup(float damage, int life, float length, boolean bypassWall, Vec3 vec3) {
-		double d0 = vec3.horizontalDistance();
+		Vec3 safeDir = DanmakuHelper.safeDirection(vec3, new Vec3(0, 0, 1));
+		double d0 = safeDir.horizontalDistance();
 		setup(damage, life, length, bypassWall,
-				(float) (-Mth.atan2(vec3.x, vec3.z) * Mth.RAD_TO_DEG),
-				(float) (-Mth.atan2(vec3.y, d0) * Mth.RAD_TO_DEG));
+				(float) (-Mth.atan2(safeDir.x, safeDir.z) * Mth.RAD_TO_DEG),
+				(float) (-Mth.atan2(safeDir.y, d0) * Mth.RAD_TO_DEG));
 	}
 
 
@@ -72,8 +73,10 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		this.bypassWall = bypassWall;
 		this.length = length;
 		setupTime(20, 20, life, 20);
-		setYRot(rY);
-		setXRot(rX);
+		float safeYRot = Float.isFinite(rY) ? rY : 0;
+		float safeXRot = Float.isFinite(rX) ? rX : 0;
+		setYRot(safeYRot);
+		setXRot(safeXRot);
 	}
 
 	@Override

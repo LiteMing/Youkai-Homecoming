@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -1359,7 +1360,10 @@ public class ActionEditorPanel {
 		try {
 			// Stale EditBox responders can still fire during focus transitions; ignore mismatched callbacks.
 			modified = modifier.apply(baseAction);
-		} catch (ClassCastException ignored) {
+		} catch (ClassCastException e) {
+			YoukaisHomecoming.LOGGER.warn(
+					"ActionEditorPanel.notifySimple ignored mismatched callback for action type {}",
+					baseAction.getClass().getName(), e);
 			return;
 		}
 		SpellAction newAction = disabled ? new SpellActions.DisabledAction(modified) : modified;

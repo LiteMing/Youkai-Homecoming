@@ -11,6 +11,17 @@
 | BUG-1 | `DanmakuProxyEntity.java:316-319` | 添加 `isPickable()` 返回 `false` |
 | BUG-2 | `DynamicSpellItem.java:158-167` | `resolveSpellDuration()` 兜底返回配置默认值而非 `DURATION_NATURAL` |
 | BUG-3 | `DanmakuManager.java:37-46` + `DanmakuProxyEntity.java:225,233,238,247` | erase 包 tracking entity 与 spawn 包统一（`trackingOverride` 机制） |
+| BUG-4 | `BossYoukaiEntity.java:318-324` | danmaku 伤害不再被 `hurtCD` 二元冷却短路，改为进入 `DamageThrottleTracker` |
+| P0-2 | `SpellRegistry.java:14-115` | `applyDatapackDefaults()` 改为基于单一 `RegistryState` 的 snapshot-and-swap，避免 reload 中间态对外可见 |
+| P1-3 | `SpellRegistry.java:27-35` | `register()` 增加 Javadoc，明确其为 transient live registry 写入，不保存 authoritative defaults |
+| P2-1 | `YHModConfig.java:70-210` + `YoukaisHomecoming.java:255-261` | 新增 `enableTestingSpellTab` 开关，默认仅展示 `itemForm.generate()` 的正式符卡 |
+| P3-1 | `ActionEditorPanel.java:1354-1367` | `notifySimple()` 不再静默吞掉 `ClassCastException`，改为 WARN 日志并保留当前忽略陈旧 responder 的行为 |
+| P3-2 | `LegacyTickerAction.java:15-59` | `legacy_ticker` 缺 factory 时改为 per-spell-id warn，并向触发该符卡的服务端玩家发送一次客户端提示 |
+| P3-3 | `MoverConfigs.java:261-281` | `HomingMoverConfig.create(Vec3,Vec3)` 在无 `SpellContext` 路径下输出一次降级 WARN |
+| P3-4 | `NumberProviders.java:502-518` | `HeightmapY` 增加 `hasChunkAt()` 保护，未加载区块时回退到 target/holder 当前 Y |
+| P3-5 | `SpellItemForm.java:9-37` | 增加 compact constructor 校验，拒绝负数 `cooldown` / `duration`，并兜底空 `iconItem` |
+| P4-1 | `docs/preview-performance-plan.md` | 将 PH 状态从“已实现”更正为“待实施”，并注明当前代码仍为同步 flush |
+| P4-2 | `docs/GLM/spell-editor-migration-plan.md` | 补全 `SpellItemForm` 配置表的 `duration` 列，并同步现有 testing-tab 配置说明 |
 
 ---
 
@@ -19,7 +30,6 @@
 | 项 | 问题 | 建议 |
 |----|------|------|
 | P0-1 | 并行 Step3 残留实时 entity 读取（`getOwner()`、`targets.contains()`、`GrazeHelper`） | 将 owner/targets 信息纳入 `CachedTarget` 快照或移至 Step2 主线程 |
-| P0-2 | `SpellRegistry.applyDatapackDefaults()` 非原子更新 | snapshot-and-swap 或明确文档化为仅主线程操作 |
 
 ---
 
@@ -29,7 +39,6 @@
 |----|------|------|
 | P1-1 | `CONTINUE` 语义从"忽略实体"变为"穿透+伤害" | 与最近修复的 editor `onHitEntity` / `discard` 问题不是同一项；这里是运行时语义变化，仍需审计所有 CONTINUE 使用点，如需"装饰性穿透"则新增 `PASS_THROUGH` 枚举值 |
 | P1-2 | 碰撞检测向量与实际移动向量不匹配 | 将 `computeMove()` 移至 Step1 |
-| P1-3 | `register()` 不再保存 defaults 但 API 不变 | 重命名/降可见性/加 Javadoc |
 
 ---
 
@@ -37,7 +46,6 @@
 
 | 项 | 问题 | 建议 |
 |----|------|------|
-| P2-1 | `populateTestingTab()` 无生产环境开关 | 加 config flag 或 `FMLEnvironment.production` 检查 |
 | P2-2 | commit `b09e447` 粒度失控 + 信息不准确 | 后续拆分或修正信息 |
 | P2-3 | `/yhspell reload` 实为全量 reload | 文档说明或实现轻量 reload |
 
@@ -47,11 +55,6 @@
 
 | 项 | 问题 | 建议 |
 |----|------|------|
-| P3-1 | `notifySimple` blanket catch(ClassCastException) | 移除或改为 WARN 日志 |
-| P3-2 | `LegacyTickerAction` 全局单次 warn | per-spell-id warn + 玩家侧提示 |
-| P3-3 | `HomingMoverConfig.create(Vec3,Vec3)` 静默丢失追踪 | 加日志警告 |
-| P3-4 | `HeightmapY` 无区块加载保护 | `hasChunkAt()` 检查 |
-| P3-5 | `SpellItemForm` 无输入校验 | compact constructor 校验 |
 
 ---
 
@@ -59,8 +62,6 @@
 
 | 项 | 问题 | 建议 |
 |----|------|------|
-| P4-1 | `preview-performance-plan.md` PH 状态不准确 | 验证并更新 |
-| P4-2 | `spell-editor-migration-plan.md` 缺 duration 列 | 补全表格 |
 
 ---
 

@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.action;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import net.minecraft.world.phys.Vec3;
 
@@ -32,31 +33,29 @@ public record LerpDirectionAction(String xKey, String yKey, String zKey, double 
 		if (target == null) return;
 
 		Vec3 cen = ctx.holder().center();
-		Vec3 desired = target.subtract(cen);
-		if (desired.lengthSqr() < 1e-8) return;
-		desired = desired.normalize();
+		Vec3 desiredDelta = target.subtract(cen);
+		if (!DanmakuHelper.isFinite(desiredDelta) || desiredDelta.lengthSqr() < 1e-8) return;
+		Vec3 desired = DanmakuHelper.safeDirection(desiredDelta, ctx.holder().forward());
 
 		double cx = ctx.getVariable(xKey);
 		double cy = ctx.getVariable(yKey);
 		double cz = ctx.getVariable(zKey);
 		Vec3 current = new Vec3(cx, cy, cz);
-		if (current.lengthSqr() < 1e-8) {
+		if (!DanmakuHelper.isFinite(current) || current.lengthSqr() < 1e-8) {
 			// Not initialized yet, snap to desired
 			ctx.setVariable(xKey, desired.x);
 			ctx.setVariable(yKey, desired.y);
 			ctx.setVariable(zKey, desired.z);
 			return;
 		}
+		current = DanmakuHelper.safeDirection(current, desired);
 
 		double dist = current.distanceTo(desired);
-		if (dist < 1e-8) return; // already aligned
+		if (!Double.isFinite(dist) || dist < 1e-8) return; // already aligned
 
 		double perc = dist < maxMove ? 1.0 : maxMove / dist;
 		Vec3 lerped = current.lerp(desired, perc);
-		// Re-normalize to prevent drift
-		if (lerped.lengthSqr() > 1e-8) {
-			lerped = lerped.normalize();
-		}
+		lerped = DanmakuHelper.safeDirection(lerped, desired);
 
 		ctx.setVariable(xKey, lerped.x);
 		ctx.setVariable(yKey, lerped.y);

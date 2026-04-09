@@ -56,11 +56,16 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		this.life = life;
 		this.bypassWall = bypassWall;
 		this.bypassEntity = bypassEntity;
-		setDeltaMovement(initVec);
+		Vec3 safeVelocity = DanmakuHelper.safeVelocity(initVec, new Vec3(0, 0, 1));
+		setDeltaMovement(safeVelocity);
 		// Directly set rotation without lerping so initial direction is correct
-		Vec3 rot = ProjectileMovement.of(initVec).rot();
+		Vec3 rot = ProjectileMovement.of(DanmakuHelper.safeDirection(safeVelocity, new Vec3(0, 0, 1))).rot();
 		float targetXRot = (float) (rot.x * Mth.RAD_TO_DEG);
 		float targetYRot = (float) (rot.y * Mth.RAD_TO_DEG);
+		if (!Float.isFinite(targetXRot) || !Float.isFinite(targetYRot)) {
+			targetXRot = 0;
+			targetYRot = 0;
+		}
 		setXRot(targetXRot);
 		setYRot(targetYRot);
 		xRotO = targetXRot;

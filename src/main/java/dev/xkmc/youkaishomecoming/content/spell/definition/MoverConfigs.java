@@ -5,16 +5,19 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.mover.*;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MoverConfigs {
 
 	private static final Map<String, Codec<? extends MoverConfig>> REGISTRY = new HashMap<>();
 	private static final Map<Class<?>, String> CLASS_TO_TYPE = new HashMap<>();
+	private static final AtomicBoolean WARNED_CONTEXTLESS_HOMING = new AtomicBoolean(false);
 
 	static {
 		register("acceleration", AccelerationConfig.CODEC, AccelerationConfig.class);
@@ -81,15 +84,14 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
 			// Fallback: accelerate along initial velocity direction
-			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			Vec3 dir = DanmakuHelper.safeDirection(velocity, new Vec3(0, 0, 1));
 			return new RectMover(origin, velocity, dir.scale(magnitude));
 		}
 
 		@Override
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity) {
-			Vec3 dir = ctx.holder().forward();
-			if (dir.lengthSqr() < 1e-8) dir = new Vec3(0, 0, 1);
-			return new RectMover(origin, velocity, dir.normalize().scale(magnitude));
+			Vec3 dir = DanmakuHelper.safeDirection(ctx.holder().forward(), new Vec3(0, 0, 1));
+			return new RectMover(origin, velocity, dir.scale(magnitude));
 		}
 	}
 
@@ -121,7 +123,7 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			return new RotateMover(velocity.normalize(), degreesPerTick);
+			return new RotateMover(DanmakuHelper.safeDirection(velocity, new Vec3(0, 0, 1)), degreesPerTick);
 		}
 	}
 
@@ -149,7 +151,7 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			Vec3 dir = DanmakuHelper.safeDirection(velocity, new Vec3(0, 0, 1));
 			var ori = DanmakuHelper.getOrientation(dir);
 			var mover = new PolarMover(origin, Vec3.ZERO, Vec3.ZERO, ori.normal(), ori.forward());
 			mover.radial(radius, radialSpeed, radialAccel);
@@ -212,7 +214,7 @@ public class MoverConfigs {
 			// Use actual ZeroMover (velocity-based, not position-based) to keep bullet
 			// at its current position rather than teleporting back to origin.
 			// rot0 = rot1 = current direction → no rotation change.
-			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity : new Vec3(0, 0, 1);
+			Vec3 dir = DanmakuHelper.safeDirection(velocity, new Vec3(0, 0, 1));
 			return new ZeroMover(dir, dir, 1);
 		}
 	}
@@ -244,14 +246,13 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			Vec3 dir = DanmakuHelper.safeDirection(velocity, new Vec3(0, 0, 1));
 			return new TrackingAttachedMover(dir, maxTurnRate);
 		}
 
 		@Override
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity) {
-			Vec3 dir = ctx.holder().forward();
-			if (dir.lengthSqr() < 1e-8) dir = new Vec3(0, 0, 1);
+			Vec3 dir = DanmakuHelper.safeDirection(ctx.holder().forward(), new Vec3(0, 0, 1));
 			return new TrackingAttachedMover(dir, maxTurnRate);
 		}
 	}
@@ -269,6 +270,9 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			if (WARNED_CONTEXTLESS_HOMING.compareAndSet(false, true)) {
+				YoukaisHomecoming.LOGGER.warn("HomingMoverConfig.create() called without SpellContext; homing target capture is unavailable and the projectile will fly straight.");
+			}
 			return new HomingMover(-1, null, velocity, strength, delay, duration);
 		}
 
@@ -310,7 +314,7 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			Vec3 dir = DanmakuHelper.safeDirection(velocity, new Vec3(0, 0, 1));
 			var ori = DanmakuHelper.getOrientation(dir);
 
 			// Build absolute control points from relative offsets

@@ -15,6 +15,16 @@ public record SpellItemForm(
 		Optional<ResourceLocation> iconItem
 ) {
 
+	public SpellItemForm {
+		if (cooldown < 0) {
+			throw new IllegalArgumentException("SpellItemForm cooldown must be >= 0");
+		}
+		if (duration < 0) {
+			throw new IllegalArgumentException("SpellItemForm duration must be >= 0");
+		}
+		iconItem = iconItem == null ? Optional.empty() : iconItem;
+	}
+
 	public static final SpellItemForm NONE = new SpellItemForm(false, 0, false, 0, Optional.empty());
 
 	public SpellItemForm(boolean generate, int cooldown, boolean requiresTarget, Optional<ResourceLocation> iconItem) {

@@ -13,18 +13,34 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SpellRegistry {
 
-	private static final Map<ResourceLocation, SpellDefinition> REGISTRY = new ConcurrentHashMap<>();
-	/** Authoritative startup defaults from Java/KubeJS registrations. */
-	private static final Map<ResourceLocation, com.google.gson.JsonElement> BUILTIN_DEFAULTS = new ConcurrentHashMap<>();
-	/** World-scoped defaults loaded from datapacks, overriding built-ins when present. */
-	private static final Map<ResourceLocation, com.google.gson.JsonElement> DATAPACK_DEFAULTS = new ConcurrentHashMap<>();
-
-	public static void register(SpellDefinition definition) {
-		REGISTRY.put(definition.id, definition);
+	private record RegistryState(
+			Map<ResourceLocation, SpellDefinition> registry,
+			Map<ResourceLocation, com.google.gson.JsonElement> builtinDefaults,
+			Map<ResourceLocation, com.google.gson.JsonElement> datapackDefaults
+	) {
 	}
 
+	private static final Object WRITE_LOCK = new Object();
+
+	private static volatile RegistryState STATE = new RegistryState(
+			new ConcurrentHashMap<>(),
+			new ConcurrentHashMap<>(),
+			new ConcurrentHashMap<>()
+	);
+
+	public static void register(SpellDefinition definition) {
+		register(definition.id, definition);
+	}
+
+	/**
+	 * Register a transient spell definition.
+	 * This updates the live registry only and does not persist authoritative defaults.
+	 * Datapack reload or explicit reset may replace it.
+	 */
 	public static void register(ResourceLocation id, SpellDefinition definition) {
-		REGISTRY.put(id, definition);
+		synchronized (WRITE_LOCK) {
+			STATE.registry().put(id, definition);
+		}
 	}
 
 	public static void registerBuiltin(SpellDefinition definition) {
@@ -32,30 +48,40 @@ public class SpellRegistry {
 	}
 
 	public static void registerBuiltin(ResourceLocation id, SpellDefinition definition) {
-		REGISTRY.put(id, definition);
-		saveDefault(BUILTIN_DEFAULTS, definition);
+		synchronized (WRITE_LOCK) {
+			STATE.registry().put(id, definition);
+			saveDefault(STATE.builtinDefaults(), id, definition);
+		}
 	}
 
 	public static void applyDatapackDefaults(Map<ResourceLocation, SpellDefinition> definitions) {
-		for (var id : java.util.Set.copyOf(DATAPACK_DEFAULTS.keySet())) {
-			DATAPACK_DEFAULTS.remove(id);
-			SpellDefinition builtin = decodeDefault(BUILTIN_DEFAULTS.get(id));
-			if (builtin != null) {
-				REGISTRY.put(id, builtin);
-			} else {
-				REGISTRY.remove(id);
+		synchronized (WRITE_LOCK) {
+			RegistryState current = STATE;
+			Map<ResourceLocation, SpellDefinition> registry = new ConcurrentHashMap<>(current.registry());
+			Map<ResourceLocation, com.google.gson.JsonElement> datapackDefaults = new ConcurrentHashMap<>();
+
+			for (var id : current.datapackDefaults().keySet()) {
+				SpellDefinition builtin = decodeDefault(current.builtinDefaults().get(id));
+				if (builtin != null) {
+					registry.put(id, builtin);
+				} else {
+					registry.remove(id);
+				}
 			}
-		}
-		for (var entry : definitions.entrySet()) {
-			SpellDefinition def = entry.getValue();
-			REGISTRY.put(entry.getKey(), def);
-			saveDefault(DATAPACK_DEFAULTS, def);
+
+			for (var entry : definitions.entrySet()) {
+				SpellDefinition def = entry.getValue();
+				registry.put(entry.getKey(), def);
+				saveDefault(datapackDefaults, entry.getKey(), def);
+			}
+
+			STATE = new RegistryState(registry, current.builtinDefaults(), datapackDefaults);
 		}
 	}
 
-	private static void saveDefault(Map<ResourceLocation, com.google.gson.JsonElement> defaults, SpellDefinition def) {
+	private static void saveDefault(Map<ResourceLocation, com.google.gson.JsonElement> defaults, ResourceLocation id, SpellDefinition def) {
 		SpellDefinition.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, def)
-				.result().ifPresent(json -> defaults.put(def.id, json));
+				.result().ifPresent(json -> defaults.put(id, json));
 	}
 
 	@Nullable
@@ -70,7 +96,8 @@ public class SpellRegistry {
 	 * Used to distinguish source-authored spells from user-created custom spells.
 	 */
 	public static boolean hasDefault(ResourceLocation id) {
-		return DATAPACK_DEFAULTS.containsKey(id) || BUILTIN_DEFAULTS.containsKey(id);
+		RegistryState state = STATE;
+		return state.datapackDefaults().containsKey(id) || state.builtinDefaults().containsKey(id);
 	}
 
 	/**
@@ -79,35 +106,42 @@ public class SpellRegistry {
 	 */
 	@Nullable
 	public static SpellDefinition getDefault(ResourceLocation id) {
-		SpellDefinition datapack = decodeDefault(DATAPACK_DEFAULTS.get(id));
+		RegistryState state = STATE;
+		SpellDefinition datapack = decodeDefault(state.datapackDefaults().get(id));
 		if (datapack != null) return datapack;
-		return decodeDefault(BUILTIN_DEFAULTS.get(id));
+		return decodeDefault(state.builtinDefaults().get(id));
 	}
 
 	@Nullable
 	public static SpellDefinition get(ResourceLocation id) {
-		return REGISTRY.get(id);
+		return STATE.registry().get(id);
 	}
 
 	public static Map<ResourceLocation, SpellDefinition> getAll() {
-		return java.util.Collections.unmodifiableMap(REGISTRY);
+		return java.util.Collections.unmodifiableMap(STATE.registry());
 	}
 
 	public static boolean contains(ResourceLocation id) {
-		return REGISTRY.containsKey(id);
+		return STATE.registry().containsKey(id);
 	}
 
 	public static void remove(ResourceLocation id) {
-		REGISTRY.remove(id);
+		synchronized (WRITE_LOCK) {
+			STATE.registry().remove(id);
+		}
 	}
 
 	public static void clear() {
-		REGISTRY.clear();
-		BUILTIN_DEFAULTS.clear();
-		DATAPACK_DEFAULTS.clear();
+		synchronized (WRITE_LOCK) {
+			STATE = new RegistryState(
+					new ConcurrentHashMap<>(),
+					new ConcurrentHashMap<>(),
+					new ConcurrentHashMap<>()
+			);
+		}
 	}
 
 	public static int size() {
-		return REGISTRY.size();
+		return STATE.registry().size();
 	}
 }

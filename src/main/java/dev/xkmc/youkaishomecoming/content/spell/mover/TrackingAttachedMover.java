@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.mover;
 
 import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
@@ -28,12 +29,14 @@ public class TrackingAttachedMover extends DanmakuMover {
 	}
 
 	public TrackingAttachedMover(Vec3 initialDirection, double maxTurnRateDegrees) {
-		this.direction = initialDirection.normalize();
+		this.direction = DanmakuHelper.safeDirection(initialDirection, new Vec3(0, 0, 1));
 		this.maxTurnRate = maxTurnRateDegrees;
 	}
 
 	@Override
 	public ProjectileMovement move(MoverInfo info) {
+		direction = DanmakuHelper.safeDirection(direction, new Vec3(0, 0, 1));
+
 		// Get caster center position
 		Vec3 casterPos = getCasterCenter(info);
 		Vec3 delta = casterPos.subtract(info.prevPos());
@@ -41,14 +44,14 @@ public class TrackingAttachedMover extends DanmakuMover {
 		// Try to get target position and lerp direction toward it
 		Vec3 targetPos = getTargetPos(info);
 		if (targetPos != null) {
-			Vec3 desired = targetPos.subtract(casterPos);
-			if (desired.lengthSqr() > 1e-6) {
-				desired = desired.normalize();
+			Vec3 desiredDelta = targetPos.subtract(casterPos);
+			if (DanmakuHelper.isFinite(desiredDelta) && desiredDelta.lengthSqr() > 1e-6) {
+				Vec3 desired = DanmakuHelper.safeDirection(desiredDelta, direction);
 				double angle = angleBetween(direction, desired);
 				if (angle > 1e-6) {
 					double maxRad = Math.toRadians(maxTurnRate);
 					double perc = angle < maxRad ? 1.0 : maxRad / angle;
-					direction = slerp(direction, desired, perc).normalize();
+					direction = DanmakuHelper.safeDirection(slerp(direction, desired, perc), desired);
 				}
 			}
 		}

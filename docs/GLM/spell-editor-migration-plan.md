@@ -410,14 +410,14 @@
 
 但它仍未完成正式物品化：
 - 第一批 5 个简单已迁移符卡已配置 `SpellItemForm`
-  - `sunny_milk`: `generate=true`, `cooldown=100`, `requiresTarget=false`
-  - `luna_child`: `generate=true`, `cooldown=120`, `requiresTarget=false`
-  - `star_sapphire`: `generate=true`, `cooldown=80`, `requiresTarget=true`
-  - `cirno`: `generate=true`, `cooldown=100`, `requiresTarget=true`
-  - `mystia_lorelei`: `generate=true`, `cooldown=140`, `requiresTarget=false`
+  - `sunny_milk`: `generate=true`, `cooldown=100`, `duration=100`, `requiresTarget=false`
+  - `luna_child`: `generate=true`, `cooldown=120`, `duration=120`, `requiresTarget=false`
+  - `star_sapphire`: `generate=true`, `cooldown=80`, `duration=80`, `requiresTarget=true`
+  - `cirno`: `generate=true`, `cooldown=100`, `duration=100`, `requiresTarget=true`
+  - `mystia_lorelei`: `generate=true`, `cooldown=140`, `duration=140`, `requiresTarget=false`
 - `SpellItemForm` 已新增独立 `duration` 字段；`DynamicSpellItem` 优先使用 `duration`，旧数据未填写时回退到 `cooldown`
 - 所有 12 个 legacy 符卡也是 `NONE`（`LegacySpellBridge.fromLegacy` 硬编码）
-- 当前创造标签页走的是 testing path：展示全部注册 spell，而不是仅 `itemForm.generate()==true` 的正式列表
+- 创造标签页现已由 `enableTestingSpellTab` 控制：默认展示正式列表，测试时才切到全量注册 spell
 
 ### 实装需要的改动（按依赖顺序）
 
@@ -434,13 +434,13 @@ private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLoca
 
 首批已落地：
 
-| 符卡 | cooldown (tick) | requiresTarget | 理由 |
-|------|----------------|----------------|------|
-| sunny_milk | 100 (5s) | false | 全向 RING，不需要目标 |
-| luna_child | 120 (6s) | false | 周期性全向弹幕 |
-| star_sapphire | 80 (4s) | true | 锥形扩散需要方向 |
-| cirno | 100 (5s) | true | direction_to_target 分裂 |
-| mystia | 140 (7s) | false | Shooter + Burst 持续较长 |
+| 符卡 | cooldown (tick) | duration (tick) | requiresTarget | 理由 |
+|------|----------------|-----------------|----------------|------|
+| sunny_milk | 100 (5s) | 100 (5s) | false | 全向 RING，不需要目标 |
+| luna_child | 120 (6s) | 120 (6s) | false | 周期性全向弹幕 |
+| star_sapphire | 80 (4s) | 80 (4s) | true | 锥形扩散需要方向 |
+| cirno | 100 (5s) | 100 (5s) | true | direction_to_target 分裂 |
+| mystia | 140 (7s) | 140 (7s) | false | Shooter + Burst 持续较长 |
 
 剩余 migrated spell 仍需逐个验证是否适合玩家物品上下文，尤其是带 boss 自移动、受伤回调、强制位移或复杂 arena 逻辑的符卡。
 
@@ -449,7 +449,9 @@ private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLoca
 **文件:** `YHDanmaku.java` 或创建一个事件监听器
 
 已在 `YoukaisHomecoming.buildCreativeTabContents()` 中接入创造标签页事件。
-当前调用的是 `SpellItemAutoRegister.populateTestingTab()`，会把所有已注册 spell 加入 `Youkai's Danmaku` 标签页，方便调试。
+当前由 `enableTestingSpellTab` config 控制：
+- `false`（默认）→ `SpellItemAutoRegister.populateCreativeTab()`，只展示正式物品化的 spell
+- `true` → `SpellItemAutoRegister.populateTestingTab()`，把所有已注册 spell 加入 `Youkai's Danmaku` 标签页方便调试
 
 正式物品化时仍建议改回只展示 `itemForm.generate()==true` 的列表，例如：
 
@@ -527,7 +529,7 @@ legacy 符卡通过 `LegacySpellBridge` 也在 `SpellRegistry` 中。它们的 `
 1. **P0: Legacy 符卡数据驱动迁移** — 最高优先，在条件系统补全后逐个迁移
 2. **P1: 创造模式测试调用** — ✅ 已完成
    - `/yhspell give <player> <spell_id> [ticks]`
-   - `SpellItemAutoRegister.populateTestingTab()` 已接入 `Youkai's Danmaku` 创造标签页
+   - `SpellItemAutoRegister.populateTestingTab()` 已接入并受 `enableTestingSpellTab` config gate 控制
 3. **P2: dynamic_spell 基础物品化** — 进行中（首批 5 个 simple migrated spell 已配置）
 4. **P3: 生存模式自定义符卡系统** — 见下文
 

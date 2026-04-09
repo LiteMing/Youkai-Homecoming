@@ -34,18 +34,16 @@ public record SetVelocityAction(
 
 	@Override
 	public void execute(SpellContext ctx) {
-		Vec3 baseDir = aimMode.getBaseDirection(ctx, ctx.holder().center());
-		if (baseDir.lengthSqr() < 1e-8) {
-			baseDir = new Vec3(0, 0, 1);
-		}
+		Vec3 baseDir = DanmakuHelper.safeDirection(aimMode.getBaseDirection(ctx, ctx.holder().center()), ctx.holder().forward());
 		double angle = angleOffset.get(ctx);
 		double elev = elevation.get(ctx);
 		Vec3 dir = (angle != 0 || elev != 0)
-				? DanmakuHelper.getOrientation(baseDir.normalize()).rotateDegrees(angle, elev)
-				: baseDir.normalize();
+				? DanmakuHelper.getOrientation(baseDir).rotateDegrees(angle, elev)
+				: baseDir;
 		Vec3 velocity = dir.scale(speed.get(ctx));
 		if (additive) {
-			velocity = ctx.self().getDeltaMovement().add(velocity);
+			Vec3 currentVelocity = ctx.self().getDeltaMovement();
+			velocity = (DanmakuHelper.isFinite(currentVelocity) ? currentVelocity : Vec3.ZERO).add(velocity);
 		}
 		ctx.self().setDeltaMovement(velocity);
 		ctx.self().hasImpulse = true;

@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
@@ -72,8 +73,8 @@ public class PreviewCardHolder implements CardHolder {
 	@Override
 	public Vec3 forward() {
 		Vec3 t = target();
-		if (t == null) return new Vec3(0, 0, 1);
-		return t.subtract(center()).normalize();
+		if (t == null) return DanmakuHelper.safeDirection(fakeCaster.getForward(), new Vec3(0, 0, 1));
+		return DanmakuHelper.safeDirection(t.subtract(center()), fakeCaster.getForward());
 	}
 
 	@Nullable

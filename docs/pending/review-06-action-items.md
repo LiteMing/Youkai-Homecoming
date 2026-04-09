@@ -15,6 +15,8 @@
 | P0-2 | `SpellRegistry.java:14-115` | `applyDatapackDefaults()` 改为基于单一 `RegistryState` 的 snapshot-and-swap，避免 reload 中间态对外可见 |
 | P1-3 | `SpellRegistry.java:27-35` | `register()` 增加 Javadoc，明确其为 transient live registry 写入，不保存 authoritative defaults |
 | P2-1 | `YHModConfig.java:70-210` + `YoukaisHomecoming.java:255-261` | 新增 `enableTestingSpellTab` 开关，默认仅展示 `itemForm.generate()` 的正式符卡 |
+| P2-2 | `docs/pending/review-00-overview.md` + `docs/pending/review-05-commits-7-to-13.md` | 补充后续说明，修正 `b09e447` 的摘要为其真实混合范围，不再沿用误导性窄标题 |
+| P2-3 | `YHCommands.java:398-410` + `docs/plan-spellcard-rework-claude.md` | `/yhspell reload` 明确提示其为全量 datapack reload（等价 `/reload`），文档同步更正 |
 | P3-1 | `ActionEditorPanel.java:1354-1367` | `notifySimple()` 不再静默吞掉 `ClassCastException`，改为 WARN 日志并保留当前忽略陈旧 responder 的行为 |
 | P3-2 | `LegacyTickerAction.java:15-59` | `legacy_ticker` 缺 factory 时改为 per-spell-id warn，并向触发该符卡的服务端玩家发送一次客户端提示 |
 | P3-3 | `MoverConfigs.java:261-281` | `HomingMoverConfig.create(Vec3,Vec3)` 在无 `SpellContext` 路径下输出一次降级 WARN |
@@ -46,8 +48,6 @@
 
 | 项 | 问题 | 建议 |
 |----|------|------|
-| P2-2 | commit `b09e447` 粒度失控 + 信息不准确 | 后续拆分或修正信息 |
-| P2-3 | `/yhspell reload` 实为全量 reload | 文档说明或实现轻量 reload |
 
 ---
 

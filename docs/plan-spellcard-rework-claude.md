@@ -348,7 +348,7 @@ public class DifficultyProfile {
 /yhspell reset <entity>                   - 重置符卡状态
 /yhspell debug <entity>                   - 输出当前状态
 /yhspell give <player> <spell_id> [ticks] - 发放 dynamic_spell 测试物品
-/yhspell reload                           - 重载datapack定义并刷新 spell registry
+/yhspell reload                           - 触发一次全量 datapack reload（等价于 /reload），并借此刷新 spell registry
 ```
 
 ### 十二、KubeJS接入

@@ -397,13 +397,15 @@ public class YHCommands {
 							var server = ctx.getSource().getServer();
 							var source = ctx.getSource();
 							var selectedPacks = java.util.List.copyOf(server.getPackRepository().getSelectedIds());
-							source.sendSuccess(() -> Component.literal("Reloading datapacks and spell definitions..."), true);
+							source.sendSuccess(() -> Component.literal(
+									"Reloading all datapacks (equivalent to /reload) to refresh spell definitions..."), true);
 							server.reloadResources(selectedPacks).whenComplete((unused, error) -> server.execute(() -> {
 								if (error != null) {
 									Throwable cause = error.getCause() != null ? error.getCause() : error;
 									source.sendFailure(Component.literal("Reload failed: " + cause.getMessage()));
 								} else {
-									source.sendSuccess(() -> Component.literal("Reload complete"), true);
+									source.sendSuccess(() -> Component.literal(
+											"Full datapack reload complete; spell definitions refreshed"), true);
 								}
 							}));
 							return 1;

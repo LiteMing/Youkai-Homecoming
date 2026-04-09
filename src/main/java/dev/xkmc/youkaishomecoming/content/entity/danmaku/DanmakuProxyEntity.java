@@ -219,6 +219,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 		removeDanmakuFlag[0] = false;
 		temp = new ArrayList<>();
 		if (level() instanceof ServerLevel sl) {
+			// Ensure erase packets are routed through this proxy entity (same as spawn packets),
+			// not through the ownerPlayer. A ServerPlayer does NOT track itself, so without
+			// this override the caster would never receive erase packets.
+			DanmakuManager.setTrackingOverride(this);
 			ParallelDanmakuTicker.tickAll(
 					sl, allDanmakus, temp, toBeSent, removeDanmakuFlag, cache, this);
 			removeDanmaku = removeDanmakuFlag[0];
@@ -226,9 +230,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 		temp = null;
 		toBeSent.clear();
 		DanmakuManager.flushErases();
+		DanmakuManager.setTrackingOverride(null);
 	}
 
 	public void eraseAllDanmaku(@Nullable Player player) {
+		// Route erase packets through this proxy (same tracking target as spawn packets)
+		DanmakuManager.setTrackingOverride(this);
 		for (var e : allDanmakus) {
 			if (player == null) e.markErased(true);
 			else e.erase(player);
@@ -237,6 +244,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		removeDanmaku = true;
 		removeDanmakuFlag[0] = true;
 		DanmakuManager.flushErases();
+		DanmakuManager.setTrackingOverride(null);
 	}
 
 	@Override
@@ -310,6 +318,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 
 	@Override
 	public boolean isPushable() {
+		return false;
+	}
+
+	@Override
+	public boolean isPickable() {
 		return false;
 	}
 

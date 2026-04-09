@@ -41,6 +41,7 @@ public class SpellActions {
 		register("set_entity_flag", SetEntityFlagAction.CODEC, SetEntityFlagAction.class);
 		register("teleport_random", TeleportRandomAction.CODEC, TeleportRandomAction.class);
 		register("set_velocity", SetVelocityAction.CODEC, SetVelocityAction.class);
+		register("lerp_direction", LerpDirectionAction.CODEC, LerpDirectionAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {

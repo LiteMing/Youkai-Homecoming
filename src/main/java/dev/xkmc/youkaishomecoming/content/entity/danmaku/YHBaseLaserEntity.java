@@ -135,7 +135,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		super.tick();
 		danmakuMove();
 		if (!level().isClientSide() && tickCount > life) {
-			discard();
+			markErased(false);
 		}
 	}
 

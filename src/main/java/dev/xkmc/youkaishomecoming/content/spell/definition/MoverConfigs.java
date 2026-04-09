@@ -18,6 +18,7 @@ public class MoverConfigs {
 
 	static {
 		register("acceleration", AccelerationConfig.CODEC, AccelerationConfig.class);
+		register("directional_acceleration", DirectionalAccelerationConfig.CODEC, DirectionalAccelerationConfig.class);
 		register("deceleration", DecelerationConfig.CODEC, DecelerationConfig.class);
 		register("rotate", RotateConfig.CODEC, RotateConfig.class);
 		register("polar", PolarMoverConfig.CODEC, PolarMoverConfig.class);
@@ -25,6 +26,7 @@ public class MoverConfigs {
 		register("zero", ZeroMoverConfig.CODEC, ZeroMoverConfig.class);
 		register("bezier", BezierMoverConfig.CODEC, BezierMoverConfig.class);
 		register("attached", AttachedMoverConfig.CODEC, AttachedMoverConfig.class);
+		register("tracking_attached", TrackingAttachedConfig.CODEC, TrackingAttachedConfig.class);
 		register("homing", HomingMoverConfig.CODEC, HomingMoverConfig.class);
 	}
 
@@ -63,6 +65,31 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
 			return new RectMover(origin, velocity, acceleration);
+		}
+	}
+
+	/**
+	 * Directional acceleration: applies acceleration along the caster's forward (toward target)
+	 * direction at the moment the danmaku is spawned. Useful for "attracted toward target" effects.
+	 * JSON: {"type": "directional_acceleration", "magnitude": 0.05}
+	 */
+	public record DirectionalAccelerationConfig(double magnitude) implements MoverConfig {
+		public static final Codec<DirectionalAccelerationConfig> CODEC = Codec.DOUBLE
+				.fieldOf("magnitude").codec()
+				.xmap(DirectionalAccelerationConfig::new, DirectionalAccelerationConfig::magnitude);
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			// Fallback: accelerate along initial velocity direction
+			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			return new RectMover(origin, velocity, dir.scale(magnitude));
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity) {
+			Vec3 dir = ctx.holder().forward();
+			if (dir.lengthSqr() < 1e-8) dir = new Vec3(0, 0, 1);
+			return new RectMover(origin, velocity, dir.normalize().scale(magnitude));
 		}
 	}
 
@@ -201,6 +228,31 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
 			return new AttachedMover();
+		}
+	}
+
+	/**
+	 * Attached mover that slowly rotates its direction toward the target.
+	 * Used for lasers like Master Spark that follow the caster and track the player.
+	 * maxTurnRate: maximum degrees per tick the laser can rotate.
+	 * JSON: {"type": "tracking_attached", "max_turn_rate": 1.15}
+	 */
+	public record TrackingAttachedConfig(double maxTurnRate) implements MoverConfig {
+		public static final Codec<TrackingAttachedConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.optionalFieldOf("max_turn_rate", 1.15).forGetter(TrackingAttachedConfig::maxTurnRate)
+		).apply(i, TrackingAttachedConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			return new TrackingAttachedMover(dir, maxTurnRate);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity) {
+			Vec3 dir = ctx.holder().forward();
+			if (dir.lengthSqr() < 1e-8) dir = new Vec3(0, 0, 1);
+			return new TrackingAttachedMover(dir, maxTurnRate);
 		}
 	}
 

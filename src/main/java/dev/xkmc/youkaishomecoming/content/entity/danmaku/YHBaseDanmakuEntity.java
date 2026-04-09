@@ -118,7 +118,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 				// Don't discard — let it keep flying until lifetime expires
 				return;
 			}
-			discard();
+			markErased(false);
 		}
 	}
 
@@ -141,12 +141,16 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		if (this instanceof ItemDanmakuEntity ide && ide.onHitEntityAction != null) {
 			executeHitAction(ide.onHitEntityAction);
 		}
-		if (this instanceof ItemDanmakuEntity ide && ide.hitBehaviorEntity == HitBehavior.CONTINUE) {
-			// Don't discard — let it keep flying until lifetime expires
-			return;
-		}
-		if (!bypassEntity) {
-			discard();
+		// Discard decision: controlled entirely by hitBehaviorEntity for data-driven danmaku.
+		// CONTINUE = keep flying (pierce through). DISCARD = stop on hit.
+		// For non-data-driven danmaku (no hitBehaviorEntity set), fall back to bypassEntity flag.
+		if (this instanceof ItemDanmakuEntity ide) {
+			if (ide.hitBehaviorEntity != HitBehavior.DISCARD) {
+				return;
+			}
+			markErased(false);
+		} else if (!bypassEntity) {
+			markErased(false);
 		}
 	}
 

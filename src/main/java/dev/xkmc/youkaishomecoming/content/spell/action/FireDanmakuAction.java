@@ -56,7 +56,7 @@ public record FireDanmakuAction(
 			int trailInterval) {
 		this(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
-				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD,
+				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.CONTINUE,
 				Optional.empty());
 	}
 
@@ -71,7 +71,7 @@ public record FireDanmakuAction(
 			int trailInterval, Optional<NumberProvider> tiltAngle) {
 		this(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
-				tiltAngle, Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD,
+				tiltAngle, Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.CONTINUE,
 				Optional.empty());
 	}
 
@@ -102,7 +102,7 @@ public record FireDanmakuAction(
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_entity").forGetter(FireDanmakuAction::onHitEntity),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_block").forGetter(FireDanmakuAction::onHitBlock),
 			HitBehavior.CODEC.optionalFieldOf("hit_behavior_entity", HitBehavior.DISCARD).forGetter(FireDanmakuAction::hitBehaviorEntity),
-			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.DISCARD).forGetter(FireDanmakuAction::hitBehaviorBlock),
+			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.CONTINUE).forGetter(FireDanmakuAction::hitBehaviorBlock),
 			DanmakuDamageType.CODEC.optionalFieldOf("damage_type").forGetter(FireDanmakuAction::damageType)
 	).apply(i, (base, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType) -> new FireDanmakuAction(
 			base.bulletType, base.color, base.count, base.speed, base.lifetime,
@@ -400,18 +400,15 @@ public record FireDanmakuAction(
 		}
 		danmaku.hitBehaviorEntity = hitBehaviorEntity;
 		danmaku.hitBehaviorBlock = hitBehaviorBlock;
-		// Override bypassWall/bypassEntity based on onHit configuration.
 		// Default from prepareDanmaku is bypassWall=true, bypassEntity=true (boss danmaku defaults).
-		// If onHitBlock is configured, we must enable block collision detection.
-		if (onHitBlock.isPresent()) {
+		// Keep that legacy pass-through behavior unless this action explicitly uses block-hit handling:
+		// either a block-hit callback is configured, or block hits should discard the danmaku.
+		if (onHitBlock.isPresent() || hitBehaviorBlock == HitBehavior.DISCARD) {
 			danmaku.setBypassWall(false);
 		}
-		// hitBehaviorEntity controls entity hit behavior:
-		// DISCARD = stop on entity hit (bypassEntity=false)
-		// CONTINUE = pierce through (bypassEntity=true, already the default)
-		if (hitBehaviorEntity == HitBehavior.DISCARD) {
-			danmaku.setBypassEntity(false);
-		}
+		// Data-driven danmaku always enables entity collision detection.
+		// Hit behavior (continue or discard) is controlled by hitBehaviorEntity in onHitEntity().
+		danmaku.setBypassEntity(false);
 		holder.shoot(danmaku);
 	}
 

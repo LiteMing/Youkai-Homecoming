@@ -19,6 +19,7 @@ public class SpellItemAutoRegister {
 	private static final Comparator<ResourceLocation> SPELL_ID_ORDER =
 			Comparator.comparing(ResourceLocation::getNamespace)
 					.thenComparing(ResourceLocation::getPath);
+	private static final int DEFAULT_TEST_DURATION = 200;
 
 	/**
 	 * Call during creative tab build event to add dynamic spell item stacks.
@@ -35,12 +36,23 @@ public class SpellItemAutoRegister {
 	 * regardless of itemForm.generate().
 	 */
 	public static void populateTestingTab(CreativeModeTab.Output output) {
-		SpellRegistry.getAll().keySet().stream()
-				.sorted(SPELL_ID_ORDER)
-				.forEach(id -> output.accept(createStack(id)));
+		SpellRegistry.getAll().entrySet().stream()
+				.sorted(java.util.Map.Entry.comparingByKey(SPELL_ID_ORDER))
+				.forEach(entry -> output.accept(createTestingStack(entry.getKey(), entry.getValue())));
 	}
 
 	private static ItemStack createStack(ResourceLocation spellId) {
 		return DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId);
+	}
+
+	private static ItemStack createTestingStack(ResourceLocation spellId, SpellDefinition definition) {
+		int duration = definition.itemForm.duration();
+		if (duration <= 0) {
+			duration = definition.itemForm.cooldown();
+		}
+		if (duration <= 0) {
+			duration = DEFAULT_TEST_DURATION;
+		}
+		return DynamicSpellItem.createStackWithDuration(YHDanmaku.DYNAMIC_SPELL.get(), spellId, duration);
 	}
 }

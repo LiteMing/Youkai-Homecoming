@@ -254,7 +254,7 @@ public class YoukaisHomecoming {
 	@SubscribeEvent
 	public static void buildCreativeTabContents(BuildCreativeModeTabContentsEvent event) {
 		if (event.getTabKey().equals(YHDanmaku.TAB.getKey())) {
-			SpellItemAutoRegister.populateTestingTab(event);
+			SpellItemAutoRegister.populateCreativeTab(event);
 		}
 	}
 

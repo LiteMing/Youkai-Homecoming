@@ -2509,6 +2509,9 @@ public class MigratedSpellCards {
 		List<DyeColor> holeColors = List.of(DyeColor.RED, DyeColor.YELLOW, DyeColor.GREEN, DyeColor.CYAN, DyeColor.BLUE);
 
 		var stopCaster = new SetVelocityAction(NumberProvider.constant(0), new AimMode.AimModes.Target());
+		// Fix #4: Legacy EarthLight direction is (gaussianX, 5, gaussianZ).normalize()
+		// which produces a mostly-up vector with random tilt. We approximate this with
+		// a random angle spread AimMode on a base up direction.
 		var fixedUp = new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0));
 
 		// --- Earth Light ---
@@ -2524,17 +2527,21 @@ public class MigratedSpellCards {
 				));
 		var earthOrigin = new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
 				elPosX, elPosY, elPosZ, NumberProvider.constant(0));
+		// Fix #4: Legacy EarthLight direction is (gaussianX, 5, gaussianZ).normalize()
+		// atan(1/5) ≈ 11.3°, so we use Gaussian(0, 11) for both angle offsets
+		var elAngleRandom = new NumberProviders.GaussianRandom(0, 11);
+		var elElevRandom = new NumberProviders.GaussianRandom(0, 11);
 		var earthLaserRed = new FireLaserAction(
 				YHDanmaku.Laser.LASER, DyeColor.RED,
 				NumberProvider.constant(60), NumberProvider.constant(80),
-				NumberProvider.constant(0), NumberProvider.constant(0),
+				elAngleRandom, elElevRandom,
 				fixedUp, earthOrigin,
 				Optional.empty(), 0, 0, 0,
 				Optional.empty(), Optional.empty());
 		var earthLaserBlue = new FireLaserAction(
 				YHDanmaku.Laser.LASER, DyeColor.BLUE,
 				NumberProvider.constant(60), NumberProvider.constant(80),
-				NumberProvider.constant(0), NumberProvider.constant(0),
+				elAngleRandom, elElevRandom,
 				fixedUp, earthOrigin,
 				Optional.empty(), 0, 0, 0,
 				Optional.empty(), Optional.empty());
@@ -2549,6 +2556,9 @@ public class MigratedSpellCards {
 		));
 
 		// --- Dash Star ---
+		// Fix #1: Use VariableDirection to lock dash direction at start of each charge,
+		// instead of real-time tracking. Legacy snaps direction once per charge.
+		var dashAim = new AimMode.AimModes.VariableDirection("dash_dx", "dash_dy", "dash_dz");
 		var dashTrailOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
 				NumberProvider.constant(0), NumberProvider.constant(0),
 				new NumberProviders.Variable("di"), NumberProvider.constant(0));
@@ -2561,9 +2571,21 @@ public class MigratedSpellCards {
 						PatternType.RANDOM, dashTrailOrigin, new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
+		// Snapshot direction + small random offset at each charge start
+		var snapDashDirection = List.<SpellAction>of(
+				new SpellActions.SetVariable("dash_dx", new NumberProviders.Add(
+						new NumberProviders.ForwardX(),
+						new NumberProviders.GaussianRandom(0, 0.05))),
+				new SpellActions.SetVariable("dash_dy", new NumberProviders.Add(
+						new NumberProviders.ForwardY(),
+						new NumberProviders.GaussianRandom(0, 0.05))),
+				new SpellActions.SetVariable("dash_dz", new NumberProviders.Add(
+						new NumberProviders.ForwardZ(),
+						new NumberProviders.GaussianRandom(0, 0.05)))
+		);
 		SpellAction dashTick = new SpellActions.ConditionalAction(
 				new SpellConditions.CompareNumbers(phaseTick, "<", dashEnd),
-				List.of(new SetVelocityAction(NumberProvider.constant(2.5), new AimMode.AimModes.Target()), dashTrail),
+				List.of(new SetVelocityAction(NumberProvider.constant(2.5), dashAim), dashTrail),
 				List.of());
 		SpellAction dashBoundary = new SpellActions.ConditionalAction(
 				new SpellConditions.CompareNumbers(phaseTick, "==", dashEnd),
@@ -2572,7 +2594,10 @@ public class MigratedSpellCards {
 						new SpellActions.AddVariable("dash_count", 1),
 						new SpellActions.ConditionalAction(
 								new SpellConditions.CompareNumbers(dashCount, "<", dashTotal),
-								List.of(new SpellActions.AddVariable("dash_end", 40)),
+								List.of(
+										// Re-snapshot direction for next charge
+										snapDashDirection.get(0), snapDashDirection.get(1), snapDashDirection.get(2),
+										new SpellActions.AddVariable("dash_end", 40)),
 								List.of())
 				),
 				List.of());
@@ -2611,12 +2636,14 @@ public class MigratedSpellCards {
 		var bhSpeed = new NumberProviders.Mul(
 				new NumberProviders.Mul(new NumberProviders.Mul(bhBaseSpeed, NumberProvider.constant(0.8)), bhSpeedScale),
 				bhPhase3Scale);
+		// Fix #2: Add directional acceleration toward target (legacy ACC=0.05, vectorScale~0.9)
+		var bhAccMover = new MoverConfigs.DirectionalAccelerationConfig(0.045);
 		var blackHoleBullet = new FireDanmakuAction(
 				YHDanmaku.Bullet.SPARK, new ColorProvider.ByVariable("bhc", holeColors),
 				NumberProvider.constant(1), bhSpeed, NumberProvider.constant(80),
 				bhAngle, NumberProvider.constant(0), NumberProvider.constant(0),
 				PatternType.AIMED, bhOrigin, new AimMode.AimModes.CasterFacing(),
-				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+				Optional.of(bhAccMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		SpellAction blackHoleTick = new SpellActions.RepeatAction(NumberProvider.constant(5), "bhc", List.of(
 				new SpellActions.RepeatAction(NumberProvider.constant(2), "bht", List.of(
 						new SpellActions.RepeatAction(NumberProvider.constant(2), "bhj", List.of(blackHoleBullet))
@@ -2624,15 +2651,24 @@ public class MigratedSpellCards {
 		));
 
 		// --- Master Spark ---
+		// Fix #3: Laser tracks target via TrackingAttachedConfig (position + slow rotation).
+		// Star/Spark danmaku use a separate slowly-lerped direction ($ms_dx/dy/dz)
+		// matching legacy's maxMove=0.02/tick lerp on the `target` variable.
 		var masterLaser = new FireLaserAction(
 				YHDanmaku.Laser.LASER, DyeColor.YELLOW,
 				NumberProvider.constant(1), NumberProvider.constant(80),
 				NumberProvider.constant(0), NumberProvider.constant(0),
 				new AimMode.AimModes.DirectionToTarget(),
 				OriginConfig.caster(),
-				Optional.of(new MoverConfigs.AttachedMoverConfig()),
+				Optional.of(new MoverConfigs.TrackingAttachedConfig(1.15)),
 				20, 1, 1,
 				Optional.empty(), Optional.empty());
+		var msAim = new AimMode.AimModes.VariableDirection("ms_dx", "ms_dy", "ms_dz");
+		var msLerpAction = new LerpDirectionAction("ms_dx", "ms_dy", "ms_dz", 0.02);
+		var initMsDir = List.<SpellAction>of(
+				new SpellActions.SetVariable("ms_dx", new NumberProviders.ForwardX()),
+				new SpellActions.SetVariable("ms_dy", new NumberProviders.ForwardY()),
+				new SpellActions.SetVariable("ms_dz", new NumberProviders.ForwardZ()));
 		var msForwardOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
 				NumberProvider.constant(0), NumberProvider.constant(0),
 				new NumberProviders.Add(
@@ -2651,7 +2687,7 @@ public class MigratedSpellCards {
 						NumberProvider.constant(1), new NumberProviders.RandomRange(2.0, 3.0),
 						NumberProvider.constant(40), NumberProvider.constant(0),
 						NumberProvider.constant(30), NumberProvider.constant(30),
-						PatternType.RANDOM, msForwardOrigin, new AimMode.AimModes.DirectionToTarget(),
+						PatternType.RANDOM, msForwardOrigin, msAim,
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
 		var masterStarsLow = new SpellActions.RepeatAction(NumberProvider.constant(20), "mi", List.of(
@@ -2660,7 +2696,7 @@ public class MigratedSpellCards {
 						NumberProvider.constant(1), new NumberProviders.RandomRange(1.0, 1.5),
 						NumberProvider.constant(40), NumberProvider.constant(0),
 						NumberProvider.constant(60), NumberProvider.constant(60),
-						PatternType.RANDOM, msForwardOrigin, new AimMode.AimModes.DirectionToTarget(),
+						PatternType.RANDOM, msForwardOrigin, msAim,
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
 		var masterStarsReverse = new SpellActions.RepeatAction(NumberProvider.constant(20), "mi", List.of(
@@ -2669,7 +2705,7 @@ public class MigratedSpellCards {
 						NumberProvider.constant(1), new NumberProviders.RandomRange(2.0, 3.0),
 						NumberProvider.constant(40), NumberProvider.constant(180),
 						NumberProvider.constant(30), NumberProvider.constant(30),
-						PatternType.RANDOM, msReverseOrigin, new AimMode.AimModes.DirectionToTarget(),
+						PatternType.RANDOM, msReverseOrigin, msAim,
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
 		var masterSparksNormal = new FireDanmakuAction(
@@ -2677,32 +2713,36 @@ public class MigratedSpellCards {
 				NumberProvider.constant(10), new NumberProviders.RandomRange(0.6, 0.9),
 				NumberProvider.constant(40), NumberProvider.constant(0),
 				NumberProvider.constant(120), NumberProvider.constant(120),
-				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.DirectionToTarget(),
+				PatternType.RANDOM, OriginConfig.caster(), msAim,
 				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		var masterSparksReverse = new FireDanmakuAction(
 				YHDanmaku.Bullet.SPARK, ColorProvider.constant(DyeColor.YELLOW),
 				NumberProvider.constant(10), new NumberProviders.RandomRange(0.6, 0.9),
 				NumberProvider.constant(40), NumberProvider.constant(180),
 				NumberProvider.constant(120), NumberProvider.constant(120),
-				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.DirectionToTarget(),
+				PatternType.RANDOM, OriginConfig.caster(), msAim,
 				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		var halfButNotLow = new SpellConditions.AndCondition(List.of(
 				new SpellConditions.HealthBelow(0.5f),
 				new SpellConditions.NotCondition(new SpellConditions.HealthBelow(0.1f))));
-		SpellAction masterSparkTick = new SpellActions.ConditionalAction(
-				new SpellConditions.CompareNumbers(phaseTick, ">", NumberProvider.constant(20)),
-				List.of(new SpellActions.ConditionalAction(
-						new SpellConditions.HealthBelow(0.1f),
-						List.of(masterStarsLow),
-						List.of(
-								masterStarsNormal,
-								masterSparksNormal,
-								new SpellActions.ConditionalAction(
-										halfButNotLow,
-										List.of(masterStarsReverse, masterSparksReverse),
-										List.of())
-						))),
-				List.of());
+		// Each tick: lerp aim direction, then fire danmaku when tick>20
+		SpellAction masterSparkTick = new SpellActions.SequenceAction(List.of(
+				msLerpAction,
+				new SpellActions.ConditionalAction(
+						new SpellConditions.CompareNumbers(phaseTick, ">", NumberProvider.constant(20)),
+						List.of(new SpellActions.ConditionalAction(
+								new SpellConditions.HealthBelow(0.1f),
+								List.of(masterStarsLow),
+								List.of(
+										masterStarsNormal,
+										masterSparksNormal,
+										new SpellActions.ConditionalAction(
+												halfButNotLow,
+												List.of(masterStarsReverse, masterSparksReverse),
+												List.of())
+								))),
+						List.of())
+		));
 
 		// --- Phase selection ---
 		var farAndFast = new SpellConditions.AndCondition(List.of(
@@ -2739,8 +2779,9 @@ public class MigratedSpellCards {
 				new Transition(new SpellConditions.AndCondition(List.of(
 						new SpellConditions.HealthBelow(0.1f),
 						new SpellConditions.VariableCheck("phase3_seen", "==", 0))), introId, TransitionMode.IMMEDIATE),
+				// Fix #8: Legacy triggers dash at dist>56 in both phase1 and phase2 (not phase3)
 				new Transition(new SpellConditions.AndCondition(List.of(
-						new SpellConditions.HealthAbove(0.5f),
+						new SpellConditions.HealthAbove(0.1f),
 						new SpellConditions.DistanceAbove(56))), dashId, TransitionMode.IMMEDIATE),
 				new Transition(phase1Master, masterSparkId, TransitionMode.IMMEDIATE),
 				new Transition(phase1Earth, earthLightId, TransitionMode.IMMEDIATE),
@@ -2757,11 +2798,14 @@ public class MigratedSpellCards {
 				List.of(), List.of(), List.of(),
 				List.of(new Transition(new SpellConditions.TickElapsed(50), selectId, TransitionMode.IMMEDIATE)));
 
+		// Fix #7: Legacy dash count is 1 + random(0,2) = 1~3, not 1~2
 		var dashPhase = new PhaseDefinition(dashId,
 				List.of(
-						new SpellActions.SetVariable("dash_total", new NumberProviders.RandomChoice(List.of(1d, 2d))),
+						new SpellActions.SetVariable("dash_total", new NumberProviders.RandomChoice(List.of(1d, 2d, 3d))),
 						new SpellActions.SetVariable("dash_count", 0),
-						new SpellActions.SetVariable("dash_end", 40)),
+						new SpellActions.SetVariable("dash_end", 40),
+						// Snapshot direction at phase start (Fix #1 continued)
+						snapDashDirection.get(0), snapDashDirection.get(1), snapDashDirection.get(2)),
 				List.of(dashTick, dashBoundary), List.of(stopCaster), List.of(),
 				List.of(new Transition(new SpellConditions.AndCondition(List.of(
 						new SpellConditions.CompareNumbers(phaseTick, ">=", dashEnd),
@@ -2773,14 +2817,17 @@ public class MigratedSpellCards {
 				List.of(blackHoleTick), List.of(), List.of(),
 				List.of(new Transition(new SpellConditions.TickElapsed(120), selectId, TransitionMode.IMMEDIATE)));
 
+		// Fix #5: Legacy cooldown=20 for EarthLight means boss can act again after 20 ticks
+		// while the EarthLight ticker keeps running. We approximate by making this phase short.
 		var earthLightPhase = new PhaseDefinition(earthLightId,
 				List.of(new SpellActions.SetVariable("earth_active", 1)),
 				List.of(earthLightTick), List.of(), List.of(),
-				List.of(new Transition(new SpellConditions.TickElapsed(100), selectId, TransitionMode.IMMEDIATE)));
+				List.of(new Transition(new SpellConditions.TickElapsed(20), selectId, TransitionMode.IMMEDIATE)));
 
 		var masterSparkPhase = new PhaseDefinition(masterSparkId,
 				List.of(
 						new SpellActions.SetVariable("earth_active", 0),
+						initMsDir.get(0), initMsDir.get(1), initMsDir.get(2),
 						masterLaser),
 				List.of(masterSparkTick), List.of(), List.of(),
 				List.of(new Transition(new SpellConditions.TickElapsed(100), selectId, TransitionMode.IMMEDIATE)));
@@ -2788,6 +2835,7 @@ public class MigratedSpellCards {
 		var comboEarthSparkPhase = new PhaseDefinition(comboEarthSparkId,
 				List.of(
 						new SpellActions.SetVariable("earth_active", 0),
+						initMsDir.get(0), initMsDir.get(1), initMsDir.get(2),
 						masterLaser),
 				List.of(earthLightTick, masterSparkTick), List.of(), List.of(),
 				List.of(new Transition(new SpellConditions.TickElapsed(100), selectId, TransitionMode.IMMEDIATE)));
@@ -2795,15 +2843,17 @@ public class MigratedSpellCards {
 		var comboDashHolePhase = new PhaseDefinition(comboDashHoleId,
 				List.of(
 						new SpellActions.SetVariable("earth_active", 0),
-						new SpellActions.SetVariable("dash_total", new NumberProviders.RandomChoice(List.of(1d, 2d))),
+						new SpellActions.SetVariable("dash_total", new NumberProviders.RandomChoice(List.of(1d, 2d, 3d))),
 						new SpellActions.SetVariable("dash_count", 0),
-						new SpellActions.SetVariable("dash_end", 40)),
+						new SpellActions.SetVariable("dash_end", 40),
+						snapDashDirection.get(0), snapDashDirection.get(1), snapDashDirection.get(2)),
 				List.of(dashTick, dashBoundary, blackHoleTick), List.of(stopCaster), List.of(),
 				List.of(new Transition(new SpellConditions.TickElapsed(150), selectId, TransitionMode.IMMEDIATE)));
 
 		var comboPhase3 = new PhaseDefinition(comboPhase3Id,
 				List.of(
 						new SpellActions.SetVariable("earth_active", 0),
+						initMsDir.get(0), initMsDir.get(1), initMsDir.get(2),
 						masterLaser),
 				List.of(blackHoleTick, masterSparkTick), List.of(), List.of(),
 				List.of(new Transition(new SpellConditions.TickElapsed(150), selectId, TransitionMode.IMMEDIATE)));

@@ -88,6 +88,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public final MoveControl walkCtrl, flyCtrl;
 	public final PathNavigation walkNav, fltNav;
 
+	/** Dynamic damage throttle — replaces binary invincibility frames for danmaku. */
+	public final DamageThrottleTracker damageThrottle = new DamageThrottleTracker();
+
 	@SerialClass.SerialField
 	public final YoukaiTargetContainer targets;
 
@@ -356,8 +359,12 @@ public abstract class YoukaiEntity extends PathfinderMob
 			amount = getDamageAfterArmorAbsorb(source, amount);
 			amount = getDamageAfterMagicAbsorb(source, amount);
 			amount = ForgeHooks.onLivingDamage(this, source, amount);
+			// Apply dynamic damage throttling for danmaku damage
+			if (source.is(YHDamageTypes.DANMAKU_TYPE)) {
+				amount = damageThrottle.throttle(source, amount, getMaxHealth(), tickCount);
+				if (amount <= 0) return;
+			}
 			hurtFinal(source, amount);
-
 		}
 	}
 
@@ -556,6 +563,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 		setTarget(null);
 		setLastHurtByMob(null);
 		setCombatProgress(combatProgress.maxProgress);
+		damageThrottle.reset();
 	}
 
 	public void syncSpellState() {

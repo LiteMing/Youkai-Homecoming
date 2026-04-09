@@ -23,6 +23,28 @@ public class DanmakuManager {
 	private static long eraseKillMask = 0;
 	private static LivingEntity eraseUser = null;
 
+	/**
+	 * Override entity used as the tracking target for erase packets.
+	 * When set, {@link #erase} ignores the {@code user} parameter and uses this instead.
+	 * <p>
+	 * This fixes a mismatch for DanmakuProxyEntity: spawn packets are sent via
+	 * {@code toTrackingPlayers(proxy)}, but danmaku {@code getOwner()} returns
+	 * the player (since {@code shooter()} returns ownerPlayer). A ServerPlayer does
+	 * NOT track itself, so the caster never receives erase packets.
+	 * Setting this override to the proxy entity ensures both spawn and erase packets
+	 * are routed through the same tracking set.
+	 */
+	private static LivingEntity trackingOverride = null;
+
+	/**
+	 * Set the entity to use as the tracking target for erase packets during this tick.
+	 * Call before tickAll() with the same entity used for send().
+	 * Call with null after flushErases() to clear.
+	 */
+	public static void setTrackingOverride(@javax.annotation.Nullable LivingEntity entity) {
+		trackingOverride = entity;
+	}
+
 	public static void send(LivingEntity user, List<SimplifiedProjectile> proj) {
 		int size = proj.size();
 		if (size <= MAX_PER_PACKET) {
@@ -39,13 +61,19 @@ public class DanmakuManager {
 
 	/**
 	 * Buffer an erase request. Call {@link #flushErases()} at end of tick to send.
+	 * <p>
+	 * If {@link #trackingOverride} is set, it is used as the tracking target instead
+	 * of {@code user}. This ensures erase packets are routed to the same player set
+	 * that received the spawn packets (critical for DanmakuProxyEntity where the
+	 * danmaku owner is a ServerPlayer that doesn't track itself).
 	 */
 	public static void erase(LivingEntity user, SimplifiedProjectile proj, boolean kill) {
+		LivingEntity effectiveUser = trackingOverride != null ? trackingOverride : user;
 		// If user changed (different owner entity), flush the previous batch first
-		if (eraseUser != null && eraseUser != user && !eraseIds.isEmpty()) {
+		if (eraseUser != null && eraseUser != effectiveUser && !eraseIds.isEmpty()) {
 			flushErases();
 		}
-		eraseUser = user;
+		eraseUser = effectiveUser;
 		int idx = eraseIds.size();
 		eraseIds.add(proj.getId());
 		if (kill && idx < 64) {

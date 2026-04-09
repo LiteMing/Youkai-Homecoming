@@ -51,6 +51,9 @@ public class NumberProviders {
 		register("game_difficulty", GameDifficulty.CODEC, GameDifficulty.class);
 		register("target_fly_time", TargetFlyTime.CODEC, TargetFlyTime.class);
 		register("target_speed", TargetSpeed.CODEC, TargetSpeed.class);
+		register("forward_x", ForwardX.CODEC, ForwardX.class);
+		register("forward_y", ForwardY.CODEC, ForwardY.class);
+		register("forward_z", ForwardZ.CODEC, ForwardZ.class);
 	}
 
 	public static void register(String id, Codec<? extends NumberProvider> codec, Class<? extends NumberProvider> clazz) {
@@ -566,6 +569,33 @@ public class NumberProviders {
 		@Override public double get(SpellContext ctx) {
 			return ctx.targetSpeed();
 		}
+	}
+
+	/**
+	 * Normalized direction X from caster to target (holder.forward().x).
+	 * Returns 0 if no target. JSON: {"type": "forward_x"}
+	 */
+	public record ForwardX() implements NumberProvider {
+		public static final Codec<ForwardX> CODEC = Codec.unit(ForwardX::new);
+		@Override public double get(SpellContext ctx) { return ctx.holder().forward().x; }
+	}
+
+	/**
+	 * Normalized direction Y from caster to target (holder.forward().y).
+	 * Returns 0 if no target. JSON: {"type": "forward_y"}
+	 */
+	public record ForwardY() implements NumberProvider {
+		public static final Codec<ForwardY> CODEC = Codec.unit(ForwardY::new);
+		@Override public double get(SpellContext ctx) { return ctx.holder().forward().y; }
+	}
+
+	/**
+	 * Normalized direction Z from caster to target (holder.forward().z).
+	 * Returns 0 if no target. JSON: {"type": "forward_z"}
+	 */
+	public record ForwardZ() implements NumberProvider {
+		public static final Codec<ForwardZ> CODEC = Codec.unit(ForwardZ::new);
+		@Override public double get(SpellContext ctx) { return ctx.holder().forward().z; }
 	}
 
 }

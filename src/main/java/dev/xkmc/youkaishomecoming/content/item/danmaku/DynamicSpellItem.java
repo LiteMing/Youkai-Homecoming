@@ -5,6 +5,7 @@ import dev.xkmc.l2library.util.raytrace.RayTraceUtil;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
@@ -155,13 +156,15 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		return 64;
 	}
 
-	private static int resolveSpellDuration(dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm itemForm) {
+	private static int resolveSpellDuration(SpellItemForm itemForm) {
 		if (itemForm.duration() > 0) {
 			return itemForm.duration();
 		}
 		if (itemForm.cooldown() > 0) {
 			return itemForm.cooldown();
 		}
-		return DURATION_NATURAL;
+		// 安全兜底���无 duration 且无 cooldown 时使用配置默认值，
+		// 避免返回 DURATION_NATURAL 导致无终止条件的符卡永不结束
+		return YHModConfig.COMMON.playerSpellCooldown.get();
 	}
 }

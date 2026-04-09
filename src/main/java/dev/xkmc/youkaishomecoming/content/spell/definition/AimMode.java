@@ -56,6 +56,7 @@ public interface AimMode {
 			register("variable_angle", VariableAngle.CODEC, VariableAngle.class);
 			register("direction_to_target", DirectionToTarget.CODEC, DirectionToTarget.class);
 			register("random_angle", RandomAngle.CODEC, RandomAngle.class);
+			register("variable_direction", VariableDirection.CODEC, VariableDirection.class);
 		}
 
 		public static void register(String id, Codec<? extends AimMode> codec, Class<? extends AimMode> clazz) {
@@ -243,6 +244,29 @@ public interface AimMode {
 				if (Math.abs(deg) < 1e-6) return fwd;
 				var ori = DanmakuHelper.getOrientation(fwd);
 				return ori.rotateDegrees(deg);
+			}
+		}
+
+		/**
+		 * Reads a 3D direction vector from three runtime variables (x, y, z).
+		 * The result is normalized. Falls back to (0, 0, 1) if all zero.
+		 * JSON: {"type": "variable_direction", "x": "dash_dx", "y": "dash_dy", "z": "dash_dz"}
+		 */
+		public record VariableDirection(String xKey, String yKey, String zKey) implements AimMode {
+			public static final Codec<VariableDirection> CODEC = RecordCodecBuilder.create(i -> i.group(
+					Codec.STRING.fieldOf("x").forGetter(VariableDirection::xKey),
+					Codec.STRING.fieldOf("y").forGetter(VariableDirection::yKey),
+					Codec.STRING.fieldOf("z").forGetter(VariableDirection::zKey)
+			).apply(i, VariableDirection::new));
+
+			@Override
+			public Vec3 getBaseDirection(SpellContext ctx) {
+				double dx = ctx.getVariable(xKey);
+				double dy = ctx.getVariable(yKey);
+				double dz = ctx.getVariable(zKey);
+				Vec3 dir = new Vec3(dx, dy, dz);
+				if (dir.lengthSqr() < 1e-8) return new Vec3(0, 0, 1);
+				return dir.normalize();
 			}
 		}
 	}

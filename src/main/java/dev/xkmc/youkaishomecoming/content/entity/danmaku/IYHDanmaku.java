@@ -85,10 +85,14 @@ public interface IYHDanmaku extends GrazingEntity {
 		var e = result.getEntity();
 		var source = source();
 		if (e instanceof LivingEntity le) {
-			if (le.hurtTime > 0 && (YHModConfig.COMMON.invulFrameForDanmaku.get() || e instanceof Player || e instanceof YoukaiEntity)) {
-				DamageSource last = le.getLastDamageSource();
-				if (last != null && last.getDirectEntity() instanceof IYHDanmaku) {
-					return;
+			// YoukaiEntity uses DamageThrottleTracker instead of binary iframes.
+			// For Players and other non-YoukaiEntity mobs, keep the original iframe behaviour.
+			if (!(le instanceof YoukaiEntity)) {
+				if (le.hurtTime > 0 && (YHModConfig.COMMON.invulFrameForDanmaku.get() || le instanceof Player)) {
+					DamageSource last = le.getLastDamageSource();
+					if (last != null && last.getDirectEntity() instanceof IYHDanmaku) {
+						return;
+					}
 				}
 			}
 		}

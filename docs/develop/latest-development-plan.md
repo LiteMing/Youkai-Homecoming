@@ -6,18 +6,18 @@
 
 ## 当前活动目标
 
-当前活动计划切换为 **90k 虚拟弹幕服务端 tick 优化**，对应文档为 `docs/preview-performance-plan.md`。
+上一轮活动计划 **90k 虚拟弹幕服务端 tick 优化** 已完成，详细过程与结果见 `docs/preview-performance-plan.md`。
 
-本轮不再继续沿用旧的 section snapshot / record 流转方案，优先完成并行 tick 第一阶段收口，并自动规划后续碰撞层与 schedule 优化。
+自动化流程的下一轮活动目标切换为：**验证优化收益并扩展安全预取覆盖范围**。
 
 ## 当前状态
 
 1. 第一阶段：**已完成**
    已完成 `ParallelDanmakuTicker` 数据流收口、`DanmakuVirtualTickData` 落地、`AtomicBitSet` touched section 标记、`applyMove` 异步化，以及 `collectActiveDanmakus()` 热路径移除。
-2. 第二阶段：**未开始**
-   下一轮处理 `SectionCache` / `ProjectileHitHelper` / `LaserHitHelper` 的碰撞层重构。
-3. 第三阶段：**未开始**
-   第二阶段完成后再做 schedule 满覆盖，例如在 tick 尾部预做下一 tick 的 Step 1。
+2. 第二阶段：**已完成**
+   已完成 `SectionCache` / `IEntityCache` / `ProjectileHitHelper` / `LaserHitHelper` / `ParallelDanmakuTicker` 的碰撞查询路径收束，统一使用 section 几何快照与 visitor 遍历。
+3. 第三阶段：**已完成**
+   已完成首版 schedule 覆盖：在 tick 结尾为**确定安全的 projectile** 预做下一 tick 的 Step 1，并在下一 tick 直接消费预取结果；依赖外部状态的 mover 保持现算，不引入语义漂移。
 
 ## 本轮已完成项
 
@@ -26,16 +26,19 @@
 3. 将 `Step2` 改为并行消费 `Step1` 结果，不再重算 `src` / `dst` / `searchBox` / section 范围。
 4. 将 `BaseProjectile.computeMove()` 保持为纯计算，把 trail 等每 tick 副作用拆到 `beforeMoveTick()`，避免并行路径重复计算或在 worker 线程触发生成副作用。
 5. 将虚拟弹幕的 `applyMove` 从主线程收尾中移出，改为并行提交位置更新。
-6. 执行 `.\gradlew.bat compileJava`，结果通过。
+6. 将 `SectionCache` 从 `Entity` 列表切换为几何快照缓存，并让顺序 projectile、laser、并行 ticker 共用同一套 section 遍历与 hit 检测基础接口。
+7. 为 schedule 覆盖引入 next-tick Step1 预取机制：`DanmakuVirtualTickData` 持有预取结果，`ParallelDanmakuTicker` 在当前 tick 结尾并行为下一 tick 预取，`BaseProjectile` 提供显式 opt-in 边界。
+8. 执行 `.\gradlew.bat compileJava`，结果通过。
 
 ## 下一轮自动化开发项
 
-1. 重构 `SectionCache` 与 `ProjectileHitHelper` / `LaserHitHelper` 的协作方式，减少碰撞层重复路径，并对齐新的 tick data 流。
-2. 评估是否需要为 section 读取增加更明确的只读快照边界或辅助接口，避免第二阶段继续在 ticker 内堆职责。
-3. 在第二阶段完成后，设计并实现 schedule 满覆盖，让本 tick 末尾可以为下一 tick 提前准备 Step 1。
+1. 对 90k 场景重新做 profiling，确认第二、第三阶段改动在 Spark/实测中的实际收益。
+2. 盘点现有 mover，评估哪些 mover 可以安全加入 `allowNextTickStep1Prefetch()` 覆盖范围。
+3. 若后续仍有明显 schedule 空窗，再评估是否需要把 virtual danmaku 调度从实体 `aiStep()` 抽离到更稳定的 world-level 时序。
 
 ## 验收与风险
 
-1. 本轮验收以第一阶段 5 个硬要求全部落地、`compileJava` 通过为准。
-2. 第二阶段和第三阶段尚未执行，因此碰撞层结构统一与 schedule 吞吐优化仍是后续工作，不应误判为已完成。
-3. 旧的符卡相关计划暂时不作为当前活动计划；如需恢复，应另开新一轮计划并重新切换 `latest-development-plan.md`。
+1. 当前该优化计划已完成；验收以三阶段关键提交完成、`compileJava` 通过为准。
+2. 第三阶段采用的是**安全 opt-in 预取**，不是对全部 mover 强行开启预取；后续扩展覆盖时仍需复核语义正确性。
+3. 当前后续工作的主要风险不在实现，而在收益验证与覆盖边界判断。
+4. 旧的符卡相关计划暂时不作为当前活动计划；如需恢复，应另开新一轮计划并重新切换 `latest-development-plan.md`。

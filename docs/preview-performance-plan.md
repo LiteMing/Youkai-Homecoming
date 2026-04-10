@@ -18,12 +18,13 @@
 4. `Step2` 已改为并行消费 `Step1` 结果；section 读取直接复用 `EntityCache` / `SectionCache`，不再额外 snapshot。
 5. 虚拟弹幕的 `applyMove` 已从主线程收尾中移出，改为并行提交。
 6. `BaseProjectile.computeMove()` 已收敛为纯计算，trail 等每 tick 副作用改到 `beforeMoveTick()`，避免并行路径重复触发。
-7. 已执行 `.\gradlew.bat compileJava`，结果通过。
+7. 第二阶段已完成：`SectionCache` 改为缓存候选实体几何快照，`IEntityCache` 提供 visitor 式 section 遍历，`ProjectileHitHelper` / `LaserHitHelper` / `ParallelDanmakuTicker` 共用同一套 section 查询与 cached hit 路径。
+8. 第三阶段已完成首版 schedule 覆盖：在当前 tick 结尾为允许预取的 projectile 预做下一 tick 的 Step 1，并在下一 tick 直接消费预取数据。
+9. 已执行 `.\gradlew.bat compileJava`，结果通过。
 
 ### 未完成
 
-1. 第二阶段碰撞层重构尚未开始：`SectionCache` / `ProjectileHitHelper` / `LaserHitHelper`
-2. 第三阶段 schedule 满覆盖尚未开始
+1. 无
 
 按主程序员 2026-04-10 23:15-23:21 的最新评审，当前仓库里的并行 tick 实现方向有偏差，文档也必须同步改：
 
@@ -213,7 +214,7 @@
 
 ## 第二阶段：碰撞层重构
 
-状态：待启动（已自动规划为下一轮）
+状态：已完成（2026-04-11，`compileJava` 通过）
 
 ### 阶段目标
 
@@ -235,9 +236,18 @@
 
 主程序员已明确要求：这部分放到第一阶段之后，不要提前夹带进去。
 
+### 第二阶段完成说明
+
+已完成以下收口：
+
+1. `SectionCache` 不再只缓存 `Entity` 引用，而是直接缓存 `boundingBox` / `deltaMovement` / `sweepBox`
+2. `IEntityCache` 新增 visitor 式遍历，并支持显式 section 范围输入
+3. `ProjectileHitHelper` / `LaserHitHelper` 不再各自分配候选列表，而是直接消费 section 几何快照
+4. `ParallelDanmakuTicker` 的 Step2 不再自己重建 section 候选几何，而是复用碰撞层统一接口
+
 ## 第三阶段：schedule 满覆盖
 
-状态：待启动（第二阶段完成后进入）
+状态：已完成（2026-04-11，`compileJava` 通过）
 
 ### 阶段目标
 
@@ -252,6 +262,23 @@
 
 这属于后续吞吐优化，不是第一阶段的前置条件。
 
+### 第三阶段完成说明
+
+当前 virtual danmaku 的 tick 入口仍在：
+
+- `YoukaiEntity.aiStep()`
+- `DanmakuProxyEntity.aiStep()`
+
+因此第三阶段没有直接对**全部** projectile 强行开启预取，而是实现了安全 opt-in 方案：
+
+1. `BaseProjectile` 新增 `allowNextTickStep1Prefetch()` 边界
+2. `DanmakuVirtualTickData` 新增 next-tick Step1 预取存储
+3. `ParallelDanmakuTicker` 在当前 tick 结尾并行为下一 tick 预取 Step1
+4. 下一 tick 若预取仍匹配当前 tickCount，则直接消费；否则自动丢弃并回退到现算
+5. 当前只对 movement 依赖 projectile 本地状态、不会因 owner / target / commander 外部状态变化而失真的 projectile 启用预取
+
+也就是说，第三阶段的“schedule 满覆盖”在当前版本实现为：**对确定安全的 projectile 填满 schedule 空窗，对外部状态敏感 projectile 保持语义优先**。
+
 ## 实施顺序
 
 1. 第一阶段：并行 tick 逻辑 5 点修正
@@ -260,7 +287,7 @@
 
 ## 当前文档结论
 
-需要改，而且已经完成第一阶段实现与文档同步。
+需要改，而且三阶段实现与文档同步均已完成。
 
 本版文档相对上一版做了这几件事：
 
@@ -273,3 +300,5 @@
 - 把 `SectionCache` 重构明确后移到第二阶段
 - 把“先确认方案再编码”补成了显式前置约束
 - 补充了 2026-04-10 自动化流程收口后的实现进度，明确第一阶段已完成、第二/第三阶段待继续推进
+- 补充了 2026-04-11 的第二阶段实现结果，并明确第三阶段当前的真实时序边界与继续推进条件
+- 补充了 2026-04-11 的第三阶段实现结果，明确本版采用安全 opt-in 的 next-tick Step1 预取策略

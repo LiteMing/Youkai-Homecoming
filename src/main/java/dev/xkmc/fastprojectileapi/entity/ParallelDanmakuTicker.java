@@ -37,6 +37,11 @@ public class ParallelDanmakuTicker {
 	private static final Logger LOGGER = LogUtils.getLogger();
 	private static final int PARALLEL_THRESHOLD = 500;
 	private static final int MAX_THREADS = 4;
+	private static volatile TickStatsSnapshot LAST_STATS = TickStatsSnapshot.empty();
+
+	public static TickStatsSnapshot getLastStats() {
+		return LAST_STATS;
+	}
 
 	/**
 	 * Tick all virtual danmaku with parallel optimization.
@@ -56,15 +61,24 @@ public class ParallelDanmakuTicker {
 	                           boolean[] removeFlag,
 	                           @Nullable UserCacheHolder cacheHolder,
 	                           @Nullable LivingEntity self) {
+		long totalStart = System.nanoTime();
+		long warmStart = totalStart;
 		long gameTime = warmCaches(sl, cacheHolder);
+		TickStatsBuilder stats = new TickStatsBuilder(gameTime, allDanmakus.size());
+		stats.warmupNanos = System.nanoTime() - warmStart;
 		if (allDanmakus.isEmpty()) {
+			stats.totalNanos = System.nanoTime() - totalStart;
+			LAST_STATS = stats.build();
 			return;
 		}
 		if (allDanmakus.size() >= PARALLEL_THRESHOLD) {
-			tickParallel(sl, allDanmakus, temp, toBeSent, removeFlag, cacheHolder, self, gameTime);
+			stats.parallelPath = true;
+			tickParallel(sl, allDanmakus, temp, toBeSent, removeFlag, cacheHolder, self, gameTime, stats);
 		} else {
-			tickSequential(sl, allDanmakus, temp, toBeSent, removeFlag, self);
+			tickSequential(sl, allDanmakus, temp, toBeSent, removeFlag, self, stats);
 		}
+		stats.totalNanos = System.nanoTime() - totalStart;
+		LAST_STATS = stats.build();
 	}
 
 	private static long warmCaches(ServerLevel sl, @Nullable UserCacheHolder cacheHolder) {
@@ -81,7 +95,9 @@ public class ParallelDanmakuTicker {
 	                                   ArrayList<SimplifiedProjectile> temp,
 	                                   ArrayList<SimplifiedProjectile> toBeSent,
 	                                   boolean[] removeFlag,
-	                                   @Nullable LivingEntity self) {
+	                                   @Nullable LivingEntity self,
+	                                   TickStatsBuilder stats) {
+		long start = System.nanoTime();
 		List<SimplifiedProjectile> toRemove = new ArrayList<>();
 		for (SimplifiedProjectile projectile : allDanmakus) {
 			if (shouldSkipVirtualTick(projectile)) {
@@ -102,6 +118,7 @@ public class ParallelDanmakuTicker {
 			}
 		}
 		finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
+		stats.finishNanos = System.nanoTime() - start;
 	}
 
 	private static void tickParallel(ServerLevel sl,
@@ -111,21 +128,42 @@ public class ParallelDanmakuTicker {
 	                                 boolean[] removeFlag,
 	                                 @Nullable UserCacheHolder cacheHolder,
 	                                 @Nullable LivingEntity self,
-	                                 long gameTime) {
-		prepareParallelTick(allDanmakus);
-		TouchedSectionBounds bounds = computeStep1(allDanmakus);
+	                                 long gameTime,
+	                                 TickStatsBuilder stats) {
+		long start = System.nanoTime();
+		prepareParallelTick(allDanmakus, stats);
+		stats.prepareNanos = System.nanoTime() - start;
+
+		start = System.nanoTime();
+		Step1Summary step1 = computeStep1(allDanmakus);
+		stats.step1Nanos = System.nanoTime() - start;
+		stats.parallelReady = step1.readyCount();
+		stats.step1Failures = step1.failures();
+
+		TouchedSectionBounds bounds = step1.bounds();
 		IEntityCache entityCache = resolveEntityCache(sl, cacheHolder, self, gameTime);
 		TouchedSectionMask mask = bounds == null ? null : new TouchedSectionMask(bounds);
+		start = System.nanoTime();
 		if (mask != null) {
 			markTouchedSections(allDanmakus, mask);
 			warmTouchedSections(entityCache, mask);
 		}
-		computeStep2(sl, allDanmakus, entityCache);
-		computeStep3(allDanmakus);
-		finishParallelTick(sl, allDanmakus, temp, toBeSent, removeFlag, self);
+		stats.touchedSectionNanos = System.nanoTime() - start;
+
+		start = System.nanoTime();
+		stats.step2Failures = computeStep2(sl, allDanmakus, entityCache);
+		stats.step2Nanos = System.nanoTime() - start;
+
+		start = System.nanoTime();
+		stats.step3Failures = computeStep3(allDanmakus);
+		stats.step3Nanos = System.nanoTime() - start;
+
+		start = System.nanoTime();
+		finishParallelTick(sl, allDanmakus, temp, toBeSent, removeFlag, self, stats);
+		stats.finishNanos = System.nanoTime() - start;
 	}
 
-	private static void prepareParallelTick(List<SimplifiedProjectile> allDanmakus) {
+	private static void prepareParallelTick(List<SimplifiedProjectile> allDanmakus, TickStatsBuilder stats) {
 		for (SimplifiedProjectile projectile : allDanmakus) {
 			DanmakuVirtualTickData data = projectile.virtualTickData();
 			data.reset();
@@ -139,14 +177,15 @@ public class ParallelDanmakuTicker {
 			projectile.setOldPosAndRot();
 			++projectile.tickCount;
 			projectile.baseTick();
-			if (!data.consumePrefetch(projectile.tickCount)) {
+			if (data.consumePrefetch(projectile.tickCount)) {
+				stats.prefetchConsumed++;
+			} else {
 				data.markPreparedTickState();
 			}
 		}
 	}
 
-	@Nullable
-	private static TouchedSectionBounds computeStep1(List<SimplifiedProjectile> allDanmakus) {
+	private static Step1Summary computeStep1(List<SimplifiedProjectile> allDanmakus) {
 		int size = allDanmakus.size();
 		AtomicInteger minX = new AtomicInteger(Integer.MAX_VALUE);
 		AtomicInteger minY = new AtomicInteger(Integer.MAX_VALUE);
@@ -192,12 +231,12 @@ public class ParallelDanmakuTicker {
 			LOGGER.warn("Parallel danmaku tick Step 1 fell back to prepared sequential for {} projectiles", failures.get());
 		}
 		if (ready.get() == 0) {
-			return null;
+			return new Step1Summary(null, 0, failures.get());
 		}
-		return new TouchedSectionBounds(
+		return new Step1Summary(new TouchedSectionBounds(
 				minX.get(), minY.get(), minZ.get(),
 				maxX.get(), maxY.get(), maxZ.get()
-		);
+		), ready.get(), failures.get());
 	}
 
 	private static void computeStep1Result(BaseProjectile projectile, DanmakuVirtualTickData data) {
@@ -254,9 +293,9 @@ public class ParallelDanmakuTicker {
 		return EntityStorageCache.get(sl, gameTime);
 	}
 
-	private static void computeStep2(ServerLevel sl,
-	                                 List<SimplifiedProjectile> allDanmakus,
-	                                 @Nullable IEntityCache entityCache) {
+	private static int computeStep2(ServerLevel sl,
+	                                List<SimplifiedProjectile> allDanmakus,
+	                                @Nullable IEntityCache entityCache) {
 		int size = allDanmakus.size();
 		AtomicInteger failures = new AtomicInteger();
 		runParallel(size, (from, to) -> {
@@ -277,6 +316,7 @@ public class ParallelDanmakuTicker {
 		if (failures.get() > 0) {
 			LOGGER.warn("Parallel danmaku tick Step 2 fell back to prepared sequential for {} projectiles", failures.get());
 		}
+		return failures.get();
 	}
 
 	private static void computeStep2Result(ServerLevel sl,
@@ -318,7 +358,7 @@ public class ParallelDanmakuTicker {
 				});
 	}
 
-	private static void computeStep3(List<SimplifiedProjectile> allDanmakus) {
+	private static int computeStep3(List<SimplifiedProjectile> allDanmakus) {
 		int size = allDanmakus.size();
 		AtomicInteger failures = new AtomicInteger();
 		runParallel(size, (from, to) -> {
@@ -339,6 +379,7 @@ public class ParallelDanmakuTicker {
 		if (failures.get() > 0) {
 			LOGGER.warn("Parallel danmaku tick Step 3 skipped collision for {} projectiles", failures.get());
 		}
+		return failures.get();
 	}
 
 	private static void computeStep3Result(DanmakuVirtualTickData data) {
@@ -377,14 +418,19 @@ public class ParallelDanmakuTicker {
 	                                       ArrayList<SimplifiedProjectile> temp,
 	                                       ArrayList<SimplifiedProjectile> toBeSent,
 	                                       boolean[] removeFlag,
-	                                       @Nullable LivingEntity self) {
+	                                       @Nullable LivingEntity self,
+	                                       TickStatsBuilder stats) {
 		List<SimplifiedProjectile> toRemove = new ArrayList<>();
+		int standardFallbacks = 0;
+		int preparedFallbacks = 0;
+		int queuedMoves = 0;
 		for (SimplifiedProjectile projectile : allDanmakus) {
 			if (shouldSkipVirtualTick(projectile)) {
 				continue;
 			}
 			DanmakuVirtualTickData data = projectile.virtualTickData();
 			if (data.usesStandardSequentialFallback()) {
+				standardFallbacks++;
 				sequentialTickOne(projectile);
 				if (removeFlag[0]) {
 					break;
@@ -395,6 +441,7 @@ public class ParallelDanmakuTicker {
 				continue;
 			}
 			if (data.usesPreparedSequentialFallback()) {
+				preparedFallbacks++;
 				if (projectile instanceof BaseProjectile bp) {
 					finishPreparedSequentialTick(sl, bp);
 				}
@@ -428,11 +475,18 @@ public class ParallelDanmakuTicker {
 				break;
 			}
 			data.queueApplyMove();
+			queuedMoves++;
 		}
+		stats.standardSequentialFallbacks = standardFallbacks;
+		stats.preparedSequentialFallbacks = preparedFallbacks;
+		stats.queuedMoves = queuedMoves;
 		if (!removeFlag[0]) {
-			applyResolvedMoves(allDanmakus);
+			stats.applyFailures = applyResolvedMoves(allDanmakus);
 			finalizeResolvedMoves(sl, allDanmakus, toRemove);
-			prefetchNextStep1(allDanmakus);
+			PrefetchSummary prefetch = prefetchNextStep1(allDanmakus);
+			stats.prefetchEligible = prefetch.eligible();
+			stats.prefetchStored = prefetch.stored();
+			stats.prefetchFailures = prefetch.failures();
 		}
 		finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
 	}
@@ -455,7 +509,7 @@ public class ParallelDanmakuTicker {
 		}
 	}
 
-	private static void applyResolvedMoves(List<SimplifiedProjectile> allDanmakus) {
+	private static int applyResolvedMoves(List<SimplifiedProjectile> allDanmakus) {
 		int size = allDanmakus.size();
 		AtomicInteger failures = new AtomicInteger();
 		runParallel(size, (from, to) -> {
@@ -478,6 +532,7 @@ public class ParallelDanmakuTicker {
 		if (failures.get() > 0) {
 			LOGGER.warn("Parallel danmaku tick movement apply failed for {} projectiles", failures.get());
 		}
+		return failures.get();
 	}
 
 	private static void finalizeResolvedMoves(ServerLevel sl,
@@ -505,8 +560,10 @@ public class ParallelDanmakuTicker {
 		}
 	}
 
-	private static void prefetchNextStep1(List<SimplifiedProjectile> allDanmakus) {
+	private static PrefetchSummary prefetchNextStep1(List<SimplifiedProjectile> allDanmakus) {
 		int size = allDanmakus.size();
+		AtomicInteger eligible = new AtomicInteger();
+		AtomicInteger stored = new AtomicInteger();
 		AtomicInteger failures = new AtomicInteger();
 		runParallel(size, (from, to) -> {
 			for (int i = from; i < to; i++) {
@@ -517,8 +574,10 @@ public class ParallelDanmakuTicker {
 						!(projectile instanceof BaseProjectile bp) || !bp.allowNextTickStep1Prefetch()) {
 					continue;
 				}
+				eligible.incrementAndGet();
 				try {
 					storePrefetchedStep1(bp, data);
+					stored.incrementAndGet();
 				} catch (Exception ex) {
 					failures.incrementAndGet();
 				}
@@ -527,6 +586,7 @@ public class ParallelDanmakuTicker {
 		if (failures.get() > 0) {
 			LOGGER.warn("Parallel danmaku tick next-step prefetch failed for {} projectiles", failures.get());
 		}
+		return new PrefetchSummary(eligible.get(), stored.get(), failures.get());
 	}
 
 	private static void storePrefetchedStep1(BaseProjectile projectile, DanmakuVirtualTickData data) {
@@ -673,6 +733,131 @@ public class ParallelDanmakuTicker {
 	@FunctionalInterface
 	private interface SectionVisitor {
 		void accept(int x, int y, int z);
+	}
+
+	private record Step1Summary(@Nullable TouchedSectionBounds bounds, int readyCount, int failures) {
+	}
+
+	private record PrefetchSummary(int eligible, int stored, int failures) {
+	}
+
+	public record TickStatsSnapshot(
+			long gameTime,
+			int projectileCount,
+			boolean parallelPath,
+			int parallelReady,
+			int prefetchConsumed,
+			int prefetchEligible,
+			int prefetchStored,
+			int prefetchFailures,
+			int standardSequentialFallbacks,
+			int preparedSequentialFallbacks,
+			int step1Failures,
+			int step2Failures,
+			int step3Failures,
+			int applyFailures,
+			int queuedMoves,
+			long warmupNanos,
+			long prepareNanos,
+			long step1Nanos,
+			long touchedSectionNanos,
+			long step2Nanos,
+			long step3Nanos,
+			long finishNanos,
+			long totalNanos
+	) {
+
+		private static TickStatsSnapshot empty() {
+			return new TickStatsSnapshot(
+					-1,
+					0,
+					false,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0L,
+					0L,
+					0L,
+					0L,
+					0L,
+					0L,
+					0L,
+					0L
+			);
+		}
+
+		public boolean hasData() {
+			return gameTime >= 0;
+		}
+	}
+
+	private static final class TickStatsBuilder {
+
+		private final long gameTime;
+		private final int projectileCount;
+		private boolean parallelPath;
+		private int parallelReady;
+		private int prefetchConsumed;
+		private int prefetchEligible;
+		private int prefetchStored;
+		private int prefetchFailures;
+		private int standardSequentialFallbacks;
+		private int preparedSequentialFallbacks;
+		private int step1Failures;
+		private int step2Failures;
+		private int step3Failures;
+		private int applyFailures;
+		private int queuedMoves;
+		private long warmupNanos;
+		private long prepareNanos;
+		private long step1Nanos;
+		private long touchedSectionNanos;
+		private long step2Nanos;
+		private long step3Nanos;
+		private long finishNanos;
+		private long totalNanos;
+
+		private TickStatsBuilder(long gameTime, int projectileCount) {
+			this.gameTime = gameTime;
+			this.projectileCount = projectileCount;
+		}
+
+		private TickStatsSnapshot build() {
+			return new TickStatsSnapshot(
+					gameTime,
+					projectileCount,
+					parallelPath,
+					parallelReady,
+					prefetchConsumed,
+					prefetchEligible,
+					prefetchStored,
+					prefetchFailures,
+					standardSequentialFallbacks,
+					preparedSequentialFallbacks,
+					step1Failures,
+					step2Failures,
+					step3Failures,
+					applyFailures,
+					queuedMoves,
+					warmupNanos,
+					prepareNanos,
+					step1Nanos,
+					touchedSectionNanos,
+					step2Nanos,
+					step3Nanos,
+					finishNanos,
+					totalNanos
+			);
+		}
 	}
 
 	private static final class TouchedSectionBounds {

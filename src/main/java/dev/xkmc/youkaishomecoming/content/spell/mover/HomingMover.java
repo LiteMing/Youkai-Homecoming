@@ -72,6 +72,11 @@ public class HomingMover extends DanmakuMover {
 		return movementOf(newVel, info.self().rot());
 	}
 
+	@Override
+	public boolean allowNextTickStep1Prefetch() {
+		return targetEntityId < 0;
+	}
+
 	private boolean isActive(int tick) {
 		if (tick < delay) return false;
 		return duration < 0 || tick < delay + duration;

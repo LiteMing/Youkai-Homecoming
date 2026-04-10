@@ -26,12 +26,7 @@ public class CompositeMover extends DanmakuMover {
 
 	@Override
 	public ProjectileMovement move(MoverInfo info) {
-		if (index < list.size() - 1) {
-			if (list.get(index + 1).subtract <= info.tick()) {
-				index++;
-			}
-		}
-		var ent = list.get(index);
+		var ent = entryForTick(info.tick());
 		return ent.mover.move(info.offsetTime(-ent.subtract));
 	}
 
@@ -53,6 +48,19 @@ public class CompositeMover extends DanmakuMover {
 		if (mover.mover instanceof RectMover rect) {
 			add(20, rect.toStatic(total - mover.subtract()));
 		}
+	}
+
+	private Entry entryForTick(int tick) {
+		if (list.isEmpty()) {
+			throw new IllegalStateException("CompositeMover has no segments");
+		}
+		for (int i = list.size() - 1; i > 0; i--) {
+			Entry entry = list.get(i);
+			if (entry.subtract <= tick) {
+				return entry;
+			}
+		}
+		return list.get(0);
 	}
 
 	public record Entry(int subtract, DanmakuMover mover) {

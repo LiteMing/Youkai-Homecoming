@@ -6,6 +6,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import dev.xkmc.fastprojectileapi.entity.ParallelDanmakuTicker;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
@@ -64,6 +65,17 @@ public class YHCommands {
 								});
 							}
 							ctx.getSource().sendSystemMessage(Component.literal("[YH] Danmaku render cache reset scheduled."));
+							return 1;
+						}))
+				.then(literal("perf")
+						.requires(e -> e.hasPermission(2))
+						.executes(ctx -> {
+							var stats = ParallelDanmakuTicker.getLastStats();
+							if (!stats.hasData()) {
+								ctx.getSource().sendSystemMessage(Component.literal("[YH] No parallel danmaku tick stats recorded yet."));
+								return 0;
+							}
+							ctx.getSource().sendSystemMessage(Component.literal(formatDanmakuPerf(stats)));
 							return 1;
 						}))
 				.then(argument("player", EntityArgument.players())
@@ -504,6 +516,43 @@ public class YHCommands {
 					true);
 		}
 		return players.size();
+	}
+
+	private static String formatDanmakuPerf(ParallelDanmakuTicker.TickStatsSnapshot stats) {
+		var sb = new StringBuilder();
+		sb.append("=== Danmaku Tick Perf ===\n");
+		sb.append("gameTime=").append(stats.gameTime())
+				.append("  mode=").append(stats.parallelPath() ? "parallel" : "sequential")
+				.append("  projectiles=").append(stats.projectileCount())
+				.append("  ready=").append(stats.parallelReady())
+				.append("\n");
+		sb.append("total=").append(formatMillis(stats.totalNanos()))
+				.append("  warm=").append(formatMillis(stats.warmupNanos()))
+				.append("  prepare=").append(formatMillis(stats.prepareNanos()))
+				.append("  step1=").append(formatMillis(stats.step1Nanos()))
+				.append("  sections=").append(formatMillis(stats.touchedSectionNanos()))
+				.append("  step2=").append(formatMillis(stats.step2Nanos()))
+				.append("  step3=").append(formatMillis(stats.step3Nanos()))
+				.append("  finish=").append(formatMillis(stats.finishNanos()))
+				.append("\n");
+		sb.append("prefetch: consumed=").append(stats.prefetchConsumed())
+				.append("  eligible=").append(stats.prefetchEligible())
+				.append("  stored=").append(stats.prefetchStored())
+				.append("  failures=").append(stats.prefetchFailures())
+				.append("\n");
+		sb.append("fallbacks: standard=").append(stats.standardSequentialFallbacks())
+				.append("  prepared=").append(stats.preparedSequentialFallbacks())
+				.append("  queuedMoves=").append(stats.queuedMoves())
+				.append("\n");
+		sb.append("failures: step1=").append(stats.step1Failures())
+				.append("  step2=").append(stats.step2Failures())
+				.append("  step3=").append(stats.step3Failures())
+				.append("  apply=").append(stats.applyFailures());
+		return sb.toString();
+	}
+
+	private static String formatMillis(long nanos) {
+		return String.format("%.3fms", nanos / 1_000_000.0);
 	}
 
 }

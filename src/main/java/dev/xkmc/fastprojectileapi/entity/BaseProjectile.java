@@ -89,6 +89,15 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 	}
 
 	/**
+	 * Allows schedule stage prefetching of the next tick's Step 1 data.
+	 * Only return true when the next movement depends solely on projectile-local state
+	 * that is already finalized at the end of the current tick.
+	 */
+	protected boolean allowNextTickStep1Prefetch() {
+		return false;
+	}
+
+	/**
 	 * Compute the next movement without modifying entity state.
 	 * Thread-safe for different entities called in parallel (each entity has its own mover instance).
 	 * Used by ClientDanmakuCache for parallel tick computation.

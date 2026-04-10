@@ -87,6 +87,11 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		return life;
 	}
 
+	@Override
+	protected boolean allowNextTickStep1Prefetch() {
+		return true;
+	}
+
 	public void addAdditionalSaveData(CompoundTag nbt) {
 		super.addAdditionalSaveData(nbt);
 		nbt.put("auto-serial", Objects.requireNonNull(TagCodec.toTag(new CompoundTag(), this)));

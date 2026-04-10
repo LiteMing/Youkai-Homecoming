@@ -139,7 +139,9 @@ public class ParallelDanmakuTicker {
 			projectile.setOldPosAndRot();
 			++projectile.tickCount;
 			projectile.baseTick();
-			data.markPreparedTickState();
+			if (!data.consumePrefetch(projectile.tickCount)) {
+				data.markPreparedTickState();
+			}
 		}
 	}
 
@@ -158,6 +160,16 @@ public class ParallelDanmakuTicker {
 			for (int i = from; i < to; i++) {
 				SimplifiedProjectile projectile = allDanmakus.get(i);
 				DanmakuVirtualTickData data = projectile.virtualTickData();
+				if (data.isParallelReady()) {
+					ready.incrementAndGet();
+					accumulateMin(minX, data.sectionX0());
+					accumulateMin(minY, data.sectionY0());
+					accumulateMin(minZ, data.sectionZ0());
+					accumulateMax(maxX, data.sectionX1());
+					accumulateMax(maxY, data.sectionY1());
+					accumulateMax(maxZ, data.sectionZ1());
+					continue;
+				}
 				if (!data.hasPreparedTickState()) {
 					continue;
 				}
@@ -420,6 +432,7 @@ public class ParallelDanmakuTicker {
 		if (!removeFlag[0]) {
 			applyResolvedMoves(allDanmakus);
 			finalizeResolvedMoves(sl, allDanmakus, toRemove);
+			prefetchNextStep1(allDanmakus);
 		}
 		finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
 	}
@@ -490,6 +503,55 @@ public class ParallelDanmakuTicker {
 				toRemove.add(projectile);
 			}
 		}
+	}
+
+	private static void prefetchNextStep1(List<SimplifiedProjectile> allDanmakus) {
+		int size = allDanmakus.size();
+		AtomicInteger failures = new AtomicInteger();
+		runParallel(size, (from, to) -> {
+			for (int i = from; i < to; i++) {
+				SimplifiedProjectile projectile = allDanmakus.get(i);
+				DanmakuVirtualTickData data = projectile.virtualTickData();
+				data.clearPrefetch();
+				if (shouldSkipVirtualTick(projectile) || shouldRemoveFromVirtualList(projectile) ||
+						!(projectile instanceof BaseProjectile bp) || !bp.allowNextTickStep1Prefetch()) {
+					continue;
+				}
+				try {
+					storePrefetchedStep1(bp, data);
+				} catch (Exception ex) {
+					failures.incrementAndGet();
+				}
+			}
+		});
+		if (failures.get() > 0) {
+			LOGGER.warn("Parallel danmaku tick next-step prefetch failed for {} projectiles", failures.get());
+		}
+	}
+
+	private static void storePrefetchedStep1(BaseProjectile projectile, DanmakuVirtualTickData data) {
+		ProjectileMovement movement = projectile.computeMove();
+		Vec3 src = projectile.position();
+		Vec3 dst = src.add(movement.vec());
+		float radius = projectile.getBbWidth() / 2f;
+		float graze = projectile.grazeRange();
+		AABB searchBox = projectile.getBoundingBox().expandTowards(movement.vec()).inflate(1 + radius + graze);
+		data.storePrefetch(
+				projectile.tickCount + 1,
+				movement,
+				src,
+				dst,
+				searchBox,
+				radius,
+				graze,
+				projectile.checkBlockHit(),
+				getSectionMin(searchBox.minX),
+				getSectionMin(searchBox.minY),
+				getSectionMin(searchBox.minZ),
+				getSectionMax(searchBox.maxX),
+				getSectionMax(searchBox.maxY),
+				getSectionMax(searchBox.maxZ)
+		);
 	}
 
 	private static void sequentialTickOne(SimplifiedProjectile projectile) {

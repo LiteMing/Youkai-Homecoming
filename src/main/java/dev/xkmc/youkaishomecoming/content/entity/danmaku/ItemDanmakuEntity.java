@@ -125,6 +125,11 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		return super.updateVelocity(vec, pos);
 	}
 
+	@Override
+	protected boolean allowNextTickStep1Prefetch() {
+		return mover == null && controlCode <= 0;
+	}
+
 	public ItemStack getItem() {
 		return stack;
 	}

@@ -17,6 +17,25 @@ public class DanmakuVirtualTickData {
 	private boolean preparedSequentialFallback;
 	private boolean parallelReady;
 	private boolean applyMovePending;
+	private boolean prefetchedStep1Available;
+	private int prefetchedTickCount;
+	@Nullable
+	private ProjectileMovement prefetchedMovement;
+	@Nullable
+	private Vec3 prefetchedSrc;
+	@Nullable
+	private Vec3 prefetchedDst;
+	@Nullable
+	private AABB prefetchedSearchBox;
+	private float prefetchedRadius;
+	private float prefetchedGraze;
+	private boolean prefetchedCheckBlock;
+	private int prefetchedSectionX0;
+	private int prefetchedSectionY0;
+	private int prefetchedSectionZ0;
+	private int prefetchedSectionX1;
+	private int prefetchedSectionY1;
+	private int prefetchedSectionZ1;
 	@Nullable
 	private ProjectileMovement movement;
 	@Nullable
@@ -67,6 +86,24 @@ public class DanmakuVirtualTickData {
 		hitEntity = null;
 		candidates.clear();
 		grazedPlayers.clear();
+	}
+
+	void clearPrefetch() {
+		prefetchedStep1Available = false;
+		prefetchedTickCount = 0;
+		prefetchedMovement = null;
+		prefetchedSrc = null;
+		prefetchedDst = null;
+		prefetchedSearchBox = null;
+		prefetchedRadius = 0;
+		prefetchedGraze = 0;
+		prefetchedCheckBlock = false;
+		prefetchedSectionX0 = 0;
+		prefetchedSectionY0 = 0;
+		prefetchedSectionZ0 = 0;
+		prefetchedSectionX1 = 0;
+		prefetchedSectionY1 = 0;
+		prefetchedSectionZ1 = 0;
 	}
 
 	void markPreparedTickState() {
@@ -134,6 +171,51 @@ public class DanmakuVirtualTickData {
 		this.hitEntity = null;
 		this.candidates.clear();
 		this.grazedPlayers.clear();
+	}
+
+	void storePrefetch(int tickCount,
+	                   ProjectileMovement movement,
+	                   Vec3 src,
+	                   Vec3 dst,
+	                   AABB searchBox,
+	                   float radius,
+	                   float graze,
+	                   boolean checkBlock,
+	                   int sectionX0,
+	                   int sectionY0,
+	                   int sectionZ0,
+	                   int sectionX1,
+	                   int sectionY1,
+	                   int sectionZ1) {
+		prefetchedStep1Available = true;
+		prefetchedTickCount = tickCount;
+		prefetchedMovement = movement;
+		prefetchedSrc = src;
+		prefetchedDst = dst;
+		prefetchedSearchBox = searchBox;
+		prefetchedRadius = radius;
+		prefetchedGraze = graze;
+		prefetchedCheckBlock = checkBlock;
+		prefetchedSectionX0 = sectionX0;
+		prefetchedSectionY0 = sectionY0;
+		prefetchedSectionZ0 = sectionZ0;
+		prefetchedSectionX1 = sectionX1;
+		prefetchedSectionY1 = sectionY1;
+		prefetchedSectionZ1 = sectionZ1;
+	}
+
+	boolean consumePrefetch(int tickCount) {
+		if (!prefetchedStep1Available || prefetchedTickCount != tickCount ||
+				prefetchedMovement == null || prefetchedSrc == null || prefetchedDst == null || prefetchedSearchBox == null) {
+			clearPrefetch();
+			return false;
+		}
+		markParallelReady(prefetchedMovement, prefetchedSrc, prefetchedDst, prefetchedSearchBox,
+				prefetchedRadius, prefetchedGraze, prefetchedCheckBlock,
+				prefetchedSectionX0, prefetchedSectionY0, prefetchedSectionZ0,
+				prefetchedSectionX1, prefetchedSectionY1, prefetchedSectionZ1);
+		clearPrefetch();
+		return true;
 	}
 
 	boolean isParallelReady() {

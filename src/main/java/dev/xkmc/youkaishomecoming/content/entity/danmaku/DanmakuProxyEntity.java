@@ -74,6 +74,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private SpellRuntime runtime;
 	private int spellTickCount = 0;
 	private int maxDuration;
+	/**
+	 * True once the spell runtime has reached its duration/natural end and should stop
+	 * spawning new danmaku. Existing virtual danmaku are still allowed to finish
+	 * naturally, matching the legacy player spell lifecycle.
+	 */
+	private boolean runtimeStopped = false;
 
 	// ==================== Constructor ====================
 
@@ -104,6 +110,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		this.runtime = new SpellRuntime(definition);
 		this.runtime.reset();
 		this.spellTickCount = 0;
+		this.runtimeStopped = false;
 
 		if (target != null) {
 			this.targetId = target.getUUID();
@@ -146,17 +153,26 @@ public class DanmakuProxyEntity extends PathfinderMob
 		refreshTarget();
 
 		// Drive the spell runtime
-		if (runtime != null) {
+		if (runtime != null && !runtimeStopped) {
 			runtime.tick(this);
+		}
+		if (!allDanmakus.isEmpty()) {
 			tickDanmaku();
 		}
 
 		// Check for completion
+		boolean naturalEnd = !runtimeStopped && maxDuration < 0 && runtime != null && runtime.isFinished();
 		spellTickCount++;
-		boolean naturalEnd = maxDuration < 0 && runtime != null && runtime.isFinished();
-		boolean timedOut = maxDuration >= 0 && spellTickCount >= maxDuration;
+		boolean timedOut = !runtimeStopped && maxDuration >= 0 && spellTickCount >= maxDuration;
 		if (naturalEnd || timedOut) {
-			cleanup();
+			runtimeStopped = true;
+			runtime = null;
+		}
+
+		// Once the runtime has stopped spawning, keep the proxy alive only long enough
+		// for its existing virtual danmaku to expire naturally.
+		if (runtimeStopped && allDanmakus.isEmpty()) {
+			this.discard();
 		}
 	}
 
@@ -303,10 +319,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	/**
-	 * @return true if this proxy has finished its spell and all danmaku have expired
+	 * @return true if this proxy has stopped spawning and all virtual danmaku have expired
 	 */
 	public boolean isFinished() {
-		return isRemoved() || (spellTickCount >= maxDuration && allDanmakus.isEmpty());
+		return isRemoved() || (runtimeStopped && allDanmakus.isEmpty());
 	}
 
 	// ==================== Entity properties: invisible, invulnerable, no AI ====================

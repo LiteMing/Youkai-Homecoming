@@ -29,4 +29,9 @@ public final class RotateMover extends DanmakuMover {
 		return new ProjectileMovement(Vec3.ZERO, ProjectileMovement.of(forward).rot());
 	}
 
+	@Override
+	public boolean allowNextTickStep1Prefetch() {
+		return true;
+	}
+
 }

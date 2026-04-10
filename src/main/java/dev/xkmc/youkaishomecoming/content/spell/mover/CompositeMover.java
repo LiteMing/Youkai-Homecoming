@@ -35,6 +35,19 @@ public class CompositeMover extends DanmakuMover {
 		return ent.mover.move(info.offsetTime(-ent.subtract));
 	}
 
+	@Override
+	public boolean allowNextTickStep1Prefetch() {
+		if (list.isEmpty()) {
+			return false;
+		}
+		for (Entry entry : list) {
+			if (entry.mover() == null || !entry.mover().allowNextTickStep1Prefetch()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	public void addEnd() {
 		var mover = list.get(list.size() - 1);
 		if (mover.mover instanceof RectMover rect) {

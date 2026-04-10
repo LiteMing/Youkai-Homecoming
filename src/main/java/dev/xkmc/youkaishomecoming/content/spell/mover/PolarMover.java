@@ -34,6 +34,11 @@ public final class PolarMover extends TargetPosMover {
 		return pos(info.tick());
 	}
 
+	@Override
+	public boolean allowNextTickStep1Prefetch() {
+		return true;
+	}
+
 	public Vec3 pos(double tick) {
 		Vec3 rect = p.add(v.scale(tick)).add(a.scale(tick * tick * 0.5));
 		Vec3 polar = DanmakuHelper.getOrientation(f, n)

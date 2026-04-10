@@ -41,4 +41,9 @@ public final class ZeroMover extends DanmakuMover {
 		return new ProjectileMovement(Vec3.ZERO, rot0.add(rot1.subtract(rot0).scale(1.0 * info.tick() / time)));
 	}
 
+	@Override
+	public boolean allowNextTickStep1Prefetch() {
+		return true;
+	}
+
 }

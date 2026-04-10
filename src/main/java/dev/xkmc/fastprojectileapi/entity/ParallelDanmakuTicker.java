@@ -530,7 +530,7 @@ public class ParallelDanmakuTicker {
 	}
 
 	private static void storePrefetchedStep1(BaseProjectile projectile, DanmakuVirtualTickData data) {
-		ProjectileMovement movement = projectile.computeMove();
+		ProjectileMovement movement = projectile.computeMoveForTick(projectile.tickCount + 1);
 		Vec3 src = projectile.position();
 		Vec3 dst = src.add(movement.vec());
 		float radius = projectile.getBbWidth() / 2f;

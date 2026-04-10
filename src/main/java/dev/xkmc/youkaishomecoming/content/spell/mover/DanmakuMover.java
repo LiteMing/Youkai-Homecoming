@@ -8,4 +8,8 @@ public abstract class DanmakuMover {
 
 	public abstract ProjectileMovement move(MoverInfo info);
 
+	public boolean allowNextTickStep1Prefetch() {
+		return false;
+	}
+
 }

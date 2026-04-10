@@ -25,6 +25,11 @@ public final class RectMover extends TargetPosMover {
 		return pos(info.tick());
 	}
 
+	@Override
+	public boolean allowNextTickStep1Prefetch() {
+		return true;
+	}
+
 	public Vec3 pos(double tick) {
 		return pos.add(v.scale(tick)).add(a.scale(tick * tick * 0.5));
 	}

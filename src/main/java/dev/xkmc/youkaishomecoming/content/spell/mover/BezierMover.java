@@ -53,6 +53,11 @@ public final class BezierMover extends TargetPosMover {
 		return pos(info.tick());
 	}
 
+	@Override
+	public boolean allowNextTickStep1Prefetch() {
+		return true;
+	}
+
 	/**
 	 * Evaluate position on the Bezier curve at the given tick.
 	 * After {duration} ticks, the projectile continues in a straight line

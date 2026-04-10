@@ -26,4 +26,9 @@ public class FixedDirMover extends DanmakuMover {
 				ProjectileMovement.of(dir).rot());
 	}
 
+	@Override
+	public boolean allowNextTickStep1Prefetch() {
+		return mover != null && mover.allowNextTickStep1Prefetch();
+	}
+
 }

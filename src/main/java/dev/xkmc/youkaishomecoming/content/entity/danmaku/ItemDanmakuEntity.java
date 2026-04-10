@@ -116,18 +116,18 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	}
 
 	@Override
-	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
+	protected ProjectileMovement updateVelocity(int moveTick, Vec3 vec, Vec3 pos) {
 		if (mover != null) {
-			return mover.move(new MoverInfo(tickCount, pos, vec, this));
+			return mover.move(new MoverInfo(moveTick, pos, vec, this));
 		}
 		if (controlCode > 0 && getOwner() instanceof DanmakuCommander commander)
-			return commander.move(controlCode, tickCount, vec);
-		return super.updateVelocity(vec, pos);
+			return commander.move(controlCode, moveTick, vec);
+		return super.updateVelocity(moveTick, vec, pos);
 	}
 
 	@Override
 	protected boolean allowNextTickStep1Prefetch() {
-		return mover == null && controlCode <= 0;
+		return controlCode <= 0 && (mover == null || mover.allowNextTickStep1Prefetch());
 	}
 
 	public ItemStack getItem() {

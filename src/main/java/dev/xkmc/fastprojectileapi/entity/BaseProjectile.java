@@ -103,7 +103,19 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 	 * Used by ClientDanmakuCache for parallel tick computation.
 	 */
 	public ProjectileMovement computeMove() {
-		return updateVelocity(getDeltaMovement(), position());
+		return computeMoveForTick(tickCount);
+	}
+
+	/**
+	 * Compute movement for an explicit logical tick without mutating projectile state.
+	 * Used by next-tick Step 1 prefetch so tick-indexed movers can be prefetched correctly.
+	 */
+	public ProjectileMovement computeMoveForTick(int moveTick) {
+		return updateVelocity(moveTick, getDeltaMovement(), position());
+	}
+
+	protected ProjectileMovement updateVelocity(int moveTick, Vec3 vec, Vec3 pos) {
+		return updateVelocity(vec, pos);
 	}
 
 	/**

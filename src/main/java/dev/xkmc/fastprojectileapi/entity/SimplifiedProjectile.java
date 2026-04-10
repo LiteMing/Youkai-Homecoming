@@ -22,6 +22,7 @@ public abstract class SimplifiedProjectile extends SimplifiedEntity implements T
 	private UUID ownerUUID;
 	@Nullable
 	private Entity cachedOwner;
+	private final DanmakuVirtualTickData virtualTickData = new DanmakuVirtualTickData();
 
 	public SimplifiedProjectile(EntityType<?> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -100,6 +101,10 @@ public abstract class SimplifiedProjectile extends SimplifiedEntity implements T
 		} else {
 			return null;
 		}
+	}
+
+	public DanmakuVirtualTickData virtualTickData() {
+		return virtualTickData;
 	}
 
 	@OverridingMethodsMustInvokeSuper

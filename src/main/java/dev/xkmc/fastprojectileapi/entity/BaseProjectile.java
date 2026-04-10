@@ -33,6 +33,7 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 
 	public void tick() {
 		super.tick();
+		beforeMoveTick();
 		ProjectileMovement preHitMovement = computeMove();
 		HitResult hitresult = ProjectileHitHelper.getHitResultOnMoveVector(this, preHitMovement, checkBlockHit());
 		if (hitresult != null) {
@@ -40,7 +41,7 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 		}
 		if (tickCount >= lifetime()) {
 			if (level() instanceof ServerLevel) {
-				projectileMove();
+				projectileMove(preHitMovement);
 				terminate();
 				markErased(false);
 				return;
@@ -51,7 +52,7 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 			}
 			return;
 		}
-		projectileMove();
+		projectileMove(preHitMovement);
 		if (level() instanceof ServerLevel sl) {
 			if (!level().hasChunk(blockPosition().getX() >> 4, blockPosition().getZ() >> 4) ||
 					isAddedToWorld() && !EntityStorageHelper.isTicking(sl, this)) {
@@ -71,8 +72,20 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 	}
 
 	protected void projectileMove() {
-		ProjectileMovement movement = computeMove();
+		beforeMoveTick();
+		projectileMove(computeMove());
+	}
+
+	protected void projectileMove(ProjectileMovement movement) {
 		applyMove(movement);
+	}
+
+	/**
+	 * Main-thread per-tick hook for side effects that must happen once, such as trail spawning.
+	 * Implementations should keep movement state changes in {@link #computeMove()}.
+	 */
+	protected void beforeMoveTick() {
+
 	}
 
 	/**
@@ -86,7 +99,7 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 
 	/**
 	 * Apply a pre-computed movement to this entity's state.
-	 * Must be called on the main thread.
+	 * Virtual danmaku may call this from worker threads because they are not world-added entities.
 	 */
 	public void applyMove(ProjectileMovement movement) {
 		setDeltaMovement(movement.vec());

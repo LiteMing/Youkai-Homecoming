@@ -1,14 +1,13 @@
 package dev.xkmc.fastprojectileapi.entity;
 
+import com.mojang.logging.LogUtils;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageCache;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.IEntityCache;
+import dev.xkmc.fastprojectileapi.collision.ProjectileHitHelper;
 import dev.xkmc.fastprojectileapi.collision.SectionCache;
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -19,74 +18,27 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Parallel danmaku tick utility implementing the PG optimization (4-step split).
+ * Parallel danmaku tick utility for virtual projectiles.
  * <p>
- * Architecture:
- * <ul>
- *   <li>Step 1 (parallel): compute collision range from the current move vector</li>
- *   <li>Step 2 (single-thread): advance tick state, block clip, and cache entity collision data</li>
- *   <li>Step 3 (parallel): entity collision detection using cached snapshots</li>
- *   <li>Step 4 (single-thread): graze callbacks, onHit callbacks, and list maintenance</li>
- * </ul>
+ * Hot-path data now stays on each projectile via {@link DanmakuVirtualTickData}:
+ * prepare on the main thread, compute Step 1/2/3 in parallel, then run callbacks on
+ * the main thread and apply movement in parallel again.
  */
 public class ParallelDanmakuTicker {
 
+	private static final Logger LOGGER = LogUtils.getLogger();
 	private static final int PARALLEL_THRESHOLD = 500;
 	private static final int MAX_THREADS = 4;
-
-	/**
-	 * Immutable snapshot of a target entity's collision-relevant state.
-	 * Captured in Step 2 and read in Step 3 without touching live entity state.
-	 */
-	public record CachedTarget(Entity entity, AABB boundingBox, Vec3 deltaMovement, AABB sweepBox) {
-	}
-
-	/** Step 1 output: computed movement and the collision search range. */
-	private record Step1Result(
-			Vec3 src,
-			Vec3 dst,
-			AABB searchBox,
-			float radius,
-			float graze,
-			boolean checkBlock,
-			int sectionX0,
-			int sectionY0,
-			int sectionZ0,
-			int sectionX1,
-			int sectionY1,
-			int sectionZ1
-	) {
-	}
-
-	/** Step 2 output: resolved hit range and cached collision candidates. */
-	private record Step2Result(
-			Vec3 src,
-			@Nullable HitResult blockHit,
-			Vec3 effectiveDst,
-			float radius,
-			float graze,
-			List<PreparedCandidate> candidates
-	) {
-	}
-
-	/** Step 2 main-thread snapshot for a target after projectile-specific hitbox adjustment. */
-	private record PreparedCandidate(Entity entity, Vec3 deltaMovement, AABB hitBox, @Nullable AABB grazeBox) {
-	}
-
-	/** Per-section snapshot reused by all projectiles touching the same section in this tick. */
-	private record SectionSnapshot(List<CachedTarget> all, List<CachedTarget> margin) {
-	}
-
-	/** Step 3 output: collision result and graze callbacks to apply on the main thread. */
-	private record Step3Result(@Nullable Entity hitEntity, List<Player> grazedPlayers) {
-	}
 
 	/**
 	 * Tick all virtual danmaku with parallel optimization.
@@ -107,15 +59,13 @@ public class ParallelDanmakuTicker {
 	                           @Nullable UserCacheHolder cacheHolder,
 	                           @Nullable LivingEntity self) {
 		long gameTime = warmCaches(sl, cacheHolder);
-		List<SimplifiedProjectile> active = collectActiveDanmakus(allDanmakus);
-		if (active.isEmpty()) {
+		if (allDanmakus.isEmpty()) {
 			return;
 		}
-
-		if (active.size() >= PARALLEL_THRESHOLD) {
-			tickParallel(sl, active, allDanmakus, temp, toBeSent, removeFlag, cacheHolder, self, gameTime);
+		if (allDanmakus.size() >= PARALLEL_THRESHOLD) {
+			tickParallel(sl, allDanmakus, temp, toBeSent, removeFlag, cacheHolder, self, gameTime);
 		} else {
-			tickSequential(sl, active, allDanmakus, temp, toBeSent, removeFlag, self);
+			tickSequential(sl, allDanmakus, temp, toBeSent, removeFlag, self);
 		}
 	}
 
@@ -128,47 +78,35 @@ public class ParallelDanmakuTicker {
 		return gameTime;
 	}
 
-	private static List<SimplifiedProjectile> collectActiveDanmakus(List<SimplifiedProjectile> allDanmakus) {
-		List<SimplifiedProjectile> active = new ArrayList<>(allDanmakus.size());
-		for (var e : allDanmakus) {
-			if (e.isAddedToWorld() && !e.isRemoved()) {
-				continue;
-			}
-			active.add(e);
-		}
-		return active;
-	}
-
 	private static void tickSequential(ServerLevel sl,
-	                                   List<SimplifiedProjectile> active,
 	                                   List<SimplifiedProjectile> allDanmakus,
 	                                   ArrayList<SimplifiedProjectile> temp,
 	                                   ArrayList<SimplifiedProjectile> toBeSent,
 	                                   boolean[] removeFlag,
 	                                   @Nullable LivingEntity self) {
 		List<SimplifiedProjectile> toRemove = new ArrayList<>();
-		for (var e : active) {
-			if (e.isRemoved()) {
-				toRemove.add(e);
+		for (SimplifiedProjectile projectile : allDanmakus) {
+			if (shouldSkipVirtualTick(projectile)) {
 				continue;
 			}
-			if (e.isValid()) {
-				e.setOldPosAndRot();
-				++e.tickCount;
-				e.tick();
+			if (projectile.isRemoved()) {
+				toRemove.add(projectile);
+				continue;
+			}
+			if (projectile.isValid()) {
+				sequentialTickOne(projectile);
 			}
 			if (removeFlag[0]) {
 				break;
 			}
-			if (!e.isValid()) {
-				toRemove.add(e);
+			if (shouldRemoveFromVirtualList(projectile)) {
+				toRemove.add(projectile);
 			}
 		}
 		finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
 	}
 
 	private static void tickParallel(ServerLevel sl,
-	                                 List<SimplifiedProjectile> active,
 	                                 List<SimplifiedProjectile> allDanmakus,
 	                                 ArrayList<SimplifiedProjectile> temp,
 	                                 ArrayList<SimplifiedProjectile> toBeSent,
@@ -176,56 +114,97 @@ public class ParallelDanmakuTicker {
 	                                 @Nullable UserCacheHolder cacheHolder,
 	                                 @Nullable LivingEntity self,
 	                                 long gameTime) {
-		int size = active.size();
-		Step1Result[] step1 = computeStep1(active);
-		if (step1 == null) {
-			tickSequential(sl, active, allDanmakus, temp, toBeSent, removeFlag, self);
-			return;
-		}
-
+		prepareParallelTick(allDanmakus);
+		TouchedSectionBounds bounds = computeStep1(allDanmakus);
 		IEntityCache entityCache = resolveEntityCache(sl, cacheHolder, self, gameTime);
-		Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots = snapshotTouchedSections(entityCache, step1);
-		Step2Result[] step2 = computeStep2(sl, active, step1, entityCache, sectionSnapshots);
-		Step3Result[] step3 = computeStep3(active, size, step2);
-		finishParallelTick(sl, active, allDanmakus, temp, toBeSent, removeFlag, self, step2, step3);
+		TouchedSectionMask mask = bounds == null ? null : new TouchedSectionMask(bounds);
+		if (mask != null) {
+			markTouchedSections(allDanmakus, mask);
+			warmTouchedSections(entityCache, mask);
+		}
+		computeStep2(sl, allDanmakus, entityCache);
+		computeStep3(allDanmakus);
+		finishParallelTick(sl, allDanmakus, temp, toBeSent, removeFlag, self);
+	}
+
+	private static void prepareParallelTick(List<SimplifiedProjectile> allDanmakus) {
+		for (SimplifiedProjectile projectile : allDanmakus) {
+			DanmakuVirtualTickData data = projectile.virtualTickData();
+			data.reset();
+			if (shouldSkipVirtualTick(projectile) || projectile.isRemoved() || !projectile.isValid()) {
+				continue;
+			}
+			if (!(projectile instanceof BaseProjectile)) {
+				data.markStandardSequentialFallback();
+				continue;
+			}
+			projectile.setOldPosAndRot();
+			++projectile.tickCount;
+			projectile.baseTick();
+			data.markPreparedTickState();
+		}
 	}
 
 	@Nullable
-	private static Step1Result[] computeStep1(List<SimplifiedProjectile> active) {
-		int size = active.size();
-		Step1Result[] results = new Step1Result[size];
-		try {
-			runParallel(size, (from, to) -> {
-				for (int i = from; i < to; i++) {
-					results[i] = computeStep1Result(active.get(i));
+	private static TouchedSectionBounds computeStep1(List<SimplifiedProjectile> allDanmakus) {
+		int size = allDanmakus.size();
+		AtomicInteger minX = new AtomicInteger(Integer.MAX_VALUE);
+		AtomicInteger minY = new AtomicInteger(Integer.MAX_VALUE);
+		AtomicInteger minZ = new AtomicInteger(Integer.MAX_VALUE);
+		AtomicInteger maxX = new AtomicInteger(Integer.MIN_VALUE);
+		AtomicInteger maxY = new AtomicInteger(Integer.MIN_VALUE);
+		AtomicInteger maxZ = new AtomicInteger(Integer.MIN_VALUE);
+		AtomicInteger ready = new AtomicInteger();
+		AtomicInteger failures = new AtomicInteger();
+		runParallel(size, (from, to) -> {
+			for (int i = from; i < to; i++) {
+				SimplifiedProjectile projectile = allDanmakus.get(i);
+				DanmakuVirtualTickData data = projectile.virtualTickData();
+				if (!data.hasPreparedTickState()) {
+					continue;
 				}
-			});
-			return results;
-		} catch (Exception ex) {
-			com.mojang.logging.LogUtils.getLogger().warn("Parallel danmaku tick Step 1 failed, falling back", ex);
+				try {
+					computeStep1Result((BaseProjectile) projectile, data);
+					ready.incrementAndGet();
+					accumulateMin(minX, data.sectionX0());
+					accumulateMin(minY, data.sectionY0());
+					accumulateMin(minZ, data.sectionZ0());
+					accumulateMax(maxX, data.sectionX1());
+					accumulateMax(maxY, data.sectionY1());
+					accumulateMax(maxZ, data.sectionZ1());
+				} catch (Exception ex) {
+					data.markPreparedSequentialFallback();
+					failures.incrementAndGet();
+				}
+			}
+		});
+		if (failures.get() > 0) {
+			LOGGER.warn("Parallel danmaku tick Step 1 fell back to prepared sequential for {} projectiles", failures.get());
+		}
+		if (ready.get() == 0) {
 			return null;
 		}
+		return new TouchedSectionBounds(
+				minX.get(), minY.get(), minZ.get(),
+				maxX.get(), maxY.get(), maxZ.get()
+		);
 	}
 
-	@Nullable
-	private static Step1Result computeStep1Result(SimplifiedProjectile projectile) {
-		if (!(projectile instanceof BaseProjectile bp)) {
-			return null;
-		}
-		Vec3 movement = projectile.getDeltaMovement();
+	private static void computeStep1Result(BaseProjectile projectile, DanmakuVirtualTickData data) {
+		ProjectileMovement movement = projectile.computeMove();
 		Vec3 src = projectile.position();
-		Vec3 dst = src.add(movement);
+		Vec3 dst = src.add(movement.vec());
 		float radius = projectile.getBbWidth() / 2f;
 		float graze = projectile.grazeRange();
-		AABB box = projectile.getBoundingBox().expandTowards(movement);
-		AABB searchBox = box.inflate(1 + radius + graze);
-		return new Step1Result(
+		AABB searchBox = projectile.getBoundingBox().expandTowards(movement.vec()).inflate(1 + radius + graze);
+		data.markParallelReady(
+				movement,
 				src,
 				dst,
 				searchBox,
 				radius,
 				graze,
-				bp.checkBlockHit(),
+				projectile.checkBlockHit(),
 				getSectionMin(searchBox.minX),
 				getSectionMin(searchBox.minY),
 				getSectionMin(searchBox.minZ),
@@ -233,6 +212,25 @@ public class ParallelDanmakuTicker {
 				getSectionMax(searchBox.maxY),
 				getSectionMax(searchBox.maxZ)
 		);
+	}
+
+	private static void markTouchedSections(List<SimplifiedProjectile> allDanmakus, TouchedSectionMask mask) {
+		int size = allDanmakus.size();
+		runParallel(size, (from, to) -> {
+			for (int i = from; i < to; i++) {
+				DanmakuVirtualTickData data = allDanmakus.get(i).virtualTickData();
+				if (data.isParallelReady()) {
+					mask.mark(data);
+				}
+			}
+		});
+	}
+
+	private static void warmTouchedSections(@Nullable IEntityCache entityCache, @Nullable TouchedSectionMask mask) {
+		if (entityCache == null || mask == null) {
+			return;
+		}
+		mask.forEach((x, y, z) -> entityCache.get(x, y, z));
 	}
 
 	@Nullable
@@ -246,65 +244,272 @@ public class ParallelDanmakuTicker {
 		return EntityStorageCache.get(sl, gameTime);
 	}
 
-	private static Step2Result[] computeStep2(ServerLevel sl,
-	                                          List<SimplifiedProjectile> active,
-	                                          Step1Result[] step1,
-	                                          @Nullable IEntityCache entityCache,
-	                                          Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots) {
-		int size = active.size();
-		Step2Result[] results = new Step2Result[size];
-		for (int i = 0; i < size; i++) {
-			results[i] = computeStep2Result(sl, active.get(i), step1[i], entityCache, sectionSnapshots);
+	private static void computeStep2(ServerLevel sl,
+	                                 List<SimplifiedProjectile> allDanmakus,
+	                                 @Nullable IEntityCache entityCache) {
+		int size = allDanmakus.size();
+		AtomicInteger failures = new AtomicInteger();
+		runParallel(size, (from, to) -> {
+			for (int i = from; i < to; i++) {
+				SimplifiedProjectile projectile = allDanmakus.get(i);
+				DanmakuVirtualTickData data = projectile.virtualTickData();
+				if (!data.isParallelReady()) {
+					continue;
+				}
+				try {
+					computeStep2Result(sl, (BaseProjectile) projectile, data, entityCache);
+				} catch (Exception ex) {
+					data.markPreparedSequentialFallback();
+					failures.incrementAndGet();
+				}
+			}
+		});
+		if (failures.get() > 0) {
+			LOGGER.warn("Parallel danmaku tick Step 2 fell back to prepared sequential for {} projectiles", failures.get());
 		}
-		return results;
 	}
 
-	@Nullable
-	private static Step2Result computeStep2Result(ServerLevel sl,
-	                                              SimplifiedProjectile projectile,
-	                                              @Nullable Step1Result data,
-	                                              @Nullable IEntityCache entityCache,
-	                                              Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots) {
-		if (projectile.isRemoved() || !projectile.isValid()) {
-			return null;
+	private static void computeStep2Result(ServerLevel sl,
+	                                       BaseProjectile projectile,
+	                                       DanmakuVirtualTickData data,
+	                                       @Nullable IEntityCache entityCache) {
+		Vec3 src = data.src();
+		Vec3 dst = data.dst();
+		AABB searchBox = data.searchBox();
+		if (src == null || dst == null || searchBox == null) {
+			data.markPreparedSequentialFallback();
+			return;
 		}
-		if (data == null) {
-			sequentialTickOne(projectile);
-			return null;
+		HitResult blockHit = resolveBlockHit(sl, projectile, src, dst, data.checkBlock());
+		data.setBlockHit(blockHit, blockHit == null ? dst : blockHit.getLocation());
+		data.clearCandidates();
+		collectCandidates(entityCache, searchBox, projectile, data);
+	}
+
+	private static void collectCandidates(@Nullable IEntityCache entityCache,
+	                                      AABB searchBox,
+	                                      SimplifiedProjectile projectile,
+	                                      DanmakuVirtualTickData data) {
+		if (entityCache == null) {
+			return;
 		}
-
-		prepareTickState(projectile);
-
-		BaseProjectile bp = (BaseProjectile) projectile;
-		ProjectileMovement preHitMovement = bp.computeMove();
-		Vec3 src = projectile.position();
-		Vec3 dst = src.add(preHitMovement.vec());
-		float radius = projectile.getBbWidth() / 2f;
-		float graze = projectile.grazeRange();
-		AABB searchBox = projectile.getBoundingBox().expandTowards(preHitMovement.vec()).inflate(1 + radius + graze);
-		Vec3 effectiveDst = dst;
-		HitResult blockHit = resolveBlockHit(sl, projectile, src, dst, bp.checkBlockHit());
-		if (blockHit != null) {
-			effectiveDst = blockHit.getLocation();
+		float radius = data.radius();
+		float graze = data.graze();
+		for (int x = data.sectionX0(); x <= data.sectionX1(); x++) {
+			for (int y = data.sectionY0(); y <= data.sectionY1(); y++) {
+				for (int z = data.sectionZ0(); z <= data.sectionZ1(); z++) {
+					SectionCache section = entityCache.get(x, y, z);
+					Iterable<Entity> pool = sectionIntersects(searchBox, x, y, z)
+							? section.allEntities()
+							: section.marginEntities();
+					for (Entity candidate : pool) {
+						AABB boundingBox = candidate.getBoundingBox();
+						Vec3 deltaMovement = candidate.getDeltaMovement();
+						AABB sweepBox = boundingBox.expandTowards(deltaMovement);
+						if (!searchBox.intersects(sweepBox) || !projectile.canHitEntity(candidate)) {
+							continue;
+						}
+						AABB hitBox = projectile.alterHitBox(candidate, boundingBox, radius, 0);
+						AABB grazeBox = graze > 0
+								? projectile.alterHitBox(candidate, boundingBox, radius, graze)
+								: null;
+						data.addCandidate(candidate, deltaMovement, hitBox, grazeBox);
+					}
+				}
+			}
 		}
+	}
 
-		List<CachedTarget> rawCandidates = sectionSnapshots.isEmpty() && entityCache == null
-				? List.of()
-				: collectCandidates(entityCache, sectionSnapshots, searchBox, projectile);
-		return new Step2Result(src, blockHit, effectiveDst, radius, graze,
-				prepareCandidates(projectile, rawCandidates, radius, graze));
+	private static void computeStep3(List<SimplifiedProjectile> allDanmakus) {
+		int size = allDanmakus.size();
+		AtomicInteger failures = new AtomicInteger();
+		runParallel(size, (from, to) -> {
+			for (int i = from; i < to; i++) {
+				SimplifiedProjectile projectile = allDanmakus.get(i);
+				DanmakuVirtualTickData data = projectile.virtualTickData();
+				if (!data.isParallelReady()) {
+					continue;
+				}
+				try {
+					computeStep3Result(data);
+				} catch (Exception ex) {
+					data.clearHitAndGraze();
+					failures.incrementAndGet();
+				}
+			}
+		});
+		if (failures.get() > 0) {
+			LOGGER.warn("Parallel danmaku tick Step 3 skipped collision for {} projectiles", failures.get());
+		}
+	}
+
+	private static void computeStep3Result(DanmakuVirtualTickData data) {
+		Vec3 src = data.src();
+		Vec3 effectiveDst = data.effectiveDst();
+		if (src == null || effectiveDst == null) {
+			data.clearHitAndGraze();
+			return;
+		}
+		data.clearHitAndGraze();
+		double closestDistance = Double.MAX_VALUE;
+		Entity hitEntity = null;
+		for (DanmakuVirtualTickData.PreparedCandidate candidate : data.candidates()) {
+			Entity target = candidate.entity();
+			Vec3 hitPos = checkHitCached(candidate.hitBox(), src, effectiveDst, candidate.deltaMovement());
+			if (hitPos != null) {
+				double distance = src.distanceToSqr(hitPos);
+				if (distance < closestDistance) {
+					closestDistance = distance;
+					hitEntity = target;
+				}
+				continue;
+			}
+			if (data.graze() > 0 && target instanceof Player player && candidate.grazeBox() != null) {
+				if (checkHitCached(candidate.grazeBox(), src, effectiveDst, candidate.deltaMovement()) != null
+						&& !data.grazedPlayers().contains(player)) {
+					data.addGraze(player);
+				}
+			}
+		}
+		data.setHitEntity(hitEntity);
+	}
+
+	private static void finishParallelTick(ServerLevel sl,
+	                                       List<SimplifiedProjectile> allDanmakus,
+	                                       ArrayList<SimplifiedProjectile> temp,
+	                                       ArrayList<SimplifiedProjectile> toBeSent,
+	                                       boolean[] removeFlag,
+	                                       @Nullable LivingEntity self) {
+		List<SimplifiedProjectile> toRemove = new ArrayList<>();
+		for (SimplifiedProjectile projectile : allDanmakus) {
+			if (shouldSkipVirtualTick(projectile)) {
+				continue;
+			}
+			DanmakuVirtualTickData data = projectile.virtualTickData();
+			if (data.usesStandardSequentialFallback()) {
+				sequentialTickOne(projectile);
+				if (removeFlag[0]) {
+					break;
+				}
+				if (shouldRemoveFromVirtualList(projectile)) {
+					toRemove.add(projectile);
+				}
+				continue;
+			}
+			if (data.usesPreparedSequentialFallback()) {
+				if (projectile instanceof BaseProjectile bp) {
+					finishPreparedSequentialTick(sl, bp);
+				}
+				if (removeFlag[0]) {
+					break;
+				}
+				if (shouldRemoveFromVirtualList(projectile)) {
+					toRemove.add(projectile);
+				}
+				continue;
+			}
+			if (!data.isParallelReady()) {
+				if (shouldRemoveFromVirtualList(projectile)) {
+					toRemove.add(projectile);
+				}
+				continue;
+			}
+			BaseProjectile bp = (BaseProjectile) projectile;
+			bp.beforeMoveTick();
+			for (Player player : data.grazedPlayers()) {
+				projectile.doGraze(player);
+			}
+			HitResult finalHit = data.blockHit();
+			if (data.hitEntity() != null) {
+				finalHit = new EntityHitResult(data.hitEntity());
+			}
+			if (finalHit != null) {
+				bp.onHit(finalHit);
+			}
+			if (removeFlag[0]) {
+				break;
+			}
+			data.queueApplyMove();
+		}
+		if (!removeFlag[0]) {
+			applyResolvedMoves(allDanmakus);
+			finalizeResolvedMoves(sl, allDanmakus, toRemove);
+		}
+		finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
+	}
+
+	private static void finishPreparedSequentialTick(ServerLevel sl, BaseProjectile projectile) {
+		projectile.beforeMoveTick();
+		ProjectileMovement movement = projectile.computeMove();
+		HitResult hitResult = ProjectileHitHelper.getHitResultOnMoveVector(projectile, movement, projectile.checkBlockHit());
+		if (hitResult != null) {
+			projectile.onHit(hitResult);
+		}
+		projectile.applyMove(movement);
+		if (projectile.tickCount >= projectile.lifetime() && sl == projectile.level()) {
+			projectile.terminate();
+			projectile.markErased(false);
+			return;
+		}
+		if (shouldEraseAfterMove(sl, projectile)) {
+			projectile.markErased(false);
+		}
+	}
+
+	private static void applyResolvedMoves(List<SimplifiedProjectile> allDanmakus) {
+		int size = allDanmakus.size();
+		AtomicInteger failures = new AtomicInteger();
+		runParallel(size, (from, to) -> {
+			for (int i = from; i < to; i++) {
+				SimplifiedProjectile projectile = allDanmakus.get(i);
+				DanmakuVirtualTickData data = projectile.virtualTickData();
+				if (!data.isApplyMovePending()) {
+					continue;
+				}
+				try {
+					ProjectileMovement movement = data.movement();
+					if (movement != null) {
+						((BaseProjectile) projectile).applyMove(movement);
+					}
+				} catch (Exception ex) {
+					failures.incrementAndGet();
+				}
+			}
+		});
+		if (failures.get() > 0) {
+			LOGGER.warn("Parallel danmaku tick movement apply failed for {} projectiles", failures.get());
+		}
+	}
+
+	private static void finalizeResolvedMoves(ServerLevel sl,
+	                                          List<SimplifiedProjectile> allDanmakus,
+	                                          List<SimplifiedProjectile> toRemove) {
+		for (SimplifiedProjectile projectile : allDanmakus) {
+			if (shouldSkipVirtualTick(projectile)) {
+				continue;
+			}
+			DanmakuVirtualTickData data = projectile.virtualTickData();
+			if (!data.isApplyMovePending()) {
+				continue;
+			}
+			data.clearApplyMovePending();
+			BaseProjectile bp = (BaseProjectile) projectile;
+			if (projectile.tickCount >= bp.lifetime() && sl == projectile.level()) {
+				bp.terminate();
+				projectile.markErased(false);
+			} else if (shouldEraseAfterMove(sl, projectile)) {
+				projectile.markErased(false);
+			}
+			if (shouldRemoveFromVirtualList(projectile)) {
+				toRemove.add(projectile);
+			}
+		}
 	}
 
 	private static void sequentialTickOne(SimplifiedProjectile projectile) {
 		projectile.setOldPosAndRot();
 		++projectile.tickCount;
 		projectile.tick();
-	}
-
-	private static void prepareTickState(SimplifiedProjectile projectile) {
-		projectile.setOldPosAndRot();
-		++projectile.tickCount;
-		projectile.baseTick();
 	}
 
 	private static boolean shouldEraseAfterMove(ServerLevel sl, SimplifiedProjectile projectile) {
@@ -333,126 +538,6 @@ public class ParallelDanmakuTicker {
 		return blockHit.getType() == HitResult.Type.MISS ? null : blockHit;
 	}
 
-	private static Long2ObjectOpenHashMap<SectionSnapshot> snapshotTouchedSections(@Nullable IEntityCache entityCache,
-	                                                                              Step1Result[] step1) {
-		Long2ObjectOpenHashMap<SectionSnapshot> snapshots = new Long2ObjectOpenHashMap<>();
-		if (entityCache == null) {
-			return snapshots;
-		}
-		LongOpenHashSet touched = new LongOpenHashSet();
-		for (Step1Result data : step1) {
-			if (data == null) {
-				continue;
-			}
-			for (int x = data.sectionX0; x <= data.sectionX1; x++) {
-				for (int y = data.sectionY0; y <= data.sectionY1; y++) {
-					for (int z = data.sectionZ0; z <= data.sectionZ1; z++) {
-						touched.add(SectionPos.asLong(x, y, z));
-					}
-				}
-			}
-		}
-		for (long key : touched) {
-			int x = SectionPos.x(key);
-			int y = SectionPos.y(key);
-			int z = SectionPos.z(key);
-			SectionCache section = entityCache.get(x, y, z);
-			snapshots.put(key, new SectionSnapshot(
-					snapshotTargets(section.allEntities()),
-					snapshotTargets(section.marginEntities())
-			));
-		}
-		return snapshots;
-	}
-
-	private static List<CachedTarget> snapshotTargets(Iterable<Entity> raw) {
-		ArrayList<CachedTarget> snapshots = null;
-		for (Entity target : raw) {
-			AABB box = target.getBoundingBox();
-			Vec3 delta = target.getDeltaMovement();
-			AABB sweep = box.expandTowards(delta);
-			if (snapshots == null) {
-				snapshots = new ArrayList<>();
-			}
-			snapshots.add(new CachedTarget(target, box, delta, sweep));
-		}
-		return snapshots == null ? List.of() : snapshots;
-	}
-
-	private static SectionSnapshot getOrCreateSectionSnapshot(@Nullable IEntityCache entityCache,
-	                                                         Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots,
-	                                                         int x,
-	                                                         int y,
-	                                                         int z) {
-		long key = SectionPos.asLong(x, y, z);
-		SectionSnapshot existing = sectionSnapshots.get(key);
-		if (existing != null || entityCache == null) {
-			return existing;
-		}
-		SectionCache section = entityCache.get(x, y, z);
-		SectionSnapshot created = new SectionSnapshot(
-				snapshotTargets(section.allEntities()),
-				snapshotTargets(section.marginEntities())
-		);
-		sectionSnapshots.put(key, created);
-		return created;
-	}
-
-	private static List<CachedTarget> collectCandidates(@Nullable IEntityCache entityCache,
-	                                                    Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots,
-	                                                    AABB searchBox,
-	                                                    SimplifiedProjectile projectile) {
-		int sectionX0 = getSectionMin(searchBox.minX);
-		int sectionY0 = getSectionMin(searchBox.minY);
-		int sectionZ0 = getSectionMin(searchBox.minZ);
-		int sectionX1 = getSectionMax(searchBox.maxX);
-		int sectionY1 = getSectionMax(searchBox.maxY);
-		int sectionZ1 = getSectionMax(searchBox.maxZ);
-		ArrayList<CachedTarget> candidates = null;
-		for (int x = sectionX0; x <= sectionX1; x++) {
-			for (int y = sectionY0; y <= sectionY1; y++) {
-				for (int z = sectionZ0; z <= sectionZ1; z++) {
-					SectionSnapshot section = getOrCreateSectionSnapshot(entityCache, sectionSnapshots, x, y, z);
-					if (section == null) {
-						continue;
-					}
-					List<CachedTarget> pool = sectionIntersects(searchBox, x, y, z) ? section.all : section.margin;
-					for (CachedTarget candidate : pool) {
-						if (!searchBox.intersects(candidate.sweepBox)) {
-							continue;
-						}
-						if (!projectile.canHitEntity(candidate.entity)) {
-							continue;
-						}
-						if (candidates == null) {
-							candidates = new ArrayList<>();
-						}
-						candidates.add(candidate);
-					}
-				}
-			}
-		}
-		return candidates == null ? List.of() : candidates;
-	}
-
-	private static List<PreparedCandidate> prepareCandidates(SimplifiedProjectile projectile,
-	                                                         List<CachedTarget> rawCandidates,
-	                                                         float radius,
-	                                                         float graze) {
-		if (rawCandidates.isEmpty()) {
-			return List.of();
-		}
-		ArrayList<PreparedCandidate> prepared = new ArrayList<>(rawCandidates.size());
-		for (CachedTarget candidate : rawCandidates) {
-			AABB hitBox = projectile.alterHitBox(candidate.entity(), candidate.boundingBox(), radius, 0);
-			AABB grazeBox = graze > 0
-					? projectile.alterHitBox(candidate.entity(), candidate.boundingBox(), radius, graze)
-					: null;
-			prepared.add(new PreparedCandidate(candidate.entity(), candidate.deltaMovement(), hitBox, grazeBox));
-		}
-		return prepared;
-	}
-
 	private static boolean sectionIntersects(AABB box, int x, int y, int z) {
 		double minX = x << 4;
 		double minY = y << 4;
@@ -470,120 +555,8 @@ public class ParallelDanmakuTicker {
 		return (((int) coordinate) >> 4) + 1;
 	}
 
-	private static Step3Result[] computeStep3(List<SimplifiedProjectile> active,
-	                                          int size,
-	                                          Step2Result[] step2) {
-		Step3Result[] results = new Step3Result[size];
-		try {
-			runParallel(size, (from, to) -> {
-				for (int i = from; i < to; i++) {
-					results[i] = computeStep3Result(active.get(i), step2[i]);
-				}
-			});
-		} catch (Exception ex) {
-			com.mojang.logging.LogUtils.getLogger().warn("Parallel danmaku tick Step 3 failed, skipping collision", ex);
-			for (int i = 0; i < size; i++) {
-				results[i] = new Step3Result(null, List.of());
-			}
-		}
-		return results;
-	}
-
-	private static Step3Result computeStep3Result(SimplifiedProjectile projectile,
-	                                              @Nullable Step2Result step2) {
-		if (step2 == null || step2.candidates.isEmpty()) {
-			return new Step3Result(null, List.of());
-		}
-
-		double closestDistance = Double.MAX_VALUE;
-		Entity hitEntity = null;
-		List<Player> grazedPlayers = step2.graze > 0 ? new ArrayList<>() : List.of();
-		for (PreparedCandidate candidate : step2.candidates) {
-			Entity target = candidate.entity();
-			Vec3 hitPos = checkHitCached(candidate.hitBox(), step2.src, step2.effectiveDst, candidate.deltaMovement());
-			if (hitPos != null) {
-				double distance = step2.src.distanceToSqr(hitPos);
-				if (distance < closestDistance) {
-					closestDistance = distance;
-					hitEntity = target;
-				}
-				continue;
-			}
-			if (step2.graze > 0 && target instanceof Player player && candidate.grazeBox() != null) {
-				if (checkHitCached(candidate.grazeBox(), step2.src, step2.effectiveDst, candidate.deltaMovement()) != null
-						&& !grazedPlayers.contains(player)) {
-					grazedPlayers.add(player);
-				}
-			}
-		}
-		return new Step3Result(hitEntity, grazedPlayers);
-	}
-
-	private static void finishParallelTick(ServerLevel sl,
-	                                       List<SimplifiedProjectile> active,
-	                                       List<SimplifiedProjectile> allDanmakus,
-	                                       ArrayList<SimplifiedProjectile> temp,
-	                                       ArrayList<SimplifiedProjectile> toBeSent,
-	                                       boolean[] removeFlag,
-	                                       @Nullable LivingEntity self,
-	                                       Step2Result[] step2,
-	                                       Step3Result[] step3) {
-		List<SimplifiedProjectile> toRemove = new ArrayList<>();
-		for (int i = 0; i < active.size(); i++) {
-			if (removeFlag[0]) {
-				break;
-			}
-
-			SimplifiedProjectile projectile = active.get(i);
-			Step2Result d2 = step2[i];
-			Step3Result d3 = step3[i];
-
-			if (d2 == null) {
-				if (shouldRemoveFromVirtualList(projectile)) {
-					toRemove.add(projectile);
-				}
-				continue;
-			}
-
-			for (Player player : d3.grazedPlayers) {
-				projectile.doGraze(player);
-			}
-
-			HitResult finalHit = d2.blockHit;
-			if (d3.hitEntity != null) {
-				finalHit = new EntityHitResult(d3.hitEntity);
-			}
-			if (finalHit != null && projectile instanceof BaseProjectile bp) {
-				bp.onHit(finalHit);
-			}
-			if (removeFlag[0]) {
-				break;
-			}
-
-			if (projectile instanceof BaseProjectile bp) {
-				finishMovementStep(sl, projectile, bp);
-			}
-
-			if (shouldRemoveFromVirtualList(projectile)) {
-				toRemove.add(projectile);
-			}
-		}
-		finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
-	}
-
-	private static void finishMovementStep(ServerLevel sl,
-	                                       SimplifiedProjectile projectile,
-	                                       BaseProjectile bp) {
-		ProjectileMovement movement = bp.computeMove();
-		bp.applyMove(movement);
-		if (projectile.tickCount >= bp.lifetime() && sl == projectile.level()) {
-			bp.terminate();
-			projectile.markErased(false);
-			return;
-		}
-		if (shouldEraseAfterMove(sl, projectile)) {
-			projectile.markErased(false);
-		}
+	private static boolean shouldSkipVirtualTick(SimplifiedProjectile projectile) {
+		return projectile.isAddedToWorld() && !projectile.isRemoved();
 	}
 
 	private static void finalizeTick(List<SimplifiedProjectile> allDanmakus,
@@ -603,6 +576,30 @@ public class ParallelDanmakuTicker {
 
 	private static boolean shouldRemoveFromVirtualList(SimplifiedProjectile projectile) {
 		return projectile.isRemoved() || !projectile.isValid();
+	}
+
+	private static void accumulateMin(AtomicInteger target, int value) {
+		while (true) {
+			int current = target.get();
+			if (value >= current) {
+				return;
+			}
+			if (target.compareAndSet(current, value)) {
+				return;
+			}
+		}
+	}
+
+	private static void accumulateMax(AtomicInteger target, int value) {
+		while (true) {
+			int current = target.get();
+			if (value <= current) {
+				return;
+			}
+			if (target.compareAndSet(current, value)) {
+				return;
+			}
+		}
 	}
 
 	private static void runParallel(int size, RangeTask task) {
@@ -634,8 +631,82 @@ public class ParallelDanmakuTicker {
 		void run(int from, int to);
 	}
 
+	@FunctionalInterface
+	private interface SectionVisitor {
+		void accept(int x, int y, int z);
+	}
+
+	private static final class TouchedSectionBounds {
+
+		private final int minX;
+		private final int minY;
+		private final int minZ;
+		private final int maxX;
+		private final int maxY;
+		private final int maxZ;
+
+		private TouchedSectionBounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+			this.minX = minX;
+			this.minY = minY;
+			this.minZ = minZ;
+			this.maxX = maxX;
+			this.maxY = maxY;
+			this.maxZ = maxZ;
+		}
+	}
+
+	private static final class TouchedSectionMask {
+
+		private final int minX;
+		private final int minY;
+		private final int minZ;
+		private final int spanY;
+		private final int spanZ;
+		private final int plane;
+		private final AtomicBitSet bits;
+
+		private TouchedSectionMask(TouchedSectionBounds bounds) {
+			minX = bounds.minX;
+			minY = bounds.minY;
+			minZ = bounds.minZ;
+			int spanX = bounds.maxX - bounds.minX + 1;
+			spanY = bounds.maxY - bounds.minY + 1;
+			spanZ = bounds.maxZ - bounds.minZ + 1;
+			long volume = 1L * spanX * spanY * spanZ;
+			if (volume <= 0 || volume > Integer.MAX_VALUE) {
+				throw new IllegalArgumentException("Touched section mask is too large: " + volume);
+			}
+			plane = spanY * spanZ;
+			bits = new AtomicBitSet((int) volume);
+		}
+
+		private void mark(DanmakuVirtualTickData data) {
+			for (int x = data.sectionX0(); x <= data.sectionX1(); x++) {
+				for (int y = data.sectionY0(); y <= data.sectionY1(); y++) {
+					for (int z = data.sectionZ0(); z <= data.sectionZ1(); z++) {
+						bits.set(index(x, y, z));
+					}
+				}
+			}
+		}
+
+		private void forEach(SectionVisitor visitor) {
+			for (int bit = bits.nextSetBit(0); bit >= 0; bit = bits.nextSetBit(bit + 1)) {
+				int dx = bit / plane;
+				int remain = bit % plane;
+				int dy = remain / spanZ;
+				int dz = remain % spanZ;
+				visitor.accept(minX + dx, minY + dy, minZ + dz);
+			}
+		}
+
+		private int index(int x, int y, int z) {
+			return ((x - minX) * spanY + (y - minY)) * spanZ + (z - minZ);
+		}
+	}
+
 	/**
-	 * Thread-safe version of {@link dev.xkmc.fastprojectileapi.collision.ProjectileHitHelper#checkHit(Entity, AABB, Vec3, Vec3)}
+	 * Thread-safe version of {@link ProjectileHitHelper#checkHit(Entity, AABB, Vec3, Vec3)}
 	 * that uses pre-cached deltaMovement instead of reading from the entity.
 	 */
 	@Nullable
@@ -644,7 +715,7 @@ public class ParallelDanmakuTicker {
 		int n = (int) Math.min(8, Math.floor(speed / 0.5));
 		for (int i = 0; i <= n; i++) {
 			AABB aabb = n == 0 ? base : base.move(targetVel.scale(1d * i / n));
-			var optional = aabb.contains(src) ? java.util.Optional.of(src) : aabb.clip(src, dst);
+			Optional<Vec3> optional = aabb.contains(src) ? Optional.of(src) : aabb.clip(src, dst);
 			if (optional.isPresent()) {
 				return optional.get();
 			}

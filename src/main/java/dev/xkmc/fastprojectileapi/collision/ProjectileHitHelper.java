@@ -41,23 +41,24 @@ public class ProjectileHitHelper {
 			var graze = e.grazeRange();
 			var box = e.getBoundingBox().expandTowards(v);
 			IEntityCache cache = e.getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
-			var list = cache.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
-			double d0 = Double.MAX_VALUE;
-			Entity entity = null;
-			for (Entity x : list) {
-				if (x == e) continue;
-				var hpos = checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
+			Vec3 finalDst = dst;
+			NearestHit nearestHit = new NearestHit();
+			cache.visit(box.inflate(1 + radius + graze), e::canHitEntity, candidate -> {
+				Entity x = candidate.entity();
+				if (x == e) return;
+				var hpos = checkHit(e.alterHitBox(x, candidate.boundingBox(), radius, 0), src, finalDst, candidate.deltaMovement());
 				if (hpos != null) {
 					double d1 = src.distanceToSqr(hpos);
-					if (d1 < d0) {
-						entity = x;
-						d0 = d1;
+					if (d1 < nearestHit.distance) {
+						nearestHit.entity = x;
+						nearestHit.distance = d1;
 					}
 				} else if (graze > 0 && x instanceof Player pl) {
-					var gr = checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
+					var gr = checkHit(e.alterHitBox(x, candidate.boundingBox(), radius, graze), src, finalDst, candidate.deltaMovement());
 					if (gr != null) e.doGraze(pl);
 				}
-			}
+			});
+			Entity entity = nearestHit.entity;
 			if (entity != null) {
 				hit = new EntityHitResult(entity);
 			}
@@ -67,16 +68,27 @@ public class ProjectileHitHelper {
 
 	@Nullable
 	public static Vec3 checkHit(Entity e, AABB base, Vec3 src, Vec3 dst) {
-		Vec3 vel = e.getDeltaMovement();
-		double speed = vel.length();
+		return checkHit(base, src, dst, e.getDeltaMovement());
+	}
+
+	@Nullable
+	public static Vec3 checkHit(AABB base, Vec3 src, Vec3 dst, Vec3 targetVel) {
+		double speed = targetVel.length();
 		int n = (int) Math.min(8, Math.floor(speed / 0.5));
 		for (int i = 0; i <= n; i++) {
-			AABB aabb = n == 0 ? base : base.move(vel.scale(1d * i / n));
+			AABB aabb = n == 0 ? base : base.move(targetVel.scale(1d * i / n));
 			Optional<Vec3> optional = aabb.contains(src) ? Optional.of(src) : aabb.clip(src, dst);
 			if (optional.isPresent())
 				return optional.get();
 		}
 		return null;
+	}
+
+	private static final class NearestHit {
+
+		private double distance = Double.MAX_VALUE;
+		@Nullable
+		private Entity entity;
 	}
 
 }

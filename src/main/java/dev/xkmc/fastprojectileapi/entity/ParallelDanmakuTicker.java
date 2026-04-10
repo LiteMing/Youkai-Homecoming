@@ -5,7 +5,6 @@ import dev.xkmc.fastprojectileapi.collision.EntityStorageCache;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.IEntityCache;
 import dev.xkmc.fastprojectileapi.collision.ProjectileHitHelper;
-import dev.xkmc.fastprojectileapi.collision.SectionCache;
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import net.minecraft.server.level.ServerLevel;
@@ -22,7 +21,6 @@ import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -295,29 +293,17 @@ public class ParallelDanmakuTicker {
 		}
 		float radius = data.radius();
 		float graze = data.graze();
-		for (int x = data.sectionX0(); x <= data.sectionX1(); x++) {
-			for (int y = data.sectionY0(); y <= data.sectionY1(); y++) {
-				for (int z = data.sectionZ0(); z <= data.sectionZ1(); z++) {
-					SectionCache section = entityCache.get(x, y, z);
-					Iterable<Entity> pool = sectionIntersects(searchBox, x, y, z)
-							? section.allEntities()
-							: section.marginEntities();
-					for (Entity candidate : pool) {
-						AABB boundingBox = candidate.getBoundingBox();
-						Vec3 deltaMovement = candidate.getDeltaMovement();
-						AABB sweepBox = boundingBox.expandTowards(deltaMovement);
-						if (!searchBox.intersects(sweepBox) || !projectile.canHitEntity(candidate)) {
-							continue;
-						}
-						AABB hitBox = projectile.alterHitBox(candidate, boundingBox, radius, 0);
-						AABB grazeBox = graze > 0
-								? projectile.alterHitBox(candidate, boundingBox, radius, graze)
-								: null;
-						data.addCandidate(candidate, deltaMovement, hitBox, grazeBox);
-					}
-				}
-			}
-		}
+		entityCache.visit(searchBox,
+				data.sectionX0(), data.sectionY0(), data.sectionZ0(),
+				data.sectionX1(), data.sectionY1(), data.sectionZ1(),
+				projectile::canHitEntity,
+				candidate -> {
+					AABB hitBox = projectile.alterHitBox(candidate.entity(), candidate.boundingBox(), radius, 0);
+					AABB grazeBox = graze > 0
+							? projectile.alterHitBox(candidate.entity(), candidate.boundingBox(), radius, graze)
+							: null;
+					data.addCandidate(candidate.entity(), candidate.deltaMovement(), hitBox, grazeBox);
+				});
 	}
 
 	private static void computeStep3(List<SimplifiedProjectile> allDanmakus) {
@@ -355,7 +341,7 @@ public class ParallelDanmakuTicker {
 		Entity hitEntity = null;
 		for (DanmakuVirtualTickData.PreparedCandidate candidate : data.candidates()) {
 			Entity target = candidate.entity();
-			Vec3 hitPos = checkHitCached(candidate.hitBox(), src, effectiveDst, candidate.deltaMovement());
+			Vec3 hitPos = ProjectileHitHelper.checkHit(candidate.hitBox(), src, effectiveDst, candidate.deltaMovement());
 			if (hitPos != null) {
 				double distance = src.distanceToSqr(hitPos);
 				if (distance < closestDistance) {
@@ -365,7 +351,7 @@ public class ParallelDanmakuTicker {
 				continue;
 			}
 			if (data.graze() > 0 && target instanceof Player player && candidate.grazeBox() != null) {
-				if (checkHitCached(candidate.grazeBox(), src, effectiveDst, candidate.deltaMovement()) != null
+				if (ProjectileHitHelper.checkHit(candidate.grazeBox(), src, effectiveDst, candidate.deltaMovement()) != null
 						&& !data.grazedPlayers().contains(player)) {
 					data.addGraze(player);
 				}
@@ -538,15 +524,6 @@ public class ParallelDanmakuTicker {
 		return blockHit.getType() == HitResult.Type.MISS ? null : blockHit;
 	}
 
-	private static boolean sectionIntersects(AABB box, int x, int y, int z) {
-		double minX = x << 4;
-		double minY = y << 4;
-		double minZ = z << 4;
-		return box.maxX > minX && box.minX < minX + 16 &&
-				box.maxY > minY && box.minY < minY + 16 &&
-				box.maxZ > minZ && box.minZ < minZ + 16;
-	}
-
 	private static int getSectionMin(double coordinate) {
 		return (((int) coordinate) >> 4) - 1;
 	}
@@ -703,24 +680,6 @@ public class ParallelDanmakuTicker {
 		private int index(int x, int y, int z) {
 			return ((x - minX) * spanY + (y - minY)) * spanZ + (z - minZ);
 		}
-	}
-
-	/**
-	 * Thread-safe version of {@link ProjectileHitHelper#checkHit(Entity, AABB, Vec3, Vec3)}
-	 * that uses pre-cached deltaMovement instead of reading from the entity.
-	 */
-	@Nullable
-	private static Vec3 checkHitCached(AABB base, Vec3 src, Vec3 dst, Vec3 targetVel) {
-		double speed = targetVel.length();
-		int n = (int) Math.min(8, Math.floor(speed / 0.5));
-		for (int i = 0; i <= n; i++) {
-			AABB aabb = n == 0 ? base : base.move(targetVel.scale(1d * i / n));
-			Optional<Vec3> optional = aabb.contains(src) ? Optional.of(src) : aabb.clip(src, dst);
-			if (optional.isPresent()) {
-				return optional.get();
-			}
-		}
-		return null;
 	}
 
 }

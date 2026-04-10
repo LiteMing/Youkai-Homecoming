@@ -33,7 +33,8 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 
 	public void tick() {
 		super.tick();
-		HitResult hitresult = ProjectileHitHelper.getHitResultOnMoveVector(this, checkBlockHit());
+		ProjectileMovement preHitMovement = computeMove();
+		HitResult hitresult = ProjectileHitHelper.getHitResultOnMoveVector(this, preHitMovement, checkBlockHit());
 		if (hitresult != null) {
 			onHit(hitresult);
 		}

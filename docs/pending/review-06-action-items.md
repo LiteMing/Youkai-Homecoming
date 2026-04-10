@@ -12,7 +12,10 @@
 | BUG-2 | `DynamicSpellItem.java:158-167` | `resolveSpellDuration()` 兜底返回配置默认值而非 `DURATION_NATURAL` |
 | BUG-3 | `DanmakuManager.java:37-46` + `DanmakuProxyEntity.java:225,233,238,247` | erase 包 tracking entity 与 spawn 包统一（`trackingOverride` 机制） |
 | BUG-4 | `BossYoukaiEntity.java:318-324` | danmaku 伤害不再被 `hurtCD` 二元冷却短路，改为进入 `DamageThrottleTracker` |
+| P0-1 | `ParallelDanmakuTicker.java:67-541` | Step2 主线程预计算 projectile-specific hit/graze boxes，Step3 不再触碰 owner/targets/graze capability 等实时 entity 状态 |
 | P0-2 | `SpellRegistry.java:14-115` | `applyDatapackDefaults()` 改为基于单一 `RegistryState` 的 snapshot-and-swap，避免 reload 中间态对外可见 |
+| P1-1 | `HitBehavior.java:8-22` + repo-wide audit | 审计确认仓库内无 `hit_behavior_entity = continue` 定义，补充注释明确 `CONTINUE` 为“穿透并伤害”语义 |
+| P1-2 | `BaseProjectile.java:33-52` + `ProjectileHitHelper.java:20-58` + `ParallelDanmakuTicker.java:67-541` | 顺序/并行碰撞检测均改为基于本 tick 的 pre-hit `computeMove()` 结果，避免搜索向量与实际轨迹脱节 |
 | P1-3 | `SpellRegistry.java:27-35` | `register()` 增加 Javadoc，明确其为 transient live registry 写入，不保存 authoritative defaults |
 | P2-1 | `YHModConfig.java:70-210` + `YoukaisHomecoming.java:255-261` | 新增 `enableTestingSpellTab` 开关，默认仅展示 `itemForm.generate()` 的正式符卡 |
 | P2-2 | `docs/pending/review-00-overview.md` + `docs/pending/review-05-commits-7-to-13.md` | 补充后续说明，修正 `b09e447` 的摘要为其真实混合范围，不再沿用误导性窄标题 |
@@ -31,7 +34,6 @@
 
 | 项 | 问题 | 建议 |
 |----|------|------|
-| P0-1 | 并行 Step3 残留实时 entity 读取（`getOwner()`、`targets.contains()`、`GrazeHelper`） | 将 owner/targets 信息纳入 `CachedTarget` 快照或移至 Step2 主线程 |
 
 ---
 
@@ -39,8 +41,6 @@
 
 | 项 | 问题 | 建议 |
 |----|------|------|
-| P1-1 | `CONTINUE` 语义从"忽略实体"变为"穿透+伤害" | 与最近修复的 editor `onHitEntity` / `discard` 问题不是同一项；这里是运行时语义变化，仍需审计所有 CONTINUE 使用点，如需"装饰性穿透"则新增 `PASS_THROUGH` 枚举值 |
-| P1-2 | 碰撞检测向量与实际移动向量不匹配 | 将 `computeMove()` 移至 Step1 |
 
 ---
 

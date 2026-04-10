@@ -2,6 +2,7 @@ package dev.xkmc.fastprojectileapi.collision;
 
 import dev.xkmc.fastprojectileapi.entity.BaseProjectile;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -19,8 +20,13 @@ public class ProjectileHitHelper {
 
 	@Nullable
 	public static HitResult getHitResultOnMoveVector(BaseProjectile e, boolean checkBlock) {
+		return getHitResultOnMoveVector(e, ProjectileMovement.of(e.getDeltaMovement()), checkBlock);
+	}
+
+	@Nullable
+	public static HitResult getHitResultOnMoveVector(BaseProjectile e, ProjectileMovement movement, boolean checkBlock) {
 		Vec3 src = e.position();
-		Vec3 v = e.getDeltaMovement();
+		Vec3 v = movement.vec();
 		Level level = e.level();
 		Vec3 dst = src.add(v);
 		HitResult hit = null;

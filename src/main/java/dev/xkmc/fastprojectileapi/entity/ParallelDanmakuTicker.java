@@ -67,10 +67,17 @@ public class ParallelDanmakuTicker {
 
 	/** Step 2 output: resolved hit range and cached collision candidates. */
 	private record Step2Result(
+			Vec3 src,
 			@Nullable HitResult blockHit,
 			Vec3 effectiveDst,
-			List<CachedTarget> candidates
+			float radius,
+			float graze,
+			List<PreparedCandidate> candidates
 	) {
+	}
+
+	/** Step 2 main-thread snapshot for a target after projectile-specific hitbox adjustment. */
+	private record PreparedCandidate(Entity entity, Vec3 deltaMovement, AABB hitBox, @Nullable AABB grazeBox) {
 	}
 
 	/** Per-section snapshot reused by all projectiles touching the same section in this tick. */
@@ -178,9 +185,9 @@ public class ParallelDanmakuTicker {
 
 		IEntityCache entityCache = resolveEntityCache(sl, cacheHolder, self, gameTime);
 		Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots = snapshotTouchedSections(entityCache, step1);
-		Step2Result[] step2 = computeStep2(sl, active, step1, sectionSnapshots);
-		Step3Result[] step3 = computeStep3(active, size, step1, step2);
-		finishParallelTick(sl, active, allDanmakus, temp, toBeSent, removeFlag, self, step1, step2, step3);
+		Step2Result[] step2 = computeStep2(sl, active, step1, entityCache, sectionSnapshots);
+		Step3Result[] step3 = computeStep3(active, size, step2);
+		finishParallelTick(sl, active, allDanmakus, temp, toBeSent, removeFlag, self, step2, step3);
 	}
 
 	@Nullable
@@ -242,11 +249,12 @@ public class ParallelDanmakuTicker {
 	private static Step2Result[] computeStep2(ServerLevel sl,
 	                                          List<SimplifiedProjectile> active,
 	                                          Step1Result[] step1,
+	                                          @Nullable IEntityCache entityCache,
 	                                          Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots) {
 		int size = active.size();
 		Step2Result[] results = new Step2Result[size];
 		for (int i = 0; i < size; i++) {
-			results[i] = computeStep2Result(sl, active.get(i), step1[i], sectionSnapshots);
+			results[i] = computeStep2Result(sl, active.get(i), step1[i], entityCache, sectionSnapshots);
 		}
 		return results;
 	}
@@ -255,6 +263,7 @@ public class ParallelDanmakuTicker {
 	private static Step2Result computeStep2Result(ServerLevel sl,
 	                                              SimplifiedProjectile projectile,
 	                                              @Nullable Step1Result data,
+	                                              @Nullable IEntityCache entityCache,
 	                                              Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots) {
 		if (projectile.isRemoved() || !projectile.isValid()) {
 			return null;
@@ -266,16 +275,24 @@ public class ParallelDanmakuTicker {
 
 		prepareTickState(projectile);
 
-		Vec3 effectiveDst = data.dst;
-		HitResult blockHit = resolveBlockHit(sl, projectile, data);
+		BaseProjectile bp = (BaseProjectile) projectile;
+		ProjectileMovement preHitMovement = bp.computeMove();
+		Vec3 src = projectile.position();
+		Vec3 dst = src.add(preHitMovement.vec());
+		float radius = projectile.getBbWidth() / 2f;
+		float graze = projectile.grazeRange();
+		AABB searchBox = projectile.getBoundingBox().expandTowards(preHitMovement.vec()).inflate(1 + radius + graze);
+		Vec3 effectiveDst = dst;
+		HitResult blockHit = resolveBlockHit(sl, projectile, src, dst, bp.checkBlockHit());
 		if (blockHit != null) {
 			effectiveDst = blockHit.getLocation();
 		}
 
-		List<CachedTarget> candidates = sectionSnapshots.isEmpty()
+		List<CachedTarget> rawCandidates = sectionSnapshots.isEmpty() && entityCache == null
 				? List.of()
-				: collectCandidates(sectionSnapshots, data, projectile);
-		return new Step2Result(blockHit, effectiveDst, candidates);
+				: collectCandidates(entityCache, sectionSnapshots, searchBox, projectile);
+		return new Step2Result(src, blockHit, effectiveDst, radius, graze,
+				prepareCandidates(projectile, rawCandidates, radius, graze));
 	}
 
 	private static void sequentialTickOne(SimplifiedProjectile projectile) {
@@ -298,13 +315,17 @@ public class ParallelDanmakuTicker {
 	}
 
 	@Nullable
-	private static HitResult resolveBlockHit(ServerLevel sl, SimplifiedProjectile projectile, Step1Result data) {
-		if (!data.checkBlock) {
+	private static HitResult resolveBlockHit(ServerLevel sl,
+	                                         SimplifiedProjectile projectile,
+	                                         Vec3 src,
+	                                         Vec3 dst,
+	                                         boolean checkBlock) {
+		if (!checkBlock) {
 			return null;
 		}
 		HitResult blockHit = sl.clip(new ClipContext(
-				data.src,
-				data.dst,
+				src,
+				dst,
 				ClipContext.Block.COLLIDER,
 				ClipContext.Fluid.NONE,
 				projectile
@@ -358,20 +379,46 @@ public class ParallelDanmakuTicker {
 		return snapshots == null ? List.of() : snapshots;
 	}
 
-	private static List<CachedTarget> collectCandidates(Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots,
-	                                                    Step1Result data,
+	private static SectionSnapshot getOrCreateSectionSnapshot(@Nullable IEntityCache entityCache,
+	                                                         Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots,
+	                                                         int x,
+	                                                         int y,
+	                                                         int z) {
+		long key = SectionPos.asLong(x, y, z);
+		SectionSnapshot existing = sectionSnapshots.get(key);
+		if (existing != null || entityCache == null) {
+			return existing;
+		}
+		SectionCache section = entityCache.get(x, y, z);
+		SectionSnapshot created = new SectionSnapshot(
+				snapshotTargets(section.allEntities()),
+				snapshotTargets(section.marginEntities())
+		);
+		sectionSnapshots.put(key, created);
+		return created;
+	}
+
+	private static List<CachedTarget> collectCandidates(@Nullable IEntityCache entityCache,
+	                                                    Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots,
+	                                                    AABB searchBox,
 	                                                    SimplifiedProjectile projectile) {
+		int sectionX0 = getSectionMin(searchBox.minX);
+		int sectionY0 = getSectionMin(searchBox.minY);
+		int sectionZ0 = getSectionMin(searchBox.minZ);
+		int sectionX1 = getSectionMax(searchBox.maxX);
+		int sectionY1 = getSectionMax(searchBox.maxY);
+		int sectionZ1 = getSectionMax(searchBox.maxZ);
 		ArrayList<CachedTarget> candidates = null;
-		for (int x = data.sectionX0; x <= data.sectionX1; x++) {
-			for (int y = data.sectionY0; y <= data.sectionY1; y++) {
-				for (int z = data.sectionZ0; z <= data.sectionZ1; z++) {
-					SectionSnapshot section = sectionSnapshots.get(SectionPos.asLong(x, y, z));
+		for (int x = sectionX0; x <= sectionX1; x++) {
+			for (int y = sectionY0; y <= sectionY1; y++) {
+				for (int z = sectionZ0; z <= sectionZ1; z++) {
+					SectionSnapshot section = getOrCreateSectionSnapshot(entityCache, sectionSnapshots, x, y, z);
 					if (section == null) {
 						continue;
 					}
-					List<CachedTarget> pool = sectionIntersects(data.searchBox, x, y, z) ? section.all : section.margin;
+					List<CachedTarget> pool = sectionIntersects(searchBox, x, y, z) ? section.all : section.margin;
 					for (CachedTarget candidate : pool) {
-						if (!data.searchBox.intersects(candidate.sweepBox)) {
+						if (!searchBox.intersects(candidate.sweepBox)) {
 							continue;
 						}
 						if (!projectile.canHitEntity(candidate.entity)) {
@@ -386,6 +433,24 @@ public class ParallelDanmakuTicker {
 			}
 		}
 		return candidates == null ? List.of() : candidates;
+	}
+
+	private static List<PreparedCandidate> prepareCandidates(SimplifiedProjectile projectile,
+	                                                         List<CachedTarget> rawCandidates,
+	                                                         float radius,
+	                                                         float graze) {
+		if (rawCandidates.isEmpty()) {
+			return List.of();
+		}
+		ArrayList<PreparedCandidate> prepared = new ArrayList<>(rawCandidates.size());
+		for (CachedTarget candidate : rawCandidates) {
+			AABB hitBox = projectile.alterHitBox(candidate.entity(), candidate.boundingBox(), radius, 0);
+			AABB grazeBox = graze > 0
+					? projectile.alterHitBox(candidate.entity(), candidate.boundingBox(), radius, graze)
+					: null;
+			prepared.add(new PreparedCandidate(candidate.entity(), candidate.deltaMovement(), hitBox, grazeBox));
+		}
+		return prepared;
 	}
 
 	private static boolean sectionIntersects(AABB box, int x, int y, int z) {
@@ -407,13 +472,12 @@ public class ParallelDanmakuTicker {
 
 	private static Step3Result[] computeStep3(List<SimplifiedProjectile> active,
 	                                          int size,
-	                                          Step1Result[] step1,
 	                                          Step2Result[] step2) {
 		Step3Result[] results = new Step3Result[size];
 		try {
 			runParallel(size, (from, to) -> {
 				for (int i = from; i < to; i++) {
-					results[i] = computeStep3Result(active.get(i), step1[i], step2[i]);
+					results[i] = computeStep3Result(active.get(i), step2[i]);
 				}
 			});
 		} catch (Exception ex) {
@@ -426,30 +490,27 @@ public class ParallelDanmakuTicker {
 	}
 
 	private static Step3Result computeStep3Result(SimplifiedProjectile projectile,
-	                                              @Nullable Step1Result step1,
 	                                              @Nullable Step2Result step2) {
-		if (step1 == null || step2 == null || step2.candidates.isEmpty()) {
+		if (step2 == null || step2.candidates.isEmpty()) {
 			return new Step3Result(null, List.of());
 		}
 
 		double closestDistance = Double.MAX_VALUE;
 		Entity hitEntity = null;
-		List<Player> grazedPlayers = step1.graze > 0 ? new ArrayList<>() : List.of();
-		for (CachedTarget candidate : step2.candidates) {
+		List<Player> grazedPlayers = step2.graze > 0 ? new ArrayList<>() : List.of();
+		for (PreparedCandidate candidate : step2.candidates) {
 			Entity target = candidate.entity();
-			AABB hitBox = projectile.alterHitBox(target, candidate.boundingBox(), step1.radius, 0);
-			Vec3 hitPos = checkHitCached(hitBox, step1.src, step2.effectiveDst, candidate.deltaMovement());
+			Vec3 hitPos = checkHitCached(candidate.hitBox(), step2.src, step2.effectiveDst, candidate.deltaMovement());
 			if (hitPos != null) {
-				double distance = step1.src.distanceToSqr(hitPos);
+				double distance = step2.src.distanceToSqr(hitPos);
 				if (distance < closestDistance) {
 					closestDistance = distance;
 					hitEntity = target;
 				}
 				continue;
 			}
-			if (step1.graze > 0 && target instanceof Player player) {
-				AABB grazeBox = projectile.alterHitBox(target, candidate.boundingBox(), step1.radius, step1.graze);
-				if (checkHitCached(grazeBox, step1.src, step2.effectiveDst, candidate.deltaMovement()) != null
+			if (step2.graze > 0 && target instanceof Player player && candidate.grazeBox() != null) {
+				if (checkHitCached(candidate.grazeBox(), step2.src, step2.effectiveDst, candidate.deltaMovement()) != null
 						&& !grazedPlayers.contains(player)) {
 					grazedPlayers.add(player);
 				}
@@ -465,7 +526,6 @@ public class ParallelDanmakuTicker {
 	                                       ArrayList<SimplifiedProjectile> toBeSent,
 	                                       boolean[] removeFlag,
 	                                       @Nullable LivingEntity self,
-	                                       Step1Result[] step1,
 	                                       Step2Result[] step2,
 	                                       Step3Result[] step3) {
 		List<SimplifiedProjectile> toRemove = new ArrayList<>();
@@ -475,7 +535,6 @@ public class ParallelDanmakuTicker {
 			}
 
 			SimplifiedProjectile projectile = active.get(i);
-			Step1Result d1 = step1[i];
 			Step2Result d2 = step2[i];
 			Step3Result d3 = step3[i];
 

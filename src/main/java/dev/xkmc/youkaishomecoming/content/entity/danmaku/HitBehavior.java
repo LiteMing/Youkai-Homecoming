@@ -10,7 +10,11 @@ import org.jetbrains.annotations.NotNull;
 public enum HitBehavior implements StringRepresentable {
 	/** Remove the danmaku on hit (default vanilla behavior). */
 	DISCARD("discard"),
-	/** Keep flying after hit — danmaku lives until lifetime expires and triggers afterExpiry. */
+	/**
+	 * Keep flying after hit.
+	 * For entity hits this means "pierce and still deal damage";
+	 * for block hits it means "do not discard on contact".
+	 */
 	CONTINUE("continue");
 
 	public static final Codec<HitBehavior> CODEC = StringRepresentable.fromEnum(HitBehavior::values);

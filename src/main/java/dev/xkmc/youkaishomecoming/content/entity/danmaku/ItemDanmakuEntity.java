@@ -40,7 +40,8 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public TrailAction onHitBlockAction = null;
 	/**
 	 * Behavior after hitting an entity:
-	 * DISCARD = remove immediately (default), CONTINUE = keep flying until lifetime expires.
+	 * DISCARD = remove immediately (default),
+	 * CONTINUE = pierce through entities while still applying hit damage/callbacks.
 	 */
 	public HitBehavior hitBehaviorEntity = HitBehavior.DISCARD;
 	/**

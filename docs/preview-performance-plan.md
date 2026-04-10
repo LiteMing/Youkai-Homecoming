@@ -21,6 +21,7 @@
 7. 第二阶段已完成：`SectionCache` 改为缓存候选实体几何快照，`IEntityCache` 提供 visitor 式 section 遍历，`ProjectileHitHelper` / `LaserHitHelper` / `ParallelDanmakuTicker` 共用同一套 section 查询与 cached hit 路径。
 8. 第三阶段已完成首版 schedule 覆盖：在当前 tick 结尾为允许预取的 projectile 预做下一 tick 的 Step 1，并在下一 tick 直接消费预取数据。
 9. 已执行 `.\gradlew.bat compileJava`，结果通过。
+10. 2026-04-11 自动化补充：为 next-tick Step1 预取补上显式 `computeMoveForTick(int)` 路径，并把 `ItemDanmakuEntity` 的安全预取覆盖扩展到纯本地状态 mover。
 
 ### 未完成
 
@@ -276,6 +277,22 @@
 3. `ParallelDanmakuTicker` 在当前 tick 结尾并行为下一 tick 预取 Step1
 4. 下一 tick 若预取仍匹配当前 tickCount，则直接消费；否则自动丢弃并回退到现算
 5. 当前只对 movement 依赖 projectile 本地状态、不会因 owner / target / commander 外部状态变化而失真的 projectile 启用预取
+
+### 2026-04-11 自动化补充
+
+为继续扩展第三阶段的 schedule 覆盖，本轮又补了两点：
+
+1. `BaseProjectile` 新增 `computeMoveForTick(int)`，并让 `ParallelDanmakuTicker` 在预取下一 tick Step 1 时按**下一 tick 的逻辑 tickCount**计算 movement，避免 tick-indexed mover 误拿当前 tick 的 movement 参与预取。
+2. `DanmakuMover` 新增显式安全声明；`ItemDanmakuEntity` 现在允许以下 mover 进入 next-tick Step1 预取：
+   - `ZeroMover`
+   - `RotateMover`
+   - `RectMover`
+   - `PolarMover`
+   - `BezierMover`
+   - `FixedDirMover`（仅当其子 mover 安全）
+   - `CompositeMover`（仅当其全部子 mover 安全）
+3. 仍明确排除依赖外部状态的 mover / 路径，例如 `AttachedMover`、`AttachedFreeRotMover`、`TrackingAttachedMover`、`HomingMover` 与 `controlCode > 0` 的 commander 路径。
+4. 已在补充实现后再次执行 `.\gradlew.bat compileJava`，结果通过。
 
 也就是说，第三阶段的“schedule 满覆盖”在当前版本实现为：**对确定安全的 projectile 填满 schedule 空窗，对外部状态敏感 projectile 保持语义优先**。
 

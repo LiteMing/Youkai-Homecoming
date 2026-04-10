@@ -32,16 +32,20 @@
 9. 为 next-tick Step1 预取补上显式 `computeMoveForTick(int)` 路径，修正 tick-indexed mover 在预取阶段按“当前 tick”误算 movement 的语义缺口。
 10. 为 `DanmakuMover` 增加显式安全声明，并将 `ZeroMover`、`RotateMover`、`RectMover`、`PolarMover`、`BezierMover`、`FixedDirMover`、以及“全部子 mover 都安全”的 `CompositeMover` 纳入 `ItemDanmakuEntity` 的预取覆盖范围。
 11. 在完成本轮扩展后再次执行 `.\gradlew.bat compileJava`，结果通过。
+12. 将 `CompositeMover.move()` 改为按 tick 纯计算当前 segment，不再在 `computeMove()` / prefetch / prepared fallback 路径中提前推进内部 `index` 状态。
+13. 将“无动态目标实体”的 `HomingMover` 纳入 `allowNextTickStep1Prefetch()` 覆盖范围；仍保留带实体 target 的 homing 为现算。
+14. 为 `ParallelDanmakuTicker` 增加最近一帧统计快照，并新增 `/danmaku perf` 命令，可直接查看最近一次 server-side virtual danmaku tick 的阶段耗时、预取命中和 fallback 计数。
+15. 在完成本轮收口后再次执行 `.\gradlew.bat compileJava`，结果通过。
 
 ## 下一轮自动化开发项
 
-1. 对 90k 场景重新做 profiling，确认三阶段改动叠加本轮 safe mover 扩展后的累计收益。
-2. 复核剩余未纳入预取的外部状态路径，例如 `AttachedMover`、`AttachedFreeRotMover`、`TrackingAttachedMover`、`HomingMover` 与 `controlCode > 0`，判断是否存在更窄但仍语义安全的 opt-in 条件。
+1. 对 90k 场景重新做 profiling，并结合 `/danmaku perf` / Spark 记录真实 server tick 阶段耗时，确认三阶段改动叠加本轮 safe mover 扩展后的累计收益。
+2. 继续复核剩余未纳入预取的外部状态路径，例如 `AttachedMover`、`AttachedFreeRotMover`、`TrackingAttachedMover` 与 `controlCode > 0`，判断是否存在更窄但仍语义安全的 opt-in 条件。
 3. 若 Spark/实测仍显示明显 schedule 空窗，再评估是否需要把 virtual danmaku 调度从实体 `aiStep()` 抽离到更稳定的 world-level 时序。
 
 ## 验收与风险
 
 1. 当前该优化计划已完成；验收以三阶段关键提交完成、`compileJava` 通过为准。
-2. 第三阶段采用的是**安全 opt-in 预取**，不是对全部 mover 强行开启预取；本轮已扩展到一批纯本地状态 mover，但外部状态敏感路径仍保持现算。
-3. 当前后续工作的主要风险不在实现，而在收益验证与剩余覆盖边界判断。
+2. 第三阶段采用的是**安全 opt-in 预取**，不是对全部 mover 强行开启预取；本轮已扩展到一批纯本地状态 mover，并修复了 `CompositeMover` 在纯计算路径下的内部状态推进风险，但外部状态敏感路径仍保持现算。
+3. 当前后续工作的主要风险不在实现，而在收益验证与剩余覆盖边界判断；`/danmaku perf` 只提供最近一帧服务端统计，最终结论仍需要结合 90k 场景实测。
 4. 旧的符卡相关计划暂时不作为当前活动计划；如需恢复，应另开新一轮计划并重新切换 `latest-development-plan.md`。

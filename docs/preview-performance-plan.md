@@ -22,6 +22,7 @@
 8. 第三阶段已完成首版 schedule 覆盖：在当前 tick 结尾为允许预取的 projectile 预做下一 tick 的 Step 1，并在下一 tick 直接消费预取数据。
 9. 已执行 `.\gradlew.bat compileJava`，结果通过。
 10. 2026-04-11 自动化补充：为 next-tick Step1 预取补上显式 `computeMoveForTick(int)` 路径，并把 `ItemDanmakuEntity` 的安全预取覆盖扩展到纯本地状态 mover。
+11. 2026-04-11 自动化补充（二）：修正 `CompositeMover` 在纯计算路径中的内部状态推进问题，并为 server-side `ParallelDanmakuTicker` 增加最近一帧性能统计与 `/danmaku perf` 查询入口。
 
 ### 未完成
 
@@ -293,6 +294,20 @@
    - `CompositeMover`（仅当其全部子 mover 安全）
 3. 仍明确排除依赖外部状态的 mover / 路径，例如 `AttachedMover`、`AttachedFreeRotMover`、`TrackingAttachedMover`、`HomingMover` 与 `controlCode > 0` 的 commander 路径。
 4. 已在补充实现后再次执行 `.\gradlew.bat compileJava`，结果通过。
+
+### 2026-04-11 自动化补充（二）
+
+在继续做收益验证与边界复核时，又补了两项：
+
+1. `CompositeMover.move()` 改为按 tick 直接选择当前 segment，不再在 `move()` / `computeMove()` 过程中推进内部 `index`。这样 next-tick Step1 预取、并行 Step1、以及 prepared sequential fallback 都不会因为“同一逻辑 tick 多次 computeMove”而推进 segment 状态两次。
+2. `HomingMover` 新增更窄的安全边界：仅当 `targetEntityId < 0`、不依赖动态实体查找时，才允许 next-tick Step1 预取；带实时 target entity 的 homing 继续保持现算。
+3. `ParallelDanmakuTicker` 新增最近一帧统计快照，记录：
+   - 当前 tick 是顺序还是并行路径
+   - 各阶段耗时（warm/prepare/step1/section warm/step2/step3/finish/total）
+   - prefetch consume / eligible / stored / failures
+   - standard/prepared fallback 与 apply failure 计数
+4. 新增 `/danmaku perf` 命令，可在服务端直接查看最近一次 virtual danmaku tick 的统计结果，为 90k 场景 profiling 提供第一手阶段数据。
+5. 已在补充实现后再次执行 `.\gradlew.bat compileJava`，结果通过。
 
 也就是说，第三阶段的“schedule 满覆盖”在当前版本实现为：**对确定安全的 projectile 填满 schedule 空窗，对外部状态敏感 projectile 保持语义优先**。
 

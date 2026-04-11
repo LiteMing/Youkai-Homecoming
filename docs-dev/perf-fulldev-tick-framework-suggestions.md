@@ -311,100 +311,155 @@
 
 ### 第二步：构建统一 tick 框架，先做同线程 baseline
 
-这一阶段的目标不是提速，而是把“串行真值路径”先做出来。
+这一轮第二步按你的新规划，目标不是直接上多线程，而是先把“按阶段批量驱动所有弹幕”的主线程基线搭出来，并把后续异步所需的接口边界一次性准备好。
 
-建议新增一份统一的 `TickData`，每发弹幕一份，至少包含：
+本轮第二步建议拆成 `1.2.1` 到 `1.2.5`，每一小步都单独验证、单独提交。
 
-- `entity`
-- `srcPos`
-- `prevVelocity`
-- `plannedMovement`
-- `dstPos`
-- `searchBox`
-- `sectionRange`
-- `blockHit`
-- `candidates`
-- `entityHit`
-- `grazeTargets`
-- `lifetimeExpired`
-- `shouldErase`
-- `shouldApplyMove`
+#### 1.2.1 构建 `ParallelTicker`，但先只跑主线程
 
-然后统一让串行路径跑这几个阶段。这样后续异步化时：
+范围：
 
-- 串行路径仍然是语义基准
-- 并行路径只是“同一阶段的不同调度方式”
+- 新增 `ParallelTicker`
+- 不再由容器层对每发弹幕直接调用 `tick()`
+- 改为 `ParallelTicker` 对全体弹幕按阶段批量调用：
+  - `beginTick`
+  - `planMove`
+  - `planPreheatRange`
+  - `collectCollisionInput`
+  - `resolveCollision`
+  - `finishTick`
 
-建议这个阶段同时做阶段耗时统计，但只统计大阶段，不先做太细的 trace：
+目标：
+
+- 先建立“全体弹幕一起跑每个阶段”的统一框架
+- 先不引入 worker 线程
+- 让当前主线程路径就已经长成未来并行路径的形状
+
+这一小步的关键要求：
+
+- `ParallelTicker` 不直接调用 `tick()`
+- 当前只是调度方式变化，不应该改变单发弹幕语义
+
+#### 1.2.2 构建 `StageTrace`，统计各阶段耗时
+
+范围：
+
+- 新增 `StageTrace`
+- 统计 `ParallelTicker` 各阶段耗时
+- 先只做主线程 baseline
+
+建议至少统计：
 
 - `begin`
 - `move`
 - `preheat`
-- `snapshot`
+- `collisionInput`
 - `resolve`
 - `finish`
 - `total`
 
-除了耗时，还建议一起记几个关键计数：
+建议同时记录以下计数：
 
 - 弹幕总数
-- 实际参与碰撞的弹幕数
 - touched section 数
 - 预热 section 数
 - 候选实体总数
 - 实际命中数
 - graze 触发数
 - 失效/擦除数
-- 越出 `UserMatrixCache` 本地矩阵的弹幕数
 
-这样你在第二步结束时就能回答三件事：
+目标：
 
-1. 统一框架本身有没有引入额外损耗
-2. 预热到底值不值得做
-3. `R=5` 的本地矩阵够不够用
+- 先拿到第二步的阶段基线
+- 后面每个子步骤都能直接对比有无退化
 
-### 第三步：用同线程 BitSet 抽出预热代码，统一预热
+#### 1.2.3 为 `IEntityCache` 增加 `asyncGet` / `asyncForEach`
 
-这一步建议只做“预热统一化”，不要顺手把碰撞判定也改了。
+范围：
 
-基于当前代码，我更建议的写法不是“BitSet + `nextSetBit()` 二次扫描”，而是：
+- `IEntityCache` 新增 `asyncGet`
+- `IEntityCache` 新增 `asyncForEach`
+- `asyncGet` 允许返回 `null`
 
-- `BitSet touched`
-- `IntArrayList touchedOrder`
+语义要求：
 
-流程如下：
+- async 版本遇到“当前 tick 尚未缓存的 section”时直接跳过
+- 不触发新的 section 懒加载
+- 不修改缓存结构
 
-1. 在 `planPreheatRange` 阶段，每发弹幕算出自己覆盖的 local section index
-2. 若某个 index 第一次被触及：
-   - `touched.set(index)`
-   - `touchedOrder.add(index)`
-3. 统一预热阶段只遍历 `touchedOrder`
-4. 对每个 index 调一次 `cache.get(...)`
+这样做的目的不是现在就提速，而是先建立一个“多线程下只消费已缓存 section”的线程安全接口。
 
-这样做的好处：
+这一小步要特别注意：
 
-- 仍然满足“用 BitSet 去重”
-- 但不会把 `BitSet` 用成新的扫描热点
-- 预热顺序稳定
-- 同一套逻辑后面串行/并行都能复用
+- async 版本暂时不应该被现有实体本地 `tick()` 直接拿去替换同步版本
+- 它的第一职责是提供安全边界，而不是立刻改变现有行为
 
-建议这一阶段只覆盖 `UserMatrixCache` 本地矩阵路径。  
-对于以下情况先保留旧 fallback：
+#### 1.2.4 构建 `AtomicBitSet` 预热，直接使用 `UserMatrixCache` 同范围
 
-- 没有 `EntityCachingUser`
-- section 范围越出 `R=5` 的本地矩阵
+范围：
 
-也就是说，第三步的目标应该是：
+- 新增 `AtomicBitSet` 预热工具
+- 预热范围直接使用 `UserMatrixCache` 的固定范围
+- 不再额外统计 touched range
 
-- 先把“主路径预热”做干净
-- 不要为了覆盖极少数 fallback，把整个预热结构搞复杂
+语义要求：
 
-建议把预热单独做成一个 helper，例如：
+- 预热的唯一目标是触发 `UserMatrixCache` 的 section 缓存加载
+- 不在这一步附带做碰撞判定
+- 不在这一步引入新的范围统计热路径
 
-- `SectionPreheater`
-- `MatrixSectionPreheater`
+这里要明确：
 
-然后串行 baseline 和后续异步框架都只调用它，不再各自写一套预热代码。
+- 本轮第二步里的 `AtomicBitSet` 是“预热工具”
+- 不是新的碰撞候选收集结构
+
+#### 1.2.5 引入 `IEntityIterator`，让碰撞判定不再自己决定 cache 访问方式
+
+范围：
+
+- 定义 `@FunctionalInterface IEntityIterator`
+- 只声明 `foreach`
+- `IEntityCache extends IEntityIterator`
+- 弹幕碰撞判定方法增加参数 `IEntityIterator`
+
+职责变化：
+
+- 实体自身 `tick()` 路径传入 `cache::foreach`
+- `ParallelTicker` 路径传入 `cache::asyncForEach`
+- 碰撞判定代码本身不再决定调用哪种 cache 方法
+
+这样做之后，碰撞判定的线程安全边界会更清楚：
+
+- 判定代码只依赖迭代器抽象
+- 调度层决定当前使用同步迭代还是 async-safe 迭代
+
+即使这一轮仍然全部跑在主线程，这个接口改造也值得先做，因为它会直接决定后面第三、第四步能不能平滑切过去。
+
+#### 第二步统一验收要求
+
+`1.2.1` 到 `1.2.5` 每一步都建议单独验证、单独提交。
+
+每一步至少做：
+
+1. 编译通过
+2. 几百个低速弹幕验证命中
+3. 几百个高速弹幕验证命中
+4. 普通弹幕和 laser 都要测
+5. 看判定范围有没有漂移
+6. 看有没有提前/延后消失
+7. 看性能是否明显变差
+
+建议这一步的核心判断标准是：
+
+1. `ParallelTicker` 主线程版是否语义正确
+2. `StageTrace` 是否能稳定给出阶段基线
+3. `asyncGet` / `asyncForEach` / `IEntityIterator` 是否把后续异步边界提前做干净
+4. `AtomicBitSet` 预热是否没有引入新的范围统计热点
+
+### 第三步：待第二步稳定后再单独细化
+
+原文档里“同线程 BitSet 统一预热”的内容，已经并入这一轮第二步的 `1.2.4`。  
+第三步不再沿用旧描述，等第二步 `1.2.1` 到 `1.2.5` 跑稳后再单独写，避免文档和实现顺序重新打架。
 
 ### 第四步：把移动 / 碰撞检测 / 收尾异步化
 

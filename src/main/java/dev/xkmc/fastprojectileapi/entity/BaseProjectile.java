@@ -43,6 +43,17 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	}
 
 	@Override
+	protected void trimMove(TickData data) {
+		if (!checkBlockHit()) return;
+		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
+		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;
+		var hit = ProjectileHitHelper.getBlockHitResultOnMoveVector(this, src, dst);
+		if (hit != null) {
+			data.moveDst = hit.getLocation();
+		}
+	}
+
+	@Override
 	protected void collectCollisionInput(TickData data) {
 		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
 		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;

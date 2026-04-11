@@ -34,6 +34,7 @@ public class ParallelTicker {
 		}
 		trace.beginNanos = runStage(active, shouldStop, (e, data) -> e.beginTick(data), null);
 		trace.moveNanos = runStage(active, shouldStop, (e, data) -> e.planMove(data), null);
+		trace.moveNanos += runStage(active, shouldStop, (e, data) -> e.trimMove(data), null);
 		trace.preheatNanos = runStage(active, shouldStop, (e, data) -> {
 			e.planPreheatRange(data, preheatCache);
 		}, null);

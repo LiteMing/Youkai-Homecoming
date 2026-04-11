@@ -32,6 +32,20 @@ public abstract class BaseLaser extends AsyncProjectile {
 		data.blockHit = LaserHitHelper.getHitResultOnProjection(this, pos, rot, checkBlockHit(), checkEntityHit(), data.hitEntities, getEntityIterator());
 	}
 
+	@Override
+	protected void trimMove(TickData data) {
+		if (!checkBlockHit()) return;
+		Vec3 pos = data.moveDst == null ? position() : data.moveDst;
+		Vec3 rot = data.plannedMovement == null ? rot() : data.plannedMovement.rot();
+		Vec3 src = pos.add(0, getBbHeight() / 2f, 0);
+		Vec3 dst = src.add(Vec3.directionFromRotation((float) Math.toDegrees(rot.x), (float) Math.toDegrees(rot.y)).scale(getLength()));
+		var hit = LaserHitHelper.getBlockHitResultOnProjection(this, src, dst);
+		if (hit != null) {
+			Vec3 delta = hit.getLocation().subtract(src);
+			data.moveDst = pos.add(delta);
+		}
+	}
+
 	protected IEntityIterator getEntityIterator() {
 		if (level() instanceof net.minecraft.server.level.ServerLevel sl) {
 			IEntityCache cache = getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);

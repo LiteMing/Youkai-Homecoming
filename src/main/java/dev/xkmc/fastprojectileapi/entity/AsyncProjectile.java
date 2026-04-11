@@ -31,6 +31,8 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		if (data.stopTick) return;
 		planMove(data);
 		if (data.stopTick) return;
+		trimMove(data);
+		if (data.stopTick) return;
 		planPreheatRange(data, null);
 		if (data.stopTick) return;
 		collectCollisionInput(data);
@@ -45,6 +47,9 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	}
 
 	protected void planMove(TickData data) {
+	}
+
+	protected void trimMove(TickData data) {
 	}
 
 	protected void planPreheatRange(TickData data, UserMatrixCache cache) {

@@ -8,6 +8,7 @@ import dev.xkmc.fastprojectileapi.collision.ProjectileHitHelper;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -82,7 +83,12 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	@Override
 	protected void resolveCollision(TickData data) {
 		if (!data.hitEntities.isEmpty()) {
-			onHitEntity(new EntityHitResult(data.hitEntities.get(0)));
+			for (Entity entity : data.hitEntities) {
+				onHitEntity(new EntityHitResult(entity));
+				if (!isValid() || isRemoved() || data.removed) {
+					break;
+				}
+			}
 		} else if (data.blockHit != null) {
 			onHitBlock(data.blockHit);
 		}

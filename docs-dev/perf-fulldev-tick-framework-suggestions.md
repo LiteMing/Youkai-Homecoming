@@ -423,7 +423,7 @@
 
 - 定义 `@FunctionalInterface IEntityIterator`
 - 只声明 `foreach`
-- `IEntityCache extends IEntityIterator`
+- `IEntityCache` 保持独立，直接使用 `cache::foreach` / `cache::asyncForEach` 适配到 `IEntityIterator`
 - 弹幕碰撞判定方法增加参数 `IEntityIterator`
 
 职责变化：
@@ -431,6 +431,28 @@
 - 实体自身 `tick()` 路径传入 `cache::foreach`
 - `ParallelTicker` 路径传入 `cache::asyncForEach`
 - 碰撞判定代码本身不再决定调用哪种 cache 方法
+
+当前实现备注：
+
+- `IEntityIterator` 已作为独立函数式接口引入
+- `ProjectileHitHelper` / `LaserHitHelper` 只保留显式传入 `IEntityIterator` 的入口
+- 当前主线程路径仍统一传 `cache::foreach`
+- `asyncForEach` 已可作为后续并行路径输入，但本轮暂未切换使用
+
+#### 第二步之后，主程序员确认还需要继续补的点
+
+1. `ProjectileHitHelper` / `LaserHitHelper` 继续拆分：
+   - 方块碰撞逻辑和实体碰撞逻辑分离
+   - 让 `trimMove` 和后续异步判定更容易复用
+2. 引入 `trimMove` 阶段：
+   - `planMove` 先写出 `dst / moveDst`
+   - 对不能穿墙的激光和弹幕，在 `trimMove` 中根据方块碰撞修正一次 `dst`
+   - 避免隔墙打人
+3. `BaseProjectile` 命中实体列表的消费逻辑改造：
+   - 不再默认只处理第一个实体
+   - 应遍历命中实体列表逐个执行命中逻辑
+   - 若命中后弹幕已消亡，则提前停止遍历
+   - 这样可以同时支持“可穿透多目标”和“只打一个就消亡”两类行为
 
 这样做之后，碰撞判定的线程安全边界会更清楚：
 

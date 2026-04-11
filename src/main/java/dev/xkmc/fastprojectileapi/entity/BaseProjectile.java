@@ -88,6 +88,7 @@ public abstract class BaseProjectile extends AsyncProjectile {
 
 	@Override
 	protected void finishTick(TickData data) {
+		super.finishTick(data);
 		if (tickCount >= lifetime()) {
 			if (level() instanceof ServerLevel) {
 				commitPreMoveEffects(data);

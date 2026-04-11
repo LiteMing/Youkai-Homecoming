@@ -35,11 +35,8 @@ public interface IYHDanmaku extends GrazingEntity {
 
 	@Override
 	default AABB alterHitBox(EntityInfo x, float radius, float graze) {
-		Entity entity = x.entity();
-		if (self().getOwner() instanceof Player player &&
-				entity instanceof YoukaiEntity youkai &&
-				youkai.targets.contains(player)) {
-			return youkai.getBoundingBox().inflate(GRAZE_RANGE);
+		if (x.ownerTrackedByYoukai() && x.entity() instanceof YoukaiEntity) {
+			return x.boundingBox().inflate(GRAZE_RANGE);
 		}
 		return alterEntityHitBox(x, radius, graze);
 	}
@@ -115,7 +112,7 @@ public interface IYHDanmaku extends GrazingEntity {
 	static AABB alterEntityHitBox(EntityInfo x, float radius, float graze) {
 		var box = x.boundingBox();
 		if (graze > 0) return box.inflate(radius + graze);
-		float shrink = x.entity() instanceof Player player ? -GrazeHelper.getHitBoxDelta(player) : 0;
+		float shrink = -x.hitBoxDelta();
 		return new AABB(
 				box.minX + shrink - radius, box.minY + shrink * 2 - radius, box.minZ + shrink - radius,
 				box.maxX - shrink + radius, box.maxY + radius, box.maxZ - shrink + radius

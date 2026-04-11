@@ -22,8 +22,6 @@ import net.minecraft.world.phys.Vec3;
 public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSupplier, MoverOwner {
 
 	@SerialClass.SerialField
-	public int controlCode = 0;
-	@SerialClass.SerialField
 	public DanmakuMover mover = null;
 	@SerialClass.SerialField
 	public TrailAction afterExpiry = null;
@@ -81,10 +79,6 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		refreshDimensions();
 	}
 
-	public void setControlCode(int code) {
-		this.controlCode = code;
-	}
-
 	@Override
 	public TraceableEntity asTraceable() {
 		return this;
@@ -105,8 +99,6 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		if (mover != null) {
 			return mover.move(new MoverInfo(tickCount, pos, vec, this));
 		}
-		if (controlCode > 0 && getOwner() instanceof DanmakuCommander commander)
-			return commander.move(controlCode, tickCount, vec);
 		return super.updateVelocity(vec, pos);
 	}
 

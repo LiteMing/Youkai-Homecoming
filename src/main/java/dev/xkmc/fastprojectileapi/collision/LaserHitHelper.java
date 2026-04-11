@@ -51,7 +51,7 @@ public class LaserHitHelper {
 				Vec3 gr = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
 				if (gr != null) {
 					e.tickData().grazeCount++;
-					e.doGraze(pl);
+					e.tickData().grazed.add(pl);
 				}
 			}
 		}

@@ -55,7 +55,7 @@ public class ProjectileHitHelper {
 				var gr = checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
 				if (gr != null) {
 					e.tickData().grazeCount++;
-					e.doGraze(pl);
+					e.tickData().grazed.add(pl);
 				}
 			}
 		}

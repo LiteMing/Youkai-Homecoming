@@ -8,6 +8,7 @@ import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -75,6 +76,13 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	}
 
 	protected void finishTick(TickData data) {
+		for (Player player : data.grazed) {
+			doGraze(player);
+		}
+	}
+
+	@Override
+	public void doGraze(Player player) {
 	}
 
 	public static class TickData {
@@ -90,6 +98,7 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		@Nullable
 		public BlockHitResult blockHit;
 		public final List<Entity> hitEntities = new ArrayList<>();
+		public final List<Player> grazed = new ArrayList<>();
 		public int candidateCount;
 		public int grazeCount;
 		public boolean removed;
@@ -102,6 +111,7 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 			moveDst = null;
 			blockHit = null;
 			hitEntities.clear();
+			grazed.clear();
 			candidateCount = 0;
 			grazeCount = 0;
 			removed = false;

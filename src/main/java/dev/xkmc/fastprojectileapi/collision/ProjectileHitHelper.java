@@ -44,7 +44,7 @@ public class ProjectileHitHelper {
 		EntityInfo entity = null;
 		for (EntityInfo x : list) {
 			if (x.entity() == e) continue;
-			var hpos = checkHit(x, e.alterHitBox(x.entity(), radius, 0), src, dst);
+			var hpos = checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
 			if (hpos != null) {
 				double d1 = src.distanceToSqr(hpos);
 				if (d1 < d0) {
@@ -52,7 +52,7 @@ public class ProjectileHitHelper {
 					d0 = d1;
 				}
 			} else if (graze > 0 && x.entity() instanceof Player pl) {
-				var gr = checkHit(x, e.alterHitBox(x.entity(), radius, graze), src, dst);
+				var gr = checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
 				if (gr != null) {
 					e.tickData().grazeCount++;
 					e.doGraze(pl);

@@ -1,5 +1,6 @@
 package dev.xkmc.fastprojectileapi.entity;
 
+import dev.xkmc.fastprojectileapi.collision.EntityInfo;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
@@ -15,8 +16,8 @@ public interface GrazingEntity {
 
 	}
 
-	default AABB alterHitBox(Entity x, float radius, float graze) {
-		return x.getBoundingBox().inflate(radius + graze);
+	default AABB alterHitBox(EntityInfo x, float radius, float graze) {
+		return x.boundingBox().inflate(radius + graze);
 	}
 
 }

@@ -45,10 +45,10 @@ public class LaserHitHelper {
 		e.tickData().candidateCount += list.size();
 		for (EntityInfo x : list) {
 			if (x.entity() == e) continue;
-			Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x.entity(), radius, 0), src, dst);
+			Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
 			if (hit != null) hitEntities.add(x.entity());
 			if (graze > 0 && x.entity() instanceof Player pl) {
-				Vec3 gr = ProjectileHitHelper.checkHit(x, e.alterHitBox(x.entity(), radius, graze), src, dst);
+				Vec3 gr = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
 				if (gr != null) {
 					e.tickData().grazeCount++;
 					e.doGraze(pl);

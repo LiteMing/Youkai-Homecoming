@@ -43,11 +43,13 @@ public abstract class BaseProjectile extends AsyncProjectile {
 
 	@Override
 	protected void trimMove(TickData data) {
+		data.blockHit = null;
 		if (!checkBlockHit()) return;
 		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
 		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;
 		var hit = ProjectileHitHelper.getBlockHitResultOnMoveVector(this, src, dst);
 		if (hit != null) {
+			data.blockHit = hit;
 			data.moveDst = hit.getLocation();
 		}
 	}
@@ -56,7 +58,7 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	protected void collectCollisionInput(TickData data, IEntityIterator iterator) {
 		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
 		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;
-		data.blockHit = ProjectileHitHelper.getHitResultOnMoveVector(this, src, dst, checkBlockHit(), data.hitEntities, iterator);
+		ProjectileHitHelper.collectEntityHitOnMoveVector(this, src, dst, data.hitEntities, iterator);
 	}
 
 	@Override

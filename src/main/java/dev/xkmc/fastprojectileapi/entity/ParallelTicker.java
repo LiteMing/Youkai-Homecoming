@@ -34,15 +34,16 @@ public class ParallelTicker {
 			if (shouldStop.getAsBoolean()) return;
 		}
 		trace.beginNanos = runStage(active, shouldStop, (e, data) -> e.beginTick(data), null);
-		trace.moveNanos = runStage(active, shouldStop, (e, data) -> e.planMove(data), null);
-		trace.moveNanos += runStage(active, shouldStop, (e, data) -> e.trimMove(data), null);
-		trace.preheatNanos = runStage(active, shouldStop, (e, data) -> {
+		trace.moveNanos = runStage(active, shouldStop, (e, data) -> {
+			e.planMove(data);
 			e.planPreheatRange(data, preheatCache);
 		}, null);
+		trace.moveNanos += runStage(active, shouldStop, (e, data) -> e.trimMove(data), null);
+		trace.preheatNanos = 0L;
 		if (preheatCache != null) {
 			long start = System.nanoTime();
 			preheatCache.flushPreheat();
-			trace.preheatNanos += System.nanoTime() - start;
+			trace.preheatNanos = System.nanoTime() - start;
 		}
 		trace.collisionInputNanos = runStage(active, shouldStop, (e, data) -> {
 			IEntityIterator iterator = preheatCache == null ? e.getEntityIterator() : preheatCache::asyncForEach;

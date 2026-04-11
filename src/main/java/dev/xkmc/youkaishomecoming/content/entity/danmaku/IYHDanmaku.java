@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
+import dev.xkmc.fastprojectileapi.collision.EntityInfo;
 import dev.xkmc.fastprojectileapi.entity.GrazingEntity;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
@@ -33,9 +34,10 @@ public interface IYHDanmaku extends GrazingEntity {
 	}
 
 	@Override
-	default AABB alterHitBox(Entity x, float radius, float graze) {
+	default AABB alterHitBox(EntityInfo x, float radius, float graze) {
+		Entity entity = x.entity();
 		if (self().getOwner() instanceof Player player &&
-				x instanceof YoukaiEntity youkai &&
+				entity instanceof YoukaiEntity youkai &&
 				youkai.targets.contains(player)) {
 			return youkai.getBoundingBox().inflate(GRAZE_RANGE);
 		}
@@ -108,6 +110,16 @@ public interface IYHDanmaku extends GrazingEntity {
 			}
 		}
 		e.hurt(source, damage(e));
+	}
+
+	static AABB alterEntityHitBox(EntityInfo x, float radius, float graze) {
+		var box = x.boundingBox();
+		if (graze > 0) return box.inflate(radius + graze);
+		float shrink = x.entity() instanceof Player player ? -GrazeHelper.getHitBoxDelta(player) : 0;
+		return new AABB(
+				box.minX + shrink - radius, box.minY + shrink * 2 - radius, box.minZ + shrink - radius,
+				box.maxX - shrink + radius, box.maxY + radius, box.maxZ - shrink + radius
+		);
 	}
 
 	static AABB alterEntityHitBox(Entity x, float radius, float graze) {

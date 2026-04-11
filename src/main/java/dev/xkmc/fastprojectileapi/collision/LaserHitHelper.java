@@ -2,6 +2,7 @@ package dev.xkmc.fastprojectileapi.collision;
 
 import dev.xkmc.fastprojectileapi.entity.BaseLaser;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import net.minecraft.util.Mth;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -18,13 +19,17 @@ import java.util.List;
 
 public class LaserHitHelper {
 
-	public record LaserHitResult(Vec3 dst, @Nullable BlockHitResult bhit, List<EntityHitResult> ehit) {
+	public record LaserHitResult(Vec3 src, Vec3 dst, @Nullable BlockHitResult bhit, List<EntityHitResult> ehit) {
 
 	}
 
 	public static LaserHitResult getHitResultOnProjection(BaseLaser e, boolean checkBlock, boolean checkEntity) {
-		Vec3 src = e.position().add(0, e.getBbHeight() / 2f, 0);
-		Vec3 v = e.getForward().scale(e.getLength());
+		return getHitResultOnProjection(e, e.position(), e.rot(), checkBlock, checkEntity);
+	}
+
+	public static LaserHitResult getHitResultOnProjection(BaseLaser e, Vec3 pos, Vec3 rot, boolean checkBlock, boolean checkEntity) {
+		Vec3 src = pos.add(0, e.getBbHeight() / 2f, 0);
+		Vec3 v = Vec3.directionFromRotation((float) (rot.x * Mth.RAD_TO_DEG), (float) (rot.y * Mth.RAD_TO_DEG)).scale(e.getLength());
 		Level level = e.level();
 		Vec3 dst = src.add(v);
 		BlockHitResult bhit = null;
@@ -38,7 +43,7 @@ public class LaserHitHelper {
 		if (checkEntity && level instanceof ServerLevel sl) {
 			var radius = e.getEffectiveHitRadius();
 			var graze = e.grazeRange();
-			var box = e.getBoundingBox().expandTowards(v);
+			var box = e.getBoundingBox().move(pos.subtract(e.position())).expandTowards(v);
 			IEntityCache cache = e.getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
 			var list = cache.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
 			for (Entity x : list) {
@@ -51,7 +56,7 @@ public class LaserHitHelper {
 				}
 			}
 		}
-		return new LaserHitResult(dst, bhit, ehit);
+		return new LaserHitResult(src, dst, bhit, ehit);
 	}
 
 

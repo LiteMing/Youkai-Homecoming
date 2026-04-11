@@ -19,10 +19,13 @@ public class ProjectileHitHelper {
 
 	@Nullable
 	public static HitResult getHitResultOnMoveVector(BaseProjectile e, boolean checkBlock) {
-		Vec3 src = e.position();
-		Vec3 v = e.getDeltaMovement();
+		return getHitResultOnMoveVector(e, e.position(), e.position().add(e.getDeltaMovement()), checkBlock);
+	}
+
+	@Nullable
+	public static HitResult getHitResultOnMoveVector(BaseProjectile e, Vec3 src, Vec3 dst, boolean checkBlock) {
+		Vec3 v = dst.subtract(src);
 		Level level = e.level();
-		Vec3 dst = src.add(v);
 		HitResult hit = null;
 		if (checkBlock) {
 			hit = level.clip(new ClipContext(src, dst, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
@@ -33,7 +36,7 @@ public class ProjectileHitHelper {
 		if (level instanceof ServerLevel sl) {
 			var radius = e.getBbWidth() / 2f;
 			var graze = e.grazeRange();
-			var box = e.getBoundingBox().expandTowards(v);
+			var box = e.getBoundingBox().move(src.subtract(e.position())).expandTowards(v);
 			IEntityCache cache = e.getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
 			var list = cache.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
 			double d0 = Double.MAX_VALUE;

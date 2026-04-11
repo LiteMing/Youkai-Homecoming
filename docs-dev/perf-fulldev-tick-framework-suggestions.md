@@ -204,6 +204,8 @@
 
 ##### 1.1.1 引入 `AsyncProjectile` 模板层
 
+- [x] 已完成
+
 范围：
 
 - 新增 `AsyncProjectile extends SimplifiedProjectile`
@@ -227,6 +229,8 @@
 - 简单看一次 TPS / tick 体感，确认没有明显额外损耗
 
 ##### 1.1.2 收掉 `YHBaseLaserEntity.tick()` 剩余逻辑
+
+- [x] 已完成
 
 范围：
 

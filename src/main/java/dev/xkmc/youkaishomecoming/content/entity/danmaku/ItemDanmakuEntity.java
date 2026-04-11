@@ -102,21 +102,26 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 
 	@Override
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
-		// Execute per-tick trail action
-		if (onTrail != null && tickCount > 0 && tickCount % trailInterval == 0) {
-			CardHolder holder = null;
-			Entity e = getOwner();
-			if (e instanceof CardHolder h) holder = h;
-			if (holder != null) onTrail.execute(holder, pos, vec);
-			else onTrail.execute(pos, vec);
-		}
-
 		if (mover != null) {
 			return mover.move(new MoverInfo(tickCount, pos, vec, this));
 		}
 		if (controlCode > 0 && getOwner() instanceof DanmakuCommander commander)
 			return commander.move(controlCode, tickCount, vec);
 		return super.updateVelocity(vec, pos);
+	}
+
+	@Override
+	protected void commitPreMoveEffects(TickData data) {
+		if (onTrail == null || tickCount <= 0 || tickCount % trailInterval != 0) {
+			return;
+		}
+		CardHolder holder = null;
+		Entity e = getOwner();
+		if (e instanceof CardHolder h) holder = h;
+		Vec3 pos = data.src == null ? position() : data.src;
+		Vec3 vec = data.originalVelocity == null ? getDeltaMovement() : data.originalVelocity;
+		if (holder != null) onTrail.execute(holder, pos, vec);
+		else onTrail.execute(pos, vec);
 	}
 
 	public ItemStack getItem() {

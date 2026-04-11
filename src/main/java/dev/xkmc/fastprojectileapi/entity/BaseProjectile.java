@@ -32,8 +32,18 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	public abstract int lifetime();
 
 	@Override
+	protected void planMove(TickData data) {
+		data.src = position();
+		data.originalVelocity = getDeltaMovement();
+		data.plannedMovement = computeMove(data.originalVelocity, data.src);
+		data.dst = data.src.add(data.plannedMovement.vec());
+	}
+
+	@Override
 	protected void collectCollisionInput(TickData data) {
-		data.projectileHit = ProjectileHitHelper.getHitResultOnMoveVector(this, checkBlockHit());
+		Vec3 src = data.src == null ? position() : data.src;
+		Vec3 dst = data.dst == null ? src.add(getDeltaMovement()) : data.dst;
+		data.projectileHit = ProjectileHitHelper.getHitResultOnMoveVector(this, src, dst, checkBlockHit());
 	}
 
 	@Override
@@ -47,7 +57,8 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	protected void finishTick(TickData data) {
 		if (tickCount >= lifetime()) {
 			if (level() instanceof ServerLevel) {
-				projectileMove();
+				commitPreMoveEffects(data);
+				applyPlannedMove(data);
 				terminate();
 				markErased(false);
 				return;
@@ -58,7 +69,8 @@ public abstract class BaseProjectile extends AsyncProjectile {
 			}
 			return;
 		}
-		projectileMove();
+		commitPreMoveEffects(data);
+		applyPlannedMove(data);
 		if (level() instanceof ServerLevel sl) {
 			if (!level().hasChunk(blockPosition().getX() >> 4, blockPosition().getZ() >> 4) ||
 					isAddedToWorld() && !EntityStorageHelper.isTicking(sl, this)) {
@@ -78,8 +90,7 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	}
 
 	protected void projectileMove() {
-		ProjectileMovement movement = computeMove();
-		applyMove(movement);
+		applyMove(computeMove());
 	}
 
 	/**
@@ -88,7 +99,11 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	 * Used by ClientDanmakuCache for parallel tick computation.
 	 */
 	public ProjectileMovement computeMove() {
-		return updateVelocity(getDeltaMovement(), position());
+		return computeMove(getDeltaMovement(), position());
+	}
+
+	protected ProjectileMovement computeMove(Vec3 vec, Vec3 pos) {
+		return updateVelocity(vec, pos);
 	}
 
 	/**
@@ -106,6 +121,17 @@ public abstract class BaseProjectile extends AsyncProjectile {
 
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
 		return ProjectileMovement.of(vec);
+	}
+
+	protected void applyPlannedMove(TickData data) {
+		if (data.plannedMovement != null) {
+			applyMove(data.plannedMovement);
+		} else {
+			projectileMove();
+		}
+	}
+
+	protected void commitPreMoveEffects(TickData data) {
 	}
 
 	public boolean shouldRenderAtSqrDistance(double pDistance) {

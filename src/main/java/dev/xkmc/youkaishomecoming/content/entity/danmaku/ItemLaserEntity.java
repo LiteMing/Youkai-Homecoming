@@ -59,17 +59,6 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 		return this;
 	}
 
-	@Override
-	protected void danmakuMove() {
-		ProjectileMovement movement = updateVelocity(getDeltaMovement(), position());
-		setDeltaMovement(movement.vec());
-		updateRotation(movement.rot());
-		double d2 = getX() + movement.vec().x;
-		double d0 = getY() + movement.vec().y;
-		double d1 = getZ() + movement.vec().z;
-		setPos(d2, d0, d1);
-	}
-
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
 		if (mover != null) {
 			return mover.move(new MoverInfo(tickCount, pos, vec, this));

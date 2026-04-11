@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 public abstract class AsyncProjectile extends SimplifiedProjectile {
@@ -16,7 +17,6 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 
 	@Override
 	public void tick() {
-		super.tick();
 		TickData data = tickData;
 		data.reset(this);
 		beginTick(data);
@@ -33,6 +33,7 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	}
 
 	protected void beginTick(TickData data) {
+		super.tick();
 	}
 
 	protected void planMove(TickData data) {
@@ -55,7 +56,13 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		@Nullable
 		public AsyncProjectile projectile;
 		@Nullable
+		public Vec3 src;
+		@Nullable
+		public Vec3 originalVelocity;
+		@Nullable
 		public ProjectileMovement plannedMovement;
+		@Nullable
+		public Vec3 dst;
 		@Nullable
 		public HitResult projectileHit;
 		@Nullable
@@ -64,7 +71,10 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 
 		public void reset(AsyncProjectile projectile) {
 			this.projectile = projectile;
+			src = null;
+			originalVelocity = null;
 			plannedMovement = null;
+			dst = null;
 			projectileHit = null;
 			laserHit = null;
 			stopTick = false;

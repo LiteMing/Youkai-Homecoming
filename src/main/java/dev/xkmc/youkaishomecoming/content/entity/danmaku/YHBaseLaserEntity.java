@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
 import dev.xkmc.fastprojectileapi.entity.BaseLaser;
+import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.PacketCodec;
@@ -131,16 +132,41 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	@Override
+	protected void planMove(TickData data) {
+		data.src = position();
+		data.originalVelocity = getDeltaMovement();
+		data.plannedMovement = computeMove(data.originalVelocity, data.src);
+		data.dst = data.src.add(data.plannedMovement.vec());
+	}
+
+	@Override
 	protected void finishTick(TickData data) {
 		super.finishTick(data);
-		danmakuMove();
+		applyMove(data.plannedMovement == null ? computeMove() : data.plannedMovement);
 		if (!level().isClientSide() && tickCount > life) {
 			discard();
 		}
 	}
 
-	protected void danmakuMove() {
+	protected ProjectileMovement computeMove() {
+		return computeMove(getDeltaMovement(), position());
+	}
 
+	protected ProjectileMovement computeMove(Vec3 vec, Vec3 pos) {
+		return updateVelocity(vec, pos);
+	}
+
+	protected void applyMove(ProjectileMovement movement) {
+		setDeltaMovement(movement.vec());
+		updateRotation(movement.rot());
+		double d2 = getX() + movement.vec().x;
+		double d0 = getY() + movement.vec().y;
+		double d1 = getZ() + movement.vec().z;
+		setPos(d2, d0, d1);
+	}
+
+	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
+		return ProjectileMovement.of(vec);
 	}
 
 	@Override
@@ -152,7 +178,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	protected void onHit(LaserHitHelper.LaserHitResult hit) {
 		if (level().isClientSide()) {
 			if (hit.bhit() != null && hit.bhit().getType() != HitResult.Type.MISS) {
-				earlyTerminate = position().add(0, getBbHeight() / 2f, 0).distanceTo(hit.bhit().getLocation());
+				earlyTerminate = hit.src().distanceTo(hit.bhit().getLocation());
 			} else earlyTerminate = -1;
 		}
 		for (var e : hit.ehit()) {

@@ -3,6 +3,7 @@ package dev.xkmc.fastprojectileapi.entity;
 import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 
 public abstract class BaseLaser extends AsyncProjectile {
 
@@ -20,7 +21,9 @@ public abstract class BaseLaser extends AsyncProjectile {
 
 	@Override
 	protected void collectCollisionInput(TickData data) {
-		data.laserHit = LaserHitHelper.getHitResultOnProjection(this, checkBlockHit(), checkEntityHit());
+		Vec3 pos = data.dst == null ? position() : data.dst;
+		Vec3 rot = data.plannedMovement == null ? rot() : data.plannedMovement.rot();
+		data.laserHit = LaserHitHelper.getHitResultOnProjection(this, pos, rot, checkBlockHit(), checkEntityHit());
 	}
 
 	@Override

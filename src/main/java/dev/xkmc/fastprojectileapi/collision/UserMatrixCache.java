@@ -4,7 +4,7 @@ import net.minecraft.server.level.ServerLevel;
 
 public class UserMatrixCache implements IEntityCache {
 
-	private static final int R = 5;
+	private static final int R = 13;
 
 	private final EntityStorageCache parent;
 	final ServerLevel sl;

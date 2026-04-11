@@ -28,6 +28,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializer;
@@ -623,7 +624,8 @@ public abstract class YoukaiEntity extends PathfinderMob
 	private void tickDanmaku() {
 		removeDanmaku = false;
 		temp = new ArrayList<>();
-		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku);
+		var preheatCache = level() instanceof ServerLevel sl ? cache.get(sl, self()) : null;
+		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache);
 		if (!removeDanmaku) {
 			var itr = allDanmakus.iterator();
 			while (itr.hasNext()) {

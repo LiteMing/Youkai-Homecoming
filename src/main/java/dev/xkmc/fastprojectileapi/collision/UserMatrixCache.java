@@ -2,15 +2,18 @@ package dev.xkmc.fastprojectileapi.collision;
 
 import net.minecraft.server.level.ServerLevel;
 
+import java.util.concurrent.atomic.AtomicLongArray;
+
 public class UserMatrixCache implements IEntityCache {
 
-	private static final int R = 5;
+	private static final int R = 13;
 
 	private final EntityStorageCache parent;
 	final ServerLevel sl;
 	final long time;
 	private final SectionCache[][][] cache;
 	private final int x0, y0, z0;
+	private final AtomicBitSet preheated;
 
 	public UserMatrixCache(ServerLevel sl, int x0, int y0, int z0) {
 		this.time = sl.getGameTime();
@@ -21,6 +24,7 @@ public class UserMatrixCache implements IEntityCache {
 		this.z0 = z0;
 		int d = R * 2 + 1;
 		cache = new SectionCache[d][d][d];
+		preheated = new AtomicBitSet(d * d * d);
 	}
 
 	public SectionCache get(int x, int y, int z) {
@@ -46,6 +50,44 @@ public class UserMatrixCache implements IEntityCache {
 			return cache[ix][iy][iz];
 		}
 		return parent.asyncGet(x, y, z);
+	}
+
+	public void preheat() {
+		int d = R * 2 + 1;
+		for (int ix = 0; ix < d; ix++) {
+			for (int iy = 0; iy < d; iy++) {
+				for (int iz = 0; iz < d; iz++) {
+					int index = index(ix, iy, iz, d);
+					if (preheated.setIfUnset(index)) {
+						get(x0 + ix - R, y0 + iy - R, z0 + iz - R);
+					}
+				}
+			}
+		}
+	}
+
+	private static int index(int ix, int iy, int iz, int d) {
+		return (ix * d + iy) * d + iz;
+	}
+
+	private static final class AtomicBitSet {
+
+		private final AtomicLongArray words;
+
+		private AtomicBitSet(int size) {
+			words = new AtomicLongArray((size + Long.SIZE - 1) / Long.SIZE);
+		}
+
+		private boolean setIfUnset(int bit) {
+			int wordIndex = bit >>> 6;
+			long mask = 1L << (bit & 63);
+			while (true) {
+				long current = words.get(wordIndex);
+				if ((current & mask) != 0L) return false;
+				if (words.compareAndSet(wordIndex, current, current | mask)) return true;
+			}
+		}
+
 	}
 
 }

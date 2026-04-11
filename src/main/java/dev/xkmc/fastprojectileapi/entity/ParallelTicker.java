@@ -1,5 +1,7 @@
 package dev.xkmc.fastprojectileapi.entity;
 
+import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
+
 import java.util.ArrayList;
 import java.util.function.BooleanSupplier;
 
@@ -8,6 +10,10 @@ public class ParallelTicker {
 	private static final ThreadLocal<StageTrace> TRACE = ThreadLocal.withInitial(StageTrace::new);
 
 	public static void tickAll(Iterable<SimplifiedProjectile> all, BooleanSupplier shouldStop) {
+		tickAll(all, shouldStop, null);
+	}
+
+	public static void tickAll(Iterable<SimplifiedProjectile> all, BooleanSupplier shouldStop, UserMatrixCache preheatCache) {
 		StageTrace trace = TRACE.get();
 		trace.reset();
 		long totalStart = System.nanoTime();
@@ -28,7 +34,14 @@ public class ParallelTicker {
 		}
 		trace.beginNanos = runStage(active, shouldStop, (e, data) -> e.beginTick(data), null);
 		trace.moveNanos = runStage(active, shouldStop, (e, data) -> e.planMove(data), null);
-		trace.preheatNanos = runStage(active, shouldStop, (e, data) -> e.planPreheatRange(data), null);
+		trace.preheatNanos = runStage(active, shouldStop, (e, data) -> {
+			e.planPreheatRange(data);
+		}, null);
+		if (preheatCache != null) {
+			long start = System.nanoTime();
+			preheatCache.preheat();
+			trace.preheatNanos += System.nanoTime() - start;
+		}
 		trace.collisionInputNanos = runStage(active, shouldStop, (e, data) -> e.collectCollisionInput(data), null);
 		trace.resolveNanos = runStage(active, shouldStop, (e, data) -> e.resolveCollision(data), (data, result) -> {
 			result.hitCount += data.hitEntities.size();

@@ -1,9 +1,7 @@
 package dev.xkmc.fastprojectileapi.collision;
 
 import dev.xkmc.fastprojectileapi.entity.BaseLaser;
-import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
 import net.minecraft.util.Mth;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
@@ -18,12 +16,7 @@ import java.util.List;
 public class LaserHitHelper {
 
 	@Nullable
-	public static BlockHitResult getHitResultOnProjection(BaseLaser e, boolean checkBlock, boolean checkEntity, List<Entity> hitEntities) {
-		return getHitResultOnProjection(e, e.position(), e.rot(), checkBlock, checkEntity, hitEntities);
-	}
-
-	@Nullable
-	public static BlockHitResult getHitResultOnProjection(BaseLaser e, Vec3 pos, Vec3 rot, boolean checkBlock, boolean checkEntity, List<Entity> hitEntities) {
+	public static BlockHitResult getHitResultOnProjection(BaseLaser e, Vec3 pos, Vec3 rot, boolean checkBlock, boolean checkEntity, List<Entity> hitEntities, IEntityIterator iterator) {
 		Vec3 src = pos.add(0, e.getBbHeight() / 2f, 0);
 		Vec3 v = Vec3.directionFromRotation((float) (rot.x * Mth.RAD_TO_DEG), (float) (rot.y * Mth.RAD_TO_DEG)).scale(e.getLength());
 		Level level = e.level();
@@ -35,12 +28,11 @@ public class LaserHitHelper {
 				dst = bhit.getLocation();
 			} else bhit = null;
 		}
-		if (checkEntity && level instanceof ServerLevel sl) {
+		if (checkEntity && level instanceof net.minecraft.server.level.ServerLevel) {
 			var radius = e.getEffectiveHitRadius();
 			var graze = e.grazeRange();
 			var box = e.getBoundingBox().move(pos.subtract(e.position())).expandTowards(v);
-			IEntityCache cache = e.getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
-			var list = cache.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
+			var list = iterator.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
 			e.tickData().candidateCount += list.size();
 			for (Entity x : list) {
 				if (x == e) continue;

@@ -1,6 +1,9 @@
 package dev.xkmc.fastprojectileapi.entity;
 
 import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
+import dev.xkmc.fastprojectileapi.collision.EntityStorageCache;
+import dev.xkmc.fastprojectileapi.collision.IEntityCache;
+import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -26,7 +29,15 @@ public abstract class BaseLaser extends AsyncProjectile {
 	protected void collectCollisionInput(TickData data) {
 		Vec3 pos = data.moveDst == null ? position() : data.moveDst;
 		Vec3 rot = data.plannedMovement == null ? rot() : data.plannedMovement.rot();
-		data.blockHit = LaserHitHelper.getHitResultOnProjection(this, pos, rot, checkBlockHit(), checkEntityHit(), data.hitEntities);
+		data.blockHit = LaserHitHelper.getHitResultOnProjection(this, pos, rot, checkBlockHit(), checkEntityHit(), data.hitEntities, getEntityIterator());
+	}
+
+	protected IEntityIterator getEntityIterator() {
+		if (level() instanceof net.minecraft.server.level.ServerLevel sl) {
+			IEntityCache cache = getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
+			return cache::foreach;
+		}
+		return (aabb, filter) -> java.util.List.of();
 	}
 
 	@Override

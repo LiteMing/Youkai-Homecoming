@@ -1,8 +1,6 @@
 package dev.xkmc.fastprojectileapi.collision;
 
 import dev.xkmc.fastprojectileapi.entity.BaseProjectile;
-import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
@@ -19,12 +17,7 @@ import java.util.Optional;
 public class ProjectileHitHelper {
 
 	@Nullable
-	public static BlockHitResult getHitResultOnMoveVector(BaseProjectile e, boolean checkBlock, List<Entity> hitEntities) {
-		return getHitResultOnMoveVector(e, e.position(), e.position().add(e.getDeltaMovement()), checkBlock, hitEntities);
-	}
-
-	@Nullable
-	public static BlockHitResult getHitResultOnMoveVector(BaseProjectile e, Vec3 src, Vec3 dst, boolean checkBlock, List<Entity> hitEntities) {
+	public static BlockHitResult getHitResultOnMoveVector(BaseProjectile e, Vec3 src, Vec3 dst, boolean checkBlock, List<Entity> hitEntities, IEntityIterator iterator) {
 		Vec3 v = dst.subtract(src);
 		Level level = e.level();
 		BlockHitResult blockHit = null;
@@ -35,12 +28,11 @@ public class ProjectileHitHelper {
 				dst = hit.getLocation();
 			}
 		}
-		if (level instanceof ServerLevel sl) {
+		if (level instanceof net.minecraft.server.level.ServerLevel) {
 			var radius = e.getBbWidth() / 2f;
 			var graze = e.grazeRange();
 			var box = e.getBoundingBox().move(src.subtract(e.position())).expandTowards(v);
-			IEntityCache cache = e.getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
-			var list = cache.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
+			var list = iterator.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
 			e.tickData().candidateCount += list.size();
 			double d0 = Double.MAX_VALUE;
 			Entity entity = null;

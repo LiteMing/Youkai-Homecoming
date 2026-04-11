@@ -37,10 +37,24 @@ public class ParallelDanmakuTicker {
 	private static final Logger LOGGER = LogUtils.getLogger();
 	private static final int PARALLEL_THRESHOLD = 500;
 	private static final int MAX_THREADS = 4;
+	private static final Object SUMMARY_LOCK = new Object();
 	private static volatile TickStatsSnapshot LAST_STATS = TickStatsSnapshot.empty();
+	private static TickSummaryAccumulator SUMMARY_STATS = new TickSummaryAccumulator();
 
 	public static TickStatsSnapshot getLastStats() {
 		return LAST_STATS;
+	}
+
+	public static TickSummarySnapshot getSummaryStats() {
+		synchronized (SUMMARY_LOCK) {
+			return SUMMARY_STATS.snapshot();
+		}
+	}
+
+	public static void resetSummaryStats() {
+		synchronized (SUMMARY_LOCK) {
+			SUMMARY_STATS = new TickSummaryAccumulator();
+		}
 	}
 
 	/**
@@ -78,7 +92,11 @@ public class ParallelDanmakuTicker {
 			tickSequential(sl, allDanmakus, temp, toBeSent, removeFlag, self, stats);
 		}
 		stats.totalNanos = System.nanoTime() - totalStart;
-		LAST_STATS = stats.build();
+		TickStatsSnapshot snapshot = stats.build();
+		LAST_STATS = snapshot;
+		synchronized (SUMMARY_LOCK) {
+			SUMMARY_STATS.record(snapshot);
+		}
 	}
 
 	private static long warmCaches(ServerLevel sl, @Nullable UserCacheHolder cacheHolder) {
@@ -800,6 +818,45 @@ public class ParallelDanmakuTicker {
 		}
 	}
 
+	public record TickSummarySnapshot(
+			long sampleCount,
+			long parallelSamples,
+			long sequentialSamples,
+			long projectileSum,
+			int maxProjectiles,
+			long parallelReadySum,
+			int maxParallelReady,
+			long prefetchConsumedSum,
+			long prefetchEligibleSum,
+			long prefetchStoredSum,
+			long prefetchFailuresSum,
+			long standardSequentialFallbacksSum,
+			long preparedSequentialFallbacksSum,
+			long step1FailuresSum,
+			long step2FailuresSum,
+			long step3FailuresSum,
+			long applyFailuresSum,
+			long queuedMovesSum,
+			long warmupNanosSum,
+			long prepareNanosSum,
+			long step1NanosSum,
+			long touchedSectionNanosSum,
+			long step2NanosSum,
+			long step3NanosSum,
+			long finishNanosSum,
+			long totalNanosSum,
+			long maxTotalNanos,
+			long maxStep1Nanos,
+			long maxStep2Nanos,
+			long maxStep3Nanos,
+			long maxFinishNanos
+	) {
+
+		public boolean hasData() {
+			return sampleCount > 0;
+		}
+	}
+
 	private static final class TickStatsBuilder {
 
 		private final long gameTime;
@@ -856,6 +913,114 @@ public class ParallelDanmakuTicker {
 					step3Nanos,
 					finishNanos,
 					totalNanos
+			);
+		}
+	}
+
+	private static final class TickSummaryAccumulator {
+
+		private long sampleCount;
+		private long parallelSamples;
+		private long sequentialSamples;
+		private long projectileSum;
+		private int maxProjectiles;
+		private long parallelReadySum;
+		private int maxParallelReady;
+		private long prefetchConsumedSum;
+		private long prefetchEligibleSum;
+		private long prefetchStoredSum;
+		private long prefetchFailuresSum;
+		private long standardSequentialFallbacksSum;
+		private long preparedSequentialFallbacksSum;
+		private long step1FailuresSum;
+		private long step2FailuresSum;
+		private long step3FailuresSum;
+		private long applyFailuresSum;
+		private long queuedMovesSum;
+		private long warmupNanosSum;
+		private long prepareNanosSum;
+		private long step1NanosSum;
+		private long touchedSectionNanosSum;
+		private long step2NanosSum;
+		private long step3NanosSum;
+		private long finishNanosSum;
+		private long totalNanosSum;
+		private long maxTotalNanos;
+		private long maxStep1Nanos;
+		private long maxStep2Nanos;
+		private long maxStep3Nanos;
+		private long maxFinishNanos;
+
+		private void record(TickStatsSnapshot stats) {
+			sampleCount++;
+			if (stats.parallelPath()) {
+				parallelSamples++;
+			} else {
+				sequentialSamples++;
+			}
+			projectileSum += stats.projectileCount();
+			maxProjectiles = Math.max(maxProjectiles, stats.projectileCount());
+			parallelReadySum += stats.parallelReady();
+			maxParallelReady = Math.max(maxParallelReady, stats.parallelReady());
+			prefetchConsumedSum += stats.prefetchConsumed();
+			prefetchEligibleSum += stats.prefetchEligible();
+			prefetchStoredSum += stats.prefetchStored();
+			prefetchFailuresSum += stats.prefetchFailures();
+			standardSequentialFallbacksSum += stats.standardSequentialFallbacks();
+			preparedSequentialFallbacksSum += stats.preparedSequentialFallbacks();
+			step1FailuresSum += stats.step1Failures();
+			step2FailuresSum += stats.step2Failures();
+			step3FailuresSum += stats.step3Failures();
+			applyFailuresSum += stats.applyFailures();
+			queuedMovesSum += stats.queuedMoves();
+			warmupNanosSum += stats.warmupNanos();
+			prepareNanosSum += stats.prepareNanos();
+			step1NanosSum += stats.step1Nanos();
+			touchedSectionNanosSum += stats.touchedSectionNanos();
+			step2NanosSum += stats.step2Nanos();
+			step3NanosSum += stats.step3Nanos();
+			finishNanosSum += stats.finishNanos();
+			totalNanosSum += stats.totalNanos();
+			maxTotalNanos = Math.max(maxTotalNanos, stats.totalNanos());
+			maxStep1Nanos = Math.max(maxStep1Nanos, stats.step1Nanos());
+			maxStep2Nanos = Math.max(maxStep2Nanos, stats.step2Nanos());
+			maxStep3Nanos = Math.max(maxStep3Nanos, stats.step3Nanos());
+			maxFinishNanos = Math.max(maxFinishNanos, stats.finishNanos());
+		}
+
+		private TickSummarySnapshot snapshot() {
+			return new TickSummarySnapshot(
+					sampleCount,
+					parallelSamples,
+					sequentialSamples,
+					projectileSum,
+					maxProjectiles,
+					parallelReadySum,
+					maxParallelReady,
+					prefetchConsumedSum,
+					prefetchEligibleSum,
+					prefetchStoredSum,
+					prefetchFailuresSum,
+					standardSequentialFallbacksSum,
+					preparedSequentialFallbacksSum,
+					step1FailuresSum,
+					step2FailuresSum,
+					step3FailuresSum,
+					applyFailuresSum,
+					queuedMovesSum,
+					warmupNanosSum,
+					prepareNanosSum,
+					step1NanosSum,
+					touchedSectionNanosSum,
+					step2NanosSum,
+					step3NanosSum,
+					finishNanosSum,
+					totalNanosSum,
+					maxTotalNanos,
+					maxStep1Nanos,
+					maxStep2Nanos,
+					maxStep3Nanos,
+					maxFinishNanos
 			);
 		}
 	}

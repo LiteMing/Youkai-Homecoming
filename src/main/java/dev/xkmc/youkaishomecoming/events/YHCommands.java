@@ -33,6 +33,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 
 import java.util.Collection;
+import java.util.Locale;
 
 @Mod.EventBusSubscriber(modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class YHCommands {
@@ -69,15 +70,15 @@ public class YHCommands {
 						}))
 				.then(literal("perf")
 						.requires(e -> e.hasPermission(2))
-						.executes(ctx -> {
-							var stats = ParallelDanmakuTicker.getLastStats();
-							if (!stats.hasData()) {
-								ctx.getSource().sendSystemMessage(Component.literal("[YH] No parallel danmaku tick stats recorded yet."));
-								return 0;
-							}
-							ctx.getSource().sendSystemMessage(Component.literal(formatDanmakuPerf(stats)));
-							return 1;
-						}))
+						.executes(ctx -> sendDanmakuPerfLatest(ctx.getSource()))
+						.then(literal("summary")
+								.executes(ctx -> sendDanmakuPerfSummary(ctx.getSource())))
+						.then(literal("reset")
+								.executes(ctx -> {
+									ParallelDanmakuTicker.resetSummaryStats();
+									ctx.getSource().sendSystemMessage(Component.literal("[YH] Danmaku perf summary reset."));
+									return 1;
+								})))
 				.then(argument("player", EntityArgument.players())
 						.then(literal("setLife")
 								.requires(e -> e.hasPermission(2))
@@ -551,8 +552,95 @@ public class YHCommands {
 		return sb.toString();
 	}
 
+	private static int sendDanmakuPerfLatest(CommandSourceStack source) {
+		var stats = ParallelDanmakuTicker.getLastStats();
+		if (!stats.hasData()) {
+			source.sendSystemMessage(Component.literal("[YH] No parallel danmaku tick stats recorded yet."));
+			return 0;
+		}
+		source.sendSystemMessage(Component.literal(formatDanmakuPerf(stats)));
+		return 1;
+	}
+
+	private static int sendDanmakuPerfSummary(CommandSourceStack source) {
+		var stats = ParallelDanmakuTicker.getSummaryStats();
+		if (!stats.hasData()) {
+			source.sendSystemMessage(Component.literal("[YH] No danmaku perf summary recorded yet."));
+			return 0;
+		}
+		source.sendSystemMessage(Component.literal(formatDanmakuPerfSummary(stats)));
+		return 1;
+	}
+
+	private static String formatDanmakuPerfSummary(ParallelDanmakuTicker.TickSummarySnapshot stats) {
+		long samples = stats.sampleCount();
+		var sb = new StringBuilder();
+		sb.append("=== Danmaku Tick Perf Summary ===\n");
+		sb.append("samples=").append(samples)
+				.append("  parallel=").append(stats.parallelSamples())
+				.append(" (").append(formatPercent(stats.parallelSamples(), samples)).append(")")
+				.append("  sequential=").append(stats.sequentialSamples())
+				.append("\n");
+		sb.append("projectiles: avg=").append(formatAverage(stats.projectileSum(), samples))
+				.append("  max=").append(stats.maxProjectiles())
+				.append("  readyAvg=").append(formatAverage(stats.parallelReadySum(), samples))
+				.append("  readyMax=").append(stats.maxParallelReady())
+				.append("\n");
+		sb.append("avg time: total=").append(formatAverageMillis(stats.totalNanosSum(), samples))
+				.append("  warm=").append(formatAverageMillis(stats.warmupNanosSum(), samples))
+				.append("  prepare=").append(formatAverageMillis(stats.prepareNanosSum(), samples))
+				.append("  step1=").append(formatAverageMillis(stats.step1NanosSum(), samples))
+				.append("  sections=").append(formatAverageMillis(stats.touchedSectionNanosSum(), samples))
+				.append("  step2=").append(formatAverageMillis(stats.step2NanosSum(), samples))
+				.append("  step3=").append(formatAverageMillis(stats.step3NanosSum(), samples))
+				.append("  finish=").append(formatAverageMillis(stats.finishNanosSum(), samples))
+				.append("\n");
+		sb.append("max time: total=").append(formatMillis(stats.maxTotalNanos()))
+				.append("  step1=").append(formatMillis(stats.maxStep1Nanos()))
+				.append("  step2=").append(formatMillis(stats.maxStep2Nanos()))
+				.append("  step3=").append(formatMillis(stats.maxStep3Nanos()))
+				.append("  finish=").append(formatMillis(stats.maxFinishNanos()))
+				.append("\n");
+		sb.append("prefetch: consumedAvg=").append(formatAverage(stats.prefetchConsumedSum(), samples))
+				.append("  eligibleAvg=").append(formatAverage(stats.prefetchEligibleSum(), samples))
+				.append("  storedAvg=").append(formatAverage(stats.prefetchStoredSum(), samples))
+				.append("  failures=").append(stats.prefetchFailuresSum())
+				.append("  storeRate=").append(formatPercent(stats.prefetchStoredSum(), stats.prefetchEligibleSum()))
+				.append("\n");
+		sb.append("fallback totals: standard=").append(stats.standardSequentialFallbacksSum())
+				.append("  prepared=").append(stats.preparedSequentialFallbacksSum())
+				.append("  queuedMoves=").append(stats.queuedMovesSum())
+				.append("\n");
+		sb.append("failure totals: step1=").append(stats.step1FailuresSum())
+				.append("  step2=").append(stats.step2FailuresSum())
+				.append("  step3=").append(stats.step3FailuresSum())
+				.append("  apply=").append(stats.applyFailuresSum());
+		return sb.toString();
+	}
+
 	private static String formatMillis(long nanos) {
-		return String.format("%.3fms", nanos / 1_000_000.0);
+		return String.format(Locale.ROOT, "%.3fms", nanos / 1_000_000.0);
+	}
+
+	private static String formatAverageMillis(long nanos, long samples) {
+		if (samples <= 0) {
+			return "0.000ms";
+		}
+		return String.format(Locale.ROOT, "%.3fms", nanos / 1_000_000.0 / samples);
+	}
+
+	private static String formatAverage(long sum, long samples) {
+		if (samples <= 0) {
+			return "0.0";
+		}
+		return String.format(Locale.ROOT, "%.1f", (double) sum / samples);
+	}
+
+	private static String formatPercent(long value, long total) {
+		if (total <= 0) {
+			return "0.0%";
+		}
+		return String.format(Locale.ROOT, "%.1f%%", value * 100.0 / total);
 	}
 
 }

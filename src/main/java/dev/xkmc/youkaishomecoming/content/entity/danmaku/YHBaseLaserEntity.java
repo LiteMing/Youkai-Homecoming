@@ -131,8 +131,8 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	@Override
-	public void tick() {
-		super.tick();
+	protected void finishTick(TickData data) {
+		super.finishTick(data);
 		danmakuMove();
 		if (!level().isClientSide() && tickCount > life) {
 			discard();

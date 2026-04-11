@@ -2,6 +2,7 @@ package dev.xkmc.fastprojectileapi.collision;
 
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 
 import java.util.ArrayList;
@@ -14,21 +15,23 @@ public class UserMatrixCache implements IEntityCache {
 	private static final int R = 13;
 
 	private final EntityStorageCache parent;
+	private final LivingEntity owner;
 	final ServerLevel sl;
 	final long time;
-	private final SectionCache[][][] cache;
+	private final OwnedSectionCache[][][] cache;
 	private final int x0, y0, z0;
 	private final AtomicBitSet preheated;
 
-	public UserMatrixCache(ServerLevel sl, int x0, int y0, int z0) {
+	public UserMatrixCache(ServerLevel sl, LivingEntity owner, int x0, int y0, int z0) {
 		this.time = sl.getGameTime();
 		this.sl = sl;
+		this.owner = owner;
 		parent = EntityStorageCache.get(sl);
 		this.x0 = x0;
 		this.y0 = y0;
 		this.z0 = z0;
 		int d = R * 2 + 1;
-		cache = new SectionCache[d][d][d];
+		cache = new OwnedSectionCache[d][d][d];
 		preheated = new AtomicBitSet(d * d * d);
 	}
 
@@ -38,22 +41,23 @@ public class UserMatrixCache implements IEntityCache {
 		int iz = z - z0 + R;
 		if (ix >= 0 && ix < R * 2 + 1 && iy >= 0 && iy < R * 2 + 1 && iz >= 0 && iz < R * 2 + 1) {
 			if (cache[ix][iy][iz] == null) {
-				cache[ix][iy][iz] = parent.get(x, y, z);
+				cache[ix][iy][iz] = new OwnedSectionCache(parent.get(x, y, z), owner);
 			}
-			return cache[ix][iy][iz];
+			return cache[ix][iy][iz].section();
 		} else {
 			return parent.get(x, y, z);
 		}
 	}
 
-	public SectionCache asyncGet(int x, int y, int z) {
+	public OwnedSectionCache asyncGet(int x, int y, int z) {
 		int ix = x - x0 + R;
 		int iy = y - y0 + R;
 		int iz = z - z0 + R;
 		if (ix >= 0 && ix < R * 2 + 1 && iy >= 0 && iy < R * 2 + 1 && iz >= 0 && iz < R * 2 + 1) {
 			return cache[ix][iy][iz];
 		}
-		return parent.map.get(x, y, z);
+		var section = parent.map.get(x, y, z);
+		return section == null ? null : new OwnedSectionCache(section, owner);
 	}
 
 	public void preheat(AABB aabb) {
@@ -72,22 +76,21 @@ public class UserMatrixCache implements IEntityCache {
 		}
 	}
 
-	public List<Entity> asyncForEach(AABB aabb, Predicate<Entity> filter) {
+	public List<EntityInfo> asyncForEach(AABB aabb, HitTestType filter) {
 		int x0 = (((int) aabb.minX) >> 4) - 1;
 		int y0 = (((int) aabb.minY) >> 4) - 1;
 		int z0 = (((int) aabb.minZ) >> 4) - 1;
 		int x1 = (((int) aabb.maxX) >> 4) + 1;
 		int y1 = (((int) aabb.maxY) >> 4) + 1;
 		int z1 = (((int) aabb.maxZ) >> 4) + 1;
-		List<Entity> list = new ArrayList<>();
+		List<EntityInfo> list = new ArrayList<>();
 		for (int x = x0; x <= x1; x++) {
 			for (int y = y0; y <= y1; y++) {
 				for (int z = z0; z <= z1; z++) {
-					SectionCache cache = asyncGet(x, y, z);
+					OwnedSectionCache cache = asyncGet(x, y, z);
 					if (cache == null) continue;
 					for (var e : cache.intersect(aabb)) {
-						var ebox = e.getBoundingBox().expandTowards(e.getDeltaMovement());
-						if (aabb.intersects(ebox) && filter.test(e)) {
+						if (aabb.intersects(e.sweepBox()) && e.canHit(filter)) {
 							list.add(e);
 						}
 					}

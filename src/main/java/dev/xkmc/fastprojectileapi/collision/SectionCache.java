@@ -42,4 +42,16 @@ public class SectionCache {
 		return aabb.intersects(box) ? all : margin;
 	}
 
+	AABB bounds() {
+		return aabb;
+	}
+
+	List<Entity> allEntities() {
+		return all;
+	}
+
+	List<Entity> marginEntities() {
+		return margin;
+	}
+
 }

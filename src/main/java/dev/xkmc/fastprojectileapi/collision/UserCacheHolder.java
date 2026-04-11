@@ -15,7 +15,7 @@ public class UserCacheHolder {
 			}
 		}
 		var bpos = SectionPos.of(user.blockPosition());
-		cache = new UserMatrixCache(sl, bpos.x(), bpos.y(), bpos.z());
+		cache = new UserMatrixCache(sl, user, bpos.x(), bpos.y(), bpos.z());
 		return cache;
 	}
 

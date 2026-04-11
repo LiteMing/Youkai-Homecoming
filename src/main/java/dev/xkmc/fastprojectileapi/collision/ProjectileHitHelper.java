@@ -18,46 +18,50 @@ public class ProjectileHitHelper {
 
 	@Nullable
 	public static BlockHitResult getHitResultOnMoveVector(BaseProjectile e, Vec3 src, Vec3 dst, boolean checkBlock, List<Entity> hitEntities, IEntityIterator iterator) {
-		Vec3 v = dst.subtract(src);
+		BlockHitResult blockHit = checkBlock ? getBlockHitResultOnMoveVector(e, src, dst) : null;
+		Vec3 entityDst = blockHit == null ? dst : blockHit.getLocation();
+		collectEntityHitOnMoveVector(e, src, entityDst, hitEntities, iterator);
+		return blockHit;
+	}
+
+	@Nullable
+	public static BlockHitResult getBlockHitResultOnMoveVector(BaseProjectile e, Vec3 src, Vec3 dst) {
 		Level level = e.level();
-		BlockHitResult blockHit = null;
-		if (checkBlock) {
-			var hit = level.clip(new ClipContext(src, dst, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
-			if (hit.getType() != HitResult.Type.MISS) {
-				blockHit = hit;
-				dst = hit.getLocation();
-			}
-		}
-		if (level instanceof net.minecraft.server.level.ServerLevel) {
-			var radius = e.getBbWidth() / 2f;
-			var graze = e.grazeRange();
-			var box = e.getBoundingBox().move(src.subtract(e.position())).expandTowards(v);
-			var list = iterator.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
-			e.tickData().candidateCount += list.size();
-			double d0 = Double.MAX_VALUE;
-			Entity entity = null;
-			for (Entity x : list) {
-				if (x == e) continue;
-				var hpos = checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
-				if (hpos != null) {
-					double d1 = src.distanceToSqr(hpos);
-					if (d1 < d0) {
-						entity = x;
-						d0 = d1;
-					}
-				} else if (graze > 0 && x instanceof Player pl) {
-					var gr = checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
-					if (gr != null) {
-						e.tickData().grazeCount++;
-						e.doGraze(pl);
-					}
+		var hit = level.clip(new ClipContext(src, dst, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
+		return hit.getType() == HitResult.Type.MISS ? null : hit;
+	}
+
+	public static void collectEntityHitOnMoveVector(BaseProjectile e, Vec3 src, Vec3 dst, List<Entity> hitEntities, IEntityIterator iterator) {
+		Level level = e.level();
+		if (!(level instanceof net.minecraft.server.level.ServerLevel)) return;
+		Vec3 v = dst.subtract(src);
+		var radius = e.getBbWidth() / 2f;
+		var graze = e.grazeRange();
+		var box = e.getBoundingBox().move(src.subtract(e.position())).expandTowards(v);
+		var list = iterator.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
+		e.tickData().candidateCount += list.size();
+		double d0 = Double.MAX_VALUE;
+		Entity entity = null;
+		for (Entity x : list) {
+			if (x == e) continue;
+			var hpos = checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
+			if (hpos != null) {
+				double d1 = src.distanceToSqr(hpos);
+				if (d1 < d0) {
+					entity = x;
+					d0 = d1;
+				}
+			} else if (graze > 0 && x instanceof Player pl) {
+				var gr = checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
+				if (gr != null) {
+					e.tickData().grazeCount++;
+					e.doGraze(pl);
 				}
 			}
-			if (entity != null) {
-				hitEntities.add(entity);
-			}
 		}
-		return blockHit;
+		if (entity != null) {
+			hitEntities.add(entity);
+		}
 	}
 
 	@Nullable

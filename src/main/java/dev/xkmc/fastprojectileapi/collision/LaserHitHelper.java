@@ -19,35 +19,42 @@ public class LaserHitHelper {
 	public static BlockHitResult getHitResultOnProjection(BaseLaser e, Vec3 pos, Vec3 rot, boolean checkBlock, boolean checkEntity, List<Entity> hitEntities, IEntityIterator iterator) {
 		Vec3 src = pos.add(0, e.getBbHeight() / 2f, 0);
 		Vec3 v = Vec3.directionFromRotation((float) (rot.x * Mth.RAD_TO_DEG), (float) (rot.y * Mth.RAD_TO_DEG)).scale(e.getLength());
-		Level level = e.level();
 		Vec3 dst = src.add(v);
-		BlockHitResult bhit = null;
-		if (checkBlock) {
-			bhit = level.clip(new ClipContext(src, dst, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
-			if (bhit.getType() != HitResult.Type.MISS) {
-				dst = bhit.getLocation();
-			} else bhit = null;
+		BlockHitResult bhit = checkBlock ? getBlockHitResultOnProjection(e, src, dst) : null;
+		Vec3 entityDst = bhit == null ? dst : bhit.getLocation();
+		if (checkEntity) {
+			collectEntityHitOnProjection(e, pos, src, entityDst, v, hitEntities, iterator);
 		}
-		if (checkEntity && level instanceof net.minecraft.server.level.ServerLevel) {
-			var radius = e.getEffectiveHitRadius();
-			var graze = e.grazeRange();
-			var box = e.getBoundingBox().move(pos.subtract(e.position())).expandTowards(v);
-			var list = iterator.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
-			e.tickData().candidateCount += list.size();
-			for (Entity x : list) {
-				if (x == e) continue;
-				Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
-				if (hit != null) hitEntities.add(x);
-				if (graze > 0 && x instanceof Player pl) {
-					Vec3 gr = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
-					if (gr != null) {
-						e.tickData().grazeCount++;
-						e.doGraze(pl);
-					}
+		return bhit;
+	}
+
+	@Nullable
+	public static BlockHitResult getBlockHitResultOnProjection(BaseLaser e, Vec3 src, Vec3 dst) {
+		Level level = e.level();
+		var hit = level.clip(new ClipContext(src, dst, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
+		return hit.getType() == HitResult.Type.MISS ? null : hit;
+	}
+
+	public static void collectEntityHitOnProjection(BaseLaser e, Vec3 pos, Vec3 src, Vec3 dst, Vec3 direction, List<Entity> hitEntities, IEntityIterator iterator) {
+		Level level = e.level();
+		if (!(level instanceof net.minecraft.server.level.ServerLevel)) return;
+		var radius = e.getEffectiveHitRadius();
+		var graze = e.grazeRange();
+		var box = e.getBoundingBox().move(pos.subtract(e.position())).expandTowards(direction);
+		var list = iterator.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
+		e.tickData().candidateCount += list.size();
+		for (Entity x : list) {
+			if (x == e) continue;
+			Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
+			if (hit != null) hitEntities.add(x);
+			if (graze > 0 && x instanceof Player pl) {
+				Vec3 gr = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
+				if (gr != null) {
+					e.tickData().grazeCount++;
+					e.doGraze(pl);
 				}
 			}
 		}
-		return bhit;
 	}
 
 

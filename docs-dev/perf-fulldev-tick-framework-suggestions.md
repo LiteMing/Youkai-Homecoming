@@ -107,6 +107,169 @@
 
 不要一上来改 world-added projectile 的自然实体 tick。
 
+在当前代码里，`SimplifiedProjectile` 的直接子类只有：
+
+- `BaseProjectile`
+- `BaseLaser`
+
+所以把一个新的中间层 `AsyncProjectile` 插在这里是合适的，结构上也足够干净。
+
+#### 1.1 建议采用 `AsyncProjectile` 中间层
+
+你补充的这三条我认为是对的，第一步建议直接按这个骨架推进：
+
+1. `AsyncProjectile extends SimplifiedProjectile`
+2. `BaseProjectile extends AsyncProjectile`
+3. `BaseLaser extends AsyncProjectile`
+4. 所有弹幕共享 `AsyncProjectile.tick()`
+
+这样做的价值是：
+
+- 统一模板方法真正落在共享抽象层
+- 虚拟弹幕和非虚拟弹幕都能复用同一阶段语义
+- 服务端和客户端逻辑的差异可以收口在阶段方法内部
+
+#### 1.2 `AsyncProjectile` 应该自带 `TickData`
+
+建议 `AsyncProjectile` 内置一份“每实体复用”的 `TickData`，而不是每 tick 临时 new。
+
+更合适的形式是：
+
+- `protected final TickData tickData = new TickData();`
+- 每个 tick 开头 `tickData.reset(this);`
+
+这样第二步做 baseline 时，数据流已经和后续并行框架一致。
+
+但这里要明确边界：
+
+- `TickData` 只存单发弹幕本 tick 的临时结果
+- `allDanmakus / temp / toBeSent / removeDanmaku` 仍然属于容器级状态
+
+也就是说：
+
+- `TickData` 是 projectile-level
+- `VirtualDanmakuTicker` 是 container-level
+
+这两层不要混。
+
+#### 1.3 `AsyncProjectile.tick()` 只做阶段编排
+
+第一步建议就把 `tick()` 收成模板方法，自己不再承担业务逻辑。
+
+建议的职责分配是：
+
+- `AsyncProjectile.tick()` 只负责编排阶段顺序
+- `BaseProjectile` / `BaseLaser` override 阶段方法
+- 具体子类继续 override 更细粒度 hook
+
+这样后续如果 `VirtualDanmakuTicker` 想批量调用某个阶段，就可以直接复用这些方法，而不需要再“模拟一次完整 tick”。
+
+#### 1.4 `BaseProjectile` 和 `BaseLaser` 不再 override `tick()`
+
+这一条建议直接定成第一步的结构目标：
+
+- `BaseProjectile` 不再 override `tick()`
+- `BaseLaser` 不再 override `tick()`
+- 其子类也不再通过 override `tick()` 表达差异
+- 差异全部改成 override 拆分后的阶段方法
+
+这样完成后，继承关系会稳定成：
+
+- `SimplifiedProjectile`
+- `AsyncProjectile`
+- `BaseProjectile` / `BaseLaser`
+- `YHBaseDanmakuEntity` / `YHBaseLaserEntity`
+- `ItemDanmakuEntity` / `ItemLaserEntity`
+
+这会明显降低后面第二、三、四步的改动扩散面。
+
+#### 1.5 第一版阶段方法不要切得过细
+
+第一版不建议一开始就切十几个公共 hook，不然公共抽象层会很快碎掉。
+
+建议第一步的公共模板先保留 6 个主阶段：
+
+- `beginTick`
+- `planMove`
+- `planPreheatRange`
+- `collectCollisionInput`
+- `resolveCollision`
+- `finishTick`
+
+然后 `BaseProjectile` / `BaseLaser` 在各自内部再按需要拆私有 helper。
+
+#### 1.1.1 / 1.1.2 / 1.1.3 建议拆法
+
+为了让每一小步都能单独测 bug 和性能，建议第一步继续细分成下面三小步：
+
+##### 1.1.1 引入 `AsyncProjectile` 模板层
+
+范围：
+
+- 新增 `AsyncProjectile extends SimplifiedProjectile`
+- `BaseProjectile` / `BaseLaser` 改为继承 `AsyncProjectile`
+- `AsyncProjectile` 持有 `TickData`
+- `AsyncProjectile.tick()` 只负责阶段编排
+- `BaseProjectile` / `BaseLaser` 不再 override `tick()`，改为 override 阶段方法
+- 暂时保留 `YHBaseLaserEntity.tick()`，先不碰 laser 子类自定义收尾
+
+目标：
+
+- 只做继承层和模板层接线
+- 现有行为尽量保持不变
+- 给后续 `1.1.2` 留出稳定落点
+
+本小步建议手测：
+
+- 几百个低速普通弹幕，确认能命中玩家
+- 几百个高速普通弹幕，确认不会穿人或提前消失
+- 几百个 laser，确认现有命中和显示长度没有明显异常
+- 简单看一次 TPS / tick 体感，确认没有明显额外损耗
+
+##### 1.1.2 收掉 `YHBaseLaserEntity.tick()` 剩余逻辑
+
+范围：
+
+- 把 `YHBaseLaserEntity.tick()` 里的 `danmakuMove()` 和超时 `discard()` 移入拆分后的阶段方法
+- 删除 `YHBaseLaserEntity.tick()` override
+- 确保当前 projectile hierarchy 内不再有弹幕类 override `tick()`
+
+目标：
+
+- 把 laser 分支也真正纳入模板体系
+- 让“所有弹幕共享 `AsyncProjectile.tick()`”这件事真正成立
+
+本小步建议手测：
+
+- 低速/高速 laser 对玩家命中是否正常
+- 激光展开、收束、提前截断长度是否正常
+- 生命周期结束时是否正常消失
+
+##### 1.1.3 固化第一步验收口径
+
+范围：
+
+- 补齐第一步的最小 smoke test 口径
+- 固定“低速/高速、普通弹幕/laser、虚拟/非虚拟”的检查项
+- 记录第一步完成后的 baseline，确认没有新 bug 和明显性能回退
+
+目标：
+
+- 不急着进入第二步
+- 先确认第一步结构重构本身没有撞坏判定和时序
+
+本小步建议手测：
+
+- `YoukaiEntity` 虚拟弹幕
+- `DanmakuProxyEntity` 虚拟弹幕
+- world-added 普通弹幕
+- world-added laser
+- 几百发低速/高速混合，重点看：
+  - 能不能打到人
+  - 判定范围有没有漂移
+  - 弹幕是否提前/延后消失
+  - 是否出现明显性能退化
+
 建议把单发弹幕 tick 拆成以下阶段：
 
 1. `beginTick`
@@ -137,6 +300,14 @@
 这里最重要的一点是：  
 你的“移动”阶段应该是“规划移动”，不是“立刻改实体状态”。  
 因为你后面第三、第四步都要复用这份移动结果。
+
+#### 1.6 这个结构下要额外注意两点
+
+1. `AsyncProjectile.tick()` 不要把服务端/客户端差异硬写在模板顺序之外。  
+   更好的做法是模板顺序固定，阶段内部再判断 `level().isClientSide()` 是否执行具体工作。
+
+2. `BaseLaser` 当前语义和普通弹幕并不完全同构。  
+   第一版即使统一进 `AsyncProjectile`，也要允许 `BaseLaser` 在阶段实现里保留自己的顺序差异，不要为了共享代码强行压平。
 
 ### 第二步：构建统一 tick 框架，先做同线程 baseline
 

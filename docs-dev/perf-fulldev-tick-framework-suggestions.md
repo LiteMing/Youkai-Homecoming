@@ -579,6 +579,27 @@
 - 因为 filter 判定被提前缓存，原本一些“虽然进入候选但会被实时 filter 排掉”的实体，后面可能会继续参与几何判定
 - 这会带来一定的候选计算量上升，需要单独验证收益与回归风险
 
+#### 1.3.4 用 `EntityCacheAccess` 统一同步/异步迭代入口
+
+范围：
+
+- 将 `IEntityIterator` 统一为 `foreach(AABB aabb, HitTestType type)`
+- 返回值统一为 `List<EntityInfo>`
+- 新增 `EntityCacheAccess`
+- 构造参数为 `IEntityCache cache` 和 `LivingEntity owner`
+- `EntityCacheAccess.foreach(...)` 在同步路径中临时构造 `EntityInfo`
+
+接口统一后：
+
+- 同步路径可直接使用 `new EntityCacheAccess(cache, owner)::foreach`
+- 异步路径可直接使用 `UserMatrixCache::asyncForEach`
+- `ProjectileHitHelper` / `LaserHitHelper` 的候选消费逻辑统一改为基于 `EntityInfo`
+
+目标：
+
+- 让同步和异步路径共用同一套候选判定入口
+- 为后续把几何碰撞阶段真正搬到 worker 线程做准备
+
 ### 第四步：把移动 / 碰撞检测 / 收尾异步化
 
 这一步要非常明确地拆成：

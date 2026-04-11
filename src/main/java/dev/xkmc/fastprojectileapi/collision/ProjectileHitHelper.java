@@ -38,21 +38,21 @@ public class ProjectileHitHelper {
 		var radius = e.getBbWidth() / 2f;
 		var graze = e.grazeRange();
 		var box = e.getBoundingBox().move(src.subtract(e.position())).expandTowards(v);
-		var list = iterator.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
+		var list = iterator.foreach(box.inflate(1 + radius + graze), HitTestType.ENEMY);
 		e.tickData().candidateCount += list.size();
 		double d0 = Double.MAX_VALUE;
-		Entity entity = null;
-		for (Entity x : list) {
-			if (x == e) continue;
-			var hpos = checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
+		EntityInfo entity = null;
+		for (EntityInfo x : list) {
+			if (x.entity() == e) continue;
+			var hpos = checkHit(x, e.alterHitBox(x.entity(), radius, 0), src, dst);
 			if (hpos != null) {
 				double d1 = src.distanceToSqr(hpos);
 				if (d1 < d0) {
 					entity = x;
 					d0 = d1;
 				}
-			} else if (graze > 0 && x instanceof Player pl) {
-				var gr = checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
+			} else if (graze > 0 && x.entity() instanceof Player pl) {
+				var gr = checkHit(x, e.alterHitBox(x.entity(), radius, graze), src, dst);
 				if (gr != null) {
 					e.tickData().grazeCount++;
 					e.doGraze(pl);
@@ -60,7 +60,7 @@ public class ProjectileHitHelper {
 			}
 		}
 		if (entity != null) {
-			hitEntities.add(entity);
+			hitEntities.add(entity.entity());
 		}
 	}
 
@@ -74,6 +74,21 @@ public class ProjectileHitHelper {
 			Optional<Vec3> optional = aabb.contains(src) ? Optional.of(src) : aabb.clip(src, dst);
 			if (optional.isPresent())
 				return optional.get();
+		}
+		return null;
+	}
+
+	@Nullable
+	public static Vec3 checkHit(EntityInfo e, AABB base, Vec3 src, Vec3 dst) {
+		Vec3 vel = e.deltaMovement();
+		double speed = vel.length();
+		int n = (int) Math.min(8, Math.floor(speed / 0.5));
+		for (int i = 0; i <= n; i++) {
+			AABB aabb = n == 0 ? base : base.move(vel.scale(1d * i / n));
+			Optional<Vec3> optional = aabb.contains(src) ? Optional.of(src) : aabb.clip(src, dst);
+			if (optional.isPresent()) {
+				return optional.get();
+			}
 		}
 		return null;
 	}

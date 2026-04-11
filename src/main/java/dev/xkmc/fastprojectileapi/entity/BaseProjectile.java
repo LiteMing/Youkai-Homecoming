@@ -2,7 +2,7 @@ package dev.xkmc.fastprojectileapi.entity;
 
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageCache;
-import dev.xkmc.fastprojectileapi.collision.HitTestType;
+import dev.xkmc.fastprojectileapi.collision.EntityCacheAccess;
 import dev.xkmc.fastprojectileapi.collision.IEntityCache;
 import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.ProjectileHitHelper;
@@ -67,11 +67,11 @@ public abstract class BaseProjectile extends AsyncProjectile {
 		if (level() instanceof ServerLevel sl) {
 			IEntityCache cache = getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
 			if (getOwner() instanceof LivingEntity owner) {
-				return (aabb, filter) -> cache.foreach(aabb, target -> HitTestType.ENEMY.canHitEntity(owner, target) && filter.test(target));
+				return new EntityCacheAccess(cache, owner)::foreach;
 			}
-			return cache::foreach;
+			return (aabb, type) -> java.util.List.of();
 		}
-		return (aabb, filter) -> java.util.List.of();
+		return (aabb, type) -> java.util.List.of();
 	}
 
 	@Override

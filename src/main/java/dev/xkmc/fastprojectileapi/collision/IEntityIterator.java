@@ -1,14 +1,12 @@
 package dev.xkmc.fastprojectileapi.collision;
 
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 
 import java.util.List;
-import java.util.function.Predicate;
 
 @FunctionalInterface
 public interface IEntityIterator {
 
-	List<Entity> foreach(AABB aabb, Predicate<Entity> filter);
+	List<EntityInfo> foreach(AABB aabb, HitTestType type);
 
 }

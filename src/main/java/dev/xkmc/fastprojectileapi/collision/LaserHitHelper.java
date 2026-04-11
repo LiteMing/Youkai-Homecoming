@@ -41,14 +41,14 @@ public class LaserHitHelper {
 		var radius = e.getEffectiveHitRadius();
 		var graze = e.grazeRange();
 		var box = e.getBoundingBox().move(pos.subtract(e.position())).expandTowards(direction);
-		var list = iterator.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
+		var list = iterator.foreach(box.inflate(1 + radius + graze), HitTestType.ENEMY);
 		e.tickData().candidateCount += list.size();
-		for (Entity x : list) {
-			if (x == e) continue;
-			Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
-			if (hit != null) hitEntities.add(x);
-			if (graze > 0 && x instanceof Player pl) {
-				Vec3 gr = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
+		for (EntityInfo x : list) {
+			if (x.entity() == e) continue;
+			Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x.entity(), radius, 0), src, dst);
+			if (hit != null) hitEntities.add(x.entity());
+			if (graze > 0 && x.entity() instanceof Player pl) {
+				Vec3 gr = ProjectileHitHelper.checkHit(x, e.alterHitBox(x.entity(), radius, graze), src, dst);
 				if (gr != null) {
 					e.tickData().grazeCount++;
 					e.doGraze(pl);

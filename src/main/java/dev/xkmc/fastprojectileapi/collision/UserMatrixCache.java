@@ -37,4 +37,15 @@ public class UserMatrixCache implements IEntityCache {
 		}
 	}
 
+	@Override
+	public SectionCache asyncGet(int x, int y, int z) {
+		int ix = x - x0 + R;
+		int iy = y - y0 + R;
+		int iz = z - z0 + R;
+		if (ix >= 0 && ix < R * 2 + 1 && iy >= 0 && iy < R * 2 + 1 && iz >= 0 && iz < R * 2 + 1) {
+			return cache[ix][iy][iz];
+		}
+		return parent.asyncGet(x, y, z);
+	}
+
 }

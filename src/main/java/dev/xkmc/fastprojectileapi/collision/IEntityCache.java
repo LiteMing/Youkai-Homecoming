@@ -11,7 +11,17 @@ public interface IEntityCache {
 
 	SectionCache get(int x, int y, int z);
 
+	SectionCache asyncGet(int x, int y, int z);
+
 	default List<Entity> foreach(AABB aabb, Predicate<Entity> filter) {
+		return foreachSections(aabb, filter, false);
+	}
+
+	default List<Entity> asyncForEach(AABB aabb, Predicate<Entity> filter) {
+		return foreachSections(aabb, filter, true);
+	}
+
+	private List<Entity> foreachSections(AABB aabb, Predicate<Entity> filter, boolean async) {
 		int x0 = (((int) aabb.minX) >> 4) - 1;
 		int y0 = (((int) aabb.minY) >> 4) - 1;
 		int z0 = (((int) aabb.minZ) >> 4) - 1;
@@ -22,7 +32,9 @@ public interface IEntityCache {
 		for (int x = x0; x <= x1; x++) {
 			for (int y = y0; y <= y1; y++) {
 				for (int z = z0; z <= z1; z++) {
-					for (var e : get(x, y, z).intersect(aabb)) {
+					SectionCache cache = async ? asyncGet(x, y, z) : get(x, y, z);
+					if (cache == null) continue;
+					for (var e : cache.intersect(aabb)) {
 						var ebox = e.getBoundingBox().expandTowards(e.getDeltaMovement());
 						if (aabb.intersects(ebox) && filter.test(e)) {
 							list.add(e);

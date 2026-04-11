@@ -8,7 +8,7 @@
 
 上一轮活动计划 **90k 虚拟弹幕服务端 tick 优化** 已完成，详细过程与结果见 `docs/preview-performance-plan.md`。
 
-自动化流程的当前活动目标切换为：**验证优化收益并复核剩余外部状态依赖边界**。
+自动化流程的当前活动目标切换为：**执行 90k 场景 profiling，并继续复核剩余外部状态依赖边界**。
 
 ## 当前状态
 
@@ -36,10 +36,12 @@
 13. 将“无动态目标实体”的 `HomingMover` 纳入 `allowNextTickStep1Prefetch()` 覆盖范围；仍保留带实体 target 的 homing 为现算。
 14. 为 `ParallelDanmakuTicker` 增加最近一帧统计快照，并新增 `/danmaku perf` 命令，可直接查看最近一次 server-side virtual danmaku tick 的阶段耗时、预取命中和 fallback 计数。
 15. 在完成本轮收口后再次执行 `.\gradlew.bat compileJava`，结果通过。
+16. 为 `ParallelDanmakuTicker` 增加跨 tick 汇总统计，并为 `/danmaku perf` 补充 `summary` / `reset` 子命令，可直接查看采样窗口内的平均值、峰值与汇总失败计数。
+17. 在完成本轮统计收口后再次执行 `.\gradlew.bat compileJava`，结果通过。
 
 ## 下一轮自动化开发项
 
-1. 对 90k 场景重新做 profiling，并结合 `/danmaku perf` / Spark 记录真实 server tick 阶段耗时，确认三阶段改动叠加本轮 safe mover 扩展后的累计收益。
+1. 对 90k 场景重新做 profiling，先用 `/danmaku perf reset` 清空采样窗口，再结合 `/danmaku perf summary` / Spark 记录真实 server tick 阶段耗时，确认三阶段改动叠加本轮 safe mover 扩展后的累计收益。
 2. 继续复核剩余未纳入预取的外部状态路径，例如 `AttachedMover`、`AttachedFreeRotMover`、`TrackingAttachedMover` 与 `controlCode > 0`，判断是否存在更窄但仍语义安全的 opt-in 条件。
 3. 若 Spark/实测仍显示明显 schedule 空窗，再评估是否需要把 virtual danmaku 调度从实体 `aiStep()` 抽离到更稳定的 world-level 时序。
 
@@ -47,5 +49,5 @@
 
 1. 当前该优化计划已完成；验收以三阶段关键提交完成、`compileJava` 通过为准。
 2. 第三阶段采用的是**安全 opt-in 预取**，不是对全部 mover 强行开启预取；本轮已扩展到一批纯本地状态 mover，并修复了 `CompositeMover` 在纯计算路径下的内部状态推进风险，但外部状态敏感路径仍保持现算。
-3. 当前后续工作的主要风险不在实现，而在收益验证与剩余覆盖边界判断；`/danmaku perf` 只提供最近一帧服务端统计，最终结论仍需要结合 90k 场景实测。
+3. 当前后续工作的主要风险不在实现，而在收益验证与剩余覆盖边界判断；`/danmaku perf` 现已提供最近一帧与汇总窗口统计，但最终结论仍需要结合 90k 场景实测与 Spark 数据。
 4. 旧的符卡相关计划暂时不作为当前活动计划；如需恢复，应另开新一轮计划并重新切换 `latest-development-plan.md`。

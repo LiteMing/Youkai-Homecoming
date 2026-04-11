@@ -23,6 +23,7 @@
 9. 已执行 `.\gradlew.bat compileJava`，结果通过。
 10. 2026-04-11 自动化补充：为 next-tick Step1 预取补上显式 `computeMoveForTick(int)` 路径，并把 `ItemDanmakuEntity` 的安全预取覆盖扩展到纯本地状态 mover。
 11. 2026-04-11 自动化补充（二）：修正 `CompositeMover` 在纯计算路径中的内部状态推进问题，并为 server-side `ParallelDanmakuTicker` 增加最近一帧性能统计与 `/danmaku perf` 查询入口。
+12. 2026-04-11 自动化补充（三）：为 `ParallelDanmakuTicker` 增加跨 tick 汇总统计，并为 `/danmaku perf` 补充 `summary` / `reset` 子命令，便于按采样窗口观察平均值与峰值。
 
 ### 未完成
 
@@ -308,6 +309,16 @@
    - standard/prepared fallback 与 apply failure 计数
 4. 新增 `/danmaku perf` 命令，可在服务端直接查看最近一次 virtual danmaku tick 的统计结果，为 90k 场景 profiling 提供第一手阶段数据。
 5. 已在补充实现后再次执行 `.\gradlew.bat compileJava`，结果通过。
+
+### 2026-04-11 自动化补充（三）
+
+为继续收口 profiling 观测入口，本轮又补了两点：
+
+1. `ParallelDanmakuTicker` 新增跨 tick 的汇总统计累加器，可记录 sample 数、并行/顺序占比、projectile / ready 平均值与峰值，以及各阶段耗时和失败计数的汇总信息。
+2. `/danmaku perf` 新增：
+   - `summary`：输出采样窗口内的平均耗时、峰值耗时、平均 projectile 数、prefetch 命中率与 fallback/failure 汇总
+   - `reset`：重置汇总采样窗口，便于 90k 场景重新采样
+3. 已在补充实现后再次执行 `.\gradlew.bat compileJava`，结果通过。
 
 也就是说，第三阶段的“schedule 满覆盖”在当前版本实现为：**对确定安全的 projectile 填满 schedule 空窗，对外部状态敏感 projectile 保持语义优先**。
 

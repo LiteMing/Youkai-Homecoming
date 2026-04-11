@@ -4,6 +4,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,6 +50,7 @@ public class UserMatrixCache implements IEntityCache {
 		}
 	}
 
+	@Nullable
 	public OwnedSectionCache asyncGet(int x, int y, int z) {
 		int ix = x - x0 + R;
 		int iy = y - y0 + R;

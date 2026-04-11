@@ -43,7 +43,7 @@ public class ParallelTicker {
 			preheatCache.flushPreheat();
 			trace.preheatNanos += System.nanoTime() - start;
 		}
-		trace.collisionInputNanos = runStage(active, shouldStop, (e, data) -> e.collectCollisionInput(data), null);
+		trace.collisionInputNanos = runStage(active, shouldStop, (e, data) -> e.collectCollisionInput(data, e.getEntityIterator()), null);
 		trace.resolveNanos = runStage(active, shouldStop, (e, data) -> e.resolveCollision(data), (data, result) -> {
 			result.hitCount += data.hitEntities.size();
 			result.grazeCount += data.grazeCount;

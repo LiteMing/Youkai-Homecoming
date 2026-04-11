@@ -1,9 +1,6 @@
 package dev.xkmc.fastprojectileapi.entity;
 
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
-import dev.xkmc.fastprojectileapi.collision.EntityStorageCache;
-import dev.xkmc.fastprojectileapi.collision.EntityCacheAccess;
-import dev.xkmc.fastprojectileapi.collision.IEntityCache;
 import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.ProjectileHitHelper;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
@@ -11,7 +8,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -57,21 +53,10 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	}
 
 	@Override
-	protected void collectCollisionInput(TickData data) {
+	protected void collectCollisionInput(TickData data, IEntityIterator iterator) {
 		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
 		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;
-		data.blockHit = ProjectileHitHelper.getHitResultOnMoveVector(this, src, dst, checkBlockHit(), data.hitEntities, getEntityIterator());
-	}
-
-	protected IEntityIterator getEntityIterator() {
-		if (level() instanceof ServerLevel sl) {
-			IEntityCache cache = getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
-			if (getOwner() instanceof LivingEntity owner) {
-				return new EntityCacheAccess(cache, owner)::foreach;
-			}
-			return (aabb, type) -> java.util.List.of();
-		}
-		return (aabb, type) -> java.util.List.of();
+		data.blockHit = ProjectileHitHelper.getHitResultOnMoveVector(this, src, dst, checkBlockHit(), data.hitEntities, iterator);
 	}
 
 	@Override

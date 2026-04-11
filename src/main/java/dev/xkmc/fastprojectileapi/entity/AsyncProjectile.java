@@ -1,8 +1,13 @@
 package dev.xkmc.fastprojectileapi.entity;
 
+import dev.xkmc.fastprojectileapi.collision.EntityCacheAccess;
+import dev.xkmc.fastprojectileapi.collision.EntityStorageCache;
+import dev.xkmc.fastprojectileapi.collision.IEntityCache;
+import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -33,9 +38,7 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		if (data.stopTick) return;
 		trimMove(data);
 		if (data.stopTick) return;
-		planPreheatRange(data, null);
-		if (data.stopTick) return;
-		collectCollisionInput(data);
+		collectCollisionInput(data, getEntityIterator());
 		if (data.stopTick) return;
 		resolveCollision(data);
 		if (data.stopTick) return;
@@ -55,7 +58,17 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	protected void planPreheatRange(TickData data, UserMatrixCache cache) {
 	}
 
-	protected void collectCollisionInput(TickData data) {
+	protected IEntityIterator getEntityIterator() {
+		if (level() instanceof net.minecraft.server.level.ServerLevel sl) {
+			IEntityCache cache = getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
+			if (getOwner() instanceof LivingEntity owner) {
+				return new EntityCacheAccess(cache, owner)::foreach;
+			}
+		}
+		return (aabb, type) -> java.util.List.of();
+	}
+
+	protected void collectCollisionInput(TickData data, IEntityIterator iterator) {
 	}
 
 	protected void resolveCollision(TickData data) {

@@ -1,14 +1,10 @@
 package dev.xkmc.fastprojectileapi.entity;
 
 import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
-import dev.xkmc.fastprojectileapi.collision.EntityStorageCache;
-import dev.xkmc.fastprojectileapi.collision.EntityCacheAccess;
-import dev.xkmc.fastprojectileapi.collision.IEntityCache;
 import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -28,10 +24,10 @@ public abstract class BaseLaser extends AsyncProjectile {
 	public abstract float getEffectiveHitRadius();
 
 	@Override
-	protected void collectCollisionInput(TickData data) {
+	protected void collectCollisionInput(TickData data, IEntityIterator iterator) {
 		Vec3 pos = data.moveDst == null ? position() : data.moveDst;
 		Vec3 rot = data.plannedMovement == null ? rot() : data.plannedMovement.rot();
-		data.blockHit = LaserHitHelper.getHitResultOnProjection(this, pos, rot, checkBlockHit(), checkEntityHit(), data.hitEntities, getEntityIterator());
+		data.blockHit = LaserHitHelper.getHitResultOnProjection(this, pos, rot, checkBlockHit(), checkEntityHit(), data.hitEntities, iterator);
 	}
 
 	@Override
@@ -46,17 +42,6 @@ public abstract class BaseLaser extends AsyncProjectile {
 			Vec3 delta = hit.getLocation().subtract(src);
 			data.moveDst = pos.add(delta);
 		}
-	}
-
-	protected IEntityIterator getEntityIterator() {
-		if (level() instanceof net.minecraft.server.level.ServerLevel sl) {
-			IEntityCache cache = getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
-			if (getOwner() instanceof LivingEntity owner) {
-				return new EntityCacheAccess(cache, owner)::foreach;
-			}
-			return (aabb, type) -> java.util.List.of();
-		}
-		return (aabb, type) -> java.util.List.of();
 	}
 
 	@Override

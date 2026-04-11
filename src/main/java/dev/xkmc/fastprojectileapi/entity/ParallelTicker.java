@@ -35,11 +35,11 @@ public class ParallelTicker {
 		trace.beginNanos = runStage(active, shouldStop, (e, data) -> e.beginTick(data), null);
 		trace.moveNanos = runStage(active, shouldStop, (e, data) -> e.planMove(data), null);
 		trace.preheatNanos = runStage(active, shouldStop, (e, data) -> {
-			e.planPreheatRange(data);
+			e.planPreheatRange(data, preheatCache);
 		}, null);
 		if (preheatCache != null) {
 			long start = System.nanoTime();
-			preheatCache.preheat();
+			preheatCache.flushPreheat();
 			trace.preheatNanos += System.nanoTime() - start;
 		}
 		trace.collisionInputNanos = runStage(active, shouldStop, (e, data) -> e.collectCollisionInput(data), null);

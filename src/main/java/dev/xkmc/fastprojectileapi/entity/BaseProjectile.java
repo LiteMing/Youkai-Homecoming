@@ -2,6 +2,7 @@ package dev.xkmc.fastprojectileapi.entity;
 
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.ProjectileHitHelper;
+import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
@@ -43,6 +44,17 @@ public abstract class BaseProjectile extends AsyncProjectile {
 		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
 		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;
 		data.blockHit = ProjectileHitHelper.getHitResultOnMoveVector(this, src, dst, checkBlockHit(), data.hitEntities);
+	}
+
+	@Override
+	protected void planPreheatRange(TickData data, UserMatrixCache cache) {
+		if (cache == null) return;
+		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
+		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;
+		var radius = getBbWidth() / 2f;
+		var graze = grazeRange();
+		var box = getBoundingBox().move(src.subtract(position())).expandTowards(dst.subtract(src));
+		cache.preheat(box.inflate(1 + radius + graze));
 	}
 
 	@Override

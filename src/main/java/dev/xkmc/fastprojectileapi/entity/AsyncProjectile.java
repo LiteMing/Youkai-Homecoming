@@ -1,5 +1,6 @@
 package dev.xkmc.fastprojectileapi.entity;
 
+import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
@@ -30,7 +31,7 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		if (data.stopTick) return;
 		planMove(data);
 		if (data.stopTick) return;
-		planPreheatRange(data);
+		planPreheatRange(data, null);
 		if (data.stopTick) return;
 		collectCollisionInput(data);
 		if (data.stopTick) return;
@@ -46,7 +47,7 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	protected void planMove(TickData data) {
 	}
 
-	protected void planPreheatRange(TickData data) {
+	protected void planPreheatRange(TickData data, UserMatrixCache cache) {
 	}
 
 	protected void collectCollisionInput(TickData data) {

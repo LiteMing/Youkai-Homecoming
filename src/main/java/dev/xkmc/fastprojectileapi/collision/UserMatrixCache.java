@@ -1,6 +1,7 @@
 package dev.xkmc.fastprojectileapi.collision;
 
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.AABB;
 
 import java.util.concurrent.atomic.AtomicLongArray;
 
@@ -52,13 +53,38 @@ public class UserMatrixCache implements IEntityCache {
 		return parent.asyncGet(x, y, z);
 	}
 
-	public void preheat() {
+	public void preheat(AABB aabb) {
+		int x0 = (((int) aabb.minX) >> 4) - 1;
+		int y0 = (((int) aabb.minY) >> 4) - 1;
+		int z0 = (((int) aabb.minZ) >> 4) - 1;
+		int x1 = (((int) aabb.maxX) >> 4) + 1;
+		int y1 = (((int) aabb.maxY) >> 4) + 1;
+		int z1 = (((int) aabb.maxZ) >> 4) + 1;
+		for (int x = x0; x <= x1; x++) {
+			for (int y = y0; y <= y1; y++) {
+				for (int z = z0; z <= z1; z++) {
+					markPreheat(x, y, z);
+				}
+			}
+		}
+	}
+
+	private void markPreheat(int x, int y, int z) {
+		int ix = x - x0 + R;
+		int iy = y - y0 + R;
+		int iz = z - z0 + R;
+		if (ix >= 0 && ix < R * 2 + 1 && iy >= 0 && iy < R * 2 + 1 && iz >= 0 && iz < R * 2 + 1) {
+			preheated.set(index(ix, iy, iz, R * 2 + 1));
+		}
+	}
+
+	public void flushPreheat() {
 		int d = R * 2 + 1;
 		for (int ix = 0; ix < d; ix++) {
 			for (int iy = 0; iy < d; iy++) {
 				for (int iz = 0; iz < d; iz++) {
 					int index = index(ix, iy, iz, d);
-					if (preheated.setIfUnset(index)) {
+					if (preheated.get(index)) {
 						get(x0 + ix - R, y0 + iy - R, z0 + iz - R);
 					}
 				}
@@ -78,13 +104,19 @@ public class UserMatrixCache implements IEntityCache {
 			words = new AtomicLongArray((size + Long.SIZE - 1) / Long.SIZE);
 		}
 
-		private boolean setIfUnset(int bit) {
+		private boolean get(int bit) {
+			int wordIndex = bit >>> 6;
+			long mask = 1L << (bit & 63);
+			return (words.get(wordIndex) & mask) != 0L;
+		}
+
+		private void set(int bit) {
 			int wordIndex = bit >>> 6;
 			long mask = 1L << (bit & 63);
 			while (true) {
 				long current = words.get(wordIndex);
-				if ((current & mask) != 0L) return false;
-				if (words.compareAndSet(wordIndex, current, current | mask)) return true;
+				if ((current & mask) != 0L) return;
+				if (words.compareAndSet(wordIndex, current, current | mask)) return;
 			}
 		}
 

@@ -107,15 +107,14 @@ public class ParallelDanmakuTicker {
 	                           @Nullable UserCacheHolder cacheHolder,
 	                           @Nullable LivingEntity self) {
 		long gameTime = warmCaches(sl, cacheHolder);
-		List<SimplifiedProjectile> active = collectActiveDanmakus(allDanmakus);
-		if (active.isEmpty()) {
+		if (allDanmakus.isEmpty()) {
 			return;
 		}
 
-		if (active.size() >= PARALLEL_THRESHOLD) {
-			tickParallel(sl, active, allDanmakus, temp, toBeSent, removeFlag, cacheHolder, self, gameTime);
+		if (allDanmakus.size() >= PARALLEL_THRESHOLD) {
+			tickParallel(sl, allDanmakus, temp, toBeSent, removeFlag, cacheHolder, self, gameTime);
 		} else {
-			tickSequential(sl, active, allDanmakus, temp, toBeSent, removeFlag, self);
+			tickSequential(sl, allDanmakus, temp, toBeSent, removeFlag, self);
 		}
 	}
 
@@ -128,26 +127,17 @@ public class ParallelDanmakuTicker {
 		return gameTime;
 	}
 
-	private static List<SimplifiedProjectile> collectActiveDanmakus(List<SimplifiedProjectile> allDanmakus) {
-		List<SimplifiedProjectile> active = new ArrayList<>(allDanmakus.size());
-		for (var e : allDanmakus) {
-			if (e.isAddedToWorld() && !e.isRemoved()) {
-				continue;
-			}
-			active.add(e);
-		}
-		return active;
-	}
-
 	private static void tickSequential(ServerLevel sl,
-	                                   List<SimplifiedProjectile> active,
 	                                   List<SimplifiedProjectile> allDanmakus,
 	                                   ArrayList<SimplifiedProjectile> temp,
 	                                   ArrayList<SimplifiedProjectile> toBeSent,
 	                                   boolean[] removeFlag,
 	                                   @Nullable LivingEntity self) {
 		List<SimplifiedProjectile> toRemove = new ArrayList<>();
-		for (var e : active) {
+		for (var e : allDanmakus) {
+			if (e.isAddedToWorld() && !e.isRemoved()) {
+				continue;
+			}
 			if (e.isRemoved()) {
 				toRemove.add(e);
 				continue;
@@ -168,7 +158,6 @@ public class ParallelDanmakuTicker {
 	}
 
 	private static void tickParallel(ServerLevel sl,
-	                                 List<SimplifiedProjectile> active,
 	                                 List<SimplifiedProjectile> allDanmakus,
 	                                 ArrayList<SimplifiedProjectile> temp,
 	                                 ArrayList<SimplifiedProjectile> toBeSent,
@@ -176,28 +165,28 @@ public class ParallelDanmakuTicker {
 	                                 @Nullable UserCacheHolder cacheHolder,
 	                                 @Nullable LivingEntity self,
 	                                 long gameTime) {
-		int size = active.size();
-		Step1Result[] step1 = computeStep1(active);
+		int size = allDanmakus.size();
+		Step1Result[] step1 = computeStep1(allDanmakus);
 		if (step1 == null) {
-			tickSequential(sl, active, allDanmakus, temp, toBeSent, removeFlag, self);
+			tickSequential(sl, allDanmakus, temp, toBeSent, removeFlag, self);
 			return;
 		}
 
 		IEntityCache entityCache = resolveEntityCache(sl, cacheHolder, self, gameTime);
 		Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots = snapshotTouchedSections(entityCache, step1);
-		Step2Result[] step2 = computeStep2(sl, active, step1, entityCache, sectionSnapshots);
-		Step3Result[] step3 = computeStep3(active, size, step2);
-		finishParallelTick(sl, active, allDanmakus, temp, toBeSent, removeFlag, self, step2, step3);
+		Step2Result[] step2 = computeStep2(sl, allDanmakus, step1, entityCache, sectionSnapshots);
+		Step3Result[] step3 = computeStep3(allDanmakus, size, step2);
+		finishParallelTick(sl, allDanmakus, temp, toBeSent, removeFlag, self, step2, step3);
 	}
 
 	@Nullable
-	private static Step1Result[] computeStep1(List<SimplifiedProjectile> active) {
-		int size = active.size();
+	private static Step1Result[] computeStep1(List<SimplifiedProjectile> allDanmakus) {
+		int size = allDanmakus.size();
 		Step1Result[] results = new Step1Result[size];
 		try {
 			runParallel(size, (from, to) -> {
 				for (int i = from; i < to; i++) {
-					results[i] = computeStep1Result(active.get(i));
+					results[i] = computeStep1Result(allDanmakus.get(i));
 				}
 			});
 			return results;
@@ -209,6 +198,9 @@ public class ParallelDanmakuTicker {
 
 	@Nullable
 	private static Step1Result computeStep1Result(SimplifiedProjectile projectile) {
+		if (projectile.isRemoved() || !projectile.isValid() || projectile.isAddedToWorld()) {
+			return null;
+		}
 		if (!(projectile instanceof BaseProjectile bp)) {
 			return null;
 		}
@@ -247,14 +239,14 @@ public class ParallelDanmakuTicker {
 	}
 
 	private static Step2Result[] computeStep2(ServerLevel sl,
-	                                          List<SimplifiedProjectile> active,
+	                                          List<SimplifiedProjectile> allDanmakus,
 	                                          Step1Result[] step1,
 	                                          @Nullable IEntityCache entityCache,
 	                                          Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots) {
-		int size = active.size();
+		int size = allDanmakus.size();
 		Step2Result[] results = new Step2Result[size];
 		for (int i = 0; i < size; i++) {
-			results[i] = computeStep2Result(sl, active.get(i), step1[i], entityCache, sectionSnapshots);
+			results[i] = computeStep2Result(sl, allDanmakus.get(i), step1[i], entityCache, sectionSnapshots);
 		}
 		return results;
 	}
@@ -266,6 +258,9 @@ public class ParallelDanmakuTicker {
 	                                              @Nullable IEntityCache entityCache,
 	                                              Long2ObjectOpenHashMap<SectionSnapshot> sectionSnapshots) {
 		if (projectile.isRemoved() || !projectile.isValid()) {
+			return null;
+		}
+		if (projectile.isAddedToWorld()) {
 			return null;
 		}
 		if (data == null) {
@@ -470,14 +465,14 @@ public class ParallelDanmakuTicker {
 		return (((int) coordinate) >> 4) + 1;
 	}
 
-	private static Step3Result[] computeStep3(List<SimplifiedProjectile> active,
+	private static Step3Result[] computeStep3(List<SimplifiedProjectile> allDanmakus,
 	                                          int size,
 	                                          Step2Result[] step2) {
 		Step3Result[] results = new Step3Result[size];
 		try {
 			runParallel(size, (from, to) -> {
 				for (int i = from; i < to; i++) {
-					results[i] = computeStep3Result(active.get(i), step2[i]);
+					results[i] = computeStep3Result(allDanmakus.get(i), step2[i]);
 				}
 			});
 		} catch (Exception ex) {
@@ -520,7 +515,6 @@ public class ParallelDanmakuTicker {
 	}
 
 	private static void finishParallelTick(ServerLevel sl,
-	                                       List<SimplifiedProjectile> active,
 	                                       List<SimplifiedProjectile> allDanmakus,
 	                                       ArrayList<SimplifiedProjectile> temp,
 	                                       ArrayList<SimplifiedProjectile> toBeSent,
@@ -529,12 +523,12 @@ public class ParallelDanmakuTicker {
 	                                       Step2Result[] step2,
 	                                       Step3Result[] step3) {
 		List<SimplifiedProjectile> toRemove = new ArrayList<>();
-		for (int i = 0; i < active.size(); i++) {
+		for (int i = 0; i < allDanmakus.size(); i++) {
 			if (removeFlag[0]) {
 				break;
 			}
 
-			SimplifiedProjectile projectile = active.get(i);
+			SimplifiedProjectile projectile = allDanmakus.get(i);
 			Step2Result d2 = step2[i];
 			Step3Result d3 = step3[i];
 

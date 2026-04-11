@@ -35,9 +35,4 @@ public class EntityStorageCache implements IEntityCache {
 		return ans;
 	}
 
-	@Override
-	public SectionCache asyncGet(int x, int y, int z) {
-		return map.get(x, y, z);
-	}
-
 }

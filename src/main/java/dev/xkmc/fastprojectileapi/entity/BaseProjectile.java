@@ -16,7 +16,7 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-public abstract class BaseProjectile extends SimplifiedProjectile {
+public abstract class BaseProjectile extends AsyncProjectile {
 
 	protected BaseProjectile(EntityType<? extends BaseProjectile> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -31,12 +31,20 @@ public abstract class BaseProjectile extends SimplifiedProjectile {
 
 	public abstract int lifetime();
 
-	public void tick() {
-		super.tick();
-		HitResult hitresult = ProjectileHitHelper.getHitResultOnMoveVector(this, checkBlockHit());
-		if (hitresult != null) {
-			onHit(hitresult);
+	@Override
+	protected void collectCollisionInput(TickData data) {
+		data.projectileHit = ProjectileHitHelper.getHitResultOnMoveVector(this, checkBlockHit());
+	}
+
+	@Override
+	protected void resolveCollision(TickData data) {
+		if (data.projectileHit != null) {
+			onHit(data.projectileHit);
 		}
+	}
+
+	@Override
+	protected void finishTick(TickData data) {
 		if (tickCount >= lifetime()) {
 			if (level() instanceof ServerLevel) {
 				projectileMove();

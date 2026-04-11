@@ -4,7 +4,7 @@ import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 
-public abstract class BaseLaser extends SimplifiedProjectile {
+public abstract class BaseLaser extends AsyncProjectile {
 
 	public BaseLaser(EntityType<?> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -18,10 +18,16 @@ public abstract class BaseLaser extends SimplifiedProjectile {
 
 	public abstract float getEffectiveHitRadius();
 
-	public void tick() {
-		super.tick();
-		var hit = LaserHitHelper.getHitResultOnProjection(this, checkBlockHit(), checkEntityHit());
-		onHit(hit);
+	@Override
+	protected void collectCollisionInput(TickData data) {
+		data.laserHit = LaserHitHelper.getHitResultOnProjection(this, checkBlockHit(), checkEntityHit());
+	}
+
+	@Override
+	protected void resolveCollision(TickData data) {
+		if (data.laserHit != null) {
+			onHit(data.laserHit);
+		}
 	}
 
 	protected void onHit(LaserHitHelper.LaserHitResult hit) {

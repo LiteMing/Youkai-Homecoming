@@ -61,11 +61,13 @@ public abstract class BaseProjectile extends AsyncProjectile {
 				commitPreMoveEffects(data);
 				applyPlannedMove(data);
 				terminate();
+				data.removed = true;
 				markErased(false);
 				return;
 			}
 			var owner = getOwner();
 			if (tickCount >= lifetime() + 10 || owner == null || !owner.isAlive()) {
+				data.removed = true;
 				markErased(false);
 			}
 			return;
@@ -75,6 +77,7 @@ public abstract class BaseProjectile extends AsyncProjectile {
 		if (level() instanceof ServerLevel sl) {
 			if (!level().hasChunk(blockPosition().getX() >> 4, blockPosition().getZ() >> 4) ||
 					isAddedToWorld() && !EntityStorageHelper.isTicking(sl, this)) {
+				data.removed = true;
 				markErased(false);
 			}
 		}

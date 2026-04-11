@@ -14,6 +14,10 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 
 	protected final TickData tickData = new TickData();
 
+	public TickData tickData() {
+		return tickData;
+	}
+
 	protected AsyncProjectile(EntityType<?> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
 	}
@@ -67,6 +71,9 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		@Nullable
 		public BlockHitResult blockHit;
 		public final List<Entity> hitEntities = new ArrayList<>();
+		public int candidateCount;
+		public int grazeCount;
+		public boolean removed;
 		public boolean stopTick;
 
 		public void reset() {
@@ -76,6 +83,9 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 			moveDst = null;
 			blockHit = null;
 			hitEntities.clear();
+			candidateCount = 0;
+			grazeCount = 0;
+			removed = false;
 			stopTick = false;
 		}
 

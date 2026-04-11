@@ -151,6 +151,7 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public void markErased(boolean kill) {
 		if (!isErased)
 			super.markErased(kill);
+		tickData().removed = true;
 		isErased = true;
 	}
 

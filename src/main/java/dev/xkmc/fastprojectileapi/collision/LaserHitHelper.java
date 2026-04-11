@@ -41,13 +41,17 @@ public class LaserHitHelper {
 			var box = e.getBoundingBox().move(pos.subtract(e.position())).expandTowards(v);
 			IEntityCache cache = e.getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
 			var list = cache.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
+			e.tickData().candidateCount += list.size();
 			for (Entity x : list) {
 				if (x == e) continue;
 				Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
 				if (hit != null) hitEntities.add(x);
 				if (graze > 0 && x instanceof Player pl) {
 					Vec3 gr = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
-					if (gr != null) e.doGraze(pl);
+					if (gr != null) {
+						e.tickData().grazeCount++;
+						e.doGraze(pl);
+					}
 				}
 			}
 		}

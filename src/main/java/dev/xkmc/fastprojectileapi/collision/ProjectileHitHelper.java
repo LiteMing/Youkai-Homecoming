@@ -41,6 +41,7 @@ public class ProjectileHitHelper {
 			var box = e.getBoundingBox().move(src.subtract(e.position())).expandTowards(v);
 			IEntityCache cache = e.getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
 			var list = cache.foreach(box.inflate(1 + radius + graze), e::canHitEntity);
+			e.tickData().candidateCount += list.size();
 			double d0 = Double.MAX_VALUE;
 			Entity entity = null;
 			for (Entity x : list) {
@@ -54,7 +55,10 @@ public class ProjectileHitHelper {
 					}
 				} else if (graze > 0 && x instanceof Player pl) {
 					var gr = checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
-					if (gr != null) e.doGraze(pl);
+					if (gr != null) {
+						e.tickData().grazeCount++;
+						e.doGraze(pl);
+					}
 				}
 			}
 			if (entity != null) {

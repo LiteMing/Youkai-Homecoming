@@ -1,5 +1,6 @@
 package dev.xkmc.fastprojectileapi.entity;
 
+import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 
 import java.util.ArrayList;
@@ -43,7 +44,10 @@ public class ParallelTicker {
 			preheatCache.flushPreheat();
 			trace.preheatNanos += System.nanoTime() - start;
 		}
-		trace.collisionInputNanos = runStage(active, shouldStop, (e, data) -> e.collectCollisionInput(data, e.getEntityIterator()), null);
+		trace.collisionInputNanos = runStage(active, shouldStop, (e, data) -> {
+			IEntityIterator iterator = preheatCache == null ? e.getEntityIterator() : preheatCache::asyncForEach;
+			e.collectCollisionInput(data, iterator);
+		}, null);
 		trace.resolveNanos = runStage(active, shouldStop, (e, data) -> e.resolveCollision(data), (data, result) -> {
 			result.hitCount += data.hitEntities.size();
 			result.grazeCount += data.grazeCount;

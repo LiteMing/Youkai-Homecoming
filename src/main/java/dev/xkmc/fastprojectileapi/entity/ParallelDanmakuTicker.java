@@ -18,6 +18,11 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +38,294 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the main thread and apply movement in parallel again.
  */
 public class ParallelDanmakuTicker {
+	private static final long TRACE_WARN_INTERVAL_MS = 2000L;
+	private static final ScheduledExecutorService TRACE_EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
+		Thread thread = new Thread(r, "YH-DanmakuStageTrace");
+		thread.setDaemon(true);
+		return thread;
+	});
+	private static final AtomicLong TRACE_SEQUENCE = new AtomicLong();
+	private static volatile boolean STAGE_TRACE_ENABLED = false;
+
+	public static boolean isStageTraceEnabled() {
+		return STAGE_TRACE_ENABLED;
+	}
+
+	public static void setStageTraceEnabled(boolean enabled) {
+		STAGE_TRACE_ENABLED = enabled;
+		LOGGER.info("Danmaku stage trace {}", enabled ? "enabled" : "disabled");
+	}
+	/**
+	 * Resolve block hits in parallel with at most 2 concurrent {@code sl.clip()} calls.
+	 * This avoids both the serial bottleneck of per-projectile clip() on the main thread
+	 * and the thundering-herd hang from fully parallel clip() on ForkJoinPool.commonPool().
+	 */
+	private static void resolveBlockHitsParallel(ServerLevel sl, List<SimplifiedProjectile> allDanmakus) {
+		ArrayList<Integer> indices = new ArrayList<>();
+		for (int i = 0; i < allDanmakus.size(); i++) {
+			DanmakuVirtualTickData data = allDanmakus.get(i).virtualTickData();
+			if (data.isParallelReady() && data.checkBlock()) {
+				indices.add(i);
+			}
+		}
+		if (indices.isEmpty()) {
+			return;
+		}
+		// Split into exactly 2 batches — limits concurrent sl.clip() to 2
+		int split = (indices.size() + 1) / 2;
+		ForkJoinTask<?> t1 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = 0; j < split; j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		ForkJoinTask<?> t2 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = split; j < indices.size(); j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		t1.join();
+		t2.join();
+	}
+
+	private static void doResolveBlockHit(ServerLevel sl, List<SimplifiedProjectile> allDanmakus, int index) {
+		DanmakuVirtualTickData data = allDanmakus.get(index).virtualTickData();
+		Vec3 src = data.src();
+		Vec3 dst = data.dst();
+		if (src == null || dst == null) {
+			return;
+		}
+		SimplifiedProjectile p = allDanmakus.get(index);
+		HitResult bh = resolveBlockHit(sl, p, src, dst, true);
+		data.setBlockHit(bh, bh == null ? dst : bh.getLocation());
+	}
+
+	@Nullable
+	private static TickTrace startTickTrace(ServerLevel sl, int projectileCount, String path, @Nullable LivingEntity self) {
+		if (!STAGE_TRACE_ENABLED) {
+			return null;
+		}
+		TickTrace trace = new TickTrace(
+				TRACE_SEQUENCE.incrementAndGet(),
+				sl.getGameTime(),
+				projectileCount,
+				path,
+				self == null ? "null" : self.getClass().getSimpleName() + "#" + self.getId()
+		);
+		trace.start();
+		return trace;
+	}
+
+	private static StageTrace openStage(@Nullable TickTrace trace, String stage) {
+		return trace == null ? StageTrace.NOOP : trace.openStage(stage);
+	}
+
+	private static final class TickTrace {
+		private final long id;
+		private final long gameTime;
+		private final int projectileCount;
+		private final String path;
+		private final String owner;
+
+		private TickTrace(long id, long gameTime, int projectileCount, String path, String owner) {
+			this.id = id;
+			this.gameTime = gameTime;
+			this.projectileCount = projectileCount;
+			this.path = path;
+			this.owner = owner;
+		}
+
+		private void start() {
+			LOGGER.info("Danmaku trace #{} start: gameTime={} projectiles={} path={} owner={}",
+					id, gameTime, projectileCount, path, owner);
+		}
+
+		private StageTrace openStage(String stage) {
+			return new StageTrace(this, stage);
+		}
+
+		private void finish(long totalNanos) {
+			LOGGER.info("Danmaku trace #{} end: total={} ms", id, TimeUnit.NANOSECONDS.toMillis(totalNanos));
+		}
+	}
+
+	private static final class StageTrace implements AutoCloseable {
+		private static final StageTrace NOOP = new StageTrace();
+
+		/**
+	 * Resolve block hits in parallel with at most 2 concurrent {@code sl.clip()} calls.
+	 * This avoids both the serial bottleneck of per-projectile clip() on the main thread
+	 * and the thundering-herd hang from fully parallel clip() on ForkJoinPool.commonPool().
+	 */
+	private static void resolveBlockHitsParallel(ServerLevel sl, List<SimplifiedProjectile> allDanmakus) {
+		ArrayList<Integer> indices = new ArrayList<>();
+		for (int i = 0; i < allDanmakus.size(); i++) {
+			DanmakuVirtualTickData data = allDanmakus.get(i).virtualTickData();
+			if (data.isParallelReady() && data.checkBlock()) {
+				indices.add(i);
+			}
+		}
+		if (indices.isEmpty()) {
+			return;
+		}
+		// Split into exactly 2 batches — limits concurrent sl.clip() to 2
+		int split = (indices.size() + 1) / 2;
+		ForkJoinTask<?> t1 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = 0; j < split; j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		ForkJoinTask<?> t2 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = split; j < indices.size(); j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		t1.join();
+		t2.join();
+	}
+
+	private static void doResolveBlockHit(ServerLevel sl, List<SimplifiedProjectile> allDanmakus, int index) {
+		DanmakuVirtualTickData data = allDanmakus.get(index).virtualTickData();
+		Vec3 src = data.src();
+		Vec3 dst = data.dst();
+		if (src == null || dst == null) {
+			return;
+		}
+		SimplifiedProjectile p = allDanmakus.get(index);
+		HitResult bh = resolveBlockHit(sl, p, src, dst, true);
+		data.setBlockHit(bh, bh == null ? dst : bh.getLocation());
+	}
+
+	@Nullable
+		private final TickTrace trace;
+		/**
+	 * Resolve block hits in parallel with at most 2 concurrent {@code sl.clip()} calls.
+	 * This avoids both the serial bottleneck of per-projectile clip() on the main thread
+	 * and the thundering-herd hang from fully parallel clip() on ForkJoinPool.commonPool().
+	 */
+	private static void resolveBlockHitsParallel(ServerLevel sl, List<SimplifiedProjectile> allDanmakus) {
+		ArrayList<Integer> indices = new ArrayList<>();
+		for (int i = 0; i < allDanmakus.size(); i++) {
+			DanmakuVirtualTickData data = allDanmakus.get(i).virtualTickData();
+			if (data.isParallelReady() && data.checkBlock()) {
+				indices.add(i);
+			}
+		}
+		if (indices.isEmpty()) {
+			return;
+		}
+		// Split into exactly 2 batches — limits concurrent sl.clip() to 2
+		int split = (indices.size() + 1) / 2;
+		ForkJoinTask<?> t1 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = 0; j < split; j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		ForkJoinTask<?> t2 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = split; j < indices.size(); j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		t1.join();
+		t2.join();
+	}
+
+	private static void doResolveBlockHit(ServerLevel sl, List<SimplifiedProjectile> allDanmakus, int index) {
+		DanmakuVirtualTickData data = allDanmakus.get(index).virtualTickData();
+		Vec3 src = data.src();
+		Vec3 dst = data.dst();
+		if (src == null || dst == null) {
+			return;
+		}
+		SimplifiedProjectile p = allDanmakus.get(index);
+		HitResult bh = resolveBlockHit(sl, p, src, dst, true);
+		data.setBlockHit(bh, bh == null ? dst : bh.getLocation());
+	}
+
+	@Nullable
+		private final String stage;
+		private final long startNanos;
+		/**
+	 * Resolve block hits in parallel with at most 2 concurrent {@code sl.clip()} calls.
+	 * This avoids both the serial bottleneck of per-projectile clip() on the main thread
+	 * and the thundering-herd hang from fully parallel clip() on ForkJoinPool.commonPool().
+	 */
+	private static void resolveBlockHitsParallel(ServerLevel sl, List<SimplifiedProjectile> allDanmakus) {
+		ArrayList<Integer> indices = new ArrayList<>();
+		for (int i = 0; i < allDanmakus.size(); i++) {
+			DanmakuVirtualTickData data = allDanmakus.get(i).virtualTickData();
+			if (data.isParallelReady() && data.checkBlock()) {
+				indices.add(i);
+			}
+		}
+		if (indices.isEmpty()) {
+			return;
+		}
+		// Split into exactly 2 batches — limits concurrent sl.clip() to 2
+		int split = (indices.size() + 1) / 2;
+		ForkJoinTask<?> t1 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = 0; j < split; j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		ForkJoinTask<?> t2 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = split; j < indices.size(); j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		t1.join();
+		t2.join();
+	}
+
+	private static void doResolveBlockHit(ServerLevel sl, List<SimplifiedProjectile> allDanmakus, int index) {
+		DanmakuVirtualTickData data = allDanmakus.get(index).virtualTickData();
+		Vec3 src = data.src();
+		Vec3 dst = data.dst();
+		if (src == null || dst == null) {
+			return;
+		}
+		SimplifiedProjectile p = allDanmakus.get(index);
+		HitResult bh = resolveBlockHit(sl, p, src, dst, true);
+		data.setBlockHit(bh, bh == null ? dst : bh.getLocation());
+	}
+
+	@Nullable
+		private final ScheduledFuture<?> warningTask;
+		private volatile boolean closed;
+
+		private StageTrace() {
+			this.trace = null;
+			this.stage = null;
+			this.startNanos = 0L;
+			this.warningTask = null;
+			this.closed = true;
+		}
+
+		private StageTrace(TickTrace trace, String stage) {
+			this.trace = trace;
+			this.stage = stage;
+			this.startNanos = System.nanoTime();
+			LOGGER.info("Danmaku trace #{} -> {}", trace.id, stage);
+			this.warningTask = TRACE_EXECUTOR.scheduleAtFixedRate(() -> {
+				if (!closed) {
+					long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+					LOGGER.warn("Danmaku trace #{} still in {} after {} ms", trace.id, stage, elapsed);
+				}
+			}, TRACE_WARN_INTERVAL_MS, TRACE_WARN_INTERVAL_MS, TimeUnit.MILLISECONDS);
+		}
+
+		@Override
+		public void close() {
+			if (closed || trace == null || stage == null) {
+				return;
+			}
+			closed = true;
+			if (warningTask != null) {
+				warningTask.cancel(false);
+			}
+			long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+			LOGGER.info("Danmaku trace #{} <- {} ({} ms)", trace.id, stage, elapsed);
+		}
+	}
 
 	private static final Logger LOGGER = LogUtils.getLogger();
 	private static final int PARALLEL_THRESHOLD = 500;
@@ -76,26 +369,37 @@ public class ParallelDanmakuTicker {
 	                           @Nullable UserCacheHolder cacheHolder,
 	                           @Nullable LivingEntity self) {
 		long totalStart = System.nanoTime();
-		long warmStart = totalStart;
-		long gameTime = warmCaches(sl, cacheHolder);
-		TickStatsBuilder stats = new TickStatsBuilder(gameTime, allDanmakus.size());
-		stats.warmupNanos = System.nanoTime() - warmStart;
-		if (allDanmakus.isEmpty()) {
+		String path = allDanmakus.isEmpty() ? "empty" : (allDanmakus.size() >= PARALLEL_THRESHOLD ? "parallel" : "sequential");
+		TickTrace trace = startTickTrace(sl, allDanmakus.size(), path, self);
+		try {
+			long warmStart = System.nanoTime();
+			long gameTime;
+			try (StageTrace ignored = openStage(trace, "warmup")) {
+				gameTime = warmCaches(sl, cacheHolder);
+			}
+			TickStatsBuilder stats = new TickStatsBuilder(gameTime, allDanmakus.size());
+			stats.warmupNanos = System.nanoTime() - warmStart;
+			if (allDanmakus.isEmpty()) {
+				stats.totalNanos = System.nanoTime() - totalStart;
+				LAST_STATS = stats.build();
+				return;
+			}
+			if (allDanmakus.size() >= PARALLEL_THRESHOLD) {
+				stats.parallelPath = true;
+				tickParallel(sl, allDanmakus, temp, toBeSent, removeFlag, cacheHolder, self, gameTime, stats, trace);
+			} else {
+				tickSequential(sl, allDanmakus, temp, toBeSent, removeFlag, self, stats, trace);
+			}
 			stats.totalNanos = System.nanoTime() - totalStart;
-			LAST_STATS = stats.build();
-			return;
-		}
-		if (allDanmakus.size() >= PARALLEL_THRESHOLD) {
-			stats.parallelPath = true;
-			tickParallel(sl, allDanmakus, temp, toBeSent, removeFlag, cacheHolder, self, gameTime, stats);
-		} else {
-			tickSequential(sl, allDanmakus, temp, toBeSent, removeFlag, self, stats);
-		}
-		stats.totalNanos = System.nanoTime() - totalStart;
-		TickStatsSnapshot snapshot = stats.build();
-		LAST_STATS = snapshot;
-		synchronized (SUMMARY_LOCK) {
-			SUMMARY_STATS.record(snapshot);
+			TickStatsSnapshot snapshot = stats.build();
+			LAST_STATS = snapshot;
+			synchronized (SUMMARY_LOCK) {
+				SUMMARY_STATS.record(snapshot);
+			}
+		} finally {
+			if (trace != null) {
+				trace.finish(System.nanoTime() - totalStart);
+			}
 		}
 	}
 
@@ -114,28 +418,31 @@ public class ParallelDanmakuTicker {
 	                                   ArrayList<SimplifiedProjectile> toBeSent,
 	                                   boolean[] removeFlag,
 	                                   @Nullable LivingEntity self,
-	                                   TickStatsBuilder stats) {
+	                                   TickStatsBuilder stats,
+	                                   @Nullable TickTrace trace) {
 		long start = System.nanoTime();
-		List<SimplifiedProjectile> toRemove = new ArrayList<>();
-		for (SimplifiedProjectile projectile : allDanmakus) {
-			if (shouldSkipVirtualTick(projectile)) {
-				continue;
+		try (StageTrace ignored = openStage(trace, "sequential")) {
+			List<SimplifiedProjectile> toRemove = new ArrayList<>();
+			for (SimplifiedProjectile projectile : allDanmakus) {
+				if (shouldSkipVirtualTick(projectile)) {
+					continue;
+				}
+				if (projectile.isRemoved()) {
+					toRemove.add(projectile);
+					continue;
+				}
+				if (projectile.isValid()) {
+					sequentialTickOne(projectile);
+				}
+				if (removeFlag[0]) {
+					break;
+				}
+				if (shouldRemoveFromVirtualList(projectile)) {
+					toRemove.add(projectile);
+				}
 			}
-			if (projectile.isRemoved()) {
-				toRemove.add(projectile);
-				continue;
-			}
-			if (projectile.isValid()) {
-				sequentialTickOne(projectile);
-			}
-			if (removeFlag[0]) {
-				break;
-			}
-			if (shouldRemoveFromVirtualList(projectile)) {
-				toRemove.add(projectile);
-			}
+			finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
 		}
-		finalizeTick(allDanmakus, temp, toBeSent, removeFlag, self, toRemove);
 		stats.finishNanos = System.nanoTime() - start;
 	}
 
@@ -147,13 +454,19 @@ public class ParallelDanmakuTicker {
 	                                 @Nullable UserCacheHolder cacheHolder,
 	                                 @Nullable LivingEntity self,
 	                                 long gameTime,
-	                                 TickStatsBuilder stats) {
+	                                 TickStatsBuilder stats,
+	                                 @Nullable TickTrace trace) {
 		long start = System.nanoTime();
-		prepareParallelTick(allDanmakus, stats);
+		try (StageTrace ignored = openStage(trace, "prepare")) {
+			prepareParallelTick(allDanmakus, stats);
+		}
 		stats.prepareNanos = System.nanoTime() - start;
 
 		start = System.nanoTime();
-		Step1Summary step1 = computeStep1(allDanmakus);
+		Step1Summary step1;
+		try (StageTrace ignored = openStage(trace, "step1")) {
+			step1 = computeStep1(allDanmakus);
+		}
 		stats.step1Nanos = System.nanoTime() - start;
 		stats.parallelReady = step1.readyCount();
 		stats.step1Failures = step1.failures();
@@ -162,22 +475,36 @@ public class ParallelDanmakuTicker {
 		IEntityCache entityCache = resolveEntityCache(sl, cacheHolder, self, gameTime);
 		TouchedSectionMask mask = bounds == null ? null : new TouchedSectionMask(bounds);
 		start = System.nanoTime();
-		if (mask != null) {
-			markTouchedSections(allDanmakus, mask);
-			warmTouchedSections(entityCache, mask);
+		try (StageTrace ignored = openStage(trace, "sections")) {
+			if (mask != null) {
+				markTouchedSections(allDanmakus, mask);
+				warmTouchedSections(entityCache, mask);
+			}
 		}
 		stats.touchedSectionNanos = System.nanoTime() - start;
 
 		start = System.nanoTime();
-		stats.step2Failures = computeStep2(sl, allDanmakus, entityCache);
+		try (StageTrace ignored = openStage(trace, "step2")) {
+			stats.step2Failures = computeStep2(allDanmakus, entityCache);
+		}
 		stats.step2Nanos = System.nanoTime() - start;
 
 		start = System.nanoTime();
-		stats.step3Failures = computeStep3(allDanmakus);
+		try (StageTrace ignored = openStage(trace, "step3")) {
+			stats.step3Failures = computeStep3(allDanmakus);
+		}
 		stats.step3Nanos = System.nanoTime() - start;
 
 		start = System.nanoTime();
-		finishParallelTick(sl, allDanmakus, temp, toBeSent, removeFlag, self, stats);
+		try (StageTrace ignored = openStage(trace, "blockHit")) {
+			resolveBlockHitsParallel(sl, allDanmakus);
+		}
+		stats.blockHitNanos = System.nanoTime() - start;
+
+		start = System.nanoTime();
+		try (StageTrace ignored = openStage(trace, "finish")) {
+			finishParallelTick(sl, allDanmakus, temp, toBeSent, removeFlag, self, stats);
+		}
 		stats.finishNanos = System.nanoTime() - start;
 	}
 
@@ -300,6 +627,50 @@ public class ParallelDanmakuTicker {
 		mask.forEach((x, y, z) -> entityCache.get(x, y, z));
 	}
 
+	/**
+	 * Resolve block hits in parallel with at most 2 concurrent {@code sl.clip()} calls.
+	 * This avoids both the serial bottleneck of per-projectile clip() on the main thread
+	 * and the thundering-herd hang from fully parallel clip() on ForkJoinPool.commonPool().
+	 */
+	private static void resolveBlockHitsParallel(ServerLevel sl, List<SimplifiedProjectile> allDanmakus) {
+		ArrayList<Integer> indices = new ArrayList<>();
+		for (int i = 0; i < allDanmakus.size(); i++) {
+			DanmakuVirtualTickData data = allDanmakus.get(i).virtualTickData();
+			if (data.isParallelReady() && data.checkBlock()) {
+				indices.add(i);
+			}
+		}
+		if (indices.isEmpty()) {
+			return;
+		}
+		// Split into exactly 2 batches — limits concurrent sl.clip() to 2
+		int split = (indices.size() + 1) / 2;
+		ForkJoinTask<?> t1 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = 0; j < split; j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		ForkJoinTask<?> t2 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = split; j < indices.size(); j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		t1.join();
+		t2.join();
+	}
+
+	private static void doResolveBlockHit(ServerLevel sl, List<SimplifiedProjectile> allDanmakus, int index) {
+		DanmakuVirtualTickData data = allDanmakus.get(index).virtualTickData();
+		Vec3 src = data.src();
+		Vec3 dst = data.dst();
+		if (src == null || dst == null) {
+			return;
+		}
+		SimplifiedProjectile p = allDanmakus.get(index);
+		HitResult bh = resolveBlockHit(sl, p, src, dst, true);
+		data.setBlockHit(bh, bh == null ? dst : bh.getLocation());
+	}
+
 	@Nullable
 	private static IEntityCache resolveEntityCache(ServerLevel sl,
 	                                               @Nullable UserCacheHolder cacheHolder,
@@ -311,8 +682,7 @@ public class ParallelDanmakuTicker {
 		return EntityStorageCache.get(sl, gameTime);
 	}
 
-	private static int computeStep2(ServerLevel sl,
-	                                List<SimplifiedProjectile> allDanmakus,
+	private static int computeStep2(List<SimplifiedProjectile> allDanmakus,
 	                                @Nullable IEntityCache entityCache) {
 		int size = allDanmakus.size();
 		AtomicInteger failures = new AtomicInteger();
@@ -324,7 +694,7 @@ public class ParallelDanmakuTicker {
 					continue;
 				}
 				try {
-					computeStep2Result(sl, (BaseProjectile) projectile, data, entityCache);
+					computeStep2Result((BaseProjectile) projectile, data, entityCache);
 				} catch (Exception ex) {
 					data.markPreparedSequentialFallback();
 					failures.incrementAndGet();
@@ -337,19 +707,14 @@ public class ParallelDanmakuTicker {
 		return failures.get();
 	}
 
-	private static void computeStep2Result(ServerLevel sl,
-	                                       BaseProjectile projectile,
+	private static void computeStep2Result(BaseProjectile projectile,
 	                                       DanmakuVirtualTickData data,
 	                                       @Nullable IEntityCache entityCache) {
-		Vec3 src = data.src();
-		Vec3 dst = data.dst();
 		AABB searchBox = data.searchBox();
-		if (src == null || dst == null || searchBox == null) {
+		if (searchBox == null) {
 			data.markPreparedSequentialFallback();
 			return;
 		}
-		HitResult blockHit = resolveBlockHit(sl, projectile, src, dst, data.checkBlock());
-		data.setBlockHit(blockHit, blockHit == null ? dst : blockHit.getLocation());
 		data.clearCandidates();
 		collectCandidates(entityCache, searchBox, projectile, data);
 	}
@@ -645,6 +1010,50 @@ public class ParallelDanmakuTicker {
 		return projectile.isAddedToWorld() && !EntityStorageHelper.isTicking(sl, projectile);
 	}
 
+	/**
+	 * Resolve block hits in parallel with at most 2 concurrent {@code sl.clip()} calls.
+	 * This avoids both the serial bottleneck of per-projectile clip() on the main thread
+	 * and the thundering-herd hang from fully parallel clip() on ForkJoinPool.commonPool().
+	 */
+	private static void resolveBlockHitsParallel(ServerLevel sl, List<SimplifiedProjectile> allDanmakus) {
+		ArrayList<Integer> indices = new ArrayList<>();
+		for (int i = 0; i < allDanmakus.size(); i++) {
+			DanmakuVirtualTickData data = allDanmakus.get(i).virtualTickData();
+			if (data.isParallelReady() && data.checkBlock()) {
+				indices.add(i);
+			}
+		}
+		if (indices.isEmpty()) {
+			return;
+		}
+		// Split into exactly 2 batches — limits concurrent sl.clip() to 2
+		int split = (indices.size() + 1) / 2;
+		ForkJoinTask<?> t1 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = 0; j < split; j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		ForkJoinTask<?> t2 = ForkJoinPool.commonPool().submit(() -> {
+			for (int j = split; j < indices.size(); j++) {
+				doResolveBlockHit(sl, allDanmakus, indices.get(j));
+			}
+		});
+		t1.join();
+		t2.join();
+	}
+
+	private static void doResolveBlockHit(ServerLevel sl, List<SimplifiedProjectile> allDanmakus, int index) {
+		DanmakuVirtualTickData data = allDanmakus.get(index).virtualTickData();
+		Vec3 src = data.src();
+		Vec3 dst = data.dst();
+		if (src == null || dst == null) {
+			return;
+		}
+		SimplifiedProjectile p = allDanmakus.get(index);
+		HitResult bh = resolveBlockHit(sl, p, src, dst, true);
+		data.setBlockHit(bh, bh == null ? dst : bh.getLocation());
+	}
+
 	@Nullable
 	private static HitResult resolveBlockHit(ServerLevel sl,
 	                                         SimplifiedProjectile projectile,
@@ -719,8 +1128,11 @@ public class ParallelDanmakuTicker {
 		}
 	}
 
+	private static final int BATCH_PER_THREAD = 2000;
+
 	private static void runParallel(int size, RangeTask task) {
-		int threads = Math.min(MAX_THREADS, Runtime.getRuntime().availableProcessors());
+		int maxThreads = Runtime.getRuntime().availableProcessors();
+		int threads = Math.min(Math.max(MAX_THREADS, (size + BATCH_PER_THREAD - 1) / BATCH_PER_THREAD), maxThreads);
 		if (threads <= 1) {
 			threads = 2;
 		}
@@ -781,6 +1193,7 @@ public class ParallelDanmakuTicker {
 			long touchedSectionNanos,
 			long step2Nanos,
 			long step3Nanos,
+			long blockHitNanos,
 			long finishNanos,
 			long totalNanos
 	) {
@@ -802,6 +1215,7 @@ public class ParallelDanmakuTicker {
 					0,
 					0,
 					0,
+					0L,
 					0L,
 					0L,
 					0L,
@@ -843,12 +1257,14 @@ public class ParallelDanmakuTicker {
 			long touchedSectionNanosSum,
 			long step2NanosSum,
 			long step3NanosSum,
+			long blockHitNanosSum,
 			long finishNanosSum,
 			long totalNanosSum,
 			long maxTotalNanos,
 			long maxStep1Nanos,
 			long maxStep2Nanos,
 			long maxStep3Nanos,
+			long maxBlockHitNanos,
 			long maxFinishNanos
 	) {
 
@@ -880,6 +1296,7 @@ public class ParallelDanmakuTicker {
 		private long touchedSectionNanos;
 		private long step2Nanos;
 		private long step3Nanos;
+		private long blockHitNanos;
 		private long finishNanos;
 		private long totalNanos;
 
@@ -911,6 +1328,7 @@ public class ParallelDanmakuTicker {
 					touchedSectionNanos,
 					step2Nanos,
 					step3Nanos,
+					blockHitNanos,
 					finishNanos,
 					totalNanos
 			);
@@ -943,12 +1361,14 @@ public class ParallelDanmakuTicker {
 		private long touchedSectionNanosSum;
 		private long step2NanosSum;
 		private long step3NanosSum;
+		private long blockHitNanosSum;
 		private long finishNanosSum;
 		private long totalNanosSum;
 		private long maxTotalNanos;
 		private long maxStep1Nanos;
 		private long maxStep2Nanos;
 		private long maxStep3Nanos;
+		private long maxBlockHitNanos;
 		private long maxFinishNanos;
 
 		private void record(TickStatsSnapshot stats) {
@@ -979,12 +1399,14 @@ public class ParallelDanmakuTicker {
 			touchedSectionNanosSum += stats.touchedSectionNanos();
 			step2NanosSum += stats.step2Nanos();
 			step3NanosSum += stats.step3Nanos();
+			blockHitNanosSum += stats.blockHitNanos();
 			finishNanosSum += stats.finishNanos();
 			totalNanosSum += stats.totalNanos();
 			maxTotalNanos = Math.max(maxTotalNanos, stats.totalNanos());
 			maxStep1Nanos = Math.max(maxStep1Nanos, stats.step1Nanos());
 			maxStep2Nanos = Math.max(maxStep2Nanos, stats.step2Nanos());
 			maxStep3Nanos = Math.max(maxStep3Nanos, stats.step3Nanos());
+			maxBlockHitNanos = Math.max(maxBlockHitNanos, stats.blockHitNanos());
 			maxFinishNanos = Math.max(maxFinishNanos, stats.finishNanos());
 		}
 
@@ -1014,12 +1436,14 @@ public class ParallelDanmakuTicker {
 					touchedSectionNanosSum,
 					step2NanosSum,
 					step3NanosSum,
+					blockHitNanosSum,
 					finishNanosSum,
 					totalNanosSum,
 					maxTotalNanos,
 					maxStep1Nanos,
 					maxStep2Nanos,
 					maxStep3Nanos,
+					maxBlockHitNanos,
 					maxFinishNanos
 			);
 		}

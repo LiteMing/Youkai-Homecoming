@@ -78,7 +78,15 @@ public class YHCommands {
 									ParallelDanmakuTicker.resetSummaryStats();
 									ctx.getSource().sendSystemMessage(Component.literal("[YH] Danmaku perf summary reset."));
 									return 1;
-								})))
+								}))
+						.then(literal("debug")
+								.executes(ctx -> sendDanmakuPerfDebugStatus(ctx.getSource()))
+								.then(literal("on")
+										.executes(ctx -> setDanmakuPerfDebug(ctx.getSource(), true)))
+								.then(literal("off")
+										.executes(ctx -> setDanmakuPerfDebug(ctx.getSource(), false)))
+								.then(literal("status")
+										.executes(ctx -> sendDanmakuPerfDebugStatus(ctx.getSource())))))
 				.then(argument("player", EntityArgument.players())
 						.then(literal("setLife")
 								.requires(e -> e.hasPermission(2))
@@ -534,6 +542,7 @@ public class YHCommands {
 				.append("  sections=").append(formatMillis(stats.touchedSectionNanos()))
 				.append("  step2=").append(formatMillis(stats.step2Nanos()))
 				.append("  step3=").append(formatMillis(stats.step3Nanos()))
+				.append("  blockHit=").append(formatMillis(stats.blockHitNanos()))
 				.append("  finish=").append(formatMillis(stats.finishNanos()))
 				.append("\n");
 		sb.append("prefetch: consumed=").append(stats.prefetchConsumed())
@@ -572,6 +581,19 @@ public class YHCommands {
 		return 1;
 	}
 
+	private static int setDanmakuPerfDebug(CommandSourceStack source, boolean enabled) {
+		ParallelDanmakuTicker.setStageTraceEnabled(enabled);
+		source.sendSystemMessage(Component.literal("[YH] Danmaku perf stage trace " + (enabled ? "enabled." : "disabled.")));
+		return 1;
+	}
+
+	private static int sendDanmakuPerfDebugStatus(CommandSourceStack source) {
+		source.sendSystemMessage(Component.literal(
+				"[YH] Danmaku perf stage trace is " +
+						(ParallelDanmakuTicker.isStageTraceEnabled() ? "enabled." : "disabled.")));
+		return 1;
+	}
+
 	private static String formatDanmakuPerfSummary(ParallelDanmakuTicker.TickSummarySnapshot stats) {
 		long samples = stats.sampleCount();
 		var sb = new StringBuilder();
@@ -593,12 +615,14 @@ public class YHCommands {
 				.append("  sections=").append(formatAverageMillis(stats.touchedSectionNanosSum(), samples))
 				.append("  step2=").append(formatAverageMillis(stats.step2NanosSum(), samples))
 				.append("  step3=").append(formatAverageMillis(stats.step3NanosSum(), samples))
+				.append("  blockHit=").append(formatAverageMillis(stats.blockHitNanosSum(), samples))
 				.append("  finish=").append(formatAverageMillis(stats.finishNanosSum(), samples))
 				.append("\n");
 		sb.append("max time: total=").append(formatMillis(stats.maxTotalNanos()))
 				.append("  step1=").append(formatMillis(stats.maxStep1Nanos()))
 				.append("  step2=").append(formatMillis(stats.maxStep2Nanos()))
 				.append("  step3=").append(formatMillis(stats.maxStep3Nanos()))
+				.append("  blockHit=").append(formatMillis(stats.maxBlockHitNanos()))
 				.append("  finish=").append(formatMillis(stats.maxFinishNanos()))
 				.append("\n");
 		sb.append("prefetch: consumedAvg=").append(formatAverage(stats.prefetchConsumedSum(), samples))

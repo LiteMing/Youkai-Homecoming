@@ -2,6 +2,7 @@ package dev.xkmc.fastprojectileapi.entity;
 
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageCache;
+import dev.xkmc.fastprojectileapi.collision.HitTestType;
 import dev.xkmc.fastprojectileapi.collision.IEntityCache;
 import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.ProjectileHitHelper;
@@ -10,6 +11,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -64,6 +66,9 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	protected IEntityIterator getEntityIterator() {
 		if (level() instanceof ServerLevel sl) {
 			IEntityCache cache = getOwner() instanceof EntityCachingUser user ? user.entityCache().get(sl, user.self()) : EntityStorageCache.get(sl);
+			if (getOwner() instanceof LivingEntity owner) {
+				return (aabb, filter) -> cache.foreach(aabb, target -> HitTestType.ENEMY.canHitEntity(owner, target) && filter.test(target));
+			}
 			return cache::foreach;
 		}
 		return (aabb, filter) -> java.util.List.of();

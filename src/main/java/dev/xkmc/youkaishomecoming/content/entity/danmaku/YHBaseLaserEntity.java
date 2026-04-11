@@ -170,11 +170,6 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	@Override
-	public boolean canHitEntity(Entity target) {
-		return super.canHitEntity(target) && shouldHurt(getOwner(), target);
-	}
-
-	@Override
 	protected void onHit(BlockHitResult blockHit, Iterable<Entity> hitEntities) {
 		if (level().isClientSide()) {
 			Vec3 src = (tickData.moveDst == null ? position() : tickData.moveDst).add(0, getBbHeight() / 2f, 0);

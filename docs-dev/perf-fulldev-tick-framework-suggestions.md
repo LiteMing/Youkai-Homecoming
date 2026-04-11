@@ -514,6 +514,71 @@
 因此原第三步的“统一预热”目标可以视为已经完成。  
 第三步不再沿用旧描述，等第二步 `1.2.1` 到 `1.2.8` 跑稳后再单独写新的后续内容，避免文档和实现顺序重新打架。
 
+### 1.3：为后续异步判定继续解耦 cache/filter 语义
+
+#### 1.3.1 把 `foreach` / `asyncForEach` 的 filter 参数外移到 `HitTestType`
+
+范围：
+
+- 当前 `canHitEntity(Entity target)` 从弹幕/激光类中继续解耦
+- 新增 `enum HitTestType`
+- 先只保留一个枚举项：`ENEMY`
+- 统一写成 `canHitEntity(LivingEntity owner, Entity target)`
+
+目标：
+
+- 让 filter 判定不再依赖弹幕实例本身
+- 为后续统一的 cache 迭代和异步碰撞路径减少实体上下文耦合
+
+#### 1.3.2 收缩 async cache 接口，只在 `UserMatrixCache` 保留
+
+范围：
+
+- 取消 `IEntityCache` 中的 `asyncGet` / `asyncForEach`
+- `EntityStorageCache` 中也不再保留对应接口
+- 只在 `UserMatrixCache` 中保留 async-safe 读取能力
+
+目标：
+
+- 缩小 async 接口暴露面
+- 把 async-safe 路径明确限制在预热后的本地矩阵 cache 上
+
+#### 1.3.3 引入 `OwnedSectionCache` 与 `EntityInfo`
+
+范围：
+
+- 定义 `OwnedSectionCache`，构建输入为 `SectionCache` 和 `LivingEntity owner`
+- `OwnedSectionCache` 模仿 `SectionCache` 的代码结构
+- 内部保留两个实体列表，但保存对象改为 `EntityInfo`
+- `EntityInfo` 不再持有对 `Entity` 的直接引用
+- `EntityInfo` 至少保存：
+  - 当前 `AABB`
+  - 当前速度
+  - 各 `HitTestType` 的判定结果缓存
+- 当前 `HitTestType` 先只支持一个值：`ENEMY`
+- `OwnedSectionCache.intersect(...)` 返回的新 iterable 也基于 `EntityInfo`
+- `UserMatrixCache` 缓存的内容从 `SectionCache` 改为 `OwnedSectionCache`
+
+接口变化：
+
+- `UserMatrixCache.get(...)` / `foreach(...)` 语义保持不变
+- 同步路径仍然通过 `OwnedSectionCache` 提供与当前一致的 section/foreach 结果
+- `UserMatrixCache.asyncGet(...)` 直接返回 `OwnedSectionCache`
+- `asyncForEach(...)` 的输入不再是 `Predicate<Entity>`，而改为 `HitTestType`
+- async 路径直接使用 `OwnedSectionCache` 返回的 `EntityInfo` iterable
+- 以 `EntityInfo` 预先缓存的 `HitTestType` 判定结果替代原来的运行时 `filter.test(...)`
+
+目标：
+
+- 进一步把 filter 逻辑从 live entity 访问里解耦出来
+- 为后续 worker 线程只读 section 快照打基础
+
+风险与代价：
+
+- 这是 `1.3` 中改动面非常大的一项
+- 因为 filter 判定被提前缓存，原本一些“虽然进入候选但会被实时 filter 排掉”的实体，后面可能会继续参与几何判定
+- 这会带来一定的候选计算量上升，需要单独验证收益与回归风险
+
 ### 第四步：把移动 / 碰撞检测 / 收尾异步化
 
 这一步要非常明确地拆成：

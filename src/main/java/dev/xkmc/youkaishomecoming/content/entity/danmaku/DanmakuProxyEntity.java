@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -214,21 +215,16 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private void tickDanmaku() {
 		removeDanmaku = false;
 		temp = new ArrayList<>();
-		var itr = allDanmakus.iterator();
-		while (itr.hasNext()) {
-			var e = itr.next();
-			if (e.isAddedToWorld() && !e.isRemoved()) continue;
-			if (e.isValid()) {
-				e.setOldPosAndRot();
-				++e.tickCount;
-				e.tick();
-			}
-			if (removeDanmaku) break;
-			if (!e.isValid()) {
-				itr.remove();
-			}
-		}
+		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku);
 		if (!removeDanmaku) {
+			var itr = allDanmakus.iterator();
+			while (itr.hasNext()) {
+				var e = itr.next();
+				if (e.isAddedToWorld() && !e.isRemoved()) continue;
+				if (!e.isValid()) {
+					itr.remove();
+				}
+			}
 			allDanmakus.addAll(temp);
 			DanmakuManager.send(this, toBeSent);
 		}

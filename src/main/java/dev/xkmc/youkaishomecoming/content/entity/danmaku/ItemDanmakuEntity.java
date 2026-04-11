@@ -118,8 +118,8 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		CardHolder holder = null;
 		Entity e = getOwner();
 		if (e instanceof CardHolder h) holder = h;
-		Vec3 pos = data.src == null ? position() : data.src;
-		Vec3 vec = data.originalVelocity == null ? getDeltaMovement() : data.originalVelocity;
+		Vec3 pos = data.moveSrc == null ? position() : data.moveSrc;
+		Vec3 vec = data.inputVelocity == null ? getDeltaMovement() : data.inputVelocity;
 		if (holder != null) onTrail.execute(holder, pos, vec);
 		else onTrail.execute(pos, vec);
 	}

@@ -8,28 +8,30 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Optional;
 
 public class ProjectileHitHelper {
 
 	@Nullable
-	public static HitResult getHitResultOnMoveVector(BaseProjectile e, boolean checkBlock) {
-		return getHitResultOnMoveVector(e, e.position(), e.position().add(e.getDeltaMovement()), checkBlock);
+	public static BlockHitResult getHitResultOnMoveVector(BaseProjectile e, boolean checkBlock, List<Entity> hitEntities) {
+		return getHitResultOnMoveVector(e, e.position(), e.position().add(e.getDeltaMovement()), checkBlock, hitEntities);
 	}
 
 	@Nullable
-	public static HitResult getHitResultOnMoveVector(BaseProjectile e, Vec3 src, Vec3 dst, boolean checkBlock) {
+	public static BlockHitResult getHitResultOnMoveVector(BaseProjectile e, Vec3 src, Vec3 dst, boolean checkBlock, List<Entity> hitEntities) {
 		Vec3 v = dst.subtract(src);
 		Level level = e.level();
-		HitResult hit = null;
+		BlockHitResult blockHit = null;
 		if (checkBlock) {
-			hit = level.clip(new ClipContext(src, dst, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
+			var hit = level.clip(new ClipContext(src, dst, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
 			if (hit.getType() != HitResult.Type.MISS) {
+				blockHit = hit;
 				dst = hit.getLocation();
 			}
 		}
@@ -56,10 +58,10 @@ public class ProjectileHitHelper {
 				}
 			}
 			if (entity != null) {
-				hit = new EntityHitResult(entity);
+				hitEntities.add(entity);
 			}
 		}
-		return hit;
+		return blockHit;
 	}
 
 	@Nullable

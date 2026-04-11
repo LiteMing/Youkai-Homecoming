@@ -13,7 +13,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 public abstract class BaseProjectile extends AsyncProjectile {
@@ -33,23 +32,25 @@ public abstract class BaseProjectile extends AsyncProjectile {
 
 	@Override
 	protected void planMove(TickData data) {
-		data.src = position();
-		data.originalVelocity = getDeltaMovement();
-		data.plannedMovement = computeMove(data.originalVelocity, data.src);
-		data.dst = data.src.add(data.plannedMovement.vec());
+		data.moveSrc = position();
+		data.inputVelocity = getDeltaMovement();
+		data.plannedMovement = computeMove(data.inputVelocity, data.moveSrc);
+		data.moveDst = data.moveSrc.add(data.plannedMovement.vec());
 	}
 
 	@Override
 	protected void collectCollisionInput(TickData data) {
-		Vec3 src = data.src == null ? position() : data.src;
-		Vec3 dst = data.dst == null ? src.add(getDeltaMovement()) : data.dst;
-		data.projectileHit = ProjectileHitHelper.getHitResultOnMoveVector(this, src, dst, checkBlockHit());
+		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
+		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;
+		data.blockHit = ProjectileHitHelper.getHitResultOnMoveVector(this, src, dst, checkBlockHit(), data.hitEntities);
 	}
 
 	@Override
 	protected void resolveCollision(TickData data) {
-		if (data.projectileHit != null) {
-			onHit(data.projectileHit);
+		if (!data.hitEntities.isEmpty()) {
+			onHitEntity(new EntityHitResult(data.hitEntities.get(0)));
+		} else if (data.blockHit != null) {
+			onHitBlock(data.blockHit);
 		}
 	}
 
@@ -141,33 +142,24 @@ public abstract class BaseProjectile extends AsyncProjectile {
 		return pDistance < d0 * d0;
 	}
 
-	protected void onHit(HitResult hitresult) {
-		if (hitresult.getType() == HitResult.Type.MISS) return;
-		if (hitresult instanceof EntityHitResult ehit) {
-			onHitEntity(ehit);
-			level().gameEvent(GameEvent.PROJECTILE_LAND, hitresult.getLocation(), GameEvent.Context.of(this, null));
-		} else if (hitresult instanceof BlockHitResult bhit) {
-			BlockPos pos = bhit.getBlockPos();
-			BlockState state = level().getBlockState(pos);
-			if (state.is(Blocks.NETHER_PORTAL)) {
-				handleInsidePortal(pos);
-				return;
-			} else if (state.is(Blocks.END_GATEWAY)) {
-				BlockEntity be = level().getBlockEntity(pos);
-				if (be instanceof TheEndGatewayBlockEntity gate && TheEndGatewayBlockEntity.canEntityTeleport(this)) {
-					TheEndGatewayBlockEntity.teleportEntity(level(), pos, state, this, gate);
-				}
-				return;
-			}
-			onHitBlock(bhit);
-			level().gameEvent(GameEvent.PROJECTILE_LAND, pos, GameEvent.Context.of(this, level().getBlockState(pos)));
-		}
-	}
-
 	protected void onHitEntity(EntityHitResult pResult) {
+		level().gameEvent(GameEvent.PROJECTILE_LAND, pResult.getLocation(), GameEvent.Context.of(this, null));
 	}
 
 	protected void onHitBlock(BlockHitResult pResult) {
+		BlockPos pos = pResult.getBlockPos();
+		BlockState state = level().getBlockState(pos);
+		if (state.is(Blocks.NETHER_PORTAL)) {
+			handleInsidePortal(pos);
+			return;
+		} else if (state.is(Blocks.END_GATEWAY)) {
+			BlockEntity be = level().getBlockEntity(pos);
+			if (be instanceof TheEndGatewayBlockEntity gate && TheEndGatewayBlockEntity.canEntityTeleport(this)) {
+				TheEndGatewayBlockEntity.teleportEntity(level(), pos, state, this, gate);
+			}
+			return;
+		}
+		level().gameEvent(GameEvent.PROJECTILE_LAND, pos, GameEvent.Context.of(this, state));
 	}
 
 	@Override

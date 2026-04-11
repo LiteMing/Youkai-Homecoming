@@ -1,6 +1,5 @@
 package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
-import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
 import dev.xkmc.fastprojectileapi.entity.BaseLaser;
 import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
@@ -19,7 +18,8 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.entity.IEntityAdditionalSpawnData;
 
@@ -133,10 +133,10 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	@Override
 	protected void planMove(TickData data) {
-		data.src = position();
-		data.originalVelocity = getDeltaMovement();
-		data.plannedMovement = computeMove(data.originalVelocity, data.src);
-		data.dst = data.src.add(data.plannedMovement.vec());
+		data.moveSrc = position();
+		data.inputVelocity = getDeltaMovement();
+		data.plannedMovement = computeMove(data.inputVelocity, data.moveSrc);
+		data.moveDst = data.moveSrc.add(data.plannedMovement.vec());
 	}
 
 	@Override
@@ -175,14 +175,13 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	@Override
-	protected void onHit(LaserHitHelper.LaserHitResult hit) {
+	protected void onHit(BlockHitResult blockHit, Iterable<Entity> hitEntities) {
 		if (level().isClientSide()) {
-			if (hit.bhit() != null && hit.bhit().getType() != HitResult.Type.MISS) {
-				earlyTerminate = hit.src().distanceTo(hit.bhit().getLocation());
-			} else earlyTerminate = -1;
+			Vec3 src = (tickData.moveDst == null ? position() : tickData.moveDst).add(0, getBbHeight() / 2f, 0);
+			earlyTerminate = blockHit == null ? -1 : src.distanceTo(blockHit.getLocation());
 		}
-		for (var e : hit.ehit()) {
-			hurtTarget(e);
+		for (var e : hitEntities) {
+			hurtTarget(new EntityHitResult(e));
 		}
 	}
 

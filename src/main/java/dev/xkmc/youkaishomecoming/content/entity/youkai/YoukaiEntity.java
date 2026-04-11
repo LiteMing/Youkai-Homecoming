@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.entity.youkai;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleHolder;
@@ -622,21 +623,16 @@ public abstract class YoukaiEntity extends PathfinderMob
 	private void tickDanmaku() {
 		removeDanmaku = false;
 		temp = new ArrayList<>();
-		var itr = allDanmakus.iterator();
-		while (itr.hasNext()) {
-			var e = itr.next();
-			if (e.isAddedToWorld() && !e.isRemoved()) continue;
-			if (e.isValid()) {
-				e.setOldPosAndRot();
-				++e.tickCount;
-				e.tick();
-			}
-			if (removeDanmaku) break;
-			if (!e.isValid()) {
-				itr.remove();
-			}
-		}
+		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku);
 		if (!removeDanmaku) {
+			var itr = allDanmakus.iterator();
+			while (itr.hasNext()) {
+				var e = itr.next();
+				if (e.isAddedToWorld() && !e.isRemoved()) continue;
+				if (!e.isValid()) {
+					itr.remove();
+				}
+			}
 			allDanmakus.addAll(temp);
 			DanmakuManager.send(this, toBeSent);
 		}

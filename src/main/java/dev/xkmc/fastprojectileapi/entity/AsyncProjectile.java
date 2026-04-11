@@ -1,11 +1,14 @@
 package dev.xkmc.fastprojectileapi.entity;
 
-import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public abstract class AsyncProjectile extends SimplifiedProjectile {
 
@@ -18,7 +21,7 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	@Override
 	public void tick() {
 		TickData data = tickData;
-		data.reset(this);
+		data.reset();
 		beginTick(data);
 		if (data.stopTick) return;
 		planMove(data);
@@ -54,29 +57,25 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	public static class TickData {
 
 		@Nullable
-		public AsyncProjectile projectile;
+		public Vec3 moveSrc;
 		@Nullable
-		public Vec3 src;
-		@Nullable
-		public Vec3 originalVelocity;
+		public Vec3 inputVelocity;
 		@Nullable
 		public ProjectileMovement plannedMovement;
 		@Nullable
-		public Vec3 dst;
+		public Vec3 moveDst;
 		@Nullable
-		public HitResult projectileHit;
-		@Nullable
-		public LaserHitHelper.LaserHitResult laserHit;
+		public BlockHitResult blockHit;
+		public final List<Entity> hitEntities = new ArrayList<>();
 		public boolean stopTick;
 
-		public void reset(AsyncProjectile projectile) {
-			this.projectile = projectile;
-			src = null;
-			originalVelocity = null;
+		public void reset() {
+			moveSrc = null;
+			inputVelocity = null;
 			plannedMovement = null;
-			dst = null;
-			projectileHit = null;
-			laserHit = null;
+			moveDst = null;
+			blockHit = null;
+			hitEntities.clear();
 			stopTick = false;
 		}
 

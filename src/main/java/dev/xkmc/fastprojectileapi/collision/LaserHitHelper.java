@@ -9,25 +9,21 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public class LaserHitHelper {
 
-	public record LaserHitResult(Vec3 src, Vec3 dst, @Nullable BlockHitResult bhit, List<EntityHitResult> ehit) {
-
+	@Nullable
+	public static BlockHitResult getHitResultOnProjection(BaseLaser e, boolean checkBlock, boolean checkEntity, List<Entity> hitEntities) {
+		return getHitResultOnProjection(e, e.position(), e.rot(), checkBlock, checkEntity, hitEntities);
 	}
 
-	public static LaserHitResult getHitResultOnProjection(BaseLaser e, boolean checkBlock, boolean checkEntity) {
-		return getHitResultOnProjection(e, e.position(), e.rot(), checkBlock, checkEntity);
-	}
-
-	public static LaserHitResult getHitResultOnProjection(BaseLaser e, Vec3 pos, Vec3 rot, boolean checkBlock, boolean checkEntity) {
+	@Nullable
+	public static BlockHitResult getHitResultOnProjection(BaseLaser e, Vec3 pos, Vec3 rot, boolean checkBlock, boolean checkEntity, List<Entity> hitEntities) {
 		Vec3 src = pos.add(0, e.getBbHeight() / 2f, 0);
 		Vec3 v = Vec3.directionFromRotation((float) (rot.x * Mth.RAD_TO_DEG), (float) (rot.y * Mth.RAD_TO_DEG)).scale(e.getLength());
 		Level level = e.level();
@@ -39,7 +35,6 @@ public class LaserHitHelper {
 				dst = bhit.getLocation();
 			} else bhit = null;
 		}
-		List<EntityHitResult> ehit = new ArrayList<>();
 		if (checkEntity && level instanceof ServerLevel sl) {
 			var radius = e.getEffectiveHitRadius();
 			var graze = e.grazeRange();
@@ -49,14 +44,14 @@ public class LaserHitHelper {
 			for (Entity x : list) {
 				if (x == e) continue;
 				Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
-				if (hit != null) ehit.add(new EntityHitResult(x, hit));
+				if (hit != null) hitEntities.add(x);
 				if (graze > 0 && x instanceof Player pl) {
 					Vec3 gr = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, graze), src, dst);
 					if (gr != null) e.doGraze(pl);
 				}
 			}
 		}
-		return new LaserHitResult(src, dst, bhit, ehit);
+		return bhit;
 	}
 
 

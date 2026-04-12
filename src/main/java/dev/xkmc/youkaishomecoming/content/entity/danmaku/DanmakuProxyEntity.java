@@ -324,6 +324,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	@Override
+	public boolean canBeHitByProjectile() {
+		return false;
+	}
+
+	@Override
 	public boolean isInvulnerableTo(DamageSource source) {
 		return true;
 	}

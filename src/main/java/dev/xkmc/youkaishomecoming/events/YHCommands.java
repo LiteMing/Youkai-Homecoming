@@ -6,6 +6,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
@@ -469,6 +470,42 @@ public class YHCommands {
 												() -> Component.literal("Gave spell item [" + spellId + "] (" + ticks + "t) to " + player.getName().getString()), true);
 										return 1;
 									}))))
+				.then(literal("log")
+						.then(literal("on")
+								.executes(ctx -> {
+									ParallelTicker.ENABLE_LOG = true;
+									ParallelTicker.LOG_INTERVAL = 1;
+									ctx.getSource().sendSuccess(() -> Component.literal("Ticker log enabled (every tick)"), true);
+									return 1;
+								})
+								.then(argument("tickinterval", IntegerArgumentType.integer(1))
+										.executes(ctx -> {
+											int interval = IntegerArgumentType.getInteger(ctx, "tickinterval");
+											ParallelTicker.ENABLE_LOG = true;
+											ParallelTicker.LOG_INTERVAL = interval;
+											ctx.getSource().sendSuccess(() -> Component.literal("Ticker log enabled (every " + interval + " ticks)"), true);
+											return 1;
+										})
+								)
+						)
+						.then(literal("off").executes(ctx -> {
+							ParallelTicker.ENABLE_LOG = false;
+							ctx.getSource().sendSuccess(() -> Component.literal("Ticker log disabled"), true);
+							return 1;
+						}))
+				)
+				.then(literal("async")
+						.then(literal("on").executes(ctx -> {
+							ParallelTicker.ENABLE_ASYNC = true;
+							ctx.getSource().sendSuccess(() -> Component.literal("Async dispatch enabled"), true);
+							return 1;
+						}))
+						.then(literal("off").executes(ctx -> {
+							ParallelTicker.ENABLE_ASYNC = false;
+							ctx.getSource().sendSuccess(() -> Component.literal("Async dispatch disabled"), true);
+							return 1;
+						}))
+				)
 		);
 	}
 

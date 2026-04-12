@@ -48,25 +48,15 @@ public class ParallelTicker {
 		MoverInfo.OwnerInfo sharedOwnerInfo = preheatCache != null && !active.isEmpty()
 				? active.get(0).snapshotOwnerInfo(active.get(0).getOwner()) : null;
 
-		trace.moveNanos = useAsync
-				? runStageAsync(active, shouldStop, (e, data) -> {
-					e.setOldPosAndRot();
-					++e.tickCount;
-					data.reset();
-					data.preheatCache = preheatCache;
-					e.beginTick(data, sharedOwnerInfo);
-					e.planMove(data);
-					e.planPreheatRange(data, preheatCache);
-				})
-				: runStage(active, shouldStop, (e, data) -> {
-					e.setOldPosAndRot();
-					++e.tickCount;
-					data.reset();
-					data.preheatCache = preheatCache;
-					e.beginTick(data, sharedOwnerInfo);
-					e.planMove(data);
-					e.planPreheatRange(data, preheatCache);
-				}, null);
+		trace.moveNanos = runStageAsync(active, shouldStop, (e, data) -> {
+				e.setOldPosAndRot();
+				++e.tickCount;
+				data.reset();
+				data.preheatCache = preheatCache;
+				e.beginTick(data, sharedOwnerInfo);
+				e.planMove(data);
+				e.planPreheatRange(data, preheatCache);
+			}, useAsync);
 
 		trace.moveNanos += runStage(active, shouldStop, (e, data) -> e.trimMove(data), null);
 		trace.preheatNanos = 0L;
@@ -76,15 +66,10 @@ public class ParallelTicker {
 			trace.preheatNanos = System.nanoTime() - start;
 		}
 
-		trace.collisionInputNanos = useAsync
-				? runStageAsync(active, shouldStop, (e, data) -> {
-					IEntityIterator iterator = preheatCache == null ? e.getEntityIterator() : preheatCache::asyncForEach;
-					e.collectCollisionInput(data, iterator);
-				})
-				: runStage(active, shouldStop, (e, data) -> {
-					IEntityIterator iterator = preheatCache == null ? e.getEntityIterator() : preheatCache::asyncForEach;
-					e.collectCollisionInput(data, iterator);
-				}, null);
+		trace.collisionInputNanos = runStageAsync(active, shouldStop, (e, data) -> {
+				IEntityIterator iterator = preheatCache == null ? e.getEntityIterator() : preheatCache::asyncForEach;
+				e.collectCollisionInput(data, iterator);
+			}, useAsync);
 
 		trace.resolveNanos = runStage(active, shouldStop, (e, data) -> e.resolveCollision(data), (data, result) -> {
 			result.hitCount += data.hitEntities.size();
@@ -118,7 +103,8 @@ public class ParallelTicker {
 		return System.nanoTime() - start;
 	}
 
-	private static long runStageAsync(ArrayList<AsyncProjectile> active, BooleanSupplier shouldStop, Stage stage) {
+	private static long runStageAsync(ArrayList<AsyncProjectile> active, BooleanSupplier shouldStop, Stage stage, boolean async) {
+		if (!async) return runStage(active, shouldStop, stage, null);
 		int n = active.size();
 		int numWorkers = Math.min(CPU_COUNT, n);
 		int chunkSize = (n + numWorkers - 1) / numWorkers;

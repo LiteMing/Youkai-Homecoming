@@ -7,7 +7,6 @@ public class StageTrace {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger("ParallelTicker");
 
-	public long beginNanos;
 	public long moveNanos;
 	public long preheatNanos;
 	public long collisionInputNanos;
@@ -27,7 +26,6 @@ public class StageTrace {
 	public boolean asyncUsed;
 
 	public void reset() {
-		beginNanos = 0L;
 		moveNanos = 0L;
 		preheatNanos = 0L;
 		collisionInputNanos = 0L;
@@ -50,18 +48,16 @@ public class StageTrace {
 		ParallelTicker.logTickCounter++;
 		if (ParallelTicker.logTickCounter < ParallelTicker.LOG_INTERVAL) return;
 		ParallelTicker.logTickCounter = 0;
-		LOGGER.info("[ParallelTicker] mode={} count={} total={}ms | begin={} plan={} preheat={} collision={} resolve={} applyMove={} finish={}ms | candidates={} hits={} graze={} removed={}",
+		LOGGER.info("[ParallelTicker] mode={} count={} total={}ms | plan+trim={} preheat={} collision={} resolve={} applyMove={} finish={}ms | hits={} graze={} removed={}",
 				asyncUsed ? "ASYNC" : "SERIAL",
 				projectileCount,
 				totalNanos / 1_000_000,
-				beginNanos / 1_000_000,
 				moveNanos / 1_000_000,
 				preheatNanos / 1_000_000,
 				collisionInputNanos / 1_000_000,
 				resolveNanos / 1_000_000,
 				applyMoveNanos / 1_000_000,
 				finishNanos / 1_000_000,
-				candidateCount,
 				hitCount,
 				grazeCount,
 				removedCount);

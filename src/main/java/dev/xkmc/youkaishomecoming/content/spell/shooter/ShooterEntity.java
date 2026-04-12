@@ -76,7 +76,7 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 	@Override
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
 		if (mover != null) {
-			return mover.move(new MoverInfo(tickCount, pos, vec, this));
+			return mover.move(new MoverInfo(tickCount, pos, vec, this, new MoverInfo.OwnerInfo(null, null)));
 		}
 		return super.updateVelocity(vec, pos);
 	}

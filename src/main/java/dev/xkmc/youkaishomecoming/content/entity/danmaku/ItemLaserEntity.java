@@ -61,7 +61,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
 		if (mover != null) {
-			return mover.move(new MoverInfo(tickCount, pos, vec, this));
+			return mover.move(new MoverInfo(tickCount, pos, vec, this, tickData().ownerInfo));
 		}
 		return new ProjectileMovement(vec, rot());
 	}

@@ -12,6 +12,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -48,6 +50,19 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 
 	protected void beginTick(TickData data) {
 		super.tick();
+		data.ownerInfo = snapshotOwnerInfo(getOwner());
+	}
+
+	protected MoverInfo.OwnerInfo snapshotOwnerInfo(@Nullable Entity owner) {
+		if (owner instanceof CardHolder holder) {
+			return new MoverInfo.OwnerInfo(holder.center(), holder.forward());
+		}
+		if (owner instanceof LivingEntity living) {
+			Vec3 pos = living.position().add(0, living.getBbHeight() / 2, 0);
+			Vec3 forward = living.getForward();
+			return new MoverInfo.OwnerInfo(pos, forward);
+		}
+		return new MoverInfo.OwnerInfo(null, null);
 	}
 
 	protected void planMove(TickData data) {
@@ -97,6 +112,8 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		public Vec3 moveDst;
 		@Nullable
 		public BlockHitResult blockHit;
+		@Nullable
+		public MoverInfo.OwnerInfo ownerInfo;
 		public final List<Entity> hitEntities = new ArrayList<>();
 		public final List<Player> grazed = new ArrayList<>();
 		public int candidateCount;
@@ -110,6 +127,7 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 			plannedMovement = null;
 			moveDst = null;
 			blockHit = null;
+			ownerInfo = null;
 			hitEntities.clear();
 			grazed.clear();
 			candidateCount = 0;

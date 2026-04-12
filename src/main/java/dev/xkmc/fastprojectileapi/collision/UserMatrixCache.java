@@ -50,6 +50,10 @@ public class UserMatrixCache implements IEntityCache {
 		}
 	}
 
+	public LivingEntity owner() {
+		return owner;
+	}
+
 	@Nullable
 	public OwnedSectionCache asyncGet(int x, int y, int z) {
 		int ix = x - x0 + R;

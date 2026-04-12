@@ -10,7 +10,7 @@ public class UserCacheHolder {
 
 	public UserMatrixCache get(ServerLevel sl, LivingEntity user) {
 		if (cache != null) {
-			if (cache.sl == sl && cache.time == sl.getGameTime()) {
+			if (cache.sl == sl && cache.time == sl.getGameTime() && cache.owner() == user) {
 				return cache;
 			}
 		}

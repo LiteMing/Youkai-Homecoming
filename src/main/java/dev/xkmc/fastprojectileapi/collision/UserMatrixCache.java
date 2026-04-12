@@ -62,8 +62,7 @@ public class UserMatrixCache implements IEntityCache {
 		if (ix >= 0 && ix < R * 2 + 1 && iy >= 0 && iy < R * 2 + 1 && iz >= 0 && iz < R * 2 + 1) {
 			return cache[ix][iy][iz];
 		}
-		var section = parent.map.get(x, y, z);
-		return section == null ? null : new OwnedSectionCache(section, owner);
+		return null;
 	}
 
 	public void preheat(AABB aabb) {
@@ -82,6 +81,10 @@ public class UserMatrixCache implements IEntityCache {
 		}
 	}
 
+	/**
+	 * Async query path. Only consumes preheated section snapshots created on the main thread.
+	 * Do not access live world/entity state or construct new cache entries here.
+	 */
 	public List<EntityInfo> asyncForEach(AABB aabb, HitTestType filter) {
 		int x0 = (((int) aabb.minX) >> 4) - 1;
 		int y0 = (((int) aabb.minY) >> 4) - 1;

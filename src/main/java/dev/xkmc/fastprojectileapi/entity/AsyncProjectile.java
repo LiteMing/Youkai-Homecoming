@@ -65,12 +65,24 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		return new MoverInfo.OwnerInfo(null, null);
 	}
 
+	/**
+	 * Async stage. Only compute from TickData snapshots captured during beginTick.
+	 * Do not read live world/entity state or perform side effects here.
+	 */
 	protected void planMove(TickData data) {
 	}
 
+	/**
+	 * Async stage. Only refine the precomputed move using already-safe inputs.
+	 * Do not read live world/entity state or perform side effects here.
+	 */
 	protected void trimMove(TickData data) {
 	}
 
+	/**
+	 * Async stage. Only mark preheat ranges for later main-thread cache creation.
+	 * Do not query world/entity live state here.
+	 */
 	protected void planPreheatRange(TickData data, UserMatrixCache cache) {
 	}
 
@@ -84,6 +96,10 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		return (aabb, type) -> java.util.List.of();
 	}
 
+	/**
+	 * Async stage. Consume only precomputed movement data and preheated entity snapshots.
+	 * Do not access live world/entity state or trigger gameplay side effects here.
+	 */
 	protected void collectCollisionInput(TickData data, IEntityIterator iterator) {
 	}
 

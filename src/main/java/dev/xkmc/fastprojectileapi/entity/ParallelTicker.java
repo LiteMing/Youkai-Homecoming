@@ -14,8 +14,9 @@ import java.util.function.BooleanSupplier;
 public class ParallelTicker {
 
 	private static final int ASYNC_THRESHOLD = 64;
+	private static final int CPU_COUNT = Runtime.getRuntime().availableProcessors();
 	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(
-			Math.max(1, Runtime.getRuntime().availableProcessors()),
+			Math.max(1, CPU_COUNT),
 			r -> {
 				Thread t = new Thread(r, "ParallelTicker-Worker");
 				t.setDaemon(true);
@@ -111,24 +112,31 @@ public class ParallelTicker {
 	}
 
 	private static long runStageAsync(ArrayList<AsyncProjectile> active, BooleanSupplier shouldStop, Stage stage) {
-		long start = System.nanoTime();
-		List<Callable<Void>> tasks = new ArrayList<>(active.size());
-		for (var e : active) {
-			if (e.tickData.stopTick) continue;
-			var e0 = e;
+		int n = active.size();
+		int numWorkers = Math.min(CPU_COUNT, n);
+		int chunkSize = (n + numWorkers - 1) / numWorkers;
+		List<Callable<Void>> tasks = new ArrayList<>(numWorkers);
+		for (int w = 0; w < numWorkers; w++) {
+			int from = w * chunkSize;
+			int to = Math.min(from + chunkSize, n);
 			tasks.add(() -> {
-				if (shouldStop.getAsBoolean()) return null;
-				stage.run(e0, e0.tickData);
+				for (int i = from; i < to; i++) {
+					if (shouldStop.getAsBoolean()) return null;
+					var e = active.get(i);
+					var data = e.tickData;
+					if (data.stopTick) continue;
+					stage.run(e, data);
+				}
 				return null;
 			});
 		}
+		long start = System.nanoTime();
 		try {
 			List<Future<Void>> futures = EXECUTOR.invokeAll(tasks);
 			for (var f : futures) {
 				f.get();
 			}
 		} catch (Exception ex) {
-			// fallback to serial on failure
 			for (var e : active) {
 				if (shouldStop.getAsBoolean()) break;
 				var data = e.tickData;

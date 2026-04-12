@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.fastprojectileapi.entity.AsyncProjectile;
 import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
@@ -25,7 +26,6 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.UUID;
 
 /**
@@ -44,8 +44,8 @@ public class DanmakuProxyEntity extends PathfinderMob
 
 	// ==================== Virtual danmaku infrastructure (copied from YoukaiEntity) ====================
 
-	private final LinkedList<SimplifiedProjectile> allDanmakus = new LinkedList<>();
-	private ArrayList<SimplifiedProjectile> temp;
+	private final ArrayList<AsyncProjectile> allDanmakus = new ArrayList<>();
+	private ArrayList<AsyncProjectile> temp;
 	private final ArrayList<SimplifiedProjectile> toBeSent = new ArrayList<>();
 	private boolean removeDanmaku = false;
 	private final UserCacheHolder cache = new UserCacheHolder();
@@ -203,7 +203,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 				e.afterExpiry.setup(this);
 			}
 		}
-		if (danmaku instanceof SimplifiedProjectile proj) {
+		if (danmaku instanceof AsyncProjectile proj) {
 			if (temp != null) temp.add(proj);
 			else allDanmakus.add(proj);
 			toBeSent.add(proj);

@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
 import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
+import dev.xkmc.fastprojectileapi.entity.AsyncProjectile;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleHolder;
@@ -61,7 +62,6 @@ import net.minecraftforge.common.MinecraftForge;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.Objects;
 
 @SerialClass
@@ -605,12 +605,12 @@ public abstract class YoukaiEntity extends PathfinderMob
 		}
 	}
 
-	private final LinkedList<SimplifiedProjectile> allDanmakus = new LinkedList<>();
-	private ArrayList<SimplifiedProjectile> temp;
+	private final ArrayList<AsyncProjectile> allDanmakus = new ArrayList<>();
+	private ArrayList<AsyncProjectile> temp;
 	private final ArrayList<SimplifiedProjectile> toBeSent = new ArrayList<>();
 
 	public void shoot(Entity danmaku) {
-		if (danmaku instanceof SimplifiedProjectile proj) {
+		if (danmaku instanceof AsyncProjectile proj) {
 			if (temp != null) temp.add(proj);
 			else allDanmakus.add(proj);
 			toBeSent.add(proj);

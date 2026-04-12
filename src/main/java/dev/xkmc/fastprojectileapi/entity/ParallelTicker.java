@@ -32,27 +32,15 @@ public class ParallelTicker {
 
 	private static final ThreadLocal<StageTrace> TRACE = ThreadLocal.withInitial(StageTrace::new);
 
-	public static void tickAll(Iterable<SimplifiedProjectile> all, BooleanSupplier shouldStop) {
+	public static void tickAll(ArrayList<AsyncProjectile> all, BooleanSupplier shouldStop) {
 		tickAll(all, shouldStop, null);
 	}
 
-	public static void tickAll(Iterable<SimplifiedProjectile> all, BooleanSupplier shouldStop, UserMatrixCache preheatCache) {
+	public static void tickAll(ArrayList<AsyncProjectile> all, BooleanSupplier shouldStop, UserMatrixCache preheatCache) {
 		StageTrace trace = TRACE.get();
 		trace.reset();
 		long totalStart = System.nanoTime();
-		ArrayList<AsyncProjectile> active = new ArrayList<>();
-		for (var e : all) {
-			if (e.isAddedToWorld() && !e.isRemoved()) continue;
-			if (!e.isValid()) continue;
-			if (e instanceof AsyncProjectile async) {
-				active.add(async);
-			} else {
-				e.setOldPosAndRot();
-				++e.tickCount;
-				e.tick();
-			}
-			if (shouldStop.getAsBoolean()) return;
-		}
+		ArrayList<AsyncProjectile> active = new ArrayList<>(all);
 		trace.projectileCount = active.size();
 		boolean useAsync = ENABLE_ASYNC && active.size() >= ASYNC_THRESHOLD && !EXECUTOR.isShutdown();
 		trace.asyncUsed = useAsync;

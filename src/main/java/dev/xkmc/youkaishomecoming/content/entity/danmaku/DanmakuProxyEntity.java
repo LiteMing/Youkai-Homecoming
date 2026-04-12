@@ -213,9 +213,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	private void tickDanmaku() {
+		if (!(level() instanceof ServerLevel sl)) return;
 		removeDanmaku = false;
 		temp = new ArrayList<>();
-		var preheatCache = level() instanceof ServerLevel sl ? cache.get(sl, shooter()) : null;
+		var preheatCache = cache.get(sl, shooter());
 		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache);
 		if (!removeDanmaku) {
 			var itr = allDanmakus.iterator();

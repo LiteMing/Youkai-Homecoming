@@ -43,9 +43,9 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		if (data.stopTick) return;
 		collectCollisionInput(data, getEntityIterator());
 		if (data.stopTick) return;
-		resolveCollision(data);
-		if (data.stopTick) return;
 		applyMoveTick(data);
+		if (data.stopTick) return;
+		resolveCollision(data);
 		if (data.stopTick) return;
 		finishTick(data);
 	}

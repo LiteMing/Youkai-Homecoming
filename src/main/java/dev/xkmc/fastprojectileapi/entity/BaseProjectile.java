@@ -88,13 +88,15 @@ public abstract class BaseProjectile extends AsyncProjectile {
 
 	@Override
 	protected void applyMoveTick(TickData data) {
-		commitPreMoveEffects(data);
-		applyPlannedMove(data);
+		if (data.plannedMovement != null) {
+			applyMove(data.plannedMovement);
+		}
 	}
 
 	@Override
 	protected void finishTick(TickData data) {
 		super.finishTick(data);
+		commitPreMoveEffects(data);
 		if (tickCount >= lifetime()) {
 			if (level() instanceof ServerLevel) {
 				terminate();
@@ -161,14 +163,6 @@ public abstract class BaseProjectile extends AsyncProjectile {
 
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
 		return ProjectileMovement.of(vec);
-	}
-
-	protected void applyPlannedMove(TickData data) {
-		if (data.plannedMovement != null) {
-			applyMove(data.plannedMovement);
-		} else {
-			projectileMove();
-		}
 	}
 
 	protected void commitPreMoveEffects(TickData data) {

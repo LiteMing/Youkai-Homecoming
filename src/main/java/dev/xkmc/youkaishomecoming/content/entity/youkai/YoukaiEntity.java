@@ -622,9 +622,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 	private boolean removeDanmaku = false;
 
 	private void tickDanmaku() {
+		if (!(level() instanceof ServerLevel sl)) return;
 		removeDanmaku = false;
 		temp = new ArrayList<>();
-		var preheatCache = level() instanceof ServerLevel sl ? cache.get(sl, self()) : null;
+		var preheatCache = cache.get(sl, self());
 		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache);
 		if (!removeDanmaku) {
 			var itr = allDanmakus.iterator();

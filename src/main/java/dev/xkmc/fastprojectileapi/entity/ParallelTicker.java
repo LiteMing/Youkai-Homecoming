@@ -54,21 +54,21 @@ public class ParallelTicker {
 				e.planPreheatRange(data, preheatCache);
 			}, useAsync);
 
-		trace.trimNanos = runStage(active, shouldStop, (e, data) -> e.trimMove(data), null);
+		trace.trimNanos = runStage(active, shouldStop, (e, data) -> e.trimMove(data));
 		long preheatStart = System.nanoTime();
 		preheatCache.flushPreheat();
 		trace.preheatNanos = System.nanoTime() - preheatStart;
 
 		long collisionStart = System.nanoTime();
 		runStageAsync(active, shouldStop, (e, data) -> e.collectCollisionInput(data, preheatCache::asyncForEach), useAsync);
-		runStage(active, shouldStop, (e, data) -> e.applyMoveTick(data), null);
+		runStage(active, shouldStop, (e, data) -> e.applyMoveTick(data));
 		trace.collisionInputNanos = System.nanoTime() - collisionStart;
 
-		trace.resolveNanos = runStage(active, shouldStop, (e, data) -> e.resolveCollision(data), (data, result) -> {
+		trace.resolveNanos = runStageWithAfter(active, shouldStop, (e, data) -> e.resolveCollision(data), (data, result) -> {
 			result.hitCount += data.hitEntities.size();
 			result.grazeCount += data.grazeCount;
 		});
-		trace.finishNanos = runStage(active, shouldStop, (e, data) -> e.finishTick(data), (data, result) -> {
+		trace.finishNanos = runStageWithAfter(active, shouldStop, (e, data) -> e.finishTick(data), (data, result) -> {
 			result.candidateCount += data.candidateCount;
 			if (data.removed) result.removedCount++;
 		});
@@ -80,23 +80,36 @@ public class ParallelTicker {
 		return TRACE.get();
 	}
 
-	private static long runStage(ArrayList<AsyncProjectile> active, BooleanSupplier shouldStop, Stage stage, AfterStage afterStage) {
+	private static long runStage(ArrayList<AsyncProjectile> active, BooleanSupplier shouldStop, Stage stage) {
+		if (shouldStop.getAsBoolean()) return 0L;
+		long start = System.nanoTime();
+		int n = active.size();
+		for (int i = 0; i < n; i++) {
+			var e = active.get(i);
+			var data = e.tickData;
+			if (!data.stopTick) stage.run(e, data);
+		}
+		return System.nanoTime() - start;
+	}
+
+	private static long runStageWithAfter(ArrayList<AsyncProjectile> active, BooleanSupplier shouldStop, Stage stage, AfterStage afterStage) {
+		if (shouldStop.getAsBoolean()) return 0L;
 		long start = System.nanoTime();
 		StageTrace trace = TRACE.get();
-		for (var e : active) {
-			if (shouldStop.getAsBoolean()) return System.nanoTime() - start;
+		int n = active.size();
+		for (int i = 0; i < n; i++) {
+			var e = active.get(i);
 			var data = e.tickData;
 			if (data.stopTick) continue;
 			stage.run(e, data);
-			if (afterStage != null) {
-				afterStage.run(data, trace);
-			}
+			afterStage.run(data, trace);
 		}
 		return System.nanoTime() - start;
 	}
 
 	private static long runStageAsync(ArrayList<AsyncProjectile> active, BooleanSupplier shouldStop, Stage stage, boolean async) {
-		if (!async) return runStage(active, shouldStop, stage, null);
+		if (!async) return runStage(active, shouldStop, stage);
+		if (shouldStop.getAsBoolean()) return 0L;
 		int n = active.size();
 		int numWorkers = Math.min(CPU_COUNT, n);
 		int chunkSize = (n + numWorkers - 1) / numWorkers;
@@ -106,27 +119,31 @@ public class ParallelTicker {
 			int to = Math.min(from + chunkSize, n);
 			tasks.add(() -> {
 				for (int i = from; i < to; i++) {
-					if (shouldStop.getAsBoolean()) return null;
 					var e = active.get(i);
 					var data = e.tickData;
-					if (data.stopTick) continue;
-					stage.run(e, data);
+					if (!data.stopTick) stage.run(e, data);
 				}
 				return null;
 			});
 		}
 		long start = System.nanoTime();
+		List<Future<Void>> futures;
 		try {
-			List<Future<Void>> futures = EXECUTOR.invokeAll(tasks);
-			for (var f : futures) {
-				f.get();
-			}
-		} catch (Exception ex) {
-			for (var e : active) {
-				if (shouldStop.getAsBoolean()) break;
-				var data = e.tickData;
-				if (data.stopTick) continue;
-				stage.run(e, data);
+			futures = EXECUTOR.invokeAll(tasks);
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			return runStage(active, shouldStop, stage);
+		}
+		for (int w = 0; w < numWorkers; w++) {
+			try {
+				futures.get(w).get();
+			} catch (Exception ex) {
+				int from = w * chunkSize, to = Math.min(from + chunkSize, n);
+				for (int i = from; i < to; i++) {
+					var e = active.get(i);
+					var data = e.tickData;
+					if (!data.stopTick) stage.run(e, data);
+				}
 			}
 		}
 		return System.nanoTime() - start;

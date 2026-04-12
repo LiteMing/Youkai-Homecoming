@@ -219,14 +219,14 @@ public class DanmakuProxyEntity extends PathfinderMob
 		var preheatCache = cache.get(sl, shooter());
 		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache);
 		if (!removeDanmaku) {
-			var itr = allDanmakus.iterator();
-			while (itr.hasNext()) {
-				var e = itr.next();
-				if (e.isAddedToWorld() && !e.isRemoved()) continue;
-				if (!e.isValid()) {
-					itr.remove();
+			int w = 0;
+			for (int i = 0; i < allDanmakus.size(); i++) {
+				var e = allDanmakus.get(i);
+				if ((e.isAddedToWorld() && !e.isRemoved()) || e.isValid()) {
+					allDanmakus.set(w++, e);
 				}
 			}
+			allDanmakus.subList(w, allDanmakus.size()).clear();
 			allDanmakus.addAll(temp);
 			DanmakuManager.send(this, toBeSent);
 		}

@@ -147,9 +147,11 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		public int grazeCount;
 		public boolean removed;
 		public boolean stopTick;
+		public boolean planPrefetched;
 
 		public void reset() {
 			preheatCache = null;
+			planPrefetched = false;
 			moveSrc = null;
 			inputVelocity = null;
 			plannedMovement = null;

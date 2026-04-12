@@ -62,7 +62,9 @@ import net.minecraftforge.common.MinecraftForge;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Future;
 
 @SerialClass
 public abstract class YoukaiEntity extends PathfinderMob
@@ -620,13 +622,17 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	private boolean removeDanmaku = false;
+	@Nullable
+	private List<Future<Void>> prefetchedPlan;
 
 	private void tickDanmaku() {
 		if (!(level() instanceof ServerLevel sl)) return;
 		removeDanmaku = false;
 		temp = new ArrayList<>();
 		var preheatCache = cache.get(sl, self());
-		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache);
+		var plan = prefetchedPlan;
+		prefetchedPlan = null;
+		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache, plan);
 		if (!removeDanmaku) {
 			var itr = allDanmakus.iterator();
 			while (itr.hasNext()) {
@@ -638,6 +644,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 			}
 			allDanmakus.addAll(temp);
 			DanmakuManager.send(this, toBeSent);
+			prefetchedPlan = ParallelTicker.prefetchPlan(allDanmakus);
 		}
 		temp = null;
 		toBeSent.clear();
@@ -651,6 +658,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 		}
 		allDanmakus.clear();
 		removeDanmaku = true;
+		prefetchedPlan = null;
 		DanmakuManager.flushErases();
 	}
 

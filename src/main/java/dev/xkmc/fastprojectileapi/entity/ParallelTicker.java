@@ -4,6 +4,8 @@ import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -32,7 +34,40 @@ public class ParallelTicker {
 
 	private static final ThreadLocal<StageTrace> TRACE = ThreadLocal.withInitial(StageTrace::new);
 
+	@Nullable
+	public static List<Future<Void>> prefetchPlan(ArrayList<AsyncProjectile> all) {
+		if (!ENABLE_ASYNC || all.size() < ASYNC_THRESHOLD || EXECUTOR.isShutdown()) return null;
+		ArrayList<AsyncProjectile> snapshot = new ArrayList<>(all);
+		int n = snapshot.size();
+		int numWorkers = Math.min(CPU_COUNT, n);
+		int chunkSize = (n + numWorkers - 1) / numWorkers;
+		List<Future<Void>> futures = new ArrayList<>(numWorkers);
+		for (int w = 0; w < numWorkers; w++) {
+			int from = w * chunkSize;
+			int to = Math.min(from + chunkSize, n);
+			futures.add(EXECUTOR.submit(() -> {
+				for (int i = from; i < to; i++) {
+					var e = snapshot.get(i);
+					var data = e.tickData;
+					e.setOldPosAndRot();
+					++e.tickCount;
+					data.reset();
+					data.ownerInfo = e.snapshotOwnerInfo(e.getOwner());
+					e.planMove(data);
+					data.planPrefetched = true;
+				}
+				return null;
+			}));
+		}
+		return futures;
+	}
+
 	public static void tickAll(ArrayList<AsyncProjectile> all, BooleanSupplier shouldStop, UserMatrixCache preheatCache) {
+		tickAll(all, shouldStop, preheatCache, null);
+	}
+
+	public static void tickAll(ArrayList<AsyncProjectile> all, BooleanSupplier shouldStop,
+							   UserMatrixCache preheatCache, @Nullable List<Future<Void>> prefetchedPlan) {
 		StageTrace trace = TRACE.get();
 		trace.reset();
 		long totalStart = System.nanoTime();
@@ -44,15 +79,48 @@ public class ParallelTicker {
 		MoverInfo.OwnerInfo sharedOwnerInfo = active.isEmpty()
 				? null : active.get(0).snapshotOwnerInfo(active.get(0).getOwner());
 
-		trace.planNanos = runStageAsync(active, shouldStop, (e, data) -> {
-				e.setOldPosAndRot();
-				++e.tickCount;
-				data.reset();
-				data.preheatCache = preheatCache;
-				e.beginTick(data, sharedOwnerInfo);
-				e.planMove(data);
-				e.planPreheatRange(data, preheatCache);
-			}, useAsync);
+		if (prefetchedPlan != null) {
+			long planStart = System.nanoTime();
+			try {
+				for (var f : prefetchedPlan) f.get();
+			} catch (Exception ex) {
+				// prefetch failed: run plan serially as fallback
+				for (var e : active) {
+					if (!e.tickData.planPrefetched) {
+						e.setOldPosAndRot();
+						++e.tickCount;
+						e.tickData.reset();
+						e.tickData.ownerInfo = sharedOwnerInfo;
+						e.planMove(e.tickData);
+					}
+				}
+			}
+			// beginTick + planPreheatRange; for between-tick new entities, run full plan first
+			trace.planNanos = System.nanoTime() - planStart;
+			trace.planNanos += runStageAsync(active, shouldStop, (e, data) -> {
+					if (!data.planPrefetched) {
+						// entity added to allDanmakus after prefetch was taken
+						e.setOldPosAndRot();
+						++e.tickCount;
+						data.reset();
+						data.ownerInfo = sharedOwnerInfo;
+						e.planMove(data);
+					}
+					data.preheatCache = preheatCache;
+					e.beginTick(data, sharedOwnerInfo);
+					e.planPreheatRange(data, preheatCache);
+				}, useAsync);
+		} else {
+			trace.planNanos = runStageAsync(active, shouldStop, (e, data) -> {
+					e.setOldPosAndRot();
+					++e.tickCount;
+					data.reset();
+					data.preheatCache = preheatCache;
+					e.beginTick(data, sharedOwnerInfo);
+					e.planMove(data);
+					e.planPreheatRange(data, preheatCache);
+				}, useAsync);
+		}
 
 		trace.trimNanos = runStage(active, shouldStop, (e, data) -> e.trimMove(data), null);
 		long preheatStart = System.nanoTime();

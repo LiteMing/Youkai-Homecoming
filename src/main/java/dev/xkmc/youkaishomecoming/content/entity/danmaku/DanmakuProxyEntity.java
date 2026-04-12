@@ -26,7 +26,9 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Future;
 
 /**
  * A lightweight invisible proxy entity that acts as a danmaku emitter on behalf of a player.
@@ -48,6 +50,8 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private ArrayList<AsyncProjectile> temp;
 	private final ArrayList<SimplifiedProjectile> toBeSent = new ArrayList<>();
 	private boolean removeDanmaku = false;
+	@Nullable
+	private List<Future<Void>> prefetchedPlan;
 	private final UserCacheHolder cache = new UserCacheHolder();
 
 	// ==================== Owner binding ====================
@@ -217,7 +221,9 @@ public class DanmakuProxyEntity extends PathfinderMob
 		removeDanmaku = false;
 		temp = new ArrayList<>();
 		var preheatCache = cache.get(sl, shooter());
-		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache);
+		var plan = prefetchedPlan;
+		prefetchedPlan = null;
+		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache, plan);
 		if (!removeDanmaku) {
 			var itr = allDanmakus.iterator();
 			while (itr.hasNext()) {
@@ -229,6 +235,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 			}
 			allDanmakus.addAll(temp);
 			DanmakuManager.send(this, toBeSent);
+			prefetchedPlan = ParallelTicker.prefetchPlan(allDanmakus);
 		}
 		temp = null;
 		toBeSent.clear();

@@ -100,6 +100,7 @@ public class ParallelTicker {
 			result.hitCount += data.hitEntities.size();
 			result.grazeCount += data.grazeCount;
 		});
+		trace.applyMoveNanos = runStage(active, shouldStop, (e, data) -> e.applyMoveTick(data), null);
 		trace.finishNanos = runStage(active, shouldStop, (e, data) -> e.finishTick(data), (data, result) -> {
 			result.candidateCount += data.candidateCount;
 			if (data.removed) result.removedCount++;

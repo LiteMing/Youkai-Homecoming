@@ -87,12 +87,16 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	}
 
 	@Override
+	protected void applyMoveTick(TickData data) {
+		commitPreMoveEffects(data);
+		applyPlannedMove(data);
+	}
+
+	@Override
 	protected void finishTick(TickData data) {
 		super.finishTick(data);
 		if (tickCount >= lifetime()) {
 			if (level() instanceof ServerLevel) {
-				commitPreMoveEffects(data);
-				applyPlannedMove(data);
 				terminate();
 				data.removed = true;
 				markErased(false);
@@ -105,8 +109,6 @@ public abstract class BaseProjectile extends AsyncProjectile {
 			}
 			return;
 		}
-		commitPreMoveEffects(data);
-		applyPlannedMove(data);
 		if (level() instanceof ServerLevel sl) {
 			if (!level().hasChunk(blockPosition().getX() >> 4, blockPosition().getZ() >> 4) ||
 					isAddedToWorld() && !EntityStorageHelper.isTicking(sl, this)) {

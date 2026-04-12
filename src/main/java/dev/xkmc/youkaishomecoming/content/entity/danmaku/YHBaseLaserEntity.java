@@ -140,9 +140,13 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	@Override
+	protected void applyMoveTick(TickData data) {
+		applyMove(data.plannedMovement == null ? computeMove() : data.plannedMovement);
+	}
+
+	@Override
 	protected void finishTick(TickData data) {
 		super.finishTick(data);
-		applyMove(data.plannedMovement == null ? computeMove() : data.plannedMovement);
 		if (!level().isClientSide() && tickCount > life) {
 			discard();
 		}

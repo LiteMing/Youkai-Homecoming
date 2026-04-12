@@ -45,6 +45,8 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		if (data.stopTick) return;
 		resolveCollision(data);
 		if (data.stopTick) return;
+		applyMoveTick(data);
+		if (data.stopTick) return;
 		finishTick(data);
 	}
 
@@ -108,6 +110,9 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	}
 
 	protected void resolveCollision(TickData data) {
+	}
+
+	protected void applyMoveTick(TickData data) {
 	}
 
 	protected void finishTick(TickData data) {

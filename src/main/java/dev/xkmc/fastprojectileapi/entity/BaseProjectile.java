@@ -110,8 +110,9 @@ public abstract class BaseProjectile extends AsyncProjectile {
 			return;
 		}
 		if (level() instanceof ServerLevel sl) {
-			if (!level().hasChunk(blockPosition().getX() >> 4, blockPosition().getZ() >> 4) ||
-					isAddedToWorld() && !EntityStorageHelper.isTicking(sl, this)) {
+			int cx = blockPosition().getX() >> 4, cz = blockPosition().getZ() >> 4;
+			boolean loaded = data.preheatCache != null ? data.preheatCache.hasChunk(cx, cz) : sl.hasChunk(cx, cz);
+			if (!loaded || isAddedToWorld() && !EntityStorageHelper.isTicking(sl, this)) {
 				data.removed = true;
 				markErased(false);
 			}

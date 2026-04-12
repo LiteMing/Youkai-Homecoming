@@ -22,6 +22,10 @@ public class UserMatrixCache implements IEntityCache {
 	private final OwnedSectionCache[][][] cache;
 	private final int x0, y0, z0;
 	private final AtomicBitSet preheated;
+	@Nullable
+	private boolean[][] hasChunkQueried;
+	@Nullable
+	private boolean[][] hasChunkResult;
 
 	public UserMatrixCache(ServerLevel sl, LivingEntity owner, int x0, int y0, int z0) {
 		this.time = sl.getGameTime();
@@ -34,6 +38,25 @@ public class UserMatrixCache implements IEntityCache {
 		int d = R * 2 + 1;
 		cache = new OwnedSectionCache[d][d][d];
 		preheated = new AtomicBitSet(d * d * d);
+	}
+
+	public boolean hasChunk(int cx, int cz) {
+		int dx = cx - x0;
+		int dz = cz - z0;
+		if (dx < -R || dx > R || dz < -R || dz > R) {
+			return sl.hasChunk(cx, cz);
+		}
+		if (hasChunkQueried == null) {
+			int d = R * 2 + 1;
+			hasChunkQueried = new boolean[d][d];
+			hasChunkResult = new boolean[d][d];
+		}
+		int ix = dx + R, iz = dz + R;
+		if (!hasChunkQueried[ix][iz]) {
+			hasChunkQueried[ix][iz] = true;
+			hasChunkResult[ix][iz] = sl.hasChunk(cx, cz);
+		}
+		return hasChunkResult[ix][iz];
 	}
 
 	public SectionCache get(int x, int y, int z) {

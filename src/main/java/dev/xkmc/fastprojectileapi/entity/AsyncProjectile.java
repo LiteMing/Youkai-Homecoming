@@ -128,6 +128,8 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	public static class TickData {
 
 		@Nullable
+		public UserMatrixCache preheatCache;
+		@Nullable
 		public Vec3 moveSrc;
 		@Nullable
 		public Vec3 inputVelocity;
@@ -147,6 +149,7 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		public boolean stopTick;
 
 		public void reset() {
+			preheatCache = null;
 			moveSrc = null;
 			inputVelocity = null;
 			plannedMovement = null;

@@ -53,6 +53,7 @@ public class ParallelTicker {
 					e.setOldPosAndRot();
 					++e.tickCount;
 					data.reset();
+					data.preheatCache = preheatCache;
 					e.beginTick(data, sharedOwnerInfo);
 					e.planMove(data);
 					e.planPreheatRange(data, preheatCache);
@@ -61,6 +62,7 @@ public class ParallelTicker {
 					e.setOldPosAndRot();
 					++e.tickCount;
 					data.reset();
+					data.preheatCache = preheatCache;
 					e.beginTick(data, sharedOwnerInfo);
 					e.planMove(data);
 					e.planPreheatRange(data, preheatCache);

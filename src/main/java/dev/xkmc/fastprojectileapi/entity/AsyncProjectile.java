@@ -49,8 +49,12 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 	}
 
 	protected void beginTick(TickData data) {
+		beginTick(data, null);
+	}
+
+	protected void beginTick(TickData data, MoverInfo.OwnerInfo sharedOwnerInfo) {
 		super.tick();
-		data.ownerInfo = snapshotOwnerInfo(getOwner());
+		data.ownerInfo = sharedOwnerInfo != null ? sharedOwnerInfo : snapshotOwnerInfo(getOwner());
 	}
 
 	protected MoverInfo.OwnerInfo snapshotOwnerInfo(@Nullable Entity owner) {

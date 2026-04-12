@@ -2,6 +2,7 @@ package dev.xkmc.fastprojectileapi.entity;
 
 import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
+import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,14 +58,17 @@ public class ParallelTicker {
 		boolean useAsync = ENABLE_ASYNC && active.size() >= ASYNC_THRESHOLD && !EXECUTOR.isShutdown();
 		trace.asyncUsed = useAsync;
 
-		trace.beginNanos = runStage(active, shouldStop, (e, data) -> e.beginTick(data), null);
+		MoverInfo.OwnerInfo sharedOwnerInfo = preheatCache != null && !active.isEmpty()
+				? active.get(0).snapshotOwnerInfo(active.get(0).getOwner()) : null;
 
 		trace.moveNanos = useAsync
 				? runStageAsync(active, shouldStop, (e, data) -> {
+					e.beginTick(data, sharedOwnerInfo);
 					e.planMove(data);
 					e.planPreheatRange(data, preheatCache);
 				})
 				: runStage(active, shouldStop, (e, data) -> {
+					e.beginTick(data, sharedOwnerInfo);
 					e.planMove(data);
 					e.planPreheatRange(data, preheatCache);
 				}, null);

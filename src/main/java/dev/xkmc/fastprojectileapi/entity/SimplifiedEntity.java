@@ -27,11 +27,8 @@ public abstract class SimplifiedEntity extends Entity {
 
 	@Override
 	public void baseTick() {
-		this.walkDistO = this.walkDist;
 		this.xRotO = this.getXRot();
 		this.yRotO = this.getYRot();
-		this.checkBelowWorld();
-		this.firstTick = false;
 	}
 
 	protected boolean updateInWaterStateAndDoFluidPushing() {

@@ -13,6 +13,11 @@ import java.util.function.BooleanSupplier;
 
 public class ParallelTicker {
 
+	public static boolean ENABLE_ASYNC = true;
+	public static boolean ENABLE_LOG = false;
+	public static int LOG_INTERVAL = 1;
+	static int logTickCounter = 0;
+
 	private static final int ASYNC_THRESHOLD = 64;
 	private static final int CPU_COUNT = Runtime.getRuntime().availableProcessors();
 	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(
@@ -49,7 +54,8 @@ public class ParallelTicker {
 			}
 			if (shouldStop.getAsBoolean()) return;
 		}
-		boolean useAsync = active.size() >= ASYNC_THRESHOLD && !EXECUTOR.isShutdown();
+		boolean useAsync = ENABLE_ASYNC && active.size() >= ASYNC_THRESHOLD && !EXECUTOR.isShutdown();
+		trace.asyncUsed = useAsync;
 
 		trace.beginNanos = runStage(active, shouldStop, (e, data) -> e.beginTick(data), null);
 
@@ -90,6 +96,7 @@ public class ParallelTicker {
 			if (data.removed) result.removedCount++;
 		});
 		trace.totalNanos = System.nanoTime() - totalStart;
+		trace.log();
 	}
 
 	public static StageTrace currentTrace() {

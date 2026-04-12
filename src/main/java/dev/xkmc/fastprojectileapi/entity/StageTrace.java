@@ -1,6 +1,11 @@
 package dev.xkmc.fastprojectileapi.entity;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class StageTrace {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger("ParallelTicker");
 
 	public long beginNanos;
 	public long moveNanos;
@@ -18,6 +23,8 @@ public class StageTrace {
 	public int grazeCount;
 	public int removedCount;
 
+	public boolean asyncUsed;
+
 	public void reset() {
 		beginNanos = 0L;
 		moveNanos = 0L;
@@ -33,6 +40,28 @@ public class StageTrace {
 		hitCount = 0;
 		grazeCount = 0;
 		removedCount = 0;
+		asyncUsed = false;
+	}
+
+	public void log() {
+		if (!ParallelTicker.ENABLE_LOG || totalNanos <= 0 || projectileCount == 0) return;
+		ParallelTicker.logTickCounter++;
+		if (ParallelTicker.logTickCounter < ParallelTicker.LOG_INTERVAL) return;
+		ParallelTicker.logTickCounter = 0;
+		LOGGER.info("[ParallelTicker] mode={} count={} total={}ms | begin={} plan={} preheat={} collision={} resolve={} finish={}ms | candidates={} hits={} graze={} removed={}",
+				asyncUsed ? "ASYNC" : "SERIAL",
+				projectileCount,
+				totalNanos / 1_000_000,
+				beginNanos / 1_000_000,
+				moveNanos / 1_000_000,
+				preheatNanos / 1_000_000,
+				collisionInputNanos / 1_000_000,
+				resolveNanos / 1_000_000,
+				finishNanos / 1_000_000,
+				candidateCount,
+				hitCount,
+				grazeCount,
+				removedCount);
 	}
 
 }

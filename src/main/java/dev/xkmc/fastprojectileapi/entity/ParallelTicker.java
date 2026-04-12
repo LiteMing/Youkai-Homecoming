@@ -4,9 +4,24 @@ import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.BooleanSupplier;
 
 public class ParallelTicker {
+
+	private static final int ASYNC_THRESHOLD = 64;
+	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(
+			Math.max(1, Runtime.getRuntime().availableProcessors()),
+			r -> {
+				Thread t = new Thread(r, "ParallelTicker-Worker");
+				t.setDaemon(true);
+				return t;
+			}
+	);
 
 	private static final ThreadLocal<StageTrace> TRACE = ThreadLocal.withInitial(StageTrace::new);
 
@@ -33,11 +48,20 @@ public class ParallelTicker {
 			}
 			if (shouldStop.getAsBoolean()) return;
 		}
+		boolean useAsync = active.size() >= ASYNC_THRESHOLD && !EXECUTOR.isShutdown();
+
 		trace.beginNanos = runStage(active, shouldStop, (e, data) -> e.beginTick(data), null);
-		trace.moveNanos = runStage(active, shouldStop, (e, data) -> {
-			e.planMove(data);
-			e.planPreheatRange(data, preheatCache);
-		}, null);
+
+		trace.moveNanos = useAsync
+				? runStageAsync(active, shouldStop, (e, data) -> {
+					e.planMove(data);
+					e.planPreheatRange(data, preheatCache);
+				})
+				: runStage(active, shouldStop, (e, data) -> {
+					e.planMove(data);
+					e.planPreheatRange(data, preheatCache);
+				}, null);
+
 		trace.moveNanos += runStage(active, shouldStop, (e, data) -> e.trimMove(data), null);
 		trace.preheatNanos = 0L;
 		if (preheatCache != null) {
@@ -45,10 +69,17 @@ public class ParallelTicker {
 			preheatCache.flushPreheat();
 			trace.preheatNanos = System.nanoTime() - start;
 		}
-		trace.collisionInputNanos = runStage(active, shouldStop, (e, data) -> {
-			IEntityIterator iterator = preheatCache == null ? e.getEntityIterator() : preheatCache::asyncForEach;
-			e.collectCollisionInput(data, iterator);
-		}, null);
+
+		trace.collisionInputNanos = useAsync
+				? runStageAsync(active, shouldStop, (e, data) -> {
+					IEntityIterator iterator = preheatCache == null ? e.getEntityIterator() : preheatCache::asyncForEach;
+					e.collectCollisionInput(data, iterator);
+				})
+				: runStage(active, shouldStop, (e, data) -> {
+					IEntityIterator iterator = preheatCache == null ? e.getEntityIterator() : preheatCache::asyncForEach;
+					e.collectCollisionInput(data, iterator);
+				}, null);
+
 		trace.resolveNanos = runStage(active, shouldStop, (e, data) -> e.resolveCollision(data), (data, result) -> {
 			result.hitCount += data.hitEntities.size();
 			result.grazeCount += data.grazeCount;
@@ -74,6 +105,35 @@ public class ParallelTicker {
 			stage.run(e, data);
 			if (afterStage != null) {
 				afterStage.run(data, trace);
+			}
+		}
+		return System.nanoTime() - start;
+	}
+
+	private static long runStageAsync(ArrayList<AsyncProjectile> active, BooleanSupplier shouldStop, Stage stage) {
+		long start = System.nanoTime();
+		List<Callable<Void>> tasks = new ArrayList<>(active.size());
+		for (var e : active) {
+			if (e.tickData.stopTick) continue;
+			var e0 = e;
+			tasks.add(() -> {
+				if (shouldStop.getAsBoolean()) return null;
+				stage.run(e0, e0.tickData);
+				return null;
+			});
+		}
+		try {
+			List<Future<Void>> futures = EXECUTOR.invokeAll(tasks);
+			for (var f : futures) {
+				f.get();
+			}
+		} catch (Exception ex) {
+			// fallback to serial on failure
+			for (var e : active) {
+				if (shouldStop.getAsBoolean()) break;
+				var data = e.tickData;
+				if (data.stopTick) continue;
+				stage.run(e, data);
 			}
 		}
 		return System.nanoTime() - start;

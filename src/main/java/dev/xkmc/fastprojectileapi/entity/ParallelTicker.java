@@ -44,17 +44,16 @@ public class ParallelTicker {
 		for (var e : all) {
 			if (e.isAddedToWorld() && !e.isRemoved()) continue;
 			if (!e.isValid()) continue;
-			trace.projectileCount++;
-			e.setOldPosAndRot();
-			++e.tickCount;
 			if (e instanceof AsyncProjectile async) {
-				async.tickData.reset();
 				active.add(async);
 			} else {
+				e.setOldPosAndRot();
+				++e.tickCount;
 				e.tick();
 			}
 			if (shouldStop.getAsBoolean()) return;
 		}
+		trace.projectileCount = active.size();
 		boolean useAsync = ENABLE_ASYNC && active.size() >= ASYNC_THRESHOLD && !EXECUTOR.isShutdown();
 		trace.asyncUsed = useAsync;
 
@@ -63,11 +62,17 @@ public class ParallelTicker {
 
 		trace.moveNanos = useAsync
 				? runStageAsync(active, shouldStop, (e, data) -> {
+					e.setOldPosAndRot();
+					++e.tickCount;
+					data.reset();
 					e.beginTick(data, sharedOwnerInfo);
 					e.planMove(data);
 					e.planPreheatRange(data, preheatCache);
 				})
 				: runStage(active, shouldStop, (e, data) -> {
+					e.setOldPosAndRot();
+					++e.tickCount;
+					data.reset();
 					e.beginTick(data, sharedOwnerInfo);
 					e.planMove(data);
 					e.planPreheatRange(data, preheatCache);

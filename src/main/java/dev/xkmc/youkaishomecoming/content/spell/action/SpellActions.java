@@ -31,6 +31,7 @@ public class SpellActions {
 		register("noop", NoopAction.CODEC, NoopAction.class);
 		register("fire_danmaku", FireDanmakuAction.CODEC, FireDanmakuAction.class);
 		register("fire_laser", FireLaserAction.CODEC, FireLaserAction.class);
+		register("fire_text_danmaku", FireTextDanmakuAction.CODEC, FireTextDanmakuAction.class);
 		register("repeat", RepeatAction.CODEC, RepeatAction.class);
 		register("delay", DelayAction.CODEC, DelayAction.class);
 		register("teleport", TeleportAction.CODEC, TeleportAction.class);

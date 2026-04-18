@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
@@ -104,6 +105,17 @@ public class PreviewCardHolder implements CardHolder {
 		laser.setPos(pos);
 		laser.setupLength = type.setupLength();
 		return laser;
+	}
+
+	@Override
+	public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float len, String text, int textColor) {
+		TextDanmakuEntity danmaku = new TextDanmakuEntity(YHEntities.TEXT_DANMAKU.get(), fakeCaster, level);
+		danmaku.setPos(pos);
+		danmaku.text = text;
+		danmaku.textColor = textColor;
+		danmaku.length = len;
+		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, len, true, dir);
+		return danmaku;
 	}
 
 	@Override
@@ -380,6 +392,11 @@ public class PreviewCardHolder implements CardHolder {
 		@Override
 		public ItemLaserEntity prepareLaser(int life, Vec3 pos, Vec3 vec, float len, YHDanmaku.Laser type, DyeColor color) {
 			return holder.prepareLaser(life, pos, vec, len, type, color);
+		}
+
+		@Override
+		public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float len, String text, int textColor) {
+			return holder.prepareTextDanmaku(life, pos, dir, len, text, textColor);
 		}
 
 		@Override

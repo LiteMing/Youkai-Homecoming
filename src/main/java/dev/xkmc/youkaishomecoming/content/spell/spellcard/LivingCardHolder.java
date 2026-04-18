@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.spellcard;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -72,6 +73,17 @@ public interface LivingCardHolder extends CardHolder {
 				life, len, true, vec);
 		danmaku.setPos(pos);
 		danmaku.setupLength = type.setupLength();
+		return danmaku;
+	}
+
+	default TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float len, String text, int textColor) {
+		TextDanmakuEntity danmaku = new TextDanmakuEntity(YHEntities.TEXT_DANMAKU.get(), shooter(), self().level());
+		danmaku.setPos(pos);
+		danmaku.text = text;
+		danmaku.textColor = textColor;
+		danmaku.length = len;
+		// Use PENCIL laser damage type as default for text danmaku
+		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, len, true, dir);
 		return danmaku;
 	}
 

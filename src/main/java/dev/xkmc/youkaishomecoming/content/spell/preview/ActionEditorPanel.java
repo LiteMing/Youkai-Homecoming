@@ -169,6 +169,8 @@ public class ActionEditorPanel {
 			buildFireDanmakuRows(fda);
 		} else if (action instanceof FireLaserAction fla) {
 			buildFireLaserRows(fla);
+		} else if (action instanceof FireTextDanmakuAction ftda) {
+			buildFireTextDanmakuRows(ftda);
 		} else if (action instanceof SpellActions.ConditionalAction ca) {
 			buildConditionalRows(ca);
 		} else if (action instanceof SpellActions.SetVariable sv) {
@@ -203,6 +205,7 @@ public class ActionEditorPanel {
 	private void buildTypeSelectorRows() {
 		addFullWidthButton("Fire Danmaku", () -> selectType("fire_danmaku"));
 		addFullWidthButton("Fire Laser", () -> selectType("fire_laser"));
+		addFullWidthButton("Fire Text Danmaku", () -> selectType("fire_text_danmaku"));
 		addFullWidthButton("Conditional", () -> selectType("conditional"));
 		addFullWidthButton("Repeat", () -> selectType("repeat"));
 		addFullWidthButton("Delay", () -> selectType("delay"));
@@ -239,12 +242,18 @@ public class ActionEditorPanel {
 					OriginConfig.caster(), new AimMode.AimModes.Target(),
 					Optional.empty(), Optional.empty(), Optional.empty(),
 					Optional.empty(), 1);
-			case "fire_laser" -> new FireLaserAction(
-					YHDanmaku.Laser.LASER, DyeColor.WHITE,
-					NumberProvider.constant(60), NumberProvider.constant(80),
-					NumberProvider.constant(0), new AimMode.AimModes.Target(),
-					OriginConfig.caster(), Optional.empty(), 0, 0, 0);
-			case "conditional" -> new SpellActions.ConditionalAction(
+		case "fire_laser" -> new FireLaserAction(
+				YHDanmaku.Laser.LASER, DyeColor.WHITE,
+				NumberProvider.constant(60), NumberProvider.constant(80),
+				NumberProvider.constant(0), new AimMode.AimModes.Target(),
+				OriginConfig.caster(), Optional.empty(), 0, 0, 0);
+		case "fire_text_danmaku" -> new FireTextDanmakuAction(
+				"言弾", 0xFFFFFFFF, false,
+				NumberProvider.constant(100), NumberProvider.constant(10),
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				new AimMode.AimModes.Target(), OriginConfig.caster(),
+				Optional.empty(), 0, 0, 0, Optional.empty());
+		case "conditional" -> new SpellActions.ConditionalAction(
 					new SpellConditions.TickInterval(20, 0),
 					new ArrayList<>(), new ArrayList<>());
 			case "repeat" -> new SpellActions.RepeatAction(
@@ -465,6 +474,78 @@ public class ActionEditorPanel {
 					notifyLaser(old -> old.withDamageType(Optional.of(
 							dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.ABYSSAL))));
 		}
+	}
+
+	// --- FireTextDanmaku rows ---
+
+	private void buildFireTextDanmakuRows(FireTextDanmakuAction a) {
+		addStringRow("Text", a.text(), v ->
+				notifyTextDanmaku(old -> old.withText(v)));
+
+		addIntRow("Text Color", a.textColor(), v ->
+				notifyTextDanmaku(old -> old.withTextColor(v), false));
+
+		addBooleanRow("Per Char", a.perChar(), v ->
+				notifyTextDanmaku(old -> old.withPerChar(v)));
+
+		addNumberRow("Lifetime", a.lifetime(), v ->
+				notifyTextDanmaku(old -> old.withLifetime(v), false));
+
+		addNumberRow("Length", a.length(), v ->
+				notifyTextDanmaku(old -> old.withLength(v), false));
+
+		addNumberRow("Angle", a.angleOffset(), v ->
+				notifyTextDanmaku(old -> old.withAngleOffset(v), false));
+
+		addNumberRow("Elevation", a.elevation(), v ->
+				notifyTextDanmaku(old -> old.withElevation(v), false));
+
+		// AimMode dropdown
+		String currentAim = getAimModeType(a.aimMode());
+		addStringCycleRow("Aim Mode", AIM_MODE_TYPES, currentAim, newType -> {
+			AimMode newMode = createDefaultAimMode(newType);
+			notifyTextDanmaku(old -> old.withAimMode(newMode));
+		});
+
+		// OriginConfig mode
+		addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
+			var newOrigin = new OriginConfig(v, a.origin().offsetX(), a.origin().offsetY(),
+					a.origin().offsetZ(), a.origin().rotation());
+			notifyTextDanmaku(old -> old.withOrigin(newOrigin));
+		});
+
+		// setupTime params
+		addIntRow("Prepare", a.setupPrepare(), v ->
+				notifyTextDanmaku(old -> old.withSetupPrepare(v), false));
+		addIntRow("Start", a.setupStart(), v ->
+				notifyTextDanmaku(old -> old.withSetupStart(v), false));
+		addIntRow("End", a.setupEnd(), v ->
+				notifyTextDanmaku(old -> old.withSetupEnd(v), false));
+
+		// OriginConfig offsets
+		buildOriginOffsetRows(a.origin(), newOrigin -> notifyTextDanmaku(old -> old.withOrigin(newOrigin), false));
+
+		// Mover
+		buildMoverRows(a.mover(),
+				newMover -> notifyTextDanmaku(old -> old.withMover(newMover)),
+				newMover -> notifyTextDanmaku(old -> old.withMover(newMover), false));
+
+		// Damage type override
+		if (a.damageType().isPresent()) {
+			addEnumRow("Dmg Type", dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.values(),
+					a.damageType().get(), v ->
+					notifyTextDanmaku(old -> old.withDamageType(Optional.of(v))));
+			addFullWidthButton("[- Remove Dmg Type]", () ->
+					notifyTextDanmaku(old -> old.withDamageType(Optional.empty())));
+		} else {
+			addFullWidthButton("[+ Damage Type]", () ->
+					notifyTextDanmaku(old -> old.withDamageType(Optional.of(
+							dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.ABYSSAL))));
+		}
+	}
+
+	private void addBooleanRow(String label, boolean value, Consumer<Boolean> onChange) {
+		addBoolRow(label, value, onChange);
 	}
 
 	// --- Conditional rows ---
@@ -1232,6 +1313,27 @@ public class ActionEditorPanel {
 				clearWidgets();
 				if (newAction instanceof FireLaserAction nfla) {
 					buildFireLaserRows(nfla);
+				}
+				actionIndex = idx;
+				layoutWidgets();
+			}
+		}
+	}
+
+	private void notifyTextDanmaku(Function<FireTextDanmakuAction, SpellAction> modifier) {
+		notifyTextDanmaku(modifier, true);
+	}
+
+	private void notifyTextDanmaku(Function<FireTextDanmakuAction, SpellAction> modifier, boolean rebuild) {
+		if (currentAction instanceof FireTextDanmakuAction ftda) {
+			var newAction = modifier.apply(ftda);
+			currentAction = newAction;
+			onActionChanged.accept(newAction);
+			if (rebuild) {
+				int idx = actionIndex;
+				clearWidgets();
+				if (newAction instanceof FireTextDanmakuAction nftda) {
+					buildFireTextDanmakuRows(nftda);
 				}
 				actionIndex = idx;
 				layoutWidgets();

@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.action;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
@@ -62,6 +63,11 @@ public class TrailCardHolder implements CardHolder {
 	@Override
 	public ItemLaserEntity prepareLaser(int life, Vec3 pos, Vec3 vec, float len, YHDanmaku.Laser type, DyeColor color) {
 		return delegate.prepareLaser(life, pos, vec, len, type, color);
+	}
+
+	@Override
+	public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float len, String text, int textColor) {
+		return delegate.prepareTextDanmaku(life, pos, dir, len, text, textColor);
 	}
 
 	@Override

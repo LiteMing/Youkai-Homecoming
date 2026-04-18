@@ -29,7 +29,7 @@ import java.util.List;
 @OnlyIn(Dist.CLIENT)
 public class SpellPreviewScreen extends Screen {
 
-	private final SpellDefinition definition;
+	private SpellDefinition definition;
 	private final VirtualSpellScene scene;
 	private final OrthographicViewport viewport;
 
@@ -59,18 +59,20 @@ public class SpellPreviewScreen extends Screen {
 
 	private boolean autoReplay = true;
 
-	/** Snapshot of the definition at the time the editor was opened (for custom spell reset). */
-	private final com.google.gson.JsonElement openSnapshot;
+	/** Snapshots of visited spell definitions when this editor first saw them. */
+	private final java.util.Map<ResourceLocation, com.google.gson.JsonElement> openSnapshots = new java.util.HashMap<>();
 
 	public SpellPreviewScreen(SpellDefinition definition) {
 		super(Component.literal("Spell Preview: " + definition.id));
 		this.definition = definition;
 		this.scene = new VirtualSpellScene(definition);
+		this.scene.setOnStateChanged(this::syncSceneState);
 		this.viewport = new OrthographicViewport();
 		this.phaseList.addAll(definition.phases.keySet());
-		// Save snapshot of current state when editor opens
-		this.openSnapshot = SpellDefinition.CODEC.encodeStart(
-				com.mojang.serialization.JsonOps.INSTANCE, definition).result().orElse(null);
+		if (!phaseList.isEmpty()) {
+			this.scene.resetToPhase(phaseList.get(selectedPhaseIndex));
+		}
+		rememberOpenSnapshot(definition);
 		// Create persistent dock panels
 		this.viewportPanel = new ViewportDockPanel(viewport, scene);
 		this.helpDockPanel = new HelpDockPanel();
@@ -174,7 +176,7 @@ public class SpellPreviewScreen extends Screen {
 					}
 				},
 				this::onRequestAddAction,
-				() -> { scene.reset(); scene.play(); }
+				this::replaySelectedPhase
 		);
 		actionListPanel.loadCustomNames(definition.customNames);
 
@@ -184,10 +186,12 @@ public class SpellPreviewScreen extends Screen {
 				this::onActionEdited,
 				this::onDeleteAction
 		);
+		actionEditorPanel.setPhaseOptions(() -> List.copyOf(phaseList), this::getPhaseOptionLabel);
+		actionEditorPanel.setSpellOptions(this::getSpellOptions, this::getSpellOptionLabel);
 		actionEditorPanel.setToggleDisableCallback(() -> {
 			if (actionListPanel != null && actionListPanel.toggleSelectedDisabled()) {
 				actionEditorPanel.clearAction();
-				if (autoReplay) { scene.reset(); scene.play(); }
+				if (autoReplay) replaySelectedPhase();
 			}
 		});
 		actionEditorPanel.setVariableJumpCallback(varName -> {
@@ -199,7 +203,10 @@ public class SpellPreviewScreen extends Screen {
 		// --- Wrap in dock panel adapters ---
 		actionListDockPanel = new ActionListDockPanel(actionListPanel);
 		editorDockPanel = new EditorDockPanel(actionEditorPanel);
-		controlsDockPanel = new ControlsDockPanel(scene, viewport, this::rebuildScreen, this::cyclePhase);
+		controlsDockPanel = new ControlsDockPanel(
+				scene, viewport, this::rebuildScreen, () -> resetSelectedPhasePreview(false), this::cyclePhase,
+				this::getSelectedPhaseDisplayName, this::renameSelectedPhase, this::addPhase,
+				this::deleteSelectedPhase, this::canDeleteSelectedPhase);
 		controlsDockPanel.setWidgetCallbacks(w -> this.addRenderableWidget(w), this::removeWidget);
 		perfDockPanel = new PerfDockPanel(scene);
 
@@ -270,7 +277,7 @@ public class SpellPreviewScreen extends Screen {
 	private void onActionEdited(SpellAction newAction) {
 		if (actionListPanel != null) {
 			actionListPanel.replaceSelectedAction(newAction);
-			if (autoReplay) { scene.reset(); scene.play(); }
+			if (autoReplay) replaySelectedPhase();
 		}
 	}
 
@@ -285,14 +292,14 @@ public class SpellPreviewScreen extends Screen {
 		if (actionListPanel != null && pendingAddTarget != null) {
 			actionListPanel.insertAction(pendingAddTarget, action);
 			pendingAddTarget = null;
-			if (autoReplay) { scene.reset(); scene.play(); }
+			if (autoReplay) replaySelectedPhase();
 		}
 	}
 
 	private void onDeleteAction() {
 		if (actionListPanel != null && actionListPanel.deleteSelected()) {
 			if (actionEditorPanel != null) actionEditorPanel.clearAction();
-			if (autoReplay) { scene.reset(); scene.play(); }
+			if (autoReplay) replaySelectedPhase();
 		}
 	}
 
@@ -384,6 +391,7 @@ public class SpellPreviewScreen extends Screen {
 	private void resetToDefault() {
 		// Try built-in default first
 		SpellDefinition restored = SpellRegistry.getDefault(definition.id);
+		var openSnapshot = openSnapshots.get(definition.id);
 		if (restored == null && openSnapshot != null) {
 			// Custom spell: restore from open-time snapshot
 			restored = SpellDefinition.CODEC.parse(
@@ -391,29 +399,33 @@ public class SpellPreviewScreen extends Screen {
 		}
 		if (restored == null) return;
 
-		// Replace all phases in the current definition with restored data
-		for (var entry : restored.phases.entrySet()) {
-			var current = definition.phases.get(entry.getKey());
-			if (current != null) {
-				var src = entry.getValue();
-				current.onEnter.clear(); current.onEnter.addAll(src.onEnter);
-				current.onTick.clear(); current.onTick.addAll(src.onTick);
-				current.onExit.clear(); current.onExit.addAll(src.onExit);
-				current.onDamage.clear(); current.onDamage.addAll(src.onDamage);
-				current.transitions.clear(); current.transitions.addAll(src.transitions);
-			}
-		}
+		// Replace the mutable spell content with the restored snapshot.
+		definition.phases.clear();
+		definition.phases.putAll(restored.phases);
+		definition.customNames.clear();
+		definition.customNames.putAll(restored.customNames);
+		phaseList.clear();
+		phaseList.addAll(definition.phases.keySet());
+		selectedPhaseIndex = phaseList.isEmpty() ? 0 : Math.min(selectedPhaseIndex, phaseList.size() - 1);
 
 		// Refresh UI
 		if (actionEditorPanel != null) actionEditorPanel.clearAction();
+		if (actionListPanel != null) {
+			actionListPanel.loadCustomNames(definition.customNames);
+		}
 		updateActionListPhase();
-		scene.reset();
-		scene.play();
+		refreshPhaseControls();
+		replaySelectedPhase();
 
 		var mc = Minecraft.getInstance();
 		if (mc.player != null) {
 			mc.player.displayClientMessage(Component.literal("[YH] Spell reset to default"), true);
 		}
+	}
+
+	private void rememberOpenSnapshot(SpellDefinition definition) {
+		openSnapshots.computeIfAbsent(definition.id, id -> SpellDefinition.CODEC.encodeStart(
+				com.mojang.serialization.JsonOps.INSTANCE, definition).result().orElse(null));
 	}
 
 	private void updateActionListPhase() {
@@ -425,12 +437,243 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
+	private ResourceLocation getSelectedPhaseId() {
+		if (phaseList.isEmpty()) return null;
+		return phaseList.get(selectedPhaseIndex);
+	}
+
+	private void resetSelectedPhasePreview(boolean autoplay) {
+		ResourceLocation phaseId = getSelectedPhaseId();
+		if (phaseId == null) {
+			scene.reset();
+		} else {
+			scene.resetToPhase(phaseId);
+		}
+		if (autoplay) {
+			scene.play();
+		}
+	}
+
+	private void replaySelectedPhase() {
+		resetSelectedPhasePreview(true);
+	}
+
 	private void cyclePhase(int delta) {
 		if (phaseList.isEmpty()) return;
+		boolean wasPlaying = scene.isPlaying();
 		selectedPhaseIndex = (selectedPhaseIndex + delta + phaseList.size()) % phaseList.size();
-		scene.forcePhase(phaseList.get(selectedPhaseIndex));
+		resetSelectedPhasePreview(wasPlaying);
 		if (actionEditorPanel != null) actionEditorPanel.clearAction();
 		updateActionListPhase();
+		refreshPhaseControls();
+	}
+
+	private void addPhase() {
+		ResourceLocation newPhaseId = createUniquePhaseId();
+		definition.phases.put(newPhaseId, new PhaseDefinition(newPhaseId, List.of(), List.of(), List.of(), List.of(), List.of()));
+		phaseList.add(newPhaseId);
+		selectedPhaseIndex = phaseList.size() - 1;
+		resetSelectedPhasePreview(autoReplay);
+		if (actionEditorPanel != null) {
+			actionEditorPanel.clearAction();
+		}
+		updateActionListPhase();
+		refreshPhaseControls();
+		refreshActionEditor();
+	}
+
+	private boolean canDeleteSelectedPhase() {
+		ResourceLocation phaseId = getSelectedPhaseId();
+		return phaseId != null && phaseList.size() > 1 && !phaseId.equals(definition.entryPhase);
+	}
+
+	private void deleteSelectedPhase() {
+		ResourceLocation removedPhaseId = getSelectedPhaseId();
+		if (removedPhaseId == null || !canDeleteSelectedPhase()) {
+			return;
+		}
+		boolean wasPlaying = scene.isPlaying();
+		int removedTransitions = removeTransitionsTargeting(removedPhaseId);
+		definition.phases.remove(removedPhaseId);
+		phaseList.remove(selectedPhaseIndex);
+		clearPhaseCustomName(removedPhaseId);
+		selectedPhaseIndex = Math.max(0, Math.min(selectedPhaseIndex, phaseList.size() - 1));
+		if (actionEditorPanel != null) {
+			actionEditorPanel.clearAction();
+		}
+		updateActionListPhase();
+		refreshPhaseControls();
+		refreshActionEditor();
+		resetSelectedPhasePreview(wasPlaying || autoReplay);
+
+		var mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			String msg = "[YH] Deleted phase " + formatResourceId(removedPhaseId) +
+					(removedTransitions > 0 ? " and removed " + removedTransitions + " transitions" : "");
+			mc.player.displayClientMessage(Component.literal(msg), true);
+		}
+	}
+
+	private int removeTransitionsTargeting(ResourceLocation removedPhaseId) {
+		int removed = 0;
+		for (PhaseDefinition phase : definition.phases.values()) {
+			var iter = phase.transitions.iterator();
+			while (iter.hasNext()) {
+				var transition = iter.next();
+				if (removedPhaseId.equals(transition.targetPhase())) {
+					iter.remove();
+					removed++;
+				}
+			}
+		}
+		return removed;
+	}
+
+	private void renameSelectedPhase(String name) {
+		if (phaseList.isEmpty()) return;
+		ResourceLocation phaseId = phaseList.get(selectedPhaseIndex);
+		String trimmed = name.trim();
+		if (trimmed.isEmpty() || trimmed.equals(formatResourceId(phaseId)) || trimmed.equals(phaseId.getPath())) {
+			clearPhaseCustomName(phaseId);
+		} else {
+			setPhaseCustomName(phaseId, trimmed);
+		}
+		refreshPhaseControls();
+		refreshActionEditor();
+	}
+
+	private String getSelectedPhaseDisplayName() {
+		if (phaseList.isEmpty()) return "";
+		ResourceLocation phaseId = phaseList.get(selectedPhaseIndex);
+		String custom = getStoredPhaseCustomName(phaseId);
+		return custom != null ? custom : formatResourceId(phaseId);
+	}
+
+	private String getPhaseOptionLabel(ResourceLocation phaseId) {
+		String custom = getStoredPhaseCustomName(phaseId);
+		if (custom == null || custom.isBlank() || custom.equals(phaseId.getPath())) {
+			return formatResourceId(phaseId);
+		}
+		return custom + " (" + formatResourceId(phaseId) + ")";
+	}
+
+	private List<ResourceLocation> getSpellOptions() {
+		var spells = new ArrayList<>(SpellRegistry.getAll().keySet());
+		spells.sort(java.util.Comparator.comparing(SpellPreviewScreen::formatResourceId));
+		return spells;
+	}
+
+	private String getSpellOptionLabel(ResourceLocation spellId) {
+		return formatResourceId(spellId);
+	}
+
+	private void refreshPhaseControls() {
+		if (controlsDockPanel != null) {
+			controlsDockPanel.buildButtons();
+		}
+	}
+
+	private void refreshActionEditor() {
+		if (actionEditorPanel != null) {
+			actionEditorPanel.refreshCurrentView();
+		}
+	}
+
+	private ResourceLocation createUniquePhaseId() {
+		int index = Math.max(phaseList.size() + 1, 1);
+		ResourceLocation id;
+		do {
+			id = new ResourceLocation(definition.id.getNamespace(), "phase_" + index++);
+		} while (definition.phases.containsKey(id));
+		return id;
+	}
+
+	private static String getPhaseNameKey(ResourceLocation phaseId) {
+		return "phase:" + formatResourceId(phaseId);
+	}
+
+	private static String getLegacyPhaseNameKey(ResourceLocation phaseId) {
+		return "phase:" + phaseId;
+	}
+
+	private String getStoredPhaseCustomName(ResourceLocation phaseId) {
+		String value = definition.customNames.get(getPhaseNameKey(phaseId));
+		if (value != null && !value.isBlank()) {
+			return value;
+		}
+		value = definition.customNames.get(getLegacyPhaseNameKey(phaseId));
+		return value != null && !value.isBlank() ? value : null;
+	}
+
+	private void clearPhaseCustomName(ResourceLocation phaseId) {
+		String key = getPhaseNameKey(phaseId);
+		String legacyKey = getLegacyPhaseNameKey(phaseId);
+		definition.customNames.remove(key);
+		definition.customNames.remove(legacyKey);
+		if (actionListPanel != null) {
+			actionListPanel.setCustomName(key, null);
+			actionListPanel.setCustomName(legacyKey, null);
+		}
+	}
+
+	private void setPhaseCustomName(ResourceLocation phaseId, String value) {
+		String key = getPhaseNameKey(phaseId);
+		String legacyKey = getLegacyPhaseNameKey(phaseId);
+		definition.customNames.remove(legacyKey);
+		definition.customNames.put(key, value);
+		if (actionListPanel != null) {
+			actionListPanel.setCustomName(legacyKey, null);
+			actionListPanel.setCustomName(key, value);
+		}
+	}
+
+	private static String formatResourceId(ResourceLocation id) {
+		return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
+	}
+
+	private void syncCustomNamesToDefinition() {
+		if (actionListPanel != null) {
+			definition.customNames.clear();
+			definition.customNames.putAll(actionListPanel.getCustomNames());
+		}
+	}
+
+	private void switchToDefinition(SpellDefinition definition) {
+		syncCustomNamesToDefinition();
+		this.definition = definition;
+		rememberOpenSnapshot(definition);
+		phaseList.clear();
+		phaseList.addAll(definition.phases.keySet());
+		ResourceLocation currentPhase = scene.getCurrentPhaseId();
+		int idx = phaseList.indexOf(currentPhase);
+		selectedPhaseIndex = idx >= 0 ? idx : 0;
+		if (actionEditorPanel != null) {
+			actionEditorPanel.clearAction();
+		}
+		if (actionListPanel != null) {
+			actionListPanel.loadCustomNames(definition.customNames);
+		}
+		updateActionListPhase();
+		refreshPhaseControls();
+		refreshActionEditor();
+	}
+
+	private void syncSceneState() {
+		SpellDefinition currentDefinition = scene.getDefinition();
+		if (definition != currentDefinition) {
+			switchToDefinition(currentDefinition);
+		}
+		ResourceLocation currentPhase = scene.getCurrentPhaseId();
+		int idx = phaseList.indexOf(currentPhase);
+		if (idx >= 0 && idx != selectedPhaseIndex) {
+			selectedPhaseIndex = idx;
+			if (actionEditorPanel != null) {
+				actionEditorPanel.clearAction();
+			}
+			updateActionListPhase();
+			refreshPhaseControls();
+			refreshActionEditor();
+		}
 	}
 
 	@Override
@@ -443,13 +686,7 @@ public class SpellPreviewScreen extends Screen {
 			viewportPanel.tick(isAnyEditBoxFocused());
 		}
 
-		// Sync selected phase index with runtime
-		ResourceLocation current = scene.getCurrentPhaseId();
-		int idx = phaseList.indexOf(current);
-		if (idx >= 0 && idx != selectedPhaseIndex) {
-			selectedPhaseIndex = idx;
-			updateActionListPhase();
-		}
+		syncSceneState();
 	}
 
 	@Override
@@ -473,13 +710,6 @@ public class SpellPreviewScreen extends Screen {
 		String spellName = definition.id.toString();
 		int nameX = width - font.width(spellName) - 4;
 		guiGraphics.drawString(font, spellName, nameX, 5, 0xFFAAAAAA, false);
-
-		// Phase name (in controls area)
-		if (!phaseList.isEmpty() && controlsDockPanel != null) {
-			int row4Y = controlsDockPanel.getY() + 4 + (BUTTON_HEIGHT + BUTTON_SPACING) * 3;
-			String phaseName = phaseList.get(selectedPhaseIndex).getPath();
-			guiGraphics.drawString(font, phaseName, controlsDockPanel.getX() + 64, row4Y + 4, 0xFFFFFF88, false);
-		}
 
 	}
 
@@ -603,14 +833,14 @@ public class SpellPreviewScreen extends Screen {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && actionListPanel != null) {
 				if (actionListPanel.undo()) {
 					if (actionEditorPanel != null) actionEditorPanel.clearAction();
-					if (autoReplay) { scene.reset(); scene.play(); }
+					if (autoReplay) replaySelectedPhase();
 					return true;
 				}
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y && actionListPanel != null) {
 				if (actionListPanel.redo()) {
 					if (actionEditorPanel != null) actionEditorPanel.clearAction();
-					if (autoReplay) { scene.reset(); scene.play(); }
+					if (autoReplay) replaySelectedPhase();
 					return true;
 				}
 			}
@@ -621,7 +851,7 @@ public class SpellPreviewScreen extends Screen {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_D && actionListPanel != null) {
 				if (actionListPanel.toggleSelectedDisabled()) {
 					if (actionEditorPanel != null) actionEditorPanel.clearAction();
-					if (autoReplay) { scene.reset(); scene.play(); }
+					if (autoReplay) replaySelectedPhase();
 					return true;
 				}
 			}
@@ -665,25 +895,25 @@ public class SpellPreviewScreen extends Screen {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_X) {
 				if (actionListPanel.cutSelected()) {
 					if (actionEditorPanel != null) actionEditorPanel.clearAction();
-					scene.reset();
+					resetSelectedPhasePreview(false);
 					return true;
 				}
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_V) {
 				if (actionListPanel.pasteAfterSelected()) {
-					scene.reset();
+					resetSelectedPhasePreview(false);
 					return true;
 				}
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_UP) {
 				if (actionListPanel.moveSelectedUp()) {
-					scene.reset();
+					resetSelectedPhasePreview(false);
 					return true;
 				}
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN) {
 				if (actionListPanel.moveSelectedDown()) {
-					scene.reset();
+					resetSelectedPhasePreview(false);
 					return true;
 				}
 			}
@@ -699,7 +929,7 @@ public class SpellPreviewScreen extends Screen {
 				|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) {
 			if (actionListPanel != null && actionListPanel.deleteSelected()) {
 				if (actionEditorPanel != null) actionEditorPanel.clearAction();
-				if (autoReplay) { scene.reset(); scene.play(); }
+				if (autoReplay) replaySelectedPhase();
 				return true;
 			}
 		}
@@ -726,7 +956,7 @@ public class SpellPreviewScreen extends Screen {
 		}
 		// R = reset
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_R) {
-			scene.reset();
+			resetSelectedPhasePreview(false);
 			return true;
 		}
 		// Right arrow = step
@@ -767,11 +997,7 @@ public class SpellPreviewScreen extends Screen {
 					org.lwjgl.glfw.GLFW.GLFW_CURSOR,
 					org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
 		}
-		// Sync custom node names back to definition before saving
-		if (actionListPanel != null) {
-			definition.customNames.clear();
-			definition.customNames.putAll(actionListPanel.getCustomNames());
-		}
+		syncCustomNamesToDefinition();
 		// Persist the current definition to SpellRegistry and disk
 		SpellRegistry.register(definition);
 		var server = Minecraft.getInstance().getSingleplayerServer();

@@ -17,6 +17,7 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * 可停靠的播放控制面板。从 SpellPreviewScreen.init() 中提取
@@ -31,7 +32,13 @@ public class ControlsDockPanel implements DockPanel {
 	private final VirtualSpellScene scene;
 	private final OrthographicViewport viewport;
 	private final Runnable rebuildCallback;
+	private final Runnable resetPhaseCallback;
 	private final Consumer<Integer> cyclePhaseCallback;
+	private final Supplier<String> currentPhaseNameSupplier;
+	private final Consumer<String> renamePhaseCallback;
+	private final Runnable addPhaseCallback;
+	private final Runnable deletePhaseCallback;
+	private final Supplier<Boolean> canDeletePhaseSupplier;
 
 	private int x, y, w, h;
 	private final List<Button> buttons = new ArrayList<>();
@@ -42,11 +49,23 @@ public class ControlsDockPanel implements DockPanel {
 	public ControlsDockPanel(VirtualSpellScene scene,
 							 OrthographicViewport viewport,
 							 Runnable rebuildCallback,
-							 Consumer<Integer> cyclePhaseCallback) {
+							 Runnable resetPhaseCallback,
+							 Consumer<Integer> cyclePhaseCallback,
+							 Supplier<String> currentPhaseNameSupplier,
+							 Consumer<String> renamePhaseCallback,
+							 Runnable addPhaseCallback,
+							 Runnable deletePhaseCallback,
+							 Supplier<Boolean> canDeletePhaseSupplier) {
 		this.scene = scene;
 		this.viewport = viewport;
 		this.rebuildCallback = rebuildCallback;
+		this.resetPhaseCallback = resetPhaseCallback;
 		this.cyclePhaseCallback = cyclePhaseCallback;
+		this.currentPhaseNameSupplier = currentPhaseNameSupplier;
+		this.renamePhaseCallback = renamePhaseCallback;
+		this.addPhaseCallback = addPhaseCallback;
+		this.deletePhaseCallback = deletePhaseCallback;
+		this.canDeletePhaseSupplier = canDeletePhaseSupplier;
 	}
 
 	/**
@@ -78,7 +97,7 @@ public class ControlsDockPanel implements DockPanel {
 		// Row 1: Playback controls
 		bx = x + 4;
 		bx = addButton(bx, row1Y, 40, "\u25B6/\u275A\u275A", btn -> scene.togglePlayPause());
-		bx = addButton(bx, row1Y, 20, "\u25A0", btn -> scene.reset());
+		bx = addButton(bx, row1Y, 20, "\u25A0", btn -> resetPhaseCallback.run());
 		addButton(bx, row1Y, 20, "\u25B8", btn -> scene.step());
 
 		// Row 2: Speed buttons + Safety limit
@@ -133,9 +152,22 @@ public class ControlsDockPanel implements DockPanel {
 
 		// Row 4: Phase selection
 		bx = x + 4;
-		bx = addButton(bx, row4Y, 40, "Phase:", btn -> {});
+		bx = addButton(bx, row4Y, 40, "Label:", btn -> {});
 		bx = addButton(bx, row4Y, 16, "<", btn -> cyclePhaseCallback.accept(-1));
-		addButton(bx + 100, row4Y, 16, ">", btn -> cyclePhaseCallback.accept(1));
+		bx = addTextEditBox(bx, row4Y, 84,
+				currentPhaseNameSupplier.get(),
+				"Display Name", 48,
+				s -> !s.contains("\n") && !s.contains("\r"),
+				renamePhaseCallback);
+		bx = addButton(bx, row4Y, 16, ">", btn -> cyclePhaseCallback.accept(1));
+		bx = addButton(bx, row4Y, 20, "+", btn -> addPhaseCallback.run());
+		Button deleteButton = Button.builder(Component.literal("-"), btn -> deletePhaseCallback.run())
+				.bounds(bx, row4Y, 20, BUTTON_HEIGHT).build();
+		deleteButton.active = canDeletePhaseSupplier.get();
+		buttons.add(deleteButton);
+		if (addWidgetCallback != null) {
+			addWidgetCallback.accept(deleteButton);
+		}
 
 		// Row 5: Range + Marker toggles
 		bx = x + 4;
@@ -243,12 +275,18 @@ public class ControlsDockPanel implements DockPanel {
 	}
 
 	private int addEditBox(int bx, int by, int bw, String hint, java.util.function.Consumer<String> onSubmit) {
+		return addTextEditBox(bx, by, bw, "", hint, 16, s -> s.matches("[0-9.%\\-]*"), onSubmit);
+	}
+
+	private int addTextEditBox(int bx, int by, int bw, String value, String hint, int maxLength,
+							   java.util.function.Predicate<String> filter,
+							   java.util.function.Consumer<String> onSubmit) {
 		EditBox box = new EditBox(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
-		box.setMaxLength(16);
-		box.setValue("");
+		box.setMaxLength(maxLength);
+		box.setValue(value);
 		box.setHint(Component.literal(hint).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
 		box.setResponder(val -> {}); // no live response
-		box.setFilter(s -> s.matches("[0-9.%\\-]*")); // only numbers, dot, %, minus
+		box.setFilter(filter::test);
 		editBoxes.add(box);
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(box);
@@ -320,9 +358,11 @@ public class ControlsDockPanel implements DockPanel {
 		Font font = Minecraft.getInstance().font;
 		int row1Y = y + 4;
 		String safetyWarning = scene.isSafetyTripped() ? "  \u26A0 SAFETY LIMIT" : "";
+		var currentPhase = scene.getCurrentPhaseId();
+		String phaseText = "minecraft".equals(currentPhase.getNamespace()) ? currentPhase.getPath() : currentPhase.toString();
 		String status = (scene.isPlaying() ? "\u25B6 " : "\u275A\u275A ") +
 				"tick:" + scene.getTotalTick() +
-				"  phase:" + scene.getCurrentPhaseId().getPath() +
+				"  phase:" + phaseText +
 				"  entities:" + scene.getEntityCount() +
 				"  hits:" + scene.getHitCount() +
 				"  speed:" + scene.getCurrentSpeed() + "x" +

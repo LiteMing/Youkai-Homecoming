@@ -1,6 +1,8 @@
 package dev.xkmc.youkaishomecoming.content.entity.youkai;
 
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
@@ -123,6 +125,16 @@ public class GeneralYoukaiEntity extends YoukaiEntity {
 	@Override
 	public void readAdditionalSaveData(CompoundTag tag) {
 		super.readAdditionalSaveData(tag);
+		if (tag.contains("SpellRuntime") && spellRuntime == null) {
+			var runtimeTag = tag.getCompound("SpellRuntime");
+			var spellId = ResourceLocation.tryParse(runtimeTag.getString("DefinitionId"));
+			if (spellId != null) {
+				var def = SpellRegistry.get(spellId);
+				if (def != null) {
+					setSpellRuntime(new SpellRuntime(def));
+				}
+			}
+		}
 		String id = getModelId();
 		// Reconstruct spell if:
 		// 1. spellCard is completely null (legacy fallback), OR

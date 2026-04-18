@@ -12,7 +12,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public class RuntimeItemSpell extends ItemSpell {
 
-	private final SpellDefinition definition;
+	private SpellDefinition definition;
 	private final int maxDuration;
 	private SpellRuntime runtime;
 	private int tickCount;
@@ -45,5 +45,20 @@ public class RuntimeItemSpell extends ItemSpell {
 		tickCount++;
 
 		return tickCount >= maxDuration;
+	}
+
+	public void clearDanmaku() {
+		for (var danmaku : cache) {
+			danmaku.markErased(false);
+		}
+		cache.clear();
+	}
+
+	public void switchSpell(SpellDefinition definition, boolean clearScreen) {
+		this.definition = definition;
+		if (clearScreen) {
+			clearDanmaku();
+		}
+		runtime = new SpellRuntime(definition);
 	}
 }

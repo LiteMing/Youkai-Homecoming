@@ -249,6 +249,13 @@ public class DanmakuProxyEntity extends PathfinderMob
 		DanmakuManager.setTrackingOverride(null);
 	}
 
+	public void switchSpellDefinition(SpellDefinition definition, boolean clearScreen) {
+		if (clearScreen) {
+			eraseAllDanmaku(null);
+		}
+		runtime = new SpellRuntime(definition);
+	}
+
 	@Override
 	public UserCacheHolder entityCache() {
 		return cache;

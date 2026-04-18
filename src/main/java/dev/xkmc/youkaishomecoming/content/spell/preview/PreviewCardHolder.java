@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
@@ -19,12 +20,14 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.DyeColor;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 /**
  * A CardHolder implementation for the preview system.
@@ -46,6 +49,10 @@ public class PreviewCardHolder implements CardHolder {
 	private final RandomSource random = RandomSource.create();
 	/** Callback invoked when a danmaku hits the target AABB */
 	private Runnable onTargetHit = null;
+	/** Callback invoked when the preview runtime should switch to another spell definition. */
+	private BiConsumer<SpellDefinition, Boolean> onSpellSwitch = null;
+	/** Callback invoked when the preview runtime should switch to another phase. */
+	private BiConsumer<ResourceLocation, Boolean> onPhaseSwitch = null;
 	/** Set of entity IDs that have already hit the target (prevent double-counting) */
 	private final java.util.Set<Integer> hitEntities = new java.util.HashSet<>();
 
@@ -347,6 +354,22 @@ public class PreviewCardHolder implements CardHolder {
 	public boolean isTargetFallFlying() { return targetFallFlying; }
 
 	public void setOnTargetHit(Runnable callback) { this.onTargetHit = callback; }
+	public void setOnSpellSwitch(BiConsumer<SpellDefinition, Boolean> callback) { this.onSpellSwitch = callback; }
+	public void setOnPhaseSwitch(BiConsumer<ResourceLocation, Boolean> callback) { this.onPhaseSwitch = callback; }
+	public boolean switchSpell(SpellDefinition definition, boolean clearScreen) {
+		if (onSpellSwitch == null) {
+			return false;
+		}
+		onSpellSwitch.accept(definition, clearScreen);
+		return true;
+	}
+	public boolean switchPhase(ResourceLocation phaseId, boolean clearScreen) {
+		if (onPhaseSwitch == null) {
+			return false;
+		}
+		onPhaseSwitch.accept(phaseId, clearScreen);
+		return true;
+	}
 
 	/**
 	 * A fake caster entity that implements CardHolder, so that danmaku

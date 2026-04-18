@@ -2,6 +2,8 @@ package dev.xkmc.youkaishomecoming.content.spell.runtime;
 
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
+import dev.xkmc.youkaishomecoming.content.spell.item.PlayerHolder;
+import dev.xkmc.youkaishomecoming.content.spell.item.RuntimeItemSpell;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
@@ -80,6 +82,10 @@ public class SpellContext {
 			preview.clear();
 			return;
 		}
+		if (holder instanceof PlayerHolder playerHolder && playerHolder.spell() instanceof RuntimeItemSpell runtimeItemSpell) {
+			runtimeItemSpell.clearDanmaku();
+			return;
+		}
 		if (holder instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity proxy) {
 			proxy.eraseAllDanmaku(null);
 			return;
@@ -88,6 +94,33 @@ public class SpellContext {
 		if (self instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity youkai) {
 			youkai.eraseAllDanmaku(null);
 		}
+	}
+
+	public boolean switchSpell(ResourceLocation spellId, boolean clearScreen) {
+		var def = SpellRegistry.get(spellId);
+		if (def == null) {
+			return false;
+		}
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
+			return preview.switchSpell(def, clearScreen);
+		}
+		if (holder instanceof PlayerHolder playerHolder && playerHolder.spell() instanceof RuntimeItemSpell runtimeItemSpell) {
+			runtimeItemSpell.switchSpell(def, clearScreen);
+			return true;
+		}
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity proxy) {
+			proxy.switchSpellDefinition(def, clearScreen);
+			return true;
+		}
+		var self = holder.self();
+		if (self instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity youkai) {
+			if (clearScreen) {
+				youkai.eraseAllDanmaku(null);
+			}
+			youkai.setSpellRuntime(new SpellRuntime(def));
+			return true;
+		}
+		return false;
 	}
 
 	public int hitCount() {

@@ -38,6 +38,8 @@ public class SpellRuntime {
 	private final List<ScheduledAction> scheduledActions = new ArrayList<>();
 	/** Tracks how many consecutive ticks the target has been off the ground. Reset on ground contact. */
 	private int targetFlyTime;
+	@Nullable
+	private ResourceLocation phasePreviewLock;
 
 	@Nullable
 	private Consumer<SpellRuntime> onPhaseChange;
@@ -95,6 +97,10 @@ public class SpellRuntime {
 		this.onPhaseChange = listener;
 	}
 
+	public void setPhasePreviewLock(@Nullable ResourceLocation phaseId) {
+		this.phasePreviewLock = phaseId;
+	}
+
 	public void tick(CardHolder holder) {
 		PhaseDefinition phase = definition.getPhase(currentPhaseId);
 		if (phase == null) return;
@@ -128,10 +134,10 @@ public class SpellRuntime {
 
 		// Evaluate transitions (priority order)
 		for (Transition trans : phase.transitions) {
-			if (trans.condition().test(ctx)) {
-				executeTransition(ctx, trans);
-				break;
-			}
+			if (!trans.condition().test(ctx)) continue;
+			if (isPhaseLocked(trans.targetPhase())) continue;
+			executeTransition(ctx, trans);
+			break;
 		}
 
 		phaseTick++;
@@ -202,7 +208,6 @@ public class SpellRuntime {
 			variables.clear();
 		}
 
-		ResourceLocation oldPhaseId = currentPhaseId;
 		currentPhaseId = trans.targetPhase();
 		phaseTick = 0;
 		scheduledActions.clear(); // Clear delayed actions from previous phase
@@ -213,10 +218,7 @@ public class SpellRuntime {
 				action.execute(ctx);
 			}
 		}
-
-		if (onPhaseChange != null) {
-			onPhaseChange.accept(this);
-		}
+		notifyPhaseChange();
 	}
 
 	/**
@@ -227,6 +229,9 @@ public class SpellRuntime {
 	}
 
 	public void forceTransition(SpellContext ctx, ResourceLocation targetPhase, boolean clearScreen) {
+		if (definition.getPhase(targetPhase) == null || isPhaseLocked(targetPhase)) {
+			return;
+		}
 		PhaseDefinition oldPhase = definition.getPhase(currentPhaseId);
 		if (oldPhase != null) {
 			for (SpellAction action : oldPhase.onExit) {
@@ -248,10 +253,27 @@ public class SpellRuntime {
 				action.execute(ctx);
 			}
 		}
+		notifyPhaseChange();
+	}
 
-		if (onPhaseChange != null) {
-			onPhaseChange.accept(this);
+	public void restartAtPhase(SpellContext ctx, ResourceLocation targetPhase) {
+		PhaseDefinition phase = definition.getPhase(targetPhase);
+		if (phase == null) {
+			return;
 		}
+		currentPhaseId = targetPhase;
+		phaseTick = 0;
+		totalTick = 0;
+		hitCount = 0;
+		targetFlyTime = 0;
+		hurtCooldownRemaining = 0;
+		variables.clear();
+		scheduledActions.clear();
+		resetLegacyActions(phase);
+		for (SpellAction action : phase.onEnter) {
+			action.execute(ctx);
+		}
+		notifyPhaseChange();
 	}
 
 	// --- Delayed action scheduling ---
@@ -317,6 +339,7 @@ public class SpellRuntime {
 	 */
 	public net.minecraft.nbt.CompoundTag saveToTag() {
 		var tag = new net.minecraft.nbt.CompoundTag();
+		tag.putString("DefinitionId", definition.id.toString());
 		tag.putString("PhaseId", currentPhaseId.toString());
 		tag.putInt("PhaseTick", phaseTick);
 		tag.putInt("TotalTick", totalTick);
@@ -350,5 +373,15 @@ public class SpellRuntime {
 			}
 		}
 		// If phase ID is invalid (definition was updated), stay at entry phase (default from constructor)
+	}
+
+	private boolean isPhaseLocked(ResourceLocation targetPhase) {
+		return phasePreviewLock != null && !phasePreviewLock.equals(targetPhase);
+	}
+
+	private void notifyPhaseChange() {
+		if (onPhaseChange != null) {
+			onPhaseChange.accept(this);
+		}
 	}
 }

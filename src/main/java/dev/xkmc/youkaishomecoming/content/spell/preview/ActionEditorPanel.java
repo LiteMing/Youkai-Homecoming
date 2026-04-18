@@ -69,6 +69,10 @@ public class ActionEditorPanel {
 	private final Consumer<AbstractWidget> removeWidget;
 	private final Consumer<SpellAction> onActionChanged;
 	private final Runnable onDeleteAction;
+	private java.util.function.Supplier<List<ResourceLocation>> phaseOptionsSupplier = List::of;
+	private java.util.function.Function<ResourceLocation, String> phaseDisplayFormatter = ResourceLocation::toString;
+	private java.util.function.Supplier<List<ResourceLocation>> spellOptionsSupplier = List::of;
+	private java.util.function.Function<ResourceLocation, String> spellDisplayFormatter = ResourceLocation::toString;
 
 	private int x, y, w, h;
 	private SpellAction currentAction;
@@ -136,6 +140,36 @@ public class ActionEditorPanel {
 		layoutWidgets();
 	}
 
+	public void setPhaseOptions(java.util.function.Supplier<List<ResourceLocation>> supplier,
+								java.util.function.Function<ResourceLocation, String> formatter) {
+		this.phaseOptionsSupplier = supplier != null ? supplier : List::of;
+		this.phaseDisplayFormatter = formatter != null ? formatter : ResourceLocation::toString;
+	}
+
+	public void setSpellOptions(java.util.function.Supplier<List<ResourceLocation>> supplier,
+								java.util.function.Function<ResourceLocation, String> formatter) {
+		this.spellOptionsSupplier = supplier != null ? supplier : List::of;
+		this.spellDisplayFormatter = formatter != null ? formatter : ResourceLocation::toString;
+	}
+
+	public void refreshCurrentView() {
+		if (typeSelectorMode) {
+			clearWidgets();
+			buildTypeSelectorRows();
+			layoutWidgets();
+			return;
+		}
+		if (currentAction != null) {
+			var action = currentAction;
+			int index = actionIndex;
+			clearWidgets();
+			this.currentAction = action;
+			this.actionIndex = index;
+			buildActionRows(action);
+			layoutWidgets();
+		}
+	}
+
 	private void clearWidgets() {
 		closeDropdown();
 		closeExprCompletion();
@@ -181,6 +215,8 @@ public class ActionEditorPanel {
 			buildPlaySoundRows(ps);
 		} else if (action instanceof SpellActions.ForcePhase fp) {
 			buildForcePhaseRows(fp);
+		} else if (action instanceof SpellActions.ForceSpell fs) {
+			buildForceSpellRows(fs);
 		} else if (action instanceof SpellActions.RepeatAction ra) {
 			buildRepeatRows(ra);
 		} else if (action instanceof DelayAction da) {
@@ -218,6 +254,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Clear Screen", () -> selectType("clear_screen"));
 		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
+		addFullWidthButton("Force Spell", () -> selectType("force_spell"));
 		addFullWidthButton("Confine Target", () -> selectType("confine_target"));
 		addFullWidthButton("Set Entity Flag", () -> selectType("set_entity_flag"));
 		addFullWidthButton("Teleport Random", () -> selectType("teleport_random"));
@@ -265,6 +302,8 @@ public class ActionEditorPanel {
 			case "play_sound" -> new SpellActions.PlaySoundAction(
 					new ResourceLocation("minecraft", "entity.experience_orb.pickup"), 1f, 1f);
 			case "force_phase" -> new SpellActions.ForcePhase(
+					new ResourceLocation("youkaishomecoming", "main"), true);
+			case "force_spell" -> new SpellActions.ForceSpell(
 					new ResourceLocation("youkaishomecoming", "main"), true);
 			case "delay" -> new DelayAction(20, new ArrayList<>());
 			case "teleport" -> new TeleportAction(OriginConfig.caster(), true);
@@ -747,12 +786,86 @@ public class ActionEditorPanel {
 	// --- ForcePhase rows ---
 
 	private void buildForcePhaseRows(SpellActions.ForcePhase fp) {
-		addStringRow("Phase", fp.phaseId().toString(), v -> {
-			ResourceLocation id = ResourceLocation.tryParse(v);
-			if (id != null) notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen()));
-		});
+		List<ResourceLocation> phaseOptions = phaseOptionsSupplier.get();
+		if (phaseOptions != null && !phaseOptions.isEmpty()) {
+			addChoiceRow("Phase ID", phaseOptions, fp.phaseId(), this::formatPhaseOption, id ->
+					notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen())));
+		} else {
+			addStringRow("Phase ID", fp.phaseId().toString(), v -> {
+				ResourceLocation id = ResourceLocation.tryParse(v);
+				if (id != null) notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen()));
+			});
+		}
+		if (phaseOptions == null || !phaseOptions.contains(fp.phaseId())) {
+			addStringRow("Raw ID", fp.phaseId().toString(), v -> {
+				ResourceLocation id = ResourceLocation.tryParse(v);
+				if (id != null) notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen()));
+			});
+		}
 		addBoolRow("Clear Screen", fp.clearScreen(), v ->
 				notifySimple(old -> new SpellActions.ForcePhase(fp.phaseId(), v), true));
+	}
+
+	private String formatPhaseOption(ResourceLocation phaseId) {
+		String formatted = phaseDisplayFormatter.apply(phaseId);
+		if (formatted == null || formatted.isBlank()) {
+			return phaseId.toString();
+		}
+		return formatted;
+	}
+
+	private <T> void addChoiceRow(String label, List<T> values, T current,
+								  java.util.function.Function<T, String> display,
+								  Consumer<T> onChange) {
+		if (values == null || values.isEmpty()) {
+			return;
+		}
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		String[] displayNames = new String[values.size()];
+		int selectedIndex = -1;
+		for (int i = 0; i < values.size(); i++) {
+			T value = values.get(i);
+			displayNames[i] = display.apply(value);
+			if (selectedIndex < 0 && java.util.Objects.equals(value, current)) {
+				selectedIndex = i;
+			}
+		}
+		String currentLabel = selectedIndex >= 0 ? displayNames[selectedIndex] : display.apply(current) + " (missing)";
+		final int initialSelectedIndex = selectedIndex;
+		int rowIndex = rows.size();
+		var btn = Button.builder(Component.literal(currentLabel + " \u25BC"), b -> {
+			openDropdown(displayNames, initialSelectedIndex, idx -> onChange.accept(values.get(idx)), rowIndex);
+		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
+		rows.add(new EditorRow(label, btn, false));
+	}
+
+	private void buildForceSpellRows(SpellActions.ForceSpell fs) {
+		List<ResourceLocation> spellOptions = spellOptionsSupplier.get();
+		if (spellOptions != null && !spellOptions.isEmpty()) {
+			addChoiceRow("Spell ID", spellOptions, fs.spellId(), this::formatSpellOption, id ->
+					notifySimple(old -> new SpellActions.ForceSpell(id, fs.clearScreen())));
+		} else {
+			addStringRow("Spell ID", fs.spellId().toString(), v -> {
+				ResourceLocation id = ResourceLocation.tryParse(v);
+				if (id != null) notifySimple(old -> new SpellActions.ForceSpell(id, fs.clearScreen()));
+			});
+		}
+		if (spellOptions == null || !spellOptions.contains(fs.spellId())) {
+			addStringRow("Raw ID", fs.spellId().toString(), v -> {
+				ResourceLocation id = ResourceLocation.tryParse(v);
+				if (id != null) notifySimple(old -> new SpellActions.ForceSpell(id, fs.clearScreen()));
+			});
+		}
+		addBoolRow("Clear Screen", fs.clearScreen(), v ->
+				notifySimple(old -> new SpellActions.ForceSpell(fs.spellId(), v), true));
+	}
+
+	private String formatSpellOption(ResourceLocation spellId) {
+		String formatted = spellDisplayFormatter.apply(spellId);
+		if (formatted == null || formatted.isBlank()) {
+			return spellId.toString();
+		}
+		return formatted;
 	}
 
 	// --- RepeatAction rows ---
@@ -2356,6 +2469,7 @@ public class ActionEditorPanel {
 			Map.entry("clear_screen", "Clear Screen"),
 			Map.entry("play_sound", "Play Sound"),
 			Map.entry("force_phase", "Force Phase"),
+			Map.entry("force_spell", "Force Spell"),
 			Map.entry("sequence", "Sequence"),
 			Map.entry("confine_target", "Confine Target"),
 			Map.entry("set_entity_flag", "Set Entity Flag"),

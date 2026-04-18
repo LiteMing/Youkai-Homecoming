@@ -17,14 +17,15 @@ import java.util.Set;
  */
 public class VirtualSpellScene {
 
-	private final SpellDefinition definition;
-	private final SpellRuntime runtime;
+	private SpellDefinition definition;
+	private SpellRuntime runtime;
 	private final PreviewCardHolder holder;
 
 	private boolean playing = false;
 	private int speedIndex = 2; // index into SPEED_OPTIONS
 	private float targetDistance = 10f;
 	private float healthRatio = 1.0f;
+	private Runnable onStateChanged;
 
 	/** Duration of the last tick() call in nanoseconds. */
 	private long lastTickNanos = 0;
@@ -38,7 +39,10 @@ public class VirtualSpellScene {
 		if (level == null) throw new IllegalStateException("Cannot create preview without a loaded world");
 		this.definition = definition;
 		this.runtime = new SpellRuntime(definition);
+		bindRuntime(this.runtime);
 		this.holder = new PreviewCardHolder(level);
+		this.holder.setOnSpellSwitch(this::switchSpellDefinition);
+		this.holder.setOnPhaseSwitch(this::switchPreviewPhase);
 		// Wire hit callback: when a danmaku hits the target AABB, notify runtime
 		// Use mobAttack(fakeCaster) so source.getEntity() instanceof LivingEntity passes
 		this.holder.setOnTargetHit(() -> {
@@ -105,8 +109,20 @@ public class VirtualSpellScene {
 
 	public void reset() {
 		playing = false;
+		runtime.setPhasePreviewLock(null);
 		runtime.reset();
 		holder.clear();
+		notifyStateChanged();
+	}
+
+	public void resetToPhase(ResourceLocation phaseId) {
+		playing = false;
+		holder.clear();
+		holder.setCasterHealth(healthRatio);
+		runtime.setPhasePreviewLock(phaseId);
+		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
+		SpellContext ctx = new SpellContext(holder, definition, runtime, diff);
+		runtime.restartAtPhase(ctx, phaseId);
 	}
 
 	public boolean isPlaying() {
@@ -206,9 +222,43 @@ public class VirtualSpellScene {
 	// Phase control
 
 	public void forcePhase(ResourceLocation phaseId) {
+		resetToPhase(phaseId);
+	}
+
+	public void setOnStateChanged(Runnable callback) {
+		this.onStateChanged = callback;
+	}
+
+	private void bindRuntime(SpellRuntime runtime) {
+		runtime.setOnPhaseChange(ignored -> notifyStateChanged());
+	}
+
+	private void notifyStateChanged() {
+		if (onStateChanged != null) {
+			onStateChanged.run();
+		}
+	}
+
+	public void switchPreviewPhase(ResourceLocation phaseId, boolean clearScreen) {
+		if (definition.getPhase(phaseId) == null) {
+			return;
+		}
 		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 		SpellContext ctx = new SpellContext(holder, definition, runtime, diff);
-		runtime.forceTransition(ctx, phaseId);
+		runtime.setPhasePreviewLock(null);
+		runtime.forceTransition(ctx, phaseId, clearScreen);
+		runtime.setPhasePreviewLock(phaseId);
+	}
+
+	public void switchSpellDefinition(SpellDefinition definition, boolean clearScreen) {
+		if (clearScreen) {
+			holder.clear();
+		}
+		this.definition = definition;
+		this.runtime = new SpellRuntime(definition);
+		bindRuntime(this.runtime);
+		this.runtime.setPhasePreviewLock(definition.entryPhase);
+		notifyStateChanged();
 	}
 
 	// Accessors

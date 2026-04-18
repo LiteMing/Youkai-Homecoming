@@ -24,6 +24,7 @@ public class SpellActions {
 		register("add_variable", AddVariable.CODEC, AddVariable.class);
 		register("clear_screen", ClearScreen.CODEC, ClearScreen.class);
 		register("force_phase", ForcePhase.CODEC, ForcePhase.class);
+		register("force_spell", ForceSpell.CODEC, ForceSpell.class);
 		register("play_sound", PlaySoundAction.CODEC, PlaySoundAction.class);
 		register("conditional", ConditionalAction.CODEC, ConditionalAction.class);
 		register("sequence", SequenceAction.CODEC, SequenceAction.class);
@@ -125,7 +126,23 @@ public class SpellActions {
 
 		@Override
 		public void execute(SpellContext ctx) {
+			if (ctx.holder() instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview
+					&& preview.switchPhase(phaseId, clearScreen)) {
+				return;
+			}
 			ctx.runtime().forceTransition(ctx, phaseId, clearScreen);
+		}
+	}
+
+	public record ForceSpell(ResourceLocation spellId, boolean clearScreen) implements SpellAction {
+		public static final Codec<ForceSpell> CODEC = RecordCodecBuilder.create(i -> i.group(
+				ResourceLocation.CODEC.fieldOf("spell_id").forGetter(ForceSpell::spellId),
+				Codec.BOOL.optionalFieldOf("clear_screen", true).forGetter(ForceSpell::clearScreen)
+		).apply(i, ForceSpell::new));
+
+		@Override
+		public void execute(SpellContext ctx) {
+			ctx.switchSpell(spellId, clearScreen);
 		}
 	}
 

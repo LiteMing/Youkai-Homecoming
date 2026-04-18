@@ -228,6 +228,14 @@ public class ActionListPanel {
 		return new java.util.HashMap<>(customNames);
 	}
 
+	public void setCustomName(String key, @org.jetbrains.annotations.Nullable String value) {
+		if (value == null || value.isBlank()) {
+			customNames.remove(key);
+		} else {
+			customNames.put(key, value);
+		}
+	}
+
 	public ActionPath getSelectedPath() {
 		return selectedPath;
 	}
@@ -1968,7 +1976,7 @@ public class ActionListPanel {
 		return prefix + getActionLabel(action, index);
 	}
 
-	private static String getActionLabel(SpellAction action, int index) {
+	private String getActionLabel(SpellAction action, int index) {
 		if (action instanceof FireDanmakuAction fda) {
 			String colorLabel = fda.color() instanceof ColorProvider.Constant cc ? cc.color().name().toLowerCase() : "dynamic";
 			return index + ": fire " + fda.bulletType().name().toLowerCase() + " " + colorLabel;
@@ -1987,7 +1995,10 @@ public class ActionListPanel {
 		if (action instanceof SpellActions.SetVariable sv) return index + ": set " + sv.key();
 		if (action instanceof SpellActions.AddVariable av) return index + ": add " + av.key();
 		if (action instanceof SpellActions.ForcePhase fp) {
-			return index + ": force " + fp.phaseId().getPath() + (fp.clearScreen() ? " [clear]" : " [keep]");
+			return index + ": force " + describePhaseTarget(fp.phaseId()) + (fp.clearScreen() ? " [clear]" : " [keep]");
+		}
+		if (action instanceof SpellActions.ForceSpell fs) {
+			return index + ": spell " + formatResourceId(fs.spellId()) + (fs.clearScreen() ? " [clear]" : " [keep]");
 		}
 		if (action instanceof SpellActions.RepeatAction ra) return index + ": repeat(" + (int) (ra.count() instanceof NumberProviders.Constant c ? c.value() : 0) + ")";
 		if (action instanceof DelayAction da) return index + ": delay(" + da.delayTicks() + "t)";
@@ -1996,6 +2007,23 @@ public class ActionListPanel {
 		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";
 		return index + ": " + action.getClass().getSimpleName();
+	}
+
+	private String describePhaseTarget(net.minecraft.resources.ResourceLocation phaseId) {
+		String key = "phase:" + formatResourceId(phaseId);
+		String legacyKey = "phase:" + phaseId;
+		String custom = customNames.get(key);
+		if ((custom == null || custom.isBlank()) && !legacyKey.equals(key)) {
+			custom = customNames.get(legacyKey);
+		}
+		if (custom == null || custom.isBlank() || custom.equals(phaseId.getPath())) {
+			return formatResourceId(phaseId);
+		}
+		return custom + " (" + formatResourceId(phaseId) + ")";
+	}
+
+	private static String formatResourceId(net.minecraft.resources.ResourceLocation id) {
+		return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
 	}
 
 	static String getConditionBrief(SpellCondition cond) {

@@ -150,7 +150,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	protected void finishTick(TickData data) {
 		super.finishTick(data);
 		if (!level().isClientSide() && tickCount > life) {
-			discard();
+			markErased(false);
 		}
 	}
 

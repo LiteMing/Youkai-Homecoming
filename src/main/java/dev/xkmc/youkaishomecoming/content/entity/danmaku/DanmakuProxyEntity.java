@@ -217,6 +217,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		removeDanmaku = false;
 		temp = new ArrayList<>();
 		var preheatCache = cache.get(sl, shooter());
+		DanmakuManager.setTrackingOverride(this);
 		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache);
 		if (!removeDanmaku) {
 			int w = 0;
@@ -233,9 +234,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 		temp = null;
 		toBeSent.clear();
 		DanmakuManager.flushErases();
+		DanmakuManager.setTrackingOverride(null);
 	}
 
 	public void eraseAllDanmaku(@Nullable Player player) {
+		DanmakuManager.setTrackingOverride(this);
 		for (var e : allDanmakus) {
 			if (player == null) e.markErased(true);
 			else e.erase(player);
@@ -243,6 +246,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		allDanmakus.clear();
 		removeDanmaku = true;
 		DanmakuManager.flushErases();
+		DanmakuManager.setTrackingOverride(null);
 	}
 
 	@Override
@@ -316,6 +320,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 
 	@Override
 	public boolean isPushable() {
+		return false;
+	}
+
+	@Override
+	public boolean isPickable() {
 		return false;
 	}
 

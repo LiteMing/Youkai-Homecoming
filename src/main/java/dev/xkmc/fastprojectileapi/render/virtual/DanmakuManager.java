@@ -22,6 +22,11 @@ public class DanmakuManager {
 	private static final IntArrayList eraseIds = new IntArrayList();
 	private static long eraseKillMask = 0;
 	private static LivingEntity eraseUser = null;
+	private static LivingEntity trackingOverride = null;
+
+	public static void setTrackingOverride(@javax.annotation.Nullable LivingEntity entity) {
+		trackingOverride = entity;
+	}
 
 	public static void send(LivingEntity user, List<SimplifiedProjectile> proj) {
 		int size = proj.size();
@@ -41,11 +46,12 @@ public class DanmakuManager {
 	 * Buffer an erase request. Call {@link #flushErases()} at end of tick to send.
 	 */
 	public static void erase(LivingEntity user, SimplifiedProjectile proj, boolean kill) {
+		LivingEntity effectiveUser = trackingOverride != null ? trackingOverride : user;
 		// If user changed (different owner entity), flush the previous batch first
-		if (eraseUser != null && eraseUser != user && !eraseIds.isEmpty()) {
+		if (eraseUser != null && eraseUser != effectiveUser && !eraseIds.isEmpty()) {
 			flushErases();
 		}
-		eraseUser = user;
+		eraseUser = effectiveUser;
 		int idx = eraseIds.size();
 		eraseIds.add(proj.getId());
 		if (kill && idx < 64) {

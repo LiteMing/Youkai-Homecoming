@@ -276,6 +276,17 @@ public class YHCommands {
 									ctx.getSource().sendSuccess(() -> Component.literal("Opening preview for " + spellId), false);
 									return 1;
 								})))
+				.then(literal("editor")
+						.executes(ctx -> {
+							if (FMLEnvironment.dist.isClient()) {
+								net.minecraft.client.Minecraft.getInstance().execute(() -> {
+									net.minecraft.client.Minecraft.getInstance().setScreen(
+											dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen.createDraftEditor());
+								});
+							}
+							ctx.getSource().sendSuccess(() -> Component.literal("Opening spell editor"), false);
+							return 1;
+						}))
 				.then(literal("reapply")
 						.then(argument("spell_id", ResourceLocationArgument.id())
 								.suggests(SPELL_SUGGESTIONS)

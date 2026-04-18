@@ -24,7 +24,7 @@ public class RegisterSpellsEventJS extends EventJS {
 		YHSpellKubeJSEvents.REGISTER.post(event);
 		for (var builder : event.builders) {
 			SpellDefinition def = builder.build();
-			SpellRegistry.register(def.id, def);
+			SpellRegistry.registerDefault(def.id, def);
 		}
 	}
 }

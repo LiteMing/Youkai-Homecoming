@@ -2010,16 +2010,20 @@ public class ActionListPanel {
 	}
 
 	private String describePhaseTarget(net.minecraft.resources.ResourceLocation phaseId) {
-		String key = "phase:" + formatResourceId(phaseId);
-		String legacyKey = "phase:" + phaseId;
+		String key = "phase:" + formatPhaseId(phaseId);
+		String legacyKey = "phase:" + formatResourceId(phaseId);
 		String custom = customNames.get(key);
 		if ((custom == null || custom.isBlank()) && !legacyKey.equals(key)) {
 			custom = customNames.get(legacyKey);
 		}
 		if (custom == null || custom.isBlank() || custom.equals(phaseId.getPath())) {
-			return formatResourceId(phaseId);
+			return formatPhaseId(phaseId);
 		}
-		return custom + " (" + formatResourceId(phaseId) + ")";
+		return custom + " (" + formatPhaseId(phaseId) + ")";
+	}
+
+	private static String formatPhaseId(net.minecraft.resources.ResourceLocation id) {
+		return id.toString();
 	}
 
 	private static String formatResourceId(net.minecraft.resources.ResourceLocation id) {

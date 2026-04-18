@@ -19,10 +19,18 @@ public class SpellRegistry {
 
 	public static void register(SpellDefinition definition) {
 		REGISTRY.put(definition.id, definition);
-		saveDefault(definition);
 	}
 
 	public static void register(ResourceLocation id, SpellDefinition definition) {
+		REGISTRY.put(id, definition);
+	}
+
+	public static void registerDefault(SpellDefinition definition) {
+		REGISTRY.put(definition.id, definition);
+		saveDefault(definition);
+	}
+
+	public static void registerDefault(ResourceLocation id, SpellDefinition definition) {
 		REGISTRY.put(id, definition);
 		saveDefault(definition);
 	}

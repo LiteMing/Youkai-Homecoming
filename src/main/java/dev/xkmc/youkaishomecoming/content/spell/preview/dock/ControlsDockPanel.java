@@ -39,10 +39,14 @@ public class ControlsDockPanel implements DockPanel {
 	private final Runnable resetPhaseCallback;
 	private final Supplier<List<ResourceLocation>> spellOptionsSupplier;
 	private final Supplier<ResourceLocation> currentSpellIdSupplier;
+	private final Supplier<String> currentSpellLabelSupplier;
 	private final Function<ResourceLocation, String> spellDisplayFormatter;
 	private final Consumer<ResourceLocation> switchSpellCallback;
+	private final Runnable newSpellCallback;
 	private final Runnable deleteSpellCallback;
 	private final Supplier<Boolean> canDeleteSpellSupplier;
+	private final Supplier<Boolean> spellDraftModeSupplier;
+	private final Consumer<String> renameSpellCallback;
 	private final Consumer<Integer> cyclePhaseCallback;
 	private final Supplier<String> currentPhaseNameSupplier;
 	private final Consumer<String> renamePhaseCallback;
@@ -55,6 +59,7 @@ public class ControlsDockPanel implements DockPanel {
 	private final List<EditBox> editBoxes = new ArrayList<>();
 	private int statusTextX = 90;
 	private Button spellDropdownButton;
+	private Button spellNewButton;
 	private Button spellDeleteButton;
 	private DropdownOverlay spellDropdown;
 	private int spellDropdownHoverIndex = -1;
@@ -78,10 +83,14 @@ public class ControlsDockPanel implements DockPanel {
 							 Runnable resetPhaseCallback,
 							 Supplier<List<ResourceLocation>> spellOptionsSupplier,
 							 Supplier<ResourceLocation> currentSpellIdSupplier,
+							 Supplier<String> currentSpellLabelSupplier,
 							 Function<ResourceLocation, String> spellDisplayFormatter,
 							 Consumer<ResourceLocation> switchSpellCallback,
+							 Runnable newSpellCallback,
 							 Runnable deleteSpellCallback,
 							 Supplier<Boolean> canDeleteSpellSupplier,
+							 Supplier<Boolean> spellDraftModeSupplier,
+							 Consumer<String> renameSpellCallback,
 							 Consumer<Integer> cyclePhaseCallback,
 							 Supplier<String> currentPhaseNameSupplier,
 							 Consumer<String> renamePhaseCallback,
@@ -94,10 +103,14 @@ public class ControlsDockPanel implements DockPanel {
 		this.resetPhaseCallback = resetPhaseCallback;
 		this.spellOptionsSupplier = spellOptionsSupplier;
 		this.currentSpellIdSupplier = currentSpellIdSupplier;
+		this.currentSpellLabelSupplier = currentSpellLabelSupplier;
 		this.spellDisplayFormatter = spellDisplayFormatter;
 		this.switchSpellCallback = switchSpellCallback;
+		this.newSpellCallback = newSpellCallback;
 		this.deleteSpellCallback = deleteSpellCallback;
 		this.canDeleteSpellSupplier = canDeleteSpellSupplier;
+		this.spellDraftModeSupplier = spellDraftModeSupplier;
+		this.renameSpellCallback = renameSpellCallback;
 		this.cyclePhaseCallback = cyclePhaseCallback;
 		this.currentPhaseNameSupplier = currentPhaseNameSupplier;
 		this.renamePhaseCallback = renamePhaseCallback;
@@ -121,6 +134,7 @@ public class ControlsDockPanel implements DockPanel {
 	public void buildButtons() {
 		clearButtons();
 		statusTextX = x + 90;
+		boolean draftMode = isDraftMode();
 
 		int row1Y = y + 4;
 		int row2Y = row1Y + BUTTON_HEIGHT + BUTTON_SPACING;
@@ -133,13 +147,18 @@ public class ControlsDockPanel implements DockPanel {
 
 		int bx;
 
-		// Row 1: Playback controls
 		bx = x + 4;
+		if (draftMode) {
+			addSpellControls(bx, row1Y, true);
+			return;
+		}
+
+		// Row 1: Playback controls
 		bx = addButton(bx, row1Y, 40, "\u25B6/\u275A\u275A", btn -> scene.togglePlayPause());
 		bx = addButton(bx, row1Y, 20, "\u25A0", btn -> resetPhaseCallback.run());
 		bx = addButton(bx, row1Y, 20, "\u25B8", btn -> scene.step());
 		bx += 8;
-		addSpellDropdownButton(bx, row1Y);
+		addSpellControls(bx, row1Y, false);
 
 		// Row 2: Speed buttons + Safety limit
 		bx = x + 4;
@@ -315,12 +334,11 @@ public class ControlsDockPanel implements DockPanel {
 		return bx + bw + BUTTON_SPACING;
 	}
 
-	private void addSpellDropdownButton(int bx, int by) {
+	private void addSpellControls(int bx, int by, boolean draftMode) {
 		int labelW = 36;
 		int dropdownW = Math.max(96, Math.min(220, w / 4));
 		int nextX = addButton(bx, by, labelW, "Spell:", btn -> {});
-		ResourceLocation currentSpellId = currentSpellIdSupplier.get();
-		String currentLabel = currentSpellId == null ? "" : formatSpellOption(currentSpellId);
+		String currentLabel = currentSpellLabelSupplier.get();
 		String displayText = fitToWidth(currentLabel, dropdownW - 14);
 		Button btn = Button.builder(Component.literal(displayText + " \u25BC"), b -> openSpellDropdown())
 				.bounds(nextX, by, dropdownW, BUTTON_HEIGHT).build();
@@ -329,16 +347,35 @@ public class ControlsDockPanel implements DockPanel {
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(btn);
 		}
-		int deleteX = nextX + dropdownW + BUTTON_SPACING;
+		int newX = nextX + dropdownW + BUTTON_SPACING;
+		Button newBtn = Button.builder(Component.literal("+"), b -> newSpellCallback.run())
+				.bounds(newX, by, 20, BUTTON_HEIGHT).build();
+		newBtn.active = !draftMode;
+		spellNewButton = newBtn;
+		buttons.add(newBtn);
+		if (addWidgetCallback != null) {
+			addWidgetCallback.accept(newBtn);
+		}
+		int deleteX = newX + 20 + BUTTON_SPACING;
 		Button deleteBtn = Button.builder(Component.literal("-"), b -> openSpellDeleteConfirm())
 				.bounds(deleteX, by, 20, BUTTON_HEIGHT).build();
-		deleteBtn.active = canDeleteSpellSupplier.get();
+		deleteBtn.active = !draftMode && canDeleteSpellSupplier.get();
 		spellDeleteButton = deleteBtn;
 		buttons.add(deleteBtn);
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(deleteBtn);
 		}
-		statusTextX = Math.max(x + 90, deleteX + 20 + 8);
+		if (draftMode) {
+			int inputX = deleteX + 20 + 8;
+			int inputW = Math.max(120, Math.min(220, w / 3));
+			addTextEditBox(inputX, by, inputW,
+					"", "New Spell ID", 96,
+					s -> !s.contains("\n") && !s.contains("\r") && s.indexOf(' ') < 0,
+					renameSpellCallback);
+			statusTextX = inputX + inputW + 8;
+		} else {
+			statusTextX = Math.max(x + 90, deleteX + 20 + 8);
+		}
 	}
 
 	private int addEditBox(int bx, int by, int bw, String hint, java.util.function.Consumer<String> onSubmit) {
@@ -380,6 +417,7 @@ public class ControlsDockPanel implements DockPanel {
 		editBoxes.clear();
 		editBoxSubmits.clear();
 		spellDropdownButton = null;
+		spellNewButton = null;
 		spellDeleteButton = null;
 	}
 
@@ -428,9 +466,15 @@ public class ControlsDockPanel implements DockPanel {
 		// 播放状态信息
 		Font font = Minecraft.getInstance().font;
 		int row1Y = y + 4;
+		if (isDraftMode()) {
+			graphics.drawString(font,
+					"Select an existing spell or enter a new spell id and press Enter.",
+					x + 4, row1Y + BUTTON_HEIGHT + BUTTON_SPACING + 4, 0xFFCCCCCC, false);
+			return;
+		}
 		String safetyWarning = scene.isSafetyTripped() ? "  \u26A0 SAFETY LIMIT" : "";
 		var currentPhase = scene.getCurrentPhaseId();
-		String phaseText = "minecraft".equals(currentPhase.getNamespace()) ? currentPhase.getPath() : currentPhase.toString();
+		String phaseText = currentPhase.toString();
 		String status = (scene.isPlaying() ? "\u25B6 " : "\u275A\u275A ") +
 				"tick:" + scene.getTotalTick() +
 				"  phase:" + phaseText +
@@ -535,6 +579,10 @@ public class ControlsDockPanel implements DockPanel {
 
 	public boolean isDropdownOpen() {
 		return spellDropdown != null || spellDeleteConfirm != null;
+	}
+
+	private boolean isDraftMode() {
+		return spellDraftModeSupplier.get();
 	}
 
 	private void openSpellDropdown() {

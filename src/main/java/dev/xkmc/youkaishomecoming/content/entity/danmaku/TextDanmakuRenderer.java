@@ -104,7 +104,6 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 	}
 
 	private void renderBillboardText(T e, String text, Font font, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
-		float textWidth = Math.max(font.width(text), 1);
 		float effLen = e.effectiveLength(pTick);
 		if (effLen <= 0) return;
 
@@ -114,38 +113,84 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		}
 
 		float openFactor = e.percentOpen(pTick);
-		float scale = effLen / textWidth;
-		pose.scale(-scale, -scale * openFactor, scale);
-		drawText(font, text, -textWidth / 2f, -font.lineHeight / 2f, e.textColor, pose, buffer, light);
+		float glyphScale = getGlyphScale(e, font);
+		float slotAdvance = getSlotAdvance(text, effLen, glyphScale);
+		pose.scale(-glyphScale, -glyphScale * openFactor, glyphScale);
+		drawTextCentered(font, text, slotAdvance, e.textColor, pose, buffer, light);
 		pose.popPose();
 	}
 
 	private void renderSignText(T e, String text, Font font, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
-		float textWidth = Math.max(font.width(text), 1);
 		float effLen = e.effectiveLength(pTick);
 		if (effLen <= 0) return;
 
-		float scale = effLen / textWidth;
 		float openFactor = e.percentOpen(pTick);
-		float drawY = -font.lineHeight / 2f;
 		float yaw = e.getViewYRot(pTick);
 		float pitch = e.getViewXRot(pTick);
+		float glyphScale = getGlyphScale(e, font);
+		float slotAdvance = getSlotAdvance(text, effLen, glyphScale);
 
 		// Front face: local +X follows the full flight direction, including pitch.
 		pose.pushPose();
 		pose.mulPose(Axis.YP.rotationDegrees(-yaw - 90));
 		pose.mulPose(Axis.ZP.rotationDegrees(-pitch));
-		pose.scale(scale, -scale * openFactor, scale);
-		drawText(font, text, 0, drawY, e.textColor, pose, buffer, light);
+		pose.scale(glyphScale, -glyphScale * openFactor, glyphScale);
+		drawTextAnchored(font, text, 0, slotAdvance, e.textColor, pose, buffer, light);
 		pose.popPose();
 
 		// Back face: mirror the plane while preserving the same world-space extent.
 		pose.pushPose();
 		pose.mulPose(Axis.YP.rotationDegrees(90 - yaw));
 		pose.mulPose(Axis.ZP.rotationDegrees(pitch));
-		pose.scale(scale, -scale * openFactor, scale);
-		drawText(font, text, -textWidth, drawY, e.textColor, pose, buffer, light);
+		pose.scale(glyphScale, -glyphScale * openFactor, glyphScale);
+		drawTextAnchored(font, text, -slotAdvance * countCodePoints(text), slotAdvance, e.textColor, pose, buffer, light);
 		pose.popPose();
+	}
+
+	private float getGlyphScale(T e, Font font) {
+		return Math.max(e.getBbHeight(), e.getBbWidth()) / font.lineHeight;
+	}
+
+	private float getSlotAdvance(String text, float worldLength, float glyphScale) {
+		int count = countCodePoints(text);
+		if (count <= 0) return 0;
+		return worldLength / Math.max(glyphScale, 0.0001f) / count;
+	}
+
+	private int countCodePoints(String text) {
+		return text.codePointCount(0, text.length());
+	}
+
+	private String[] splitCodePoints(String text) {
+		int n = countCodePoints(text);
+		String[] ans = new String[n];
+		int idx = 0;
+		for (int pos = 0; pos < text.length();) {
+			int cp = text.codePointAt(pos);
+			ans[idx++] = new String(Character.toChars(cp));
+			pos += Character.charCount(cp);
+		}
+		return ans;
+	}
+
+	private void drawTextCentered(Font font, String text, float slotAdvance, int color, PoseStack pose, MultiBufferSource buffer, int light) {
+		drawGlyphRun(font, text, -slotAdvance * countCodePoints(text) / 2f, slotAdvance, color, pose, buffer, light);
+	}
+
+	private void drawTextAnchored(Font font, String text, float startX, float slotAdvance, int color, PoseStack pose, MultiBufferSource buffer, int light) {
+		drawGlyphRun(font, text, startX, slotAdvance, color, pose, buffer, light);
+	}
+
+	private void drawGlyphRun(Font font, String text, float startX, float slotAdvance, int color, PoseStack pose, MultiBufferSource buffer, int light) {
+		String[] glyphs = splitCodePoints(text);
+		if (glyphs.length == 0) return;
+		float drawY = -font.lineHeight / 2f;
+		for (int i = 0; i < glyphs.length; i++) {
+			String glyph = glyphs[i];
+			float glyphWidth = font.width(glyph);
+			float x = startX + slotAdvance * i + (slotAdvance - glyphWidth) / 2f;
+			drawText(font, glyph, x, drawY, color, pose, buffer, light);
+		}
 	}
 
 	private void drawText(Font font, String text, float x, float y, int color, PoseStack pose, MultiBufferSource buffer, int light) {

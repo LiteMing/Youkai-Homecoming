@@ -117,13 +117,15 @@ public class SpellActions {
 		}
 	}
 
-	public record ForcePhase(ResourceLocation phaseId) implements SpellAction {
-		public static final Codec<ForcePhase> CODEC = ResourceLocation.CODEC
-				.fieldOf("phase_id").codec().xmap(ForcePhase::new, ForcePhase::phaseId);
+	public record ForcePhase(ResourceLocation phaseId, boolean clearScreen) implements SpellAction {
+		public static final Codec<ForcePhase> CODEC = RecordCodecBuilder.create(i -> i.group(
+				ResourceLocation.CODEC.fieldOf("phase_id").forGetter(ForcePhase::phaseId),
+				Codec.BOOL.optionalFieldOf("clear_screen", true).forGetter(ForcePhase::clearScreen)
+		).apply(i, ForcePhase::new));
 
 		@Override
 		public void execute(SpellContext ctx) {
-			ctx.runtime().forceTransition(ctx, phaseId);
+			ctx.runtime().forceTransition(ctx, phaseId, clearScreen);
 		}
 	}
 

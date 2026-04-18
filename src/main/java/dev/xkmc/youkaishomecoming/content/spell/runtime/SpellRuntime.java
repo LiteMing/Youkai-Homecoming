@@ -223,11 +223,19 @@ public class SpellRuntime {
 	 * Force transition to a specific phase (used by commands/KJS).
 	 */
 	public void forceTransition(SpellContext ctx, ResourceLocation targetPhase) {
+		forceTransition(ctx, targetPhase, true);
+	}
+
+	public void forceTransition(SpellContext ctx, ResourceLocation targetPhase, boolean clearScreen) {
 		PhaseDefinition oldPhase = definition.getPhase(currentPhaseId);
 		if (oldPhase != null) {
 			for (SpellAction action : oldPhase.onExit) {
 				action.execute(ctx);
 			}
+		}
+
+		if (clearScreen) {
+			ctx.clearDanmaku();
 		}
 
 		currentPhaseId = targetPhase;

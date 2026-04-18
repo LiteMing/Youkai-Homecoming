@@ -1986,7 +1986,9 @@ public class ActionListPanel {
 		if (action instanceof SpellActions.PlaySoundAction) return index + ": play_sound";
 		if (action instanceof SpellActions.SetVariable sv) return index + ": set " + sv.key();
 		if (action instanceof SpellActions.AddVariable av) return index + ": add " + av.key();
-		if (action instanceof SpellActions.ForcePhase fp) return index + ": force " + fp.phaseId().getPath();
+		if (action instanceof SpellActions.ForcePhase fp) {
+			return index + ": force " + fp.phaseId().getPath() + (fp.clearScreen() ? " [clear]" : " [keep]");
+		}
 		if (action instanceof SpellActions.RepeatAction ra) return index + ": repeat(" + (int) (ra.count() instanceof NumberProviders.Constant c ? c.value() : 0) + ")";
 		if (action instanceof DelayAction da) return index + ": delay(" + da.delayTicks() + "t)";
 		if (action instanceof BurstAction ba) return index + ": burst(" + ba.waves() + "x" + ba.interval() + "t)";

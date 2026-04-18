@@ -265,7 +265,7 @@ public class ActionEditorPanel {
 			case "play_sound" -> new SpellActions.PlaySoundAction(
 					new ResourceLocation("minecraft", "entity.experience_orb.pickup"), 1f, 1f);
 			case "force_phase" -> new SpellActions.ForcePhase(
-					new ResourceLocation("youkaishomecoming", "main"));
+					new ResourceLocation("youkaishomecoming", "main"), true);
 			case "delay" -> new DelayAction(20, new ArrayList<>());
 			case "teleport" -> new TeleportAction(OriginConfig.caster(), true);
 			case "spawn_shooter" -> new SpawnShooterAction(40, 4f, 100,
@@ -749,8 +749,10 @@ public class ActionEditorPanel {
 	private void buildForcePhaseRows(SpellActions.ForcePhase fp) {
 		addStringRow("Phase", fp.phaseId().toString(), v -> {
 			ResourceLocation id = ResourceLocation.tryParse(v);
-			if (id != null) notifySimple(old -> new SpellActions.ForcePhase(id));
+			if (id != null) notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen()));
 		});
+		addBoolRow("Clear Screen", fp.clearScreen(), v ->
+				notifySimple(old -> new SpellActions.ForcePhase(fp.phaseId(), v), true));
 	}
 
 	// --- RepeatAction rows ---
@@ -1369,6 +1371,10 @@ public class ActionEditorPanel {
 	}
 
 	private void notifySimple(Function<SpellAction, SpellAction> modifier) {
+		notifySimple(modifier, false);
+	}
+
+	private void notifySimple(Function<SpellAction, SpellAction> modifier, boolean rebuild) {
 		if (currentAction == null) return;
 		SpellAction newAction;
 		if (currentAction instanceof SpellActions.DisabledAction da) {
@@ -1380,6 +1386,13 @@ public class ActionEditorPanel {
 		}
 		currentAction = newAction;
 		onActionChanged.accept(newAction);
+		if (rebuild) {
+			int idx = actionIndex;
+			clearWidgets();
+			buildActionRows(newAction);
+			actionIndex = idx;
+			layoutWidgets();
+		}
 	}
 
 	// --- Row builders ---

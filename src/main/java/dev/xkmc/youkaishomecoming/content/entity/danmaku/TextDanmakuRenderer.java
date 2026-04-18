@@ -153,7 +153,7 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 				false,
 				pose.last().pose(),
 				buffer,
-				Font.DisplayMode.SEE_THROUGH,
+				Font.DisplayMode.NORMAL,
 				0,
 				light
 		);

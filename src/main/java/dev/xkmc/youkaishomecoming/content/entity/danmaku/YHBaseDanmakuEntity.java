@@ -114,9 +114,21 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
 				executeHitAction(ide.onHitBlockAction);
 			}
-			if (this instanceof ItemDanmakuEntity ide && ide.hitBehaviorBlock == HitBehavior.CONTINUE) {
-				// Don't discard — let it keep flying until lifetime expires
-				return;
+			if (this instanceof ItemDanmakuEntity ide) {
+				switch (ide.hitBehaviorBlock) {
+					case CONTINUE -> {
+						// Don't remove — let it keep flying until lifetime expires.
+						return;
+					}
+					case EXPIRE -> {
+						expireNow();
+						return;
+					}
+					case DISCARD -> {
+						markErased(false);
+						return;
+					}
+				}
 			}
 			markErased(false);
 		}
@@ -140,13 +152,27 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		// Data-driven danmaku always collide with entities.
 		// Whether they pierce or stop is controlled by hitBehaviorEntity.
 		if (this instanceof ItemDanmakuEntity ide) {
-			if (ide.hitBehaviorEntity != HitBehavior.DISCARD) {
-				return;
+			switch (ide.hitBehaviorEntity) {
+				case CONTINUE -> {
+					return;
+				}
+				case EXPIRE -> {
+					expireNow();
+					return;
+				}
+				case DISCARD -> {
+					markErased(false);
+					return;
+				}
 			}
-			markErased(false);
 		} else if (!bypassEntity) {
 			markErased(false);
 		}
+	}
+
+	private void expireNow() {
+		terminate();
+		markErased(false);
 	}
 
 	/** Helper: execute a TrailAction at the current danmaku position/direction. */

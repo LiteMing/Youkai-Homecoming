@@ -402,8 +402,8 @@ public record FireDanmakuAction(
 		danmaku.hitBehaviorBlock = hitBehaviorBlock;
 		// Default from prepareDanmaku is bypassWall=true, bypassEntity=true (boss danmaku defaults).
 		// Keep the legacy pass-through behavior unless this action explicitly uses block hit handling:
-		// either a block-hit callback is configured, or block hits should discard the danmaku.
-		if (onHitBlock.isPresent() || hitBehaviorBlock == HitBehavior.DISCARD) {
+		// either a block-hit callback is configured, or block hits should stop/expire the danmaku.
+		if (onHitBlock.isPresent() || hitBehaviorBlock != HitBehavior.CONTINUE) {
 			danmaku.setBypassWall(false);
 		}
 		// Data-driven danmaku always enable entity collision detection.

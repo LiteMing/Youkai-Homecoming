@@ -99,7 +99,9 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		if (effLen <= 0) return;
 
 		pose.pushPose();
-		pose.mulPose(cameraOrientation());
+		if (ProjectileRenderHelper.cameraOrientationOverride == null) {
+			pose.mulPose(cameraOrientation());
+		}
 
 		float scale = effLen / textWidth;
 		float openFactor = e.percentOpen(pTick);

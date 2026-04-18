@@ -23,6 +23,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -724,7 +725,10 @@ public class OrthographicViewport {
 		poseStack.pushPose();
 		poseStack.translate(ex + offset.x, ey + offset.y, ez + offset.z);
 
-		if (renderer instanceof ProjectileRenderer<?> pr) {
+		if (renderer instanceof TextDanmakuRenderer<?>) {
+			renderer.render(entity, entity.getYRot(), partialTick, poseStack, buffer,
+					LightTexture.FULL_BRIGHT);
+		} else if (renderer instanceof ProjectileRenderer<?> pr) {
 			ProjectileRenderer<SimplifiedProjectile> projRenderer = Wrappers.cast(pr);
 			projRenderer.render((SimplifiedProjectile) entity, partialTick, poseStack);
 		} else {

@@ -7,8 +7,5 @@ secrets.properties
 temp
 /bin/main/data/
 /tash
-# Auto-generated lang files (produced by LangFileOrganizer from src/test/resources/)
-/src/main/resources/assets/youkaishomecoming/lang/zh_cn.json
-/src/main/resources/assets/youkaishomecoming/lang/ja_jp.json
 # Registrate datagen output
 /src/generated/

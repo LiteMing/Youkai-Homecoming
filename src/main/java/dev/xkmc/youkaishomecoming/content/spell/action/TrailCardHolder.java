@@ -66,8 +66,8 @@ public class TrailCardHolder implements CardHolder {
 	}
 
 	@Override
-	public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float len, String text, int textColor) {
-		return delegate.prepareTextDanmaku(life, pos, dir, len, text, textColor);
+	public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float size, String text, int textColor) {
+		return delegate.prepareTextDanmaku(life, pos, dir, size, text, textColor);
 	}
 
 	@Override

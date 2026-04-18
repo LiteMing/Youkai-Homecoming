@@ -31,7 +31,7 @@ public interface CardHolder {
 
 	ItemLaserEntity prepareLaser(int life, Vec3 pos, Vec3 vec, float len, YHDanmaku.Laser type, DyeColor color);
 
-	TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float len, String text, int textColor);
+	TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float size, String text, int textColor);
 
 	void shoot(Entity danmaku);
 

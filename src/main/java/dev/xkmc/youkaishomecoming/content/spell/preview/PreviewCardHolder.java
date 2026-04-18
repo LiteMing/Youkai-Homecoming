@@ -108,13 +108,11 @@ public class PreviewCardHolder implements CardHolder {
 	}
 
 	@Override
-	public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float len, String text, int textColor) {
+	public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float size, String text, int textColor) {
 		TextDanmakuEntity danmaku = new TextDanmakuEntity(YHEntities.TEXT_DANMAKU.get(), fakeCaster, level);
 		danmaku.setPos(pos);
-		danmaku.text = text;
-		danmaku.textColor = textColor;
-		danmaku.length = len;
-		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, len, true, dir);
+		danmaku.configureText(text, size, textColor);
+		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, danmaku.length, true, dir);
 		danmaku.setupLength = YHDanmaku.Laser.PENCIL.setupLength();
 		return danmaku;
 	}
@@ -396,8 +394,8 @@ public class PreviewCardHolder implements CardHolder {
 		}
 
 		@Override
-		public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float len, String text, int textColor) {
-			return holder.prepareTextDanmaku(life, pos, dir, len, text, textColor);
+		public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float size, String text, int textColor) {
+			return holder.prepareTextDanmaku(life, pos, dir, size, text, textColor);
 		}
 
 		@Override

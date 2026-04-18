@@ -26,7 +26,7 @@ public record FireTextDanmakuAction(
 		int textColor,
 		boolean perChar,
 		NumberProvider lifetime,
-		NumberProvider length,
+		NumberProvider size,
 		NumberProvider angleOffset,
 		NumberProvider elevation,
 		NumberProvider roll,
@@ -44,7 +44,7 @@ public record FireTextDanmakuAction(
 			Codec.INT.optionalFieldOf("text_color", 0xFFFFFFFF).forGetter(FireTextDanmakuAction::textColor),
 			Codec.BOOL.optionalFieldOf("per_char", false).forGetter(FireTextDanmakuAction::perChar),
 			NumberProvider.CODEC.fieldOf("lifetime").forGetter(FireTextDanmakuAction::lifetime),
-			NumberProvider.CODEC.optionalFieldOf("length", NumberProvider.constant(4)).forGetter(FireTextDanmakuAction::length),
+			NumberProvider.CODEC.optionalFieldOf("size", NumberProvider.constant(TextDanmakuEntity.DEFAULT_SIZE)).forGetter(FireTextDanmakuAction::size),
 			NumberProvider.CODEC.optionalFieldOf("angle_offset", NumberProvider.constant(0)).forGetter(FireTextDanmakuAction::angleOffset),
 			NumberProvider.CODEC.optionalFieldOf("elevation", NumberProvider.constant(0)).forGetter(FireTextDanmakuAction::elevation),
 			NumberProvider.CODEC.optionalFieldOf("roll", NumberProvider.constant(0)).forGetter(FireTextDanmakuAction::roll),
@@ -57,24 +57,24 @@ public record FireTextDanmakuAction(
 			DanmakuDamageType.CODEC.optionalFieldOf("damage_type").forGetter(FireTextDanmakuAction::damageType)
 	).apply(i, FireTextDanmakuAction::new));
 
-	private FireTextDanmakuAction copy(String t, int tc, boolean pc, NumberProvider lt, NumberProvider ln, NumberProvider ao, NumberProvider el, NumberProvider rl, AimMode am, OriginConfig o, Optional<MoverConfig> m, int sp, int ss, int se, Optional<DanmakuDamageType> dt) {
-		return new FireTextDanmakuAction(t, tc, pc, lt, ln, ao, el, rl, am, o, m, sp, ss, se, dt);
+	private FireTextDanmakuAction copy(String t, int tc, boolean pc, NumberProvider lt, NumberProvider sz, NumberProvider ao, NumberProvider el, NumberProvider rl, AimMode am, OriginConfig o, Optional<MoverConfig> m, int sp, int ss, int se, Optional<DanmakuDamageType> dt) {
+		return new FireTextDanmakuAction(t, tc, pc, lt, sz, ao, el, rl, am, o, m, sp, ss, se, dt);
 	}
-	public FireTextDanmakuAction withText(String v) { return copy(v, textColor, perChar, lifetime, length, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withTextColor(int v) { return copy(text, v, perChar, lifetime, length, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withPerChar(boolean v) { return copy(text, textColor, v, lifetime, length, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withLifetime(NumberProvider v) { return copy(text, textColor, perChar, v, length, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withLength(NumberProvider v) { return copy(text, textColor, perChar, lifetime, v, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withAngleOffset(NumberProvider v) { return copy(text, textColor, perChar, lifetime, length, v, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withElevation(NumberProvider v) { return copy(text, textColor, perChar, lifetime, length, angleOffset, v, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withRoll(NumberProvider v) { return copy(text, textColor, perChar, lifetime, length, angleOffset, elevation, v, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withAimMode(AimMode v) { return copy(text, textColor, perChar, lifetime, length, angleOffset, elevation, roll, v, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withOrigin(OriginConfig v) { return copy(text, textColor, perChar, lifetime, length, angleOffset, elevation, roll, aimMode, v, mover, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withMover(Optional<MoverConfig> v) { return copy(text, textColor, perChar, lifetime, length, angleOffset, elevation, roll, aimMode, origin, v, setupPrepare, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withSetupPrepare(int v) { return copy(text, textColor, perChar, lifetime, length, angleOffset, elevation, roll, aimMode, origin, mover, v, setupStart, setupEnd, damageType); }
-	public FireTextDanmakuAction withSetupStart(int v) { return copy(text, textColor, perChar, lifetime, length, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, v, setupEnd, damageType); }
-	public FireTextDanmakuAction withSetupEnd(int v) { return copy(text, textColor, perChar, lifetime, length, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, v, damageType); }
-	public FireTextDanmakuAction withDamageType(Optional<DanmakuDamageType> v) { return copy(text, textColor, perChar, lifetime, length, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, v); }
+	public FireTextDanmakuAction withText(String v) { return copy(v, textColor, perChar, lifetime, size, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withTextColor(int v) { return copy(text, v, perChar, lifetime, size, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withPerChar(boolean v) { return copy(text, textColor, v, lifetime, size, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withLifetime(NumberProvider v) { return copy(text, textColor, perChar, v, size, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withSize(NumberProvider v) { return copy(text, textColor, perChar, lifetime, v, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withAngleOffset(NumberProvider v) { return copy(text, textColor, perChar, lifetime, size, v, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withElevation(NumberProvider v) { return copy(text, textColor, perChar, lifetime, size, angleOffset, v, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withRoll(NumberProvider v) { return copy(text, textColor, perChar, lifetime, size, angleOffset, elevation, v, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withAimMode(AimMode v) { return copy(text, textColor, perChar, lifetime, size, angleOffset, elevation, roll, v, origin, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withOrigin(OriginConfig v) { return copy(text, textColor, perChar, lifetime, size, angleOffset, elevation, roll, aimMode, v, mover, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withMover(Optional<MoverConfig> v) { return copy(text, textColor, perChar, lifetime, size, angleOffset, elevation, roll, aimMode, origin, v, setupPrepare, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withSetupPrepare(int v) { return copy(text, textColor, perChar, lifetime, size, angleOffset, elevation, roll, aimMode, origin, mover, v, setupStart, setupEnd, damageType); }
+	public FireTextDanmakuAction withSetupStart(int v) { return copy(text, textColor, perChar, lifetime, size, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, v, setupEnd, damageType); }
+	public FireTextDanmakuAction withSetupEnd(int v) { return copy(text, textColor, perChar, lifetime, size, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, v, damageType); }
+	public FireTextDanmakuAction withDamageType(Optional<DanmakuDamageType> v) { return copy(text, textColor, perChar, lifetime, size, angleOffset, elevation, roll, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, v); }
 
 	@Override
 	public void execute(SpellContext ctx) {
@@ -82,7 +82,7 @@ public record FireTextDanmakuAction(
 
 		CardHolder holder = ctx.holder();
 		int life = (int) lifetime.get(ctx);
-		float len = (float) length.get(ctx);
+		float sizeVal = (float) size.get(ctx);
 		double angle = angleOffset.get(ctx);
 		double elev = elevation.get(ctx);
 		float rollDeg = (float) roll.get(ctx);
@@ -114,19 +114,18 @@ public record FireTextDanmakuAction(
 
 		if (perChar) {
 			var chars = splitCodePoints(resolvedText);
-			int n = chars.length;
-			if (n == 0) return;
-			float segLen = len / n;
-			for (int idx = 0; idx < n; idx++) {
+			if (chars.length == 0) return;
+			for (int idx = 0; idx < chars.length; idx++) {
 				String ch = chars[idx];
-				String back = chars[n - 1 - idx];
+				String back = chars[chars.length - 1 - idx];
+				float charLen = TextDanmakuEntity.computeAutoLength(ch, sizeVal);
 				// Keep per-char spacing consistent with the single-entity variant:
 				// the first glyph starts nearest the origin and extends forward in text order.
-				Vec3 charPos = originPos.add(dir.scale(segLen * (idx + 0.5)));
-				spawn(holder, life, charPos, dir, segLen, ch, back, rollDeg);
+				Vec3 charPos = originPos.add(dir.scale(charLen * (idx + 0.5)));
+				spawn(holder, life, charPos, dir, sizeVal, ch, back, rollDeg);
 			}
 		} else {
-			spawn(holder, life, originPos, dir, len, resolvedText, resolvedText, rollDeg);
+			spawn(holder, life, originPos, dir, sizeVal, resolvedText, resolvedText, rollDeg);
 		}
 	}
 
@@ -163,8 +162,8 @@ public record FireTextDanmakuAction(
 		return result;
 	}
 
-	private void spawn(CardHolder holder, int life, Vec3 pos, Vec3 dir, float len, String str, String backStr, float rollDeg) {
-		TextDanmakuEntity e = holder.prepareTextDanmaku(life, pos, dir, len, str, textColor);
+	private void spawn(CardHolder holder, int life, Vec3 pos, Vec3 dir, float size, String str, String backStr, float rollDeg) {
+		TextDanmakuEntity e = holder.prepareTextDanmaku(life, pos, dir, size, str, textColor);
 		e.backText = backStr;
 		e.perChar = perChar;
 		e.roll = rollDeg;

@@ -76,14 +76,12 @@ public interface LivingCardHolder extends CardHolder {
 		return danmaku;
 	}
 
-	default TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float len, String text, int textColor) {
+	default TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float size, String text, int textColor) {
 		TextDanmakuEntity danmaku = new TextDanmakuEntity(YHEntities.TEXT_DANMAKU.get(), shooter(), self().level());
 		danmaku.setPos(pos);
-		danmaku.text = text;
-		danmaku.textColor = textColor;
-		danmaku.length = len;
+		danmaku.configureText(text, size, textColor);
 		// Use PENCIL laser damage type as default for text danmaku
-		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, len, true, dir);
+		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, danmaku.length, true, dir);
 		danmaku.setupLength = YHDanmaku.Laser.PENCIL.setupLength();
 		return danmaku;
 	}

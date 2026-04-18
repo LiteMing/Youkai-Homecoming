@@ -7,8 +7,12 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverOwner;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.TraceableEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
@@ -16,6 +20,9 @@ import net.minecraft.world.phys.Vec3;
 
 @SerialClass
 public class TextDanmakuEntity extends YHBaseLaserEntity implements MoverOwner {
+
+	public static final float DEFAULT_SIZE = 0.4f;
+	private static final float MIN_SIZE = 0.05f;
 
 	@SerialClass.SerialField
 	public DanmakuMover mover;
@@ -29,6 +36,8 @@ public class TextDanmakuEntity extends YHBaseLaserEntity implements MoverOwner {
 	public boolean perChar = false;
 	@SerialClass.SerialField
 	public float roll = 0;
+	@SerialClass.SerialField
+	public float size = DEFAULT_SIZE;
 
 	public DanmakuDamageType damageTypeOverride = null;
 
@@ -47,6 +56,47 @@ public class TextDanmakuEntity extends YHBaseLaserEntity implements MoverOwner {
 
 	public TextDanmakuEntity(EntityType<? extends TextDanmakuEntity> pEntityType, LivingEntity pShooter, Level pLevel) {
 		super(pEntityType, pShooter, pLevel);
+	}
+
+	public void configureText(String text, float size, int textColor) {
+		this.text = text == null ? "" : text;
+		this.textColor = textColor;
+		this.size = clampSize(size);
+		this.length = computeAutoLength(this.text, this.size);
+		refreshDimensions();
+	}
+
+	public static float computeAutoLength(String text, float size) {
+		if (text == null || text.isEmpty()) {
+			return clampSize(size);
+		}
+		int count = Math.max(1, text.codePointCount(0, text.length()));
+		return count * clampSize(size);
+	}
+
+	private static float clampSize(float size) {
+		return Math.max(MIN_SIZE, size);
+	}
+
+	@Override
+	public EntityDimensions getDimensions(Pose pose) {
+		return super.getDimensions(pose).scale(size / DEFAULT_SIZE);
+	}
+
+	@Override
+	public void readAdditionalSaveData(CompoundTag nbt) {
+		super.readAdditionalSaveData(nbt);
+		size = clampSize(size);
+		length = computeAutoLength(text, size);
+		refreshDimensions();
+	}
+
+	@Override
+	public void readSpawnData(FriendlyByteBuf data) {
+		super.readSpawnData(data);
+		size = clampSize(size);
+		length = computeAutoLength(text, size);
+		refreshDimensions();
 	}
 
 	@Override

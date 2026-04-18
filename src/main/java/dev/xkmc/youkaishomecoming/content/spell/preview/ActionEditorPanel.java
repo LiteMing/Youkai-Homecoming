@@ -249,7 +249,7 @@ public class ActionEditorPanel {
 				OriginConfig.caster(), Optional.empty(), 0, 0, 0);
 		case "fire_text_danmaku" -> new FireTextDanmakuAction(
 				"言弾", 0xFFFFFFFF, false,
-				NumberProvider.constant(100), NumberProvider.constant(10),
+				NumberProvider.constant(100), NumberProvider.constant(dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity.DEFAULT_SIZE),
 				NumberProvider.constant(0), NumberProvider.constant(0),
 				NumberProvider.constant(0),
 				new AimMode.AimModes.Target(), OriginConfig.caster(),
@@ -492,8 +492,8 @@ public class ActionEditorPanel {
 		addNumberRow("Lifetime", a.lifetime(), v ->
 				notifyTextDanmaku(old -> old.withLifetime(v), false));
 
-		addNumberRow("Length", a.length(), v ->
-				notifyTextDanmaku(old -> old.withLength(v), false));
+		addNumberRow("Size", a.size(), v ->
+				notifyTextDanmaku(old -> old.withSize(v), false));
 
 		addNumberRow("Angle", a.angleOffset(), v ->
 				notifyTextDanmaku(old -> old.withAngleOffset(v), false));

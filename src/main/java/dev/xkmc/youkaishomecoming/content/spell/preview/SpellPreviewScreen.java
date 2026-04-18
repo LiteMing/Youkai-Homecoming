@@ -822,6 +822,10 @@ public class SpellPreviewScreen extends Screen {
 				setFocused(null);
 				return true;
 			}
+			// Let the active dock consume submit-style shortcuts such as Enter in Controls.
+			if (dockLayout != null && dockLayout.keyPressed(keyCode, scanCode, modifiers)) {
+				return true;
+			}
 			// All other keys → let EditBox handle (typing, cursor, Ctrl+A/C/V within text)
 			return super.keyPressed(keyCode, scanCode, modifiers);
 		}

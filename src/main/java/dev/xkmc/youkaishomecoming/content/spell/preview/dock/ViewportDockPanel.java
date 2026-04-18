@@ -71,17 +71,6 @@ public class ViewportDockPanel implements DockPanel {
 	@Override
 	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		viewport.render(graphics, scene, partialTick);
-
-		// 视角标签和目标信息
-		var font = Minecraft.getInstance().font;
-		var tp = scene.getTargetPos();
-		String viewLabel = "View: " + viewport.getViewLabel();
-		String targetInfo = String.format("Target: (%.1f, %.1f, %.1f)", tp.x, tp.y, tp.z);
-		String hitInfo = "  hits:" + scene.getHitCount();
-
-		graphics.drawString(font, viewLabel, x + 4, y + h - 22, 0xFF888888, false);
-		graphics.drawString(font, targetInfo, x + 4, y + h - 12, 0xFFBBBB44, false);
-		graphics.drawString(font, hitInfo, x + 4 + font.width(targetInfo), y + h - 12, 0xFFFF8844, false);
 	}
 
 	// ---- 鼠标事件 ----

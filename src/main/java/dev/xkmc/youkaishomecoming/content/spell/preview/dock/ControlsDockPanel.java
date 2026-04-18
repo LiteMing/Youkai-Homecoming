@@ -57,7 +57,6 @@ public class ControlsDockPanel implements DockPanel {
 	private int x, y, w, h;
 	private final List<Button> buttons = new ArrayList<>();
 	private final List<EditBox> editBoxes = new ArrayList<>();
-	private int statusTextX = 90;
 	private Button spellDropdownButton;
 	private Button spellNewButton;
 	private Button spellDeleteButton;
@@ -133,7 +132,6 @@ public class ControlsDockPanel implements DockPanel {
 	 */
 	public void buildButtons() {
 		clearButtons();
-		statusTextX = x + 90;
 		boolean draftMode = isDraftMode();
 
 		int row1Y = y + 4;
@@ -372,9 +370,6 @@ public class ControlsDockPanel implements DockPanel {
 					"", "New Spell ID", 96,
 					s -> !s.contains("\n") && !s.contains("\r") && s.indexOf(' ') < 0,
 					renameSpellCallback);
-			statusTextX = inputX + inputW + 8;
-		} else {
-			statusTextX = Math.max(x + 90, deleteX + 20 + 8);
 		}
 	}
 
@@ -460,31 +455,14 @@ public class ControlsDockPanel implements DockPanel {
 
 	@Override
 	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-		// 控制面板背景
 		graphics.fill(x, y, x + w, y + h, 0xCC000000);
-
-		// 播放状态信息
 		Font font = Minecraft.getInstance().font;
 		int row1Y = y + 4;
 		if (isDraftMode()) {
 			graphics.drawString(font,
 					"Select an existing spell or enter a new spell id and press Enter.",
 					x + 4, row1Y + BUTTON_HEIGHT + BUTTON_SPACING + 4, 0xFFCCCCCC, false);
-			return;
 		}
-		String safetyWarning = scene.isSafetyTripped() ? "  \u26A0 SAFETY LIMIT" : "";
-		var currentPhase = scene.getCurrentPhaseId();
-		String phaseText = currentPhase.toString();
-		String status = (scene.isPlaying() ? "\u25B6 " : "\u275A\u275A ") +
-				"tick:" + scene.getTotalTick() +
-				"  phase:" + phaseText +
-				"  entities:" + scene.getEntityCount() +
-				"  hits:" + scene.getHitCount() +
-				"  speed:" + scene.getCurrentSpeed() + "x" +
-				safetyWarning;
-		graphics.drawString(font, status, statusTextX, row1Y + 4, 0xFFCCCCCC, false);
-
-		// 注意：按钮由 Screen 的 super.render() 统一渲染
 	}
 
 	@Override

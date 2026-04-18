@@ -147,6 +147,43 @@ public class DockSerializer {
 		}
 	}
 
+	public static boolean hasSavedLayout() {
+		return getConfigFile().exists();
+	}
+
+	public static boolean savedLayoutContainsPanel(String panelId) {
+		File file = getConfigFile();
+		if (!file.exists()) {
+			return false;
+		}
+		try (Reader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
+			JsonElement json = JsonParser.parseReader(reader);
+			return containsPanelId(json, panelId);
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	public static DockNode loadLayout(@Nullable JsonObject json, Map<String, DockPanel> panelMap,
+			Function<Map<String, DockPanel>, DockNode> defaultLayout) {
+		if (json == null) {
+			return defaultLayout.apply(panelMap);
+		}
+		try {
+			Set<String> usedIds = new HashSet<>();
+			DockNode node = deserialize(json, panelMap, usedIds);
+			if (node == null) {
+				LOGGER.warn("Invalid in-memory layout, falling back to default");
+				return defaultLayout.apply(panelMap);
+			}
+			addMissingPanels(node, panelMap, usedIds);
+			return node;
+		} catch (Exception e) {
+			LOGGER.error("Failed to load in-memory editor layout, falling back to default", e);
+			return defaultLayout.apply(panelMap);
+		}
+	}
+
 	/**
 	 * 从配置文件加载布局。
 	 *
@@ -167,17 +204,20 @@ public class DockSerializer {
 				LOGGER.warn("Invalid layout file, falling back to default");
 				return defaultLayout.apply(panelMap);
 			}
-			// 检查是否所有面板都被分配了，未分配的面板需要添加到某个 Group
-			for (Map.Entry<String, DockPanel> entry : panelMap.entrySet()) {
-				if (!usedIds.contains(entry.getKey())) {
-					LOGGER.warn("Panel '{}' missing from layout, adding to first group", entry.getKey());
-					addPanelToFirstGroup(node, entry.getValue());
-				}
-			}
+			addMissingPanels(node, panelMap, usedIds);
 			return node;
 		} catch (Exception e) {
 			LOGGER.error("Failed to load editor layout, falling back to default", e);
 			return defaultLayout.apply(panelMap);
+		}
+	}
+
+	private static void addMissingPanels(DockNode node, Map<String, DockPanel> panelMap, Set<String> usedIds) {
+		for (Map.Entry<String, DockPanel> entry : panelMap.entrySet()) {
+			if (!usedIds.contains(entry.getKey())) {
+				LOGGER.warn("Panel '{}' missing from layout, adding to first group", entry.getKey());
+				addPanelToFirstGroup(node, entry.getValue());
+			}
 		}
 	}
 
@@ -190,6 +230,26 @@ public class DockSerializer {
 		} else if (node instanceof DockSplit split) {
 			addPanelToFirstGroup(split.getFirst(), panel);
 		}
+	}
+
+	private static boolean containsPanelId(JsonElement element, String panelId) {
+		if (element == null || !element.isJsonObject()) {
+			return false;
+		}
+		JsonObject object = element.getAsJsonObject();
+		String type = object.has("type") ? object.get("type").getAsString() : "";
+		if ("group".equals(type) && object.has("panels")) {
+			for (JsonElement panel : object.getAsJsonArray("panels")) {
+				if (panelId.equals(panel.getAsString())) {
+					return true;
+				}
+			}
+			return false;
+		}
+		if ("split".equals(type)) {
+			return containsPanelId(object.get("first"), panelId) || containsPanelId(object.get("second"), panelId);
+		}
+		return false;
 	}
 
 	/**

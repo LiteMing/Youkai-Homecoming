@@ -51,6 +51,7 @@ public class SpellPreviewScreen extends Screen {
 	private ActionListDockPanel actionListDockPanel;
 	private EditorDockPanel editorDockPanel;
 	private ControlsDockPanel controlsDockPanel;
+	private StatusDockPanel statusDockPanel;
 	private PerfDockPanel perfDockPanel;
 	private HelpDockPanel helpDockPanel;
 
@@ -67,6 +68,7 @@ public class SpellPreviewScreen extends Screen {
 	private boolean autoReplay = true;
 	private boolean draftMode;
 	private boolean skipSaveOnNextDefinitionSwitch;
+	private com.google.gson.JsonObject pendingDockLayout;
 
 	/** Snapshots of visited spell definitions when this editor first saw them. */
 	private final java.util.Map<ResourceLocation, com.google.gson.JsonElement> openSnapshots = new java.util.HashMap<>();
@@ -91,6 +93,7 @@ public class SpellPreviewScreen extends Screen {
 		}
 		// Create persistent dock panels
 		this.viewportPanel = new ViewportDockPanel(viewport, scene);
+		this.statusDockPanel = new StatusDockPanel(scene, viewport);
 		this.helpDockPanel = new HelpDockPanel();
 	}
 
@@ -210,7 +213,7 @@ public class SpellPreviewScreen extends Screen {
 		// Reset Layout button
 		Button resetLayoutButton = Button.builder(Component.literal("RstLayout"), btn -> {
 			DockSerializer.deleteLayout();
-			rebuildScreen();
+			rebuildScreen(false);
 		}).bounds(bx, by, 56, BUTTON_HEIGHT).build();
 		resetLayoutButton.active = fullEdit;
 		addRenderableWidget(resetLayoutButton);
@@ -266,11 +269,23 @@ public class SpellPreviewScreen extends Screen {
 		panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
 		panelMap.put(editorDockPanel.dockId(), editorDockPanel);
 		panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
+		panelMap.put(statusDockPanel.dockId(), statusDockPanel);
 		panelMap.put(perfDockPanel.dockId(), perfDockPanel);
 		panelMap.put(helpDockPanel.dockId(), helpDockPanel);
 
-		DockNode root = DockSerializer.loadLayout(panelMap, SpellPreviewScreen::buildDefaultLayout);
-		dockLayout = new DockLayout(root);
+		com.google.gson.JsonObject layoutSnapshot = pendingDockLayout;
+		pendingDockLayout = null;
+		if (layoutSnapshot != null) {
+			dockLayout = new DockLayout(DockSerializer.loadLayout(layoutSnapshot, panelMap, SpellPreviewScreen::buildDefaultLayout));
+		} else {
+			boolean hadSavedLayout = DockSerializer.hasSavedLayout();
+			boolean savedLayoutHasStatusPanel = DockSerializer.savedLayoutContainsPanel(statusDockPanel.dockId());
+			DockNode root = DockSerializer.loadLayout(panelMap, SpellPreviewScreen::buildDefaultLayout);
+			dockLayout = new DockLayout(root);
+			if (hadSavedLayout && !savedLayoutHasStatusPanel) {
+				relocateMissingStatusPanel();
+			}
+		}
 		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
 		// Set active group to the one containing the viewport
 		DockGroup vpGroup = dockLayout.findGroupContaining(viewportPanel);
@@ -288,21 +303,80 @@ public class SpellPreviewScreen extends Screen {
 		DockPanel actions = panelMap.get("actions");
 		DockPanel properties = panelMap.get("properties");
 		DockPanel controls = panelMap.get("controls");
+		DockPanel status = panelMap.get("status");
 		DockPanel perf = panelMap.get("perf");
 
 		DockGroup viewportGroup = new DockGroup(viewport);
 		DockGroup actionListGroup = new DockGroup(actions);
 		DockGroup editorGroup = new DockGroup(properties);
-		// Controls and Perf share the same DockGroup as sibling tabs
 		DockGroup controlsGroup = new DockGroup(controls, perf);
+		DockGroup statusGroup = new DockGroup(status);
 		// Help 面板默认不显示
 
 		DockSplit rightSplit = new DockSplit(false, 0.4f, actionListGroup, editorGroup);
 		DockSplit mainSplit = new DockSplit(true, 0.6f, viewportGroup, rightSplit);
-		return new DockSplit(false, 0.8f, mainSplit, controlsGroup);
+		DockSplit bottomSplit = new DockSplit(true, 0.72f, controlsGroup, statusGroup);
+		return new DockSplit(false, 0.8f, mainSplit, bottomSplit);
+	}
+
+	private void relocateMissingStatusPanel() {
+		if (dockLayout == null || statusDockPanel == null) {
+			return;
+		}
+		DockGroup currentGroup = dockLayout.findGroupContaining(statusDockPanel);
+		if (currentGroup != null && currentGroup.getPanelCount() == 1) {
+			return;
+		}
+		boolean removed = false;
+		if (currentGroup != null) {
+			removed = currentGroup.removePanel(statusDockPanel);
+		}
+		DockGroup anchor = dockLayout.findGroupContaining(controlsDockPanel);
+		if (anchor == null) {
+			anchor = dockLayout.findGroupContaining(perfDockPanel);
+		}
+		if (anchor == null) {
+			anchor = dockLayout.findGroupContaining(viewportPanel);
+		}
+		if (anchor == null) {
+			if (removed && currentGroup != null) {
+				currentGroup.addPanel(statusDockPanel);
+			}
+			return;
+		}
+		DockGroup statusGroup = new DockGroup(statusDockPanel);
+		DockSplit split = new DockSplit(true, 0.72f, anchor, statusGroup);
+		if (dockLayout.getRoot() == anchor) {
+			dockLayout.setRoot(split);
+			return;
+		}
+		if (!replaceDockNode(dockLayout.getRoot(), anchor, split) && removed && currentGroup != null) {
+			currentGroup.addPanel(statusDockPanel);
+		}
+	}
+
+	private boolean replaceDockNode(DockNode current, DockNode oldNode, DockNode newNode) {
+		if (current instanceof DockSplit split) {
+			if (split.getFirst() == oldNode) {
+				split.setFirst(newNode);
+				return true;
+			}
+			if (split.getSecond() == oldNode) {
+				split.setSecond(newNode);
+				return true;
+			}
+			return replaceDockNode(split.getFirst(), oldNode, newNode)
+					|| replaceDockNode(split.getSecond(), oldNode, newNode);
+		}
+		return false;
 	}
 
 	private void rebuildScreen() {
+		rebuildScreen(true);
+	}
+
+	private void rebuildScreen(boolean preserveLayout) {
+		pendingDockLayout = preserveLayout && dockLayout != null ? DockSerializer.serialize(dockLayout.getRoot()) : null;
 		this.init(minecraft, width, height);
 	}
 

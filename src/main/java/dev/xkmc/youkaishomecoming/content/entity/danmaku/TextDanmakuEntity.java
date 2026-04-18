@@ -22,6 +22,8 @@ public class TextDanmakuEntity extends YHBaseLaserEntity implements MoverOwner {
 	@SerialClass.SerialField
 	public String text = "";
 	@SerialClass.SerialField
+	public String backText = "";
+	@SerialClass.SerialField
 	public int textColor = 0xFFFFFFFF;
 	@SerialClass.SerialField
 	public boolean perChar = false;

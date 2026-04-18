@@ -115,6 +115,7 @@ public class PreviewCardHolder implements CardHolder {
 		danmaku.textColor = textColor;
 		danmaku.length = len;
 		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, len, true, dir);
+		danmaku.setupLength = YHDanmaku.Laser.PENCIL.setupLength();
 		return danmaku;
 	}
 

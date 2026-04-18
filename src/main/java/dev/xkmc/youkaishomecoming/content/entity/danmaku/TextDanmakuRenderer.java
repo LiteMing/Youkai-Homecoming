@@ -5,6 +5,7 @@ import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.LightTexture;
@@ -19,6 +20,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 @OnlyIn(Dist.CLIENT)
 public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRenderer<T> implements ProjectileRenderer<T> {
@@ -73,30 +75,69 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		if (e.tickCount < 2) return;
 
 		Font font = Minecraft.getInstance().font;
-		float textWidth = Math.max(font.width(e.text), 1);
+		if (e.perChar) {
+			String visible = choosePerCharText(e, pose);
+			renderBillboardText(e, visible, font, pTick, pose, buffer, light);
+			return;
+		}
+		renderSignText(e, e.text, font, pTick, pose, buffer, light);
+	}
+
+	private String choosePerCharText(T e, PoseStack pose) {
+		if (e.backText == null || e.backText.isEmpty()) return e.text;
+		Vec3 forward = e.getForward();
+		// Use the current view transform directly so preview/world rendering agree on
+		// whether the danmaku line runs left-to-right or right-to-left on screen.
+		Vector3f screenForward = pose.last().normal().transform(
+				new Vector3f((float) forward.x, (float) forward.y, (float) forward.z));
+		return screenForward.x >= 0 ? e.text : e.backText;
+	}
+
+	private void renderBillboardText(T e, String text, Font font, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
+		float textWidth = Math.max(font.width(text), 1);
 		float effLen = e.effectiveLength(pTick);
 		if (effLen <= 0) return;
 
 		pose.pushPose();
-
-		Quaternionf camRot = cameraOrientation();
-		pose.mulPose(camRot);
+		pose.mulPose(cameraOrientation());
 
 		float scale = effLen / textWidth;
 		float openFactor = e.percentOpen(pTick);
-		boolean preview = ProjectileRenderHelper.cameraOrientationOverride != null;
-		// Vanilla name-tag pattern: scale(-s, -s, s) flips X+Y for correct text orientation.
-		// In preview, OrthographicViewport already applies negative Y scale, so skip the Y flip.
-		float yScale = preview ? scale * openFactor : -scale * openFactor;
-		pose.scale(-scale, yScale, scale);
+		pose.scale(-scale, -scale * openFactor, scale);
+		drawText(font, text, -textWidth / 2f, -font.lineHeight / 2f, e.textColor, pose, buffer, light);
+		pose.popPose();
+	}
 
-		float x = -textWidth / 2f;
-		float y = -font.lineHeight / 2f;
+	private void renderSignText(T e, String text, Font font, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
+		float textWidth = Math.max(font.width(text), 1);
+		float effLen = e.effectiveLength(pTick);
+		if (effLen <= 0) return;
 
+		float scale = effLen / textWidth;
+		float openFactor = e.percentOpen(pTick);
+		float drawY = -font.lineHeight / 2f;
+		float yaw = e.getViewYRot(pTick);
+
+		// Front face: anchor at the laser origin and extend along the hitbox direction.
+		pose.pushPose();
+		pose.mulPose(Axis.YP.rotationDegrees(-yaw - 90));
+		pose.scale(scale, -scale * openFactor, scale);
+		drawText(font, text, 0, drawY, e.textColor, pose, buffer, light);
+		pose.popPose();
+
+		// Back face: flip the plane, but keep the world-space extent identical.
+		pose.pushPose();
+		pose.mulPose(Axis.YP.rotationDegrees(90 - yaw));
+		pose.scale(scale, -scale * openFactor, scale);
+		drawText(font, text, -textWidth, drawY, e.textColor, pose, buffer, light);
+		pose.popPose();
+	}
+
+	private void drawText(Font font, String text, float x, float y, int color, PoseStack pose, MultiBufferSource buffer, int light) {
 		font.drawInBatch(
-				e.text,
+				text,
 				x, y,
-				e.textColor,
+				color,
 				false,
 				pose.last().pose(),
 				buffer,
@@ -104,8 +145,6 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 				0,
 				light
 		);
-
-		pose.popPose();
 	}
 
 	@Override

@@ -84,6 +84,7 @@ public interface LivingCardHolder extends CardHolder {
 		danmaku.length = len;
 		// Use PENCIL laser damage type as default for text danmaku
 		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, len, true, dir);
+		danmaku.setupLength = YHDanmaku.Laser.PENCIL.setupLength();
 		return danmaku;
 	}
 

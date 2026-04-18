@@ -109,23 +109,33 @@ public record FireTextDanmakuAction(
 		String resolvedText = resolveTextPlaceholders(text, ctx);
 
 		if (perChar) {
-			int n = resolvedText.codePointCount(0, resolvedText.length());
+			var chars = splitCodePoints(resolvedText);
+			int n = chars.length;
 			if (n == 0) return;
 			float segLen = len / n;
-			int idx = 0;
-			int cp;
-			for (int pos = 0; pos < resolvedText.length(); pos += Character.charCount(cp)) {
-				cp = resolvedText.codePointAt(pos);
-				String ch = new String(Character.toChars(cp));
-				// Place each character at its own spawn offset along the flight direction.
-				// Use (n - idx - 0.5) to reverse the order so first character is at the front
-				Vec3 charPos = originPos.add(dir.scale(segLen * (n - idx - 0.5)));
-				spawn(holder, life, charPos, dir, segLen, ch);
-				idx++;
+			for (int idx = 0; idx < n; idx++) {
+				String ch = chars[idx];
+				String back = chars[n - 1 - idx];
+				// Keep per-char spacing consistent with the single-entity variant:
+				// the first glyph starts nearest the origin and extends forward in text order.
+				Vec3 charPos = originPos.add(dir.scale(segLen * (idx + 0.5)));
+				spawn(holder, life, charPos, dir, segLen, ch, back);
 			}
 		} else {
-			spawn(holder, life, originPos, dir, len, resolvedText);
+			spawn(holder, life, originPos, dir, len, resolvedText, resolvedText);
 		}
+	}
+
+	private static String[] splitCodePoints(String text) {
+		int n = text.codePointCount(0, text.length());
+		String[] ans = new String[n];
+		int idx = 0;
+		for (int pos = 0; pos < text.length();) {
+			int cp = text.codePointAt(pos);
+			ans[idx++] = new String(Character.toChars(cp));
+			pos += Character.charCount(cp);
+		}
+		return ans;
 	}
 
 	/**
@@ -149,8 +159,9 @@ public record FireTextDanmakuAction(
 		return result;
 	}
 
-	private void spawn(CardHolder holder, int life, Vec3 pos, Vec3 dir, float len, String str) {
+	private void spawn(CardHolder holder, int life, Vec3 pos, Vec3 dir, float len, String str, String backStr) {
 		TextDanmakuEntity e = holder.prepareTextDanmaku(life, pos, dir, len, str, textColor);
+		e.backText = backStr;
 		e.perChar = perChar;
 		if (damageType.isPresent()) {
 			e.damageTypeOverride = damageType.get();

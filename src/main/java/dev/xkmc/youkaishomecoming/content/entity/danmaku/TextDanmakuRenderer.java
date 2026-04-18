@@ -113,8 +113,8 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 			pose.mulPose(cameraOrientation());
 		}
 
-		float scale = effLen / textWidth;
 		float openFactor = e.percentOpen(pTick);
+		float scale = effLen / textWidth;
 		pose.scale(-scale, -scale * openFactor, scale);
 		drawText(font, text, -textWidth / 2f, -font.lineHeight / 2f, e.textColor, pose, buffer, light);
 		pose.popPose();
@@ -129,17 +129,20 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		float openFactor = e.percentOpen(pTick);
 		float drawY = -font.lineHeight / 2f;
 		float yaw = e.getViewYRot(pTick);
+		float pitch = e.getViewXRot(pTick);
 
-		// Front face: anchor at the laser origin and extend along the hitbox direction.
+		// Front face: local +X follows the full flight direction, including pitch.
 		pose.pushPose();
 		pose.mulPose(Axis.YP.rotationDegrees(-yaw - 90));
+		pose.mulPose(Axis.ZP.rotationDegrees(-pitch));
 		pose.scale(scale, -scale * openFactor, scale);
 		drawText(font, text, 0, drawY, e.textColor, pose, buffer, light);
 		pose.popPose();
 
-		// Back face: flip the plane, but keep the world-space extent identical.
+		// Back face: mirror the plane while preserving the same world-space extent.
 		pose.pushPose();
 		pose.mulPose(Axis.YP.rotationDegrees(90 - yaw));
+		pose.mulPose(Axis.ZP.rotationDegrees(pitch));
 		pose.scale(scale, -scale * openFactor, scale);
 		drawText(font, text, -textWidth, drawY, e.textColor, pose, buffer, light);
 		pose.popPose();

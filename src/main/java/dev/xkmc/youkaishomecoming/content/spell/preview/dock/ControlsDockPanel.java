@@ -11,12 +11,14 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -28,11 +30,19 @@ public class ControlsDockPanel implements DockPanel {
 
 	private static final int BUTTON_HEIGHT = 16;
 	private static final int BUTTON_SPACING = 2;
+	private static final int DROPDOWN_ITEM_H = 18;
+	private static final int DROPDOWN_MAX_VISIBLE = 10;
 
 	private final VirtualSpellScene scene;
 	private final OrthographicViewport viewport;
 	private final Runnable rebuildCallback;
 	private final Runnable resetPhaseCallback;
+	private final Supplier<List<ResourceLocation>> spellOptionsSupplier;
+	private final Supplier<ResourceLocation> currentSpellIdSupplier;
+	private final Function<ResourceLocation, String> spellDisplayFormatter;
+	private final Consumer<ResourceLocation> switchSpellCallback;
+	private final Runnable deleteSpellCallback;
+	private final Supplier<Boolean> canDeleteSpellSupplier;
 	private final Consumer<Integer> cyclePhaseCallback;
 	private final Supplier<String> currentPhaseNameSupplier;
 	private final Consumer<String> renamePhaseCallback;
@@ -43,13 +53,35 @@ public class ControlsDockPanel implements DockPanel {
 	private int x, y, w, h;
 	private final List<Button> buttons = new ArrayList<>();
 	private final List<EditBox> editBoxes = new ArrayList<>();
+	private int statusTextX = 90;
+	private Button spellDropdownButton;
+	private Button spellDeleteButton;
+	private DropdownOverlay spellDropdown;
+	private int spellDropdownHoverIndex = -1;
+	private int spellDropdownScrollOffset = 0;
+	private ConfirmOverlay spellDeleteConfirm;
+	private int spellDeleteConfirmHoverIndex = -1;
 	private Consumer<AbstractWidget> addWidgetCallback;
 	private Consumer<GuiEventListener> removeWidgetCallback;
+
+	private record DropdownOverlay(
+			List<ResourceLocation> values,
+			String[] options,
+			int selectedIndex
+	) {}
+
+	private record ConfirmOverlay(String[] options) {}
 
 	public ControlsDockPanel(VirtualSpellScene scene,
 							 OrthographicViewport viewport,
 							 Runnable rebuildCallback,
 							 Runnable resetPhaseCallback,
+							 Supplier<List<ResourceLocation>> spellOptionsSupplier,
+							 Supplier<ResourceLocation> currentSpellIdSupplier,
+							 Function<ResourceLocation, String> spellDisplayFormatter,
+							 Consumer<ResourceLocation> switchSpellCallback,
+							 Runnable deleteSpellCallback,
+							 Supplier<Boolean> canDeleteSpellSupplier,
 							 Consumer<Integer> cyclePhaseCallback,
 							 Supplier<String> currentPhaseNameSupplier,
 							 Consumer<String> renamePhaseCallback,
@@ -60,6 +92,12 @@ public class ControlsDockPanel implements DockPanel {
 		this.viewport = viewport;
 		this.rebuildCallback = rebuildCallback;
 		this.resetPhaseCallback = resetPhaseCallback;
+		this.spellOptionsSupplier = spellOptionsSupplier;
+		this.currentSpellIdSupplier = currentSpellIdSupplier;
+		this.spellDisplayFormatter = spellDisplayFormatter;
+		this.switchSpellCallback = switchSpellCallback;
+		this.deleteSpellCallback = deleteSpellCallback;
+		this.canDeleteSpellSupplier = canDeleteSpellSupplier;
 		this.cyclePhaseCallback = cyclePhaseCallback;
 		this.currentPhaseNameSupplier = currentPhaseNameSupplier;
 		this.renamePhaseCallback = renamePhaseCallback;
@@ -82,6 +120,7 @@ public class ControlsDockPanel implements DockPanel {
 	 */
 	public void buildButtons() {
 		clearButtons();
+		statusTextX = x + 90;
 
 		int row1Y = y + 4;
 		int row2Y = row1Y + BUTTON_HEIGHT + BUTTON_SPACING;
@@ -98,7 +137,9 @@ public class ControlsDockPanel implements DockPanel {
 		bx = x + 4;
 		bx = addButton(bx, row1Y, 40, "\u25B6/\u275A\u275A", btn -> scene.togglePlayPause());
 		bx = addButton(bx, row1Y, 20, "\u25A0", btn -> resetPhaseCallback.run());
-		addButton(bx, row1Y, 20, "\u25B8", btn -> scene.step());
+		bx = addButton(bx, row1Y, 20, "\u25B8", btn -> scene.step());
+		bx += 8;
+		addSpellDropdownButton(bx, row1Y);
 
 		// Row 2: Speed buttons + Safety limit
 		bx = x + 4;
@@ -274,6 +315,32 @@ public class ControlsDockPanel implements DockPanel {
 		return bx + bw + BUTTON_SPACING;
 	}
 
+	private void addSpellDropdownButton(int bx, int by) {
+		int labelW = 36;
+		int dropdownW = Math.max(96, Math.min(220, w / 4));
+		int nextX = addButton(bx, by, labelW, "Spell:", btn -> {});
+		ResourceLocation currentSpellId = currentSpellIdSupplier.get();
+		String currentLabel = currentSpellId == null ? "" : formatSpellOption(currentSpellId);
+		String displayText = fitToWidth(currentLabel, dropdownW - 14);
+		Button btn = Button.builder(Component.literal(displayText + " \u25BC"), b -> openSpellDropdown())
+				.bounds(nextX, by, dropdownW, BUTTON_HEIGHT).build();
+		spellDropdownButton = btn;
+		buttons.add(btn);
+		if (addWidgetCallback != null) {
+			addWidgetCallback.accept(btn);
+		}
+		int deleteX = nextX + dropdownW + BUTTON_SPACING;
+		Button deleteBtn = Button.builder(Component.literal("-"), b -> openSpellDeleteConfirm())
+				.bounds(deleteX, by, 20, BUTTON_HEIGHT).build();
+		deleteBtn.active = canDeleteSpellSupplier.get();
+		spellDeleteButton = deleteBtn;
+		buttons.add(deleteBtn);
+		if (addWidgetCallback != null) {
+			addWidgetCallback.accept(deleteBtn);
+		}
+		statusTextX = Math.max(x + 90, deleteX + 20 + 8);
+	}
+
 	private int addEditBox(int bx, int by, int bw, String hint, java.util.function.Consumer<String> onSubmit) {
 		return addTextEditBox(bx, by, bw, "", hint, 16, s -> s.matches("[0-9.%\\-]*"), onSubmit);
 	}
@@ -299,6 +366,8 @@ public class ControlsDockPanel implements DockPanel {
 	private final java.util.Map<EditBox, java.util.function.Consumer<String>> editBoxSubmits = new java.util.HashMap<>();
 
 	public void clearButtons() {
+		closeSpellDropdown();
+		closeSpellDeleteConfirm();
 		if (removeWidgetCallback != null) {
 			for (Button btn : buttons) {
 				removeWidgetCallback.accept(btn);
@@ -310,6 +379,8 @@ public class ControlsDockPanel implements DockPanel {
 		buttons.clear();
 		editBoxes.clear();
 		editBoxSubmits.clear();
+		spellDropdownButton = null;
+		spellDeleteButton = null;
 	}
 
 	// ---- DockPanel 基础实现 ----
@@ -367,19 +438,45 @@ public class ControlsDockPanel implements DockPanel {
 				"  hits:" + scene.getHitCount() +
 				"  speed:" + scene.getCurrentSpeed() + "x" +
 				safetyWarning;
-		graphics.drawString(font, status, x + 90, row1Y + 4, 0xFFCCCCCC, false);
+		graphics.drawString(font, status, statusTextX, row1Y + 4, 0xFFCCCCCC, false);
 
 		// 注意：按钮由 Screen 的 super.render() 统一渲染
 	}
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (spellDeleteConfirm != null) {
+			if (handleSpellDeleteConfirmClick(mouseX, mouseY)) {
+				return true;
+			}
+			closeSpellDeleteConfirm();
+			return true;
+		}
+		if (spellDropdown != null) {
+			if (handleSpellDropdownClick(mouseX, mouseY)) {
+				return true;
+			}
+			closeSpellDropdown();
+			return true;
+		}
 		// 按钮和 EditBox 的点击由 Screen widget 系统处理
 		return false;
 	}
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (spellDeleteConfirm != null) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+				closeSpellDeleteConfirm();
+			}
+			return true;
+		}
+		if (spellDropdown != null) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+				closeSpellDropdown();
+			}
+			return true;
+		}
 		// Enter key submits focused EditBox value
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
 			for (EditBox box : editBoxes) {
@@ -397,6 +494,32 @@ public class ControlsDockPanel implements DockPanel {
 	}
 
 	@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+		if (spellDeleteConfirm != null) {
+			return true;
+		}
+		if (spellDropdown == null) {
+			return false;
+		}
+		String[] options = spellDropdown.options();
+		if (options == null || options.length == 0) {
+			return true;
+		}
+		int[] bounds = computeSpellDropdownBounds();
+		int visibleItems = Math.max(1, bounds[4]);
+		int maxScroll = Math.max(0, options.length - visibleItems);
+		spellDropdownScrollOffset = Math.max(0, Math.min(maxScroll,
+				spellDropdownScrollOffset - (int) (delta * 3)));
+		return true;
+	}
+
+	@Override
+	public void renderOverlay(GuiGraphics graphics, int mouseX, int mouseY) {
+		doRenderSpellDropdown(graphics, mouseX, mouseY);
+		doRenderSpellDeleteConfirm(graphics, mouseX, mouseY);
+	}
+
+	@Override
 	public void onActivated() {
 		for (Button btn : buttons) btn.visible = true;
 		for (EditBox box : editBoxes) box.visible = true;
@@ -404,7 +527,295 @@ public class ControlsDockPanel implements DockPanel {
 
 	@Override
 	public void onDeactivated() {
+		closeSpellDropdown();
+		closeSpellDeleteConfirm();
 		for (Button btn : buttons) btn.visible = false;
 		for (EditBox box : editBoxes) box.visible = false;
+	}
+
+	public boolean isDropdownOpen() {
+		return spellDropdown != null || spellDeleteConfirm != null;
+	}
+
+	private void openSpellDropdown() {
+		List<ResourceLocation> values = spellOptionsSupplier.get();
+		if (values == null || values.isEmpty() || spellDropdownButton == null) {
+			return;
+		}
+		closeSpellDeleteConfirm();
+		String[] options = new String[values.size()];
+		ResourceLocation current = currentSpellIdSupplier.get();
+		int selectedIndex = -1;
+		for (int i = 0; i < values.size(); i++) {
+			ResourceLocation value = values.get(i);
+			options[i] = formatSpellOption(value);
+			if (selectedIndex < 0 && java.util.Objects.equals(value, current)) {
+				selectedIndex = i;
+			}
+		}
+		spellDropdown = new DropdownOverlay(List.copyOf(values), options, selectedIndex);
+		spellDropdownHoverIndex = -1;
+		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int maxScroll = Math.max(0, options.length - visibleItems);
+		if (selectedIndex >= visibleItems) {
+			spellDropdownScrollOffset = selectedIndex - visibleItems + 1;
+		} else {
+			spellDropdownScrollOffset = 0;
+		}
+		spellDropdownScrollOffset = Math.max(0, Math.min(maxScroll, spellDropdownScrollOffset));
+	}
+
+	private void closeSpellDropdown() {
+		spellDropdown = null;
+		spellDropdownHoverIndex = -1;
+		spellDropdownScrollOffset = 0;
+	}
+
+	private void openSpellDeleteConfirm() {
+		if (spellDeleteButton == null || !canDeleteSpellSupplier.get()) {
+			return;
+		}
+		closeSpellDropdown();
+		ResourceLocation currentSpellId = currentSpellIdSupplier.get();
+		String label = currentSpellId == null ? "current spell" : fitToWidth(formatSpellOption(currentSpellId), 150);
+		spellDeleteConfirm = new ConfirmOverlay(new String[]{
+				"Cancel",
+				"Delete " + label
+		});
+		spellDeleteConfirmHoverIndex = -1;
+	}
+
+	private void closeSpellDeleteConfirm() {
+		spellDeleteConfirm = null;
+		spellDeleteConfirmHoverIndex = -1;
+	}
+
+	private String formatSpellOption(ResourceLocation spellId) {
+		String formatted = spellDisplayFormatter.apply(spellId);
+		if (formatted == null || formatted.isBlank()) {
+			return spellId.toString();
+		}
+		return formatted;
+	}
+
+	private String fitToWidth(String text, int width) {
+		Font font = Minecraft.getInstance().font;
+		if (text == null || text.isEmpty() || font.width(text) <= width) {
+			return text;
+		}
+		String ellipsis = "...";
+		String clipped = font.plainSubstrByWidth(text, Math.max(0, width - font.width(ellipsis)));
+		return clipped + ellipsis;
+	}
+
+	private int[] computeSpellDropdownBounds() {
+		if (spellDropdown == null || spellDropdownButton == null) {
+			return new int[]{0, 0, 0, 0, 0};
+		}
+		String[] options = spellDropdown.options();
+		if (options == null || options.length == 0) {
+			return new int[]{0, 0, 0, 0, 0};
+		}
+		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int totalH = visibleItems * DROPDOWN_ITEM_H;
+		int dropdownX = spellDropdownButton.getX();
+		int dropdownY = spellDropdownButton.getY() + spellDropdownButton.getHeight();
+		int dropdownW = spellDropdownButton.getWidth();
+		if (dropdownY + totalH > y + h) {
+			dropdownY = spellDropdownButton.getY() - totalH;
+		}
+		if (dropdownY < y) {
+			dropdownY = y;
+		}
+		if (dropdownY + totalH > y + h) {
+			totalH = y + h - dropdownY;
+		}
+		if (totalH < DROPDOWN_ITEM_H) {
+			totalH = DROPDOWN_ITEM_H;
+		}
+		return new int[]{dropdownX, dropdownY, dropdownW, totalH, Math.max(1, totalH / DROPDOWN_ITEM_H)};
+	}
+
+	private int[] computeSpellDeleteConfirmBounds() {
+		if (spellDeleteConfirm == null || spellDeleteButton == null) {
+			return new int[]{0, 0, 0, 0, 0};
+		}
+		String[] options = spellDeleteConfirm.options();
+		if (options == null || options.length == 0) {
+			return new int[]{0, 0, 0, 0, 0};
+		}
+		Font font = Minecraft.getInstance().font;
+		int dropdownW = 120;
+		for (String option : options) {
+			dropdownW = Math.max(dropdownW, font.width(option) + 18);
+		}
+		dropdownW = Math.min(dropdownW, Math.max(120, w / 3));
+		int totalH = options.length * DROPDOWN_ITEM_H;
+		int dropdownX = spellDeleteButton.getX() + spellDeleteButton.getWidth() - dropdownW;
+		if (dropdownX < x) {
+			dropdownX = x;
+		}
+		int dropdownY = spellDeleteButton.getY() + spellDeleteButton.getHeight();
+		if (dropdownY + totalH > y + h) {
+			dropdownY = spellDeleteButton.getY() - totalH;
+		}
+		if (dropdownY < y) {
+			dropdownY = y;
+		}
+		if (dropdownY + totalH > y + h) {
+			totalH = y + h - dropdownY;
+		}
+		if (totalH < DROPDOWN_ITEM_H) {
+			totalH = DROPDOWN_ITEM_H;
+		}
+		return new int[]{dropdownX, dropdownY, dropdownW, totalH, options.length};
+	}
+
+	private void doRenderSpellDropdown(GuiGraphics graphics, int mouseX, int mouseY) {
+		if (spellDropdown == null) {
+			return;
+		}
+		Font font = Minecraft.getInstance().font;
+		int[] bounds = computeSpellDropdownBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+		int visibleItems = bounds[4];
+		String[] options = spellDropdown.options();
+		if (options == null || options.length == 0) {
+			return;
+		}
+
+		boolean needsScroll = options.length > visibleItems;
+		int scrollbarW = needsScroll ? 6 : 0;
+
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 200);
+		graphics.fill(dx + 3, dy + 3, dx + dw + 3, dy + dh + 3, 0x88000000);
+		graphics.fill(dx, dy, dx + dw, dy + dh, 0xFF1a1a30);
+		graphics.fill(dx, dy, dx + dw, dy + 1, 0xFF666688);
+		graphics.fill(dx, dy + dh - 1, dx + dw, dy + dh, 0xFF666688);
+		graphics.fill(dx, dy, dx + 1, dy + dh, 0xFF666688);
+		graphics.fill(dx + dw - 1, dy, dx + dw, dy + dh, 0xFF666688);
+
+		spellDropdownHoverIndex = -1;
+		int contentW = dw - scrollbarW;
+		if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
+			int rawIdx = (mouseY - dy) / DROPDOWN_ITEM_H + spellDropdownScrollOffset;
+			if (rawIdx >= 0 && rawIdx < options.length) {
+				spellDropdownHoverIndex = rawIdx;
+			}
+		}
+
+		int visCount = Math.min(options.length, dh / DROPDOWN_ITEM_H);
+		for (int i = 0; i < visCount; i++) {
+			int optIdx = i + spellDropdownScrollOffset;
+			if (optIdx >= options.length) {
+				break;
+			}
+			int itemY = dy + i * DROPDOWN_ITEM_H;
+			boolean isHovered = optIdx == spellDropdownHoverIndex;
+			boolean isSelected = optIdx == spellDropdown.selectedIndex();
+			if (isHovered) {
+				graphics.fill(dx + 1, itemY, dx + contentW - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
+			}
+			int textX = dx + 4;
+			if (isSelected) {
+				graphics.drawString(font, "\u25B6", dx + 3, itemY + 4, 0xFFFFCC44, false);
+				textX = dx + 14;
+			}
+			int textColor = isHovered ? 0xFFFFDD66 : (isSelected ? 0xFFFFCC88 : 0xFFDDDDDD);
+			graphics.drawString(font, options[optIdx], textX, itemY + 4, textColor, false);
+		}
+
+		if (needsScroll) {
+			int sbX = dx + dw - scrollbarW;
+			graphics.fill(sbX, dy, sbX + scrollbarW, dy + dh, 0x33FFFFFF);
+			int trackH = dh - 2;
+			int thumbH = Math.max(10, trackH * visibleItems / options.length);
+			int maxScroll = Math.max(1, options.length - visibleItems);
+			int thumbTravel = trackH - thumbH;
+			if (thumbTravel > 0) {
+				int thumbY = dy + 1 + thumbTravel * spellDropdownScrollOffset / maxScroll;
+				graphics.fill(sbX + 1, thumbY, sbX + scrollbarW - 1, thumbY + thumbH, 0xAAAAAACC);
+			}
+		}
+		graphics.pose().popPose();
+	}
+
+	private void doRenderSpellDeleteConfirm(GuiGraphics graphics, int mouseX, int mouseY) {
+		if (spellDeleteConfirm == null) {
+			return;
+		}
+		Font font = Minecraft.getInstance().font;
+		String[] options = spellDeleteConfirm.options();
+		int[] bounds = computeSpellDeleteConfirmBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 200);
+		graphics.fill(dx + 3, dy + 3, dx + dw + 3, dy + dh + 3, 0x88000000);
+		graphics.fill(dx, dy, dx + dw, dy + dh, 0xFF301818);
+		graphics.fill(dx, dy, dx + dw, dy + 1, 0xFFAA6666);
+		graphics.fill(dx, dy + dh - 1, dx + dw, dy + dh, 0xFFAA6666);
+		graphics.fill(dx, dy, dx + 1, dy + dh, 0xFFAA6666);
+		graphics.fill(dx + dw - 1, dy, dx + dw, dy + dh, 0xFFAA6666);
+
+		spellDeleteConfirmHoverIndex = -1;
+		if (mouseX >= dx && mouseX < dx + dw && mouseY >= dy && mouseY < dy + dh) {
+			int rawIdx = (mouseY - dy) / DROPDOWN_ITEM_H;
+			if (rawIdx >= 0 && rawIdx < options.length) {
+				spellDeleteConfirmHoverIndex = rawIdx;
+			}
+		}
+
+		for (int i = 0; i < options.length; i++) {
+			int itemY = dy + i * DROPDOWN_ITEM_H;
+			boolean isHovered = i == spellDeleteConfirmHoverIndex;
+			if (isHovered) {
+				graphics.fill(dx + 1, itemY, dx + dw - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
+			}
+			int color = i == 0 ? 0xFFDDDDDD : (isHovered ? 0xFFFF8888 : 0xFFFF6666);
+			graphics.drawString(font, options[i], dx + 6, itemY + 4, color, false);
+		}
+		graphics.pose().popPose();
+	}
+
+	private boolean handleSpellDropdownClick(double mouseX, double mouseY) {
+		if (spellDropdown == null) {
+			return false;
+		}
+		int[] bounds = computeSpellDropdownBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+		int visibleItems = bounds[4];
+		boolean needsScroll = spellDropdown.options().length > visibleItems;
+		int scrollbarW = needsScroll ? 6 : 0;
+		int contentW = dw - scrollbarW;
+		if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
+			int visIdx = (int) ((mouseY - dy) / DROPDOWN_ITEM_H);
+			int optIdx = visIdx + spellDropdownScrollOffset;
+			if (optIdx >= 0 && optIdx < spellDropdown.values().size()) {
+				ResourceLocation selected = spellDropdown.values().get(optIdx);
+				closeSpellDropdown();
+				switchSpellCallback.accept(selected);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean handleSpellDeleteConfirmClick(double mouseX, double mouseY) {
+		if (spellDeleteConfirm == null) {
+			return false;
+		}
+		int[] bounds = computeSpellDeleteConfirmBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+		if (mouseX >= dx && mouseX < dx + dw && mouseY >= dy && mouseY < dy + dh) {
+			int idx = (int) ((mouseY - dy) / DROPDOWN_ITEM_H);
+			closeSpellDeleteConfirm();
+			if (idx == 1) {
+				deleteSpellCallback.run();
+			}
+			return true;
+		}
+		return false;
 	}
 }

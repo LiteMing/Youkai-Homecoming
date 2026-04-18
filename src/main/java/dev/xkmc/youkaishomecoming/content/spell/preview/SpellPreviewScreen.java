@@ -204,7 +204,9 @@ public class SpellPreviewScreen extends Screen {
 		actionListDockPanel = new ActionListDockPanel(actionListPanel);
 		editorDockPanel = new EditorDockPanel(actionEditorPanel);
 		controlsDockPanel = new ControlsDockPanel(
-				scene, viewport, this::rebuildScreen, () -> resetSelectedPhasePreview(false), this::cyclePhase,
+				scene, viewport, this::rebuildScreen, () -> resetSelectedPhasePreview(false),
+				this::getSpellOptions, () -> definition.id, this::getSpellOptionLabel, this::switchSelectedSpell,
+				this::deleteSelectedSpell, this::canDeleteSelectedSpell, this::cyclePhase,
 				this::getSelectedPhaseDisplayName, this::renameSelectedPhase, this::addPhase,
 				this::deleteSelectedPhase, this::canDeleteSelectedPhase);
 		controlsDockPanel.setWidgetCallbacks(w -> this.addRenderableWidget(w), this::removeWidget);
@@ -567,6 +569,59 @@ public class SpellPreviewScreen extends Screen {
 		return formatResourceId(spellId);
 	}
 
+	private void switchSelectedSpell(ResourceLocation spellId) {
+		if (spellId == null || spellId.equals(definition.id)) {
+			return;
+		}
+		SpellDefinition target = SpellRegistry.get(spellId);
+		if (target == null) {
+			return;
+		}
+		boolean wasPlaying = scene.isPlaying();
+		scene.switchSpellDefinition(target, true);
+		if (wasPlaying) {
+			scene.play();
+		}
+	}
+
+	private boolean canDeleteSelectedSpell() {
+		return !SpellRegistry.hasDefault(definition.id) && getSpellOptions().size() > 1;
+	}
+
+	private void deleteSelectedSpell() {
+		ResourceLocation spellId = definition.id;
+		if (!canDeleteSelectedSpell()) {
+			return;
+		}
+		List<ResourceLocation> spells = getSpellOptions();
+		int currentIndex = spells.indexOf(spellId);
+		ResourceLocation fallbackId = null;
+		if (currentIndex > 0) {
+			fallbackId = spells.get(currentIndex - 1);
+		} else if (spells.size() > 1) {
+			fallbackId = spells.get(1);
+		}
+		SpellDefinition fallback = fallbackId == null ? null : SpellRegistry.get(fallbackId);
+		if (fallback == null) {
+			return;
+		}
+		boolean wasPlaying = scene.isPlaying();
+		openSnapshots.remove(spellId);
+		SpellRegistry.remove(spellId);
+		var server = Minecraft.getInstance().getSingleplayerServer();
+		if (server != null) {
+			server.execute(() -> CustomSpellStorage.deleteSpell(server, spellId));
+		}
+		scene.switchSpellDefinition(fallback, true);
+		if (wasPlaying) {
+			scene.play();
+		}
+		var mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			mc.player.displayClientMessage(Component.literal("[YH] Deleted spell " + formatResourceId(spellId)), true);
+		}
+	}
+
 	private void refreshPhaseControls() {
 		if (controlsDockPanel != null) {
 			controlsDockPanel.buildButtons();
@@ -801,6 +856,10 @@ public class SpellPreviewScreen extends Screen {
 
 		// Handle editor dropdown/completion overlays (Escape to close, arrow keys, etc.)
 		if (actionEditorPanel != null && actionEditorPanel.keyPressed(keyCode, scanCode, modifiers)) {
+			return true;
+		}
+		if (controlsDockPanel != null && controlsDockPanel.isDropdownOpen()
+				&& dockLayout != null && dockLayout.keyPressed(keyCode, scanCode, modifiers)) {
 			return true;
 		}
 

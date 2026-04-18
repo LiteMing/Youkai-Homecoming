@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
@@ -61,7 +62,16 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 
 	@Override
 	public void render(T e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
-		renderText(e, pTick, pose, buffer, light);
+		MultiBufferSource out = buffer;
+		MultiBufferSource.BufferSource isolated = null;
+		if (ProjectileRenderHelper.cameraOrientationOverride == null && entityRenderDispatcher.shouldRenderHitBoxes()) {
+			isolated = MultiBufferSource.immediate(new BufferBuilder(256));
+			out = isolated;
+		}
+		renderText(e, pTick, pose, out, light);
+		if (isolated != null) {
+			isolated.endBatch();
+		}
 	}
 
 	@Override

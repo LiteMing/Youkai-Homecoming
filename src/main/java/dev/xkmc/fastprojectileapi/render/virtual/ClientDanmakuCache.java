@@ -1,5 +1,6 @@
 package dev.xkmc.fastprojectileapi.render.virtual;
 
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
@@ -14,10 +15,12 @@ import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -176,8 +179,7 @@ public class ClientDanmakuCache {
 		double camy = vec3.y();
 		double camz = vec3.z();
 		EntityRenderDispatcher disp = Minecraft.getInstance().getEntityRenderDispatcher();
-		var box = disp.shouldRenderHitBoxes() && !Minecraft.getInstance().showOnlyReducedInfo() ?
-				buffer.getBuffer(RenderType.lines()) : null;
+		boolean renderHitBoxes = disp.shouldRenderHitBoxes() && !Minecraft.getInstance().showOnlyReducedInfo();
 
 		// PE-2: Extract view matrix once for billboard fast path (same idea as PB3 for preview).
 		// For billboard types, bypass PoseStack push/translate/scale/pop entirely.
@@ -238,31 +240,33 @@ public class ClientDanmakuCache {
 			}
 
 			// Standard path: PoseStack-based rendering for non-billboard types and non-danmaku entities
-			this.maybeRenderEntity(disp, frustum, e, camx, camy, camz, pTick, pose, box);
+			this.maybeRenderEntity(disp, frustum, e, camx, camy, camz, pTick, pose, buffer, renderHitBoxes);
 		}
-		if (box != null && cam.getEntity() instanceof Player pl && !all.isEmpty() &&
+		if (renderHitBoxes && cam.getEntity() instanceof Player pl && !all.isEmpty() &&
 				!Minecraft.getInstance().options.getCameraType().isFirstPerson()) {
-			renderPlayerHitbox(pose, box, pl, camx, camy, camz, pTick);
+			var lineBuffers = MultiBufferSource.immediate(new BufferBuilder(RenderType.lines().bufferSize()));
+			renderPlayerHitbox(pose, lineBuffers.getBuffer(RenderType.lines()), pl, camx, camy, camz, pTick);
+			lineBuffers.endBatch(RenderType.lines());
 		}
 	}
 
 	private <E extends SimplifiedProjectile> void maybeRenderEntity(
 			EntityRenderDispatcher disp, Frustum frustum, E e,
 			double camx, double camy, double camz, float pTick,
-			PoseStack pose, @Nullable VertexConsumer box
+			PoseStack pose, MultiBufferSource.BufferSource buffer, boolean renderHitBoxes
 	) {
 		EntityRenderer<E> er = getRenderer(disp, e);
 		if (!er.shouldRender(e, frustum, camx, camy, camz)) return;
 		double dx = Mth.lerp(pTick, e.xOld, e.getX());
 		double dy = Mth.lerp(pTick, e.yOld, e.getY());
 		double dz = Mth.lerp(pTick, e.zOld, e.getZ());
-		this.renderEntity(e, er, dx - camx, dy - camy, dz - camz, pTick, pose, box);
+		this.renderEntity(e, er, dx - camx, dy - camy, dz - camz, pTick, pose, buffer, renderHitBoxes);
 	}
 
 	public <E extends SimplifiedProjectile> void renderEntity(
 			E e, EntityRenderer<E> er,
 			double x, double y, double z, float pTick,
-			PoseStack pose, @Nullable VertexConsumer box
+			PoseStack pose, MultiBufferSource.BufferSource buffer, boolean renderHitBoxes
 	) {
 		if (!(er instanceof ProjectileRenderer<?> pr)) return;
 		ProjectileRenderer<E> r = Wrappers.cast(pr);
@@ -272,10 +276,16 @@ public class ClientDanmakuCache {
 		double dz = z + vec3.z();
 		pose.pushPose();
 		pose.translate(dx, dy, dz);
-		r.render(e, pTick, pose);
-		if (box != null) {
+		if (er instanceof TextDanmakuRenderer<?>) {
+			er.render(e, e.getYRot(), pTick, pose, buffer, LightTexture.FULL_BRIGHT);
+		} else {
+			r.render(e, pTick, pose);
+		}
+		if (renderHitBoxes) {
 			pose.translate(-vec3.x(), -vec3.y(), -vec3.z());
-			renderHitbox(pose, box, e, pTick);
+			var lineBuffers = MultiBufferSource.immediate(new BufferBuilder(RenderType.lines().bufferSize()));
+			renderHitbox(pose, lineBuffers.getBuffer(RenderType.lines()), e, pTick);
+			lineBuffers.endBatch(RenderType.lines());
 		}
 		pose.popPose();
 	}

@@ -27,6 +27,8 @@ public class TextDanmakuEntity extends YHBaseLaserEntity implements MoverOwner {
 	public int textColor = 0xFFFFFFFF;
 	@SerialClass.SerialField
 	public boolean perChar = false;
+	@SerialClass.SerialField
+	public float roll = 0;
 
 	public DanmakuDamageType damageTypeOverride = null;
 

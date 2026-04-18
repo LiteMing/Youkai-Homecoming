@@ -134,6 +134,7 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		pose.pushPose();
 		pose.mulPose(Axis.YP.rotationDegrees(-yaw - 90));
 		pose.mulPose(Axis.ZP.rotationDegrees(-pitch));
+		pose.mulPose(Axis.XP.rotationDegrees(e.roll));
 		pose.scale(glyphScale, -glyphScale * openFactor, glyphScale);
 		drawTextAnchored(font, text, 0, slotAdvance, e.textColor, pose, buffer, light);
 		pose.popPose();
@@ -142,6 +143,7 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		pose.pushPose();
 		pose.mulPose(Axis.YP.rotationDegrees(90 - yaw));
 		pose.mulPose(Axis.ZP.rotationDegrees(pitch));
+		pose.mulPose(Axis.XP.rotationDegrees(-e.roll));
 		pose.scale(glyphScale, -glyphScale * openFactor, glyphScale);
 		drawTextAnchored(font, text, -slotAdvance * countCodePoints(text), slotAdvance, e.textColor, pose, buffer, light);
 		pose.popPose();

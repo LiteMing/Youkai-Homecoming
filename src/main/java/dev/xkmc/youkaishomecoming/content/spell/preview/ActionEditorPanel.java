@@ -251,6 +251,7 @@ public class ActionEditorPanel {
 				"言弾", 0xFFFFFFFF, false,
 				NumberProvider.constant(100), NumberProvider.constant(10),
 				NumberProvider.constant(0), NumberProvider.constant(0),
+				NumberProvider.constant(0),
 				new AimMode.AimModes.Target(), OriginConfig.caster(),
 				Optional.empty(), 0, 0, 0, Optional.empty());
 		case "conditional" -> new SpellActions.ConditionalAction(
@@ -482,7 +483,7 @@ public class ActionEditorPanel {
 		addStringRow("Text", a.text(), v ->
 				notifyTextDanmaku(old -> old.withText(v)));
 
-		addIntRow("Text Color", a.textColor(), v ->
+		addColorRow("Text Color", a.textColor(), v ->
 				notifyTextDanmaku(old -> old.withTextColor(v), false));
 
 		addBooleanRow("Per Char", a.perChar(), v ->
@@ -499,6 +500,11 @@ public class ActionEditorPanel {
 
 		addNumberRow("Elevation", a.elevation(), v ->
 				notifyTextDanmaku(old -> old.withElevation(v), false));
+
+		if (!a.perChar()) {
+			addNumberRow("Roll", a.roll(), v ->
+					notifyTextDanmaku(old -> old.withRoll(v), false));
+		}
 
 		// AimMode dropdown
 		String currentAim = getAimModeType(a.aimMode());
@@ -1619,6 +1625,21 @@ public class ActionEditorPanel {
 		rows.add(new EditorRow(label, editBox, false));
 	}
 
+	private void addColorRow(String label, int value, Consumer<Integer> onChange) {
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
+				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		editBox.setMaxLength(16);
+		editBox.setValue(String.format("0x%08X", value));
+		editBox.setResponder(text -> {
+			Integer parsed = parseColor(text);
+			if (parsed != null) {
+				onChange.accept(parsed);
+			}
+		});
+		rows.add(new EditorRow(label, editBox, false));
+	}
+
 	private void addFloatRow(String label, float value, Consumer<Float> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
@@ -1655,6 +1676,23 @@ public class ActionEditorPanel {
 		editBox.setValue(value);
 		editBox.setResponder(onChange::accept);
 		rows.add(new EditorRow(label, editBox, false));
+	}
+
+	private Integer parseColor(String text) {
+		String value = text.trim();
+		if (value.isEmpty()) return null;
+		try {
+			if (value.startsWith("#")) {
+				long raw = Long.parseLong(value.substring(1), 16);
+				if (value.length() == 7) {
+					raw |= 0xFF000000L;
+				}
+				return (int) raw;
+			}
+			return (int) (long) Long.decode(value);
+		} catch (NumberFormatException ignored) {
+			return null;
+		}
 	}
 
 	private void addFullWidthButton(String text, Runnable onClick) {

@@ -89,6 +89,7 @@ public class YHClient {
 				event.register(e.get(col), deco);
 			}
 		}
+		event.register(YHDanmaku.TEXT_DANMAKU_ITEM.get(), deco);
 		event.register(YHDanmaku.CUSTOM_SPELL_RING.get(), deco);
 		event.register(YHDanmaku.CUSTOM_SPELL_HOMING.get(), deco);
 		for (var e : SpellItem.LIST) {

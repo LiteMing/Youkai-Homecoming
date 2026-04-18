@@ -10,6 +10,7 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.TextDanmakuItem;
 import dev.xkmc.youkaishomecoming.content.spell.custom.data.HomingSpellFormData;
 import dev.xkmc.youkaishomecoming.content.spell.custom.data.RingSpellFormData;
 import dev.xkmc.youkaishomecoming.content.spell.player.*;
@@ -150,6 +151,7 @@ public class YHDanmaku {
 	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_RING;
 	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_HOMING;
 	public static final ItemEntry<DynamicSpellItem> DYNAMIC_SPELL;
+	public static final ItemEntry<TextDanmakuItem> TEXT_DANMAKU_ITEM;
 
 	// Special bullets (not 16 colors)
 	public static final ItemEntry<DanmakuItem> ROSE_DANMAKU;
@@ -295,6 +297,15 @@ public class YHDanmaku {
 				LASER[t.ordinal()][e.ordinal()] = ent;
 			}
 		}
+
+		TEXT_DANMAKU_ITEM = YoukaisHomecoming.REGISTRATE
+				.item("text_danmaku_item", p -> new TextDanmakuItem(p.rarity(Rarity.RARE)))
+				.model((ctx, pvd) -> pvd.generated(ctx,
+						pvd.modLoc("item/danmaku/pencil"),
+						pvd.modLoc("item/danmaku/pencil_overlay")))
+				.color(() -> () -> (stack, i) -> ((TextDanmakuItem) stack.getItem()).getDanmakuColor(stack, i))
+				.tag(YHTagGen.LASER, YHTagGen.DANMAKU_SHOOTER)
+				.register();
 
 		// Register special bullets with specific textures
 		ROSE_DANMAKU = YoukaisHomecoming.REGISTRATE

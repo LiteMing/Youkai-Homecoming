@@ -6,9 +6,11 @@ import dev.xkmc.fastprojectileapi.entity.AsyncProjectile;
 import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
+import dev.xkmc.youkaishomecoming.compat.api.API;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
+import dev.xkmc.youkaishomecoming.events.SpellEndEvent;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
@@ -129,7 +131,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		if (ownerPlayer == null || ownerPlayer.isRemoved() || !ownerPlayer.isAlive()) {
 			resolveOwner();
 			if (ownerPlayer == null) {
-				cleanup();
+				cleanup(SpellEndEvent.Reason.OWNER_LOST);
 				return;
 			}
 		}
@@ -154,7 +156,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		boolean naturalEnd = maxDuration < 0 && runtime != null && runtime.isFinished();
 		boolean timedOut = maxDuration >= 0 && spellTickCount >= maxDuration;
 		if (naturalEnd || timedOut) {
-			cleanup();
+			cleanup(timedOut ? SpellEndEvent.Reason.TIMED_OUT : null);
 		}
 	}
 
@@ -253,7 +255,15 @@ public class DanmakuProxyEntity extends PathfinderMob
 		if (clearScreen) {
 			eraseAllDanmaku(null);
 		}
+		if (runtime != null) {
+			runtime.postSpellEnd(this, SpellEndEvent.Reason.REPLACED);
+		}
 		runtime = new SpellRuntime(definition);
+	}
+
+	@API
+	public @Nullable SpellRuntime getSpellRuntime() {
+		return runtime;
 	}
 
 	@Override
@@ -294,6 +304,13 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 * Clean up all virtual danmaku and remove this proxy entity from the world.
 	 */
 	public void cleanup() {
+		cleanup(null);
+	}
+
+	public void cleanup(@Nullable SpellEndEvent.Reason reason) {
+		if (reason != null && runtime != null) {
+			runtime.postSpellEnd(this, reason);
+		}
 		eraseAllDanmaku(null);
 		this.discard();
 	}

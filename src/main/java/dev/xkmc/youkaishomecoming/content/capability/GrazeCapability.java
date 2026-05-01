@@ -7,6 +7,9 @@ import dev.xkmc.l2library.capability.player.PlayerCapabilityTemplate;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
+import dev.xkmc.youkaishomecoming.events.DanmakuBattleEnterEvent;
+import dev.xkmc.youkaishomecoming.events.DanmakuBattleExitEvent;
+import dev.xkmc.youkaishomecoming.events.DanmakuEraseEvent;
 import dev.xkmc.youkaishomecoming.events.DanmakuLastHitEvent;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
@@ -92,14 +95,14 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (bomb > maxResource) bomb = maxResource;
 		if (player.level() instanceof ServerLevel sl) {
 			if (!full) {
-				dirty = !sessions.isEmpty();
-				sessions.clear();
+				if (!sessions.isEmpty()) {
+					stopAllSessions(DanmakuBattleExitEvent.Reason.COMBAT_DISABLED);
+				}
 			} else {
 				for (var ent : new ArrayList<>(sessions.entrySet())) {
 					if (ent.getValue().youkai == null) dirty = true;
 					if (ent.getValue().shouldRemove(sl, player)) {
-						sessions.remove(ent.getKey());
-						dirty = true;
+						stopSession(ent.getKey(), DanmakuBattleExitEvent.Reason.TARGET_LOST);
 					}
 				}
 			}
@@ -151,14 +154,14 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public HitType performErase(YoukaiEntity e) {
-		if (!EffectEventHandlers.canDanmakuCombat(player)) return HitType.NONE;
-		if (!sessions.containsKey(e.getUUID())) return HitType.ERASE;
-		if (invul > 0) return HitType.INVUL;
+		if (!EffectEventHandlers.canDanmakuCombat(player)) return postEraseEvent(e, HitType.NONE);
+		if (!sessions.containsKey(e.getUUID())) return postEraseEvent(e, HitType.ERASE);
+		if (invul > 0) return postEraseEvent(e, HitType.INVUL);
 		for (var s : sessions.values()) {
 			s.eraseDanmaku(player);
 		}
 		if (useBomb()) {
-			return HitType.BOMB;
+			return postEraseEvent(e, HitType.BOMB);
 		}
 		int maxLoss = (int) (YHModConfig.COMMON.maxPowerLossOnMiss.get() * MAX_GRAZE);
 		int loss = Math.min(power / 2, maxLoss);
@@ -171,18 +174,18 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		}
 		if (life < SHARD) {
 			if (MinecraftForge.EVENT_BUS.post(new DanmakuLastHitEvent(player, e))) {
-				return HitType.LIFE;
+				return postEraseEvent(e, HitType.LIFE);
 			}
 			for (var s : sessions.values()) {
 				s.resetTarget(player);
 			}
-			sessions.clear();
+			stopAllSessions(DanmakuBattleExitEvent.Reason.LAST_HIT);
 			weak = WEAK;
-			return HitType.LAST;
+			return postEraseEvent(e, HitType.LAST);
 		}
 		life -= SHARD;
 		bomb = GrazeHelper.getInitialResource(player) * SHARD;
-		return HitType.LIFE;
+		return postEraseEvent(e, HitType.LIFE);
 	}
 	public void setWeak(int duration) {
 		weak = duration;
@@ -242,19 +245,34 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (sessions.isEmpty()) initStatus();
 		sessions.put(youkai.getUUID(), new CombatSession().init(youkai));
 		youkai.targets.add(player);
+		MinecraftForge.EVENT_BUS.post(new DanmakuBattleEnterEvent(player, youkai));
 		dirty = true;
 	}
 
 	public void stopSession(UUID uuid) {
-		if (!sessions.containsKey(uuid)) return;
-		sessions.remove(uuid);
-		// Only clear spell proxies when in a full danmaku combat session (has youkai/fairy effect).
-		// Normal players using dynamic spell without effects should keep their spell proxies running.
-		if (sessions.isEmpty() && player instanceof ServerPlayer sp
-				&& EffectEventHandlers.isFullCharacter(player)) {
-			SpellContainer.clear(sp);
+		stopSession(uuid, DanmakuBattleExitEvent.Reason.MANUAL);
+	}
+
+	public void stopSession(UUID uuid, DanmakuBattleExitEvent.Reason reason) {
+		CombatSession session = sessions.remove(uuid);
+		if (session == null) return;
+		MinecraftForge.EVENT_BUS.post(new DanmakuBattleExitEvent(player, session.getTarget(player), reason));
+		afterSessionMutation();
+	}
+
+	public void stopAllSessions(DanmakuBattleExitEvent.Reason reason) {
+		if (sessions.isEmpty()) return;
+		for (UUID uuid : new ArrayList<>(sessions.keySet())) {
+			stopSession(uuid, reason);
 		}
-		dirty = true;
+	}
+
+	public boolean eraseSessionDanmaku() {
+		if (sessions.isEmpty()) return false;
+		for (var session : sessions.values()) {
+			session.eraseDanmaku(player);
+		}
+		return true;
 	}
 
 	public boolean shouldHurt(LivingEntity le) {
@@ -320,6 +338,23 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	public void sync() {
 		if (player instanceof ServerPlayer sp)
 			HOLDER.network.toClientSyncAll(sp);
+	}
+
+	private HitType postEraseEvent(YoukaiEntity attacker, HitType hitType) {
+		ResourceLocation spellId = attacker.spellRuntime == null ? null : attacker.spellRuntime.getDefinition().id;
+		ResourceLocation phaseId = attacker.spellRuntime == null ? null : attacker.spellRuntime.getCurrentPhaseId();
+		MinecraftForge.EVENT_BUS.post(new DanmakuEraseEvent(player, attacker, hitType, spellId, phaseId));
+		return hitType;
+	}
+
+	private void afterSessionMutation() {
+		// Only clear spell proxies when in a full danmaku combat session (has youkai/fairy effect).
+		// Normal players using dynamic spell without effects should keep their spell proxies running.
+		if (sessions.isEmpty() && player instanceof ServerPlayer sp
+				&& EffectEventHandlers.isFullCharacter(player)) {
+			SpellContainer.clear(sp);
+		}
+		dirty = true;
 	}
 
 	public static void register() {

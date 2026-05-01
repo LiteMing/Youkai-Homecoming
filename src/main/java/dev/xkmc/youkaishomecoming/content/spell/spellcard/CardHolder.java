@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
+import dev.xkmc.youkaishomecoming.compat.api.API;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
@@ -16,6 +17,7 @@ import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+@API
 public interface CardHolder {
 
 	Vec3 center();

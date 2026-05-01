@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.runtime;
 
+import dev.xkmc.youkaishomecoming.compat.api.API;
 import dev.xkmc.youkaishomecoming.content.spell.action.LegacyTickerAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
@@ -9,9 +10,13 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.TransitionMode;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
+import dev.xkmc.youkaishomecoming.events.SpellEndEvent;
+import dev.xkmc.youkaishomecoming.events.SpellHitEvent;
+import dev.xkmc.youkaishomecoming.events.SpellPhaseChangeEvent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraftforge.common.MinecraftForge;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -26,6 +31,7 @@ import java.util.function.Consumer;
  * Holds mutable state: current phase, tick counters, variables.
  * Does NOT extend SpellCard — it replaces the old runtime model.
  */
+@API
 public class SpellRuntime {
 
 	private final SpellDefinition definition;
@@ -43,16 +49,29 @@ public class SpellRuntime {
 
 	@Nullable
 	private Consumer<SpellRuntime> onPhaseChange;
+	private boolean endEventPosted;
 
+	@API
 	public SpellRuntime(SpellDefinition definition) {
 		this.definition = definition;
 		this.currentPhaseId = definition.entryPhase;
 	}
 
+	/**
+	 * Compatibility constructor for external integrations that already hold a CardHolder.
+	 * The holder is not retained; runtime state is still driven explicitly through tick/hurt calls.
+	 */
+	@API
+	public SpellRuntime(CardHolder holder, SpellDefinition definition) {
+		this(definition);
+	}
+
+	@API
 	public SpellDefinition getDefinition() {
 		return definition;
 	}
 
+	@API
 	public ResourceLocation getCurrentPhaseId() {
 		return currentPhaseId;
 	}
@@ -61,6 +80,7 @@ public class SpellRuntime {
 	 * Returns true when the spell has naturally finished — i.e. the current phase
 	 * no longer exists in the definition (transitioned to a terminal/undefined phase).
 	 */
+	@API
 	public boolean isFinished() {
 		return definition.getPhase(currentPhaseId) == null;
 	}
@@ -81,10 +101,12 @@ public class SpellRuntime {
 		return targetFlyTime;
 	}
 
+	@API
 	public double getVariable(String key) {
 		return variables.getOrDefault(key, 0.0);
 	}
 
+	@API
 	public void setVariable(String key, double value) {
 		variables.put(key, value);
 	}
@@ -101,9 +123,13 @@ public class SpellRuntime {
 		this.phasePreviewLock = phaseId;
 	}
 
+	@API
 	public void tick(CardHolder holder) {
 		PhaseDefinition phase = definition.getPhase(currentPhaseId);
-		if (phase == null) return;
+		if (phase == null) {
+			postSpellEnd(holder, SpellEndEvent.Reason.NATURAL);
+			return;
+		}
 
 		// Track target fly time — use the same logic as SpellContext.targetOnGround()
 		// so preview mode uses the simulated targetOnGround property instead of entity physics.
@@ -149,9 +175,12 @@ public class SpellRuntime {
 	private static final int HURT_COOLDOWN = 20;
 	private int hurtCooldownRemaining = 0;
 
+	@API
 	public void hurt(CardHolder holder, DamageSource source, float amount) {
 		if (source.getEntity() instanceof LivingEntity && amount > 1) {
 			hitCount++;
+			MinecraftForge.EVENT_BUS.post(new SpellHitEvent(
+					this, holder.self(), holder.targetEntity(), definition.id, source, amount, hitCount));
 
 			// Enforce cooldown to prevent exponential feedback from danmaku-hit → on_hurt → more danmaku
 			if (hurtCooldownRemaining > 0) return;
@@ -170,6 +199,7 @@ public class SpellRuntime {
 		}
 	}
 
+	@API
 	public void reset() {
 		currentPhaseId = definition.entryPhase;
 		phaseTick = 0;
@@ -194,7 +224,8 @@ public class SpellRuntime {
 	}
 
 	private void executeTransition(SpellContext ctx, Transition trans) {
-		PhaseDefinition oldPhase = definition.getPhase(currentPhaseId);
+		ResourceLocation oldPhaseId = currentPhaseId;
+		PhaseDefinition oldPhase = definition.getPhase(oldPhaseId);
 		if (oldPhase != null) {
 			for (SpellAction action : oldPhase.onExit) {
 				action.execute(ctx);
@@ -218,21 +249,28 @@ public class SpellRuntime {
 				action.execute(ctx);
 			}
 		}
+		postPhaseChange(ctx.holder(), oldPhaseId, currentPhaseId);
+		if (newPhase == null) {
+			postSpellEnd(ctx.holder(), SpellEndEvent.Reason.NATURAL);
+		}
 		notifyPhaseChange();
 	}
 
 	/**
 	 * Force transition to a specific phase (used by commands/KJS).
 	 */
+	@API
 	public void forceTransition(SpellContext ctx, ResourceLocation targetPhase) {
 		forceTransition(ctx, targetPhase, true);
 	}
 
+	@API
 	public void forceTransition(SpellContext ctx, ResourceLocation targetPhase, boolean clearScreen) {
 		if (definition.getPhase(targetPhase) == null || isPhaseLocked(targetPhase)) {
 			return;
 		}
-		PhaseDefinition oldPhase = definition.getPhase(currentPhaseId);
+		ResourceLocation oldPhaseId = currentPhaseId;
+		PhaseDefinition oldPhase = definition.getPhase(oldPhaseId);
 		if (oldPhase != null) {
 			for (SpellAction action : oldPhase.onExit) {
 				action.execute(ctx);
@@ -253,6 +291,7 @@ public class SpellRuntime {
 				action.execute(ctx);
 			}
 		}
+		postPhaseChange(ctx.holder(), oldPhaseId, currentPhaseId);
 		notifyPhaseChange();
 	}
 
@@ -267,6 +306,7 @@ public class SpellRuntime {
 		hitCount = 0;
 		targetFlyTime = 0;
 		hurtCooldownRemaining = 0;
+		endEventPosted = false;
 		variables.clear();
 		scheduledActions.clear();
 		resetLegacyActions(phase);
@@ -371,6 +411,7 @@ public class SpellRuntime {
 					variables.put(key, varsTag.getDouble(key));
 				}
 			}
+			this.endEventPosted = false;
 		}
 		// If phase ID is invalid (definition was updated), stay at entry phase (default from constructor)
 	}
@@ -383,5 +424,20 @@ public class SpellRuntime {
 		if (onPhaseChange != null) {
 			onPhaseChange.accept(this);
 		}
+	}
+
+	private void postPhaseChange(CardHolder holder, @Nullable ResourceLocation oldPhaseId,
+								 @Nullable ResourceLocation newPhaseId) {
+		MinecraftForge.EVENT_BUS.post(new SpellPhaseChangeEvent(
+				this, holder.self(), holder.targetEntity(), definition.id, oldPhaseId, newPhaseId));
+	}
+
+	public void postSpellEnd(CardHolder holder, SpellEndEvent.Reason reason) {
+		if (endEventPosted) {
+			return;
+		}
+		endEventPosted = true;
+		MinecraftForge.EVENT_BUS.post(new SpellEndEvent(
+				this, holder.self(), holder.targetEntity(), definition.id, currentPhaseId, reason));
 	}
 }

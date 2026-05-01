@@ -5,6 +5,7 @@ import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.events.DanmakuGrazeEvent;
+import dev.xkmc.youkaishomecoming.events.DanmakuBattleExitEvent;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
@@ -50,7 +51,7 @@ public class GrazeHelper {
 	}
 
 	public static void onDanmakuKill(Player player, YoukaiEntity e) {
-		 GrazeCapability.HOLDER.get(player).stopSession(e.getUUID());
+		 GrazeCapability.HOLDER.get(player).stopSession(e.getUUID(), DanmakuBattleExitEvent.Reason.TARGET_DEFEATED);
 	}
 
 	public static int getInitialResource(Player player) {

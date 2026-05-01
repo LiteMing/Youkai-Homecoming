@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.compat.api.API;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
@@ -20,11 +21,13 @@ import net.minecraft.world.phys.Vec3;
 import dev.xkmc.youkaishomecoming.content.spell.preview.dock.*;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Standalone screen for previewing and editing spell card effects.
@@ -69,18 +72,30 @@ public class SpellPreviewScreen extends Screen {
 	private boolean draftMode;
 	private boolean skipSaveOnNextDefinitionSwitch;
 	private com.google.gson.JsonObject pendingDockLayout;
+	@Nullable
+	private final Screen parentScreen;
+	@Nullable
+	private final Consumer<SpellDefinition> onSaveCallback;
+	private final boolean embeddedMode;
+	private boolean embeddedResultDelivered;
 
 	/** Snapshots of visited spell definitions when this editor first saw them. */
 	private final java.util.Map<ResourceLocation, com.google.gson.JsonElement> openSnapshots = new java.util.HashMap<>();
 
 	public SpellPreviewScreen(SpellDefinition definition) {
-		this(definition, isDraftDefinition(definition));
+		this(definition, isDraftDefinition(definition), null, null, false);
 	}
 
-	private SpellPreviewScreen(SpellDefinition definition, boolean draftMode) {
+	private SpellPreviewScreen(SpellDefinition definition, boolean draftMode,
+							   @Nullable Screen parentScreen,
+							   @Nullable Consumer<SpellDefinition> onSaveCallback,
+							   boolean embeddedMode) {
 		super(Component.literal(draftMode ? "Spell Editor" : "Spell Preview: " + definition.id));
 		this.definition = definition;
 		this.draftMode = draftMode;
+		this.parentScreen = parentScreen;
+		this.onSaveCallback = onSaveCallback;
+		this.embeddedMode = embeddedMode;
 		this.scene = new VirtualSpellScene(definition);
 		this.scene.setOnStateChanged(this::syncSceneState);
 		this.viewport = new OrthographicViewport();
@@ -98,7 +113,13 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	public static SpellPreviewScreen createDraftEditor() {
-		return new SpellPreviewScreen(createDraftDefinition(), true);
+		return new SpellPreviewScreen(createDraftDefinition(), true, null, null, false);
+	}
+
+	@API
+	public static SpellPreviewScreen openAsSubScreen(Screen parent, SpellDefinition definition, Consumer<SpellDefinition> onSave) {
+		SpellDefinition copy = copyDefinition(definition);
+		return new SpellPreviewScreen(copy, isDraftDefinition(copy), parent, onSave, true);
 	}
 
 	@Override
@@ -156,13 +177,13 @@ public class SpellPreviewScreen extends Screen {
 		// Apply button: re-apply edited spell to all entities using it
 		Button applyButton = Button.builder(Component.literal("Apply"), btn -> applyToEntities())
 				.bounds(bx, by, 40, BUTTON_HEIGHT).build();
-		applyButton.active = fullEdit;
+		applyButton.active = fullEdit && !embeddedMode;
 		addRenderableWidget(applyButton);
 		bx += 42;
 		// Export button: save spell definition as JSON datapack file
 		Button exportButton = Button.builder(Component.literal("Export"), btn -> exportToDatapack())
 				.bounds(bx, by, 46, BUTTON_HEIGHT).build();
-		exportButton.active = fullEdit;
+		exportButton.active = fullEdit && !embeddedMode;
 		addRenderableWidget(exportButton);
 		bx += 48;
 		// Reset button: restore to original (built-in) or open-snapshot (custom)
@@ -691,6 +712,9 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private List<ResourceLocation> getSpellOptions() {
+		if (embeddedMode) {
+			return isDraftMode() ? List.of() : List.of(definition.id);
+		}
 		var spells = new ArrayList<>(SpellRegistry.getAll().keySet());
 		spells.sort(java.util.Comparator.comparing(SpellPreviewScreen::formatResourceId));
 		return spells;
@@ -709,6 +733,9 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void switchSelectedSpell(ResourceLocation spellId) {
+		if (embeddedMode) {
+			return;
+		}
 		if (spellId == null || (!isDraftMode() && spellId.equals(definition.id))) {
 			return;
 		}
@@ -729,10 +756,13 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private boolean canDeleteSelectedSpell() {
-		return !isDraftMode() && !SpellRegistry.hasDefault(definition.id);
+		return !embeddedMode && !isDraftMode() && !SpellRegistry.hasDefault(definition.id);
 	}
 
 	private void enterDraftSpellEditor() {
+		if (embeddedMode) {
+			return;
+		}
 		saveCurrentDefinition();
 		skipSaveOnNextDefinitionSwitch = true;
 		draftMode = true;
@@ -741,6 +771,9 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void nameCurrentDraftSpell(String name) {
+		if (embeddedMode) {
+			return;
+		}
 		if (!isDraftMode()) {
 			return;
 		}
@@ -766,6 +799,9 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void deleteSelectedSpell() {
+		if (embeddedMode) {
+			return;
+		}
 		ResourceLocation spellId = definition.id;
 		if (!canDeleteSelectedSpell()) {
 			return;
@@ -859,7 +895,7 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void saveCurrentDefinition() {
-		if (isDraftMode()) {
+		if (isDraftMode() || embeddedMode) {
 			return;
 		}
 		syncCustomNamesToDefinition();
@@ -1298,6 +1334,16 @@ public class SpellPreviewScreen extends Screen {
 	 * This ensures edits are persisted even if the user forgets to click Apply.
 	 */
 	@Override
+	public void onClose() {
+		if (embeddedMode) {
+			deliverEmbeddedResult();
+			Minecraft.getInstance().setScreen(parentScreen);
+			return;
+		}
+		super.onClose();
+	}
+
+	@Override
 	public void removed() {
 		super.removed();
 		// Restore cursor if hidden during perspective capture
@@ -1324,5 +1370,23 @@ public class SpellPreviewScreen extends Screen {
 
 	public void removeWidget(net.minecraft.client.gui.components.events.GuiEventListener widget) {
 		super.removeWidget(widget);
+	}
+
+	private void deliverEmbeddedResult() {
+		if (embeddedResultDelivered || onSaveCallback == null) {
+			return;
+		}
+		syncCustomNamesToDefinition();
+		embeddedResultDelivered = true;
+		onSaveCallback.accept(copyDefinition(definition));
+	}
+
+	private static SpellDefinition copyDefinition(SpellDefinition definition) {
+		var encoded = SpellDefinition.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, definition)
+				.result()
+				.orElseThrow(() -> new IllegalStateException("Failed to encode spell definition: " + definition.id));
+		return SpellDefinition.CODEC.parse(com.mojang.serialization.JsonOps.INSTANCE, encoded)
+				.result()
+				.orElseThrow(() -> new IllegalStateException("Failed to decode spell definition: " + definition.id));
 	}
 }

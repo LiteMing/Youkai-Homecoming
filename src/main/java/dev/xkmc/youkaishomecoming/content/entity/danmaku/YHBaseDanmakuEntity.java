@@ -7,8 +7,13 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.PacketCodec;
 import dev.xkmc.l2serial.serialization.codec.TagCodec;
 import dev.xkmc.l2serial.util.Wrappers;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
+import dev.xkmc.youkaishomecoming.events.DanmakuHitBlockEvent;
+import dev.xkmc.youkaishomecoming.events.DanmakuHitEntityEvent;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -19,6 +24,8 @@ import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.common.MinecraftForge;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -110,6 +117,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	protected void onHitBlock(BlockHitResult pResult) {
 		super.onHitBlock(pResult);
 		if (!level().isClientSide) {
+			postDanmakuHitBlock(pResult);
 			// Execute onHitBlock callback before potential discard
 			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
 				executeHitAction(ide.onHitBlockAction);
@@ -144,6 +152,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		if (level().isClientSide)
 			return;
 		super.onHitEntity(result);
+		postDanmakuHitEntity(result);
 		hurtTarget(result);
 		// Execute onHitEntity callback before potential discard
 		if (this instanceof ItemDanmakuEntity ide && ide.onHitEntityAction != null) {
@@ -173,6 +182,32 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	private void expireNow() {
 		terminate();
 		markErased(false);
+	}
+
+	@Nullable
+	private SpellRuntime getOwningRuntime() {
+		Entity owner = getOwner();
+		if (owner instanceof DanmakuProxyEntity proxy) {
+			return proxy.getSpellRuntime();
+		}
+		if (owner instanceof YoukaiEntity youkai) {
+			return youkai.spellRuntime;
+		}
+		return null;
+	}
+
+	private void postDanmakuHitBlock(BlockHitResult result) {
+		SpellRuntime runtime = getOwningRuntime();
+		ResourceLocation spellId = runtime == null ? null : runtime.getDefinition().id;
+		ResourceLocation phaseId = runtime == null ? null : runtime.getCurrentPhaseId();
+		MinecraftForge.EVENT_BUS.post(new DanmakuHitBlockEvent(this, getOwner(), result, spellId, phaseId));
+	}
+
+	private void postDanmakuHitEntity(EntityHitResult result) {
+		SpellRuntime runtime = getOwningRuntime();
+		ResourceLocation spellId = runtime == null ? null : runtime.getDefinition().id;
+		ResourceLocation phaseId = runtime == null ? null : runtime.getCurrentPhaseId();
+		MinecraftForge.EVENT_BUS.post(new DanmakuHitEntityEvent(this, getOwner(), result.getEntity(), spellId, phaseId));
 	}
 
 	/** Helper: execute a TrailAction at the current danmaku position/direction. */

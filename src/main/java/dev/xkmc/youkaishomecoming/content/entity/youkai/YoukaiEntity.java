@@ -21,6 +21,8 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
+import dev.xkmc.youkaishomecoming.events.SpellEndEvent;
+import dev.xkmc.youkaishomecoming.events.DanmakuBattleExitEvent;
 import dev.xkmc.youkaishomecoming.events.YoukaiFightEvent;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
@@ -387,7 +389,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 		if (!source.is(YHDamageTypes.DANMAKU_TYPE) && source.getEntity() instanceof Player player) {
 			// Non-danmaku damage from a player without youkai/fairy effect exits the session
 			if (!EffectEventHandlers.isFullCharacter(player)) {
-				GrazeCapability.HOLDER.get(player).stopSession(getUUID());
+				GrazeCapability.HOLDER.get(player).stopSession(getUUID(), DanmakuBattleExitEvent.Reason.COMBAT_DISABLED);
 			}
 		}
 		setCombatProgress(getCombatProgress() - amount);
@@ -576,6 +578,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	public void setSpellRuntime(@Nullable SpellRuntime runtime) {
+		if (this.spellRuntime != null && this.spellRuntime != runtime) {
+			this.spellRuntime.postSpellEnd(this, SpellEndEvent.Reason.REPLACED);
+		}
 		this.spellRuntime = runtime;
 		if (runtime != null) {
 			runtime.setOnPhaseChange(r -> syncSpellState());

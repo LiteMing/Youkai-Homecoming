@@ -9,13 +9,15 @@ import java.util.List;
 
 /**
  * Additive mover: multiple sub-movers run simultaneously and their displacements are summed.
- * Each sub-mover computes its own position/velocity independently, and the final movement
- * is the sum of all sub-mover displacements relative to origin.
+ * Each sub-mover computes its position at tick t independently, and the final position
+ * is origin + sum of (layer_pos(t) - layer_origin) for all layers.
  *
- * This differs from CompositeMover which chains movers sequentially in time.
+ * This is a TargetPosMover so it works correctly when nested inside other movers.
+ * All sub-layers should ideally be TargetPosMover instances for correct behavior.
+ * Non-TargetPosMover layers (like RotateMover) contribute zero displacement.
  */
 @SerialClass
-public class LayeredMover extends DanmakuMover {
+public class LayeredMover extends TargetPosMover {
 
 	@SerialClass.SerialField
 	private final ArrayList<DanmakuMover> layers = new ArrayList<>();
@@ -38,29 +40,21 @@ public class LayeredMover extends DanmakuMover {
 	}
 
 	@Override
-	public ProjectileMovement move(MoverInfo info) {
-		Vec3 totalDisplacement = Vec3.ZERO;
+	public Vec3 pos(MoverInfo info) {
+		Vec3 totalOffset = Vec3.ZERO;
 
 		for (DanmakuMover layer : layers) {
 			if (layer instanceof TargetPosMover tpm) {
-				// Position-based mover: displacement = pos(tick) - origin
-				Vec3 pos = tpm.pos(info);
-				Vec3 displacement = pos.subtract(origin);
-				totalDisplacement = totalDisplacement.add(displacement);
-			} else {
-				// Velocity-based mover: use its move() result directly as displacement
-				ProjectileMovement pm = layer.move(info);
-				totalDisplacement = totalDisplacement.add(pm.vec());
+				// Position-based mover: offset = pos(tick) - origin
+				// Since all sub-movers are created with the same origin,
+				// pos(tick) - origin gives the pure displacement from that layer.
+				Vec3 layerPos = tpm.pos(info);
+				totalOffset = totalOffset.add(layerPos.subtract(origin));
 			}
+			// Non-TargetPosMover layers (e.g. RotateMover) only affect rotation, not position.
+			// They contribute zero displacement in the layered context.
 		}
 
-		// Final position = origin + sum of all displacements
-		Vec3 finalPos = origin.add(totalDisplacement);
-		Vec3 delta = finalPos.subtract(info.prevPos());
-
-		if (delta.lengthSqr() > 1e-4) {
-			return ProjectileMovement.of(delta);
-		}
-		return new ProjectileMovement(delta, info.self().rot());
+		return origin.add(totalOffset);
 	}
 }

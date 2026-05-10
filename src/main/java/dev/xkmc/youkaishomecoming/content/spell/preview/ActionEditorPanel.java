@@ -1647,6 +1647,10 @@ public class ActionEditorPanel {
 			});
 		} else if (subCfg instanceof MoverConfigs.BezierMoverConfig bez) {
 			buildNestedBezierParams(bez, segIdx, true, onParamChanged);
+		} else if (subCfg instanceof MoverConfigs.FormulaMoverConfig fm) {
+			buildNestedFormulaParams(fm, segIdx, true, onParamChanged);
+		} else if (subCfg instanceof MoverConfigs.SplineMoverConfig sp) {
+			buildNestedSplineParams(sp, segIdx, true, onTypeChanged, onParamChanged);
 		} else if (subCfg instanceof MoverConfigs.CompositeMoverConfig || subCfg instanceof MoverConfigs.LayeredMoverConfig) {
 			// Recursive: render nested mover using the full mover editor at increased depth
 			buildNestedMoverRows(Optional.of(subCfg), segIdx, true, onTypeChanged, onParamChanged);
@@ -1762,6 +1766,10 @@ public class ActionEditorPanel {
 			});
 		} else if (layerCfg instanceof MoverConfigs.BezierMoverConfig bez) {
 			buildNestedBezierParams(bez, layerIdx, false, onParamChanged);
+		} else if (layerCfg instanceof MoverConfigs.FormulaMoverConfig fm) {
+			buildNestedFormulaParams(fm, layerIdx, false, onParamChanged);
+		} else if (layerCfg instanceof MoverConfigs.SplineMoverConfig sp) {
+			buildNestedSplineParams(sp, layerIdx, false, onTypeChanged, onParamChanged);
 		} else if (layerCfg instanceof MoverConfigs.CompositeMoverConfig || layerCfg instanceof MoverConfigs.LayeredMoverConfig) {
 			// Recursive: render nested mover using the full mover editor at increased depth
 			buildNestedMoverRows(Optional.of(layerCfg), layerIdx, false, onTypeChanged, onParamChanged);
@@ -1823,6 +1831,93 @@ public class ActionEditorPanel {
 			updateCompositeSegment(idx, newMover, onParamChanged);
 		} else {
 			updateLayeredLayer(idx, newMover, onParamChanged);
+		}
+	}
+
+	/** Nested formula mover params editor. */
+	private void buildNestedFormulaParams(MoverConfigs.FormulaMoverConfig fm, int idx, boolean isComposite,
+										  Consumer<Optional<MoverConfig>> onParamChanged) {
+		addStringRow("  X (fwd)", fm.x(), v -> {
+			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+			if (current instanceof MoverConfigs.FormulaMoverConfig f) {
+				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(v, f.y(), f.z()), onParamChanged);
+			}
+		});
+		addStringRow("  Y (right)", fm.y(), v -> {
+			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+			if (current instanceof MoverConfigs.FormulaMoverConfig f) {
+				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(f.x(), v, f.z()), onParamChanged);
+			}
+		});
+		addStringRow("  Z (up)", fm.z(), v -> {
+			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+			if (current instanceof MoverConfigs.FormulaMoverConfig f) {
+				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), v), onParamChanged);
+			}
+		});
+	}
+
+	/** Nested spline mover params editor. */
+	private void buildNestedSplineParams(MoverConfigs.SplineMoverConfig sp, int idx, boolean isComposite,
+										 Consumer<Optional<MoverConfig>> onTypeChanged,
+										 Consumer<Optional<MoverConfig>> onParamChanged) {
+		addIntRow("  Duration", sp.duration(), v -> {
+			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+			if (current instanceof MoverConfigs.SplineMoverConfig s) {
+				updateNested(idx, isComposite, new MoverConfigs.SplineMoverConfig(s.waypoints(), v, s.closed()), onParamChanged);
+			}
+		});
+		addBoolRow("  Closed", sp.closed(), v -> {
+			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+			if (current instanceof MoverConfigs.SplineMoverConfig s) {
+				updateNested(idx, isComposite, new MoverConfigs.SplineMoverConfig(s.waypoints(), s.duration(), v), onTypeChanged);
+			}
+		});
+		for (int wi = 0; wi < sp.waypoints().size(); wi++) {
+			var wp = sp.waypoints().get(wi);
+			final int wpIdx = wi;
+			addDoubleRow("  P" + (wi + 1) + " Fwd", wp[0], v -> {
+				MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+				if (current instanceof MoverConfigs.SplineMoverConfig s) {
+					var wps = new java.util.ArrayList<>(s.waypoints());
+					if (wpIdx < wps.size()) { wps.set(wpIdx, new double[]{v, wps.get(wpIdx)[1], wps.get(wpIdx)[2]}); }
+					updateNested(idx, isComposite, new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed()), onParamChanged);
+				}
+			});
+			addDoubleRow("  P" + (wi + 1) + " Rt", wp[1], v -> {
+				MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+				if (current instanceof MoverConfigs.SplineMoverConfig s) {
+					var wps = new java.util.ArrayList<>(s.waypoints());
+					if (wpIdx < wps.size()) { wps.set(wpIdx, new double[]{wps.get(wpIdx)[0], v, wps.get(wpIdx)[2]}); }
+					updateNested(idx, isComposite, new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed()), onParamChanged);
+				}
+			});
+			addDoubleRow("  P" + (wi + 1) + " Up", wp[2], v -> {
+				MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+				if (current instanceof MoverConfigs.SplineMoverConfig s) {
+					var wps = new java.util.ArrayList<>(s.waypoints());
+					if (wpIdx < wps.size()) { wps.set(wpIdx, new double[]{wps.get(wpIdx)[0], wps.get(wpIdx)[1], v}); }
+					updateNested(idx, isComposite, new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed()), onParamChanged);
+				}
+			});
+		}
+		addFullWidthButton("[+] Add Waypoint", () -> {
+			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+			if (current instanceof MoverConfigs.SplineMoverConfig s) {
+				var wps = new java.util.ArrayList<>(s.waypoints());
+				wps.add(new double[]{5, 0, 0});
+				updateNested(idx, isComposite, new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed()), onTypeChanged);
+			}
+		});
+		if (sp.waypoints().size() > 2) {
+			addFullWidthButton("[-] Remove Last Waypoint", () -> {
+				MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+				if (current instanceof MoverConfigs.SplineMoverConfig s) {
+					var wps = new java.util.ArrayList<>(s.waypoints());
+					if (wps.size() > 2) { wps.remove(wps.size() - 1); }
+					updateNested(idx, isComposite, new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed()), onTypeChanged);
+				}
+			});
 		}
 	}
 

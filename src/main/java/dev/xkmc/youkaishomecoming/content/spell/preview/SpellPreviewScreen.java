@@ -1,7 +1,10 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
+import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
@@ -75,6 +78,11 @@ public class SpellPreviewScreen extends Screen {
 		}
 		// Create persistent dock panels
 		this.viewportPanel = new ViewportDockPanel(viewport, scene);
+		this.viewportPanel.setGroupTransformCallbacks(
+				this::onGroupOffsetDragged,
+				this::onGroupAngleDragged,
+				this::onGroupDeselect
+		);
 		this.statusDockPanel = new StatusDockPanel(scene, viewport);
 		this.helpDockPanel = new HelpDockPanel();
 	}
@@ -386,6 +394,48 @@ public class SpellPreviewScreen extends Screen {
 		if (actionListPanel != null) {
 			actionListPanel.replaceSelectedAction(newAction);
 			if (autoReplay) replaySelectedPhase();
+		}
+	}
+
+	// --- Group transform callbacks (viewport drag interaction) ---
+
+	private void onGroupOffsetDragged() {
+		var delta = viewport.consumePendingGroupOffset();
+		if (delta.lengthSqr() < 1e-8) return;
+		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
+		SpellAction action = actionEditorPanel.getCurrentAction();
+		if (action instanceof FireDanmakuAction fda) {
+			var origin = fda.origin();
+			var newOrigin = new OriginConfig(origin.mode(),
+					NumberProvider.constant(origin.offsetX().get(null) + delta.x),
+					NumberProvider.constant(origin.offsetY().get(null) + delta.y),
+					NumberProvider.constant(origin.offsetZ().get(null) + delta.z),
+					origin.rotation());
+			var newAction = fda.withOrigin(newOrigin);
+			onActionEdited(newAction);
+			if (actionEditorPanel != null) {
+				actionEditorPanel.setAction(newAction, actionEditorPanel.getActionIndex());
+			}
+		}
+	}
+
+	private void onGroupAngleDragged(double angleDelta) {
+		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
+		SpellAction action = actionEditorPanel.getCurrentAction();
+		if (action instanceof FireDanmakuAction fda) {
+			double currentAngle = fda.angleOffset().get(null);
+			var newAction = fda.withAngleOffset(NumberProvider.constant(currentAngle + angleDelta));
+			onActionEdited(newAction);
+			if (actionEditorPanel != null) {
+				actionEditorPanel.setAction(newAction, actionEditorPanel.getActionIndex());
+			}
+		}
+	}
+
+	private void onGroupDeselect() {
+		scene.getHolder().setHighlightedActionIndex(-1);
+		if (actionEditorPanel != null) {
+			actionEditorPanel.clearAction();
 		}
 	}
 

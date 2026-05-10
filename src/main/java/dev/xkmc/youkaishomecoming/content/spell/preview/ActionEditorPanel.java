@@ -1055,7 +1055,7 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "zero", "bezier"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -1235,6 +1235,53 @@ public class ActionEditorPanel {
 					}
 				});
 			}
+		} else if (cfg instanceof MoverConfigs.LayeredMoverConfig layered) {
+			// Display layer count and per-layer editors
+			addStringRow("Layers", String.valueOf(layered.layers().size()), v -> {});
+			for (int li = 0; li < layered.layers().size(); li++) {
+				var layerCfg = layered.layers().get(li);
+				final int layerIdx = li;
+				// Show sub-mover type as cycle selector
+				String subType = getMoverType(Optional.of(layerCfg));
+				// Exclude "composite" and "layered" from sub-layer types to avoid deep nesting
+				String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "zero"};
+				addStringCycleRow("  L" + (li + 1) + " Type", layerTypes, subType, newSubType -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
+						var layers = new java.util.ArrayList<>(lm.layers());
+						if (layerIdx < layers.size()) {
+							var newMover = createDefaultMover(newSubType);
+							if (newMover.isPresent()) {
+								layers.set(layerIdx, newMover.get());
+								onTypeChanged.accept(Optional.of(new MoverConfigs.LayeredMoverConfig(layers)));
+							}
+						}
+					}
+				});
+				// Inline sub-mover parameters
+				buildLayeredLayerParams(layerCfg, layerIdx, onTypeChanged, onParamChanged);
+			}
+			// Add/Remove layer buttons
+			addFullWidthButton("[+] Add Layer", () -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
+					var layers = new java.util.ArrayList<>(lm.layers());
+					layers.add(new MoverConfigs.ZeroMoverConfig());
+					onTypeChanged.accept(Optional.of(new MoverConfigs.LayeredMoverConfig(layers)));
+				}
+			});
+			if (layered.layers().size() > 1) {
+				addFullWidthButton("[-] Remove Last Layer", () -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
+						var layers = new java.util.ArrayList<>(lm.layers());
+						if (layers.size() > 1) {
+							layers.remove(layers.size() - 1);
+							onTypeChanged.accept(Optional.of(new MoverConfigs.LayeredMoverConfig(layers)));
+						}
+					}
+				});
+			}
 		} else if (cfg instanceof MoverConfigs.BezierMoverConfig bez) {
 				addDoubleRow("CP1 Fwd", bez.cp1Forward(), v -> {
 					var cur = getCurrentMover();
@@ -1328,6 +1375,7 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.RotateConfig) return "rotate";
 		if (cfg instanceof MoverConfigs.PolarMoverConfig) return "polar";
 		if (cfg instanceof MoverConfigs.CompositeMoverConfig) return "composite";
+		if (cfg instanceof MoverConfigs.LayeredMoverConfig) return "layered";
 		if (cfg instanceof MoverConfigs.ZeroMoverConfig) return "zero";
 		if (cfg instanceof MoverConfigs.BezierMoverConfig) return "bezier";
 		return "none";
@@ -1342,6 +1390,10 @@ public class ActionEditorPanel {
 			case "composite" -> Optional.of(new MoverConfigs.CompositeMoverConfig(List.of(
 					new MoverConfigs.CompositeMoverConfig.Segment(20, new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(0, 0, 0))),
 					new MoverConfigs.CompositeMoverConfig.Segment(20, new MoverConfigs.ZeroMoverConfig())
+			)));
+			case "layered" -> Optional.of(new MoverConfigs.LayeredMoverConfig(List.of(
+					new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(0, 0, 0)),
+					new MoverConfigs.PolarMoverConfig(0, 0.3, -0.01, 0, 8.0, 0)
 			)));
 			case "zero" -> Optional.of(new MoverConfigs.ZeroMoverConfig());
 			case "bezier" -> Optional.of(new MoverConfigs.BezierMoverConfig(5, 3, 0, 10, -3, 0, 15, 0, 0, 40));
@@ -1452,6 +1504,115 @@ public class ActionEditorPanel {
 			if (segIdx < segs.size()) {
 				segs.set(segIdx, new MoverConfigs.CompositeMoverConfig.Segment(segs.get(segIdx).duration(), newSubMover));
 				onParamChanged.accept(Optional.of(new MoverConfigs.CompositeMoverConfig(segs)));
+			}
+		}
+	}
+
+	// --- Layered mover helpers ---
+
+	/**
+	 * Render inline parameter rows for a layer within a LayeredMover.
+	 * Uses the same pattern as buildCompositeSegmentParams but reads from layered layers.
+	 */
+	private void buildLayeredLayerParams(MoverConfig layerCfg, int layerIdx,
+										 Consumer<Optional<MoverConfig>> onTypeChanged,
+										 Consumer<Optional<MoverConfig>> onParamChanged) {
+		if (layerCfg instanceof MoverConfigs.AccelerationConfig acc) {
+			addDoubleRow("  Acc X", acc.acceleration().x, v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.AccelerationConfig a) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(
+							new net.minecraft.world.phys.Vec3(v, a.acceleration().y, a.acceleration().z)), onParamChanged);
+				}
+			});
+			addDoubleRow("  Acc Y", acc.acceleration().y, v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.AccelerationConfig a) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(
+							new net.minecraft.world.phys.Vec3(a.acceleration().x, v, a.acceleration().z)), onParamChanged);
+				}
+			});
+			addDoubleRow("  Acc Z", acc.acceleration().z, v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.AccelerationConfig a) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(
+							new net.minecraft.world.phys.Vec3(a.acceleration().x, a.acceleration().y, v)), onParamChanged);
+				}
+			});
+		} else if (layerCfg instanceof MoverConfigs.DecelerationConfig dc) {
+			addDoubleRow("  Factor", dc.factor(), v -> updateLayeredLayer(layerIdx,
+					new MoverConfigs.DecelerationConfig(v), onParamChanged));
+		} else if (layerCfg instanceof MoverConfigs.RotateConfig rot) {
+			addDoubleRow("  Deg/t", rot.degreesPerTick(), v -> updateLayeredLayer(layerIdx,
+					new MoverConfigs.RotateConfig(v), onParamChanged));
+		} else if (layerCfg instanceof MoverConfigs.PolarMoverConfig polar) {
+			addDoubleRow("  Radius", polar.radius(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
+							v, p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Rad Spd", polar.radialSpeed(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), v, p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Rad Acc", polar.radialAccel(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), v, p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Init Ang", polar.initialAngle(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Ang Spd", polar.angularSpeed(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), v, p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Ang Acc", polar.angularAccel(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), v), onParamChanged);
+				}
+			});
+		}
+		// ZeroMoverConfig has no params
+	}
+
+	/**
+	 * Read the current layer mover from the live currentAction state.
+	 */
+	private MoverConfig getLayeredLayerMover(int layerIdx) {
+		var cur = getCurrentMover();
+		if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
+			if (layerIdx < lm.layers().size()) {
+				return lm.layers().get(layerIdx);
+			}
+		}
+		return null;
+	}
+
+	private void updateLayeredLayer(int layerIdx, MoverConfig newLayerMover,
+									Consumer<Optional<MoverConfig>> onParamChanged) {
+		var cur = getCurrentMover();
+		if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
+			var layers = new java.util.ArrayList<>(lm.layers());
+			if (layerIdx < layers.size()) {
+				layers.set(layerIdx, newLayerMover);
+				onParamChanged.accept(Optional.of(new MoverConfigs.LayeredMoverConfig(layers)));
 			}
 		}
 	}

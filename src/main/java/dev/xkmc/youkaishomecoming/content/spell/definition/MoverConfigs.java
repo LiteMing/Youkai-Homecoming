@@ -21,6 +21,7 @@ public class MoverConfigs {
 		register("rotate", RotateConfig.CODEC, RotateConfig.class);
 		register("polar", PolarMoverConfig.CODEC, PolarMoverConfig.class);
 		register("composite", CompositeMoverConfig.CODEC, CompositeMoverConfig.class);
+		register("layered", LayeredMoverConfig.CODEC, LayeredMoverConfig.class);
 		register("zero", ZeroMoverConfig.CODEC, ZeroMoverConfig.class);
 		register("bezier", BezierMoverConfig.CODEC, BezierMoverConfig.class);
 	}
@@ -226,6 +227,26 @@ public class MoverConfigs {
 
 			return new dev.xkmc.youkaishomecoming.content.spell.mover.BezierMover(
 					origin, cp1, cp2, end, duration);
+		}
+	}
+
+	/**
+	 * Layered (additive) motion: multiple movers run simultaneously and their displacements are summed.
+	 * Unlike composite which chains movers in time, layered applies all movers every tick.
+	 * JSON: {"type": "layered", "layers": [{"type": "acceleration", ...}, {"type": "polar", ...}]}
+	 */
+	public record LayeredMoverConfig(List<MoverConfig> layers) implements MoverConfig {
+		public static final Codec<LayeredMoverConfig> CODEC = MoverConfig.CODEC.listOf()
+				.fieldOf("layers").codec()
+				.xmap(LayeredMoverConfig::new, LayeredMoverConfig::layers);
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			var movers = new java.util.ArrayList<DanmakuMover>();
+			for (var layer : layers) {
+				movers.add(layer.create(origin, velocity));
+			}
+			return new LayeredMover(origin, movers);
 		}
 	}
 

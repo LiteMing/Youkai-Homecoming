@@ -1077,7 +1077,7 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -1224,7 +1224,7 @@ public class ActionEditorPanel {
 					});
 				// Show sub-mover type as cycle selector
 				String subType = getMoverType(Optional.of(seg.mover()));
-				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"}, subType, newSubType -> {
+				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline"}, subType, newSubType -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
 						var segs = new java.util.ArrayList<>(c.segments());
@@ -1276,7 +1276,7 @@ public class ActionEditorPanel {
 					// Show sub-mover type as cycle selector
 					String subType = getMoverType(Optional.of(layerCfg));
 					// Allow nesting: composite and layered can contain each other
-					String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"};
+					String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline"};
 					addStringCycleRow("  L" + (li + 1) + " Type", layerTypes, subType, newSubType -> {
 						var cur = getCurrentMover();
 						if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
@@ -1435,6 +1435,67 @@ public class ActionEditorPanel {
 					}
 				});
 			}
+		} else if (cfg instanceof MoverConfigs.SplineMoverConfig sp) {
+			// Spline: waypoints list + duration + closed toggle
+			addIntRow("Duration", sp.duration(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.SplineMoverConfig s) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.SplineMoverConfig(s.waypoints(), v, s.closed())));
+				}
+			});
+			addBoolRow("Closed", sp.closed(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.SplineMoverConfig s) {
+					onTypeChanged.accept(Optional.of(new MoverConfigs.SplineMoverConfig(s.waypoints(), s.duration(), v)));
+				}
+			});
+			addStringRow("Points", String.valueOf(sp.waypoints().size()), v -> {});
+			for (int wi = 0; wi < sp.waypoints().size(); wi++) {
+				var wp = sp.waypoints().get(wi);
+				final int wpIdx = wi;
+				addDoubleRow("P" + (wi + 1) + " Fwd", wp[0], v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.SplineMoverConfig s) {
+						var wps = new java.util.ArrayList<>(s.waypoints());
+						if (wpIdx < wps.size()) { wps.set(wpIdx, new double[]{v, wps.get(wpIdx)[1], wps.get(wpIdx)[2]}); }
+						onParamChanged.accept(Optional.of(new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed())));
+					}
+				});
+				addDoubleRow("P" + (wi + 1) + " Rt", wp[1], v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.SplineMoverConfig s) {
+						var wps = new java.util.ArrayList<>(s.waypoints());
+						if (wpIdx < wps.size()) { wps.set(wpIdx, new double[]{wps.get(wpIdx)[0], v, wps.get(wpIdx)[2]}); }
+						onParamChanged.accept(Optional.of(new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed())));
+					}
+				});
+				addDoubleRow("P" + (wi + 1) + " Up", wp[2], v -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.SplineMoverConfig s) {
+						var wps = new java.util.ArrayList<>(s.waypoints());
+						if (wpIdx < wps.size()) { wps.set(wpIdx, new double[]{wps.get(wpIdx)[0], wps.get(wpIdx)[1], v}); }
+						onParamChanged.accept(Optional.of(new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed())));
+					}
+				});
+			}
+			addFullWidthButton("[+] Add Waypoint", () -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.SplineMoverConfig s) {
+					var wps = new java.util.ArrayList<>(s.waypoints());
+					wps.add(new double[]{5, 0, 0});
+					onTypeChanged.accept(Optional.of(new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed())));
+				}
+			});
+			if (sp.waypoints().size() > 2) {
+				addFullWidthButton("[-] Remove Last Waypoint", () -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.SplineMoverConfig s) {
+						var wps = new java.util.ArrayList<>(s.waypoints());
+						if (wps.size() > 2) { wps.remove(wps.size() - 1); }
+						onTypeChanged.accept(Optional.of(new MoverConfigs.SplineMoverConfig(wps, s.duration(), s.closed())));
+					}
+				});
+			}
 		}
 		}
 	}
@@ -1451,6 +1512,7 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.ZeroMoverConfig) return "zero";
 		if (cfg instanceof MoverConfigs.BezierMoverConfig) return "bezier";
 		if (cfg instanceof MoverConfigs.MultiBezierMoverConfig) return "multi_bezier";
+		if (cfg instanceof MoverConfigs.SplineMoverConfig) return "spline";
 		return "none";
 	}
 
@@ -1473,6 +1535,12 @@ public class ActionEditorPanel {
 			case "multi_bezier" -> Optional.of(new MoverConfigs.MultiBezierMoverConfig(List.of(
 					new MoverConfigs.MultiBezierMoverConfig.BezierSegment(5, 3, 0, 10, -3, 0, 15, 0, 0, 40)
 			)));
+			case "spline" -> Optional.of(new MoverConfigs.SplineMoverConfig(List.of(
+					new double[]{5, 5, 0},
+					new double[]{5, -5, 0},
+					new double[]{-5, -5, 0},
+					new double[]{-5, 5, 0}
+			), 60, true));
 			default -> Optional.empty();
 		};
 	}
@@ -1766,7 +1834,7 @@ public class ActionEditorPanel {
 						}
 					});
 					String subType = getMoverType(Optional.of(seg.mover()));
-					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"}, subType, newSubType -> {
+					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline"}, subType, newSubType -> {
 						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
 						if (parentMover instanceof MoverConfigs.CompositeMoverConfig c) {
 							var segs = new java.util.ArrayList<>(c.segments());
@@ -1797,7 +1865,7 @@ public class ActionEditorPanel {
 				if (!isSectionCollapsed(layerLabel)) {
 					currentDepth++;
 					String subType = getMoverType(Optional.of(layerCfg));
-					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"}, subType, newSubType -> {
+					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline"}, subType, newSubType -> {
 						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
 						if (parentMover instanceof MoverConfigs.LayeredMoverConfig lm) {
 							var layers = new java.util.ArrayList<>(lm.layers());

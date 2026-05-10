@@ -25,6 +25,7 @@ public class MoverConfigs {
 		register("zero", ZeroMoverConfig.CODEC, ZeroMoverConfig.class);
 		register("bezier", BezierMoverConfig.CODEC, BezierMoverConfig.class);
 		register("multi_bezier", MultiBezierMoverConfig.CODEC, MultiBezierMoverConfig.class);
+		register("spline", SplineMoverConfig.CODEC, SplineMoverConfig.class);
 	}
 
 	public static void register(String id, Codec<? extends MoverConfig> codec, Class<? extends MoverConfig> clazz) {
@@ -310,6 +311,48 @@ public class MoverConfigs {
 			}
 
 			return new MultiBezierMover(moverSegments);
+		}
+	}
+
+	/**
+	 * Spline mover: the projectile smoothly passes through a list of waypoints using Catmull-Rom interpolation.
+	 * Only requires specifying the points the path goes through — no manual control points needed.
+	 * Each waypoint is [forward, right, up] relative to the initial velocity direction.
+	 * If closed=true, the path loops back to the start (useful for circular/orbital paths).
+	 * JSON: {"type": "spline", "waypoints": [[5,5,0],[5,-5,0],[-5,-5,0],[-5,5,0]], "duration": 60, "closed": true}
+	 */
+	public record SplineMoverConfig(List<double[]> waypoints, int duration, boolean closed) implements MoverConfig {
+		public static final Codec<SplineMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.listOf().listOf().xmap(
+						// List<List<Double>> -> List<double[]>
+						lists -> lists.stream().map(l -> new double[]{
+								l.size() > 0 ? l.get(0) : 0,
+								l.size() > 1 ? l.get(1) : 0,
+								l.size() > 2 ? l.get(2) : 0
+						}).collect(java.util.stream.Collectors.toList()),
+						// List<double[]> -> List<List<Double>>
+						arrays -> arrays.stream().map(a -> List.of(a[0], a[1], a[2])).collect(java.util.stream.Collectors.toList())
+				).fieldOf("waypoints").forGetter(SplineMoverConfig::waypoints),
+				Codec.INT.optionalFieldOf("duration", 60).forGetter(SplineMoverConfig::duration),
+				Codec.BOOL.optionalFieldOf("closed", false).forGetter(SplineMoverConfig::closed)
+		).apply(i, SplineMoverConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			var ori = DanmakuHelper.getOrientation(dir);
+
+			// Convert relative waypoints to absolute world positions
+			var absolutePoints = new java.util.ArrayList<Vec3>();
+			for (var wp : waypoints) {
+				Vec3 point = origin
+						.add(dir.scale(wp[0]))
+						.add(ori.side().scale(wp[1]))
+						.add(ori.normal().scale(wp[2]));
+				absolutePoints.add(point);
+			}
+
+			return new dev.xkmc.youkaishomecoming.content.spell.mover.SplineMover(absolutePoints, duration, closed);
 		}
 	}
 

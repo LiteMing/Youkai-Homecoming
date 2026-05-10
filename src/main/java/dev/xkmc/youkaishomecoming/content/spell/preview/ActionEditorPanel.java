@@ -329,6 +329,7 @@ public class ActionEditorPanel {
 	// --- FireDanmaku rows ---
 
 	private void buildFireDanmakuRows(FireDanmakuAction a) {
+		// === Base group (always visible) ===
 		addEnumRow("Bullet", YHDanmaku.Bullet.values(), a.bulletType(), v ->
 				notifyDanmaku(old -> old.withBulletType(v)));
 
@@ -337,9 +338,8 @@ public class ActionEditorPanel {
 			addEnumRow("Color", DyeColor.values(), cc.color(), v ->
 					notifyDanmaku(old -> old.withColor(ColorProvider.constant(v))));
 		} else {
-			// For dynamic color providers (cycle, by_variable), show a read-only label
 			String colorType = ColorProvider.CLASS_TO_TYPE.getOrDefault(a.color().getClass(), "dynamic");
-			addStringRow("Color", colorType, v -> {}); // read-only display
+			addStringRow("Color", colorType, v -> {});
 		}
 
 		addNumberRow("Count", a.count(), v ->
@@ -351,92 +351,108 @@ public class ActionEditorPanel {
 		addNumberRow("Lifetime", a.lifetime(), v ->
 				notifyDanmaku(old -> old.withLifetime(v), false));
 
-		addNumberRow("Angle", a.angleOffset(), v ->
-				notifyDanmaku(old -> old.withAngleOffset(v), false));
+		// === Pattern group ===
+		addSectionHeader("Pattern");
+		if (!isSectionCollapsed("Pattern")) {
+			currentDepth++;
+			addNumberRow("Angle", a.angleOffset(), v ->
+					notifyDanmaku(old -> old.withAngleOffset(v), false));
 
-		addNumberRow("Spread", a.spread(), v ->
-				notifyDanmaku(old -> old.withSpread(v), false));
+			addNumberRow("Spread", a.spread(), v ->
+					notifyDanmaku(old -> old.withSpread(v), false));
 
-		addNumberRow("Elevation", a.elevation(), v ->
-				notifyDanmaku(old -> old.withElevation(v), false));
+			addNumberRow("Elevation", a.elevation(), v ->
+					notifyDanmaku(old -> old.withElevation(v), false));
 
-		addEnumRow("Pattern", PatternType.values(), a.pattern(), v ->
-				notifyDanmaku(old -> old.withPattern(v)));
+			addEnumRow("Pattern", PatternType.values(), a.pattern(), v ->
+					notifyDanmaku(old -> old.withPattern(v)));
 
-		// NESTED_RING, GRID: show outerCount row
-		// SPHERE/SPHERE_RANDOM use count as total — no outerCount needed
-		if (a.pattern() == PatternType.NESTED_RING || a.pattern() == PatternType.GRID) {
-			String label = switch (a.pattern()) {
-				case GRID -> "Cols";
-				default -> "Outer Cnt";
-			};
-			NumberProvider outerProv = a.outerCount().orElse(NumberProvider.constant(1));
-			addNumberRow(label, outerProv, v ->
-					notifyDanmaku(old -> old.withOuterCount(Optional.of(v)), false));
+			if (a.pattern() == PatternType.NESTED_RING || a.pattern() == PatternType.GRID) {
+				String label = switch (a.pattern()) {
+					case GRID -> "Cols";
+					default -> "Outer Cnt";
+				};
+				NumberProvider outerProv = a.outerCount().orElse(NumberProvider.constant(1));
+				addNumberRow(label, outerProv, v ->
+						notifyDanmaku(old -> old.withOuterCount(Optional.of(v)), false));
+			}
+
+			// AimMode dropdown
+			String currentAim = getAimModeType(a.aimMode());
+			addStringCycleRow("Aim Mode", AIM_MODE_TYPES, currentAim, newType -> {
+				AimMode newMode = createDefaultAimMode(newType);
+				notifyDanmaku(old -> old.withAimMode(newMode));
+			});
+
+			// Tilt angle
+			if (a.pattern() == PatternType.NESTED_RING) {
+				NumberProvider tiltProv = a.tiltAngle().orElse(NumberProvider.constant(0));
+				addNumberRow("Axis Tilt", tiltProv, v ->
+						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
+			} else if (a.tiltAngle().isPresent()) {
+				addNumberRow("Tilt Angle", a.tiltAngle().get(), v ->
+						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
+				addFullWidthButton("[Remove Tilt]", () ->
+						notifyDanmaku(old -> old.withTiltAngle(Optional.empty())));
+			} else {
+				addFullWidthButton("[+ Tilt Angle]", () ->
+						notifyDanmaku(old -> old.withTiltAngle(Optional.of(NumberProvider.constant(0)))));
+			}
+			currentDepth--;
 		}
 
-		// AimMode dropdown
-		String currentAim = getAimModeType(a.aimMode());
-		addStringCycleRow("Aim Mode", AIM_MODE_TYPES, currentAim, newType -> {
-			AimMode newMode = createDefaultAimMode(newType);
-			notifyDanmaku(old -> old.withAimMode(newMode));
-		});
-
-		// OriginConfig mode
-		addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
-			var newOrigin = new OriginConfig(v, a.origin().offsetX(), a.origin().offsetY(),
-					a.origin().offsetZ(), a.origin().rotation());
-			notifyDanmaku(old -> old.withOrigin(newOrigin));
-		});
-
-		// OriginConfig offsets
-		buildOriginOffsetRows(a.origin(), newOrigin -> notifyDanmaku(old -> old.withOrigin(newOrigin), false));
-
-		// Mover
-		buildMoverRows(a.mover(),
-				newMover -> notifyDanmaku(old -> old.withMover(newMover)),
-				newMover -> notifyDanmaku(old -> old.withMover(newMover), false));
-
-		// Trail interval (only show if onTrail is used)
-		if (a.onTrail().isPresent()) {
-			addIntRow("Trail Intv", a.trailInterval(), v ->
-					notifyDanmaku(old -> old.withTrailInterval(v), false));
+		// === Origin group ===
+		addSectionHeader("Origin");
+		if (!isSectionCollapsed("Origin")) {
+			currentDepth++;
+			addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
+				var newOrigin = new OriginConfig(v, a.origin().offsetX(), a.origin().offsetY(),
+						a.origin().offsetZ(), a.origin().rotation());
+				notifyDanmaku(old -> old.withOrigin(newOrigin));
+			});
+			buildOriginOffsetRows(a.origin(), newOrigin -> notifyDanmaku(old -> old.withOrigin(newOrigin), false));
+			currentDepth--;
 		}
 
-		// Tilt angle: for NESTED_RING controls inner ring axis (0°=vertical, 90°=perpendicular);
-		// for other patterns tilts the entire orientation plane.
-		// NESTED_RING always shows tilt (default 0°); other patterns show add/remove toggle.
-		if (a.pattern() == PatternType.NESTED_RING) {
-			NumberProvider tiltProv = a.tiltAngle().orElse(NumberProvider.constant(0));
-			addNumberRow("Axis Tilt", tiltProv, v ->
-					notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
-		} else if (a.tiltAngle().isPresent()) {
-			addNumberRow("Tilt Angle", a.tiltAngle().get(), v ->
-					notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
-			addFullWidthButton("[Remove Tilt]", () ->
-					notifyDanmaku(old -> old.withTiltAngle(Optional.empty())));
-		} else {
-			addFullWidthButton("[+ Tilt Angle]", () ->
-					notifyDanmaku(old -> old.withTiltAngle(Optional.of(NumberProvider.constant(0)))));
+		// === Mover group ===
+		addSectionHeader("Mover");
+		if (!isSectionCollapsed("Mover")) {
+			currentDepth++;
+			buildMoverRows(a.mover(),
+					newMover -> notifyDanmaku(old -> old.withMover(newMover)),
+					newMover -> notifyDanmaku(old -> old.withMover(newMover), false));
+			currentDepth--;
 		}
 
-		// Hit behavior: separate entity/block controls
-		addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
-				notifyDanmaku(old -> old.withHitBehaviorEntity(v)));
-		addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
-				notifyDanmaku(old -> old.withHitBehaviorBlock(v)));
+		// === Advanced group ===
+		addSectionHeader("Advanced");
+		if (!isSectionCollapsed("Advanced")) {
+			currentDepth++;
+			// Trail interval (only show if onTrail is used)
+			if (a.onTrail().isPresent()) {
+				addIntRow("Trail Intv", a.trailInterval(), v ->
+						notifyDanmaku(old -> old.withTrailInterval(v), false));
+			}
 
-		// Damage type override: optional, defaults to standard danmaku damage
-		if (a.damageType().isPresent()) {
-			addEnumRow("Dmg Type", dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.values(),
-					a.damageType().get(), v ->
-					notifyDanmaku(old -> old.withDamageType(Optional.of(v))));
-			addFullWidthButton("[- Remove Dmg Type]", () ->
-					notifyDanmaku(old -> old.withDamageType(Optional.empty())));
-		} else {
-			addFullWidthButton("[+ Damage Type]", () ->
-					notifyDanmaku(old -> old.withDamageType(Optional.of(
-							dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.ABYSSAL))));
+			// Hit behavior: separate entity/block controls
+			addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
+					notifyDanmaku(old -> old.withHitBehaviorEntity(v)));
+			addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
+					notifyDanmaku(old -> old.withHitBehaviorBlock(v)));
+
+			// Damage type override
+			if (a.damageType().isPresent()) {
+				addEnumRow("Dmg Type", dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.values(),
+						a.damageType().get(), v ->
+						notifyDanmaku(old -> old.withDamageType(Optional.of(v))));
+				addFullWidthButton("[- Remove Dmg Type]", () ->
+						notifyDanmaku(old -> old.withDamageType(Optional.empty())));
+			} else {
+				addFullWidthButton("[+ Damage Type]", () ->
+						notifyDanmaku(old -> old.withDamageType(Optional.of(
+								dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.ABYSSAL))));
+			}
+			currentDepth--;
 		}
 	}
 
@@ -2546,25 +2562,22 @@ public class ActionEditorPanel {
 			return;
 		}
 
-		// Row labels
+		// Row labels and depth indicators
 		for (int i = 0; i < rows.size(); i++) {
 			int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
 			var row = rows.get(i);
 			boolean visible = rowY >= y && rowY + ROW_HEIGHT <= y + h;
 			row.widget().visible = visible;
 			if (visible) {
-				// Draw depth-based background stripe
+				// Draw depth indicator bar on the left edge
 				if (row.depth() > 0) {
-					int bgColor = getDepthColor(row.depth());
-					guiGraphics.fill(x + 1, rowY, x + w, rowY + ROW_HEIGHT, bgColor);
-				}
-				// Section headers get a slightly brighter background
-				if (row.sectionHeader()) {
-					int headerColor = getDepthColor(row.depth()) | 0x20000000;
-					guiGraphics.fill(x + 1, rowY, x + w, rowY + ROW_HEIGHT, headerColor);
+					int barColor = getDepthBarColor(row.depth());
+					int barW = 3 * row.depth();
+					guiGraphics.fill(x + 1, rowY, x + 1 + barW, rowY + ROW_HEIGHT, barColor);
 				}
 				if (!row.fullWidth() && !row.label().isEmpty()) {
-					guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 4, 0xFFBBBBBB, false);
+					int labelX = x + PADDING + (row.depth() > 0 ? 3 * row.depth() + 2 : 0);
+					guiGraphics.drawString(font, row.label(), labelX, rowY + 4, 0xFFBBBBBB, false);
 				}
 			}
 		}
@@ -2578,14 +2591,14 @@ public class ActionEditorPanel {
 		}
 	}
 
-	/** Returns a semi-transparent background color for the given nesting depth. */
-	private static int getDepthColor(int depth) {
+	/** Returns a solid color for the depth indicator bar on the left edge. */
+	private static int getDepthBarColor(int depth) {
 		return switch (depth) {
-			case 1 -> 0x40335577; // blue tint
-			case 2 -> 0x40557733; // green tint
-			case 3 -> 0x40775533; // orange tint
-			case 4 -> 0x40553377; // purple tint
-			default -> 0x30444444; // gray
+			case 1 -> 0xFF4488CC; // blue
+			case 2 -> 0xFF44CC66; // green
+			case 3 -> 0xFFCC8844; // orange
+			case 4 -> 0xFF9944CC; // purple
+			default -> 0xFF888888; // gray
 		};
 	}
 

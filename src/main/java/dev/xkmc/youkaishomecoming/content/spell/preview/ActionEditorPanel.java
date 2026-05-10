@@ -82,6 +82,11 @@ public class ActionEditorPanel {
 	private boolean widgetsRegistered = false;
 	private boolean scrollbarDragging = false;
 
+	// Depth tracking for nested mover editors
+	private int currentDepth = 0;
+	// Collapsed sections: key = section label at specific row index
+	private final java.util.Set<String> collapsedSections = new java.util.HashSet<>();
+
 	// Type selector mode
 	private boolean typeSelectorMode = false;
 	private Consumer<SpellAction> typeSelectorCallback;
@@ -193,6 +198,7 @@ public class ActionEditorPanel {
 	// --- Type selector ---
 
 	private void buildActionRows(SpellAction action) {
+		currentDepth = 0;
 		// Unwrap DisabledAction to edit the inner action
 		if (action instanceof SpellActions.DisabledAction da) {
 			addFullWidthButton("\u26A0 DISABLED (press D to enable)", () -> {});
@@ -1186,16 +1192,20 @@ public class ActionEditorPanel {
 			for (int si = 0; si < comp.segments().size(); si++) {
 				var seg = comp.segments().get(si);
 				final int segIdx = si;
-				addIntRow("Seg " + (si + 1) + " Dur", seg.duration(), v -> {
-					var cur = getCurrentMover();
-					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
-						var segs = new java.util.ArrayList<>(c.segments());
-						if (segIdx < segs.size()) {
-							segs.set(segIdx, new MoverConfigs.CompositeMoverConfig.Segment(v, segs.get(segIdx).mover()));
-							onParamChanged.accept(Optional.of(new MoverConfigs.CompositeMoverConfig(segs)));
+				String segLabel = "Seg " + (si + 1) + " [" + getMoverType(Optional.of(seg.mover())) + "]";
+				addSectionHeader(segLabel);
+				if (!isSectionCollapsed(segLabel)) {
+					currentDepth++;
+					addIntRow("Seg " + (si + 1) + " Dur", seg.duration(), v -> {
+						var cur = getCurrentMover();
+						if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
+							var segs = new java.util.ArrayList<>(c.segments());
+							if (segIdx < segs.size()) {
+								segs.set(segIdx, new MoverConfigs.CompositeMoverConfig.Segment(v, segs.get(segIdx).mover()));
+								onParamChanged.accept(Optional.of(new MoverConfigs.CompositeMoverConfig(segs)));
+							}
 						}
-					}
-				});
+					});
 				// Show sub-mover type as cycle selector
 				String subType = getMoverType(Optional.of(seg.mover()));
 				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"}, subType, newSubType -> {
@@ -1213,6 +1223,8 @@ public class ActionEditorPanel {
 				});
 				// Inline sub-mover parameters
 				buildCompositeSegmentParams(seg.mover(), segIdx, onTypeChanged, onParamChanged);
+				currentDepth--;
+				} // end if (!isSectionCollapsed)
 			}
 			// Add/Remove segment buttons
 			addFullWidthButton("[+] Add Segment", () -> {
@@ -1241,25 +1253,31 @@ public class ActionEditorPanel {
 			for (int li = 0; li < layered.layers().size(); li++) {
 				var layerCfg = layered.layers().get(li);
 				final int layerIdx = li;
-				// Show sub-mover type as cycle selector
-				String subType = getMoverType(Optional.of(layerCfg));
-				// Allow nesting: composite and layered can contain each other
-				String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"};
-				addStringCycleRow("  L" + (li + 1) + " Type", layerTypes, subType, newSubType -> {
-					var cur = getCurrentMover();
-					if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
-						var layers = new java.util.ArrayList<>(lm.layers());
-						if (layerIdx < layers.size()) {
-							var newMover = createDefaultMover(newSubType);
-							if (newMover.isPresent()) {
-								layers.set(layerIdx, newMover.get());
-								onTypeChanged.accept(Optional.of(new MoverConfigs.LayeredMoverConfig(layers)));
+				String layerLabel = "Layer " + (li + 1) + " [" + getMoverType(Optional.of(layerCfg)) + "]";
+				addSectionHeader(layerLabel);
+				if (!isSectionCollapsed(layerLabel)) {
+					currentDepth++;
+					// Show sub-mover type as cycle selector
+					String subType = getMoverType(Optional.of(layerCfg));
+					// Allow nesting: composite and layered can contain each other
+					String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"};
+					addStringCycleRow("  L" + (li + 1) + " Type", layerTypes, subType, newSubType -> {
+						var cur = getCurrentMover();
+						if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
+							var layers = new java.util.ArrayList<>(lm.layers());
+							if (layerIdx < layers.size()) {
+								var newMover = createDefaultMover(newSubType);
+								if (newMover.isPresent()) {
+									layers.set(layerIdx, newMover.get());
+									onTypeChanged.accept(Optional.of(new MoverConfigs.LayeredMoverConfig(layers)));
+								}
 							}
 						}
-					}
-				});
-				// Inline sub-mover parameters
-				buildLayeredLayerParams(layerCfg, layerIdx, onTypeChanged, onParamChanged);
+					});
+					// Inline sub-mover parameters
+					buildLayeredLayerParams(layerCfg, layerIdx, onTypeChanged, onParamChanged);
+					currentDepth--;
+				} // end if (!isSectionCollapsed)
 			}
 			// Add/Remove layer buttons
 			addFullWidthButton("[+] Add Layer", () -> {
@@ -1522,6 +1540,9 @@ public class ActionEditorPanel {
 			});
 		} else if (subCfg instanceof MoverConfigs.BezierMoverConfig bez) {
 			buildNestedBezierParams(bez, segIdx, true, onParamChanged);
+		} else if (subCfg instanceof MoverConfigs.CompositeMoverConfig || subCfg instanceof MoverConfigs.LayeredMoverConfig) {
+			// Recursive: render nested composite/layered as a full mover editor at increased depth
+			addStringRow("  (nested)", getMoverType(Optional.of(subCfg)), v -> {});
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -1634,6 +1655,9 @@ public class ActionEditorPanel {
 			});
 		} else if (layerCfg instanceof MoverConfigs.BezierMoverConfig bez) {
 			buildNestedBezierParams(bez, layerIdx, false, onParamChanged);
+		} else if (layerCfg instanceof MoverConfigs.CompositeMoverConfig || layerCfg instanceof MoverConfigs.LayeredMoverConfig) {
+			// Recursive: render nested composite/layered as a label (deep nesting handled by section headers)
+			addStringRow("  (nested)", getMoverType(Optional.of(layerCfg)), v -> {});
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -2150,6 +2174,35 @@ public class ActionEditorPanel {
 		rows.add(new EditorRow("", btn, true));
 	}
 
+	/**
+	 * Add a collapsible section header. When clicked, toggles visibility of subsequent rows
+	 * at deeper depth levels until the next section at the same or lower depth.
+	 */
+	private void addSectionHeader(String label) {
+		boolean collapsed = collapsedSections.contains(label);
+		String prefix = collapsed ? "\u25B6 " : "\u25BC ";
+		var btn = Button.builder(Component.literal(prefix + label), b -> {
+			if (collapsedSections.contains(label)) {
+				collapsedSections.remove(label);
+			} else {
+				collapsedSections.add(label);
+			}
+			// Rebuild to show/hide rows
+			int idx = actionIndex;
+			var action = currentAction;
+			clearWidgets();
+			if (action != null) buildActionRows(action);
+			actionIndex = idx;
+			layoutWidgets();
+		}).bounds(0, 0, w - PADDING * 2, ROW_HEIGHT - 2).build();
+		rows.add(new EditorRow(label, btn, true, -1, currentDepth, true));
+	}
+
+	/** Check if a section is currently collapsed. */
+	private boolean isSectionCollapsed(String label) {
+		return collapsedSections.contains(label);
+	}
+
 	private void addInlineRow(String text, Runnable onDelete) {
 		int deleteW = 20;
 		var btn = Button.builder(Component.literal("[x]"), b -> onDelete.run())
@@ -2414,8 +2467,20 @@ public class ActionEditorPanel {
 			var row = rows.get(i);
 			boolean visible = rowY >= y && rowY + ROW_HEIGHT <= y + h;
 			row.widget().visible = visible;
-			if (visible && !row.fullWidth() && !row.label().isEmpty()) {
-				guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 4, 0xFFBBBBBB, false);
+			if (visible) {
+				// Draw depth-based background stripe
+				if (row.depth() > 0) {
+					int bgColor = getDepthColor(row.depth());
+					guiGraphics.fill(x + 1, rowY, x + w, rowY + ROW_HEIGHT, bgColor);
+				}
+				// Section headers get a slightly brighter background
+				if (row.sectionHeader()) {
+					int headerColor = getDepthColor(row.depth()) | 0x20000000;
+					guiGraphics.fill(x + 1, rowY, x + w, rowY + ROW_HEIGHT, headerColor);
+				}
+				if (!row.fullWidth() && !row.label().isEmpty()) {
+					guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 4, 0xFFBBBBBB, false);
+				}
 			}
 		}
 
@@ -2426,6 +2491,17 @@ public class ActionEditorPanel {
 		if (renderDropdown && dropdown != null) {
 			doRenderDropdown(guiGraphics, mouseX, mouseY);
 		}
+	}
+
+	/** Returns a semi-transparent background color for the given nesting depth. */
+	private static int getDepthColor(int depth) {
+		return switch (depth) {
+			case 1 -> 0x18335577; // blue tint
+			case 2 -> 0x18557733; // green tint
+			case 3 -> 0x18775533; // orange tint
+			case 4 -> 0x18553377; // purple tint
+			default -> 0x10444444; // gray
+		};
 	}
 
 	private void renderScrollbar(GuiGraphics g) {
@@ -2838,12 +2914,15 @@ public class ActionEditorPanel {
 		return value.name().toLowerCase().replace('_', ' ');
 	}
 
-	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW) {
+	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader) {
 		EditorRow(String label, AbstractWidget widget) {
-			this(label, widget, false, -1);
+			this(label, widget, false, -1, 0, false);
 		}
 		EditorRow(String label, AbstractWidget widget, boolean fullWidth) {
-			this(label, widget, fullWidth, -1);
+			this(label, widget, fullWidth, -1, 0, false);
+		}
+		EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW) {
+			this(label, widget, fullWidth, customWidgetW, 0, false);
 		}
 	}
 

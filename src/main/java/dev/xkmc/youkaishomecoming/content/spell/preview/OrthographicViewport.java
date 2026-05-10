@@ -296,6 +296,42 @@ public class OrthographicViewport {
 	public void addPendingGroupOffset(Vec3 delta) { this.pendingGroupOffset = this.pendingGroupOffset.add(delta); }
 	public Vec3 consumePendingGroupOffset() { Vec3 v = pendingGroupOffset; pendingGroupOffset = Vec3.ZERO; return v; }
 
+	public float getZoom() { return zoom; }
+
+	/**
+	 * Convert screen coordinates to approximate world position (for hit testing).
+	 * Returns the world position at the view plane (depth = 0 in view space).
+	 */
+	public Vec3 screenToWorld(double screenX, double screenY) {
+		if (width <= 0 || height <= 0) return null;
+		// Reverse the render transform: screen → view → world
+		float xRot = currentXRot();
+		float yRot = currentYRot();
+
+		// Screen to view space (before rotation)
+		double vx = (screenX - (x + width / 2.0)) / zoom + viewX;
+		double vy = -((screenY - (y + height / 2.0)) / zoom) + viewY; // Y inverted
+
+		// Apply inverse rotation to get world coords
+		// The render applies: R_x(xRot) * R_y(yRot) to world coords
+		// Inverse: R_y(-yRot) * R_x(-xRot) applied to view coords
+		double xRad = Math.toRadians(-xRot);
+		double yRad = Math.toRadians(-yRot);
+		double cosX = Math.cos(xRad), sinX = Math.sin(xRad);
+		double cosY = Math.cos(yRad), sinY = Math.sin(yRad);
+
+		// View space: (vx, vy, 0) → apply R_x(-xRot)
+		double rx = vx;
+		double ry = vy * cosX;
+		double rz = vy * sinX;
+		// Then R_y(-yRot)
+		double wx = rx * cosY + rz * sinY;
+		double wy = ry;
+		double wz = -rx * sinY + rz * cosY;
+
+		return new Vec3(wx, wy, wz);
+	}
+
 	/**
 	 * Move the camera in perspective mode using WASD/Space/Shift keys.
 	 * Called each tick from the screen.

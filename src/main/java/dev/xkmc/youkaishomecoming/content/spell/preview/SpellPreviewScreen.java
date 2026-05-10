@@ -83,7 +83,8 @@ public class SpellPreviewScreen extends Screen {
 		this.viewportPanel.setGroupTransformCallbacks(
 				this::onGroupOffsetDragged,
 				this::onGroupAngleDragged,
-				this::onGroupDeselect
+				this::onGroupDeselect,
+				this::onClickSelectDanmaku
 		);
 		this.statusDockPanel = new StatusDockPanel(scene, viewport);
 		this.helpDockPanel = new HelpDockPanel();
@@ -425,11 +426,19 @@ public class SpellPreviewScreen extends Screen {
 		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
 		SpellAction action = actionEditorPanel.getCurrentAction();
 		if (action instanceof FireDanmakuAction fda) {
-			// Modify group rotation Y axis (yaw)
+			// Determine which axis to rotate based on viewport's rotate mode
+			int axis = viewportPanel != null ? viewportPanel.getRotateAxis() : 1;
+			if (axis < 0) axis = 1; // default Y if not in rotate mode
+
 			GroupRotation current = fda.groupRotation().orElse(
 					new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
-			double currentY = current.rotY().get(null);
-			var newGr = new GroupRotation(current.rotX(), NumberProvider.constant(currentY + angleDelta), current.rotZ());
+			NumberProvider newX = current.rotX(), newY = current.rotY(), newZ = current.rotZ();
+			switch (axis) {
+				case 0 -> newX = NumberProvider.constant(current.rotX().get(null) + angleDelta);
+				case 1 -> newY = NumberProvider.constant(current.rotY().get(null) + angleDelta);
+				case 2 -> newZ = NumberProvider.constant(current.rotZ().get(null) + angleDelta);
+			}
+			var newGr = new GroupRotation(newX, newY, newZ);
 			var newAction = fda.withGroupRotation(Optional.of(newGr));
 			onActionEdited(newAction);
 			if (actionEditorPanel != null) {
@@ -443,6 +452,11 @@ public class SpellPreviewScreen extends Screen {
 		if (actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
 		}
+	}
+
+	private void onClickSelectDanmaku(int actionIndex) {
+		if (actionIndex < 0) return;
+		scene.getHolder().setHighlightedActionIndex(actionIndex);
 	}
 
 	private void onRequestAddAction(ActionListPanel.AddTarget target) {
@@ -1048,10 +1062,19 @@ public class SpellPreviewScreen extends Screen {
 			scene.togglePlayPause();
 			return true;
 		}
-		// R = reset
+		// R = reset (or enter rotate mode if group is highlighted)
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_R) {
+			if (viewportPanel != null && viewportPanel.keyPressed(keyCode, 0, 0)) {
+				return true;
+			}
 			resetSelectedPhasePreview(false);
 			return true;
+		}
+		// X/Y/Z axis selection in rotate mode
+		if (viewportPanel != null && viewportPanel.isRotateMode()) {
+			if (viewportPanel.keyPressed(keyCode, scanCode, modifiers)) {
+				return true;
+			}
 		}
 		// Right arrow = step
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT) {

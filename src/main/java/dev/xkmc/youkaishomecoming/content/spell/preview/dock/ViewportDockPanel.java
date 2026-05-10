@@ -28,10 +28,12 @@ public class ViewportDockPanel implements DockPanel {
 	// Group transform interaction state
 	private boolean groupDragging = false;   // 左键拖动选中组（修改 origin offset）
 	private boolean groupRotating = false;   // 右键拖动选中组（修改 angle_offset）
-	private long lastClickTime = 0;         // 双击检测
+	private boolean rotateMode = false;      // R键旋转模式
+	private int rotateAxis = 1;              // 旋转轴: 0=X, 1=Y, 2=Z
 	private Runnable onGroupOffsetChanged;   // 回调：origin offset 变化
 	private java.util.function.DoubleConsumer onGroupAngleChanged; // 回调：angle_offset 变化
-	private Runnable onGroupDeselect;        // 回调：双击取消选择
+	private Runnable onGroupDeselect;        // 回调：取消选择
+	private java.util.function.IntConsumer onClickSelectAction; // 回调：点击弹幕选中 action (传入 action index)
 
 	// 透视模式鼠标追踪
 	private double lastMouseX, lastMouseY;
@@ -111,20 +113,29 @@ public class ViewportDockPanel implements DockPanel {
 		} else {
 			// 正交模式
 			if (button == 0) {
-				// Double-click detection for deselect
-				long now = System.currentTimeMillis();
-				if (now - lastClickTime < 400 && hasHighlightedGroup()) {
-					lastClickTime = 0;
+				// If in rotate mode, click confirms and exits
+				if (rotateMode) {
+					rotateMode = false;
+					return true;
+				}
+
+				// Try to click-select a danmaku entity
+				int hitAction = hitTestDanmaku(mouseX, mouseY);
+				if (hitAction >= 0) {
+					// Clicked on a danmaku → select its action
+					if (onClickSelectAction != null) onClickSelectAction.accept(hitAction);
+					return true;
+				}
+
+				// Clicked on empty space
+				if (hasHighlightedGroup()) {
+					// Deselect
 					if (onGroupDeselect != null) onGroupDeselect.run();
 					return true;
 				}
-				lastClickTime = now;
 
-				if (hasHighlightedGroup()) {
-					groupDragging = true; // Left drag = move origin
-				} else {
-					movingTarget = true;
-				}
+				// No selection → move target
+				movingTarget = true;
 				return true;
 			}
 			if (button == 2) {
@@ -133,7 +144,7 @@ public class ViewportDockPanel implements DockPanel {
 			}
 			if (button == 1) {
 				if (hasHighlightedGroup()) {
-					groupRotating = true; // Right drag = rotate angle
+					groupRotating = true;
 				} else {
 					rotating = true;
 				}
@@ -151,6 +162,12 @@ public class ViewportDockPanel implements DockPanel {
 		}
 		if (viewport.isPerspectivePanning()) {
 			viewport.perspectivePan((float) deltaX, (float) deltaY);
+			return true;
+		}
+		if (rotateMode && hasHighlightedGroup()) {
+			// In rotate mode, any drag rotates the group
+			double angleDelta = deltaX * 0.5;
+			if (onGroupAngleChanged != null) onGroupAngleChanged.accept(angleDelta);
 			return true;
 		}
 		if (movingTarget) {
@@ -287,14 +304,79 @@ public class ViewportDockPanel implements DockPanel {
 		return scene;
 	}
 
-	public void setGroupTransformCallbacks(Runnable onOffsetChanged, java.util.function.DoubleConsumer onAngleChanged, Runnable onDeselect) {
+	public void setGroupTransformCallbacks(Runnable onOffsetChanged, java.util.function.DoubleConsumer onAngleChanged,
+										   Runnable onDeselect, java.util.function.IntConsumer onClickSelect) {
 		this.onGroupOffsetChanged = onOffsetChanged;
 		this.onGroupAngleChanged = onAngleChanged;
 		this.onGroupDeselect = onDeselect;
+		this.onClickSelectAction = onClickSelect;
 	}
 
 	/** Check if a group action is currently highlighted (for interaction mode switching). */
 	private boolean hasHighlightedGroup() {
 		return scene.getHolder().getHighlightedActionIndex() >= 0;
+	}
+
+	/**
+	 * Hit-test: find which danmaku entity is under the given screen coordinates.
+	 * Returns the sourceActionIndex of the hit entity, or -1 if nothing hit.
+	 */
+	private int hitTestDanmaku(double screenX, double screenY) {
+		// Convert screen coords to world coords using viewport's inverse transform
+		Vec3 worldPos = viewport.screenToWorld(screenX, screenY);
+		if (worldPos == null) return -1;
+
+		float hitRadius = 1.0f / viewport.getZoom() * 5; // 5 pixels tolerance
+		double bestDistSq = hitRadius * hitRadius;
+		int bestAction = -1;
+
+		for (var entity : scene.getHolder().getLocalEntities()) {
+			if (entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity danmaku) {
+				Vec3 pos = entity.position();
+				// Project both to 2D (ignore depth axis based on view angle)
+				Vec3 diff = pos.subtract(worldPos);
+				double distSq = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
+				if (distSq < bestDistSq) {
+					bestDistSq = distSq;
+					bestAction = danmaku.sourceActionIndex;
+				}
+			}
+		}
+		return bestAction;
+	}
+
+	/**
+	 * Handle key presses for rotation mode.
+	 * R = enter rotate mode, X/Y/Z = switch axis, Escape = cancel.
+	 */
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (!hasHighlightedGroup()) return false;
+
+		// R = toggle rotate mode
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_R) {
+			rotateMode = !rotateMode;
+			rotateAxis = 1; // default Y
+			return true;
+		}
+
+		if (rotateMode) {
+			// X/Y/Z = switch axis
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_X) { rotateAxis = 0; return true; }
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y) { rotateAxis = 1; return true; }
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z) { rotateAxis = 2; return true; }
+			// Escape = cancel rotate mode
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) { rotateMode = false; return true; }
+		}
+
+		return false;
+	}
+
+	/** Get the current rotate mode axis (0=X, 1=Y, 2=Z). -1 if not in rotate mode. */
+	public int getRotateAxis() {
+		return rotateMode ? rotateAxis : -1;
+	}
+
+	public boolean isRotateMode() {
+		return rotateMode;
 	}
 }

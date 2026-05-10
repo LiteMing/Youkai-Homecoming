@@ -1198,7 +1198,7 @@ public class ActionEditorPanel {
 				});
 				// Show sub-mover type as cycle selector
 				String subType = getMoverType(Optional.of(seg.mover()));
-				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "zero"}, subType, newSubType -> {
+				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero"}, subType, newSubType -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
 						var segs = new java.util.ArrayList<>(c.segments());
@@ -1243,8 +1243,8 @@ public class ActionEditorPanel {
 				final int layerIdx = li;
 				// Show sub-mover type as cycle selector
 				String subType = getMoverType(Optional.of(layerCfg));
-				// Exclude "composite" and "layered" from sub-layer types to avoid deep nesting
-				String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "zero"};
+				// Allow nesting: composite and layered can contain each other
+				String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero"};
 				addStringCycleRow("  L" + (li + 1) + " Type", layerTypes, subType, newSubType -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {

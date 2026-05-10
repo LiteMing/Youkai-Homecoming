@@ -2346,11 +2346,13 @@ public class ActionEditorPanel {
 	/**
 	 * Add a collapsible section header. When clicked, toggles visibility of subsequent rows
 	 * at deeper depth levels until the next section at the same or lower depth.
+	 * The button text color indicates nesting depth.
 	 */
 	private void addSectionHeader(String label) {
 		boolean collapsed = collapsedSections.contains(label);
 		String prefix = collapsed ? "\u25B6 " : "\u25BC ";
-		var btn = Button.builder(Component.literal(prefix + label), b -> {
+		int depthColor = getSectionHeaderColor(currentDepth);
+		var btn = Button.builder(Component.literal(prefix + label).withStyle(s -> s.withColor(net.minecraft.network.chat.TextColor.fromRgb(depthColor & 0xFFFFFF))), b -> {
 			if (collapsedSections.contains(label)) {
 				collapsedSections.remove(label);
 			} else {
@@ -2365,6 +2367,18 @@ public class ActionEditorPanel {
 			layoutWidgets();
 		}).bounds(0, 0, w - PADDING * 2, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, true, -1, currentDepth, true));
+	}
+
+	/** Color for section header text based on depth. */
+	private static int getSectionHeaderColor(int depth) {
+		return switch (depth) {
+			case 0 -> 0xFFFFCC44; // gold (top level)
+			case 1 -> 0xFF66BBFF; // blue
+			case 2 -> 0xFF66FF88; // green
+			case 3 -> 0xFFFFAA44; // orange
+			case 4 -> 0xFFCC77FF; // purple
+			default -> 0xFFBBBBBB; // gray
+		};
 	}
 
 	/** Check if a section is currently collapsed. */
@@ -2630,23 +2644,14 @@ public class ActionEditorPanel {
 			return;
 		}
 
-		// Row labels and depth indicators
+		// Row labels
 		for (int i = 0; i < rows.size(); i++) {
 			int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
 			var row = rows.get(i);
 			boolean visible = rowY >= y && rowY + ROW_HEIGHT <= y + h;
 			row.widget().visible = visible;
-			if (visible) {
-				// Draw depth indicator bar on the left edge
-				if (row.depth() > 0) {
-					int barColor = getDepthBarColor(row.depth());
-					int barW = 3 * row.depth();
-					guiGraphics.fill(x + 1, rowY, x + 1 + barW, rowY + ROW_HEIGHT, barColor);
-				}
-				if (!row.fullWidth() && !row.label().isEmpty()) {
-					int labelX = x + PADDING + (row.depth() > 0 ? 3 * row.depth() + 2 : 0);
-					guiGraphics.drawString(font, row.label(), labelX, rowY + 4, 0xFFBBBBBB, false);
-				}
+			if (visible && !row.fullWidth() && !row.label().isEmpty()) {
+				guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 4, 0xFFBBBBBB, false);
 			}
 		}
 
@@ -2660,13 +2665,14 @@ public class ActionEditorPanel {
 	}
 
 	/** Returns a solid color for the depth indicator bar on the left edge. */
+	@SuppressWarnings("unused")
 	private static int getDepthBarColor(int depth) {
 		return switch (depth) {
-			case 1 -> 0xFF4488CC; // blue
-			case 2 -> 0xFF44CC66; // green
-			case 3 -> 0xFFCC8844; // orange
-			case 4 -> 0xFF9944CC; // purple
-			default -> 0xFF888888; // gray
+			case 1 -> 0xFF4488CC;
+			case 2 -> 0xFF44CC66;
+			case 3 -> 0xFFCC8844;
+			case 4 -> 0xFF9944CC;
+			default -> 0xFF888888;
 		};
 	}
 

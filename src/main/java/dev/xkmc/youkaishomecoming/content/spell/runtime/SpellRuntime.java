@@ -194,31 +194,10 @@ public class SpellRuntime {
 	}
 
 	private void executeTransition(SpellContext ctx, Transition trans) {
-		PhaseDefinition oldPhase = definition.getPhase(currentPhaseId);
-		if (oldPhase != null) {
-			for (SpellAction action : oldPhase.onExit) {
-				action.execute(ctx);
-			}
-		}
-
-		if (trans.mode() == TransitionMode.CLEAR_SCREEN || trans.mode() == TransitionMode.CLEAR_AND_RESET) {
-			ctx.clearDanmaku();
-		}
-		if (trans.mode() == TransitionMode.CLEAR_AND_RESET) {
-			variables.clear();
-		}
-
-		currentPhaseId = trans.targetPhase();
-		phaseTick = 0;
-		scheduledActions.clear(); // Clear delayed actions from previous phase
-
-		PhaseDefinition newPhase = definition.getPhase(currentPhaseId);
-		if (newPhase != null) {
-			for (SpellAction action : newPhase.onEnter) {
-				action.execute(ctx);
-			}
-		}
-		notifyPhaseChange();
+		boolean clearScreen = trans.mode() == TransitionMode.CLEAR_SCREEN
+				|| trans.mode() == TransitionMode.CLEAR_AND_RESET;
+		boolean resetVars = trans.mode() == TransitionMode.CLEAR_AND_RESET;
+		doTransition(ctx, trans.targetPhase(), clearScreen, resetVars);
 	}
 
 	/**
@@ -232,6 +211,14 @@ public class SpellRuntime {
 		if (definition.getPhase(targetPhase) == null || isPhaseLocked(targetPhase)) {
 			return;
 		}
+		doTransition(ctx, targetPhase, clearScreen, false);
+	}
+
+	/**
+	 * Core phase transition logic shared by executeTransition and forceTransition.
+	 * Executes onExit → optional clear/reset → switch phase → onEnter → notify.
+	 */
+	private void doTransition(SpellContext ctx, ResourceLocation targetPhase, boolean clearScreen, boolean resetVars) {
 		PhaseDefinition oldPhase = definition.getPhase(currentPhaseId);
 		if (oldPhase != null) {
 			for (SpellAction action : oldPhase.onExit) {
@@ -241,6 +228,9 @@ public class SpellRuntime {
 
 		if (clearScreen) {
 			ctx.clearDanmaku();
+		}
+		if (resetVars) {
+			variables.clear();
 		}
 
 		currentPhaseId = targetPhase;

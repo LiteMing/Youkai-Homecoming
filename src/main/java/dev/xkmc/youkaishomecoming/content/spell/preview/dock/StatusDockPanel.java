@@ -23,11 +23,15 @@ import java.util.Locale;
 public class StatusDockPanel implements DockPanel {
 
 	private static final int PADDING = 6;
+	/** Refresh text every N frames to reduce GC pressure from string rebuilding at 60fps. */
+	private static final int REFRESH_INTERVAL = 3;
 
 	private final VirtualSpellScene scene;
 	private final OrthographicViewport viewport;
 
 	private int x, y, w, h;
+	private int frameCounter;
+	private List<Line> cachedLines;
 
 	public StatusDockPanel(VirtualSpellScene scene, OrthographicViewport viewport) {
 		this.scene = scene;
@@ -50,6 +54,7 @@ public class StatusDockPanel implements DockPanel {
 		this.y = y;
 		this.w = w;
 		this.h = h;
+		this.cachedLines = null; // Invalidate on resize
 	}
 
 	@Override
@@ -87,12 +92,18 @@ public class StatusDockPanel implements DockPanel {
 			return;
 		}
 
-		List<Line> lines = buildWrappedLines(font, contentWidth);
+		// Only rebuild text lines every REFRESH_INTERVAL frames
+		frameCounter++;
+		if (cachedLines == null || frameCounter >= REFRESH_INTERVAL) {
+			frameCounter = 0;
+			cachedLines = buildWrappedLines(font, contentWidth);
+		}
+
 		int lineY = y + PADDING;
 		int lineStep = font.lineHeight + 2;
 		int maxLines = Math.max(1, (contentHeight + 2) / lineStep);
 		int renderedLines = 0;
-		for (Line line : lines) {
+		for (Line line : cachedLines) {
 			if (renderedLines >= maxLines || lineY + font.lineHeight > y + h - PADDING) {
 				break;
 			}

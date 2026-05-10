@@ -2,12 +2,8 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
-import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
-import dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm;
-import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile;
-import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import net.minecraft.client.Minecraft;
@@ -16,15 +12,11 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.phys.Vec3;
 import dev.xkmc.youkaishomecoming.content.spell.preview.dock.*;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * Standalone screen for previewing and editing spell card effects.
@@ -42,8 +34,10 @@ public class SpellPreviewScreen extends Screen {
 	private static final int TOP_BAR_HEIGHT = 20;
 	private static final int BUTTON_HEIGHT = 16;
 	private static final int BUTTON_SPACING = 2;
-	private static final ResourceLocation DRAFT_SPELL_ID = new ResourceLocation("minecraft", "__yh_editor__");
-	private static final ResourceLocation DRAFT_ENTRY_PHASE = new ResourceLocation("minecraft", "__yh_editor__/main");
+
+	// Controllers (extracted logic)
+	private final SpellEditorController spellController;
+	private final PhaseEditorController phaseController;
 
 	// Dock layout system
 	private DockLayout dockLayout;
@@ -61,35 +55,23 @@ public class SpellPreviewScreen extends Screen {
 	private boolean editorVisible = true;
 	private ActionListPanel.AddTarget pendingAddTarget;
 
-	// Phase dropdown state
-	private final List<ResourceLocation> phaseList = new ArrayList<>();
-	private int selectedPhaseIndex = 0;
-
-	private boolean autoReplay = true;
-	private boolean draftMode;
-	private boolean skipSaveOnNextDefinitionSwitch;
+	private boolean autoReplay = false;
 	private com.google.gson.JsonObject pendingDockLayout;
 
-	/** Snapshots of visited spell definitions when this editor first saw them. */
-	private final java.util.Map<ResourceLocation, com.google.gson.JsonElement> openSnapshots = new java.util.HashMap<>();
-
 	public SpellPreviewScreen(SpellDefinition definition) {
-		this(definition, isDraftDefinition(definition));
+		this(definition, SpellEditorController.isDraftDefinition(definition));
 	}
 
 	private SpellPreviewScreen(SpellDefinition definition, boolean draftMode) {
 		super(Component.literal(draftMode ? "Spell Editor" : "Spell Preview: " + definition.id));
 		this.definition = definition;
-		this.draftMode = draftMode;
 		this.scene = new VirtualSpellScene(definition);
 		this.scene.setOnStateChanged(this::syncSceneState);
 		this.viewport = new OrthographicViewport();
-		this.phaseList.addAll(definition.phases.keySet());
-		if (!phaseList.isEmpty()) {
-			this.scene.resetToPhase(phaseList.get(selectedPhaseIndex));
-		}
-		if (!draftMode) {
-			rememberOpenSnapshot(definition);
+		this.spellController = new SpellEditorController(definition, draftMode, scene, this::rebuildScreen);
+		this.phaseController = new PhaseEditorController(definition);
+		if (!phaseController.getPhaseList().isEmpty()) {
+			this.scene.resetToPhase(phaseController.getPhaseList().get(0));
 		}
 		// Create persistent dock panels
 		this.viewportPanel = new ViewportDockPanel(viewport, scene);
@@ -98,15 +80,13 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	public static SpellPreviewScreen createDraftEditor() {
-		return new SpellPreviewScreen(createDraftDefinition(), true);
+		return new SpellPreviewScreen(SpellEditorController.createDraftDefinition(), true);
 	}
 
 	@Override
 	protected void init() {
 		super.init();
 		boolean fullEdit = !isDraftMode();
-
-		// --- Top bar: view angle buttons + toggle editor + spell name ---
 		int bx = 4;
 		int by = 2;
 		int bw = 50;
@@ -236,8 +216,8 @@ public class SpellPreviewScreen extends Screen {
 				this::onActionEdited,
 				this::onDeleteAction
 		);
-		actionEditorPanel.setPhaseOptions(() -> List.copyOf(phaseList), this::getPhaseOptionLabel);
-		actionEditorPanel.setSpellOptions(this::getSpellOptions, this::getSpellOptionLabel);
+		actionEditorPanel.setPhaseOptions(() -> List.copyOf(phaseController.getPhaseList()), phaseController::getPhaseOptionLabel);
+		actionEditorPanel.setSpellOptions(spellController::getSpellOptions, spellController::getSpellOptionLabel);
 		actionEditorPanel.setToggleDisableCallback(() -> {
 			if (actionListPanel != null && actionListPanel.toggleSelectedDisabled()) {
 				actionEditorPanel.clearAction();
@@ -255,11 +235,13 @@ public class SpellPreviewScreen extends Screen {
 		editorDockPanel = new EditorDockPanel(actionEditorPanel);
 		controlsDockPanel = new ControlsDockPanel(
 				scene, viewport, this::rebuildScreen, () -> resetSelectedPhasePreview(false),
-				this::getSpellOptions, this::getCurrentSpellSelectionId, this::getCurrentSpellButtonLabel, this::getSpellOptionLabel,
-				this::switchSelectedSpell, this::enterDraftSpellEditor, this::deleteSelectedSpell,
-				this::canDeleteSelectedSpell, this::isDraftMode, this::nameCurrentDraftSpell, this::cyclePhase,
-				this::getSelectedPhaseDisplayName, this::renameSelectedPhase, this::addPhase,
-				this::deleteSelectedPhase, this::canDeleteSelectedPhase);
+				spellController::getSpellOptions, spellController::getCurrentSpellSelectionId,
+				spellController::getCurrentSpellButtonLabel, spellController::getSpellOptionLabel,
+				spellController::switchSelectedSpell, spellController::enterDraftSpellEditor,
+				spellController::deleteSelectedSpell, spellController::canDeleteSelectedSpell,
+				spellController::isDraftMode, spellController::nameCurrentDraftSpell, this::cyclePhase,
+				phaseController::getSelectedPhaseDisplayName, this::renameSelectedPhase, this::addPhase,
+				this::deleteSelectedPhase, phaseController::canDeleteSelectedPhase);
 		controlsDockPanel.setWidgetCallbacks(w -> this.addRenderableWidget(w), this::removeWidget);
 		perfDockPanel = new PerfDockPanel(scene);
 
@@ -479,33 +461,7 @@ public class SpellPreviewScreen extends Screen {
 	 * File is written to: ./youkaishomecoming_exports/<namespace>/<path>.json
 	 */
 	private void exportToDatapack() {
-		if (isDraftMode()) {
-			return;
-		}
-		var mc = Minecraft.getInstance();
-		try {
-			com.google.gson.JsonElement json = SpellDefinition.CODEC.encodeStart(
-					com.mojang.serialization.JsonOps.INSTANCE, definition).getOrThrow(false, s -> {});
-			com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
-			String jsonStr = gson.toJson(json);
-
-			java.io.File dir = new java.io.File(mc.gameDirectory, "youkaishomecoming_exports/" + definition.id.getNamespace());
-			dir.mkdirs();
-			java.io.File file = new java.io.File(dir, definition.id.getPath().replace('/', '_') + ".json");
-			try (var writer = new java.io.FileWriter(file)) {
-				writer.write(jsonStr);
-			}
-
-			if (mc.player != null) {
-				mc.player.displayClientMessage(
-						Component.literal("[YH] Exported to " + file.getPath()), false);
-			}
-		} catch (Exception e) {
-			if (mc.player != null) {
-				mc.player.displayClientMessage(
-						Component.literal("[YH] Export failed: " + e.getMessage()), false);
-			}
-		}
+		spellController.exportToDatapack();
 	}
 
 	/**
@@ -514,27 +470,9 @@ public class SpellPreviewScreen extends Screen {
 	 * Custom spells: restored from the snapshot taken when the editor was opened.
 	 */
 	private void resetToDefault() {
-		if (isDraftMode()) {
-			return;
-		}
-		// Try built-in default first
-		SpellDefinition restored = SpellRegistry.getDefault(definition.id);
-		var openSnapshot = openSnapshots.get(definition.id);
-		if (restored == null && openSnapshot != null) {
-			// Custom spell: restore from open-time snapshot
-			restored = SpellDefinition.CODEC.parse(
-					com.mojang.serialization.JsonOps.INSTANCE, openSnapshot).result().orElse(null);
-		}
-		if (restored == null) return;
-
-		// Replace the mutable spell content with the restored snapshot.
-		definition.phases.clear();
-		definition.phases.putAll(restored.phases);
-		definition.customNames.clear();
-		definition.customNames.putAll(restored.customNames);
-		phaseList.clear();
-		phaseList.addAll(definition.phases.keySet());
-		selectedPhaseIndex = phaseList.isEmpty() ? 0 : Math.min(selectedPhaseIndex, phaseList.size() - 1);
+		spellController.resetToDefault();
+		// Reload phase list after reset
+		phaseController.reloadPhaseList();
 
 		// Refresh UI
 		if (actionEditorPanel != null) actionEditorPanel.clearAction();
@@ -544,35 +482,21 @@ public class SpellPreviewScreen extends Screen {
 		updateActionListPhase();
 		refreshPhaseControls();
 		replaySelectedPhase();
-
-		var mc = Minecraft.getInstance();
-		if (mc.player != null) {
-			mc.player.displayClientMessage(Component.literal("[YH] Spell reset to default"), true);
-		}
-	}
-
-	private void rememberOpenSnapshot(SpellDefinition definition) {
-		if (isDraftDefinition(definition)) {
-			return;
-		}
-		openSnapshots.computeIfAbsent(definition.id, id -> SpellDefinition.CODEC.encodeStart(
-				com.mojang.serialization.JsonOps.INSTANCE, definition).result().orElse(null));
 	}
 
 	private void updateActionListPhase() {
 		if (actionListPanel == null) return;
-		if (phaseList.isEmpty()) {
+		ResourceLocation phaseId = phaseController.getSelectedPhaseId();
+		if (phaseId == null) {
 			actionListPanel.setPhase(null);
 			return;
 		}
-		ResourceLocation phaseId = phaseList.get(selectedPhaseIndex);
 		PhaseDefinition phase = definition.phases.get(phaseId);
 		actionListPanel.setPhase(phase);
 	}
 
 	private ResourceLocation getSelectedPhaseId() {
-		if (phaseList.isEmpty()) return null;
-		return phaseList.get(selectedPhaseIndex);
+		return phaseController.getSelectedPhaseId();
 	}
 
 	private void resetSelectedPhasePreview(boolean autoplay) {
@@ -592,9 +516,9 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void cyclePhase(int delta) {
-		if (phaseList.isEmpty()) return;
+		if (phaseController.getPhaseList().isEmpty()) return;
 		boolean wasPlaying = scene.isPlaying();
-		selectedPhaseIndex = (selectedPhaseIndex + delta + phaseList.size()) % phaseList.size();
+		phaseController.cyclePhase(delta);
 		resetSelectedPhasePreview(wasPlaying);
 		if (actionEditorPanel != null) actionEditorPanel.clearAction();
 		updateActionListPhase();
@@ -602,10 +526,7 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void addPhase() {
-		ResourceLocation newPhaseId = createUniquePhaseId();
-		definition.phases.put(newPhaseId, new PhaseDefinition(newPhaseId, List.of(), List.of(), List.of(), List.of(), List.of()));
-		phaseList.add(newPhaseId);
-		selectedPhaseIndex = phaseList.size() - 1;
+		phaseController.addPhase();
 		resetSelectedPhasePreview(autoReplay);
 		if (actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
@@ -616,21 +537,15 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private boolean canDeleteSelectedPhase() {
-		ResourceLocation phaseId = getSelectedPhaseId();
-		return phaseId != null && phaseList.size() > 1 && !phaseId.equals(definition.entryPhase);
+		return phaseController.canDeleteSelectedPhase();
 	}
 
 	private void deleteSelectedPhase() {
-		ResourceLocation removedPhaseId = getSelectedPhaseId();
-		if (removedPhaseId == null || !canDeleteSelectedPhase()) {
+		ResourceLocation removedPhaseId = phaseController.deleteSelectedPhase();
+		if (removedPhaseId == null) {
 			return;
 		}
 		boolean wasPlaying = scene.isPlaying();
-		int removedTransitions = removeTransitionsTargeting(removedPhaseId);
-		definition.phases.remove(removedPhaseId);
-		phaseList.remove(selectedPhaseIndex);
-		clearPhaseCustomName(removedPhaseId);
-		selectedPhaseIndex = Math.max(0, Math.min(selectedPhaseIndex, phaseList.size() - 1));
 		if (actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
 		}
@@ -638,149 +553,61 @@ public class SpellPreviewScreen extends Screen {
 		refreshPhaseControls();
 		refreshActionEditor();
 		resetSelectedPhasePreview(wasPlaying || autoReplay);
-
-		var mc = Minecraft.getInstance();
-		if (mc.player != null) {
-			String msg = "[YH] Deleted phase " + formatPhaseId(removedPhaseId) +
-					(removedTransitions > 0 ? " and removed " + removedTransitions + " transitions" : "");
-			mc.player.displayClientMessage(Component.literal(msg), true);
-		}
-	}
-
-	private int removeTransitionsTargeting(ResourceLocation removedPhaseId) {
-		int removed = 0;
-		for (PhaseDefinition phase : definition.phases.values()) {
-			var iter = phase.transitions.iterator();
-			while (iter.hasNext()) {
-				var transition = iter.next();
-				if (removedPhaseId.equals(transition.targetPhase())) {
-					iter.remove();
-					removed++;
-				}
-			}
-		}
-		return removed;
 	}
 
 	private void renameSelectedPhase(String name) {
-		if (phaseList.isEmpty()) return;
-		ResourceLocation phaseId = phaseList.get(selectedPhaseIndex);
-		String trimmed = name.trim();
-		if (trimmed.isEmpty() || trimmed.equals(formatPhaseId(phaseId)) || trimmed.equals(phaseId.getPath())) {
-			clearPhaseCustomName(phaseId);
-		} else {
-			setPhaseCustomName(phaseId, trimmed);
+		phaseController.renameSelectedPhase(name);
+		// Sync custom name changes to actionListPanel
+		ResourceLocation phaseId = phaseController.getSelectedPhaseId();
+		if (phaseId != null && actionListPanel != null) {
+			String key = PhaseEditorController.getPhaseNameKey(phaseId);
+			String legacyKey = PhaseEditorController.getLegacyPhaseNameKey(phaseId);
+			String custom = phaseController.getStoredPhaseCustomName(phaseId);
+			actionListPanel.setCustomName(legacyKey, null);
+			actionListPanel.setCustomName(key, custom);
 		}
 		refreshPhaseControls();
 		refreshActionEditor();
 	}
 
 	private String getSelectedPhaseDisplayName() {
-		if (phaseList.isEmpty()) return "";
-		ResourceLocation phaseId = phaseList.get(selectedPhaseIndex);
-		String custom = getStoredPhaseCustomName(phaseId);
-		return custom != null ? custom : formatPhaseId(phaseId);
-	}
-
-	private String getPhaseOptionLabel(ResourceLocation phaseId) {
-		String custom = getStoredPhaseCustomName(phaseId);
-		if (custom == null || custom.isBlank() || custom.equals(phaseId.getPath())) {
-			return formatPhaseId(phaseId);
-		}
-		return custom + " (" + formatPhaseId(phaseId) + ")";
+		return phaseController.getSelectedPhaseDisplayName();
 	}
 
 	private List<ResourceLocation> getSpellOptions() {
-		var spells = new ArrayList<>(SpellRegistry.getAll().keySet());
-		spells.sort(java.util.Comparator.comparing(SpellPreviewScreen::formatResourceId));
-		return spells;
+		return spellController.getSpellOptions();
 	}
 
 	private String getSpellOptionLabel(ResourceLocation spellId) {
-		return formatResourceId(spellId);
+		return spellController.getSpellOptionLabel(spellId);
 	}
 
 	private String getCurrentSpellButtonLabel() {
-		return isDraftMode() ? "New Spell" : getSpellOptionLabel(definition.id);
+		return spellController.getCurrentSpellButtonLabel();
 	}
 
 	private ResourceLocation getCurrentSpellSelectionId() {
-		return isDraftMode() ? null : definition.id;
+		return spellController.getCurrentSpellSelectionId();
 	}
 
 	private void switchSelectedSpell(ResourceLocation spellId) {
-		if (spellId == null || (!isDraftMode() && spellId.equals(definition.id))) {
-			return;
-		}
-		SpellDefinition target = SpellRegistry.get(spellId);
-		if (target == null) {
-			return;
-		}
-		saveCurrentDefinition();
-		skipSaveOnNextDefinitionSwitch = true;
-		boolean wasPlaying = scene.isPlaying();
-		scene.pause();
-		scene.switchSpellDefinition(target, true);
-		if (wasPlaying) {
-			scene.play();
-		} else {
-			scene.pause();
-		}
+		spellController.switchSelectedSpell(spellId);
 	}
 
 	private boolean canDeleteSelectedSpell() {
-		return !isDraftMode() && !SpellRegistry.hasDefault(definition.id);
+		return spellController.canDeleteSelectedSpell();
 	}
 
 	private void enterDraftSpellEditor() {
-		saveCurrentDefinition();
-		skipSaveOnNextDefinitionSwitch = true;
-		draftMode = true;
-		scene.pause();
-		scene.switchSpellDefinition(createDraftDefinition(), true);
+		spellController.enterDraftSpellEditor();
 	}
 
 	private void nameCurrentDraftSpell(String name) {
-		if (!isDraftMode()) {
-			return;
-		}
-		ResourceLocation spellId = parseDraftSpellId(name);
-		if (spellId == null) {
-			displayEditorMessage("[YH] Invalid spell id");
-			return;
-		}
-		if (SpellRegistry.contains(spellId)) {
-			displayEditorMessage("[YH] Spell already exists: " + formatResourceId(spellId));
-			return;
-		}
-		SpellDefinition created = createEmptySpellDefinition(spellId);
-		SpellRegistry.register(created);
-		var server = Minecraft.getInstance().getSingleplayerServer();
-		if (server != null) {
-			server.execute(() -> CustomSpellStorage.saveSpell(server, created));
-		}
-		skipSaveOnNextDefinitionSwitch = true;
-		scene.pause();
-		scene.switchSpellDefinition(created, true);
-		displayEditorMessage("[YH] Created spell " + formatResourceId(spellId));
+		spellController.nameCurrentDraftSpell(name);
 	}
 
 	private void deleteSelectedSpell() {
-		ResourceLocation spellId = definition.id;
-		if (!canDeleteSelectedSpell()) {
-			return;
-		}
-		openSnapshots.remove(spellId);
-		SpellRegistry.remove(spellId);
-		var server = Minecraft.getInstance().getSingleplayerServer();
-		if (server != null) {
-			server.execute(() -> CustomSpellStorage.deleteSpell(server, spellId));
-		}
-		skipSaveOnNextDefinitionSwitch = true;
-		draftMode = true;
-		scene.pause();
-		scene.switchSpellDefinition(createDraftDefinition(), true);
-		displayEditorMessage("[YH] Deleted spell " + formatResourceId(spellId));
+		spellController.deleteSelectedSpell();
 	}
 
 	private void refreshPhaseControls() {
@@ -795,60 +622,8 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
-	private ResourceLocation createUniquePhaseId() {
-		int index = Math.max(phaseList.size() + 1, 1);
-		ResourceLocation id;
-		do {
-			id = new ResourceLocation(definition.id.getNamespace(), "phase_" + index++);
-		} while (definition.phases.containsKey(id));
-		return id;
-	}
-
-	private static String getPhaseNameKey(ResourceLocation phaseId) {
-		return "phase:" + formatPhaseId(phaseId);
-	}
-
-	private static String getLegacyPhaseNameKey(ResourceLocation phaseId) {
-		return "phase:" + formatResourceId(phaseId);
-	}
-
-	private static String formatPhaseId(ResourceLocation phaseId) {
-		return phaseId.toString();
-	}
-
-	private String getStoredPhaseCustomName(ResourceLocation phaseId) {
-		String value = definition.customNames.get(getPhaseNameKey(phaseId));
-		if (value != null && !value.isBlank()) {
-			return value;
-		}
-		value = definition.customNames.get(getLegacyPhaseNameKey(phaseId));
-		return value != null && !value.isBlank() ? value : null;
-	}
-
-	private void clearPhaseCustomName(ResourceLocation phaseId) {
-		String key = getPhaseNameKey(phaseId);
-		String legacyKey = getLegacyPhaseNameKey(phaseId);
-		definition.customNames.remove(key);
-		definition.customNames.remove(legacyKey);
-		if (actionListPanel != null) {
-			actionListPanel.setCustomName(key, null);
-			actionListPanel.setCustomName(legacyKey, null);
-		}
-	}
-
-	private void setPhaseCustomName(ResourceLocation phaseId, String value) {
-		String key = getPhaseNameKey(phaseId);
-		String legacyKey = getLegacyPhaseNameKey(phaseId);
-		definition.customNames.remove(legacyKey);
-		definition.customNames.put(key, value);
-		if (actionListPanel != null) {
-			actionListPanel.setCustomName(legacyKey, null);
-			actionListPanel.setCustomName(key, value);
-		}
-	}
-
 	private static String formatResourceId(ResourceLocation id) {
-		return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
+		return SpellEditorController.formatResourceId(id);
 	}
 
 	private void syncCustomNamesToDefinition() {
@@ -863,62 +638,11 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		syncCustomNamesToDefinition();
-		SpellRegistry.register(definition);
-		var server = Minecraft.getInstance().getSingleplayerServer();
-		if (server != null) {
-			server.execute(() -> CustomSpellStorage.saveSpell(server, definition));
-		}
+		spellController.saveCurrentDefinition();
 	}
 
 	private boolean isDraftMode() {
-		return draftMode || isDraftDefinition(definition);
-	}
-
-	private static boolean isDraftDefinition(SpellDefinition definition) {
-		return definition != null && DRAFT_SPELL_ID.equals(definition.id);
-	}
-
-	private static SpellDefinition createDraftDefinition() {
-		return new SpellDefinition(
-				DRAFT_SPELL_ID,
-				new SpellDisplay("new_spell", "", Optional.empty(), Optional.empty()),
-				SpellItemForm.NONE,
-				DRAFT_ENTRY_PHASE,
-				Map.of(),
-				DifficultyProfile.DEFAULT
-		);
-	}
-
-	private static SpellDefinition createEmptySpellDefinition(ResourceLocation spellId) {
-		ResourceLocation phaseId = new ResourceLocation(spellId.getNamespace(), spellId.getPath() + "/main");
-		PhaseDefinition phase = new PhaseDefinition(
-				phaseId,
-				List.of(),
-				List.of(),
-				List.of(),
-				List.of(),
-				List.of()
-		);
-		return new SpellDefinition(
-				spellId,
-				new SpellDisplay(spellId.getPath(), "", Optional.empty(), Optional.empty()),
-				SpellItemForm.NONE,
-				phaseId,
-				Map.of(phaseId, phase),
-				DifficultyProfile.DEFAULT
-		);
-	}
-
-	private ResourceLocation parseDraftSpellId(String raw) {
-		String trimmed = raw == null ? "" : raw.trim();
-		if (trimmed.isEmpty()) {
-			return null;
-		}
-		ResourceLocation id = ResourceLocation.tryParse(trimmed.contains(":") ? trimmed : "minecraft:" + trimmed);
-		if (id == null || DRAFT_SPELL_ID.equals(id)) {
-			return null;
-		}
-		return id;
+		return spellController.isDraftMode();
 	}
 
 	private void displayEditorMessage(String message) {
@@ -929,23 +653,24 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void switchToDefinition(SpellDefinition definition) {
-		if (!skipSaveOnNextDefinitionSwitch) {
+		if (!spellController.isSkipSaveOnNextDefinitionSwitch()) {
 			saveCurrentDefinition();
 		}
-		skipSaveOnNextDefinitionSwitch = false;
-		boolean oldDraftMode = this.draftMode;
+		spellController.clearSkipFlag();
+		boolean oldDraftMode = spellController.isDraftMode();
 		this.definition = definition;
-		this.draftMode = isDraftDefinition(definition);
-		rememberOpenSnapshot(definition);
-		phaseList.clear();
-		phaseList.addAll(definition.phases.keySet());
-		if (oldDraftMode != this.draftMode) {
+		spellController.setDefinition(definition);
+		spellController.setDraftMode(SpellEditorController.isDraftDefinition(definition));
+		spellController.rememberOpenSnapshot(definition);
+		phaseController.setDefinition(definition);
+		phaseController.reloadPhaseList();
+		if (oldDraftMode != spellController.isDraftMode()) {
 			rebuildScreen();
 			return;
 		}
 		ResourceLocation currentPhase = scene.getCurrentPhaseId();
-		int idx = phaseList.indexOf(currentPhase);
-		selectedPhaseIndex = idx >= 0 ? idx : 0;
+		int idx = phaseController.getPhaseList().indexOf(currentPhase);
+		phaseController.setSelectedPhaseIndex(idx >= 0 ? idx : 0);
 		if (actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
 		}
@@ -963,9 +688,9 @@ public class SpellPreviewScreen extends Screen {
 			switchToDefinition(currentDefinition);
 		}
 		ResourceLocation currentPhase = scene.getCurrentPhaseId();
-		int idx = phaseList.indexOf(currentPhase);
-		if (idx >= 0 && idx != selectedPhaseIndex) {
-			selectedPhaseIndex = idx;
+		int idx = phaseController.getPhaseList().indexOf(currentPhase);
+		if (idx >= 0 && idx != phaseController.getSelectedPhaseIndex()) {
+			phaseController.setSelectedPhaseIndex(idx);
 			if (actionEditorPanel != null) {
 				actionEditorPanel.clearAction();
 			}

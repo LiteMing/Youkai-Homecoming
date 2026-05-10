@@ -1356,12 +1356,27 @@ public class ActionEditorPanel {
 											Consumer<Optional<MoverConfig>> onTypeChanged,
 											Consumer<Optional<MoverConfig>> onParamChanged) {
 		if (subCfg instanceof MoverConfigs.AccelerationConfig acc) {
-			addDoubleRow("  Acc X", acc.acceleration().x, v -> updateCompositeSegment(segIdx,
-					new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(v, acc.acceleration().y, acc.acceleration().z)), onParamChanged));
-			addDoubleRow("  Acc Y", acc.acceleration().y, v -> updateCompositeSegment(segIdx,
-					new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(acc.acceleration().x, v, acc.acceleration().z)), onParamChanged));
-			addDoubleRow("  Acc Z", acc.acceleration().z, v -> updateCompositeSegment(segIdx,
-					new MoverConfigs.AccelerationConfig(new net.minecraft.world.phys.Vec3(acc.acceleration().x, acc.acceleration().y, v)), onParamChanged));
+			addDoubleRow("  Acc X", acc.acceleration().x, v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.AccelerationConfig a) {
+					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(
+							new net.minecraft.world.phys.Vec3(v, a.acceleration().y, a.acceleration().z)), onParamChanged);
+				}
+			});
+			addDoubleRow("  Acc Y", acc.acceleration().y, v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.AccelerationConfig a) {
+					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(
+							new net.minecraft.world.phys.Vec3(a.acceleration().x, v, a.acceleration().z)), onParamChanged);
+				}
+			});
+			addDoubleRow("  Acc Z", acc.acceleration().z, v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.AccelerationConfig a) {
+					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(
+							new net.minecraft.world.phys.Vec3(a.acceleration().x, a.acceleration().y, v)), onParamChanged);
+				}
+			});
 		} else if (subCfg instanceof MoverConfigs.DecelerationConfig dc) {
 			addDoubleRow("  Factor", dc.factor(), v -> updateCompositeSegment(segIdx,
 					new MoverConfigs.DecelerationConfig(v), onParamChanged));
@@ -1369,20 +1384,64 @@ public class ActionEditorPanel {
 			addDoubleRow("  Deg/t", rot.degreesPerTick(), v -> updateCompositeSegment(segIdx,
 					new MoverConfigs.RotateConfig(v), onParamChanged));
 		} else if (subCfg instanceof MoverConfigs.PolarMoverConfig polar) {
-			addDoubleRow("  Radius", polar.radius(), v -> updateCompositeSegment(segIdx,
-					new MoverConfigs.PolarMoverConfig(v, polar.radialSpeed(), polar.radialAccel(), polar.initialAngle(), polar.angularSpeed(), polar.angularAccel()), onParamChanged));
-			addDoubleRow("  Rad Spd", polar.radialSpeed(), v -> updateCompositeSegment(segIdx,
-					new MoverConfigs.PolarMoverConfig(polar.radius(), v, polar.radialAccel(), polar.initialAngle(), polar.angularSpeed(), polar.angularAccel()), onParamChanged));
-			addDoubleRow("  Ang Spd", polar.angularSpeed(), v -> updateCompositeSegment(segIdx,
-					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), polar.radialAccel(), polar.initialAngle(), v, polar.angularAccel()), onParamChanged));
-			addDoubleRow("  Init Ang", polar.initialAngle(), v -> updateCompositeSegment(segIdx,
-					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), polar.radialAccel(), v, polar.angularSpeed(), polar.angularAccel()), onParamChanged));
-			addDoubleRow("  Rad Acc", polar.radialAccel(), v -> updateCompositeSegment(segIdx,
-					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), v, polar.initialAngle(), polar.angularSpeed(), polar.angularAccel()), onParamChanged));
-			addDoubleRow("  Ang Acc", polar.angularAccel(), v -> updateCompositeSegment(segIdx,
-					new MoverConfigs.PolarMoverConfig(polar.radius(), polar.radialSpeed(), polar.radialAccel(), polar.initialAngle(), polar.angularSpeed(), v), onParamChanged));
+			addDoubleRow("  Radius", polar.radius(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
+							v, p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Rad Spd", polar.radialSpeed(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), v, p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Ang Spd", polar.angularSpeed(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), v, p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Init Ang", polar.initialAngle(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Rad Acc", polar.radialAccel(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), v, p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
+				}
+			});
+			addDoubleRow("  Ang Acc", polar.angularAccel(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.PolarMoverConfig p) {
+					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
+							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), v), onParamChanged);
+				}
+			});
 		}
 		// ZeroMoverConfig has no params
+	}
+
+	/**
+	 * Read the current sub-mover for a specific segment from the live currentAction state.
+	 * Returns null if the segment doesn't exist or the mover is not composite.
+	 */
+	private MoverConfig getCompositeSegmentMover(int segIdx) {
+		var cur = getCurrentMover();
+		if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
+			if (segIdx < c.segments().size()) {
+				return c.segments().get(segIdx).mover();
+			}
+		}
+		return null;
 	}
 
 	private void updateCompositeSegment(int segIdx, MoverConfig newSubMover,

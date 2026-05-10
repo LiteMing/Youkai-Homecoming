@@ -129,13 +129,21 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
 			// Rotation plane normal comes from baseDirection (shared by all projectiles).
-			// Forward direction (initial polar angle reference) comes from per-projectile velocity.
-			// This ensures all projectiles rotate in the same plane but start at different angles.
+			// Forward direction (initial polar angle reference) comes from per-projectile velocity,
+			// projected onto the rotation plane to ensure orthogonality with normal.
 			Vec3 baseDir = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1);
 			Vec3 projDir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : baseDir;
 			var baseOri = DanmakuHelper.getOrientation(baseDir);
-			// Use baseDir's normal as the rotation axis, but projDir as the initial forward
-			var mover = new PolarMover(origin, Vec3.ZERO, Vec3.ZERO, baseOri.normal(), projDir);
+			Vec3 normal = baseOri.normal();
+			// Project projDir onto the plane perpendicular to normal
+			Vec3 projOnPlane = projDir.subtract(normal.scale(projDir.dot(normal)));
+			if (projOnPlane.lengthSqr() < 1e-8) {
+				// projDir is parallel to normal — fall back to baseDir's forward
+				projOnPlane = baseOri.forward();
+			} else {
+				projOnPlane = projOnPlane.normalize();
+			}
+			var mover = new PolarMover(origin, Vec3.ZERO, Vec3.ZERO, normal, projOnPlane);
 			mover.radial(radius, radialSpeed, radialAccel);
 			mover.angular(
 					Math.toRadians(initialAngle),

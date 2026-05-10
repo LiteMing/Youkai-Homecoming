@@ -81,6 +81,23 @@ public class ViewportDockPanel implements DockPanel {
 	@Override
 	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		viewport.render(graphics, scene, partialTick);
+
+		// Render mode indicator overlay
+		if (hasHighlightedGroup()) {
+			var font = Minecraft.getInstance().font;
+			String modeText;
+			int modeColor;
+			if (rotateMode) {
+				String axisName = switch (rotateAxis) { case 0 -> "X"; case 1 -> "Y"; default -> "Z"; };
+				int axisColor = switch (rotateAxis) { case 0 -> 0xFFFF4444; case 1 -> 0xFF44FF44; default -> 0xFF4444FF; };
+				modeText = "ROTATE " + axisName;
+				modeColor = axisColor;
+			} else {
+				modeText = "SELECTED [R=Rotate]";
+				modeColor = 0xFF66FF88;
+			}
+			graphics.drawString(font, modeText, x + 4, y + h - 12, modeColor, true);
+		}
 	}
 
 	// ---- 鼠标事件 ----
@@ -143,8 +160,10 @@ public class ViewportDockPanel implements DockPanel {
 				return true;
 			}
 			if (button == 1) {
-				if (hasHighlightedGroup()) {
-					groupRotating = true;
+				if (hasHighlightedGroup() && rotateMode) {
+					groupRotating = true; // Only rotate in rotate mode
+				} else if (hasHighlightedGroup()) {
+					groupDragging = true; // Right drag = move offset when not in rotate mode
 				} else {
 					rotating = true;
 				}
@@ -214,7 +233,7 @@ public class ViewportDockPanel implements DockPanel {
 			movingTarget = false;
 			return true;
 		}
-		if (groupDragging && button == 0) {
+		if (groupDragging && (button == 0 || button == 1)) {
 			groupDragging = false;
 			return true;
 		}

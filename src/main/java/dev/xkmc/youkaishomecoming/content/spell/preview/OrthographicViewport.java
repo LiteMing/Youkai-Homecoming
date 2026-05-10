@@ -497,6 +497,12 @@ public class OrthographicViewport {
 		ProjectileRenderHelper.flushPreviewQueue(buffer);
 		buffer.endBatch();
 
+		// 10.5. Render highlight overlay for selected action's danmaku
+		int highlightIdx = scene.getHolder().getHighlightedActionIndex();
+		if (highlightIdx >= 0) {
+			renderHighlightOverlay(poseStack, scene, highlightIdx, partialTick);
+		}
+
 		// 11. Cleanup
 		dispatcher.setRenderShadow(true);
 		ProjectileRenderHelper.cameraOrientationOverride = null;
@@ -854,6 +860,61 @@ public class OrthographicViewport {
 		builder.vertex(mat, x, y + s, z).color(r, g, b, a).endVertex();
 		builder.vertex(mat, x, y, z - s).color(r, g, b, a).endVertex();
 		builder.vertex(mat, x, y, z + s).color(r, g, b, a).endVertex();
+	}
+
+	/**
+	 * Render highlight indicators for danmaku belonging to the selected action.
+	 * Draws a colored diamond around each highlighted entity and an axis cross at the origin.
+	 */
+	private void renderHighlightOverlay(PoseStack poseStack, VirtualSpellScene scene, int actionIndex, float partialTick) {
+		var tesselator = Tesselator.getInstance();
+		var builder = tesselator.getBuilder();
+		Matrix4f mat = poseStack.last().pose();
+
+		RenderSystem.setShader(GameRenderer::getPositionColorShader);
+		RenderSystem.lineWidth(2.0f);
+		RenderSystem.enableBlend();
+		RenderSystem.defaultBlendFunc();
+
+		builder.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+
+		// Highlight each danmaku belonging to the selected action
+		Vec3 centroid = Vec3.ZERO;
+		int count = 0;
+		for (Entity entity : scene.getHolder().getLocalEntities()) {
+			if (entity instanceof ItemDanmakuEntity danmaku && danmaku.sourceActionIndex == actionIndex) {
+				Vec3 pos = entity.position();
+				float px = (float) pos.x, py = (float) pos.y, pz = (float) pos.z;
+				// Small diamond highlight around each danmaku
+				float s = 0.15f;
+				drawDiamond(builder, mat, px, py, pz, s, 0.3f, 1f, 0.5f, 0.8f);
+				centroid = centroid.add(pos);
+				count++;
+			}
+		}
+
+		// Draw origin axis cross at the centroid of highlighted danmaku
+		if (count > 0) {
+			centroid = centroid.scale(1.0 / count);
+			float cx = (float) centroid.x, cy = (float) centroid.y, cz = (float) centroid.z;
+			float axisLen = 2.0f;
+			// X axis - red
+			builder.vertex(mat, cx, cy, cz).color(1f, 0.2f, 0.2f, 1f).endVertex();
+			builder.vertex(mat, cx + axisLen, cy, cz).color(1f, 0.2f, 0.2f, 1f).endVertex();
+			// Y axis - green
+			builder.vertex(mat, cx, cy, cz).color(0.2f, 1f, 0.2f, 1f).endVertex();
+			builder.vertex(mat, cx, cy + axisLen, cz).color(0.2f, 1f, 0.2f, 1f).endVertex();
+			// Z axis - blue
+			builder.vertex(mat, cx, cy, cz).color(0.2f, 0.2f, 1f, 1f).endVertex();
+			builder.vertex(mat, cx, cy, cz + axisLen).color(0.2f, 0.2f, 1f, 1f).endVertex();
+			// Center dot (small cross)
+			float ds = 0.3f;
+			drawCross3D(builder, mat, cx, cy, cz, ds, 1f, 1f, 1f, 1f);
+		}
+
+		tesselator.end();
+		RenderSystem.lineWidth(1.0f);
+		RenderSystem.disableBlend();
 	}
 
 	/**

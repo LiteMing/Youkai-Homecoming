@@ -204,6 +204,8 @@ public class SpellPreviewScreen extends Screen {
 					if (actionEditorPanel != null) {
 						actionEditorPanel.setAction(action, path.leafIndex());
 					}
+					// Highlight the selected action's danmaku in the viewport
+					scene.getHolder().setHighlightedActionIndex(path.leafIndex());
 				},
 				this::onRequestAddAction,
 				this::replaySelectedPhase

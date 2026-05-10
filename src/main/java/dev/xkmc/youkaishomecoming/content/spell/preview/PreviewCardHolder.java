@@ -62,6 +62,11 @@ public class PreviewCardHolder implements CardHolder {
 	private boolean targetFlying = false;
 	private boolean targetFallFlying = false;
 
+	/** Current action index being executed — set by SpellRuntime during tick, used to tag spawned danmaku. */
+	private int currentSpawningActionIndex = -1;
+	/** The action index currently selected in the editor (for highlighting). */
+	private int highlightedActionIndex = -1;
+
 	public PreviewCardHolder(Level level) {
 		this.level = level;
 		this.fakeCaster = new FakeCasterEntity(level, this);
@@ -156,6 +161,10 @@ public class PreviewCardHolder implements CardHolder {
 		if (total >= maxEntityCount) {
 			safetyTripped = true;
 			return;
+		}
+		// Tag danmaku with source action index for highlighting
+		if (danmaku instanceof ItemDanmakuEntity ide) {
+			ide.sourceActionIndex = currentSpawningActionIndex;
 		}
 		// Setup trail action so trail danmaku work in preview
 		if (danmaku instanceof ItemDanmakuEntity e && e.afterExpiry != null) {
@@ -356,6 +365,11 @@ public class PreviewCardHolder implements CardHolder {
 	public void setOnTargetHit(Runnable callback) { this.onTargetHit = callback; }
 	public void setOnSpellSwitch(BiConsumer<SpellDefinition, Boolean> callback) { this.onSpellSwitch = callback; }
 	public void setOnPhaseSwitch(BiConsumer<ResourceLocation, Boolean> callback) { this.onPhaseSwitch = callback; }
+
+	public void setCurrentSpawningActionIndex(int index) { this.currentSpawningActionIndex = index; }
+	public int getCurrentSpawningActionIndex() { return currentSpawningActionIndex; }
+	public void setHighlightedActionIndex(int index) { this.highlightedActionIndex = index; }
+	public int getHighlightedActionIndex() { return highlightedActionIndex; }
 	public boolean switchSpell(SpellDefinition definition, boolean clearScreen) {
 		if (onSpellSwitch == null) {
 			return false;

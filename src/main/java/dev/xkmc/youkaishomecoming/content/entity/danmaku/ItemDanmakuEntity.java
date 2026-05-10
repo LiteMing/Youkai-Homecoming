@@ -25,6 +25,9 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public DanmakuMover mover = null;
 	@SerialClass.SerialField
 	public TrailAction afterExpiry = null;
+
+	/** Preview-only: index of the source action that spawned this danmaku (-1 = unknown). */
+	public transient int sourceActionIndex = -1;
 	/**
 	 * Per-tick trail action: executed every {@link #trailInterval} ticks during flight.
 	 * Used for generating sub-danmaku along the projectile's path (e.g. StarSpell shooting stars).

@@ -125,8 +125,16 @@ public class SpellRuntime {
 		SpellContext ctx = new SpellContext(holder, definition, this, diff);
 
 		// Execute tick actions
-		for (SpellAction action : phase.onTick) {
-			action.execute(ctx);
+		for (int i = 0; i < phase.onTick.size(); i++) {
+			// Track action index for preview highlighting
+			if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
+				preview.setCurrentSpawningActionIndex(i);
+			}
+			phase.onTick.get(i).execute(ctx);
+		}
+		// Reset action index after tick
+		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
+			preview.setCurrentSpawningActionIndex(-1);
 		}
 
 		// Execute scheduled delayed actions

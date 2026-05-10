@@ -1541,8 +1541,8 @@ public class ActionEditorPanel {
 		} else if (subCfg instanceof MoverConfigs.BezierMoverConfig bez) {
 			buildNestedBezierParams(bez, segIdx, true, onParamChanged);
 		} else if (subCfg instanceof MoverConfigs.CompositeMoverConfig || subCfg instanceof MoverConfigs.LayeredMoverConfig) {
-			// Recursive: render nested composite/layered as a full mover editor at increased depth
-			addStringRow("  (nested)", getMoverType(Optional.of(subCfg)), v -> {});
+			// Recursive: render nested mover using the full mover editor at increased depth
+			buildNestedMoverRows(Optional.of(subCfg), segIdx, true, onTypeChanged, onParamChanged);
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -1656,8 +1656,8 @@ public class ActionEditorPanel {
 		} else if (layerCfg instanceof MoverConfigs.BezierMoverConfig bez) {
 			buildNestedBezierParams(bez, layerIdx, false, onParamChanged);
 		} else if (layerCfg instanceof MoverConfigs.CompositeMoverConfig || layerCfg instanceof MoverConfigs.LayeredMoverConfig) {
-			// Recursive: render nested composite/layered as a label (deep nesting handled by section headers)
-			addStringRow("  (nested)", getMoverType(Optional.of(layerCfg)), v -> {});
+			// Recursive: render nested mover using the full mover editor at increased depth
+			buildNestedMoverRows(Optional.of(layerCfg), layerIdx, false, onTypeChanged, onParamChanged);
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -1716,6 +1716,91 @@ public class ActionEditorPanel {
 			updateCompositeSegment(idx, newMover, onParamChanged);
 		} else {
 			updateLayeredLayer(idx, newMover, onParamChanged);
+		}
+	}
+
+	/**
+	 * Recursively render a nested mover's internal parameters (for composite/layered inside composite/layered).
+	 * Uses the parent's update callbacks to propagate changes up the tree.
+	 */
+	private void buildNestedMoverRows(Optional<MoverConfig> nestedMoverOpt, int parentIdx, boolean parentIsComposite,
+									  Consumer<Optional<MoverConfig>> onTypeChanged,
+									  Consumer<Optional<MoverConfig>> onParamChanged) {
+		if (nestedMoverOpt.isEmpty()) return;
+		MoverConfig nestedCfg = nestedMoverOpt.get();
+
+		if (nestedCfg instanceof MoverConfigs.CompositeMoverConfig comp) {
+			addStringRow("  Segments", String.valueOf(comp.segments().size()), v -> {});
+			for (int si = 0; si < comp.segments().size(); si++) {
+				var seg = comp.segments().get(si);
+				final int segIdx = si;
+				final int pIdx = parentIdx;
+				String segLabel = "Nested Seg " + (si + 1) + " [" + getMoverType(Optional.of(seg.mover())) + "]";
+				addSectionHeader(segLabel);
+				if (!isSectionCollapsed(segLabel)) {
+					currentDepth++;
+					addIntRow("  Duration", seg.duration(), v -> {
+						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
+						if (parentMover instanceof MoverConfigs.CompositeMoverConfig c) {
+							var segs = new java.util.ArrayList<>(c.segments());
+							if (segIdx < segs.size()) {
+								segs.set(segIdx, new MoverConfigs.CompositeMoverConfig.Segment(v, segs.get(segIdx).mover()));
+								updateNested(pIdx, parentIsComposite, new MoverConfigs.CompositeMoverConfig(segs), onParamChanged);
+							}
+						}
+					});
+					String subType = getMoverType(Optional.of(seg.mover()));
+					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"}, subType, newSubType -> {
+						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
+						if (parentMover instanceof MoverConfigs.CompositeMoverConfig c) {
+							var segs = new java.util.ArrayList<>(c.segments());
+							if (segIdx < segs.size()) {
+								var newMover = createDefaultMover(newSubType);
+								if (newMover.isPresent()) {
+									segs.set(segIdx, new MoverConfigs.CompositeMoverConfig.Segment(segs.get(segIdx).duration(), newMover.get()));
+									updateNested(pIdx, parentIsComposite, new MoverConfigs.CompositeMoverConfig(segs), onTypeChanged);
+								}
+							}
+						}
+					});
+					// Render sub-mover params (non-recursive for now to prevent infinite depth)
+					if (currentDepth < 4) {
+						buildCompositeSegmentParams(seg.mover(), parentIdx, onTypeChanged, onParamChanged);
+					}
+					currentDepth--;
+				}
+			}
+		} else if (nestedCfg instanceof MoverConfigs.LayeredMoverConfig layered) {
+			addStringRow("  Layers", String.valueOf(layered.layers().size()), v -> {});
+			for (int li = 0; li < layered.layers().size(); li++) {
+				var layerCfg = layered.layers().get(li);
+				final int layerIdx = li;
+				final int pIdx = parentIdx;
+				String layerLabel = "Nested L" + (li + 1) + " [" + getMoverType(Optional.of(layerCfg)) + "]";
+				addSectionHeader(layerLabel);
+				if (!isSectionCollapsed(layerLabel)) {
+					currentDepth++;
+					String subType = getMoverType(Optional.of(layerCfg));
+					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"}, subType, newSubType -> {
+						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
+						if (parentMover instanceof MoverConfigs.LayeredMoverConfig lm) {
+							var layers = new java.util.ArrayList<>(lm.layers());
+							if (layerIdx < layers.size()) {
+								var newMover = createDefaultMover(newSubType);
+								if (newMover.isPresent()) {
+									layers.set(layerIdx, newMover.get());
+									updateNested(pIdx, parentIsComposite, new MoverConfigs.LayeredMoverConfig(layers), onTypeChanged);
+								}
+							}
+						}
+					});
+					// Render sub-layer params (non-recursive for now to prevent infinite depth)
+					if (currentDepth < 4) {
+						buildLayeredLayerParams(layerCfg, parentIdx, onTypeChanged, onParamChanged);
+					}
+					currentDepth--;
+				}
+			}
 		}
 	}
 
@@ -2496,11 +2581,11 @@ public class ActionEditorPanel {
 	/** Returns a semi-transparent background color for the given nesting depth. */
 	private static int getDepthColor(int depth) {
 		return switch (depth) {
-			case 1 -> 0x18335577; // blue tint
-			case 2 -> 0x18557733; // green tint
-			case 3 -> 0x18775533; // orange tint
-			case 4 -> 0x18553377; // purple tint
-			default -> 0x10444444; // gray
+			case 1 -> 0x40335577; // blue tint
+			case 2 -> 0x40557733; // green tint
+			case 3 -> 0x40775533; // orange tint
+			case 4 -> 0x40553377; // purple tint
+			default -> 0x30444444; // gray
 		};
 	}
 

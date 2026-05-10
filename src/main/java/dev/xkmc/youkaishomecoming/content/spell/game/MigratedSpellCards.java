@@ -2025,7 +2025,7 @@ public class MigratedSpellCards {
 				NumberProvider.constant(140), NumberProvider.constant(len),
 				NumberProvider.constant(0), NumberProvider.constant(0),
 				new AimMode.AimModes.FixedDirection(dir), OriginConfig.caster(),
-				Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty());
+				Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty(), Optional.empty());
 
 		// Endpoint
 		Vec3 endpoint = dir.scale(len); // relative to caster center
@@ -2168,7 +2168,7 @@ public class MigratedSpellCards {
 						Optional.of(new MoverConfigs.DecelerationConfig(0.025)),
 						Optional.empty(), Optional.empty(), Optional.empty(), 1,
 						Optional.empty(), Optional.empty(), Optional.empty(),
-						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL))
+						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL), Optional.empty())
 		));
 		// Additional condition: target must be moving fast (speed > 0.5)
 		var interceptSpeedCheck = new SpellConditions.CompareNumbers(
@@ -2201,7 +2201,7 @@ public class MigratedSpellCards {
 						PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
 						Optional.empty(), Optional.empty(), Optional.empty(),
-						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL))),
+						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL), Optional.empty())),
 				List.of());
 
 		// === tick > 2400: set abyssal flag ===
@@ -2269,10 +2269,10 @@ public class MigratedSpellCards {
 										new AimMode.AimModes.DirectionToTarget(),
 										Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
 										Optional.empty(), Optional.empty(), Optional.empty(),
-										HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL)))),
+										HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL), Optional.empty()))),
 								Optional.empty(), 1,
 								Optional.empty(), Optional.empty(), Optional.empty(),
-								HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL))
+								HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL), Optional.empty())
 				))
 		));
 		var hurtSequence = new SpellActions.ConditionalAction(

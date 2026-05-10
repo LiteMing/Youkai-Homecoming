@@ -35,4 +35,14 @@ public interface MoverConfig {
 	 */
 	DanmakuMover create(Vec3 origin, Vec3 velocity);
 
+	/**
+	 * Create a DanmakuMover with an additional baseDirection parameter.
+	 * baseDirection is the overall aim direction (e.g., toward target), shared by all projectiles in a pattern.
+	 * Used by movers that need to drift the origin along a common direction (e.g., formula mover's speed).
+	 * Default implementation ignores baseDirection.
+	 */
+	default DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
+		return create(origin, velocity);
+	}
+
 }

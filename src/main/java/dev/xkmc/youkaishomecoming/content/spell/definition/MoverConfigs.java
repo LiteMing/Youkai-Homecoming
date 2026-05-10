@@ -361,21 +361,35 @@ public class MoverConfigs {
 	 * Formula mover: position defined by mathematical expressions for each axis.
 	 * Expressions can use 'tick' (or 't'), arithmetic operators, and math functions.
 	 * Axes are relative to the initial velocity direction: x=forward, y=right, z=up.
-	 * JSON: {"type": "formula", "x": "tick * 0.3", "y": "3 * sin(tick * 0.15)", "z": "3 * cos(tick * 0.15)"}
+	 * If speed > 0, the projectile also moves forward at that speed (blocks/tick) in addition to the formula offset.
+	 * JSON: {"type": "formula", "x": "tick * 0.3", "y": "3 * sin(tick * 0.15)", "z": "3 * cos(tick * 0.15)", "speed": 0.5}
 	 */
-	public record FormulaMoverConfig(String x, String y, String z) implements MoverConfig {
+	public record FormulaMoverConfig(String x, String y, String z, double speed) implements MoverConfig {
 		public static final Codec<FormulaMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.optionalFieldOf("x", "0").forGetter(FormulaMoverConfig::x),
 				Codec.STRING.optionalFieldOf("y", "0").forGetter(FormulaMoverConfig::y),
-				Codec.STRING.optionalFieldOf("z", "0").forGetter(FormulaMoverConfig::z)
+				Codec.STRING.optionalFieldOf("z", "0").forGetter(FormulaMoverConfig::z),
+				Codec.DOUBLE.optionalFieldOf("speed", 0.0).forGetter(FormulaMoverConfig::speed)
 		).apply(i, FormulaMoverConfig::new));
+
+		/** Backwards-compatible constructor without speed. */
+		public FormulaMoverConfig(String x, String y, String z) {
+			this(x, y, z, 0.0);
+		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return create(origin, velocity, velocity);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
 			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
 			var ori = DanmakuHelper.getOrientation(dir);
+			// Drift direction: use baseDirection (shared by all projectiles in the pattern)
+			Vec3 drift = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize().scale(speed) : Vec3.ZERO;
 			return new dev.xkmc.youkaishomecoming.content.spell.mover.FormulaMover(
-					origin, dir, ori.side(), ori.normal(), x, y, z);
+					origin, dir, ori.side(), ori.normal(), x, y, z, drift);
 		}
 	}
 

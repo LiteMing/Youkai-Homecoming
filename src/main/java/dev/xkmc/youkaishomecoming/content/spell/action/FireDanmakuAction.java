@@ -217,7 +217,7 @@ public record FireDanmakuAction(
 						innerAngle = n > 1 ? -innerSpread / 2.0 + innerSpread * j / (n - 1) : 0;
 					}
 					Vec3 dir = innerOri.rotateDegrees(0, innerAngle).scale(spd);
-					emitDanmaku(holder, ctx, life, dir, originPos);
+					emitDanmaku(holder, ctx, life, dir, originPos, baseDir);
 				}
 			}
 			return;
@@ -233,7 +233,7 @@ public record FireDanmakuAction(
 				for (int c = 0; c < cols; c++) {
 					double colAngle = cols > 1 ? rowSpread * (c - (cols - 1) / 2.0) / (cols - 1) : 0;
 					Vec3 dir = ori.rotateDegrees(angle + colAngle, rowAngle).scale(spd);
-					emitDanmaku(holder, ctx, life, dir, originPos);
+					emitDanmaku(holder, ctx, life, dir, originPos, baseDir);
 				}
 			}
 			return;
@@ -289,7 +289,7 @@ public record FireDanmakuAction(
 					theta = angle - lonRange / 2.0 + (goldenAngle * i) % lonRange;
 				}
 				Vec3 dir = ori.rotateDegrees(theta, phi).scale(spd);
-				emitDanmaku(holder, ctx, life, dir, originPos);
+				emitDanmaku(holder, ctx, life, dir, originPos, baseDir);
 			}
 			return;
 		}
@@ -308,7 +308,7 @@ public record FireDanmakuAction(
 				double phi = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinPhi))));
 				double theta = angle - lonRange / 2.0 + lonRange * rand.nextDouble();
 				Vec3 dir = ori.rotateDegrees(theta, phi).scale(spd);
-				emitDanmaku(holder, ctx, life, dir, originPos);
+				emitDanmaku(holder, ctx, life, dir, originPos, baseDir);
 			}
 			return;
 		}
@@ -321,7 +321,7 @@ public record FireDanmakuAction(
 				double a = angle + totalTurns * t;
 				// Radius grows linearly with t; elevation stays flat (horizontal spiral)
 				Vec3 dir = ori.rotateDegrees(a).scale(spd * (0.3 + 0.7 * t));
-				emitDanmaku(holder, ctx, life, dir, originPos);
+				emitDanmaku(holder, ctx, life, dir, originPos, baseDir);
 			}
 			return;
 		}
@@ -337,7 +337,7 @@ public record FireDanmakuAction(
 				double a = Math.toRadians(angle + (360.0 / n) * i);
 				Vec3 radial = ori.normal().scale(Math.cos(a)).add(ori.side().scale(Math.sin(a)));
 				Vec3 dir = ori.forward().scale(sinCone).add(radial.scale(cosCone)).scale(spd);
-				emitDanmaku(holder, ctx, life, dir, originPos);
+				emitDanmaku(holder, ctx, life, dir, originPos, baseDir);
 			}
 			return;
 		}
@@ -362,11 +362,11 @@ public record FireDanmakuAction(
 				default -> {} // New patterns handled above
 			}
 			Vec3 dir = ori.rotateDegrees(a, v).scale(spd);
-			emitDanmaku(holder, ctx, life, dir, originPos);
+			emitDanmaku(holder, ctx, life, dir, originPos, baseDir);
 		}
 	}
 
-	private void emitDanmaku(CardHolder holder, SpellContext ctx, int life, Vec3 dir, Vec3 originPos) {
+	private void emitDanmaku(CardHolder holder, SpellContext ctx, int life, Vec3 dir, Vec3 originPos, Vec3 baseDir) {
 		DyeColor resolvedColor = color.get(ctx);
 		var danmaku = holder.prepareDanmaku(life, dir, bulletType, resolvedColor);
 		danmaku.setPos(originPos);
@@ -375,7 +375,8 @@ public record FireDanmakuAction(
 			danmaku.damageTypeOverride = damageType.get();
 		}
 		if (mover.isPresent()) {
-			danmaku.mover = mover.get().create(originPos, dir);
+			// Pass baseDir so movers can drift origin along the shared aim direction
+			danmaku.mover = mover.get().create(originPos, dir, baseDir);
 		}
 		if (onExpiry.isPresent()) {
 			var expiryAction = new DataDrivenTrailAction(onExpiry.get(), ctx.runtime(), ctx.definition());

@@ -37,6 +37,9 @@ public final class FormulaMover extends TargetPosMover {
 	private String formulaY = "0";
 	@SerialClass.SerialField
 	private String formulaZ = "0";
+	/** Per-tick drift vector in world coordinates (moves the origin, shared by all projectiles). */
+	@SerialClass.SerialField
+	private Vec3 drift = Vec3.ZERO;
 
 	// Compiled expressions (transient, rebuilt on first use)
 	private transient FormulaExpr.Evaluable exprX;
@@ -49,15 +52,16 @@ public final class FormulaMover extends TargetPosMover {
 
 	/**
 	 * @param origin   spawn position (absolute world coords)
-	 * @param forward  unit vector along initial velocity direction
+	 * @param forward  unit vector along initial velocity direction (per-projectile)
 	 * @param right    unit vector perpendicular (horizontal)
 	 * @param up       unit vector perpendicular (vertical)
 	 * @param formulaX expression for forward offset
 	 * @param formulaY expression for right offset
 	 * @param formulaZ expression for up offset
+	 * @param drift    per-tick world-space drift vector (moves origin along baseDir)
 	 */
 	public FormulaMover(Vec3 origin, Vec3 forward, Vec3 right, Vec3 up,
-						String formulaX, String formulaY, String formulaZ) {
+						String formulaX, String formulaY, String formulaZ, Vec3 drift) {
 		this.origin = origin;
 		this.forward = forward;
 		this.right = right;
@@ -65,6 +69,7 @@ public final class FormulaMover extends TargetPosMover {
 		this.formulaX = formulaX;
 		this.formulaY = formulaY;
 		this.formulaZ = formulaZ;
+		this.drift = drift;
 	}
 
 	@Override
@@ -77,7 +82,10 @@ public final class FormulaMover extends TargetPosMover {
 		double fx = exprX.eval(tick);
 		double fy = exprY.eval(tick);
 		double fz = exprZ.eval(tick);
-		return origin.add(forward.scale(fx)).add(right.scale(fy)).add(up.scale(fz));
+		// Origin drifts along baseDir (shared direction for all projectiles in the pattern)
+		Vec3 driftedOrigin = origin.add(drift.scale(tick));
+		// Formula offsets are in the per-projectile local coordinate system
+		return driftedOrigin.add(forward.scale(fx)).add(right.scale(fy)).add(up.scale(fz));
 	}
 
 	private void ensureCompiled() {

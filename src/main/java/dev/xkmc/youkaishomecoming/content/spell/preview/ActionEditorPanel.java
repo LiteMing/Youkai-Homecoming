@@ -1497,23 +1497,29 @@ public class ActionEditorPanel {
 				});
 			}
 		} else if (cfg instanceof MoverConfigs.FormulaMoverConfig fm) {
-			// Formula mover: three expression strings for x/y/z
+			// Formula mover: three expression strings for x/y/z + base speed
+			addDoubleRow("Speed", fm.speed(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), f.z(), v)));
+				}
+			});
 			addStringRow("X (fwd)", fm.x(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(v, f.y(), f.z())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(v, f.y(), f.z(), f.speed())));
 				}
 			});
 			addStringRow("Y (right)", fm.y(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), v, f.z())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), v, f.z(), f.speed())));
 				}
 			});
 			addStringRow("Z (up)", fm.z(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), v)));
+					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), v, f.speed())));
 				}
 			});
 		}
@@ -1563,7 +1569,7 @@ public class ActionEditorPanel {
 					new double[]{-5, 5, 0}
 			), 60, true));
 			case "formula" -> Optional.of(new MoverConfigs.FormulaMoverConfig(
-					"tick * 0.3", "3 * sin(tick * 0.15)", "3 * cos(tick * 0.15)"));
+					"0", "3 * sin(tick * 0.15)", "3 * cos(tick * 0.15)", 0.3));
 			default -> Optional.empty();
 		};
 	}
@@ -1837,22 +1843,28 @@ public class ActionEditorPanel {
 	/** Nested formula mover params editor. */
 	private void buildNestedFormulaParams(MoverConfigs.FormulaMoverConfig fm, int idx, boolean isComposite,
 										  Consumer<Optional<MoverConfig>> onParamChanged) {
+		addDoubleRow("  Speed", fm.speed(), v -> {
+			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+			if (current instanceof MoverConfigs.FormulaMoverConfig f) {
+				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), f.z(), v), onParamChanged);
+			}
+		});
 		addStringRow("  X (fwd)", fm.x(), v -> {
 			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
 			if (current instanceof MoverConfigs.FormulaMoverConfig f) {
-				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(v, f.y(), f.z()), onParamChanged);
+				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(v, f.y(), f.z(), f.speed()), onParamChanged);
 			}
 		});
 		addStringRow("  Y (right)", fm.y(), v -> {
 			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
 			if (current instanceof MoverConfigs.FormulaMoverConfig f) {
-				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(f.x(), v, f.z()), onParamChanged);
+				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(f.x(), v, f.z(), f.speed()), onParamChanged);
 			}
 		});
 		addStringRow("  Z (up)", fm.z(), v -> {
 			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
 			if (current instanceof MoverConfigs.FormulaMoverConfig f) {
-				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), v), onParamChanged);
+				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), v, f.speed()), onParamChanged);
 			}
 		});
 	}

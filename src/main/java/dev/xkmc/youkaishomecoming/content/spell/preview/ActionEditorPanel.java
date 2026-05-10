@@ -1077,7 +1077,7 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -1224,7 +1224,7 @@ public class ActionEditorPanel {
 					});
 				// Show sub-mover type as cycle selector
 				String subType = getMoverType(Optional.of(seg.mover()));
-				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline"}, subType, newSubType -> {
+				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline", "formula"}, subType, newSubType -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
 						var segs = new java.util.ArrayList<>(c.segments());
@@ -1276,7 +1276,7 @@ public class ActionEditorPanel {
 					// Show sub-mover type as cycle selector
 					String subType = getMoverType(Optional.of(layerCfg));
 					// Allow nesting: composite and layered can contain each other
-					String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline"};
+					String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline", "formula"};
 					addStringCycleRow("  L" + (li + 1) + " Type", layerTypes, subType, newSubType -> {
 						var cur = getCurrentMover();
 						if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
@@ -1496,6 +1496,26 @@ public class ActionEditorPanel {
 					}
 				});
 			}
+		} else if (cfg instanceof MoverConfigs.FormulaMoverConfig fm) {
+			// Formula mover: three expression strings for x/y/z
+			addStringRow("X (fwd)", fm.x(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(v, f.y(), f.z())));
+				}
+			});
+			addStringRow("Y (right)", fm.y(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), v, f.z())));
+				}
+			});
+			addStringRow("Z (up)", fm.z(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), v)));
+				}
+			});
 		}
 		}
 	}
@@ -1513,6 +1533,7 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.BezierMoverConfig) return "bezier";
 		if (cfg instanceof MoverConfigs.MultiBezierMoverConfig) return "multi_bezier";
 		if (cfg instanceof MoverConfigs.SplineMoverConfig) return "spline";
+		if (cfg instanceof MoverConfigs.FormulaMoverConfig) return "formula";
 		return "none";
 	}
 
@@ -1541,6 +1562,8 @@ public class ActionEditorPanel {
 					new double[]{-5, -5, 0},
 					new double[]{-5, 5, 0}
 			), 60, true));
+			case "formula" -> Optional.of(new MoverConfigs.FormulaMoverConfig(
+					"tick * 0.3", "3 * sin(tick * 0.15)", "3 * cos(tick * 0.15)"));
 			default -> Optional.empty();
 		};
 	}
@@ -1834,7 +1857,7 @@ public class ActionEditorPanel {
 						}
 					});
 					String subType = getMoverType(Optional.of(seg.mover()));
-					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline"}, subType, newSubType -> {
+					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline", "formula"}, subType, newSubType -> {
 						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
 						if (parentMover instanceof MoverConfigs.CompositeMoverConfig c) {
 							var segs = new java.util.ArrayList<>(c.segments());
@@ -1865,7 +1888,7 @@ public class ActionEditorPanel {
 				if (!isSectionCollapsed(layerLabel)) {
 					currentDepth++;
 					String subType = getMoverType(Optional.of(layerCfg));
-					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline"}, subType, newSubType -> {
+					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline", "formula"}, subType, newSubType -> {
 						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
 						if (parentMover instanceof MoverConfigs.LayeredMoverConfig lm) {
 							var layers = new java.util.ArrayList<>(lm.layers());

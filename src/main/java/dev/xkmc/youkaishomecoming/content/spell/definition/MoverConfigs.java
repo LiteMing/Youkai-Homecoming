@@ -26,6 +26,7 @@ public class MoverConfigs {
 		register("bezier", BezierMoverConfig.CODEC, BezierMoverConfig.class);
 		register("multi_bezier", MultiBezierMoverConfig.CODEC, MultiBezierMoverConfig.class);
 		register("spline", SplineMoverConfig.CODEC, SplineMoverConfig.class);
+		register("formula", FormulaMoverConfig.CODEC, FormulaMoverConfig.class);
 	}
 
 	public static void register(String id, Codec<? extends MoverConfig> codec, Class<? extends MoverConfig> clazz) {
@@ -353,6 +354,28 @@ public class MoverConfigs {
 			}
 
 			return new dev.xkmc.youkaishomecoming.content.spell.mover.SplineMover(absolutePoints, duration, closed);
+		}
+	}
+
+	/**
+	 * Formula mover: position defined by mathematical expressions for each axis.
+	 * Expressions can use 'tick' (or 't'), arithmetic operators, and math functions.
+	 * Axes are relative to the initial velocity direction: x=forward, y=right, z=up.
+	 * JSON: {"type": "formula", "x": "tick * 0.3", "y": "3 * sin(tick * 0.15)", "z": "3 * cos(tick * 0.15)"}
+	 */
+	public record FormulaMoverConfig(String x, String y, String z) implements MoverConfig {
+		public static final Codec<FormulaMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.STRING.optionalFieldOf("x", "0").forGetter(FormulaMoverConfig::x),
+				Codec.STRING.optionalFieldOf("y", "0").forGetter(FormulaMoverConfig::y),
+				Codec.STRING.optionalFieldOf("z", "0").forGetter(FormulaMoverConfig::z)
+		).apply(i, FormulaMoverConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			var ori = DanmakuHelper.getOrientation(dir);
+			return new dev.xkmc.youkaishomecoming.content.spell.mover.FormulaMover(
+					origin, dir, ori.side(), ori.normal(), x, y, z);
 		}
 	}
 

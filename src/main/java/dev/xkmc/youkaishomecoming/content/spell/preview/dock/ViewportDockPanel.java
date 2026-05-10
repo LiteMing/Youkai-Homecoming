@@ -25,6 +25,14 @@ public class ViewportDockPanel implements DockPanel {
 	private boolean dragging = false;  // 中键平移
 	private boolean rotating = false;  // 右键旋转
 
+	// Group transform interaction state
+	private boolean groupDragging = false;   // 左键拖动选中组（修改 origin offset）
+	private boolean groupRotating = false;   // 右键拖动选中组（修改 angle_offset）
+	private long lastClickTime = 0;         // 双击检测
+	private Runnable onGroupOffsetChanged;   // 回调：origin offset 变化
+	private java.util.function.DoubleConsumer onGroupAngleChanged; // 回调：angle_offset 变化
+	private Runnable onGroupDeselect;        // 回调：双击取消选择
+
 	// 透视模式鼠标追踪
 	private double lastMouseX, lastMouseY;
 
@@ -103,7 +111,20 @@ public class ViewportDockPanel implements DockPanel {
 		} else {
 			// 正交模式
 			if (button == 0) {
-				movingTarget = true;
+				// Double-click detection for deselect
+				long now = System.currentTimeMillis();
+				if (now - lastClickTime < 400 && hasHighlightedGroup()) {
+					lastClickTime = 0;
+					if (onGroupDeselect != null) onGroupDeselect.run();
+					return true;
+				}
+				lastClickTime = now;
+
+				if (hasHighlightedGroup()) {
+					groupDragging = true; // Left drag = move origin
+				} else {
+					movingTarget = true;
+				}
 				return true;
 			}
 			if (button == 2) {
@@ -111,7 +132,11 @@ public class ViewportDockPanel implements DockPanel {
 				return true;
 			}
 			if (button == 1) {
-				rotating = true;
+				if (hasHighlightedGroup()) {
+					groupRotating = true; // Right drag = rotate angle
+				} else {
+					rotating = true;
+				}
 				return true;
 			}
 		}
@@ -131,6 +156,20 @@ public class ViewportDockPanel implements DockPanel {
 		if (movingTarget) {
 			var delta = viewport.screenDeltaToWorldDelta((float) deltaX, (float) deltaY);
 			scene.moveTarget(delta);
+			return true;
+		}
+		if (groupDragging) {
+			// Move origin offset: convert screen delta to world delta
+			var delta = viewport.screenDeltaToWorldDelta((float) deltaX, (float) deltaY);
+			// Store delta in viewport for the callback to read
+			viewport.addPendingGroupOffset(delta);
+			if (onGroupOffsetChanged != null) onGroupOffsetChanged.run();
+			return true;
+		}
+		if (groupRotating) {
+			// Rotate angle_offset: horizontal drag = angle change
+			double angleDelta = deltaX * 0.5; // 0.5 degrees per pixel
+			if (onGroupAngleChanged != null) onGroupAngleChanged.accept(angleDelta);
 			return true;
 		}
 		if (dragging) {
@@ -156,6 +195,14 @@ public class ViewportDockPanel implements DockPanel {
 		}
 		if (movingTarget && button == 0) {
 			movingTarget = false;
+			return true;
+		}
+		if (groupDragging && button == 0) {
+			groupDragging = false;
+			return true;
+		}
+		if (groupRotating && button == 1) {
+			groupRotating = false;
 			return true;
 		}
 		if (dragging && button == 2) {
@@ -238,5 +285,16 @@ public class ViewportDockPanel implements DockPanel {
 
 	public VirtualSpellScene getScene() {
 		return scene;
+	}
+
+	public void setGroupTransformCallbacks(Runnable onOffsetChanged, java.util.function.DoubleConsumer onAngleChanged, Runnable onDeselect) {
+		this.onGroupOffsetChanged = onOffsetChanged;
+		this.onGroupAngleChanged = onAngleChanged;
+		this.onGroupDeselect = onDeselect;
+	}
+
+	/** Check if a group action is currently highlighted (for interaction mode switching). */
+	private boolean hasHighlightedGroup() {
+		return scene.getHolder().getHighlightedActionIndex() >= 0;
 	}
 }

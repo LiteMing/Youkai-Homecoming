@@ -74,6 +74,9 @@ public class OrthographicViewport {
 	private boolean showCasterMarker = true;
 	private boolean showTargetMarker = true;
 	private float moveSpeed = 0.5f;
+
+	/** Action index to highlight in the viewport (-1 = none). */
+	private int highlightedActionIndex = -1;
 	private static final float MIN_MOVE_SPEED = 0.05f;
 	private static final float MAX_MOVE_SPEED = 5.0f;
 	private static final float LOOK_SENSITIVITY = 0.15f;
@@ -285,6 +288,14 @@ public class OrthographicViewport {
 	public boolean isShowTargetMarker() { return showTargetMarker; }
 	public void setShowTargetMarker(boolean show) { this.showTargetMarker = show; }
 
+	public int getHighlightedActionIndex() { return highlightedActionIndex; }
+	public void setHighlightedActionIndex(int index) { this.highlightedActionIndex = index; }
+
+	/** Pending group offset delta accumulated during drag (consumed by callback). */
+	private Vec3 pendingGroupOffset = Vec3.ZERO;
+	public void addPendingGroupOffset(Vec3 delta) { this.pendingGroupOffset = this.pendingGroupOffset.add(delta); }
+	public Vec3 consumePendingGroupOffset() { Vec3 v = pendingGroupOffset; pendingGroupOffset = Vec3.ZERO; return v; }
+
 	/**
 	 * Move the camera in perspective mode using WASD/Space/Shift keys.
 	 * Called each tick from the screen.
@@ -466,6 +477,8 @@ public class OrthographicViewport {
 		renderMarkers(poseStack, scene);
 
 		// 9. Render all entities
+		// Set highlight index before rendering so renderDanmakuDirect can apply tint
+		highlightedActionIndex = scene.getHolder().getHighlightedActionIndex();
 		// Fast path: for danmaku entities, skip EntityRenderDispatcher.getRenderer() lookup
 		// (which costs 6.41% frame time per spark profiling) by caching the renderer once.
 		dispatcher.setRenderShadow(false);
@@ -497,10 +510,9 @@ public class OrthographicViewport {
 		ProjectileRenderHelper.flushPreviewQueue(buffer);
 		buffer.endBatch();
 
-		// 10.5. Render highlight overlay for selected action's danmaku
-		int highlightIdx = scene.getHolder().getHighlightedActionIndex();
-		if (highlightIdx >= 0) {
-			renderHighlightOverlay(poseStack, scene, highlightIdx, partialTick);
+		// 10.5. Render highlight overlay for selected action's danmaku (axis cross at centroid)
+		if (highlightedActionIndex >= 0) {
+			renderHighlightOverlay(poseStack, scene, highlightedActionIndex, partialTick);
 		}
 
 		// 11. Cleanup
@@ -661,17 +673,20 @@ public class OrthographicViewport {
 		var typeHolder = danmaku.getTypeForRender();
 		var type = typeHolder.getType();
 
+		// Check if this danmaku should be highlighted
+		boolean highlighted = highlightedActionIndex >= 0 && entity.sourceActionIndex == highlightedActionIndex;
+
 		// Billboard types: bypass PoseStack entirely, pure scalar math
 		if (type instanceof SimpleProjectileType st) {
 			float wx = (float) Mth.lerp(partialTick, entity.xOld, entity.getX());
 			float wy = (float) (Mth.lerp(partialTick, entity.yOld, entity.getY()) + entity.getBbHeight() / 2.0);
 			float wz = (float) Mth.lerp(partialTick, entity.zOld, entity.getZ());
-			// viewPos = viewMat × (wx, wy, wz, 1) — inline to avoid Vector4f allocation
 			float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
 			float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
 			float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
 			float scale = viewScale * entity.scale();
 			int col = DanmakuRenderStates.fading(st.display(), -1, renderer, entity);
+			if (highlighted) col = applyHighlightTint(col);
 			((ProjTypeHolder) typeHolder).accept(new SimpleProjectileType.Ins(vx, vy, vz, scale, col));
 		} else if (type instanceof RotatingProjectileType rt) {
 			float wx = (float) Mth.lerp(partialTick, entity.xOld, entity.getX());
@@ -683,6 +698,7 @@ public class OrthographicViewport {
 			float scale = viewScale * entity.scale();
 			float zAngle = (float) Math.toRadians((entity.tickCount + partialTick) * 360f / (float) rt.rot());
 			int col = DanmakuRenderStates.fading(rt.display(), -1, renderer, entity);
+			if (highlighted) col = applyHighlightTint(col);
 			((ProjTypeHolder) typeHolder).accept(new RotatingProjectileType.Ins(vx, vy, vz, scale, zAngle, col));
 		} else if (type instanceof AnimatedProjectileType at) {
 			float wx = (float) Mth.lerp(partialTick, entity.xOld, entity.getX());
@@ -694,6 +710,7 @@ public class OrthographicViewport {
 			float scale = viewScale * entity.scale();
 			int frame = (entity.tickCount / at.ticksPerFrame()) % at.frameCount();
 			int col = DanmakuRenderStates.fading(at.display(), -1, renderer, entity);
+			if (highlighted) col = applyHighlightTint(col);
 			((ProjTypeHolder) typeHolder).accept(new AnimatedProjectileType.Ins(vx, vy, vz, scale, col, frame));
 		} else {
 			// Non-billboard types (Swinging/Cross/Butterfly): fall back to PoseStack path.
@@ -864,7 +881,7 @@ public class OrthographicViewport {
 
 	/**
 	 * Render highlight indicators for danmaku belonging to the selected action.
-	 * Draws a colored diamond around each highlighted entity and an axis cross at the origin.
+	 * Draws an axis cross at the centroid of highlighted entities.
 	 */
 	private void renderHighlightOverlay(PoseStack poseStack, VirtualSpellScene scene, int actionIndex, float partialTick) {
 		var tesselator = Tesselator.getInstance();
@@ -878,22 +895,17 @@ public class OrthographicViewport {
 
 		builder.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
 
-		// Highlight each danmaku belonging to the selected action
+		// Compute centroid of highlighted danmaku
 		Vec3 centroid = Vec3.ZERO;
 		int count = 0;
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
 			if (entity instanceof ItemDanmakuEntity danmaku && danmaku.sourceActionIndex == actionIndex) {
-				Vec3 pos = entity.position();
-				float px = (float) pos.x, py = (float) pos.y, pz = (float) pos.z;
-				// Small diamond highlight around each danmaku
-				float s = 0.15f;
-				drawDiamond(builder, mat, px, py, pz, s, 0.3f, 1f, 0.5f, 0.8f);
-				centroid = centroid.add(pos);
+				centroid = centroid.add(entity.position());
 				count++;
 			}
 		}
 
-		// Draw origin axis cross at the centroid of highlighted danmaku
+		// Draw origin axis cross at the centroid
 		if (count > 0) {
 			centroid = centroid.scale(1.0 / count);
 			float cx = (float) centroid.x, cy = (float) centroid.y, cz = (float) centroid.z;
@@ -907,7 +919,7 @@ public class OrthographicViewport {
 			// Z axis - blue
 			builder.vertex(mat, cx, cy, cz).color(0.2f, 0.2f, 1f, 1f).endVertex();
 			builder.vertex(mat, cx, cy, cz + axisLen).color(0.2f, 0.2f, 1f, 1f).endVertex();
-			// Center dot (small cross)
+			// Center cross
 			float ds = 0.3f;
 			drawCross3D(builder, mat, cx, cy, cz, ds, 1f, 1f, 1f, 1f);
 		}
@@ -915,6 +927,22 @@ public class OrthographicViewport {
 		tesselator.end();
 		RenderSystem.lineWidth(1.0f);
 		RenderSystem.disableBlend();
+	}
+
+	/**
+	 * Apply a green highlight tint to a danmaku color.
+	 * Blends the original color toward bright green-white.
+	 */
+	private static int applyHighlightTint(int col) {
+		int a = (col >> 24) & 0xFF;
+		int r = (col >> 16) & 0xFF;
+		int g = (col >> 8) & 0xFF;
+		int b = col & 0xFF;
+		// Blend toward green-white (lerp 40% toward highlight color)
+		r = r + (255 - r) * 2 / 5;
+		g = g + (255 - g) * 3 / 5;
+		b = b + (255 - b) * 1 / 5;
+		return (a << 24) | (r << 16) | (g << 8) | b;
 	}
 
 	/**

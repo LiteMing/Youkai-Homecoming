@@ -60,7 +60,8 @@ public class SpellPreviewScreen extends Screen {
 	private boolean editorVisible = true;
 	private ActionListPanel.AddTarget pendingAddTarget;
 
-	private boolean autoReplay = false;
+	/** Persists across editor open/close within the same game session. */
+	private static boolean autoReplay = false;
 	private com.google.gson.JsonObject pendingDockLayout;
 
 	public SpellPreviewScreen(SpellDefinition definition) {

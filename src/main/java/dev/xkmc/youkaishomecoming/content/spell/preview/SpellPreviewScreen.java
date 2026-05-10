@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.definition.GroupRotation;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
@@ -20,6 +21,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Standalone screen for previewing and editing spell card effects.
@@ -423,8 +425,12 @@ public class SpellPreviewScreen extends Screen {
 		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
 		SpellAction action = actionEditorPanel.getCurrentAction();
 		if (action instanceof FireDanmakuAction fda) {
-			double currentAngle = fda.angleOffset().get(null);
-			var newAction = fda.withAngleOffset(NumberProvider.constant(currentAngle + angleDelta));
+			// Modify group rotation Y axis (yaw)
+			GroupRotation current = fda.groupRotation().orElse(
+					new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
+			double currentY = current.rotY().get(null);
+			var newGr = new GroupRotation(current.rotX(), NumberProvider.constant(currentY + angleDelta), current.rotZ());
+			var newAction = fda.withGroupRotation(Optional.of(newGr));
 			onActionEdited(newAction);
 			if (actionEditorPanel != null) {
 				actionEditorPanel.setAction(newAction, actionEditorPanel.getActionIndex());

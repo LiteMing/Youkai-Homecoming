@@ -401,6 +401,36 @@ public class ActionEditorPanel {
 			currentDepth--;
 		}
 
+		// === Group Rotation ===
+		addSectionHeader("Group Rotation");
+		if (!isSectionCollapsed("Group Rotation")) {
+			currentDepth++;
+			if (a.groupRotation().isPresent()) {
+				var gr = a.groupRotation().get();
+				addNumberRow("Rot X", gr.rotX(), v ->
+						notifyDanmaku(old -> old.withGroupRotation(Optional.of(new GroupRotation(v,
+								old.groupRotation().map(GroupRotation::rotY).orElse(NumberProvider.constant(0)),
+								old.groupRotation().map(GroupRotation::rotZ).orElse(NumberProvider.constant(0))))), false));
+				addNumberRow("Rot Y", gr.rotY(), v ->
+						notifyDanmaku(old -> old.withGroupRotation(Optional.of(new GroupRotation(
+								old.groupRotation().map(GroupRotation::rotX).orElse(NumberProvider.constant(0)),
+								v,
+								old.groupRotation().map(GroupRotation::rotZ).orElse(NumberProvider.constant(0))))), false));
+				addNumberRow("Rot Z", gr.rotZ(), v ->
+						notifyDanmaku(old -> old.withGroupRotation(Optional.of(new GroupRotation(
+								old.groupRotation().map(GroupRotation::rotX).orElse(NumberProvider.constant(0)),
+								old.groupRotation().map(GroupRotation::rotY).orElse(NumberProvider.constant(0)),
+								v))), false));
+				addFullWidthButton("[Remove Group Rotation]", () ->
+						notifyDanmaku(old -> old.withGroupRotation(Optional.empty())));
+			} else {
+				addFullWidthButton("[+ Group Rotation]", () ->
+						notifyDanmaku(old -> old.withGroupRotation(Optional.of(new GroupRotation(
+								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0))))));
+			}
+			currentDepth--;
+		}
+
 		// === Origin group ===
 		addSectionHeader("Origin");
 		if (!isSectionCollapsed("Origin")) {

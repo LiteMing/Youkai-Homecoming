@@ -1055,7 +1055,7 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -1198,7 +1198,7 @@ public class ActionEditorPanel {
 				});
 				// Show sub-mover type as cycle selector
 				String subType = getMoverType(Optional.of(seg.mover()));
-				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero"}, subType, newSubType -> {
+				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"}, subType, newSubType -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
 						var segs = new java.util.ArrayList<>(c.segments());
@@ -1244,7 +1244,7 @@ public class ActionEditorPanel {
 				// Show sub-mover type as cycle selector
 				String subType = getMoverType(Optional.of(layerCfg));
 				// Allow nesting: composite and layered can contain each other
-				String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero"};
+				String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier"};
 				addStringCycleRow("  L" + (li + 1) + " Type", layerTypes, subType, newSubType -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
@@ -1363,7 +1363,45 @@ public class ActionEditorPanel {
 								b.endForward(), b.endRight(), b.endUp(), v)));
 					}
 				});
+		} else if (cfg instanceof MoverConfigs.MultiBezierMoverConfig mb) {
+			// Multi-segment bezier: show per-segment editors with add/remove
+			addStringRow("Segments", String.valueOf(mb.segments().size()), v -> {});
+			for (int si = 0; si < mb.segments().size(); si++) {
+				var seg = mb.segments().get(si);
+				final int segIdx = si;
+				addStringRow("--- Seg " + (si + 1), "---", v -> {});
+				addDoubleRow("  CP1 Fwd", seg.cp1Forward(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(v, s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addDoubleRow("  CP1 Rt", seg.cp1Right(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), v, s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addDoubleRow("  CP1 Up", seg.cp1Up(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), v, s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addDoubleRow("  CP2 Fwd", seg.cp2Forward(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), v, s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addDoubleRow("  CP2 Rt", seg.cp2Right(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), v, s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addDoubleRow("  CP2 Up", seg.cp2Up(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), v, s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addDoubleRow("  End Fwd", seg.endForward(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), v, s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addDoubleRow("  End Rt", seg.endRight(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), v, s.endUp(), s.duration()), onParamChanged); });
+				addDoubleRow("  End Up", seg.endUp(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), v, s.duration()), onParamChanged); });
+				addIntRow("  Duration", seg.duration(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), v), onParamChanged); });
 			}
+			addFullWidthButton("[+] Add Bezier Segment", () -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.MultiBezierMoverConfig m) {
+					var segs = new java.util.ArrayList<>(m.segments());
+					segs.add(new MoverConfigs.MultiBezierMoverConfig.BezierSegment(5, 3, 0, 10, -3, 0, 15, 0, 0, 40));
+					onTypeChanged.accept(Optional.of(new MoverConfigs.MultiBezierMoverConfig(segs)));
+				}
+			});
+			if (mb.segments().size() > 1) {
+				addFullWidthButton("[-] Remove Last Segment", () -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.MultiBezierMoverConfig m) {
+						var segs = new java.util.ArrayList<>(m.segments());
+						if (segs.size() > 1) {
+							segs.remove(segs.size() - 1);
+							onTypeChanged.accept(Optional.of(new MoverConfigs.MultiBezierMoverConfig(segs)));
+						}
+					}
+				});
+			}
+		}
 		}
 	}
 
@@ -1378,6 +1416,7 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.LayeredMoverConfig) return "layered";
 		if (cfg instanceof MoverConfigs.ZeroMoverConfig) return "zero";
 		if (cfg instanceof MoverConfigs.BezierMoverConfig) return "bezier";
+		if (cfg instanceof MoverConfigs.MultiBezierMoverConfig) return "multi_bezier";
 		return "none";
 	}
 
@@ -1397,6 +1436,9 @@ public class ActionEditorPanel {
 			)));
 			case "zero" -> Optional.of(new MoverConfigs.ZeroMoverConfig());
 			case "bezier" -> Optional.of(new MoverConfigs.BezierMoverConfig(5, 3, 0, 10, -3, 0, 15, 0, 0, 40));
+			case "multi_bezier" -> Optional.of(new MoverConfigs.MultiBezierMoverConfig(List.of(
+					new MoverConfigs.MultiBezierMoverConfig.BezierSegment(5, 3, 0, 10, -3, 0, 15, 0, 0, 40)
+			)));
 			default -> Optional.empty();
 		};
 	}
@@ -1478,6 +1520,8 @@ public class ActionEditorPanel {
 							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), v), onParamChanged);
 				}
 			});
+		} else if (subCfg instanceof MoverConfigs.BezierMoverConfig bez) {
+			buildNestedBezierParams(bez, segIdx, true, onParamChanged);
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -1588,6 +1632,8 @@ public class ActionEditorPanel {
 							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), v), onParamChanged);
 				}
 			});
+		} else if (layerCfg instanceof MoverConfigs.BezierMoverConfig bez) {
+			buildNestedBezierParams(bez, layerIdx, false, onParamChanged);
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -1613,6 +1659,62 @@ public class ActionEditorPanel {
 			if (layerIdx < layers.size()) {
 				layers.set(layerIdx, newLayerMover);
 				onParamChanged.accept(Optional.of(new MoverConfigs.LayeredMoverConfig(layers)));
+			}
+		}
+	}
+
+	/**
+	 * Shared bezier parameter editor for nested contexts (composite segments or layered layers).
+	 * @param isComposite true = update via composite segment, false = update via layered layer
+	 */
+	private void buildNestedBezierParams(MoverConfigs.BezierMoverConfig bez, int idx,
+										 boolean isComposite, Consumer<Optional<MoverConfig>> onParamChanged) {
+		addDoubleRow("  CP1 Fwd", bez.cp1Forward(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(v, b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addDoubleRow("  CP1 Rt", bez.cp1Right(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), v, b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addDoubleRow("  CP1 Up", bez.cp1Up(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), v, b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addDoubleRow("  CP2 Fwd", bez.cp2Forward(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), v, b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addDoubleRow("  CP2 Rt", bez.cp2Right(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), v, b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addDoubleRow("  CP2 Up", bez.cp2Up(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), v, b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addDoubleRow("  End Fwd", bez.endForward(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), v, b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addDoubleRow("  End Rt", bez.endRight(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), v, b.endUp(), b.duration()), onParamChanged); });
+		addDoubleRow("  End Up", bez.endUp(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), v, b.duration()), onParamChanged); });
+		addIntRow("  Duration", bez.duration(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), v), onParamChanged); });
+	}
+
+	private MoverConfigs.BezierMoverConfig getNestedBezier(int idx, boolean isComposite) {
+		MoverConfig cfg = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
+		return cfg instanceof MoverConfigs.BezierMoverConfig b ? b : null;
+	}
+
+	private void updateNested(int idx, boolean isComposite, MoverConfig newMover,
+							  Consumer<Optional<MoverConfig>> onParamChanged) {
+		if (isComposite) {
+			updateCompositeSegment(idx, newMover, onParamChanged);
+		} else {
+			updateLayeredLayer(idx, newMover, onParamChanged);
+		}
+	}
+
+	// --- Multi-bezier helpers ---
+
+	private MoverConfigs.MultiBezierMoverConfig.BezierSegment getMultiBezierSegment(int segIdx) {
+		var cur = getCurrentMover();
+		if (cur.isPresent() && cur.get() instanceof MoverConfigs.MultiBezierMoverConfig m) {
+			if (segIdx < m.segments().size()) {
+				return m.segments().get(segIdx);
+			}
+		}
+		return null;
+	}
+
+	private void updateMultiBezierSegment(int segIdx, MoverConfigs.MultiBezierMoverConfig.BezierSegment newSeg,
+										  Consumer<Optional<MoverConfig>> onParamChanged) {
+		var cur = getCurrentMover();
+		if (cur.isPresent() && cur.get() instanceof MoverConfigs.MultiBezierMoverConfig m) {
+			var segs = new java.util.ArrayList<>(m.segments());
+			if (segIdx < segs.size()) {
+				segs.set(segIdx, newSeg);
+				onParamChanged.accept(Optional.of(new MoverConfigs.MultiBezierMoverConfig(segs)));
 			}
 		}
 	}

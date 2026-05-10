@@ -24,6 +24,7 @@ public class MoverConfigs {
 		register("layered", LayeredMoverConfig.CODEC, LayeredMoverConfig.class);
 		register("zero", ZeroMoverConfig.CODEC, ZeroMoverConfig.class);
 		register("bezier", BezierMoverConfig.CODEC, BezierMoverConfig.class);
+		register("multi_bezier", MultiBezierMoverConfig.CODEC, MultiBezierMoverConfig.class);
 	}
 
 	public static void register(String id, Codec<? extends MoverConfig> codec, Class<? extends MoverConfig> clazz) {
@@ -247,6 +248,68 @@ public class MoverConfigs {
 				movers.add(layer.create(origin, velocity));
 			}
 			return new LayeredMover(origin, movers);
+		}
+	}
+
+	/**
+	 * Multi-segment Bezier mover: chains multiple cubic Bezier curves end-to-end.
+	 * Each segment has its own control points (relative to origin/velocity direction) and duration.
+	 * The end point of segment N automatically becomes the start of segment N+1.
+	 * JSON: {"type": "multi_bezier", "segments": [{"cp1_forward": 5, ..., "duration": 40}, ...]}
+	 */
+	public record MultiBezierMoverConfig(List<BezierSegment> segments) implements MoverConfig {
+
+		public record BezierSegment(
+				double cp1Forward, double cp1Right, double cp1Up,
+				double cp2Forward, double cp2Right, double cp2Up,
+				double endForward, double endRight, double endUp,
+				int duration
+		) {
+			public static final Codec<BezierSegment> CODEC = RecordCodecBuilder.create(i -> i.group(
+					Codec.DOUBLE.optionalFieldOf("cp1_forward", 5.0).forGetter(BezierSegment::cp1Forward),
+					Codec.DOUBLE.optionalFieldOf("cp1_right", 3.0).forGetter(BezierSegment::cp1Right),
+					Codec.DOUBLE.optionalFieldOf("cp1_up", 0.0).forGetter(BezierSegment::cp1Up),
+					Codec.DOUBLE.optionalFieldOf("cp2_forward", 10.0).forGetter(BezierSegment::cp2Forward),
+					Codec.DOUBLE.optionalFieldOf("cp2_right", -3.0).forGetter(BezierSegment::cp2Right),
+					Codec.DOUBLE.optionalFieldOf("cp2_up", 0.0).forGetter(BezierSegment::cp2Up),
+					Codec.DOUBLE.optionalFieldOf("end_forward", 15.0).forGetter(BezierSegment::endForward),
+					Codec.DOUBLE.optionalFieldOf("end_right", 0.0).forGetter(BezierSegment::endRight),
+					Codec.DOUBLE.optionalFieldOf("end_up", 0.0).forGetter(BezierSegment::endUp),
+					Codec.INT.optionalFieldOf("duration", 40).forGetter(BezierSegment::duration)
+			).apply(i, BezierSegment::new));
+		}
+
+		public static final Codec<MultiBezierMoverConfig> CODEC = BezierSegment.CODEC.listOf()
+				.fieldOf("segments").codec()
+				.xmap(MultiBezierMoverConfig::new, MultiBezierMoverConfig::segments);
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			var ori = DanmakuHelper.getOrientation(dir);
+
+			var moverSegments = new java.util.ArrayList<MultiBezierMover.Segment>();
+			Vec3 currentStart = origin;
+
+			for (var seg : segments) {
+				Vec3 cp1 = currentStart
+						.add(dir.scale(seg.cp1Forward))
+						.add(ori.side().scale(seg.cp1Right))
+						.add(ori.normal().scale(seg.cp1Up));
+				Vec3 cp2 = currentStart
+						.add(dir.scale(seg.cp2Forward))
+						.add(ori.side().scale(seg.cp2Right))
+						.add(ori.normal().scale(seg.cp2Up));
+				Vec3 end = currentStart
+						.add(dir.scale(seg.endForward))
+						.add(ori.side().scale(seg.endRight))
+						.add(ori.normal().scale(seg.endUp));
+
+				moverSegments.add(new MultiBezierMover.Segment(currentStart, cp1, cp2, end, seg.duration));
+				currentStart = end; // Chain: next segment starts where this one ends
+			}
+
+			return new MultiBezierMover(moverSegments);
 		}
 	}
 

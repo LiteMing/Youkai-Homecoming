@@ -123,7 +123,15 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			return create(origin, velocity, velocity);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
+			// Use baseDirection (shared pattern direction) for the rotation plane,
+			// not per-projectile velocity. This ensures all projectiles in a ring
+			// share the same polar rotation plane even after group rotation.
+			Vec3 dir = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1);
 			var ori = DanmakuHelper.getOrientation(dir);
 			var mover = new PolarMover(origin, Vec3.ZERO, Vec3.ZERO, ori.normal(), ori.forward());
 			mover.radial(radius, radialSpeed, radialAccel);

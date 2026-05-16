@@ -4,33 +4,30 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Translate mover: applies a world-coordinate offset defined by formula expressions.
+ * Translate mover: applies a world-coordinate offset to the projectile.
  * <p>
- * Unlike {@link FormulaMover} which uses a per-projectile local coordinate system (forward/right/up),
- * this mover operates in absolute world coordinates (X = east, Y = up, Z = south).
- * This makes it ideal for layered use — add a translate layer to shift the entire pattern
- * in world space regardless of individual bullet directions.
+ * Two modes of operation:
+ * <ol>
+ *   <li><b>Formula mode</b> (aim="none"): x/y/z formula expressions define the offset.
+ *       Supports extended variables (targetX/Y/Z, casterX/Y/Z, originX/Y/Z, tick).</li>
+ *   <li><b>Aim mode</b> (aim="target"/"forward"): pre-computed direction + speed.
+ *       Only stores a Vec3 direction and a double speed — minimal network footprint.
+ *       Position = origin + direction * speed * tick.</li>
+ * </ol>
  * <p>
- * Supports extended variables for aiming (snapshotted at creation time):
+ * Additional pre-computed variables available in formula mode:
  * <ul>
- *   <li>{@code targetX}, {@code targetY}, {@code targetZ} (or {@code tx}, {@code ty}, {@code tz}) — target entity position at spawn</li>
- *   <li>{@code casterX}, {@code casterY}, {@code casterZ} (or {@code cx}, {@code cy}, {@code cz}) — caster/owner position at spawn</li>
- *   <li>{@code originX}, {@code originY}, {@code originZ} (or {@code ox}, {@code oy}, {@code oz}) — bullet spawn position</li>
- *   <li>{@code tick} (or {@code t}) — current tick</li>
+ *   <li>{@code dist} — distance from origin to target at spawn time</li>
+ *   <li>{@code dx}, {@code dy}, {@code dz} — normalized direction from origin to target</li>
  * </ul>
- * <p>
- * Example (aim toward target at constant speed):
- * <pre>
- *   x = "(targetX - originX) * tick * 0.02"
- *   y = "(targetY - originY) * tick * 0.02"
- *   z = "(targetZ - originZ) * tick * 0.02"
- * </pre>
  */
 @SerialClass
 public final class TranslateMover extends TargetPosMover {
 
 	@SerialClass.SerialField
 	private Vec3 origin = Vec3.ZERO;
+
+	// Formula mode fields
 	@SerialClass.SerialField
 	private String formulaX = "0";
 	@SerialClass.SerialField
@@ -38,11 +35,23 @@ public final class TranslateMover extends TargetPosMover {
 	@SerialClass.SerialField
 	private String formulaZ = "0";
 
-	// Snapshotted positions at creation time
+	// Pre-computed aim mode fields (no formula strings needed — saves network bandwidth)
+	@SerialClass.SerialField
+	private Vec3 aimDir = Vec3.ZERO;
+	@SerialClass.SerialField
+	private double aimSpeed = 0;
+	@SerialClass.SerialField
+	private boolean useAimMode = false;
+
+	// Snapshotted values for formula mode
 	@SerialClass.SerialField
 	private Vec3 targetPos = Vec3.ZERO;
 	@SerialClass.SerialField
 	private Vec3 casterPos = Vec3.ZERO;
+	@SerialClass.SerialField
+	private double dist = 0;
+	@SerialClass.SerialField
+	private double dx = 0, dy = 0, dz = 0;
 
 	private transient FormulaExpr.RichEvaluable exprX;
 	private transient FormulaExpr.RichEvaluable exprY;
@@ -52,6 +61,7 @@ public final class TranslateMover extends TargetPosMover {
 	public TranslateMover() {
 	}
 
+	/** Formula mode constructor. */
 	public TranslateMover(Vec3 origin, String formulaX, String formulaY, String formulaZ,
 						  Vec3 targetPos, Vec3 casterPos) {
 		this.origin = origin;
@@ -60,38 +70,55 @@ public final class TranslateMover extends TargetPosMover {
 		this.formulaZ = formulaZ;
 		this.targetPos = targetPos;
 		this.casterPos = casterPos;
+		this.useAimMode = false;
+		// Pre-compute dist and dx/dy/dz for use in formulas
+		Vec3 diff = targetPos.subtract(origin);
+		this.dist = diff.length();
+		if (this.dist > 1e-4) {
+			this.dx = diff.x / this.dist;
+			this.dy = diff.y / this.dist;
+			this.dz = diff.z / this.dist;
+		}
+	}
+
+	/** Aim mode constructor — no formula strings, minimal serialization. */
+	public TranslateMover(Vec3 origin, Vec3 aimDir, double aimSpeed) {
+		this.origin = origin;
+		this.aimDir = aimDir;
+		this.aimSpeed = aimSpeed;
+		this.useAimMode = true;
+		// Formula fields stay at "0" — they won't be evaluated
 	}
 
 	@Override
 	public Vec3 pos(MoverInfo info) {
-		ensureCompiled();
-		double tick = info.tick();
+		if (useAimMode) {
+			return origin.add(aimDir.scale(aimSpeed * info.tick()));
+		}
+		return posFormula(info.tick(), info);
+	}
 
-		// Use snapshotted positions (captured at creation time)
+	public Vec3 pos(double tick) {
+		if (useAimMode) {
+			return origin.add(aimDir.scale(aimSpeed * tick));
+		}
+		return posFormula(tick, null);
+	}
+
+	private Vec3 posFormula(double tick, MoverInfo info) {
+		ensureCompiled();
 		double tx = targetPos.x, ty = targetPos.y, tz = targetPos.z;
 		double cx = casterPos.x, cy = casterPos.y, cz = casterPos.z;
 		double ox = origin.x, oy = origin.y, oz = origin.z;
 
-		// If owner position is available at runtime, use it for caster (live tracking)
-		if (info.ownerInfo() != null && info.ownerInfo().ownerPos() != null) {
+		// Live caster tracking if available
+		if (info != null && info.ownerInfo() != null && info.ownerInfo().ownerPos() != null) {
 			Vec3 ownerPos = info.ownerInfo().ownerPos();
 			cx = ownerPos.x;
 			cy = ownerPos.y;
 			cz = ownerPos.z;
 		}
 
-		double x = exprX.eval(tick, tx, ty, tz, cx, cy, cz, ox, oy, oz);
-		double y = exprY.eval(tick, tx, ty, tz, cx, cy, cz, ox, oy, oz);
-		double z = exprZ.eval(tick, tx, ty, tz, cx, cy, cz, ox, oy, oz);
-		return origin.add(x, y, z);
-	}
-
-	/** Fallback for pos(double tick) — uses snapshotted positions only. */
-	public Vec3 pos(double tick) {
-		ensureCompiled();
-		double tx = targetPos.x, ty = targetPos.y, tz = targetPos.z;
-		double cx = casterPos.x, cy = casterPos.y, cz = casterPos.z;
-		double ox = origin.x, oy = origin.y, oz = origin.z;
 		double x = exprX.eval(tick, tx, ty, tz, cx, cy, cz, ox, oy, oz);
 		double y = exprY.eval(tick, tx, ty, tz, cx, cy, cz, ox, oy, oz);
 		double z = exprZ.eval(tick, tx, ty, tz, cx, cy, cz, ox, oy, oz);

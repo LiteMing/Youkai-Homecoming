@@ -30,8 +30,6 @@ public class MoverConfigs {
 		register("attached", AttachedMoverConfig.CODEC, AttachedMoverConfig.class);
 		register("attached_free_rot", AttachedFreeRotMoverConfig.CODEC, AttachedFreeRotMoverConfig.class);
 		register("fixed_dir", FixedDirMoverConfig.CODEC, FixedDirMoverConfig.class);
-		register("space_rotation", SpaceRotationMoverConfig.CODEC, SpaceRotationMoverConfig.class);
-		register("space_attached", SpaceAttachedMoverConfig.CODEC, SpaceAttachedMoverConfig.class);
 		register("orbital", OrbitalMoverConfig.CODEC, OrbitalMoverConfig.class);
 		register("translate", TranslateMoverConfig.CODEC, TranslateMoverConfig.class);
 	}
@@ -499,61 +497,6 @@ public class MoverConfigs {
 	}
 
 	/**
-	 * Space rotation mover: drives the ShooterEntity's spaceRotation quaternion.
-	 * This config does NOT control projectile position — it configures how the space rotates over time.
-	 * ShooterEntity calls SpaceRotationMover.computeTickRotation() each tick to update its rotation state.
-	 * JSON: {"type": "space_rotation", "axis": [0, 1, 0], "degrees_per_tick": 3.0, "angular_accel": 0.0}
-	 */
-	public record SpaceRotationMoverConfig(Vec3 axis, double degreesPerTick, double angularAccel) implements MoverConfig {
-		private static final Codec<Vec3> AXIS_CODEC = Codec.DOUBLE.listOf().xmap(
-				list -> new Vec3(
-						list.size() > 0 ? list.get(0) : 0,
-						list.size() > 1 ? list.get(1) : 0,
-						list.size() > 2 ? list.get(2) : 0
-				),
-				vec -> List.of(vec.x, vec.y, vec.z)
-		);
-
-		public static final Codec<SpaceRotationMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
-				AXIS_CODEC.optionalFieldOf("axis", new Vec3(0, 1, 0)).forGetter(SpaceRotationMoverConfig::axis),
-				Codec.DOUBLE.optionalFieldOf("degrees_per_tick", 0.0).forGetter(SpaceRotationMoverConfig::degreesPerTick),
-				Codec.DOUBLE.optionalFieldOf("angular_accel", 0.0).forGetter(SpaceRotationMoverConfig::angularAccel)
-		).apply(i, SpaceRotationMoverConfig::new));
-
-		@Override
-		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			return new SpaceRotationMover(axis, degreesPerTick, angularAccel);
-		}
-	}
-
-	/**
-	 * Space attached mover: locks a projectile to a space's local coordinate system.
-	 * The projectile's world position is computed as: ownerPos + ownerRotation.rotate(localOffset).
-	 * The render orientation is fixed at creation time (from initial velocity) and never changes.
-	 * Supports optional expansion_speed to grow the local offset over time.
-	 * JSON: {"type": "space_attached", "expansion_speed": 0.05}
-	 */
-	public record SpaceAttachedMoverConfig(double expansionSpeed) implements MoverConfig {
-		public static final Codec<SpaceAttachedMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
-				Codec.DOUBLE.optionalFieldOf("expansion_speed", 0.0).forGetter(SpaceAttachedMoverConfig::expansionSpeed)
-		).apply(i, SpaceAttachedMoverConfig::new));
-
-		@Override
-		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			// Fallback when ownerPos is not available: use Vec3.ZERO as ownerPos
-			return new SpaceAttachedMover(origin, velocity, Vec3.ZERO, expansionSpeed);
-		}
-
-		/**
-		 * Factory method with ownerPos, used by auto-attach logic when the shooter's position is known.
-		 * localOffset will be computed as origin - ownerPos.
-		 */
-		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 ownerPos) {
-			return new SpaceAttachedMover(origin, velocity, ownerPos, expansionSpeed);
-		}
-	}
-
-	/**
 	 * Orbital mover: projectile orbits around the baseDirection axis with formula-driven radius.
 	 * The orbit plane is perpendicular to baseDirection. Each projectile's initial angle
 	 * is derived from its velocity direction projected onto the orbit plane, so CONE/RING
@@ -629,7 +572,7 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
-			// If aim mode is set with speed, pre-compute direction and use simple "tick * speed" formulas
+			// If aim mode is set with speed, use pre-computed direction (no formula strings in serialization)
 			if (speed > 0 && !"none".equals(aim)) {
 				Vec3 dir;
 				if ("target".equals(aim)) {
@@ -643,16 +586,11 @@ public class MoverConfigs {
 				if (len > 1e-4) {
 					dir = dir.scale(1.0 / len);
 				} else {
-					dir = new Vec3(0, 0, 1);
+					// No valid direction (no target, or target == origin) — zero movement
+					return new TranslateMover(origin, Vec3.ZERO, 0);
 				}
-				// Pre-compute: store direction * speed as a simple linear formula
-				// This avoids long sqrt expressions in the serialized formula strings
-				String fx = String.valueOf(dir.x * speed);
-				String fy = String.valueOf(dir.y * speed);
-				String fz = String.valueOf(dir.z * speed);
-				return new TranslateMover(origin,
-						"tick * " + fx, "tick * " + fy, "tick * " + fz,
-						targetPos, casterPos);
+				// Store only Vec3 direction + double speed — minimal network footprint
+				return new TranslateMover(origin, dir, speed);
 			}
 			return new TranslateMover(origin, x, y, z, targetPos, casterPos);
 		}

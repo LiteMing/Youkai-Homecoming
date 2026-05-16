@@ -4,7 +4,6 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.GroupRotation;
-import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfigs;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
@@ -502,49 +501,19 @@ public class SpellPreviewScreen extends Screen {
 
 	/**
 	 * Update the rotation gizmo state on the viewport based on the selected action.
-	 * If the action is a SpawnShooterAction with a SpaceRotationMoverConfig, activate the gizmo.
 	 */
 	private void updateRotationGizmoForAction(@Nullable SpellAction action) {
-		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction ssa
-				&& ssa.rotationMover().isPresent()
-				&& ssa.rotationMover().get() instanceof MoverConfigs.SpaceRotationMoverConfig cfg) {
-			Vec3 axis = cfg.axis();
-			double len = axis.length();
-			if (len > 1e-8) {
-				axis = axis.normalize();
-			} else {
-				axis = new Vec3(0, 1, 0); // fallback
-			}
-			if (viewportPanel != null) {
-				viewportPanel.setRotationGizmo(true, axis.x, axis.y, axis.z);
-			}
-			viewport.setRotationGizmo(true, (float) axis.x, (float) axis.y, (float) axis.z);
-		} else {
-			if (viewportPanel != null) {
-				viewportPanel.setRotationGizmo(false, 0, 0, 0);
-			}
-			viewport.setRotationGizmo(false, 0, 0, 0);
+		if (viewportPanel != null) {
+			viewportPanel.setRotationGizmo(false, 0, 0, 0);
 		}
 	}
 
 	/**
 	 * Called when the user drags the rotation gizmo to modify degrees_per_tick.
-	 * Modifies the SpawnShooterAction's rotationMover config.
+	 * Currently a no-op since space rotation system is not yet implemented.
 	 */
 	private void onRotationSpeedDragged(double speedDelta) {
-		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
-		SpellAction action = actionEditorPanel.getCurrentAction();
-		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction ssa
-				&& ssa.rotationMover().isPresent()
-				&& ssa.rotationMover().get() instanceof MoverConfigs.SpaceRotationMoverConfig cfg) {
-			double newSpeed = cfg.degreesPerTick() + speedDelta;
-			var newCfg = new MoverConfigs.SpaceRotationMoverConfig(cfg.axis(), newSpeed, cfg.angularAccel());
-			var newAction = ssa.withRotationMover(Optional.of(newCfg));
-			onActionEditedTransient(newAction);
-			if (actionEditorPanel != null) {
-				actionEditorPanel.setAction(newAction, actionEditorPanel.getActionIndex());
-			}
-		}
+		// No-op: space rotation mover not yet available
 	}
 
 	private void onClickSelectDanmaku(int actionIndex) {

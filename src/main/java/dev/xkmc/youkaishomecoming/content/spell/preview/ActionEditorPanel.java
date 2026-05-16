@@ -351,7 +351,7 @@ public class ActionEditorPanel {
 			case "spawn_shooter" -> new SpawnShooterAction(40, 4f, 100,
 					OriginConfig.caster(),
 					NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
-					Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), new ArrayList<>());
+					Optional.empty(), new ArrayList<>());
 		case "burst" -> new BurstAction(3, 5, new ArrayList<>());
 		case "sequence" -> new SpellActions.SequenceAction(new ArrayList<>());
 		case "confine_target" -> new ConfineTargetAction(32, 1.0);
@@ -1079,98 +1079,74 @@ public class ActionEditorPanel {
 	// --- SpawnShooter rows ---
 
 	private void buildSpawnShooterRows(SpawnShooterAction ssa) {
-		// Spell ID selector (dropdown of registered spells)
-		if (ssa.spellId().isPresent()) {
-			List<net.minecraft.resources.ResourceLocation> spellOptions = spellOptionsSupplier.get();
-			if (spellOptions != null && !spellOptions.isEmpty()) {
-				addChoiceRow("Spell ID", spellOptions, ssa.spellId().get(), this::formatSpellOption, id ->
-						notifySimple(old -> ((SpawnShooterAction) old).withSpellId(Optional.of(id)), true));
-			} else {
-				addStringRow("Spell ID", ssa.spellId().get().toString(), v -> {
-					var id = net.minecraft.resources.ResourceLocation.tryParse(v);
-					if (id != null) notifySimple(old -> ((SpawnShooterAction) old).withSpellId(Optional.of(id)));
-				});
-			}
-			addFullWidthButton("[Remove Spell ID]", () ->
-					notifySimple(old -> ((SpawnShooterAction) old).withSpellId(Optional.empty()), true));
-		} else {
-			addFullWidthButton("[+ Spell ID (use registered spell)]", () -> {
-				List<net.minecraft.resources.ResourceLocation> opts = spellOptionsSupplier.get();
-				net.minecraft.resources.ResourceLocation defaultId = (opts != null && !opts.isEmpty())
-						? opts.get(0)
-						: new net.minecraft.resources.ResourceLocation("youkaishomecoming", "example");
-				notifySimple(old -> ((SpawnShooterAction) old).withSpellId(Optional.of(defaultId)), true);
-			});
-		}
-
 		addIntRow("Health", ssa.health(), v ->
 				notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					return new SpawnShooterAction(v, s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.rotationMover(), s.initialRotation(), s.spellId(), s.body());
+							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
 				}));
 		addIntRow("Lifetime", ssa.lifetime(), v ->
 				notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					return new SpawnShooterAction(s.health(), s.damage(), v, s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.rotationMover(), s.initialRotation(), s.spellId(), s.body());
+							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
 				}));
 		addNumberRow("Vel X", ssa.velocityX(), v ->
 				notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							v, s.velocityY(), s.velocityZ(), s.mover(), s.rotationMover(), s.initialRotation(), s.spellId(), s.body());
+							v, s.velocityY(), s.velocityZ(), s.mover(), s.body());
 				}));
 		addNumberRow("Vel Y", ssa.velocityY(), v ->
 				notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), v, s.velocityZ(), s.mover(), s.rotationMover(), s.initialRotation(), s.spellId(), s.body());
+							s.velocityX(), v, s.velocityZ(), s.mover(), s.body());
 				}));
 		addNumberRow("Vel Z", ssa.velocityZ(), v ->
 				notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), v, s.mover(), s.rotationMover(), s.initialRotation(), s.spellId(), s.body());
+							s.velocityX(), s.velocityY(), v, s.mover(), s.body());
 				}));
 		addFloatRow("Damage", ssa.damage(), v ->
 				notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					return new SpawnShooterAction(s.health(), v, s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.rotationMover(), s.initialRotation(), s.spellId(), s.body());
+							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
 				}));
 		addEnumRow("Origin", OriginConfig.OriginMode.values(), ssa.origin().mode(), v -> {
 			var s = (SpawnShooterAction) currentAction;
 			var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
 					s.origin().offsetZ(), s.origin().rotation());
 			notifySimple(old -> new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), newOrigin,
-					s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.rotationMover(), s.initialRotation(), s.spellId(), s.body()));
+					s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body()));
 		});
 		// Origin offsets
 		buildOriginOffsetRows(ssa.origin(), newOrigin ->
 				notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), newOrigin,
-							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.rotationMover(), s.initialRotation(), s.spellId(), s.body());
+							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
 				}));
 		// Mover
 		buildMoverRows(ssa.mover(),
 				newMover -> notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), newMover, s.rotationMover(), s.initialRotation(), s.spellId(), s.body());
+							s.velocityX(), s.velocityY(), s.velocityZ(), newMover, s.body());
 				}),
 				newMover -> notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), newMover, s.rotationMover(), s.initialRotation(), s.spellId(), s.body());
+							s.velocityX(), s.velocityY(), s.velocityZ(), newMover, s.body());
 				}));
 	}
 
 	// --- Shared Origin/Mover row builders ---
 
-	// Top-level mover types (includes "none" for removal and special types like attached/space)
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "translate", "space_attached", "space_rotation", "attached", "attached_free_rot", "fixed_dir"};
+	// Top-level mover types (includes "none" for removal and special types like attached)
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "translate", "attached", "attached_free_rot", "fixed_dir"};
 
 	/**
 	 * Sub-mover types available inside composite segments, layered layers, and fixed_dir inner.
@@ -1715,8 +1691,6 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.FormulaMoverConfig) return "formula";
 		if (cfg instanceof MoverConfigs.OrbitalMoverConfig) return "orbital";
 		if (cfg instanceof MoverConfigs.TranslateMoverConfig) return "translate";
-		if (cfg instanceof MoverConfigs.SpaceAttachedMoverConfig) return "space_attached";
-		if (cfg instanceof MoverConfigs.SpaceRotationMoverConfig) return "space_rotation";
 		if (cfg instanceof MoverConfigs.AttachedMoverConfig) return "attached";
 		if (cfg instanceof MoverConfigs.AttachedFreeRotMoverConfig) return "attached_free_rot";
 		if (cfg instanceof MoverConfigs.FixedDirMoverConfig) return "fixed_dir";
@@ -1752,8 +1726,6 @@ public class ActionEditorPanel {
 					"0", "3 * sin(tick * 0.15)", "3 * cos(tick * 0.15)", 0.3));
 			case "orbital" -> Optional.of(new MoverConfigs.OrbitalMoverConfig(5.0, "3 * sin(tick * 0.05)", "0"));
 			case "translate" -> Optional.of(new MoverConfigs.TranslateMoverConfig("0", "0", "0", 0.3, "target"));
-			case "space_attached" -> Optional.of(new MoverConfigs.SpaceAttachedMoverConfig(0));
-			case "space_rotation" -> Optional.of(new MoverConfigs.SpaceRotationMoverConfig(new net.minecraft.world.phys.Vec3(0, 1, 0), 5.0, 0));
 			case "attached" -> Optional.of(new MoverConfigs.AttachedMoverConfig());
 			case "attached_free_rot" -> Optional.of(new MoverConfigs.AttachedFreeRotMoverConfig());
 			case "fixed_dir" -> Optional.of(new MoverConfigs.FixedDirMoverConfig(new MoverConfigs.ZeroMoverConfig()));

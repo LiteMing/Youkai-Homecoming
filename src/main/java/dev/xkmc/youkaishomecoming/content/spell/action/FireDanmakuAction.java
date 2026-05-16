@@ -4,7 +4,6 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
-import dev.xkmc.youkaishomecoming.content.spell.mover.SpaceAttachedMover;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
@@ -398,14 +397,11 @@ public record FireDanmakuAction(
 			danmaku.damageTypeOverride = damageType.get();
 		}
 		if (mover.isPresent()) {
-			// Pass baseDir, target, and caster positions so movers can use them in expressions
-			Vec3 targetPos = holder.target() != null ? holder.target() : Vec3.ZERO;
-			Vec3 casterPos = holder.self() != null ? holder.self().position() : Vec3.ZERO;
+			// Pass baseDir, target, and caster positions so movers can use them in expressions.
+			// When no target is available, targetPos = originPos (zero displacement for aim="target").
+			Vec3 casterPos = holder.self() != null ? holder.self().position() : originPos;
+			Vec3 targetPos = holder.target() != null ? holder.target() : originPos;
 			danmaku.mover = mover.get().create(originPos, dir, baseDir, targetPos, casterPos);
-		} else if (holder.self() instanceof ShooterEntity se && se.isSpaceMode()) {
-			// Auto-attach: bullet has no explicit mover and shooter is in space mode
-			// Create SpaceAttachedMover with localOffset = bulletPos - shooterPos, expansion_speed = 0
-			danmaku.mover = new SpaceAttachedMover(originPos, dir, se.position(), 0);
 		}
 		if (onExpiry.isPresent()) {
 			var expiryAction = new DataDrivenTrailAction(onExpiry.get(), ctx.runtime(), ctx.definition());

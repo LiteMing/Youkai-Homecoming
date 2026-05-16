@@ -326,6 +326,26 @@ public final class FormulaExpr {
 			case "originX", "ox" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> ox;
 			case "originY", "oy" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> oy;
 			case "originZ", "oz" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> oz;
+			// Derived: distance and normalized direction from origin to target
+			case "dist" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> {
+				double ddx = tx - ox, ddy = ty - oy, ddz = tz - oz;
+				return Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+			};
+			case "dx" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> {
+				double ddx = tx - ox, ddy = ty - oy, ddz = tz - oz;
+				double d = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+				return d > 1e-4 ? ddx / d : 0;
+			};
+			case "dy" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> {
+				double ddx = tx - ox, ddy = ty - oy, ddz = tz - oz;
+				double d = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+				return d > 1e-4 ? ddy / d : 0;
+			};
+			case "dz" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> {
+				double ddx = tx - ox, ddy = ty - oy, ddz = tz - oz;
+				double d = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+				return d > 1e-4 ? ddz / d : 0;
+			};
 			// Functions
 			case "sin" -> parseFuncRich1(Math::sin);
 			case "cos" -> parseFuncRich1(Math::cos);

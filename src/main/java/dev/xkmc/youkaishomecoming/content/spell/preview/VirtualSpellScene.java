@@ -162,6 +162,11 @@ public class VirtualSpellScene {
 		holder.getFakeCaster().setPos(pos);
 	}
 
+	public void moveCaster(Vec3 delta) {
+		Vec3 current = holder.getFakeCaster().position();
+		holder.getFakeCaster().setPos(current.add(delta));
+	}
+
 	public void resetCasterPos() {
 		holder.getFakeCaster().setPos(0, 0, 0);
 	}

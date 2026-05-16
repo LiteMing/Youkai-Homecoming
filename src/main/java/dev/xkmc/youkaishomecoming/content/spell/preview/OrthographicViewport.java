@@ -291,6 +291,11 @@ public class OrthographicViewport {
 	public int getHighlightedActionIndex() { return highlightedActionIndex; }
 	public void setHighlightedActionIndex(int index) { this.highlightedActionIndex = index; }
 
+	/** Set rotation gizmo state for rendering. Currently a visual-only hint (no-op on rendering). */
+	public void setRotationGizmo(boolean active, float axisX, float axisY, float axisZ) {
+		// Reserved for future rotation gizmo rendering
+	}
+
 	/** Pending group offset delta accumulated during drag (consumed by callback). */
 	private Vec3 pendingGroupOffset = Vec3.ZERO;
 	public void addPendingGroupOffset(Vec3 delta) { this.pendingGroupOffset = this.pendingGroupOffset.add(delta); }
@@ -330,6 +335,42 @@ public class OrthographicViewport {
 		double wz = -rx * sinY + rz * cosY;
 
 		return new Vec3(wx, wy, wz);
+	}
+
+	/**
+	 * Convert a world position to screen coordinates (for hit testing in orthographic mode).
+	 * Returns a Vec3 where x/y are screen pixel coordinates and z is the view-space depth
+	 * (useful for front-to-back picking).
+	 */
+	public Vec3 worldToScreen(Vec3 worldPos) {
+		if (width <= 0 || height <= 0) return new Vec3(0, 0, 0);
+		float xRot = currentXRot();
+		float yRot = currentYRot();
+		float xRad = (float) Math.toRadians(xRot);
+		float yRad = (float) Math.toRadians(yRot);
+
+		float cosX = (float) Math.cos(xRad), sinX = (float) Math.sin(xRad);
+		float cosY = (float) Math.cos(yRad), sinY = (float) Math.sin(yRad);
+
+		// View right vector (screen X) in world space
+		float rx = cosY, ry = 0, rz = sinY;
+		// View up vector (screen Y) in world space
+		float ux = sinY * sinX, uy = cosX, uz = -cosY * sinX;
+		// View forward vector (into screen) in world space
+		float fx = -sinY * cosX, fy = sinX, fz = cosY * cosX;
+
+		float wx = (float) worldPos.x, wy = (float) worldPos.y, wz = (float) worldPos.z;
+
+		// Project world position onto view axes
+		double viewXCoord = rx * wx + ry * wy + rz * wz;
+		double viewYCoord = ux * wx + uy * wy + uz * wz;
+		double viewZCoord = fx * wx + fy * wy + fz * wz;
+
+		// View → Screen
+		double screenX = (viewXCoord - viewX) * zoom + (x + width / 2.0);
+		double screenY = -(viewYCoord - viewY) * zoom + (y + height / 2.0);
+
+		return new Vec3(screenX, screenY, viewZCoord);
 	}
 
 	/**

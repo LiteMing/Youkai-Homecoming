@@ -1099,6 +1099,17 @@ public class ActionListPanel {
 		replaceAction(selectedPath, newAction);
 	}
 
+	/** Replace the selected action without pushing an undo snapshot (for transient drag edits). */
+	public void replaceSelectedActionWithoutUndo(SpellAction newAction) {
+		if (selectedPath == null) return;
+		replaceAction(selectedPath, newAction);
+	}
+
+	/** Explicitly push an undo snapshot (e.g. at the start of a drag gesture). */
+	public void pushUndoSnapshot() {
+		pushUndo();
+	}
+
 	public void replaceAction(ActionPath path, SpellAction newAction) {
 		if (phase == null) return;
 		List<SpellAction> list = getSectionList(path.section);

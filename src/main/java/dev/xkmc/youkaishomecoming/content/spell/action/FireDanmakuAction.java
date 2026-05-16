@@ -4,7 +4,9 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
+import dev.xkmc.youkaishomecoming.content.spell.mover.SpaceAttachedMover;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
@@ -179,13 +181,22 @@ public record FireDanmakuAction(
 			ori = DanmakuHelper.getOrientation(baseDir);
 		}
 
-		// Apply group rotation: rotates the entire pattern's coordinate system
+		// Apply group rotation: rotates the pattern's lateral axes (normal/side) only.
+		// baseDir (forward) is intentionally left untouched so the overall aim direction —
+		// and therefore each projectile's emission direction relative to baseDir — is preserved.
+		// rotX/Y/Z thus reshape the ring/pattern plane around the aim axis without deflecting
+		// the volley away from the target.
 		if (groupRotation.isPresent()) {
 			var gr = groupRotation.get();
-			Vec3 rotatedForward = gr.apply(ori.forward(), ctx);
+			Vec3 forward = ori.forward();
 			Vec3 rotatedNormal = gr.apply(ori.normal(), ctx);
-			ori = DanmakuHelper.getOrientation(rotatedForward, rotatedNormal);
-			baseDir = rotatedForward;
+			// Re-orthogonalize the rotated normal against the unchanged forward
+			double dot = rotatedNormal.dot(forward);
+			Vec3 projNormal = rotatedNormal.subtract(forward.scale(dot));
+			if (projNormal.lengthSqr() > 1e-8) {
+				ori = DanmakuHelper.getOrientation(forward, projNormal.normalize());
+			}
+			// baseDir unchanged → emitDanmaku still aims along the original direction
 		}
 
 		// NESTED_RING: outer ring × inner ring with configurable inner axis via tilt_angle.
@@ -387,8 +398,14 @@ public record FireDanmakuAction(
 			danmaku.damageTypeOverride = damageType.get();
 		}
 		if (mover.isPresent()) {
-			// Pass baseDir so movers can drift origin along the shared aim direction
-			danmaku.mover = mover.get().create(originPos, dir, baseDir);
+			// Pass baseDir, target, and caster positions so movers can use them in expressions
+			Vec3 targetPos = holder.target() != null ? holder.target() : Vec3.ZERO;
+			Vec3 casterPos = holder.self() != null ? holder.self().position() : Vec3.ZERO;
+			danmaku.mover = mover.get().create(originPos, dir, baseDir, targetPos, casterPos);
+		} else if (holder.self() instanceof ShooterEntity se && se.isSpaceMode()) {
+			// Auto-attach: bullet has no explicit mover and shooter is in space mode
+			// Create SpaceAttachedMover with localOffset = bulletPos - shooterPos, expansion_speed = 0
+			danmaku.mover = new SpaceAttachedMover(originPos, dir, se.position(), 0);
 		}
 		if (onExpiry.isPresent()) {
 			var expiryAction = new DataDrivenTrailAction(onExpiry.get(), ctx.runtime(), ctx.definition());

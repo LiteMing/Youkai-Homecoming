@@ -45,4 +45,14 @@ public interface MoverConfig {
 		return create(origin, velocity);
 	}
 
+	/**
+	 * Create a DanmakuMover with target and caster position context.
+	 * Used by movers that need to reference entity positions in expressions (e.g., translate mover).
+	 * Target/caster positions are snapshotted at creation time.
+	 * Default implementation delegates to the 3-arg version (ignores target/caster).
+	 */
+	default DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+		return create(origin, velocity, baseDirection);
+	}
+
 }

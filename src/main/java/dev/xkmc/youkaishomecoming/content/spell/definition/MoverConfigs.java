@@ -27,6 +27,13 @@ public class MoverConfigs {
 		register("multi_bezier", MultiBezierMoverConfig.CODEC, MultiBezierMoverConfig.class);
 		register("spline", SplineMoverConfig.CODEC, SplineMoverConfig.class);
 		register("formula", FormulaMoverConfig.CODEC, FormulaMoverConfig.class);
+		register("attached", AttachedMoverConfig.CODEC, AttachedMoverConfig.class);
+		register("attached_free_rot", AttachedFreeRotMoverConfig.CODEC, AttachedFreeRotMoverConfig.class);
+		register("fixed_dir", FixedDirMoverConfig.CODEC, FixedDirMoverConfig.class);
+		register("space_rotation", SpaceRotationMoverConfig.CODEC, SpaceRotationMoverConfig.class);
+		register("space_attached", SpaceAttachedMoverConfig.CODEC, SpaceAttachedMoverConfig.class);
+		register("orbital", OrbitalMoverConfig.CODEC, OrbitalMoverConfig.class);
+		register("translate", TranslateMoverConfig.CODEC, TranslateMoverConfig.class);
 	}
 
 	public static void register(String id, Codec<? extends MoverConfig> codec, Class<? extends MoverConfig> clazz) {
@@ -172,12 +179,22 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			// All segments share the same origin and velocity, matching legacy CompositeMover behavior.
+			return create(origin, velocity, velocity, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
+			return create(origin, velocity, baseDirection, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			// All segments share the same origin, velocity, and baseDirection.
 			// Each sub-mover receives (global tick - segment start) as its local tick via CompositeMover.
 			// Position continuity is achieved by the mover parameters themselves (not by chaining pos/vel).
 			var composite = new CompositeMover();
 			for (var seg : segments) {
-				composite.add(seg.duration, seg.mover.create(origin, velocity));
+				composite.add(seg.duration, seg.mover.create(origin, velocity, baseDirection, targetPos, casterPos));
 			}
 			return composite;
 		}
@@ -263,9 +280,19 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return create(origin, velocity, velocity, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
+			return create(origin, velocity, baseDirection, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			var movers = new java.util.ArrayList<DanmakuMover>();
 			for (var layer : layers) {
-				movers.add(layer.create(origin, velocity));
+				movers.add(layer.create(origin, velocity, baseDirection, targetPos, casterPos));
 			}
 			return new LayeredMover(origin, movers);
 		}
@@ -408,6 +435,183 @@ public class MoverConfigs {
 			Vec3 drift = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize().scale(speed) : Vec3.ZERO;
 			return new dev.xkmc.youkaishomecoming.content.spell.mover.FormulaMover(
 					origin, dir, ori.side(), ori.normal(), x, y, z, drift);
+		}
+	}
+
+	/**
+	 * Attached: projectile locks to its owner entity's position each tick.
+	 * No parameters. Useful for shooter/laser bullets that should follow the caster.
+	 * Visual rotation comes from the projectile's own delta movement.
+	 * JSON: {"type": "attached"}
+	 */
+	public record AttachedMoverConfig() implements MoverConfig {
+		public static final Codec<AttachedMoverConfig> CODEC = Codec.unit(AttachedMoverConfig::new);
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return new AttachedMover();
+		}
+	}
+
+	/**
+	 * Attached + free rotation: like {@link AttachedMoverConfig} but the projectile's
+	 * visual rotation also tracks the owner's facing direction (uses ownerForward from MoverInfo).
+	 * JSON: {"type": "attached_free_rot"}
+	 */
+	public record AttachedFreeRotMoverConfig() implements MoverConfig {
+		public static final Codec<AttachedFreeRotMoverConfig> CODEC = Codec.unit(AttachedFreeRotMoverConfig::new);
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return new AttachedFreeRotMover();
+		}
+	}
+
+	/**
+	 * Fixed direction wrapper: runs an inner mover but locks the projectile's visual
+	 * rotation to the pattern's baseDirection (the group's shared aim direction).
+	 * The inner mover controls displacement; this wrapper only overrides rotation.
+	 * JSON: {"type": "fixed_dir", "inner": { ... mover ... }}
+	 */
+	public record FixedDirMoverConfig(MoverConfig inner) implements MoverConfig {
+		public static final Codec<FixedDirMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				MoverConfig.CODEC.fieldOf("inner").forGetter(FixedDirMoverConfig::inner)
+		).apply(i, FixedDirMoverConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return create(origin, velocity, velocity);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
+			Vec3 fixedDir = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1);
+			return new FixedDirMover(inner.create(origin, velocity, baseDirection), fixedDir);
+		}
+	}
+
+	/**
+	 * Space rotation mover: drives the ShooterEntity's spaceRotation quaternion.
+	 * This config does NOT control projectile position — it configures how the space rotates over time.
+	 * ShooterEntity calls SpaceRotationMover.computeTickRotation() each tick to update its rotation state.
+	 * JSON: {"type": "space_rotation", "axis": [0, 1, 0], "degrees_per_tick": 3.0, "angular_accel": 0.0}
+	 */
+	public record SpaceRotationMoverConfig(Vec3 axis, double degreesPerTick, double angularAccel) implements MoverConfig {
+		private static final Codec<Vec3> AXIS_CODEC = Codec.DOUBLE.listOf().xmap(
+				list -> new Vec3(
+						list.size() > 0 ? list.get(0) : 0,
+						list.size() > 1 ? list.get(1) : 0,
+						list.size() > 2 ? list.get(2) : 0
+				),
+				vec -> List.of(vec.x, vec.y, vec.z)
+		);
+
+		public static final Codec<SpaceRotationMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				AXIS_CODEC.optionalFieldOf("axis", new Vec3(0, 1, 0)).forGetter(SpaceRotationMoverConfig::axis),
+				Codec.DOUBLE.optionalFieldOf("degrees_per_tick", 0.0).forGetter(SpaceRotationMoverConfig::degreesPerTick),
+				Codec.DOUBLE.optionalFieldOf("angular_accel", 0.0).forGetter(SpaceRotationMoverConfig::angularAccel)
+		).apply(i, SpaceRotationMoverConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return new SpaceRotationMover(axis, degreesPerTick, angularAccel);
+		}
+	}
+
+	/**
+	 * Space attached mover: locks a projectile to a space's local coordinate system.
+	 * The projectile's world position is computed as: ownerPos + ownerRotation.rotate(localOffset).
+	 * The render orientation is fixed at creation time (from initial velocity) and never changes.
+	 * Supports optional expansion_speed to grow the local offset over time.
+	 * JSON: {"type": "space_attached", "expansion_speed": 0.05}
+	 */
+	public record SpaceAttachedMoverConfig(double expansionSpeed) implements MoverConfig {
+		public static final Codec<SpaceAttachedMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.optionalFieldOf("expansion_speed", 0.0).forGetter(SpaceAttachedMoverConfig::expansionSpeed)
+		).apply(i, SpaceAttachedMoverConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			// Fallback when ownerPos is not available: use Vec3.ZERO as ownerPos
+			return new SpaceAttachedMover(origin, velocity, Vec3.ZERO, expansionSpeed);
+		}
+
+		/**
+		 * Factory method with ownerPos, used by auto-attach logic when the shooter's position is known.
+		 * localOffset will be computed as origin - ownerPos.
+		 */
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 ownerPos) {
+			return new SpaceAttachedMover(origin, velocity, ownerPos, expansionSpeed);
+		}
+	}
+
+	/**
+	 * Orbital mover: projectile orbits around the baseDirection axis with formula-driven radius.
+	 * The orbit plane is perpendicular to baseDirection. Each projectile's initial angle
+	 * is derived from its velocity direction projected onto the orbit plane, so CONE/RING
+	 * patterns naturally distribute projectiles around the orbit.
+	 * <p>
+	 * Use cases:
+	 * <ul>
+	 *   <li>Dragon pattern (龍紋弾): SPHERE + on_expiry CONE with orbital mover</li>
+	 *   <li>Any "ring of bullets orbiting an axis" effect</li>
+	 *   <li>Sin-pulsing radius creates breathing/contracting rings</li>
+	 * </ul>
+	 * JSON: {"type": "orbital", "angular_speed": 5.0, "radius": "3 * sin(tick * 0.05)", "drift": "2 * sin(tick * 0.03)"}
+	 */
+	public record OrbitalMoverConfig(double angularSpeed, String radius, String drift) implements MoverConfig {
+		public static final Codec<OrbitalMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.optionalFieldOf("angular_speed", 0.0).forGetter(OrbitalMoverConfig::angularSpeed),
+				Codec.STRING.optionalFieldOf("radius", "1").forGetter(OrbitalMoverConfig::radius),
+				Codec.STRING.optionalFieldOf("drift", "0").forGetter(OrbitalMoverConfig::drift)
+		).apply(i, OrbitalMoverConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return create(origin, velocity, velocity);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
+			// Orbit axis = baseDirection (shared by all projectiles in the pattern)
+			Vec3 axis = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 1, 0);
+			return new OrbitalMover(origin, axis, velocity, angularSpeed, radius, drift);
+		}
+	}
+
+	/**
+	 * Translate mover: world-coordinate offset defined by formula expressions for each axis.
+	 * Unlike formula mover (which uses per-projectile local coordinates), translate operates
+	 * in absolute world space: X = east/west, Y = up/down, Z = south/north.
+	 * <p>
+	 * Supports extended variables: targetX/Y/Z, casterX/Y/Z, originX/Y/Z, tick.
+	 * Target and caster positions are snapshotted at bullet creation time.
+	 * <p>
+	 * Ideal for use inside a {@code layered} mover to add world-space drift or aiming to any other mover.
+	 * <p>
+	 * JSON: {"type": "translate", "x": "(targetX - originX) * tick * 0.02", "y": "(targetY - originY) * tick * 0.02", "z": "(targetZ - originZ) * tick * 0.02"}
+	 */
+	public record TranslateMoverConfig(String x, String y, String z) implements MoverConfig {
+		public static final Codec<TranslateMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.STRING.optionalFieldOf("x", "0").forGetter(TranslateMoverConfig::x),
+				Codec.STRING.optionalFieldOf("y", "0").forGetter(TranslateMoverConfig::y),
+				Codec.STRING.optionalFieldOf("z", "0").forGetter(TranslateMoverConfig::z)
+		).apply(i, TranslateMoverConfig::new));
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			// No target/caster info available in basic create — use zero
+			return new TranslateMover(origin, x, y, z, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
+			return new TranslateMover(origin, x, y, z, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			return new TranslateMover(origin, x, y, z, targetPos, casterPos);
 		}
 	}
 

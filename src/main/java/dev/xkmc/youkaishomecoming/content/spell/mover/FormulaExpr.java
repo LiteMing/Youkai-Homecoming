@@ -6,16 +6,22 @@ package dev.xkmc.youkaishomecoming.content.spell.mover;
  * Variable: tick (the current mover tick).
  * Constants: pi, e.
  *
+ * Extended variables (available when using {@link RichEvaluable}):
+ *   targetX, targetY, targetZ — target entity position
+ *   casterX, casterY, casterZ — caster/owner entity position
+ *   originX, originY, originZ — bullet spawn position
+ *
  * Grammar:
  *   expr   = term (('+' | '-') term)*
  *   term   = unary (('*' | '/') unary)*
  *   unary  = '-' unary | atom
- *   atom   = number | 'tick' | 'pi' | 'e' | func '(' expr (',' expr)* ')' | '(' expr ')'
+ *   atom   = number | 'tick' | 'pi' | 'e' | var | func '(' expr (',' expr)* ')' | '(' expr ')'
  */
 public final class FormulaExpr {
 
 	private final String source;
 	private int pos;
+	private boolean richMode = false;
 
 	private FormulaExpr(String source) {
 		this.source = source;
@@ -43,6 +49,36 @@ public final class FormulaExpr {
 	@FunctionalInterface
 	public interface Evaluable {
 		double eval(double tick);
+	}
+
+	/**
+	 * Extended evaluable that receives a full context with target/caster/origin positions.
+	 * Used by TranslateMover and any future mover that needs runtime entity positions.
+	 */
+	@FunctionalInterface
+	public interface RichEvaluable {
+		double eval(double tick, double targetX, double targetY, double targetZ,
+					double casterX, double casterY, double casterZ,
+					double originX, double originY, double originZ);
+	}
+
+	/**
+	 * Parse a formula string into a rich evaluable that supports extended variables.
+	 * Supports all standard variables plus: targetX/Y/Z, casterX/Y/Z, originX/Y/Z.
+	 */
+	public static RichEvaluable parseRich(String formula) {
+		if (formula == null || formula.isBlank()) return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> 0;
+		try {
+			FormulaExpr parser = new FormulaExpr(formula.trim());
+			parser.richMode = true;
+			RichEvaluable result = parser.parseExprRich();
+			if (parser.pos < parser.source.length()) {
+				return null;
+			}
+			return result;
+		} catch (Exception e) {
+			return null;
+		}
 	}
 
 	// --- Parser ---
@@ -192,5 +228,152 @@ public final class FormulaExpr {
 		while (pos < source.length() && Character.isWhitespace(source.charAt(pos))) {
 			pos++;
 		}
+	}
+
+	// --- Rich mode parser (supports extended variables) ---
+
+	private RichEvaluable parseExprRich() {
+		RichEvaluable left = parseTermRich();
+		while (pos < source.length()) {
+			skipWhitespace();
+			if (pos >= source.length()) break;
+			char c = source.charAt(pos);
+			if (c == '+') {
+				pos++;
+				RichEvaluable right = parseTermRich();
+				RichEvaluable l = left, r = right;
+				left = (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> l.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz) + r.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz);
+			} else if (c == '-') {
+				pos++;
+				RichEvaluable right = parseTermRich();
+				RichEvaluable l = left, r = right;
+				left = (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> l.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz) - r.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz);
+			} else {
+				break;
+			}
+		}
+		return left;
+	}
+
+	private RichEvaluable parseTermRich() {
+		RichEvaluable left = parseUnaryRich();
+		while (pos < source.length()) {
+			skipWhitespace();
+			if (pos >= source.length()) break;
+			char c = source.charAt(pos);
+			if (c == '*') {
+				pos++;
+				RichEvaluable right = parseUnaryRich();
+				RichEvaluable l = left, r = right;
+				left = (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> l.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz) * r.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz);
+			} else if (c == '/') {
+				pos++;
+				RichEvaluable right = parseUnaryRich();
+				RichEvaluable l = left, r = right;
+				left = (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> { double d = r.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz); return d == 0 ? 0 : l.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz) / d; };
+			} else {
+				break;
+			}
+		}
+		return left;
+	}
+
+	private RichEvaluable parseUnaryRich() {
+		skipWhitespace();
+		if (pos < source.length() && source.charAt(pos) == '-') {
+			pos++;
+			RichEvaluable inner = parseUnaryRich();
+			return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> -inner.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz);
+		}
+		return parseAtomRich();
+	}
+
+	private RichEvaluable parseAtomRich() {
+		skipWhitespace();
+		if (pos >= source.length()) return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> 0;
+
+		char c = source.charAt(pos);
+
+		if (c == '(') {
+			pos++;
+			RichEvaluable inner = parseExprRich();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ')') pos++;
+			return inner;
+		}
+
+		if (Character.isDigit(c) || c == '.') {
+			double value = parseNumberValue();
+			return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> value;
+		}
+
+		String id = parseIdentifier();
+		if (id.isEmpty()) return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> 0;
+
+		return switch (id) {
+			case "tick", "t" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> t;
+			case "pi" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> Math.PI;
+			case "e" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> Math.E;
+			// Target position
+			case "targetX", "tx" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> tx;
+			case "targetY", "ty" -> (t, tx2, ty, tz, cx, cy, cz, ox, oy, oz) -> ty;
+			case "targetZ", "tz" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> tz;
+			// Caster position
+			case "casterX", "cx" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> cx;
+			case "casterY", "cy" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> cy;
+			case "casterZ", "cz" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> cz;
+			// Origin (spawn) position
+			case "originX", "ox" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> ox;
+			case "originY", "oy" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> oy;
+			case "originZ", "oz" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> oz;
+			// Functions
+			case "sin" -> parseFuncRich1(Math::sin);
+			case "cos" -> parseFuncRich1(Math::cos);
+			case "abs" -> parseFuncRich1(Math::abs);
+			case "sqrt" -> parseFuncRich1(Math::sqrt);
+			case "floor" -> parseFuncRich1(Math::floor);
+			case "ceil" -> parseFuncRich1(Math::ceil);
+			case "min" -> parseFuncRich2(Math::min);
+			case "max" -> parseFuncRich2(Math::max);
+			case "pow" -> parseFuncRich2(Math::pow);
+			default -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> 0;
+		};
+	}
+
+	private RichEvaluable parseFuncRich1(java.util.function.DoubleUnaryOperator op) {
+		skipWhitespace();
+		if (pos < source.length() && source.charAt(pos) == '(') {
+			pos++;
+			RichEvaluable arg = parseExprRich();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ')') pos++;
+			return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> op.applyAsDouble(arg.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz));
+		}
+		return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> 0;
+	}
+
+	private RichEvaluable parseFuncRich2(java.util.function.DoubleBinaryOperator op) {
+		skipWhitespace();
+		if (pos < source.length() && source.charAt(pos) == '(') {
+			pos++;
+			RichEvaluable arg1 = parseExprRich();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ',') pos++;
+			RichEvaluable arg2 = parseExprRich();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ')') pos++;
+			return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> op.applyAsDouble(
+					arg1.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz),
+					arg2.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz));
+		}
+		return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> 0;
+	}
+
+	private double parseNumberValue() {
+		int start = pos;
+		while (pos < source.length() && (Character.isDigit(source.charAt(pos)) || source.charAt(pos) == '.')) {
+			pos++;
+		}
+		return Double.parseDouble(source.substring(start, pos));
 	}
 }

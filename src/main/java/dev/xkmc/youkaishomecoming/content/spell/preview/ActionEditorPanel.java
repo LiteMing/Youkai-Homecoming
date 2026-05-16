@@ -1143,7 +1143,16 @@ public class ActionEditorPanel {
 
 	// --- Shared Origin/Mover row builders ---
 
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "attached", "attached_free_rot", "fixed_dir"};
+	// Top-level mover types (includes "none" for removal and special types like attached/space)
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "translate", "space_attached", "space_rotation", "attached", "attached_free_rot", "fixed_dir"};
+
+	/**
+	 * Sub-mover types available inside composite segments, layered layers, and fixed_dir inner.
+	 * This is the single source of truth — when adding a new mover type, add it here too.
+	 * Excludes "none" (sub-movers must exist) and special types (attached/space) that don't
+	 * make sense as sub-movers.
+	 */
+	private static final String[] SUB_MOVER_TYPES = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "translate"};
 
 	/**
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
@@ -1290,7 +1299,7 @@ public class ActionEditorPanel {
 					});
 				// Show sub-mover type as cycle selector
 				String subType = getMoverType(Optional.of(seg.mover()));
-				addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline", "formula"}, subType, newSubType -> {
+				addStringCycleRow("  Type", SUB_MOVER_TYPES, subType, newSubType -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
 						var segs = new java.util.ArrayList<>(c.segments());
@@ -1342,7 +1351,7 @@ public class ActionEditorPanel {
 					// Show sub-mover type as cycle selector
 					String subType = getMoverType(Optional.of(layerCfg));
 					// Allow nesting: composite and layered can contain each other
-					String[] layerTypes = {"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline", "formula"};
+					String[] layerTypes = SUB_MOVER_TYPES;
 					addStringCycleRow("  L" + (li + 1) + " Type", layerTypes, subType, newSubType -> {
 						var cur = getCurrentMover();
 						if (cur.isPresent() && cur.get() instanceof MoverConfigs.LayeredMoverConfig lm) {
@@ -1589,23 +1598,43 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (cfg instanceof MoverConfigs.OrbitalMoverConfig orb) {
-			// Orbital mover: angular_speed, radius formula, drift_speed
+			// Orbital mover: angular_speed, radius formula, drift formula
 			addDoubleRow("Ang Spd (°/t)", orb.angularSpeed(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.OrbitalMoverConfig o) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.OrbitalMoverConfig(v, o.radius(), o.driftSpeed())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.OrbitalMoverConfig(v, o.radius(), o.drift())));
 				}
 			});
 			addStringRow("Radius", orb.radius(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.OrbitalMoverConfig o) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.OrbitalMoverConfig(o.angularSpeed(), v, o.driftSpeed())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.OrbitalMoverConfig(o.angularSpeed(), v, o.drift())));
 				}
 			});
-			addDoubleRow("Drift Spd", orb.driftSpeed(), v -> {
+			addStringRow("Drift", orb.drift(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.OrbitalMoverConfig o) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.OrbitalMoverConfig(o.angularSpeed(), o.radius(), v)));
+				}
+			});
+		} else if (cfg instanceof MoverConfigs.TranslateMoverConfig tr) {
+			// Translate mover: world-coordinate formula expressions for X/Y/Z
+			addStringRow("X (east)", tr.x(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z())));
+				}
+			});
+			addStringRow("Y (up)", tr.y(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z())));
+				}
+			});
+			addStringRow("Z (south)", tr.z(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v)));
 				}
 			});
 		} else if (cfg instanceof MoverConfigs.AttachedMoverConfig) {
@@ -1616,7 +1645,7 @@ public class ActionEditorPanel {
 		} else if (cfg instanceof MoverConfigs.FixedDirMoverConfig fdm) {
 			// fixed_dir wraps an inner mover; expose inner type selector. Inner params are not edited inline here.
 			String innerType = getMoverType(Optional.of(fdm.inner()));
-			String[] innerTypes = {"acceleration", "deceleration", "rotate", "polar", "zero", "bezier", "spline", "formula"};
+			String[] innerTypes = SUB_MOVER_TYPES;
 			addStringCycleRow("Inner", innerTypes, innerType, newType -> {
 				var newInner = createDefaultMover(newType);
 				if (newInner.isPresent()) {
@@ -1642,6 +1671,9 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.SplineMoverConfig) return "spline";
 		if (cfg instanceof MoverConfigs.FormulaMoverConfig) return "formula";
 		if (cfg instanceof MoverConfigs.OrbitalMoverConfig) return "orbital";
+		if (cfg instanceof MoverConfigs.TranslateMoverConfig) return "translate";
+		if (cfg instanceof MoverConfigs.SpaceAttachedMoverConfig) return "space_attached";
+		if (cfg instanceof MoverConfigs.SpaceRotationMoverConfig) return "space_rotation";
 		if (cfg instanceof MoverConfigs.AttachedMoverConfig) return "attached";
 		if (cfg instanceof MoverConfigs.AttachedFreeRotMoverConfig) return "attached_free_rot";
 		if (cfg instanceof MoverConfigs.FixedDirMoverConfig) return "fixed_dir";
@@ -1675,7 +1707,10 @@ public class ActionEditorPanel {
 			), 60, true));
 			case "formula" -> Optional.of(new MoverConfigs.FormulaMoverConfig(
 					"0", "3 * sin(tick * 0.15)", "3 * cos(tick * 0.15)", 0.3));
-			case "orbital" -> Optional.of(new MoverConfigs.OrbitalMoverConfig(5.0, "3 * sin(tick * 0.05)", 0.0));
+			case "orbital" -> Optional.of(new MoverConfigs.OrbitalMoverConfig(5.0, "3 * sin(tick * 0.05)", "0"));
+			case "translate" -> Optional.of(new MoverConfigs.TranslateMoverConfig("tick * 0.1", "0", "0"));
+			case "space_attached" -> Optional.of(new MoverConfigs.SpaceAttachedMoverConfig(0));
+			case "space_rotation" -> Optional.of(new MoverConfigs.SpaceRotationMoverConfig(new net.minecraft.world.phys.Vec3(0, 1, 0), 5.0, 0));
 			case "attached" -> Optional.of(new MoverConfigs.AttachedMoverConfig());
 			case "attached_free_rot" -> Optional.of(new MoverConfigs.AttachedFreeRotMoverConfig());
 			case "fixed_dir" -> Optional.of(new MoverConfigs.FixedDirMoverConfig(new MoverConfigs.ZeroMoverConfig()));
@@ -1769,6 +1804,44 @@ public class ActionEditorPanel {
 		} else if (subCfg instanceof MoverConfigs.CompositeMoverConfig || subCfg instanceof MoverConfigs.LayeredMoverConfig) {
 			// Recursive: render nested mover using the full mover editor at increased depth
 			buildNestedMoverRows(Optional.of(subCfg), segIdx, true, onTypeChanged, onParamChanged);
+		} else if (subCfg instanceof MoverConfigs.OrbitalMoverConfig orb) {
+			addDoubleRow("  Ang Spd", orb.angularSpeed(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.OrbitalMoverConfig o) {
+					updateCompositeSegment(segIdx, new MoverConfigs.OrbitalMoverConfig(v, o.radius(), o.drift()), onParamChanged);
+				}
+			});
+			addStringRow("  Radius", orb.radius(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.OrbitalMoverConfig o) {
+					updateCompositeSegment(segIdx, new MoverConfigs.OrbitalMoverConfig(o.angularSpeed(), v, o.drift()), onParamChanged);
+				}
+			});
+			addStringRow("  Drift", orb.drift(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.OrbitalMoverConfig o) {
+					updateCompositeSegment(segIdx, new MoverConfigs.OrbitalMoverConfig(o.angularSpeed(), o.radius(), v), onParamChanged);
+				}
+			});
+		} else if (subCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
+			addStringRow("  X (east)", tr.x(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z()), onParamChanged);
+				}
+			});
+			addStringRow("  Y (up)", tr.y(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z()), onParamChanged);
+				}
+			});
+			addStringRow("  Z (south)", tr.z(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v), onParamChanged);
+				}
+			});
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -1888,6 +1961,44 @@ public class ActionEditorPanel {
 		} else if (layerCfg instanceof MoverConfigs.CompositeMoverConfig || layerCfg instanceof MoverConfigs.LayeredMoverConfig) {
 			// Recursive: render nested mover using the full mover editor at increased depth
 			buildNestedMoverRows(Optional.of(layerCfg), layerIdx, false, onTypeChanged, onParamChanged);
+		} else if (layerCfg instanceof MoverConfigs.OrbitalMoverConfig orb) {
+			addDoubleRow("  Ang Spd", orb.angularSpeed(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.OrbitalMoverConfig o) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.OrbitalMoverConfig(v, o.radius(), o.drift()), onParamChanged);
+				}
+			});
+			addStringRow("  Radius", orb.radius(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.OrbitalMoverConfig o) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.OrbitalMoverConfig(o.angularSpeed(), v, o.drift()), onParamChanged);
+				}
+			});
+			addStringRow("  Drift", orb.drift(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.OrbitalMoverConfig o) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.OrbitalMoverConfig(o.angularSpeed(), o.radius(), v), onParamChanged);
+				}
+			});
+		} else if (layerCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
+			addStringRow("  X (east)", tr.x(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z()), onParamChanged);
+				}
+			});
+			addStringRow("  Y (up)", tr.y(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z()), onParamChanged);
+				}
+			});
+			addStringRow("  Z (south)", tr.z(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v), onParamChanged);
+				}
+			});
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -2073,7 +2184,7 @@ public class ActionEditorPanel {
 						}
 					});
 					String subType = getMoverType(Optional.of(seg.mover()));
-					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline", "formula"}, subType, newSubType -> {
+					addStringCycleRow("  Type", SUB_MOVER_TYPES, subType, newSubType -> {
 						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
 						if (parentMover instanceof MoverConfigs.CompositeMoverConfig c) {
 							var segs = new java.util.ArrayList<>(c.segments());
@@ -2104,7 +2215,7 @@ public class ActionEditorPanel {
 				if (!isSectionCollapsed(layerLabel)) {
 					currentDepth++;
 					String subType = getMoverType(Optional.of(layerCfg));
-					addStringCycleRow("  Type", new String[]{"acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "spline", "formula"}, subType, newSubType -> {
+					addStringCycleRow("  Type", SUB_MOVER_TYPES, subType, newSubType -> {
 						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
 						if (parentMover instanceof MoverConfigs.LayeredMoverConfig lm) {
 							var layers = new java.util.ArrayList<>(lm.layers());

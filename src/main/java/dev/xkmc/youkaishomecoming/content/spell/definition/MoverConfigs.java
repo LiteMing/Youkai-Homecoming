@@ -47,6 +47,14 @@ public class MoverConfigs {
 		throw new IllegalStateException("Unknown MoverConfig type: " + config.getClass());
 	}
 
+	/**
+	 * Returns the registered type ID string for the given MoverConfig instance,
+	 * or null if the type is not registered.
+	 */
+	public static String getTypeId(MoverConfig config) {
+		return CLASS_TO_TYPE.get(config.getClass());
+	}
+
 	@SuppressWarnings("unchecked")
 	static final Codec<MoverConfig> DISPATCH_CODEC = Codec.STRING.fieldOf("type")
 			.codec()
@@ -587,20 +595,30 @@ public class MoverConfigs {
 	 * Supports extended variables: targetX/Y/Z, casterX/Y/Z, originX/Y/Z, tick.
 	 * Target and caster positions are snapshotted at bullet creation time.
 	 * <p>
-	 * Ideal for use inside a {@code layered} mover to add world-space drift or aiming to any other mover.
+	 * For simple aiming at constant speed, use the {@code speed} + {@code aim} shorthand
+	 * instead of writing long normalization expressions:
+	 * <pre>
+	 *   {"type": "translate", "speed": 0.3, "aim": "target"}
+	 * </pre>
+	 * This pre-computes the normalized direction at creation time, avoiding long formula strings
+	 * that would bloat network packets.
 	 * <p>
-	 * JSON: {"type": "translate", "x": "(targetX - originX) * tick * 0.02", "y": "(targetY - originY) * tick * 0.02", "z": "(targetZ - originZ) * tick * 0.02"}
+	 * {@code aim} modes: "target" (toward target), "forward" (caster facing), "none" (use x/y/z formulas)
+	 * <p>
+	 * JSON: {"type": "translate", "x": "tick * 0.1", "y": "0", "z": "0"}
+	 * JSON: {"type": "translate", "speed": 0.3, "aim": "target"}
 	 */
-	public record TranslateMoverConfig(String x, String y, String z) implements MoverConfig {
+	public record TranslateMoverConfig(String x, String y, String z, double speed, String aim) implements MoverConfig {
 		public static final Codec<TranslateMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.optionalFieldOf("x", "0").forGetter(TranslateMoverConfig::x),
 				Codec.STRING.optionalFieldOf("y", "0").forGetter(TranslateMoverConfig::y),
-				Codec.STRING.optionalFieldOf("z", "0").forGetter(TranslateMoverConfig::z)
+				Codec.STRING.optionalFieldOf("z", "0").forGetter(TranslateMoverConfig::z),
+				Codec.DOUBLE.optionalFieldOf("speed", 0.0).forGetter(TranslateMoverConfig::speed),
+				Codec.STRING.optionalFieldOf("aim", "none").forGetter(TranslateMoverConfig::aim)
 		).apply(i, TranslateMoverConfig::new));
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			// No target/caster info available in basic create — use zero
 			return new TranslateMover(origin, x, y, z, Vec3.ZERO, Vec3.ZERO);
 		}
 
@@ -611,6 +629,31 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			// If aim mode is set with speed, pre-compute direction and use simple "tick * speed" formulas
+			if (speed > 0 && !"none".equals(aim)) {
+				Vec3 dir;
+				if ("target".equals(aim)) {
+					dir = targetPos.subtract(origin);
+				} else if ("forward".equals(aim)) {
+					dir = baseDirection;
+				} else {
+					dir = targetPos.subtract(origin);
+				}
+				double len = dir.length();
+				if (len > 1e-4) {
+					dir = dir.scale(1.0 / len);
+				} else {
+					dir = new Vec3(0, 0, 1);
+				}
+				// Pre-compute: store direction * speed as a simple linear formula
+				// This avoids long sqrt expressions in the serialized formula strings
+				String fx = String.valueOf(dir.x * speed);
+				String fy = String.valueOf(dir.y * speed);
+				String fz = String.valueOf(dir.z * speed);
+				return new TranslateMover(origin,
+						"tick * " + fx, "tick * " + fy, "tick * " + fz,
+						targetPos, casterPos);
+			}
 			return new TranslateMover(origin, x, y, z, targetPos, casterPos);
 		}
 	}

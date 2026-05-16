@@ -20,9 +20,12 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -34,6 +37,7 @@ import java.util.function.Function;
 public class ActionEditorPanel {
 
 	private static final int ROW_HEIGHT = 20;
+	private static final int SECTION_HEADER_HEIGHT = 14;
 	private static final int LABEL_WIDTH = 70;
 	private static final int PADDING = 4;
 	private static final int DROPDOWN_ITEM_H = 16;
@@ -79,6 +83,7 @@ public class ActionEditorPanel {
 	private int actionIndex = -1;
 	private final List<EditorRow> rows = new ArrayList<>();
 	private int scrollOffset = 0;
+	private final Map<Integer, Integer> scrollStateMap = new HashMap<>();
 	private boolean widgetsRegistered = false;
 	private boolean scrollbarDragging = false;
 
@@ -119,13 +124,22 @@ public class ActionEditorPanel {
 
 	public void setAction(SpellAction action, int index) {
 		if (action == currentAction && index == actionIndex) return;
+		// Save current scroll state before switching
+		if (actionIndex >= 0) {
+			scrollStateMap.put(actionIndex, scrollOffset);
+		}
 		clearWidgets();
 		this.currentAction = action;
 		this.actionIndex = index;
-		this.scrollOffset = 0;
+		this.scrollOffset = scrollStateMap.getOrDefault(index, 0);
 		this.typeSelectorMode = false;
 		buildActionRows(action);
 		layoutWidgets();
+		// Clamp restored offset to valid range after layout
+		int maxScroll = getContentMaxScroll();
+		if (scrollOffset > maxScroll) {
+			scrollOffset = Math.max(0, maxScroll);
+		}
 	}
 
 	public void clearAction() {
@@ -133,6 +147,15 @@ public class ActionEditorPanel {
 		currentAction = null;
 		actionIndex = -1;
 		typeSelectorMode = false;
+	}
+
+	/**
+	 * Clears all stored scroll state entries.
+	 * Called when actions are deleted or reordered (indices may shift),
+	 * making previously stored scroll positions invalid.
+	 */
+	public void clearScrollState() {
+		scrollStateMap.clear();
 	}
 
 	public void showTypeSelector(Consumer<SpellAction> onCreated) {
@@ -341,6 +364,9 @@ public class ActionEditorPanel {
 	// --- FireDanmaku rows ---
 
 	private void buildFireDanmakuRows(FireDanmakuAction a) {
+		// Compute mover override state
+		var overrides = MoverOverrideResolver.resolve(a.mover());
+
 		// === Base group (always visible) ===
 		addEnumRow("Bullet", YHDanmaku.Bullet.values(), a.bulletType(), v ->
 				notifyDanmaku(old -> old.withBulletType(v)));
@@ -358,7 +384,7 @@ public class ActionEditorPanel {
 				notifyDanmaku(old -> old.withCount(v), false));
 
 		addNumberRow("Speed", a.speed(), v ->
-				notifyDanmaku(old -> old.withSpeed(v), false));
+				notifyDanmaku(old -> old.withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides));
 
 		addNumberRow("Lifetime", a.lifetime(), v ->
 				notifyDanmaku(old -> old.withLifetime(v), false));
@@ -452,7 +478,7 @@ public class ActionEditorPanel {
 						a.origin().offsetZ(), a.origin().rotation());
 				notifyDanmaku(old -> old.withOrigin(newOrigin));
 			});
-			buildOriginOffsetRows(a.origin(), newOrigin -> notifyDanmaku(old -> old.withOrigin(newOrigin), false));
+			buildOriginOffsetRows(a.origin(), newOrigin -> notifyDanmaku(old -> old.withOrigin(newOrigin), false), overrides);
 			currentDepth--;
 		}
 
@@ -1174,18 +1200,22 @@ public class ActionEditorPanel {
 	}
 
 	private void buildOriginOffsetRows(OriginConfig cfg, Consumer<OriginConfig> onChanged) {
+		buildOriginOffsetRows(cfg, onChanged, java.util.Collections.emptySet());
+	}
+
+	private void buildOriginOffsetRows(OriginConfig cfg, Consumer<OriginConfig> onChanged, Set<MoverOverrideResolver.OverriddenParam> overrides) {
 		addNumberRow("Off X", cfg.offsetX(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), v, cur.offsetY(), cur.offsetZ(), cur.rotation()));
-		});
+		}, MoverOverrideResolver.isLabelOverridden("Off X", overrides));
 		addNumberRow("Off Y", cfg.offsetY(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), cur.offsetX(), v, cur.offsetZ(), cur.rotation()));
-		});
+		}, MoverOverrideResolver.isLabelOverridden("Off Y", overrides));
 		addNumberRow("Off Z", cfg.offsetZ(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), cur.offsetX(), cur.offsetY(), v, cur.rotation()));
-		});
+		}, MoverOverrideResolver.isLabelOverridden("Off Z", overrides));
 		addNumberRow("Rot", cfg.rotation(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), cur.offsetX(), cur.offsetY(), cur.offsetZ(), v));
@@ -1618,23 +1648,36 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (cfg instanceof MoverConfigs.TranslateMoverConfig tr) {
-			// Translate mover: world-coordinate formula expressions for X/Y/Z
+			// Translate mover: aim mode + speed, or raw x/y/z formulas
+			String[] aimModes = {"none", "target", "forward"};
+			addStringCycleRow("Aim", aimModes, tr.aim(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
+					onTypeChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v)));
+				}
+			});
+			addDoubleRow("Speed", tr.speed(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim())));
+				}
+			});
 			addStringRow("X (east)", tr.x(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim())));
 				}
 			});
 			addStringRow("Y (up)", tr.y(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim())));
 				}
 			});
 			addStringRow("Z (south)", tr.z(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v)));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim())));
 				}
 			});
 		} else if (cfg instanceof MoverConfigs.AttachedMoverConfig) {
@@ -1708,7 +1751,7 @@ public class ActionEditorPanel {
 			case "formula" -> Optional.of(new MoverConfigs.FormulaMoverConfig(
 					"0", "3 * sin(tick * 0.15)", "3 * cos(tick * 0.15)", 0.3));
 			case "orbital" -> Optional.of(new MoverConfigs.OrbitalMoverConfig(5.0, "3 * sin(tick * 0.05)", "0"));
-			case "translate" -> Optional.of(new MoverConfigs.TranslateMoverConfig("tick * 0.1", "0", "0"));
+			case "translate" -> Optional.of(new MoverConfigs.TranslateMoverConfig("0", "0", "0", 0.3, "target"));
 			case "space_attached" -> Optional.of(new MoverConfigs.SpaceAttachedMoverConfig(0));
 			case "space_rotation" -> Optional.of(new MoverConfigs.SpaceRotationMoverConfig(new net.minecraft.world.phys.Vec3(0, 1, 0), 5.0, 0));
 			case "attached" -> Optional.of(new MoverConfigs.AttachedMoverConfig());
@@ -1824,22 +1867,35 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (subCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
+			String[] aimModes = {"none", "target", "forward"};
+			addStringCycleRow("  Aim", aimModes, tr.aim(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);
+				}
+			});
+			addDoubleRow("  Speed", tr.speed(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim()), onParamChanged);
+				}
+			});
 			addStringRow("  X (east)", tr.x(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim()), onParamChanged);
 				}
 			});
 			addStringRow("  Y (up)", tr.y(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim()), onParamChanged);
 				}
 			});
 			addStringRow("  Z (south)", tr.z(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim()), onParamChanged);
 				}
 			});
 		}
@@ -1981,22 +2037,35 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (layerCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
+			String[] aimModes = {"none", "target", "forward"};
+			addStringCycleRow("  Aim", aimModes, tr.aim(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);
+				}
+			});
+			addDoubleRow("  Speed", tr.speed(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim()), onParamChanged);
+				}
+			});
 			addStringRow("  X (east)", tr.x(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim()), onParamChanged);
 				}
 			});
 			addStringRow("  Y (up)", tr.y(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim()), onParamChanged);
 				}
 			});
 			addStringRow("  Z (south)", tr.z(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim()), onParamChanged);
 				}
 			});
 		}
@@ -2545,6 +2614,10 @@ public class ActionEditorPanel {
 	private int exprCompletionInsertStart = -1;
 
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange) {
+		addNumberRow(label, provider, onChange, false);
+	}
+
+	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, boolean overridden) {
 		double value = provider instanceof NumberProviders.Constant c ? c.value() : 0;
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
@@ -2591,7 +2664,7 @@ public class ActionEditorPanel {
 			displayLabel = label + "*";
 		}
 		exprEditBoxes.add(editBox);
-		rows.add(new EditorRow(displayLabel, editBox, false));
+		rows.add(new EditorRow(displayLabel, editBox, false, -1, currentDepth, false, overridden));
 	}
 
 	private void addBoolRow(String label, boolean value, Consumer<Boolean> onChange) {
@@ -2702,21 +2775,9 @@ public class ActionEditorPanel {
 		boolean collapsed = collapsedSections.contains(label);
 		String prefix = collapsed ? "\u25B6 " : "\u25BC ";
 		int depthColor = getSectionHeaderColor(currentDepth);
-		var btn = Button.builder(Component.literal(prefix + label).withStyle(s -> s.withColor(net.minecraft.network.chat.TextColor.fromRgb(depthColor & 0xFFFFFF))), b -> {
-			if (collapsedSections.contains(label)) {
-				collapsedSections.remove(label);
-			} else {
-				collapsedSections.add(label);
-			}
-			// Rebuild to show/hide rows
-			int idx = actionIndex;
-			var action = currentAction;
-			clearWidgets();
-			if (action != null) buildActionRows(action);
-			actionIndex = idx;
-			layoutWidgets();
-		}).bounds(0, 0, w - PADDING * 2, ROW_HEIGHT - 2).build();
-		rows.add(new EditorRow(label, btn, true, -1, currentDepth, true));
+		// Use an invisible placeholder widget instead of Button for compact 14px section headers
+		var placeholder = createInvisiblePlaceholder(w - PADDING * 2, SECTION_HEADER_HEIGHT - 2);
+		rows.add(new EditorRow(prefix + label, placeholder, true, -1, currentDepth, true, false));
 	}
 
 	/** Color for section header text based on depth. */
@@ -2784,12 +2845,13 @@ public class ActionEditorPanel {
 		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
 		int totalH = visibleItems * DROPDOWN_ITEM_H;
 
-		int triggerRowY = y + PADDING + (dropdown.triggerRowIndex() + 1) * ROW_HEIGHT - scrollOffset;
+		int triggerRowY = y + getRowY(dropdown.triggerRowIndex()) - scrollOffset;
 		int dropdownX = x + LABEL_WIDTH + PADDING * 2;
 		int dropdownW = w - LABEL_WIDTH - PADDING * 3;
 		if (dropdownW < 20) dropdownW = 20;
 
-		int dropdownY = triggerRowY + ROW_HEIGHT;
+		int triggerRowH = getRowHeight(dropdown.triggerRowIndex());
+		int dropdownY = triggerRowY + triggerRowH;
 		if (dropdownY + totalH > y + h) {
 			dropdownY = triggerRowY - totalH;
 		}
@@ -2913,7 +2975,7 @@ public class ActionEditorPanel {
 			scrollOffset = maxScroll;
 		}
 		for (int i = 0; i < rows.size(); i++) {
-			int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
+			int rowY = y + getRowY(i) - scrollOffset;
 			var row = rows.get(i);
 			if (row.fullWidth()) {
 				row.widget().setX(x + PADDING);
@@ -2951,8 +3013,9 @@ public class ActionEditorPanel {
 		if (typeSelectorMode) {
 			guiGraphics.drawString(font, "Add Action", x + PADDING, y + PADDING + 2, 0xFFFFCC44, false);
 			for (int i = 0; i < rows.size(); i++) {
-				int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
-				rows.get(i).widget().visible = rowY >= y && rowY + ROW_HEIGHT <= y + h;
+				int rowY = y + getRowY(i) - scrollOffset;
+				int rowH = getRowHeight(i);
+				rows.get(i).widget().visible = rowY >= y && rowY + rowH <= y + h;
 			}
 			renderScrollbar(guiGraphics);
 			if (renderDropdown && dropdown != null) {
@@ -2995,18 +3058,52 @@ public class ActionEditorPanel {
 		}
 
 		// Row labels
+		String overrideTooltipText = null;
 		for (int i = 0; i < rows.size(); i++) {
-			int rowY = y + PADDING + (i + 1) * ROW_HEIGHT - scrollOffset;
+			int rowY = y + getRowY(i) - scrollOffset;
+			int rowH = getRowHeight(i);
 			var row = rows.get(i);
-			boolean visible = rowY >= y && rowY + ROW_HEIGHT <= y + h;
-			row.widget().visible = visible;
-			if (visible && !row.fullWidth() && !row.label().isEmpty()) {
-				guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 4, 0xFFBBBBBB, false);
+			boolean visible = rowY >= y && rowY + rowH <= y + h;
+			// Section header placeholders are always invisible; rendering is handled directly
+			row.widget().visible = visible && !row.sectionHeader();
+			if (visible) {
+				if (row.sectionHeader()) {
+					// Draw 1px separator line above section header at 50% opacity of section text color
+					int sectionColor = getSectionHeaderColor(row.depth());
+					int separatorColor = (sectionColor & 0x00FFFFFF) | 0x80000000; // 50% opacity
+					guiGraphics.fill(x + PADDING, rowY, x + w - PADDING, rowY + 1, separatorColor);
+					// Draw section header text (includes ▶/▼ prefix) colored by depth
+					guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 3, sectionColor, false);
+				} else if (!row.fullWidth() && !row.label().isEmpty()) {
+					if (row.overridden()) {
+						// Overridden row: reduced opacity (50% alpha) and strikethrough
+						int labelColor = 0x80BBBBBB; // ~50% opacity
+						int labelX = x + PADDING;
+						int labelY = rowY + 4;
+						guiGraphics.drawString(font, row.label(), labelX, labelY, labelColor, false);
+						// Draw 1px strikethrough line through the middle of the text
+						int textWidth = font.width(row.label());
+						int strikeY = labelY + font.lineHeight / 2;
+						guiGraphics.fill(labelX, strikeY, labelX + textWidth, strikeY + 1, labelColor);
+						// Check if mouse is hovering over the label area for tooltip
+						if (mouseX >= labelX && mouseX < labelX + textWidth
+								&& mouseY >= rowY && mouseY < rowY + rowH) {
+							overrideTooltipText = MoverOverrideResolver.getTooltip(getCurrentMover());
+						}
+					} else {
+						guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 4, 0xFFBBBBBB, false);
+					}
+				}
 			}
 		}
 
 		// Scrollbar for content area
 		renderScrollbar(guiGraphics);
+
+		// Render override tooltip on top of other content (but below dropdown)
+		if (overrideTooltipText != null && !overrideTooltipText.isEmpty()) {
+			guiGraphics.renderTooltip(font, Component.literal(overrideTooltipText), mouseX, mouseY);
+		}
 
 		// Dropdown overlay (rendered last, on top of everything)
 		if (renderDropdown && dropdown != null) {
@@ -3170,6 +3267,31 @@ public class ActionEditorPanel {
 			}
 		}
 
+		// Section header click detection
+		if (isMouseOver(mouseX, mouseY)) {
+			for (int i = 0; i < rows.size(); i++) {
+				EditorRow row = rows.get(i);
+				if (!row.sectionHeader()) continue;
+				int rowY = y + getRowY(i) - scrollOffset;
+				int rowH = getRowHeight(i);
+				if (mouseY >= rowY && mouseY < rowY + rowH
+						&& mouseX >= x + PADDING && mouseX < x + w - PADDING) {
+					// Extract section label without the collapse indicator prefix (▶ or ▼ + space)
+					String fullLabel = row.label();
+					String sectionLabel = fullLabel.length() > 2 ? fullLabel.substring(2) : fullLabel;
+					// Toggle collapsed state
+					if (collapsedSections.contains(sectionLabel)) {
+						collapsedSections.remove(sectionLabel);
+					} else {
+						collapsedSections.add(sectionLabel);
+					}
+					// Rebuild panel to reflect new collapsed/expanded state
+					refreshCurrentView();
+					return true;
+				}
+			}
+		}
+
 		Font font = Minecraft.getInstance().font;
 
 		// Handle [Disable]/[Enable] button
@@ -3194,7 +3316,25 @@ public class ActionEditorPanel {
 	}
 
 	private int getContentMaxScroll() {
-		return Math.max(0, (rows.size() + 1) * ROW_HEIGHT + PADDING - h);
+		int totalHeight = PADDING + ROW_HEIGHT; // title row
+		for (int i = 0; i < rows.size(); i++) {
+			totalHeight += getRowHeight(i);
+		}
+		return Math.max(0, totalHeight - h);
+	}
+
+	/** Row height depends on whether it's a section header (14px) or normal row (20px). */
+	private int getRowHeight(int rowIndex) {
+		return rows.get(rowIndex).sectionHeader() ? SECTION_HEADER_HEIGHT : ROW_HEIGHT;
+	}
+
+	/** Cumulative Y position for row i, accounting for variable row heights. */
+	private int getRowY(int rowIndex) {
+		int cumY = PADDING + ROW_HEIGHT; // title row
+		for (int i = 0; i < rowIndex; i++) {
+			cumY += getRowHeight(i);
+		}
+		return cumY;
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
@@ -3436,15 +3576,27 @@ public class ActionEditorPanel {
 		return value.name().toLowerCase().replace('_', ' ');
 	}
 
-	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader) {
+	/**
+	 * Creates a minimal invisible widget used as a placeholder for section header rows.
+	 * Does not render anything but occupies space for layout and hit-testing purposes.
+	 * Section header text is rendered directly by the panel's render method.
+	 */
+	private static AbstractWidget createInvisiblePlaceholder(int width, int height) {
+		var btn = Button.builder(Component.empty(), b -> {})
+				.bounds(0, 0, width, height).build();
+		btn.active = false;
+		return btn;
+	}
+
+	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader, boolean overridden) {
 		EditorRow(String label, AbstractWidget widget) {
-			this(label, widget, false, -1, 0, false);
+			this(label, widget, false, -1, 0, false, false);
 		}
 		EditorRow(String label, AbstractWidget widget, boolean fullWidth) {
-			this(label, widget, fullWidth, -1, 0, false);
+			this(label, widget, fullWidth, -1, 0, false, false);
 		}
 		EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW) {
-			this(label, widget, fullWidth, customWidgetW, 0, false);
+			this(label, widget, fullWidth, customWidgetW, 0, false, false);
 		}
 	}
 

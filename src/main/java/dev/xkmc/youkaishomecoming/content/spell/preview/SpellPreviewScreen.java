@@ -64,7 +64,7 @@ public class SpellPreviewScreen extends Screen {
 	private ActionListPanel.AddTarget pendingAddTarget;
 
 	/** Persists across editor open/close within the same game session. */
-	private static boolean autoReplay = false;
+	private static boolean autoReplay = true;
 	private com.google.gson.JsonObject pendingDockLayout;
 
 	public SpellPreviewScreen(SpellDefinition definition) {
@@ -228,7 +228,7 @@ public class SpellPreviewScreen extends Screen {
 					updateRotationGizmoForAction(action);
 				},
 				this::onRequestAddAction,
-				this::replaySelectedPhase
+				this::onActionListReordered
 		);
 		actionListPanel.loadCustomNames(definition.customNames);
 
@@ -563,12 +563,14 @@ public class SpellPreviewScreen extends Screen {
 		if (actionListPanel != null && pendingAddTarget != null) {
 			actionListPanel.insertAction(pendingAddTarget, action);
 			pendingAddTarget = null;
+			if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 			if (autoReplay) replaySelectedPhase();
 		}
 	}
 
 	private void onDeleteAction() {
 		if (actionListPanel != null && actionListPanel.deleteSelected()) {
+			if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 			clearActionSelection();
 			if (autoReplay) replaySelectedPhase();
 		}
@@ -678,6 +680,15 @@ public class SpellPreviewScreen extends Screen {
 
 	private void replaySelectedPhase() {
 		resetSelectedPhasePreview(true);
+	}
+
+	/**
+	 * Called when the action list is reordered (drag-drop or move up/down from ActionListPanel).
+	 * Clears scroll state since action indices have shifted, then replays.
+	 */
+	private void onActionListReordered() {
+		if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
+		replaySelectedPhase();
 	}
 
 	private void cyclePhase(int delta) {
@@ -1118,18 +1129,21 @@ public class SpellPreviewScreen extends Screen {
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_V) {
 				if (actionListPanel.pasteAfterSelected()) {
+					if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 					resetSelectedPhasePreview(false);
 					return true;
 				}
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_UP) {
 				if (actionListPanel.moveSelectedUp()) {
+					if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 					resetSelectedPhasePreview(false);
 					return true;
 				}
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN) {
 				if (actionListPanel.moveSelectedDown()) {
+					if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 					resetSelectedPhasePreview(false);
 					return true;
 				}
@@ -1145,7 +1159,10 @@ public class SpellPreviewScreen extends Screen {
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE
 				|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) {
 			if (actionListPanel != null && actionListPanel.deleteSelected()) {
-				if (actionEditorPanel != null) actionEditorPanel.clearAction();
+				if (actionEditorPanel != null) {
+					actionEditorPanel.clearScrollState();
+					actionEditorPanel.clearAction();
+				}
 				if (autoReplay) replaySelectedPhase();
 				return true;
 			}

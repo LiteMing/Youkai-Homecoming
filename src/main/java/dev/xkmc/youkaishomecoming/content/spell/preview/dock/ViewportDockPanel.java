@@ -22,18 +22,29 @@ public class ViewportDockPanel implements DockPanel {
 
 	// 正交模式下的交互状态
 	private boolean movingTarget = false;
+	private boolean movingCaster = false;
 	private boolean dragging = false;  // 中键平移
 	private boolean rotating = false;  // 右键旋转
 
 	// Group transform interaction state
-	private boolean groupDragging = false;   // 左键拖动选中组（修改 origin offset）
-	private boolean groupRotating = false;   // 右键拖动选中组（修改 angle_offset）
+	private boolean groupDragging = false;   // 右键拖动选中组（修改 origin offset）
+	private boolean groupRotating = false;   // 右键拖动选中组（修改 group rotation）
 	private boolean rotateMode = false;      // R键旋转模式
 	private int rotateAxis = 1;              // 旋转轴: 0=X, 1=Y, 2=Z
-	private Runnable onGroupOffsetChanged;   // 回调：origin offset 变化
-	private java.util.function.DoubleConsumer onGroupAngleChanged; // 回调：angle_offset 变化
+	/** True after we've already pushed one undo snapshot for the current drag gesture. */
+	private boolean dragUndoPushed = false;
+	private java.util.function.Consumer<Vec3> onGroupOffsetChanged; // delta in world coords
+	private java.util.function.DoubleConsumer onGroupAngleChanged;  // angle delta in degrees
+	private Runnable onGroupDragBegin;       // 回调：拖拽刚开始（用于 push undo 一次）
 	private Runnable onGroupDeselect;        // 回调：取消选择
 	private java.util.function.IntConsumer onClickSelectAction; // 回调：点击弹幕选中 action (传入 action index)
+	private java.util.function.BooleanSupplier isEditBoxFocusedSupplier; // 回调：检查是否有 EditBox 聚焦
+
+	// Rotation gizmo state: when a SpawnShooterAction with rotationMover is selected,
+	// this stores the rotation axis for gizmo rendering and drag interaction.
+	private boolean rotationGizmoActive = false;
+	private double rotationGizmoAxisX, rotationGizmoAxisY, rotationGizmoAxisZ;
+	private java.util.function.DoubleConsumer onRotationSpeedChanged; // degrees_per_tick delta
 
 	// 透视模式鼠标追踪
 	private double lastMouseX, lastMouseY;
@@ -80,23 +91,25 @@ public class ViewportDockPanel implements DockPanel {
 
 	@Override
 	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+		// Sync rotation gizmo state to the viewport for rendering
+		viewport.setRotationGizmo(rotationGizmoActive,
+				(float) rotationGizmoAxisX, (float) rotationGizmoAxisY, (float) rotationGizmoAxisZ);
 		viewport.render(graphics, scene, partialTick);
 
 		// Render mode indicator overlay
+		var font = Minecraft.getInstance().font;
 		if (hasHighlightedGroup()) {
-			var font = Minecraft.getInstance().font;
-			String modeText;
-			int modeColor;
-			if (rotateMode) {
+			if (viewport.isPerspectiveMode()) {
+				graphics.drawString(font, "SELECTED — switch to orthographic to edit", x + 4, y + h - 12, 0xFFFFAA44, true);
+			} else if (rotationGizmoActive) {
+				graphics.drawString(font, "ROTATION MOVER  [R=Rotate speed  RMB=Drag]", x + 4, y + h - 12, 0xFFFF88FF, true);
+			} else if (rotateMode) {
 				String axisName = switch (rotateAxis) { case 0 -> "X"; case 1 -> "Y"; default -> "Z"; };
 				int axisColor = switch (rotateAxis) { case 0 -> 0xFFFF4444; case 1 -> 0xFF44FF44; default -> 0xFF4444FF; };
-				modeText = "ROTATE " + axisName;
-				modeColor = axisColor;
+				graphics.drawString(font, "ROTATE " + axisName + "  [X/Y/Z=Axis  LMB=Confirm  Esc=Cancel]", x + 4, y + h - 12, axisColor, true);
 			} else {
-				modeText = "SELECTED [R=Rotate]";
-				modeColor = 0xFF66FF88;
+				graphics.drawString(font, "SELECTED  [R=Rotate  RMB=Move  LMB-empty=Deselect]", x + 4, y + h - 12, 0xFF66FF88, true);
 			}
-			graphics.drawString(font, modeText, x + 4, y + h - 12, modeColor, true);
 		}
 	}
 
@@ -136,6 +149,17 @@ public class ViewportDockPanel implements DockPanel {
 					return true;
 				}
 
+				// Hit-test markers first (caster/target) — they sit on top in the editor
+				int hitMarker = hitTestMarker(mouseX, mouseY);
+				if (hitMarker == 0) {
+					movingCaster = true;
+					return true;
+				}
+				if (hitMarker == 1) {
+					movingTarget = true;
+					return true;
+				}
+
 				// Try to click-select a danmaku entity
 				int hitAction = hitTestDanmaku(mouseX, mouseY);
 				if (hitAction >= 0) {
@@ -146,12 +170,18 @@ public class ViewportDockPanel implements DockPanel {
 
 				// Clicked on empty space
 				if (hasHighlightedGroup()) {
+					// If an editbox was focused, just consume the click to unfocus it
+					// (Screen-level code handles the actual unfocusing).
+					// Only deselect the action if no editbox was focused.
+					if (isEditBoxFocusedSupplier != null && isEditBoxFocusedSupplier.getAsBoolean()) {
+						return true;
+					}
 					// Deselect
 					if (onGroupDeselect != null) onGroupDeselect.run();
 					return true;
 				}
 
-				// No selection → move target
+				// No selection → fall back to moving target (legacy default)
 				movingTarget = true;
 				return true;
 			}
@@ -162,8 +192,10 @@ public class ViewportDockPanel implements DockPanel {
 			if (button == 1) {
 				if (hasHighlightedGroup() && rotateMode) {
 					groupRotating = true; // Only rotate in rotate mode
+					dragUndoPushed = false;
 				} else if (hasHighlightedGroup()) {
 					groupDragging = true; // Right drag = move offset when not in rotate mode
+					dragUndoPushed = false;
 				} else {
 					rotating = true;
 				}
@@ -183,29 +215,34 @@ public class ViewportDockPanel implements DockPanel {
 			viewport.perspectivePan((float) deltaX, (float) deltaY);
 			return true;
 		}
-		if (rotateMode && hasHighlightedGroup()) {
-			// In rotate mode, any drag rotates the group
-			double angleDelta = deltaX * 0.5;
-			if (onGroupAngleChanged != null) onGroupAngleChanged.accept(angleDelta);
-			return true;
-		}
 		if (movingTarget) {
 			var delta = viewport.screenDeltaToWorldDelta((float) deltaX, (float) deltaY);
 			scene.moveTarget(delta);
 			return true;
 		}
+		if (movingCaster) {
+			var delta = viewport.screenDeltaToWorldDelta((float) deltaX, (float) deltaY);
+			scene.moveCaster(delta);
+			return true;
+		}
 		if (groupDragging) {
 			// Move origin offset: convert screen delta to world delta
 			var delta = viewport.screenDeltaToWorldDelta((float) deltaX, (float) deltaY);
-			// Store delta in viewport for the callback to read
-			viewport.addPendingGroupOffset(delta);
-			if (onGroupOffsetChanged != null) onGroupOffsetChanged.run();
+			ensureDragUndoPushed();
+			if (onGroupOffsetChanged != null) onGroupOffsetChanged.accept(delta);
 			return true;
 		}
 		if (groupRotating) {
-			// Rotate angle_offset: horizontal drag = angle change
+			// Rotate group_rotation around the active axis. In rotate mode, allow any button drag;
+			// outside rotate mode this branch only runs when button==1 (set in mouseClicked).
 			double angleDelta = deltaX * 0.5; // 0.5 degrees per pixel
-			if (onGroupAngleChanged != null) onGroupAngleChanged.accept(angleDelta);
+			ensureDragUndoPushed();
+			if (rotationGizmoActive && onRotationSpeedChanged != null) {
+				// When rotation gizmo is active, modify degrees_per_tick instead of group rotation
+				onRotationSpeedChanged.accept(angleDelta * 0.1); // finer control: 0.05 deg/tick per pixel
+			} else if (onGroupAngleChanged != null) {
+				onGroupAngleChanged.accept(angleDelta);
+			}
 			return true;
 		}
 		if (dragging) {
@@ -217,6 +254,13 @@ public class ViewportDockPanel implements DockPanel {
 			return true;
 		}
 		return false;
+	}
+
+	private void ensureDragUndoPushed() {
+		if (!dragUndoPushed) {
+			if (onGroupDragBegin != null) onGroupDragBegin.run();
+			dragUndoPushed = true;
+		}
 	}
 
 	@Override
@@ -233,12 +277,18 @@ public class ViewportDockPanel implements DockPanel {
 			movingTarget = false;
 			return true;
 		}
+		if (movingCaster && button == 0) {
+			movingCaster = false;
+			return true;
+		}
 		if (groupDragging && (button == 0 || button == 1)) {
 			groupDragging = false;
+			dragUndoPushed = false;
 			return true;
 		}
 		if (groupRotating && button == 1) {
 			groupRotating = false;
+			dragUndoPushed = false;
 			return true;
 		}
 		if (dragging && button == 2) {
@@ -323,12 +373,47 @@ public class ViewportDockPanel implements DockPanel {
 		return scene;
 	}
 
-	public void setGroupTransformCallbacks(Runnable onOffsetChanged, java.util.function.DoubleConsumer onAngleChanged,
-										   Runnable onDeselect, java.util.function.IntConsumer onClickSelect) {
+	public void setGroupTransformCallbacks(java.util.function.Consumer<Vec3> onOffsetChanged,
+										   java.util.function.DoubleConsumer onAngleChanged,
+										   Runnable onDragBegin,
+										   Runnable onDeselect,
+										   java.util.function.IntConsumer onClickSelect) {
 		this.onGroupOffsetChanged = onOffsetChanged;
 		this.onGroupAngleChanged = onAngleChanged;
+		this.onGroupDragBegin = onDragBegin;
 		this.onGroupDeselect = onDeselect;
 		this.onClickSelectAction = onClickSelect;
+	}
+
+	/** Set a supplier that returns true when an EditBox in the editor is focused. */
+	public void setEditBoxFocusedSupplier(java.util.function.BooleanSupplier supplier) {
+		this.isEditBoxFocusedSupplier = supplier;
+	}
+
+	/**
+	 * Set the rotation gizmo state. When active, the viewport displays a rotation axis
+	 * indicator and drag interactions modify the rotation speed instead of group rotation.
+	 *
+	 * @param active whether the rotation gizmo should be shown
+	 * @param axisX  rotation axis X component (normalized)
+	 * @param axisY  rotation axis Y component (normalized)
+	 * @param axisZ  rotation axis Z component (normalized)
+	 */
+	public void setRotationGizmo(boolean active, double axisX, double axisY, double axisZ) {
+		this.rotationGizmoActive = active;
+		this.rotationGizmoAxisX = axisX;
+		this.rotationGizmoAxisY = axisY;
+		this.rotationGizmoAxisZ = axisZ;
+	}
+
+	/** Set the callback for rotation speed changes (degrees_per_tick delta). */
+	public void setOnRotationSpeedChanged(java.util.function.DoubleConsumer callback) {
+		this.onRotationSpeedChanged = callback;
+	}
+
+	/** Whether the rotation gizmo is currently active (selected action has a rotation mover). */
+	public boolean isRotationGizmoActive() {
+		return rotationGizmoActive;
 	}
 
 	/** Check if a group action is currently highlighted (for interaction mode switching). */
@@ -337,26 +422,62 @@ public class ViewportDockPanel implements DockPanel {
 	}
 
 	/**
+	 * Hit-test: detect caster/target marker under the given screen coordinates.
+	 * Returns 0 = caster, 1 = target, -1 = none. Markers are skipped when their
+	 * visibility toggle is off in OrthographicViewport. Perspective mode is unsupported.
+	 */
+	private int hitTestMarker(double screenX, double screenY) {
+		if (viewport.isPerspectiveMode()) return -1;
+
+		double pixelTolSq = 12.0 * 12.0; // markers are larger than danmaku, allow a bit more slack
+		double bestDistSq = pixelTolSq;
+		int bestKind = -1;
+
+		if (viewport.isShowCasterMarker()) {
+			Vec3 cp = scene.getHolder().getFakeCaster().position();
+			Vec3 sp = viewport.worldToScreen(cp);
+			double dx = sp.x - screenX, dy = sp.y - screenY;
+			double distSq = dx * dx + dy * dy;
+			if (distSq <= bestDistSq) {
+				bestDistSq = distSq;
+				bestKind = 0;
+			}
+		}
+		if (viewport.isShowTargetMarker()) {
+			Vec3 tp = scene.getHolder().getFakeTarget().position();
+			Vec3 sp = viewport.worldToScreen(tp);
+			double dx = sp.x - screenX, dy = sp.y - screenY;
+			double distSq = dx * dx + dy * dy;
+			if (distSq <= bestDistSq) {
+				bestDistSq = distSq;
+				bestKind = 1;
+			}
+		}
+		return bestKind;
+	}
+
+	/**
 	 * Hit-test: find which danmaku entity is under the given screen coordinates.
+	 * Projects each danmaku's world position to screen pixels and compares 2D distance,
+	 * so picking works at any view angle (not just when bullets lie on the view plane).
+	 * Among all candidates within the pixel tolerance, picks the front-most (smallest viewspace z).
 	 * Returns the sourceActionIndex of the hit entity, or -1 if nothing hit.
 	 */
 	private int hitTestDanmaku(double screenX, double screenY) {
-		// Convert screen coords to world coords using viewport's inverse transform
-		Vec3 worldPos = viewport.screenToWorld(screenX, screenY);
-		if (worldPos == null) return -1;
+		if (viewport.isPerspectiveMode()) return -1; // worldToScreen is ortho-only
 
-		float hitRadius = 1.0f / viewport.getZoom() * 5; // 5 pixels tolerance
-		double bestDistSq = hitRadius * hitRadius;
+		double pixelTolSq = 8.0 * 8.0;
+		double bestDepth = Double.POSITIVE_INFINITY;
 		int bestAction = -1;
 
 		for (var entity : scene.getHolder().getLocalEntities()) {
 			if (entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity danmaku) {
-				Vec3 pos = entity.position();
-				// Project both to 2D (ignore depth axis based on view angle)
-				Vec3 diff = pos.subtract(worldPos);
-				double distSq = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
-				if (distSq < bestDistSq) {
-					bestDistSq = distSq;
+				Vec3 sp = viewport.worldToScreen(entity.position());
+				double dx = sp.x - screenX;
+				double dy = sp.y - screenY;
+				double distSq = dx * dx + dy * dy;
+				if (distSq <= pixelTolSq && sp.z < bestDepth) {
+					bestDepth = sp.z;
 					bestAction = danmaku.sourceActionIndex;
 				}
 			}

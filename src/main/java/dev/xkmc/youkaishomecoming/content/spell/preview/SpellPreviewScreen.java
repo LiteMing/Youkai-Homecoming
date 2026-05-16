@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.GroupRotation;
+import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfigs;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
@@ -16,9 +17,11 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.phys.Vec3;
 import dev.xkmc.youkaishomecoming.content.spell.preview.dock.*;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Optional;
@@ -84,9 +87,12 @@ public class SpellPreviewScreen extends Screen {
 		this.viewportPanel.setGroupTransformCallbacks(
 				this::onGroupOffsetDragged,
 				this::onGroupAngleDragged,
+				this::onGroupDragBegin,
 				this::onGroupDeselect,
 				this::onClickSelectDanmaku
 		);
+		this.viewportPanel.setOnRotationSpeedChanged(this::onRotationSpeedDragged);
+		this.viewportPanel.setEditBoxFocusedSupplier(this::isAnyEditBoxFocused);
 		this.statusDockPanel = new StatusDockPanel(scene, viewport);
 		this.helpDockPanel = new HelpDockPanel();
 	}
@@ -218,6 +224,8 @@ public class SpellPreviewScreen extends Screen {
 					}
 					// Highlight the selected action's danmaku in the viewport
 					scene.getHolder().setHighlightedActionIndex(path.leafIndex());
+					// Update rotation gizmo state based on selected action
+					updateRotationGizmoForAction(action);
 				},
 				this::onRequestAddAction,
 				this::replaySelectedPhase
@@ -401,22 +409,38 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
+	/** Transient edit during a drag — replaces selected action without pushing undo. */
+	private void onActionEditedTransient(SpellAction newAction) {
+		if (actionListPanel != null) {
+			actionListPanel.replaceSelectedActionWithoutUndo(newAction);
+			if (autoReplay) replaySelectedPhase();
+		}
+	}
+
 	// --- Group transform callbacks (viewport drag interaction) ---
 
-	private void onGroupOffsetDragged() {
-		var delta = viewport.consumePendingGroupOffset();
+	/** Called by viewport when a drag gesture begins — push a single undo snapshot for the whole drag. */
+	private void onGroupDragBegin() {
+		if (actionListPanel != null) actionListPanel.pushUndoSnapshot();
+	}
+
+	private void onGroupOffsetDragged(Vec3 delta) {
 		if (delta.lengthSqr() < 1e-8) return;
 		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
 		SpellAction action = actionEditorPanel.getCurrentAction();
 		if (action instanceof FireDanmakuAction fda) {
 			var origin = fda.origin();
-			var newOrigin = new OriginConfig(origin.mode(),
-					NumberProvider.constant(origin.offsetX().get(null) + delta.x),
-					NumberProvider.constant(origin.offsetY().get(null) + delta.y),
-					NumberProvider.constant(origin.offsetZ().get(null) + delta.z),
-					origin.rotation());
+			// Only edit axes whose offset is a plain constant — non-constant expressions
+			// (random/expression/etc.) would be silently flattened to constants, losing the user's intent.
+			NumberProvider newX = bumpConstant(origin.offsetX(), delta.x);
+			NumberProvider newY = bumpConstant(origin.offsetY(), delta.y);
+			NumberProvider newZ = bumpConstant(origin.offsetZ(), delta.z);
+			if (newX == origin.offsetX() && newY == origin.offsetY() && newZ == origin.offsetZ()) {
+				return; // nothing constant to bump
+			}
+			var newOrigin = new OriginConfig(origin.mode(), newX, newY, newZ, origin.rotation());
 			var newAction = fda.withOrigin(newOrigin);
-			onActionEdited(newAction);
+			onActionEditedTransient(newAction);
 			if (actionEditorPanel != null) {
 				actionEditorPanel.setAction(newAction, actionEditorPanel.getActionIndex());
 			}
@@ -434,24 +458,92 @@ public class SpellPreviewScreen extends Screen {
 			GroupRotation current = fda.groupRotation().orElse(
 					new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
 			NumberProvider newX = current.rotX(), newY = current.rotY(), newZ = current.rotZ();
+			NumberProvider bumped;
 			switch (axis) {
-				case 0 -> newX = NumberProvider.constant(current.rotX().get(null) + angleDelta);
-				case 1 -> newY = NumberProvider.constant(current.rotY().get(null) + angleDelta);
-				case 2 -> newZ = NumberProvider.constant(current.rotZ().get(null) + angleDelta);
+				case 0 -> {
+					bumped = bumpConstant(current.rotX(), angleDelta);
+					if (bumped == current.rotX()) return; // non-constant, refuse to clobber
+					newX = bumped;
+				}
+				case 1 -> {
+					bumped = bumpConstant(current.rotY(), angleDelta);
+					if (bumped == current.rotY()) return;
+					newY = bumped;
+				}
+				case 2 -> {
+					bumped = bumpConstant(current.rotZ(), angleDelta);
+					if (bumped == current.rotZ()) return;
+					newZ = bumped;
+				}
 			}
 			var newGr = new GroupRotation(newX, newY, newZ);
 			var newAction = fda.withGroupRotation(Optional.of(newGr));
-			onActionEdited(newAction);
+			onActionEditedTransient(newAction);
 			if (actionEditorPanel != null) {
 				actionEditorPanel.setAction(newAction, actionEditorPanel.getActionIndex());
 			}
 		}
 	}
 
+	/**
+	 * Returns a Constant NumberProvider with value bumped by delta, or the original if
+	 * the input isn't a Constant (signaling "non-constant — don't clobber").
+	 */
+	private static NumberProvider bumpConstant(NumberProvider p, double delta) {
+		if (p instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Constant c) {
+			return NumberProvider.constant(c.value() + delta);
+		}
+		return p;
+	}
+
 	private void onGroupDeselect() {
-		scene.getHolder().setHighlightedActionIndex(-1);
-		if (actionEditorPanel != null) {
-			actionEditorPanel.clearAction();
+		clearActionSelection();
+	}
+
+	/**
+	 * Update the rotation gizmo state on the viewport based on the selected action.
+	 * If the action is a SpawnShooterAction with a SpaceRotationMoverConfig, activate the gizmo.
+	 */
+	private void updateRotationGizmoForAction(@Nullable SpellAction action) {
+		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction ssa
+				&& ssa.rotationMover().isPresent()
+				&& ssa.rotationMover().get() instanceof MoverConfigs.SpaceRotationMoverConfig cfg) {
+			Vec3 axis = cfg.axis();
+			double len = axis.length();
+			if (len > 1e-8) {
+				axis = axis.normalize();
+			} else {
+				axis = new Vec3(0, 1, 0); // fallback
+			}
+			if (viewportPanel != null) {
+				viewportPanel.setRotationGizmo(true, axis.x, axis.y, axis.z);
+			}
+			viewport.setRotationGizmo(true, (float) axis.x, (float) axis.y, (float) axis.z);
+		} else {
+			if (viewportPanel != null) {
+				viewportPanel.setRotationGizmo(false, 0, 0, 0);
+			}
+			viewport.setRotationGizmo(false, 0, 0, 0);
+		}
+	}
+
+	/**
+	 * Called when the user drags the rotation gizmo to modify degrees_per_tick.
+	 * Modifies the SpawnShooterAction's rotationMover config.
+	 */
+	private void onRotationSpeedDragged(double speedDelta) {
+		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
+		SpellAction action = actionEditorPanel.getCurrentAction();
+		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction ssa
+				&& ssa.rotationMover().isPresent()
+				&& ssa.rotationMover().get() instanceof MoverConfigs.SpaceRotationMoverConfig cfg) {
+			double newSpeed = cfg.degreesPerTick() + speedDelta;
+			var newCfg = new MoverConfigs.SpaceRotationMoverConfig(cfg.axis(), newSpeed, cfg.angularAccel());
+			var newAction = ssa.withRotationMover(Optional.of(newCfg));
+			onActionEditedTransient(newAction);
+			if (actionEditorPanel != null) {
+				actionEditorPanel.setAction(newAction, actionEditorPanel.getActionIndex());
+			}
 		}
 	}
 
@@ -477,7 +569,7 @@ public class SpellPreviewScreen extends Screen {
 
 	private void onDeleteAction() {
 		if (actionListPanel != null && actionListPanel.deleteSelected()) {
-			if (actionEditorPanel != null) actionEditorPanel.clearAction();
+			clearActionSelection();
 			if (autoReplay) replaySelectedPhase();
 		}
 	}
@@ -548,7 +640,7 @@ public class SpellPreviewScreen extends Screen {
 		phaseController.reloadPhaseList();
 
 		// Refresh UI
-		if (actionEditorPanel != null) actionEditorPanel.clearAction();
+		clearActionSelection();
 		if (actionListPanel != null) {
 			actionListPanel.loadCustomNames(definition.customNames);
 		}
@@ -593,7 +685,7 @@ public class SpellPreviewScreen extends Screen {
 		boolean wasPlaying = scene.isPlaying();
 		phaseController.cyclePhase(delta);
 		resetSelectedPhasePreview(wasPlaying);
-		if (actionEditorPanel != null) actionEditorPanel.clearAction();
+		clearActionSelection();
 		updateActionListPhase();
 		refreshPhaseControls();
 	}
@@ -601,9 +693,7 @@ public class SpellPreviewScreen extends Screen {
 	private void addPhase() {
 		phaseController.addPhase();
 		resetSelectedPhasePreview(autoReplay);
-		if (actionEditorPanel != null) {
-			actionEditorPanel.clearAction();
-		}
+		clearActionSelection();
 		updateActionListPhase();
 		refreshPhaseControls();
 		refreshActionEditor();
@@ -619,13 +709,22 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		boolean wasPlaying = scene.isPlaying();
-		if (actionEditorPanel != null) {
-			actionEditorPanel.clearAction();
-		}
+		clearActionSelection();
 		updateActionListPhase();
 		refreshPhaseControls();
 		refreshActionEditor();
 		resetSelectedPhasePreview(wasPlaying || autoReplay);
+	}
+
+	/** Clear both the action editor focus and the viewport highlight — used whenever the active
+	 *  phase changes, since action indices are phase-scoped and would otherwise dangle. */
+	private void clearActionSelection() {
+		scene.getHolder().setHighlightedActionIndex(-1);
+		if (actionEditorPanel != null) {
+			actionEditorPanel.clearAction();
+		}
+		// Clear rotation gizmo
+		updateRotationGizmoForAction(null);
 	}
 
 	private void renameSelectedPhase(String name) {
@@ -824,6 +923,15 @@ public class SpellPreviewScreen extends Screen {
 		}
 		// Dock layout dispatches to panels (also updates activeGroup)
 		if (dockLayout != null && dockLayout.mouseClicked(mouseX, mouseY, button)) {
+			// When clicking outside the properties panel (e.g. viewport), clear editbox focus
+			// to remove the highlight, but keep the properties panel itself open.
+			DockGroup editorGroup = dockLayout.findGroupContaining(editorDockPanel);
+			if (dockLayout.getActiveGroup() != editorGroup) {
+				if (actionEditorPanel != null) {
+					actionEditorPanel.unfocusAllEditBoxes();
+				}
+				setFocused(null);
+			}
 			return true;
 		}
 		// Screen widgets (top bar buttons, control panel buttons)

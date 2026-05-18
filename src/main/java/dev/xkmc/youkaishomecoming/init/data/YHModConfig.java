@@ -21,6 +21,12 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue powerInfoYAnchor;
 		public final ForgeConfigSpec.IntValue powerInfoYOffset;
 
+		// Exposure compat: photo overlay display
+		public final ForgeConfigSpec.DoubleValue photoOverlayAlpha;
+		public final ForgeConfigSpec.DoubleValue photoOverlayScale;
+		public final ForgeConfigSpec.IntValue photoOverlayCorner;
+		public final ForgeConfigSpec.IntValue photoOverlayDuration;
+
 		Client(ForgeConfigSpec.Builder builder) {
 			laserRenderAdditive = builder.define("laserRenderAdditive", true);
 			laserRenderInverted = builder.define("laserRenderInverted", true);
@@ -33,6 +39,19 @@ public class YHModConfig {
 			powerInfoXOffset = builder.defineInRange("powerInfoXOffset", -8, -1000, 1000);
 			powerInfoYAnchor = builder.defineInRange("powerInfoYAnchor", 0, -1, 1);
 			powerInfoYOffset = builder.defineInRange("powerInfoYOffset", 0, -1000, 1000);
+
+			builder.push("exposure_compat");
+			{
+				photoOverlayAlpha = builder.comment("Opacity of the photo thumbnail overlay (0=invisible, 1=opaque)")
+						.defineInRange("photoOverlayAlpha", 0.85, 0, 1);
+				photoOverlayScale = builder.comment("Scale of the photo thumbnail overlay")
+						.defineInRange("photoOverlayScale", 0.25, 0.1, 1.0);
+				photoOverlayCorner = builder.comment("Corner for photo overlay: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right")
+						.defineInRange("photoOverlayCorner", 0, 0, 3);
+				photoOverlayDuration = builder.comment("Duration (ticks) to display the photo overlay")
+						.defineInRange("photoOverlayDuration", 80, 20, 600);
+			}
+			builder.pop();
 		}
 
 	}
@@ -111,6 +130,10 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue maxPowerLossOnMiss;
 		public final ForgeConfigSpec.IntValue initialResource;
 		public final ForgeConfigSpec.IntValue initialPower;
+
+		// Exposure compat
+		public final ForgeConfigSpec.IntValue exposureCameraCooldown;
+		public final ForgeConfigSpec.BooleanValue exposureDeactivateAfterShot;
 
 		Common(ForgeConfigSpec.Builder builder) {
 			builder.push("youkaifying_effect");
@@ -289,6 +312,15 @@ public class YHModConfig {
 						.defineInRange("smallFairySummonStrongFairy", 0.1, 0, 1);
 				smallFairyStrength = builder.comment("Small Fairy spellcard strength")
 						.defineInRange("smallFairyStrength", 2, 0, 4);
+			}
+			builder.pop();
+
+			builder.push("exposure_compat");
+			{
+				exposureCameraCooldown = builder.comment("Cooldown (ticks) applied to camera after photographing danmaku")
+						.defineInRange("exposureCameraCooldown", 40, 0, 600);
+				exposureDeactivateAfterShot = builder.comment("Whether to exit viewfinder after photographing danmaku")
+						.define("exposureDeactivateAfterShot", true);
 			}
 			builder.pop();
 		}

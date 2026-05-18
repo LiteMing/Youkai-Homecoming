@@ -29,6 +29,9 @@ public class ClientEventHandlers {
 		oTilt = tilt;
 		float lv = drunkLevel();
 		tilt = Mth.lerp(0.03f, tilt, lv);
+		if (event.phase == TickEvent.Phase.END) {
+			dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();
+		}
 	}
 
 	@SubscribeEvent

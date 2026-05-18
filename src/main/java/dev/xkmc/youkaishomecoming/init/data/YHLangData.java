@@ -183,6 +183,10 @@ public enum YHLangData {
 		// Spell editor help panel
 		genSpellEditorHelp(pvd);
 
+		// Exposure compat
+		pvd.add("exposure.youkaishomecoming.danmaku_count", "Danmaku: %d");
+		pvd.add("exposure.youkaishomecoming.score", "Score: %d");
+
 		for (var e : YHDanmaku.Bullet.values()) {
 			var name = e.name().toLowerCase(Locale.ROOT);
 			pvd.add(YoukaisHomecoming.MODID + ".custom_spell.bullet." + name,

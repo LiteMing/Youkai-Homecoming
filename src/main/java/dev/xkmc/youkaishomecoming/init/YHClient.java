@@ -62,6 +62,9 @@ public class YHClient {
 		if (YoukaisHomecoming.ENABLE_TLM && ModList.get().isLoaded(TouhouLittleMaid.MOD_ID)) {
 			MinecraftForge.EVENT_BUS.register(TLMRenderHandler.class);
 		}
+		if (ModList.get().isLoaded("exposure")) {
+			MinecraftForge.EVENT_BUS.register(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.class);
+		}
 		event.enqueueWork(() -> {
 			ItemProperties.register(YHItems.SAKE_BOTTLE.get(), YoukaisHomecoming.loc("slip"),
 					(stack, level, user, index) -> SlipBottleItem.texture(stack));

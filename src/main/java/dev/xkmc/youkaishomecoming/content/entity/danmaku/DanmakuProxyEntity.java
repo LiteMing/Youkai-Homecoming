@@ -249,6 +249,39 @@ public class DanmakuProxyEntity extends PathfinderMob
 		DanmakuManager.setTrackingOverride(null);
 	}
 
+	/**
+	 * Count virtual danmaku in the frustum without erasing them.
+	 * Records types/colors into the result for NBT writing.
+	 */
+	public void countDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit, dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result) {
+		int counted = 0;
+		for (var e : allDanmakus) {
+			if (counted >= limit) break;
+			if (frustum.contains(e.position())) {
+				String[] info = dev.xkmc.youkaishomecoming.compat.exposure.ExposureCompat.getDanmakuTypeAndColor(e);
+				result.record(info[0], info[1]);
+				counted++;
+			}
+		}
+	}
+
+	/**
+	 * Erase virtual danmaku that fall within the given frustum.
+	 */
+	public void eraseDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, @Nullable Player player, int limit) {
+		DanmakuManager.setTrackingOverride(this);
+		int erased = 0;
+		for (var e : allDanmakus) {
+			if (erased >= limit) break;
+			if (frustum.contains(e.position())) {
+				if (player == null) e.markErased(true);
+				else e.erase(player);
+				erased++;
+			}
+		}
+		DanmakuManager.setTrackingOverride(null);
+	}
+
 	public void switchSpellDefinition(SpellDefinition definition, boolean clearScreen) {
 		if (clearScreen) {
 			eraseAllDanmaku(null);

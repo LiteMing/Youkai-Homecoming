@@ -93,7 +93,8 @@ public class YoukaisHomecoming {
 			e -> e.create(DanmakuToClientPacket.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(EraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 		e -> e.create(BatchEraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
-			e -> e.create(SpellStateToClient.class, NetworkDirection.PLAY_TO_CLIENT));
+			e -> e.create(SpellStateToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",
 			SpellCircleConfig.class);
@@ -143,6 +144,9 @@ public class YoukaisHomecoming {
 		}
 		if (ModList.get().isLoaded(Gateways.MODID)) {
 			MinecraftForge.EVENT_BUS.register(GatewayEventHandlers.class);
+		}
+		if (ModList.get().isLoaded("exposure")) {
+			MinecraftForge.EVENT_BUS.register(dev.xkmc.youkaishomecoming.compat.exposure.ExposureCompat.class);
 		}
 	}
 

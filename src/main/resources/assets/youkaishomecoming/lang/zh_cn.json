@@ -1067,5 +1067,7 @@
   "youkaishomecoming.usage_fairy_wings": "在%s状态下激活创造飞行",
   "youkaishomecoming.constant_effect": "适用时提供持续的%s",
   "youkaishomecoming.no_consume_1": "使用%s弹幕时不消耗",
-  "youkaishomecoming.no_consume_2": "使用%s和%s弹幕时不消耗"
+  "youkaishomecoming.no_consume_2": "使用%s和%s弹幕时不消耗",
+  "exposure.youkaishomecoming.danmaku_count": "弹幕: %d",
+  "exposure.youkaishomecoming.score": "得分: %d"
 }

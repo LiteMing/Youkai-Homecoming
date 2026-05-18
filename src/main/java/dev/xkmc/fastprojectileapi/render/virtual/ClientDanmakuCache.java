@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
+import dev.xkmc.fastprojectileapi.compat.oculus.OculusCompat;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
@@ -183,6 +184,11 @@ public class ClientDanmakuCache {
 
 		// PE-2: Extract view matrix once for billboard fast path (same idea as PB3 for preview).
 		// For billboard types, bypass PoseStack push/translate/scale/pop entirely.
+		// Disabled when an Oculus shader pack is active — the fast path bypasses
+		// EntityRenderDispatcher.render (no setCurrentEntity context) and feeds vertices
+		// via BulkDataWriter's direct path which is incompatible with Embeddium's
+		// internal BufferBuilder state machine.
+		boolean useFastPath = !OculusCompat.shouldFallback();
 		Matrix4f viewMat = pose.last().pose();
 		float viewScale = (float) Math.cbrt(Math.abs(viewMat.determinant3x3()));
 
@@ -191,7 +197,7 @@ public class ClientDanmakuCache {
 
 		for (var e : all) {
 			// Billboard fast path for ItemDanmakuEntity
-			if (e instanceof ItemDanmakuEntity danmaku) {
+			if (useFastPath && e instanceof ItemDanmakuEntity danmaku) {
 				if (cachedRenderer == null) {
 					var r = getRenderer(disp, e);
 					if (r instanceof ItemDanmakuRenderer<?> dr) cachedRenderer = dr;

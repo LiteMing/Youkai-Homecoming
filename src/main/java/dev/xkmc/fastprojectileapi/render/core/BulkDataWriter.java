@@ -2,6 +2,7 @@ package dev.xkmc.fastprojectileapi.render.core;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.xkmc.fastprojectileapi.compat.oculus.OculusCompat;
 import dev.xkmc.youkaishomecoming.mixin.api.BufferBuilderAccessor;
 import net.minecraft.util.FastColor;
 import org.joml.Matrix4f;
@@ -28,7 +29,7 @@ public class BulkDataWriter {
 	}
 
 	public void addVertex(float x, float y, float z, float u, float v, int col) {
-		if (direct == null) {
+		if (direct == null || OculusCompat.shouldFallback()) {
 			vc.vertex(x, y, z).uv(u, v).color(col).endVertex();
 		} else {
 			direct.putFloat(0, x);
@@ -91,7 +92,7 @@ public class BulkDataWriter {
 	 * @param vertexCount  number of vertices contained in data
 	 */
 	public void bulkWrite(byte[] data, int vertexCount) {
-		if (direct == null) {
+		if (direct == null || OculusCompat.shouldFallback()) {
 			// Fallback: decode and write through VertexConsumer
 			for (int i = 0; i < vertexCount; i++) {
 				int off = i * STRIDE;

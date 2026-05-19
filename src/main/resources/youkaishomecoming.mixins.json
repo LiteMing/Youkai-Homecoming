@@ -23,7 +23,6 @@
 	],
 	"client": [
 		"CriterionGridMixin",
-		"api.BufferBuilderAccessor",
 		"effect.GameRendererMixin"
 	],
 	"injectors": {

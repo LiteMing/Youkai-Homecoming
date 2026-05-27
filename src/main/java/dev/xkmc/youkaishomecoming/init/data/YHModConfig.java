@@ -12,6 +12,10 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue laserRenderAdditive;
 		public final ForgeConfigSpec.BooleanValue laserRenderInverted;
 		public final ForgeConfigSpec.DoubleValue laserTransparency;
+		public final ForgeConfigSpec.BooleanValue adaptiveProjectileMesh;
+		public final ForgeConfigSpec.IntValue giantSphereBaseSegments;
+		public final ForgeConfigSpec.IntValue giantSphereBaseRings;
+		public final ForgeConfigSpec.IntValue laserCylinderBaseSegments;
 		public final ForgeConfigSpec.DoubleValue farDanmakuFading;
 		public final ForgeConfigSpec.DoubleValue selfDanmakuFading;
 		public final ForgeConfigSpec.DoubleValue fadingStart;
@@ -31,6 +35,14 @@ public class YHModConfig {
 			laserRenderAdditive = builder.define("laserRenderAdditive", true);
 			laserRenderInverted = builder.define("laserRenderInverted", true);
 			laserTransparency = builder.defineInRange("laserTransparency", 0.5, 0, 1);
+			adaptiveProjectileMesh = builder.comment("Adapt giant sphere and cylinder laser mesh detail to projectile visual size.")
+					.define("adaptiveProjectileMesh", true);
+			giantSphereBaseSegments = builder.comment("Base longitude segments for giant sphere danmaku when adaptive mesh is enabled.")
+					.defineInRange("giantSphereBaseSegments", 16, 8, 32);
+			giantSphereBaseRings = builder.comment("Base latitude rings for giant sphere danmaku when adaptive mesh is enabled.")
+					.defineInRange("giantSphereBaseRings", 8, 4, 16);
+			laserCylinderBaseSegments = builder.comment("Base side count for cylindrical laser rendering when adaptive mesh is enabled.")
+					.defineInRange("laserCylinderBaseSegments", 12, 4, 24);
 			farDanmakuFading = builder.defineInRange("farDanmakuFading", 0.5d, 0, 1);
 			selfDanmakuFading = builder.defineInRange("selfDanmakuFading", 0.5d, 0, 1);
 			fadingStart = builder.defineInRange("fadingStart", 8d, 0, 128);

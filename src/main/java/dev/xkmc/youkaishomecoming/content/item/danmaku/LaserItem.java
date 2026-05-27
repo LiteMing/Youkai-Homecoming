@@ -1,7 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.item.danmaku;
 
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
-import dev.xkmc.fastprojectileapi.render.type.DoubleLayerLaserType;
+import dev.xkmc.fastprojectileapi.render.type.CylinderLaserType;
 import dev.xkmc.fastprojectileapi.render.type.PencilLayerLaserType;
 import dev.xkmc.fastprojectileapi.render.type.RenderableProjectileType;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
@@ -110,10 +110,11 @@ public class LaserItem extends Item {
 	public ProjTypeHolder<? extends RenderableProjectileType<?, ?>, ?> getTypeForRender() {
 		if (render == null) {
 			render = switch (type) {
-				case LASER -> ProjTypeHolder.wrap(new DoubleLayerLaserType(
+				case LASER -> ProjTypeHolder.wrap(new CylinderLaserType(
 						YoukaisHomecoming.loc("textures/entities/laser_inner.png"),
 						YoukaisHomecoming.loc("textures/entities/laser_outer.png"),
-						0xff000000 | color.getFireworkColor()));
+						0xff000000 | color.getFireworkColor(),
+						YHModConfig.CLIENT.laserCylinderBaseSegments.get()));
 				case PENCIL -> ProjTypeHolder.wrap(new PencilLayerLaserType(
 						YoukaisHomecoming.loc("textures/entities/laser_inner.png"),
 						YoukaisHomecoming.loc("textures/entities/laser_outer.png"),

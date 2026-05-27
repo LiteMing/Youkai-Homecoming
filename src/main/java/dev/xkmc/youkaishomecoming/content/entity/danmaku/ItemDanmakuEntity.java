@@ -57,6 +57,8 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType damageTypeOverride = null;
 	@SerialClass.SerialField
 	public ItemStack stack = ItemStack.EMPTY;
+	@SerialClass.SerialField
+	public float visualScale = 1;
 
 	private boolean isErased = false;
 
@@ -163,7 +165,7 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 				sizeCache = item.size;
 			}
 		}
-		return sizeCache == null ? 1 : sizeCache;
+		return (sizeCache == null ? 1 : sizeCache) * visualScale;
 	}
 
 	private int lastGraze = 0;

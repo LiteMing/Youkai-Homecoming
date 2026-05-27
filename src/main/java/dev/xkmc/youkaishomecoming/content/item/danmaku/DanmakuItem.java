@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
 import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.ButterflyProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.CrossProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.GiantSphereProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RenderableProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
@@ -143,9 +144,13 @@ public class DanmakuItem extends Item {
 				// Cross-shaped bullets (like Minecraft saplings)
 				case KUNAI -> new CrossProjectileType(loc, type.display());
 				case KNIFE -> new CrossProjectileType(loc, type.display());
-				// Large bullets use rotating type for impressive visual effect
-				case MOON -> new RotatingProjectileType(loc, type.display(), 80);
-				case GIANT_YINYANG -> new RotatingProjectileType(loc, type.display(), 60);
+				// Large bullets use sphere geometry for stronger 3D readability
+				case MOON -> new GiantSphereProjectileType(loc, type.display(),
+						YHModConfig.CLIENT.giantSphereBaseSegments.get(),
+						YHModConfig.CLIENT.giantSphereBaseRings.get(), 120);
+				case GIANT_YINYANG -> new GiantSphereProjectileType(loc, type.display(),
+						YHModConfig.CLIENT.giantSphereBaseSegments.get(),
+						YHModConfig.CLIENT.giantSphereBaseRings.get(), 80);
 				default -> new SimpleProjectileType(loc, type.display());
 			};
 			render = ProjTypeHolder.wrap(Wrappers.cast(r));

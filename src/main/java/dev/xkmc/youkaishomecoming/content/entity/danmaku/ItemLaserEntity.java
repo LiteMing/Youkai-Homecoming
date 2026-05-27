@@ -20,6 +20,8 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	public DanmakuMover mover;
 	@SerialClass.SerialField
 	public ItemStack stack = ItemStack.EMPTY;
+	@SerialClass.SerialField
+	public float visualScale = 1;
 	/**
 	 * Per-laser damage type override. When non-null, this takes priority over
 	 * the CardHolder/SpellCard damage source resolution chain.
@@ -97,7 +99,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 				sizeCache = item.size;
 			}
 		}
-		return sizeCache == null ? 1 : sizeCache;
+		return (sizeCache == null ? 1 : sizeCache) * visualScale;
 	}
 
 	private boolean isErased = false;

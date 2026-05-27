@@ -389,6 +389,9 @@ public class ActionEditorPanel {
 		addNumberRow("Lifetime", a.lifetime(), v ->
 				notifyDanmaku(old -> old.withLifetime(v), false));
 
+		addNumberRow("Size", a.size(), v ->
+				notifyDanmaku(old -> old.withSize(v), false));
+
 		// === Pattern group ===
 		addSectionHeader("Pattern");
 		if (!isSectionCollapsed("Pattern")) {
@@ -538,6 +541,9 @@ public class ActionEditorPanel {
 
 		addNumberRow("Length", a.length(), v ->
 				notifyLaser(old -> old.withLength(v), false));
+
+		addNumberRow("Thickness", a.thickness(), v ->
+				notifyLaser(old -> old.withThickness(v), false));
 
 		addNumberRow("Angle", a.angleOffset(), v ->
 				notifyLaser(old -> old.withAngleOffset(v), false));

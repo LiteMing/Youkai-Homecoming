@@ -113,8 +113,7 @@ public class LaserItem extends Item {
 				case LASER -> ProjTypeHolder.wrap(new CylinderLaserType(
 						YoukaisHomecoming.loc("textures/entities/laser_inner.png"),
 						YoukaisHomecoming.loc("textures/entities/laser_outer.png"),
-						0xff000000 | color.getFireworkColor(),
-						YHModConfig.CLIENT.laserCylinderBaseSegments.get()));
+						0xff000000 | color.getFireworkColor(), 12));
 				case PENCIL -> ProjTypeHolder.wrap(new PencilLayerLaserType(
 						YoukaisHomecoming.loc("textures/entities/laser_inner.png"),
 						YoukaisHomecoming.loc("textures/entities/laser_outer.png"),

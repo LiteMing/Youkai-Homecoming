@@ -145,12 +145,8 @@ public class DanmakuItem extends Item {
 				case KUNAI -> new CrossProjectileType(loc, type.display());
 				case KNIFE -> new CrossProjectileType(loc, type.display());
 				// Large bullets use sphere geometry for stronger 3D readability
-				case MOON -> new GiantSphereProjectileType(loc, type.display(),
-						YHModConfig.CLIENT.giantSphereBaseSegments.get(),
-						YHModConfig.CLIENT.giantSphereBaseRings.get(), 120);
-				case GIANT_YINYANG -> new GiantSphereProjectileType(loc, type.display(),
-						YHModConfig.CLIENT.giantSphereBaseSegments.get(),
-						YHModConfig.CLIENT.giantSphereBaseRings.get(), 80);
+				case MOON -> new GiantSphereProjectileType(loc, type.display(), 16, 8, 120);
+				case GIANT_YINYANG -> new GiantSphereProjectileType(loc, type.display(), 16, 8, 80);
 				default -> new SimpleProjectileType(loc, type.display());
 			};
 			render = ProjTypeHolder.wrap(Wrappers.cast(r));

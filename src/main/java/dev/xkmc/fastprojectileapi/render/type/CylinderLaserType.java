@@ -63,12 +63,18 @@ public record CylinderLaserType(ResourceLocation inner, ResourceLocation outer, 
 				(int) ((color >> 8 & 0xff) * tran) << 8 |
 				(int) ((color >> 16 & 0xff) * tran) << 16 | 0xff000000;
 		float scale = (float) Math.cbrt(Math.abs(pose.last().pose().determinant3x3()));
-		int seg = adaptive(segments, scale);
+		int seg = segments(scale);
 		holder.accept(new Ins(Cache.vertex(pose.last().pose(), seg), core, outer, add));
 	}
 
+	private int segments(float scale) {
+		if (!YHModConfig.CLIENT.adaptiveProjectileMesh.get()) {
+			return Mth.clamp(YHModConfig.CLIENT.laserCylinderBaseSegments.get(), 4, 24);
+		}
+		return adaptive(segments, scale);
+	}
+
 	private static int adaptive(int base, float scale) {
-		if (!YHModConfig.CLIENT.adaptiveProjectileMesh.get()) return Mth.clamp(base, 4, 24);
 		float factor = scale < 0.75f ? 0.75f : scale > 1.5f ? 1.5f : 1;
 		return Mth.clamp(Math.round(base * factor), 4, 24);
 	}

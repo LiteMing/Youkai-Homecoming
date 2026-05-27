@@ -40,13 +40,26 @@ public record GiantSphereProjectileType(ResourceLocation tex, DisplayType displa
 		int col = DanmakuRenderStates.fading(display, -1, r, e);
 		var m4 = new Matrix4f(pose.last().pose());
 		float scale = (float) Math.cbrt(Math.abs(m4.determinant3x3()));
-		int seg = adaptive(segments, scale, 8, 32);
-		int ring = adaptive(rings, scale, 4, 16);
+		int seg = segments(scale);
+		int ring = rings(scale);
 		holder.accept(new Ins(m4, col, seg, ring));
 	}
 
+	private int segments(float scale) {
+		if (!YHModConfig.CLIENT.adaptiveProjectileMesh.get()) {
+			return Mth.clamp(YHModConfig.CLIENT.giantSphereBaseSegments.get(), 8, 32);
+		}
+		return adaptive(segments, scale, 8, 32);
+	}
+
+	private int rings(float scale) {
+		if (!YHModConfig.CLIENT.adaptiveProjectileMesh.get()) {
+			return Mth.clamp(YHModConfig.CLIENT.giantSphereBaseRings.get(), 4, 16);
+		}
+		return adaptive(rings, scale, 4, 16);
+	}
+
 	private static int adaptive(int base, float scale, int min, int max) {
-		if (!YHModConfig.CLIENT.adaptiveProjectileMesh.get()) return Mth.clamp(base, min, max);
 		float factor = scale < 0.75f ? 0.75f : scale > 1.5f ? 1.5f : 1;
 		return Mth.clamp(Math.round(base * factor), min, max);
 	}

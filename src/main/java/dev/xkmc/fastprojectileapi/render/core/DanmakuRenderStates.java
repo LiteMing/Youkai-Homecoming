@@ -2,6 +2,7 @@ package dev.xkmc.fastprojectileapi.render.core;
 
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import dev.xkmc.fastprojectileapi.compat.oculus.OculusRenderCompat;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import net.minecraft.Util;
 import net.minecraft.client.renderer.GameRenderer;
@@ -23,6 +24,13 @@ public abstract class DanmakuRenderStates extends RenderType {
 		// sortOnUpload=false: skip per-frame quad distance sorting for danmaku.
 		// Sorting 30,000 quads costs ~9% frame time (putSortedQuadIndices).
 		// Danmaku are small particles where depth sort order is visually negligible.
+		// writeMask=COLOR_WRITE for translucent/additive: don't write depth, otherwise
+		// the front-facing faces of a translucent shell stamp depth values that kill
+		// subsequent translucent fragments at the same/greater depth (visible under
+		// Oculus where buckets serialize draws — the inner core in DECAL bucket gets
+		// rejected by the shell's depth from GENERAL_TRANSPARENT). Vanilla translucent
+		// RenderTypes also use COLOR_WRITE for the same reason.
+		boolean opaque = type == DisplayType.SOLID;
 		return create(name,
 				DefaultVertexFormat.POSITION_TEX_COLOR,
 				VertexFormat.Mode.QUADS,
@@ -35,6 +43,7 @@ public abstract class DanmakuRenderStates extends RenderType {
 							case TRANSPARENT -> TRANSLUCENT_TRANSPARENCY;
 							case ADDITIVE -> ADDITIVE_TRANSPARENCY;
 						})
+						.setWriteMaskState(opaque ? COLOR_DEPTH_WRITE : COLOR_WRITE)
 						.setCullState(cull ? CULL : NO_CULL)
 						.createCompositeState(false));
 	}
@@ -43,6 +52,16 @@ public abstract class DanmakuRenderStates extends RenderType {
 			Util.memoize((rl, type) -> create("danmaku_" + type.getName(), rl, false, type));
 	private static final BiFunction<ResourceLocation, DisplayType, RenderType> LASER =
 			Util.memoize((rl, type) -> create("laser_" + type.getName(), rl, true, type));
+	// Laser inner-core uses a separate RenderType so it can be routed into Oculus's DECAL
+	// bucket — drawn AFTER the GENERAL_TRANSPARENT shell, so the translucent shell never
+	// hides the core under Oculus's batched-entity-rendering pipeline. Vanilla just sees
+	// two RenderTypes flushed in submission order, which is also correct.
+	private static final BiFunction<ResourceLocation, DisplayType, RenderType> LASER_CORE =
+			Util.memoize((rl, type) -> {
+				RenderType rt = create("laser_core_" + type.getName(), rl, true, type);
+				OculusRenderCompat.markAsDecal(rt);
+				return rt;
+			});
 
 	public static RenderType danmaku(ResourceLocation rl, DisplayType type) {
 		if (type == DisplayType.SOLID) type = DisplayType.TRANSPARENT;
@@ -51,6 +70,10 @@ public abstract class DanmakuRenderStates extends RenderType {
 
 	public static RenderType laser(ResourceLocation rl, DisplayType type) {
 		return LASER.apply(rl, type);
+	}
+
+	public static RenderType laserCore(ResourceLocation rl, DisplayType type) {
+		return LASER_CORE.apply(rl, type);
 	}
 
 	public static int fading(DisplayType display, int col, ProjectileRenderer<?> r, SimplifiedProjectile e) {

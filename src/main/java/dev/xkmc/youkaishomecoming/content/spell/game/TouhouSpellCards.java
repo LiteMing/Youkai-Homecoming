@@ -10,6 +10,7 @@ import dev.xkmc.youkaishomecoming.content.spell.bridge.LegacySpellBridge;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
@@ -32,37 +33,48 @@ public class TouhouSpellCards {
 	}
 
 	public static void registerSpells() {
-		// registerSpell("touhou_little_maid:hakurei_reimu", ReimuSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:yukari_yakumo", YukariSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:kochiya_sanae", SanaeSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:komeiji_koishi", KoishiSpell::new); // Legacy — migrated
+		// Marisa is not yet migrated — always legacy.
 		registerSpell("touhou_little_maid:kirisame_marisa", MarisaSpell::new);
-		// registerSpell("touhou_little_maid:mystia_lorelei", MystiaSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:doremy_sweet", DoremiSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:kisin_sagume", KisinSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:remilia_scarlet", RemiliaSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:clownpiece", ClownSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:izayoi_sakuya", SakuyaSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:konpaku_youmu", YoumuSpell::new); // Legacy — migrated
-		// registerSpell("touhou_little_maid:eternity_larva", LarvaSpell::new); // Legacy — migrated
 
-		// === Migrated to data-driven ===
-		registerMigrated(MigratedSpellCards.sunnyMilk());
-		registerMigrated(MigratedSpellCards.lunaChild());
-		registerMigrated(MigratedSpellCards.starSapphire());
-		registerMigrated(MigratedSpellCards.cirno());
-		registerMigrated(MigratedSpellCards.mystia());
-		registerMigrated(MigratedSpellCards.youmu());
-		registerMigrated(MigratedSpellCards.larva());
-		registerMigrated(MigratedSpellCards.sanae());
-		registerMigrated(MigratedSpellCards.clown());
-		registerMigrated(MigratedSpellCards.sakuya());
-		registerMigrated(MigratedSpellCards.kisin());
-		registerMigrated(MigratedSpellCards.remilia());
-		registerMigrated(MigratedSpellCards.doremi());
-		registerMigrated(MigratedSpellCards.koishi());
-		registerMigrated(MigratedSpellCards.reimu());
-		registerMigrated(MigratedSpellCards.yukari());
+		// All other Touhou spells have data-driven equivalents in MigratedSpellCards.
+		// The useLegacySpellCards config toggles between the two implementations
+		// (data-driven by default; flip to true to fall back to the original Java classes).
+		boolean useLegacy = YHModConfig.COMMON.useLegacySpellCards.get();
+		if (useLegacy) {
+			registerSpell("touhou_little_maid:sunny_milk", SunnySpell::new);
+			registerSpell("touhou_little_maid:luna_child", LunaSpell::new);
+			registerSpell("touhou_little_maid:star_sapphire", StarSpell::new);
+			registerSpell("touhou_little_maid:cirno", CirnoSpell::new);
+			registerSpell("touhou_little_maid:mystia_lorelei", MystiaSpell::new);
+			registerSpell("touhou_little_maid:konpaku_youmu", YoumuSpell::new);
+			registerSpell("touhou_little_maid:eternity_larva", LarvaSpell::new);
+			registerSpell("touhou_little_maid:kochiya_sanae", SanaeSpell::new);
+			registerSpell("touhou_little_maid:clownpiece", ClownSpell::new);
+			registerSpell("touhou_little_maid:izayoi_sakuya", SakuyaSpell::new);
+			registerSpell("touhou_little_maid:kisin_sagume", KisinSpell::new);
+			registerSpell("touhou_little_maid:remilia_scarlet", RemiliaSpell::new);
+			registerSpell("touhou_little_maid:doremy_sweet", DoremiSpell::new);
+			registerSpell("touhou_little_maid:komeiji_koishi", KoishiSpell::new);
+			registerSpell("touhou_little_maid:hakurei_reimu", ReimuSpell::new);
+			registerSpell("touhou_little_maid:yukari_yakumo", YukariSpell::new);
+		} else {
+			registerMigrated(MigratedSpellCards.sunnyMilk());
+			registerMigrated(MigratedSpellCards.lunaChild());
+			registerMigrated(MigratedSpellCards.starSapphire());
+			registerMigrated(MigratedSpellCards.cirno());
+			registerMigrated(MigratedSpellCards.mystia());
+			registerMigrated(MigratedSpellCards.youmu());
+			registerMigrated(MigratedSpellCards.larva());
+			registerMigrated(MigratedSpellCards.sanae());
+			registerMigrated(MigratedSpellCards.clown());
+			registerMigrated(MigratedSpellCards.sakuya());
+			registerMigrated(MigratedSpellCards.kisin());
+			registerMigrated(MigratedSpellCards.remilia());
+			registerMigrated(MigratedSpellCards.doremi());
+			registerMigrated(MigratedSpellCards.koishi());
+			registerMigrated(MigratedSpellCards.reimu());
+			registerMigrated(MigratedSpellCards.yukari());
+		}
 	}
 
 	/**

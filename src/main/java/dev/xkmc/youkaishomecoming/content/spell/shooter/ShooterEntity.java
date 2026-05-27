@@ -9,6 +9,7 @@ import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverOwner;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -124,7 +125,15 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 
 	@Override
 	public float getDamage(YHDanmaku.IDanmakuType type) {
-		return data.damage();
+		float d = data.damage();
+		// Fallback: if no damage was configured for this shooter (data-driven spawn_shooter
+		// with damage omitted or 0), inherit from the spawning caster. Without this, lasers
+		// fired through a shooter deal 0 damage even though their damage_type override still
+		// fires the danmaku-battle judgment, leading to "graze counts but no HP loss".
+		if (d <= 0 && getOwner() instanceof CardHolder owner) {
+			return owner.getDamage(type);
+		}
+		return d;
 	}
 
 	// data

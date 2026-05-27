@@ -116,6 +116,8 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue ringSpellDanmakuPerItemCost;
 		public final ForgeConfigSpec.IntValue homingSpellDanmakuPerItemCost;
 
+		public final ForgeConfigSpec.BooleanValue useLegacySpellCards;
+
 		public final ForgeConfigSpec.BooleanValue smallFairyReplacement;
 		public final ForgeConfigSpec.DoubleValue smallFairySummonReinforcement;
 		public final ForgeConfigSpec.DoubleValue smallFairySummonStrongFairy;
@@ -299,6 +301,14 @@ public class YHModConfig {
 						.defineInRange("ringSpellDanmakuPerItemCost", 32, 1, 1024);
 				homingSpellDanmakuPerItemCost = builder.comment("Homing Spell: Max number of bullet allowed per item cost")
 						.defineInRange("homingSpellDanmakuPerItemCost", 8, 1, 1024);
+			}
+			builder.pop();
+
+			builder.push("spell_migration");
+			{
+				useLegacySpellCards = builder.comment("Fallback to legacy Java SpellCard classes instead of data-driven migrated versions.")
+						.comment("Read at startup — restart required to apply.")
+						.define("useLegacySpellCards", false);
 			}
 			builder.pop();
 

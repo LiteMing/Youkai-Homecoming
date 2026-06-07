@@ -4,8 +4,12 @@ import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.EntityNumberProviderEvaluator;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.mover.*;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ItemSupplier;
@@ -22,6 +26,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	public ItemStack stack = ItemStack.EMPTY;
 	@SerialClass.SerialField
 	public float visualScale = 1;
+	public NumberProvider visualScaleFunction = null;
 	/**
 	 * Per-laser damage type override. When non-null, this takes priority over
 	 * the CardHolder/SpellCard damage source resolution chain.
@@ -57,6 +62,14 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	}
 
 	@Override
+	public void tick() {
+		super.tick();
+		if (visualScaleFunction != null) {
+			refreshDimensions();
+		}
+	}
+
+	@Override
 	public TraceableEntity asTraceable() {
 		return this;
 	}
@@ -79,6 +92,31 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 
 	public void readAdditionalSaveData(CompoundTag nbt) {
 		super.readAdditionalSaveData(nbt);
+		readScaleFunction(nbt);
+		refreshDimensions();
+	}
+
+	@Override
+	public void addAdditionalSaveData(CompoundTag nbt) {
+		super.addAdditionalSaveData(nbt);
+		writeScaleFunction(nbt);
+	}
+
+	@Override
+	public void writeSpawnData(FriendlyByteBuf data) {
+		super.writeSpawnData(data);
+		CompoundTag tag = new CompoundTag();
+		writeScaleFunction(tag);
+		data.writeNbt(tag);
+	}
+
+	@Override
+	public void readSpawnData(FriendlyByteBuf data) {
+		super.readSpawnData(data);
+		CompoundTag tag = data.readNbt();
+		if (tag != null) {
+			readScaleFunction(tag);
+		}
 		refreshDimensions();
 	}
 
@@ -99,7 +137,24 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 				sizeCache = item.size;
 			}
 		}
-		return (sizeCache == null ? 1 : sizeCache) * visualScale;
+		return (sizeCache == null ? 1 : sizeCache) * dynamicVisualScale();
+	}
+
+	private float dynamicVisualScale() {
+		if (visualScaleFunction == null) return visualScale;
+		return Math.max(0.05f, (float) EntityNumberProviderEvaluator.get(visualScaleFunction, tickCount, visualScale, random));
+	}
+
+	private void writeScaleFunction(CompoundTag nbt) {
+		if (visualScaleFunction == null) return;
+		NumberProvider.CODEC.encodeStart(NbtOps.INSTANCE, visualScaleFunction)
+				.result().ifPresent(tag -> nbt.put("visual_scale_function", tag));
+	}
+
+	private void readScaleFunction(CompoundTag nbt) {
+		if (!nbt.contains("visual_scale_function")) return;
+		NumberProvider.CODEC.parse(NbtOps.INSTANCE, nbt.get("visual_scale_function"))
+				.result().ifPresent(provider -> visualScaleFunction = provider);
 	}
 
 	private boolean isErased = false;

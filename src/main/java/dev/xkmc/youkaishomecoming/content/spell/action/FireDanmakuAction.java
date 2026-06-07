@@ -412,6 +412,9 @@ public record FireDanmakuAction(
 		DyeColor resolvedColor = color.get(ctx);
 		var danmaku = holder.prepareDanmaku(life, dir, bulletType, resolvedColor);
 		danmaku.visualScale = Math.max(0.05f, (float) size.get(ctx));
+		if (!(size instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Constant)) {
+			danmaku.visualScaleFunction = size;
+		}
 		danmaku.setPos(originPos);
 		// Apply per-action damage type override
 		if (damageType.isPresent()) {

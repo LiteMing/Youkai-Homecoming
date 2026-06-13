@@ -1,12 +1,16 @@
 package dev.xkmc.youkaishomecoming.events;
 
 import com.mojang.brigadier.arguments.ArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
+import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
+import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
+import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
@@ -40,6 +44,10 @@ public class YHCommands {
 			SharedSuggestionProvider.suggestResource(
 					SpellRegistry.getAll().keySet(),
 					builder);
+	private static final SuggestionProvider<CommandSourceStack> STG_MODE_SUGGESTIONS = (ctx, builder) ->
+			SharedSuggestionProvider.suggest(StgCombatMode.commandNames(), builder);
+	private static final SuggestionProvider<CommandSourceStack> STG_RESOURCE_SUGGESTIONS = (ctx, builder) ->
+			SharedSuggestionProvider.suggest(java.util.List.of("life", "bomb", "power"), builder);
 
 	@SubscribeEvent
 	public static void onServerStarted(ServerStartedEvent event) {
@@ -105,6 +113,63 @@ public class YHCommands {
 										})))
 
 				));
+
+		event.getDispatcher().register(literal("yhstg")
+				.requires(e -> e.hasPermission(2))
+				.then(literal("mode")
+						.then(argument("player", EntityArgument.player())
+								.then(argument("mode", StringArgumentType.word())
+										.suggests(STG_MODE_SUGGESTIONS)
+										.executes(ctx -> {
+											ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
+											String modeName = StringArgumentType.getString(ctx, "mode");
+											StgCombatMode mode;
+											try {
+												mode = StgCombatMode.fromName(modeName);
+											} catch (IllegalArgumentException e) {
+												ctx.getSource().sendFailure(Component.literal(e.getMessage()));
+												return 0;
+											}
+											YHStgApi.setMode(player, mode);
+											ctx.getSource().sendSuccess(() -> Component.literal(
+													"Set STG mode for " + player.getName().getString() + " to " + mode.commandName()), true);
+											return 1;
+										}))))
+				.then(literal("resource")
+						.then(argument("player", EntityArgument.player())
+								.then(literal("set")
+										.then(argument("resource", StringArgumentType.word())
+												.suggests(STG_RESOURCE_SUGGESTIONS)
+												.then(argument("amount", IntegerArgumentType.integer(0))
+														.executes(ctx -> setStgResource(ctx, false)))))
+								.then(literal("add")
+										.then(argument("resource", StringArgumentType.word())
+												.suggests(STG_RESOURCE_SUGGESTIONS)
+												.then(argument("amount", IntegerArgumentType.integer())
+														.executes(ctx -> setStgResource(ctx, true)))))))
+				.then(literal("bomb")
+						.then(argument("player", EntityArgument.player())
+								.executes(ctx -> {
+									ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
+									if (!YHStgApi.tryManualBomb(player)) {
+										ctx.getSource().sendFailure(Component.literal("Manual Bomb failed: no Bomb available"));
+										return 0;
+									}
+									ctx.getSource().sendSuccess(() -> Component.literal(
+											"Manual Bomb used by " + player.getName().getString()), true);
+									return 1;
+								})))
+				.then(literal("erase")
+						.then(argument("player", EntityArgument.player())
+								.then(argument("radius", DoubleArgumentType.doubleArg(0))
+										.executes(ctx -> {
+											ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
+											double radius = DoubleArgumentType.getDouble(ctx, "radius");
+											int erased = YHStgApi.eraseActiveDanmaku(player, radius, false);
+											ctx.getSource().sendSuccess(() -> Component.literal(
+													"Erased " + erased + " active danmaku for " + player.getName().getString()), true);
+											return erased;
+										})))));
 
 		// /yhspell commands
 		event.getDispatcher().register(literal("yhspell")
@@ -530,6 +595,51 @@ public class YHCommands {
 
 	protected static <T> RequiredArgumentBuilder<CommandSourceStack, T> argument(String name, ArgumentType<T> type) {
 		return RequiredArgumentBuilder.argument(name, type);
+	}
+
+	private static int setStgResource(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, boolean add) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
+		String resourceName = StringArgumentType.getString(ctx, "resource");
+		int amount = IntegerArgumentType.getInteger(ctx, "amount");
+		StgResourceEvent.Resource resource;
+		try {
+			resource = parseStgResource(resourceName);
+		} catch (IllegalArgumentException e) {
+			ctx.getSource().sendFailure(Component.literal(e.getMessage()));
+			return 0;
+		}
+		if (add) {
+			switch (resource) {
+				case LIFE -> YHStgApi.addLife(player, amount);
+				case BOMB -> YHStgApi.addBomb(player, amount);
+				case POWER -> YHStgApi.addPower(player, amount);
+			}
+		} else {
+			switch (resource) {
+				case LIFE -> YHStgApi.setLife(player, amount);
+				case BOMB -> YHStgApi.setBomb(player, amount);
+				case POWER -> YHStgApi.setPower(player, amount);
+			}
+		}
+		int value = switch (resource) {
+			case LIFE -> YHStgApi.getLife(player);
+			case BOMB -> YHStgApi.getBomb(player);
+			case POWER -> YHStgApi.getPower(player);
+		};
+		String action = add ? "Added " + amount + " to" : "Set";
+		ctx.getSource().sendSuccess(() -> Component.literal(
+				action + " STG " + resource.name().toLowerCase(java.util.Locale.ROOT) +
+						" for " + player.getName().getString() + " (now " + value + ")"), true);
+		return 1;
+	}
+
+	private static StgResourceEvent.Resource parseStgResource(String name) {
+		return switch (name.toLowerCase(java.util.Locale.ROOT)) {
+			case "life" -> StgResourceEvent.Resource.LIFE;
+			case "bomb" -> StgResourceEvent.Resource.BOMB;
+			case "power" -> StgResourceEvent.Resource.POWER;
+			default -> throw new IllegalArgumentException("Unknown STG resource: " + name);
+		};
 	}
 
 }

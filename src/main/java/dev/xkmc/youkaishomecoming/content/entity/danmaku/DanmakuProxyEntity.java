@@ -238,6 +238,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	public void eraseAllDanmaku(@Nullable Player player) {
+		eraseAllDanmakuAndCount(player);
+	}
+
+	public int eraseAllDanmakuAndCount(@Nullable Player player) {
+		int erased = allDanmakus.size();
 		DanmakuManager.setTrackingOverride(this);
 		for (var e : allDanmakus) {
 			if (player == null) e.markErased(true);
@@ -247,6 +252,30 @@ public class DanmakuProxyEntity extends PathfinderMob
 		removeDanmaku = true;
 		DanmakuManager.flushErases();
 		DanmakuManager.setTrackingOverride(null);
+		return erased;
+	}
+
+	public int eraseDanmakuInRadius(Vec3 center, double radius, @Nullable Player player) {
+		double radiusSq = radius * radius;
+		int erased = 0;
+		int w = 0;
+		DanmakuManager.setTrackingOverride(this);
+		for (int i = 0; i < allDanmakus.size(); i++) {
+			var e = allDanmakus.get(i);
+			if (e.position().distanceToSqr(center) <= radiusSq) {
+				if (player == null) e.markErased(true);
+				else e.erase(player);
+				erased++;
+			} else {
+				allDanmakus.set(w++, e);
+			}
+		}
+		if (erased > 0) {
+			allDanmakus.subList(w, allDanmakus.size()).clear();
+			DanmakuManager.flushErases();
+		}
+		DanmakuManager.setTrackingOverride(null);
+		return erased;
 	}
 
 	/**

@@ -5,6 +5,9 @@ import dev.xkmc.l2library.capability.player.PlayerCapabilityHolder;
 import dev.xkmc.l2library.capability.player.PlayerCapabilityNetworkHandler;
 import dev.xkmc.l2library.capability.player.PlayerCapabilityTemplate;
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
+import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.events.DanmakuLastHitEvent;
@@ -18,6 +21,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.AABB;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.CapabilityManager;
@@ -44,6 +48,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private int power, hidden, step, bomb, life, invul, weak;
 	@SerialClass.SerialField
 	private Map<UUID, CombatSession> sessions = new LinkedHashMap<>();
+	@SerialClass.SerialField
+	private String stgCombatMode = StgCombatMode.NOVICE_AUTO_BOMB.name();
 
 	private boolean dirty = false;
 	private int tempGraze = 0;
@@ -154,10 +160,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (!EffectEventHandlers.canDanmakuCombat(player)) return HitType.NONE;
 		if (!sessions.containsKey(e.getUUID())) return HitType.ERASE;
 		if (invul > 0) return HitType.INVUL;
-		for (var s : sessions.values()) {
-			s.eraseDanmaku(player);
-		}
-		if (useBomb()) {
+		int erased = eraseActiveDanmaku(0, true);
+		if (getStgCombatMode().autoBombOnHit() && useBomb()) {
+			if (player instanceof ServerPlayer sp) {
+				MinecraftForge.EVENT_BUS.post(new StgBombEvent.Auto(sp, e, erased));
+			}
 			return HitType.BOMB;
 		}
 		int maxLoss = (int) (YHModConfig.COMMON.maxPowerLossOnMiss.get() * MAX_GRAZE);
@@ -181,7 +188,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			return HitType.LAST;
 		}
 		life -= SHARD;
-		bomb = GrazeHelper.getInitialResource(player) * SHARD;
+		if (getStgCombatMode() == StgCombatMode.NOVICE_AUTO_BOMB) {
+			bomb = GrazeHelper.getInitialResource(player) * SHARD;
+		}
 		return HitType.LIFE;
 	}
 	public void setWeak(int duration) {
@@ -194,6 +203,27 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		invul = YHModConfig.COMMON.bombInvulTime.get();
 		dirty = true;
 		return true;
+	}
+
+	public int eraseActiveDanmaku(double radius, boolean sessionsOnly) {
+		double range = Math.max(0, radius);
+		Set<UUID> erasedYoukai = new HashSet<>();
+		int erased = 0;
+		for (var s : sessions.values()) {
+			erased += eraseSessionDanmaku(s, range, erasedYoukai);
+		}
+		if (!sessionsOnly && range > 0 && player.level() instanceof ServerLevel sl) {
+			AABB area = player.getBoundingBox().inflate(range);
+			for (var youkai : sl.getEntitiesOfClass(YoukaiEntity.class, area)) {
+				if (erasedYoukai.add(youkai.getUUID())) {
+					erased += eraseDanmaku(youkai, range);
+				}
+			}
+			for (var proxy : sl.getEntitiesOfClass(DanmakuProxyEntity.class, area)) {
+				erased += proxy.eraseDanmakuInRadius(player.position(), range, player);
+			}
+		}
+		return erased;
 	}
 
 	public float powerBonus() {
@@ -297,6 +327,15 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		dirty = true;
 	}
 
+	public StgCombatMode getStgCombatMode() {
+		return StgCombatMode.fromSerialized(stgCombatMode);
+	}
+
+	public void setStgCombatMode(StgCombatMode mode) {
+		stgCombatMode = Objects.requireNonNull(mode, "mode").name();
+		dirty = true;
+	}
+
 	public boolean isInvul() {
 		return invul > 0;
 	}
@@ -320,6 +359,19 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	public void sync() {
 		if (player instanceof ServerPlayer sp)
 			HOLDER.network.toClientSyncAll(sp);
+	}
+
+	private int eraseSessionDanmaku(CombatSession session, double radius, Set<UUID> erasedYoukai) {
+		if (!(session.getTarget(player) instanceof YoukaiEntity youkai)) return 0;
+		if (!erasedYoukai.add(youkai.getUUID())) return 0;
+		return eraseDanmaku(youkai, radius);
+	}
+
+	private int eraseDanmaku(YoukaiEntity youkai, double radius) {
+		if (radius > 0) {
+			return youkai.eraseDanmakuInRadius(player.position(), radius, player);
+		}
+		return youkai.eraseAllDanmakuAndCount(player);
 	}
 
 	public static void register() {

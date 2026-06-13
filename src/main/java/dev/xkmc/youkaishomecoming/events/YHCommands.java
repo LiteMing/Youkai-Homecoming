@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeAccess;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -292,29 +293,12 @@ public class YHCommands {
 								.suggests(SPELL_SUGGESTIONS)
 								.executes(ctx -> {
 									ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
-									SpellDefinition def = SpellRegistry.get(spellId);
-									if (def == null) {
-										ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
+									int count;
+									try {
+										count = SpellRuntimeAccess.reapply(ctx.getSource().getServer(), spellId, true);
+									} catch (Exception e) {
+										ctx.getSource().sendFailure(Component.literal(e.getMessage()));
 										return 0;
-									}
-									String spellIdStr = spellId.toString();
-									int count = 0;
-									for (var level : ctx.getSource().getServer().getAllLevels()) {
-										for (var entity : level.getAllEntities()) {
-											if (!(entity instanceof YoukaiEntity youkai)) continue;
-											boolean match = false;
-											if (youkai.spellRuntime != null
-													&& youkai.spellRuntime.getDefinition().id.equals(spellId)) {
-												match = true;
-											} else if (youkai.spellCard != null
-													&& spellIdStr.equals(youkai.spellCard.modelId)) {
-												match = true;
-											}
-											if (match) {
-												youkai.setSpellRuntime(new SpellRuntime(def));
-												count++;
-											}
-										}
 									}
 									int finalCount = count;
 									ctx.getSource().sendSuccess(
@@ -354,6 +338,35 @@ public class YHCommands {
 										return 0;
 									}
 								})))
+				.then(literal("patch")
+						.then(argument("spell_id", ResourceLocationArgument.id())
+								.suggests(SPELL_SUGGESTIONS)
+								.then(argument("json_pointer", StringArgumentType.string())
+										.then(argument("json_value", StringArgumentType.greedyString())
+												.executes(ctx -> {
+													ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+													String pointer = StringArgumentType.getString(ctx, "json_pointer");
+													String jsonValue = StringArgumentType.getString(ctx, "json_value");
+													try {
+														int applied = SpellRuntimeAccess.patch(
+																ctx.getSource().getServer(),
+																spellId.toString(),
+																pointer,
+																jsonValue,
+																true,
+																true);
+														int finalApplied = applied;
+														ctx.getSource().sendSuccess(
+																() -> Component.literal("Patched " + spellId + " and reapplied to "
+																		+ finalApplied + " entities"), true);
+														return 1;
+													} catch (Exception e) {
+														String msg = e.getMessage();
+														if (msg == null) msg = e.getClass().getSimpleName();
+														ctx.getSource().sendFailure(Component.literal("Patch failed: " + msg));
+														return 0;
+													}
+												})))))
 				.then(literal("import")
 						.then(argument("file_path", StringArgumentType.greedyString())
 								.executes(ctx -> {
@@ -376,23 +389,14 @@ public class YHCommands {
 											return 0;
 										}
 										String content = java.nio.file.Files.readString(file.toPath());
+										int applied = SpellRuntimeAccess.importJson(ctx.getSource().getServer(), content, true, true);
 										com.google.gson.JsonElement json = com.google.gson.JsonParser.parseString(content);
-										var parseResult = SpellDefinition.CODEC.parse(
-												com.mojang.serialization.JsonOps.INSTANCE, json);
-										if (parseResult.error().isPresent()) {
-											String errMsg = parseResult.error().get().message();
-											ctx.getSource().sendFailure(Component.literal("Parse error: " + errMsg));
-											return 0;
-										}
-										SpellDefinition def = parseResult.result().orElse(null);
-										if (def == null) {
-											ctx.getSource().sendFailure(Component.literal("Parse returned empty result"));
-											return 0;
-										}
-										SpellRegistry.register(def);
-										CustomSpellStorage.saveSpell(ctx.getSource().getServer(), def);
+										SpellDefinition def = SpellDefinition.CODEC.parse(
+												com.mojang.serialization.JsonOps.INSTANCE, json).result().orElseThrow();
+										int finalApplied = applied;
 										ctx.getSource().sendSuccess(
-												() -> Component.literal("Imported spell: " + def.id), true);
+												() -> Component.literal("Imported spell: " + def.id
+														+ " and reapplied to " + finalApplied + " entities"), true);
 										return 1;
 									} catch (Exception e) {
 										String msg = e.getMessage();

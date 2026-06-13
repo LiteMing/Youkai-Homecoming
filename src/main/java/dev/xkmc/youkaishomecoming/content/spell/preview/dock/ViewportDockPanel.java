@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
 import dev.xkmc.youkaishomecoming.content.spell.preview.VirtualSpellScene;
 import net.minecraft.client.Minecraft;
@@ -96,21 +97,111 @@ public class ViewportDockPanel implements DockPanel {
 				(float) rotationGizmoAxisX, (float) rotationGizmoAxisY, (float) rotationGizmoAxisZ);
 		viewport.render(graphics, scene, partialTick);
 
-		// Render mode indicator overlay
+		// Persistent control legend + live hover/drag feedback so it is always clear
+		// what a drag will move (view / caster / target / danmaku).
+		renderLegend(graphics);
+		renderInteractionFeedback(graphics, mouseX, mouseY);
+	}
+
+	// ---- Interaction feedback (legend + hover/drag indicators) ----
+
+	/** Always-visible control legend; its contents reflect the current interaction state. */
+	private void renderLegend(GuiGraphics graphics) {
 		var font = Minecraft.getInstance().font;
-		if (hasHighlightedGroup()) {
-			if (viewport.isPerspectiveMode()) {
-				graphics.drawString(font, "SELECTED — switch to orthographic to edit", x + 4, y + h - 12, 0xFFFFAA44, true);
-			} else if (rotationGizmoActive) {
-				graphics.drawString(font, "ROTATION MOVER  [R=Rotate speed  RMB=Drag]", x + 4, y + h - 12, 0xFFFF88FF, true);
-			} else if (rotateMode) {
-				String axisName = switch (rotateAxis) { case 0 -> "X"; case 1 -> "Y"; default -> "Z"; };
-				int axisColor = switch (rotateAxis) { case 0 -> 0xFFFF4444; case 1 -> 0xFF44FF44; default -> 0xFF4444FF; };
-				graphics.drawString(font, "ROTATE " + axisName + "  [X/Y/Z=Axis  LMB=Confirm  Esc=Cancel]", x + 4, y + h - 12, axisColor, true);
+		String l1, l2 = null;
+		int c1, c2 = 0;
+		if (viewport.isPerspectiveMode()) {
+			if (hasHighlightedGroup()) {
+				l1 = "SELECTED — switch to orthographic to edit";
+				c1 = 0xFFFFAA44;
 			} else {
-				graphics.drawString(font, "SELECTED  [R=Rotate  RMB=Move  LMB-empty=Deselect]", x + 4, y + h - 12, 0xFF66FF88, true);
+				l1 = "Perspective  LMB look · RMB orbit · MMB pan · wheel speed";
+				c1 = 0xFFBBBBBB;
 			}
+		} else if (rotateMode) {
+			c1 = axisColor(rotateAxis);
+			c2 = c1;
+			l1 = "ROTATE " + axisName(rotateAxis) + "  LMB drag: rotate";
+			l2 = "X/Y/Z axis · Esc/R exit · RMB orbit";
+		} else if (hasHighlightedGroup()) {
+			l1 = "SELECTED  LMB drag bullets: move origin · LMB empty: deselect";
+			c1 = 0xFF66FF88;
+			l2 = "R rotate · RMB orbit · MMB pan · wheel zoom";
+			c2 = 0xFF99CCAA;
+		} else {
+			l1 = "LMB select bullet · drag caster/target marker to move";
+			c1 = 0xFFCCCCCC;
+			l2 = "RMB orbit · MMB pan · wheel zoom";
+			c2 = 0xFFAAAAAA;
 		}
+		int lines = l2 == null ? 1 : 2;
+		int ly = y + h - 4 - lines * 10;
+		graphics.drawString(font, l1, x + 4, ly, c1, true);
+		if (l2 != null) graphics.drawString(font, l2, x + 4, ly + 10, c2, true);
+	}
+
+	/**
+	 * While dragging, label what is being moved. Otherwise, highlight the object the
+	 * cursor is hovering (caster/target marker or danmaku) with a ring + label near the cursor.
+	 */
+	private void renderInteractionFeedback(GuiGraphics graphics, int mouseX, int mouseY) {
+		var font = Minecraft.getInstance().font;
+		String dragLabel = activeDragLabel();
+		if (dragLabel != null) {
+			graphics.drawString(font, dragLabel, mouseX + 8, mouseY - 4, 0xFFFFFFFF, true);
+			return;
+		}
+		if (viewport.isPerspectiveMode() || !viewport.isMouseOver(mouseX, mouseY)) return;
+		int hm = hitTestMarker(mouseX, mouseY);
+		if (hm == 0) {
+			markerRing(graphics, scene.getHolder().getFakeCaster().position(), 7, 0xFFFF5555);
+			graphics.drawString(font, "Caster — drag to move", mouseX + 8, mouseY - 4, 0xFFFF7777, true);
+			return;
+		}
+		if (hm == 1) {
+			markerRing(graphics, scene.getHolder().getFakeTarget().position(), 7, 0xFFFFEE55);
+			graphics.drawString(font, "Target — drag to move", mouseX + 8, mouseY - 4, 0xFFFFEE77, true);
+			return;
+		}
+		ItemDanmakuEntity d = pickDanmaku(mouseX, mouseY);
+		if (d != null) {
+			Vec3 sp = viewport.worldToScreen(d.position());
+			drawRing(graphics, sp.x, sp.y, 5, 0xFF66DDFF);
+			boolean selected = d.sourceActionIndex >= 0
+					&& d.sourceActionIndex == scene.getHolder().getHighlightedActionIndex();
+			String label = selected ? "Danmaku — drag to move origin" : "Danmaku — click to select";
+			graphics.drawString(font, label, mouseX + 8, mouseY - 4, 0xFF99E6FF, true);
+		}
+	}
+
+	/** The label for whatever is currently being dragged, or null if no drag is active. */
+	private String activeDragLabel() {
+		if (movingCaster) return "Moving Caster";
+		if (movingTarget) return "Moving Target";
+		if (groupDragging) return "Moving origin";
+		if (groupRotating) return "Rotating " + axisName(rotateAxis);
+		if (rotating || viewport.isPerspectiveOrbiting()) return "Orbit view";
+		if (dragging || viewport.isPerspectivePanning()) return "Pan view";
+		return null;
+	}
+
+	private void markerRing(GuiGraphics graphics, Vec3 worldPos, int radius, int color) {
+		Vec3 sp = viewport.worldToScreen(worldPos);
+		drawRing(graphics, sp.x, sp.y, radius, color);
+	}
+
+	private void drawRing(GuiGraphics graphics, double sx, double sy, int radius, int color) {
+		int x0 = (int) Math.round(sx) - radius;
+		int y0 = (int) Math.round(sy) - radius;
+		graphics.renderOutline(x0, y0, radius * 2, radius * 2, color);
+	}
+
+	private static String axisName(int axis) {
+		return switch (axis) { case 0 -> "X"; case 1 -> "Y"; default -> "Z"; };
+	}
+
+	private static int axisColor(int axis) {
+		return switch (axis) { case 0 -> 0xFFFF4444; case 1 -> 0xFF44FF44; default -> 0xFF4444FF; };
 	}
 
 	// ---- 鼠标事件 ----
@@ -143,13 +234,16 @@ public class ViewportDockPanel implements DockPanel {
 		} else {
 			// 正交模式
 			if (button == 0) {
-				// If in rotate mode, click confirms and exits
+				// Rotate mode: LMB drag rotates the selected group around the active axis.
 				if (rotateMode) {
-					rotateMode = false;
+					if (hasHighlightedGroup()) {
+						groupRotating = true;
+						dragUndoPushed = false;
+					}
 					return true;
 				}
 
-				// Hit-test markers first (caster/target) — they sit on top in the editor
+				// Hit-test markers first (caster/target) — they sit on top in the editor.
 				int hitMarker = hitTestMarker(mouseX, mouseY);
 				if (hitMarker == 0) {
 					movingCaster = true;
@@ -160,45 +254,38 @@ public class ViewportDockPanel implements DockPanel {
 					return true;
 				}
 
-				// Try to click-select a danmaku entity
+				// Click a danmaku: select its action. If it is already the selected action,
+				// begin an origin drag instead (grab the bullets and drag to move the origin).
 				int hitAction = hitTestDanmaku(mouseX, mouseY);
 				if (hitAction >= 0) {
-					// Clicked on a danmaku → select its action
-					if (onClickSelectAction != null) onClickSelectAction.accept(hitAction);
+					if (hitAction == scene.getHolder().getHighlightedActionIndex()) {
+						groupDragging = true;
+						dragUndoPushed = false;
+					} else if (onClickSelectAction != null) {
+						onClickSelectAction.accept(hitAction);
+					}
 					return true;
 				}
 
-				// Clicked on empty space
+				// Empty space: deselect if something is selected. It no longer moves the
+				// target (drag the target marker for that) — that overload was the main
+				// source of "what am I dragging?" confusion.
 				if (hasHighlightedGroup()) {
 					// If an editbox was focused, just consume the click to unfocus it
 					// (Screen-level code handles the actual unfocusing).
-					// Only deselect the action if no editbox was focused.
 					if (isEditBoxFocusedSupplier != null && isEditBoxFocusedSupplier.getAsBoolean()) {
 						return true;
 					}
-					// Deselect
 					if (onGroupDeselect != null) onGroupDeselect.run();
-					return true;
 				}
-
-				// No selection → fall back to moving target (legacy default)
-				movingTarget = true;
 				return true;
 			}
 			if (button == 2) {
-				dragging = true;
+				dragging = true; // MMB = pan
 				return true;
 			}
 			if (button == 1) {
-				if (hasHighlightedGroup() && rotateMode) {
-					groupRotating = true; // Only rotate in rotate mode
-					dragUndoPushed = false;
-				} else if (hasHighlightedGroup()) {
-					groupDragging = true; // Right drag = move offset when not in rotate mode
-					dragUndoPushed = false;
-				} else {
-					rotating = true;
-				}
+				rotating = true; // RMB always orbits the camera (no longer stolen by selection)
 				return true;
 			}
 		}
@@ -281,12 +368,12 @@ public class ViewportDockPanel implements DockPanel {
 			movingCaster = false;
 			return true;
 		}
-		if (groupDragging && (button == 0 || button == 1)) {
+		if (groupDragging && button == 0) {
 			groupDragging = false;
 			dragUndoPushed = false;
 			return true;
 		}
-		if (groupRotating && button == 1) {
+		if (groupRotating && button == 0) {
 			groupRotating = false;
 			dragUndoPushed = false;
 			return true;
@@ -464,25 +551,34 @@ public class ViewportDockPanel implements DockPanel {
 	 * Returns the sourceActionIndex of the hit entity, or -1 if nothing hit.
 	 */
 	private int hitTestDanmaku(double screenX, double screenY) {
-		if (viewport.isPerspectiveMode()) return -1; // worldToScreen is ortho-only
+		ItemDanmakuEntity d = pickDanmaku(screenX, screenY);
+		return d == null ? -1 : d.sourceActionIndex;
+	}
+
+	/**
+	 * Like {@link #hitTestDanmaku} but returns the front-most danmaku entity itself
+	 * (or null), so the hover layer can highlight it precisely.
+	 */
+	private ItemDanmakuEntity pickDanmaku(double screenX, double screenY) {
+		if (viewport.isPerspectiveMode()) return null; // worldToScreen is ortho-only
 
 		double pixelTolSq = 8.0 * 8.0;
 		double bestDepth = Double.POSITIVE_INFINITY;
-		int bestAction = -1;
+		ItemDanmakuEntity best = null;
 
 		for (var entity : scene.getHolder().getLocalEntities()) {
-			if (entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity danmaku) {
+			if (entity instanceof ItemDanmakuEntity danmaku) {
 				Vec3 sp = viewport.worldToScreen(entity.position());
 				double dx = sp.x - screenX;
 				double dy = sp.y - screenY;
 				double distSq = dx * dx + dy * dy;
 				if (distSq <= pixelTolSq && sp.z < bestDepth) {
 					bestDepth = sp.z;
-					bestAction = danmaku.sourceActionIndex;
+					best = danmaku;
 				}
 			}
 		}
-		return bestAction;
+		return best;
 	}
 
 	/**

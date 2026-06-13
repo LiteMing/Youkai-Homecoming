@@ -289,6 +289,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 		runtime = new SpellRuntime(definition);
 	}
 
+	@Nullable
+	public net.minecraft.resources.ResourceLocation getSpellDefinitionId() {
+		return runtime == null ? null : runtime.getDefinition().id;
+	}
+
 	@Override
 	public UserCacheHolder entityCache() {
 		return cache;

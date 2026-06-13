@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellConditions;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeAccess;
 
 public class YHSpellKubeJSPlugin extends KubeJSPlugin {
 
@@ -19,6 +20,7 @@ public class YHSpellKubeJSPlugin extends KubeJSPlugin {
 	@Override
 	public void registerBindings(BindingsEvent event) {
 		event.add("SpellRegistry", SpellRegistry.class);
+		event.add("YHSpellRuntime", SpellRuntimeAccess.class);
 		event.add("SpellConditions", SpellConditions.class);
 		event.add("SpellActions", SpellActions.class);
 	}

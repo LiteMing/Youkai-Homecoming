@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.common.MinecraftForge;
 
 import java.util.Objects;
@@ -79,6 +80,19 @@ public final class YHStgApi {
 
 	public static boolean isInDanmakuSession(ServerPlayer player) {
 		return cap(player).isInSession();
+	}
+
+	public static boolean isWeak(ServerPlayer player) {
+		return cap(player).isWeak();
+	}
+
+	/**
+	 * Entry point for external danmaku-like projectiles.
+	 * Returns false when the hit should be ignored by YH danmaku combat rules.
+	 */
+	public static boolean tryPlayerDanmakuHit(ServerPlayer player, LivingEntity target) {
+		Objects.requireNonNull(target, "target");
+		return cap(player).shouldHurt(target);
 	}
 
 	private static GrazeCapability cap(ServerPlayer player) {

@@ -39,6 +39,10 @@ public class YHAttackListener implements AttackListener {
 		var source = event.getSource();
 		if (source.is(YHDamageTypes.DANMAKU_TYPE) && source.getEntity() instanceof Player player) {
 			var graze = GrazeCapability.HOLDER.get(player);
+			if (!graze.shouldHurt(cache.getAttackTarget())) {
+				event.setCanceled(true);
+				return;
+			}
 			cache.addHurtModifier(DamageModifier.multTotal(1 + graze.powerBonus()));
 		}
 		if (source.getEntity() instanceof TunaEntity && cache.getAttackTarget() instanceof WaterAnimal) {

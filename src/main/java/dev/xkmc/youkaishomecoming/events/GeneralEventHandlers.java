@@ -97,9 +97,7 @@ public class GeneralEventHandlers {
 
 	@SubscribeEvent(priority = EventPriority.LOW)
 	public static void collectBlood(LivingDeathEvent event) {
-		if (event.getEntity() instanceof ServerPlayer player) {
-			SpellContainer.clear(player);
-		}
+		clearPlayerSpells(event.getEntity());
 		if (!event.getEntity().getType().is(YHTagGen.FLESH_SOURCE)) return;
 		if (event.getSource().getEntity() instanceof LivingEntity le) {
 			if (le.getMainHandItem().is(ForgeTags.TOOLS_KNIVES) &&
@@ -151,6 +149,23 @@ public class GeneralEventHandlers {
 	}
 
 	@SubscribeEvent
+	public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+		clearPlayerSpells(event.getEntity());
+	}
+
+	@SubscribeEvent
+	public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+		clearPlayerSpells(event.getEntity());
+	}
+
+	@SubscribeEvent
+	public static void onPlayerClone(PlayerEvent.Clone event) {
+		if (event.isWasDeath()) {
+			clearPlayerSpells(event.getEntity());
+		}
+	}
+
+	@SubscribeEvent
 	public static void onEntityKilled(LivingDeathEvent event) {
 		if (event.getEntity() instanceof Villager && YHModConfig.COMMON.reimuSummonKill.get()) {
 			if (event.getSource().getEntity() instanceof LivingEntity le) {
@@ -182,6 +197,12 @@ public class GeneralEventHandlers {
 			return hat.modifyDamageType(stack, le, danmaku, type);
 		}
 		return type;
+	}
+
+	private static void clearPlayerSpells(LivingEntity entity) {
+		if (entity instanceof ServerPlayer player) {
+			SpellContainer.clear(player);
+		}
 	}
 
 }

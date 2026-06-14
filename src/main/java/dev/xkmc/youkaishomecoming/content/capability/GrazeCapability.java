@@ -98,8 +98,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (bomb > maxResource) bomb = maxResource;
 		if (player.level() instanceof ServerLevel sl) {
 			if (!full) {
-				dirty = !sessions.isEmpty();
-				sessions.clear();
+				if (!sessions.isEmpty()) {
+					sessions.clear();
+					dirty = true;
+				}
 			} else {
 				for (var ent : new ArrayList<>(sessions.entrySet())) {
 					if (ent.getValue().youkai == null) dirty = true;
@@ -178,19 +180,14 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		}
 		if (life < SHARD) {
 			if (MinecraftForge.EVENT_BUS.post(new DanmakuLastHitEvent(player, e))) {
+				dirty = true;
 				return HitType.LIFE;
 			}
-			for (var s : sessions.values()) {
-				s.resetTarget(player);
-			}
-			sessions.clear();
-			weak = WEAK;
+			exitDanmakuCombatOnLastHit();
 			return HitType.LAST;
 		}
 		life -= SHARD;
-		if (getStgCombatMode() == StgCombatMode.NOVICE_AUTO_BOMB) {
-			bomb = GrazeHelper.getInitialResource(player) * SHARD;
-		}
+		restoreInitialBomb();
 		return HitType.LIFE;
 	}
 	public void setWeak(int duration) {
@@ -220,7 +217,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 				}
 			}
 			for (var proxy : sl.getEntitiesOfClass(DanmakuProxyEntity.class, area)) {
-				erased += proxy.eraseDanmakuInRadius(player.position(), range, player);
+				if (!proxy.isOwnedBy(player)) {
+					erased += proxy.eraseDanmakuInRadius(player.position(), range, player);
+				}
 			}
 		}
 		return erased;
@@ -372,6 +371,26 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			return youkai.eraseDanmakuInRadius(player.position(), radius, player);
 		}
 		return youkai.eraseAllDanmakuAndCount(player);
+	}
+
+	private void restoreInitialBomb() {
+		bomb = GrazeHelper.getInitialResource(player) * SHARD;
+		dirty = true;
+	}
+
+	private void exitDanmakuCombatOnLastHit() {
+		life = 0;
+		bomb = 0;
+		for (var s : sessions.values()) {
+			s.resetTarget(player);
+		}
+		sessions.clear();
+		weak = WEAK;
+		if (player instanceof ServerPlayer sp) {
+			SpellContainer.clear(sp);
+			sync();
+		}
+		dirty = true;
 	}
 
 	public static void register() {

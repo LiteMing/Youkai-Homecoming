@@ -153,6 +153,10 @@ public class SpellRuntime {
 		if (hurtCooldownRemaining > 0) hurtCooldownRemaining--;
 	}
 
+	public void tick(SpellRuntimeHost host) {
+		tick((CardHolder) host);
+	}
+
 	/** Minimum ticks between on_damage triggers to prevent feedback loops (e.g. border → hit → on_hurt → border). */
 	private static final int HURT_COOLDOWN = 20;
 	private int hurtCooldownRemaining = 0;
@@ -176,6 +180,10 @@ public class SpellRuntime {
 				}
 			}
 		}
+	}
+
+	public void hurt(SpellRuntimeHost host, DamageSource source, float amount) {
+		hurt((CardHolder) host, source, amount);
 	}
 
 	public void reset() {

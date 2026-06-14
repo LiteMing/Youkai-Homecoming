@@ -18,7 +18,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RestrictData;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
-import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.events.YoukaiFightEvent;
@@ -66,7 +66,7 @@ import java.util.Objects;
 
 @SerialClass
 public abstract class YoukaiEntity extends PathfinderMob
-		implements SpellCircleHolder, LivingCardHolder, EntityCachingUser {
+		implements SpellCircleHolder, SpellRuntimeHost, EntityCachingUser {
 
 	private static final int GROUND_HEIGHT = 5, ATTEMPT_ABOVE = 3;
 
@@ -583,6 +583,27 @@ public abstract class YoukaiEntity extends PathfinderMob
 		syncSpellState();
 	}
 
+	@Nullable
+	@Override
+	public SpellRuntime getSpellRuntime() {
+		return spellRuntime;
+	}
+
+	@Override
+	public LivingEntity owner() {
+		return this;
+	}
+
+	@Override
+	public void eraseDanmaku(@Nullable Player player) {
+		eraseAllDanmaku(player);
+	}
+
+	@Override
+	public boolean isBossHost() {
+		return true;
+	}
+
 	public void danmakuHitTarget(IYHDanmaku self, DamageSource source, LivingEntity target) {
 		if (combatProgress.progress <= 0) return;
 		if (target instanceof Player player) {
@@ -615,7 +636,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 			else allDanmakus.add(proj);
 			toBeSent.add(proj);
 		} else {
-			LivingCardHolder.super.shoot(danmaku);
+			SpellRuntimeHost.super.shoot(danmaku);
 		}
 	}
 

@@ -8,8 +8,9 @@ import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
-import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -40,7 +41,7 @@ import java.util.UUID;
  * the same path used by boss youkai entities.
  */
 public class DanmakuProxyEntity extends PathfinderMob
-		implements LivingCardHolder, EntityCachingUser {
+		implements SpellRuntimeHost, EntityCachingUser {
 
 	// ==================== Virtual danmaku infrastructure (copied from YoukaiEntity) ====================
 
@@ -208,7 +209,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 			else allDanmakus.add(proj);
 			toBeSent.add(proj);
 		} else {
-			LivingCardHolder.super.shoot(danmaku);
+			SpellRuntimeHost.super.shoot(danmaku);
 		}
 	}
 
@@ -315,11 +316,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 		if (clearScreen) {
 			eraseAllDanmaku(null);
 		}
-		runtime = new SpellRuntime(definition);
+		setSpellRuntime(new SpellRuntime(definition));
 	}
 
 	@Nullable
-	public net.minecraft.resources.ResourceLocation getSpellDefinitionId() {
+	@Override
+	public ResourceLocation getSpellDefinitionId() {
 		return runtime == null ? null : runtime.getDefinition().id;
 	}
 
@@ -338,6 +340,43 @@ public class DanmakuProxyEntity extends PathfinderMob
 	@Override
 	public LivingEntity shooter() {
 		return ownerPlayer != null ? ownerPlayer : this;
+	}
+
+	@Nullable
+	@Override
+	public LivingEntity owner() {
+		resolveOwner();
+		return ownerPlayer;
+	}
+
+	@Nullable
+	@Override
+	public SpellRuntime getSpellRuntime() {
+		return runtime;
+	}
+
+	@Override
+	public void setSpellRuntime(@Nullable SpellRuntime runtime) {
+		this.runtime = runtime;
+	}
+
+	@Override
+	public void eraseDanmaku(@Nullable Player player) {
+		eraseAllDanmaku(player);
+	}
+
+	@Override
+	public void syncSpellState() {
+	}
+
+	@Override
+	public boolean isBossHost() {
+		return false;
+	}
+
+	@Override
+	public boolean isOwnedBy(@Nullable Player player) {
+		return player != null && ownerPlayerId != null && ownerPlayerId.equals(player.getUUID());
 	}
 
 	@Override

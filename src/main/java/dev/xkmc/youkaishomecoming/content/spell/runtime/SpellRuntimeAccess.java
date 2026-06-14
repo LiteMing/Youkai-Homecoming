@@ -135,8 +135,8 @@ public class SpellRuntimeAccess {
 					}
 					continue;
 				}
-				if (entity instanceof DanmakuProxyEntity proxy && spellId.equals(proxy.getSpellDefinitionId())) {
-					proxy.switchSpellDefinition(def, clearScreen);
+				if (entity instanceof SpellRuntimeHost host && host.hasSpell(spellId)) {
+					host.switchSpellDefinition(def, clearScreen);
 					count++;
 				}
 			}

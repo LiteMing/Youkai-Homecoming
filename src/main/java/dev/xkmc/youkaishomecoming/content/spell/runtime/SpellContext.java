@@ -14,6 +14,8 @@ import java.util.Map;
 public class SpellContext {
 
 	private final CardHolder holder;
+	@Nullable
+	private final SpellRuntimeHost host;
 	private final SpellDefinition definition;
 	private final SpellRuntime runtime;
 	private final DifficultyModifiers difficulty;
@@ -21,6 +23,7 @@ public class SpellContext {
 	public SpellContext(CardHolder holder, SpellDefinition definition,
 						SpellRuntime runtime, DifficultyModifiers difficulty) {
 		this.holder = holder;
+		this.host = holder instanceof SpellRuntimeHost spellHost ? spellHost : null;
 		this.definition = definition;
 		this.runtime = runtime;
 		this.difficulty = difficulty;
@@ -28,6 +31,11 @@ public class SpellContext {
 
 	public CardHolder holder() {
 		return holder;
+	}
+
+	@Nullable
+	public SpellRuntimeHost host() {
+		return host;
 	}
 
 	public SpellDefinition definition() {
@@ -86,13 +94,8 @@ public class SpellContext {
 			runtimeItemSpell.clearDanmaku();
 			return;
 		}
-		if (holder instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity proxy) {
-			proxy.eraseAllDanmaku(null);
-			return;
-		}
-		var self = holder.self();
-		if (self instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity youkai) {
-			youkai.eraseAllDanmaku(null);
+		if (host != null) {
+			host.eraseDanmaku(null);
 		}
 	}
 
@@ -108,16 +111,8 @@ public class SpellContext {
 			runtimeItemSpell.switchSpell(def, clearScreen);
 			return true;
 		}
-		if (holder instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity proxy) {
-			proxy.switchSpellDefinition(def, clearScreen);
-			return true;
-		}
-		var self = holder.self();
-		if (self instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity youkai) {
-			if (clearScreen) {
-				youkai.eraseAllDanmaku(null);
-			}
-			youkai.setSpellRuntime(new SpellRuntime(def));
+		if (host != null) {
+			host.switchSpellDefinition(def, clearScreen);
 			return true;
 		}
 		return false;

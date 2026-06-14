@@ -326,6 +326,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		dirty = true;
 	}
 
+	public void setPoints(int i) {
+		hidden = Math.max(0, Math.min(MAX_GRAZE - 1, i));
+		dirty = true;
+	}
+
 	public StgCombatMode getStgCombatMode() {
 		return StgCombatMode.fromSerialized(stgCombatMode);
 	}
@@ -353,6 +358,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public int getPower() {
 		return power;
+	}
+
+	public int getPoints() {
+		return hidden;
 	}
 
 	public void sync() {

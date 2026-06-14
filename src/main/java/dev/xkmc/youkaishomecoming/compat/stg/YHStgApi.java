@@ -39,6 +39,10 @@ public final class YHStgApi {
 		return cap(player).getPower() / POWER_UNIT;
 	}
 
+	public static int getPoints(ServerPlayer player) {
+		return cap(player).getPoints();
+	}
+
 	public static void setLife(ServerPlayer player, int displayLife) {
 		setResource(player, StgResourceEvent.Resource.LIFE, toInternal(displayLife, RESOURCE_UNIT));
 	}
@@ -51,6 +55,10 @@ public final class YHStgApi {
 		setResource(player, StgResourceEvent.Resource.POWER, toInternal(displayPower, POWER_UNIT));
 	}
 
+	public static void setPoints(ServerPlayer player, int points) {
+		setResource(player, StgResourceEvent.Resource.POINTS, points);
+	}
+
 	public static void addLife(ServerPlayer player, int amount) {
 		addResource(player, StgResourceEvent.Resource.LIFE, amount, RESOURCE_UNIT);
 	}
@@ -61,6 +69,10 @@ public final class YHStgApi {
 
 	public static void addPower(ServerPlayer player, int amount) {
 		addResource(player, StgResourceEvent.Resource.POWER, amount, POWER_UNIT);
+	}
+
+	public static void addPoints(ServerPlayer player, int amount) {
+		addResource(player, StgResourceEvent.Resource.POINTS, amount, 1);
 	}
 
 	public static boolean tryManualBomb(ServerPlayer player) {
@@ -111,6 +123,7 @@ public final class YHStgApi {
 		int oldValue = getInternal(cap, resource);
 		int newValue = clampInternal(internalValue);
 		setInternal(cap, resource, newValue);
+		newValue = getInternal(cap, resource);
 		cap.sync();
 		MinecraftForge.EVENT_BUS.post(new StgResourceEvent(player, resource, oldValue, newValue, unit(resource)));
 	}
@@ -120,6 +133,7 @@ public final class YHStgApi {
 			case LIFE -> cap.getLife();
 			case BOMB -> cap.getBomb();
 			case POWER -> cap.getPower();
+			case POINTS -> cap.getPoints();
 		};
 	}
 
@@ -128,11 +142,16 @@ public final class YHStgApi {
 			case LIFE -> cap.setLife(value);
 			case BOMB -> cap.setBomb(value);
 			case POWER -> cap.setPower(value);
+			case POINTS -> cap.setPoints(value);
 		}
 	}
 
 	private static int unit(StgResourceEvent.Resource resource) {
-		return resource == StgResourceEvent.Resource.POWER ? POWER_UNIT : RESOURCE_UNIT;
+		return switch (resource) {
+			case POWER -> POWER_UNIT;
+			case POINTS -> 1;
+			case LIFE, BOMB -> RESOURCE_UNIT;
+		};
 	}
 
 	private static int toInternal(int displayValue, int unit) {

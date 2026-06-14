@@ -39,6 +39,10 @@ public final class YHStg {
 		return YHStgApi.getPower(requirePlayer(player));
 	}
 
+	public static int getPoints(Object player) {
+		return YHStgApi.getPoints(requirePlayer(player));
+	}
+
 	public static void setLife(Object player, int amount) {
 		YHStgApi.setLife(requirePlayer(player), amount);
 	}
@@ -51,6 +55,10 @@ public final class YHStg {
 		YHStgApi.setPower(requirePlayer(player), amount);
 	}
 
+	public static void setPoints(Object player, int amount) {
+		YHStgApi.setPoints(requirePlayer(player), amount);
+	}
+
 	public static void addLife(Object player, int amount) {
 		YHStgApi.addLife(requirePlayer(player), amount);
 	}
@@ -61,6 +69,10 @@ public final class YHStg {
 
 	public static void addPower(Object player, int amount) {
 		YHStgApi.addPower(requirePlayer(player), amount);
+	}
+
+	public static void addPoints(Object player, int amount) {
+		YHStgApi.addPoints(requirePlayer(player), amount);
 	}
 
 	public static boolean tryManualBomb(Object player) {

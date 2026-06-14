@@ -39,7 +39,7 @@ public class StgResourceEvent extends PlayerEvent {
 	}
 
 	public enum Resource {
-		LIFE, BOMB, POWER
+		LIFE, BOMB, POWER, POINTS
 	}
 
 }

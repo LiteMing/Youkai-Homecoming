@@ -47,7 +47,7 @@ public class YHCommands {
 	private static final SuggestionProvider<CommandSourceStack> STG_MODE_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(StgCombatMode.commandNames(), builder);
 	private static final SuggestionProvider<CommandSourceStack> STG_RESOURCE_SUGGESTIONS = (ctx, builder) ->
-			SharedSuggestionProvider.suggest(java.util.List.of("life", "bomb", "power"), builder);
+			SharedSuggestionProvider.suggest(java.util.List.of("life", "bomb", "power", "points"), builder);
 
 	@SubscribeEvent
 	public static void onServerStarted(ServerStartedEvent event) {
@@ -108,6 +108,18 @@ public class YHCommands {
 											int power = ctx.getArgument("power", Integer.class);
 											var cap = GrazeCapability.HOLDER.get(player);
 											cap.setPower(power * 100);
+											ctx.getSource().sendSystemMessage(Component.literal("Completed"));
+											return 0;
+										})))
+						.then(literal("setPoints")
+								.requires(e -> e.hasPermission(2))
+								.then(argument("points", IntegerArgumentType.integer(0, 99))
+										.executes(ctx -> {
+											EntitySelector sel = ctx.getArgument("player", EntitySelector.class);
+											var player = sel.findSinglePlayer(ctx.getSource());
+											int points = ctx.getArgument("points", Integer.class);
+											var cap = GrazeCapability.HOLDER.get(player);
+											cap.setPoints(points);
 											ctx.getSource().sendSystemMessage(Component.literal("Completed"));
 											return 0;
 										})))
@@ -613,18 +625,21 @@ public class YHCommands {
 				case LIFE -> YHStgApi.addLife(player, amount);
 				case BOMB -> YHStgApi.addBomb(player, amount);
 				case POWER -> YHStgApi.addPower(player, amount);
+				case POINTS -> YHStgApi.addPoints(player, amount);
 			}
 		} else {
 			switch (resource) {
 				case LIFE -> YHStgApi.setLife(player, amount);
 				case BOMB -> YHStgApi.setBomb(player, amount);
 				case POWER -> YHStgApi.setPower(player, amount);
+				case POINTS -> YHStgApi.setPoints(player, amount);
 			}
 		}
 		int value = switch (resource) {
 			case LIFE -> YHStgApi.getLife(player);
 			case BOMB -> YHStgApi.getBomb(player);
 			case POWER -> YHStgApi.getPower(player);
+			case POINTS -> YHStgApi.getPoints(player);
 		};
 		String action = add ? "Added " + amount + " to" : "Set";
 		ctx.getSource().sendSuccess(() -> Component.literal(
@@ -638,6 +653,7 @@ public class YHCommands {
 			case "life" -> StgResourceEvent.Resource.LIFE;
 			case "bomb" -> StgResourceEvent.Resource.BOMB;
 			case "power" -> StgResourceEvent.Resource.POWER;
+			case "points", "point" -> StgResourceEvent.Resource.POINTS;
 			default -> throw new IllegalArgumentException("Unknown STG resource: " + name);
 		};
 	}

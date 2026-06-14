@@ -258,6 +258,8 @@ public class ActionEditorPanel {
 			buildForcePhaseRows(fp);
 		} else if (action instanceof SpellActions.ForceSpell fs) {
 			buildForceSpellRows(fs);
+		} else if (action instanceof SpellActions.FireSpell fs) {
+			buildFireSpellRows(fs);
 		} else if (action instanceof SpellActions.RepeatAction ra) {
 			buildRepeatRows(ra);
 		} else if (action instanceof DelayAction da) {
@@ -296,6 +298,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
 		addFullWidthButton("Force Spell", () -> selectType("force_spell"));
+		addFullWidthButton("Fire Spell", () -> selectType("fire_spell"));
 		addFullWidthButton("Confine Target", () -> selectType("confine_target"));
 		addFullWidthButton("Set Entity Flag", () -> selectType("set_entity_flag"));
 		addFullWidthButton("Teleport Random", () -> selectType("teleport_random"));
@@ -346,11 +349,17 @@ public class ActionEditorPanel {
 					new ResourceLocation("youkaishomecoming", "main"), true);
 			case "force_spell" -> new SpellActions.ForceSpell(
 					new ResourceLocation("youkaishomecoming", "main"), true);
+			case "fire_spell" -> new SpellActions.FireSpell(
+					new ResourceLocation("youkaishomecoming", "main"), Optional.empty(), NumberProvider.constant(1));
 			case "delay" -> new DelayAction(20, new ArrayList<>());
 			case "teleport" -> new TeleportAction(OriginConfig.caster(), true);
 			case "spawn_shooter" -> new SpawnShooterAction(40, 4f, 100,
 					OriginConfig.caster(),
 					NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+					NumberProvider.constant(1), NumberProvider.constant(0),
+					NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(0),
+					PatternType.AIMED, new AimMode.AimModes.Target(),
+					Optional.empty(), Optional.empty(), Optional.empty(),
 					Optional.empty(), new ArrayList<>());
 		case "burst" -> new BurstAction(3, 5, new ArrayList<>());
 		case "sequence" -> new SpellActions.SequenceAction(new ArrayList<>());
@@ -956,6 +965,38 @@ public class ActionEditorPanel {
 				notifySimple(old -> new SpellActions.ForceSpell(fs.spellId(), v), true));
 	}
 
+	private void buildFireSpellRows(SpellActions.FireSpell fs) {
+		List<ResourceLocation> spellOptions = spellOptionsSupplier.get();
+		if (spellOptions != null && !spellOptions.isEmpty()) {
+			addChoiceRow("Spell ID", spellOptions, fs.spellId(), this::formatSpellOption, id ->
+					notifySimple(old -> new SpellActions.FireSpell(id,
+							((SpellActions.FireSpell) old).phaseId(), ((SpellActions.FireSpell) old).duration())));
+		} else {
+			addStringRow("Spell ID", fs.spellId().toString(), v -> {
+				ResourceLocation id = ResourceLocation.tryParse(v);
+				if (id != null) notifySimple(old -> new SpellActions.FireSpell(id,
+						((SpellActions.FireSpell) old).phaseId(), ((SpellActions.FireSpell) old).duration()));
+			});
+		}
+		if (spellOptions == null || !spellOptions.contains(fs.spellId())) {
+			addStringRow("Raw ID", fs.spellId().toString(), v -> {
+				ResourceLocation id = ResourceLocation.tryParse(v);
+				if (id != null) notifySimple(old -> new SpellActions.FireSpell(id,
+						((SpellActions.FireSpell) old).phaseId(), ((SpellActions.FireSpell) old).duration()));
+			});
+		}
+		addStringRow("Phase ID", fs.phaseId().map(ResourceLocation::toString).orElse(""), v -> {
+			ResourceLocation id = v == null || v.isBlank() ? null : ResourceLocation.tryParse(v);
+			if (id != null || v == null || v.isBlank()) {
+				notifySimple(old -> new SpellActions.FireSpell(((SpellActions.FireSpell) old).spellId(),
+						Optional.ofNullable(id), ((SpellActions.FireSpell) old).duration()));
+			}
+		});
+		addNumberRow("Duration", fs.duration(), v ->
+				notifySimple(old -> new SpellActions.FireSpell(((SpellActions.FireSpell) old).spellId(),
+						((SpellActions.FireSpell) old).phaseId(), v)));
+	}
+
 	private String formatSpellOption(ResourceLocation spellId) {
 		String formatted = spellDisplayFormatter.apply(spellId);
 		if (formatted == null || formatted.isBlank()) {
@@ -1086,67 +1127,106 @@ public class ActionEditorPanel {
 
 	private void buildSpawnShooterRows(SpawnShooterAction ssa) {
 		addIntRow("Health", ssa.health(), v ->
-				notifySimple(old -> {
-					var s = (SpawnShooterAction) old;
-					return new SpawnShooterAction(v, s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
-				}));
+				notifySimple(old -> ((SpawnShooterAction) old).withHealth(v)));
 		addIntRow("Lifetime", ssa.lifetime(), v ->
-				notifySimple(old -> {
-					var s = (SpawnShooterAction) old;
-					return new SpawnShooterAction(s.health(), s.damage(), v, s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
-				}));
+				notifySimple(old -> ((SpawnShooterAction) old).withLifetime(v)));
 		addNumberRow("Vel X", ssa.velocityX(), v ->
-				notifySimple(old -> {
-					var s = (SpawnShooterAction) old;
-					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							v, s.velocityY(), s.velocityZ(), s.mover(), s.body());
-				}));
+				notifySimple(old -> ((SpawnShooterAction) old).withVelocityX(v)));
 		addNumberRow("Vel Y", ssa.velocityY(), v ->
-				notifySimple(old -> {
-					var s = (SpawnShooterAction) old;
-					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), v, s.velocityZ(), s.mover(), s.body());
-				}));
+				notifySimple(old -> ((SpawnShooterAction) old).withVelocityY(v)));
 		addNumberRow("Vel Z", ssa.velocityZ(), v ->
-				notifySimple(old -> {
-					var s = (SpawnShooterAction) old;
-					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), v, s.mover(), s.body());
-				}));
+				notifySimple(old -> ((SpawnShooterAction) old).withVelocityZ(v)));
 		addFloatRow("Damage", ssa.damage(), v ->
-				notifySimple(old -> {
-					var s = (SpawnShooterAction) old;
-					return new SpawnShooterAction(s.health(), v, s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
-				}));
+				notifySimple(old -> ((SpawnShooterAction) old).withDamage(v)));
+		addSectionHeader("Pattern");
+		if (!isSectionCollapsed("Pattern")) {
+			currentDepth++;
+			addNumberRow("Count", ssa.count(), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withCount(v), false));
+			addNumberRow("Speed", ssa.speed(), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withSpeed(v), false));
+			addNumberRow("Angle", ssa.angleOffset(), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withAngleOffset(v), false));
+			addNumberRow("Spread", ssa.spread(), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withSpread(v), false));
+			addNumberRow("Elevation", ssa.elevation(), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withElevation(v), false));
+			addEnumRow("Pattern", PatternType.values(), ssa.pattern(), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withPattern(v)));
+			if (ssa.pattern() == PatternType.NESTED_RING || ssa.pattern() == PatternType.GRID) {
+				String label = ssa.pattern() == PatternType.GRID ? "Cols" : "Outer Cnt";
+				NumberProvider outerProv = ssa.outerCount().orElse(NumberProvider.constant(1));
+				addNumberRow(label, outerProv, v ->
+						notifySimple(old -> ((SpawnShooterAction) old).withOuterCount(Optional.of(v)), false));
+			}
+			String currentAim = getAimModeType(ssa.aimMode());
+			addStringCycleRow("Aim Mode", AIM_MODE_TYPES, currentAim, newType ->
+					notifySimple(old -> ((SpawnShooterAction) old).withAimMode(createDefaultAimMode(newType))));
+			if (ssa.pattern() == PatternType.NESTED_RING) {
+				NumberProvider tiltProv = ssa.tiltAngle().orElse(NumberProvider.constant(0));
+				addNumberRow("Axis Tilt", tiltProv, v ->
+						notifySimple(old -> ((SpawnShooterAction) old).withTiltAngle(Optional.of(v)), false));
+			} else if (ssa.tiltAngle().isPresent()) {
+				addNumberRow("Tilt Angle", ssa.tiltAngle().get(), v ->
+						notifySimple(old -> ((SpawnShooterAction) old).withTiltAngle(Optional.of(v)), false));
+				addFullWidthButton("[Remove Tilt]", () ->
+						notifySimple(old -> ((SpawnShooterAction) old).withTiltAngle(Optional.empty())));
+			} else {
+				addFullWidthButton("[+ Tilt Angle]", () ->
+						notifySimple(old -> ((SpawnShooterAction) old).withTiltAngle(Optional.of(NumberProvider.constant(0)))));
+			}
+			currentDepth--;
+		}
+		addSectionHeader("Group Rotation");
+		if (!isSectionCollapsed("Group Rotation")) {
+			currentDepth++;
+			if (ssa.groupRotation().isPresent()) {
+				var gr = ssa.groupRotation().get();
+				addNumberRow("Rot X", gr.rotX(), v ->
+						notifySimple(old -> {
+							var s = (SpawnShooterAction) old;
+							return s.withGroupRotation(Optional.of(new GroupRotation(v,
+									s.groupRotation().map(GroupRotation::rotY).orElse(NumberProvider.constant(0)),
+									s.groupRotation().map(GroupRotation::rotZ).orElse(NumberProvider.constant(0)))));
+						}, false));
+				addNumberRow("Rot Y", gr.rotY(), v ->
+						notifySimple(old -> {
+							var s = (SpawnShooterAction) old;
+							return s.withGroupRotation(Optional.of(new GroupRotation(
+									s.groupRotation().map(GroupRotation::rotX).orElse(NumberProvider.constant(0)),
+									v,
+									s.groupRotation().map(GroupRotation::rotZ).orElse(NumberProvider.constant(0)))));
+						}, false));
+				addNumberRow("Rot Z", gr.rotZ(), v ->
+						notifySimple(old -> {
+							var s = (SpawnShooterAction) old;
+							return s.withGroupRotation(Optional.of(new GroupRotation(
+									s.groupRotation().map(GroupRotation::rotX).orElse(NumberProvider.constant(0)),
+									s.groupRotation().map(GroupRotation::rotY).orElse(NumberProvider.constant(0)),
+									v)));
+						}, false));
+				addFullWidthButton("[Remove Group Rotation]", () ->
+						notifySimple(old -> ((SpawnShooterAction) old).withGroupRotation(Optional.empty())));
+			} else {
+				addFullWidthButton("[+ Group Rotation]", () ->
+						notifySimple(old -> ((SpawnShooterAction) old).withGroupRotation(Optional.of(new GroupRotation(
+								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0))))));
+			}
+			currentDepth--;
+		}
 		addEnumRow("Origin", OriginConfig.OriginMode.values(), ssa.origin().mode(), v -> {
 			var s = (SpawnShooterAction) currentAction;
 			var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
 					s.origin().offsetZ(), s.origin().rotation());
-			notifySimple(old -> new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), newOrigin,
-					s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body()));
+			notifySimple(old -> ((SpawnShooterAction) old).withOrigin(newOrigin));
 		});
 		// Origin offsets
 		buildOriginOffsetRows(ssa.origin(), newOrigin ->
-				notifySimple(old -> {
-					var s = (SpawnShooterAction) old;
-					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), newOrigin,
-							s.velocityX(), s.velocityY(), s.velocityZ(), s.mover(), s.body());
-				}));
+				notifySimple(old -> ((SpawnShooterAction) old).withOrigin(newOrigin)));
 		// Mover
 		buildMoverRows(ssa.mover(),
-				newMover -> notifySimple(old -> {
-					var s = (SpawnShooterAction) old;
-					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), newMover, s.body());
-				}),
-				newMover -> notifySimple(old -> {
-					var s = (SpawnShooterAction) old;
-					return new SpawnShooterAction(s.health(), s.damage(), s.lifetime(), s.origin(),
-							s.velocityX(), s.velocityY(), s.velocityZ(), newMover, s.body());
-				}));
+				newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover)),
+				newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover)));
 	}
 
 	// --- Shared Origin/Mover row builders ---
@@ -1178,6 +1258,7 @@ public class ActionEditorPanel {
 	private OriginConfig getCurrentOrigin() {
 		if (currentAction instanceof FireDanmakuAction fda) return fda.origin();
 		if (currentAction instanceof FireLaserAction fla) return fla.origin();
+		if (currentAction instanceof SpawnShooterAction ssa) return ssa.origin();
 		return OriginConfig.caster();
 	}
 

@@ -5,14 +5,17 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
+import org.jetbrains.annotations.Nullable;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class SpellActions {
 
@@ -25,6 +28,7 @@ public class SpellActions {
 		register("clear_screen", ClearScreen.CODEC, ClearScreen.class);
 		register("force_phase", ForcePhase.CODEC, ForcePhase.class);
 		register("force_spell", ForceSpell.CODEC, ForceSpell.class);
+		register("fire_spell", FireSpell.CODEC, FireSpell.class);
 		register("play_sound", PlaySoundAction.CODEC, PlaySoundAction.class);
 		register("conditional", ConditionalAction.CODEC, ConditionalAction.class);
 		register("sequence", SequenceAction.CODEC, SequenceAction.class);
@@ -143,6 +147,29 @@ public class SpellActions {
 		@Override
 		public void execute(SpellContext ctx) {
 			ctx.switchSpell(spellId, clearScreen);
+		}
+	}
+
+	public record FireSpell(ResourceLocation spellId, Optional<ResourceLocation> phaseId,
+							NumberProvider duration) implements SpellAction {
+		public static final Codec<FireSpell> CODEC = RecordCodecBuilder.create(i -> i.group(
+				ResourceLocation.CODEC.fieldOf("spell_id").forGetter(FireSpell::spellId),
+				ResourceLocation.CODEC.optionalFieldOf("phase_id").forGetter(FireSpell::phaseId),
+				NumberProvider.CODEC.optionalFieldOf("duration", NumberProvider.constant(1)).forGetter(FireSpell::duration)
+		).apply(i, FireSpell::new));
+
+		public FireSpell(ResourceLocation spellId, @Nullable ResourceLocation phaseId, int duration) {
+			this(spellId, Optional.ofNullable(phaseId), NumberProvider.constant(duration));
+		}
+
+		@Override
+		public void execute(SpellContext ctx) {
+			var definition = SpellRegistry.get(spellId);
+			if (definition == null) {
+				return;
+			}
+			int ticks = Math.max(0, (int) duration.get(ctx));
+			ctx.runtime().startChildRuntime(ctx.holder(), definition, phaseId.orElse(null), ticks);
 		}
 	}
 

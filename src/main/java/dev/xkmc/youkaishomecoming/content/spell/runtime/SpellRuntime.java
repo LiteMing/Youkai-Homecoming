@@ -36,6 +36,7 @@ public class SpellRuntime {
 	private int hitCount;
 	private final Map<String, Double> variables = new HashMap<>();
 	private final List<ScheduledAction> scheduledActions = new ArrayList<>();
+	private final List<ChildRuntime> childRuntimes = new ArrayList<>();
 	/** Tracks how many consecutive ticks the target has been off the ground. Reset on ground contact. */
 	private int targetFlyTime;
 	@Nullable
@@ -43,6 +44,9 @@ public class SpellRuntime {
 
 	@Nullable
 	private Consumer<SpellRuntime> onPhaseChange;
+
+	private static final int MAX_CHILD_RUNTIME_DEPTH = 8;
+	private static final ThreadLocal<Integer> CHILD_RUNTIME_DEPTH = ThreadLocal.withInitial(() -> 0);
 
 	public SpellRuntime(SpellDefinition definition) {
 		this.definition = definition;
@@ -139,6 +143,7 @@ public class SpellRuntime {
 
 		// Execute scheduled delayed actions
 		executeScheduledActions(ctx);
+		tickChildRuntimes(holder);
 
 		// Evaluate transitions (priority order)
 		for (Transition trans : phase.transitions) {
@@ -195,6 +200,7 @@ public class SpellRuntime {
 		hurtCooldownRemaining = 0;
 		variables.clear();
 		scheduledActions.clear();
+		childRuntimes.clear();
 
 		// Reset any legacy ticker actions
 		resetLegacyActions(definition.getPhase(currentPhaseId));
@@ -275,6 +281,7 @@ public class SpellRuntime {
 		hurtCooldownRemaining = 0;
 		variables.clear();
 		scheduledActions.clear();
+		childRuntimes.clear();
 		resetLegacyActions(phase);
 		for (SpellAction action : phase.onEnter) {
 			action.execute(ctx);
@@ -289,6 +296,67 @@ public class SpellRuntime {
 	 */
 	public void scheduleDelayed(int executeAtTick, List<SpellAction> actions) {
 		scheduledActions.add(new ScheduledAction(executeAtTick, actions));
+	}
+
+	public void startChildRuntime(CardHolder holder, SpellDefinition definition, @Nullable ResourceLocation phaseId, int duration) {
+		if (duration <= 0) {
+			return;
+		}
+		ResourceLocation targetPhase = phaseId == null ? definition.entryPhase : phaseId;
+		if (definition.getPhase(targetPhase) == null) {
+			return;
+		}
+		SpellRuntime runtime = new SpellRuntime(definition);
+		PhaseDefinition phase = definition.getPhase(targetPhase);
+		if (phase == null) {
+			return;
+		}
+		runtime.currentPhaseId = targetPhase;
+		runtime.phaseTick = 0;
+		runtime.totalTick = 0;
+		runtime.hitCount = 0;
+		runtime.targetFlyTime = 0;
+		runtime.hurtCooldownRemaining = 0;
+		runtime.variables.clear();
+		runtime.variables.putAll(variables);
+		runtime.scheduledActions.clear();
+		runtime.childRuntimes.clear();
+		runtime.resetLegacyActions(phase);
+		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
+		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
+		SpellContext ctx = new SpellContext(holder, definition, runtime, diff);
+		for (SpellAction action : phase.onEnter) {
+			action.execute(ctx);
+		}
+		runtime.notifyPhaseChange();
+		childRuntimes.add(new ChildRuntime(runtime, duration));
+	}
+
+	private void tickChildRuntimes(CardHolder holder) {
+		if (childRuntimes.isEmpty()) {
+			return;
+		}
+		var ready = new ArrayList<>(childRuntimes);
+		childRuntimes.clear();
+		for (ChildRuntime child : ready) {
+			if (child.remainingTicks() <= 0 || child.runtime().isFinished()) {
+				continue;
+			}
+			int depth = CHILD_RUNTIME_DEPTH.get();
+			if (depth >= MAX_CHILD_RUNTIME_DEPTH) {
+				continue;
+			}
+			CHILD_RUNTIME_DEPTH.set(depth + 1);
+			try {
+				child.runtime().tick(holder);
+			} finally {
+				CHILD_RUNTIME_DEPTH.set(depth);
+			}
+			int remaining = child.remainingTicks() - 1;
+			if (remaining > 0 && !child.runtime().isFinished()) {
+				childRuntimes.add(new ChildRuntime(child.runtime(), remaining));
+			}
+		}
 	}
 
 	/**
@@ -320,6 +388,9 @@ public class SpellRuntime {
 	 * A delayed action entry: actions to execute when totalTick reaches executeAtTick.
 	 */
 	private record ScheduledAction(int executeAtTick, List<SpellAction> actions) {
+	}
+
+	private record ChildRuntime(SpellRuntime runtime, int remainingTicks) {
 	}
 
 	/**

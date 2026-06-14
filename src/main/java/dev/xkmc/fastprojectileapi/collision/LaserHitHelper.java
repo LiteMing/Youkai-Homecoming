@@ -44,7 +44,7 @@ public class LaserHitHelper {
 		var list = iterator.foreach(box.inflate(1 + radius + graze), HitTestType.ENEMY);
 		e.tickData().candidateCount += list.size();
 		for (EntityInfo x : list) {
-			if (x.entity() == e) continue;
+			if (x.entity() == e || e.ignoresEntity(x.entity())) continue;
 			Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
 			if (hit != null) hitEntities.add(x.entity());
 			if (graze > 0 && x.entity() instanceof Player pl) {

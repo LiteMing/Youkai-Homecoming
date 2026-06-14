@@ -1,11 +1,15 @@
 package dev.xkmc.youkaishomecoming.content.spell.shooter;
 
 import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
+import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleHolder;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.PacketCodec;
 import dev.xkmc.l2serial.serialization.codec.TagCodec;
 import dev.xkmc.l2serial.util.Wrappers;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverOwner;
@@ -17,10 +21,12 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TraceableEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -32,6 +38,9 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 
 	@SerialClass.SerialField
 	private ShooterData data = ShooterData.EMPTY;
+	private final float[] inheritedBulletDamage = new float[YHDanmaku.Bullet.values().length];
+	private final float[] inheritedLaserDamage = new float[YHDanmaku.Laser.values().length];
+	private boolean hasInheritedDamage;
 
 	@Nullable
 	@SerialClass.SerialField
@@ -77,9 +86,21 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 	@Override
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
 		if (mover != null) {
-			return mover.move(new MoverInfo(tickCount, pos, vec, this, new MoverInfo.OwnerInfo(null, null)));
+			return mover.move(new MoverInfo(tickCount, pos, vec, this, snapshotOwnerInfo()));
 		}
 		return super.updateVelocity(vec, pos);
+	}
+
+	private MoverInfo.OwnerInfo snapshotOwnerInfo() {
+		Entity owner = getOwner();
+		if (owner instanceof CardHolder holder) {
+			return new MoverInfo.OwnerInfo(holder.center(), holder.forward());
+		}
+		if (owner instanceof LivingEntity living) {
+			Vec3 pos = living.position().add(0, living.getBbHeight() / 2, 0);
+			return new MoverInfo.OwnerInfo(pos, living.getForward());
+		}
+		return new MoverInfo.OwnerInfo(null, null);
 	}
 
 	// spell
@@ -118,6 +139,36 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 		return getOwner() instanceof LivingEntity le ? le : this;
 	}
 
+	public void inheritDamageFrom(CardHolder holder) {
+		hasInheritedDamage = true;
+		for (YHDanmaku.Bullet type : YHDanmaku.Bullet.values()) {
+			inheritedBulletDamage[type.ordinal()] = holder.getDamage(type);
+		}
+		for (YHDanmaku.Laser type : YHDanmaku.Laser.values()) {
+			inheritedLaserDamage[type.ordinal()] = holder.getDamage(type);
+		}
+	}
+
+	@Override
+	public ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DyeColor color) {
+		return ignoreSelf(LivingCardHolder.super.prepareDanmaku(life, vec, type, color));
+	}
+
+	@Override
+	public ItemLaserEntity prepareLaser(int life, Vec3 pos, Vec3 vec, float len, YHDanmaku.Laser type, DyeColor color) {
+		return ignoreSelf(LivingCardHolder.super.prepareLaser(life, pos, vec, len, type, color));
+	}
+
+	@Override
+	public TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float size, String text, int textColor) {
+		return ignoreSelf(LivingCardHolder.super.prepareTextDanmaku(life, pos, dir, size, text, textColor));
+	}
+
+	private <T extends SimplifiedProjectile> T ignoreSelf(T projectile) {
+		projectile.ignoreEntity(this);
+		return projectile;
+	}
+
 	@Override
 	public @Nullable LivingEntity targetEntity() {
 		return target;
@@ -126,14 +177,21 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 	@Override
 	public float getDamage(YHDanmaku.IDanmakuType type) {
 		float d = data.damage();
-		// Fallback: if no damage was configured for this shooter (data-driven spawn_shooter
-		// with damage omitted or 0), inherit from the spawning caster. Without this, lasers
-		// fired through a shooter deal 0 damage even though their damage_type override still
-		// fires the danmaku-battle judgment, leading to "graze counts but no HP loss".
-		if (d <= 0 && getOwner() instanceof CardHolder owner) {
+		if (d > 0) {
+			return d;
+		}
+		if (hasInheritedDamage) {
+			if (type instanceof YHDanmaku.Bullet bullet) {
+				return inheritedBulletDamage[bullet.ordinal()];
+			}
+			if (type instanceof YHDanmaku.Laser laser) {
+				return inheritedLaserDamage[laser.ordinal()];
+			}
+		}
+		if (getOwner() instanceof CardHolder owner) {
 			return owner.getDamage(type);
 		}
-		return d;
+		return type.damage();
 	}
 
 	// data

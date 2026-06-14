@@ -43,7 +43,7 @@ public class ProjectileHitHelper {
 		double d0 = Double.MAX_VALUE;
 		EntityInfo entity = null;
 		for (EntityInfo x : list) {
-			if (x.entity() == e) continue;
+			if (x.entity() == e || e.ignoresEntity(x.entity())) continue;
 			var hpos = checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
 			if (hpos != null) {
 				double d1 = src.distanceToSqr(hpos);

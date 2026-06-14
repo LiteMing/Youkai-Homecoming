@@ -3,7 +3,6 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 import dev.xkmc.fastprojectileapi.collision.EntityInfo;
 import dev.xkmc.fastprojectileapi.entity.GrazingEntity;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
-import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType;
@@ -100,11 +99,6 @@ public interface IYHDanmaku extends GrazingEntity {
 		if (target != null && owner instanceof YoukaiEntity youkai) {
 			youkai.danmakuHitTarget(this, source, target);
 			return;
-		}
-		if (owner instanceof Player player) {
-			if (e instanceof LivingEntity le) {
-				if (!GrazeCapability.HOLDER.get(player).shouldHurt(le)) return;
-			}
 		}
 		e.hurt(source, damage(e));
 	}

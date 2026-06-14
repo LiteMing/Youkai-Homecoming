@@ -3,7 +3,9 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.ColorProvider;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
+import dev.xkmc.youkaishomecoming.content.spell.definition.PatternType;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -1160,8 +1162,7 @@ public class ActionListPanel {
 		if (parent instanceof SpawnShooterAction ssa && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(ssa.body());
 			if (!doReplace(body, path, depth + 1, newAction)) return false;
-			list.set(entry.index, new SpawnShooterAction(ssa.health(), ssa.damage(), ssa.lifetime(), ssa.origin(),
-					ssa.velocityX(), ssa.velocityY(), ssa.velocityZ(), ssa.mover(), body));
+			list.set(entry.index, ssa.withBody(body));
 			return true;
 		}
 		if (parent instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
@@ -1260,8 +1261,7 @@ public class ActionListPanel {
 			if (current instanceof SpawnShooterAction ssa && "body".equals(targetBranch)) {
 				List<SpellAction> body = new ArrayList<>(ssa.body());
 				body.add(newAction);
-				list.set(entry.index, new SpawnShooterAction(ssa.health(), ssa.damage(), ssa.lifetime(), ssa.origin(),
-						ssa.velocityX(), ssa.velocityY(), ssa.velocityZ(), ssa.mover(), body));
+				list.set(entry.index, ssa.withBody(body));
 				selectedPath = parentPath.child(targetBranch, body.size() - 1);
 				return true;
 			}
@@ -1336,8 +1336,7 @@ public class ActionListPanel {
 		if (current instanceof SpawnShooterAction ssa && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(ssa.body());
 			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath)) return false;
-			list.set(entry.index, new SpawnShooterAction(ssa.health(), ssa.damage(), ssa.lifetime(), ssa.origin(),
-					ssa.velocityX(), ssa.velocityY(), ssa.velocityZ(), ssa.mover(), body));
+			list.set(entry.index, ssa.withBody(body));
 			return true;
 		}
 		if (current instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
@@ -1432,8 +1431,7 @@ public class ActionListPanel {
 		if (parent instanceof SpawnShooterAction ssa && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(ssa.body());
 			if (!doDelete(body, path, depth + 1)) return false;
-			list.set(entry.index, new SpawnShooterAction(ssa.health(), ssa.damage(), ssa.lifetime(), ssa.origin(),
-					ssa.velocityX(), ssa.velocityY(), ssa.velocityZ(), ssa.mover(), body));
+			list.set(entry.index, ssa.withBody(body));
 			return true;
 		}
 		if (parent instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
@@ -1918,8 +1916,7 @@ public class ActionListPanel {
 		if (parent instanceof SpawnShooterAction ssa && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(ssa.body());
 			if (!doToggleDisabled(body, path, depth + 1)) return false;
-			var rebuilt = new SpawnShooterAction(ssa.health(), ssa.damage(), ssa.lifetime(), ssa.origin(),
-					ssa.velocityX(), ssa.velocityY(), ssa.velocityZ(), ssa.mover(), body);
+			var rebuilt = ssa.withBody(body);
 			list.set(entry.index, current instanceof SpellActions.DisabledAction ? new SpellActions.DisabledAction(rebuilt) : rebuilt);
 			return true;
 		}
@@ -2011,10 +2008,17 @@ public class ActionListPanel {
 		if (action instanceof SpellActions.ForceSpell fs) {
 			return index + ": spell " + formatResourceId(fs.spellId()) + (fs.clearScreen() ? " [clear]" : " [keep]");
 		}
+		if (action instanceof SpellActions.FireSpell fs) {
+			String phase = fs.phaseId().map(id -> "@" + formatPhaseId(id)).orElse("");
+			return index + ": fire spell " + formatResourceId(fs.spellId()) + phase;
+		}
 		if (action instanceof SpellActions.RepeatAction ra) return index + ": repeat(" + (int) (ra.count() instanceof NumberProviders.Constant c ? c.value() : 0) + ")";
 		if (action instanceof DelayAction da) return index + ": delay(" + da.delayTicks() + "t)";
 		if (action instanceof BurstAction ba) return index + ": burst(" + ba.waves() + "x" + ba.interval() + "t)";
-		if (action instanceof SpawnShooterAction ssa) return index + ": shooter(hp=" + ssa.health() + ")";
+		if (action instanceof SpawnShooterAction ssa) {
+			String pattern = ssa.pattern() == PatternType.AIMED ? "" : " " + formatNumberProvider(ssa.count()) + "x" + ssa.pattern().name().toLowerCase();
+			return index + ": shooter" + pattern + "(hp=" + ssa.health() + ")";
+		}
 		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";
 		return index + ": " + action.getClass().getSimpleName();
@@ -2039,6 +2043,14 @@ public class ActionListPanel {
 
 	private static String formatResourceId(net.minecraft.resources.ResourceLocation id) {
 		return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
+	}
+
+	private static String formatNumberProvider(NumberProvider provider) {
+		if (provider instanceof NumberProviders.Constant c) {
+			double value = c.value();
+			return Math.rint(value) == value ? Integer.toString((int) value) : Double.toString(value);
+		}
+		return "*";
 	}
 
 	static String getConditionBrief(SpellCondition cond) {

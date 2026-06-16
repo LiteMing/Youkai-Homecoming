@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.entity.youkai;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMClientCompat;
+import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RumiaModel;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.model.EntityModel;
@@ -22,6 +23,9 @@ public class GeneralYoukaiRenderer<T extends GeneralYoukaiEntity> extends MobRen
 	@Override
 	public void render(T e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
 		SpellCircleLayer.renderImpl(pose, buffer, light, e, pTick, entityRenderDispatcher.cameraOrientation());
+		if (YSMClientCompat.delegateRender(e, yaw, pTick, pose, buffer, light)) {
+			return;
+		}
 		if (TLMClientCompat.delegateRender(e, yaw, pTick, pose, buffer, light)) {
 			return;
 		}

@@ -13,6 +13,7 @@ public final class YHStgApi {
 
 	private static final int RESOURCE_UNIT = 5;
 	private static final int POWER_UNIT = 100;
+	private static final int POINTS_UNIT = 100;
 
 	private YHStgApi() {
 	}
@@ -27,52 +28,100 @@ public final class YHStgApi {
 		cap.sync();
 	}
 
-	public static int getLife(ServerPlayer player) {
-		return cap(player).getLife() / RESOURCE_UNIT;
+	public static double getLife(ServerPlayer player) {
+		return fromInternal(getLifeRaw(player), RESOURCE_UNIT);
 	}
 
-	public static int getBomb(ServerPlayer player) {
-		return cap(player).getBomb() / RESOURCE_UNIT;
+	public static double getBomb(ServerPlayer player) {
+		return fromInternal(getBombRaw(player), RESOURCE_UNIT);
 	}
 
-	public static int getPower(ServerPlayer player) {
-		return cap(player).getPower() / POWER_UNIT;
+	public static double getPower(ServerPlayer player) {
+		return fromInternal(getPowerRaw(player), POWER_UNIT);
 	}
 
-	public static int getPoints(ServerPlayer player) {
+	public static double getPoints(ServerPlayer player) {
+		return fromInternal(getPointsRaw(player), POINTS_UNIT);
+	}
+
+	public static int getLifeRaw(ServerPlayer player) {
+		return cap(player).getLife();
+	}
+
+	public static int getBombRaw(ServerPlayer player) {
+		return cap(player).getBomb();
+	}
+
+	public static int getPowerRaw(ServerPlayer player) {
+		return cap(player).getPower();
+	}
+
+	public static int getPointsRaw(ServerPlayer player) {
 		return cap(player).getPoints();
 	}
 
-	public static void setLife(ServerPlayer player, int displayLife) {
+	public static void setLife(ServerPlayer player, double displayLife) {
 		setResource(player, StgResourceEvent.Resource.LIFE, toInternal(displayLife, RESOURCE_UNIT));
 	}
 
-	public static void setBomb(ServerPlayer player, int displayBomb) {
+	public static void setBomb(ServerPlayer player, double displayBomb) {
 		setResource(player, StgResourceEvent.Resource.BOMB, toInternal(displayBomb, RESOURCE_UNIT));
 	}
 
-	public static void setPower(ServerPlayer player, int displayPower) {
+	public static void setPower(ServerPlayer player, double displayPower) {
 		setResource(player, StgResourceEvent.Resource.POWER, toInternal(displayPower, POWER_UNIT));
 	}
 
-	public static void setPoints(ServerPlayer player, int points) {
-		setResource(player, StgResourceEvent.Resource.POINTS, points);
+	public static void setPoints(ServerPlayer player, double points) {
+		setResource(player, StgResourceEvent.Resource.POINTS, toInternal(points, POINTS_UNIT));
 	}
 
-	public static void addLife(ServerPlayer player, int amount) {
+	public static void setLifeRaw(ServerPlayer player, int internalLife) {
+		setResource(player, StgResourceEvent.Resource.LIFE, internalLife);
+	}
+
+	public static void setBombRaw(ServerPlayer player, int internalBomb) {
+		setResource(player, StgResourceEvent.Resource.BOMB, internalBomb);
+	}
+
+	public static void setPowerRaw(ServerPlayer player, int internalPower) {
+		setResource(player, StgResourceEvent.Resource.POWER, internalPower);
+	}
+
+	public static void setPointsRaw(ServerPlayer player, int internalPoints) {
+		setResource(player, StgResourceEvent.Resource.POINTS, internalPoints);
+	}
+
+	public static void addLife(ServerPlayer player, double amount) {
 		addResource(player, StgResourceEvent.Resource.LIFE, amount, RESOURCE_UNIT);
 	}
 
-	public static void addBomb(ServerPlayer player, int amount) {
+	public static void addBomb(ServerPlayer player, double amount) {
 		addResource(player, StgResourceEvent.Resource.BOMB, amount, RESOURCE_UNIT);
 	}
 
-	public static void addPower(ServerPlayer player, int amount) {
+	public static void addPower(ServerPlayer player, double amount) {
 		addResource(player, StgResourceEvent.Resource.POWER, amount, POWER_UNIT);
 	}
 
-	public static void addPoints(ServerPlayer player, int amount) {
-		addResource(player, StgResourceEvent.Resource.POINTS, amount, 1);
+	public static void addPoints(ServerPlayer player, double amount) {
+		addResource(player, StgResourceEvent.Resource.POINTS, amount, POINTS_UNIT);
+	}
+
+	public static void addLifeRaw(ServerPlayer player, int internalAmount) {
+		addResourceRaw(player, StgResourceEvent.Resource.LIFE, internalAmount);
+	}
+
+	public static void addBombRaw(ServerPlayer player, int internalAmount) {
+		addResourceRaw(player, StgResourceEvent.Resource.BOMB, internalAmount);
+	}
+
+	public static void addPowerRaw(ServerPlayer player, int internalAmount) {
+		addResourceRaw(player, StgResourceEvent.Resource.POWER, internalAmount);
+	}
+
+	public static void addPointsRaw(ServerPlayer player, int internalAmount) {
+		addResourceRaw(player, StgResourceEvent.Resource.POINTS, internalAmount);
 	}
 
 	public static boolean tryManualBomb(ServerPlayer player) {
@@ -112,10 +161,37 @@ public final class YHStgApi {
 		return GrazeCapability.HOLDER.get(player);
 	}
 
-	private static void addResource(ServerPlayer player, StgResourceEvent.Resource resource, int amount, int unit) {
+	private static void addResource(ServerPlayer player, StgResourceEvent.Resource resource, double amount, int unit) {
+		addResourceRaw(player, resource, toInternalDelta(amount, unit));
+	}
+
+	private static void addResourceRaw(ServerPlayer player, StgResourceEvent.Resource resource, int internalAmount) {
+		if (resource == StgResourceEvent.Resource.POINTS) {
+			addPointsResource(player, internalAmount);
+			return;
+		}
 		var cap = cap(player);
 		int oldValue = getInternal(cap, resource);
-		setResource(player, resource, clampInternal((long) oldValue + (long) amount * unit));
+		setResource(player, resource, clampInternal((long) oldValue + internalAmount));
+	}
+
+	private static void addPointsResource(ServerPlayer player, int internalAmount) {
+		var cap = cap(player);
+		int oldLife = cap.getLife();
+		int oldBomb = cap.getBomb();
+		int oldPoints = cap.getPoints();
+		cap.addPoints(internalAmount);
+		int newLife = cap.getLife();
+		int newBomb = cap.getBomb();
+		int newPoints = cap.getPoints();
+		cap.sync();
+		postResourceEvent(player, StgResourceEvent.Resource.POINTS, oldPoints, newPoints);
+		if (oldBomb != newBomb) {
+			postResourceEvent(player, StgResourceEvent.Resource.BOMB, oldBomb, newBomb);
+		}
+		if (oldLife != newLife) {
+			postResourceEvent(player, StgResourceEvent.Resource.LIFE, oldLife, newLife);
+		}
 	}
 
 	private static void setResource(ServerPlayer player, StgResourceEvent.Resource resource, int internalValue) {
@@ -125,6 +201,10 @@ public final class YHStgApi {
 		setInternal(cap, resource, newValue);
 		newValue = getInternal(cap, resource);
 		cap.sync();
+		postResourceEvent(player, resource, oldValue, newValue);
+	}
+
+	private static void postResourceEvent(ServerPlayer player, StgResourceEvent.Resource resource, int oldValue, int newValue) {
 		MinecraftForge.EVENT_BUS.post(new StgResourceEvent(player, resource, oldValue, newValue, unit(resource)));
 	}
 
@@ -149,18 +229,38 @@ public final class YHStgApi {
 	private static int unit(StgResourceEvent.Resource resource) {
 		return switch (resource) {
 			case POWER -> POWER_UNIT;
-			case POINTS -> 1;
+			case POINTS -> POINTS_UNIT;
 			case LIFE, BOMB -> RESOURCE_UNIT;
 		};
 	}
 
-	private static int toInternal(int displayValue, int unit) {
-		return displayValue <= 0 ? 0 : clampInternal((long) displayValue * unit);
+	private static double fromInternal(int value, int unit) {
+		return value / (double) unit;
+	}
+
+	private static int toInternal(double displayValue, int unit) {
+		if (!Double.isFinite(displayValue)) {
+			throw new IllegalArgumentException("STG resource value must be finite");
+		}
+		return displayValue <= 0 ? 0 : clampInternal(Math.round(displayValue * unit));
+	}
+
+	private static int toInternalDelta(double displayValue, int unit) {
+		if (!Double.isFinite(displayValue)) {
+			throw new IllegalArgumentException("STG resource delta must be finite");
+		}
+		return clampInternalDelta(Math.round(displayValue * unit));
 	}
 
 	private static int clampInternal(long value) {
 		if (value <= 0) return 0;
 		return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
+	}
+
+	private static int clampInternalDelta(long value) {
+		if (value > Integer.MAX_VALUE) return Integer.MAX_VALUE;
+		if (value < Integer.MIN_VALUE) return Integer.MIN_VALUE;
+		return (int) value;
 	}
 
 }

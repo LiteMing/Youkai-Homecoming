@@ -30,10 +30,24 @@ public class StgResourceEvent extends PlayerEvent {
 		return newInternal;
 	}
 
+	public double getOldDisplayValue() {
+		return oldInternal / (double) displayUnit;
+	}
+
+	public double getNewDisplayValue() {
+		return newInternal / (double) displayUnit;
+	}
+
+	public int getDisplayUnit() {
+		return displayUnit;
+	}
+
+	@Deprecated(forRemoval = false)
 	public int getOldDisplay() {
 		return oldInternal / displayUnit;
 	}
 
+	@Deprecated(forRemoval = false)
 	public int getNewDisplay() {
 		return newInternal / displayUnit;
 	}

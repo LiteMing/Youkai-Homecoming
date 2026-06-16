@@ -27,52 +27,100 @@ public final class YHStg {
 		YHStgApi.setMode(requirePlayer(player), StgCombatMode.fromName(mode));
 	}
 
-	public static int getLife(Object player) {
+	public static double getLife(Object player) {
 		return YHStgApi.getLife(requirePlayer(player));
 	}
 
-	public static int getBomb(Object player) {
+	public static double getBomb(Object player) {
 		return YHStgApi.getBomb(requirePlayer(player));
 	}
 
-	public static int getPower(Object player) {
+	public static double getPower(Object player) {
 		return YHStgApi.getPower(requirePlayer(player));
 	}
 
-	public static int getPoints(Object player) {
+	public static double getPoints(Object player) {
 		return YHStgApi.getPoints(requirePlayer(player));
 	}
 
-	public static void setLife(Object player, int amount) {
+	public static int getLifeRaw(Object player) {
+		return YHStgApi.getLifeRaw(requirePlayer(player));
+	}
+
+	public static int getBombRaw(Object player) {
+		return YHStgApi.getBombRaw(requirePlayer(player));
+	}
+
+	public static int getPowerRaw(Object player) {
+		return YHStgApi.getPowerRaw(requirePlayer(player));
+	}
+
+	public static int getPointsRaw(Object player) {
+		return YHStgApi.getPointsRaw(requirePlayer(player));
+	}
+
+	public static void setLife(Object player, double amount) {
 		YHStgApi.setLife(requirePlayer(player), amount);
 	}
 
-	public static void setBomb(Object player, int amount) {
+	public static void setBomb(Object player, double amount) {
 		YHStgApi.setBomb(requirePlayer(player), amount);
 	}
 
-	public static void setPower(Object player, int amount) {
+	public static void setPower(Object player, double amount) {
 		YHStgApi.setPower(requirePlayer(player), amount);
 	}
 
-	public static void setPoints(Object player, int amount) {
+	public static void setPoints(Object player, double amount) {
 		YHStgApi.setPoints(requirePlayer(player), amount);
 	}
 
-	public static void addLife(Object player, int amount) {
+	public static void setLifeRaw(Object player, int amount) {
+		YHStgApi.setLifeRaw(requirePlayer(player), amount);
+	}
+
+	public static void setBombRaw(Object player, int amount) {
+		YHStgApi.setBombRaw(requirePlayer(player), amount);
+	}
+
+	public static void setPowerRaw(Object player, int amount) {
+		YHStgApi.setPowerRaw(requirePlayer(player), amount);
+	}
+
+	public static void setPointsRaw(Object player, int amount) {
+		YHStgApi.setPointsRaw(requirePlayer(player), amount);
+	}
+
+	public static void addLife(Object player, double amount) {
 		YHStgApi.addLife(requirePlayer(player), amount);
 	}
 
-	public static void addBomb(Object player, int amount) {
+	public static void addBomb(Object player, double amount) {
 		YHStgApi.addBomb(requirePlayer(player), amount);
 	}
 
-	public static void addPower(Object player, int amount) {
+	public static void addPower(Object player, double amount) {
 		YHStgApi.addPower(requirePlayer(player), amount);
 	}
 
-	public static void addPoints(Object player, int amount) {
+	public static void addPoints(Object player, double amount) {
 		YHStgApi.addPoints(requirePlayer(player), amount);
+	}
+
+	public static void addLifeRaw(Object player, int amount) {
+		YHStgApi.addLifeRaw(requirePlayer(player), amount);
+	}
+
+	public static void addBombRaw(Object player, int amount) {
+		YHStgApi.addBombRaw(requirePlayer(player), amount);
+	}
+
+	public static void addPowerRaw(Object player, int amount) {
+		YHStgApi.addPowerRaw(requirePlayer(player), amount);
+	}
+
+	public static void addPointsRaw(Object player, int amount) {
+		YHStgApi.addPointsRaw(requirePlayer(player), amount);
 	}
 
 	public static boolean tryManualBomb(Object player) {

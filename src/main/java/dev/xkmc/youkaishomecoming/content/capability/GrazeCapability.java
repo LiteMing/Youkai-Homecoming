@@ -140,6 +140,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		hidden++;
 		if (hidden < MAX_GRAZE) return;
 		hidden -= MAX_GRAZE;
+		completePointCycle();
+	}
+
+	private void completePointCycle() {
 		step++;
 		int max = GrazeHelper.getMaxResource(player) * SHARD;
 		if (step == CYCLE) {
@@ -328,6 +332,29 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public void setPoints(int i) {
 		hidden = Math.max(0, Math.min(MAX_GRAZE - 1, i));
+		dirty = true;
+	}
+
+	public void addPoints(int amount) {
+		if (amount == 0) {
+			return;
+		}
+		if (amount < 0) {
+			hidden = Math.max(0, hidden + amount);
+			dirty = true;
+			return;
+		}
+		long total = hidden + (long) amount;
+		hidden = (int) (total % MAX_GRAZE);
+		long cycles = total / MAX_GRAZE;
+		while (cycles > 0) {
+			completePointCycle();
+			cycles--;
+			int max = GrazeHelper.getMaxResource(player) * SHARD;
+			if (life >= max && bomb >= max && step == CYCLE - 1) {
+				break;
+			}
+		}
 		dirty = true;
 	}
 

@@ -11,7 +11,6 @@ import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
 import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
 import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
-import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
@@ -77,49 +76,45 @@ public class YHCommands {
 				.then(argument("player", EntityArgument.players())
 						.then(literal("setLife")
 								.requires(e -> e.hasPermission(2))
-								.then(argument("life", IntegerArgumentType.integer(0, 100))
+								.then(argument("life", DoubleArgumentType.doubleArg(0, 100))
 										.executes(ctx -> {
 											EntitySelector sel = ctx.getArgument("player", EntitySelector.class);
 											var player = sel.findSinglePlayer(ctx.getSource());
-											int life = ctx.getArgument("life", Integer.class);
-											var cap = GrazeCapability.HOLDER.get(player);
-											cap.setLife(life * 5);
+											double life = DoubleArgumentType.getDouble(ctx, "life");
+											YHStgApi.setLife(player, life);
 											ctx.getSource().sendSystemMessage(Component.literal("Completed"));
 											return 0;
 										})))
 						.then(literal("setBomb")
 								.requires(e -> e.hasPermission(2))
-								.then(argument("bomb", IntegerArgumentType.integer(0, 100))
+								.then(argument("bomb", DoubleArgumentType.doubleArg(0, 100))
 										.executes(ctx -> {
 											EntitySelector sel = ctx.getArgument("player", EntitySelector.class);
 											var player = sel.findSinglePlayer(ctx.getSource());
-											int bomb = ctx.getArgument("bomb", Integer.class);
-											var cap = GrazeCapability.HOLDER.get(player);
-											cap.setBomb(bomb * 5);
+											double bomb = DoubleArgumentType.getDouble(ctx, "bomb");
+											YHStgApi.setBomb(player, bomb);
 											ctx.getSource().sendSystemMessage(Component.literal("Completed"));
 											return 0;
 										})))
 						.then(literal("setPower")
 								.requires(e -> e.hasPermission(2))
-								.then(argument("power", IntegerArgumentType.integer(0, 100))
+								.then(argument("power", DoubleArgumentType.doubleArg(0, 100))
 										.executes(ctx -> {
 											EntitySelector sel = ctx.getArgument("player", EntitySelector.class);
 											var player = sel.findSinglePlayer(ctx.getSource());
-											int power = ctx.getArgument("power", Integer.class);
-											var cap = GrazeCapability.HOLDER.get(player);
-											cap.setPower(power * 100);
+											double power = DoubleArgumentType.getDouble(ctx, "power");
+											YHStgApi.setPower(player, power);
 											ctx.getSource().sendSystemMessage(Component.literal("Completed"));
 											return 0;
 										})))
 						.then(literal("setPoints")
 								.requires(e -> e.hasPermission(2))
-								.then(argument("points", IntegerArgumentType.integer(0, 99))
+								.then(argument("points", DoubleArgumentType.doubleArg(0, 0.99))
 										.executes(ctx -> {
 											EntitySelector sel = ctx.getArgument("player", EntitySelector.class);
 											var player = sel.findSinglePlayer(ctx.getSource());
-											int points = ctx.getArgument("points", Integer.class);
-											var cap = GrazeCapability.HOLDER.get(player);
-											cap.setPoints(points);
+											double points = DoubleArgumentType.getDouble(ctx, "points");
+											YHStgApi.setPoints(player, points);
 											ctx.getSource().sendSystemMessage(Component.literal("Completed"));
 											return 0;
 										})))
@@ -152,12 +147,12 @@ public class YHCommands {
 								.then(literal("set")
 										.then(argument("resource", StringArgumentType.word())
 												.suggests(STG_RESOURCE_SUGGESTIONS)
-												.then(argument("amount", IntegerArgumentType.integer(0))
+												.then(argument("amount", DoubleArgumentType.doubleArg(0))
 														.executes(ctx -> setStgResource(ctx, false)))))
 								.then(literal("add")
 										.then(argument("resource", StringArgumentType.word())
 												.suggests(STG_RESOURCE_SUGGESTIONS)
-												.then(argument("amount", IntegerArgumentType.integer())
+												.then(argument("amount", DoubleArgumentType.doubleArg())
 														.executes(ctx -> setStgResource(ctx, true)))))))
 				.then(literal("bomb")
 						.then(argument("player", EntityArgument.player())
@@ -612,7 +607,7 @@ public class YHCommands {
 	private static int setStgResource(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, boolean add) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
 		ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
 		String resourceName = StringArgumentType.getString(ctx, "resource");
-		int amount = IntegerArgumentType.getInteger(ctx, "amount");
+		double amount = DoubleArgumentType.getDouble(ctx, "amount");
 		StgResourceEvent.Resource resource;
 		try {
 			resource = parseStgResource(resourceName);
@@ -635,16 +630,16 @@ public class YHCommands {
 				case POINTS -> YHStgApi.setPoints(player, amount);
 			}
 		}
-		int value = switch (resource) {
+		double value = switch (resource) {
 			case LIFE -> YHStgApi.getLife(player);
 			case BOMB -> YHStgApi.getBomb(player);
 			case POWER -> YHStgApi.getPower(player);
 			case POINTS -> YHStgApi.getPoints(player);
 		};
-		String action = add ? "Added " + amount + " to" : "Set";
+		String action = add ? "Added " + formatStgValue(resource, amount) + " to" : "Set";
 		ctx.getSource().sendSuccess(() -> Component.literal(
 				action + " STG " + resource.name().toLowerCase(java.util.Locale.ROOT) +
-						" for " + player.getName().getString() + " (now " + value + ")"), true);
+						" for " + player.getName().getString() + " (now " + formatStgValue(resource, value) + ")"), true);
 		return 1;
 	}
 
@@ -656,6 +651,14 @@ public class YHCommands {
 			case "points", "point" -> StgResourceEvent.Resource.POINTS;
 			default -> throw new IllegalArgumentException("Unknown STG resource: " + name);
 		};
+	}
+
+	private static String formatStgValue(StgResourceEvent.Resource resource, double value) {
+		int decimals = switch (resource) {
+			case LIFE, BOMB -> 1;
+			case POWER, POINTS -> 2;
+		};
+		return String.format(java.util.Locale.ROOT, "%." + decimals + "f", value);
 	}
 
 }

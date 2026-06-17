@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.init;
 import com.github.tartaricacid.touhoulittlemaid.TouhouLittleMaid;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMRenderHandler;
+import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.capability.PowerInfoOverlay;
 import dev.xkmc.youkaishomecoming.content.client.*;
 import dev.xkmc.youkaishomecoming.content.entity.animal.crab.CrabModel;
@@ -109,6 +110,7 @@ public class YHClient {
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "info_tile", new TileInfoDisplay());
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "cuisine_hint", new HintOverlay());
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "power_info", new PowerInfoOverlay());
+		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "ysm_debug", YSMClientCompat::renderDebugOverlay);
 	}
 
 	@SubscribeEvent

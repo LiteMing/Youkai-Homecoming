@@ -12,6 +12,8 @@ import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -24,6 +26,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.client.gui.overlay.ForgeGui;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -36,6 +39,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Locale;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -59,6 +63,10 @@ public class YSMClientCompat {
 	);
 	private static final Map<ResourceLocation, RenderBinding> TYPE_DEBUG_OVERRIDES = new LinkedHashMap<>();
 	private static final Map<UUID, RenderBinding> ENTITY_DEBUG_OVERRIDES = new LinkedHashMap<>();
+	private static final int DEBUG_TEXT_COLOR = 0xffffffff;
+	private static final int DEBUG_LABEL_COLOR = 0xffb8e6ff;
+	private static final int DEBUG_BG_A = 0xa0000000;
+	private static final int DEBUG_BG_B = 0x90000000;
 	private static final SuggestionProvider<CommandSourceStack> ENTITY_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(ForgeRegistries.ENTITY_TYPES.getKeys().stream()
 					.filter(id -> Objects.equals(id.getNamespace(), YoukaisHomecoming.MODID))
@@ -78,7 +86,14 @@ public class YSMClientCompat {
 	};
 
 	private static Method renderMethod;
+	private static Method enableDebugMethod;
+	private static Method clearDebugMethod;
+	private static Method debugSnapshotMethod;
 	private static boolean unavailable;
+	private static boolean debugOverlay;
+	private static boolean debugYsmOverlay;
+	private static boolean debugYsmActivated;
+	private static UUID debugTarget;
 
 	public static boolean delegateRender(GeneralYoukaiEntity e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
 		RenderBinding binding = resolveBinding(e);
@@ -91,7 +106,11 @@ public class YSMClientCompat {
 		}
 		try {
 			Object result = method.invoke(null, e, binding.modelId(), binding.textureName(), selectAnimation(e), yaw, pTick, pose, buffer, light);
-			return result instanceof Boolean value && value;
+			boolean rendered = result instanceof Boolean value && value;
+			if (rendered && debugYsmOverlay && !debugYsmActivated && e.getUUID().equals(debugTarget)) {
+				debugYsmActivated = enableYsmDebug(e);
+			}
+			return rendered;
 		} catch (IllegalAccessException | InvocationTargetException ex) {
 			unavailable = true;
 			YoukaisHomecoming.LOGGER.warn("Failed to delegate youkai rendering to Yes Steve Model", ex);
@@ -124,20 +143,117 @@ public class YSMClientCompat {
 		}
 	}
 
+	private static Method getEnableDebugMethod() {
+		if (enableDebugMethod != null) {
+			return enableDebugMethod;
+		}
+		try {
+			enableDebugMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
+					"enableDebug",
+					LivingEntity.class
+			);
+			return enableDebugMethod;
+		} catch (ClassNotFoundException | NoSuchMethodException ex) {
+			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living debug API is unavailable", ex);
+			return null;
+		}
+	}
+
+	private static Method getClearDebugMethod() {
+		if (clearDebugMethod != null) {
+			return clearDebugMethod;
+		}
+		try {
+			clearDebugMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod("clearDebug");
+			return clearDebugMethod;
+		} catch (ClassNotFoundException | NoSuchMethodException ex) {
+			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living debug clear API is unavailable", ex);
+			return null;
+		}
+	}
+
+	private static Method getDebugSnapshotMethod() {
+		if (debugSnapshotMethod != null) {
+			return debugSnapshotMethod;
+		}
+		try {
+			debugSnapshotMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
+					"getDebugSnapshot",
+					LivingEntity.class
+			);
+			return debugSnapshotMethod;
+		} catch (ClassNotFoundException | NoSuchMethodException ex) {
+			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living debug snapshot API is unavailable", ex);
+			return null;
+		}
+	}
+
+	private static boolean enableYsmDebug(LivingEntity entity) {
+		Method method = getEnableDebugMethod();
+		if (method == null) {
+			return false;
+		}
+		try {
+			Object result = method.invoke(null, entity);
+			return result instanceof Boolean value && value;
+		} catch (IllegalAccessException | InvocationTargetException ex) {
+			YoukaisHomecoming.LOGGER.warn("Failed to enable Yes Steve Model external living debug overlay", ex);
+			return false;
+		}
+	}
+
+	private static void clearYsmDebug() {
+		Method method = getClearDebugMethod();
+		if (method == null) {
+			return;
+		}
+		try {
+			method.invoke(null);
+		} catch (IllegalAccessException | InvocationTargetException ex) {
+			YoukaisHomecoming.LOGGER.warn("Failed to clear Yes Steve Model external living debug overlay", ex);
+		}
+	}
+
+	private static Map<String, String> getYsmDebugSnapshot(LivingEntity entity) {
+		Method method = getDebugSnapshotMethod();
+		if (method == null) {
+			return Map.of("debugApi", "missing");
+		}
+		try {
+			Object result = method.invoke(null, entity);
+			if (result instanceof Map<?, ?> map) {
+				Map<String, String> copy = new LinkedHashMap<>();
+				map.forEach((key, value) -> copy.put(String.valueOf(key), String.valueOf(value)));
+				return copy;
+			}
+			return Map.of("debugApi", "invalid result");
+		} catch (IllegalAccessException | InvocationTargetException ex) {
+			YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model external living debug snapshot", ex);
+			return Map.of("debugApi", "error");
+		}
+	}
+
 	private static RenderBinding resolveBinding(GeneralYoukaiEntity e) {
+		BindingResolution resolution = resolveBindingWithSource(e);
+		RenderBinding binding = resolution.binding();
+		return binding != null && binding.enabled() ? binding : null;
+	}
+
+	private static BindingResolution resolveBindingWithSource(GeneralYoukaiEntity e) {
 		RenderBinding entityOverride = ENTITY_DEBUG_OVERRIDES.get(e.getUUID());
 		if (entityOverride != null) {
-			return entityOverride.enabled() ? entityOverride : null;
+			return new BindingResolution(entityOverride, "entity override");
 		}
 		ResourceLocation entityId = ForgeRegistries.ENTITY_TYPES.getKey(e.getType());
 		if (entityId == null) {
-			return null;
+			return new BindingResolution(null, "unknown type");
 		}
 		RenderBinding override = TYPE_DEBUG_OVERRIDES.get(entityId);
 		if (override != null) {
-			return override.enabled() ? override : null;
+			return new BindingResolution(override, "type override");
 		}
-		return DEFAULT_BINDINGS.get(entityId);
+		RenderBinding binding = DEFAULT_BINDINGS.get(entityId);
+		return new BindingResolution(binding, binding == null ? "none" : "default");
 	}
 
 	private static String selectAnimation(GeneralYoukaiEntity e) {
@@ -174,6 +290,21 @@ public class YSMClientCompat {
 							ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Debug render mappings reset."));
 							return 1;
 						}))
+				.then(Commands.literal("debug")
+						.then(Commands.literal("on")
+								.executes(ctx -> setDebugTarget(ctx, getPointedEntity()))
+								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
+										.suggests(TARGET_ENTITY_SUGGESTIONS)
+										.executes(ctx -> setDebugTarget(ctx, getFirstResolvedEntity(ctx)))))
+						.then(Commands.literal("off")
+								.executes(YSMClientCompat::disableDebug))
+						.then(Commands.literal("status")
+								.executes(YSMClientCompat::showDebugStatus))
+						.then(Commands.literal("inspect")
+								.executes(ctx -> inspectDebugTarget(ctx, getPointedEntityOrSelected()))
+								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
+										.suggests(TARGET_ENTITY_SUGGESTIONS)
+										.executes(ctx -> inspectDebugTarget(ctx, getFirstResolvedEntity(ctx))))))
 				.then(Commands.literal("type")
 						.then(Commands.literal("set")
 								.then(Commands.argument("entity_type", ResourceLocationArgument.id())
@@ -244,6 +375,152 @@ public class YSMClientCompat {
 			ENTITY_DEBUG_OVERRIDES.forEach((uuid, binding) -> source.sendSystemMessage(Component.literal(formatStatusLine(uuid, binding))));
 		}
 		return 1;
+	}
+
+	private static int setDebugTarget(CommandContext<CommandSourceStack> ctx, Entity entity) {
+		if (!(entity instanceof LivingEntity living)) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Point at a living entity or pass a visible client entity selector/UUID."));
+			return 0;
+		}
+		debugTarget = living.getUUID();
+		debugOverlay = true;
+		debugYsmOverlay = true;
+		debugYsmActivated = enableYsmDebug(living);
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Debug target: " + entityDebugName(living)));
+		if (!debugYsmActivated) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] YSM overlay will activate after this entity is rendered by the external renderer."));
+		}
+		return 1;
+	}
+
+	private static int disableDebug(CommandContext<CommandSourceStack> ctx) {
+		debugOverlay = false;
+		debugYsmOverlay = false;
+		debugYsmActivated = false;
+		debugTarget = null;
+		clearYsmDebug();
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Debug overlay disabled."));
+		return 1;
+	}
+
+	private static int showDebugStatus(CommandContext<CommandSourceStack> ctx) {
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Debug overlay: " + debugOverlay));
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] YSM overlay: " + debugYsmOverlay + ", active: " + debugYsmActivated));
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Target: " + (debugTarget == null ? "none" : debugTarget)));
+		Entity entity = getDebugTargetEntity();
+		if (entity != null) {
+			return inspectDebugTarget(ctx, entity);
+		}
+		return 1;
+	}
+
+	private static int inspectDebugTarget(CommandContext<CommandSourceStack> ctx, Entity entity) {
+		if (entity == null) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] No visible debug target. Point at an entity or pass a selector/UUID."));
+			return 0;
+		}
+		for (DebugLine line : collectDebugLines(entity)) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + line.label() + ": " + line.value()));
+		}
+		return 1;
+	}
+
+	public static void renderDebugOverlay(ForgeGui gui, GuiGraphics graphics, float partialTick, int width, int height) {
+		if (!debugOverlay || Minecraft.getInstance().screen != null) {
+			return;
+		}
+		Entity entity = getDebugTargetEntity();
+		if (entity == null) {
+			return;
+		}
+		List<DebugLine> lines = collectDebugLines(entity);
+		if (lines.isEmpty()) {
+			return;
+		}
+		Font font = gui.getFont();
+		int labelWidth = 0;
+		int valueWidth = 0;
+		for (DebugLine line : lines) {
+			labelWidth = Math.max(labelWidth, font.width(line.label()));
+			valueWidth = Math.max(valueWidth, font.width(line.value()));
+		}
+		int rowHeight = font.lineHeight + 2;
+		int x = 5;
+		int y = 5;
+		int panelWidth = Math.min(width - 10, labelWidth + valueWidth + 22);
+		for (int i = 0; i < lines.size(); i++) {
+			DebugLine line = lines.get(i);
+			graphics.fill(x - 2, y - 1, x + panelWidth, y + rowHeight - 1, i % 2 == 0 ? DEBUG_BG_A : DEBUG_BG_B);
+			graphics.drawString(font, line.label(), x, y, DEBUG_LABEL_COLOR, false);
+			graphics.drawString(font, line.value(), x + labelWidth + 12, y, DEBUG_TEXT_COLOR, false);
+			y += rowHeight;
+			if (y + rowHeight > height - 5) {
+				break;
+			}
+		}
+	}
+
+	private static List<DebugLine> collectDebugLines(Entity entity) {
+		List<DebugLine> lines = new ArrayList<>();
+		ResourceLocation typeId = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+		lines.add(new DebugLine("entity", entityDebugName(entity)));
+		lines.add(new DebugLine("type", String.valueOf(typeId)));
+		lines.add(new DebugLine("uuid", entity.getUUID().toString()));
+		if (entity instanceof GeneralYoukaiEntity youkai) {
+			BindingResolution resolution = resolveBindingWithSource(youkai);
+			RenderBinding binding = resolution.binding();
+			lines.add(new DebugLine("binding", formatBinding(resolution.source(), binding)));
+			lines.add(new DebugLine("yh.hint", String.valueOf(selectAnimation(youkai))));
+			lines.add(new DebugLine("yh.flags", formatYoukaiFlags(youkai)));
+			lines.add(new DebugLine("yh.motion", formatMotion(youkai.getDeltaMovement())));
+			lines.add(new DebugLine("yh.target", youkai.getTarget() == null ? "none" : entityDebugName(youkai.getTarget())));
+		}
+		if (entity instanceof LivingEntity living) {
+			lines.addAll(collectYsmDebugLines(living));
+		}
+		return lines;
+	}
+
+	private static List<DebugLine> collectYsmDebugLines(LivingEntity entity) {
+		List<DebugLine> lines = new ArrayList<>();
+		if (!LOADED) {
+			lines.add(new DebugLine("ysm.loaded", "false"));
+			return lines;
+		}
+		Map<String, String> snapshot = getYsmDebugSnapshot(entity);
+		snapshot.forEach((key, value) -> lines.add(new DebugLine("ysm." + key, value)));
+		return lines;
+	}
+
+	private static String formatBinding(String source, RenderBinding binding) {
+		if (binding == null) {
+			return source + " -> none";
+		}
+		if (!binding.enabled()) {
+			return source + " -> off";
+		}
+		return source + " -> " + binding.modelId() + " / " + binding.textureName();
+	}
+
+	private static String formatYoukaiFlags(GeneralYoukaiEntity entity) {
+		boolean boss = entity instanceof BossYoukaiEntity;
+		boolean chaotic = entity instanceof BossYoukaiEntity bossEntity && bossEntity.isChaotic();
+		return "ground=" + entity.onGround() +
+				", flying=" + entity.isFlying() +
+				", noGravity=" + entity.isNoGravity() +
+				", aggressive=" + entity.isAggressive() +
+				", boss=" + boss +
+				", chaotic=" + chaotic +
+				", hurt=" + entity.hurtTime;
+	}
+
+	private static String formatMotion(Vec3 motion) {
+		double horizontal = Math.sqrt(motion.x * motion.x + motion.z * motion.z);
+		return String.format(Locale.ROOT, "x=%.3f y=%.3f z=%.3f h=%.3f", motion.x, motion.y, motion.z, horizontal);
+	}
+
+	private static String entityDebugName(Entity entity) {
+		return entity.getDisplayName().getString() + " (" + entity.getId() + ")";
 	}
 
 	private static String formatStatusLine(ResourceLocation entityId, RenderBinding binding) {
@@ -355,6 +632,29 @@ public class YSMClientCompat {
 			return entityHitResult.getEntity();
 		}
 		return null;
+	}
+
+	private static Entity getPointedEntityOrSelected() {
+		Entity pointed = getPointedEntity();
+		return pointed != null ? pointed : getDebugTargetEntity();
+	}
+
+	private static Entity getDebugTargetEntity() {
+		if (debugTarget == null) {
+			return null;
+		}
+		Minecraft minecraft = Minecraft.getInstance();
+		for (Entity entity : collectClientEntities(minecraft)) {
+			if (entity.getUUID().equals(debugTarget)) {
+				return entity;
+			}
+		}
+		return null;
+	}
+
+	private static Entity getFirstResolvedEntity(CommandContext<CommandSourceStack> ctx) {
+		List<Entity> entities = resolveClientEntities(ctx);
+		return entities.isEmpty() ? null : entities.get(0);
 	}
 
 	private static String getYsmId(CommandContext<CommandSourceStack> ctx, String name) {
@@ -544,5 +844,11 @@ public class YSMClientCompat {
 		private static RenderBinding disabled() {
 			return new RenderBinding("", "", false);
 		}
+	}
+
+	private record BindingResolution(RenderBinding binding, String source) {
+	}
+
+	private record DebugLine(String label, String value) {
 	}
 }

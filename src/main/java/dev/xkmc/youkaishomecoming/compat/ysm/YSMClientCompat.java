@@ -16,7 +16,6 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
-import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -34,7 +33,9 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -49,7 +50,8 @@ public class YSMClientCompat {
 	private static final String MODEL_REMILIA = "yh/remilia";
 	private static final String MODEL_FLANDRE = "yh/flandre";
 	private static final String TEXTURE_DEFAULT = "default";
-	private static final ArgumentType<String> YSM_ID_ARGUMENT = new YsmIdArgument();
+	private static final ArgumentType<String> YSM_ID_ARGUMENT = new TokenArgument("Expected YSM id", List.of("yh/remilia", "yh/flandre", "namespace:path/model"));
+	private static final ArgumentType<String> ENTITY_TARGET_ARGUMENT = new TokenArgument("Expected entity target", List.of("@e[limit=1,sort=nearest]", "@a", "00000000-0000-0000-0000-000000000000"));
 	private static final boolean LOADED = ModList.get().isLoaded(MOD_ID);
 	private static final ResourceLocation REMILIA_ENTITY = YoukaisHomecoming.loc("remilia_scarlet");
 	private static final Map<ResourceLocation, RenderBinding> DEFAULT_BINDINGS = Map.of(
@@ -191,7 +193,7 @@ public class YSMClientCompat {
 										.executes(ctx -> unsetTypeMapping(ctx)))))
 				.then(Commands.literal("entity")
 						.then(Commands.literal("set")
-								.then(Commands.argument("entities", EntityArgument.entities())
+								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
 										.suggests(TARGET_ENTITY_SUGGESTIONS)
 										.then(Commands.argument("model", YSM_ID_ARGUMENT)
 												.suggests(MODEL_SUGGESTIONS)
@@ -199,11 +201,11 @@ public class YSMClientCompat {
 												.then(Commands.argument("texture", YSM_ID_ARGUMENT)
 														.executes(ctx -> setEntityMapping(ctx, getYsmId(ctx, "texture")))))))
 						.then(Commands.literal("off")
-								.then(Commands.argument("entities", EntityArgument.entities())
+								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
 										.suggests(TARGET_ENTITY_SUGGESTIONS)
 										.executes(ctx -> setEntityDisabled(ctx))))
 						.then(Commands.literal("unset")
-								.then(Commands.argument("entities", EntityArgument.entities())
+								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
 										.suggests(TARGET_ENTITY_SUGGESTIONS)
 										.executes(ctx -> unsetEntityMapping(ctx)))))
 				.then(Commands.literal("unset")
@@ -293,8 +295,11 @@ public class YSMClientCompat {
 		return 1;
 	}
 
-	private static int setEntityMapping(CommandContext<CommandSourceStack> ctx, String textureName) throws CommandSyntaxException {
-		Collection<? extends Entity> entities = EntityArgument.getEntities(ctx, "entities");
+	private static int setEntityMapping(CommandContext<CommandSourceStack> ctx, String textureName) {
+		List<Entity> entities = resolveClientEntities(ctx);
+		if (entities.isEmpty()) {
+			return 0;
+		}
 		String modelId = getYsmId(ctx, "model");
 		if (modelId.isBlank() || textureName.isBlank()) {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Model and texture must not be blank."));
@@ -307,8 +312,11 @@ public class YSMClientCompat {
 		return entities.size();
 	}
 
-	private static int setEntityDisabled(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
-		Collection<? extends Entity> entities = EntityArgument.getEntities(ctx, "entities");
+	private static int setEntityDisabled(CommandContext<CommandSourceStack> ctx) {
+		List<Entity> entities = resolveClientEntities(ctx);
+		if (entities.isEmpty()) {
+			return 0;
+		}
 		for (Entity entity : entities) {
 			ENTITY_DEBUG_OVERRIDES.put(entity.getUUID(), RenderBinding.disabled());
 		}
@@ -316,8 +324,11 @@ public class YSMClientCompat {
 		return entities.size();
 	}
 
-	private static int unsetEntityMapping(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
-		Collection<? extends Entity> entities = EntityArgument.getEntities(ctx, "entities");
+	private static int unsetEntityMapping(CommandContext<CommandSourceStack> ctx) {
+		List<Entity> entities = resolveClientEntities(ctx);
+		if (entities.isEmpty()) {
+			return 0;
+		}
 		for (Entity entity : entities) {
 			ENTITY_DEBUG_OVERRIDES.remove(entity.getUUID());
 		}
@@ -350,11 +361,161 @@ public class YSMClientCompat {
 		return ctx.getArgument(name, String.class);
 	}
 
-	private static class YsmIdArgument implements ArgumentType<String> {
+	private static List<Entity> resolveClientEntities(CommandContext<CommandSourceStack> ctx) {
+		String target = ctx.getArgument("entities", String.class);
+		Minecraft minecraft = Minecraft.getInstance();
+		if (minecraft.level == null) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] No client level is loaded."));
+			return List.of();
+		}
+		if (target.startsWith("@")) {
+			return resolveClientSelector(ctx, target, minecraft);
+		}
+		try {
+			UUID uuid = UUID.fromString(target);
+			for (Entity entity : collectClientEntities(minecraft)) {
+				if (entity.getUUID().equals(uuid)) {
+					return List.of(entity);
+				}
+			}
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Entity UUID is not visible on the client: " + uuid));
+			return List.of();
+		} catch (IllegalArgumentException ignored) {
+			for (Entity entity : collectClientEntities(minecraft)) {
+				if (entity.getName().getString().equals(target)) {
+					return List.of(entity);
+				}
+			}
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Unsupported entity target or invisible entity: " + target));
+			return List.of();
+		}
+	}
 
-		private static final SimpleCommandExceptionType ERROR_EMPTY_ID =
-				new SimpleCommandExceptionType(new LiteralMessage("Expected YSM id"));
-		private static final List<String> EXAMPLES = List.of("yh/remilia", "yh/flandre", "namespace:path/model");
+	private static List<Entity> resolveClientSelector(CommandContext<CommandSourceStack> ctx, String target, Minecraft minecraft) {
+		char selector = target.length() > 1 ? target.charAt(1) : '\0';
+		Map<String, String> options = parseSelectorOptions(target);
+		List<Entity> result = new ArrayList<>();
+		switch (selector) {
+			case 's' -> {
+				if (minecraft.player != null) {
+					result.add(minecraft.player);
+				}
+			}
+			case 'p' -> {
+				for (Entity entity : collectClientEntities(minecraft)) {
+					if (entity instanceof net.minecraft.world.entity.player.Player) {
+						result.add(entity);
+					}
+				}
+				sortEntities(result, "nearest", minecraft);
+				limitEntities(result, 1);
+			}
+			case 'a' -> {
+				for (Entity entity : collectClientEntities(minecraft)) {
+					if (entity instanceof net.minecraft.world.entity.player.Player) {
+						result.add(entity);
+					}
+				}
+			}
+			case 'e' -> result.addAll(collectClientEntities(minecraft));
+			default -> {
+				ctx.getSource().sendFailure(Component.literal("[YH/YSM] Unsupported client selector: @" + selector));
+				return List.of();
+			}
+		}
+		filterByType(result, options.get("type"));
+		sortEntities(result, options.get("sort"), minecraft);
+		if (options.containsKey("limit")) {
+			try {
+				limitEntities(result, Math.max(0, Integer.parseInt(options.get("limit"))));
+			} catch (NumberFormatException ex) {
+				ctx.getSource().sendFailure(Component.literal("[YH/YSM] Invalid selector limit: " + options.get("limit")));
+				return List.of();
+			}
+		}
+		if (result.isEmpty()) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] No visible client entities matched: " + target));
+		}
+		return result;
+	}
+
+	private static List<Entity> collectClientEntities(Minecraft minecraft) {
+		Map<UUID, Entity> entities = new LinkedHashMap<>();
+		if (minecraft.level != null) {
+			for (Entity entity : minecraft.level.entitiesForRendering()) {
+				entities.put(entity.getUUID(), entity);
+			}
+			for (Entity entity : minecraft.level.players()) {
+				entities.put(entity.getUUID(), entity);
+			}
+		}
+		if (minecraft.player != null) {
+			entities.put(minecraft.player.getUUID(), minecraft.player);
+		}
+		return new ArrayList<>(entities.values());
+	}
+
+	private static Map<String, String> parseSelectorOptions(String target) {
+		int start = target.indexOf('[');
+		int end = target.lastIndexOf(']');
+		if (start < 0 || end <= start) {
+			return Map.of();
+		}
+		Map<String, String> options = new LinkedHashMap<>();
+		for (String part : target.substring(start + 1, end).split(",")) {
+			int equals = part.indexOf('=');
+			if (equals > 0) {
+				options.put(part.substring(0, equals).trim(), part.substring(equals + 1).trim());
+			}
+		}
+		return options;
+	}
+
+	private static void filterByType(List<Entity> entities, String typeOption) {
+		if (typeOption == null || typeOption.isBlank()) {
+			return;
+		}
+		boolean negate = typeOption.startsWith("!");
+		String expected = negate ? typeOption.substring(1) : typeOption;
+		entities.removeIf(entity -> {
+			ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+			boolean matches = id != null && id.toString().equals(expected);
+			return negate ? matches : !matches;
+		});
+	}
+
+	private static void sortEntities(List<Entity> entities, String sort, Minecraft minecraft) {
+		if (sort == null || sort.isBlank() || "arbitrary".equals(sort)) {
+			return;
+		}
+		Entity origin = minecraft.getCameraEntity() != null ? minecraft.getCameraEntity() : minecraft.player;
+		if (origin == null) {
+			return;
+		}
+		Comparator<Entity> comparator = Comparator.comparingDouble(origin::distanceToSqr);
+		if ("furthest".equals(sort)) {
+			comparator = comparator.reversed();
+		} else if (!"nearest".equals(sort)) {
+			return;
+		}
+		entities.sort(comparator);
+	}
+
+	private static void limitEntities(List<Entity> entities, int limit) {
+		while (entities.size() > limit) {
+			entities.remove(entities.size() - 1);
+		}
+	}
+
+	private static class TokenArgument implements ArgumentType<String> {
+
+		private final SimpleCommandExceptionType emptyInput;
+		private final Collection<String> examples;
+
+		private TokenArgument(String errorMessage, Collection<String> examples) {
+			this.emptyInput = new SimpleCommandExceptionType(new LiteralMessage(errorMessage));
+			this.examples = examples;
+		}
 
 		@Override
 		public String parse(StringReader reader) throws CommandSyntaxException {
@@ -363,14 +524,14 @@ public class YSMClientCompat {
 				reader.skip();
 			}
 			if (reader.getCursor() == start) {
-				throw ERROR_EMPTY_ID.createWithContext(reader);
+				throw emptyInput.createWithContext(reader);
 			}
 			return reader.getString().substring(start, reader.getCursor());
 		}
 
 		@Override
 		public Collection<String> getExamples() {
-			return EXAMPLES;
+			return examples;
 		}
 	}
 

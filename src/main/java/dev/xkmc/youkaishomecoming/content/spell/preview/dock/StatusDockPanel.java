@@ -132,6 +132,7 @@ public class StatusDockPanel implements DockPanel {
 		appendWrapped(lines, font, width, "view: " + viewport.getViewLabel(), 0xFF8CC6FF);
 		appendWrapped(lines, font, width, "target: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
 		appendWrapped(lines, font, width, "caster: " + formatVec(scene.getCasterPos()), 0xFFFF9A9A);
+		appendWrapped(lines, font, width, "ysm caster: " + scene.describeYsmPreviewCaster(), 0xFFB8E6FF);
 		appendWrapped(lines, font, width,
 				"dist: " + formatDecimal(scene.getTargetDistance()) +
 						"  casterHP: " + Math.round(scene.getHealthRatio() * 100) + "%" +

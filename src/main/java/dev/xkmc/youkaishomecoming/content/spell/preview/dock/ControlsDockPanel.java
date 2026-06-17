@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
+import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
 import dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.preview.VirtualSpellScene;
@@ -245,8 +246,14 @@ public class ControlsDockPanel implements DockPanel {
 			rebuildCallback.run();
 		});
 		String targetMkLabel = viewport.isShowTargetMarker() ? "Target:\u00A7eON" : "Target:OFF";
-		addButton(bx, row5Y, 52, targetMkLabel, btn -> {
+		bx = addButton(bx, row5Y, 52, targetMkLabel, btn -> {
 			viewport.setShowTargetMarker(!viewport.isShowTargetMarker());
+			rebuildCallback.run();
+		});
+		String ysmLabel = !YSMClientCompat.isLoaded() ? "YSM:N/A" :
+				scene.isYsmPreviewCasterEnabled() ? "YSM:\u00A7aON" : "YSM:OFF";
+		addButton(bx, row5Y, 48, ysmLabel, btn -> {
+			scene.setYsmPreviewCasterEnabled(!scene.isYsmPreviewCasterEnabled());
 			rebuildCallback.run();
 		});
 

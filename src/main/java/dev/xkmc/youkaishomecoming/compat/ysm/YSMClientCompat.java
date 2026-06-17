@@ -10,6 +10,7 @@ import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -86,6 +87,7 @@ public class YSMClientCompat {
 	};
 
 	private static Method renderMethod;
+	private static Method previewRenderMethod;
 	private static Method clearDebugMethod;
 	private static Method debugSnapshotMethod;
 	private static Method loadedModelIdsMethod;
@@ -93,11 +95,16 @@ public class YSMClientCompat {
 	private static Method modelAnimationNamesMethod;
 	private static Method modelDefaultTextureNameMethod;
 	private static boolean unavailable;
+	private static boolean previewRenderUnavailable;
 	private static boolean textureListUnavailable;
 	private static boolean animationListUnavailable;
 	private static boolean defaultTextureUnavailable;
 	private static boolean debugOverlay;
 	private static UUID debugTarget;
+
+	public static boolean isLoaded() {
+		return LOADED;
+	}
 
 	public static boolean delegateRender(GeneralYoukaiEntity e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
 		RenderRequest request = resolveRenderRequest(e);
@@ -116,6 +123,52 @@ public class YSMClientCompat {
 			YoukaisHomecoming.LOGGER.warn("Failed to delegate youkai rendering to Yes Steve Model", ex);
 			return false;
 		}
+	}
+
+	public static boolean renderPreviewCaster(PreviewCardHolder holder, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
+		if (!LOADED || unavailable) {
+			return false;
+		}
+		String modelId = holder.getYsmModelOverride();
+		if (modelId.isBlank()) {
+			modelId = MODEL_REMILIA;
+		}
+		String textureName = holder.getYsmTextureOverride();
+		if (textureName.isBlank()) {
+			textureName = defaultTextureName(modelId);
+		}
+		String animationHint = selectPreviewAnimation(holder, modelId);
+		Method method = getPreviewRenderMethod();
+		if (method == null) {
+			method = getRenderMethod();
+		}
+		if (method == null) {
+			return false;
+		}
+		LivingEntity caster = holder.getFakeCaster();
+		boolean invisible = caster.isInvisible();
+		caster.setInvisible(false);
+		try {
+			Object result = method.invoke(null, caster, modelId, textureName, animationHint, yaw, pTick, pose, buffer, light);
+			return result instanceof Boolean value && value;
+		} catch (IllegalAccessException | InvocationTargetException ex) {
+			YoukaisHomecoming.LOGGER.warn("Failed to render preview caster with Yes Steve Model", ex);
+			return false;
+		} finally {
+			caster.setInvisible(invisible);
+		}
+	}
+
+	private static String selectPreviewAnimation(PreviewCardHolder holder, String modelId) {
+		String actionHint = actionAnimationHint(modelId, holder.getYsmAnimationOverride());
+		List<String> hints = new ArrayList<>(2);
+		if (!hasHintToken(actionHint, "fly") && !hasHintToken(actionHint, "walk")) {
+			hints.add("calm");
+		}
+		if (!actionHint.isBlank()) {
+			hints.add(actionHint);
+		}
+		return hints.isEmpty() ? null : String.join(" ", hints);
 	}
 
 	private static Method getRenderMethod() {
@@ -181,6 +234,34 @@ public class YSMClientCompat {
 			return loadedModelIdsMethod;
 		} catch (ClassNotFoundException | NoSuchMethodException ex) {
 			YoukaisHomecoming.LOGGER.warn("Yes Steve Model loaded model id API is unavailable", ex);
+			return null;
+		}
+	}
+
+	private static Method getPreviewRenderMethod() {
+		if (previewRenderUnavailable) {
+			return null;
+		}
+		if (previewRenderMethod != null) {
+			return previewRenderMethod;
+		}
+		try {
+			previewRenderMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
+					"renderPreview",
+					LivingEntity.class,
+					String.class,
+					String.class,
+					String.class,
+					float.class,
+					float.class,
+					PoseStack.class,
+					MultiBufferSource.class,
+					int.class
+			);
+			return previewRenderMethod;
+		} catch (ClassNotFoundException | NoSuchMethodException ex) {
+			previewRenderUnavailable = true;
+			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living preview renderer API is unavailable; falling back to normal render", ex);
 			return null;
 		}
 	}
@@ -500,6 +581,15 @@ public class YSMClientCompat {
 	private static String hintKey(String token) {
 		int equals = token.indexOf('=');
 		return (equals >= 0 ? token.substring(0, equals) : token).trim();
+	}
+
+	private static boolean hasHintToken(String animationHint, String expected) {
+		for (String token : splitAnimationHint(animationHint)) {
+			if (expected.equals(hintKey(token))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	@SubscribeEvent

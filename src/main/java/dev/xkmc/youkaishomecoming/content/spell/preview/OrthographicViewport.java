@@ -11,6 +11,7 @@ import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
 import dev.xkmc.l2serial.util.Wrappers;
+import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -550,6 +551,8 @@ public class OrthographicViewport {
 		renderGrid(poseStack);
 		renderAxes(poseStack);
 
+		renderYsmPreviewCaster(scene, poseStack, buffer, partialTick);
+
 		// 8. Render markers
 		renderMarkers(poseStack, scene);
 
@@ -672,6 +675,8 @@ public class OrthographicViewport {
 		renderGrid(poseStack);
 		renderAxes(poseStack);
 
+		renderYsmPreviewCaster(scene, poseStack, buffer, partialTick);
+
 		// 12. Render markers
 		renderMarkers(poseStack, scene);
 
@@ -715,6 +720,21 @@ public class OrthographicViewport {
 
 		// 18. Restore GUI projection
 		RenderSystem.setProjectionMatrix(savedProjection, com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z);
+	}
+
+	private void renderYsmPreviewCaster(VirtualSpellScene scene, PoseStack poseStack, MultiBufferSource buffer, float partialTick) {
+		if (!scene.isYsmPreviewCasterEnabled()) {
+			return;
+		}
+		var caster = scene.getHolder().getFakeCaster();
+		double ex = Mth.lerp(partialTick, caster.xOld, caster.getX());
+		double ey = Mth.lerp(partialTick, caster.yOld, caster.getY());
+		double ez = Mth.lerp(partialTick, caster.zOld, caster.getZ());
+		float yaw = Mth.rotLerp(partialTick, caster.yRotO, caster.getYRot());
+		poseStack.pushPose();
+		poseStack.translate(ex, ey, ez);
+		YSMClientCompat.renderPreviewCaster(scene.getHolder(), yaw, partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
+		poseStack.popPose();
 	}
 
 	/**

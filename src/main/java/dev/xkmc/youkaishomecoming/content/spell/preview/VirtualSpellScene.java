@@ -26,6 +26,7 @@ public class VirtualSpellScene {
 	private float targetDistance = 10f;
 	private float healthRatio = 1.0f;
 	private Runnable onStateChanged;
+	private boolean ysmPreviewCasterEnabled = false;
 
 	/** Duration of the last tick() call in nanoseconds. */
 	private long lastTickNanos = 0;
@@ -112,12 +113,14 @@ public class VirtualSpellScene {
 		runtime.setPhasePreviewLock(null);
 		runtime.reset();
 		holder.clear();
+		holder.clearYsmRenderOverride();
 		notifyStateChanged();
 	}
 
 	public void resetToPhase(ResourceLocation phaseId) {
 		playing = false;
 		holder.clear();
+		holder.clearYsmRenderOverride();
 		holder.setCasterHealth(healthRatio);
 		runtime.setPhasePreviewLock(phaseId);
 		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
@@ -169,6 +172,21 @@ public class VirtualSpellScene {
 
 	public void resetCasterPos() {
 		holder.getFakeCaster().setPos(0, 0, 0);
+	}
+
+	public boolean isYsmPreviewCasterEnabled() {
+		return ysmPreviewCasterEnabled;
+	}
+
+	public void setYsmPreviewCasterEnabled(boolean enabled) {
+		this.ysmPreviewCasterEnabled = enabled;
+	}
+
+	public String describeYsmPreviewCaster() {
+		if (!ysmPreviewCasterEnabled) {
+			return "disabled";
+		}
+		return holder.hasYsmRenderOverride() ? holder.describeYsmRenderOverride() : "default yh/remilia";
 	}
 
 	public void resetTargetPos() {
@@ -258,6 +276,7 @@ public class VirtualSpellScene {
 	public void switchSpellDefinition(SpellDefinition definition, boolean clearScreen) {
 		if (clearScreen) {
 			holder.clear();
+			holder.clearYsmRenderOverride();
 		}
 		this.definition = definition;
 		this.runtime = new SpellRuntime(definition);

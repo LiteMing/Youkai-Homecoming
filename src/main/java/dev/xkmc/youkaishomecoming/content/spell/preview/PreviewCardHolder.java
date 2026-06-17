@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
@@ -33,7 +34,7 @@ import java.util.function.BiConsumer;
  * A CardHolder implementation for the preview system.
  * Entities are stored in a local pool and never injected into the real world.
  */
-public class PreviewCardHolder implements CardHolder {
+public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	private final Level level;
 	private final FakeCasterEntity fakeCaster;
@@ -66,6 +67,12 @@ public class PreviewCardHolder implements CardHolder {
 	private int currentSpawningActionIndex = -1;
 	/** The action index currently selected in the editor (for highlighting). */
 	private int highlightedActionIndex = -1;
+	private String ysmModelOverride = "";
+	private String ysmTextureOverride = "";
+	private String ysmAnimationOverride = "";
+	private int ysmModelOverrideUntil = 0;
+	private int ysmTextureOverrideUntil = 0;
+	private int ysmAnimationOverrideUntil = 0;
 
 	public PreviewCardHolder(Level level) {
 		this.level = level;
@@ -231,6 +238,8 @@ public class PreviewCardHolder implements CardHolder {
 	 * For ShooterEntity: manual movement + lifetime + spell tick.
 	 */
 	public void tick() {
+		expireYsmRenderOverride();
+		tickFakeCaster();
 		// Auto-reset safety flag when entity count drops below limit
 		if (safetyTripped && localEntities.size() + pendingEntities.size() < maxEntityCount) {
 			safetyTripped = false;
@@ -346,6 +355,159 @@ public class PreviewCardHolder implements CardHolder {
 
 	public ArmorStand getFakeTarget() {
 		return fakeTarget;
+	}
+
+	@Override
+	public void setYsmRenderOverride(String modelId, String textureName, String animationHint, int duration, String clearTarget) {
+		String model = YsmRenderOverrideTarget.normalizeYsmOverride(modelId);
+		String texture = YsmRenderOverrideTarget.normalizeYsmOverride(textureName);
+		String animation = YsmRenderOverrideTarget.normalizeYsmOverride(animationHint);
+		if (!model.isBlank()) {
+			ysmModelOverride = model;
+		}
+		if (!texture.isBlank()) {
+			ysmTextureOverride = texture;
+		}
+		if (!animation.isBlank()) {
+			ysmAnimationOverride = animation;
+		}
+		int changedMask = YsmRenderOverrideTarget.changedMask(model, texture, animation);
+		updateYsmFieldExpirations(changedMask, YsmRenderOverrideTarget.clearMask(clearTarget, changedMask), duration);
+	}
+
+	@Override
+	public void clearYsmRenderOverride(String target) {
+		clearYsmRenderOverride(YsmRenderOverrideTarget.clearMask(target, YSM_CLEAR_ALL));
+	}
+
+	private void clearYsmRenderOverride(int mask) {
+		if ((mask & YSM_CLEAR_MODEL) != 0) {
+			ysmModelOverride = "";
+			ysmModelOverrideUntil = 0;
+		}
+		if ((mask & YSM_CLEAR_TEXTURE) != 0) {
+			ysmTextureOverride = "";
+			ysmTextureOverrideUntil = 0;
+		}
+		if ((mask & YSM_CLEAR_ANIMATION) != 0) {
+			ysmAnimationOverride = "";
+			ysmAnimationOverrideUntil = 0;
+		}
+	}
+
+	private void tickFakeCaster() {
+		fakeCaster.setOldPosAndRot();
+		fakeCaster.yBodyRotO = fakeCaster.yBodyRot;
+		fakeCaster.yHeadRotO = fakeCaster.yHeadRot;
+		fakeCaster.yBodyRot = fakeCaster.getYRot();
+		fakeCaster.yHeadRot = fakeCaster.getYRot();
+		fakeCaster.setOnGround(!hasYsmAnimationToken("fly"));
+		fakeCaster.walkAnimation.update(hasYsmAnimationToken("walk") ? 0.8f : 0.0f, 0.4f);
+		++fakeCaster.tickCount;
+	}
+
+	@Override
+	public boolean hasYsmRenderOverride() {
+		return !getYsmModelOverride().isBlank() ||
+				!getYsmTextureOverride().isBlank() ||
+				!getYsmAnimationOverride().isBlank();
+	}
+
+	@Override
+	public String getYsmModelOverride() {
+		return hasActiveYsmField(ysmModelOverride, ysmModelOverrideUntil) ? ysmModelOverride : "";
+	}
+
+	@Override
+	public String getYsmTextureOverride() {
+		return hasActiveYsmField(ysmTextureOverride, ysmTextureOverrideUntil) ? ysmTextureOverride : "";
+	}
+
+	@Override
+	public String getYsmAnimationOverride() {
+		return hasActiveYsmField(ysmAnimationOverride, ysmAnimationOverrideUntil) ? ysmAnimationOverride : "";
+	}
+
+	@Override
+	public int getYsmOverrideTicksRemaining() {
+		int remaining = 0;
+		remaining = mergeYsmRemaining(remaining, ysmModelOverrideUntil);
+		remaining = mergeYsmRemaining(remaining, ysmTextureOverrideUntil);
+		remaining = mergeYsmRemaining(remaining, ysmAnimationOverrideUntil);
+		return remaining;
+	}
+
+	@Override
+	public String describeYsmRenderOverride() {
+		if (!hasYsmRenderOverride()) {
+			return "none";
+		}
+		return "model=" + displayYsmOverride(ysmModelOverride, ysmModelOverrideUntil) +
+				", texture=" + displayYsmOverride(ysmTextureOverride, ysmTextureOverrideUntil) +
+				", animation=" + displayYsmOverride(ysmAnimationOverride, ysmAnimationOverrideUntil);
+	}
+
+	public boolean hasYsmAnimationToken(String expected) {
+		for (String token : getYsmAnimationOverride().split("[,;|\\s]+")) {
+			int equals = token.indexOf('=');
+			String key = equals >= 0 ? token.substring(0, equals) : token;
+			if (expected.equals(key.trim())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean hasActiveYsmField(String value, int until) {
+		return !value.isBlank() && !isYsmFieldExpired(until);
+	}
+
+	private boolean isYsmFieldExpired(int until) {
+		return until > 0 && fakeCaster.tickCount >= until;
+	}
+
+	private int mergeYsmRemaining(int current, int until) {
+		if (until <= fakeCaster.tickCount) {
+			return current;
+		}
+		int remaining = until - fakeCaster.tickCount;
+		return current <= 0 ? remaining : Math.min(current, remaining);
+	}
+
+	private String displayYsmOverride(String value, int until) {
+		if (value.isBlank()) {
+			return "(keep)";
+		}
+		return until > 0 && fakeCaster.tickCount < until ? value + " (" + (until - fakeCaster.tickCount) + "t)" : value;
+	}
+
+	private void updateYsmFieldExpirations(int changedMask, int expireMask, int duration) {
+		int until = duration > 0 ? fakeCaster.tickCount + duration : 0;
+		if ((changedMask & YSM_CLEAR_MODEL) != 0 || (expireMask & YSM_CLEAR_MODEL) != 0) {
+			ysmModelOverrideUntil = (expireMask & YSM_CLEAR_MODEL) != 0 ? until : 0;
+		}
+		if ((changedMask & YSM_CLEAR_TEXTURE) != 0 || (expireMask & YSM_CLEAR_TEXTURE) != 0) {
+			ysmTextureOverrideUntil = (expireMask & YSM_CLEAR_TEXTURE) != 0 ? until : 0;
+		}
+		if ((changedMask & YSM_CLEAR_ANIMATION) != 0 || (expireMask & YSM_CLEAR_ANIMATION) != 0) {
+			ysmAnimationOverrideUntil = (expireMask & YSM_CLEAR_ANIMATION) != 0 ? until : 0;
+		}
+	}
+
+	private void expireYsmRenderOverride() {
+		int mask = 0;
+		if (isYsmFieldExpired(ysmModelOverrideUntil)) {
+			mask |= YSM_CLEAR_MODEL;
+		}
+		if (isYsmFieldExpired(ysmTextureOverrideUntil)) {
+			mask |= YSM_CLEAR_TEXTURE;
+		}
+		if (isYsmFieldExpired(ysmAnimationOverrideUntil)) {
+			mask |= YSM_CLEAR_ANIMATION;
+		}
+		if (mask != 0) {
+			clearYsmRenderOverride(mask);
+		}
 	}
 
 	// --- Target property simulation ---

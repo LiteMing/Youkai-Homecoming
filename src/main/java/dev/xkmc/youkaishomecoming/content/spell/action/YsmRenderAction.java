@@ -2,7 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.action;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 
 /**
@@ -39,11 +39,17 @@ public record YsmRenderAction(String model, String texture, String animation, in
 
 	@Override
 	public void execute(SpellContext ctx) {
-		if (ctx.self() instanceof GeneralYoukaiEntity youkai) {
+		YsmRenderOverrideTarget target = null;
+		if (ctx.self() instanceof YsmRenderOverrideTarget selfTarget) {
+			target = selfTarget;
+		} else if (ctx.holder() instanceof YsmRenderOverrideTarget holderTarget) {
+			target = holderTarget;
+		}
+		if (target != null) {
 			if (clear) {
-				youkai.clearYsmRenderOverride(clearTarget.isBlank() || "changed".equals(clearTarget) ? "all" : clearTarget);
+				target.clearYsmRenderOverride(clearTarget.isBlank() || "changed".equals(clearTarget) ? "all" : clearTarget);
 			} else {
-				youkai.setYsmRenderOverride(model, texture, animation, duration, clearTarget);
+				target.setYsmRenderOverride(model, texture, animation, duration, clearTarget);
 			}
 		}
 	}

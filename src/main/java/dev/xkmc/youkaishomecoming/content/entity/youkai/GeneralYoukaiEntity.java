@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.entity.youkai;
 
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
@@ -27,7 +28,7 @@ import net.minecraft.world.level.ServerLevelAccessor;
 import org.jetbrains.annotations.Nullable;
 
 @SerialClass
-public class GeneralYoukaiEntity extends YoukaiEntity {
+public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverrideTarget {
 
 	private static final ResourceLocation SPELL = YoukaisHomecoming.loc("ex_rumia");
 

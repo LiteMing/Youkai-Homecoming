@@ -94,8 +94,8 @@ public class YSMClientCompat {
 	private static UUID debugTarget;
 
 	public static boolean delegateRender(GeneralYoukaiEntity e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
-		RenderBinding binding = resolveBinding(e);
-		if (!LOADED || unavailable || binding == null) {
+		RenderRequest request = resolveRenderRequest(e);
+		if (!LOADED || unavailable || request == null) {
 			return false;
 		}
 		Method method = getRenderMethod();
@@ -103,7 +103,7 @@ public class YSMClientCompat {
 			return false;
 		}
 		try {
-			Object result = method.invoke(null, e, binding.modelId(), binding.textureName(), selectAnimation(e, binding.modelId()), yaw, pTick, pose, buffer, light);
+			Object result = method.invoke(null, e, request.modelId(), request.textureName(), request.animationHint(), yaw, pTick, pose, buffer, light);
 			return result instanceof Boolean value && value;
 		} catch (IllegalAccessException | InvocationTargetException ex) {
 			unavailable = true;
@@ -238,6 +238,24 @@ public class YSMClientCompat {
 		return binding != null && binding.enabled() ? binding : null;
 	}
 
+	private static RenderRequest resolveRenderRequest(GeneralYoukaiEntity e) {
+		BindingResolution resolution = resolveBindingWithSource(e);
+		RenderBinding binding = resolution.binding();
+		if (binding != null && !binding.enabled()) {
+			return null;
+		}
+		String modelOverride = e.getYsmModelOverride();
+		String textureOverride = e.getYsmTextureOverride();
+		String modelId = !modelOverride.isBlank() ? modelOverride : binding == null ? "" : binding.modelId();
+		if (modelId.isBlank()) {
+			return null;
+		}
+		String textureName = !textureOverride.isBlank() ? textureOverride :
+				!modelOverride.isBlank() ? TEXTURE_DEFAULT :
+						binding == null ? TEXTURE_DEFAULT : binding.textureName();
+		return new RenderRequest(modelId, textureName, selectAnimation(e, modelId));
+	}
+
 	private static BindingResolution resolveBindingWithSource(GeneralYoukaiEntity e) {
 		RenderBinding entityOverride = ENTITY_DEBUG_OVERRIDES.get(e.getUUID());
 		if (entityOverride != null) {
@@ -260,7 +278,8 @@ public class YSMClientCompat {
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
 		boolean flying = e.isFlying() || e.isNoGravity() || e instanceof BossYoukaiEntity && e.isAggressive();
 		boolean angry = isAngryExpression(e);
-		List<String> hints = new ArrayList<>(2);
+		String actionHint = actionAnimationHint(modelId, e.getYsmAnimationOverride());
+		List<String> hints = new ArrayList<>(3);
 		if (flying) {
 			hints.add("fly");
 		} else if (e.onGround()) {
@@ -270,10 +289,66 @@ public class YSMClientCompat {
 				hints.add("calm");
 			}
 		}
-		if (angry) {
+		if (angry && !overridesPassiveExpression(e.getYsmAnimationOverride())) {
 			hints.add(YSMCompatConfig.expressionToken(modelId, "angry"));
 		}
+		if (!actionHint.isBlank()) {
+			hints.add(actionHint);
+		}
 		return hints.isEmpty() ? null : String.join(" ", hints);
+	}
+
+	private static String actionAnimationHint(String modelId, String animation) {
+		if (animation.isBlank()) {
+			return "";
+		}
+		List<String> tokens = new ArrayList<>();
+		for (String token : splitAnimationHint(animation)) {
+			tokens.add(actionAnimationToken(modelId, token));
+		}
+		return String.join(" ", tokens);
+	}
+
+	private static String actionAnimationToken(String modelId, String token) {
+		String key = hintKey(token);
+		if (key.isBlank() || token.contains("=") || "fly".equals(key) || "walk".equals(key) || "calm".equals(key)) {
+			return token;
+		}
+		String semantic = YSMCompatConfig.expressionToken(modelId, key);
+		int equals = semantic.indexOf('=');
+		if ("angry".equals(key) || "cast".equals(key) || "charge".equals(key) || "special".equals(key)) {
+			return semantic;
+		}
+		String candidates = equals >= 0 ? semantic.substring(equals + 1) : key;
+		return "special=" + candidates;
+	}
+
+	private static boolean overridesPassiveExpression(String animation) {
+		for (String token : splitAnimationHint(animation)) {
+			String key = hintKey(token);
+			if (!key.isBlank() && !"fly".equals(key) && !"walk".equals(key) && !"calm".equals(key)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static List<String> splitAnimationHint(String animation) {
+		if (animation.isBlank()) {
+			return List.of();
+		}
+		List<String> result = new ArrayList<>();
+		for (String token : animation.split("[,;|\\s]+")) {
+			if (!token.isBlank()) {
+				result.add(token.trim());
+			}
+		}
+		return result;
+	}
+
+	private static String hintKey(String token) {
+		int equals = token.indexOf('=');
+		return (equals >= 0 ? token.substring(0, equals) : token).trim();
 	}
 
 	@SubscribeEvent
@@ -455,9 +530,12 @@ public class YSMClientCompat {
 		if (entity instanceof GeneralYoukaiEntity youkai) {
 			BindingResolution resolution = resolveBindingWithSource(youkai);
 			RenderBinding binding = resolution.binding();
+			RenderRequest request = resolveRenderRequest(youkai);
 			lines.add(new DebugLine("binding", formatBinding(resolution.source(), binding)));
-			String modelId = binding != null && binding.enabled() ? binding.modelId() : "";
-			lines.add(new DebugLine("yh.hint", String.valueOf(selectAnimation(youkai, modelId))));
+			String modelId = request != null ? request.modelId() : binding != null && binding.enabled() ? binding.modelId() : "";
+			lines.add(new DebugLine("yh.render", request == null ? "none" : request.modelId() + " / " + request.textureName()));
+			lines.add(new DebugLine("yh.spellYsm", youkai.describeYsmRenderOverride()));
+			lines.add(new DebugLine("yh.hint", request == null ? "null" : String.valueOf(request.animationHint())));
 			lines.add(new DebugLine("yh.expression", isAngryExpression(youkai) ? "angry" : "none"));
 			if (!modelId.isBlank()) {
 				lines.add(new DebugLine("yh.expressionMap", YSMCompatConfig.debugExpressionMapping(modelId, "angry")));
@@ -844,6 +922,9 @@ public class YSMClientCompat {
 	}
 
 	private record BindingResolution(RenderBinding binding, String source) {
+	}
+
+	private record RenderRequest(String modelId, String textureName, String animationHint) {
 	}
 
 	private record DebugLine(String label, String value) {

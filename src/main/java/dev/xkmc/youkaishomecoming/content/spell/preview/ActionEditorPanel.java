@@ -276,6 +276,8 @@ public class ActionEditorPanel {
 			buildConfineTargetRows(cta);
 		} else if (action instanceof SetEntityFlagAction sefa) {
 			buildSetEntityFlagRows(sefa);
+		} else if (action instanceof YsmRenderAction yra) {
+			buildYsmRenderRows(yra);
 		} else if (action instanceof TeleportRandomAction tra) {
 			buildTeleportRandomRows(tra);
 		}
@@ -301,6 +303,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Fire Spell", () -> selectType("fire_spell"));
 		addFullWidthButton("Confine Target", () -> selectType("confine_target"));
 		addFullWidthButton("Set Entity Flag", () -> selectType("set_entity_flag"));
+		addFullWidthButton("YSM Render", () -> selectType("ysm_render"));
 		addFullWidthButton("Teleport Random", () -> selectType("teleport_random"));
 	}
 
@@ -365,6 +368,7 @@ public class ActionEditorPanel {
 		case "sequence" -> new SpellActions.SequenceAction(new ArrayList<>());
 		case "confine_target" -> new ConfineTargetAction(32, 1.0);
 		case "set_entity_flag" -> new SetEntityFlagAction(4, true);
+		case "ysm_render" -> new YsmRenderAction("", "", "special", 40, false);
 		case "teleport_random" -> new TeleportRandomAction(32, 0.8, 0.4, 16, true, true);
 		default -> new SpellActions.NoopAction();
 		};
@@ -1086,6 +1090,39 @@ public class ActionEditorPanel {
 				notifySimple(old -> new SetEntityFlagAction(v, ((SetEntityFlagAction) old).enable())));
 		addStringCycleRow("Enable", new String[]{"true", "false"}, sefa.enable() ? "true" : "false", v ->
 				notifySimple(old -> new SetEntityFlagAction(((SetEntityFlagAction) old).flag(), v.equals("true"))));
+	}
+
+	// --- YSM Render rows ---
+
+	private void buildYsmRenderRows(YsmRenderAction yra) {
+		addBoolRow("Clear", yra.clear(), v ->
+				notifySimple(old -> {
+					var y = (YsmRenderAction) old;
+					return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), v);
+				}, true));
+		if (yra.clear()) {
+			return;
+		}
+		addStringRow("Model", yra.model(), v ->
+				notifySimple(old -> {
+					var y = (YsmRenderAction) old;
+					return new YsmRenderAction(v, y.texture(), y.animation(), y.duration(), y.clear());
+				}));
+		addStringRow("Texture", yra.texture(), v ->
+				notifySimple(old -> {
+					var y = (YsmRenderAction) old;
+					return new YsmRenderAction(y.model(), v, y.animation(), y.duration(), y.clear());
+				}));
+		addStringRow("Animation", yra.animation(), v ->
+				notifySimple(old -> {
+					var y = (YsmRenderAction) old;
+					return new YsmRenderAction(y.model(), y.texture(), v, y.duration(), y.clear());
+				}));
+		addIntRow("Duration", yra.duration(), v ->
+				notifySimple(old -> {
+					var y = (YsmRenderAction) old;
+					return new YsmRenderAction(y.model(), y.texture(), y.animation(), v, y.clear());
+				}));
 	}
 
 	// --- Teleport Random rows ---
@@ -3592,6 +3629,7 @@ public class ActionEditorPanel {
 			Map.entry("sequence", "Sequence"),
 			Map.entry("confine_target", "Confine Target"),
 			Map.entry("set_entity_flag", "Set Entity Flag"),
+			Map.entry("ysm_render", "YSM Render"),
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);

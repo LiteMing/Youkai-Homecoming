@@ -38,6 +38,10 @@ public class GeneralYoukaiEntity extends YoukaiEntity {
 	protected static final SyncedData SPELL_DATA = new SyncedData(GeneralYoukaiEntity::defineId, YOUKAI_DATA);
 
 	private static final EntityDataAccessor<String> SPELL_MODEL = SPELL_DATA.define(SyncedData.STRING, "", "modelId");
+	private static final EntityDataAccessor<String> YSM_MODEL_OVERRIDE = SPELL_DATA.define(SyncedData.STRING, "", "ysmModelOverride");
+	private static final EntityDataAccessor<String> YSM_TEXTURE_OVERRIDE = SPELL_DATA.define(SyncedData.STRING, "", "ysmTextureOverride");
+	private static final EntityDataAccessor<String> YSM_ANIMATION_OVERRIDE = SPELL_DATA.define(SyncedData.STRING, "", "ysmAnimationOverride");
+	private static final EntityDataAccessor<Integer> YSM_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmOverrideUntil");
 
 	private int tickAggressive;
 
@@ -61,6 +65,70 @@ public class GeneralYoukaiEntity extends YoukaiEntity {
 		if (spellCard != null) model = spellCard.getModelId();
 		if (model == null) model = "";
 		entityData.set(SPELL_MODEL, model);
+	}
+
+	public void setYsmRenderOverride(String modelId, String textureName, String animationHint, int duration) {
+		entityData.set(YSM_MODEL_OVERRIDE, normalizeYsmOverride(modelId));
+		entityData.set(YSM_TEXTURE_OVERRIDE, normalizeYsmOverride(textureName));
+		entityData.set(YSM_ANIMATION_OVERRIDE, normalizeYsmOverride(animationHint));
+		entityData.set(YSM_OVERRIDE_UNTIL, duration > 0 ? tickCount + duration : 0);
+	}
+
+	public void clearYsmRenderOverride() {
+		entityData.set(YSM_MODEL_OVERRIDE, "");
+		entityData.set(YSM_TEXTURE_OVERRIDE, "");
+		entityData.set(YSM_ANIMATION_OVERRIDE, "");
+		entityData.set(YSM_OVERRIDE_UNTIL, 0);
+	}
+
+	public boolean hasYsmRenderOverride() {
+		if (isYsmRenderOverrideExpired()) {
+			return false;
+		}
+		return !entityData.get(YSM_MODEL_OVERRIDE).isBlank() ||
+				!entityData.get(YSM_TEXTURE_OVERRIDE).isBlank() ||
+				!entityData.get(YSM_ANIMATION_OVERRIDE).isBlank();
+	}
+
+	public String getYsmModelOverride() {
+		return hasYsmRenderOverride() ? entityData.get(YSM_MODEL_OVERRIDE) : "";
+	}
+
+	public String getYsmTextureOverride() {
+		return hasYsmRenderOverride() ? entityData.get(YSM_TEXTURE_OVERRIDE) : "";
+	}
+
+	public String getYsmAnimationOverride() {
+		return hasYsmRenderOverride() ? entityData.get(YSM_ANIMATION_OVERRIDE) : "";
+	}
+
+	public int getYsmOverrideTicksRemaining() {
+		int until = entityData.get(YSM_OVERRIDE_UNTIL);
+		return until <= 0 || isYsmRenderOverrideExpired() ? 0 : until - tickCount;
+	}
+
+	public String describeYsmRenderOverride() {
+		if (!hasYsmRenderOverride()) {
+			return "none";
+		}
+		int remaining = getYsmOverrideTicksRemaining();
+		return "model=" + displayYsmOverride(entityData.get(YSM_MODEL_OVERRIDE)) +
+				", texture=" + displayYsmOverride(entityData.get(YSM_TEXTURE_OVERRIDE)) +
+				", animation=" + displayYsmOverride(entityData.get(YSM_ANIMATION_OVERRIDE)) +
+				", duration=" + (remaining > 0 ? remaining + "t" : "until clear");
+	}
+
+	private boolean isYsmRenderOverrideExpired() {
+		int until = entityData.get(YSM_OVERRIDE_UNTIL);
+		return until > 0 && tickCount >= until;
+	}
+
+	private static String normalizeYsmOverride(String value) {
+		return value == null ? "" : value.trim();
+	}
+
+	private static String displayYsmOverride(String value) {
+		return value.isBlank() ? "(keep)" : value;
 	}
 
 	protected void registerGoals() {
@@ -87,6 +155,9 @@ public class GeneralYoukaiEntity extends YoukaiEntity {
 	@Override
 	public void tick() {
 		super.tick();
+		if (!level().isClientSide() && isYsmRenderOverrideExpired()) {
+			clearYsmRenderOverride();
+		}
 		if (level().isClientSide()) {
 			if (isAggressive()) {
 				if (tickAggressive < 20)

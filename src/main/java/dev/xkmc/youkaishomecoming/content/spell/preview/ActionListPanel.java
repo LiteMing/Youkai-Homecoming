@@ -2019,6 +2019,11 @@ public class ActionListPanel {
 			String pattern = ssa.pattern() == PatternType.AIMED ? "" : " " + formatNumberProvider(ssa.count()) + "x" + ssa.pattern().name().toLowerCase();
 			return index + ": shooter" + pattern + "(hp=" + ssa.health() + ")";
 		}
+		if (action instanceof YsmRenderAction yra) {
+			if (yra.clear()) return index + ": ysm clear";
+			String target = !yra.animation().isBlank() ? yra.animation() : !yra.model().isBlank() ? yra.model() : "render";
+			return index + ": ysm " + target + (yra.duration() > 0 ? " " + yra.duration() + "t" : "");
+		}
 		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";
 		return index + ": " + action.getClass().getSimpleName();
@@ -2083,6 +2088,7 @@ public class ActionListPanel {
 		if (action instanceof BurstAction) return 0xFFDDAAAA;
 		if (action instanceof SpawnShooterAction) return 0xFFDDCCAA;
 		if (action instanceof TeleportAction || action instanceof TeleportRandomAction) return 0xFFAADDAA;
+		if (action instanceof YsmRenderAction) return 0xFFAADDEE;
 		if (action instanceof SpellActions.SequenceAction) return 0xFFAAAADD;
 		return 0xFF999999;
 	}

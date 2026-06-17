@@ -67,17 +67,20 @@ public class YSMClientCompat {
 	}
 
 	private static String selectAnimation(GeneralYoukaiEntity e) {
-		if (e instanceof BossYoukaiEntity boss && boss.isChaotic()) {
-			return "angry";
-		}
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
-		boolean flying = e.isFlying() || !e.onGround() || e.isNoGravity();
+		boolean flying = e.isFlying() || e.isNoGravity();
 		if (flying) {
 			return "fly";
 		}
+		if (!e.onGround()) {
+			return null;
+		}
 		if (horizontalSpeedSqr > 0.0025) {
 			return "walk";
+		}
+		if (e instanceof BossYoukaiEntity boss && boss.isChaotic()) {
+			return "angry";
 		}
 		if (e.getTarget() != null) {
 			return "angry";

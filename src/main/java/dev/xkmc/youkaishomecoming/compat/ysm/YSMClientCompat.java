@@ -338,23 +338,7 @@ public class YSMClientCompat {
 						.then(Commands.literal("unset")
 								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
 										.suggests(TARGET_ENTITY_SUGGESTIONS)
-										.executes(ctx -> unsetEntityMapping(ctx)))))
-				.then(Commands.literal("unset")
-						.then(Commands.argument("entity_type", ResourceLocationArgument.id())
-								.suggests(ENTITY_SUGGESTIONS)
-								.executes(ctx -> unsetTypeMapping(ctx))))
-				.then(Commands.literal("off")
-						.then(Commands.argument("entity_type", ResourceLocationArgument.id())
-								.suggests(ENTITY_SUGGESTIONS)
-								.executes(ctx -> setTypeDisabled(ctx))))
-				.then(Commands.literal("set")
-						.then(Commands.argument("entity_type", ResourceLocationArgument.id())
-								.suggests(ENTITY_SUGGESTIONS)
-								.then(Commands.argument("model", YSM_ID_ARGUMENT)
-										.suggests(MODEL_SUGGESTIONS)
-										.executes(ctx -> setTypeMapping(ctx, TEXTURE_DEFAULT))
-										.then(Commands.argument("texture", YSM_ID_ARGUMENT)
-												.executes(ctx -> setTypeMapping(ctx, getYsmId(ctx, "texture"))))))));
+										.executes(ctx -> unsetEntityMapping(ctx))))));
 	}
 
 	private static int showStatus(CommandContext<CommandSourceStack> ctx) {

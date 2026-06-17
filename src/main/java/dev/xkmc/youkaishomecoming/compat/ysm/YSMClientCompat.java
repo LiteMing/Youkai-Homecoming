@@ -86,13 +86,10 @@ public class YSMClientCompat {
 	};
 
 	private static Method renderMethod;
-	private static Method enableDebugMethod;
 	private static Method clearDebugMethod;
 	private static Method debugSnapshotMethod;
 	private static boolean unavailable;
 	private static boolean debugOverlay;
-	private static boolean debugYsmOverlay;
-	private static boolean debugYsmActivated;
 	private static UUID debugTarget;
 
 	public static boolean delegateRender(GeneralYoukaiEntity e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
@@ -106,11 +103,7 @@ public class YSMClientCompat {
 		}
 		try {
 			Object result = method.invoke(null, e, binding.modelId(), binding.textureName(), selectAnimation(e), yaw, pTick, pose, buffer, light);
-			boolean rendered = result instanceof Boolean value && value;
-			if (rendered && debugYsmOverlay && !debugYsmActivated && e.getUUID().equals(debugTarget)) {
-				debugYsmActivated = enableYsmDebug(e);
-			}
-			return rendered;
+			return result instanceof Boolean value && value;
 		} catch (IllegalAccessException | InvocationTargetException ex) {
 			unavailable = true;
 			YoukaisHomecoming.LOGGER.warn("Failed to delegate youkai rendering to Yes Steve Model", ex);
@@ -143,22 +136,6 @@ public class YSMClientCompat {
 		}
 	}
 
-	private static Method getEnableDebugMethod() {
-		if (enableDebugMethod != null) {
-			return enableDebugMethod;
-		}
-		try {
-			enableDebugMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
-					"enableDebug",
-					LivingEntity.class
-			);
-			return enableDebugMethod;
-		} catch (ClassNotFoundException | NoSuchMethodException ex) {
-			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living debug API is unavailable", ex);
-			return null;
-		}
-	}
-
 	private static Method getClearDebugMethod() {
 		if (clearDebugMethod != null) {
 			return clearDebugMethod;
@@ -185,20 +162,6 @@ public class YSMClientCompat {
 		} catch (ClassNotFoundException | NoSuchMethodException ex) {
 			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living debug snapshot API is unavailable", ex);
 			return null;
-		}
-	}
-
-	private static boolean enableYsmDebug(LivingEntity entity) {
-		Method method = getEnableDebugMethod();
-		if (method == null) {
-			return false;
-		}
-		try {
-			Object result = method.invoke(null, entity);
-			return result instanceof Boolean value && value;
-		} catch (IllegalAccessException | InvocationTargetException ex) {
-			YoukaisHomecoming.LOGGER.warn("Failed to enable Yes Steve Model external living debug overlay", ex);
-			return false;
 		}
 	}
 
@@ -383,19 +346,13 @@ public class YSMClientCompat {
 		}
 		debugTarget = living.getUUID();
 		debugOverlay = true;
-		debugYsmOverlay = true;
-		debugYsmActivated = enableYsmDebug(living);
+		clearYsmDebug();
 		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Debug target: " + entityDebugName(living)));
-		if (!debugYsmActivated) {
-			ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] YSM overlay will activate after this entity is rendered by the external renderer."));
-		}
 		return 1;
 	}
 
 	private static int disableDebug(CommandContext<CommandSourceStack> ctx) {
 		debugOverlay = false;
-		debugYsmOverlay = false;
-		debugYsmActivated = false;
 		debugTarget = null;
 		clearYsmDebug();
 		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Debug overlay disabled."));
@@ -404,7 +361,6 @@ public class YSMClientCompat {
 
 	private static int showDebugStatus(CommandContext<CommandSourceStack> ctx) {
 		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Debug overlay: " + debugOverlay));
-		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] YSM overlay: " + debugYsmOverlay + ", active: " + debugYsmActivated));
 		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Target: " + (debugTarget == null ? "none" : debugTarget)));
 		Entity entity = getDebugTargetEntity();
 		if (entity != null) {

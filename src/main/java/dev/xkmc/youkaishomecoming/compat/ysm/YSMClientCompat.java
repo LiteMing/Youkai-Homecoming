@@ -1,9 +1,12 @@
 package dev.xkmc.youkaishomecoming.compat.ysm;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.LiteralMessage;
+import com.mojang.brigadier.StringReader;
+import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
@@ -31,8 +34,9 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.LinkedHashMap;
 import java.util.Collection;
+import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -45,6 +49,7 @@ public class YSMClientCompat {
 	private static final String MODEL_REMILIA = "yh/remilia";
 	private static final String MODEL_FLANDRE = "yh/flandre";
 	private static final String TEXTURE_DEFAULT = "default";
+	private static final ArgumentType<String> YSM_ID_ARGUMENT = new YsmIdArgument();
 	private static final boolean LOADED = ModList.get().isLoaded(MOD_ID);
 	private static final ResourceLocation REMILIA_ENTITY = YoukaisHomecoming.loc("remilia_scarlet");
 	private static final Map<ResourceLocation, RenderBinding> DEFAULT_BINDINGS = Map.of(
@@ -171,11 +176,11 @@ public class YSMClientCompat {
 						.then(Commands.literal("set")
 								.then(Commands.argument("entity_type", ResourceLocationArgument.id())
 										.suggests(ENTITY_SUGGESTIONS)
-										.then(Commands.argument("model", StringArgumentType.string())
+										.then(Commands.argument("model", YSM_ID_ARGUMENT)
 												.suggests(MODEL_SUGGESTIONS)
 												.executes(ctx -> setTypeMapping(ctx, TEXTURE_DEFAULT))
-												.then(Commands.argument("texture", StringArgumentType.string())
-														.executes(ctx -> setTypeMapping(ctx, StringArgumentType.getString(ctx, "texture")))))))
+												.then(Commands.argument("texture", YSM_ID_ARGUMENT)
+														.executes(ctx -> setTypeMapping(ctx, getYsmId(ctx, "texture")))))))
 						.then(Commands.literal("off")
 								.then(Commands.argument("entity_type", ResourceLocationArgument.id())
 										.suggests(ENTITY_SUGGESTIONS)
@@ -188,11 +193,11 @@ public class YSMClientCompat {
 						.then(Commands.literal("set")
 								.then(Commands.argument("entities", EntityArgument.entities())
 										.suggests(TARGET_ENTITY_SUGGESTIONS)
-										.then(Commands.argument("model", StringArgumentType.string())
+										.then(Commands.argument("model", YSM_ID_ARGUMENT)
 												.suggests(MODEL_SUGGESTIONS)
 												.executes(ctx -> setEntityMapping(ctx, TEXTURE_DEFAULT))
-												.then(Commands.argument("texture", StringArgumentType.string())
-														.executes(ctx -> setEntityMapping(ctx, StringArgumentType.getString(ctx, "texture")))))))
+												.then(Commands.argument("texture", YSM_ID_ARGUMENT)
+														.executes(ctx -> setEntityMapping(ctx, getYsmId(ctx, "texture")))))))
 						.then(Commands.literal("off")
 								.then(Commands.argument("entities", EntityArgument.entities())
 										.suggests(TARGET_ENTITY_SUGGESTIONS)
@@ -212,11 +217,11 @@ public class YSMClientCompat {
 				.then(Commands.literal("set")
 						.then(Commands.argument("entity_type", ResourceLocationArgument.id())
 								.suggests(ENTITY_SUGGESTIONS)
-								.then(Commands.argument("model", StringArgumentType.string())
+								.then(Commands.argument("model", YSM_ID_ARGUMENT)
 										.suggests(MODEL_SUGGESTIONS)
 										.executes(ctx -> setTypeMapping(ctx, TEXTURE_DEFAULT))
-										.then(Commands.argument("texture", StringArgumentType.string())
-												.executes(ctx -> setTypeMapping(ctx, StringArgumentType.getString(ctx, "texture"))))))));
+										.then(Commands.argument("texture", YSM_ID_ARGUMENT)
+												.executes(ctx -> setTypeMapping(ctx, getYsmId(ctx, "texture"))))))));
 	}
 
 	private static int showStatus(CommandContext<CommandSourceStack> ctx) {
@@ -258,7 +263,7 @@ public class YSMClientCompat {
 		if (entityId == null) {
 			return 0;
 		}
-		String modelId = StringArgumentType.getString(ctx, "model");
+		String modelId = getYsmId(ctx, "model");
 		if (modelId.isBlank() || textureName.isBlank()) {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Model and texture must not be blank."));
 			return 0;
@@ -290,7 +295,7 @@ public class YSMClientCompat {
 
 	private static int setEntityMapping(CommandContext<CommandSourceStack> ctx, String textureName) throws CommandSyntaxException {
 		Collection<? extends Entity> entities = EntityArgument.getEntities(ctx, "entities");
-		String modelId = StringArgumentType.getString(ctx, "model");
+		String modelId = getYsmId(ctx, "model");
 		if (modelId.isBlank() || textureName.isBlank()) {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Model and texture must not be blank."));
 			return 0;
@@ -339,6 +344,34 @@ public class YSMClientCompat {
 			return entityHitResult.getEntity();
 		}
 		return null;
+	}
+
+	private static String getYsmId(CommandContext<CommandSourceStack> ctx, String name) {
+		return ctx.getArgument(name, String.class);
+	}
+
+	private static class YsmIdArgument implements ArgumentType<String> {
+
+		private static final SimpleCommandExceptionType ERROR_EMPTY_ID =
+				new SimpleCommandExceptionType(new LiteralMessage("Expected YSM id"));
+		private static final List<String> EXAMPLES = List.of("yh/remilia", "yh/flandre", "namespace:path/model");
+
+		@Override
+		public String parse(StringReader reader) throws CommandSyntaxException {
+			int start = reader.getCursor();
+			while (reader.canRead() && !Character.isWhitespace(reader.peek())) {
+				reader.skip();
+			}
+			if (reader.getCursor() == start) {
+				throw ERROR_EMPTY_ID.createWithContext(reader);
+			}
+			return reader.getString().substring(start, reader.getCursor());
+		}
+
+		@Override
+		public Collection<String> getExamples() {
+			return EXAMPLES;
+		}
 	}
 
 	private record RenderBinding(String modelId, String textureName, boolean enabled) {

@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
+import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
@@ -201,11 +202,13 @@ public class ActionEditorPanel {
 	private void clearWidgets() {
 		closeDropdown();
 		closeExprCompletion();
+		closeStringCompletion();
 		for (var row : rows) {
 			removeWidget.accept(row.widget());
 		}
 		rows.clear();
 		exprEditBoxes.clear();
+		stringCompletionSuppliers.clear();
 		widgetsRegistered = false;
 	}
 
@@ -1098,31 +1101,61 @@ public class ActionEditorPanel {
 		addBoolRow("Clear", yra.clear(), v ->
 				notifySimple(old -> {
 					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), v);
+					return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), v, v ? "all" : "changed");
 				}, true));
 		if (yra.clear()) {
+			addStringCycleRow("Target", ysmClearTargets(), normalizeYsmClearTarget(yra.clearTarget(), "all"), v ->
+					notifySimple(old -> {
+						var y = (YsmRenderAction) old;
+						return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), y.clear(), v);
+					}));
 			return;
 		}
-		addStringRow("Model", yra.model(), v ->
+		addSuggestStringRow("Model", yra.model(), YSMClientCompat::loadedModelIds, v ->
 				notifySimple(old -> {
 					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(v, y.texture(), y.animation(), y.duration(), y.clear());
+					return new YsmRenderAction(v, y.texture(), y.animation(), y.duration(), y.clear(), y.clearTarget());
+				}, true));
+		addSuggestStringRow("Texture", yra.texture(), () -> YSMClientCompat.loadedTextureNames(currentYsmModel(yra)), v ->
+				notifySimple(old -> {
+					var y = (YsmRenderAction) old;
+					return new YsmRenderAction(y.model(), v, y.animation(), y.duration(), y.clear(), y.clearTarget());
 				}));
-		addStringRow("Texture", yra.texture(), v ->
+		addSuggestStringRow("Animation", yra.animation(), () -> YSMClientCompat.loadedAnimationNames(currentYsmModel(yra)), v ->
 				notifySimple(old -> {
 					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(y.model(), v, y.animation(), y.duration(), y.clear());
-				}));
-		addStringRow("Animation", yra.animation(), v ->
-				notifySimple(old -> {
-					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(y.model(), y.texture(), v, y.duration(), y.clear());
+					return new YsmRenderAction(y.model(), y.texture(), v, y.duration(), y.clear(), y.clearTarget());
 				}));
 		addIntRow("Duration", yra.duration(), v ->
 				notifySimple(old -> {
 					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(y.model(), y.texture(), y.animation(), v, y.clear());
+					return new YsmRenderAction(y.model(), y.texture(), y.animation(), v, y.clear(), y.clearTarget());
 				}));
+		addStringCycleRow("Clear On End", ysmClearTargets(), normalizeYsmClearTarget(yra.clearTarget(), "changed"), v ->
+				notifySimple(old -> {
+					var y = (YsmRenderAction) old;
+					return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), y.clear(), v);
+				}));
+	}
+
+	private static String currentYsmModel(YsmRenderAction action) {
+		return action.model().isBlank() ? "" : action.model();
+	}
+
+	private static String[] ysmClearTargets() {
+		return new String[]{"changed", "animation", "model", "texture", "model_texture", "all"};
+	}
+
+	private static String normalizeYsmClearTarget(String value, String fallback) {
+		if (value == null || value.isBlank()) {
+			return fallback;
+		}
+		for (String target : ysmClearTargets()) {
+			if (target.equals(value)) {
+				return value;
+			}
+		}
+		return fallback;
 	}
 
 	// --- Teleport Random rows ---
@@ -2702,12 +2735,19 @@ public class ActionEditorPanel {
 	}
 
 	private final List<EditBox> exprEditBoxes = new ArrayList<>();
+	private final Map<EditBox, java.util.function.Supplier<List<String>>> stringCompletionSuppliers = new HashMap<>();
 
 	// Expression completion overlay
 	private String[] exprCompletionItems = null;
 	private int exprCompletionHoverIndex = -1;
 	private EditBox exprCompletionTarget = null;
 	private int exprCompletionInsertStart = -1;
+
+	// Plain string field completion overlay
+	private String[] stringCompletionItems = null;
+	private int stringCompletionHoverIndex = -1;
+	private EditBox stringCompletionTarget = null;
+	private int stringCompletionInsertStart = -1;
 
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange) {
 		addNumberRow(label, provider, onChange, false);
@@ -2836,6 +2876,17 @@ public class ActionEditorPanel {
 		editBox.setValue(value);
 		editBox.setResponder(onChange::accept);
 		rows.add(new EditorRow(label, editBox, false));
+	}
+
+	private void addSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
+				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		editBox.setMaxLength(256);
+		editBox.setValue(value);
+		editBox.setResponder(onChange::accept);
+		stringCompletionSuppliers.put(editBox, suggestions);
+		rows.add(new EditorRow(label + "*", editBox, false));
 	}
 
 	private Integer parseColor(String text) {
@@ -3271,6 +3322,7 @@ public class ActionEditorPanel {
 		if (dropdown != null) {
 			doRenderDropdown(guiGraphics, mouseX, mouseY);
 		}
+		doRenderStringCompletion(guiGraphics, mouseX, mouseY);
 		doRenderExprCompletion(guiGraphics, mouseX, mouseY);
 	}
 
@@ -3310,6 +3362,31 @@ public class ActionEditorPanel {
 				}
 			}
 		}
+		// Handle string completion overlay
+		if (stringCompletionItems != null) {
+			if (button == 0) {
+				int cx = stringCompletionTarget.getX();
+				int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
+				int cw = Math.max(stringCompletionTarget.getWidth(), 120);
+				int itemH = DROPDOWN_ITEM_H;
+				int itemCount = stringCompletionItems.length;
+				int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
+				if (cy + totalH > y + h) totalH = y + h - cy;
+
+				if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
+					int idx = (int) ((mouseY - cy) / itemH);
+					if (idx >= 0 && idx < itemCount) {
+						stringCompletionHoverIndex = idx;
+						applyStringCompletion();
+						return true;
+					}
+				}
+				closeStringCompletion();
+				return true;
+			}
+			return true;
+		}
+
 		// Handle expression completion overlay
 		if (exprCompletionItems != null) {
 			if (button == 0) {
@@ -3498,6 +3575,27 @@ public class ActionEditorPanel {
 			return true;
 		}
 
+		if (stringCompletionItems != null) {
+			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+				closeStringCompletion();
+				return true;
+			}
+			if (keyCode == GLFW.GLFW_KEY_TAB || keyCode == GLFW.GLFW_KEY_ENTER) {
+				applyStringCompletion();
+				return true;
+			}
+			if (keyCode == GLFW.GLFW_KEY_UP) {
+				if (stringCompletionHoverIndex > 0) stringCompletionHoverIndex--;
+				return true;
+			}
+			if (keyCode == GLFW.GLFW_KEY_DOWN) {
+				if (stringCompletionHoverIndex < stringCompletionItems.length - 1) stringCompletionHoverIndex++;
+				return true;
+			}
+			closeStringCompletion();
+			return false;
+		}
+
 		// Handle expression completion overlay
 		if (exprCompletionItems != null) {
 			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
@@ -3525,6 +3623,15 @@ public class ActionEditorPanel {
 			return true;
 		}
 
+		if (keyCode == GLFW.GLFW_KEY_DOWN || keyCode == GLFW.GLFW_KEY_TAB ||
+				keyCode == GLFW.GLFW_KEY_SPACE && net.minecraft.client.gui.screens.Screen.hasControlDown()) {
+			if (Minecraft.getInstance().screen != null &&
+					Minecraft.getInstance().screen.getFocused() instanceof EditBox editBox &&
+					stringCompletionSuppliers.containsKey(editBox)) {
+				return openStringCompletion(editBox);
+			}
+		}
+
 		return false;
 	}
 
@@ -3532,6 +3639,9 @@ public class ActionEditorPanel {
 	 * Called from SpellPreviewScreen when Tab is pressed in an EditBox.
 	 */
 	public boolean handleTabCompletion(EditBox editBox) {
+		if (stringCompletionSuppliers.containsKey(editBox)) {
+			return openStringCompletion(editBox);
+		}
 		if (!exprEditBoxes.contains(editBox)) return false;
 		String text = editBox.getValue();
 		int cursor = editBox.getCursorPosition();
@@ -3715,6 +3825,118 @@ public class ActionEditorPanel {
 			case "random_angle" -> new AimMode.AimModes.RandomAngle(NumberProvider.constant(360));
 			default -> new AimMode.AimModes.Target();
 		};
+	}
+
+	// --- String completion ---
+
+	private boolean openStringCompletion(EditBox editBox) {
+		var supplier = stringCompletionSuppliers.get(editBox);
+		if (supplier == null) {
+			return false;
+		}
+		String text = editBox.getValue();
+		int cursor = editBox.getCursorPosition();
+		int tokenStart = stringTokenStart(text, cursor);
+		String prefix = text.substring(tokenStart, cursor).toLowerCase(java.util.Locale.ROOT);
+		java.util.LinkedHashSet<String> matches = new java.util.LinkedHashSet<>();
+		List<String> options = supplier.get();
+		if (options == null) {
+			return false;
+		}
+		for (String option : options) {
+			if (option != null && !option.isBlank() && option.toLowerCase(java.util.Locale.ROOT).startsWith(prefix)) {
+				matches.add(option);
+			}
+		}
+		for (String option : options) {
+			if (option != null && !option.isBlank() && option.toLowerCase(java.util.Locale.ROOT).contains(prefix)) {
+				matches.add(option);
+			}
+		}
+		if (matches.isEmpty()) {
+			return false;
+		}
+		stringCompletionItems = matches.toArray(new String[0]);
+		stringCompletionHoverIndex = 0;
+		stringCompletionTarget = editBox;
+		stringCompletionInsertStart = tokenStart;
+		return true;
+	}
+
+	private static int stringTokenStart(String text, int cursor) {
+		int tokenStart = Math.min(cursor, text.length());
+		while (tokenStart > 0) {
+			char c = text.charAt(tokenStart - 1);
+			if (Character.isWhitespace(c) || c == ',' || c == ';' || c == '|') {
+				break;
+			}
+			tokenStart--;
+		}
+		return tokenStart;
+	}
+
+	private void applyStringCompletion() {
+		if (stringCompletionItems == null || stringCompletionTarget == null) return;
+		if (stringCompletionHoverIndex < 0 || stringCompletionHoverIndex >= stringCompletionItems.length) return;
+		String chosen = stringCompletionItems[stringCompletionHoverIndex];
+		String text = stringCompletionTarget.getValue();
+		int cursor = stringCompletionTarget.getCursorPosition();
+		String newText = text.substring(0, stringCompletionInsertStart) + chosen + text.substring(cursor);
+		int newPos = stringCompletionInsertStart + chosen.length();
+		stringCompletionTarget.setValue(newText);
+		stringCompletionTarget.setCursorPosition(newPos);
+		try {
+			var method = net.minecraft.client.gui.components.EditBox.class.getDeclaredMethod("setHighlightPos", int.class);
+			method.setAccessible(true);
+			method.invoke(stringCompletionTarget, newPos);
+		} catch (Exception ignored) {}
+		closeStringCompletion();
+	}
+
+	private void closeStringCompletion() {
+		stringCompletionItems = null;
+		stringCompletionHoverIndex = -1;
+		stringCompletionTarget = null;
+	}
+
+	private void doRenderStringCompletion(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+		if (stringCompletionItems == null || stringCompletionTarget == null) return;
+		Font font = Minecraft.getInstance().font;
+		int itemCount = stringCompletionItems.length;
+		int itemH = DROPDOWN_ITEM_H;
+		int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
+		int cx = stringCompletionTarget.getX();
+		int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
+		int cw = Math.max(stringCompletionTarget.getWidth(), 120);
+		if (cy + totalH > y + h) totalH = y + h - cy;
+		if (totalH < itemH) return;
+
+		guiGraphics.pose().pushPose();
+		guiGraphics.pose().translate(0, 0, 200);
+		guiGraphics.fill(cx + 2, cy + 2, cx + cw + 2, cy + totalH + 2, 0x88000000);
+		guiGraphics.fill(cx, cy, cx + cw, cy + totalH, 0xFF1a1a30);
+		guiGraphics.fill(cx, cy, cx + cw, cy + 1, 0xFF666688);
+		guiGraphics.fill(cx, cy + totalH - 1, cx + cw, cy + totalH, 0xFF666688);
+		guiGraphics.fill(cx, cy, cx + 1, cy + totalH, 0xFF666688);
+		guiGraphics.fill(cx + cw - 1, cy, cx + cw, cy + totalH, 0xFF666688);
+
+		stringCompletionHoverIndex = -1;
+		if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
+			int rawIdx = (mouseY - cy) / itemH;
+			if (rawIdx >= 0 && rawIdx < itemCount) stringCompletionHoverIndex = rawIdx;
+		}
+
+		int visCount = Math.min(itemCount, totalH / itemH);
+		for (int i = 0; i < visCount; i++) {
+			if (i >= itemCount) break;
+			int iy = cy + i * itemH;
+			if (iy + itemH > cy + totalH) break;
+			boolean hovered = i == stringCompletionHoverIndex;
+			if (hovered) guiGraphics.fill(cx + 1, iy, cx + cw - 1, iy + itemH, 0x44FFFFFF);
+			guiGraphics.drawString(font, stringCompletionItems[i], cx + 4, iy + 4,
+					hovered ? 0xFFFFDD66 : 0xFFDDDDDD, false);
+		}
+		guiGraphics.pose().popPose();
 	}
 
 	// --- Expression completion ---

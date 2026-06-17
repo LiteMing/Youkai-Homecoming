@@ -89,7 +89,13 @@ public class YSMClientCompat {
 	private static Method clearDebugMethod;
 	private static Method debugSnapshotMethod;
 	private static Method loadedModelIdsMethod;
+	private static Method modelTextureNamesMethod;
+	private static Method modelAnimationNamesMethod;
+	private static Method modelDefaultTextureNameMethod;
 	private static boolean unavailable;
+	private static boolean textureListUnavailable;
+	private static boolean animationListUnavailable;
+	private static boolean defaultTextureUnavailable;
 	private static boolean debugOverlay;
 	private static UUID debugTarget;
 
@@ -179,6 +185,66 @@ public class YSMClientCompat {
 		}
 	}
 
+	private static Method getModelTextureNamesMethod() {
+		if (textureListUnavailable) {
+			return null;
+		}
+		if (modelTextureNamesMethod != null) {
+			return modelTextureNamesMethod;
+		}
+		try {
+			modelTextureNamesMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
+					"getModelTextureNames",
+					String.class
+			);
+			return modelTextureNamesMethod;
+		} catch (ClassNotFoundException | NoSuchMethodException ex) {
+			textureListUnavailable = true;
+			YoukaisHomecoming.LOGGER.warn("Yes Steve Model texture list API is unavailable", ex);
+			return null;
+		}
+	}
+
+	private static Method getModelAnimationNamesMethod() {
+		if (animationListUnavailable) {
+			return null;
+		}
+		if (modelAnimationNamesMethod != null) {
+			return modelAnimationNamesMethod;
+		}
+		try {
+			modelAnimationNamesMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
+					"getModelAnimationNames",
+					String.class
+			);
+			return modelAnimationNamesMethod;
+		} catch (ClassNotFoundException | NoSuchMethodException ex) {
+			animationListUnavailable = true;
+			YoukaisHomecoming.LOGGER.warn("Yes Steve Model animation list API is unavailable", ex);
+			return null;
+		}
+	}
+
+	private static Method getModelDefaultTextureNameMethod() {
+		if (defaultTextureUnavailable) {
+			return null;
+		}
+		if (modelDefaultTextureNameMethod != null) {
+			return modelDefaultTextureNameMethod;
+		}
+		try {
+			modelDefaultTextureNameMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
+					"getModelDefaultTextureName",
+					String.class
+			);
+			return modelDefaultTextureNameMethod;
+		} catch (ClassNotFoundException | NoSuchMethodException ex) {
+			defaultTextureUnavailable = true;
+			YoukaisHomecoming.LOGGER.warn("Yes Steve Model default texture API is unavailable", ex);
+			return null;
+		}
+	}
+
 	private static void clearYsmDebug() {
 		Method method = getClearDebugMethod();
 		if (method == null) {
@@ -210,7 +276,7 @@ public class YSMClientCompat {
 		}
 	}
 
-	private static List<String> loadedModelIds() {
+	public static List<String> loadedModelIds() {
 		List<String> result = new ArrayList<>(List.of(MODEL_REMILIA, MODEL_FLANDRE));
 		Method method = getLoadedModelIdsMethod();
 		if (method == null) {
@@ -344,6 +410,91 @@ public class YSMClientCompat {
 			}
 		}
 		return result;
+	}
+
+	public static List<String> loadedTextureNames(String modelId) {
+		List<String> result = new ArrayList<>();
+		if (modelId == null || modelId.isBlank()) {
+			for (String id : loadedModelIds()) {
+				addAllUnique(result, loadedTextureNames(id));
+			}
+			if (result.isEmpty()) {
+				result.add(TEXTURE_DEFAULT);
+			}
+			return result;
+		}
+		String defaultTexture = defaultTextureName(modelId);
+		if (!defaultTexture.isBlank()) {
+			result.add(defaultTexture);
+		}
+		Method method = getModelTextureNamesMethod();
+		if (method != null) {
+			try {
+				addIterableUnique(result, method.invoke(null, modelId));
+			} catch (IllegalAccessException | InvocationTargetException ex) {
+				YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model texture ids for {}", modelId, ex);
+			}
+		}
+		if (!result.contains(TEXTURE_DEFAULT)) {
+			result.add(TEXTURE_DEFAULT);
+		}
+		return result;
+	}
+
+	public static List<String> loadedAnimationNames(String modelId) {
+		List<String> result = new ArrayList<>(List.of("special", "cast", "charge", "angry", "fly", "walk", "calm"));
+		if (modelId == null || modelId.isBlank()) {
+			for (String id : loadedModelIds()) {
+				addAllUnique(result, loadedAnimationNames(id));
+			}
+			return result;
+		}
+		Method method = getModelAnimationNamesMethod();
+		if (method != null) {
+			try {
+				addIterableUnique(result, method.invoke(null, modelId));
+			} catch (IllegalAccessException | InvocationTargetException ex) {
+				YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model animation ids for {}", modelId, ex);
+			}
+		}
+		return result;
+	}
+
+	public static String defaultTextureName(String modelId) {
+		if (modelId == null || modelId.isBlank()) {
+			return TEXTURE_DEFAULT;
+		}
+		Method method = getModelDefaultTextureNameMethod();
+		if (method == null) {
+			return TEXTURE_DEFAULT;
+		}
+		try {
+			Object value = method.invoke(null, modelId);
+			String name = String.valueOf(value);
+			return name.isBlank() || "null".equals(name) ? TEXTURE_DEFAULT : name;
+		} catch (IllegalAccessException | InvocationTargetException ex) {
+			YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model default texture for {}", modelId, ex);
+			return TEXTURE_DEFAULT;
+		}
+	}
+
+	private static void addIterableUnique(List<String> result, Object value) {
+		if (value instanceof Iterable<?> iterable) {
+			for (Object entry : iterable) {
+				String id = String.valueOf(entry);
+				if (!id.isBlank() && !result.contains(id)) {
+					result.add(id);
+				}
+			}
+		}
+	}
+
+	private static void addAllUnique(List<String> result, Iterable<String> values) {
+		for (String value : values) {
+			if (value != null && !value.isBlank() && !result.contains(value)) {
+				result.add(value);
+			}
+		}
 	}
 
 	private static String hintKey(String token) {

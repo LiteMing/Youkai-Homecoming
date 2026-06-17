@@ -2020,9 +2020,12 @@ public class ActionListPanel {
 			return index + ": shooter" + pattern + "(hp=" + ssa.health() + ")";
 		}
 		if (action instanceof YsmRenderAction yra) {
-			if (yra.clear()) return index + ": ysm clear";
+			if (yra.clear()) {
+				String clearTarget = yra.clearTarget().isBlank() || "changed".equals(yra.clearTarget()) ? "all" : yra.clearTarget();
+				return index + ": ysm clear " + clearTarget;
+			}
 			String target = !yra.animation().isBlank() ? yra.animation() : !yra.model().isBlank() ? yra.model() : "render";
-			return index + ": ysm " + target + (yra.duration() > 0 ? " " + yra.duration() + "t" : "");
+			return index + ": ysm " + target + (yra.duration() > 0 ? " " + yra.duration() + "t/" + yra.clearTarget() : "");
 		}
 		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";

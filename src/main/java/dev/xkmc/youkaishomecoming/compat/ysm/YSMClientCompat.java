@@ -1,11 +1,13 @@
 package dev.xkmc.youkaishomecoming.compat.ysm;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.boss.RemiliaEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fml.ModList;
 
 import java.lang.reflect.InvocationTargetException;
@@ -65,6 +67,21 @@ public class YSMClientCompat {
 	}
 
 	private static String selectAnimation(GeneralYoukaiEntity e) {
-		return null;
+		if (e instanceof BossYoukaiEntity boss && boss.isChaotic()) {
+			return "angry";
+		}
+		Vec3 motion = e.getDeltaMovement();
+		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
+		boolean flying = e.isFlying() || !e.onGround() || e.isNoGravity();
+		if (flying) {
+			return "fly";
+		}
+		if (horizontalSpeedSqr > 0.0025) {
+			return "walk";
+		}
+		if (e.getTarget() != null) {
+			return "angry";
+		}
+		return "calm";
 	}
 }

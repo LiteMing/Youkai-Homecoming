@@ -143,7 +143,7 @@ public class YSMClientCompat {
 	private static String selectAnimation(GeneralYoukaiEntity e) {
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
-		boolean flying = e.isFlying() || e.isNoGravity();
+		boolean flying = e.isFlying() || e.isNoGravity() || e instanceof BossYoukaiEntity && e.isAggressive();
 		if (flying) {
 			return "fly";
 		}

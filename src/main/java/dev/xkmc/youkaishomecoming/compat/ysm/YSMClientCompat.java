@@ -3,17 +3,24 @@ package dev.xkmc.youkaishomecoming.compat.ysm;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.Component;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
@@ -25,8 +32,10 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 @Mod.EventBusSubscriber(value = Dist.CLIENT, modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -41,13 +50,25 @@ public class YSMClientCompat {
 	private static final Map<ResourceLocation, RenderBinding> DEFAULT_BINDINGS = Map.of(
 			REMILIA_ENTITY, RenderBinding.enabled(MODEL_REMILIA, TEXTURE_DEFAULT)
 	);
-	private static final Map<ResourceLocation, RenderBinding> DEBUG_OVERRIDES = new LinkedHashMap<>();
+	private static final Map<ResourceLocation, RenderBinding> TYPE_DEBUG_OVERRIDES = new LinkedHashMap<>();
+	private static final Map<UUID, RenderBinding> ENTITY_DEBUG_OVERRIDES = new LinkedHashMap<>();
 	private static final SuggestionProvider<CommandSourceStack> ENTITY_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(ForgeRegistries.ENTITY_TYPES.getKeys().stream()
 					.filter(id -> Objects.equals(id.getNamespace(), YoukaisHomecoming.MODID))
 					.map(ResourceLocation::toString), builder);
 	private static final SuggestionProvider<CommandSourceStack> MODEL_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(Stream.of(MODEL_REMILIA, MODEL_FLANDRE), builder);
+	private static final SuggestionProvider<CommandSourceStack> TARGET_ENTITY_SUGGESTIONS = (ctx, builder) -> {
+		Entity pointed = getPointedEntity();
+		if (pointed != null) {
+			builder.suggest(pointed.getUUID().toString(), Component.literal("pointed entity"));
+		}
+		return SharedSuggestionProvider.suggest(Stream.of(
+				"@e[limit=1,sort=nearest]",
+				"@e[type=youkaishomecoming:remilia_scarlet,limit=1,sort=nearest]",
+				"@a[limit=1,sort=nearest]"
+		), builder);
+	};
 
 	private static Method renderMethod;
 	private static boolean unavailable;
@@ -97,11 +118,15 @@ public class YSMClientCompat {
 	}
 
 	private static RenderBinding resolveBinding(GeneralYoukaiEntity e) {
+		RenderBinding entityOverride = ENTITY_DEBUG_OVERRIDES.get(e.getUUID());
+		if (entityOverride != null) {
+			return entityOverride.enabled() ? entityOverride : null;
+		}
 		ResourceLocation entityId = ForgeRegistries.ENTITY_TYPES.getKey(e.getType());
 		if (entityId == null) {
 			return null;
 		}
-		RenderBinding override = DEBUG_OVERRIDES.get(entityId);
+		RenderBinding override = TYPE_DEBUG_OVERRIDES.get(entityId);
 		if (override != null) {
 			return override.enabled() ? override : null;
 		}
@@ -137,42 +162,61 @@ public class YSMClientCompat {
 						.executes(YSMClientCompat::showStatus))
 				.then(Commands.literal("reset")
 						.executes(ctx -> {
-							DEBUG_OVERRIDES.clear();
+							TYPE_DEBUG_OVERRIDES.clear();
+							ENTITY_DEBUG_OVERRIDES.clear();
 							ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Debug render mappings reset."));
 							return 1;
 						}))
+				.then(Commands.literal("type")
+						.then(Commands.literal("set")
+								.then(Commands.argument("entity_type", ResourceLocationArgument.id())
+										.suggests(ENTITY_SUGGESTIONS)
+										.then(Commands.argument("model", StringArgumentType.string())
+												.suggests(MODEL_SUGGESTIONS)
+												.executes(ctx -> setTypeMapping(ctx, TEXTURE_DEFAULT))
+												.then(Commands.argument("texture", StringArgumentType.string())
+														.executes(ctx -> setTypeMapping(ctx, StringArgumentType.getString(ctx, "texture")))))))
+						.then(Commands.literal("off")
+								.then(Commands.argument("entity_type", ResourceLocationArgument.id())
+										.suggests(ENTITY_SUGGESTIONS)
+										.executes(ctx -> setTypeDisabled(ctx))))
+						.then(Commands.literal("unset")
+								.then(Commands.argument("entity_type", ResourceLocationArgument.id())
+										.suggests(ENTITY_SUGGESTIONS)
+										.executes(ctx -> unsetTypeMapping(ctx)))))
+				.then(Commands.literal("entity")
+						.then(Commands.literal("set")
+								.then(Commands.argument("entities", EntityArgument.entities())
+										.suggests(TARGET_ENTITY_SUGGESTIONS)
+										.then(Commands.argument("model", StringArgumentType.string())
+												.suggests(MODEL_SUGGESTIONS)
+												.executes(ctx -> setEntityMapping(ctx, TEXTURE_DEFAULT))
+												.then(Commands.argument("texture", StringArgumentType.string())
+														.executes(ctx -> setEntityMapping(ctx, StringArgumentType.getString(ctx, "texture")))))))
+						.then(Commands.literal("off")
+								.then(Commands.argument("entities", EntityArgument.entities())
+										.suggests(TARGET_ENTITY_SUGGESTIONS)
+										.executes(ctx -> setEntityDisabled(ctx))))
+						.then(Commands.literal("unset")
+								.then(Commands.argument("entities", EntityArgument.entities())
+										.suggests(TARGET_ENTITY_SUGGESTIONS)
+										.executes(ctx -> unsetEntityMapping(ctx)))))
 				.then(Commands.literal("unset")
-						.then(Commands.argument("entity", StringArgumentType.word())
+						.then(Commands.argument("entity_type", ResourceLocationArgument.id())
 								.suggests(ENTITY_SUGGESTIONS)
-								.executes(ctx -> {
-									ResourceLocation entityId = parseEntityId(ctx);
-									if (entityId == null) {
-										return 0;
-									}
-									DEBUG_OVERRIDES.remove(entityId);
-									ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + entityId + " uses its default mapping."));
-									return 1;
-								})))
+								.executes(ctx -> unsetTypeMapping(ctx))))
 				.then(Commands.literal("off")
-						.then(Commands.argument("entity", StringArgumentType.word())
+						.then(Commands.argument("entity_type", ResourceLocationArgument.id())
 								.suggests(ENTITY_SUGGESTIONS)
-								.executes(ctx -> {
-									ResourceLocation entityId = parseEntityId(ctx);
-									if (entityId == null) {
-										return 0;
-									}
-									DEBUG_OVERRIDES.put(entityId, RenderBinding.disabled());
-									ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + entityId + " YSM rendering disabled."));
-									return 1;
-								})))
+								.executes(ctx -> setTypeDisabled(ctx))))
 				.then(Commands.literal("set")
-						.then(Commands.argument("entity", StringArgumentType.word())
+						.then(Commands.argument("entity_type", ResourceLocationArgument.id())
 								.suggests(ENTITY_SUGGESTIONS)
-								.then(Commands.argument("model", StringArgumentType.word())
+								.then(Commands.argument("model", StringArgumentType.string())
 										.suggests(MODEL_SUGGESTIONS)
-										.executes(ctx -> setMapping(ctx, TEXTURE_DEFAULT))
-										.then(Commands.argument("texture", StringArgumentType.word())
-												.executes(ctx -> setMapping(ctx, StringArgumentType.getString(ctx, "texture"))))))));
+										.executes(ctx -> setTypeMapping(ctx, TEXTURE_DEFAULT))
+										.then(Commands.argument("texture", StringArgumentType.string())
+												.executes(ctx -> setTypeMapping(ctx, StringArgumentType.getString(ctx, "texture"))))))));
 	}
 
 	private static int showStatus(CommandContext<CommandSourceStack> ctx) {
@@ -180,12 +224,18 @@ public class YSMClientCompat {
 		source.sendSystemMessage(Component.literal("[YH/YSM] Yes Steve Model loaded: " + LOADED));
 		source.sendSystemMessage(Component.literal("[YH/YSM] Default mappings:"));
 		DEFAULT_BINDINGS.forEach((entityId, binding) -> source.sendSystemMessage(Component.literal(formatStatusLine(entityId, binding))));
-		if (DEBUG_OVERRIDES.isEmpty()) {
-			source.sendSystemMessage(Component.literal("[YH/YSM] Debug overrides: none"));
-			return 1;
+		if (TYPE_DEBUG_OVERRIDES.isEmpty()) {
+			source.sendSystemMessage(Component.literal("[YH/YSM] Type overrides: none"));
+		} else {
+			source.sendSystemMessage(Component.literal("[YH/YSM] Type overrides:"));
+			TYPE_DEBUG_OVERRIDES.forEach((entityId, binding) -> source.sendSystemMessage(Component.literal(formatStatusLine(entityId, binding))));
 		}
-		source.sendSystemMessage(Component.literal("[YH/YSM] Debug overrides:"));
-		DEBUG_OVERRIDES.forEach((entityId, binding) -> source.sendSystemMessage(Component.literal(formatStatusLine(entityId, binding))));
+		if (ENTITY_DEBUG_OVERRIDES.isEmpty()) {
+			source.sendSystemMessage(Component.literal("[YH/YSM] Entity overrides: none"));
+		} else {
+			source.sendSystemMessage(Component.literal("[YH/YSM] Entity overrides:"));
+			ENTITY_DEBUG_OVERRIDES.forEach((uuid, binding) -> source.sendSystemMessage(Component.literal(formatStatusLine(uuid, binding))));
+		}
 		return 1;
 	}
 
@@ -196,8 +246,15 @@ public class YSMClientCompat {
 		return "  " + entityId + " -> " + binding.modelId() + " / " + binding.textureName();
 	}
 
-	private static int setMapping(CommandContext<CommandSourceStack> ctx, String textureName) {
-		ResourceLocation entityId = parseEntityId(ctx);
+	private static String formatStatusLine(UUID uuid, RenderBinding binding) {
+		if (!binding.enabled()) {
+			return "  " + uuid + " -> off";
+		}
+		return "  " + uuid + " -> " + binding.modelId() + " / " + binding.textureName();
+	}
+
+	private static int setTypeMapping(CommandContext<CommandSourceStack> ctx, String textureName) {
+		ResourceLocation entityId = parseEntityType(ctx);
 		if (entityId == null) {
 			return 0;
 		}
@@ -206,23 +263,82 @@ public class YSMClientCompat {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Model and texture must not be blank."));
 			return 0;
 		}
-		DEBUG_OVERRIDES.put(entityId, RenderBinding.enabled(modelId, textureName));
-		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + entityId + " -> " + modelId + " / " + textureName));
+		TYPE_DEBUG_OVERRIDES.put(entityId, RenderBinding.enabled(modelId, textureName));
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] type " + entityId + " -> " + modelId + " / " + textureName));
 		return 1;
 	}
 
-	private static ResourceLocation parseEntityId(CommandContext<CommandSourceStack> ctx) {
-		String raw = StringArgumentType.getString(ctx, "entity");
-		ResourceLocation entityId = ResourceLocation.tryParse(raw);
+	private static int setTypeDisabled(CommandContext<CommandSourceStack> ctx) {
+		ResourceLocation entityId = parseEntityType(ctx);
 		if (entityId == null) {
-			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Invalid entity id: " + raw));
-			return null;
+			return 0;
 		}
+		TYPE_DEBUG_OVERRIDES.put(entityId, RenderBinding.disabled());
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] type " + entityId + " YSM rendering disabled."));
+		return 1;
+	}
+
+	private static int unsetTypeMapping(CommandContext<CommandSourceStack> ctx) {
+		ResourceLocation entityId = parseEntityType(ctx);
+		if (entityId == null) {
+			return 0;
+		}
+		TYPE_DEBUG_OVERRIDES.remove(entityId);
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] type " + entityId + " uses its default mapping."));
+		return 1;
+	}
+
+	private static int setEntityMapping(CommandContext<CommandSourceStack> ctx, String textureName) throws CommandSyntaxException {
+		Collection<? extends Entity> entities = EntityArgument.getEntities(ctx, "entities");
+		String modelId = StringArgumentType.getString(ctx, "model");
+		if (modelId.isBlank() || textureName.isBlank()) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Model and texture must not be blank."));
+			return 0;
+		}
+		for (Entity entity : entities) {
+			ENTITY_DEBUG_OVERRIDES.put(entity.getUUID(), RenderBinding.enabled(modelId, textureName));
+		}
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + entities.size() + " entity override(s) -> " + modelId + " / " + textureName));
+		return entities.size();
+	}
+
+	private static int setEntityDisabled(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+		Collection<? extends Entity> entities = EntityArgument.getEntities(ctx, "entities");
+		for (Entity entity : entities) {
+			ENTITY_DEBUG_OVERRIDES.put(entity.getUUID(), RenderBinding.disabled());
+		}
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + entities.size() + " entity override(s) disabled."));
+		return entities.size();
+	}
+
+	private static int unsetEntityMapping(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+		Collection<? extends Entity> entities = EntityArgument.getEntities(ctx, "entities");
+		for (Entity entity : entities) {
+			ENTITY_DEBUG_OVERRIDES.remove(entity.getUUID());
+		}
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + entities.size() + " entity override(s) removed."));
+		return entities.size();
+	}
+
+	private static ResourceLocation parseEntityType(CommandContext<CommandSourceStack> ctx) {
+		ResourceLocation entityId = ResourceLocationArgument.getId(ctx, "entity_type");
 		if (!ForgeRegistries.ENTITY_TYPES.containsKey(entityId)) {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Unknown entity type: " + entityId));
 			return null;
 		}
+		if (!Objects.equals(entityId.getNamespace(), YoukaisHomecoming.MODID)) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Entity type is not from Youkai Homecoming: " + entityId));
+			return null;
+		}
 		return entityId;
+	}
+
+	private static Entity getPointedEntity() {
+		HitResult hitResult = Minecraft.getInstance().hitResult;
+		if (hitResult instanceof EntityHitResult entityHitResult) {
+			return entityHitResult.getEntity();
+		}
+		return null;
 	}
 
 	private record RenderBinding(String modelId, String textureName, boolean enabled) {

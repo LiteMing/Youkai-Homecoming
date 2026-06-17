@@ -72,7 +72,7 @@ public class YSMClientCompat {
 					.filter(id -> Objects.equals(id.getNamespace(), YoukaisHomecoming.MODID))
 					.map(ResourceLocation::toString), builder);
 	private static final SuggestionProvider<CommandSourceStack> MODEL_SUGGESTIONS = (ctx, builder) ->
-			SharedSuggestionProvider.suggest(Stream.of(MODEL_REMILIA, MODEL_FLANDRE), builder);
+			SharedSuggestionProvider.suggest(loadedModelIds(), builder);
 	private static final SuggestionProvider<CommandSourceStack> TARGET_ENTITY_SUGGESTIONS = (ctx, builder) -> {
 		Entity pointed = getPointedEntity();
 		if (pointed != null) {
@@ -88,6 +88,7 @@ public class YSMClientCompat {
 	private static Method renderMethod;
 	private static Method clearDebugMethod;
 	private static Method debugSnapshotMethod;
+	private static Method loadedModelIdsMethod;
 	private static boolean unavailable;
 	private static boolean debugOverlay;
 	private static UUID debugTarget;
@@ -102,7 +103,7 @@ public class YSMClientCompat {
 			return false;
 		}
 		try {
-			Object result = method.invoke(null, e, binding.modelId(), binding.textureName(), selectAnimation(e), yaw, pTick, pose, buffer, light);
+			Object result = method.invoke(null, e, binding.modelId(), binding.textureName(), selectAnimation(e, binding.modelId()), yaw, pTick, pose, buffer, light);
 			return result instanceof Boolean value && value;
 		} catch (IllegalAccessException | InvocationTargetException ex) {
 			unavailable = true;
@@ -165,6 +166,19 @@ public class YSMClientCompat {
 		}
 	}
 
+	private static Method getLoadedModelIdsMethod() {
+		if (loadedModelIdsMethod != null) {
+			return loadedModelIdsMethod;
+		}
+		try {
+			loadedModelIdsMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod("getLoadedModelIds");
+			return loadedModelIdsMethod;
+		} catch (ClassNotFoundException | NoSuchMethodException ex) {
+			YoukaisHomecoming.LOGGER.warn("Yes Steve Model loaded model id API is unavailable", ex);
+			return null;
+		}
+	}
+
 	private static void clearYsmDebug() {
 		Method method = getClearDebugMethod();
 		if (method == null) {
@@ -196,6 +210,28 @@ public class YSMClientCompat {
 		}
 	}
 
+	private static List<String> loadedModelIds() {
+		List<String> result = new ArrayList<>(List.of(MODEL_REMILIA, MODEL_FLANDRE));
+		Method method = getLoadedModelIdsMethod();
+		if (method == null) {
+			return result;
+		}
+		try {
+			Object value = method.invoke(null);
+			if (value instanceof Iterable<?> iterable) {
+				for (Object entry : iterable) {
+					String id = String.valueOf(entry);
+					if (!id.isBlank() && !result.contains(id)) {
+						result.add(id);
+					}
+				}
+			}
+		} catch (IllegalAccessException | InvocationTargetException ex) {
+			YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model loaded model ids", ex);
+		}
+		return result;
+	}
+
 	private static RenderBinding resolveBinding(GeneralYoukaiEntity e) {
 		BindingResolution resolution = resolveBindingWithSource(e);
 		RenderBinding binding = resolution.binding();
@@ -219,7 +255,7 @@ public class YSMClientCompat {
 		return new BindingResolution(binding, binding == null ? "none" : "default");
 	}
 
-	private static String selectAnimation(GeneralYoukaiEntity e) {
+	private static String selectAnimation(GeneralYoukaiEntity e, String modelId) {
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
 		boolean flying = e.isFlying() || e.isNoGravity() || e instanceof BossYoukaiEntity && e.isAggressive();
@@ -235,7 +271,7 @@ public class YSMClientCompat {
 			}
 		}
 		if (angry) {
-			hints.add("angry");
+			hints.add(YSMCompatConfig.expressionToken(modelId, "angry"));
 		}
 		return hints.isEmpty() ? null : String.join(" ", hints);
 	}
@@ -245,6 +281,8 @@ public class YSMClientCompat {
 		event.getDispatcher().register(Commands.literal("yhysm")
 				.then(Commands.literal("status")
 						.executes(YSMClientCompat::showStatus))
+				.then(Commands.literal("models")
+						.executes(YSMClientCompat::showLoadedModels))
 				.then(Commands.literal("reset")
 						.executes(ctx -> {
 							TYPE_DEBUG_OVERRIDES.clear();
@@ -339,6 +377,15 @@ public class YSMClientCompat {
 		return 1;
 	}
 
+	private static int showLoadedModels(CommandContext<CommandSourceStack> ctx) {
+		List<String> ids = loadedModelIds();
+		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Loaded YSM model ids (" + ids.size() + "):"));
+		for (String id : ids) {
+			ctx.getSource().sendSystemMessage(Component.literal("  " + id));
+		}
+		return ids.size();
+	}
+
 	private static int setDebugTarget(CommandContext<CommandSourceStack> ctx, Entity entity) {
 		if (!(entity instanceof LivingEntity living)) {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Point at a living entity or pass a visible client entity selector/UUID."));
@@ -425,8 +472,12 @@ public class YSMClientCompat {
 			BindingResolution resolution = resolveBindingWithSource(youkai);
 			RenderBinding binding = resolution.binding();
 			lines.add(new DebugLine("binding", formatBinding(resolution.source(), binding)));
-			lines.add(new DebugLine("yh.hint", String.valueOf(selectAnimation(youkai))));
+			String modelId = binding != null && binding.enabled() ? binding.modelId() : "";
+			lines.add(new DebugLine("yh.hint", String.valueOf(selectAnimation(youkai, modelId))));
 			lines.add(new DebugLine("yh.expression", isAngryExpression(youkai) ? "angry" : "none"));
+			if (!modelId.isBlank()) {
+				lines.add(new DebugLine("yh.expressionMap", YSMCompatConfig.debugExpressionMapping(modelId, "angry")));
+			}
 			lines.add(new DebugLine("yh.flags", formatYoukaiFlags(youkai)));
 			lines.add(new DebugLine("yh.motion", formatMotion(youkai.getDeltaMovement())));
 			lines.add(new DebugLine("yh.target", youkai.getTarget() == null ? "none" : entityDebugName(youkai.getTarget())));

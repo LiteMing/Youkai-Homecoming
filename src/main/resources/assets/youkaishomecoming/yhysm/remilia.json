@@ -1,0 +1,13 @@
+{
+  "model": "yh/remilia",
+  "expressions": {
+    "angry": [
+      "angry",
+      "combat",
+      "extra10",
+      "attack",
+      "attacked",
+      "idle"
+    ]
+  }
+}

@@ -260,22 +260,21 @@ public class YSMClientCompat {
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
 		boolean flying = e.isFlying() || e.isNoGravity() || e instanceof BossYoukaiEntity && e.isAggressive();
+		boolean angry = e.getTarget() != null || e instanceof BossYoukaiEntity boss && boss.isChaotic();
+		List<String> hints = new ArrayList<>(2);
 		if (flying) {
-			return "fly";
+			hints.add("fly");
+		} else if (e.onGround()) {
+			if (horizontalSpeedSqr > 0.0025) {
+				hints.add("walk");
+			} else {
+				hints.add("calm");
+			}
 		}
-		if (!e.onGround()) {
-			return null;
+		if (angry) {
+			hints.add("angry");
 		}
-		if (horizontalSpeedSqr > 0.0025) {
-			return "walk";
-		}
-		if (e instanceof BossYoukaiEntity boss && boss.isChaotic()) {
-			return "angry";
-		}
-		if (e.getTarget() != null) {
-			return "angry";
-		}
-		return "calm";
+		return hints.isEmpty() ? null : String.join(" ", hints);
 	}
 
 	@SubscribeEvent

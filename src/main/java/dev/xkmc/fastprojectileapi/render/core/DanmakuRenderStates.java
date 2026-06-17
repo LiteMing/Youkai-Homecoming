@@ -25,11 +25,16 @@ public abstract class DanmakuRenderStates extends RenderType {
 		// Sorting 30,000 quads costs ~9% frame time (putSortedQuadIndices).
 		// Danmaku are small particles where depth sort order is visually negligible.
 		//
-		// noDepthWrite=true only for laser inner-core: prevents the translucent shell from
-		// stamping depth values that cull subsequent translucent core fragments (visible under
-		// Oculus where buckets serialize draws). Regular danmaku always write depth to maintain
-		// correct depth ordering with world geometry.
+		// Laser inner-core strategy:
+		// - noDepthWrite=true: don't write depth (avoid z-fighting with shell)
+		// - NO_DEPTH_TEST: ignore depth buffer (render even if shell is in front)
+		// - Oculus DECAL bucket: render after GENERAL_TRANSPARENT shell
+		//
+		// This ensures the core is always visible regardless of shell depth values,
+		// solving the Oculus batching issue where shell+core in the same bucket
+		// would have undefined rendering order.
 		boolean opaque = type == DisplayType.SOLID;
+		boolean laserCore = noDepthWrite && !opaque; // only laser core has noDepthWrite=true
 		return create(name,
 				DefaultVertexFormat.POSITION_TEX_COLOR,
 				VertexFormat.Mode.QUADS,
@@ -43,6 +48,7 @@ public abstract class DanmakuRenderStates extends RenderType {
 							case ADDITIVE -> ADDITIVE_TRANSPARENCY;
 						})
 						.setWriteMaskState((opaque || !noDepthWrite) ? COLOR_DEPTH_WRITE : COLOR_WRITE)
+						.setDepthTestState(laserCore ? NO_DEPTH_TEST : LEQUAL_DEPTH_TEST)
 						.setCullState(cull ? CULL : NO_CULL)
 						.createCompositeState(false));
 	}

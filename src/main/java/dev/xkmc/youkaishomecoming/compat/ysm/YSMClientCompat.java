@@ -223,7 +223,7 @@ public class YSMClientCompat {
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
 		boolean flying = e.isFlying() || e.isNoGravity() || e instanceof BossYoukaiEntity && e.isAggressive();
-		boolean angry = e.getTarget() != null || e instanceof BossYoukaiEntity boss && boss.isChaotic();
+		boolean angry = isAngryExpression(e);
 		List<String> hints = new ArrayList<>(2);
 		if (flying) {
 			hints.add("fly");
@@ -426,6 +426,7 @@ public class YSMClientCompat {
 			RenderBinding binding = resolution.binding();
 			lines.add(new DebugLine("binding", formatBinding(resolution.source(), binding)));
 			lines.add(new DebugLine("yh.hint", String.valueOf(selectAnimation(youkai))));
+			lines.add(new DebugLine("yh.expression", isAngryExpression(youkai) ? "angry" : "none"));
 			lines.add(new DebugLine("yh.flags", formatYoukaiFlags(youkai)));
 			lines.add(new DebugLine("yh.motion", formatMotion(youkai.getDeltaMovement())));
 			lines.add(new DebugLine("yh.target", youkai.getTarget() == null ? "none" : entityDebugName(youkai.getTarget())));
@@ -455,6 +456,12 @@ public class YSMClientCompat {
 			return source + " -> off";
 		}
 		return source + " -> " + binding.modelId() + " / " + binding.textureName();
+	}
+
+	private static boolean isAngryExpression(GeneralYoukaiEntity entity) {
+		return entity.isAggressive() ||
+				entity.getTarget() != null ||
+				entity instanceof BossYoukaiEntity boss && boss.isChaotic();
 	}
 
 	private static String formatYoukaiFlags(GeneralYoukaiEntity entity) {

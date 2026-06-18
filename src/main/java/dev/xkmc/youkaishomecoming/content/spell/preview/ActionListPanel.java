@@ -2021,11 +2021,26 @@ public class ActionListPanel {
 		}
 		if (action instanceof YsmRenderAction yra) {
 			if (yra.clear()) {
-				String clearTarget = yra.clearTarget().isBlank() || "changed".equals(yra.clearTarget()) ? "all" : yra.clearTarget();
-				return index + ": ysm clear " + clearTarget;
+				return index + ": ysm clear " + ysmClearTargetBrief(yra.clearTarget(), "all");
 			}
-			String target = !yra.animation().isBlank() ? yra.animation() : !yra.model().isBlank() ? yra.model() : "render";
-			return index + ": ysm " + target + (yra.duration() > 0 ? " " + yra.duration() + "t/" + yra.clearTarget() : "");
+			StringBuilder builder = new StringBuilder(index + ": ysm set");
+			if (!yra.model().isBlank()) {
+				builder.append(" model=").append(yra.model());
+			}
+			if (!yra.texture().isBlank()) {
+				builder.append(" tex=").append(yra.texture());
+			}
+			if (!yra.animation().isBlank()) {
+				builder.append(" anim=").append(yra.animation());
+			}
+			if (yra.model().isBlank() && yra.texture().isBlank() && yra.animation().isBlank()) {
+				builder.append(" render");
+			}
+			if (yra.duration() > 0) {
+				builder.append(" ").append(yra.duration()).append("t expire=")
+						.append(ysmClearTargetBrief(yra.clearTarget(), "changed"));
+			}
+			return builder.toString();
 		}
 		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";
@@ -2047,6 +2062,19 @@ public class ActionListPanel {
 
 	private static String formatPhaseId(net.minecraft.resources.ResourceLocation id) {
 		return id.toString();
+	}
+
+	private static String ysmClearTargetBrief(String value, String fallback) {
+		String target = value == null || value.isBlank() || "changed".equals(value) && "all".equals(fallback) ? fallback : value;
+		return switch (target) {
+			case "changed" -> "changed";
+			case "animation", "anim" -> "animation";
+			case "model" -> "model";
+			case "texture" -> "texture";
+			case "model_texture", "model+texture", "render" -> "model+texture";
+			case "all" -> "all";
+			default -> target;
+		};
 	}
 
 	private static String formatResourceId(net.minecraft.resources.ResourceLocation id) {

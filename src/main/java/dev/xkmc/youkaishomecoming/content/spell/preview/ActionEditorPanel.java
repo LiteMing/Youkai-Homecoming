@@ -43,6 +43,7 @@ public class ActionEditorPanel {
 	private static final int PADDING = 4;
 	private static final int DROPDOWN_ITEM_H = 16;
 	private static final int DROPDOWN_MAX_VISIBLE = 10;
+	private static final int STRING_DROPDOWN_W = 14;
 
 	private static final String[] CONDITION_TYPES = {
 			"tick_interval", "health_below", "health_above", "tick_elapsed",
@@ -1098,20 +1099,22 @@ public class ActionEditorPanel {
 	// --- YSM Render rows ---
 
 	private void buildYsmRenderRows(YsmRenderAction yra) {
-		addBoolRow("Clear", yra.clear(), v ->
+		addStringOptionRow("Mode", new String[]{"set", "clear"}, new String[]{"Set / switch", "Clear overrides"},
+				yra.clear() ? "clear" : "set", v ->
 				notifySimple(old -> {
 					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), v, v ? "all" : "changed");
+					boolean clear = "clear".equals(v);
+					return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), clear, clear ? "all" : "changed");
 				}, true));
 		if (yra.clear()) {
-			addStringCycleRow("Target", ysmClearTargets(), normalizeYsmClearTarget(yra.clearTarget(), "all"), v ->
+			addStringOptionRow("Clear Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(yra.clearTarget(), "all"), v ->
 					notifySimple(old -> {
 						var y = (YsmRenderAction) old;
 						return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), y.clear(), v);
 					}));
 			return;
 		}
-		addSuggestStringRow("Model", yra.model(), YSMClientCompat::loadedModelIds, v ->
+		addSuggestStringRow("Model ID", yra.model(), YSMClientCompat::loadedModelIds, v ->
 				notifySimple(old -> {
 					var y = (YsmRenderAction) old;
 					return new YsmRenderAction(v, y.texture(), y.animation(), y.duration(), y.clear(), y.clearTarget());
@@ -1121,7 +1124,7 @@ public class ActionEditorPanel {
 					var y = (YsmRenderAction) old;
 					return new YsmRenderAction(y.model(), v, y.animation(), y.duration(), y.clear(), y.clearTarget());
 				}));
-		addSuggestStringRow("Animation", yra.animation(), () -> YSMClientCompat.loadedAnimationNames(currentYsmModel(yra)), v ->
+		addSuggestStringRow("Anim Hint", yra.animation(), () -> YSMClientCompat.loadedAnimationNames(currentYsmModel(yra)), v ->
 				notifySimple(old -> {
 					var y = (YsmRenderAction) old;
 					return new YsmRenderAction(y.model(), y.texture(), v, y.duration(), y.clear(), y.clearTarget());
@@ -1131,7 +1134,7 @@ public class ActionEditorPanel {
 					var y = (YsmRenderAction) old;
 					return new YsmRenderAction(y.model(), y.texture(), y.animation(), v, y.clear(), y.clearTarget());
 				}));
-		addStringCycleRow("Clear On End", ysmClearTargets(), normalizeYsmClearTarget(yra.clearTarget(), "changed"), v ->
+		addStringOptionRow("Expire Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(yra.clearTarget(), "changed"), v ->
 				notifySimple(old -> {
 					var y = (YsmRenderAction) old;
 					return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), y.clear(), v);
@@ -1144,6 +1147,10 @@ public class ActionEditorPanel {
 
 	private static String[] ysmClearTargets() {
 		return new String[]{"changed", "animation", "model", "texture", "model_texture", "all"};
+	}
+
+	private static String[] ysmClearTargetLabels() {
+		return new String[]{"Changed fields", "Animation", "Model", "Texture", "Model + texture", "All fields"};
 	}
 
 	private static String normalizeYsmClearTarget(String value, String fallback) {
@@ -2588,6 +2595,10 @@ public class ActionEditorPanel {
 	}
 
 	private void addStringCycleRow(String label, String[] values, String current, Consumer<String> onChange) {
+		addStringOptionRow(label, values, values, current, onChange);
+	}
+
+	private void addStringOptionRow(String label, String[] values, String[] displayNames, String current, Consumer<String> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		int selectedIdx = -1;
 		for (int i = 0; i < values.length; i++) {
@@ -2597,9 +2608,10 @@ public class ActionEditorPanel {
 			}
 		}
 		final int selectedIndex = selectedIdx;
+		String display = selectedIndex >= 0 && selectedIndex < displayNames.length ? displayNames[selectedIndex] : current;
 		int rowIndex = rows.size();
-		var btn = Button.builder(Component.literal(current + " \u25BC"), b -> {
-			openDropdown(values, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
+		var btn = Button.builder(Component.literal(display + " \u25BC"), b -> {
+			openDropdown(displayNames, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
 		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, false));
 	}
@@ -2748,6 +2760,8 @@ public class ActionEditorPanel {
 	private int stringCompletionHoverIndex = -1;
 	private EditBox stringCompletionTarget = null;
 	private int stringCompletionInsertStart = -1;
+	private int stringCompletionInsertEnd = -1;
+	private int stringCompletionScrollOffset = 0;
 
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange) {
 		addNumberRow(label, provider, onChange, false);
@@ -2886,7 +2900,7 @@ public class ActionEditorPanel {
 		editBox.setValue(value);
 		editBox.setResponder(onChange::accept);
 		stringCompletionSuppliers.put(editBox, suggestions);
-		rows.add(new EditorRow(label + "*", editBox, false));
+		rows.add(new EditorRow(label, editBox, false));
 	}
 
 	private Integer parseColor(String text) {
@@ -3319,11 +3333,50 @@ public class ActionEditorPanel {
 			// Variable highlighting is now handled by EditBox.setFormatter() — no overlay needed
 		}
 
+		renderStringDropdownArrows(guiGraphics, mouseX, mouseY);
 		if (dropdown != null) {
 			doRenderDropdown(guiGraphics, mouseX, mouseY);
 		}
 		doRenderStringCompletion(guiGraphics, mouseX, mouseY);
 		doRenderExprCompletion(guiGraphics, mouseX, mouseY);
+	}
+
+	private void renderStringDropdownArrows(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+		if (stringCompletionSuppliers.isEmpty()) {
+			return;
+		}
+		Font font = Minecraft.getInstance().font;
+		guiGraphics.pose().pushPose();
+		guiGraphics.pose().translate(0, 0, 210);
+		for (EditBox editBox : stringCompletionSuppliers.keySet()) {
+			if (!editBox.visible) {
+				continue;
+			}
+			int arrowX = editBox.getX() + editBox.getWidth() - STRING_DROPDOWN_W;
+			int arrowY = editBox.getY() + 1;
+			int arrowH = editBox.getHeight() - 2;
+			boolean hovered = mouseX >= arrowX && mouseX < editBox.getX() + editBox.getWidth()
+					&& mouseY >= editBox.getY() && mouseY < editBox.getY() + editBox.getHeight();
+			guiGraphics.fill(arrowX, arrowY, editBox.getX() + editBox.getWidth() - 1,
+					arrowY + arrowH, hovered ? 0x66556688 : 0x44334455);
+			guiGraphics.drawString(font, "\u25BE", arrowX + 4, editBox.getY() + 4,
+					hovered ? 0xFFFFDD66 : 0xFFBBBBCC, false);
+		}
+		guiGraphics.pose().popPose();
+	}
+
+	private EditBox getStringDropdownTarget(double mouseX, double mouseY) {
+		for (EditBox editBox : stringCompletionSuppliers.keySet()) {
+			if (!editBox.visible) {
+				continue;
+			}
+			int arrowX = editBox.getX() + editBox.getWidth() - STRING_DROPDOWN_W;
+			if (mouseX >= arrowX && mouseX < editBox.getX() + editBox.getWidth()
+					&& mouseY >= editBox.getY() && mouseY < editBox.getY() + editBox.getHeight()) {
+				return editBox;
+			}
+		}
+		return null;
 	}
 
 	// --- Mouse handling ---
@@ -3372,9 +3425,12 @@ public class ActionEditorPanel {
 				int itemCount = stringCompletionItems.length;
 				int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
 				if (cy + totalH > y + h) totalH = y + h - cy;
+				int visibleItems = Math.max(1, totalH / itemH);
+				int scrollbarW = itemCount > visibleItems ? 6 : 0;
+				int contentW = cw - scrollbarW;
 
-				if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
-					int idx = (int) ((mouseY - cy) / itemH);
+				if (mouseX >= cx && mouseX < cx + contentW && mouseY >= cy && mouseY < cy + totalH) {
+					int idx = (int) ((mouseY - cy) / itemH) + stringCompletionScrollOffset;
 					if (idx >= 0 && idx < itemCount) {
 						stringCompletionHoverIndex = idx;
 						applyStringCompletion();
@@ -3424,6 +3480,14 @@ public class ActionEditorPanel {
 				return true;
 			}
 			return true; // block all clicks while dropdown is open
+		}
+
+		if (button == 0) {
+			EditBox stringDropdownTarget = getStringDropdownTarget(mouseX, mouseY);
+			if (stringDropdownTarget != null) {
+				openStringDropdown(stringDropdownTarget);
+				return true;
+			}
 		}
 
 		if (button != 0 || currentAction == null) return false;
@@ -3511,6 +3575,13 @@ public class ActionEditorPanel {
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+		if (stringCompletionItems != null) {
+			int visible = getStringCompletionVisibleItems();
+			int maxScroll = Math.max(0, stringCompletionItems.length - visible);
+			stringCompletionScrollOffset = Math.max(0, Math.min(maxScroll,
+					stringCompletionScrollOffset - (int) (delta * 3)));
+			return true;
+		}
 		if (dropdown != null) {
 			String[] options = dropdown.options();
 			if (options == null) return true;
@@ -3586,10 +3657,12 @@ public class ActionEditorPanel {
 			}
 			if (keyCode == GLFW.GLFW_KEY_UP) {
 				if (stringCompletionHoverIndex > 0) stringCompletionHoverIndex--;
+				ensureStringCompletionHoverVisible();
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_DOWN) {
 				if (stringCompletionHoverIndex < stringCompletionItems.length - 1) stringCompletionHoverIndex++;
+				ensureStringCompletionHoverVisible();
 				return true;
 			}
 			closeStringCompletion();
@@ -3830,14 +3903,23 @@ public class ActionEditorPanel {
 	// --- String completion ---
 
 	private boolean openStringCompletion(EditBox editBox) {
+		return openStringOptions(editBox, true);
+	}
+
+	private boolean openStringDropdown(EditBox editBox) {
+		return openStringOptions(editBox, false);
+	}
+
+	private boolean openStringOptions(EditBox editBox, boolean filterByPrefix) {
 		var supplier = stringCompletionSuppliers.get(editBox);
 		if (supplier == null) {
 			return false;
 		}
 		String text = editBox.getValue();
 		int cursor = editBox.getCursorPosition();
-		int tokenStart = stringTokenStart(text, cursor);
-		String prefix = text.substring(tokenStart, cursor).toLowerCase(java.util.Locale.ROOT);
+		int tokenStart = filterByPrefix ? stringTokenStart(text, cursor) : 0;
+		int tokenEnd = filterByPrefix ? cursor : text.length();
+		String prefix = filterByPrefix ? text.substring(tokenStart, cursor).toLowerCase(java.util.Locale.ROOT) : "";
 		java.util.LinkedHashSet<String> matches = new java.util.LinkedHashSet<>();
 		List<String> options = supplier.get();
 		if (options == null) {
@@ -3860,6 +3942,8 @@ public class ActionEditorPanel {
 		stringCompletionHoverIndex = 0;
 		stringCompletionTarget = editBox;
 		stringCompletionInsertStart = tokenStart;
+		stringCompletionInsertEnd = tokenEnd;
+		stringCompletionScrollOffset = 0;
 		return true;
 	}
 
@@ -3880,8 +3964,8 @@ public class ActionEditorPanel {
 		if (stringCompletionHoverIndex < 0 || stringCompletionHoverIndex >= stringCompletionItems.length) return;
 		String chosen = stringCompletionItems[stringCompletionHoverIndex];
 		String text = stringCompletionTarget.getValue();
-		int cursor = stringCompletionTarget.getCursorPosition();
-		String newText = text.substring(0, stringCompletionInsertStart) + chosen + text.substring(cursor);
+		int replaceEnd = stringCompletionInsertEnd >= 0 ? Math.min(stringCompletionInsertEnd, text.length()) : stringCompletionTarget.getCursorPosition();
+		String newText = text.substring(0, stringCompletionInsertStart) + chosen + text.substring(replaceEnd);
 		int newPos = stringCompletionInsertStart + chosen.length();
 		stringCompletionTarget.setValue(newText);
 		stringCompletionTarget.setCursorPosition(newPos);
@@ -3897,6 +3981,37 @@ public class ActionEditorPanel {
 		stringCompletionItems = null;
 		stringCompletionHoverIndex = -1;
 		stringCompletionTarget = null;
+		stringCompletionInsertStart = -1;
+		stringCompletionInsertEnd = -1;
+		stringCompletionScrollOffset = 0;
+	}
+
+	private int getStringCompletionVisibleItems() {
+		if (stringCompletionItems == null || stringCompletionTarget == null) {
+			return 1;
+		}
+		int itemCount = stringCompletionItems.length;
+		int itemH = DROPDOWN_ITEM_H;
+		int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
+		int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
+		if (cy + totalH > y + h) {
+			totalH = y + h - cy;
+		}
+		return Math.max(1, totalH / itemH);
+	}
+
+	private void ensureStringCompletionHoverVisible() {
+		if (stringCompletionItems == null) {
+			return;
+		}
+		int visible = getStringCompletionVisibleItems();
+		if (stringCompletionHoverIndex < stringCompletionScrollOffset) {
+			stringCompletionScrollOffset = stringCompletionHoverIndex;
+		} else if (stringCompletionHoverIndex >= stringCompletionScrollOffset + visible) {
+			stringCompletionScrollOffset = stringCompletionHoverIndex - visible + 1;
+		}
+		int maxScroll = Math.max(0, stringCompletionItems.length - visible);
+		stringCompletionScrollOffset = Math.max(0, Math.min(maxScroll, stringCompletionScrollOffset));
 	}
 
 	private void doRenderStringCompletion(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -3910,6 +4025,11 @@ public class ActionEditorPanel {
 		int cw = Math.max(stringCompletionTarget.getWidth(), 120);
 		if (cy + totalH > y + h) totalH = y + h - cy;
 		if (totalH < itemH) return;
+		int visibleItems = Math.max(1, totalH / itemH);
+		int maxScroll = Math.max(0, itemCount - visibleItems);
+		stringCompletionScrollOffset = Math.max(0, Math.min(maxScroll, stringCompletionScrollOffset));
+		int scrollbarW = itemCount > visibleItems ? 6 : 0;
+		int contentW = cw - scrollbarW;
 
 		guiGraphics.pose().pushPose();
 		guiGraphics.pose().translate(0, 0, 200);
@@ -3920,21 +4040,32 @@ public class ActionEditorPanel {
 		guiGraphics.fill(cx, cy, cx + 1, cy + totalH, 0xFF666688);
 		guiGraphics.fill(cx + cw - 1, cy, cx + cw, cy + totalH, 0xFF666688);
 
-		stringCompletionHoverIndex = -1;
-		if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
-			int rawIdx = (mouseY - cy) / itemH;
+		if (mouseX >= cx && mouseX < cx + contentW && mouseY >= cy && mouseY < cy + totalH) {
+			int rawIdx = (mouseY - cy) / itemH + stringCompletionScrollOffset;
 			if (rawIdx >= 0 && rawIdx < itemCount) stringCompletionHoverIndex = rawIdx;
 		}
 
-		int visCount = Math.min(itemCount, totalH / itemH);
+		int visCount = Math.min(itemCount - stringCompletionScrollOffset, visibleItems);
 		for (int i = 0; i < visCount; i++) {
-			if (i >= itemCount) break;
+			int optIdx = i + stringCompletionScrollOffset;
+			if (optIdx >= itemCount) break;
 			int iy = cy + i * itemH;
 			if (iy + itemH > cy + totalH) break;
-			boolean hovered = i == stringCompletionHoverIndex;
-			if (hovered) guiGraphics.fill(cx + 1, iy, cx + cw - 1, iy + itemH, 0x44FFFFFF);
-			guiGraphics.drawString(font, stringCompletionItems[i], cx + 4, iy + 4,
+			boolean hovered = optIdx == stringCompletionHoverIndex;
+			if (hovered) guiGraphics.fill(cx + 1, iy, cx + contentW - 1, iy + itemH, 0x44FFFFFF);
+			guiGraphics.drawString(font, stringCompletionItems[optIdx], cx + 4, iy + 4,
 					hovered ? 0xFFFFDD66 : 0xFFDDDDDD, false);
+		}
+		if (itemCount > visibleItems) {
+			int sbX = cx + cw - scrollbarW;
+			guiGraphics.fill(sbX, cy, sbX + scrollbarW, cy + totalH, 0x33FFFFFF);
+			int trackH = totalH - 2;
+			int thumbH = Math.max(10, trackH * visibleItems / itemCount);
+			int thumbTravel = trackH - thumbH;
+			if (thumbTravel > 0) {
+				int thumbY = cy + 1 + thumbTravel * stringCompletionScrollOffset / Math.max(1, maxScroll);
+				guiGraphics.fill(sbX + 1, thumbY, sbX + scrollbarW - 1, thumbY + thumbH, 0xAAAAAACC);
+			}
 		}
 		guiGraphics.pose().popPose();
 	}

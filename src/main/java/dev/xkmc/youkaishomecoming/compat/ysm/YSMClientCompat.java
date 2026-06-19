@@ -325,6 +325,9 @@ public class YSMClientCompat {
 	}
 
 	private static void clearYsmDebug() {
+		if (!LOADED) {
+			return;
+		}
 		Method method = getClearDebugMethod();
 		if (method == null) {
 			return;
@@ -337,6 +340,9 @@ public class YSMClientCompat {
 	}
 
 	private static Map<String, String> getYsmDebugSnapshot(LivingEntity entity) {
+		if (!LOADED) {
+			return Map.of("loaded", "false");
+		}
 		Method method = getDebugSnapshotMethod();
 		if (method == null) {
 			return Map.of("debugApi", "missing");
@@ -361,6 +367,11 @@ public class YSMClientCompat {
 			return new ArrayList<>(loadedModelIdsCache);
 		}
 		List<String> result = new ArrayList<>(List.of(MODEL_REMILIA, MODEL_FLANDRE));
+		if (!LOADED) {
+			loadedModelIdsCache = List.copyOf(result);
+			loadedModelIdsCacheAt = now;
+			return result;
+		}
 		Method method = getLoadedModelIdsMethod();
 		if (method == null) {
 			loadedModelIdsCache = List.copyOf(result);
@@ -528,12 +539,14 @@ public class YSMClientCompat {
 		if (!defaultTexture.isBlank()) {
 			result.add(defaultTexture);
 		}
-		Method method = getModelTextureNamesMethod();
-		if (method != null) {
-			try {
-				addIterableUnique(result, method.invoke(null, modelId));
-			} catch (IllegalAccessException | InvocationTargetException ex) {
-				YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model texture ids for {}", modelId, ex);
+		if (LOADED) {
+			Method method = getModelTextureNamesMethod();
+			if (method != null) {
+				try {
+					addIterableUnique(result, method.invoke(null, modelId));
+				} catch (IllegalAccessException | InvocationTargetException ex) {
+					YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model texture ids for {}", modelId, ex);
+				}
 			}
 		}
 		if (!result.contains(TEXTURE_DEFAULT)) {
@@ -558,12 +571,14 @@ public class YSMClientCompat {
 			animationNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
 			return result;
 		}
-		Method method = getModelAnimationNamesMethod();
-		if (method != null) {
-			try {
-				addIterableUnique(result, method.invoke(null, modelId));
-			} catch (IllegalAccessException | InvocationTargetException ex) {
-				YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model animation ids for {}", modelId, ex);
+		if (LOADED) {
+			Method method = getModelAnimationNamesMethod();
+			if (method != null) {
+				try {
+					addIterableUnique(result, method.invoke(null, modelId));
+				} catch (IllegalAccessException | InvocationTargetException ex) {
+					YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model animation ids for {}", modelId, ex);
+				}
 			}
 		}
 		animationNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
@@ -572,6 +587,9 @@ public class YSMClientCompat {
 
 	public static String defaultTextureName(String modelId) {
 		if (modelId == null || modelId.isBlank()) {
+			return TEXTURE_DEFAULT;
+		}
+		if (!LOADED) {
 			return TEXTURE_DEFAULT;
 		}
 		long now = System.nanoTime();

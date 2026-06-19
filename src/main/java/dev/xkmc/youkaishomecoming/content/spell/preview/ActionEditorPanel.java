@@ -1145,6 +1145,10 @@ public class ActionEditorPanel {
 		return action.model().isBlank() ? "" : action.model();
 	}
 
+	private static String currentYsmModel(SpawnShooterAction action) {
+		return action.ysmModel().isBlank() ? "" : action.ysmModel();
+	}
+
 	private static String[] ysmClearTargets() {
 		return new String[]{"changed", "animation", "model", "texture", "model_texture", "all"};
 	}
@@ -1215,6 +1219,21 @@ public class ActionEditorPanel {
 				notifySimple(old -> ((SpawnShooterAction) old).withVelocityZ(v)));
 		addFloatRow("Damage", ssa.damage(), v ->
 				notifySimple(old -> ((SpawnShooterAction) old).withDamage(v)));
+		addSectionHeader("YSM");
+		if (!isSectionCollapsed("YSM")) {
+			currentDepth++;
+			addSuggestStringRow("Model ID", ssa.ysmModel(), YSMClientCompat::loadedModelIds, v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmModel(v), true));
+			addSuggestStringRow("Texture", ssa.ysmTexture(), () -> YSMClientCompat.loadedTextureNames(currentYsmModel(ssa)), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmTexture(v)));
+			addSuggestStringRow("Anim Hint", ssa.ysmAnimation(), () -> YSMClientCompat.loadedAnimationNames(currentYsmModel(ssa)), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmAnimation(v)));
+			addIntRow("Duration", ssa.ysmDuration(), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmDuration(v)));
+			addStringOptionRow("Expire Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(ssa.ysmClearTarget(), "changed"), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmClearTarget(v)));
+			currentDepth--;
+		}
 		addSectionHeader("Pattern");
 		if (!isSectionCollapsed("Pattern")) {
 			currentDepth++;
@@ -3417,6 +3436,10 @@ public class ActionEditorPanel {
 		}
 		// Handle string completion overlay
 		if (stringCompletionItems != null) {
+			if (stringCompletionTarget == null) {
+				closeStringCompletion();
+				return true;
+			}
 			if (button == 0) {
 				int cx = stringCompletionTarget.getX();
 				int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
@@ -3960,19 +3983,26 @@ public class ActionEditorPanel {
 	}
 
 	private void applyStringCompletion() {
-		if (stringCompletionItems == null || stringCompletionTarget == null) return;
-		if (stringCompletionHoverIndex < 0 || stringCompletionHoverIndex >= stringCompletionItems.length) return;
-		String chosen = stringCompletionItems[stringCompletionHoverIndex];
-		String text = stringCompletionTarget.getValue();
-		int replaceEnd = stringCompletionInsertEnd >= 0 ? Math.min(stringCompletionInsertEnd, text.length()) : stringCompletionTarget.getCursorPosition();
-		String newText = text.substring(0, stringCompletionInsertStart) + chosen + text.substring(replaceEnd);
-		int newPos = stringCompletionInsertStart + chosen.length();
-		stringCompletionTarget.setValue(newText);
-		stringCompletionTarget.setCursorPosition(newPos);
+		EditBox target = stringCompletionTarget;
+		String[] items = stringCompletionItems;
+		int hoverIndex = stringCompletionHoverIndex;
+		int insertStart = stringCompletionInsertStart;
+		int insertEnd = stringCompletionInsertEnd;
+		if (items == null || target == null) return;
+		if (hoverIndex < 0 || hoverIndex >= items.length) return;
+		String chosen = items[hoverIndex];
+		String text = target.getValue();
+		int safeStart = Math.max(0, Math.min(insertStart, text.length()));
+		int replaceEnd = insertEnd >= 0 ? Math.min(insertEnd, text.length()) : target.getCursorPosition();
+		replaceEnd = Math.max(safeStart, Math.min(replaceEnd, text.length()));
+		String newText = text.substring(0, safeStart) + chosen + text.substring(replaceEnd);
+		int newPos = safeStart + chosen.length();
+		target.setValue(newText);
+		target.setCursorPosition(newPos);
 		try {
 			var method = net.minecraft.client.gui.components.EditBox.class.getDeclaredMethod("setHighlightPos", int.class);
 			method.setAccessible(true);
-			method.invoke(stringCompletionTarget, newPos);
+			method.invoke(target, newPos);
 		} catch (Exception ignored) {}
 		closeStringCompletion();
 	}

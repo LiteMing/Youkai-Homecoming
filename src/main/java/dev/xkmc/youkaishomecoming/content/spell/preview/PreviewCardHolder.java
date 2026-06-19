@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
+import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -399,11 +400,52 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		fakeCaster.setOldPosAndRot();
 		fakeCaster.yBodyRotO = fakeCaster.yBodyRot;
 		fakeCaster.yHeadRotO = fakeCaster.yHeadRot;
-		fakeCaster.yBodyRot = fakeCaster.getYRot();
-		fakeCaster.yHeadRot = fakeCaster.getYRot();
+		syncFakeCasterFacing();
 		fakeCaster.setOnGround(!hasYsmAnimationToken("fly"));
 		fakeCaster.walkAnimation.update(hasYsmAnimationToken("walk") ? 0.8f : 0.0f, 0.4f);
 		++fakeCaster.tickCount;
+	}
+
+	public void syncFakeCasterFacing() {
+		Vec3 look = getCasterLookDirection();
+		float yaw = getYawFromDirection(look, fakeCaster.getYRot());
+		float pitch = getPitchFromDirection(look, fakeCaster.getXRot());
+		if (fakeCaster.tickCount <= 0) {
+			fakeCaster.yRotO = yaw;
+			fakeCaster.xRotO = pitch;
+			fakeCaster.yBodyRotO = yaw;
+			fakeCaster.yHeadRotO = yaw;
+		}
+		fakeCaster.setYRot(yaw);
+		fakeCaster.setXRot(pitch);
+		fakeCaster.yBodyRot = yaw;
+		fakeCaster.yHeadRot = yaw;
+	}
+
+	private Vec3 getCasterLookDirection() {
+		Vec3 target = target();
+		if (target != null) {
+			Vec3 dir = target.subtract(center());
+			if (dir.lengthSqr() > 1.0E-8) {
+				return dir.normalize();
+			}
+		}
+		return forward();
+	}
+
+	private static float getYawFromDirection(Vec3 dir, float fallback) {
+		if (dir.horizontalDistanceSqr() < 1.0E-8) {
+			return fallback;
+		}
+		return (float) -(Mth.atan2(dir.x, dir.z) * Mth.RAD_TO_DEG);
+	}
+
+	private static float getPitchFromDirection(Vec3 dir, float fallback) {
+		double horizontal = dir.horizontalDistance();
+		if (horizontal < 1.0E-8 && Math.abs(dir.y) < 1.0E-8) {
+			return fallback;
+		}
+		return Mth.clamp((float) -(Mth.atan2(dir.y, horizontal) * Mth.RAD_TO_DEG), -90.0F, 90.0F);
 	}
 
 	@Override

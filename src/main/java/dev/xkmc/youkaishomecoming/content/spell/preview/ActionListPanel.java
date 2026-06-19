@@ -2017,7 +2017,18 @@ public class ActionListPanel {
 		if (action instanceof BurstAction ba) return index + ": burst(" + ba.waves() + "x" + ba.interval() + "t)";
 		if (action instanceof SpawnShooterAction ssa) {
 			String pattern = ssa.pattern() == PatternType.AIMED ? "" : " " + formatNumberProvider(ssa.count()) + "x" + ssa.pattern().name().toLowerCase();
-			return index + ": shooter" + pattern + "(hp=" + ssa.health() + ")";
+			String ysm = "";
+			if (!ssa.ysmModel().isBlank() || !ssa.ysmTexture().isBlank() || !ssa.ysmAnimation().isBlank()) {
+				StringBuilder builder = new StringBuilder(" ysm");
+				if (!ssa.ysmModel().isBlank()) {
+					builder.append("=").append(ssa.ysmModel());
+				}
+				if (!ssa.ysmAnimation().isBlank()) {
+					builder.append("@").append(ssa.ysmAnimation());
+				}
+				ysm = builder.toString();
+			}
+			return index + ": shooter" + pattern + "(hp=" + ssa.health() + ")" + ysm;
 		}
 		if (action instanceof YsmRenderAction yra) {
 			if (yra.clear()) {

@@ -726,14 +726,16 @@ public class OrthographicViewport {
 		if (!scene.isYsmPreviewCasterEnabled()) {
 			return;
 		}
-		var caster = scene.getHolder().getFakeCaster();
+		var holder = scene.getHolder();
+		holder.syncFakeCasterFacing();
+		var caster = holder.getFakeCaster();
 		double ex = Mth.lerp(partialTick, caster.xOld, caster.getX());
 		double ey = Mth.lerp(partialTick, caster.yOld, caster.getY());
 		double ez = Mth.lerp(partialTick, caster.zOld, caster.getZ());
-		float yaw = Mth.rotLerp(partialTick, caster.yRotO, caster.getYRot());
+		float yaw = Mth.rotLerp(partialTick, caster.yBodyRotO, caster.yBodyRot);
 		poseStack.pushPose();
 		poseStack.translate(ex, ey, ez);
-		YSMClientCompat.renderPreviewCaster(scene.getHolder(), yaw, partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
+		YSMClientCompat.renderPreviewCaster(holder, yaw, partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
 		poseStack.popPose();
 	}
 

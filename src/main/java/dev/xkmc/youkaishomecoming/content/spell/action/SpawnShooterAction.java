@@ -53,6 +53,11 @@ public record SpawnShooterAction(
 		Optional<NumberProvider> tiltAngle,
 		Optional<GroupRotation> groupRotation,
 		Optional<MoverConfig> mover,
+		String ysmModel,
+		String ysmTexture,
+		String ysmAnimation,
+		int ysmDuration,
+		String ysmClearTarget,
 		List<SpellAction> body
 ) implements SpellAction {
 
@@ -79,13 +84,27 @@ public record SpawnShooterAction(
 			BASE_MAP.forGetter(ssa -> ssa),
 			GroupRotation.CODEC.optionalFieldOf("group_rotation").forGetter(SpawnShooterAction::groupRotation),
 			MoverConfig.CODEC.optionalFieldOf("mover").forGetter(SpawnShooterAction::mover),
+			Codec.STRING.optionalFieldOf("ysm_model", "").forGetter(SpawnShooterAction::ysmModel),
+			Codec.STRING.optionalFieldOf("ysm_texture", "").forGetter(SpawnShooterAction::ysmTexture),
+			Codec.STRING.optionalFieldOf("ysm_animation", "").forGetter(SpawnShooterAction::ysmAnimation),
+			Codec.INT.optionalFieldOf("ysm_duration", 0).forGetter(SpawnShooterAction::ysmDuration),
+			Codec.STRING.optionalFieldOf("ysm_clear_target", "changed").forGetter(SpawnShooterAction::ysmClearTarget),
 			SpellAction.CODEC.listOf().fieldOf("body").forGetter(SpawnShooterAction::body)
-	).apply(i, (base, groupRotation, mover, body) -> new SpawnShooterAction(
+	).apply(i, (base, groupRotation, mover, ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body) -> new SpawnShooterAction(
 			base.health, base.damage, base.lifetime, base.origin,
 			base.velocityX, base.velocityY, base.velocityZ,
 			base.count, base.speed, base.angleOffset, base.spread, base.elevation,
-			base.pattern, base.aimMode, base.outerCount, base.tiltAngle, groupRotation, mover, body
+			base.pattern, base.aimMode, base.outerCount, base.tiltAngle, groupRotation, mover,
+			ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body
 	)));
+
+	public SpawnShooterAction {
+		ysmModel = normalize(ysmModel);
+		ysmTexture = normalize(ysmTexture);
+		ysmAnimation = normalize(ysmAnimation);
+		ysmClearTarget = normalize(ysmClearTarget);
+		body = List.copyOf(body);
+	}
 
 	public SpawnShooterAction(
 			int health,
@@ -107,7 +126,8 @@ public record SpawnShooterAction(
 	) {
 		this(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, Optional.empty(), Optional.empty(), List.of());
+				outerCount, tiltAngle, Optional.empty(), Optional.empty(),
+				"", "", "", 0, "changed", List.of());
 	}
 
 	public SpawnShooterAction(
@@ -125,121 +145,203 @@ public record SpawnShooterAction(
 				NumberProvider.constant(1), NumberProvider.constant(0),
 				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(0),
 				PatternType.AIMED, new AimMode.AimModes.Target(),
-				Optional.empty(), Optional.empty(), Optional.empty(), mover, body);
+				Optional.empty(), Optional.empty(), Optional.empty(), mover,
+				"", "", "", 0, "changed", body);
+	}
+
+	public SpawnShooterAction(
+			int health,
+			float damage,
+			int lifetime,
+			OriginConfig origin,
+			NumberProvider velocityX,
+			NumberProvider velocityY,
+			NumberProvider velocityZ,
+			NumberProvider count,
+			NumberProvider speed,
+			NumberProvider angleOffset,
+			NumberProvider spread,
+			NumberProvider elevation,
+			PatternType pattern,
+			AimMode aimMode,
+			Optional<NumberProvider> outerCount,
+			Optional<NumberProvider> tiltAngle,
+			Optional<GroupRotation> groupRotation,
+			Optional<MoverConfig> mover,
+			List<SpellAction> body
+	) {
+		this(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
+				count, speed, angleOffset, spread, elevation, pattern, aimMode,
+				outerCount, tiltAngle, groupRotation, mover,
+				"", "", "", 0, "changed", body);
 	}
 
 	public SpawnShooterAction withBody(List<SpellAction> body) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withHealth(int v) {
 		return new SpawnShooterAction(v, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withDamage(float v) {
 		return new SpawnShooterAction(health, v, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withLifetime(int v) {
 		return new SpawnShooterAction(health, damage, v, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withOrigin(OriginConfig v) {
 		return new SpawnShooterAction(health, damage, lifetime, v, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withVelocityX(NumberProvider v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, v, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withVelocityY(NumberProvider v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, v, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withVelocityZ(NumberProvider v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, v,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withCount(NumberProvider v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				v, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withSpeed(NumberProvider v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, v, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withAngleOffset(NumberProvider v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, v, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withSpread(NumberProvider v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, v, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withElevation(NumberProvider v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, v, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withPattern(PatternType v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, v, aimMode,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withAimMode(AimMode v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, v,
-				outerCount, tiltAngle, groupRotation, mover, body);
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withOuterCount(Optional<NumberProvider> v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				v, tiltAngle, groupRotation, mover, body);
+				v, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withTiltAngle(Optional<NumberProvider> v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, v, groupRotation, mover, body);
+				outerCount, v, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withGroupRotation(Optional<GroupRotation> v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, v, mover, body);
+				outerCount, tiltAngle, v, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
 	}
 
 	public SpawnShooterAction withMover(Optional<MoverConfig> v) {
 		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
 				count, speed, angleOffset, spread, elevation, pattern, aimMode,
-				outerCount, tiltAngle, groupRotation, v, body);
+				outerCount, tiltAngle, groupRotation, v,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
+	}
+
+	public SpawnShooterAction withYsmModel(String v) {
+		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
+				count, speed, angleOffset, spread, elevation, pattern, aimMode,
+				outerCount, tiltAngle, groupRotation, mover,
+				v, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget, body);
+	}
+
+	public SpawnShooterAction withYsmTexture(String v) {
+		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
+				count, speed, angleOffset, spread, elevation, pattern, aimMode,
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, v, ysmAnimation, ysmDuration, ysmClearTarget, body);
+	}
+
+	public SpawnShooterAction withYsmAnimation(String v) {
+		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
+				count, speed, angleOffset, spread, elevation, pattern, aimMode,
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, v, ysmDuration, ysmClearTarget, body);
+	}
+
+	public SpawnShooterAction withYsmDuration(int v) {
+		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
+				count, speed, angleOffset, spread, elevation, pattern, aimMode,
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, v, ysmClearTarget, body);
+	}
+
+	public SpawnShooterAction withYsmClearTarget(String v) {
+		return new SpawnShooterAction(health, damage, lifetime, origin, velocityX, velocityY, velocityZ,
+				count, speed, angleOffset, spread, elevation, pattern, aimMode,
+				outerCount, tiltAngle, groupRotation, mover,
+				ysmModel, ysmTexture, ysmAnimation, ysmDuration, v, body);
 	}
 
 	@Override
@@ -311,6 +413,18 @@ public record SpawnShooterAction(
 			entity.mover = mover.get().create(spawnPos, vel, baseDir, targetPos, casterPos);
 		}
 
+		if (hasInitialYsmOverride()) {
+			entity.setYsmRenderOverride(ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget);
+		}
+
 		holder.shoot(entity);
+	}
+
+	private boolean hasInitialYsmOverride() {
+		return !ysmModel.isBlank() || !ysmTexture.isBlank() || !ysmAnimation.isBlank();
+	}
+
+	private static String normalize(String value) {
+		return value == null ? "" : value.trim();
 	}
 }

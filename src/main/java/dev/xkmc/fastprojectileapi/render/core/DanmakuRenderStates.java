@@ -27,14 +27,15 @@ public abstract class DanmakuRenderStates extends RenderType {
 		//
 		// Laser inner-core strategy:
 		// - noDepthWrite=true: don't write depth (avoid z-fighting with shell)
-		// - NO_DEPTH_TEST: ignore depth buffer (render even if shell is in front)
+		// - LEQUAL_DEPTH_TEST: normal depth test (occluded by solid blocks)
 		// - Oculus DECAL bucket: render after GENERAL_TRANSPARENT shell
 		//
-		// This ensures the core is always visible regardless of shell depth values,
-		// solving the Oculus batching issue where shell+core in the same bucket
-		// would have undefined rendering order.
+		// Key insight: The shell and core are at the SAME geometric position.
+		// With depth test enabled, the core can only render where depth <= shell depth.
+		// Since they're colocated and shell writes depth first, LEQUAL allows the
+		// core to pass at exactly the shell's depth value, rendering "inside" the shell.
+		// Solid blocks (with smaller depth values) will still occlude both shell and core.
 		boolean opaque = type == DisplayType.SOLID;
-		boolean laserCore = noDepthWrite && !opaque; // only laser core has noDepthWrite=true
 		return create(name,
 				DefaultVertexFormat.POSITION_TEX_COLOR,
 				VertexFormat.Mode.QUADS,
@@ -48,7 +49,7 @@ public abstract class DanmakuRenderStates extends RenderType {
 							case ADDITIVE -> ADDITIVE_TRANSPARENCY;
 						})
 						.setWriteMaskState((opaque || !noDepthWrite) ? COLOR_DEPTH_WRITE : COLOR_WRITE)
-						.setDepthTestState(laserCore ? NO_DEPTH_TEST : LEQUAL_DEPTH_TEST)
+						.setDepthTestState(LEQUAL_DEPTH_TEST)
 						.setCullState(cull ? CULL : NO_CULL)
 						.createCompositeState(false));
 	}

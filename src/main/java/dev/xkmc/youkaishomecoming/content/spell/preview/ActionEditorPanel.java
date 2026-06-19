@@ -256,6 +256,8 @@ public class ActionEditorPanel {
 			buildSetVariableRows(sv);
 		} else if (action instanceof SpellActions.AddVariable av) {
 			buildAddVariableRows(av);
+		} else if (action instanceof EraseEnemyDanmakuAction ee) {
+			buildEraseEnemyDanmakuRows(ee);
 		} else if (action instanceof SpellActions.PlaySoundAction ps) {
 			buildPlaySoundRows(ps);
 		} else if (action instanceof SpellActions.ForcePhase fp) {
@@ -301,6 +303,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Add Variable", () -> selectType("add_variable"));
 		addFullWidthButton("Sequence", () -> selectType("sequence"));
 		addFullWidthButton("Clear Screen", () -> selectType("clear_screen"));
+		addFullWidthButton("Erase Enemy Danmaku", () -> selectType("erase_enemy_danmaku"));
 		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
 		addFullWidthButton("Force Spell", () -> selectType("force_spell"));
@@ -350,6 +353,7 @@ public class ActionEditorPanel {
 			case "set_variable" -> new SpellActions.SetVariable("var", 0);
 			case "add_variable" -> new SpellActions.AddVariable("var", 1);
 			case "clear_screen" -> new SpellActions.ClearScreen();
+			case "erase_enemy_danmaku" -> new EraseEnemyDanmakuAction(NumberProvider.constant(4), false);
 			case "play_sound" -> new SpellActions.PlaySoundAction(
 					new ResourceLocation("minecraft", "entity.experience_orb.pickup"), 1f, 1f);
 			case "force_phase" -> new SpellActions.ForcePhase(
@@ -878,6 +882,13 @@ public class ActionEditorPanel {
 				notifySimple(old -> new SpellActions.AddVariable(v, ((SpellActions.AddVariable) old).delta())));
 		addDoubleRow("Delta", av.delta(), v ->
 				notifySimple(old -> new SpellActions.AddVariable(((SpellActions.AddVariable) old).key(), v)));
+	}
+
+	private void buildEraseEnemyDanmakuRows(EraseEnemyDanmakuAction ee) {
+		addNumberRow("Radius", ee.radius(), v ->
+				notifySimple(old -> new EraseEnemyDanmakuAction(v, ((EraseEnemyDanmakuAction) old).sessionsOnly())));
+		addBoolRow("Sessions Only", ee.sessionsOnly(), v ->
+				notifySimple(old -> new EraseEnemyDanmakuAction(((EraseEnemyDanmakuAction) old).radius(), v), true));
 	}
 
 	// --- PlaySound rows ---
@@ -3829,6 +3840,7 @@ public class ActionEditorPanel {
 			Map.entry("set_variable", "Set Variable"),
 			Map.entry("add_variable", "Add Variable"),
 			Map.entry("clear_screen", "Clear Screen"),
+			Map.entry("erase_enemy_danmaku", "Erase Enemy Danmaku"),
 			Map.entry("play_sound", "Play Sound"),
 			Map.entry("force_phase", "Force Phase"),
 			Map.entry("force_spell", "Force Spell"),

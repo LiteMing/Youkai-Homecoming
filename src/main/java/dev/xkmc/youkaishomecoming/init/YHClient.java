@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.init;
 
 import com.github.tartaricacid.touhoulittlemaid.TouhouLittleMaid;
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMRenderHandler;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
@@ -30,6 +31,7 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHBlocks;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import dev.xkmc.youkaishomecoming.init.registrate.YHItems;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -44,11 +46,13 @@ import net.minecraft.world.item.DyeColor;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.*;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
+import net.minecraftforge.client.settings.KeyConflictContext;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.Map;
@@ -56,10 +60,19 @@ import java.util.Map;
 @Mod.EventBusSubscriber(value = Dist.CLIENT, modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.MOD)
 public class YHClient {
 
+	private static final KeyMapping OPEN_SPELL_EDITOR = new KeyMapping(
+			"key.youkaishomecoming.open_spell_editor",
+			KeyConflictContext.IN_GAME,
+			InputConstants.Type.KEYSYM,
+			GLFW.GLFW_KEY_UNKNOWN,
+			"key.categories.youkaishomecoming"
+	);
+
 	@SubscribeEvent
 	public static void clientSetup(FMLClientSetupEvent event) {
 		// 直接在这里注册醉酒效果渲染器
 		MinecraftForge.EVENT_BUS.register(DrunkEffectRenderer.class);
+		MinecraftForge.EVENT_BUS.register(ClientForgeEvents.class);
 
 		if (YoukaisHomecoming.ENABLE_TLM && ModList.get().isLoaded(TouhouLittleMaid.MOD_ID)) {
 			MinecraftForge.EVENT_BUS.register(TLMRenderHandler.class);
@@ -112,6 +125,11 @@ public class YHClient {
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "cuisine_hint", new HintOverlay());
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "power_info", new PowerInfoOverlay());
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "ysm_debug", YSMClientCompat::renderDebugOverlay);
+	}
+
+	@SubscribeEvent
+	public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
+		event.register(OPEN_SPELL_EDITOR);
 	}
 
 	@SubscribeEvent
@@ -184,6 +202,20 @@ public class YHClient {
 		var mc = Minecraft.getInstance();
 		ler.addLayer(new CirnoWingsLayer<>(ler, mc.getEntityModels()));
 		ler.addLayer(new CamelliaHeadLayer<>(ler, mc.getEntityModels()));
+	}
+
+	public static class ClientForgeEvents {
+
+		@SubscribeEvent
+		public static void onKeyInput(InputEvent.Key event) {
+			Minecraft mc = Minecraft.getInstance();
+			while (OPEN_SPELL_EDITOR.consumeClick()) {
+				if (mc.player != null && mc.player.connection != null && mc.screen == null) {
+					mc.player.connection.sendCommand("yhspell editor");
+				}
+			}
+		}
+
 	}
 
 }

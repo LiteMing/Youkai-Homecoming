@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.ColorProvider;
@@ -938,7 +939,6 @@ public class ActionListPanel {
 	 */
 	private void performDrop() {
 		if (phase == null || dragSourcePath == null) return;
-		pushUndo();
 
 		// Get the source action before removing it
 		SpellAction action = getActionAt(dragSourcePath);
@@ -946,33 +946,28 @@ public class ActionListPanel {
 
 		if (dragBranchTarget != null) {
 			// === Branch insert mode ===
-			// Adjust parentPath before deletion: if source is top-level and appears
-			// before the target parent, deleting it shifts the parent's index down by 1.
-			AddTarget adjustedTarget = dragBranchTarget;
-			if (!dragSourcePath.isNested() && dragBranchTarget.parentPath() != null) {
-				int srcIdx = dragSourcePath.leafIndex();
-				int parentTopIdx = dragBranchTarget.parentPath().path().get(0).index();
-				if (srcIdx < parentTopIdx) {
-					var newPath = new java.util.ArrayList<>(dragBranchTarget.parentPath().path());
-					PathEntry first = newPath.get(0);
-					newPath.set(0, new PathEntry(first.index() - 1, first.branch()));
-					var adjustedPath = new ActionPath(
-							dragBranchTarget.parentPath().section(),
-							java.util.List.copyOf(newPath)
-					);
-					adjustedTarget = new AddTarget(
-							dragBranchTarget.section(), adjustedPath, dragBranchTarget.branch());
-				}
-			}
+			AddTarget adjustedTarget = adjustAddTargetAfterDelete(dragBranchTarget, dragSourcePath);
+			if (adjustedTarget == null) return;
+
+			PhaseDefinition beforeDrop = copyPhase(phase);
+			pushUndo();
 
 			// Remove from source
 			boolean removed = doDeleteAt(dragSourcePath);
-			if (!removed) return;
+			if (!removed) {
+				restoreDropSnapshot(beforeDrop);
+				return;
+			}
 			dirty = true;
 
 			// Insert into the branch target
-			insertAction(adjustedTarget, action);
-			// selectedPath and onSelect are handled inside insertAction
+			if (!insertActionInternal(adjustedTarget, action)) {
+				restoreDropSnapshot(beforeDrop);
+				return;
+			}
+			selectedAddTarget = null;
+			dirty = true;
+			onSelect.accept(action, selectedPath);
 			onMoved.run();
 
 		} else if (dragInsertIndex >= 0 && dragInsertSection != null) {
@@ -981,12 +976,20 @@ public class ActionListPanel {
 
 			if (dragSourcePath.isNested()) {
 				// Source is nested: remove from branch, insert at top level
+				PhaseDefinition beforeDrop = copyPhase(phase);
+				pushUndo();
 				boolean removed = doDeleteAt(dragSourcePath);
-				if (!removed) return;
+				if (!removed) {
+					restoreDropSnapshot(beforeDrop);
+					return;
+				}
 				dirty = true;
 
 				List<SpellAction> list = getSectionList(dragInsertSection);
-				if (list == null) return;
+				if (list == null) {
+					restoreDropSnapshot(beforeDrop);
+					return;
+				}
 				int actualDst = Math.max(0, Math.min(dragInsertIndex, list.size()));
 				list.add(actualDst, action);
 				selectedPath = ActionPath.topLevel(dragInsertSection, actualDst);
@@ -1002,6 +1005,7 @@ public class ActionListPanel {
 				if (srcIdx < 0 || srcIdx >= list.size()) return;
 				if (dstIdx == srcIdx || dstIdx == srcIdx + 1) return; // no-op
 
+				pushUndo();
 				list.remove(srcIdx);
 				int actualDst = dstIdx > srcIdx ? dstIdx - 1 : dstIdx;
 				actualDst = Math.max(0, Math.min(actualDst, list.size()));
@@ -1018,6 +1022,93 @@ public class ActionListPanel {
 	/**
 	 * Delete the action at the given path. Returns true if successful.
 	 */
+	private @Nullable AddTarget adjustAddTargetAfterDelete(AddTarget target, ActionPath deletedPath) {
+		if (target.parentPath() == null || !target.section().equals(deletedPath.section())) {
+			return target;
+		}
+		ActionPath adjustedParent = adjustPathAfterDelete(target.parentPath(), deletedPath);
+		if (adjustedParent == null) {
+			return null;
+		}
+		return AddTarget.branch(target.section(), adjustedParent, target.branch());
+	}
+
+	private @Nullable ActionPath adjustPathAfterDelete(ActionPath path, ActionPath deletedPath) {
+		if (!path.section().equals(deletedPath.section())) {
+			return path;
+		}
+		if (isSameActionOrDescendant(path, deletedPath)) {
+			return null;
+		}
+
+		List<PathEntry> deletedEntries = deletedPath.path();
+		List<PathEntry> targetEntries = path.path();
+		int deletedDepth = deletedEntries.size() - 1;
+		if (targetEntries.size() <= deletedDepth) {
+			return path;
+		}
+		if (!sameContainerPrefix(targetEntries, deletedEntries, deletedDepth)) {
+			return path;
+		}
+
+		int deletedIndex = deletedEntries.get(deletedDepth).index();
+		PathEntry affected = targetEntries.get(deletedDepth);
+		if (affected.index() <= deletedIndex) {
+			return path;
+		}
+
+		var adjusted = new ArrayList<>(targetEntries);
+		adjusted.set(deletedDepth, new PathEntry(affected.index() - 1, affected.branch()));
+		return new ActionPath(path.section(), List.copyOf(adjusted));
+	}
+
+	private boolean sameContainerPrefix(List<PathEntry> targetEntries, List<PathEntry> deletedEntries, int containerDepth) {
+		for (int i = 0; i < containerDepth; i++) {
+			if (!samePathEntry(targetEntries.get(i), deletedEntries.get(i), true)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private boolean isSameActionOrDescendant(ActionPath path, ActionPath possibleAncestor) {
+		if (!path.section().equals(possibleAncestor.section())) {
+			return false;
+		}
+		List<PathEntry> entries = path.path();
+		List<PathEntry> ancestorEntries = possibleAncestor.path();
+		if (entries.size() < ancestorEntries.size()) {
+			return false;
+		}
+		for (int i = 0; i < ancestorEntries.size(); i++) {
+			boolean compareBranch = i < ancestorEntries.size() - 1;
+			if (!samePathEntry(entries.get(i), ancestorEntries.get(i), compareBranch)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private boolean samePathEntry(PathEntry a, PathEntry b, boolean compareBranch) {
+		if (a.index() != b.index()) {
+			return false;
+		}
+		return !compareBranch || java.util.Objects.equals(a.branch(), b.branch());
+	}
+
+	private @Nullable PhaseDefinition copyPhase(PhaseDefinition source) {
+		return PhaseDefinition.CODEC.encodeStart(JsonOps.INSTANCE, source)
+				.result()
+				.flatMap(json -> PhaseDefinition.CODEC.parse(JsonOps.INSTANCE, json).result())
+				.orElse(null);
+	}
+
+	private void restoreDropSnapshot(@Nullable PhaseDefinition snapshot) {
+		if (snapshot != null) {
+			applyRestoredPhase(snapshot);
+		}
+	}
+
 	private boolean doDeleteAt(ActionPath path) {
 		List<SpellAction> list = getSectionList(path.section);
 		if (list == null) return false;
@@ -1201,18 +1292,26 @@ public class ActionListPanel {
 	public void insertAction(AddTarget target, SpellAction action) {
 		if (phase == null) return;
 		pushUndo();
-		List<SpellAction> list = getSectionList(target.section);
-		if (list == null) return;
-
-		if (!target.isBranch()) {
-			list.add(action);
-			selectedPath = ActionPath.topLevel(target.section, list.size() - 1);
-		} else {
-			doInsert(list, target.parentPath.path, 0, target.branch, action, target.parentPath);
+		if (!insertActionInternal(target, action)) {
+			return;
 		}
 		selectedAddTarget = null;
 		dirty = true;
 		onSelect.accept(action, selectedPath);
+	}
+
+	private boolean insertActionInternal(AddTarget target, SpellAction action) {
+		if (phase == null) return false;
+		List<SpellAction> list = getSectionList(target.section);
+		if (list == null) return false;
+
+		if (!target.isBranch()) {
+			list.add(action);
+			selectedPath = ActionPath.topLevel(target.section, list.size() - 1);
+			return true;
+		} else {
+			return doInsert(list, target.parentPath.path, 0, target.branch, action, target.parentPath);
+		}
 	}
 
 	private boolean doInsert(List<SpellAction> list, List<PathEntry> path, int depth,
@@ -1999,6 +2098,9 @@ public class ActionListPanel {
 			return index + ": sequence(" + sa.actions().size() + ")";
 		}
 		if (action instanceof SpellActions.ClearScreen) return index + ": clear_screen";
+		if (action instanceof EraseEnemyDanmakuAction ee) {
+			return index + ": erase enemy r=" + formatNumberProvider(ee.radius());
+		}
 		if (action instanceof SpellActions.PlaySoundAction) return index + ": play_sound";
 		if (action instanceof SpellActions.SetVariable sv) return index + ": set " + sv.key();
 		if (action instanceof SpellActions.AddVariable av) return index + ": add " + av.key();

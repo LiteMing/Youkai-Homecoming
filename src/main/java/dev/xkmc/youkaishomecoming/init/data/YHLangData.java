@@ -179,6 +179,8 @@ public enum YHLangData {
 		pvd.add(YoukaisHomecoming.MODID + ".custom_spell.randomizedSpeed.desc", "Variation of bullet speed in percentage, plus or minus");
 		pvd.add(YoukaisHomecoming.MODID + ".custom_spell.turnTime", "Turn Time");
 		pvd.add(YoukaisHomecoming.MODID + ".custom_spell.turnTime.desc", "Time in tick after which bullet will redirect toward target");
+		pvd.add("key.categories.youkaishomecoming", "Youkai Homecoming");
+		pvd.add("key.youkaishomecoming.open_spell_editor", "Open Spell Editor");
 
 		// Spell editor help panel
 		genSpellEditorHelp(pvd);

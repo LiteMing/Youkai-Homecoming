@@ -933,6 +933,8 @@
   "youkaishomecoming.custom_spell.randomizedSpeed.desc": "弹幕速度的随机变化范围，正负百分比",
   "youkaishomecoming.custom_spell.turnTime": "转向延迟",
   "youkaishomecoming.custom_spell.turnTime.desc": "弹幕发射到重新定向至目标的时间间隔，单位：游戏刻",
+  "key.categories.youkaishomecoming": "妖怪归家",
+  "key.youkaishomecoming.open_spell_editor": "打开符卡编辑器",
   "youkaishomecoming.custom_spell.reset": "还原",
   "youkaishomecoming.custom_spell.invalid_time": "符卡最高持续时间为%s刻。当前持续时间：%s刻",
   "youkaishomecoming.flesh_human": "怪肉",

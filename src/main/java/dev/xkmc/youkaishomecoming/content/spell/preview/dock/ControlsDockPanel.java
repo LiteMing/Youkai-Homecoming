@@ -66,6 +66,9 @@ public class ControlsDockPanel implements DockPanel {
 	private int spellDropdownScrollOffset = 0;
 	private ConfirmOverlay spellDeleteConfirm;
 	private int spellDeleteConfirmHoverIndex = -1;
+	private Button actionMenuButton;
+	private ActionMenuOverlay actionMenu;
+	private int actionMenuHoverIndex = -1;
 	private Consumer<AbstractWidget> addWidgetCallback;
 	private Consumer<GuiEventListener> removeWidgetCallback;
 
@@ -76,6 +79,10 @@ public class ControlsDockPanel implements DockPanel {
 	) {}
 
 	private record ConfirmOverlay(String[] options) {}
+
+	private record MenuEntry(String label, Runnable action, boolean active) {}
+
+	private record ActionMenuOverlay(String title, List<MenuEntry> entries) {}
 
 	public ControlsDockPanel(VirtualSpellScene scene,
 							 OrthographicViewport viewport,
@@ -139,10 +146,6 @@ public class ControlsDockPanel implements DockPanel {
 		int row2Y = row1Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row3Y = row2Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row4Y = row3Y + BUTTON_HEIGHT + BUTTON_SPACING;
-		int row5Y = row4Y + BUTTON_HEIGHT + BUTTON_SPACING;
-		int row6Y = row5Y + BUTTON_HEIGHT + BUTTON_SPACING;
-		int row7Y = row6Y + BUTTON_HEIGHT + BUTTON_SPACING;
-		int row8Y = row7Y + BUTTON_HEIGHT + BUTTON_SPACING;
 
 		int bx;
 
@@ -159,15 +162,9 @@ public class ControlsDockPanel implements DockPanel {
 		bx += 8;
 		addSpellControls(bx, row1Y, false);
 
-		// Row 2: Speed buttons + Safety limit
+		// Row 2: frequently edited numeric state, with presets hidden behind menus.
 		bx = x + 4;
-		for (int i = 0; i < VirtualSpellScene.SPEED_OPTIONS.length; i++) {
-			float speed = VirtualSpellScene.SPEED_OPTIONS[i];
-			String label = speed < 1 ? speed + "x" : ((int) speed) + "x";
-			final int idx = i;
-			bx = addButton(bx, row2Y, 36, label, btn -> scene.setSpeedIndex(idx));
-		}
-		bx += 10;
+		bx = addMenuButton(bx, row2Y, 62, "Speed", this::openSpeedMenu);
 		int curLimit = PreviewCardHolder.getMaxEntityCount();
 		String limitHint = curLimit >= 1000 ? "Limit:" + (curLimit / 1000) + "k" : "Limit:" + curLimit;
 		bx = addEditBox(bx, row2Y, 52, limitHint, val -> {
@@ -176,26 +173,12 @@ public class ControlsDockPanel implements DockPanel {
 				PreviewCardHolder.setMaxEntityCount(Integer.parseInt(s));
 			} catch (NumberFormatException ignored) {}
 		});
-		for (int lim : new int[]{10_000, 50_000, 100_000, 500_000}) {
-			String limLabel = lim >= 1000 ? (lim / 1000) + "k" : String.valueOf(lim);
-			final int fl = lim;
-			bx = addButton(bx, row2Y, 30, limLabel, btn -> {
-				PreviewCardHolder.setMaxEntityCount(fl);
-				rebuildCallback.run();
-			});
-		}
-
-		// Row 3: Distance + HP
-		bx = x + 4;
-		bx = addEditBox(bx, row3Y, 46, "Dist:" + (int) scene.getTargetDistance(), val -> {
+		bx = addMenuButton(bx, row2Y, 48, "Limit", this::openLimitMenu);
+		bx = addEditBox(bx, row2Y, 46, "Dist:" + (int) scene.getTargetDistance(), val -> {
 			try { scene.setTargetDistance(Float.parseFloat(val)); } catch (NumberFormatException ignored) {}
 		});
-		for (float dist : VirtualSpellScene.DISTANCE_OPTIONS) {
-			final float d = dist;
-			bx = addButton(bx, row3Y, 24, String.valueOf((int) dist), btn -> scene.setTargetDistance(d));
-		}
-		bx += 10;
-		bx = addEditBox(bx, row3Y, 46, "HP:" + (int) (scene.getHealthRatio() * 100) + "%", val -> {
+		bx = addMenuButton(bx, row2Y, 42, "Dist", this::openDistanceMenu);
+		bx = addEditBox(bx, row2Y, 46, "HP:" + (int) (scene.getHealthRatio() * 100) + "%", val -> {
 			try {
 				String s = val.replace("%", "").trim();
 				float v = Float.parseFloat(s);
@@ -203,79 +186,33 @@ public class ControlsDockPanel implements DockPanel {
 				scene.setHealthRatio(v);
 			} catch (NumberFormatException ignored) {}
 		});
-		for (float hp : VirtualSpellScene.HP_OPTIONS) {
-			String hpLabel = ((int) (hp * 100)) + "%";
-			final float h = hp;
-			bx = addButton(bx, row3Y, 30, hpLabel, btn -> scene.setHealthRatio(h));
-		}
+		addMenuButton(bx, row2Y, 36, "HP", this::openHealthMenu);
 
-		// Row 4: Phase selection
+		// Row 3: Phase selection
 		bx = x + 4;
-		bx = addButton(bx, row4Y, 40, "Label:", btn -> {});
-		bx = addButton(bx, row4Y, 16, "<", btn -> cyclePhaseCallback.accept(-1));
-		bx = addTextEditBox(bx, row4Y, 84,
+		bx = addButton(bx, row3Y, 40, "Label:", btn -> {});
+		bx = addButton(bx, row3Y, 16, "<", btn -> cyclePhaseCallback.accept(-1));
+		bx = addTextEditBox(bx, row3Y, 84,
 				currentPhaseNameSupplier.get(),
 				"Display Name", 48,
 				s -> !s.contains("\n") && !s.contains("\r"),
 				renamePhaseCallback);
-		bx = addButton(bx, row4Y, 16, ">", btn -> cyclePhaseCallback.accept(1));
-		bx = addButton(bx, row4Y, 20, "+", btn -> addPhaseCallback.run());
+		bx = addButton(bx, row3Y, 16, ">", btn -> cyclePhaseCallback.accept(1));
+		bx = addButton(bx, row3Y, 20, "+", btn -> addPhaseCallback.run());
 		Button deleteButton = Button.builder(Component.literal("-"), btn -> deletePhaseCallback.run())
-				.bounds(bx, row4Y, 20, BUTTON_HEIGHT).build();
+				.bounds(bx, row3Y, 20, BUTTON_HEIGHT).build();
 		deleteButton.active = canDeletePhaseSupplier.get();
 		buttons.add(deleteButton);
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(deleteButton);
 		}
 
-		// Row 5: Range + Marker toggles
+		// Row 4: Secondary settings menus
 		bx = x + 4;
-		int[] rangeOptions = {50, 100, 200, 500};
-		bx = addButton(bx, row5Y, 40, "Range:", btn -> {});
-		for (int range : rangeOptions) {
-			final float r = range;
-			bx = addButton(bx, row5Y, 30, String.valueOf(range), btn -> {
-				viewport.setGridExtent(r);
-				viewport.setClipDepth(r * 4);
-			});
-		}
-		bx += 10;
-		String casterMkLabel = viewport.isShowCasterMarker() ? "Caster:\u00A7cON" : "Caster:OFF";
-		bx = addButton(bx, row5Y, 52, casterMkLabel, btn -> {
-			viewport.setShowCasterMarker(!viewport.isShowCasterMarker());
-			rebuildCallback.run();
-		});
-		String targetMkLabel = viewport.isShowTargetMarker() ? "Target:\u00A7eON" : "Target:OFF";
-		bx = addButton(bx, row5Y, 52, targetMkLabel, btn -> {
-			viewport.setShowTargetMarker(!viewport.isShowTargetMarker());
-			rebuildCallback.run();
-		});
-		String ysmLabel = !YSMClientCompat.isLoaded() ? "YSM:N/A" :
-				scene.isYsmPreviewCasterEnabled() ? "YSM:\u00A7aON" : "YSM:OFF";
-		addButton(bx, row5Y, 48, ysmLabel, btn -> {
-			scene.setYsmPreviewCasterEnabled(!scene.isYsmPreviewCasterEnabled());
-			rebuildCallback.run();
-		});
-
-		// Row 6: Target properties
-		bx = x + 4;
-		bx = addButton(bx, row6Y, 42, "Target:", btn -> {});
-		String groundLabel = scene.isTargetOnGround() ? "Ground:Y" : "Ground:N";
-		bx = addButton(bx, row6Y, 52, groundLabel, btn -> {
-			scene.setTargetOnGround(!scene.isTargetOnGround());
-			rebuildCallback.run();
-		});
-		String flyLabel = scene.isTargetFlying() ? "Fly:Y" : "Fly:N";
-		bx = addButton(bx, row6Y, 36, flyLabel, btn -> {
-			scene.setTargetFlying(!scene.isTargetFlying());
-			rebuildCallback.run();
-		});
-		String elytraLabel = scene.isTargetFallFlying() ? "Elytra:Y" : "Elytra:N";
-		bx = addButton(bx, row6Y, 48, elytraLabel, btn -> {
-			scene.setTargetFallFlying(!scene.isTargetFallFlying());
-			rebuildCallback.run();
-		});
-		bx = addEditBox(bx, row6Y, 48, "THP:" + (int) (scene.getTargetHealthRatio() * 100) + "%", val -> {
+		bx = addMenuButton(bx, row4Y, 48, "Range", this::openRangeMenu);
+		bx = addMenuButton(bx, row4Y, 58, "Markers", this::openMarkerMenu);
+		bx = addMenuButton(bx, row4Y, 50, "Target", this::openTargetStateMenu);
+		bx = addEditBox(bx, row4Y, 48, "THP:" + (int) (scene.getTargetHealthRatio() * 100) + "%", val -> {
 			try {
 				String s = val.replace("%", "").trim();
 				float v = Float.parseFloat(s);
@@ -284,49 +221,16 @@ public class ControlsDockPanel implements DockPanel {
 				rebuildCallback.run();
 			} catch (NumberFormatException ignored) {}
 		});
-		for (float hp : new float[]{0.25f, 0.5f, 0.75f, 1.0f}) {
-			String thpLabel = ((int) (hp * 100)) + "%";
-			final float h = hp;
-			bx = addButton(bx, row6Y, 30, thpLabel, btn -> {
-				scene.setTargetHealthRatio(h);
-				rebuildCallback.run();
-			});
-		}
-
-		// Row 7: Target Height
-		bx = x + 4;
-		bx = addEditBox(bx, row7Y, 46, "Height:" + (int) scene.getTargetHeight(), val -> {
+		bx = addMenuButton(bx, row4Y, 40, "THP", this::openTargetHealthMenu);
+		bx = addEditBox(bx, row4Y, 50, "Height:" + (int) scene.getTargetHeight(), val -> {
 			try {
 				scene.setTargetHeight(Double.parseDouble(val));
 				rebuildCallback.run();
 			} catch (NumberFormatException ignored) {}
 		});
-		for (double hgt : new double[]{0, 1, 2, 5, 10, 20}) {
-			String hLabel = String.valueOf((int) hgt);
-			final double finalH = hgt;
-			bx = addButton(bx, row7Y, 22, hLabel, btn -> {
-				scene.setTargetHeight(finalH);
-				rebuildCallback.run();
-			});
-		}
-
-		// Row 8: Focus + Reset position
-		bx = x + 4;
-		bx = addButton(bx, row8Y, 52, "FocusTgt", btn -> {
-			viewport.focusOnWorldPos(scene.getTargetPos());
-		});
-		bx = addButton(bx, row8Y, 58, "FocusCstr", btn -> {
-			viewport.focusOnWorldPos(scene.getCasterPos());
-		});
-		bx += 10;
-		bx = addButton(bx, row8Y, 52, "RstTgtPos", btn -> {
-			scene.resetTargetPos();
-			rebuildCallback.run();
-		});
-		addButton(bx, row8Y, 56, "RstCstrPos", btn -> {
-			scene.resetCasterPos();
-			rebuildCallback.run();
-		});
+		bx = addMenuButton(bx, row4Y, 48, "Height", this::openTargetHeightMenu);
+		bx = addMenuButton(bx, row4Y, 44, "Focus", this::openFocusMenu);
+		addMenuButton(bx, row4Y, 48, "Reset", this::openResetPositionMenu);
 	}
 
 	private int addButton(int bx, int by, int bw, String label, Button.OnPress action) {
@@ -337,6 +241,163 @@ public class ControlsDockPanel implements DockPanel {
 			addWidgetCallback.accept(btn);
 		}
 		return bx + bw + BUTTON_SPACING;
+	}
+
+	private int addMenuButton(int bx, int by, int bw, String label, Consumer<Button> opener) {
+		Button btn = Button.builder(Component.literal(label + " \u25BE"), opener::accept)
+				.bounds(bx, by, bw, BUTTON_HEIGHT).build();
+		buttons.add(btn);
+		if (addWidgetCallback != null) {
+			addWidgetCallback.accept(btn);
+		}
+		return bx + bw + BUTTON_SPACING;
+	}
+
+	private void openSpeedMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		for (int i = 0; i < VirtualSpellScene.SPEED_OPTIONS.length; i++) {
+			float speed = VirtualSpellScene.SPEED_OPTIONS[i];
+			String label = speed < 1 ? speed + "x" : ((int) speed) + "x";
+			if (i == scene.getSpeedIndex()) {
+				label = "* " + label;
+			}
+			final int idx = i;
+			entries.add(new MenuEntry(label, () -> scene.setSpeedIndex(idx), true));
+		}
+		openActionMenu(anchor, "Speed", entries);
+	}
+
+	private void openLimitMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		for (int lim : new int[]{10_000, 50_000, 100_000, 500_000}) {
+			String label = lim >= 1000 ? (lim / 1000) + "k" : String.valueOf(lim);
+			final int fl = lim;
+			entries.add(new MenuEntry(label, () -> {
+				PreviewCardHolder.setMaxEntityCount(fl);
+				rebuildCallback.run();
+			}, true));
+		}
+		openActionMenu(anchor, "Safety Limit", entries);
+	}
+
+	private void openDistanceMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		for (float dist : VirtualSpellScene.DISTANCE_OPTIONS) {
+			final float d = dist;
+			entries.add(new MenuEntry(String.valueOf((int) dist), () -> scene.setTargetDistance(d), true));
+		}
+		openActionMenu(anchor, "Distance", entries);
+	}
+
+	private void openHealthMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		for (float hp : VirtualSpellScene.HP_OPTIONS) {
+			String label = ((int) (hp * 100)) + "%";
+			final float h = hp;
+			entries.add(new MenuEntry(label, () -> scene.setHealthRatio(h), true));
+		}
+		openActionMenu(anchor, "Caster HP", entries);
+	}
+
+	private void openRangeMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		for (int range : new int[]{50, 100, 200, 500}) {
+			final float r = range;
+			entries.add(new MenuEntry(String.valueOf(range), () -> {
+				viewport.setGridExtent(r);
+				viewport.setClipDepth(r * 4);
+			}, true));
+		}
+		openActionMenu(anchor, "Viewport Range", entries);
+	}
+
+	private void openMarkerMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		entries.add(new MenuEntry(viewport.isShowCasterMarker() ? "Caster Marker: ON" : "Caster Marker: OFF", () -> {
+			viewport.setShowCasterMarker(!viewport.isShowCasterMarker());
+			rebuildCallback.run();
+		}, true));
+		entries.add(new MenuEntry(viewport.isShowTargetMarker() ? "Target Marker: ON" : "Target Marker: OFF", () -> {
+			viewport.setShowTargetMarker(!viewport.isShowTargetMarker());
+			rebuildCallback.run();
+		}, true));
+		entries.add(new MenuEntry(!YSMClientCompat.isLoaded() ? "YSM Caster: N/A" :
+				scene.isYsmPreviewCasterEnabled() ? "YSM Caster: ON" : "YSM Caster: OFF", () -> {
+			scene.setYsmPreviewCasterEnabled(!scene.isYsmPreviewCasterEnabled());
+			rebuildCallback.run();
+		}, YSMClientCompat.isLoaded()));
+		openActionMenu(anchor, "Markers", entries);
+	}
+
+	private void openTargetStateMenu(Button anchor) {
+		openActionMenu(anchor, "Target State", List.of(
+				new MenuEntry(scene.isTargetOnGround() ? "Ground: Y" : "Ground: N", () -> {
+					scene.setTargetOnGround(!scene.isTargetOnGround());
+					rebuildCallback.run();
+				}, true),
+				new MenuEntry(scene.isTargetFlying() ? "Flying: Y" : "Flying: N", () -> {
+					scene.setTargetFlying(!scene.isTargetFlying());
+					rebuildCallback.run();
+				}, true),
+				new MenuEntry(scene.isTargetFallFlying() ? "Elytra: Y" : "Elytra: N", () -> {
+					scene.setTargetFallFlying(!scene.isTargetFallFlying());
+					rebuildCallback.run();
+				}, true)
+		));
+	}
+
+	private void openTargetHealthMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		for (float hp : new float[]{0.25f, 0.5f, 0.75f, 1.0f}) {
+			String label = ((int) (hp * 100)) + "%";
+			final float h = hp;
+			entries.add(new MenuEntry(label, () -> {
+				scene.setTargetHealthRatio(h);
+				rebuildCallback.run();
+			}, true));
+		}
+		openActionMenu(anchor, "Target HP", entries);
+	}
+
+	private void openTargetHeightMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		for (double hgt : new double[]{0, 1, 2, 5, 10, 20}) {
+			String label = String.valueOf((int) hgt);
+			final double finalH = hgt;
+			entries.add(new MenuEntry(label, () -> {
+				scene.setTargetHeight(finalH);
+				rebuildCallback.run();
+			}, true));
+		}
+		openActionMenu(anchor, "Target Height", entries);
+	}
+
+	private void openFocusMenu(Button anchor) {
+		openActionMenu(anchor, "Focus", List.of(
+				new MenuEntry("Target", () -> viewport.focusOnWorldPos(scene.getTargetPos()), true),
+				new MenuEntry("Caster", () -> viewport.focusOnWorldPos(scene.getCasterPos()), true)
+		));
+	}
+
+	private void openResetPositionMenu(Button anchor) {
+		openActionMenu(anchor, "Reset Position", List.of(
+				new MenuEntry("Target Position", () -> {
+					scene.resetTargetPos();
+					rebuildCallback.run();
+				}, true),
+				new MenuEntry("Caster Position", () -> {
+					scene.resetCasterPos();
+					rebuildCallback.run();
+				}, true)
+		));
+	}
+
+	private void openActionMenu(Button anchor, String title, List<MenuEntry> entries) {
+		closeSpellDropdown();
+		closeSpellDeleteConfirm();
+		actionMenuButton = anchor;
+		actionMenu = new ActionMenuOverlay(title, List.copyOf(entries));
+		actionMenuHoverIndex = -1;
 	}
 
 	private void addSpellControls(int bx, int by, boolean draftMode) {
@@ -407,6 +468,7 @@ public class ControlsDockPanel implements DockPanel {
 	public void clearButtons() {
 		closeSpellDropdown();
 		closeSpellDeleteConfirm();
+		closeActionMenu();
 		if (removeWidgetCallback != null) {
 			for (Button btn : buttons) {
 				removeWidgetCallback.accept(btn);
@@ -488,6 +550,13 @@ public class ControlsDockPanel implements DockPanel {
 			closeSpellDropdown();
 			return true;
 		}
+		if (actionMenu != null) {
+			if (handleActionMenuClick(mouseX, mouseY)) {
+				return true;
+			}
+			closeActionMenu();
+			return true;
+		}
 		// 按钮和 EditBox 的点击由 Screen widget 系统处理
 		return false;
 	}
@@ -503,6 +572,12 @@ public class ControlsDockPanel implements DockPanel {
 		if (spellDropdown != null) {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
 				closeSpellDropdown();
+			}
+			return true;
+		}
+		if (actionMenu != null) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+				closeActionMenu();
 			}
 			return true;
 		}
@@ -527,6 +602,9 @@ public class ControlsDockPanel implements DockPanel {
 		if (spellDeleteConfirm != null) {
 			return true;
 		}
+		if (actionMenu != null) {
+			return true;
+		}
 		if (spellDropdown == null) {
 			return false;
 		}
@@ -546,6 +624,7 @@ public class ControlsDockPanel implements DockPanel {
 	public void renderOverlay(GuiGraphics graphics, int mouseX, int mouseY) {
 		doRenderSpellDropdown(graphics, mouseX, mouseY);
 		doRenderSpellDeleteConfirm(graphics, mouseX, mouseY);
+		doRenderActionMenu(graphics, mouseX, mouseY);
 	}
 
 	@Override
@@ -558,12 +637,13 @@ public class ControlsDockPanel implements DockPanel {
 	public void onDeactivated() {
 		closeSpellDropdown();
 		closeSpellDeleteConfirm();
+		closeActionMenu();
 		for (Button btn : buttons) btn.visible = false;
 		for (EditBox box : editBoxes) box.visible = false;
 	}
 
 	public boolean isDropdownOpen() {
-		return spellDropdown != null || spellDeleteConfirm != null;
+		return spellDropdown != null || spellDeleteConfirm != null || actionMenu != null;
 	}
 
 	private boolean isDraftMode() {
@@ -576,6 +656,7 @@ public class ControlsDockPanel implements DockPanel {
 			return;
 		}
 		closeSpellDeleteConfirm();
+		closeActionMenu();
 		String[] options = new String[values.size()];
 		ResourceLocation current = currentSpellIdSupplier.get();
 		int selectedIndex = -1;
@@ -609,6 +690,7 @@ public class ControlsDockPanel implements DockPanel {
 			return;
 		}
 		closeSpellDropdown();
+		closeActionMenu();
 		ResourceLocation currentSpellId = currentSpellIdSupplier.get();
 		String label = currentSpellId == null ? "current spell" : fitToWidth(formatSpellOption(currentSpellId), 150);
 		spellDeleteConfirm = new ConfirmOverlay(new String[]{
@@ -621,6 +703,12 @@ public class ControlsDockPanel implements DockPanel {
 	private void closeSpellDeleteConfirm() {
 		spellDeleteConfirm = null;
 		spellDeleteConfirmHoverIndex = -1;
+	}
+
+	private void closeActionMenu() {
+		actionMenu = null;
+		actionMenuButton = null;
+		actionMenuHoverIndex = -1;
 	}
 
 	private String formatSpellOption(ResourceLocation spellId) {
@@ -702,6 +790,45 @@ public class ControlsDockPanel implements DockPanel {
 			totalH = DROPDOWN_ITEM_H;
 		}
 		return new int[]{dropdownX, dropdownY, dropdownW, totalH, options.length};
+	}
+
+	private int[] computeActionMenuBounds() {
+		if (actionMenu == null || actionMenuButton == null) {
+			return new int[]{0, 0, 0, 0, 0};
+		}
+		List<MenuEntry> entries = actionMenu.entries();
+		if (entries == null || entries.isEmpty()) {
+			return new int[]{0, 0, 0, 0, 0};
+		}
+		Font font = Minecraft.getInstance().font;
+		int dropdownW = Math.max(96, font.width(actionMenu.title()) + 18);
+		for (MenuEntry entry : entries) {
+			dropdownW = Math.max(dropdownW, font.width(entry.label()) + 18);
+		}
+		dropdownW = Math.min(dropdownW, Math.max(120, w / 2));
+		int titleH = 14;
+		int totalH = titleH + entries.size() * DROPDOWN_ITEM_H;
+		int dropdownX = actionMenuButton.getX();
+		if (dropdownX + dropdownW > x + w) {
+			dropdownX = x + w - dropdownW;
+		}
+		if (dropdownX < x) {
+			dropdownX = x;
+		}
+		int dropdownY = actionMenuButton.getY() + actionMenuButton.getHeight();
+		if (dropdownY + totalH > y + h) {
+			dropdownY = actionMenuButton.getY() - totalH;
+		}
+		if (dropdownY < y) {
+			dropdownY = y;
+		}
+		if (dropdownY + totalH > y + h) {
+			totalH = y + h - dropdownY;
+		}
+		if (totalH < titleH + DROPDOWN_ITEM_H) {
+			totalH = titleH + DROPDOWN_ITEM_H;
+		}
+		return new int[]{dropdownX, dropdownY, dropdownW, totalH, Math.max(1, (totalH - titleH) / DROPDOWN_ITEM_H)};
 	}
 
 	private void doRenderSpellDropdown(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -812,6 +939,51 @@ public class ControlsDockPanel implements DockPanel {
 		graphics.pose().popPose();
 	}
 
+	private void doRenderActionMenu(GuiGraphics graphics, int mouseX, int mouseY) {
+		if (actionMenu == null) {
+			return;
+		}
+		Font font = Minecraft.getInstance().font;
+		List<MenuEntry> entries = actionMenu.entries();
+		int[] bounds = computeActionMenuBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+		int visibleItems = bounds[4];
+		int titleH = 14;
+
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 200);
+		graphics.fill(dx + 3, dy + 3, dx + dw + 3, dy + dh + 3, 0x88000000);
+		graphics.fill(dx, dy, dx + dw, dy + dh, 0xFF181828);
+		graphics.fill(dx, dy, dx + dw, dy + 1, 0xFF666688);
+		graphics.fill(dx, dy + dh - 1, dx + dw, dy + dh, 0xFF666688);
+		graphics.fill(dx, dy, dx + 1, dy + dh, 0xFF666688);
+		graphics.fill(dx + dw - 1, dy, dx + dw, dy + dh, 0xFF666688);
+		graphics.drawString(font, fitToWidth(actionMenu.title(), dw - 8), dx + 4, dy + 3, 0xFFFFDD88, false);
+
+		actionMenuHoverIndex = -1;
+		int itemTop = dy + titleH;
+		int itemH = Math.max(0, dh - titleH);
+		if (mouseX >= dx && mouseX < dx + dw && mouseY >= itemTop && mouseY < itemTop + itemH) {
+			int rawIdx = (mouseY - itemTop) / DROPDOWN_ITEM_H;
+			if (rawIdx >= 0 && rawIdx < entries.size() && rawIdx < visibleItems) {
+				actionMenuHoverIndex = rawIdx;
+			}
+		}
+
+		int count = Math.min(entries.size(), visibleItems);
+		for (int i = 0; i < count; i++) {
+			MenuEntry entry = entries.get(i);
+			int itemY = itemTop + i * DROPDOWN_ITEM_H;
+			boolean hovered = i == actionMenuHoverIndex && entry.active();
+			if (hovered) {
+				graphics.fill(dx + 1, itemY, dx + dw - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
+			}
+			int color = !entry.active() ? 0xFF777777 : hovered ? 0xFFFFDD66 : 0xFFDDDDDD;
+			graphics.drawString(font, fitToWidth(entry.label(), dw - 10), dx + 6, itemY + 4, color, false);
+		}
+		graphics.pose().popPose();
+	}
+
 	private boolean handleSpellDropdownClick(double mouseX, double mouseY) {
 		if (spellDropdown == null) {
 			return false;
@@ -848,6 +1020,31 @@ public class ControlsDockPanel implements DockPanel {
 				deleteSpellCallback.run();
 			}
 			return true;
+		}
+		return false;
+	}
+
+	private boolean handleActionMenuClick(double mouseX, double mouseY) {
+		if (actionMenu == null) {
+			return false;
+		}
+		int[] bounds = computeActionMenuBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+		int visibleItems = bounds[4];
+		int titleH = 14;
+		int itemTop = dy + titleH;
+		if (mouseX >= dx && mouseX < dx + dw && mouseY >= itemTop && mouseY < dy + dh) {
+			int idx = (int) ((mouseY - itemTop) / DROPDOWN_ITEM_H);
+			if (idx >= 0 && idx < actionMenu.entries().size() && idx < visibleItems) {
+				MenuEntry entry = actionMenu.entries().get(idx);
+				Runnable action = entry.action();
+				boolean active = entry.active();
+				closeActionMenu();
+				if (active && action != null) {
+					action.run();
+				}
+				return true;
+			}
 		}
 		return false;
 	}

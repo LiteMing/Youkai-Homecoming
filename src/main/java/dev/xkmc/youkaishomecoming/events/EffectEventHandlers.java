@@ -54,7 +54,7 @@ public class EffectEventHandlers {
 		if (isFullCharacter(e)) return true;
 		if (e instanceof Player player) {
 			var cap = GrazeCapability.HOLDER.get(player);
-			return cap.isInSession();
+			return cap.isInDanmakuCombat();
 		}
 		return false;
 	}

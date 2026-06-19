@@ -606,6 +606,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	public void danmakuHitTarget(IYHDanmaku self, DamageSource source, LivingEntity target) {
 		if (combatProgress.progress <= 0) return;
+		if (!shouldHurt(target)) return;
 		if (target instanceof Player player) {
 			var graze = GrazeCapability.HOLDER.get(player);
 			var type = graze.performErase(this);
@@ -723,13 +724,20 @@ public abstract class YoukaiEntity extends PathfinderMob
 	 */
 	public void eraseDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, @Nullable Player player, int limit) {
 		int erased = 0;
-		for (var e : allDanmakus) {
-			if (erased >= limit) break;
-			if (frustum.contains(e.position())) {
+		int w = 0;
+		for (int i = 0; i < allDanmakus.size(); i++) {
+			var e = allDanmakus.get(i);
+			if (erased < limit && frustum.contains(e.position())) {
 				if (player == null) e.markErased(true);
 				else e.erase(player);
 				erased++;
+			} else {
+				allDanmakus.set(w++, e);
 			}
+		}
+		if (erased > 0) {
+			allDanmakus.subList(w, allDanmakus.size()).clear();
+			DanmakuManager.flushErases();
 		}
 	}
 

@@ -39,9 +39,15 @@ public class GrazeHelper {
 	public static void addSession(Player player, LivingEntity target) {
 		if (player.level().isClientSide()) return;
 		var cap = GrazeCapability.HOLDER.get(player);
-		if (!(target instanceof YoukaiEntity e)) return;
-		if (e.targets.contains(player)) return;
-		cap.initSession(e);
+		if (target instanceof YoukaiEntity e) {
+			if (e.targets.contains(player)) return;
+			cap.initSession(e);
+			return;
+		}
+		if (target instanceof Player opponent) {
+			cap.addPlayerOpponent(opponent);
+			GrazeCapability.HOLDER.get(opponent).addPlayerOpponent(player);
+		}
 	}
 
 	public static boolean forbidDanmaku(Player player) {

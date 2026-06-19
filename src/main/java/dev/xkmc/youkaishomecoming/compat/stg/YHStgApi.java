@@ -140,7 +140,17 @@ public final class YHStgApi {
 	}
 
 	public static boolean isInDanmakuSession(ServerPlayer player) {
-		return cap(player).isInSession();
+		return cap(player).isInDanmakuCombat();
+	}
+
+	public static boolean isForcedDanmakuCombat(ServerPlayer player) {
+		return cap(player).isForcedDanmakuCombat();
+	}
+
+	public static void setDanmakuCombat(ServerPlayer player, boolean enabled) {
+		var cap = cap(player);
+		cap.setForcedDanmakuCombat(enabled);
+		cap.sync();
 	}
 
 	public static boolean isWeak(ServerPlayer player) {

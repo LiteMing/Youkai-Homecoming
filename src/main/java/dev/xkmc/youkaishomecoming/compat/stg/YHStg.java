@@ -135,6 +135,14 @@ public final class YHStg {
 		return YHStgApi.isInDanmakuSession(requirePlayer(player));
 	}
 
+	public static boolean isForcedDanmakuCombat(Object player) {
+		return YHStgApi.isForcedDanmakuCombat(requirePlayer(player));
+	}
+
+	public static void setDanmakuCombat(Object player, boolean enabled) {
+		YHStgApi.setDanmakuCombat(requirePlayer(player), enabled);
+	}
+
 	private static ServerPlayer requirePlayer(Object value) {
 		ServerPlayer player = resolvePlayer(value, 0);
 		if (player == null) {

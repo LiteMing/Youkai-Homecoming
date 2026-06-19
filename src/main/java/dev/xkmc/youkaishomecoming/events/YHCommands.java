@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.events;
 
 import com.mojang.brigadier.arguments.ArgumentType;
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -166,6 +167,17 @@ public class YHCommands {
 											"Manual Bomb used by " + player.getName().getString()), true);
 									return 1;
 								})))
+				.then(literal("combat")
+						.then(argument("player", EntityArgument.player())
+								.then(argument("enabled", BoolArgumentType.bool())
+										.executes(ctx -> {
+											ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
+											boolean enabled = BoolArgumentType.getBool(ctx, "enabled");
+											YHStgApi.setDanmakuCombat(player, enabled);
+											ctx.getSource().sendSuccess(() -> Component.literal(
+													"Set STG combat for " + player.getName().getString() + " to " + enabled), true);
+											return 1;
+										}))))
 				.then(literal("erase")
 						.then(argument("player", EntityArgument.player())
 								.then(argument("radius", DoubleArgumentType.doubleArg(0))

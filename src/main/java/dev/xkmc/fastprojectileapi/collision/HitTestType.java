@@ -1,6 +1,6 @@
 package dev.xkmc.fastprojectileapi.collision;
 
-import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -28,8 +28,8 @@ public enum HitTestType {
 			if (owner.isAlliedTo(target)) {
 				return false;
 			}
-			if (owner instanceof IYHDanmaku danmaku) {
-				return danmaku.shouldHurt(owner, target);
+			if (owner instanceof YoukaiEntity youkai && target instanceof LivingEntity livingTarget) {
+				return youkai.shouldHurt(livingTarget);
 			}
 			return true;
 		}

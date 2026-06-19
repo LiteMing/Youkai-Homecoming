@@ -34,6 +34,10 @@ public class TrailCardHolder implements CardHolder {
 		this.direction = direction.lengthSqr() > 1e-8 ? direction.normalize() : new Vec3(0, 0, 1);
 	}
 
+	public CardHolder delegate() {
+		return delegate;
+	}
+
 	@Override
 	public Vec3 center() {
 		return position;

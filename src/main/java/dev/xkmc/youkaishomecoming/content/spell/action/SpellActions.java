@@ -26,6 +26,7 @@ public class SpellActions {
 		register("set_variable", SetVariable.CODEC, SetVariable.class);
 		register("add_variable", AddVariable.CODEC, AddVariable.class);
 		register("clear_screen", ClearScreen.CODEC, ClearScreen.class);
+		register("erase_enemy_danmaku", EraseEnemyDanmakuAction.CODEC, EraseEnemyDanmakuAction.class);
 		register("force_phase", ForcePhase.CODEC, ForcePhase.class);
 		register("force_spell", ForceSpell.CODEC, ForceSpell.class);
 		register("fire_spell", FireSpell.CODEC, FireSpell.class);

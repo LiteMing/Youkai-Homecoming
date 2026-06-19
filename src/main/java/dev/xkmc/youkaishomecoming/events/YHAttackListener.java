@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.animal.WaterAnimal;
 import net.minecraft.world.entity.player.Player;
@@ -37,6 +38,19 @@ public class YHAttackListener implements AttackListener {
 		var event = cache.getLivingHurtEvent();
 		assert event != null;
 		var source = event.getSource();
+		if (source.is(YHDamageTypes.DANMAKU_TYPE) &&
+				cache.getAttackTarget() instanceof Player target &&
+				source.getEntity() instanceof LivingEntity attacker &&
+				attacker != target) {
+			var targetGraze = GrazeCapability.HOLDER.get(target);
+			if (targetGraze.shouldAbsorbDanmakuFrom(attacker)) {
+				var type = targetGraze.performDanmakuHit(attacker);
+				if (type.skipDamage()) {
+					event.setCanceled(true);
+					return;
+				}
+			}
+		}
 		if (source.is(YHDamageTypes.DANMAKU_TYPE) && source.getEntity() instanceof Player player) {
 			var graze = GrazeCapability.HOLDER.get(player);
 			if (!graze.shouldHurt(cache.getAttackTarget())) {

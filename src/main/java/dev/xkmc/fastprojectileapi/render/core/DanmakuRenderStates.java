@@ -20,22 +20,22 @@ public abstract class DanmakuRenderStates extends RenderType {
 
 	protected static final ShaderStateShard DANMAKU_SHADER = new ShaderStateShard(GameRenderer::getPositionTexColorShader);
 
-	private static RenderType create(String name, ResourceLocation tex, boolean cull, DisplayType type, boolean noDepthWrite) {
+	private static RenderType create(String name, ResourceLocation tex, boolean cull, DisplayType type, boolean noDepthWrite, boolean isLaserShell) {
 		// sortOnUpload=false: skip per-frame quad distance sorting for danmaku.
 		// Sorting 30,000 quads costs ~9% frame time (putSortedQuadIndices).
 		// Danmaku are small particles where depth sort order is visually negligible.
 		//
-		// Laser inner-core strategy:
-		// - noDepthWrite=true: don't write depth (avoid z-fighting with shell)
-		// - LEQUAL_DEPTH_TEST: normal depth test (occluded by solid blocks)
-		// - Oculus DECAL bucket: render after GENERAL_TRANSPARENT shell
+		// Laser rendering strategy (Oculus compatibility):
+		// - Both shell and core: don't write depth (COLOR_WRITE)
+		// - Both shell and core: normal depth test (LEQUAL_DEPTH_TEST)
+		// - Core in DECAL bucket: render after shell
 		//
-		// Key insight: The shell and core are at the SAME geometric position.
-		// With depth test enabled, the core can only render where depth <= shell depth.
-		// Since they're colocated and shell writes depth first, LEQUAL allows the
-		// core to pass at exactly the shell's depth value, rendering "inside" the shell.
-		// Solid blocks (with smaller depth values) will still occlude both shell and core.
+		// This allows the core to render "inside" the shell (no depth conflict)
+		// while both are properly occluded by solid blocks that wrote depth earlier.
+		// The shell/core lose depth ordering with other transparent objects, but
+		// this is acceptable for the laser visual effect.
 		boolean opaque = type == DisplayType.SOLID;
+		boolean noDepthWriteForLaser = isLaserShell || noDepthWrite; // shell or core
 		return create(name,
 				DefaultVertexFormat.POSITION_TEX_COLOR,
 				VertexFormat.Mode.QUADS,
@@ -48,24 +48,24 @@ public abstract class DanmakuRenderStates extends RenderType {
 							case TRANSPARENT -> TRANSLUCENT_TRANSPARENCY;
 							case ADDITIVE -> ADDITIVE_TRANSPARENCY;
 						})
-						.setWriteMaskState((opaque || !noDepthWrite) ? COLOR_DEPTH_WRITE : COLOR_WRITE)
+						.setWriteMaskState((opaque || !noDepthWriteForLaser) ? COLOR_DEPTH_WRITE : COLOR_WRITE)
 						.setDepthTestState(LEQUAL_DEPTH_TEST)
 						.setCullState(cull ? CULL : NO_CULL)
 						.createCompositeState(false));
 	}
 
 	private static final BiFunction<ResourceLocation, DisplayType, RenderType> DANMAKU =
-			Util.memoize((rl, type) -> create("danmaku_" + type.getName(), rl, false, type, false));
+			Util.memoize((rl, type) -> create("danmaku_" + type.getName(), rl, false, type, false, false));
 	private static final BiFunction<ResourceLocation, DisplayType, RenderType> LASER =
-			Util.memoize((rl, type) -> create("laser_" + type.getName(), rl, true, type, false));
+			Util.memoize((rl, type) -> create("laser_" + type.getName(), rl, true, type, false, true));
 	// Laser inner-core uses a separate RenderType so it can be routed into Oculus's DECAL
 	// bucket — drawn AFTER the GENERAL_TRANSPARENT shell, so the translucent shell never
 	// hides the core under Oculus's batched-entity-rendering pipeline. Vanilla just sees
 	// two RenderTypes flushed in submission order, which is also correct.
-	// Additionally, uses COLOR_WRITE (no depth write) to avoid shell/core z-fighting.
+	// Both shell and core don't write depth to allow the core to render through the shell.
 	private static final BiFunction<ResourceLocation, DisplayType, RenderType> LASER_CORE =
 			Util.memoize((rl, type) -> {
-				RenderType rt = create("laser_core_" + type.getName(), rl, true, type, true);
+				RenderType rt = create("laser_core_" + type.getName(), rl, true, type, true, false);
 				OculusRenderCompat.markAsDecal(rt);
 				return rt;
 			});

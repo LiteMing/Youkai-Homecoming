@@ -107,6 +107,13 @@ repositories {
         dirs 'libs'
     }
     mavenCentral()
+    maven {
+        name = "JitPack"
+        url = "https://jitpack.io"
+        content {
+            includeGroup "com.github.TartaricAlkaline"
+        }
+    }
     maven { // Registrate
         url "https://maven.tterrag.com/"
     }
@@ -191,6 +198,18 @@ dependencies {
     runtimeOnly fg.deobf("curse.maven:spark-361579:4738952")
     runtimeOnly fg.deobf("curse.maven:ftb-library-forge-404465:6164053")
     runtimeOnly fg.deobf("curse.maven:architectury-api-419699:5137938")
+    def openYsmCompatJar = findProperty("openysm_compat_jar")
+    if (openYsmCompatJar) {
+        def openYsmCompatFile = file(openYsmCompatJar)
+        if (openYsmCompatFile.exists()) {
+            runtimeOnly files(openYsmCompatFile)
+            minecraftLibrary("com.github.TartaricAlkaline:ImageStream:-SNAPSHOT") {
+                transitive = false
+            }
+        } else {
+            logger.lifecycle("OpenYSM compat jar not found: ${openYsmCompatFile}")
+        }
+    }
     implementation fg.deobf("curse.maven:time-stop-clock-mod-690991:4733372")
     implementation fg.deobf("curse.maven:yacl-667299:5963252")
     implementation fg.deobf("curse.maven:embeddium-908741:5681725")

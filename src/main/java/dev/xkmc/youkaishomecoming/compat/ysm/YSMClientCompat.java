@@ -8,6 +8,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import dev.xkmc.youkaishomecoming.compat.ysm.YSMCompatConfig.RenderBinding;
 import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder;
@@ -46,7 +47,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.stream.Stream;
 
 @Mod.EventBusSubscriber(value = Dist.CLIENT, modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class YSMClientCompat {
@@ -58,10 +58,6 @@ public class YSMClientCompat {
 	private static final ArgumentType<String> YSM_ID_ARGUMENT = new TokenArgument("Expected YSM id", List.of("yh/remilia", "yh/flandre", "namespace:path/model"));
 	private static final ArgumentType<String> ENTITY_TARGET_ARGUMENT = new TokenArgument("Expected entity target", List.of("@e[limit=1,sort=nearest]", "@a", "00000000-0000-0000-0000-000000000000"));
 	private static final boolean LOADED = ModList.get().isLoaded(MOD_ID);
-	private static final ResourceLocation REMILIA_ENTITY = YoukaisHomecoming.loc("remilia_scarlet");
-	private static final Map<ResourceLocation, RenderBinding> DEFAULT_BINDINGS = Map.of(
-			REMILIA_ENTITY, RenderBinding.enabled(MODEL_REMILIA, TEXTURE_DEFAULT)
-	);
 	private static final Map<ResourceLocation, RenderBinding> TYPE_DEBUG_OVERRIDES = new LinkedHashMap<>();
 	private static final Map<UUID, RenderBinding> ENTITY_DEBUG_OVERRIDES = new LinkedHashMap<>();
 	private static final int DEBUG_TEXT_COLOR = 0xffffffff;
@@ -79,11 +75,7 @@ public class YSMClientCompat {
 		if (pointed != null) {
 			builder.suggest(pointed.getUUID().toString(), Component.literal("pointed entity"));
 		}
-		return SharedSuggestionProvider.suggest(Stream.of(
-				"@e[limit=1,sort=nearest]",
-				"@e[type=youkaishomecoming:remilia_scarlet,limit=1,sort=nearest]",
-				"@a[limit=1,sort=nearest]"
-		), builder);
+		return builder.buildFuture();
 	};
 
 	private static Method renderMethod;
@@ -101,12 +93,18 @@ public class YSMClientCompat {
 	private static boolean defaultTextureUnavailable;
 	private static boolean debugOverlay;
 	private static UUID debugTarget;
+	private static final long CATALOG_CACHE_NANOS = 500_000_000L;
+	private static long loadedModelIdsCacheAt;
+	private static List<String> loadedModelIdsCache = List.of();
+	private static final Map<String, CachedList> textureNameCache = new LinkedHashMap<>();
+	private static final Map<String, CachedList> animationNameCache = new LinkedHashMap<>();
+	private static final Map<String, CachedString> defaultTextureCache = new LinkedHashMap<>();
 
 	public static boolean isLoaded() {
 		return LOADED;
 	}
 
-	public static boolean delegateRender(GeneralYoukaiEntity e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
+	public static boolean delegateRender(LivingEntity e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
 		RenderRequest request = resolveRenderRequest(e);
 		if (!LOADED || unavailable || request == null) {
 			return false;
@@ -358,9 +356,15 @@ public class YSMClientCompat {
 	}
 
 	public static List<String> loadedModelIds() {
+		long now = System.nanoTime();
+		if (isCacheFresh(loadedModelIdsCacheAt, now)) {
+			return new ArrayList<>(loadedModelIdsCache);
+		}
 		List<String> result = new ArrayList<>(List.of(MODEL_REMILIA, MODEL_FLANDRE));
 		Method method = getLoadedModelIdsMethod();
 		if (method == null) {
+			loadedModelIdsCache = List.copyOf(result);
+			loadedModelIdsCacheAt = now;
 			return result;
 		}
 		try {
@@ -376,23 +380,25 @@ public class YSMClientCompat {
 		} catch (IllegalAccessException | InvocationTargetException ex) {
 			YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model loaded model ids", ex);
 		}
+		loadedModelIdsCache = List.copyOf(result);
+		loadedModelIdsCacheAt = now;
 		return result;
 	}
 
-	private static RenderBinding resolveBinding(GeneralYoukaiEntity e) {
+	private static RenderBinding resolveBinding(LivingEntity e) {
 		BindingResolution resolution = resolveBindingWithSource(e);
 		RenderBinding binding = resolution.binding();
 		return binding != null && binding.enabled() ? binding : null;
 	}
 
-	private static RenderRequest resolveRenderRequest(GeneralYoukaiEntity e) {
+	private static RenderRequest resolveRenderRequest(LivingEntity e) {
 		BindingResolution resolution = resolveBindingWithSource(e);
 		RenderBinding binding = resolution.binding();
 		if (binding != null && !binding.enabled()) {
 			return null;
 		}
-		String modelOverride = e.getYsmModelOverride();
-		String textureOverride = e.getYsmTextureOverride();
+		String modelOverride = e instanceof YsmRenderOverrideTarget target ? target.getYsmModelOverride() : "";
+		String textureOverride = e instanceof YsmRenderOverrideTarget target ? target.getYsmTextureOverride() : "";
 		String modelId = !modelOverride.isBlank() ? modelOverride : binding == null ? "" : binding.modelId();
 		if (modelId.isBlank()) {
 			return null;
@@ -403,7 +409,7 @@ public class YSMClientCompat {
 		return new RenderRequest(modelId, textureName, selectAnimation(e, modelId));
 	}
 
-	private static BindingResolution resolveBindingWithSource(GeneralYoukaiEntity e) {
+	private static BindingResolution resolveBindingWithSource(LivingEntity e) {
 		RenderBinding entityOverride = ENTITY_DEBUG_OVERRIDES.get(e.getUUID());
 		if (entityOverride != null) {
 			return new BindingResolution(entityOverride, "entity override");
@@ -416,16 +422,23 @@ public class YSMClientCompat {
 		if (override != null) {
 			return new BindingResolution(override, "type override");
 		}
-		RenderBinding binding = DEFAULT_BINDINGS.get(entityId);
+		RenderBinding binding = YSMCompatConfig.defaultBinding(entityId);
 		return new BindingResolution(binding, binding == null ? "none" : "default");
 	}
 
-	private static String selectAnimation(GeneralYoukaiEntity e, String modelId) {
+	private static String selectAnimation(LivingEntity e, String modelId) {
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
-		boolean flying = e.isFlying() || e.isNoGravity() || e instanceof BossYoukaiEntity && e.isAggressive();
+		boolean flying = e.isNoGravity();
+		if (e instanceof GeneralYoukaiEntity youkai) {
+			flying |= youkai.isFlying();
+			if (youkai instanceof BossYoukaiEntity && youkai.isAggressive()) {
+				flying = true;
+			}
+		}
 		boolean angry = isAngryExpression(e);
-		String actionHint = actionAnimationHint(modelId, e.getYsmAnimationOverride());
+		String overrideHint = e instanceof YsmRenderOverrideTarget target ? target.getYsmAnimationOverride() : "";
+		String actionHint = actionAnimationHint(modelId, overrideHint);
 		List<String> hints = new ArrayList<>(3);
 		if (flying) {
 			hints.add("fly");
@@ -436,7 +449,7 @@ public class YSMClientCompat {
 				hints.add("calm");
 			}
 		}
-		if (angry && !overridesPassiveExpression(e.getYsmAnimationOverride())) {
+		if (angry && !overridesPassiveExpression(overrideHint)) {
 			hints.add(YSMCompatConfig.expressionToken(modelId, "angry"));
 		}
 		if (!actionHint.isBlank()) {
@@ -494,6 +507,12 @@ public class YSMClientCompat {
 	}
 
 	public static List<String> loadedTextureNames(String modelId) {
+		String cacheKey = modelId == null ? "" : modelId;
+		long now = System.nanoTime();
+		CachedList cached = textureNameCache.get(cacheKey);
+		if (cached != null && isCacheFresh(cached.loadedAt(), now)) {
+			return new ArrayList<>(cached.values());
+		}
 		List<String> result = new ArrayList<>();
 		if (modelId == null || modelId.isBlank()) {
 			for (String id : loadedModelIds()) {
@@ -502,6 +521,7 @@ public class YSMClientCompat {
 			if (result.isEmpty()) {
 				result.add(TEXTURE_DEFAULT);
 			}
+			textureNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
 			return result;
 		}
 		String defaultTexture = defaultTextureName(modelId);
@@ -519,15 +539,23 @@ public class YSMClientCompat {
 		if (!result.contains(TEXTURE_DEFAULT)) {
 			result.add(TEXTURE_DEFAULT);
 		}
+		textureNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
 		return result;
 	}
 
 	public static List<String> loadedAnimationNames(String modelId) {
+		String cacheKey = modelId == null ? "" : modelId;
+		long now = System.nanoTime();
+		CachedList cached = animationNameCache.get(cacheKey);
+		if (cached != null && isCacheFresh(cached.loadedAt(), now)) {
+			return new ArrayList<>(cached.values());
+		}
 		List<String> result = new ArrayList<>(List.of("special", "cast", "charge", "angry", "fly", "walk", "calm"));
 		if (modelId == null || modelId.isBlank()) {
 			for (String id : loadedModelIds()) {
 				addAllUnique(result, loadedAnimationNames(id));
 			}
+			animationNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
 			return result;
 		}
 		Method method = getModelAnimationNamesMethod();
@@ -538,12 +566,18 @@ public class YSMClientCompat {
 				YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model animation ids for {}", modelId, ex);
 			}
 		}
+		animationNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
 		return result;
 	}
 
 	public static String defaultTextureName(String modelId) {
 		if (modelId == null || modelId.isBlank()) {
 			return TEXTURE_DEFAULT;
+		}
+		long now = System.nanoTime();
+		CachedString cached = defaultTextureCache.get(modelId);
+		if (cached != null && isCacheFresh(cached.loadedAt(), now)) {
+			return cached.value();
 		}
 		Method method = getModelDefaultTextureNameMethod();
 		if (method == null) {
@@ -552,11 +586,17 @@ public class YSMClientCompat {
 		try {
 			Object value = method.invoke(null, modelId);
 			String name = String.valueOf(value);
-			return name.isBlank() || "null".equals(name) ? TEXTURE_DEFAULT : name;
+			name = name.isBlank() || "null".equals(name) ? TEXTURE_DEFAULT : name;
+			defaultTextureCache.put(modelId, new CachedString(name, now));
+			return name;
 		} catch (IllegalAccessException | InvocationTargetException ex) {
 			YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model default texture for {}", modelId, ex);
 			return TEXTURE_DEFAULT;
 		}
+	}
+
+	private static boolean isCacheFresh(long loadedAt, long now) {
+		return loadedAt > 0 && now - loadedAt < CATALOG_CACHE_NANOS;
 	}
 
 	private static void addIterableUnique(List<String> result, Object value) {
@@ -661,7 +701,7 @@ public class YSMClientCompat {
 		CommandSourceStack source = ctx.getSource();
 		source.sendSystemMessage(Component.literal("[YH/YSM] Yes Steve Model loaded: " + LOADED));
 		source.sendSystemMessage(Component.literal("[YH/YSM] Default mappings:"));
-		DEFAULT_BINDINGS.forEach((entityId, binding) -> source.sendSystemMessage(Component.literal(formatStatusLine(entityId, binding))));
+		YSMCompatConfig.defaultBindings().forEach((entityId, binding) -> source.sendSystemMessage(Component.literal(formatStatusLine(entityId, binding))));
 		if (TYPE_DEBUG_OVERRIDES.isEmpty()) {
 			source.sendSystemMessage(Component.literal("[YH/YSM] Type overrides: none"));
 		} else {
@@ -784,6 +824,16 @@ public class YSMClientCompat {
 			lines.add(new DebugLine("yh.flags", formatYoukaiFlags(youkai)));
 			lines.add(new DebugLine("yh.motion", formatMotion(youkai.getDeltaMovement())));
 			lines.add(new DebugLine("yh.target", youkai.getTarget() == null ? "none" : entityDebugName(youkai.getTarget())));
+		} else if (entity instanceof LivingEntity living) {
+			BindingResolution resolution = resolveBindingWithSource(living);
+			RenderBinding binding = resolution.binding();
+			RenderRequest request = resolveRenderRequest(living);
+			lines.add(new DebugLine("binding", formatBinding(resolution.source(), binding)));
+			lines.add(new DebugLine("yh.render", request == null ? "none" : request.modelId() + " / " + request.textureName()));
+			lines.add(new DebugLine("yh.hint", request == null ? "null" : String.valueOf(request.animationHint())));
+			if (living instanceof YsmRenderOverrideTarget target) {
+				lines.add(new DebugLine("yh.spellYsm", target.describeYsmRenderOverride()));
+			}
 		}
 		if (entity instanceof LivingEntity living) {
 			lines.addAll(collectYsmDebugLines(living));
@@ -812,10 +862,13 @@ public class YSMClientCompat {
 		return source + " -> " + binding.modelId() + " / " + binding.textureName();
 	}
 
-	private static boolean isAngryExpression(GeneralYoukaiEntity entity) {
-		return entity.isAggressive() ||
-				entity.getTarget() != null ||
-				entity instanceof BossYoukaiEntity boss && boss.isChaotic();
+	private static boolean isAngryExpression(LivingEntity entity) {
+		if (entity instanceof GeneralYoukaiEntity youkai) {
+			return youkai.isAggressive() ||
+					youkai.getTarget() != null ||
+					youkai instanceof BossYoukaiEntity boss && boss.isChaotic();
+		}
+		return entity.hurtTime > 0;
 	}
 
 	private static String formatYoukaiFlags(GeneralYoukaiEntity entity) {
@@ -1151,17 +1204,6 @@ public class YSMClientCompat {
 		}
 	}
 
-	private record RenderBinding(String modelId, String textureName, boolean enabled) {
-
-		private static RenderBinding enabled(String modelId, String textureName) {
-			return new RenderBinding(modelId, textureName, true);
-		}
-
-		private static RenderBinding disabled() {
-			return new RenderBinding("", "", false);
-		}
-	}
-
 	private record BindingResolution(RenderBinding binding, String source) {
 	}
 
@@ -1169,5 +1211,11 @@ public class YSMClientCompat {
 	}
 
 	private record DebugLine(String label, String value) {
+	}
+
+	private record CachedList(List<String> values, long loadedAt) {
+	}
+
+	private record CachedString(String value, long loadedAt) {
 	}
 }

@@ -159,6 +159,9 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 	}
 
 	private boolean isYsmFieldExpired(EntityDataAccessor<Integer> untilField) {
+		if (level().isClientSide()) {
+			return false;
+		}
 		int until = entityData.get(untilField);
 		return until > 0 && tickCount >= until;
 	}
@@ -177,10 +180,16 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 			return "(keep)";
 		}
 		int until = entityData.get(untilField);
+		if (level().isClientSide()) {
+			return until > 0 ? value + " (timed)" : value;
+		}
 		return until > 0 && tickCount < until ? value + " (" + (until - tickCount) + "t)" : value;
 	}
 
 	private int mergeYsmRemaining(int current, int until) {
+		if (level().isClientSide()) {
+			return current;
+		}
 		if (until <= tickCount) {
 			return current;
 		}

@@ -32,6 +32,8 @@ import dev.xkmc.youkaishomecoming.content.pot.table.food.YHSushi;
 import dev.xkmc.youkaishomecoming.content.pot.table.item.TableItemManager;
 import dev.xkmc.youkaishomecoming.content.spell.custom.screen.SpellSetToServer;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
+import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorSyncToServer;
+import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
 import dev.xkmc.youkaishomecoming.events.YHAttackListener;
 import dev.xkmc.youkaishomecoming.init.data.*;
 import dev.xkmc.youkaishomecoming.init.food.InitializationMarker;
@@ -88,6 +90,7 @@ public class YoukaisHomecoming {
 			e -> e.create(FrogSyncPacket.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(KoishiStartPacket.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellSetToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(SpellEditorSyncToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(CombatToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(GrazeHelper.GrazeToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(DanmakuToClientPacket.class, NetworkDirection.PLAY_TO_CLIENT),
@@ -95,6 +98,7 @@ public class YoukaisHomecoming {
 		e -> e.create(BatchEraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellStateToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(PvpDanmakuStatusToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(OpenSpellPreviewToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",

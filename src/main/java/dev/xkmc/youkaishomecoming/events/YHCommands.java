@@ -21,6 +21,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeAccess;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
+import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.commands.CommandSourceStack;
@@ -357,23 +358,13 @@ public class YHCommands {
 										ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
 										return 0;
 									}
-									if (FMLEnvironment.dist.isClient()) {
-										net.minecraft.client.Minecraft.getInstance().execute(() -> {
-											net.minecraft.client.Minecraft.getInstance().setScreen(
-													new dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen(def));
-										});
-									}
+									openSpellPreview(ctx.getSource(), def);
 									ctx.getSource().sendSuccess(() -> Component.literal("Opening preview for " + spellId), false);
 									return 1;
 								})))
 				.then(literal("editor")
 						.executes(ctx -> {
-							if (FMLEnvironment.dist.isClient()) {
-								net.minecraft.client.Minecraft.getInstance().execute(() -> {
-									net.minecraft.client.Minecraft.getInstance().setScreen(
-											dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen.createDraftEditor());
-								});
-							}
+							openDraftSpellEditor(ctx.getSource());
 							ctx.getSource().sendSuccess(() -> Component.literal("Opening spell editor"), false);
 							return 1;
 						}))
@@ -525,13 +516,7 @@ public class YHCommands {
 									CustomSpellStorage.saveSpell(ctx.getSource().getServer(), def);
 									ctx.getSource().sendSuccess(
 											() -> Component.literal("Created new spell: " + spellId + " (use /yhspell preview to edit)"), true);
-									if (FMLEnvironment.dist.isClient()) {
-										net.minecraft.client.Minecraft.getInstance().execute(() -> {
-											net.minecraft.client.Minecraft.getInstance().setScreen(
-													new dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen(
-															SpellRegistry.get(spellId)));
-										});
-									}
+									openSpellPreview(ctx.getSource(), def);
 									return 1;
 								})))
 				.then(literal("proxy")
@@ -679,6 +664,16 @@ public class YHCommands {
 
 	private static String formatDuration(int duration) {
 		return duration < 0 ? " until natural end" : " for " + duration + "t";
+	}
+
+	private static void openDraftSpellEditor(CommandSourceStack source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.draftEditor(), player);
+	}
+
+	private static void openSpellPreview(CommandSourceStack source, SpellDefinition definition) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.preview(definition), player);
 	}
 
 	private static int setStgResource(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, boolean add) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

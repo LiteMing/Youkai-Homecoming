@@ -1,6 +1,5 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
-import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.GroupRotation;
@@ -9,7 +8,6 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
-import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -554,49 +552,15 @@ public class SpellPreviewScreen extends Screen {
 
 	/**
 	 * Re-apply the edited spell definition to all entities currently using it.
-	 * Works in singleplayer by directly accessing the integrated server.
-	 * Matches both new SpellRuntime entities and legacy SpellCardWrapper entities.
+	 * Sends the full edited definition to the server before reapplying it.
 	 */
 	private void applyToEntities() {
 		if (isDraftMode()) {
 			return;
 		}
-		var mc = Minecraft.getInstance();
-		saveCurrentDefinition();
-		var server = mc.getSingleplayerServer();
-		if (server != null) {
-			ResourceLocation spellId = definition.id;
-			String spellIdStr = spellId.toString();
-			server.execute(() -> {
-				int count = 0;
-				for (var level : server.getAllLevels()) {
-					for (var entity : level.getAllEntities()) {
-						if (!(entity instanceof YoukaiEntity youkai)) continue;
-						boolean match = false;
-						if (youkai.spellRuntime != null
-								&& youkai.spellRuntime.getDefinition().id.equals(spellId)) {
-							match = true;
-						} else if (youkai.spellCard != null
-								&& spellIdStr.equals(youkai.spellCard.modelId)) {
-							match = true;
-						}
-						if (match) {
-							youkai.setSpellRuntime(new SpellRuntime(definition));
-							count++;
-						}
-					}
-				}
-				int finalCount = count;
-				mc.execute(() -> {
-					if (mc.player != null) {
-						mc.player.displayClientMessage(
-								Component.literal("[YH] Applied & saved spell to " + finalCount + " entities"), true);
-					}
-				});
-			});
-		} else if (mc.player != null) {
-			mc.player.connection.sendCommand("yhspell reapply " + definition.id);
-		}
+		syncCustomNamesToDefinition();
+		SpellRegistry.register(definition);
+		SpellEditorNetworkClient.saveAndReapply(definition);
 	}
 
 	/**

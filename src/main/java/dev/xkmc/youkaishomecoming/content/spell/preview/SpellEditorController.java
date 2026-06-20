@@ -5,7 +5,6 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile;
-import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -150,10 +149,7 @@ public class SpellEditorController {
 		}
 		SpellDefinition created = createEmptySpellDefinition(spellId);
 		SpellRegistry.register(created);
-		var server = Minecraft.getInstance().getSingleplayerServer();
-		if (server != null) {
-			server.execute(() -> CustomSpellStorage.saveSpell(server, created));
-		}
+		SpellEditorNetworkClient.save(created);
 		skipSaveOnNextDefinitionSwitch = true;
 		scene.pause();
 		scene.switchSpellDefinition(created, true);
@@ -167,10 +163,7 @@ public class SpellEditorController {
 		}
 		openSnapshots.remove(spellId);
 		SpellRegistry.remove(spellId);
-		var server = Minecraft.getInstance().getSingleplayerServer();
-		if (server != null) {
-			server.execute(() -> CustomSpellStorage.deleteSpell(server, spellId));
-		}
+		SpellEditorNetworkClient.delete(spellId);
 		skipSaveOnNextDefinitionSwitch = true;
 		draftMode = true;
 		scene.pause();
@@ -185,10 +178,7 @@ public class SpellEditorController {
 			return;
 		}
 		SpellRegistry.register(definition);
-		var server = Minecraft.getInstance().getSingleplayerServer();
-		if (server != null) {
-			server.execute(() -> CustomSpellStorage.saveSpell(server, definition));
-		}
+		SpellEditorNetworkClient.save(definition);
 	}
 
 	public void resetToDefault() {

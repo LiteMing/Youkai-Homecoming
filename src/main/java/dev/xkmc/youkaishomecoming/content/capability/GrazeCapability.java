@@ -8,6 +8,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.events.DanmakuLastHitEvent;
@@ -485,6 +486,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			if (!shouldEraseProxyHost(proxy)) continue;
 			erased += proxy.eraseDanmakuInRadius(center, radius, player);
 		}
+		for (var proxy : sl.getEntitiesOfClass(EntitySpellProxyEntity.class, area)) {
+			if (!erasedProxy.add(proxy.getUUID())) continue;
+			if (!shouldEraseEntityProxyHost(proxy)) continue;
+			erased += proxy.eraseDanmakuInRadius(center, radius, player);
+		}
 		return erased;
 	}
 
@@ -503,6 +509,23 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 					EffectEventHandlers.isFullCharacter(player);
 		}
 		return true;
+	}
+
+	private boolean shouldEraseEntityProxyHost(EntitySpellProxyEntity proxy) {
+		if (proxy.isOwnedBy(player)) return false;
+		LivingEntity owner = proxy.owner();
+		if (owner == null) return false;
+		if (owner.isAlliedTo(player)) return false;
+		if (owner instanceof Player target) {
+			return forcedDanmakuCombat || playerOpponents.contains(target.getUUID()) ||
+					EffectEventHandlers.isFullCharacter(player);
+		}
+		if (owner instanceof YoukaiEntity youkai) {
+			return sessions.containsKey(youkai.getUUID()) || youkai.targets.contains(player);
+		}
+		if (proxy.targetEntity() == player) return true;
+		return forcedDanmakuCombat || owner instanceof Mob mob && mob.getTarget() == player ||
+				EffectEventHandlers.isFullCharacter(player);
 	}
 
 	private static AABB hostSearchArea(Vec3 center, double radius) {

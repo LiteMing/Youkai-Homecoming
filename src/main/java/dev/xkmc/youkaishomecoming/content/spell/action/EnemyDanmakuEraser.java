@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
@@ -97,6 +98,12 @@ final class EnemyDanmakuEraser {
 										AABB hostArea, Set<UUID> erasedHosts) {
 		int erased = 0;
 		for (var proxy : sl.getEntitiesOfClass(DanmakuProxyEntity.class, hostArea)) {
+			if (!erasedHosts.add(proxy.getUUID())) continue;
+			LivingEntity proxyOwner = proxy.owner();
+			if (proxyOwner == owner || proxyOwner != null && proxyOwner.isAlliedTo(owner)) continue;
+			erased += proxy.eraseDanmakuInRadius(center, radius, owner instanceof Player player ? player : null);
+		}
+		for (var proxy : sl.getEntitiesOfClass(EntitySpellProxyEntity.class, hostArea)) {
 			if (!erasedHosts.add(proxy.getUUID())) continue;
 			LivingEntity proxyOwner = proxy.owner();
 			if (proxyOwner == owner || proxyOwner != null && proxyOwner.isAlliedTo(owner)) continue;

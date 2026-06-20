@@ -3,11 +3,8 @@ package dev.xkmc.youkaishomecoming.content.entity.youkai;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
-import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
-import dev.xkmc.fastprojectileapi.entity.AsyncProjectile;
-import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
-import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleHolder;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.VirtualDanmakuHolder;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.TagCodec;
 import dev.xkmc.l2serial.util.Wrappers;
@@ -61,7 +58,6 @@ import net.minecraftforge.common.ForgeHooks;
 import net.minecraftforge.common.MinecraftForge;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.Objects;
 
 @SerialClass
@@ -322,7 +318,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 				} else {
 					spellRuntime.reset();
 					eraseAllDanmaku(null);
-					toBeSent.clear();
+					danmakuHolder.clearSentQueue();
 				}
 			} else if (spellCard != null) {
 				if (getTarget() != null && shouldShowSpellCircle()) {
@@ -331,7 +327,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 				} else {
 					spellCard.reset();
 					eraseAllDanmaku(null);
-					toBeSent.clear();
+					danmakuHolder.clearSentQueue();
 				}
 			}
 		}
@@ -627,43 +623,16 @@ public abstract class YoukaiEntity extends PathfinderMob
 		}
 	}
 
-	private final ArrayList<AsyncProjectile> allDanmakus = new ArrayList<>();
-	private ArrayList<AsyncProjectile> temp;
-	private final ArrayList<SimplifiedProjectile> toBeSent = new ArrayList<>();
+	private final VirtualDanmakuHolder danmakuHolder = new VirtualDanmakuHolder();
 
 	public void shoot(Entity danmaku) {
-		if (danmaku instanceof AsyncProjectile proj) {
-			if (temp != null) temp.add(proj);
-			else allDanmakus.add(proj);
-			toBeSent.add(proj);
-		} else {
+		if (!danmakuHolder.shoot(danmaku)) {
 			SpellRuntimeHost.super.shoot(danmaku);
 		}
 	}
 
-	private boolean removeDanmaku = false;
-
 	private void tickDanmaku() {
-		if (!(level() instanceof ServerLevel sl)) return;
-		removeDanmaku = false;
-		temp = new ArrayList<>();
-		var preheatCache = cache.get(sl, self());
-		ParallelTicker.tickAll(allDanmakus, () -> removeDanmaku, preheatCache);
-		if (!removeDanmaku) {
-			int w = 0;
-			for (int i = 0; i < allDanmakus.size(); i++) {
-				var e = allDanmakus.get(i);
-				if ((e.isAddedToWorld() && !e.isRemoved()) || e.isValid()) {
-					allDanmakus.set(w++, e);
-				}
-			}
-			allDanmakus.subList(w, allDanmakus.size()).clear();
-			allDanmakus.addAll(temp);
-			DanmakuManager.send(this, toBeSent);
-		}
-		temp = null;
-		toBeSent.clear();
-		DanmakuManager.flushErases();
+		danmakuHolder.tickDanmaku(this, self());
 	}
 
 	public void eraseAllDanmaku(@Nullable Player player) {
@@ -671,80 +640,25 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	public int eraseAllDanmakuAndCount(@Nullable Player player) {
-		int erased = allDanmakus.size();
-		for (var e : allDanmakus) {
-			if (player == null) e.markErased(true);
-			else e.erase(player);
-		}
-		allDanmakus.clear();
-		removeDanmaku = true;
-		DanmakuManager.flushErases();
-		return erased;
+		return danmakuHolder.eraseAllDanmakuAndCount(this, player);
 	}
 
 	public int eraseDanmakuInRadius(Vec3 center, double radius, @Nullable Player player) {
-		double radiusSq = radius * radius;
-		int erased = 0;
-		int w = 0;
-		for (int i = 0; i < allDanmakus.size(); i++) {
-			var e = allDanmakus.get(i);
-			if (e.position().distanceToSqr(center) <= radiusSq) {
-				if (player == null) e.markErased(true);
-				else e.erase(player);
-				erased++;
-			} else {
-				allDanmakus.set(w++, e);
-			}
-		}
-		if (erased > 0) {
-			allDanmakus.subList(w, allDanmakus.size()).clear();
-			DanmakuManager.flushErases();
-		}
-		return erased;
+		return danmakuHolder.eraseDanmakuInRadius(this, center, radius, player);
 	}
 
-	/**
-	 * Count virtual danmaku in the frustum without erasing them.
-	 * Records types/colors into the result for NBT writing.
-	 */
 	public void countDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit, dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result) {
-		int counted = 0;
-		for (var e : allDanmakus) {
-			if (counted >= limit) break;
-			if (frustum.contains(e.position())) {
-				String[] info = dev.xkmc.youkaishomecoming.compat.exposure.ExposureCompat.getDanmakuTypeAndColor(e);
-				result.record(info[0], info[1]);
-				counted++;
-			}
-		}
+		danmakuHolder.countDanmakuInFrustum(frustum, limit, result);
 	}
 
-	/**
-	 * Erase virtual danmaku that fall within the given frustum.
-	 */
 	public void eraseDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, @Nullable Player player, int limit) {
-		int erased = 0;
-		int w = 0;
-		for (int i = 0; i < allDanmakus.size(); i++) {
-			var e = allDanmakus.get(i);
-			if (erased < limit && frustum.contains(e.position())) {
-				if (player == null) e.markErased(true);
-				else e.erase(player);
-				erased++;
-			} else {
-				allDanmakus.set(w++, e);
-			}
-		}
-		if (erased > 0) {
-			allDanmakus.subList(w, allDanmakus.size()).clear();
-			DanmakuManager.flushErases();
-		}
+		danmakuHolder.eraseDanmakuInFrustum(this, frustum, player, limit);
 	}
 
 	@Override
 	public void remove(RemovalReason reason) {
-		if (!allDanmakus.isEmpty()) {
-			eraseAllDanmaku(null);
+		if (!danmakuHolder.isEmpty()) {
+			danmakuHolder.cleanup(this);
 		}
 		super.remove(reason);
 	}

@@ -6,10 +6,9 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -19,35 +18,45 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
- * A lightweight invisible proxy entity that acts as a danmaku emitter on behalf of a player.
+ * A general-purpose spell proxy entity that can attach to any entity and drive a
+ * {@link SpellRuntime}, emitting virtual danmaku on behalf of that entity.
  * <p>
- * When a player uses a {@link dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem},
- * instead of adding each danmaku as a real world entity, a single DanmakuProxyEntity is spawned.
- * It follows the player's position and view angle, drives the SpellRuntime, and manages all
- * danmaku in a virtual list (identical to YoukaiEntity's virtualization infrastructure).
+ * Use cases:
+ * <ul>
+ *   <li>"Ender Dragon that casts spell cards" - attach to an EnderDragon</li>
+ *   <li>Spell trap blocks - spawn without a host at a fixed position</li>
+ *   <li>Any custom entity that needs danmaku abilities without implementing SpellRuntimeHost</li>
+ * </ul>
  * <p>
- * Danmaku are rendered on clients via {@link DanmakuManager#send} batch packets,
- * the same path used by boss youkai entities.
+ * Unlike {@link DanmakuProxyEntity} (which is player-bound), this proxy:
+ * <ul>
+ *   <li>Follows any entity's position (or stays fixed for block traps)</li>
+ *   <li>Sends danmaku packets to players tracking the <em>host</em> entity</li>
+ *   <li>Selects targets automatically (nearest hostile player) or from a fixed reference</li>
+ * </ul>
  */
-public class DanmakuProxyEntity extends PathfinderMob
+public class EntitySpellProxyEntity extends PathfinderMob
 		implements SpellRuntimeHost, EntityCachingUser {
 
 	// ==================== Virtual danmaku infrastructure ====================
 
 	private final VirtualDanmakuHolder danmakuHolder = new VirtualDanmakuHolder();
 
-	// ==================== Owner binding ====================
+	// ==================== Host binding ====================
 
 	@Nullable
-	private UUID ownerPlayerId;
+	private UUID hostId;
 	@Nullable
-	private ServerPlayer ownerPlayer;
+	private Entity hostEntity;
+	private boolean destroyWhenHostDies = true;
 
 	// ==================== Target tracking ====================
 
@@ -63,11 +72,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 	@Nullable
 	private SpellRuntime runtime;
 	private int spellTickCount = 0;
-	private int maxDuration;
+	private int maxDuration = -1;
 
 	// ==================== Constructor ====================
 
-	public DanmakuProxyEntity(EntityType<? extends DanmakuProxyEntity> type, Level level) {
+	public EntitySpellProxyEntity(EntityType<? extends EntitySpellProxyEntity> type, Level level) {
 		super(type, level);
 		this.setInvisible(true);
 		this.setSilent(true);
@@ -83,57 +92,100 @@ public class DanmakuProxyEntity extends PathfinderMob
 	// ==================== Initialization ====================
 
 	/**
-	 * Set up this proxy for a player casting a dynamic spell.
-	 * Must be called before adding the entity to the world.
+	 * Attach this proxy to a host entity. The proxy will follow the host's position.
 	 */
-	public void init(ServerPlayer player, SpellDefinition definition, int duration,
-					 @Nullable LivingEntity target) {
-		this.ownerPlayerId = player.getUUID();
-		this.ownerPlayer = player;
+	public void attachTo(Entity host, SpellDefinition definition, int duration,
+						  @Nullable LivingEntity target) {
+		this.hostId = host.getUUID();
+		this.hostEntity = host;
 		this.maxDuration = duration;
 		this.runtime = new SpellRuntime(definition);
 		this.runtime.reset();
 		this.spellTickCount = 0;
+		setTarget(target);
 
-		if (target != null) {
-			this.targetId = target.getUUID();
-			this.targetCache = target;
-			this.targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
+		copyHostTransform(host);
+	}
+
+	/**
+	 * Spawn this proxy at a fixed position for block traps.
+	 * No host entity: the proxy stays at the given position.
+	 */
+	public void spawnAtPosition(Vec3 position, float yRot, SpellDefinition definition,
+								 int duration, @Nullable LivingEntity target) {
+		spawnAtPosition(position, yRot, 0, definition, duration, target);
+	}
+
+	/**
+	 * Spawn this proxy at a fixed position with an explicit rotation.
+	 */
+	public void spawnAtPosition(Vec3 position, float yRot, float xRot, SpellDefinition definition,
+								 int duration, @Nullable LivingEntity target) {
+		this.hostId = null;
+		this.hostEntity = null;
+		this.maxDuration = duration;
+		this.runtime = new SpellRuntime(definition);
+		this.runtime.reset();
+		this.spellTickCount = 0;
+		setTarget(target);
+
+		this.moveTo(position);
+		this.setYRot(yRot);
+		this.setXRot(xRot);
+		this.setYHeadRot(yRot);
+	}
+
+	public void setDestroyWhenHostDies(boolean value) {
+		this.destroyWhenHostDies = value;
+	}
+
+	@Nullable
+	public Entity attachedHost() {
+		if (hostEntity == null && hostId != null) {
+			resolveHost();
 		}
+		return hostEntity;
+	}
 
-		// Position at the player
-		this.moveTo(player.position());
-		this.setYRot(player.getYRot());
-		this.setXRot(player.getXRot());
-		this.setYHeadRot(player.getYHeadRot());
+	public boolean isFixedPositionProxy() {
+		return hostId == null && hostEntity == null;
+	}
+
+	public void setTarget(@Nullable LivingEntity target) {
+		if (target == null) {
+			targetId = null;
+			targetCache = null;
+			targetPos = null;
+			return;
+		}
+		targetId = target.getUUID();
+		targetCache = target;
+		targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
 	}
 
 	// ==================== Core tick ====================
 
 	@Override
 	public void tick() {
-		// Minimal super.tick() — we skip most mob logic
 		this.baseTick();
-
 		if (level().isClientSide()) return;
 
-		// Validate owner
-		if (ownerPlayer == null || ownerPlayer.isRemoved() || !ownerPlayer.isAlive()) {
-			resolveOwner();
-			if (ownerPlayer == null) {
-				cleanup();
-				return;
-			}
+		if (!validateHost()) {
+			return;
 		}
 
-		// Follow player position and orientation
-		this.moveTo(ownerPlayer.position());
-		this.setYRot(ownerPlayer.getYRot());
-		this.setXRot(ownerPlayer.getXRot());
-		this.setYHeadRot(ownerPlayer.getYHeadRot());
+		// Follow host position
+		if (hostEntity != null) {
+			copyHostTransform(hostEntity);
+		}
 
 		// Refresh target tracking
 		refreshTarget();
+
+		// Auto-select target if none set
+		if (targetCache == null || !targetCache.isAlive()) {
+			autoSelectTarget();
+		}
 
 		// Drive the spell runtime
 		if (runtime != null) {
@@ -150,15 +202,66 @@ public class DanmakuProxyEntity extends PathfinderMob
 		}
 	}
 
-	private void resolveOwner() {
-		if (ownerPlayerId == null) return;
-		if (!(level() instanceof ServerLevel sl)) return;
-		var entity = sl.getEntity(ownerPlayerId);
-		if (entity instanceof ServerPlayer sp && sp.isAlive()) {
-			ownerPlayer = sp;
-		} else {
-			ownerPlayer = null;
+	private boolean validateHost() {
+		if (hostEntity == null && hostId != null) {
+			resolveHost();
 		}
+		if (hostEntity == null) {
+			return true;
+		}
+		if (!hostEntity.isRemoved() && hostEntity.isAlive()) {
+			return true;
+		}
+		if (destroyWhenHostDies) {
+			cleanup();
+			return false;
+		}
+		hostEntity = null;
+		hostId = null;
+		return true;
+	}
+
+	private void resolveHost() {
+		if (hostId == null || !(level() instanceof ServerLevel sl)) return;
+		Entity entity = sl.getEntity(hostId);
+		if (entity != null && entity.isAlive() && !entity.isRemoved()) {
+			hostEntity = entity;
+		}
+	}
+
+	private void copyHostTransform(Entity host) {
+		this.moveTo(host.position());
+		this.setYRot(host.getYRot());
+		this.setXRot(host.getXRot());
+		this.setYHeadRot(host instanceof LivingEntity le ? le.getYHeadRot() : host.getYRot());
+	}
+
+	private void autoSelectTarget() {
+		if (!(level() instanceof ServerLevel)) return;
+		Vec3 searchCenter = hostEntity != null ? hostEntity.position() : position();
+		AABB searchBox = AABB.ofSize(searchCenter, 64, 64, 64);
+		List<Player> players = level().getEntitiesOfClass(Player.class, searchBox,
+				this::canAutoTarget);
+		if (!players.isEmpty()) {
+			Player nearest = null;
+			double bestDistSq = Double.MAX_VALUE;
+			for (Player p : players) {
+				double distSq = p.distanceToSqr(searchCenter);
+				if (distSq < bestDistSq) {
+					bestDistSq = distSq;
+					nearest = p;
+				}
+			}
+			if (nearest != null) {
+				setTarget(nearest);
+			}
+		}
+	}
+
+	private boolean canAutoTarget(Player player) {
+		if (!player.isAlive() || !player.isAddedToWorld() || player.isSpectator()) return false;
+		if (player == hostEntity) return false;
+		return !(hostEntity instanceof LivingEntity owner) || !owner.isAlliedTo(player);
 	}
 
 	private void refreshTarget() {
@@ -186,7 +289,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		}
 	}
 
-	// ==================== Virtual danmaku methods (from YoukaiEntity) ====================
+	// ==================== Virtual danmaku methods ====================
 
 	@Override
 	public void shoot(Entity danmaku) {
@@ -201,19 +304,20 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	private void tickDanmaku() {
-		danmakuHolder.tickDanmaku(this, shooter());
+		// Use host as tracking target so packets go to players watching the host
+		danmakuHolder.tickDanmaku(trackingHost(), shooter());
 	}
 
 	public void eraseAllDanmaku(@Nullable Player player) {
-		eraseAllDanmakuAndCount(player);
+		danmakuHolder.eraseAllDanmaku(trackingHost(), player);
 	}
 
 	public int eraseAllDanmakuAndCount(@Nullable Player player) {
-		return danmakuHolder.eraseAllDanmakuAndCount(this, player);
+		return danmakuHolder.eraseAllDanmakuAndCount(trackingHost(), player);
 	}
 
 	public int eraseDanmakuInRadius(Vec3 center, double radius, @Nullable Player player) {
-		return danmakuHolder.eraseDanmakuInRadius(this, center, radius, player);
+		return danmakuHolder.eraseDanmakuInRadius(trackingHost(), center, radius, player);
 	}
 
 	public void countDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit, dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result) {
@@ -221,44 +325,29 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	public void eraseDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, @Nullable Player player, int limit) {
-		danmakuHolder.eraseDanmakuInFrustum(this, frustum, player, limit);
+		danmakuHolder.eraseDanmakuInFrustum(trackingHost(), frustum, player, limit);
 	}
 
-	public void switchSpellDefinition(SpellDefinition definition, boolean clearScreen) {
-		if (clearScreen) {
-			eraseAllDanmaku(null);
-		}
-		setSpellRuntime(new SpellRuntime(definition));
-	}
-
-	@Nullable
-	@Override
-	public ResourceLocation getSpellDefinitionId() {
-		return runtime == null ? null : runtime.getDefinition().id;
-	}
-
-	@Override
-	public UserCacheHolder entityCache() {
-		return danmakuHolder.entityCache();
+	private LivingEntity trackingHost() {
+		return hostEntity instanceof LivingEntity le ? le : this;
 	}
 
 	// ==================== LivingCardHolder implementation ====================
 
 	@Override
 	public LivingEntity self() {
-		return this;
+		return trackingHost();
 	}
 
 	@Override
 	public LivingEntity shooter() {
-		return ownerPlayer != null ? ownerPlayer : this;
+		return trackingHost();
 	}
 
 	@Nullable
 	@Override
 	public LivingEntity owner() {
-		resolveOwner();
-		return ownerPlayer;
+		return trackingHost();
 	}
 
 	@Nullable
@@ -287,11 +376,6 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	@Override
-	public boolean isOwnedBy(@Nullable Player player) {
-		return player != null && ownerPlayerId != null && ownerPlayerId.equals(player.getUUID());
-	}
-
-	@Override
 	public @Nullable LivingEntity targetEntity() {
 		return targetCache;
 	}
@@ -306,21 +390,18 @@ public class DanmakuProxyEntity extends PathfinderMob
 		return type.damage();
 	}
 
+	@Override
+	public UserCacheHolder entityCache() {
+		return danmakuHolder.entityCache();
+	}
+
 	// ==================== Lifecycle ====================
 
-	/**
-	 * Clean up all virtual danmaku and remove this proxy entity from the world.
-	 */
 	public void cleanup() {
 		eraseAllDanmaku(null);
 		this.discard();
 	}
 
-	/**
-	 * Safety net: ensure virtual danmaku are erased no matter how this entity is removed.
-	 * Covers: /kill, void fall (checkBelowWorld → discard), chunk unload, or any
-	 * unexpected removal path that bypasses {@link #cleanup()}.
-	 */
 	@Override
 	public void remove(RemovalReason reason) {
 		if (!danmakuHolder.isEmpty()) {
@@ -329,18 +410,14 @@ public class DanmakuProxyEntity extends PathfinderMob
 		super.remove(reason);
 	}
 
-	/**
-	 * @return true if this proxy has finished its spell and all danmaku have expired
-	 */
 	public boolean isFinished() {
 		return isRemoved() || (spellTickCount >= maxDuration && danmakuHolder.isEmpty());
 	}
 
-	// ==================== Entity properties: invisible, invulnerable, no AI ====================
+	// ==================== Entity properties ====================
 
 	@Override
 	protected void registerGoals() {
-		// No AI goals
 	}
 
 	@Override
@@ -383,23 +460,29 @@ public class DanmakuProxyEntity extends PathfinderMob
 		return false;
 	}
 
-	// ==================== Serialization (minimal — entity is transient) ====================
+	// ==================== Serialization ====================
 
 	@Override
 	public void addAdditionalSaveData(CompoundTag tag) {
 		super.addAdditionalSaveData(tag);
-		if (ownerPlayerId != null) {
-			tag.putUUID("OwnerPlayer", ownerPlayerId);
+		if (hostId != null) {
+			tag.putUUID("Host", hostId);
 		}
+		if (targetId != null) {
+			tag.putUUID("Target", targetId);
+		}
+		tag.putBoolean("DestroyWhenHostDies", destroyWhenHostDies);
 	}
 
 	@Override
 	public void readAdditionalSaveData(CompoundTag tag) {
 		super.readAdditionalSaveData(tag);
-		if (tag.hasUUID("OwnerPlayer")) {
-			ownerPlayerId = tag.getUUID("OwnerPlayer");
+		if (tag.hasUUID("Host")) {
+			hostId = tag.getUUID("Host");
 		}
-		// Runtime is not persisted — proxy will be cleaned up after server restart
-		// since shouldBeSaved() returns false, this is just a safety fallback
+		if (tag.hasUUID("Target")) {
+			targetId = tag.getUUID("Target");
+		}
+		destroyWhenHostDies = !tag.contains("DestroyWhenHostDies") || tag.getBoolean("DestroyWhenHostDies");
 	}
 }

@@ -13,6 +13,7 @@ import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaEntity;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.boss.*;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
@@ -72,6 +73,7 @@ public class YHEntities {
 	public static final EntityEntry<ChairEntity> CHAIR;
 	public static final EntityEntry<ShooterEntity> SHOOTER;
 	public static final EntityEntry<DanmakuProxyEntity> DANMAKU_PROXY;
+	public static final EntityEntry<EntitySpellProxyEntity> ENTITY_SPELL_PROXY;
 
 	static {
 
@@ -307,6 +309,13 @@ public class YHEntities {
 					.<DanmakuProxyEntity>entity("danmaku_proxy", DanmakuProxyEntity::new, MobCategory.MISC)
 					.properties(e -> e.sized(0.1f, 0.1f).clientTrackingRange(10).updateInterval(2))
 					.attributes(DanmakuProxyEntity::createAttributes)
+					.renderer(() -> NothingRenderer::new)
+					.register();
+
+			ENTITY_SPELL_PROXY = YoukaisHomecoming.REGISTRATE
+					.<EntitySpellProxyEntity>entity("entity_spell_proxy", EntitySpellProxyEntity::new, MobCategory.MISC)
+					.properties(e -> e.sized(0.1f, 0.1f).clientTrackingRange(10).updateInterval(2))
+					.attributes(EntitySpellProxyEntity::createAttributes)
 					.renderer(() -> NothingRenderer::new)
 					.register();
 		}

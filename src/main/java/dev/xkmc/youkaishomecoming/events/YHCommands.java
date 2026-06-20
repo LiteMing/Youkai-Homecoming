@@ -15,6 +15,7 @@ import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
@@ -24,6 +25,9 @@ import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
@@ -36,6 +40,7 @@ import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
+import org.jetbrains.annotations.Nullable;
 
 @Mod.EventBusSubscriber(modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class YHCommands {
@@ -529,6 +534,22 @@ public class YHCommands {
 									}
 									return 1;
 								})))
+				.then(literal("proxy")
+						.then(literal("entity")
+								.then(argument("host", EntityArgument.entity())
+										.then(argument("spell_id", ResourceLocationArgument.id())
+												.suggests(SPELL_SUGGESTIONS)
+												.executes(ctx -> spawnEntitySpellProxy(ctx, DynamicSpellItem.DURATION_NATURAL))
+												.then(argument("ticks", IntegerArgumentType.integer(1))
+														.executes(ctx -> spawnEntitySpellProxy(ctx,
+																IntegerArgumentType.getInteger(ctx, "ticks")))))))
+						.then(literal("fixed")
+								.then(argument("spell_id", ResourceLocationArgument.id())
+										.suggests(SPELL_SUGGESTIONS)
+										.executes(ctx -> spawnFixedSpellProxy(ctx, DynamicSpellItem.DURATION_NATURAL))
+										.then(argument("ticks", IntegerArgumentType.integer(1))
+												.executes(ctx -> spawnFixedSpellProxy(ctx,
+														IntegerArgumentType.getInteger(ctx, "ticks")))))))
 			.then(literal("give")
 					.then(argument("spell_id", ResourceLocationArgument.id())
 							.suggests(SPELL_SUGGESTIONS)
@@ -614,6 +635,50 @@ public class YHCommands {
 
 	protected static <T> RequiredArgumentBuilder<CommandSourceStack, T> argument(String name, ArgumentType<T> type) {
 		return RequiredArgumentBuilder.argument(name, type);
+	}
+
+	private static int spawnEntitySpellProxy(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, int duration)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		Entity host = EntityArgument.getEntity(ctx, "host");
+		ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+		SpellDefinition def = getSpellOrReport(ctx, spellId);
+		if (def == null) return 0;
+		LivingEntity target = host instanceof Mob mob ? mob.getTarget() : null;
+		var proxy = SpellCardBlockHelper.spawnProxy(host, def, duration, target);
+		if (proxy == null) {
+			ctx.getSource().sendFailure(Component.literal("Failed to spawn spell proxy"));
+			return 0;
+		}
+		ctx.getSource().sendSuccess(() -> Component.literal("Spawned spell proxy " + proxy.getId() +
+				" on " + host.getDisplayName().getString() + " with " + spellId + formatDuration(duration)), true);
+		return 1;
+	}
+
+	private static int spawnFixedSpellProxy(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, int duration) {
+		ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+		SpellDefinition def = getSpellOrReport(ctx, spellId);
+		if (def == null) return 0;
+		var source = ctx.getSource();
+		var rotation = source.getRotation();
+		var proxy = SpellCardBlockHelper.spawnFixedProxy(source.getLevel(), source.getPosition(),
+				rotation.y, rotation.x, def, duration, null);
+		ctx.getSource().sendSuccess(() -> Component.literal("Spawned fixed spell proxy " + proxy.getId() +
+				" with " + spellId + formatDuration(duration)), true);
+		return 1;
+	}
+
+	@Nullable
+	private static SpellDefinition getSpellOrReport(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx,
+													ResourceLocation spellId) {
+		SpellDefinition def = SpellRegistry.get(spellId);
+		if (def == null) {
+			ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
+		}
+		return def;
+	}
+
+	private static String formatDuration(int duration) {
+		return duration < 0 ? " until natural end" : " for " + duration + "t";
 	}
 
 	private static int setStgResource(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, boolean add) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

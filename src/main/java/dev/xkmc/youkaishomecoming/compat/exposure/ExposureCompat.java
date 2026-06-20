@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.compat.exposure;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
@@ -88,6 +89,12 @@ public class ExposureCompat {
 			}
 		}
 		if (result.getTotal() < MAX_ERASE_PER_SHOT) {
+			for (EntitySpellProxyEntity proxy : level.getEntitiesOfClass(EntitySpellProxyEntity.class, searchBox)) {
+				proxy.countDanmakuInFrustum(frustum, result.remaining(MAX_ERASE_PER_SHOT), result);
+				if (result.getTotal() >= MAX_ERASE_PER_SHOT) break;
+			}
+		}
+		if (result.getTotal() < MAX_ERASE_PER_SHOT) {
 			for (Entity entity : level.getEntities(player, searchBox, e -> e instanceof IYHDanmaku)) {
 				if (result.getTotal() >= MAX_ERASE_PER_SHOT) break;
 				if (entity instanceof SimplifiedProjectile) {
@@ -131,6 +138,9 @@ public class ExposureCompat {
 			youkai.eraseDanmakuInFrustum(frustum, player, MAX_ERASE_PER_SHOT);
 		}
 		for (DanmakuProxyEntity proxy : level.getEntitiesOfClass(DanmakuProxyEntity.class, searchBox)) {
+			proxy.eraseDanmakuInFrustum(frustum, player, MAX_ERASE_PER_SHOT);
+		}
+		for (EntitySpellProxyEntity proxy : level.getEntitiesOfClass(EntitySpellProxyEntity.class, searchBox)) {
 			proxy.eraseDanmakuInFrustum(frustum, player, MAX_ERASE_PER_SHOT);
 		}
 		for (Entity entity : level.getEntities(player, searchBox, e -> e instanceof IYHDanmaku)) {

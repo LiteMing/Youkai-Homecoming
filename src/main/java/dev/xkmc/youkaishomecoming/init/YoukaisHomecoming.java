@@ -94,6 +94,7 @@ public class YoukaisHomecoming {
 			e -> e.create(EraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 		e -> e.create(BatchEraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellStateToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(PvpDanmakuStatusToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",

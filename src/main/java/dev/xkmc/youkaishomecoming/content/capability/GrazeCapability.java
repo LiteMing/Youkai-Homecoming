@@ -61,6 +61,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private boolean dirty = false;
 	private int tempGraze = 0;
 	private int lastGraze = 0;
+	private int pvpStatusSyncCooldown = 0;
+	private boolean pvpStatusVisible = false;
 
 	@Override
 	public void onClone(boolean isWasDeath) {
@@ -127,6 +129,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			}
 			if (dirty)
 				sync();
+			syncPvpOpponentStatus(sl);
 		}
 		dirty = false;
 		if (player.level().isClientSide) {
@@ -323,6 +326,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (target == player || target.level() != player.level()) return;
 		if (!isInDanmakuCombat()) initStatus();
 		if (playerOpponents.add(target.getUUID())) {
+			pvpStatusSyncCooldown = 0;
 			dirty = true;
 		}
 	}
@@ -458,6 +462,34 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	public void sync() {
 		if (player instanceof ServerPlayer sp)
 			HOLDER.network.toClientSyncAll(sp);
+	}
+
+	private void syncPvpOpponentStatus(ServerLevel sl) {
+		if (!(player instanceof ServerPlayer sp)) return;
+		if (playerOpponents.isEmpty()) {
+			pvpStatusSyncCooldown = 0;
+			if (pvpStatusVisible) {
+				YoukaisHomecoming.HANDLER.toClientPlayer(PvpDanmakuStatusToClient.clearAll(), sp);
+				pvpStatusVisible = false;
+			}
+			return;
+		}
+		if (!dirty && pvpStatusVisible && --pvpStatusSyncCooldown > 0) return;
+		pvpStatusSyncCooldown = 5;
+		pvpStatusVisible = true;
+		for (UUID id : playerOpponents) {
+			if (!(sl.getEntity(id) instanceof ServerPlayer target)) continue;
+			var cap = HOLDER.get(target);
+			int maxResource = GrazeHelper.getMaxResource(target) * SHARD;
+			YoukaisHomecoming.HANDLER.toClientPlayer(PvpDanmakuStatusToClient.status(
+					target.getId(),
+					target.getGameProfile().getName(),
+					cap.getLife(),
+					cap.getBomb(),
+					maxResource,
+					maxResource
+			), sp);
+		}
 	}
 
 	private int eraseSessionDanmaku(CombatSession session, Vec3 center, double radius, Set<UUID> erasedYoukai) {

@@ -122,8 +122,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 					}
 				}
 				if (!playerOpponents.isEmpty()) {
-					if (playerOpponents.removeIf(id -> shouldRemovePlayerOpponent(sl, id))) {
-						dirty = true;
+					for (UUID id : List.copyOf(playerOpponents)) {
+						if (shouldRemovePlayerOpponent(sl, id)) {
+							removePlayerOpponent(id, false, false);
+						}
 					}
 				}
 			}
@@ -305,12 +307,27 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return forcedDanmakuCombat;
 	}
 
+	public boolean hasPlayerOpponent(UUID id) {
+		return playerOpponents.contains(id);
+	}
+
 	public void setForcedDanmakuCombat(boolean enabled) {
 		if (forcedDanmakuCombat == enabled) return;
 		if (enabled && !isInDanmakuCombat()) {
 			initStatus();
 		}
 		forcedDanmakuCombat = enabled;
+		dirty = true;
+	}
+
+	public void clearPlayerOpponents() {
+		if (player.level() instanceof ServerLevel sl) {
+			clearPlayerOpponents(sl, true);
+			return;
+		}
+		if (playerOpponents.isEmpty()) return;
+		playerOpponents.clear();
+		resetPvpOpponentStatus();
 		dirty = true;
 	}
 
@@ -467,11 +484,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private void syncPvpOpponentStatus(ServerLevel sl) {
 		if (!(player instanceof ServerPlayer sp)) return;
 		if (playerOpponents.isEmpty()) {
-			pvpStatusSyncCooldown = 0;
-			if (pvpStatusVisible) {
-				YoukaisHomecoming.HANDLER.toClientPlayer(PvpDanmakuStatusToClient.clearAll(), sp);
-				pvpStatusVisible = false;
-			}
+			resetPvpOpponentStatus();
 			return;
 		}
 		if (!dirty && pvpStatusVisible && --pvpStatusSyncCooldown > 0) return;
@@ -571,7 +584,41 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	private boolean shouldRemovePlayerOpponent(ServerLevel sl, UUID id) {
 		var entity = sl.getEntity(id);
-		return !(entity instanceof ServerPlayer target) || !target.isAlive() || target.level() != player.level();
+		return !(entity instanceof ServerPlayer target) || !target.isAlive() || target.level() != player.level() ||
+				!HOLDER.get(target).hasPlayerOpponent(player.getUUID());
+	}
+
+	private void clearPlayerOpponents(ServerLevel sl, boolean reciprocal) {
+		if (playerOpponents.isEmpty()) return;
+		List<UUID> ids = List.copyOf(playerOpponents);
+		playerOpponents.clear();
+		resetPvpOpponentStatus();
+		dirty = true;
+		if (!reciprocal) return;
+		for (UUID id : ids) {
+			if (sl.getEntity(id) instanceof ServerPlayer target) {
+				HOLDER.get(target).removePlayerOpponent(player.getUUID(), false, true);
+			}
+		}
+	}
+
+	private boolean removePlayerOpponent(UUID id, boolean reciprocal, boolean syncAfter) {
+		if (!playerOpponents.remove(id)) return false;
+		resetPvpOpponentStatus();
+		dirty = true;
+		if (reciprocal && player.level() instanceof ServerLevel sl && sl.getEntity(id) instanceof ServerPlayer target) {
+			HOLDER.get(target).removePlayerOpponent(player.getUUID(), false, true);
+		}
+		if (syncAfter) sync();
+		return true;
+	}
+
+	private void resetPvpOpponentStatus() {
+		pvpStatusSyncCooldown = 0;
+		if (pvpStatusVisible && player instanceof ServerPlayer sp) {
+			YoukaisHomecoming.HANDLER.toClientPlayer(PvpDanmakuStatusToClient.clearAll(), sp);
+		}
+		pvpStatusVisible = false;
 	}
 
 	private int eraseActiveDanmakuForHit(@Nullable LivingEntity source) {
@@ -594,7 +641,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			s.resetTarget(player);
 		}
 		sessions.clear();
-		playerOpponents.clear();
+		clearPlayerOpponents();
 		forcedDanmakuCombat = false;
 		weak = WEAK;
 		if (player instanceof ServerPlayer sp) {

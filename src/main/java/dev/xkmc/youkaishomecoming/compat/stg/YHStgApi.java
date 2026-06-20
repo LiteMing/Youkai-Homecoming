@@ -150,6 +150,9 @@ public final class YHStgApi {
 	public static void setDanmakuCombat(ServerPlayer player, boolean enabled) {
 		var cap = cap(player);
 		cap.setForcedDanmakuCombat(enabled);
+		if (!enabled) {
+			cap.clearPlayerOpponents();
+		}
 		cap.sync();
 	}
 

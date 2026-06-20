@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
 import dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
 import dev.xkmc.youkaishomecoming.content.spell.preview.VirtualSpellScene;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -234,7 +235,7 @@ public class ControlsDockPanel implements DockPanel {
 	}
 
 	private int addButton(int bx, int by, int bw, String label, Button.OnPress action) {
-		Button btn = Button.builder(Component.literal(label), action)
+		Button btn = Button.builder(Component.literal(SpellEditorLocalization.t(label)), action)
 				.bounds(bx, by, bw, BUTTON_HEIGHT).build();
 		buttons.add(btn);
 		if (addWidgetCallback != null) {
@@ -244,7 +245,7 @@ public class ControlsDockPanel implements DockPanel {
 	}
 
 	private int addMenuButton(int bx, int by, int bw, String label, Consumer<Button> opener) {
-		Button btn = Button.builder(Component.literal(label + " \u25BE"), opener::accept)
+		Button btn = Button.builder(Component.literal(SpellEditorLocalization.t(label) + " \u25BE"), opener::accept)
 				.bounds(bx, by, bw, BUTTON_HEIGHT).build();
 		buttons.add(btn);
 		if (addWidgetCallback != null) {
@@ -451,7 +452,7 @@ public class ControlsDockPanel implements DockPanel {
 		EditBox box = new EditBox(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
 		box.setMaxLength(maxLength);
 		box.setValue(value);
-		box.setHint(Component.literal(hint).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+		box.setHint(Component.literal(SpellEditorLocalization.t(hint)).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
 		box.setResponder(val -> {}); // no live response
 		box.setFilter(filter::test);
 		editBoxes.add(box);
@@ -529,7 +530,7 @@ public class ControlsDockPanel implements DockPanel {
 		int row1Y = y + 4;
 		if (isDraftMode()) {
 			graphics.drawString(font,
-					"Select an existing spell or enter a new spell id and press Enter.",
+					SpellEditorLocalization.t("Select an existing spell or enter a new spell id and press Enter."),
 					x + 4, row1Y + BUTTON_HEIGHT + BUTTON_SPACING + 4, 0xFFCCCCCC, false);
 		}
 	}
@@ -768,7 +769,7 @@ public class ControlsDockPanel implements DockPanel {
 		Font font = Minecraft.getInstance().font;
 		int dropdownW = 120;
 		for (String option : options) {
-			dropdownW = Math.max(dropdownW, font.width(option) + 18);
+			dropdownW = Math.max(dropdownW, font.width(SpellEditorLocalization.t(option)) + 18);
 		}
 		dropdownW = Math.min(dropdownW, Math.max(120, w / 3));
 		int totalH = options.length * DROPDOWN_ITEM_H;
@@ -801,9 +802,9 @@ public class ControlsDockPanel implements DockPanel {
 			return new int[]{0, 0, 0, 0, 0};
 		}
 		Font font = Minecraft.getInstance().font;
-		int dropdownW = Math.max(96, font.width(actionMenu.title()) + 18);
+		int dropdownW = Math.max(96, font.width(SpellEditorLocalization.t(actionMenu.title())) + 18);
 		for (MenuEntry entry : entries) {
-			dropdownW = Math.max(dropdownW, font.width(entry.label()) + 18);
+			dropdownW = Math.max(dropdownW, font.width(SpellEditorLocalization.t(entry.label())) + 18);
 		}
 		dropdownW = Math.min(dropdownW, Math.max(120, w / 2));
 		int titleH = 14;
@@ -934,7 +935,7 @@ public class ControlsDockPanel implements DockPanel {
 				graphics.fill(dx + 1, itemY, dx + dw - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
 			}
 			int color = i == 0 ? 0xFFDDDDDD : (isHovered ? 0xFFFF8888 : 0xFFFF6666);
-			graphics.drawString(font, options[i], dx + 6, itemY + 4, color, false);
+			graphics.drawString(font, SpellEditorLocalization.t(options[i]), dx + 6, itemY + 4, color, false);
 		}
 		graphics.pose().popPose();
 	}
@@ -958,7 +959,7 @@ public class ControlsDockPanel implements DockPanel {
 		graphics.fill(dx, dy + dh - 1, dx + dw, dy + dh, 0xFF666688);
 		graphics.fill(dx, dy, dx + 1, dy + dh, 0xFF666688);
 		graphics.fill(dx + dw - 1, dy, dx + dw, dy + dh, 0xFF666688);
-		graphics.drawString(font, fitToWidth(actionMenu.title(), dw - 8), dx + 4, dy + 3, 0xFFFFDD88, false);
+		graphics.drawString(font, fitToWidth(SpellEditorLocalization.t(actionMenu.title()), dw - 8), dx + 4, dy + 3, 0xFFFFDD88, false);
 
 		actionMenuHoverIndex = -1;
 		int itemTop = dy + titleH;
@@ -979,7 +980,7 @@ public class ControlsDockPanel implements DockPanel {
 				graphics.fill(dx + 1, itemY, dx + dw - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
 			}
 			int color = !entry.active() ? 0xFF777777 : hovered ? 0xFFFFDD66 : 0xFFDDDDDD;
-			graphics.drawString(font, fitToWidth(entry.label(), dw - 10), dx + 6, itemY + 4, color, false);
+			graphics.drawString(font, fitToWidth(SpellEditorLocalization.t(entry.label()), dw - 10), dx + 6, itemY + 4, color, false);
 		}
 		graphics.pose().popPose();
 	}

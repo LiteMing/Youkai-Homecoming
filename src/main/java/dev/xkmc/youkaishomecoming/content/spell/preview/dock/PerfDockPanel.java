@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
+import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
 import dev.xkmc.youkaishomecoming.content.spell.preview.VirtualSpellScene;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -93,12 +94,15 @@ public class PerfDockPanel implements DockPanel {
 		double maxTickMs = calcMaxMs(tickTimeSamples);
 
 		int ty = y + 4;
-		String briefText = String.format("FPS: %d   tick: %.1fms   avg: %.1fms   max: %.1fms",
-				fps, tickMs, avgTickMs, maxTickMs);
+		String briefText = SpellEditorLocalization.isChinese()
+				? String.format("FPS: %d   tick: %.1fms   平均: %.1fms   最大: %.1fms", fps, tickMs, avgTickMs, maxTickMs)
+				: String.format("FPS: %d   tick: %.1fms   avg: %.1fms   max: %.1fms", fps, tickMs, avgTickMs, maxTickMs);
 		graphics.drawString(font, briefText, x + 4, ty, 0xFF88FF88, false);
 		ty += 12;
 
-		String entityText = "entities: " + scene.getEntityCount() + "   speed: " + scene.getCurrentSpeed() + "x";
+		String entityText = SpellEditorLocalization.isChinese()
+				? "实体: " + scene.getEntityCount() + "   速度: " + scene.getCurrentSpeed() + "x"
+				: "entities: " + scene.getEntityCount() + "   speed: " + scene.getCurrentSpeed() + "x";
 		graphics.drawString(font, entityText, x + 4, ty, 0xFFAAAACC, false);
 		ty += 16;
 
@@ -111,8 +115,8 @@ public class PerfDockPanel implements DockPanel {
 		int gy = ty;
 
 		// Legend
-		graphics.drawString(font, "\u2588 tick", gx, gy, 0xFF44FF44, false);
-		graphics.drawString(font, "\u2588 render interval", gx + 36, gy, 0xFF44CCCC, false);
+		graphics.drawString(font, SpellEditorLocalization.t("\u2588 tick"), gx, gy, 0xFF44FF44, false);
+		graphics.drawString(font, SpellEditorLocalization.t("\u2588 render interval"), gx + 36, gy, 0xFF44CCCC, false);
 		graphics.drawString(font, "-- 16ms (60fps)", gx + 112, gy, 0x88FFFF00, false);
 		gy += 12;
 
@@ -156,7 +160,9 @@ public class PerfDockPanel implements DockPanel {
 		}
 
 		// Scale label
-		String scaleLabel = String.format("scale: %.0fms", maxTick / 1_000_000.0);
+		String scaleLabel = SpellEditorLocalization.isChinese()
+				? String.format("刻度: %.0fms", maxTick / 1_000_000.0)
+				: String.format("scale: %.0fms", maxTick / 1_000_000.0);
 		graphics.drawString(font, scaleLabel, gx, gy + graphH + 2, 0xFF666666, false);
 	}
 

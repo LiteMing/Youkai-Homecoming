@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
+import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
 import dev.xkmc.youkaishomecoming.content.spell.preview.VirtualSpellScene;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -136,8 +137,8 @@ public class ViewportDockPanel implements DockPanel {
 		}
 		int lines = l2 == null ? 1 : 2;
 		int ly = y + h - 4 - lines * 10;
-		graphics.drawString(font, l1, x + 4, ly, c1, true);
-		if (l2 != null) graphics.drawString(font, l2, x + 4, ly + 10, c2, true);
+		graphics.drawString(font, SpellEditorLocalization.t(l1), x + 4, ly, c1, true);
+		if (l2 != null) graphics.drawString(font, SpellEditorLocalization.t(l2), x + 4, ly + 10, c2, true);
 	}
 
 	/**
@@ -148,19 +149,19 @@ public class ViewportDockPanel implements DockPanel {
 		var font = Minecraft.getInstance().font;
 		String dragLabel = activeDragLabel();
 		if (dragLabel != null) {
-			graphics.drawString(font, dragLabel, mouseX + 8, mouseY - 4, 0xFFFFFFFF, true);
+			graphics.drawString(font, SpellEditorLocalization.t(dragLabel), mouseX + 8, mouseY - 4, 0xFFFFFFFF, true);
 			return;
 		}
 		if (viewport.isPerspectiveMode() || !viewport.isMouseOver(mouseX, mouseY)) return;
 		int hm = hitTestMarker(mouseX, mouseY);
 		if (hm == 0) {
 			markerRing(graphics, scene.getHolder().getFakeCaster().position(), 7, 0xFFFF5555);
-			graphics.drawString(font, "Caster — drag to move", mouseX + 8, mouseY - 4, 0xFFFF7777, true);
+			graphics.drawString(font, SpellEditorLocalization.t("Caster — drag to move"), mouseX + 8, mouseY - 4, 0xFFFF7777, true);
 			return;
 		}
 		if (hm == 1) {
 			markerRing(graphics, scene.getHolder().getFakeTarget().position(), 7, 0xFFFFEE55);
-			graphics.drawString(font, "Target — drag to move", mouseX + 8, mouseY - 4, 0xFFFFEE77, true);
+			graphics.drawString(font, SpellEditorLocalization.t("Target — drag to move"), mouseX + 8, mouseY - 4, 0xFFFFEE77, true);
 			return;
 		}
 		ItemDanmakuEntity d = pickDanmaku(mouseX, mouseY);
@@ -170,7 +171,7 @@ public class ViewportDockPanel implements DockPanel {
 			boolean selected = d.sourceActionIndex >= 0
 					&& d.sourceActionIndex == scene.getHolder().getHighlightedActionIndex();
 			String label = selected ? "Danmaku — drag to move origin" : "Danmaku — click to select";
-			graphics.drawString(font, label, mouseX + 8, mouseY - 4, 0xFF99E6FF, true);
+			graphics.drawString(font, SpellEditorLocalization.t(label), mouseX + 8, mouseY - 4, 0xFF99E6FF, true);
 		}
 	}
 

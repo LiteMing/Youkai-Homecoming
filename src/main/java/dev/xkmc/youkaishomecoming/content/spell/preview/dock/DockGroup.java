@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
+import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -194,7 +195,7 @@ public final class DockGroup implements DockNode {
 
 		for (int i = 0; i < panels.size(); i++) {
 			DockPanel panel = panels.get(i);
-			String title = panel.dockTitle();
+			String title = SpellEditorLocalization.t(panel.dockTitle());
 			int textWidth = font.width(title);
 			int tabWidth = Math.min(TAB_MAX_WIDTH, Math.max(TAB_MIN_WIDTH, textWidth + TAB_PADDING * 2));
 

@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
+import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
 import dev.xkmc.youkaishomecoming.content.spell.preview.VirtualSpellScene;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -115,35 +116,65 @@ public class StatusDockPanel implements DockPanel {
 
 	private List<Line> buildWrappedLines(Font font, int width) {
 		List<Line> lines = new ArrayList<>();
-		String playState = scene.isPlaying() ? "Running" : "Paused";
+		boolean zh = SpellEditorLocalization.isChinese();
+		String playState = zh ? (scene.isPlaying() ? "运行中" : "已暂停") : (scene.isPlaying() ? "Running" : "Paused");
 		ResourceLocation phaseId = scene.getCurrentPhaseId();
 		String phaseText = phaseId == null ? "-" : phaseId.toString();
-		appendWrapped(lines, font, width,
-				playState + "  tick:" + scene.getTotalTick() +
-						"  phaseTick:" + scene.getPhaseTick() +
-						"  speed:" + formatDecimal(scene.getCurrentSpeed()) + "x",
-				0xFFE2E8F0);
-		appendWrapped(lines, font, width, "phase: " + phaseText, 0xFFB9C8DA);
-		appendWrapped(lines, font, width,
-				"entities: " + scene.getEntityCount() +
-						"  hits: " + scene.getHitCount() +
-						"  safety: " + (scene.isSafetyTripped() ? "TRIPPED" : "OK"),
-				scene.isSafetyTripped() ? 0xFFFFAA55 : 0xFFAED8AE);
-		appendWrapped(lines, font, width, "view: " + viewport.getViewLabel(), 0xFF8CC6FF);
-		appendWrapped(lines, font, width, "target: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
-		appendWrapped(lines, font, width, "caster: " + formatVec(scene.getCasterPos()), 0xFFFF9A9A);
-		appendWrapped(lines, font, width, "ysm caster: " + scene.describeYsmPreviewCaster(), 0xFFB8E6FF);
-		appendWrapped(lines, font, width,
-				"dist: " + formatDecimal(scene.getTargetDistance()) +
-						"  casterHP: " + Math.round(scene.getHealthRatio() * 100) + "%" +
-						"  targetHP: " + Math.round(scene.getTargetHealthRatio() * 100) + "%",
-				0xFFD6D3F0);
-		appendWrapped(lines, font, width,
-				"ground=" + yesNo(scene.isTargetOnGround()) +
-						"  fly=" + yesNo(scene.isTargetFlying()) +
-						"  elytra=" + yesNo(scene.isTargetFallFlying()) +
-						"  targetY=" + formatDecimal(scene.getTargetHeight()),
-				0xFFB8C5D6);
+		if (zh) {
+			appendWrapped(lines, font, width,
+					playState + "  tick:" + scene.getTotalTick() +
+							"  阶段tick:" + scene.getPhaseTick() +
+							"  速度:" + formatDecimal(scene.getCurrentSpeed()) + "x",
+					0xFFE2E8F0);
+			appendWrapped(lines, font, width, "阶段: " + phaseText, 0xFFB9C8DA);
+			appendWrapped(lines, font, width,
+					"实体: " + scene.getEntityCount() +
+							"  命中: " + scene.getHitCount() +
+							"  安全: " + (scene.isSafetyTripped() ? "触发" : "正常"),
+					scene.isSafetyTripped() ? 0xFFFFAA55 : 0xFFAED8AE);
+			appendWrapped(lines, font, width, "视图: " + SpellEditorLocalization.t(viewport.getViewLabel()), 0xFF8CC6FF);
+			appendWrapped(lines, font, width, "目标: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
+			appendWrapped(lines, font, width, "施法者: " + formatVec(scene.getCasterPos()), 0xFFFF9A9A);
+			appendWrapped(lines, font, width, "YSM 施法者: " + scene.describeYsmPreviewCaster(), 0xFFB8E6FF);
+			appendWrapped(lines, font, width,
+					"距离: " + formatDecimal(scene.getTargetDistance()) +
+							"  施法者HP: " + Math.round(scene.getHealthRatio() * 100) + "%" +
+							"  目标HP: " + Math.round(scene.getTargetHealthRatio() * 100) + "%",
+					0xFFD6D3F0);
+			appendWrapped(lines, font, width,
+					"地面=" + yesNo(scene.isTargetOnGround()) +
+							"  飞行=" + yesNo(scene.isTargetFlying()) +
+							"  鞘翅=" + yesNo(scene.isTargetFallFlying()) +
+							"  目标Y=" + formatDecimal(scene.getTargetHeight()),
+					0xFFB8C5D6);
+		} else {
+			appendWrapped(lines, font, width,
+					playState + "  tick:" + scene.getTotalTick() +
+							"  phaseTick:" + scene.getPhaseTick() +
+							"  speed:" + formatDecimal(scene.getCurrentSpeed()) + "x",
+					0xFFE2E8F0);
+			appendWrapped(lines, font, width, "phase: " + phaseText, 0xFFB9C8DA);
+			appendWrapped(lines, font, width,
+					"entities: " + scene.getEntityCount() +
+							"  hits: " + scene.getHitCount() +
+							"  safety: " + (scene.isSafetyTripped() ? "TRIPPED" : "OK"),
+					scene.isSafetyTripped() ? 0xFFFFAA55 : 0xFFAED8AE);
+			appendWrapped(lines, font, width, "view: " + viewport.getViewLabel(), 0xFF8CC6FF);
+			appendWrapped(lines, font, width, "target: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
+			appendWrapped(lines, font, width, "caster: " + formatVec(scene.getCasterPos()), 0xFFFF9A9A);
+			appendWrapped(lines, font, width, "ysm caster: " + scene.describeYsmPreviewCaster(), 0xFFB8E6FF);
+			appendWrapped(lines, font, width,
+					"dist: " + formatDecimal(scene.getTargetDistance()) +
+							"  casterHP: " + Math.round(scene.getHealthRatio() * 100) + "%" +
+							"  targetHP: " + Math.round(scene.getTargetHealthRatio() * 100) + "%",
+					0xFFD6D3F0);
+			appendWrapped(lines, font, width,
+					"ground=" + yesNo(scene.isTargetOnGround()) +
+							"  fly=" + yesNo(scene.isTargetFlying()) +
+							"  elytra=" + yesNo(scene.isTargetFallFlying()) +
+							"  targetY=" + formatDecimal(scene.getTargetHeight()),
+					0xFFB8C5D6);
+		}
 		return lines;
 	}
 
@@ -162,7 +193,7 @@ public class StatusDockPanel implements DockPanel {
 	}
 
 	private static String yesNo(boolean value) {
-		return value ? "Y" : "N";
+		return SpellEditorLocalization.t(value ? "Y" : "N");
 	}
 
 	private record Line(net.minecraft.util.FormattedCharSequence text, int color) {}

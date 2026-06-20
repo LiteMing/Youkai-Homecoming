@@ -71,7 +71,7 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private SpellPreviewScreen(SpellDefinition definition, boolean draftMode) {
-		super(Component.literal(draftMode ? "Spell Editor" : "Spell Preview: " + definition.id));
+		super(Component.literal(draftMode ? SpellEditorLocalization.t("Spell Editor") : SpellEditorLocalization.t("Spell Preview") + ": " + definition.id));
 		this.definition = definition;
 		this.scene = new VirtualSpellScene(definition);
 		this.scene.setOnStateChanged(this::syncSceneState);
@@ -108,7 +108,7 @@ public class SpellPreviewScreen extends Screen {
 		int by = 2;
 		int bw = 50;
 		for (ViewAngle angle : ViewAngle.values()) {
-			Button angleButton = Button.builder(Component.literal(angle.getLabel()), btn -> {
+			Button angleButton = Button.builder(Component.literal(SpellEditorLocalization.t(angle.getLabel())), btn -> {
 				viewport.setPerspectiveMode(false);
 				viewport.setViewAngle(angle);
 			}).bounds(bx, by, bw, BUTTON_HEIGHT).build();
@@ -117,7 +117,7 @@ public class SpellPreviewScreen extends Screen {
 			bx += bw + BUTTON_SPACING;
 		}
 		// Perspective / Orthographic toggle
-		String perspLabel = viewport.isPerspectiveMode() ? "Ortho" : "Persp";
+		String perspLabel = SpellEditorLocalization.t(viewport.isPerspectiveMode() ? "Ortho" : "Persp");
 		Button perspectiveButton = Button.builder(Component.literal(perspLabel), btn -> {
 			boolean newPersp = !viewport.isPerspectiveMode();
 			viewport.setPerspectiveMode(newPersp);
@@ -132,7 +132,7 @@ public class SpellPreviewScreen extends Screen {
 		bx += 42;
 		// Bind target toggle (only in perspective mode)
 		if (viewport.isPerspectiveMode()) {
-			String bindLabel = viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt";
+			String bindLabel = SpellEditorLocalization.t(viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt");
 			Button bindButton = Button.builder(Component.literal(bindLabel), btn -> {
 				viewport.setTargetBoundToCamera(!viewport.isTargetBoundToCamera());
 				rebuildScreen();
@@ -143,7 +143,7 @@ public class SpellPreviewScreen extends Screen {
 		}
 		// Toggle editor button
 		bx += 10;
-		Button editorToggleButton = Button.builder(Component.literal(editorVisible ? "Editor <<" : "Editor >>"), btn -> {
+		Button editorToggleButton = Button.builder(Component.literal(SpellEditorLocalization.t(editorVisible ? "Editor <<" : "Editor >>")), btn -> {
 			editorVisible = !editorVisible;
 			rebuildScreen();
 		}).bounds(bx, by, 60, BUTTON_HEIGHT).build();
@@ -151,25 +151,25 @@ public class SpellPreviewScreen extends Screen {
 		addRenderableWidget(editorToggleButton);
 		bx += 62;
 		// Apply button: re-apply edited spell to all entities using it
-		Button applyButton = Button.builder(Component.literal("Apply"), btn -> applyToEntities())
+		Button applyButton = Button.builder(Component.literal(SpellEditorLocalization.t("Apply")), btn -> applyToEntities())
 				.bounds(bx, by, 40, BUTTON_HEIGHT).build();
 		applyButton.active = fullEdit;
 		addRenderableWidget(applyButton);
 		bx += 42;
 		// Export button: save spell definition as JSON datapack file
-		Button exportButton = Button.builder(Component.literal("Export"), btn -> exportToDatapack())
+		Button exportButton = Button.builder(Component.literal(SpellEditorLocalization.t("Export")), btn -> exportToDatapack())
 				.bounds(bx, by, 46, BUTTON_HEIGHT).build();
 		exportButton.active = fullEdit;
 		addRenderableWidget(exportButton);
 		bx += 48;
 		// Reset button: restore to original (built-in) or open-snapshot (custom)
-		Button resetButton = Button.builder(Component.literal("Reset"), btn -> resetToDefault())
+		Button resetButton = Button.builder(Component.literal(SpellEditorLocalization.t("Reset")), btn -> resetToDefault())
 				.bounds(bx, by, 40, BUTTON_HEIGHT).build();
 		resetButton.active = fullEdit;
 		addRenderableWidget(resetButton);
 		bx += 42;
 		// Auto Replay toggle
-		Button autoReplayButton = Button.builder(Component.literal(autoReplay ? "Auto:ON" : "Auto:OFF"), btn -> {
+		Button autoReplayButton = Button.builder(Component.literal(SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF")), btn -> {
 			autoReplay = !autoReplay;
 			rebuildScreen();
 		}).bounds(bx, by, 52, BUTTON_HEIGHT).build();
@@ -177,20 +177,27 @@ public class SpellPreviewScreen extends Screen {
 		addRenderableWidget(autoReplayButton);
 		bx += 54;
 		// Help button — toggles HelpDockPanel as a docked tab
-		Button helpButton = Button.builder(Component.literal("Help"), btn -> {
+		Button helpButton = Button.builder(Component.literal(SpellEditorLocalization.t("Help")), btn -> {
 			toggleHelpPanel();
 		}).bounds(bx, by, 32, BUTTON_HEIGHT).build();
 		helpButton.active = fullEdit;
 		addRenderableWidget(helpButton);
 		bx += 34;
+		Button langButton = Button.builder(Component.literal(SpellEditorLocalization.modeButtonLabel()), btn -> {
+			SpellEditorLocalization.toggle();
+			rebuildScreen();
+		}).bounds(bx, by, 34, BUTTON_HEIGHT).build();
+		langButton.active = fullEdit;
+		addRenderableWidget(langButton);
+		bx += 36;
 		// Collapse All / Expand All
-		Button collapseAllButton = Button.builder(Component.literal("\u25B6All"), btn -> {
+		Button collapseAllButton = Button.builder(Component.literal(SpellEditorLocalization.t("\u25B6All")), btn -> {
 			if (actionListPanel != null) actionListPanel.collapseAll();
 		}).bounds(bx, by, 34, BUTTON_HEIGHT).build();
 		collapseAllButton.active = fullEdit;
 		addRenderableWidget(collapseAllButton);
 		bx += 36;
-		Button expandAllButton = Button.builder(Component.literal("\u25BCAll"), btn -> {
+		Button expandAllButton = Button.builder(Component.literal(SpellEditorLocalization.t("\u25BCAll")), btn -> {
 			if (actionListPanel != null) actionListPanel.expandAll();
 		}).bounds(bx, by, 34, BUTTON_HEIGHT).build();
 		expandAllButton.active = fullEdit;
@@ -198,7 +205,7 @@ public class SpellPreviewScreen extends Screen {
 		bx += 36;
 		// Toggle show all add-buttons
 		if (actionListPanel != null) {
-			String addLabel = actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel";
+			String addLabel = SpellEditorLocalization.t(actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel");
 			Button addButtonModeButton = Button.builder(Component.literal(addLabel), btn -> {
 				actionListPanel.toggleShowAllAddButtons();
 				rebuildScreen();
@@ -208,7 +215,7 @@ public class SpellPreviewScreen extends Screen {
 			bx += 44;
 		}
 		// Reset Layout button
-		Button resetLayoutButton = Button.builder(Component.literal("RstLayout"), btn -> {
+		Button resetLayoutButton = Button.builder(Component.literal(SpellEditorLocalization.t("RstLayout")), btn -> {
 			DockSerializer.deleteLayout();
 			rebuildScreen(false);
 		}).bounds(bx, by, 56, BUTTON_HEIGHT).build();
@@ -883,7 +890,7 @@ public class SpellPreviewScreen extends Screen {
 		}
 
 		// Spell name on top bar
-		String spellName = isDraftMode() ? "New Spell" : definition.id.toString();
+		String spellName = isDraftMode() ? SpellEditorLocalization.t("New Spell") : definition.id.toString();
 		int nameX = width - font.width(spellName) - 4;
 		guiGraphics.drawString(font, spellName, nameX, 5, 0xFFAAAAAA, false);
 

@@ -500,7 +500,7 @@ public class ActionListPanel {
 		g.fill(x, y, x + 1, y + h, 0xFF444466);
 
 		if (phase == null) {
-			g.drawString(font, "No phase", x + PADDING, y + PADDING, 0xFF888888, false);
+			g.drawString(font, SpellEditorLocalization.t("No phase"), x + PADDING, y + PADDING, 0xFF888888, false);
 			return;
 		}
 
@@ -511,7 +511,7 @@ public class ActionListPanel {
 			if (row.y + ROW_HEIGHT < y || row.y > y + h) continue;
 
 			if (row.kind == RowKind.SECTION) {
-				g.drawString(font, row.sectionTitle, x + PADDING, row.y + 2, 0xFF88AACC, false);
+				g.drawString(font, SpellEditorLocalization.t(row.sectionTitle), x + PADDING, row.y + 2, 0xFF88AACC, false);
 				String plus = "[+]";
 				int plusX = x + w - font.width(plus) - PADDING;
 				boolean plusHovered = mouseX >= plusX && mouseX < x + w
@@ -551,7 +551,7 @@ public class ActionListPanel {
 				if (renamingPath != null && row.path != null && row.path.equals(renamingPath)) {
 					g.drawString(font, "> " + renamingText + "_", ix, row.y + 2, 0xFFFFFF44, false);
 				} else {
-					String label = getDisplayLabel(displayAction, row.path);
+					String label = SpellEditorLocalization.t(getDisplayLabel(displayAction, row.path));
 					int textColor;
 					if (isDisabled) {
 						textColor = 0xFF666666; // Gray for disabled
@@ -573,7 +573,7 @@ public class ActionListPanel {
 					g.fill(x + 1, row.y, x + w, row.y + ROW_HEIGHT, 0xFF2a4a2e);
 					g.fill(x + 1, row.y, x + 3, row.y + ROW_HEIGHT, 0xFF66FF66);
 				}
-				g.drawString(font, row.addLabel, ix, row.y + 2, selected ? 0xFFFFFF88 : (hovered ? 0xFFFFFF44 : 0xFF448844), false);
+				g.drawString(font, SpellEditorLocalization.t(row.addLabel), ix, row.y + 2, selected ? 0xFFFFFF88 : (hovered ? 0xFFFFFF44 : 0xFF448844), false);
 			}
 		}
 

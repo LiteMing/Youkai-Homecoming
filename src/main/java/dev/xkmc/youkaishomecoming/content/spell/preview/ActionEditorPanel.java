@@ -2614,7 +2614,7 @@ public class ActionEditorPanel {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		String[] displayNames = new String[values.length];
 		for (int i = 0; i < values.length; i++) {
-			displayNames[i] = formatEnum(values[i]);
+			displayNames[i] = SpellEditorLocalization.t(formatEnum(values[i]));
 		}
 		int selectedIndex = current.ordinal();
 		int rowIndex = rows.size();
@@ -2630,6 +2630,10 @@ public class ActionEditorPanel {
 
 	private void addStringOptionRow(String label, String[] values, String[] displayNames, String current, Consumer<String> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		String[] localizedDisplayNames = new String[displayNames.length];
+		for (int i = 0; i < displayNames.length; i++) {
+			localizedDisplayNames[i] = SpellEditorLocalization.t(displayNames[i]);
+		}
 		int selectedIdx = -1;
 		for (int i = 0; i < values.length; i++) {
 			if (values[i].equals(current)) {
@@ -2638,10 +2642,10 @@ public class ActionEditorPanel {
 			}
 		}
 		final int selectedIndex = selectedIdx;
-		String display = selectedIndex >= 0 && selectedIndex < displayNames.length ? displayNames[selectedIndex] : current;
+		String display = selectedIndex >= 0 && selectedIndex < localizedDisplayNames.length ? localizedDisplayNames[selectedIndex] : SpellEditorLocalization.t(current);
 		int rowIndex = rows.size();
 		var btn = Button.builder(Component.literal(display + " \u25BC"), b -> {
-			openDropdown(displayNames, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
+			openDropdown(localizedDisplayNames, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
 		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, false));
 	}
@@ -2849,7 +2853,7 @@ public class ActionEditorPanel {
 
 	private void addBoolRow(String label, boolean value, Consumer<Boolean> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var btn = Button.builder(Component.literal(value ? "ON" : "OFF"), b -> {
+		var btn = Button.builder(Component.literal(SpellEditorLocalization.t(value ? "ON" : "OFF")), b -> {
 			onChange.accept(!value);
 		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, false));
@@ -2952,7 +2956,7 @@ public class ActionEditorPanel {
 
 	private void addFullWidthButton(String text, Runnable onClick) {
 		int widgetW = w - PADDING * 2;
-		var btn = Button.builder(Component.literal(text), b -> onClick.run())
+		var btn = Button.builder(Component.literal(SpellEditorLocalization.t(text)), b -> onClick.run())
 				.bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow("", btn, true));
 	}
@@ -2990,7 +2994,7 @@ public class ActionEditorPanel {
 
 	private void addInlineRow(String text, Runnable onDelete) {
 		int deleteW = 20;
-		var btn = Button.builder(Component.literal("[x]"), b -> onDelete.run())
+		var btn = Button.builder(Component.literal(SpellEditorLocalization.t("[x]")), b -> onDelete.run())
 				.bounds(0, 0, deleteW, ROW_HEIGHT - 2).build();
 		// customWidgetW > 0 means the widget should be right-aligned with this exact width
 		// The label text fills the remaining space on the left
@@ -3202,7 +3206,7 @@ public class ActionEditorPanel {
 		guiGraphics.fill(x, y, x + 1, y + h, 0xFF444466);
 
 		if (typeSelectorMode) {
-			guiGraphics.drawString(font, "Add Action", x + PADDING, y + PADDING + 2, 0xFFFFCC44, false);
+			guiGraphics.drawString(font, SpellEditorLocalization.t("Add Action"), x + PADDING, y + PADDING + 2, 0xFFFFCC44, false);
 			for (int i = 0; i < rows.size(); i++) {
 				int rowY = y + getRowY(i) - scrollOffset;
 				int rowH = getRowHeight(i);
@@ -3216,20 +3220,20 @@ public class ActionEditorPanel {
 		}
 
 		// Title
-		String title = currentAction == null ? "Select an action" : actionTypeName(currentAction);
+		String title = currentAction == null ? SpellEditorLocalization.t("Select an action") : actionTypeName(currentAction);
 		guiGraphics.drawString(font, title, x + PADDING, y + PADDING + 2, 0xFFFFCC44, false);
 
 		if (currentAction == null) {
-			guiGraphics.drawString(font, "Click an action in", x + PADDING, y + 30, 0xFF888888, false);
-			guiGraphics.drawString(font, "the list below to", x + PADDING, y + 42, 0xFF888888, false);
-			guiGraphics.drawString(font, "edit its properties", x + PADDING, y + 54, 0xFF888888, false);
+			guiGraphics.drawString(font, SpellEditorLocalization.t("Click an action in"), x + PADDING, y + 30, 0xFF888888, false);
+			guiGraphics.drawString(font, SpellEditorLocalization.t("the list below to"), x + PADDING, y + 42, 0xFF888888, false);
+			guiGraphics.drawString(font, SpellEditorLocalization.t("edit its properties"), x + PADDING, y + 54, 0xFF888888, false);
 			return;
 		}
 
 		// Disable/Enable + Delete buttons (top right)
 		boolean isDisabled = currentAction instanceof SpellActions.DisabledAction;
-		String toggleText = isDisabled ? "[Enable]" : "[Disable]";
-		String deleteText = "[Delete]";
+		String toggleText = SpellEditorLocalization.t(isDisabled ? "[Enable]" : "[Disable]");
+		String deleteText = SpellEditorLocalization.t("[Delete]");
 		int deleteX = x + w - font.width(deleteText) - PADDING;
 		int toggleX = deleteX - font.width(toggleText) - 6;
 
@@ -3244,7 +3248,7 @@ public class ActionEditorPanel {
 				deleteHovered ? 0xFFFF4444 : 0xFFAA4444, false);
 
 		if (rows.isEmpty()) {
-			guiGraphics.drawString(font, "Read-only action", x + PADDING, y + 30, 0xFF888888, false);
+			guiGraphics.drawString(font, SpellEditorLocalization.t("Read-only action"), x + PADDING, y + 30, 0xFF888888, false);
 			return;
 		}
 
@@ -3264,16 +3268,17 @@ public class ActionEditorPanel {
 					int separatorColor = (sectionColor & 0x00FFFFFF) | 0x80000000; // 50% opacity
 					guiGraphics.fill(x + PADDING, rowY, x + w - PADDING, rowY + 1, separatorColor);
 					// Draw section header text (includes ▶/▼ prefix) colored by depth
-					guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 3, sectionColor, false);
+					guiGraphics.drawString(font, SpellEditorLocalization.t(row.label()), x + PADDING, rowY + 3, sectionColor, false);
 				} else if (!row.fullWidth() && !row.label().isEmpty()) {
+					String rowLabel = SpellEditorLocalization.t(row.label());
 					if (row.overridden()) {
 						// Overridden row: reduced opacity (50% alpha) and strikethrough
 						int labelColor = 0x80BBBBBB; // ~50% opacity
 						int labelX = x + PADDING;
 						int labelY = rowY + 4;
-						guiGraphics.drawString(font, row.label(), labelX, labelY, labelColor, false);
+						guiGraphics.drawString(font, rowLabel, labelX, labelY, labelColor, false);
 						// Draw 1px strikethrough line through the middle of the text
-						int textWidth = font.width(row.label());
+						int textWidth = font.width(rowLabel);
 						int strikeY = labelY + font.lineHeight / 2;
 						guiGraphics.fill(labelX, strikeY, labelX + textWidth, strikeY + 1, labelColor);
 						// Check if mouse is hovering over the label area for tooltip
@@ -3282,7 +3287,7 @@ public class ActionEditorPanel {
 							overrideTooltipText = MoverOverrideResolver.getTooltip(getCurrentMover());
 						}
 					} else {
-						guiGraphics.drawString(font, row.label(), x + PADDING, rowY + 4, 0xFFBBBBBB, false);
+						guiGraphics.drawString(font, rowLabel, x + PADDING, rowY + 4, 0xFFBBBBBB, false);
 					}
 				}
 			}
@@ -3293,7 +3298,7 @@ public class ActionEditorPanel {
 
 		// Render override tooltip on top of other content (but below dropdown)
 		if (overrideTooltipText != null && !overrideTooltipText.isEmpty()) {
-			guiGraphics.renderTooltip(font, Component.literal(overrideTooltipText), mouseX, mouseY);
+			guiGraphics.renderTooltip(font, Component.literal(SpellEditorLocalization.t(overrideTooltipText)), mouseX, mouseY);
 		}
 
 		// Dropdown overlay (rendered last, on top of everything)
@@ -3567,8 +3572,8 @@ public class ActionEditorPanel {
 
 		// Handle [Disable]/[Enable] button
 		boolean isDisabled = currentAction instanceof SpellActions.DisabledAction;
-		String toggleText = isDisabled ? "[Enable]" : "[Disable]";
-		String deleteText = "[Delete]";
+		String toggleText = SpellEditorLocalization.t(isDisabled ? "[Enable]" : "[Disable]");
+		String deleteText = SpellEditorLocalization.t("[Delete]");
 		int deleteX = x + w - font.width(deleteText) - PADDING;
 		int toggleX = deleteX - font.width(toggleText) - 6;
 		if (mouseX >= toggleX && mouseX < toggleX + font.width(toggleText)
@@ -3876,8 +3881,8 @@ public class ActionEditorPanel {
 		String id = SpellActions.getTypeId(action);
 		if (id != null) {
 			String name = ACTION_TYPE_NAMES.get(id);
-			if (name != null) return name;
-			return id;
+			if (name != null) return SpellEditorLocalization.t(name);
+			return SpellEditorLocalization.t(id);
 		}
 		return action.getClass().getSimpleName();
 	}

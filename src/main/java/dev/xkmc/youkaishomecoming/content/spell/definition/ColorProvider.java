@@ -71,7 +71,8 @@ public interface ColorProvider {
 			String type = CLASS_TO_TYPE.get(value.getClass());
 			if (type == null) return DataResult.error(() -> "Unknown ColorProvider class: " + value.getClass());
 			var codec = (Codec<ColorProvider>) REGISTRY.get(type);
-			return codec.encode(value, ops, prefix);
+			return codec.encode(value, ops, prefix)
+					.flatMap(encoded -> ops.mergeToMap(encoded, ops.createString("type"), ops.createString(type)));
 		}
 	};
 
@@ -83,6 +84,7 @@ public interface ColorProvider {
 	private static boolean _doInit() {
 		register("constant", Constant.CODEC, Constant.class);
 		register("by_variable", ByVariable.CODEC, ByVariable.class);
+		register("indexed", Indexed.CODEC, Indexed.class);
 		register("cycle", Cycle.CODEC, Cycle.class);
 		register("random_choice", RandomChoice.CODEC, RandomChoice.class);
 		return true;
@@ -120,6 +122,21 @@ public interface ColorProvider {
 			int index = ((int) Math.floor(ctx.getVariable(key))) % palette.size();
 			if (index < 0) index += palette.size();
 			return palette.get(index);
+		}
+	}
+
+	record Indexed(NumberProvider index, List<DyeColor> palette) implements ColorProvider {
+		public static final Codec<Indexed> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("index").forGetter(Indexed::index),
+				SpellCodecs.DYE_COLOR_CODEC.listOf().fieldOf("palette").forGetter(Indexed::palette)
+		).apply(i, Indexed::new));
+
+		@Override
+		public DyeColor get(SpellContext ctx) {
+			if (palette.isEmpty()) return DyeColor.WHITE;
+			int id = ((int) Math.floor(index.get(ctx))) % palette.size();
+			if (id < 0) id += palette.size();
+			return palette.get(id);
 		}
 	}
 

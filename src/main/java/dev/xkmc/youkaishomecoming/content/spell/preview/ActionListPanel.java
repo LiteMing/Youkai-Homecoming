@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
+import dev.xkmc.youkaishomecoming.content.spell.definition.BulletProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.ColorProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
@@ -2086,7 +2087,8 @@ public class ActionListPanel {
 	private String getActionLabel(SpellAction action, int index) {
 		if (action instanceof FireDanmakuAction fda) {
 			String colorLabel = fda.color() instanceof ColorProvider.Constant cc ? cc.color().name().toLowerCase() : "dynamic";
-			return index + ": fire " + fda.bulletType().name().toLowerCase() + " " + colorLabel;
+			String bulletLabel = fda.bulletType() instanceof BulletProvider.Constant bc ? bc.bullet().name().toLowerCase() : "dynamic";
+			return index + ": fire " + bulletLabel + " " + colorLabel;
 		}
 		if (action instanceof FireLaserAction fla) {
 			return index + ": laser " + fla.laserType().name().toLowerCase() + " " + fla.color().name().toLowerCase();

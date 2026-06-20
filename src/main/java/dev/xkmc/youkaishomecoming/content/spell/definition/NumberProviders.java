@@ -33,6 +33,7 @@ public class NumberProviders {
 		register("div", Div.CODEC, Div.class);
 		register("mod", Mod.CODEC, Mod.class);
 		register("sqrt", Sqrt.CODEC, Sqrt.class);
+		register("indexed", Indexed.CODEC, Indexed.class);
 		register("random_choice", RandomChoice.CODEC, RandomChoice.class);
 		register("conditional", Conditional.CODEC, Conditional.class);
 		register("gaussian", GaussianRandom.CODEC, GaussianRandom.class);
@@ -366,6 +367,25 @@ public class NumberProviders {
 		public double get(SpellContext ctx) {
 			if (values.isEmpty()) return 0;
 			return values.get(ctx.holder().random().nextInt(values.size()));
+		}
+	}
+
+	/**
+	 * Select a value from a list by an index expression.
+	 * JSON: {"type": "indexed", "index": {"type": "variable", "key": "i"}, "values": [30, 45, 60]}
+	 */
+	public record Indexed(NumberProvider index, java.util.List<Double> values) implements NumberProvider {
+		public static final Codec<Indexed> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("index").forGetter(Indexed::index),
+				Codec.DOUBLE.listOf().fieldOf("values").forGetter(Indexed::values)
+		).apply(i, Indexed::new));
+
+		@Override
+		public double get(SpellContext ctx) {
+			if (values.isEmpty()) return 0;
+			int id = ((int) Math.floor(index.get(ctx))) % values.size();
+			if (id < 0) id += values.size();
+			return values.get(id);
 		}
 	}
 

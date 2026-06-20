@@ -389,17 +389,8 @@ public class ActionEditorPanel {
 		var overrides = MoverOverrideResolver.resolve(a.mover());
 
 		// === Base group (always visible) ===
-		addEnumRow("Bullet", YHDanmaku.Bullet.values(), a.bulletType(), v ->
-				notifyDanmaku(old -> old.withBulletType(v)));
-
-		// Color: if constant, show DyeColor dropdown; otherwise show type label
-		if (a.color() instanceof ColorProvider.Constant cc) {
-			addEnumRow("Color", DyeColor.values(), cc.color(), v ->
-					notifyDanmaku(old -> old.withColor(ColorProvider.constant(v))));
-		} else {
-			String colorType = ColorProvider.CLASS_TO_TYPE.getOrDefault(a.color().getClass(), "dynamic");
-			addStringRow("Color", colorType, v -> {});
-		}
+		addBulletProviderRows(a);
+		addColorProviderRows(a);
 
 		addNumberRow("Count", a.count(), v ->
 				notifyDanmaku(old -> old.withCount(v), false));
@@ -407,11 +398,11 @@ public class ActionEditorPanel {
 		addNumberRow("Speed", a.speed(), v ->
 				notifyDanmaku(old -> old.withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides));
 
-		addNumberRow("Lifetime", a.lifetime(), v ->
-				notifyDanmaku(old -> old.withLifetime(v), false));
+		addIndexedNumberRows("Lifetime", a.lifetime(), v ->
+				notifyDanmaku(old -> old.withLifetime(v), false), false);
 
-		addNumberRow("Size", a.size(), v ->
-				notifyDanmaku(old -> old.withSize(v), false));
+		addIndexedNumberRows("Size", a.size(), v ->
+				notifyDanmaku(old -> old.withSize(v), false), false);
 
 		// === Pattern group ===
 		addSectionHeader("Pattern");
@@ -546,6 +537,231 @@ public class ActionEditorPanel {
 			}
 			currentDepth--;
 		}
+	}
+
+	private void addBulletProviderRows(FireDanmakuAction a) {
+		BulletProvider provider = a.bulletType();
+		String mode = provider instanceof BulletProvider.Indexed ? "indexed" :
+				provider instanceof BulletProvider.RandomChoice ? "random_choice" : "constant";
+		YHDanmaku.Bullet fallback = firstBullet(provider);
+		addStringOptionRow("Bullet Mode",
+				new String[]{"constant", "indexed", "random_choice"},
+				new String[]{"Constant", "Indexed", "Random"},
+				mode,
+				next -> notifyDanmaku(old -> old.withBulletProvider(createBulletProvider(next, provider, fallback)), true));
+		if (provider instanceof BulletProvider.Constant bc) {
+			addEnumRow("Bullet", YHDanmaku.Bullet.values(), bc.bullet(), v ->
+					notifyDanmaku(old -> old.withBulletType(v)));
+		} else if (provider instanceof BulletProvider.Indexed indexed) {
+			addNumberRow("Bullet Index", indexed.index(), v ->
+					notifyDanmaku(old -> old.withBulletProvider(new BulletProvider.Indexed(v, indexed.palette())), false));
+			addStringRow("Bullet List", formatBulletList(indexed.palette()), v -> {
+				var parsed = parseBulletList(v);
+				if (!parsed.isEmpty()) {
+					notifyDanmaku(old -> old.withBulletProvider(new BulletProvider.Indexed(indexed.index(), parsed)), true);
+				}
+			});
+		} else if (provider instanceof BulletProvider.RandomChoice random) {
+			addStringRow("Bullet List", formatBulletList(random.palette()), v -> {
+				var parsed = parseBulletList(v);
+				if (!parsed.isEmpty()) {
+					notifyDanmaku(old -> old.withBulletProvider(new BulletProvider.RandomChoice(parsed)), true);
+				}
+			});
+		}
+	}
+
+	private void addColorProviderRows(FireDanmakuAction a) {
+		ColorProvider provider = a.color();
+		String mode = provider instanceof ColorProvider.Indexed ? "indexed" :
+				provider instanceof ColorProvider.ByVariable ? "by_variable" :
+						provider instanceof ColorProvider.Cycle ? "cycle" :
+								provider instanceof ColorProvider.RandomChoice ? "random_choice" : "constant";
+		DyeColor fallback = firstColor(provider);
+		addStringOptionRow("Color Mode",
+				new String[]{"constant", "indexed", "by_variable", "cycle", "random_choice"},
+				new String[]{"Constant", "Indexed", "Variable", "Cycle", "Random"},
+				mode,
+				next -> notifyDanmaku(old -> old.withColor(createColorProvider(next, provider, fallback)), true));
+		if (provider instanceof ColorProvider.Constant cc) {
+			addEnumRow("Color", DyeColor.values(), cc.color(), v ->
+					notifyDanmaku(old -> old.withColor(ColorProvider.constant(v))));
+		} else if (provider instanceof ColorProvider.Indexed indexed) {
+			addNumberRow("Color Index", indexed.index(), v ->
+					notifyDanmaku(old -> old.withColor(new ColorProvider.Indexed(v, indexed.palette())), false));
+			addColorPaletteRow(indexed.palette(), list ->
+					notifyDanmaku(old -> old.withColor(new ColorProvider.Indexed(indexed.index(), list)), true));
+		} else if (provider instanceof ColorProvider.ByVariable variable) {
+			addStringRow("Color Var", variable.key(), v ->
+					notifyDanmaku(old -> old.withColor(new ColorProvider.ByVariable(v, variable.palette())), true));
+			addColorPaletteRow(variable.palette(), list ->
+					notifyDanmaku(old -> old.withColor(new ColorProvider.ByVariable(variable.key(), list)), true));
+		} else if (provider instanceof ColorProvider.Cycle cycle) {
+			addIntRow("Color Interval", cycle.interval(), v ->
+					notifyDanmaku(old -> old.withColor(new ColorProvider.Cycle(cycle.palette(), Math.max(1, v))), false));
+			addColorPaletteRow(cycle.palette(), list ->
+					notifyDanmaku(old -> old.withColor(new ColorProvider.Cycle(list, cycle.interval())), true));
+		} else if (provider instanceof ColorProvider.RandomChoice random) {
+			addColorPaletteRow(random.palette(), list ->
+					notifyDanmaku(old -> old.withColor(new ColorProvider.RandomChoice(list)), true));
+		}
+	}
+
+	private void addIndexedNumberRows(String label, NumberProvider provider, Consumer<NumberProvider> onChange,
+									  boolean overridden) {
+		String mode = provider instanceof NumberProviders.Indexed ? "indexed" : "expr";
+		addStringOptionRow(label + " Mode",
+				new String[]{"expr", "indexed"},
+				new String[]{"Expression", "Indexed"},
+				mode,
+				next -> {
+					if ("indexed".equals(next)) {
+						onChange.accept(new NumberProviders.Indexed(NumberProvider.constant(0), List.of(numberFallback(provider))));
+					} else {
+						onChange.accept(NumberProvider.constant(numberFallback(provider)));
+					}
+				});
+		if (provider instanceof NumberProviders.Indexed indexed) {
+			addNumberRow(label + " Index", indexed.index(), v ->
+					onChange.accept(new NumberProviders.Indexed(v, indexed.values())), overridden);
+			addStringRow(label + " Values", formatDoubleList(indexed.values()), v -> {
+				var parsed = parseDoubleList(v);
+				if (!parsed.isEmpty()) {
+					onChange.accept(new NumberProviders.Indexed(indexed.index(), parsed));
+				}
+			});
+		} else {
+			addNumberRow(label, provider, onChange, overridden);
+		}
+	}
+
+	private void addColorPaletteRow(List<DyeColor> palette, Consumer<List<DyeColor>> onChange) {
+		addStringRow("Color List", formatColorList(palette), v -> {
+			var parsed = parseColorList(v);
+			if (!parsed.isEmpty()) {
+				onChange.accept(parsed);
+			}
+		});
+	}
+
+	private BulletProvider createBulletProvider(String mode, BulletProvider old, YHDanmaku.Bullet fallback) {
+		List<YHDanmaku.Bullet> palette = bulletPalette(old, fallback);
+		return switch (mode) {
+			case "indexed" -> old instanceof BulletProvider.Indexed indexed ? indexed :
+					new BulletProvider.Indexed(NumberProvider.constant(0), palette);
+			case "random_choice" -> old instanceof BulletProvider.RandomChoice random ? random :
+					new BulletProvider.RandomChoice(palette);
+			default -> BulletProvider.constant(fallback);
+		};
+	}
+
+	private ColorProvider createColorProvider(String mode, ColorProvider old, DyeColor fallback) {
+		List<DyeColor> palette = colorPalette(old, fallback);
+		return switch (mode) {
+			case "indexed" -> old instanceof ColorProvider.Indexed indexed ? indexed :
+					new ColorProvider.Indexed(NumberProvider.constant(0), palette);
+			case "by_variable" -> old instanceof ColorProvider.ByVariable variable ? variable :
+					new ColorProvider.ByVariable("i", palette);
+			case "cycle" -> old instanceof ColorProvider.Cycle cycle ? cycle :
+					new ColorProvider.Cycle(palette, 1);
+			case "random_choice" -> old instanceof ColorProvider.RandomChoice random ? random :
+					new ColorProvider.RandomChoice(palette);
+			default -> ColorProvider.constant(fallback);
+		};
+	}
+
+	private YHDanmaku.Bullet firstBullet(BulletProvider provider) {
+		if (provider instanceof BulletProvider.Constant c) return c.bullet();
+		if (provider instanceof BulletProvider.Indexed indexed && !indexed.palette().isEmpty()) return indexed.palette().get(0);
+		if (provider instanceof BulletProvider.RandomChoice random && !random.palette().isEmpty()) return random.palette().get(0);
+		return YHDanmaku.Bullet.CIRCLE;
+	}
+
+	private DyeColor firstColor(ColorProvider provider) {
+		if (provider instanceof ColorProvider.Constant c) return c.color();
+		if (provider instanceof ColorProvider.Indexed indexed && !indexed.palette().isEmpty()) return indexed.palette().get(0);
+		if (provider instanceof ColorProvider.ByVariable variable && !variable.palette().isEmpty()) return variable.palette().get(0);
+		if (provider instanceof ColorProvider.Cycle cycle && !cycle.palette().isEmpty()) return cycle.palette().get(0);
+		if (provider instanceof ColorProvider.RandomChoice random && !random.palette().isEmpty()) return random.palette().get(0);
+		return DyeColor.WHITE;
+	}
+
+	private List<YHDanmaku.Bullet> bulletPalette(BulletProvider provider, YHDanmaku.Bullet fallback) {
+		if (provider instanceof BulletProvider.Indexed indexed && !indexed.palette().isEmpty()) return indexed.palette();
+		if (provider instanceof BulletProvider.RandomChoice random && !random.palette().isEmpty()) return random.palette();
+		return List.of(fallback);
+	}
+
+	private List<DyeColor> colorPalette(ColorProvider provider, DyeColor fallback) {
+		if (provider instanceof ColorProvider.Indexed indexed && !indexed.palette().isEmpty()) return indexed.palette();
+		if (provider instanceof ColorProvider.ByVariable variable && !variable.palette().isEmpty()) return variable.palette();
+		if (provider instanceof ColorProvider.Cycle cycle && !cycle.palette().isEmpty()) return cycle.palette();
+		if (provider instanceof ColorProvider.RandomChoice random && !random.palette().isEmpty()) return random.palette();
+		return List.of(fallback);
+	}
+
+	private double numberFallback(NumberProvider provider) {
+		if (provider instanceof NumberProviders.Constant c) return c.value();
+		if (provider instanceof NumberProviders.Indexed indexed && !indexed.values().isEmpty()) return indexed.values().get(0);
+		return 0;
+	}
+
+	private String formatBulletList(List<YHDanmaku.Bullet> values) {
+		return values.stream().map(e -> e.name().toLowerCase(java.util.Locale.ROOT))
+				.collect(java.util.stream.Collectors.joining(", "));
+	}
+
+	private String formatColorList(List<DyeColor> values) {
+		return values.stream().map(e -> e.name().toLowerCase(java.util.Locale.ROOT))
+				.collect(java.util.stream.Collectors.joining(", "));
+	}
+
+	private String formatDoubleList(List<Double> values) {
+		return values.stream().map(ActionEditorPanel::formatNumber)
+				.collect(java.util.stream.Collectors.joining(", "));
+	}
+
+	private List<YHDanmaku.Bullet> parseBulletList(String raw) {
+		List<YHDanmaku.Bullet> ans = new ArrayList<>();
+		for (String token : splitList(raw)) {
+			try {
+				ans.add(YHDanmaku.Bullet.valueOf(token.toUpperCase(java.util.Locale.ROOT)));
+			} catch (IllegalArgumentException ignored) {
+			}
+		}
+		return ans;
+	}
+
+	private List<DyeColor> parseColorList(String raw) {
+		List<DyeColor> ans = new ArrayList<>();
+		for (String token : splitList(raw)) {
+			try {
+				ans.add(DyeColor.valueOf(token.toUpperCase(java.util.Locale.ROOT)));
+			} catch (IllegalArgumentException ignored) {
+			}
+		}
+		return ans;
+	}
+
+	private List<Double> parseDoubleList(String raw) {
+		List<Double> ans = new ArrayList<>();
+		for (String token : splitList(raw)) {
+			try {
+				ans.add(Double.parseDouble(token));
+			} catch (NumberFormatException ignored) {
+			}
+		}
+		return ans;
+	}
+
+	private List<String> splitList(String raw) {
+		if (raw == null || raw.isBlank()) return List.of();
+		List<String> ans = new ArrayList<>();
+		for (String token : raw.split("[,\\s]+")) {
+			String trimmed = token.trim();
+			if (!trimmed.isEmpty()) ans.add(trimmed);
+		}
+		return ans;
 	}
 
 	// --- FireLaser rows ---

@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.fairy;
 
+import com.github.tartaricacid.touhoulittlemaid.entity.monster.IHasPowerPoint;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.FairyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
@@ -11,7 +12,10 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.Level;
 
 @SerialClass
-public class SmallFairy extends FairyEntity {
+public class SmallFairy extends FairyEntity implements IHasPowerPoint {
+
+	private static final int MIN_POWER_POINT = 300;
+	private static final int MAX_POWER_POINT = 500;
 
 	public static AttributeSupplier.Builder createAttributes() {
 		return YoukaiEntity.createAttributes()
@@ -26,6 +30,17 @@ public class SmallFairy extends FairyEntity {
 	@Override
 	public float percentageDamage(LivingEntity le) {
 		return super.percentageDamage(le) / 2;
+	}
+
+	@Override
+	public int getPowerPoint() {
+		return MIN_POWER_POINT + random().nextInt(MAX_POWER_POINT - MIN_POWER_POINT + 1);
+	}
+
+	@Override
+	protected void tickDeath() {
+		super.tickDeath();
+		dropPowerPoint(this);
 	}
 
 	@Override

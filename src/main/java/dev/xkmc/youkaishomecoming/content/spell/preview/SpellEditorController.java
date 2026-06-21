@@ -205,30 +205,8 @@ public class SpellEditorController {
 		if (isDraftMode()) {
 			return;
 		}
-		var mc = Minecraft.getInstance();
-		try {
-			com.google.gson.JsonElement json = SpellDefinition.CODEC.encodeStart(
-					com.mojang.serialization.JsonOps.INSTANCE, definition).getOrThrow(false, s -> {});
-			com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
-			String jsonStr = gson.toJson(json);
-
-			java.io.File dir = new java.io.File(mc.gameDirectory, "youkaishomecoming_exports/" + definition.id.getNamespace());
-			dir.mkdirs();
-			java.io.File file = new java.io.File(dir, definition.id.getPath().replace('/', '_') + ".json");
-			try (var writer = new java.io.FileWriter(file)) {
-				writer.write(jsonStr);
-			}
-
-			if (mc.player != null) {
-				mc.player.displayClientMessage(
-						Component.literal("[YH] Exported to " + file.getPath()), false);
-			}
-		} catch (Exception e) {
-			if (mc.player != null) {
-				mc.player.displayClientMessage(
-						Component.literal("[YH] Export failed: " + e.getMessage()), false);
-			}
-		}
+		SpellEditorNetworkClient.exportGlobal(definition);
+		displayEditorMessage("[YH] Exporting global spell " + formatResourceId(definition.id));
 	}
 
 	// --- Snapshot management ---

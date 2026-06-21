@@ -22,6 +22,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	public enum Action {
 		SAVE,
 		SAVE_AND_REAPPLY,
+		EXPORT_GLOBAL,
 		DELETE
 	}
 
@@ -49,6 +50,12 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 				definition.id.toString(), GSON.toJson(json));
 	}
 
+	public static SpellEditorSyncToServer exportGlobal(SpellDefinition definition) {
+		var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
+				.getOrThrow(false, s -> {});
+		return new SpellEditorSyncToServer(Action.EXPORT_GLOBAL, definition.id.toString(), GSON.toJson(json));
+	}
+
 	public static SpellEditorSyncToServer delete(ResourceLocation spellId) {
 		return new SpellEditorSyncToServer(Action.DELETE, spellId.toString(), "");
 	}
@@ -64,6 +71,8 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		try {
 			if (action == Action.DELETE) {
 				deleteSpell(sender);
+			} else if (action == Action.EXPORT_GLOBAL) {
+				exportGlobalSpell(sender);
 			} else {
 				saveSpell(sender, action == Action.SAVE_AND_REAPPLY);
 			}
@@ -72,6 +81,13 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 			sender.sendSystemMessage(Component.literal("[YH] Spell editor sync failed: " +
 					(msg == null ? e.getClass().getSimpleName() : msg)));
 		}
+	}
+
+	private void exportGlobalSpell(ServerPlayer sender) {
+		SpellDefinition definition = parseDefinition();
+		SpellRegistry.register(definition);
+		var file = CustomSpellStorage.saveGlobalSpell(definition);
+		sender.sendSystemMessage(Component.literal("[YH] Exported global spell " + definition.id + " to " + file.getPath()));
 	}
 
 	private void saveSpell(ServerPlayer sender, boolean reapply) {

@@ -396,22 +396,9 @@ public class YHCommands {
 										return 0;
 									}
 									try {
-										com.google.gson.JsonElement json = SpellDefinition.CODEC.encodeStart(
-												com.mojang.serialization.JsonOps.INSTANCE, def).getOrThrow(false, s -> {});
-										com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
-										String jsonStr = gson.toJson(json);
-
-										java.io.File dir = new java.io.File(
-												ctx.getSource().getServer().getServerDirectory(),
-												"youkaishomecoming_exports/" + spellId.getNamespace());
-										dir.mkdirs();
-										java.io.File file = new java.io.File(dir,
-												spellId.getPath().replace('/', '_') + ".json");
-										try (var writer = new java.io.FileWriter(file)) {
-											writer.write(jsonStr);
-										}
+										java.io.File file = CustomSpellStorage.saveGlobalSpell(def);
 										ctx.getSource().sendSuccess(
-												() -> Component.literal("Exported " + spellId + " to " + file.getPath()), true);
+												() -> Component.literal("Exported global spell " + spellId + " to " + file.getPath()), true);
 										return 1;
 									} catch (Exception e) {
 										ctx.getSource().sendFailure(Component.literal("Export failed: " + e.getMessage()));

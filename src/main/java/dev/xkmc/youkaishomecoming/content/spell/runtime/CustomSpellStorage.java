@@ -6,19 +6,20 @@ import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.storage.LevelResource;
+import net.minecraftforge.fml.loading.FMLPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileReader;
 import java.io.FileWriter;
-import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 
 /**
  * JSON file-based storage for custom spell definitions.
- * Each spell is stored as a .json file under {@code <world>/youkaishomecoming_spells/<namespace>/}.
+ * Regular saves are stored under {@code <world>/youkaishomecoming_spells/<namespace>/}.
+ * Exported spells are stored under {@code <game>/youkaishomecoming_spells/<namespace>/}
+ * and are loaded for every save on the same game/server instance.
  * No NBT conversion — pure JSON, consistent with the export/import system.
  */
 public class CustomSpellStorage {
@@ -28,10 +29,24 @@ public class CustomSpellStorage {
 	private static final String DIR_NAME = "youkaishomecoming_spells";
 
 	/**
+	 * Get the global storage root directory shared by all saves on this game/server instance.
+	 */
+	public static File getGlobalStorageDir() {
+		return new File(FMLPaths.GAMEDIR.get().toFile(), DIR_NAME);
+	}
+
+	/**
 	 * Get the storage root directory for the given server's world.
 	 */
+	public static File getWorldStorageDir(MinecraftServer server) {
+		return new File(server.getWorldPath(LevelResource.ROOT).toFile(), DIR_NAME);
+	}
+
+	/**
+	 * Backwards-compatible name for world-local spell storage.
+	 */
 	public static File getStorageDir(MinecraftServer server) {
-		return new File(server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).toFile(), DIR_NAME);
+		return getWorldStorageDir(server);
 	}
 
 	/**
@@ -39,7 +54,15 @@ public class CustomSpellStorage {
 	 * e.g. {@code youkaishomecoming_spells/youkaishomecoming/my_spell.json}
 	 */
 	public static File getSpellFile(MinecraftServer server, ResourceLocation id) {
-		File nsDir = new File(getStorageDir(server), id.getNamespace());
+		return getSpellFile(getWorldStorageDir(server), id);
+	}
+
+	public static File getGlobalSpellFile(ResourceLocation id) {
+		return getSpellFile(getGlobalStorageDir(), id);
+	}
+
+	private static File getSpellFile(File root, ResourceLocation id) {
+		File nsDir = new File(root, id.getNamespace());
 		nsDir.mkdirs();
 		String fileName = id.getPath().replace('/', '_') + ".json";
 		return new File(nsDir, fileName);
@@ -49,8 +72,20 @@ public class CustomSpellStorage {
 	 * Save a spell definition as a JSON file. Overwrites if exists.
 	 */
 	public static void saveSpell(MinecraftServer server, SpellDefinition definition) {
+		saveSpell(getSpellFile(server, definition.id), definition);
+	}
+
+	/**
+	 * Export a spell definition into the game/server directory so every save loads it.
+	 */
+	public static File saveGlobalSpell(SpellDefinition definition) {
+		File file = getGlobalSpellFile(definition.id);
+		saveSpell(file, definition);
+		return file;
+	}
+
+	private static void saveSpell(File file, SpellDefinition definition) {
 		try {
-			File file = getSpellFile(server, definition.id);
 			var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 					.getOrThrow(false, s -> {});
 			try (var writer = new FileWriter(file)) {
@@ -65,7 +100,11 @@ public class CustomSpellStorage {
 	 * Delete a custom spell JSON file.
 	 */
 	public static void deleteSpell(MinecraftServer server, ResourceLocation id) {
-		File file = getSpellFile(server, id);
+		deleteSpellFile(getSpellFile(server, id));
+		deleteSpellFile(getGlobalSpellFile(id));
+	}
+
+	private static void deleteSpellFile(File file) {
 		if (file.exists()) {
 			file.delete();
 		}
@@ -81,24 +120,28 @@ public class CustomSpellStorage {
 	 * Call on server/world start.
 	 */
 	public static void loadAllIntoRegistry(MinecraftServer server) {
-		File dir = getStorageDir(server);
-		if (!dir.exists() || !dir.isDirectory()) return;
-		loadRecursive(dir);
+		loadStorageDir(getGlobalStorageDir(), true);
+		loadStorageDir(getWorldStorageDir(server), false);
 	}
 
-	private static void loadRecursive(File dir) {
+	private static void loadStorageDir(File dir, boolean allowDefaultOverrides) {
+		if (!dir.exists() || !dir.isDirectory()) return;
+		loadRecursive(dir, allowDefaultOverrides);
+	}
+
+	private static void loadRecursive(File dir, boolean allowDefaultOverrides) {
 		File[] files = dir.listFiles();
 		if (files == null) return;
 		for (File file : files) {
 			if (file.isDirectory()) {
-				loadRecursive(file);
+				loadRecursive(file, allowDefaultOverrides);
 			} else if (file.getName().endsWith(".json")) {
-				loadSpellFile(file);
+				loadSpellFile(file, allowDefaultOverrides);
 			}
 		}
 	}
 
-	private static void loadSpellFile(File file) {
+	private static void loadSpellFile(File file, boolean allowDefaultOverrides) {
 		try {
 			String content = Files.readString(file.toPath());
 			var json = com.google.gson.JsonParser.parseString(content);
@@ -107,7 +150,7 @@ public class CustomSpellStorage {
 					.ifPresent(def -> {
 						// Skip disk-cached versions of built-in spells — Java code is always authoritative.
 						// This prevents stale auto-saved JSONs from overriding updated Java definitions.
-						if (SpellRegistry.hasDefault(def.id)) {
+						if (!allowDefaultOverrides && SpellRegistry.hasDefault(def.id)) {
 							LOGGER.info("Skipping disk-cached built-in spell {} (Java definition takes priority)", def.id);
 							file.delete();
 							return;

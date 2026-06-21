@@ -14,6 +14,10 @@ public class SpellEditorNetworkClient {
 		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.save(definition, true));
 	}
 
+	public static void exportGlobal(SpellDefinition definition) {
+		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.exportGlobal(definition));
+	}
+
 	public static void delete(ResourceLocation spellId) {
 		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.delete(spellId));
 	}

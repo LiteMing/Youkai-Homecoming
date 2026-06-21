@@ -564,10 +564,11 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	/**
-	 * Export the current spell definition to a JSON file in the game directory.
-	 * File is written to: ./youkaishomecoming_exports/<namespace>/<path>.json
+	 * Export the current spell definition to the server global spell directory.
+	 * Exported spells are loaded for every save on the same game/server instance.
 	 */
 	private void exportToDatapack() {
+		syncCustomNamesToDefinition();
 		spellController.exportToDatapack();
 	}
 

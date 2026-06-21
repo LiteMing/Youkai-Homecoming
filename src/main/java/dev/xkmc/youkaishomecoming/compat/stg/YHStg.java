@@ -1,7 +1,12 @@
 package dev.xkmc.youkaishomecoming.compat.stg;
 
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ItemLike;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
@@ -143,6 +148,14 @@ public final class YHStg {
 		YHStgApi.setDanmakuCombat(requirePlayer(player), enabled);
 	}
 
+	public static boolean shouldShowPower(Object player) {
+		return YHStgApi.shouldShowPower(requireAnyPlayer(player));
+	}
+
+	public static boolean shouldShowPowerForStack(Object stack) {
+		return YHStgApi.shouldShowPowerForStack(requireItemStack(stack));
+	}
+
 	private static ServerPlayer requirePlayer(Object value) {
 		ServerPlayer player = resolvePlayer(value, 0);
 		if (player == null) {
@@ -150,6 +163,24 @@ public final class YHStg {
 					(value == null ? "null" : value.getClass().getName()));
 		}
 		return player;
+	}
+
+	private static Player requireAnyPlayer(Object value) {
+		Player player = resolveAnyPlayer(value, 0);
+		if (player == null) {
+			throw new IllegalArgumentException("Expected a player for YHStg API, got " +
+					(value == null ? "null" : value.getClass().getName()));
+		}
+		return player;
+	}
+
+	private static ItemStack requireItemStack(Object value) {
+		ItemStack stack = resolveItemStack(value, 0);
+		if (stack == null) {
+			throw new IllegalArgumentException("Expected an item stack for YHStg API, got " +
+					(value == null ? "null" : value.getClass().getName()));
+		}
+		return stack;
 	}
 
 	@Nullable
@@ -169,6 +200,45 @@ public final class YHStg {
 	}
 
 	@Nullable
+	private static Player resolveAnyPlayer(Object value, int depth) {
+		if (value == null || depth > 4) return null;
+		if (value instanceof Player player) return player;
+		for (String name : PLAYER_METHODS) {
+			Player player = invokeAnyPlayerMethod(value, name, depth);
+			if (player != null) return player;
+		}
+		for (String name : PLAYER_FIELDS) {
+			Player player = readAnyPlayerField(value, name, depth);
+			if (player != null) return player;
+		}
+		return null;
+	}
+
+	@Nullable
+	private static ItemStack resolveItemStack(Object value, int depth) {
+		if (value == null || depth > 4) return null;
+		if (value instanceof ItemStack stack) return stack;
+		if (value instanceof ItemLike item) return new ItemStack(item);
+		if (value instanceof ResourceLocation id) {
+			return BuiltInRegistries.ITEM.getOptional(id).map(ItemStack::new).orElse(null);
+		}
+		if (value instanceof CharSequence text) {
+			ResourceLocation id = ResourceLocation.tryParse(text.toString());
+			if (id == null) return null;
+			return BuiltInRegistries.ITEM.getOptional(id).map(ItemStack::new).orElse(null);
+		}
+		for (String name : new String[]{"getItemStack", "itemStack", "getStack", "stack", "getItem", "item", "getId", "id"}) {
+			ItemStack stack = invokeItemStackMethod(value, name, depth);
+			if (stack != null) return stack;
+		}
+		for (String name : new String[]{"itemStack", "stack", "item", "id"}) {
+			ItemStack stack = readItemStackField(value, name, depth);
+			if (stack != null) return stack;
+		}
+		return null;
+	}
+
+	@Nullable
 	private static ServerPlayer invokePlayerMethod(Object value, String name, int depth) {
 		try {
 			Method method = value.getClass().getMethod(name);
@@ -180,10 +250,52 @@ public final class YHStg {
 	}
 
 	@Nullable
+	private static Player invokeAnyPlayerMethod(Object value, String name, int depth) {
+		try {
+			Method method = value.getClass().getMethod(name);
+			if (method.getParameterCount() != 0) return null;
+			return resolveAnyPlayer(method.invoke(value), depth + 1);
+		} catch (ReflectiveOperationException | SecurityException ignored) {
+			return null;
+		}
+	}
+
+	@Nullable
+	private static ItemStack invokeItemStackMethod(Object value, String name, int depth) {
+		try {
+			Method method = value.getClass().getMethod(name);
+			if (method.getParameterCount() != 0) return null;
+			return resolveItemStack(method.invoke(value), depth + 1);
+		} catch (ReflectiveOperationException | SecurityException ignored) {
+			return null;
+		}
+	}
+
+	@Nullable
 	private static ServerPlayer readPlayerField(Object value, String name, int depth) {
 		try {
 			Field field = value.getClass().getField(name);
 			return resolvePlayer(field.get(value), depth + 1);
+		} catch (ReflectiveOperationException | SecurityException ignored) {
+			return null;
+		}
+	}
+
+	@Nullable
+	private static Player readAnyPlayerField(Object value, String name, int depth) {
+		try {
+			Field field = value.getClass().getField(name);
+			return resolveAnyPlayer(field.get(value), depth + 1);
+		} catch (ReflectiveOperationException | SecurityException ignored) {
+			return null;
+		}
+	}
+
+	@Nullable
+	private static ItemStack readItemStackField(Object value, String name, int depth) {
+		try {
+			Field field = value.getClass().getField(name);
+			return resolveItemStack(field.get(value), depth + 1);
 		} catch (ReflectiveOperationException | SecurityException ignored) {
 			return null;
 		}

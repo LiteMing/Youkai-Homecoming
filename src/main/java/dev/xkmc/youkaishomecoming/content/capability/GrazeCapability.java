@@ -6,6 +6,7 @@ import dev.xkmc.l2library.capability.player.PlayerCapabilityNetworkHandler;
 import dev.xkmc.l2library.capability.player.PlayerCapabilityTemplate;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
+import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
@@ -15,7 +16,6 @@ import dev.xkmc.youkaishomecoming.events.DanmakuLastHitEvent;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
-import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -267,8 +267,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			if (forcedDanmakuCombat || !playerOpponents.isEmpty()) {
 				return fullInfo(icon);
 			}
-			boolean holding = player.getMainHandItem().is(YHTagGen.DANMAKU_SHOOTER) ||
-					player.getOffhandItem().is(YHTagGen.DANMAKU_SHOOTER);
+			boolean holding = YHStgApi.shouldShowPower(player);
 			boolean bypass = player.getAbilities().instabuild && player.isShiftKeyDown();
 			if (!holding) return List.of();
 			if (!bypass) {

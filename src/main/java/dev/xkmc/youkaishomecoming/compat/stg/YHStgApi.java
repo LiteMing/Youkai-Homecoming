@@ -1,10 +1,17 @@
 package dev.xkmc.youkaishomecoming.compat.stg;
 
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
+import dev.xkmc.youkaishomecoming.compat.stg.event.StgPowerHudEvent;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
+import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.common.MinecraftForge;
 
 import java.util.Objects;
@@ -158,6 +165,23 @@ public final class YHStgApi {
 
 	public static boolean isWeak(ServerPlayer player) {
 		return cap(player).isWeak();
+	}
+
+	public static boolean shouldShowPower(Player player) {
+		Objects.requireNonNull(player, "player");
+		boolean show = shouldShowPowerForStack(player.getMainHandItem()) ||
+				shouldShowPowerForStack(player.getOffhandItem());
+		var event = new StgPowerHudEvent(player, show);
+		MinecraftForge.EVENT_BUS.post(event);
+		return event.shouldShowPower();
+	}
+
+	public static boolean shouldShowPowerForStack(ItemStack stack) {
+		if (stack.isEmpty()) return false;
+		return stack.is(YHTagGen.DANMAKU_SHOOTER) ||
+				stack.getItem() instanceof DanmakuItem ||
+				stack.getItem() instanceof LaserItem ||
+				stack.getItem() instanceof ISpellItem;
 	}
 
 	/**

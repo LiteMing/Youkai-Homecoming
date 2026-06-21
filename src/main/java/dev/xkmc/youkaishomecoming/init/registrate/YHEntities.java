@@ -307,7 +307,7 @@ public class YHEntities {
 
 			DANMAKU_PROXY = YoukaisHomecoming.REGISTRATE
 					.<DanmakuProxyEntity>entity("danmaku_proxy", DanmakuProxyEntity::new, MobCategory.MISC)
-					.properties(e -> e.sized(0.1f, 0.1f).clientTrackingRange(10).updateInterval(2))
+					.properties(e -> e.sized(0.1f, 0.1f).clientTrackingRange(10).updateInterval(2).noSave())
 					.attributes(DanmakuProxyEntity::createAttributes)
 					.renderer(() -> NothingRenderer::new)
 					.register();

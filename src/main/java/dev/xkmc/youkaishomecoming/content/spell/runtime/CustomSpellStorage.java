@@ -91,8 +91,9 @@ public class CustomSpellStorage {
 			try (var writer = new FileWriter(file)) {
 				GSON.toJson(json, writer);
 			}
+			LOGGER.info("Saved custom spell {} to {}", definition.id, file.getPath());
 		} catch (Exception e) {
-			LOGGER.error("Failed to save spell {}", definition.id, e);
+			LOGGER.error("Failed to save spell {} to {}", definition.id, file.getPath(), e);
 		}
 	}
 
@@ -120,12 +121,16 @@ public class CustomSpellStorage {
 	 * Call on server/world start.
 	 */
 	public static void loadAllIntoRegistry(MinecraftServer server) {
-		loadStorageDir(getGlobalStorageDir(), true);
-		loadStorageDir(getWorldStorageDir(server), false);
+		loadStorageDir("global", getGlobalStorageDir(), true);
+		loadStorageDir("world", getWorldStorageDir(server), false);
 	}
 
-	private static void loadStorageDir(File dir, boolean allowDefaultOverrides) {
-		if (!dir.exists() || !dir.isDirectory()) return;
+	private static void loadStorageDir(String label, File dir, boolean allowDefaultOverrides) {
+		LOGGER.info("Loading {} custom spells from {}", label, dir.getPath());
+		if (!dir.exists() || !dir.isDirectory()) {
+			LOGGER.info("No {} custom spell directory found at {}", label, dir.getPath());
+			return;
+		}
 		loadRecursive(dir, allowDefaultOverrides);
 	}
 
@@ -146,7 +151,7 @@ public class CustomSpellStorage {
 			String content = Files.readString(file.toPath());
 			var json = com.google.gson.JsonParser.parseString(content);
 			SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
-					.resultOrPartial(err -> LOGGER.warn("Failed to parse spell file {}: {}", file.getName(), err))
+					.resultOrPartial(err -> LOGGER.warn("Failed to parse spell file {}: {}", file.getPath(), err))
 					.ifPresent(def -> {
 						// Skip disk-cached versions of built-in spells — Java code is always authoritative.
 						// This prevents stale auto-saved JSONs from overriding updated Java definitions.
@@ -156,9 +161,10 @@ public class CustomSpellStorage {
 							return;
 						}
 						SpellRegistry.register(def);
+						LOGGER.info("Loaded custom spell {} from {}", def.id, file.getPath());
 					});
 		} catch (Exception e) {
-			LOGGER.warn("Failed to read spell file {}: {}", file.getName(), e.getMessage());
+			LOGGER.warn("Failed to read spell file {}: {}", file.getPath(), e.getMessage());
 		}
 	}
 

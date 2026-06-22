@@ -27,7 +27,7 @@ public final class MoverOverrideResolver {
 	);
 
 	private static final Set<String> ATTACHED_TYPES = Set.of(
-			"attached", "attached_free_rot", "space_attached"
+			"attached", "attached_free_rot"
 	);
 
 	/**

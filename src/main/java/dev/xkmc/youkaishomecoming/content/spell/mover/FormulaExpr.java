@@ -2,8 +2,8 @@ package dev.xkmc.youkaishomecoming.content.spell.mover;
 
 /**
  * Lightweight expression evaluator for formula mover.
- * Supports: +, -, *, /, parentheses, and functions: sin, cos, abs, sqrt, min, max, pow, floor, ceil.
- * Variable: tick (the current mover tick).
+ * Supports: +, -, *, /, %, parentheses, and functions: sin, cos, abs, sqrt, min, max, pow, floor, ceil.
+ * Variable: tick/bullet_tick (the current mover tick).
  * Constants: pi, e.
  *
  * Extended variables (available when using {@link RichEvaluable}):
@@ -13,7 +13,7 @@ package dev.xkmc.youkaishomecoming.content.spell.mover;
  *
  * Grammar:
  *   expr   = term (('+' | '-') term)*
- *   term   = unary (('*' | '/') unary)*
+ *   term   = unary (('*' | '/' | '%') unary)*
  *   unary  = '-' unary | atom
  *   atom   = number | 'tick' | 'pi' | 'e' | var | func '(' expr (',' expr)* ')' | '(' expr ')'
  */
@@ -122,6 +122,11 @@ public final class FormulaExpr {
 				Evaluable right = parseUnary();
 				Evaluable l = left, r = right;
 				left = t -> { double d = r.eval(t); return d == 0 ? 0 : l.eval(t) / d; };
+			} else if (c == '%') {
+				pos++;
+				Evaluable right = parseUnary();
+				Evaluable l = left, r = right;
+				left = t -> { double d = r.eval(t); return d == 0 ? 0 : l.eval(t) % d; };
 			} else {
 				break;
 			}
@@ -164,7 +169,7 @@ public final class FormulaExpr {
 		if (id.isEmpty()) return t -> 0;
 
 		return switch (id) {
-			case "tick", "t" -> t -> t;
+			case "tick", "t", "bullet_tick", "bulletTick" -> t -> t;
 			case "pi" -> t -> Math.PI;
 			case "e" -> t -> Math.E;
 			case "sin" -> parseFunc1(Math::sin);
@@ -173,9 +178,13 @@ public final class FormulaExpr {
 			case "sqrt" -> parseFunc1(Math::sqrt);
 			case "floor" -> parseFunc1(Math::floor);
 			case "ceil" -> parseFunc1(Math::ceil);
+			case "round" -> parseFunc1(Math::rint);
+			case "log", "ln" -> parseFunc1(v -> v > 0 ? Math.log(v) : 0);
+			case "exp" -> parseFunc1(Math::exp);
 			case "min" -> parseFunc2(Math::min);
 			case "max" -> parseFunc2(Math::max);
 			case "pow" -> parseFunc2(Math::pow);
+			case "root" -> parseFunc2((value, degree) -> degree == 0 ? 0 : Math.pow(value, 1.0 / degree));
 			default -> t -> 0; // Unknown identifier
 		};
 	}
@@ -271,6 +280,11 @@ public final class FormulaExpr {
 				RichEvaluable right = parseUnaryRich();
 				RichEvaluable l = left, r = right;
 				left = (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> { double d = r.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz); return d == 0 ? 0 : l.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz) / d; };
+			} else if (c == '%') {
+				pos++;
+				RichEvaluable right = parseUnaryRich();
+				RichEvaluable l = left, r = right;
+				left = (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> { double d = r.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz); return d == 0 ? 0 : l.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz) % d; };
 			} else {
 				break;
 			}
@@ -311,7 +325,7 @@ public final class FormulaExpr {
 		if (id.isEmpty()) return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> 0;
 
 		return switch (id) {
-			case "tick", "t" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> t;
+			case "tick", "t", "bullet_tick", "bulletTick" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> t;
 			case "pi" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> Math.PI;
 			case "e" -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> Math.E;
 			// Target position
@@ -353,9 +367,13 @@ public final class FormulaExpr {
 			case "sqrt" -> parseFuncRich1(Math::sqrt);
 			case "floor" -> parseFuncRich1(Math::floor);
 			case "ceil" -> parseFuncRich1(Math::ceil);
+			case "round" -> parseFuncRich1(Math::rint);
+			case "log", "ln" -> parseFuncRich1(v -> v > 0 ? Math.log(v) : 0);
+			case "exp" -> parseFuncRich1(Math::exp);
 			case "min" -> parseFuncRich2(Math::min);
 			case "max" -> parseFuncRich2(Math::max);
 			case "pow" -> parseFuncRich2(Math::pow);
+			case "root" -> parseFuncRich2((value, degree) -> degree == 0 ? 0 : Math.pow(value, 1.0 / degree));
 			default -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> 0;
 		};
 	}

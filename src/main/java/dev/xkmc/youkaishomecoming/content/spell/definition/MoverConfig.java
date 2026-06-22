@@ -7,6 +7,7 @@ import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.RectMover;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.HashMap;
@@ -53,6 +54,15 @@ public interface MoverConfig {
 	 */
 	default DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 		return create(origin, velocity, baseDirection);
+	}
+
+	/**
+	 * Create a mover with access to the spell context at projectile spawn time.
+	 * Implementations can snapshot runtime variables into formulas without keeping
+	 * a live SpellRuntime reference on every projectile.
+	 */
+	default DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+		return create(origin, velocity, baseDirection, targetPos, casterPos);
 	}
 
 }

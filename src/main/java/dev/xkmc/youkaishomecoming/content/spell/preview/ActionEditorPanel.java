@@ -1633,25 +1633,22 @@ public class ActionEditorPanel {
 		if (moverOpt.isPresent()) {
 			MoverConfig cfg = moverOpt.get();
 			if (cfg instanceof MoverConfigs.AccelerationConfig acc) {
-				addDoubleRow("Accel X", acc.acceleration().x, v -> {
+				addNumberRow("Accel X", acc.x(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-								new net.minecraft.world.phys.Vec3(v, a.acceleration().y, a.acceleration().z))));
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(v, a.y(), a.z())));
 					}
 				});
-				addDoubleRow("Accel Y", acc.acceleration().y, v -> {
+				addNumberRow("Accel Y", acc.y(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-								new net.minecraft.world.phys.Vec3(a.acceleration().x, v, a.acceleration().z))));
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), v, a.z())));
 					}
 				});
-				addDoubleRow("Accel Z", acc.acceleration().z, v -> {
+				addNumberRow("Accel Z", acc.z(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-								new net.minecraft.world.phys.Vec3(a.acceleration().x, a.acceleration().y, v))));
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), v)));
 					}
 				});
 			} else if (cfg instanceof MoverConfigs.DecelerationConfig dc) {
@@ -2160,25 +2157,22 @@ public class ActionEditorPanel {
 											Consumer<Optional<MoverConfig>> onTypeChanged,
 											Consumer<Optional<MoverConfig>> onParamChanged) {
 		if (subCfg instanceof MoverConfigs.AccelerationConfig acc) {
-			addDoubleRow("  Acc X", acc.acceleration().x, v -> {
+			addNumberRow("  Acc X", acc.x(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(
-							new net.minecraft.world.phys.Vec3(v, a.acceleration().y, a.acceleration().z)), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(v, a.y(), a.z()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Acc Y", acc.acceleration().y, v -> {
+			addNumberRow("  Acc Y", acc.y(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(
-							new net.minecraft.world.phys.Vec3(a.acceleration().x, v, a.acceleration().z)), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(a.x(), v, a.z()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Acc Z", acc.acceleration().z, v -> {
+			addNumberRow("  Acc Z", acc.z(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(
-							new net.minecraft.world.phys.Vec3(a.acceleration().x, a.acceleration().y, v)), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(a.x(), a.y(), v), onParamChanged);
 				}
 			});
 		} else if (subCfg instanceof MoverConfigs.DecelerationConfig dc) {
@@ -2330,25 +2324,22 @@ public class ActionEditorPanel {
 										 Consumer<Optional<MoverConfig>> onTypeChanged,
 										 Consumer<Optional<MoverConfig>> onParamChanged) {
 		if (layerCfg instanceof MoverConfigs.AccelerationConfig acc) {
-			addDoubleRow("  Acc X", acc.acceleration().x, v -> {
+			addNumberRow("  Acc X", acc.x(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(
-							new net.minecraft.world.phys.Vec3(v, a.acceleration().y, a.acceleration().z)), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(v, a.y(), a.z()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Acc Y", acc.acceleration().y, v -> {
+			addNumberRow("  Acc Y", acc.y(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(
-							new net.minecraft.world.phys.Vec3(a.acceleration().x, v, a.acceleration().z)), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(a.x(), v, a.z()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Acc Z", acc.acceleration().z, v -> {
+			addNumberRow("  Acc Z", acc.z(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(
-							new net.minecraft.world.phys.Vec3(a.acceleration().x, a.acceleration().y, v)), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(a.x(), a.y(), v), onParamChanged);
 				}
 			});
 		} else if (layerCfg instanceof MoverConfigs.DecelerationConfig dc) {
@@ -2879,7 +2870,8 @@ public class ActionEditorPanel {
 	// Expression autocomplete keywords
 	private static final String[] EXPR_FUNCTIONS = {
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
-			"tick_mod", "sin", "cos", "sqrt", "max", "min", "clamp", "gaussian", "choose",
+			"tick_mod", "sin", "cos", "sqrt", "abs", "floor", "ceil", "round",
+			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose",
 			"tick", "phase_tick", "total_tick", "distance",
 			"target_height", "target_fly_time", "target_speed", "game_difficulty",
 			"caster_x", "caster_y", "caster_z", "target_x", "target_y", "target_z"
@@ -2894,6 +2886,14 @@ public class ActionEditorPanel {
 		if (name.equals("sin")) return "sin()";
 		if (name.equals("cos")) return "cos()";
 		if (name.equals("sqrt")) return "sqrt()";
+		if (name.equals("abs")) return "abs()";
+		if (name.equals("floor")) return "floor()";
+		if (name.equals("ceil")) return "ceil()";
+		if (name.equals("round")) return "round()";
+		if (name.equals("pow")) return "pow(, )";
+		if (name.equals("root")) return "root(, )";
+		if (name.equals("log") || name.equals("ln")) return "log()";
+		if (name.equals("exp")) return "exp()";
 		if (name.equals("max")) return "max(, )";
 		if (name.equals("min")) return "min(, )";
 		if (name.equals("clamp")) return "clamp(, , )";
@@ -2911,6 +2911,14 @@ public class ActionEditorPanel {
 		if (name.equals("sin")) return 4;
 		if (name.equals("cos")) return 4;
 		if (name.equals("sqrt")) return 5;
+		if (name.equals("abs")) return 4;
+		if (name.equals("floor")) return 6;
+		if (name.equals("ceil")) return 5;
+		if (name.equals("round")) return 6;
+		if (name.equals("pow")) return 4;
+		if (name.equals("root")) return 5;
+		if (name.equals("log") || name.equals("ln")) return name.length() + 1;
+		if (name.equals("exp")) return 4;
 		return name.length(); // bare keyword
 	}
 
@@ -2923,6 +2931,14 @@ public class ActionEditorPanel {
 		if (name.equals("sin")) return "sin(input, amp?, phase?)";
 		if (name.equals("cos")) return "cos(input, amp?, phase?)";
 		if (name.equals("sqrt")) return "sqrt(input)";
+		if (name.equals("abs")) return "abs(input)";
+		if (name.equals("floor")) return "floor(input)";
+		if (name.equals("ceil")) return "ceil(input)";
+		if (name.equals("round")) return "round(input)";
+		if (name.equals("pow")) return "pow(base, exp)";
+		if (name.equals("root")) return "root(value, degree)";
+		if (name.equals("log") || name.equals("ln")) return "log(input, base?)";
+		if (name.equals("exp")) return "exp(input)";
 		return name;
 	}
 
@@ -2940,7 +2956,8 @@ public class ActionEditorPanel {
 	private static final int COLOR_KEYWORD = 0xFFDD44;   // yellow (tick, distance, etc.)
 	private static final java.util.Set<String> KNOWN_FUNCTIONS = java.util.Set.of(
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
-			"tick_mod", "sin", "cos", "sqrt", "max", "min", "clamp", "gaussian", "choose"
+			"tick_mod", "sin", "cos", "sqrt", "abs", "floor", "ceil", "round",
+			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose"
 	);
 	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
 			"tick", "phase_tick", "total_tick", "distance", "target_height", "target_fly_time",

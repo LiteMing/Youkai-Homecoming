@@ -122,10 +122,10 @@ public record FireTextDanmakuAction(
 				// Keep per-char spacing consistent with the single-entity variant:
 				// the first glyph starts nearest the origin and extends forward in text order.
 				Vec3 charPos = originPos.add(dir.scale(charLen * (idx + 0.5)));
-				spawn(holder, life, charPos, dir, sizeVal, ch, back, rollDeg);
+				spawn(ctx, holder, life, charPos, dir, baseDir, sizeVal, ch, back, rollDeg);
 			}
 		} else {
-			spawn(holder, life, originPos, dir, sizeVal, resolvedText, resolvedText, rollDeg);
+			spawn(ctx, holder, life, originPos, dir, baseDir, sizeVal, resolvedText, resolvedText, rollDeg);
 		}
 	}
 
@@ -162,7 +162,7 @@ public record FireTextDanmakuAction(
 		return result;
 	}
 
-	private void spawn(CardHolder holder, int life, Vec3 pos, Vec3 dir, float size, String str, String backStr, float rollDeg) {
+	private void spawn(SpellContext ctx, CardHolder holder, int life, Vec3 pos, Vec3 dir, Vec3 baseDir, float size, String str, String backStr, float rollDeg) {
 		TextDanmakuEntity e = holder.prepareTextDanmaku(life, pos, dir, size, str, textColor);
 		e.backText = backStr;
 		e.perChar = perChar;
@@ -174,7 +174,9 @@ public record FireTextDanmakuAction(
 			e.setupTime(setupPrepare, setupStart, life, setupEnd);
 		}
 		if (mover.isPresent()) {
-			e.mover = mover.get().create(pos, dir);
+			Vec3 casterPos = holder.self() != null ? holder.self().position() : pos;
+			Vec3 targetPos = holder.target() != null ? holder.target() : pos;
+			e.mover = mover.get().create(ctx, pos, dir, baseDir, targetPos, casterPos);
 		}
 		holder.shoot(e);
 	}

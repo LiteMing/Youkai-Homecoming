@@ -410,7 +410,7 @@ public record SpawnShooterAction(
 		if (mover.isPresent()) {
 			Vec3 casterPos = holder.self() != null ? holder.self().position() : spawnPos;
 			Vec3 targetPos = holder.target() != null ? holder.target() : spawnPos;
-			entity.mover = mover.get().create(spawnPos, vel, baseDir, targetPos, casterPos);
+			entity.mover = mover.get().create(ctx, spawnPos, vel, baseDir, targetPos, casterPos);
 		}
 
 		if (hasInitialYsmOverride()) {

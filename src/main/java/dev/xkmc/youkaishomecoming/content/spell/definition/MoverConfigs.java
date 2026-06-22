@@ -3,12 +3,15 @@ package dev.xkmc.youkaishomecoming.content.spell.definition;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.mover.*;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MoverConfigs {
 
@@ -53,6 +56,34 @@ public class MoverConfigs {
 		return CLASS_TO_TYPE.get(config.getClass());
 	}
 
+	private static final Pattern FORMULA_VARIABLE = Pattern.compile("\\$([A-Za-z_][A-Za-z0-9_]*)");
+
+	private static String bindFormula(String formula, SpellContext ctx) {
+		if (formula == null || formula.isBlank()) return "0";
+		if (ctx == null) return formula;
+		Matcher matcher = FORMULA_VARIABLE.matcher(formula);
+		StringBuffer sb = new StringBuffer();
+		while (matcher.find()) {
+			matcher.appendReplacement(sb, Matcher.quoteReplacement(formatFormulaNumber(ctx.getVariable(matcher.group(1)))));
+		}
+		matcher.appendTail(sb);
+		return sb.toString()
+				.replaceAll("\\bphase_tick\\b", formatFormulaNumber(ctx.phaseTick()))
+				.replaceAll("\\btotal_tick\\b", formatFormulaNumber(ctx.totalTick()));
+	}
+
+	private static String formatFormulaNumber(double value) {
+		if (!Double.isFinite(value)) return "0";
+		if (value == (long) value) return Long.toString((long) value);
+		return Double.toString(value);
+	}
+
+	private static double getNumber(NumberProvider provider, SpellContext ctx) {
+		if (ctx != null) return provider.get(ctx);
+		if (provider instanceof NumberProviders.Constant c) return c.value();
+		return 0;
+	}
+
 	@SuppressWarnings("unchecked")
 	static final Codec<MoverConfig> DISPATCH_CODEC = Codec.STRING.fieldOf("type")
 			.codec()
@@ -66,17 +97,30 @@ public class MoverConfigs {
 			);
 
 	/**
-	 * Adds constant acceleration to the projectile (creates RectMover).
-	 * JSON: {"type": "acceleration", "x": 0, "y": -0.05, "z": 0}
+	 * Adds acceleration to the projectile (creates RectMover).
+	 * Each component is a NumberProvider evaluated when the projectile is spawned.
+	 * JSON: {"type": "acceleration", "x": "$i * 0.02", "y": 0, "z": "sin(tick) * 0.01"}
 	 */
-	public record AccelerationConfig(Vec3 acceleration) implements MoverConfig {
-		public static final Codec<AccelerationConfig> CODEC = SpellCodecs.VEC3_CODEC
-				.fieldOf("acceleration").codec()
-				.xmap(AccelerationConfig::new, AccelerationConfig::acceleration);
+	public record AccelerationConfig(NumberProvider x, NumberProvider y, NumberProvider z) implements MoverConfig {
+		public static final Codec<AccelerationConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.optionalFieldOf("x", NumberProvider.constant(0)).forGetter(AccelerationConfig::x),
+				NumberProvider.CODEC.optionalFieldOf("y", NumberProvider.constant(0)).forGetter(AccelerationConfig::y),
+				NumberProvider.CODEC.optionalFieldOf("z", NumberProvider.constant(0)).forGetter(AccelerationConfig::z)
+		).apply(i, AccelerationConfig::new));
+
+		public AccelerationConfig(Vec3 acceleration) {
+			this(NumberProvider.constant(acceleration.x), NumberProvider.constant(acceleration.y),
+					NumberProvider.constant(acceleration.z));
+		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			return new RectMover(origin, velocity, acceleration);
+			return new RectMover(origin, velocity, new Vec3(getNumber(x, null), getNumber(y, null), getNumber(z, null)));
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			return new RectMover(origin, velocity, new Vec3(getNumber(x, ctx), getNumber(y, ctx), getNumber(z, ctx)));
 		}
 	}
 
@@ -204,6 +248,15 @@ public class MoverConfigs {
 			}
 			return composite;
 		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			var composite = new CompositeMover();
+			for (var seg : segments) {
+				composite.add(seg.duration, seg.mover.create(ctx, origin, velocity, baseDirection, targetPos, casterPos));
+			}
+			return composite;
+		}
 	}
 
 	/**
@@ -299,6 +352,15 @@ public class MoverConfigs {
 			var movers = new java.util.ArrayList<DanmakuMover>();
 			for (var layer : layers) {
 				movers.add(layer.create(origin, velocity, baseDirection, targetPos, casterPos));
+			}
+			return new LayeredMover(origin, movers);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			var movers = new java.util.ArrayList<DanmakuMover>();
+			for (var layer : layers) {
+				movers.add(layer.create(ctx, origin, velocity, baseDirection, targetPos, casterPos));
 			}
 			return new LayeredMover(origin, movers);
 		}
@@ -442,6 +504,16 @@ public class MoverConfigs {
 			return new dev.xkmc.youkaishomecoming.content.spell.mover.FormulaMover(
 					origin, dir, ori.side(), ori.normal(), x, y, z, drift);
 		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			var ori = DanmakuHelper.getOrientation(dir);
+			Vec3 drift = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize().scale(speed) : Vec3.ZERO;
+			return new dev.xkmc.youkaishomecoming.content.spell.mover.FormulaMover(
+					origin, dir, ori.side(), ori.normal(),
+					bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx), drift);
+		}
 	}
 
 	/**
@@ -494,6 +566,12 @@ public class MoverConfigs {
 			Vec3 fixedDir = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1);
 			return new FixedDirMover(inner.create(origin, velocity, baseDirection), fixedDir);
 		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			Vec3 fixedDir = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1);
+			return new FixedDirMover(inner.create(ctx, origin, velocity, baseDirection, targetPos, casterPos), fixedDir);
+		}
 	}
 
 	/**
@@ -527,6 +605,12 @@ public class MoverConfigs {
 			// Orbit axis = baseDirection (shared by all projectiles in the pattern)
 			Vec3 axis = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 1, 0);
 			return new OrbitalMover(origin, axis, velocity, angularSpeed, radius, drift);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			Vec3 axis = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 1, 0);
+			return new OrbitalMover(origin, axis, velocity, angularSpeed, bindFormula(radius, ctx), bindFormula(drift, ctx));
 		}
 	}
 
@@ -593,6 +677,14 @@ public class MoverConfigs {
 				return new TranslateMover(origin, dir, speed);
 			}
 			return new TranslateMover(origin, x, y, z, targetPos, casterPos);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			if (speed > 0 && !"none".equals(aim)) {
+				return create(origin, velocity, baseDirection, targetPos, casterPos);
+			}
+			return new TranslateMover(origin, bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx), targetPos, casterPos);
 		}
 	}
 

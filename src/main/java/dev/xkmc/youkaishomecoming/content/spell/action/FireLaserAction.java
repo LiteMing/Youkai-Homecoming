@@ -168,7 +168,9 @@ public record FireLaserAction(
 			laser.setDelayedMover(delayedV0.get().floatValue(), delayedV1.get().floatValue(),
 					setupPrepare, setupStart);
 		} else if (mover.isPresent()) {
-			laser.mover = mover.get().create(originPos, dir);
+			Vec3 casterPos = holder.self() != null ? holder.self().position() : originPos;
+			Vec3 targetPos = holder.target() != null ? holder.target() : originPos;
+			laser.mover = mover.get().create(ctx, originPos, dir, baseDir, targetPos, casterPos);
 		}
 		holder.shoot(laser);
 	}

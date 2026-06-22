@@ -207,7 +207,7 @@ public record FireDanmakuAction(
 			// When no target is available, targetPos = originPos (zero displacement for aim="target").
 			Vec3 casterPos = holder.self() != null ? holder.self().position() : originPos;
 			Vec3 targetPos = holder.target() != null ? holder.target() : originPos;
-			danmaku.mover = mover.get().create(originPos, dir, baseDir, targetPos, casterPos);
+			danmaku.mover = mover.get().create(ctx, originPos, dir, baseDir, targetPos, casterPos);
 		}
 		if (onExpiry.isPresent()) {
 			var expiryAction = new DataDrivenTrailAction(onExpiry.get(), ctx.runtime(), ctx.definition());

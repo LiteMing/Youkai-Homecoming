@@ -33,6 +33,14 @@ public class NumberProviders {
 		register("div", Div.CODEC, Div.class);
 		register("mod", Mod.CODEC, Mod.class);
 		register("sqrt", Sqrt.CODEC, Sqrt.class);
+		register("abs", Abs.CODEC, Abs.class);
+		register("floor", Floor.CODEC, Floor.class);
+		register("ceil", Ceil.CODEC, Ceil.class);
+		register("round", Round.CODEC, Round.class);
+		register("pow", Pow.CODEC, Pow.class);
+		register("root", Root.CODEC, Root.class);
+		register("log", Log.CODEC, Log.class);
+		register("exp", Exp.CODEC, Exp.class);
 		register("indexed", Indexed.CODEC, Indexed.class);
 		register("random_choice", RandomChoice.CODEC, RandomChoice.class);
 		register("conditional", Conditional.CODEC, Conditional.class);
@@ -86,6 +94,13 @@ public class NumberProviders {
 			if (numResult.result().isPresent()) {
 				double val = numResult.result().get().doubleValue();
 				return DataResult.success(Pair.of(new Constant(val), ops.empty()));
+			}
+			var strResult = ops.getStringValue(input);
+			if (strResult.result().isPresent()) {
+				NumberProvider parsed = NumberExprParser.parse(strResult.result().get());
+				if (parsed != null) {
+					return DataResult.success(Pair.of(parsed, ops.empty()));
+				}
 			}
 			// Fall back to dispatch codec
 			return DISPATCH_CODEC.decode(ops, input);
@@ -353,6 +368,72 @@ public class NumberProviders {
 			double v = input.get(ctx);
 			return v >= 0 ? Math.sqrt(v) : 0;
 		}
+	}
+
+	/** abs(input). */
+	public record Abs(NumberProvider input) implements NumberProvider {
+		public static final Codec<Abs> CODEC = NumberProvider.CODEC
+				.fieldOf("input").codec().xmap(Abs::new, Abs::input);
+		@Override public double get(SpellContext ctx) { return Math.abs(input.get(ctx)); }
+	}
+
+	/** floor(input). */
+	public record Floor(NumberProvider input) implements NumberProvider {
+		public static final Codec<Floor> CODEC = NumberProvider.CODEC
+				.fieldOf("input").codec().xmap(Floor::new, Floor::input);
+		@Override public double get(SpellContext ctx) { return Math.floor(input.get(ctx)); }
+	}
+
+	/** ceil(input). */
+	public record Ceil(NumberProvider input) implements NumberProvider {
+		public static final Codec<Ceil> CODEC = NumberProvider.CODEC
+				.fieldOf("input").codec().xmap(Ceil::new, Ceil::input);
+		@Override public double get(SpellContext ctx) { return Math.ceil(input.get(ctx)); }
+	}
+
+	/** round(input), half-to-even. */
+	public record Round(NumberProvider input) implements NumberProvider {
+		public static final Codec<Round> CODEC = NumberProvider.CODEC
+				.fieldOf("input").codec().xmap(Round::new, Round::input);
+		@Override public double get(SpellContext ctx) { return Math.rint(input.get(ctx)); }
+	}
+
+	/** pow(base, exponent). */
+	public record Pow(NumberProvider base, NumberProvider exponent) implements NumberProvider {
+		public static final Codec<Pow> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("base").forGetter(Pow::base),
+				NumberProvider.CODEC.fieldOf("exponent").forGetter(Pow::exponent)
+		).apply(i, Pow::new));
+		@Override public double get(SpellContext ctx) { return Math.pow(base.get(ctx), exponent.get(ctx)); }
+	}
+
+	/** root(value, degree), returns 0 when degree is zero. */
+	public record Root(NumberProvider value, NumberProvider degree) implements NumberProvider {
+		public static final Codec<Root> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("value").forGetter(Root::value),
+				NumberProvider.CODEC.fieldOf("degree").forGetter(Root::degree)
+		).apply(i, Root::new));
+		@Override public double get(SpellContext ctx) {
+			double d = degree.get(ctx);
+			return d == 0 ? 0 : Math.pow(value.get(ctx), 1.0 / d);
+		}
+	}
+
+	/** Natural logarithm. */
+	public record Log(NumberProvider input) implements NumberProvider {
+		public static final Codec<Log> CODEC = NumberProvider.CODEC
+				.fieldOf("input").codec().xmap(Log::new, Log::input);
+		@Override public double get(SpellContext ctx) {
+			double v = input.get(ctx);
+			return v > 0 ? Math.log(v) : 0;
+		}
+	}
+
+	/** exp(input). */
+	public record Exp(NumberProvider input) implements NumberProvider {
+		public static final Codec<Exp> CODEC = NumberProvider.CODEC
+				.fieldOf("input").codec().xmap(Exp::new, Exp::input);
+		@Override public double get(SpellContext ctx) { return Math.exp(input.get(ctx)); }
 	}
 
 	/**

@@ -10,7 +10,7 @@ import java.util.*;
  * Grammar (precedence low→high):
  *   expr   ::= add
  *   add    ::= mul (('+' | '-') mul)*
- *   mul    ::= unary (('*' | '/') unary)*
+ *   mul    ::= unary (('*' | '/' | '%') unary)*
  *   unary  ::= '-' unary | atom
  *   atom   ::= NUMBER | VARIABLE | function_call | '(' expr ')'
  *   function_call ::= NAME '(' expr (',' expr)* ')'
@@ -112,6 +112,22 @@ public class NumberExprParser {
 			if (inStr == null) return null;
 			return "sqrt(" + inStr + ")";
 		}
+		if (p instanceof NumberProviders.Abs a) return unparseUnary("abs", a.input());
+		if (p instanceof NumberProviders.Floor f) return unparseUnary("floor", f.input());
+		if (p instanceof NumberProviders.Ceil c) return unparseUnary("ceil", c.input());
+		if (p instanceof NumberProviders.Round r) return unparseUnary("round", r.input());
+		if (p instanceof NumberProviders.Pow pow) {
+			String bs = unparse(pow.base()), es = unparse(pow.exponent());
+			if (bs == null || es == null) return null;
+			return "pow(" + bs + ", " + es + ")";
+		}
+		if (p instanceof NumberProviders.Root root) {
+			String vs = unparse(root.value()), ds = unparse(root.degree());
+			if (vs == null || ds == null) return null;
+			return "root(" + vs + ", " + ds + ")";
+		}
+		if (p instanceof NumberProviders.Log l) return unparseUnary("log", l.input());
+		if (p instanceof NumberProviders.Exp e) return unparseUnary("exp", e.input());
 		if (p instanceof NumberProviders.Distance) return "distance";
 		if (p instanceof NumberProviders.TargetHeight) return "target_height";
 		if (p instanceof NumberProviders.GameDifficulty) return "game_difficulty";
@@ -334,6 +350,40 @@ public class NumberExprParser {
 				if (args.size() != 1) throw new ParseException("sqrt() requires 1 argument");
 				return new NumberProviders.Sqrt(args.get(0));
 			}
+			case "abs" -> {
+				if (args.size() != 1) throw new ParseException("abs() requires 1 argument");
+				return new NumberProviders.Abs(args.get(0));
+			}
+			case "floor" -> {
+				if (args.size() != 1) throw new ParseException("floor() requires 1 argument");
+				return new NumberProviders.Floor(args.get(0));
+			}
+			case "ceil" -> {
+				if (args.size() != 1) throw new ParseException("ceil() requires 1 argument");
+				return new NumberProviders.Ceil(args.get(0));
+			}
+			case "round" -> {
+				if (args.size() != 1) throw new ParseException("round() requires 1 argument");
+				return new NumberProviders.Round(args.get(0));
+			}
+			case "pow" -> {
+				if (args.size() != 2) throw new ParseException("pow() requires 2 arguments");
+				return new NumberProviders.Pow(args.get(0), args.get(1));
+			}
+			case "root" -> {
+				if (args.size() != 2) throw new ParseException("root() requires 2 arguments");
+				return new NumberProviders.Root(args.get(0), args.get(1));
+			}
+			case "log", "ln" -> {
+				if (args.size() == 1) return new NumberProviders.Log(args.get(0));
+				if (args.size() == 2) return new NumberProviders.Div(
+						new NumberProviders.Log(args.get(0)), new NumberProviders.Log(args.get(1)));
+				throw new ParseException("log() requires 1-2 arguments");
+			}
+			case "exp" -> {
+				if (args.size() != 1) throw new ParseException("exp() requires 1 argument");
+				return new NumberProviders.Exp(args.get(0));
+			}
 			case "max" -> {
 				if (args.size() != 2) throw new ParseException("max() requires 2 arguments");
 				return new NumberProviders.Max(args.get(0), args.get(1));
@@ -434,6 +484,11 @@ public class NumberExprParser {
 		if (amp == 1.0 && phase == 0.0) return name + "(" + inStr + ")";
 		if (phase == 0.0) return name + "(" + inStr + ", " + formatDouble(amp) + ")";
 		return name + "(" + inStr + ", " + formatDouble(amp) + ", " + formatDouble(phase) + ")";
+	}
+
+	private static String unparseUnary(String name, NumberProvider input) {
+		String inStr = unparse(input);
+		return inStr == null ? null : name + "(" + inStr + ")";
 	}
 
 	private static class ParseException extends RuntimeException {

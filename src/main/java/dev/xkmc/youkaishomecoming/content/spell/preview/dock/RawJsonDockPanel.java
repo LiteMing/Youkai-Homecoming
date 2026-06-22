@@ -47,7 +47,7 @@ public class RawJsonDockPanel implements DockPanel {
 
 	private Consumer<AbstractWidget> addWidgetCallback;
 	private Consumer<GuiEventListener> removeWidgetCallback;
-	private MultiLineEditBox editor;
+	private RawJsonEditBox editor;
 	private int x, y, w, h;
 	private boolean suppressChange;
 	private boolean dirtyInvalidDraft;
@@ -134,6 +134,7 @@ public class RawJsonDockPanel implements DockPanel {
 	@Override
 	public void onActivated() {
 		if (editor != null) {
+			highlightedPath = null;
 			editor.visible = true;
 			syncEditorFromDefinition();
 		}
@@ -148,6 +149,9 @@ public class RawJsonDockPanel implements DockPanel {
 	}
 
 	private void createEditor() {
+		String currentText = editor == null ? "" : editor.getValue();
+		boolean currentVisible = editor != null && editor.visible;
+		boolean currentFocused = editor != null && editor.isFocused();
 		if (editor != null && removeWidgetCallback != null) {
 			removeWidgetCallback.accept(editor);
 		}
@@ -155,12 +159,16 @@ public class RawJsonDockPanel implements DockPanel {
 			return;
 		}
 		Font font = Minecraft.getInstance().font;
-		editor = new MultiLineEditBox(font, x + PADDING, y + PADDING, 10, 10,
+		editor = new RawJsonEditBox(font, editorX(), editorY(), editorWidth(), editorHeight(),
 				Component.literal("raw_json"), Component.empty());
 		editor.setCharacterLimit(MAX_JSON_LENGTH);
 		editor.setValueListener(this::onJsonChanged);
-		editor.visible = false;
-		layoutEditor();
+		editor.visible = currentVisible;
+		if (!currentText.isEmpty()) {
+			setEditorText(currentText);
+		}
+		editor.setFocused(currentFocused);
+		highlightedPath = null;
 		addWidgetCallback.accept(editor);
 	}
 
@@ -168,10 +176,32 @@ public class RawJsonDockPanel implements DockPanel {
 		if (editor == null) {
 			return;
 		}
-		editor.setX(x + PADDING);
-		editor.setY(y + PADDING);
-		editor.setWidth(Math.max(10, w - PADDING * 2));
-		editor.setHeight(Math.max(10, h - PADDING * 2 - STATUS_HEIGHT));
+		int nextX = editorX();
+		int nextY = editorY();
+		int nextW = editorWidth();
+		int nextH = editorHeight();
+		if (editor.getWidth() != nextW || editor.getHeight() != nextH) {
+			createEditor();
+			return;
+		}
+		editor.setX(nextX);
+		editor.setY(nextY);
+	}
+
+	private int editorX() {
+		return x + PADDING;
+	}
+
+	private int editorY() {
+		return y + PADDING;
+	}
+
+	private int editorWidth() {
+		return Math.max(10, w - PADDING * 2);
+	}
+
+	private int editorHeight() {
+		return Math.max(10, h - PADDING * 2 - STATUS_HEIGHT);
 	}
 
 	private void syncEditorFromDefinition() {
@@ -203,11 +233,11 @@ public class RawJsonDockPanel implements DockPanel {
 		if (!editor.isFocused()) {
 			if (selected != null && formatted.highlightStart() >= 0) {
 				if (shouldReplaceText || shouldHighlight) {
-					selectRange(formatted.highlightStart(), formatted.highlightEnd());
+					selectRange(formatted.highlightStart(), formatted.highlightEnd(), true);
 					highlightedPath = selected;
 				}
 			} else if (highlightedPath != null) {
-				selectRange(0, 0);
+				selectRange(0, 0, false);
 				highlightedPath = null;
 			}
 		}
@@ -420,21 +450,11 @@ public class RawJsonDockPanel implements DockPanel {
 		builder.append("  ".repeat(Math.max(0, depth)));
 	}
 
-	private void selectRange(int start, int end) {
+	private void selectRange(int start, int end, boolean scrollToRange) {
 		if (editor == null || start < 0 || end < start) {
 			return;
 		}
-		try {
-			Field field = MultiLineEditBox.class.getDeclaredField("textField");
-			field.setAccessible(true);
-			MultilineTextField textField = (MultilineTextField) field.get(editor);
-			textField.setSelecting(false);
-			textField.seekCursor(Whence.ABSOLUTE, Math.min(end, editor.getValue().length()));
-			textField.setSelecting(true);
-			textField.seekCursor(Whence.ABSOLUTE, Math.min(start, editor.getValue().length()));
-			textField.setSelecting(false);
-		} catch (ReflectiveOperationException ignored) {
-		}
+		editor.highlightRange(start, end, scrollToRange);
 	}
 
 	private static String errorStatus(String key, String detail) {
@@ -448,6 +468,54 @@ public class RawJsonDockPanel implements DockPanel {
 	}
 
 	private record FormattedJson(String text, int highlightStart, int highlightEnd) {
+	}
+
+	private static final class RawJsonEditBox extends MultiLineEditBox {
+
+		private static final int LINE_HEIGHT = 9;
+		private static final String[] TEXT_FIELD_NAMES = {"textField", "f_238540_"};
+
+		private RawJsonEditBox(Font font, int x, int y, int width, int height,
+							   Component placeholder, Component message) {
+			super(font, x, y, width, height, placeholder, message);
+		}
+
+		private void highlightRange(int start, int end, boolean scrollToRange) {
+			MultilineTextField textField = textField();
+			if (textField == null) {
+				return;
+			}
+			int length = getValue().length();
+			int clampedStart = Math.max(0, Math.min(start, length));
+			int clampedEnd = Math.max(clampedStart, Math.min(end, length));
+			textField.setSelecting(false);
+			textField.seekCursor(Whence.ABSOLUTE, clampedStart);
+			int line = textField.getLineAtCursor();
+			textField.setSelecting(true);
+			textField.seekCursor(Whence.ABSOLUTE, clampedEnd);
+			textField.setSelecting(false);
+			if (scrollToRange && line >= 0) {
+				scrollToLine(line);
+			}
+		}
+
+		private void scrollToLine(int line) {
+			int visibleHeight = Math.max(0, getHeight() - totalInnerPadding());
+			double target = line * LINE_HEIGHT - visibleHeight / 2.0 + LINE_HEIGHT / 2.0;
+			setScrollAmount(Math.max(0, Math.min(getMaxScrollAmount(), target)));
+		}
+
+		private MultilineTextField textField() {
+			for (String name : TEXT_FIELD_NAMES) {
+				try {
+					Field field = MultiLineEditBox.class.getDeclaredField(name);
+					field.setAccessible(true);
+					return (MultilineTextField) field.get(this);
+				} catch (ReflectiveOperationException ignored) {
+				}
+			}
+			return null;
+		}
 	}
 
 }

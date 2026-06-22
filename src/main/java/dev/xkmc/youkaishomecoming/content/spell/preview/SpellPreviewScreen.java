@@ -107,19 +107,15 @@ public class SpellPreviewScreen extends Screen {
 		boolean fullEdit = !isDraftMode();
 		int bx = 4;
 		int by = 2;
-		int bw = 50;
 		for (ViewAngle angle : ViewAngle.values()) {
-			Button angleButton = Button.builder(Component.literal(SpellEditorLocalization.t(angle.getLabel())), btn -> {
+			bx = addTopBarButton(bx, by, SpellEditorLocalization.t(angle.getLabel()), 50, btn -> {
 				viewport.setPerspectiveMode(false);
 				viewport.setViewAngle(angle);
-			}).bounds(bx, by, bw, BUTTON_HEIGHT).build();
-			angleButton.active = fullEdit;
-			addRenderableWidget(angleButton);
-			bx += bw + BUTTON_SPACING;
+			}, fullEdit);
 		}
 		// Perspective / Orthographic toggle
 		String perspLabel = SpellEditorLocalization.t(viewport.isPerspectiveMode() ? "Ortho" : "Persp");
-		Button perspectiveButton = Button.builder(Component.literal(perspLabel), btn -> {
+		bx = addTopBarButton(bx, by, perspLabel, 40, btn -> {
 			boolean newPersp = !viewport.isPerspectiveMode();
 			viewport.setPerspectiveMode(newPersp);
 			if (newPersp) {
@@ -127,101 +123,60 @@ public class SpellPreviewScreen extends Screen {
 				viewport.setCameraToTarget(scene.getTargetPos());
 			}
 			rebuildScreen();
-		}).bounds(bx, by, 40, BUTTON_HEIGHT).build();
-		perspectiveButton.active = fullEdit;
-		addRenderableWidget(perspectiveButton);
-		bx += 42;
+		}, fullEdit);
 		// Bind target toggle (only in perspective mode)
 		if (viewport.isPerspectiveMode()) {
 			String bindLabel = SpellEditorLocalization.t(viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt");
-			Button bindButton = Button.builder(Component.literal(bindLabel), btn -> {
+			bx = addTopBarButton(bx, by, bindLabel, 48, btn -> {
 				viewport.setTargetBoundToCamera(!viewport.isTargetBoundToCamera());
 				rebuildScreen();
-			}).bounds(bx, by, 48, BUTTON_HEIGHT).build();
-			bindButton.active = fullEdit;
-			addRenderableWidget(bindButton);
-			bx += 50;
+			}, fullEdit);
 		}
 		// Toggle editor button
 		bx += 10;
-		Button editorToggleButton = Button.builder(Component.literal(SpellEditorLocalization.t(editorVisible ? "Editor <<" : "Editor >>")), btn -> {
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.t(editorVisible ? "Editor <<" : "Editor >>"), 60, btn -> {
 			editorVisible = !editorVisible;
 			rebuildScreen();
-		}).bounds(bx, by, 60, BUTTON_HEIGHT).build();
-		editorToggleButton.active = fullEdit;
-		addRenderableWidget(editorToggleButton);
-		bx += 62;
+		}, fullEdit);
 		// Apply button: re-apply edited spell to all entities using it
-		Button applyButton = Button.builder(Component.literal(SpellEditorLocalization.t("Apply")), btn -> applyToEntities())
-				.bounds(bx, by, 40, BUTTON_HEIGHT).build();
-		applyButton.active = fullEdit;
-		addRenderableWidget(applyButton);
-		bx += 42;
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit);
 		// Export button: save spell definition as JSON datapack file
-		Button exportButton = Button.builder(Component.literal(SpellEditorLocalization.t("Export")), btn -> exportToDatapack())
-				.bounds(bx, by, 46, BUTTON_HEIGHT).build();
-		exportButton.active = fullEdit;
-		addRenderableWidget(exportButton);
-		bx += 48;
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("Export"), 46, btn -> exportToDatapack(), fullEdit);
 		// Reset button: restore to original (built-in) or open-snapshot (custom)
-		Button resetButton = Button.builder(Component.literal(SpellEditorLocalization.t("Reset")), btn -> resetToDefault())
-				.bounds(bx, by, 40, BUTTON_HEIGHT).build();
-		resetButton.active = fullEdit;
-		addRenderableWidget(resetButton);
-		bx += 42;
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit);
 		// Auto Replay toggle
-		Button autoReplayButton = Button.builder(Component.literal(SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF")), btn -> {
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF"), 52, btn -> {
 			autoReplay = !autoReplay;
 			rebuildScreen();
-		}).bounds(bx, by, 52, BUTTON_HEIGHT).build();
-		autoReplayButton.active = fullEdit;
-		addRenderableWidget(autoReplayButton);
-		bx += 54;
+		}, fullEdit);
 		// Help button — toggles HelpDockPanel as a docked tab
-		Button helpButton = Button.builder(Component.literal(SpellEditorLocalization.t("Help")), btn -> {
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("Help"), 32, btn -> {
 			toggleHelpPanel();
-		}).bounds(bx, by, 32, BUTTON_HEIGHT).build();
-		helpButton.active = fullEdit;
-		addRenderableWidget(helpButton);
-		bx += 34;
-		Button langButton = Button.builder(Component.literal(SpellEditorLocalization.modeButtonLabel()), btn -> {
+		}, fullEdit);
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.modeButtonLabel(), 34, btn -> {
 			SpellEditorLocalization.toggle();
 			rebuildScreen();
-		}).bounds(bx, by, 34, BUTTON_HEIGHT).build();
-		langButton.active = fullEdit;
-		addRenderableWidget(langButton);
-		bx += 36;
+		}, fullEdit);
 		// Collapse All / Expand All
-		Button collapseAllButton = Button.builder(Component.literal(SpellEditorLocalization.t("\u25B6All")), btn -> {
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("\u25B6All"), 34, btn -> {
 			if (actionListPanel != null) actionListPanel.collapseAll();
-		}).bounds(bx, by, 34, BUTTON_HEIGHT).build();
-		collapseAllButton.active = fullEdit;
-		addRenderableWidget(collapseAllButton);
-		bx += 36;
-		Button expandAllButton = Button.builder(Component.literal(SpellEditorLocalization.t("\u25BCAll")), btn -> {
+		}, fullEdit);
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("\u25BCAll"), 34, btn -> {
 			if (actionListPanel != null) actionListPanel.expandAll();
-		}).bounds(bx, by, 34, BUTTON_HEIGHT).build();
-		expandAllButton.active = fullEdit;
-		addRenderableWidget(expandAllButton);
-		bx += 36;
+		}, fullEdit);
 		// Toggle show all add-buttons
 		if (actionListPanel != null) {
 			String addLabel = SpellEditorLocalization.t(actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel");
-			Button addButtonModeButton = Button.builder(Component.literal(addLabel), btn -> {
+			bx = addTopBarButton(bx, by, addLabel, 42, btn -> {
 				actionListPanel.toggleShowAllAddButtons();
 				rebuildScreen();
-			}).bounds(bx, by, 42, BUTTON_HEIGHT).build();
-			addButtonModeButton.active = fullEdit;
-			addRenderableWidget(addButtonModeButton);
-			bx += 44;
+			}, fullEdit);
 		}
 		// Reset Layout button
-		Button resetLayoutButton = Button.builder(Component.literal(SpellEditorLocalization.t("RstLayout")), btn -> {
+		addTopBarButton(bx, by, SpellEditorLocalization.t("RstLayout"), 56, btn -> {
 			DockSerializer.deleteLayout();
 			rebuildScreen(false);
-		}).bounds(bx, by, 56, BUTTON_HEIGHT).build();
-		resetLayoutButton.active = fullEdit;
-		addRenderableWidget(resetLayoutButton);
+		}, fullEdit);
 
 		// --- Create editor panels ---
 		actionListPanel = new ActionListPanel(
@@ -319,6 +274,15 @@ public class SpellPreviewScreen extends Screen {
 
 		controlsDockPanel.buildButtons();
 		updateActionListPhase();
+	}
+
+	private int addTopBarButton(int bx, int by, String label, int minWidth, Button.OnPress onPress, boolean active) {
+		int bw = Math.max(minWidth, font.width(label) + 12);
+		Button button = Button.builder(Component.literal(label), onPress)
+				.bounds(bx, by, bw, BUTTON_HEIGHT).build();
+		button.active = active;
+		addRenderableWidget(button);
+		return bx + bw + BUTTON_SPACING;
 	}
 
 	/**

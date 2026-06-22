@@ -235,7 +235,9 @@ public class ControlsDockPanel implements DockPanel {
 	}
 
 	private int addButton(int bx, int by, int bw, String label, Button.OnPress action) {
-		Button btn = Button.builder(Component.literal(SpellEditorLocalization.t(label)), action)
+		String text = SpellEditorLocalization.t(label);
+		bw = buttonWidth(text, bw);
+		Button btn = Button.builder(Component.literal(text), action)
 				.bounds(bx, by, bw, BUTTON_HEIGHT).build();
 		buttons.add(btn);
 		if (addWidgetCallback != null) {
@@ -245,13 +247,19 @@ public class ControlsDockPanel implements DockPanel {
 	}
 
 	private int addMenuButton(int bx, int by, int bw, String label, Consumer<Button> opener) {
-		Button btn = Button.builder(Component.literal(SpellEditorLocalization.t(label) + " \u25BE"), opener::accept)
+		String text = SpellEditorLocalization.t(label) + " \u25BE";
+		bw = buttonWidth(text, bw);
+		Button btn = Button.builder(Component.literal(text), opener::accept)
 				.bounds(bx, by, bw, BUTTON_HEIGHT).build();
 		buttons.add(btn);
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(btn);
 		}
 		return bx + bw + BUTTON_SPACING;
+	}
+
+	private int buttonWidth(String text, int minWidth) {
+		return Math.max(minWidth, Minecraft.getInstance().font.width(text) + 12);
 	}
 
 	private void openSpeedMenu(Button anchor) {

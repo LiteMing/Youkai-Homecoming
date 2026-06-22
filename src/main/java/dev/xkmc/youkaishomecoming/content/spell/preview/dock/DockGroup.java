@@ -197,7 +197,7 @@ public final class DockGroup implements DockNode {
 			DockPanel panel = panels.get(i);
 			String title = SpellEditorLocalization.t(panel.dockTitle());
 			int textWidth = font.width(title);
-			int tabWidth = Math.min(TAB_MAX_WIDTH, Math.max(TAB_MIN_WIDTH, textWidth + TAB_PADDING * 2));
+			int tabWidth = getTabWidth(font, title);
 
 			// 如果超出宽度则截断
 			if (tabX + tabWidth > x + w) break;
@@ -341,9 +341,8 @@ public final class DockGroup implements DockNode {
 		Font font = Minecraft.getInstance().font;
 		int tabX = x;
 		for (int i = 0; i < panels.size(); i++) {
-			String title = panels.get(i).dockTitle();
-			int textWidth = font.width(title);
-			int tabWidth = Math.min(TAB_MAX_WIDTH, Math.max(TAB_MIN_WIDTH, textWidth + TAB_PADDING * 2));
+			String title = SpellEditorLocalization.t(panels.get(i).dockTitle());
+			int tabWidth = getTabWidth(font, title);
 			if (tabX + tabWidth > x + w) break;
 			if (mouseX >= tabX && mouseX < tabX + tabWidth) {
 				return i;
@@ -351,6 +350,10 @@ public final class DockGroup implements DockNode {
 			tabX += tabWidth;
 		}
 		return -1;
+	}
+
+	private static int getTabWidth(Font font, String title) {
+		return Math.min(TAB_MAX_WIDTH, Math.max(TAB_MIN_WIDTH, font.width(title) + TAB_PADDING * 2));
 	}
 
 	/** Tab 栏区域的 Y 范围 */

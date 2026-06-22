@@ -54,6 +54,7 @@ public class SpellPreviewScreen extends Screen {
 	private VariablesDockPanel variablesDockPanel;
 	private PerfDockPanel perfDockPanel;
 	private HelpDockPanel helpDockPanel;
+	private RawJsonDockPanel rawJsonDockPanel;
 
 	// Editor panels (direct references for hotkey access)
 	private ActionListPanel actionListPanel;
@@ -225,9 +226,7 @@ public class SpellPreviewScreen extends Screen {
 		// --- Create editor panels ---
 		actionListPanel = new ActionListPanel(
 				(action, path) -> {
-					if (actionEditorPanel != null) {
-						actionEditorPanel.setAction(action, path.leafIndex());
-					}
+					setActionEditorAction(action, path.leafIndex());
 					// Highlight the selected action's danmaku in the viewport
 					scene.getHolder().setHighlightedActionIndex(path.leafIndex());
 					// Update rotation gizmo state based on selected action
@@ -261,6 +260,11 @@ public class SpellPreviewScreen extends Screen {
 		// --- Wrap in dock panel adapters ---
 		actionListDockPanel = new ActionListDockPanel(actionListPanel);
 		editorDockPanel = new EditorDockPanel(actionEditorPanel);
+		rawJsonDockPanel = new RawJsonDockPanel(
+				() -> actionEditorPanel == null ? null : actionEditorPanel.getCurrentAction(),
+				this::onRawJsonActionEdited
+		);
+		rawJsonDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
 		controlsDockPanel = new ControlsDockPanel(
 				scene, viewport, this::rebuildScreen, () -> resetSelectedPhasePreview(false),
 				spellController::getSpellOptions, spellController::getCurrentSpellSelectionId,
@@ -278,6 +282,7 @@ public class SpellPreviewScreen extends Screen {
 		panelMap.put(viewportPanel.dockId(), viewportPanel);
 		panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
 		panelMap.put(editorDockPanel.dockId(), editorDockPanel);
+		panelMap.put(rawJsonDockPanel.dockId(), rawJsonDockPanel);
 		panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
 		panelMap.put(statusDockPanel.dockId(), statusDockPanel);
 		panelMap.put(variablesDockPanel.dockId(), variablesDockPanel);
@@ -292,6 +297,7 @@ public class SpellPreviewScreen extends Screen {
 			boolean hadSavedLayout = DockSerializer.hasSavedLayout();
 			boolean savedLayoutHasStatusPanel = DockSerializer.savedLayoutContainsPanel(statusDockPanel.dockId());
 			boolean savedLayoutHasVariablesPanel = DockSerializer.savedLayoutContainsPanel(variablesDockPanel.dockId());
+			boolean savedLayoutHasRawJsonPanel = DockSerializer.savedLayoutContainsPanel(rawJsonDockPanel.dockId());
 			DockNode root = DockSerializer.loadLayout(panelMap, SpellPreviewScreen::buildDefaultLayout);
 			dockLayout = new DockLayout(root);
 			if (hadSavedLayout && !savedLayoutHasStatusPanel) {
@@ -299,6 +305,9 @@ public class SpellPreviewScreen extends Screen {
 			}
 			if (hadSavedLayout && !savedLayoutHasVariablesPanel) {
 				relocateMissingVariablesPanel();
+			}
+			if (hadSavedLayout && !savedLayoutHasRawJsonPanel) {
+				relocateMissingRawJsonPanel();
 			}
 		}
 		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
@@ -317,6 +326,7 @@ public class SpellPreviewScreen extends Screen {
 		DockPanel viewport = panelMap.get("viewport");
 		DockPanel actions = panelMap.get("actions");
 		DockPanel properties = panelMap.get("properties");
+		DockPanel rawJson = panelMap.get("raw_json");
 		DockPanel controls = panelMap.get("controls");
 		DockPanel status = panelMap.get("status");
 		DockPanel variables = panelMap.get("variables");
@@ -324,7 +334,7 @@ public class SpellPreviewScreen extends Screen {
 
 		DockGroup viewportGroup = new DockGroup(viewport);
 		DockGroup actionListGroup = new DockGroup(actions);
-		DockGroup editorGroup = new DockGroup(properties);
+		DockGroup editorGroup = new DockGroup(properties, rawJson);
 		DockGroup controlsGroup = new DockGroup(controls, perf);
 		DockGroup statusGroup = new DockGroup(status, variables);
 		// Help 面板默认不显示
@@ -389,6 +399,24 @@ public class SpellPreviewScreen extends Screen {
 		statusGroup.addPanel(variablesDockPanel);
 	}
 
+	private void relocateMissingRawJsonPanel() {
+		if (dockLayout == null || rawJsonDockPanel == null || editorDockPanel == null) {
+			return;
+		}
+		DockGroup editorGroup = dockLayout.findGroupContaining(editorDockPanel);
+		if (editorGroup == null) {
+			return;
+		}
+		DockGroup currentGroup = dockLayout.findGroupContaining(rawJsonDockPanel);
+		if (currentGroup == editorGroup) {
+			return;
+		}
+		if (currentGroup != null) {
+			currentGroup.removePanel(rawJsonDockPanel);
+		}
+		editorGroup.addPanel(rawJsonDockPanel);
+	}
+
 	private boolean replaceDockNode(DockNode current, DockNode oldNode, DockNode newNode) {
 		if (current instanceof DockSplit split) {
 			if (split.getFirst() == oldNode) {
@@ -439,6 +467,30 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
+	private void onRawJsonActionEdited(SpellAction newAction) {
+		onActionEdited(newAction);
+		setActionEditorAction(newAction, actionEditorPanel == null ? -1 : actionEditorPanel.getActionIndex());
+		updateRotationGizmoForAction(newAction);
+	}
+
+	private void setActionEditorAction(SpellAction action, int index) {
+		if (actionEditorPanel == null) {
+			return;
+		}
+		actionEditorPanel.setAction(action, index);
+		syncActionEditorWidgetVisibility();
+	}
+
+	private void syncActionEditorWidgetVisibility() {
+		if (actionEditorPanel == null || editorDockPanel == null || dockLayout == null) {
+			return;
+		}
+		DockGroup group = dockLayout.findGroupContaining(editorDockPanel);
+		if (group != null) {
+			actionEditorPanel.setAllWidgetsVisible(group.getActivePanel() == editorDockPanel);
+		}
+	}
+
 	/** Transient edit during a drag — replaces selected action without pushing undo. */
 	private void onActionEditedTransient(SpellAction newAction) {
 		if (actionListPanel != null) {
@@ -472,7 +524,7 @@ public class SpellPreviewScreen extends Screen {
 			var newAction = fda.withOrigin(newOrigin);
 			onActionEditedTransient(newAction);
 			if (actionEditorPanel != null) {
-				actionEditorPanel.setAction(newAction, actionEditorPanel.getActionIndex());
+				setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
 			}
 		}
 	}
@@ -510,7 +562,7 @@ public class SpellPreviewScreen extends Screen {
 			var newAction = fda.withGroupRotation(Optional.of(newGr));
 			onActionEditedTransient(newAction);
 			if (actionEditorPanel != null) {
-				actionEditorPanel.setAction(newAction, actionEditorPanel.getActionIndex());
+				setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
 			}
 		}
 	}
@@ -960,7 +1012,8 @@ public class SpellPreviewScreen extends Screen {
 	 * When true, all custom hotkeys should be suppressed to avoid conflicts.
 	 */
 	private boolean isAnyEditBoxFocused() {
-		return getFocused() instanceof net.minecraft.client.gui.components.EditBox;
+		return getFocused() instanceof net.minecraft.client.gui.components.EditBox ||
+				getFocused() instanceof net.minecraft.client.gui.components.MultiLineEditBox;
 	}
 
 	@Override

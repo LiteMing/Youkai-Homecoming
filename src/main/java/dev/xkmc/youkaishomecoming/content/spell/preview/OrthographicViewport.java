@@ -10,8 +10,10 @@ import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
+import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
 import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
+import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -30,6 +32,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 /**
@@ -542,7 +545,8 @@ public class OrthographicViewport {
 		ViewAngle.applyRotation(poseStack, xRot, yRot);
 
 		// 5. Set camera orientation override for billboard rendering
-		ProjectileRenderHelper.cameraOrientationOverride = ViewAngle.computeOrientation(xRot, yRot);
+		Quaternionf previewOrientation = ViewAngle.computeOrientation(xRot, yRot);
+		ProjectileRenderHelper.cameraOrientationOverride = previewOrientation;
 
 		// 6. Enable depth testing for 3D content
 		RenderSystem.enableDepthTest();
@@ -572,6 +576,10 @@ public class OrthographicViewport {
 
 		ItemDanmakuRenderer<?> cachedDanmakuRenderer = null;
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
+			if (entity instanceof ShooterEntity shooter) {
+				renderShooterPreview(shooter, poseStack, buffer, partialTick, previewOrientation);
+				continue;
+			}
 			if (entity instanceof ItemDanmakuEntity danmaku) {
 				// Fast path: skip dispatcher.getRenderer() for danmaku (all same EntityType)
 				if (cachedDanmakuRenderer == null) {
@@ -661,11 +669,12 @@ public class OrthographicViewport {
 		poseStack.translate(-camX, -camY, -camZ);
 
 		// 9. Camera orientation for billboard rendering
-		ProjectileRenderHelper.cameraOrientationOverride = new org.joml.Quaternionf()
+		Quaternionf previewOrientation = new Quaternionf()
 				.rotationYXZ(
 						(float) Math.toRadians(-camYaw - 180),
 						(float) Math.toRadians(camPitch),
 						0);
+		ProjectileRenderHelper.cameraOrientationOverride = previewOrientation;
 
 		// 10. Enable depth testing
 		RenderSystem.enableDepthTest();
@@ -689,6 +698,10 @@ public class OrthographicViewport {
 
 		ItemDanmakuRenderer<?> cachedDanmakuRendererP = null;
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
+			if (entity instanceof ShooterEntity shooter) {
+				renderShooterPreview(shooter, poseStack, buffer, partialTick, previewOrientation);
+				continue;
+			}
 			if (entity instanceof ItemDanmakuEntity danmaku) {
 				if (cachedDanmakuRendererP == null) {
 					var r = dispatcher.getRenderer(entity);
@@ -736,6 +749,21 @@ public class OrthographicViewport {
 		poseStack.pushPose();
 		poseStack.translate(ex, ey, ez);
 		YSMClientCompat.renderPreviewCaster(holder, yaw, partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
+		poseStack.popPose();
+	}
+
+	private void renderShooterPreview(ShooterEntity shooter, PoseStack poseStack,
+			MultiBufferSource buffer, float partialTick, Quaternionf previewOrientation) {
+		if (shooter.tickCount <= 0) return;
+
+		double ex = Mth.lerp(partialTick, shooter.xOld, shooter.getX());
+		double ey = Mth.lerp(partialTick, shooter.yOld, shooter.getY());
+		double ez = Mth.lerp(partialTick, shooter.zOld, shooter.getZ());
+
+		poseStack.pushPose();
+		poseStack.translate(ex, ey, ez);
+		SpellCircleLayer.renderImpl(poseStack, buffer, LightTexture.FULL_BRIGHT, shooter, partialTick, previewOrientation);
+		YSMClientCompat.delegateRender(shooter, shooter.getYRot(), partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
 		poseStack.popPose();
 	}
 

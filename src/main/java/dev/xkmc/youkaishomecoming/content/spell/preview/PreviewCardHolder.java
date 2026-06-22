@@ -267,8 +267,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 					iterator.remove();
 				}
 			} else if (e instanceof ShooterEntity shooter) {
-				tickShooter(shooter);
-				if (!shooter.isAlive() || shooter.isRemoved()) {
+				if (!tickShooter(shooter)) {
 					iterator.remove();
 				}
 			} else {
@@ -302,19 +301,24 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		}
 	}
 
-	private void tickShooter(ShooterEntity shooter) {
-		// Lifetime check before tick
+	private boolean tickShooter(ShooterEntity shooter) {
 		if (shooter.tickCount >= shooter.lifetime()) {
 			shooter.discard();
-			return;
+			return false;
 		}
 
 		try {
 			// tick() handles movement, aiStep(), and serverAiStep() (via our override)
 			shooter.tick();
 		} catch (Exception ignored) {
-			// Safety net for any server-only code paths
+			shooter.discard();
+			return false;
 		}
+		if (shooter.tickCount >= shooter.lifetime()) {
+			shooter.discard();
+			return false;
+		}
+		return shooter.isAlive() && !shooter.isRemoved();
 	}
 
 	public List<Entity> getLocalEntities() {

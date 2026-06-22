@@ -1485,7 +1485,7 @@ public class ActionEditorPanel {
 			addNumberRow("Elevation", ssa.elevation(), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withElevation(v), false));
 			addEnumRow("Pattern", PatternType.values(), ssa.pattern(), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withPattern(v)));
+					notifySimple(old -> ((SpawnShooterAction) old).withPattern(v), true));
 			if (ssa.pattern() == PatternType.NESTED_RING || ssa.pattern() == PatternType.GRID) {
 				String label = ssa.pattern() == PatternType.GRID ? "Cols" : "Outer Cnt";
 				NumberProvider outerProv = ssa.outerCount().orElse(NumberProvider.constant(1));
@@ -1494,7 +1494,7 @@ public class ActionEditorPanel {
 			}
 			String currentAim = getAimModeType(ssa.aimMode());
 			addStringCycleRow("Aim Mode", AIM_MODE_TYPES, currentAim, newType ->
-					notifySimple(old -> ((SpawnShooterAction) old).withAimMode(createDefaultAimMode(newType))));
+					notifySimple(old -> ((SpawnShooterAction) old).withAimMode(createDefaultAimMode(newType)), true));
 			if (ssa.pattern() == PatternType.NESTED_RING) {
 				NumberProvider tiltProv = ssa.tiltAngle().orElse(NumberProvider.constant(0));
 				addNumberRow("Axis Tilt", tiltProv, v ->
@@ -1503,10 +1503,10 @@ public class ActionEditorPanel {
 				addNumberRow("Tilt Angle", ssa.tiltAngle().get(), v ->
 						notifySimple(old -> ((SpawnShooterAction) old).withTiltAngle(Optional.of(v)), false));
 				addFullWidthButton("[Remove Tilt]", () ->
-						notifySimple(old -> ((SpawnShooterAction) old).withTiltAngle(Optional.empty())));
+						notifySimple(old -> ((SpawnShooterAction) old).withTiltAngle(Optional.empty()), true));
 			} else {
 				addFullWidthButton("[+ Tilt Angle]", () ->
-						notifySimple(old -> ((SpawnShooterAction) old).withTiltAngle(Optional.of(NumberProvider.constant(0)))));
+						notifySimple(old -> ((SpawnShooterAction) old).withTiltAngle(Optional.of(NumberProvider.constant(0))), true));
 			}
 			currentDepth--;
 		}
@@ -1539,27 +1539,29 @@ public class ActionEditorPanel {
 									v)));
 						}, false));
 				addFullWidthButton("[Remove Group Rotation]", () ->
-						notifySimple(old -> ((SpawnShooterAction) old).withGroupRotation(Optional.empty())));
+						notifySimple(old -> ((SpawnShooterAction) old).withGroupRotation(Optional.empty()), true));
 			} else {
 				addFullWidthButton("[+ Group Rotation]", () ->
 						notifySimple(old -> ((SpawnShooterAction) old).withGroupRotation(Optional.of(new GroupRotation(
-								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0))))));
+								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)))), true));
 			}
 			currentDepth--;
 		}
 		addEnumRow("Origin", OriginConfig.OriginMode.values(), ssa.origin().mode(), v -> {
-			var s = (SpawnShooterAction) currentAction;
-			var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
-					s.origin().offsetZ(), s.origin().rotation());
-			notifySimple(old -> ((SpawnShooterAction) old).withOrigin(newOrigin));
+			notifySimple(old -> {
+				var s = (SpawnShooterAction) old;
+				var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
+						s.origin().offsetZ(), s.origin().rotation());
+				return s.withOrigin(newOrigin);
+			}, true);
 		});
 		// Origin offsets
 		buildOriginOffsetRows(ssa.origin(), newOrigin ->
-				notifySimple(old -> ((SpawnShooterAction) old).withOrigin(newOrigin)));
+				notifySimple(old -> ((SpawnShooterAction) old).withOrigin(newOrigin), false));
 		// Mover
 		buildMoverRows(ssa.mover(),
-				newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover)),
-				newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover)));
+				newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover), true),
+				newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover), false));
 	}
 
 	// --- Shared Origin/Mover row builders ---

@@ -26,6 +26,10 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.lwjgl.glfw.GLFW;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Optional;
@@ -39,6 +43,7 @@ public class RawJsonDockPanel implements DockPanel {
 	private static final int PADDING = 4;
 	private static final int STATUS_HEIGHT = 13;
 	private static final int MAX_JSON_LENGTH = 1_048_576;
+	private static final String DRAFT_DIR = "youkaishomecoming_spells/raw_json_drafts";
 
 	private final Supplier<SpellDefinition> definitionSupplier;
 	private final Supplier<ResourceLocation> phaseSupplier;
@@ -51,6 +56,8 @@ public class RawJsonDockPanel implements DockPanel {
 	private int x, y, w, h;
 	private boolean suppressChange;
 	private boolean dirtyInvalidDraft;
+	private String dirtyDraftMessage = "";
+	private Path dirtyDraftPath;
 	private ActionListPanel.ActionPath highlightedPath;
 	private String status = "";
 	private int statusColor = 0xFF888888;
@@ -172,6 +179,8 @@ public class RawJsonDockPanel implements DockPanel {
 		editor.visible = currentVisible;
 		if (!currentText.isEmpty()) {
 			setEditorText(currentText);
+		} else {
+			restoreDraftIfPresent();
 		}
 		editor.setFocused(currentFocused);
 		highlightedPath = null;
@@ -268,29 +277,149 @@ public class RawJsonDockPanel implements DockPanel {
 			Optional<SpellDefinition> parsed = SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
 					.resultOrPartial(msg -> parseError[0] = msg);
 			if (parsed.isEmpty()) {
-				dirtyInvalidDraft = true;
-				setStatus(errorStatus("Invalid spell JSON", parseError[0]), 0xFFFF8888);
+				markDraft(text, errorStatus("Invalid spell JSON", parseError[0]));
 				return;
 			}
 			String[] encodeError = new String[1];
 			Optional<JsonElement> encoded = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, parsed.get())
 					.resultOrPartial(msg -> encodeError[0] = msg);
 			if (encoded.isEmpty()) {
-				dirtyInvalidDraft = true;
-				setStatus(errorStatus("Invalid spell JSON", encodeError[0]), 0xFFFF8888);
+				markDraft(text, errorStatus("Invalid spell JSON", encodeError[0]));
+				return;
+			}
+			String droppedField = findDroppedField(json, encoded.get(), "$");
+			if (droppedField != null) {
+				markDraft(text, errorStatus("Raw JSON has unsupported field", droppedField));
 				return;
 			}
 			dirtyInvalidDraft = false;
+			dirtyDraftMessage = "";
+			dirtyDraftPath = null;
 			highlightedPath = null;
+			SpellDefinition currentDefinition = definitionSupplier.get();
+			if (currentDefinition != null) {
+				clearDraftFile(currentDefinition.id);
+			}
+			clearDraftFile(parsed.get().id);
 			applyDefinition.accept(parsed.get());
 			setStatus("Raw JSON applied", 0xFF88FF88);
 		} catch (JsonSyntaxException e) {
-			dirtyInvalidDraft = true;
-			setStatus(errorStatus("Invalid JSON", e.getMessage()), 0xFFFF8888);
+			markDraft(text, errorStatus("Invalid JSON", e.getMessage()));
 		} catch (RuntimeException e) {
-			dirtyInvalidDraft = true;
-			setStatus(errorStatus("Invalid spell JSON", e.getMessage()), 0xFFFF8888);
+			markDraft(text, errorStatus("Invalid spell JSON", e.getMessage()));
 		}
+	}
+
+	public boolean hasDirtyDraft() {
+		return dirtyInvalidDraft;
+	}
+
+	public String dirtyDraftMessage() {
+		return dirtyDraftMessage;
+	}
+
+	public Path dirtyDraftPath() {
+		return dirtyDraftPath;
+	}
+
+	private void markDraft(String text, String message) {
+		dirtyInvalidDraft = true;
+		dirtyDraftMessage = message == null ? "" : message;
+		dirtyDraftPath = saveDraftFile(text);
+		setStatus(dirtyDraftMessage, 0xFFFF8888);
+	}
+
+	private void restoreDraftIfPresent() {
+		SpellDefinition definition = definitionSupplier.get();
+		if (definition == null) {
+			return;
+		}
+		Path path = draftPath(definition.id);
+		if (!Files.isRegularFile(path)) {
+			return;
+		}
+		try {
+			String draft = Files.readString(path, StandardCharsets.UTF_8);
+			if (!draft.isBlank()) {
+				setEditorText(draft);
+				onJsonChanged(draft);
+			}
+		} catch (IOException e) {
+			setStatus(errorStatus("Unable to load Raw JSON draft", e.getMessage()), 0xFFFF8888);
+		}
+	}
+
+	private Path saveDraftFile(String text) {
+		SpellDefinition definition = definitionSupplier.get();
+		ResourceLocation id = definition == null ? null : definition.id;
+		Path path = draftPath(id);
+		try {
+			Files.createDirectories(path.getParent());
+			Files.writeString(path, text == null ? "" : text, StandardCharsets.UTF_8);
+			return path;
+		} catch (IOException e) {
+			dirtyDraftMessage = errorStatus("Unable to save Raw JSON draft", e.getMessage());
+			return null;
+		}
+	}
+
+	private void clearDraftFile(ResourceLocation id) {
+		Path path = draftPath(id);
+		try {
+			Files.deleteIfExists(path);
+		} catch (IOException ignored) {
+		}
+	}
+
+	private static Path draftPath(ResourceLocation id) {
+		String namespace = id == null ? "draft" : sanitizePathPart(id.getNamespace());
+		String path = id == null ? "untitled" : sanitizePathPart(id.getPath());
+		return Minecraft.getInstance().gameDirectory.toPath()
+				.resolve(DRAFT_DIR)
+				.resolve(namespace)
+				.resolve(path + ".json");
+	}
+
+	private static String sanitizePathPart(String raw) {
+		if (raw == null || raw.isBlank()) {
+			return "untitled";
+		}
+		return raw.replaceAll("[^a-zA-Z0-9._-]+", "_");
+	}
+
+	private static String findDroppedField(JsonElement input, JsonElement encoded, String path) {
+		if (input == null || encoded == null) {
+			return null;
+		}
+		if (input.isJsonObject() && encoded.isJsonObject()) {
+			JsonObject inObj = input.getAsJsonObject();
+			JsonObject outObj = encoded.getAsJsonObject();
+			for (Map.Entry<String, JsonElement> entry : inObj.entrySet()) {
+				String key = entry.getKey();
+				String childPath = path + "." + key;
+				if (!outObj.has(key)) {
+					return childPath;
+				}
+				String child = findDroppedField(entry.getValue(), outObj.get(key), childPath);
+				if (child != null) {
+					return child;
+				}
+			}
+		} else if (input.isJsonArray() && encoded.isJsonArray()) {
+			JsonArray inArray = input.getAsJsonArray();
+			JsonArray outArray = encoded.getAsJsonArray();
+			for (int i = 0; i < inArray.size(); i++) {
+				String childPath = path + "[" + i + "]";
+				if (i >= outArray.size()) {
+					return childPath;
+				}
+				String child = findDroppedField(inArray.get(i), outArray.get(i), childPath);
+				if (child != null) {
+					return child;
+				}
+			}
+		}
+		return null;
 	}
 
 	private FormattedJson encodeDefinition(SpellDefinition definition, ResourceLocation phaseId,

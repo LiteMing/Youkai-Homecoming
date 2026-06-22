@@ -20,6 +20,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
@@ -1282,10 +1283,30 @@ public class SpellPreviewScreen extends Screen {
 					org.lwjgl.glfw.GLFW.GLFW_CURSOR,
 					org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
 		}
+		reportRawJsonDraftOnClose();
 		saveCurrentDefinition();
 		// Save dock layout
 		if (dockLayout != null) {
 			DockSerializer.saveLayout(dockLayout.getRoot());
+		}
+	}
+
+	private void reportRawJsonDraftOnClose() {
+		if (rawJsonDockPanel == null || !rawJsonDockPanel.hasDirtyDraft()) {
+			return;
+		}
+		String message = "[YH] Raw JSON was not applied";
+		String reason = rawJsonDockPanel.dirtyDraftMessage();
+		if (reason != null && !reason.isBlank()) {
+			message += ": " + reason;
+		}
+		Path draftPath = rawJsonDockPanel.dirtyDraftPath();
+		if (draftPath != null) {
+			message += " (draft: " + draftPath + ")";
+		}
+		var mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			mc.player.displayClientMessage(Component.literal(message), false);
 		}
 	}
 

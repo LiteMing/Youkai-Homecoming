@@ -27,6 +27,8 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	@SerialClass.SerialField
 	public float visualScale = 1;
 	public NumberProvider visualScaleFunction = null;
+	private static final float VISUAL_SCALE_EPSILON = 1.0E-4f;
+	private float currentVisualScale = 1;
 	/**
 	 * Per-laser damage type override. When non-null, this takes priority over
 	 * the CardHolder/SpellCard damage source resolution chain.
@@ -64,7 +66,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	@Override
 	public void tick() {
 		if (visualScaleFunction != null) {
-			refreshDimensions();
+			updateVisualScaleDimensions(false);
 		}
 		super.tick();
 	}
@@ -83,13 +85,14 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 
 	public void setItem(ItemStack pStack) {
 		stack = pStack;
+		sizeCache = null;
 		refreshDimensions();
 	}
 
 	public void configureVisualScale(float scale, NumberProvider function) {
 		visualScale = Math.max(0.05f, scale);
 		visualScaleFunction = function;
-		refreshDimensions();
+		updateVisualScaleDimensions(true);
 	}
 
 	public ItemStack getItem() {
@@ -99,7 +102,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	public void readAdditionalSaveData(CompoundTag nbt) {
 		super.readAdditionalSaveData(nbt);
 		readScaleFunction(nbt);
-		refreshDimensions();
+		updateVisualScaleDimensions(true);
 	}
 
 	@Override
@@ -123,7 +126,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 		if (tag != null) {
 			readScaleFunction(tag);
 		}
-		refreshDimensions();
+		updateVisualScaleDimensions(true);
 	}
 
 	@Override
@@ -143,10 +146,18 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 				sizeCache = item.size;
 			}
 		}
-		return (sizeCache == null ? 1 : sizeCache) * dynamicVisualScale();
+		return (sizeCache == null ? 1 : sizeCache) * currentVisualScale;
 	}
 
-	private float dynamicVisualScale() {
+	private void updateVisualScaleDimensions(boolean force) {
+		float next = visualScaleFunction == null ? visualScale : evaluateVisualScaleFunction();
+		if (force || Math.abs(next - currentVisualScale) > VISUAL_SCALE_EPSILON) {
+			currentVisualScale = next;
+			refreshDimensions();
+		}
+	}
+
+	private float evaluateVisualScaleFunction() {
 		if (visualScaleFunction == null) return visualScale;
 		return Math.max(0.05f, (float) EntityNumberProviderEvaluator.get(visualScaleFunction, tickCount, visualScale, random));
 	}

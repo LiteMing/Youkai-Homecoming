@@ -64,6 +64,8 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public float visualScale = 1;
 	public NumberProvider visualScaleFunction = null;
 
+	private static final float VISUAL_SCALE_EPSILON = 1.0E-4f;
+	private float currentVisualScale = 1;
 	private boolean isErased = false;
 
 	@Override
@@ -85,19 +87,20 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 
 	public void setItem(ItemStack pStack) {
 		stack = pStack.copyWithCount(1);
+		sizeCache = null;
 		refreshDimensions();
 	}
 
 	public void configureVisualScale(float scale, NumberProvider function) {
 		visualScale = Math.max(0.05f, scale);
 		visualScaleFunction = function;
-		refreshDimensions();
+		updateVisualScaleDimensions(true);
 	}
 
 	@Override
 	public void tick() {
 		if (visualScaleFunction != null) {
-			refreshDimensions();
+			updateVisualScaleDimensions(false);
 		}
 		super.tick();
 	}
@@ -146,7 +149,7 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public void readAdditionalSaveData(CompoundTag nbt) {
 		super.readAdditionalSaveData(nbt);
 		readScaleFunction(nbt);
-		refreshDimensions();
+		updateVisualScaleDimensions(true);
 	}
 
 	@Override
@@ -170,7 +173,7 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		if (tag != null) {
 			readScaleFunction(tag);
 		}
-		refreshDimensions();
+		updateVisualScaleDimensions(true);
 	}
 
 	@Override
@@ -202,10 +205,18 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 				sizeCache = item.size;
 			}
 		}
-		return (sizeCache == null ? 1 : sizeCache) * dynamicVisualScale();
+		return (sizeCache == null ? 1 : sizeCache) * currentVisualScale;
 	}
 
-	private float dynamicVisualScale() {
+	private void updateVisualScaleDimensions(boolean force) {
+		float next = visualScaleFunction == null ? visualScale : evaluateVisualScaleFunction();
+		if (force || Math.abs(next - currentVisualScale) > VISUAL_SCALE_EPSILON) {
+			currentVisualScale = next;
+			refreshDimensions();
+		}
+	}
+
+	private float evaluateVisualScaleFunction() {
 		if (visualScaleFunction == null) return visualScale;
 		return Math.max(0.05f, (float) EntityNumberProviderEvaluator.get(visualScaleFunction, tickCount, visualScale, random));
 	}

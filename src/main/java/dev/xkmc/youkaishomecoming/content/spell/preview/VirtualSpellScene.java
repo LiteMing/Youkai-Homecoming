@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -321,6 +322,10 @@ public class VirtualSpellScene {
 
 	public int getHitCount() {
 		return runtime.getHitCount();
+	}
+
+	public Map<String, Double> getVariables() {
+		return runtime.getVariables();
 	}
 
 	public Set<ResourceLocation> getPhaseIds() {

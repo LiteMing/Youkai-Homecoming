@@ -51,6 +51,7 @@ public class SpellPreviewScreen extends Screen {
 	private EditorDockPanel editorDockPanel;
 	private ControlsDockPanel controlsDockPanel;
 	private StatusDockPanel statusDockPanel;
+	private VariablesDockPanel variablesDockPanel;
 	private PerfDockPanel perfDockPanel;
 	private HelpDockPanel helpDockPanel;
 
@@ -91,6 +92,7 @@ public class SpellPreviewScreen extends Screen {
 		this.viewportPanel.setOnRotationSpeedChanged(this::onRotationSpeedDragged);
 		this.viewportPanel.setEditBoxFocusedSupplier(this::isAnyEditBoxFocused);
 		this.statusDockPanel = new StatusDockPanel(scene, viewport);
+		this.variablesDockPanel = new VariablesDockPanel(scene);
 		this.helpDockPanel = new HelpDockPanel();
 	}
 
@@ -278,6 +280,7 @@ public class SpellPreviewScreen extends Screen {
 		panelMap.put(editorDockPanel.dockId(), editorDockPanel);
 		panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
 		panelMap.put(statusDockPanel.dockId(), statusDockPanel);
+		panelMap.put(variablesDockPanel.dockId(), variablesDockPanel);
 		panelMap.put(perfDockPanel.dockId(), perfDockPanel);
 		panelMap.put(helpDockPanel.dockId(), helpDockPanel);
 
@@ -288,10 +291,14 @@ public class SpellPreviewScreen extends Screen {
 		} else {
 			boolean hadSavedLayout = DockSerializer.hasSavedLayout();
 			boolean savedLayoutHasStatusPanel = DockSerializer.savedLayoutContainsPanel(statusDockPanel.dockId());
+			boolean savedLayoutHasVariablesPanel = DockSerializer.savedLayoutContainsPanel(variablesDockPanel.dockId());
 			DockNode root = DockSerializer.loadLayout(panelMap, SpellPreviewScreen::buildDefaultLayout);
 			dockLayout = new DockLayout(root);
 			if (hadSavedLayout && !savedLayoutHasStatusPanel) {
 				relocateMissingStatusPanel();
+			}
+			if (hadSavedLayout && !savedLayoutHasVariablesPanel) {
+				relocateMissingVariablesPanel();
 			}
 		}
 		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
@@ -312,13 +319,14 @@ public class SpellPreviewScreen extends Screen {
 		DockPanel properties = panelMap.get("properties");
 		DockPanel controls = panelMap.get("controls");
 		DockPanel status = panelMap.get("status");
+		DockPanel variables = panelMap.get("variables");
 		DockPanel perf = panelMap.get("perf");
 
 		DockGroup viewportGroup = new DockGroup(viewport);
 		DockGroup actionListGroup = new DockGroup(actions);
 		DockGroup editorGroup = new DockGroup(properties);
 		DockGroup controlsGroup = new DockGroup(controls, perf);
-		DockGroup statusGroup = new DockGroup(status);
+		DockGroup statusGroup = new DockGroup(status, variables);
 		// Help 面板默认不显示
 
 		DockSplit rightSplit = new DockSplit(false, 0.4f, actionListGroup, editorGroup);
@@ -361,6 +369,24 @@ public class SpellPreviewScreen extends Screen {
 		if (!replaceDockNode(dockLayout.getRoot(), anchor, split) && removed && currentGroup != null) {
 			currentGroup.addPanel(statusDockPanel);
 		}
+	}
+
+	private void relocateMissingVariablesPanel() {
+		if (dockLayout == null || variablesDockPanel == null || statusDockPanel == null) {
+			return;
+		}
+		DockGroup statusGroup = dockLayout.findGroupContaining(statusDockPanel);
+		if (statusGroup == null) {
+			return;
+		}
+		DockGroup currentGroup = dockLayout.findGroupContaining(variablesDockPanel);
+		if (currentGroup == statusGroup) {
+			return;
+		}
+		if (currentGroup != null) {
+			currentGroup.removePanel(variablesDockPanel);
+		}
+		statusGroup.addPanel(variablesDockPanel);
 	}
 
 	private boolean replaceDockNode(DockNode current, DockNode oldNode, DockNode newNode) {

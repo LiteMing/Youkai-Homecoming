@@ -23,10 +23,12 @@ import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -51,7 +53,7 @@ public class ActionEditorPanel {
 			"target_on_ground", "target_speed", "random_chance",
 			"target_health_below", "target_health_above",
 			"target_is_flying", "target_is_fallflying",
-			"dynamic_tick_interval", "entity_trait", "entity_flag", "compare", "variable_check",
+			"dynamic_tick_interval", "entity_trait", "entity_flag", "compare",
 			"difficulty_equals", "difficulty_above",
 			"always", "not", "and", "or"
 	};
@@ -62,7 +64,7 @@ public class ActionEditorPanel {
 			"target_on_ground", "target_speed", "random_chance",
 			"target_health_below", "target_health_above",
 			"target_is_flying", "target_is_fallflying",
-			"dynamic_tick_interval", "entity_trait", "entity_flag", "compare", "variable_check",
+			"dynamic_tick_interval", "entity_trait", "entity_flag", "compare",
 			"difficulty_equals", "difficulty_above",
 			"always"
 	};
@@ -210,6 +212,7 @@ public class ActionEditorPanel {
 		rows.clear();
 		exprEditBoxes.clear();
 		stringCompletionSuppliers.clear();
+		listCompletionTargets.clear();
 		widgetsRegistered = false;
 	}
 
@@ -398,11 +401,11 @@ public class ActionEditorPanel {
 		addNumberRow("Speed", a.speed(), v ->
 				notifyDanmaku(old -> old.withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides));
 
-		addIndexedNumberRows("Lifetime", a.lifetime(), v ->
-				notifyDanmaku(old -> old.withLifetime(v), false), false);
+		addNumberRow("Lifetime", a.lifetime(), v ->
+				notifyDanmaku(old -> old.withLifetime(v), false));
 
-		addIndexedNumberRows("Size", a.size(), v ->
-				notifyDanmaku(old -> old.withSize(v), false), false);
+		addNumberRow("Size", a.size(), v ->
+				notifyDanmaku(old -> old.withSize(v), false));
 
 		// === Pattern group ===
 		addSectionHeader("Pattern");
@@ -554,18 +557,26 @@ public class ActionEditorPanel {
 					notifyDanmaku(old -> old.withBulletType(v)));
 		} else if (provider instanceof BulletProvider.Indexed indexed) {
 			addNumberRow("Bullet Index", indexed.index(), v ->
-					notifyDanmaku(old -> old.withBulletProvider(new BulletProvider.Indexed(v, indexed.palette())), false));
-			addStringRow("Bullet List", formatBulletList(indexed.palette()), v -> {
+					notifyDanmaku(old -> {
+						List<YHDanmaku.Bullet> palette = old.bulletType() instanceof BulletProvider.Indexed cur ?
+								cur.palette() : indexed.palette();
+						return old.withBulletProvider(new BulletProvider.Indexed(v, palette));
+					}, false));
+			addListSuggestStringRow("Bullet List", formatBulletList(indexed.palette()), ActionEditorPanel::bulletListOptions, v -> {
 				var parsed = parseBulletList(v);
 				if (!parsed.isEmpty()) {
-					notifyDanmaku(old -> old.withBulletProvider(new BulletProvider.Indexed(indexed.index(), parsed)), true);
+					notifyDanmaku(old -> {
+						NumberProvider index = old.bulletType() instanceof BulletProvider.Indexed cur ?
+								cur.index() : indexed.index();
+						return old.withBulletProvider(new BulletProvider.Indexed(index, parsed));
+					}, false);
 				}
 			});
 		} else if (provider instanceof BulletProvider.RandomChoice random) {
-			addStringRow("Bullet List", formatBulletList(random.palette()), v -> {
+			addListSuggestStringRow("Bullet List", formatBulletList(random.palette()), ActionEditorPanel::bulletListOptions, v -> {
 				var parsed = parseBulletList(v);
 				if (!parsed.isEmpty()) {
-					notifyDanmaku(old -> old.withBulletProvider(new BulletProvider.RandomChoice(parsed)), true);
+					notifyDanmaku(old -> old.withBulletProvider(new BulletProvider.RandomChoice(parsed)), false);
 				}
 			});
 		}
@@ -588,55 +599,51 @@ public class ActionEditorPanel {
 					notifyDanmaku(old -> old.withColor(ColorProvider.constant(v))));
 		} else if (provider instanceof ColorProvider.Indexed indexed) {
 			addNumberRow("Color Index", indexed.index(), v ->
-					notifyDanmaku(old -> old.withColor(new ColorProvider.Indexed(v, indexed.palette())), false));
+					notifyDanmaku(old -> {
+						List<DyeColor> palette = old.color() instanceof ColorProvider.Indexed cur ?
+								cur.palette() : indexed.palette();
+						return old.withColor(new ColorProvider.Indexed(v, palette));
+					}, false));
 			addColorPaletteRow(indexed.palette(), list ->
-					notifyDanmaku(old -> old.withColor(new ColorProvider.Indexed(indexed.index(), list)), true));
+					notifyDanmaku(old -> {
+						NumberProvider index = old.color() instanceof ColorProvider.Indexed cur ?
+								cur.index() : indexed.index();
+						return old.withColor(new ColorProvider.Indexed(index, list));
+					}, false));
 		} else if (provider instanceof ColorProvider.ByVariable variable) {
 			addStringRow("Color Var", variable.key(), v ->
-					notifyDanmaku(old -> old.withColor(new ColorProvider.ByVariable(v, variable.palette())), true));
+					notifyDanmaku(old -> {
+						List<DyeColor> palette = old.color() instanceof ColorProvider.ByVariable cur ?
+								cur.palette() : variable.palette();
+						return old.withColor(new ColorProvider.ByVariable(v, palette));
+					}, true));
 			addColorPaletteRow(variable.palette(), list ->
-					notifyDanmaku(old -> old.withColor(new ColorProvider.ByVariable(variable.key(), list)), true));
+					notifyDanmaku(old -> {
+						String key = old.color() instanceof ColorProvider.ByVariable cur ?
+								cur.key() : variable.key();
+						return old.withColor(new ColorProvider.ByVariable(key, list));
+					}, false));
 		} else if (provider instanceof ColorProvider.Cycle cycle) {
 			addIntRow("Color Interval", cycle.interval(), v ->
-					notifyDanmaku(old -> old.withColor(new ColorProvider.Cycle(cycle.palette(), Math.max(1, v))), false));
+					notifyDanmaku(old -> {
+						List<DyeColor> palette = old.color() instanceof ColorProvider.Cycle cur ?
+								cur.palette() : cycle.palette();
+						return old.withColor(new ColorProvider.Cycle(palette, Math.max(1, v)));
+					}, false));
 			addColorPaletteRow(cycle.palette(), list ->
-					notifyDanmaku(old -> old.withColor(new ColorProvider.Cycle(list, cycle.interval())), true));
+					notifyDanmaku(old -> {
+						int interval = old.color() instanceof ColorProvider.Cycle cur ?
+								cur.interval() : cycle.interval();
+						return old.withColor(new ColorProvider.Cycle(list, interval));
+					}, false));
 		} else if (provider instanceof ColorProvider.RandomChoice random) {
 			addColorPaletteRow(random.palette(), list ->
-					notifyDanmaku(old -> old.withColor(new ColorProvider.RandomChoice(list)), true));
-		}
-	}
-
-	private void addIndexedNumberRows(String label, NumberProvider provider, Consumer<NumberProvider> onChange,
-									  boolean overridden) {
-		String mode = provider instanceof NumberProviders.Indexed ? "indexed" : "expr";
-		addStringOptionRow(label + " Mode",
-				new String[]{"expr", "indexed"},
-				new String[]{"Expression", "Indexed"},
-				mode,
-				next -> {
-					if ("indexed".equals(next)) {
-						onChange.accept(new NumberProviders.Indexed(NumberProvider.constant(0), List.of(numberFallback(provider))));
-					} else {
-						onChange.accept(NumberProvider.constant(numberFallback(provider)));
-					}
-				});
-		if (provider instanceof NumberProviders.Indexed indexed) {
-			addNumberRow(label + " Index", indexed.index(), v ->
-					onChange.accept(new NumberProviders.Indexed(v, indexed.values())), overridden);
-			addStringRow(label + " Values", formatDoubleList(indexed.values()), v -> {
-				var parsed = parseDoubleList(v);
-				if (!parsed.isEmpty()) {
-					onChange.accept(new NumberProviders.Indexed(indexed.index(), parsed));
-				}
-			});
-		} else {
-			addNumberRow(label, provider, onChange, overridden);
+					notifyDanmaku(old -> old.withColor(new ColorProvider.RandomChoice(list)), false));
 		}
 	}
 
 	private void addColorPaletteRow(List<DyeColor> palette, Consumer<List<DyeColor>> onChange) {
-		addStringRow("Color List", formatColorList(palette), v -> {
+		addListSuggestStringRow("Color List", formatColorList(palette), ActionEditorPanel::colorListOptions, v -> {
 			var parsed = parseColorList(v);
 			if (!parsed.isEmpty()) {
 				onChange.accept(parsed);
@@ -700,12 +707,6 @@ public class ActionEditorPanel {
 		return List.of(fallback);
 	}
 
-	private double numberFallback(NumberProvider provider) {
-		if (provider instanceof NumberProviders.Constant c) return c.value();
-		if (provider instanceof NumberProviders.Indexed indexed && !indexed.values().isEmpty()) return indexed.values().get(0);
-		return 0;
-	}
-
 	private String formatBulletList(List<YHDanmaku.Bullet> values) {
 		return values.stream().map(e -> e.name().toLowerCase(java.util.Locale.ROOT))
 				.collect(java.util.stream.Collectors.joining(", "));
@@ -716,9 +717,29 @@ public class ActionEditorPanel {
 				.collect(java.util.stream.Collectors.joining(", "));
 	}
 
-	private String formatDoubleList(List<Double> values) {
-		return values.stream().map(ActionEditorPanel::formatNumber)
-				.collect(java.util.stream.Collectors.joining(", "));
+	private static List<String> bulletListOptions() {
+		List<String> ans = new ArrayList<>();
+		for (YHDanmaku.Bullet bullet : YHDanmaku.Bullet.values()) {
+			ans.add(bullet.name().toLowerCase(java.util.Locale.ROOT));
+		}
+		return ans;
+	}
+
+	private static List<String> colorListOptions() {
+		List<String> ans = new ArrayList<>();
+		for (DyeColor color : DyeColor.values()) {
+			ans.add(color.name().toLowerCase(java.util.Locale.ROOT));
+		}
+		return ans;
+	}
+
+	private static boolean isBulletOption(String option) {
+		for (YHDanmaku.Bullet bullet : YHDanmaku.Bullet.values()) {
+			if (bullet.name().equalsIgnoreCase(option)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private List<YHDanmaku.Bullet> parseBulletList(String raw) {
@@ -738,17 +759,6 @@ public class ActionEditorPanel {
 			try {
 				ans.add(DyeColor.valueOf(token.toUpperCase(java.util.Locale.ROOT)));
 			} catch (IllegalArgumentException ignored) {
-			}
-		}
-		return ans;
-	}
-
-	private List<Double> parseDoubleList(String raw) {
-		List<Double> ans = new ArrayList<>();
-		for (String token : splitList(raw)) {
-			try {
-				ans.add(Double.parseDouble(token));
-			} catch (NumberFormatException ignored) {
 			}
 		}
 		return ans;
@@ -942,8 +952,8 @@ public class ActionEditorPanel {
 		} else if (cond instanceof SpellConditions.OrCondition oc) {
 			buildCompoundConditionRows(oc.conditions(), false);
 		} else {
-			buildConditionParamRows("", cond, newCond ->
-					notifyConditional(old -> new SpellActions.ConditionalAction(newCond, old.ifTrue(), old.ifFalse()), false));
+			buildConditionParamRows("", cond, (newCond, rebuild) ->
+					notifyConditional(old -> new SpellActions.ConditionalAction(newCond, old.ifTrue(), old.ifFalse()), rebuild));
 		}
 	}
 
@@ -957,8 +967,8 @@ public class ActionEditorPanel {
 			int idx = i;
 			addStringCycleRow("Cond " + (i + 1), SIMPLE_CONDITION_TYPES, getConditionType(sub), newType ->
 					notifyCompoundSubCondition(idx, createDefaultCondition(newType), isAnd));
-			buildConditionParamRows((idx + 1) + ":", sub, newSub ->
-					notifyCompoundSubCondition(idx, newSub, isAnd, false));
+			buildConditionParamRows((idx + 1) + ":", sub, (newSub, rebuild) ->
+					notifyCompoundSubCondition(idx, newSub, isAnd, rebuild));
 		}
 
 		// Button to add more sub-conditions
@@ -994,46 +1004,46 @@ public class ActionEditorPanel {
 		return List.of(cond);
 	}
 
-	private void buildConditionParamRows(String prefix, SpellCondition cond, Consumer<SpellCondition> onChanged) {
+	private void buildConditionParamRows(String prefix, SpellCondition cond, BiConsumer<SpellCondition, Boolean> onChanged) {
 		if (cond instanceof SpellConditions.TickInterval ti) {
 			addIntRow(prefix + "Interval", ti.interval(), v ->
-					onChanged.accept(new SpellConditions.TickInterval(v, ti.offset())));
+					onChanged.accept(new SpellConditions.TickInterval(v, ti.offset()), false));
 			addIntRow(prefix + "Offset", ti.offset(), v ->
-					onChanged.accept(new SpellConditions.TickInterval(ti.interval(), v)));
+					onChanged.accept(new SpellConditions.TickInterval(ti.interval(), v), false));
 		} else if (cond instanceof SpellConditions.HealthBelow hb) {
 			addFloatRow(prefix + "Threshold", hb.threshold(), v ->
-					onChanged.accept(new SpellConditions.HealthBelow(v)));
+					onChanged.accept(new SpellConditions.HealthBelow(v), false));
 		} else if (cond instanceof SpellConditions.HealthAbove ha) {
 			addFloatRow(prefix + "Threshold", ha.threshold(), v ->
-					onChanged.accept(new SpellConditions.HealthAbove(v)));
+					onChanged.accept(new SpellConditions.HealthAbove(v), false));
 		} else if (cond instanceof SpellConditions.TickElapsed te) {
 			addIntRow(prefix + "Ticks", te.ticks(), v ->
-					onChanged.accept(new SpellConditions.TickElapsed(v)));
+					onChanged.accept(new SpellConditions.TickElapsed(v), false));
 		} else if (cond instanceof SpellConditions.DistanceAbove da) {
 			addDoubleRow(prefix + "Distance", da.distance(), v ->
-					onChanged.accept(new SpellConditions.DistanceAbove(v)));
+					onChanged.accept(new SpellConditions.DistanceAbove(v), false));
 		} else if (cond instanceof SpellConditions.DistanceBelow db) {
 			addDoubleRow(prefix + "Distance", db.distance(), v ->
-					onChanged.accept(new SpellConditions.DistanceBelow(v)));
+					onChanged.accept(new SpellConditions.DistanceBelow(v), false));
 		} else if (cond instanceof SpellConditions.HitCountCondition hc) {
 			addIntRow(prefix + "Count", hc.count(), v ->
-					onChanged.accept(new SpellConditions.HitCountCondition(v)));
+					onChanged.accept(new SpellConditions.HitCountCondition(v), false));
 		} else if (cond instanceof SpellConditions.TargetOnGround) {
 			// No parameters - just a label
 		} else if (cond instanceof SpellConditions.TargetSpeed ts) {
 			addDoubleRow(prefix + "Threshold", ts.threshold(), v ->
-					onChanged.accept(new SpellConditions.TargetSpeed(v, ts.op())));
+					onChanged.accept(new SpellConditions.TargetSpeed(v, ts.op()), false));
 			addStringCycleRow(prefix + "Op", new String[]{">", ">=", "<", "<="}, ts.op(), v ->
-					onChanged.accept(new SpellConditions.TargetSpeed(ts.threshold(), v)));
+					onChanged.accept(new SpellConditions.TargetSpeed(ts.threshold(), v), true));
 		} else if (cond instanceof SpellConditions.RandomChance rc) {
 			addFloatRow(prefix + "Probability", rc.probability(), v ->
-					onChanged.accept(new SpellConditions.RandomChance(v)));
+					onChanged.accept(new SpellConditions.RandomChance(v), false));
 		} else if (cond instanceof SpellConditions.TargetHealthBelow thb) {
 			addFloatRow(prefix + "Threshold", thb.threshold(), v ->
-					onChanged.accept(new SpellConditions.TargetHealthBelow(v)));
+					onChanged.accept(new SpellConditions.TargetHealthBelow(v), false));
 		} else if (cond instanceof SpellConditions.TargetHealthAbove tha) {
 			addFloatRow(prefix + "Threshold", tha.threshold(), v ->
-					onChanged.accept(new SpellConditions.TargetHealthAbove(v)));
+					onChanged.accept(new SpellConditions.TargetHealthAbove(v), false));
 		} else if (cond instanceof SpellConditions.TargetIsFlying) {
 			// No parameters
 		} else if (cond instanceof SpellConditions.TargetIsFallFlying) {
@@ -1041,46 +1051,46 @@ public class ActionEditorPanel {
 		} else if (cond instanceof SpellConditions.AlwaysCondition ac) {
 			addStringCycleRow(prefix + "Value", new String[]{"true", "false"},
 					ac.value() ? "true" : "false", v ->
-					onChanged.accept(new SpellConditions.AlwaysCondition(v.equals("true"))));
+					onChanged.accept(new SpellConditions.AlwaysCondition(v.equals("true")), true));
 		} else if (cond instanceof SpellConditions.DynamicTickInterval dti) {
 			addNumberRow(prefix + "Period", dti.period(), v ->
-					onChanged.accept(new SpellConditions.DynamicTickInterval(v, dti.offset())));
+					onChanged.accept(new SpellConditions.DynamicTickInterval(v, dti.offset()), false));
 			addNumberRow(prefix + "Offset", dti.offset(), v ->
-					onChanged.accept(new SpellConditions.DynamicTickInterval(dti.period(), v)));
+					onChanged.accept(new SpellConditions.DynamicTickInterval(dti.period(), v), false));
 		} else if (cond instanceof SpellConditions.EntityTrait et) {
 			addStringRow(prefix + "Trait", et.trait(), v ->
-					onChanged.accept(new SpellConditions.EntityTrait(v)));
+					onChanged.accept(new SpellConditions.EntityTrait(v), false));
 		} else if (cond instanceof SpellConditions.EntityFlagCondition ef) {
 			addIntRow(prefix + "Flag", ef.flag(), v ->
-					onChanged.accept(new SpellConditions.EntityFlagCondition(v)));
+					onChanged.accept(new SpellConditions.EntityFlagCondition(v), false));
 		} else if (cond instanceof SpellConditions.CompareNumbers cn) {
 			addNumberRow(prefix + "Left", cn.left(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(v, cn.op(), cn.right())));
+					onChanged.accept(new SpellConditions.CompareNumbers(v, cn.op(), cn.right()), false));
 			addStringCycleRow(prefix + "Op", new String[]{"<", ">", "==", "!=", "<=", ">="}, cn.op(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), v, cn.right())));
+					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), v, cn.right()), true));
 			addNumberRow(prefix + "Right", cn.right(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), cn.op(), v)));
+					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), cn.op(), v), false));
 		} else if (cond instanceof SpellConditions.VariableCheck vc) {
 			addStringRow(prefix + "Key", vc.key(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(v, vc.op(), vc.value())));
+					onChanged.accept(new SpellConditions.VariableCheck(v, vc.op(), vc.value()), false));
 			addStringCycleRow(prefix + "Op", new String[]{"==", "!=", "<", ">", "<=", ">="}, vc.op(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value())));
+					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value()), true));
 			addDoubleRow(prefix + "Value", vc.value(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), vc.op(), v)));
+					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), vc.op(), v), false));
 		} else if (cond instanceof SpellConditions.DifficultyEquals de) {
 			addStringCycleRow(prefix + "Difficulty", new String[]{"PEACEFUL", "EASY", "NORMAL", "HARD"},
 					difficultyName(de.difficultyId()), v ->
-					onChanged.accept(new SpellConditions.DifficultyEquals(difficultyId(v))));
+					onChanged.accept(new SpellConditions.DifficultyEquals(difficultyId(v)), true));
 		} else if (cond instanceof SpellConditions.DifficultyAbove da) {
 			addStringCycleRow(prefix + "Min Diff", new String[]{"PEACEFUL", "EASY", "NORMAL", "HARD"},
 					difficultyName(da.minDifficultyId()), v ->
-					onChanged.accept(new SpellConditions.DifficultyAbove(difficultyId(v))));
+					onChanged.accept(new SpellConditions.DifficultyAbove(difficultyId(v)), true));
 		} else if (cond instanceof SpellConditions.NotCondition nc) {
 			// Show inner condition type and params
 			addStringCycleRow(prefix + "Inner", SIMPLE_CONDITION_TYPES, getConditionType(nc.condition()), newType ->
-					onChanged.accept(new SpellConditions.NotCondition(createDefaultCondition(newType))));
-			buildConditionParamRows(prefix + "!", nc.condition(), inner ->
-					onChanged.accept(new SpellConditions.NotCondition(inner)));
+					onChanged.accept(new SpellConditions.NotCondition(createDefaultCondition(newType)), true));
+			buildConditionParamRows(prefix + "!", nc.condition(), (inner, rebuild) ->
+					onChanged.accept(new SpellConditions.NotCondition(inner), rebuild));
 		}
 	}
 
@@ -2998,6 +3008,7 @@ public class ActionEditorPanel {
 
 	private final List<EditBox> exprEditBoxes = new ArrayList<>();
 	private final Map<EditBox, java.util.function.Supplier<List<String>>> stringCompletionSuppliers = new HashMap<>();
+	private final Set<EditBox> listCompletionTargets = new HashSet<>();
 
 	// Expression completion overlay
 	private String[] exprCompletionItems = null;
@@ -3150,6 +3161,18 @@ public class ActionEditorPanel {
 		editBox.setValue(value);
 		editBox.setResponder(onChange::accept);
 		stringCompletionSuppliers.put(editBox, suggestions);
+		rows.add(new EditorRow(label, editBox, false));
+	}
+
+	private void addListSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
+				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		editBox.setMaxLength(256);
+		editBox.setValue(value);
+		editBox.setResponder(onChange::accept);
+		stringCompletionSuppliers.put(editBox, suggestions);
+		listCompletionTargets.add(editBox);
 		rows.add(new EditorRow(label, editBox, false));
 	}
 
@@ -3630,6 +3653,19 @@ public class ActionEditorPanel {
 		return null;
 	}
 
+	private EditBox getListCompletionTarget(double mouseX, double mouseY) {
+		for (EditBox editBox : listCompletionTargets) {
+			if (!editBox.visible) {
+				continue;
+			}
+			if (mouseX >= editBox.getX() && mouseX < editBox.getX() + editBox.getWidth()
+					&& mouseY >= editBox.getY() && mouseY < editBox.getY() + editBox.getHeight()) {
+				return editBox;
+			}
+		}
+		return null;
+	}
+
 	// --- Mouse handling ---
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -3692,6 +3728,13 @@ public class ActionEditorPanel {
 						return true;
 					}
 				}
+				if (listCompletionTargets.contains(stringCompletionTarget)
+						&& mouseX >= stringCompletionTarget.getX()
+						&& mouseX < stringCompletionTarget.getX() + stringCompletionTarget.getWidth()
+						&& mouseY >= stringCompletionTarget.getY()
+						&& mouseY < stringCompletionTarget.getY() + stringCompletionTarget.getHeight()) {
+					return false;
+				}
 				closeStringCompletion();
 				return true;
 			}
@@ -3738,6 +3781,11 @@ public class ActionEditorPanel {
 		}
 
 		if (button == 0) {
+			EditBox listTarget = getListCompletionTarget(mouseX, mouseY);
+			if (listTarget != null) {
+				openStringDropdown(listTarget);
+				return false;
+			}
 			EditBox stringDropdownTarget = getStringDropdownTarget(mouseX, mouseY);
 			if (stringDropdownTarget != null) {
 				openStringDropdown(stringDropdownTarget);
@@ -4225,6 +4273,18 @@ public class ActionEditorPanel {
 		if (hoverIndex < 0 || hoverIndex >= items.length) return;
 		String chosen = items[hoverIndex];
 		String text = target.getValue();
+		if (listCompletionTargets.contains(target)) {
+			String newText = appendListCompletion(text, chosen);
+			int newPos = newText.length();
+			target.setValue(newText);
+			target.setCursorPosition(newPos);
+			try {
+				var method = net.minecraft.client.gui.components.EditBox.class.getDeclaredMethod("setHighlightPos", int.class);
+				method.setAccessible(true);
+				method.invoke(target, newPos);
+			} catch (Exception ignored) {}
+			return;
+		}
 		int safeStart = Math.max(0, Math.min(insertStart, text.length()));
 		int replaceEnd = insertEnd >= 0 ? Math.min(insertEnd, text.length()) : target.getCursorPosition();
 		replaceEnd = Math.max(safeStart, Math.min(replaceEnd, text.length()));
@@ -4238,6 +4298,17 @@ public class ActionEditorPanel {
 			method.invoke(target, newPos);
 		} catch (Exception ignored) {}
 		closeStringCompletion();
+	}
+
+	private static String appendListCompletion(String text, String chosen) {
+		String base = text == null ? "" : text.trim();
+		while (base.endsWith(",") || base.endsWith(";") || base.endsWith("|")) {
+			base = base.substring(0, base.length() - 1).trim();
+		}
+		if (base.isEmpty()) {
+			return chosen;
+		}
+		return base + ", " + chosen;
 	}
 
 	private void closeStringCompletion() {
@@ -4293,6 +4364,8 @@ public class ActionEditorPanel {
 		stringCompletionScrollOffset = Math.max(0, Math.min(maxScroll, stringCompletionScrollOffset));
 		int scrollbarW = itemCount > visibleItems ? 6 : 0;
 		int contentW = cw - scrollbarW;
+		boolean listMode = listCompletionTargets.contains(stringCompletionTarget);
+		Map<String, Integer> selectedCounts = listMode ? listTokenCounts(stringCompletionTarget.getValue()) : Map.of();
 
 		guiGraphics.pose().pushPose();
 		guiGraphics.pose().translate(0, 0, 200);
@@ -4316,7 +4389,19 @@ public class ActionEditorPanel {
 			if (iy + itemH > cy + totalH) break;
 			boolean hovered = optIdx == stringCompletionHoverIndex;
 			if (hovered) guiGraphics.fill(cx + 1, iy, cx + contentW - 1, iy + itemH, 0x44FFFFFF);
-			guiGraphics.drawString(font, stringCompletionItems[optIdx], cx + 4, iy + 4,
+			String option = stringCompletionItems[optIdx];
+			int textX = cx + 4;
+			int selectedCount = selectedCounts.getOrDefault(option.toLowerCase(java.util.Locale.ROOT), 0);
+			if (listMode) {
+				String marker = selectedCount <= 0 ? "" : selectedCount == 1 ? "\u2713" : "x" + selectedCount;
+				if (!marker.isEmpty()) {
+					guiGraphics.drawString(font, marker, cx + 4, iy + 4,
+							hovered ? 0xFFFFDD66 : 0xFFFFCC88, false);
+				}
+				textX = cx + 24;
+			}
+			String display = listMode ? listCompletionDisplayName(option) : option;
+			guiGraphics.drawString(font, display, textX, iy + 4,
 					hovered ? 0xFFFFDD66 : 0xFFDDDDDD, false);
 		}
 		if (itemCount > visibleItems) {
@@ -4331,6 +4416,25 @@ public class ActionEditorPanel {
 			}
 		}
 		guiGraphics.pose().popPose();
+	}
+
+	private Map<String, Integer> listTokenCounts(String text) {
+		Map<String, Integer> ans = new HashMap<>();
+		for (String token : splitList(text)) {
+			String key = token.toLowerCase(java.util.Locale.ROOT);
+			ans.put(key, ans.getOrDefault(key, 0) + 1);
+		}
+		return ans;
+	}
+
+	private String listCompletionDisplayName(String option) {
+		if (!SpellEditorLocalization.isChinese()) {
+			return option;
+		}
+		if (isBulletOption(option)) {
+			return SpellEditorLocalization.danmakuBulletShapeName(option);
+		}
+		return SpellEditorLocalization.t(option.replace('_', ' '));
 	}
 
 	// --- Expression completion ---

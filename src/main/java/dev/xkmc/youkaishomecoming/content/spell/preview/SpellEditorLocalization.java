@@ -1,7 +1,9 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.language.I18n;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -127,6 +129,44 @@ public final class SpellEditorLocalization {
 		return italic + prefix + text;
 	}
 
+	public static String danmakuBulletShapeName(String bulletId) {
+		if (bulletId == null || bulletId.isBlank()) {
+			return bulletId;
+		}
+		String id = bulletId.toLowerCase(Locale.ROOT);
+		if (!isChinese()) {
+			return id;
+		}
+		String itemKey = switch (id) {
+			case "rose" -> "item.youkaishomecoming.rose_danmaku";
+			case "moon" -> "item.youkaishomecoming.moon_danmaku";
+			case "giant_yinyang" -> "item.youkaishomecoming.red_giant_yinyang_danmaku";
+			default -> "item.youkaishomecoming.white_" + id + "_danmaku";
+		};
+		if (I18n.exists(itemKey)) {
+			return stripDanmakuItemName(I18n.get(itemKey));
+		}
+		return t(id.replace('_', ' '));
+	}
+
+	private static String stripDanmakuItemName(String name) {
+		String ans = name;
+		for (String prefix : new String[]{
+				"淡蓝色", "淡灰色", "黄绿色", "品红色", "粉红色",
+				"黑色", "蓝色", "棕色", "青色", "灰色", "绿色",
+				"橙色", "紫色", "红色", "白色", "黄色"
+		}) {
+			if (ans.startsWith(prefix)) {
+				ans = ans.substring(prefix.length());
+				break;
+			}
+		}
+		if (ans.endsWith("弹幕")) {
+			ans = ans.substring(0, ans.length() - "弹幕".length());
+		}
+		return ans;
+	}
+
 	private static String actionRest(String text) {
 		if (text.startsWith("fire spell ")) {
 			return "发射符卡 " + text.substring("fire spell ".length());
@@ -134,7 +174,7 @@ public final class SpellEditorLocalization {
 		if (text.startsWith("fire ")) {
 			String[] parts = text.split(" ");
 			if (parts.length >= 3) {
-				return "发射 " + t(parts[1]) + " " + t(parts[2]);
+				return "发射 " + danmakuBulletShapeName(parts[1]) + " " + t(parts[2]);
 			}
 			return "发射 " + text.substring(5);
 		}
@@ -253,8 +293,16 @@ public final class SpellEditorLocalization {
 			Map.entry("[+] Add Waypoint", "[+] 添加路径点"),
 			Map.entry("[-] Remove Last Waypoint", "[-] 移除最后路径点"),
 			Map.entry("Bullet", "弹幕"),
+			Map.entry("Bullet Mode", "弹幕模式"),
+			Map.entry("Bullet Index", "弹幕索引"),
+			Map.entry("Bullet List", "弹幕列表"),
 			Map.entry("Laser", "激光"),
 			Map.entry("Color", "颜色"),
+			Map.entry("Color Mode", "颜色模式"),
+			Map.entry("Color Index", "颜色索引"),
+			Map.entry("Color Var", "颜色变量"),
+			Map.entry("Color Interval", "颜色间隔"),
+			Map.entry("Color List", "颜色列表"),
 			Map.entry("Count", "数量"),
 			Map.entry("Speed", "速度"),
 			Map.entry("Lifetime", "生命周期"),
@@ -328,6 +376,11 @@ public final class SpellEditorLocalization {
 			Map.entry("N/A", "不可用"),
 			Map.entry("true", "真"),
 			Map.entry("false", "假"),
+			Map.entry("Constant", "固定"),
+			Map.entry("Indexed", "索引"),
+			Map.entry("Variable", "变量"),
+			Map.entry("Cycle", "循环"),
+			Map.entry("Random", "随机"),
 			Map.entry("onEnter", "进入时"),
 			Map.entry("onTick", "每刻"),
 			Map.entry("onExit", "退出时"),
@@ -365,7 +418,7 @@ public final class SpellEditorLocalization {
 			Map.entry("entity_trait", "实体特性"),
 			Map.entry("entity_flag", "实体标志"),
 			Map.entry("compare", "数值比较"),
-			Map.entry("variable_check", "变量检查"),
+			Map.entry("variable_check", "变量检查(旧)"),
 			Map.entry("difficulty_equals", "难度等于"),
 			Map.entry("difficulty_above", "难度高于"),
 			Map.entry("always", "始终"),
@@ -389,7 +442,6 @@ public final class SpellEditorLocalization {
 			Map.entry("translate", "平移"),
 			Map.entry("attached", "附着"),
 			Map.entry("attached_free_rot", "附着自由旋转"),
-			Map.entry("space_attached", "空间附着"),
 			Map.entry("white", "白色"),
 			Map.entry("orange", "橙色"),
 			Map.entry("magenta", "品红"),

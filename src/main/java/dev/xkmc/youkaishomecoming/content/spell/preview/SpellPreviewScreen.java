@@ -271,6 +271,7 @@ public class SpellPreviewScreen extends Screen {
 		// Set active group to the one containing the viewport
 		DockGroup vpGroup = dockLayout.findGroupContaining(viewportPanel);
 		if (vpGroup != null) dockLayout.setActiveGroup(vpGroup);
+		syncEditorDockWidgetVisibility();
 
 		controlsDockPanel.buildButtons();
 		updateActionListPhase();
@@ -479,16 +480,22 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		actionEditorPanel.setAction(action, index);
-		syncActionEditorWidgetVisibility();
+		syncEditorDockWidgetVisibility();
 	}
 
-	private void syncActionEditorWidgetVisibility() {
-		if (actionEditorPanel == null || editorDockPanel == null || dockLayout == null) {
+	private void syncEditorDockWidgetVisibility() {
+		if (dockLayout == null || editorDockPanel == null) {
 			return;
 		}
 		DockGroup group = dockLayout.findGroupContaining(editorDockPanel);
 		if (group != null) {
-			actionEditorPanel.setAllWidgetsVisible(group.getActivePanel() == editorDockPanel);
+			boolean propertiesActive = group.getActivePanel() == editorDockPanel;
+			if (actionEditorPanel != null) {
+				actionEditorPanel.setAllWidgetsVisible(propertiesActive);
+			}
+			if (rawJsonDockPanel != null) {
+				rawJsonDockPanel.setEditorActive(group.getActivePanel() == rawJsonDockPanel);
+			}
 		}
 	}
 
@@ -958,10 +965,12 @@ public class SpellPreviewScreen extends Screen {
 				DockGroup eg = dockLayout.findGroupContaining(editorDockPanel);
 				if (eg != null) dockLayout.setActiveGroup(eg);
 			}
+			syncEditorDockWidgetVisibility();
 			return true;
 		}
 		// Dock layout dispatches to panels (also updates activeGroup)
 		if (dockLayout != null && dockLayout.mouseClicked(mouseX, mouseY, button)) {
+			syncEditorDockWidgetVisibility();
 			// When clicking outside the properties panel (e.g. viewport), clear editbox focus
 			// to remove the highlight, but keep the properties panel itself open.
 			DockGroup editorGroup = dockLayout.findGroupContaining(editorDockPanel);
@@ -973,6 +982,7 @@ public class SpellPreviewScreen extends Screen {
 			}
 			return true;
 		}
+		syncEditorDockWidgetVisibility();
 		// Screen widgets (top bar buttons, control panel buttons)
 		if (super.mouseClicked(mouseX, mouseY, button)) {
 			return true;

@@ -133,18 +133,24 @@ public class RawJsonDockPanel implements DockPanel {
 
 	@Override
 	public void onActivated() {
-		if (editor != null) {
-			highlightedPath = null;
-			editor.visible = true;
-			syncEditorFromDefinition();
-		}
+		setEditorActive(true);
 	}
 
 	@Override
 	public void onDeactivated() {
+		setEditorActive(false);
+	}
+
+	public void setEditorActive(boolean active) {
 		if (editor != null) {
-			editor.setFocused(false);
-			editor.visible = false;
+			if (active) {
+				highlightedPath = null;
+				editor.visible = true;
+				syncEditorFromDefinition();
+			} else {
+				editor.setFocused(false);
+				editor.visible = false;
+			}
 		}
 	}
 

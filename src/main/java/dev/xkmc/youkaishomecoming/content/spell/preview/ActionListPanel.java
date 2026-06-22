@@ -244,6 +244,29 @@ public class ActionListPanel {
 		return selectedPath;
 	}
 
+	@Nullable
+	public SpellAction getSelectedAction() {
+		return selectedPath == null ? null : getActionAt(selectedPath);
+	}
+
+	@Nullable
+	public SpellAction getActionAtPath(ActionPath path) {
+		return path == null ? null : getActionAt(path);
+	}
+
+	public boolean selectPath(ActionPath path) {
+		if (path == null) return false;
+		SpellAction action = getActionAt(path);
+		if (action == null) return false;
+		selectedPath = path;
+		selectedPaths.clear();
+		selectedPaths.add(path);
+		selectedAddTarget = null;
+		dirty = true;
+		onSelect.accept(action, path);
+		return true;
+	}
+
 	public void clearSelection() {
 		selectedPath = null;
 		selectedPaths.clear();

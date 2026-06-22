@@ -261,8 +261,10 @@ public class SpellPreviewScreen extends Screen {
 		actionListDockPanel = new ActionListDockPanel(actionListPanel);
 		editorDockPanel = new EditorDockPanel(actionEditorPanel);
 		rawJsonDockPanel = new RawJsonDockPanel(
-				() -> actionEditorPanel == null ? null : actionEditorPanel.getCurrentAction(),
-				this::onRawJsonActionEdited
+				this::currentDefinitionForRawJson,
+				phaseController::getSelectedPhaseId,
+				() -> actionListPanel == null ? null : actionListPanel.getSelectedPath(),
+				this::onRawJsonDefinitionEdited
 		);
 		rawJsonDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
 		controlsDockPanel = new ControlsDockPanel(
@@ -467,10 +469,45 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
-	private void onRawJsonActionEdited(SpellAction newAction) {
-		onActionEdited(newAction);
-		setActionEditorAction(newAction, actionEditorPanel == null ? -1 : actionEditorPanel.getActionIndex());
-		updateRotationGizmoForAction(newAction);
+	private SpellDefinition currentDefinitionForRawJson() {
+		syncCustomNamesToDefinition();
+		return definition;
+	}
+
+	private void onRawJsonDefinitionEdited(SpellDefinition newDefinition) {
+		ResourceLocation selectedPhase = phaseController.getSelectedPhaseId();
+		ActionListPanel.ActionPath selectedPath = actionListPanel == null ? null : actionListPanel.getSelectedPath();
+		boolean wasPlaying = scene.isPlaying();
+
+		this.definition = newDefinition;
+		spellController.setDefinition(newDefinition);
+		spellController.setDraftMode(SpellEditorController.isDraftDefinition(newDefinition));
+		phaseController.setDefinition(newDefinition);
+		phaseController.reloadPhaseList();
+		selectPhaseAfterRawJsonApply(selectedPhase);
+		if (actionListPanel != null) {
+			actionListPanel.loadCustomNames(newDefinition.customNames);
+		}
+		updateActionListPhase();
+		refreshPhaseControls();
+		scene.switchSpellDefinition(newDefinition, true);
+		resetSelectedPhasePreview(wasPlaying || autoReplay);
+		if (selectedPath == null || actionListPanel == null || !actionListPanel.selectPath(selectedPath)) {
+			clearActionSelection();
+		}
+	}
+
+	private void selectPhaseAfterRawJsonApply(ResourceLocation preferredPhase) {
+		List<ResourceLocation> phases = phaseController.getPhaseList();
+		if (phases.isEmpty()) {
+			phaseController.setSelectedPhaseIndex(0);
+			return;
+		}
+		int idx = preferredPhase == null ? -1 : phases.indexOf(preferredPhase);
+		if (idx < 0) {
+			idx = phases.indexOf(definition.entryPhase);
+		}
+		phaseController.setSelectedPhaseIndex(idx >= 0 ? idx : 0);
 	}
 
 	private void setActionEditorAction(SpellAction action, int index) {
@@ -489,6 +526,14 @@ public class SpellPreviewScreen extends Screen {
 		if (group != null) {
 			actionEditorPanel.setAllWidgetsVisible(group.getActivePanel() == editorDockPanel);
 		}
+	}
+
+	private boolean isEditorDockActive() {
+		if (editorDockPanel == null || dockLayout == null) {
+			return false;
+		}
+		DockGroup group = dockLayout.findGroupContaining(editorDockPanel);
+		return group != null && group.getActivePanel() == editorDockPanel;
 	}
 
 	/** Transient edit during a drag — replaces selected action without pushing undo. */
@@ -943,7 +988,7 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
 		// Editor dropdown/completion may extend beyond panel bounds — check first
-		if (actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
+		if (isEditorDockActive() && actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
 			// 同步 activeGroup 到编辑器所在的 Group
 			if (dockLayout != null) {
 				DockGroup eg = dockLayout.findGroupContaining(editorDockPanel);
@@ -1036,7 +1081,7 @@ public class SpellPreviewScreen extends Screen {
 		}
 
 		// Handle editor dropdown/completion overlays (Escape to close, arrow keys, etc.)
-		if (actionEditorPanel != null && actionEditorPanel.keyPressed(keyCode, scanCode, modifiers)) {
+		if (isEditorDockActive() && actionEditorPanel != null && actionEditorPanel.keyPressed(keyCode, scanCode, modifiers)) {
 			return true;
 		}
 		if (controlsDockPanel != null && controlsDockPanel.isDropdownOpen()
@@ -1050,7 +1095,7 @@ public class SpellPreviewScreen extends Screen {
 		// which routes to the focused EditBox for normal text editing.
 		if (isAnyEditBoxFocused()) {
 			// Tab → expression autocomplete
-			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB && actionEditorPanel != null) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB && isEditorDockActive() && actionEditorPanel != null) {
 				if (getFocused() instanceof net.minecraft.client.gui.components.EditBox eb) {
 					if (actionEditorPanel.handleTabCompletion(eb)) {
 						return true;
@@ -1232,6 +1277,9 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean charTyped(char codePoint, int modifiers) {
+		if (isAnyEditBoxFocused()) {
+			return super.charTyped(codePoint, modifiers);
+		}
 		if (actionListPanel != null && actionListPanel.charTyped(codePoint, modifiers)) {
 			return true;
 		}

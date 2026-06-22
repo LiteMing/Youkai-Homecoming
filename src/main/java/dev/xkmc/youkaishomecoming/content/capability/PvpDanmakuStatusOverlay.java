@@ -12,8 +12,9 @@ import java.util.Map;
 public class PvpDanmakuStatusOverlay implements IGuiOverlay {
 
 	private static final int SHARD = 5;
-	private static final int BAR_WIDTH = 182;
-	private static final int BAR_HEIGHT = 8;
+	private static final int MIN_ENTRY_WIDTH = 64;
+	private static final int ICON_TEXT_GAP = 4;
+	private static final int RESOURCE_GAP = 14;
 	private static final int EXPIRE_MS = 1500;
 
 	private static final Map<Integer, Status> STATUS = new LinkedHashMap<>();
@@ -46,44 +47,28 @@ public class PvpDanmakuStatusOverlay implements IGuiOverlay {
 		if (STATUS.isEmpty()) return;
 
 		var font = gui.getFont();
-		int x = (width - BAR_WIDTH) / 2;
 		int y = 12;
 		for (Status status : STATUS.values()) {
 			String name = status.name();
+			String bomb = "x" + resourceCount(status.bomb());
+			String life = "x" + resourceCount(status.life());
+			int bombWidth = PowerInfoOverlay.ICON_SIZE + ICON_TEXT_GAP + font.width(bomb);
+			int lifeWidth = PowerInfoOverlay.ICON_SIZE + ICON_TEXT_GAP + font.width(life);
+			int rowWidth = bombWidth + RESOURCE_GAP + lifeWidth;
+			int entryWidth = Math.max(MIN_ENTRY_WIDTH, Math.max(rowWidth, font.width(name)));
+			int x = (width - entryWidth) / 2;
 			if (!name.isEmpty()) {
-				int nameX = x + (BAR_WIDTH - font.width(name)) / 2;
+				int nameX = x + (entryWidth - font.width(name)) / 2;
 				g.drawString(font, name, nameX, y, 0xFFFFFFFF, true);
 			}
-			int barY = y + 10;
-			renderBombBar(g, x, barY, status.bomb(), status.maxBomb());
-			String life = "x" + resourceCount(status.life());
-			g.drawString(font, life, x + BAR_WIDTH + 6, barY, 0xFFFFDD88, true);
+			int rowX = x + (entryWidth - rowWidth) / 2;
+			int rowY = y + 10;
+			PowerInfoOverlay.renderBombIcon(g, rowX, rowY);
+			g.drawString(font, bomb, rowX + PowerInfoOverlay.ICON_SIZE + ICON_TEXT_GAP, rowY, 0xFFFFFFFF, true);
+			rowX += bombWidth + RESOURCE_GAP;
+			PowerInfoOverlay.renderLifeIcon(g, rowX, rowY);
+			g.drawString(font, life, rowX + PowerInfoOverlay.ICON_SIZE + ICON_TEXT_GAP, rowY, 0xFFFFFFFF, true);
 			y += 24;
-		}
-	}
-
-	private static void renderBombBar(GuiGraphics g, int x, int y, int bomb, int maxBomb) {
-		int segments = Math.max(1, resourceCount(Math.max(SHARD, maxBomb)));
-		g.fill(x - 1, y - 1, x + BAR_WIDTH + 1, y + BAR_HEIGHT + 1, 0xFF100B18);
-		g.fill(x, y, x + BAR_WIDTH, y + BAR_HEIGHT, 0xFF21162B);
-		for (int i = 0; i < segments; i++) {
-			int sx = x + i * BAR_WIDTH / segments;
-			int ex = x + (i + 1) * BAR_WIDTH / segments;
-			int innerX0 = sx + 1;
-			int innerX1 = ex - 1;
-			if (innerX1 <= innerX0) continue;
-			double segMin = maxBomb * i / (double) segments;
-			double segMax = maxBomb * (i + 1) / (double) segments;
-			double fill = (bomb - segMin) / Math.max(1.0, segMax - segMin);
-			fill = Math.max(0, Math.min(1, fill));
-			if (fill > 0) {
-				int fillX = innerX0 + (int) Math.round((innerX1 - innerX0) * fill);
-				g.fill(innerX0, y + 1, fillX, y + BAR_HEIGHT - 1, 0xFF3B72D9);
-				g.fill(innerX0, y + 1, fillX, y + 3, 0xFF86C5FF);
-			}
-			if (i > 0) {
-				g.fill(sx, y, sx + 1, y + BAR_HEIGHT, 0xFF100B18);
-			}
 		}
 	}
 

@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.capability;
 
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -9,6 +10,16 @@ import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 import java.util.List;
 
 public class PowerInfoOverlay implements IGuiOverlay {
+
+	public static final GrazeCapability.InfoIcon RESOURCE_ICON = new GrazeCapability.InfoIcon(
+			YoukaisHomecoming.loc("textures/gui/elements.png"),
+			20, 20
+	);
+	public static final int ICON_SIZE = 10;
+	private static final int BOMB_ICON_X = 0;
+	private static final int BOMB_ICON_Y = 0;
+	private static final int LIFE_ICON_X = 0;
+	private static final int LIFE_ICON_Y = 10;
 
 	@Override
 	public void render(ForgeGui gui, GuiGraphics g, float pTick, int w, int h) {
@@ -36,7 +47,7 @@ public class PowerInfoOverlay implements IGuiOverlay {
 		int y = yo + (ya + 1) * (h - th) / 2;
 
 		for (var e : info) {
-			g.blit(e.icon().loc(), x, y, e.x(), e.y(), 10, 10, e.icon().w(), e.icon().h());
+			renderIcon(g, e.icon(), x, y, e.x(), e.y());
 			g.drawString(font, e.text(), x + 14, y, 0xffffffff, false);
 			y += lh;
 		}
@@ -44,5 +55,16 @@ public class PowerInfoOverlay implements IGuiOverlay {
 
 	}
 
-}
+	public static void renderBombIcon(GuiGraphics g, int x, int y) {
+		renderIcon(g, RESOURCE_ICON, x, y, BOMB_ICON_X, BOMB_ICON_Y);
+	}
 
+	public static void renderLifeIcon(GuiGraphics g, int x, int y) {
+		renderIcon(g, RESOURCE_ICON, x, y, LIFE_ICON_X, LIFE_ICON_Y);
+	}
+
+	public static void renderIcon(GuiGraphics g, GrazeCapability.InfoIcon icon, int x, int y, int u, int v) {
+		g.blit(icon.loc(), x, y, u, v, ICON_SIZE, ICON_SIZE, icon.w(), icon.h());
+	}
+
+}

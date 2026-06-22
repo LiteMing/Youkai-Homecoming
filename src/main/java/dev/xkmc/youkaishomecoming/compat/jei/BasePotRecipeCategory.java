@@ -48,6 +48,11 @@ public abstract class BasePotRecipeCategory<T extends BasePotRecipe> implements 
 		return this.icon;
 	}
 
+	@Override
+	public IDrawable getBackground() {
+		return this.background;
+	}
+
 	public void setRecipe(IRecipeLayoutBuilder builder, T recipe, IFocusGroup focusGroup) {
 		NonNullList<Ingredient> recipeIngredients = recipe.getIngredients();
 		ItemStack resultStack = RecipeUtils.getResultItem(recipe);

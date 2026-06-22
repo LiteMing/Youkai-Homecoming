@@ -88,12 +88,18 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		refreshDimensions();
 	}
 
+	public void configureVisualScale(float scale, NumberProvider function) {
+		visualScale = Math.max(0.05f, scale);
+		visualScaleFunction = function;
+		refreshDimensions();
+	}
+
 	@Override
 	public void tick() {
-		super.tick();
 		if (visualScaleFunction != null) {
 			refreshDimensions();
 		}
+		super.tick();
 	}
 
 	@Override

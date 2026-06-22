@@ -66,7 +66,7 @@ public class ItemLaserRenderer<T extends ItemLaserEntity> extends EntityRenderer
 		if (!(e.getItem().getItem() instanceof LaserItem danmaku)) return;
 		if (e.tickCount < 2) return;
 		pose.pushPose();
-		float scale = e.scale() * e.percentOpen(pTick);
+		float scale = e.percentOpen(pTick);
 		pose.mulPose(Axis.YP.rotationDegrees(-e.getViewYRot(pTick)));
 		pose.mulPose(Axis.XP.rotationDegrees(e.getViewXRot(pTick) + 90));
 		pose.scale(e.getBbWidth() * scale, e.effectiveLength(pTick), e.getBbWidth() * scale);

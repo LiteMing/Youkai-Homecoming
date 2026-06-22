@@ -63,10 +63,10 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 
 	@Override
 	public void tick() {
-		super.tick();
 		if (visualScaleFunction != null) {
 			refreshDimensions();
 		}
+		super.tick();
 	}
 
 	@Override
@@ -83,6 +83,12 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 
 	public void setItem(ItemStack pStack) {
 		stack = pStack;
+		refreshDimensions();
+	}
+
+	public void configureVisualScale(float scale, NumberProvider function) {
+		visualScale = Math.max(0.05f, scale);
+		visualScaleFunction = function;
 		refreshDimensions();
 	}
 

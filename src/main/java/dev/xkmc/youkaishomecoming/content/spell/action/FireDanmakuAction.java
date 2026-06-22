@@ -195,10 +195,8 @@ public record FireDanmakuAction(
 		YHDanmaku.Bullet resolvedBullet = bulletType.get(ctx);
 		DyeColor resolvedColor = color.get(ctx);
 		var danmaku = holder.prepareDanmaku(life, dir, resolvedBullet, resolvedColor);
-		danmaku.visualScale = Math.max(0.05f, (float) size.get(ctx));
-		if (!(size instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Constant)) {
-			danmaku.visualScaleFunction = size;
-		}
+		NumberProvider scaleFunction = size instanceof NumberProviders.Constant ? null : size;
+		danmaku.configureVisualScale((float) size.get(ctx), scaleFunction);
 		danmaku.setPos(originPos);
 		// Apply per-action damage type override
 		if (damageType.isPresent()) {

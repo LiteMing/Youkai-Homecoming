@@ -154,10 +154,8 @@ public record FireLaserAction(
 		}
 
 		var laser = holder.prepareLaser(life, originPos, dir, len, laserType, color);
-		laser.visualScale = Math.max(0.05f, (float) thickness.get(ctx));
-		if (!(thickness instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Constant)) {
-			laser.visualScaleFunction = thickness;
-		}
+		NumberProvider scaleFunction = thickness instanceof NumberProviders.Constant ? null : thickness;
+		laser.configureVisualScale((float) thickness.get(ctx), scaleFunction);
 		// Apply per-action damage type override
 		if (damageType.isPresent()) {
 			laser.damageTypeOverride = damageType.get();

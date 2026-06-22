@@ -23,11 +23,11 @@ public record SpellDisplay(
 	).apply(i, SpellDisplay::new));
 
 	public Component displayName() {
-		return Component.translatable(name);
+		return Component.translatableWithFallback(name, name);
 	}
 
 	public Component displayDesc() {
-		return Component.translatable(description);
+		return Component.translatableWithFallback(description, description);
 	}
 
 	@Nullable

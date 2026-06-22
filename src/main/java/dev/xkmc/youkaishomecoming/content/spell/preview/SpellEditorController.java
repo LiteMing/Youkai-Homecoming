@@ -205,8 +205,15 @@ public class SpellEditorController {
 		if (isDraftMode()) {
 			return;
 		}
-		SpellEditorNetworkClient.exportGlobal(definition);
-		displayEditorMessage("[YH] Exporting global spell " + formatResourceId(definition.id));
+		try {
+			var localCopy = SpellEditorNetworkClient.exportGlobal(definition);
+			displayEditorMessage("[YH] Exporting global spell " + formatResourceId(definition.id) +
+					" (local copy: " + localCopy + ")");
+		} catch (Exception e) {
+			String msg = e.getMessage();
+			displayEditorMessage("[YH] Export requested, but failed to save local copy: " +
+					(msg == null ? e.getClass().getSimpleName() : msg));
+		}
 	}
 
 	// --- Snapshot management ---

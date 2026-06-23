@@ -264,7 +264,7 @@ public class SpellPreviewScreen extends Screen {
 			if (hadSavedLayout && !savedLayoutHasVariablesPanel) {
 				relocateMissingVariablesPanel();
 			}
-			if (hadSavedLayout && !savedLayoutHasRawJsonPanel) {
+			if (hadSavedLayout && (!savedLayoutHasRawJsonPanel || rawJsonSharesEditorGroup())) {
 				relocateMissingRawJsonPanel();
 			}
 		}
@@ -302,9 +302,9 @@ public class SpellPreviewScreen extends Screen {
 
 		DockGroup viewportGroup = new DockGroup(viewport);
 		DockGroup actionListGroup = new DockGroup(actions);
-		DockGroup editorGroup = new DockGroup(properties, rawJson);
+		DockGroup editorGroup = new DockGroup(properties);
 		DockGroup controlsGroup = new DockGroup(controls, perf);
-		DockGroup statusGroup = new DockGroup(status, variables);
+		DockGroup statusGroup = new DockGroup(status, variables, rawJson);
 		// Help 面板默认不显示
 
 		DockSplit rightSplit = new DockSplit(false, 0.4f, actionListGroup, editorGroup);
@@ -368,21 +368,29 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void relocateMissingRawJsonPanel() {
-		if (dockLayout == null || rawJsonDockPanel == null || editorDockPanel == null) {
+		if (dockLayout == null || rawJsonDockPanel == null || statusDockPanel == null) {
 			return;
 		}
-		DockGroup editorGroup = dockLayout.findGroupContaining(editorDockPanel);
-		if (editorGroup == null) {
+		DockGroup statusGroup = dockLayout.findGroupContaining(statusDockPanel);
+		if (statusGroup == null) {
 			return;
 		}
 		DockGroup currentGroup = dockLayout.findGroupContaining(rawJsonDockPanel);
-		if (currentGroup == editorGroup) {
+		if (currentGroup == statusGroup) {
 			return;
 		}
 		if (currentGroup != null) {
 			currentGroup.removePanel(rawJsonDockPanel);
 		}
-		editorGroup.addPanel(rawJsonDockPanel);
+		statusGroup.addPanel(rawJsonDockPanel);
+	}
+
+	private boolean rawJsonSharesEditorGroup() {
+		if (dockLayout == null || rawJsonDockPanel == null || editorDockPanel == null) {
+			return false;
+		}
+		DockGroup rawGroup = dockLayout.findGroupContaining(rawJsonDockPanel);
+		return rawGroup != null && rawGroup == dockLayout.findGroupContaining(editorDockPanel);
 	}
 
 	private boolean replaceDockNode(DockNode current, DockNode oldNode, DockNode newNode) {
@@ -485,18 +493,16 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void syncEditorDockWidgetVisibility() {
-		if (dockLayout == null || editorDockPanel == null) {
+		if (dockLayout == null) {
 			return;
 		}
-		DockGroup group = dockLayout.findGroupContaining(editorDockPanel);
-		if (group != null) {
-			boolean propertiesActive = group.getActivePanel() == editorDockPanel;
-			if (actionEditorPanel != null) {
-				actionEditorPanel.setAllWidgetsVisible(propertiesActive);
-			}
-			if (rawJsonDockPanel != null) {
-				rawJsonDockPanel.setEditorActive(group.getActivePanel() == rawJsonDockPanel);
-			}
+		if (editorDockPanel != null && actionEditorPanel != null) {
+			DockGroup editorGroup = dockLayout.findGroupContaining(editorDockPanel);
+			actionEditorPanel.setAllWidgetsVisible(editorGroup != null && editorGroup.getActivePanel() == editorDockPanel);
+		}
+		if (rawJsonDockPanel != null) {
+			DockGroup rawJsonGroup = dockLayout.findGroupContaining(rawJsonDockPanel);
+			rawJsonDockPanel.setEditorActive(rawJsonGroup != null && rawJsonGroup.getActivePanel() == rawJsonDockPanel);
 		}
 	}
 
@@ -938,6 +944,7 @@ public class SpellPreviewScreen extends Screen {
 
 		// Dock layout renders all panels
 		if (dockLayout != null) {
+			syncEditorDockWidgetVisibility();
 			dockLayout.render(guiGraphics, mouseX, mouseY, partialTick);
 		}
 
@@ -994,6 +1001,7 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
 		if (dockLayout != null && dockLayout.mouseReleased(mouseX, mouseY, button)) {
+			syncEditorDockWidgetVisibility();
 			return true;
 		}
 		return super.mouseReleased(mouseX, mouseY, button);

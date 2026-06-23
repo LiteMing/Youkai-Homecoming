@@ -44,6 +44,9 @@ public final class DockGroup implements DockNode {
 		for (DockPanel p : initialPanels) {
 			panels.add(p);
 		}
+		if (!panels.isEmpty()) {
+			panels.get(activeIndex).onActivated();
+		}
 	}
 
 	// ---- 面板管理 ----

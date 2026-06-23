@@ -152,6 +152,9 @@ public class RawJsonDockPanel implements DockPanel {
 
 	public void setEditorActive(boolean active) {
 		if (editor != null) {
+			if (editor.visible == active) {
+				return;
+			}
 			if (active) {
 				highlightedPath = null;
 				editor.visible = true;

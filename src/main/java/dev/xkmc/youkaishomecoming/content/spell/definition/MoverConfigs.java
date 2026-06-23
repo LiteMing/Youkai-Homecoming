@@ -84,6 +84,10 @@ public class MoverConfigs {
 		return 0;
 	}
 
+	private static int getTicks(NumberProvider provider, SpellContext ctx) {
+		return Math.max(0, (int) Math.round(getNumber(provider, ctx)));
+	}
+
 	@SuppressWarnings("unchecked")
 	static final Codec<MoverConfig> DISPATCH_CODEC = Codec.STRING.dispatch(
 			"type",
@@ -128,14 +132,24 @@ public class MoverConfigs {
 	 * At factor=0.06, a bullet with speed=1.0 decelerates to ~0 in ~17 ticks.
 	 * JSON: {"type": "deceleration", "factor": 0.06}
 	 */
-	public record DecelerationConfig(double factor) implements MoverConfig {
+	public record DecelerationConfig(NumberProvider factor) implements MoverConfig {
 		public static final Codec<DecelerationConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
-				Codec.DOUBLE.fieldOf("factor").forGetter(DecelerationConfig::factor)
+				NumberProvider.CODEC.fieldOf("factor").forGetter(DecelerationConfig::factor)
 		).apply(i, DecelerationConfig::new));
+
+		public DecelerationConfig(double factor) {
+			this(NumberProvider.constant(factor));
+		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			Vec3 acc = velocity.scale(-factor);
+			Vec3 acc = velocity.scale(-getNumber(factor, null));
+			return new RectMover(origin, velocity, acc);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			Vec3 acc = velocity.scale(-getNumber(factor, ctx));
 			return new RectMover(origin, velocity, acc);
 		}
 	}
@@ -144,14 +158,23 @@ public class MoverConfigs {
 	 * Makes the projectile rotate in place (creates RotateMover).
 	 * JSON: {"type": "rotate", "degrees_per_tick": 5.0}
 	 */
-	public record RotateConfig(double degreesPerTick) implements MoverConfig {
+	public record RotateConfig(NumberProvider degreesPerTick) implements MoverConfig {
 		public static final Codec<RotateConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
-				Codec.DOUBLE.fieldOf("degrees_per_tick").forGetter(RotateConfig::degreesPerTick)
+				NumberProvider.CODEC.fieldOf("degrees_per_tick").forGetter(RotateConfig::degreesPerTick)
 		).apply(i, RotateConfig::new));
+
+		public RotateConfig(double degreesPerTick) {
+			this(NumberProvider.constant(degreesPerTick));
+		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			return new RotateMover(velocity.normalize(), degreesPerTick);
+			return new RotateMover(velocity.normalize(), getNumber(degreesPerTick, null));
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			return new RotateMover(velocity.normalize(), getNumber(degreesPerTick, ctx));
 		}
 	}
 
@@ -161,21 +184,27 @@ public class MoverConfigs {
 	 * JSON: {"type": "polar", "radius": 5.0, "angular_speed": 10.0}
 	 */
 	public record PolarMoverConfig(
-			double radius,
-			double radialSpeed,
-			double radialAccel,
-			double initialAngle,
-			double angularSpeed,
-			double angularAccel
+			NumberProvider radius,
+			NumberProvider radialSpeed,
+			NumberProvider radialAccel,
+			NumberProvider initialAngle,
+			NumberProvider angularSpeed,
+			NumberProvider angularAccel
 	) implements MoverConfig {
 		public static final Codec<PolarMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
-				Codec.DOUBLE.optionalFieldOf("radius", 0.0).forGetter(PolarMoverConfig::radius),
-				Codec.DOUBLE.optionalFieldOf("radial_speed", 0.0).forGetter(PolarMoverConfig::radialSpeed),
-				Codec.DOUBLE.optionalFieldOf("radial_accel", 0.0).forGetter(PolarMoverConfig::radialAccel),
-				Codec.DOUBLE.optionalFieldOf("initial_angle", 0.0).forGetter(PolarMoverConfig::initialAngle),
-				Codec.DOUBLE.optionalFieldOf("angular_speed", 0.0).forGetter(PolarMoverConfig::angularSpeed),
-				Codec.DOUBLE.optionalFieldOf("angular_accel", 0.0).forGetter(PolarMoverConfig::angularAccel)
+				NumberProvider.CODEC.optionalFieldOf("radius", NumberProvider.constant(0)).forGetter(PolarMoverConfig::radius),
+				NumberProvider.CODEC.optionalFieldOf("radial_speed", NumberProvider.constant(0)).forGetter(PolarMoverConfig::radialSpeed),
+				NumberProvider.CODEC.optionalFieldOf("radial_accel", NumberProvider.constant(0)).forGetter(PolarMoverConfig::radialAccel),
+				NumberProvider.CODEC.optionalFieldOf("initial_angle", NumberProvider.constant(0)).forGetter(PolarMoverConfig::initialAngle),
+				NumberProvider.CODEC.optionalFieldOf("angular_speed", NumberProvider.constant(0)).forGetter(PolarMoverConfig::angularSpeed),
+				NumberProvider.CODEC.optionalFieldOf("angular_accel", NumberProvider.constant(0)).forGetter(PolarMoverConfig::angularAccel)
 		).apply(i, PolarMoverConfig::new));
+
+		public PolarMoverConfig(double radius, double radialSpeed, double radialAccel,
+								double initialAngle, double angularSpeed, double angularAccel) {
+			this(NumberProvider.constant(radius), NumberProvider.constant(radialSpeed), NumberProvider.constant(radialAccel),
+					NumberProvider.constant(initialAngle), NumberProvider.constant(angularSpeed), NumberProvider.constant(angularAccel));
+		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
@@ -184,6 +213,11 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
+			return create(null, origin, velocity, baseDirection, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			// Rotation plane normal comes from baseDirection (shared by all projectiles).
 			// Forward direction (initial polar angle reference) comes from per-projectile velocity,
 			// projected onto the rotation plane to ensure orthogonality with normal.
@@ -200,11 +234,11 @@ public class MoverConfigs {
 				projOnPlane = projOnPlane.normalize();
 			}
 			var mover = new PolarMover(origin, Vec3.ZERO, Vec3.ZERO, normal, projOnPlane);
-			mover.radial(radius, radialSpeed, radialAccel);
+			mover.radial(getNumber(radius, ctx), getNumber(radialSpeed, ctx), getNumber(radialAccel, ctx));
 			mover.angular(
-					Math.toRadians(initialAngle),
-					Math.toRadians(angularSpeed),
-					Math.toRadians(angularAccel)
+					Math.toRadians(getNumber(initialAngle, ctx)),
+					Math.toRadians(getNumber(angularSpeed, ctx)),
+					Math.toRadians(getNumber(angularAccel, ctx))
 			);
 			return mover;
 		}
@@ -215,11 +249,15 @@ public class MoverConfigs {
 	 * JSON: {"type": "composite", "segments": [{"duration": 20, "mover": {"type": "acceleration", ...}}, ...]}
 	 */
 	public record CompositeMoverConfig(List<Segment> segments) implements MoverConfig {
-		public record Segment(int duration, MoverConfig mover) {
+		public record Segment(NumberProvider duration, MoverConfig mover) {
 			public static final Codec<Segment> CODEC = RecordCodecBuilder.create(i -> i.group(
-					Codec.INT.fieldOf("duration").forGetter(Segment::duration),
+					NumberProvider.CODEC.fieldOf("duration").forGetter(Segment::duration),
 					MoverConfig.CODEC.fieldOf("mover").forGetter(Segment::mover)
 			).apply(i, Segment::new));
+
+			public Segment(int duration, MoverConfig mover) {
+				this(NumberProvider.constant(duration), mover);
+			}
 		}
 
 		public static final Codec<CompositeMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
@@ -243,7 +281,7 @@ public class MoverConfigs {
 			// Position continuity is achieved by the mover parameters themselves (not by chaining pos/vel).
 			var composite = new CompositeMover();
 			for (var seg : segments) {
-				composite.add(seg.duration, seg.mover.create(origin, velocity, baseDirection, targetPos, casterPos));
+				composite.add(getTicks(seg.duration, null), seg.mover.create(origin, velocity, baseDirection, targetPos, casterPos));
 			}
 			return composite;
 		}
@@ -252,7 +290,7 @@ public class MoverConfigs {
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			var composite = new CompositeMover();
 			for (var seg : segments) {
-				composite.add(seg.duration, seg.mover.create(ctx, origin, velocity, baseDirection, targetPos, casterPos));
+				composite.add(getTicks(seg.duration, ctx), seg.mover.create(ctx, origin, velocity, baseDirection, targetPos, casterPos));
 			}
 			return composite;
 		}
@@ -283,46 +321,61 @@ public class MoverConfigs {
 	 *        "end_forward": 15, "end_right": 0, "end_up": 0, "duration": 40}
 	 */
 	public record BezierMoverConfig(
-			double cp1Forward, double cp1Right, double cp1Up,
-			double cp2Forward, double cp2Right, double cp2Up,
-			double endForward, double endRight, double endUp,
-			int duration
+			NumberProvider cp1Forward, NumberProvider cp1Right, NumberProvider cp1Up,
+			NumberProvider cp2Forward, NumberProvider cp2Right, NumberProvider cp2Up,
+			NumberProvider endForward, NumberProvider endRight, NumberProvider endUp,
+			NumberProvider duration
 	) implements MoverConfig {
 		public static final Codec<BezierMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
-				Codec.DOUBLE.optionalFieldOf("cp1_forward", 5.0).forGetter(BezierMoverConfig::cp1Forward),
-				Codec.DOUBLE.optionalFieldOf("cp1_right", 3.0).forGetter(BezierMoverConfig::cp1Right),
-				Codec.DOUBLE.optionalFieldOf("cp1_up", 0.0).forGetter(BezierMoverConfig::cp1Up),
-				Codec.DOUBLE.optionalFieldOf("cp2_forward", 10.0).forGetter(BezierMoverConfig::cp2Forward),
-				Codec.DOUBLE.optionalFieldOf("cp2_right", -3.0).forGetter(BezierMoverConfig::cp2Right),
-				Codec.DOUBLE.optionalFieldOf("cp2_up", 0.0).forGetter(BezierMoverConfig::cp2Up),
-				Codec.DOUBLE.optionalFieldOf("end_forward", 15.0).forGetter(BezierMoverConfig::endForward),
-				Codec.DOUBLE.optionalFieldOf("end_right", 0.0).forGetter(BezierMoverConfig::endRight),
-				Codec.DOUBLE.optionalFieldOf("end_up", 0.0).forGetter(BezierMoverConfig::endUp),
-				Codec.INT.optionalFieldOf("duration", 40).forGetter(BezierMoverConfig::duration)
+				NumberProvider.CODEC.optionalFieldOf("cp1_forward", NumberProvider.constant(5)).forGetter(BezierMoverConfig::cp1Forward),
+				NumberProvider.CODEC.optionalFieldOf("cp1_right", NumberProvider.constant(3)).forGetter(BezierMoverConfig::cp1Right),
+				NumberProvider.CODEC.optionalFieldOf("cp1_up", NumberProvider.constant(0)).forGetter(BezierMoverConfig::cp1Up),
+				NumberProvider.CODEC.optionalFieldOf("cp2_forward", NumberProvider.constant(10)).forGetter(BezierMoverConfig::cp2Forward),
+				NumberProvider.CODEC.optionalFieldOf("cp2_right", NumberProvider.constant(-3)).forGetter(BezierMoverConfig::cp2Right),
+				NumberProvider.CODEC.optionalFieldOf("cp2_up", NumberProvider.constant(0)).forGetter(BezierMoverConfig::cp2Up),
+				NumberProvider.CODEC.optionalFieldOf("end_forward", NumberProvider.constant(15)).forGetter(BezierMoverConfig::endForward),
+				NumberProvider.CODEC.optionalFieldOf("end_right", NumberProvider.constant(0)).forGetter(BezierMoverConfig::endRight),
+				NumberProvider.CODEC.optionalFieldOf("end_up", NumberProvider.constant(0)).forGetter(BezierMoverConfig::endUp),
+				NumberProvider.CODEC.optionalFieldOf("duration", NumberProvider.constant(40)).forGetter(BezierMoverConfig::duration)
 		).apply(i, BezierMoverConfig::new));
+
+		public BezierMoverConfig(double cp1Forward, double cp1Right, double cp1Up,
+								 double cp2Forward, double cp2Right, double cp2Up,
+								 double endForward, double endRight, double endUp,
+								 int duration) {
+			this(NumberProvider.constant(cp1Forward), NumberProvider.constant(cp1Right), NumberProvider.constant(cp1Up),
+					NumberProvider.constant(cp2Forward), NumberProvider.constant(cp2Right), NumberProvider.constant(cp2Up),
+					NumberProvider.constant(endForward), NumberProvider.constant(endRight), NumberProvider.constant(endUp),
+					NumberProvider.constant(duration));
+		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return create(null, origin, velocity, velocity, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
 			var ori = DanmakuHelper.getOrientation(dir);
 
 			// Build absolute control points from relative offsets
 			// forward = along velocity dir, right = ori.side(), up = ori.normal()
 			Vec3 cp1 = origin
-					.add(dir.scale(cp1Forward))
-					.add(ori.side().scale(cp1Right))
-					.add(ori.normal().scale(cp1Up));
+					.add(dir.scale(getNumber(cp1Forward, ctx)))
+					.add(ori.side().scale(getNumber(cp1Right, ctx)))
+					.add(ori.normal().scale(getNumber(cp1Up, ctx)));
 			Vec3 cp2 = origin
-					.add(dir.scale(cp2Forward))
-					.add(ori.side().scale(cp2Right))
-					.add(ori.normal().scale(cp2Up));
+					.add(dir.scale(getNumber(cp2Forward, ctx)))
+					.add(ori.side().scale(getNumber(cp2Right, ctx)))
+					.add(ori.normal().scale(getNumber(cp2Up, ctx)));
 			Vec3 end = origin
-					.add(dir.scale(endForward))
-					.add(ori.side().scale(endRight))
-					.add(ori.normal().scale(endUp));
+					.add(dir.scale(getNumber(endForward, ctx)))
+					.add(ori.side().scale(getNumber(endRight, ctx)))
+					.add(ori.normal().scale(getNumber(endUp, ctx)));
 
 			return new dev.xkmc.youkaishomecoming.content.spell.mover.BezierMover(
-					origin, cp1, cp2, end, duration);
+					origin, cp1, cp2, end, getTicks(duration, ctx));
 		}
 	}
 
@@ -374,23 +427,33 @@ public class MoverConfigs {
 	public record MultiBezierMoverConfig(List<BezierSegment> segments) implements MoverConfig {
 
 		public record BezierSegment(
-				double cp1Forward, double cp1Right, double cp1Up,
-				double cp2Forward, double cp2Right, double cp2Up,
-				double endForward, double endRight, double endUp,
-				int duration
+				NumberProvider cp1Forward, NumberProvider cp1Right, NumberProvider cp1Up,
+				NumberProvider cp2Forward, NumberProvider cp2Right, NumberProvider cp2Up,
+				NumberProvider endForward, NumberProvider endRight, NumberProvider endUp,
+				NumberProvider duration
 		) {
 			public static final Codec<BezierSegment> CODEC = RecordCodecBuilder.create(i -> i.group(
-					Codec.DOUBLE.optionalFieldOf("cp1_forward", 5.0).forGetter(BezierSegment::cp1Forward),
-					Codec.DOUBLE.optionalFieldOf("cp1_right", 3.0).forGetter(BezierSegment::cp1Right),
-					Codec.DOUBLE.optionalFieldOf("cp1_up", 0.0).forGetter(BezierSegment::cp1Up),
-					Codec.DOUBLE.optionalFieldOf("cp2_forward", 10.0).forGetter(BezierSegment::cp2Forward),
-					Codec.DOUBLE.optionalFieldOf("cp2_right", -3.0).forGetter(BezierSegment::cp2Right),
-					Codec.DOUBLE.optionalFieldOf("cp2_up", 0.0).forGetter(BezierSegment::cp2Up),
-					Codec.DOUBLE.optionalFieldOf("end_forward", 15.0).forGetter(BezierSegment::endForward),
-					Codec.DOUBLE.optionalFieldOf("end_right", 0.0).forGetter(BezierSegment::endRight),
-					Codec.DOUBLE.optionalFieldOf("end_up", 0.0).forGetter(BezierSegment::endUp),
-					Codec.INT.optionalFieldOf("duration", 40).forGetter(BezierSegment::duration)
+					NumberProvider.CODEC.optionalFieldOf("cp1_forward", NumberProvider.constant(5)).forGetter(BezierSegment::cp1Forward),
+					NumberProvider.CODEC.optionalFieldOf("cp1_right", NumberProvider.constant(3)).forGetter(BezierSegment::cp1Right),
+					NumberProvider.CODEC.optionalFieldOf("cp1_up", NumberProvider.constant(0)).forGetter(BezierSegment::cp1Up),
+					NumberProvider.CODEC.optionalFieldOf("cp2_forward", NumberProvider.constant(10)).forGetter(BezierSegment::cp2Forward),
+					NumberProvider.CODEC.optionalFieldOf("cp2_right", NumberProvider.constant(-3)).forGetter(BezierSegment::cp2Right),
+					NumberProvider.CODEC.optionalFieldOf("cp2_up", NumberProvider.constant(0)).forGetter(BezierSegment::cp2Up),
+					NumberProvider.CODEC.optionalFieldOf("end_forward", NumberProvider.constant(15)).forGetter(BezierSegment::endForward),
+					NumberProvider.CODEC.optionalFieldOf("end_right", NumberProvider.constant(0)).forGetter(BezierSegment::endRight),
+					NumberProvider.CODEC.optionalFieldOf("end_up", NumberProvider.constant(0)).forGetter(BezierSegment::endUp),
+					NumberProvider.CODEC.optionalFieldOf("duration", NumberProvider.constant(40)).forGetter(BezierSegment::duration)
 			).apply(i, BezierSegment::new));
+
+			public BezierSegment(double cp1Forward, double cp1Right, double cp1Up,
+								 double cp2Forward, double cp2Right, double cp2Up,
+								 double endForward, double endRight, double endUp,
+								 int duration) {
+				this(NumberProvider.constant(cp1Forward), NumberProvider.constant(cp1Right), NumberProvider.constant(cp1Up),
+						NumberProvider.constant(cp2Forward), NumberProvider.constant(cp2Right), NumberProvider.constant(cp2Up),
+						NumberProvider.constant(endForward), NumberProvider.constant(endRight), NumberProvider.constant(endUp),
+						NumberProvider.constant(duration));
+			}
 		}
 
 		public static final Codec<MultiBezierMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
@@ -399,6 +462,11 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return create(null, origin, velocity, velocity, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
 			var ori = DanmakuHelper.getOrientation(dir);
 
@@ -407,19 +475,19 @@ public class MoverConfigs {
 
 			for (var seg : segments) {
 				Vec3 cp1 = currentStart
-						.add(dir.scale(seg.cp1Forward))
-						.add(ori.side().scale(seg.cp1Right))
-						.add(ori.normal().scale(seg.cp1Up));
+						.add(dir.scale(getNumber(seg.cp1Forward, ctx)))
+						.add(ori.side().scale(getNumber(seg.cp1Right, ctx)))
+						.add(ori.normal().scale(getNumber(seg.cp1Up, ctx)));
 				Vec3 cp2 = currentStart
-						.add(dir.scale(seg.cp2Forward))
-						.add(ori.side().scale(seg.cp2Right))
-						.add(ori.normal().scale(seg.cp2Up));
+						.add(dir.scale(getNumber(seg.cp2Forward, ctx)))
+						.add(ori.side().scale(getNumber(seg.cp2Right, ctx)))
+						.add(ori.normal().scale(getNumber(seg.cp2Up, ctx)));
 				Vec3 end = currentStart
-						.add(dir.scale(seg.endForward))
-						.add(ori.side().scale(seg.endRight))
-						.add(ori.normal().scale(seg.endUp));
+						.add(dir.scale(getNumber(seg.endForward, ctx)))
+						.add(ori.side().scale(getNumber(seg.endRight, ctx)))
+						.add(ori.normal().scale(getNumber(seg.endUp, ctx)));
 
-				moverSegments.add(new MultiBezierMover.Segment(currentStart, cp1, cp2, end, seg.duration));
+				moverSegments.add(new MultiBezierMover.Segment(currentStart, cp1, cp2, end, getTicks(seg.duration, ctx)));
 				currentStart = end; // Chain: next segment starts where this one ends
 			}
 
@@ -434,7 +502,7 @@ public class MoverConfigs {
 	 * If closed=true, the path loops back to the start (useful for circular/orbital paths).
 	 * JSON: {"type": "spline", "waypoints": [[5,5,0],[5,-5,0],[-5,-5,0],[-5,5,0]], "duration": 60, "closed": true}
 	 */
-	public record SplineMoverConfig(List<double[]> waypoints, int duration, boolean closed) implements MoverConfig {
+	public record SplineMoverConfig(List<double[]> waypoints, NumberProvider duration, boolean closed) implements MoverConfig {
 		public static final Codec<SplineMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.DOUBLE.listOf().listOf().xmap(
 						// List<List<Double>> -> List<double[]>
@@ -446,12 +514,21 @@ public class MoverConfigs {
 						// List<double[]> -> List<List<Double>>
 						arrays -> arrays.stream().map(a -> List.of(a[0], a[1], a[2])).collect(java.util.stream.Collectors.toList())
 				).fieldOf("waypoints").forGetter(SplineMoverConfig::waypoints),
-				Codec.INT.optionalFieldOf("duration", 60).forGetter(SplineMoverConfig::duration),
+				NumberProvider.CODEC.optionalFieldOf("duration", NumberProvider.constant(60)).forGetter(SplineMoverConfig::duration),
 				Codec.BOOL.optionalFieldOf("closed", false).forGetter(SplineMoverConfig::closed)
 		).apply(i, SplineMoverConfig::new));
 
+		public SplineMoverConfig(List<double[]> waypoints, int duration, boolean closed) {
+			this(waypoints, NumberProvider.constant(duration), closed);
+		}
+
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			return create(null, origin, velocity, velocity, Vec3.ZERO, Vec3.ZERO);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
 			var ori = DanmakuHelper.getOrientation(dir);
 
@@ -465,7 +542,7 @@ public class MoverConfigs {
 				absolutePoints.add(point);
 			}
 
-			return new dev.xkmc.youkaishomecoming.content.spell.mover.SplineMover(absolutePoints, duration, closed);
+			return new dev.xkmc.youkaishomecoming.content.spell.mover.SplineMover(absolutePoints, getTicks(duration, ctx), closed);
 		}
 	}
 
@@ -476,17 +553,21 @@ public class MoverConfigs {
 	 * If speed > 0, the projectile also moves forward at that speed (blocks/tick) in addition to the formula offset.
 	 * JSON: {"type": "formula", "x": "tick * 0.3", "y": "3 * sin(tick * 0.15)", "z": "3 * cos(tick * 0.15)", "speed": 0.5}
 	 */
-	public record FormulaMoverConfig(String x, String y, String z, double speed) implements MoverConfig {
+	public record FormulaMoverConfig(String x, String y, String z, NumberProvider speed) implements MoverConfig {
 		public static final Codec<FormulaMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.optionalFieldOf("x", "0").forGetter(FormulaMoverConfig::x),
 				Codec.STRING.optionalFieldOf("y", "0").forGetter(FormulaMoverConfig::y),
 				Codec.STRING.optionalFieldOf("z", "0").forGetter(FormulaMoverConfig::z),
-				Codec.DOUBLE.optionalFieldOf("speed", 0.0).forGetter(FormulaMoverConfig::speed)
+				NumberProvider.CODEC.optionalFieldOf("speed", NumberProvider.constant(0)).forGetter(FormulaMoverConfig::speed)
 		).apply(i, FormulaMoverConfig::new));
+
+		public FormulaMoverConfig(String x, String y, String z, double speed) {
+			this(x, y, z, NumberProvider.constant(speed));
+		}
 
 		/** Backwards-compatible constructor without speed. */
 		public FormulaMoverConfig(String x, String y, String z) {
-			this(x, y, z, 0.0);
+			this(x, y, z, NumberProvider.constant(0));
 		}
 
 		@Override
@@ -499,7 +580,7 @@ public class MoverConfigs {
 			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
 			var ori = DanmakuHelper.getOrientation(dir);
 			// Drift direction: use baseDirection (shared by all projectiles in the pattern)
-			Vec3 drift = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize().scale(speed) : Vec3.ZERO;
+			Vec3 drift = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize().scale(getNumber(speed, null)) : Vec3.ZERO;
 			return new dev.xkmc.youkaishomecoming.content.spell.mover.FormulaMover(
 					origin, dir, ori.side(), ori.normal(), x, y, z, drift);
 		}
@@ -508,7 +589,7 @@ public class MoverConfigs {
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			Vec3 dir = velocity.lengthSqr() > 1e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
 			var ori = DanmakuHelper.getOrientation(dir);
-			Vec3 drift = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize().scale(speed) : Vec3.ZERO;
+			Vec3 drift = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize().scale(getNumber(speed, ctx)) : Vec3.ZERO;
 			return new dev.xkmc.youkaishomecoming.content.spell.mover.FormulaMover(
 					origin, dir, ori.side(), ori.normal(),
 					bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx), drift);
@@ -587,12 +668,16 @@ public class MoverConfigs {
 	 * </ul>
 	 * JSON: {"type": "orbital", "angular_speed": 5.0, "radius": "3 * sin(tick * 0.05)", "drift": "2 * sin(tick * 0.03)"}
 	 */
-	public record OrbitalMoverConfig(double angularSpeed, String radius, String drift) implements MoverConfig {
+	public record OrbitalMoverConfig(NumberProvider angularSpeed, String radius, String drift) implements MoverConfig {
 		public static final Codec<OrbitalMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
-				Codec.DOUBLE.optionalFieldOf("angular_speed", 0.0).forGetter(OrbitalMoverConfig::angularSpeed),
+				NumberProvider.CODEC.optionalFieldOf("angular_speed", NumberProvider.constant(0)).forGetter(OrbitalMoverConfig::angularSpeed),
 				Codec.STRING.optionalFieldOf("radius", "1").forGetter(OrbitalMoverConfig::radius),
 				Codec.STRING.optionalFieldOf("drift", "0").forGetter(OrbitalMoverConfig::drift)
 		).apply(i, OrbitalMoverConfig::new));
+
+		public OrbitalMoverConfig(double angularSpeed, String radius, String drift) {
+			this(NumberProvider.constant(angularSpeed), radius, drift);
+		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
@@ -603,13 +688,13 @@ public class MoverConfigs {
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
 			// Orbit axis = baseDirection (shared by all projectiles in the pattern)
 			Vec3 axis = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 1, 0);
-			return new OrbitalMover(origin, axis, velocity, angularSpeed, radius, drift);
+			return new OrbitalMover(origin, axis, velocity, getNumber(angularSpeed, null), radius, drift);
 		}
 
 		@Override
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			Vec3 axis = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 1, 0);
-			return new OrbitalMover(origin, axis, velocity, angularSpeed, bindFormula(radius, ctx), bindFormula(drift, ctx));
+			return new OrbitalMover(origin, axis, velocity, getNumber(angularSpeed, ctx), bindFormula(radius, ctx), bindFormula(drift, ctx));
 		}
 	}
 
@@ -634,14 +719,18 @@ public class MoverConfigs {
 	 * JSON: {"type": "translate", "x": "tick * 0.1", "y": "0", "z": "0"}
 	 * JSON: {"type": "translate", "speed": 0.3, "aim": "target"}
 	 */
-	public record TranslateMoverConfig(String x, String y, String z, double speed, String aim) implements MoverConfig {
+	public record TranslateMoverConfig(String x, String y, String z, NumberProvider speed, String aim) implements MoverConfig {
 		public static final Codec<TranslateMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.optionalFieldOf("x", "0").forGetter(TranslateMoverConfig::x),
 				Codec.STRING.optionalFieldOf("y", "0").forGetter(TranslateMoverConfig::y),
 				Codec.STRING.optionalFieldOf("z", "0").forGetter(TranslateMoverConfig::z),
-				Codec.DOUBLE.optionalFieldOf("speed", 0.0).forGetter(TranslateMoverConfig::speed),
+				NumberProvider.CODEC.optionalFieldOf("speed", NumberProvider.constant(0)).forGetter(TranslateMoverConfig::speed),
 				Codec.STRING.optionalFieldOf("aim", "none").forGetter(TranslateMoverConfig::aim)
 		).apply(i, TranslateMoverConfig::new));
+
+		public TranslateMoverConfig(String x, String y, String z, double speed, String aim) {
+			this(x, y, z, NumberProvider.constant(speed), aim);
+		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
@@ -656,7 +745,8 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			// If aim mode is set with speed, use pre-computed direction (no formula strings in serialization)
-			if (speed > 0 && !"none".equals(aim)) {
+			double resolvedSpeed = getNumber(speed, null);
+			if (resolvedSpeed > 0 && !"none".equals(aim)) {
 				Vec3 dir;
 				if ("target".equals(aim)) {
 					dir = targetPos.subtract(origin);
@@ -673,15 +763,28 @@ public class MoverConfigs {
 					return new TranslateMover(origin, Vec3.ZERO, 0);
 				}
 				// Store only Vec3 direction + double speed — minimal network footprint
-				return new TranslateMover(origin, dir, speed);
+				return new TranslateMover(origin, dir, resolvedSpeed);
 			}
 			return new TranslateMover(origin, x, y, z, targetPos, casterPos);
 		}
 
 		@Override
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
-			if (speed > 0 && !"none".equals(aim)) {
-				return create(origin, velocity, baseDirection, targetPos, casterPos);
+			double resolvedSpeed = getNumber(speed, ctx);
+			if (resolvedSpeed > 0 && !"none".equals(aim)) {
+				Vec3 dir;
+				if ("target".equals(aim)) {
+					dir = targetPos.subtract(origin);
+				} else if ("forward".equals(aim)) {
+					dir = baseDirection;
+				} else {
+					dir = targetPos.subtract(origin);
+				}
+				double len = dir.length();
+				if (len > 1e-4) {
+					return new TranslateMover(origin, dir.scale(1.0 / len), resolvedSpeed);
+				}
+				return new TranslateMover(origin, Vec3.ZERO, 0);
 			}
 			return new TranslateMover(origin, bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx), targetPos, casterPos);
 		}

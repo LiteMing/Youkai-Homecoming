@@ -1654,48 +1654,48 @@ public class ActionEditorPanel {
 					}
 				});
 			} else if (cfg instanceof MoverConfigs.DecelerationConfig dc) {
-				addDoubleRow("Factor", dc.factor(), v ->
+				addNumberRow("Factor", dc.factor(), v ->
 						onParamChanged.accept(Optional.of(new MoverConfigs.DecelerationConfig(v))));
 			} else if (cfg instanceof MoverConfigs.RotateConfig rot) {
-				addDoubleRow("Deg/tick", rot.degreesPerTick(), v ->
+				addNumberRow("Deg/tick", rot.degreesPerTick(), v ->
 						onParamChanged.accept(Optional.of(new MoverConfigs.RotateConfig(v))));
 			} else if (cfg instanceof MoverConfigs.PolarMoverConfig polar) {
-				addDoubleRow("Radius", polar.radius(), v -> {
+				addNumberRow("Radius", polar.radius(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 								v, p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel())));
 					}
 				});
-				addDoubleRow("Rad Spd", polar.radialSpeed(), v -> {
+				addNumberRow("Rad Spd", polar.radialSpeed(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 								p.radius(), v, p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel())));
 					}
 				});
-				addDoubleRow("Ang Spd", polar.angularSpeed(), v -> {
+				addNumberRow("Ang Spd", polar.angularSpeed(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 								p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), v, p.angularAccel())));
 					}
 				});
-			addDoubleRow("Init Ang", polar.initialAngle(), v -> {
+			addNumberRow("Init Ang", polar.initialAngle(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel())));
 				}
 			});
-			addDoubleRow("Rad Acc", polar.radialAccel(), v -> {
+			addNumberRow("Rad Acc", polar.radialAccel(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), v, p.initialAngle(), p.angularSpeed(), p.angularAccel())));
 				}
 			});
-			addDoubleRow("Ang Acc", polar.angularAccel(), v -> {
+			addNumberRow("Ang Acc", polar.angularAccel(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
@@ -1712,7 +1712,7 @@ public class ActionEditorPanel {
 				addSectionHeader(segLabel);
 				if (!isSectionCollapsed(segLabel)) {
 					currentDepth++;
-					addIntRow("Seg " + (si + 1) + " Dur", seg.duration(), v -> {
+					addNumberRow("Seg " + (si + 1) + " Dur", seg.duration(), v -> {
 						var cur = getCurrentMover();
 						if (cur.isPresent() && cur.get() instanceof MoverConfigs.CompositeMoverConfig c) {
 							var segs = new java.util.ArrayList<>(c.segments());
@@ -1817,7 +1817,7 @@ public class ActionEditorPanel {
 				});
 			}
 		} else if (cfg instanceof MoverConfigs.BezierMoverConfig bez) {
-				addDoubleRow("CP1 Fwd", bez.cp1Forward(), v -> {
+				addNumberRow("CP1 Fwd", bez.cp1Forward(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1825,7 +1825,7 @@ public class ActionEditorPanel {
 								b.endForward(), b.endRight(), b.endUp(), b.duration())));
 					}
 				});
-				addDoubleRow("CP1 Right", bez.cp1Right(), v -> {
+				addNumberRow("CP1 Right", bez.cp1Right(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1833,7 +1833,7 @@ public class ActionEditorPanel {
 								b.endForward(), b.endRight(), b.endUp(), b.duration())));
 					}
 				});
-				addDoubleRow("CP1 Up", bez.cp1Up(), v -> {
+				addNumberRow("CP1 Up", bez.cp1Up(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1841,7 +1841,7 @@ public class ActionEditorPanel {
 								b.endForward(), b.endRight(), b.endUp(), b.duration())));
 					}
 				});
-				addDoubleRow("CP2 Fwd", bez.cp2Forward(), v -> {
+				addNumberRow("CP2 Fwd", bez.cp2Forward(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1849,7 +1849,7 @@ public class ActionEditorPanel {
 								b.endForward(), b.endRight(), b.endUp(), b.duration())));
 					}
 				});
-				addDoubleRow("CP2 Right", bez.cp2Right(), v -> {
+				addNumberRow("CP2 Right", bez.cp2Right(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1857,7 +1857,7 @@ public class ActionEditorPanel {
 								b.endForward(), b.endRight(), b.endUp(), b.duration())));
 					}
 				});
-				addDoubleRow("CP2 Up", bez.cp2Up(), v -> {
+				addNumberRow("CP2 Up", bez.cp2Up(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1865,7 +1865,7 @@ public class ActionEditorPanel {
 								b.endForward(), b.endRight(), b.endUp(), b.duration())));
 					}
 				});
-				addDoubleRow("End Fwd", bez.endForward(), v -> {
+				addNumberRow("End Fwd", bez.endForward(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1873,7 +1873,7 @@ public class ActionEditorPanel {
 								v, b.endRight(), b.endUp(), b.duration())));
 					}
 				});
-				addDoubleRow("End Right", bez.endRight(), v -> {
+				addNumberRow("End Right", bez.endRight(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1881,7 +1881,7 @@ public class ActionEditorPanel {
 								b.endForward(), v, b.endUp(), b.duration())));
 					}
 				});
-				addDoubleRow("End Up", bez.endUp(), v -> {
+				addNumberRow("End Up", bez.endUp(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1889,7 +1889,7 @@ public class ActionEditorPanel {
 								b.endForward(), b.endRight(), v, b.duration())));
 					}
 				});
-				addIntRow("Duration", bez.duration(), v -> {
+				addNumberRow("Duration", bez.duration(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.BezierMoverConfig b) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.BezierMoverConfig(
@@ -1904,16 +1904,16 @@ public class ActionEditorPanel {
 				var seg = mb.segments().get(si);
 				final int segIdx = si;
 				addStringRow("--- Seg " + (si + 1), "---", v -> {});
-				addDoubleRow("  CP1 Fwd", seg.cp1Forward(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(v, s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
-				addDoubleRow("  CP1 Rt", seg.cp1Right(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), v, s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
-				addDoubleRow("  CP1 Up", seg.cp1Up(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), v, s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
-				addDoubleRow("  CP2 Fwd", seg.cp2Forward(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), v, s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
-				addDoubleRow("  CP2 Rt", seg.cp2Right(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), v, s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
-				addDoubleRow("  CP2 Up", seg.cp2Up(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), v, s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
-				addDoubleRow("  End Fwd", seg.endForward(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), v, s.endRight(), s.endUp(), s.duration()), onParamChanged); });
-				addDoubleRow("  End Rt", seg.endRight(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), v, s.endUp(), s.duration()), onParamChanged); });
-				addDoubleRow("  End Up", seg.endUp(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), v, s.duration()), onParamChanged); });
-				addIntRow("  Duration", seg.duration(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), v), onParamChanged); });
+				addNumberRow("  CP1 Fwd", seg.cp1Forward(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(v, s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addNumberRow("  CP1 Rt", seg.cp1Right(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), v, s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addNumberRow("  CP1 Up", seg.cp1Up(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), v, s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addNumberRow("  CP2 Fwd", seg.cp2Forward(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), v, s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addNumberRow("  CP2 Rt", seg.cp2Right(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), v, s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addNumberRow("  CP2 Up", seg.cp2Up(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), v, s.endForward(), s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addNumberRow("  End Fwd", seg.endForward(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), v, s.endRight(), s.endUp(), s.duration()), onParamChanged); });
+				addNumberRow("  End Rt", seg.endRight(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), v, s.endUp(), s.duration()), onParamChanged); });
+				addNumberRow("  End Up", seg.endUp(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), v, s.duration()), onParamChanged); });
+				addNumberRow("  Duration", seg.duration(), v -> { var s = getMultiBezierSegment(segIdx); if (s != null) updateMultiBezierSegment(segIdx, new MoverConfigs.MultiBezierMoverConfig.BezierSegment(s.cp1Forward(), s.cp1Right(), s.cp1Up(), s.cp2Forward(), s.cp2Right(), s.cp2Up(), s.endForward(), s.endRight(), s.endUp(), v), onParamChanged); });
 			}
 			addFullWidthButton("[+] Add Bezier Segment", () -> {
 				var cur = getCurrentMover();
@@ -1937,7 +1937,7 @@ public class ActionEditorPanel {
 			}
 		} else if (cfg instanceof MoverConfigs.SplineMoverConfig sp) {
 			// Spline: waypoints list + duration + closed toggle
-			addIntRow("Duration", sp.duration(), v -> {
+			addNumberRow("Duration", sp.duration(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.SplineMoverConfig s) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.SplineMoverConfig(s.waypoints(), v, s.closed())));
@@ -1998,7 +1998,7 @@ public class ActionEditorPanel {
 			}
 		} else if (cfg instanceof MoverConfigs.FormulaMoverConfig fm) {
 			// Formula mover: three expression strings for x/y/z + base speed
-			addDoubleRow("Speed", fm.speed(), v -> {
+			addNumberRow("Speed", fm.speed(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), f.z(), v)));
@@ -2024,7 +2024,7 @@ public class ActionEditorPanel {
 			});
 		} else if (cfg instanceof MoverConfigs.OrbitalMoverConfig orb) {
 			// Orbital mover: angular_speed, radius formula, drift formula
-			addDoubleRow("Ang Spd (°/t)", orb.angularSpeed(), v -> {
+			addNumberRow("Ang Spd (°/t)", orb.angularSpeed(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.OrbitalMoverConfig o) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.OrbitalMoverConfig(v, o.radius(), o.drift())));
@@ -2051,7 +2051,7 @@ public class ActionEditorPanel {
 					onTypeChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v)));
 				}
 			});
-			addDoubleRow("Speed", tr.speed(), v -> {
+			addNumberRow("Speed", tr.speed(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim())));
@@ -2178,48 +2178,48 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (subCfg instanceof MoverConfigs.DecelerationConfig dc) {
-			addDoubleRow("  Factor", dc.factor(), v -> updateCompositeSegment(segIdx,
+			addNumberRow("  Factor", dc.factor(), v -> updateCompositeSegment(segIdx,
 					new MoverConfigs.DecelerationConfig(v), onParamChanged));
 		} else if (subCfg instanceof MoverConfigs.RotateConfig rot) {
-			addDoubleRow("  Deg/t", rot.degreesPerTick(), v -> updateCompositeSegment(segIdx,
+			addNumberRow("  Deg/t", rot.degreesPerTick(), v -> updateCompositeSegment(segIdx,
 					new MoverConfigs.RotateConfig(v), onParamChanged));
 		} else if (subCfg instanceof MoverConfigs.PolarMoverConfig polar) {
-			addDoubleRow("  Radius", polar.radius(), v -> {
+			addNumberRow("  Radius", polar.radius(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
 							v, p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Rad Spd", polar.radialSpeed(), v -> {
+			addNumberRow("  Rad Spd", polar.radialSpeed(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
 							p.radius(), v, p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Ang Spd", polar.angularSpeed(), v -> {
+			addNumberRow("  Ang Spd", polar.angularSpeed(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), v, p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Init Ang", polar.initialAngle(), v -> {
+			addNumberRow("  Init Ang", polar.initialAngle(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Rad Acc", polar.radialAccel(), v -> {
+			addNumberRow("  Rad Acc", polar.radialAccel(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), v, p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Ang Acc", polar.angularAccel(), v -> {
+			addNumberRow("  Ang Acc", polar.angularAccel(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateCompositeSegment(segIdx, new MoverConfigs.PolarMoverConfig(
@@ -2236,7 +2236,7 @@ public class ActionEditorPanel {
 			// Recursive: render nested mover using the full mover editor at increased depth
 			buildNestedMoverRows(Optional.of(subCfg), segIdx, true, onTypeChanged, onParamChanged);
 		} else if (subCfg instanceof MoverConfigs.OrbitalMoverConfig orb) {
-			addDoubleRow("  Ang Spd", orb.angularSpeed(), v -> {
+			addNumberRow("  Ang Spd", orb.angularSpeed(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.OrbitalMoverConfig o) {
 					updateCompositeSegment(segIdx, new MoverConfigs.OrbitalMoverConfig(v, o.radius(), o.drift()), onParamChanged);
@@ -2262,7 +2262,7 @@ public class ActionEditorPanel {
 					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);
 				}
 			});
-			addDoubleRow("  Speed", tr.speed(), v -> {
+			addNumberRow("  Speed", tr.speed(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
 					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim()), onParamChanged);
@@ -2345,48 +2345,48 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (layerCfg instanceof MoverConfigs.DecelerationConfig dc) {
-			addDoubleRow("  Factor", dc.factor(), v -> updateLayeredLayer(layerIdx,
+			addNumberRow("  Factor", dc.factor(), v -> updateLayeredLayer(layerIdx,
 					new MoverConfigs.DecelerationConfig(v), onParamChanged));
 		} else if (layerCfg instanceof MoverConfigs.RotateConfig rot) {
-			addDoubleRow("  Deg/t", rot.degreesPerTick(), v -> updateLayeredLayer(layerIdx,
+			addNumberRow("  Deg/t", rot.degreesPerTick(), v -> updateLayeredLayer(layerIdx,
 					new MoverConfigs.RotateConfig(v), onParamChanged));
 		} else if (layerCfg instanceof MoverConfigs.PolarMoverConfig polar) {
-			addDoubleRow("  Radius", polar.radius(), v -> {
+			addNumberRow("  Radius", polar.radius(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
 							v, p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Rad Spd", polar.radialSpeed(), v -> {
+			addNumberRow("  Rad Spd", polar.radialSpeed(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
 							p.radius(), v, p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Rad Acc", polar.radialAccel(), v -> {
+			addNumberRow("  Rad Acc", polar.radialAccel(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), v, p.initialAngle(), p.angularSpeed(), p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Init Ang", polar.initialAngle(), v -> {
+			addNumberRow("  Init Ang", polar.initialAngle(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Ang Spd", polar.angularSpeed(), v -> {
+			addNumberRow("  Ang Spd", polar.angularSpeed(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), v, p.angularAccel()), onParamChanged);
 				}
 			});
-			addDoubleRow("  Ang Acc", polar.angularAccel(), v -> {
+			addNumberRow("  Ang Acc", polar.angularAccel(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.PolarMoverConfig p) {
 					updateLayeredLayer(layerIdx, new MoverConfigs.PolarMoverConfig(
@@ -2403,7 +2403,7 @@ public class ActionEditorPanel {
 			// Recursive: render nested mover using the full mover editor at increased depth
 			buildNestedMoverRows(Optional.of(layerCfg), layerIdx, false, onTypeChanged, onParamChanged);
 		} else if (layerCfg instanceof MoverConfigs.OrbitalMoverConfig orb) {
-			addDoubleRow("  Ang Spd", orb.angularSpeed(), v -> {
+			addNumberRow("  Ang Spd", orb.angularSpeed(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.OrbitalMoverConfig o) {
 					updateLayeredLayer(layerIdx, new MoverConfigs.OrbitalMoverConfig(v, o.radius(), o.drift()), onParamChanged);
@@ -2429,7 +2429,7 @@ public class ActionEditorPanel {
 					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);
 				}
 			});
-			addDoubleRow("  Speed", tr.speed(), v -> {
+			addNumberRow("  Speed", tr.speed(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
 					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim()), onParamChanged);
@@ -2488,16 +2488,16 @@ public class ActionEditorPanel {
 	 */
 	private void buildNestedBezierParams(MoverConfigs.BezierMoverConfig bez, int idx,
 										 boolean isComposite, Consumer<Optional<MoverConfig>> onParamChanged) {
-		addDoubleRow("  CP1 Fwd", bez.cp1Forward(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(v, b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
-		addDoubleRow("  CP1 Rt", bez.cp1Right(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), v, b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
-		addDoubleRow("  CP1 Up", bez.cp1Up(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), v, b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
-		addDoubleRow("  CP2 Fwd", bez.cp2Forward(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), v, b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
-		addDoubleRow("  CP2 Rt", bez.cp2Right(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), v, b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
-		addDoubleRow("  CP2 Up", bez.cp2Up(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), v, b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
-		addDoubleRow("  End Fwd", bez.endForward(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), v, b.endRight(), b.endUp(), b.duration()), onParamChanged); });
-		addDoubleRow("  End Rt", bez.endRight(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), v, b.endUp(), b.duration()), onParamChanged); });
-		addDoubleRow("  End Up", bez.endUp(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), v, b.duration()), onParamChanged); });
-		addIntRow("  Duration", bez.duration(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), v), onParamChanged); });
+		addNumberRow("  CP1 Fwd", bez.cp1Forward(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(v, b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addNumberRow("  CP1 Rt", bez.cp1Right(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), v, b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addNumberRow("  CP1 Up", bez.cp1Up(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), v, b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addNumberRow("  CP2 Fwd", bez.cp2Forward(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), v, b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addNumberRow("  CP2 Rt", bez.cp2Right(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), v, b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addNumberRow("  CP2 Up", bez.cp2Up(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), v, b.endForward(), b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addNumberRow("  End Fwd", bez.endForward(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), v, b.endRight(), b.endUp(), b.duration()), onParamChanged); });
+		addNumberRow("  End Rt", bez.endRight(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), v, b.endUp(), b.duration()), onParamChanged); });
+		addNumberRow("  End Up", bez.endUp(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), v, b.duration()), onParamChanged); });
+		addNumberRow("  Duration", bez.duration(), v -> { var b = getNestedBezier(idx, isComposite); if (b != null) updateNested(idx, isComposite, new MoverConfigs.BezierMoverConfig(b.cp1Forward(), b.cp1Right(), b.cp1Up(), b.cp2Forward(), b.cp2Right(), b.cp2Up(), b.endForward(), b.endRight(), b.endUp(), v), onParamChanged); });
 	}
 
 	private MoverConfigs.BezierMoverConfig getNestedBezier(int idx, boolean isComposite) {
@@ -2517,7 +2517,7 @@ public class ActionEditorPanel {
 	/** Nested formula mover params editor. */
 	private void buildNestedFormulaParams(MoverConfigs.FormulaMoverConfig fm, int idx, boolean isComposite,
 										  Consumer<Optional<MoverConfig>> onParamChanged) {
-		addDoubleRow("  Speed", fm.speed(), v -> {
+		addNumberRow("  Speed", fm.speed(), v -> {
 			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
 			if (current instanceof MoverConfigs.FormulaMoverConfig f) {
 				updateNested(idx, isComposite, new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), f.z(), v), onParamChanged);
@@ -2547,7 +2547,7 @@ public class ActionEditorPanel {
 	private void buildNestedSplineParams(MoverConfigs.SplineMoverConfig sp, int idx, boolean isComposite,
 										 Consumer<Optional<MoverConfig>> onTypeChanged,
 										 Consumer<Optional<MoverConfig>> onParamChanged) {
-		addIntRow("  Duration", sp.duration(), v -> {
+		addNumberRow("  Duration", sp.duration(), v -> {
 			MoverConfig current = isComposite ? getCompositeSegmentMover(idx) : getLayeredLayerMover(idx);
 			if (current instanceof MoverConfigs.SplineMoverConfig s) {
 				updateNested(idx, isComposite, new MoverConfigs.SplineMoverConfig(s.waypoints(), v, s.closed()), onParamChanged);
@@ -2627,7 +2627,7 @@ public class ActionEditorPanel {
 				addSectionHeader(segLabel);
 				if (!isSectionCollapsed(segLabel)) {
 					currentDepth++;
-					addIntRow("  Duration", seg.duration(), v -> {
+					addNumberRow("  Duration", seg.duration(), v -> {
 						MoverConfig parentMover = parentIsComposite ? getCompositeSegmentMover(pIdx) : getLayeredLayerMover(pIdx);
 						if (parentMover instanceof MoverConfigs.CompositeMoverConfig c) {
 							var segs = new java.util.ArrayList<>(c.segments());

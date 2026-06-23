@@ -12,7 +12,7 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 public class HelpDockPanel implements DockPanel {
 
 	private static final String KEY_PREFIX = YoukaisHomecoming.MODID + ".spell_editor.help.";
-	private static final int LINE_COUNT = 90;
+	private static final int LINE_COUNT = 110;
 
 	private int x, y, w, h;
 	private int scrollOffset = 0;

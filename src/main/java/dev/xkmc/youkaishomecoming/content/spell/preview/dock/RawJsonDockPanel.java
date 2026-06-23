@@ -9,6 +9,8 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSyntaxException;
 import com.mojang.serialization.JsonOps;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.preview.ActionListPanel;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
@@ -287,9 +289,10 @@ public class RawJsonDockPanel implements DockPanel {
 				markDraft(text, errorStatus("Invalid spell JSON", encodeError[0]));
 				return;
 			}
-			String droppedField = findDroppedField(json, encoded.get(), "$");
+			DroppedField droppedField = findDroppedField(json, encoded.get(), "$");
 			if (droppedField != null) {
-				markDraft(text, errorStatus("Raw JSON has unsupported field", droppedField));
+				String key = droppedField.parseError ? "Invalid spell JSON" : "Raw JSON has unsupported field";
+				markDraft(text, errorStatus(key, droppedField.message()));
 				return;
 			}
 			dirtyInvalidDraft = false;
@@ -387,7 +390,7 @@ public class RawJsonDockPanel implements DockPanel {
 		return raw.replaceAll("[^a-zA-Z0-9._-]+", "_");
 	}
 
-	private static String findDroppedField(JsonElement input, JsonElement encoded, String path) {
+	private static DroppedField findDroppedField(JsonElement input, JsonElement encoded, String path) {
 		if (input == null || encoded == null) {
 			return null;
 		}
@@ -398,9 +401,13 @@ public class RawJsonDockPanel implements DockPanel {
 				String key = entry.getKey();
 				String childPath = path + "." + key;
 				if (!outObj.has(key)) {
-					return childPath;
+					if (isCodecDefaultOmitted(childPath, entry.getValue())) {
+						continue;
+					}
+					DroppedField parseError = diagnoseDroppedActionList(entry.getValue(), childPath);
+					return parseError != null ? parseError : DroppedField.unsupported(childPath);
 				}
-				String child = findDroppedField(entry.getValue(), outObj.get(key), childPath);
+				DroppedField child = findDroppedField(entry.getValue(), outObj.get(key), childPath);
 				if (child != null) {
 					return child;
 				}
@@ -411,15 +418,323 @@ public class RawJsonDockPanel implements DockPanel {
 			for (int i = 0; i < inArray.size(); i++) {
 				String childPath = path + "[" + i + "]";
 				if (i >= outArray.size()) {
-					return childPath;
+					if (isCodecDefaultOmitted(childPath, inArray.get(i))) {
+						continue;
+					}
+					return DroppedField.unsupported(childPath);
 				}
-				String child = findDroppedField(inArray.get(i), outArray.get(i), childPath);
+				DroppedField child = findDroppedField(inArray.get(i), outArray.get(i), childPath);
 				if (child != null) {
 					return child;
 				}
 			}
 		}
 		return null;
+	}
+
+	private static DroppedField diagnoseDroppedActionList(JsonElement input, String path) {
+		if (!isActionListPath(path) || !input.isJsonArray()) {
+			return null;
+		}
+		JsonArray actions = input.getAsJsonArray();
+		for (int i = 0; i < actions.size(); i++) {
+			String actionPath = path + "[" + i + "]";
+			DroppedField child = diagnoseAction(actions.get(i), actionPath);
+			if (child != null) {
+				return child;
+			}
+		}
+		return null;
+	}
+
+	private static DroppedField diagnoseAction(JsonElement action, String path) {
+		String[] error = new String[1];
+		Optional<SpellAction> parsed = SpellAction.CODEC.parse(JsonOps.INSTANCE, action)
+				.resultOrPartial(msg -> error[0] = msg);
+		if (parsed.isEmpty()) {
+			DroppedField child = diagnoseActionChildren(action, path);
+			if (child != null) {
+				return child;
+			}
+			String detail = path;
+			if (error[0] != null && !error[0].isBlank()) {
+				detail += ": " + error[0];
+			}
+			return DroppedField.parseError(detail);
+		}
+		return diagnoseActionChildren(action, path);
+	}
+
+	private static DroppedField diagnoseActionChildren(JsonElement action, String path) {
+		if (!action.isJsonObject()) {
+			return null;
+		}
+		JsonObject object = action.getAsJsonObject();
+		String type = getStringField(object, "type");
+		if ("conditional".equals(type)) {
+			if (object.has("condition")) {
+				DroppedField condition = diagnoseCondition(object.get("condition"), path + ".condition");
+				if (condition != null) {
+					return condition;
+				}
+			}
+			DroppedField ifTrue = diagnoseActionListField(object, "if_true", path + ".if_true");
+			if (ifTrue != null) {
+				return ifTrue;
+			}
+			return diagnoseActionListField(object, "if_false", path + ".if_false");
+		}
+		if ("sequence".equals(type)) {
+			return diagnoseActionListField(object, "actions", path + ".actions");
+		}
+		if ("repeat".equals(type) || "delay".equals(type) || "burst".equals(type) || "spawn_shooter".equals(type)) {
+			return diagnoseActionListField(object, "body", path + ".body");
+		}
+		if ("fire_danmaku".equals(type)) {
+			for (String key : new String[]{"on_expiry", "on_trail", "on_hit_entity", "on_hit_block"}) {
+				DroppedField child = diagnoseActionListField(object, key, path + "." + key);
+				if (child != null) {
+					return child;
+				}
+			}
+		}
+		if ("disabled".equals(type) && object.has("inner")) {
+			return diagnoseAction(object.get("inner"), path + ".inner");
+		}
+		return null;
+	}
+
+	private static DroppedField diagnoseActionListField(JsonObject object, String key, String path) {
+		if (!object.has(key)) {
+			return null;
+		}
+		JsonElement value = object.get(key);
+		if (!value.isJsonArray()) {
+			return DroppedField.parseError(path + ": expected JSON array");
+		}
+		return diagnoseDroppedActionList(value, path);
+	}
+
+	private static DroppedField diagnoseCondition(JsonElement condition, String path) {
+		String[] error = new String[1];
+		Optional<SpellCondition> parsed = SpellCondition.CODEC.parse(JsonOps.INSTANCE, condition)
+				.resultOrPartial(msg -> error[0] = msg);
+		if (condition.isJsonObject()) {
+			JsonObject object = condition.getAsJsonObject();
+			String type = getStringField(object, "type");
+			if (("and".equals(type) || "or".equals(type)) && object.has("conditions")) {
+				JsonElement conditions = object.get("conditions");
+				if (!conditions.isJsonArray()) {
+					return DroppedField.parseError(path + ".conditions: expected JSON array");
+				}
+				JsonArray array = conditions.getAsJsonArray();
+				for (int i = 0; i < array.size(); i++) {
+					DroppedField child = diagnoseCondition(array.get(i), path + ".conditions[" + i + "]");
+					if (child != null) {
+						return child;
+					}
+				}
+			}
+			if ("not".equals(type) && object.has("condition")) {
+				DroppedField child = diagnoseCondition(object.get("condition"), path + ".condition");
+				if (child != null) {
+					return child;
+				}
+			}
+		}
+		if (parsed.isEmpty()) {
+			String detail = path;
+			if (error[0] != null && !error[0].isBlank()) {
+				detail += ": " + error[0];
+			}
+			return DroppedField.parseError(detail);
+		}
+		return null;
+	}
+
+	private static String getStringField(JsonObject object, String key) {
+		JsonElement value = object.get(key);
+		return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()
+				? value.getAsString() : "";
+	}
+
+	private static boolean isActionListPath(String path) {
+		return path.endsWith(".on_enter") || path.endsWith(".on_tick") ||
+				path.endsWith(".on_exit") || path.endsWith(".on_damage") ||
+				path.endsWith(".if_true") || path.endsWith(".if_false") ||
+				path.endsWith(".actions") || path.endsWith(".body") ||
+				path.endsWith(".on_expiry") || path.endsWith(".on_trail") ||
+				path.endsWith(".on_hit_entity") || path.endsWith(".on_hit_block");
+	}
+
+	private static boolean isCodecDefaultOmitted(String path, JsonElement value) {
+		if (value == null || value.isJsonNull()) {
+			return false;
+		}
+		if (value.isJsonArray() && value.getAsJsonArray().isEmpty() && isActionListPath(path)) {
+			return true;
+		}
+		if (path.endsWith(".transitions") && value.isJsonArray() && value.getAsJsonArray().isEmpty()) {
+			return true;
+		}
+		if (path.endsWith(".difficulty") && isDefaultDifficulty(value)) {
+			return true;
+		}
+		if (path.endsWith(".item_form") && isDefaultItemForm(value)) {
+			return true;
+		}
+		if (endsWithAny(path, ".difficulty.speed_base", ".difficulty.frequency_base", ".difficulty.count_base")) {
+			return isNumber(value, 1);
+		}
+		if (endsWithAny(path, ".difficulty.speed_per_health_lost", ".difficulty.frequency_per_health_lost",
+				".difficulty.count_per_health_lost")) {
+			return isNumber(value, 0);
+		}
+		if (endsWithAny(path, ".condition.offset", ".origin.offset_x", ".origin.offset_y", ".origin.offset_z",
+				".origin.rotation", ".destination.offset_x", ".destination.offset_y", ".destination.offset_z",
+				".destination.rotation", ".angle_offset", ".elevation", ".group_rotation.rot_x",
+				".group_rotation.rot_y", ".group_rotation.rot_z")) {
+			return isNumberOrNumericString(value, 0);
+		}
+		if (endsWithAny(path, ".mover.x", ".mover.y", ".mover.z", ".mover.speed")) {
+			return isNumberOrNumericString(value, 0) || isString(value, "0");
+		}
+		if (path.endsWith(".spread")) {
+			return isNumberOrNumericString(value, 360);
+		}
+		if (path.endsWith(".length")) {
+			return isNumberOrNumericString(value, 80);
+		}
+		if (path.endsWith(".pattern")) {
+			return isString(value, "ring");
+		}
+		if (path.endsWith(".aim_mode")) {
+			return isString(value, "target");
+		}
+		if (endsWithAny(path, ".origin.mode", ".destination.mode")) {
+			return isString(value, "caster");
+		}
+		if (endsWithAny(path, ".trail_interval", ".color.interval", ".volume", ".pitch", ".size")) {
+			return isNumberOrNumericString(value, 1);
+		}
+		if (path.endsWith(".hit_behavior_entity")) {
+			return isString(value, "discard");
+		}
+		if (path.endsWith(".hit_behavior_block")) {
+			return isString(value, "continue");
+		}
+		if (path.endsWith(".laser")) {
+			return isString(value, "laser");
+		}
+		if (path.endsWith(".index_variable")) {
+			return isString(value, "i");
+		}
+		if (path.endsWith(".if_false")) {
+			return isNumberOrNumericString(value, 0);
+		}
+		if (path.endsWith(".condition.value")) {
+			return isBoolean(value, true);
+		}
+		if (path.endsWith(".condition.op")) {
+			return isString(value, ">");
+		}
+		if (endsWithAny(path, ".item_form.generate", ".item_form.requires_target")) {
+			return isBoolean(value, false);
+		}
+		if (path.endsWith(".item_form.cooldown")) {
+			return isNumber(value, 100);
+		}
+		if (path.endsWith(".mover.aim")) {
+			return isString(value, "none");
+		}
+		return false;
+	}
+
+	private static boolean endsWithAny(String path, String... suffixes) {
+		for (String suffix : suffixes) {
+			if (path.endsWith(suffix)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean isDefaultDifficulty(JsonElement value) {
+		if (!value.isJsonObject()) {
+			return false;
+		}
+		JsonObject obj = value.getAsJsonObject();
+		for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
+			String key = entry.getKey();
+			boolean ok = switch (key) {
+				case "speed_base", "frequency_base", "count_base" -> isNumber(entry.getValue(), 1);
+				case "speed_per_health_lost", "frequency_per_health_lost", "count_per_health_lost" ->
+						isNumber(entry.getValue(), 0);
+				default -> false;
+			};
+			if (!ok) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static boolean isDefaultItemForm(JsonElement value) {
+		if (!value.isJsonObject()) {
+			return false;
+		}
+		JsonObject obj = value.getAsJsonObject();
+		for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
+			String key = entry.getKey();
+			boolean ok = switch (key) {
+				case "generate", "requires_target" -> isBoolean(entry.getValue(), false);
+				case "cooldown" -> isNumber(entry.getValue(), 0) || isNumber(entry.getValue(), 100);
+				default -> false;
+			};
+			if (!ok) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static boolean isString(JsonElement value, String expected) {
+		return value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() &&
+				expected.equals(value.getAsString());
+	}
+
+	private static boolean isBoolean(JsonElement value, boolean expected) {
+		return value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean() &&
+				value.getAsBoolean() == expected;
+	}
+
+	private static boolean isNumber(JsonElement value, double expected) {
+		return value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber() &&
+				Double.compare(value.getAsDouble(), expected) == 0;
+	}
+
+	private static boolean isNumberOrNumericString(JsonElement value, double expected) {
+		if (isNumber(value, expected)) {
+			return true;
+		}
+		if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+			return false;
+		}
+		try {
+			return Double.compare(Double.parseDouble(value.getAsString().trim()), expected) == 0;
+		} catch (NumberFormatException ignored) {
+			return false;
+		}
+	}
+
+	private record DroppedField(String message, boolean parseError) {
+		private static DroppedField unsupported(String path) {
+			return new DroppedField(path, false);
+		}
+
+		private static DroppedField parseError(String message) {
+			return new DroppedField(message, true);
+		}
 	}
 
 	private FormattedJson encodeDefinition(SpellDefinition definition, ResourceLocation phaseId,

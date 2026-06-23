@@ -4,7 +4,7 @@ import java.util.*;
 
 /**
  * Recursive-descent parser for NumberProvider expression shorthand.
- * Input:  editbox string  (e.g. "rand(60,100)", "sin(tick*3)*20", "$angle")
+ * Input:  editbox string  (e.g. "rand(60,100)", "sin_deg(tick*3)*20", "$angle")
  * Output: NumberProvider  (or null on parse failure)
  *
  * Grammar (precedence low→high):
@@ -62,8 +62,10 @@ public class NumberExprParser {
 		if (p instanceof NumberProviders.Variable v) return "$" + v.key();
 		if (p instanceof NumberProviders.PhaseTick) return "tick";
 		if (p instanceof NumberProviders.TotalTick) return "total_tick";
-		if (p instanceof NumberProviders.Sin s) return unparseTrig("sin", s.input(), s.amplitude(), s.phase());
-		if (p instanceof NumberProviders.Cos c) return unparseTrig("cos", c.input(), c.amplitude(), c.phase());
+		if (p instanceof NumberProviders.SinDeg s) return unparseTrig("sin_deg", s.input(), s.amplitude(), s.phase());
+		if (p instanceof NumberProviders.CosDeg c) return unparseTrig("cos_deg", c.input(), c.amplitude(), c.phase());
+		if (p instanceof NumberProviders.SinRad s) return unparseTrig("sin_rad", s.input(), s.amplitude(), s.phase());
+		if (p instanceof NumberProviders.CosRad c) return unparseTrig("cos_rad", c.input(), c.amplitude(), c.phase());
 		if (p instanceof NumberProviders.Add a) {
 			// Special case: a + (-1 * b) → (a - b)
 			if (a.b() instanceof NumberProviders.Mul m
@@ -344,8 +346,10 @@ public class NumberExprParser {
 						resolveIntArg(args.get(0), "tick_mod period")
 				);
 			}
-			case "sin" -> { return parseTrigArgs(args, false); }
-			case "cos" -> { return parseTrigArgs(args, true); }
+			case "sin_deg" -> { return parseTrigArgs(args, false, false); }
+			case "cos_deg" -> { return parseTrigArgs(args, true, false); }
+			case "sin_rad" -> { return parseTrigArgs(args, false, true); }
+			case "cos_rad" -> { return parseTrigArgs(args, true, true); }
 			case "sqrt" -> {
 				if (args.size() != 1) throw new ParseException("sqrt() requires 1 argument");
 				return new NumberProviders.Sqrt(args.get(0));
@@ -431,13 +435,16 @@ public class NumberExprParser {
 		};
 	}
 
-	private NumberProvider parseTrigArgs(List<NumberProvider> args, boolean isCos) {
+	private NumberProvider parseTrigArgs(List<NumberProvider> args, boolean isCos, boolean radians) {
 		if (args.size() < 1 || args.size() > 3)
-			throw new ParseException(isCos ? "cos() requires 1-3 arguments" : "sin() requires 1-3 arguments");
+			throw new ParseException((isCos ? "cos" : "sin") + (radians ? "_rad" : "_deg") + "() requires 1-3 arguments");
 		NumberProvider input = args.get(0);
 		double amplitude = args.size() >= 2 ? resolveDoubleArg(args.get(1), "amplitude") : 1.0;
 		double phase = args.size() >= 3 ? resolveDoubleArg(args.get(2), "phase") : 0.0;
-		return isCos ? new NumberProviders.Cos(input, amplitude, phase) : new NumberProviders.Sin(input, amplitude, phase);
+		if (radians) {
+			return isCos ? new NumberProviders.CosRad(input, amplitude, phase) : new NumberProviders.SinRad(input, amplitude, phase);
+		}
+		return isCos ? new NumberProviders.CosDeg(input, amplitude, phase) : new NumberProviders.SinDeg(input, amplitude, phase);
 	}
 
 	// ---- helpers ----

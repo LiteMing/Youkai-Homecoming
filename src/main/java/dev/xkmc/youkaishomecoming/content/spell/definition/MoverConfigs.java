@@ -102,7 +102,7 @@ public class MoverConfigs {
 	/**
 	 * Adds acceleration to the projectile (creates RectMover).
 	 * Each component is a NumberProvider evaluated when the projectile is spawned.
-	 * JSON: {"type": "acceleration", "x": "$i * 0.02", "y": 0, "z": "sin(tick) * 0.01"}
+	 * JSON: {"type": "acceleration", "x": "$i * 0.02", "y": 0, "z": "sin_rad(tick) * 0.01"}
 	 */
 	public record AccelerationConfig(NumberProvider x, NumberProvider y, NumberProvider z) implements MoverConfig {
 		public static final Codec<AccelerationConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
@@ -551,7 +551,7 @@ public class MoverConfigs {
 	 * Expressions can use 'tick' (or 't'), arithmetic operators, and math functions.
 	 * Axes are relative to the initial velocity direction: x=forward, y=right, z=up.
 	 * If speed > 0, the projectile also moves forward at that speed (blocks/tick) in addition to the formula offset.
-	 * JSON: {"type": "formula", "x": "tick * 0.3", "y": "3 * sin(tick * 0.15)", "z": "3 * cos(tick * 0.15)", "speed": 0.5}
+	 * JSON: {"type": "formula", "x": "tick * 0.3", "y": "3 * sin_rad(tick * 0.15)", "z": "3 * cos_rad(tick * 0.15)", "speed": 0.5}
 	 */
 	public record FormulaMoverConfig(String x, String y, String z, NumberProvider speed) implements MoverConfig {
 		public static final Codec<FormulaMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
@@ -666,7 +666,7 @@ public class MoverConfigs {
 	 *   <li>Any "ring of bullets orbiting an axis" effect</li>
 	 *   <li>Sin-pulsing radius creates breathing/contracting rings</li>
 	 * </ul>
-	 * JSON: {"type": "orbital", "angular_speed": 5.0, "radius": "3 * sin(tick * 0.05)", "drift": "2 * sin(tick * 0.03)"}
+	 * JSON: {"type": "orbital", "angular_speed": 5.0, "radius": "3 * sin_rad(tick * 0.05)", "drift": "2 * sin_rad(tick * 0.03)"}
 	 */
 	public record OrbitalMoverConfig(NumberProvider angularSpeed, String radius, String drift) implements MoverConfig {
 		public static final Codec<OrbitalMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(

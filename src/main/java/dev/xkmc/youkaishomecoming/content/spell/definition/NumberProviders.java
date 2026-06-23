@@ -25,8 +25,10 @@ public class NumberProviders {
 		register("variable", Variable.CODEC, Variable.class);
 		register("phase_tick", PhaseTick.CODEC, PhaseTick.class);
 		register("total_tick", TotalTick.CODEC, TotalTick.class);
-		register("sin", Sin.CODEC, Sin.class);
-		register("cos", Cos.CODEC, Cos.class);
+		register("sin_deg", SinDeg.CODEC, SinDeg.class);
+		register("cos_deg", CosDeg.CODEC, CosDeg.class);
+		register("sin_rad", SinRad.CODEC, SinRad.class);
+		register("cos_rad", CosRad.CODEC, CosRad.class);
 		register("add", Add.CODEC, Add.class);
 		register("mul", Mul.CODEC, Mul.class);
 		register("distance", Distance.CODEC, Distance.class);
@@ -241,16 +243,16 @@ public class NumberProviders {
 	}
 
 	/**
-	 * sin(input + phase) * amplitude.
+	 * sin_deg(input + phase) * amplitude.
 	 * Input is in degrees.
-	 * JSON: {"type": "sin", "input": {"type": "phase_tick"}, "amplitude": 1.0, "phase": 0}
+	 * JSON: {"type": "sin_deg", "input": {"type": "phase_tick"}, "amplitude": 1.0, "phase": 0}
 	 */
-	public record Sin(NumberProvider input, double amplitude, double phase) implements NumberProvider {
-		public static final Codec<Sin> CODEC = RecordCodecBuilder.create(i -> i.group(
-				NumberProvider.CODEC.fieldOf("input").forGetter(Sin::input),
-				Codec.DOUBLE.optionalFieldOf("amplitude", 1.0).forGetter(Sin::amplitude),
-				Codec.DOUBLE.optionalFieldOf("phase", 0.0).forGetter(Sin::phase)
-		).apply(i, Sin::new));
+	public record SinDeg(NumberProvider input, double amplitude, double phase) implements NumberProvider {
+		public static final Codec<SinDeg> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(SinDeg::input),
+				Codec.DOUBLE.optionalFieldOf("amplitude", 1.0).forGetter(SinDeg::amplitude),
+				Codec.DOUBLE.optionalFieldOf("phase", 0.0).forGetter(SinDeg::phase)
+		).apply(i, SinDeg::new));
 
 		@Override
 		public double get(SpellContext ctx) {
@@ -259,20 +261,56 @@ public class NumberProviders {
 	}
 
 	/**
-	 * cos(input + phase) * amplitude.
+	 * cos_deg(input + phase) * amplitude.
 	 * Input is in degrees.
-	 * JSON: {"type": "cos", "input": {"type": "phase_tick"}, "amplitude": 1.0, "phase": 0}
+	 * JSON: {"type": "cos_deg", "input": {"type": "phase_tick"}, "amplitude": 1.0, "phase": 0}
 	 */
-	public record Cos(NumberProvider input, double amplitude, double phase) implements NumberProvider {
-		public static final Codec<Cos> CODEC = RecordCodecBuilder.create(i -> i.group(
-				NumberProvider.CODEC.fieldOf("input").forGetter(Cos::input),
-				Codec.DOUBLE.optionalFieldOf("amplitude", 1.0).forGetter(Cos::amplitude),
-				Codec.DOUBLE.optionalFieldOf("phase", 0.0).forGetter(Cos::phase)
-		).apply(i, Cos::new));
+	public record CosDeg(NumberProvider input, double amplitude, double phase) implements NumberProvider {
+		public static final Codec<CosDeg> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(CosDeg::input),
+				Codec.DOUBLE.optionalFieldOf("amplitude", 1.0).forGetter(CosDeg::amplitude),
+				Codec.DOUBLE.optionalFieldOf("phase", 0.0).forGetter(CosDeg::phase)
+		).apply(i, CosDeg::new));
 
 		@Override
 		public double get(SpellContext ctx) {
 			return Math.cos(Math.toRadians(input.get(ctx) + phase)) * amplitude;
+		}
+	}
+
+	/**
+	 * sin_rad(input + phase) * amplitude.
+	 * Input is in radians.
+	 * JSON: {"type": "sin_rad", "input": {"type": "phase_tick"}, "amplitude": 1.0, "phase": 0}
+	 */
+	public record SinRad(NumberProvider input, double amplitude, double phase) implements NumberProvider {
+		public static final Codec<SinRad> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(SinRad::input),
+				Codec.DOUBLE.optionalFieldOf("amplitude", 1.0).forGetter(SinRad::amplitude),
+				Codec.DOUBLE.optionalFieldOf("phase", 0.0).forGetter(SinRad::phase)
+		).apply(i, SinRad::new));
+
+		@Override
+		public double get(SpellContext ctx) {
+			return Math.sin(input.get(ctx) + phase) * amplitude;
+		}
+	}
+
+	/**
+	 * cos_rad(input + phase) * amplitude.
+	 * Input is in radians.
+	 * JSON: {"type": "cos_rad", "input": {"type": "phase_tick"}, "amplitude": 1.0, "phase": 0}
+	 */
+	public record CosRad(NumberProvider input, double amplitude, double phase) implements NumberProvider {
+		public static final Codec<CosRad> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(CosRad::input),
+				Codec.DOUBLE.optionalFieldOf("amplitude", 1.0).forGetter(CosRad::amplitude),
+				Codec.DOUBLE.optionalFieldOf("phase", 0.0).forGetter(CosRad::phase)
+		).apply(i, CosRad::new));
+
+		@Override
+		public double get(SpellContext ctx) {
+			return Math.cos(input.get(ctx) + phase) * amplitude;
 		}
 	}
 

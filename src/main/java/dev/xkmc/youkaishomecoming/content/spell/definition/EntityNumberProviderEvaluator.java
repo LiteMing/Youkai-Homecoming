@@ -14,8 +14,10 @@ public class EntityNumberProviderEvaluator {
 		if (provider instanceof NumberProviders.PhaseTick) return tick;
 		if (provider instanceof NumberProviders.TotalTick) return tick;
 		if (provider instanceof NumberProviders.PhaseTickMod p) return p.period() > 0 ? tick % p.period() : 0;
-		if (provider instanceof NumberProviders.Sin p) return Math.sin(Math.toRadians(get(p.input(), tick, fallback, random) + p.phase())) * p.amplitude();
-		if (provider instanceof NumberProviders.Cos p) return Math.cos(Math.toRadians(get(p.input(), tick, fallback, random) + p.phase())) * p.amplitude();
+		if (provider instanceof NumberProviders.SinDeg p) return Math.sin(Math.toRadians(get(p.input(), tick, fallback, random) + p.phase())) * p.amplitude();
+		if (provider instanceof NumberProviders.CosDeg p) return Math.cos(Math.toRadians(get(p.input(), tick, fallback, random) + p.phase())) * p.amplitude();
+		if (provider instanceof NumberProviders.SinRad p) return Math.sin(get(p.input(), tick, fallback, random) + p.phase()) * p.amplitude();
+		if (provider instanceof NumberProviders.CosRad p) return Math.cos(get(p.input(), tick, fallback, random) + p.phase()) * p.amplitude();
 		if (provider instanceof NumberProviders.Add p) return get(p.a(), tick, fallback, random) + get(p.b(), tick, fallback, random);
 		if (provider instanceof NumberProviders.Mul p) return get(p.a(), tick, fallback, random) * get(p.b(), tick, fallback, random);
 		if (provider instanceof NumberProviders.Div p) return get(p.a(), tick, fallback, random) / get(p.b(), tick, fallback, random);

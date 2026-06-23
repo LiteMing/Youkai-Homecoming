@@ -2,7 +2,8 @@ package dev.xkmc.youkaishomecoming.content.spell.mover;
 
 /**
  * Lightweight expression evaluator for formula mover.
- * Supports: +, -, *, /, %, parentheses, and functions: sin, cos, abs, sqrt, min, max, pow, floor, ceil.
+ * Supports: +, -, *, /, %, parentheses, and functions:
+ * sin_rad, cos_rad, sin_deg, cos_deg, abs, sqrt, min, max, pow, floor, ceil.
  * Variable: tick/bullet_tick (the current mover tick).
  * Constants: pi, e.
  *
@@ -172,8 +173,10 @@ public final class FormulaExpr {
 			case "tick", "t", "bullet_tick", "bulletTick" -> t -> t;
 			case "pi" -> t -> Math.PI;
 			case "e" -> t -> Math.E;
-			case "sin" -> parseFunc1(Math::sin);
-			case "cos" -> parseFunc1(Math::cos);
+			case "sin_rad" -> parseFunc1(Math::sin);
+			case "cos_rad" -> parseFunc1(Math::cos);
+			case "sin_deg" -> parseFunc1(v -> Math.sin(Math.toRadians(v)));
+			case "cos_deg" -> parseFunc1(v -> Math.cos(Math.toRadians(v)));
 			case "abs" -> parseFunc1(Math::abs);
 			case "sqrt" -> parseFunc1(Math::sqrt);
 			case "floor" -> parseFunc1(Math::floor);
@@ -361,8 +364,10 @@ public final class FormulaExpr {
 				return d > 1e-4 ? ddz / d : 0;
 			};
 			// Functions
-			case "sin" -> parseFuncRich1(Math::sin);
-			case "cos" -> parseFuncRich1(Math::cos);
+			case "sin_rad" -> parseFuncRich1(Math::sin);
+			case "cos_rad" -> parseFuncRich1(Math::cos);
+			case "sin_deg" -> parseFuncRich1(v -> Math.sin(Math.toRadians(v)));
+			case "cos_deg" -> parseFuncRich1(v -> Math.cos(Math.toRadians(v)));
 			case "abs" -> parseFuncRich1(Math::abs);
 			case "sqrt" -> parseFuncRich1(Math::sqrt);
 			case "floor" -> parseFuncRich1(Math::floor);

@@ -12,11 +12,12 @@ import net.minecraft.world.phys.Vec3;
  *   y = right (perpendicular, horizontal)
  *   z = up (perpendicular, vertical)
  *
- * Supported in formulas: +, -, *, /, parentheses, sin(), cos(), abs(), sqrt(),
+ * Supported in formulas: +, -, *, /, parentheses, sin_rad(), cos_rad(),
+ * sin_deg(), cos_deg(), abs(), sqrt(),
  * min(), max(), pow(), floor(), ceil(), pi, e, tick (or t).
  *
- * Example (spiral): x="tick * 0.3", y="3 * sin(tick * 0.15)", z="3 * cos(tick * 0.15)"
- * Example (figure-8): x="tick * 0.2", y="4 * sin(tick * 0.1)", z="2 * sin(tick * 0.2)"
+ * Example (spiral): x="tick * 0.3", y="3 * sin_rad(tick * 0.15)", z="3 * cos_rad(tick * 0.15)"
+ * Example (figure-8): x="tick * 0.2", y="4 * sin_rad(tick * 0.1)", z="2 * sin_rad(tick * 0.2)"
  */
 @SerialClass
 public final class FormulaMover extends TargetPosMover {

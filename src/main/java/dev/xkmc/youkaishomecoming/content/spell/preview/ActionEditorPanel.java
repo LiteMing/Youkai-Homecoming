@@ -2154,8 +2154,8 @@ public class ActionEditorPanel {
 					new double[]{-5, 5, 0}
 			), 60, true));
 			case "formula" -> Optional.of(new MoverConfigs.FormulaMoverConfig(
-					"0", "3 * sin(tick * 0.15)", "3 * cos(tick * 0.15)", 0.3));
-			case "orbital" -> Optional.of(new MoverConfigs.OrbitalMoverConfig(5.0, "3 * sin(tick * 0.05)", "0"));
+					"0", "3 * sin_rad(tick * 0.15)", "3 * cos_rad(tick * 0.15)", 0.3));
+			case "orbital" -> Optional.of(new MoverConfigs.OrbitalMoverConfig(5.0, "3 * sin_rad(tick * 0.05)", "0"));
 			case "translate" -> Optional.of(new MoverConfigs.TranslateMoverConfig("0", "0", "0", 0.3, "target"));
 			case "attached" -> Optional.of(new MoverConfigs.AttachedMoverConfig());
 			case "attached_free_rot" -> Optional.of(new MoverConfigs.AttachedFreeRotMoverConfig());
@@ -2882,7 +2882,7 @@ public class ActionEditorPanel {
 	// Expression autocomplete keywords
 	private static final String[] EXPR_FUNCTIONS = {
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
-			"tick_mod", "sin", "cos", "sqrt", "abs", "floor", "ceil", "round",
+			"tick_mod", "sin_deg", "cos_deg", "sin_rad", "cos_rad", "sqrt", "abs", "floor", "ceil", "round",
 			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose",
 			"tick", "phase_tick", "total_tick", "distance",
 			"target_height", "target_fly_time", "target_speed", "game_difficulty",
@@ -2895,8 +2895,10 @@ public class ActionEditorPanel {
 		if (name.equals("lerp") || name.equals("lerp_time")) return "lerp(, , )";
 		if (name.equals("hp") || name.equals("health") || name.equals("by_health")) return "hp(, )";
 		if (name.equals("tick_mod")) return "tick_mod()";
-		if (name.equals("sin")) return "sin()";
-		if (name.equals("cos")) return "cos()";
+		if (name.equals("sin_deg")) return "sin_deg()";
+		if (name.equals("cos_deg")) return "cos_deg()";
+		if (name.equals("sin_rad")) return "sin_rad()";
+		if (name.equals("cos_rad")) return "cos_rad()";
 		if (name.equals("sqrt")) return "sqrt()";
 		if (name.equals("abs")) return "abs()";
 		if (name.equals("floor")) return "floor()";
@@ -2920,8 +2922,10 @@ public class ActionEditorPanel {
 		if (name.equals("lerp") || name.equals("lerp_time")) return 5;
 		if (name.equals("hp") || name.equals("health") || name.equals("by_health")) return 3;
 		if (name.equals("tick_mod")) return 9;
-		if (name.equals("sin")) return 4;
-		if (name.equals("cos")) return 4;
+		if (name.equals("sin_deg")) return 8;
+		if (name.equals("cos_deg")) return 8;
+		if (name.equals("sin_rad")) return 8;
+		if (name.equals("cos_rad")) return 8;
 		if (name.equals("sqrt")) return 5;
 		if (name.equals("abs")) return 4;
 		if (name.equals("floor")) return 6;
@@ -2940,8 +2944,10 @@ public class ActionEditorPanel {
 		if (name.equals("lerp") || name.equals("lerp_time")) return "lerp(start, end, dur)";
 		if (name.equals("hp") || name.equals("health") || name.equals("by_health")) return "hp(full, empty)";
 		if (name.equals("tick_mod")) return "tick_mod(period)";
-		if (name.equals("sin")) return "sin(input, amp?, phase?)";
-		if (name.equals("cos")) return "cos(input, amp?, phase?)";
+		if (name.equals("sin_deg")) return "sin_deg(deg, amp?, phaseDeg?)";
+		if (name.equals("cos_deg")) return "cos_deg(deg, amp?, phaseDeg?)";
+		if (name.equals("sin_rad")) return "sin_rad(rad, amp?, phaseRad?)";
+		if (name.equals("cos_rad")) return "cos_rad(rad, amp?, phaseRad?)";
 		if (name.equals("sqrt")) return "sqrt(input)";
 		if (name.equals("abs")) return "abs(input)";
 		if (name.equals("floor")) return "floor(input)";
@@ -2968,7 +2974,7 @@ public class ActionEditorPanel {
 	private static final int COLOR_KEYWORD = 0xFFDD44;   // yellow (tick, distance, etc.)
 	private static final java.util.Set<String> KNOWN_FUNCTIONS = java.util.Set.of(
 			"rand", "random", "lerp", "lerp_time", "hp", "health", "by_health",
-			"tick_mod", "sin", "cos", "sqrt", "abs", "floor", "ceil", "round",
+			"tick_mod", "sin_deg", "cos_deg", "sin_rad", "cos_rad", "sqrt", "abs", "floor", "ceil", "round",
 			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose"
 	);
 	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(

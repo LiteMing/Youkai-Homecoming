@@ -53,7 +53,7 @@ public final class OrbitalMover extends TargetPosMover {
 	 * @param velocity     per-projectile initial velocity (used to compute initial angle)
 	 * @param angularSpeed angular speed in degrees per tick
 	 * @param radiusFormula formula expression for radius (can use 'tick')
-	 * @param driftFormula  formula expression for drift distance along axis (can use 'tick', e.g. "3 * sin(tick * 0.05)")
+	 * @param driftFormula  formula expression for drift distance along axis (can use 'tick', e.g. "3 * sin_rad(tick * 0.05)")
 	 */
 	public OrbitalMover(Vec3 center, Vec3 axis, Vec3 velocity, double angularSpeed,
 						String radiusFormula, String driftFormula) {

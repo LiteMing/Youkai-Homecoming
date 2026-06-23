@@ -426,7 +426,7 @@ public class MigratedSpellCards {
 								NumberProvider.constant(80),
 								new NumberProviders.Mul(new NumberProviders.Variable("petal"), NumberProvider.constant(72)),
 								NumberProvider.constant(50),
-								new NumberProviders.Sin(new NumberProviders.Mul(
+								new NumberProviders.SinDeg(new NumberProviders.Mul(
 										new NumberProviders.Variable("petal"), NumberProvider.constant(72)), 10, 0),
 								PatternType.LINE,
 								OriginConfig.caster(),
@@ -784,12 +784,12 @@ public class MigratedSpellCards {
 		// offsetX = sin($gi*72°)*12, offsetY = cos($gi*72°)*12
 		var emissionOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
 				new NumberProviders.Mul(
-						new NumberProviders.Sin(
+						new NumberProviders.SinDeg(
 								new NumberProviders.Mul(new NumberProviders.Variable("gi"), NumberProvider.constant(72)),
 								1, 0),
 						NumberProvider.constant(12)),
 				new NumberProviders.Mul(
-						new NumberProviders.Cos(
+						new NumberProviders.CosDeg(
 								new NumberProviders.Mul(new NumberProviders.Variable("gi"), NumberProvider.constant(72)),
 								1, 0),
 						NumberProvider.constant(12)),
@@ -1235,7 +1235,7 @@ public class MigratedSpellCards {
 				NumberProvider.constant(35));
 		// tilt = sin(sw * 6.875°) * 25  (legacy: sin(tick*0.12 rad) → 0.12 rad = 6.875°)
 		var spiralTilt = new NumberProviders.Mul(
-				new NumberProviders.Sin(
+				new NumberProviders.SinDeg(
 						new NumberProviders.Mul(new NumberProviders.Variable("sw"), NumberProvider.constant(6.875)),
 						1, 0),
 				NumberProvider.constant(25));
@@ -1631,7 +1631,7 @@ public class MigratedSpellCards {
 				NumberProvider.constant(12));
 		// t = gi/count (0~1), 梭形宽度 = sin(t*180°) * 0.25
 		var shuttleWidth = new NumberProviders.Mul(
-				new NumberProviders.Sin(
+				new NumberProviders.SinDeg(
 						new NumberProviders.Mul(
 								new NumberProviders.Div(new NumberProviders.Variable("gi"), gungCount),
 								NumberProvider.constant(180)), 1, 0),
@@ -1763,7 +1763,7 @@ public class MigratedSpellCards {
 										new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
 												new NumberProviders.Add(new NumberProviders.Variable("maze_x"),
 														new NumberProviders.Mul(
-																new NumberProviders.Cos(new NumberProviders.Mul(new NumberProviders.Variable("mi"), NumberProvider.constant(45)), 1, 0),
+																new NumberProviders.CosDeg(new NumberProviders.Mul(new NumberProviders.Variable("mi"), NumberProvider.constant(45)), 1, 0),
 																NumberProvider.constant(6))),
 												new NumberProviders.Add(new NumberProviders.Variable("maze_y"),
 														new NumberProviders.Mul(
@@ -1771,7 +1771,7 @@ public class MigratedSpellCards {
 																NumberProvider.constant(4))),
 												new NumberProviders.Add(new NumberProviders.Variable("maze_z"),
 														new NumberProviders.Mul(
-																new NumberProviders.Sin(new NumberProviders.Mul(new NumberProviders.Variable("mi"), NumberProvider.constant(45)), 1, 0),
+																new NumberProviders.SinDeg(new NumberProviders.Mul(new NumberProviders.Variable("mi"), NumberProvider.constant(45)), 1, 0),
 																NumberProvider.constant(6))),
 												NumberProvider.constant(0)),
 										Optional.of(new MoverConfigs.RotateConfig(3)),
@@ -1793,14 +1793,14 @@ public class MigratedSpellCards {
 						new OriginConfig(OriginConfig.OriginMode.ABSOLUTE,
 								new NumberProviders.Add(new NumberProviders.Variable("maze_x"),
 										new NumberProviders.Mul(
-												new NumberProviders.Cos(new NumberProviders.Add(
+												new NumberProviders.CosDeg(new NumberProviders.Add(
 														new NumberProviders.Variable("maze_init"),
 														new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))), 1, 0),
 												NumberProvider.constant(8))),
 								new NumberProviders.Variable("maze_y"),
 								new NumberProviders.Add(new NumberProviders.Variable("maze_z"),
 										new NumberProviders.Mul(
-												new NumberProviders.Sin(new NumberProviders.Add(
+												new NumberProviders.SinDeg(new NumberProviders.Add(
 														new NumberProviders.Variable("maze_init"),
 														new NumberProviders.Mul(new NumberProviders.Variable("mt"), NumberProvider.constant(9))), 1, 0),
 												NumberProvider.constant(8))),
@@ -1880,13 +1880,13 @@ public class MigratedSpellCards {
 		var angle = new NumberProviders.Add(new NumberProviders.Variable("mst" + s),
 				new NumberProviders.Mul(new NumberProviders.Variable("msp" + s), new NumberProviders.Variable("mdt_t")));
 		var tilt = new NumberProviders.Mul(new NumberProviders.Variable("mam" + s),
-				new NumberProviders.Sin(
+				new NumberProviders.SinDeg(
 						new NumberProviders.Mul(new NumberProviders.Variable("mfr" + s), new NumberProviders.Variable("mdt_t")),
 						0.5, 0.5));
-		var cosA = new NumberProviders.Cos(angle, 1, 0);
-		var sinA = new NumberProviders.Sin(angle, 1, 0);
-		var cosT = new NumberProviders.Cos(tilt, 1, 0);
-		var sinT = new NumberProviders.Sin(tilt, 1, 0);
+		var cosA = new NumberProviders.CosDeg(angle, 1, 0);
+		var sinA = new NumberProviders.SinDeg(angle, 1, 0);
+		var cosT = new NumberProviders.CosDeg(tilt, 1, 0);
+		var sinT = new NumberProviders.SinDeg(tilt, 1, 0);
 		var px = new NumberProviders.Add(new NumberProviders.TargetX(), new NumberProviders.Mul(new NumberProviders.Mul(cosA, cosT), NumberProvider.constant(16)));
 		var py = new NumberProviders.Add(new NumberProviders.TargetY(), new NumberProviders.Mul(sinT, NumberProvider.constant(16)));
 		var pz = new NumberProviders.Add(new NumberProviders.TargetZ(), new NumberProviders.Mul(new NumberProviders.Mul(sinA, cosT), NumberProvider.constant(16)));
@@ -1930,15 +1930,15 @@ public class MigratedSpellCards {
 		var tDeg = new NumberProviders.Add(
 				new NumberProviders.Mul(new NumberProviders.PhaseTick(), NumberProvider.constant(1.375)),
 				new NumberProviders.Mul(new NumberProviders.Variable("li"), NumberProvider.constant(974.03)));
-		var cosInner = new NumberProviders.Cos(new NumberProviders.Mul(tDeg, NumberProvider.constant(1.47)), 1, 0);
+		var cosInner = new NumberProviders.CosDeg(new NumberProviders.Mul(tDeg, NumberProvider.constant(1.47)), 1, 0);
 		var lissX = new NumberProviders.Add(new NumberProviders.CasterX(),
-				new NumberProviders.Mul(new NumberProviders.Mul(cosInner, new NumberProviders.Cos(tDeg, 1, 0)), NumberProvider.constant(32)));
+				new NumberProviders.Mul(new NumberProviders.Mul(cosInner, new NumberProviders.CosDeg(tDeg, 1, 0)), NumberProvider.constant(32)));
 		var lissZ = new NumberProviders.Add(new NumberProviders.CasterZ(),
-				new NumberProviders.Mul(new NumberProviders.Mul(cosInner, new NumberProviders.Sin(tDeg, 1, 0)), NumberProvider.constant(32)));
+				new NumberProviders.Mul(new NumberProviders.Mul(cosInner, new NumberProviders.SinDeg(tDeg, 1, 0)), NumberProvider.constant(32)));
 		var lissY = new NumberProviders.Min(
 				new NumberProviders.Add(new NumberProviders.CasterY(), NumberProvider.constant(-15)),
 				new NumberProviders.Add(new NumberProviders.TargetY(), NumberProvider.constant(-10)));
-		var laserSwing = new NumberProviders.Cos(
+		var laserSwing = new NumberProviders.CosDeg(
 				new NumberProviders.Mul(tDeg, NumberProvider.constant(4)), 18, 0);
 		var lissajous = new SpellActions.RepeatAction(NumberProvider.constant(10), "li", List.of(
 				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
@@ -2494,3 +2494,4 @@ public class MigratedSpellCards {
 		return new ResourceLocation("touhou_little_maid", path);
 	}
 }
+

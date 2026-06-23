@@ -178,6 +178,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		if (danmaku instanceof ItemDanmakuEntity e && e.afterExpiry != null) {
 			e.afterExpiry.setup(this);
 		}
+		if (danmaku instanceof ShooterEntity shooter) {
+			shooter.setOldPosAndRot();
+			shooter.yBodyRotO = shooter.yBodyRot;
+			shooter.yHeadRotO = shooter.yHeadRot;
+		}
 		// Buffer during tick iteration to avoid ConcurrentModificationException
 		if (ticking) {
 			pendingEntities.add(danmaku);
@@ -302,19 +307,23 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	}
 
 	private boolean tickShooter(ShooterEntity shooter) {
-		if (shooter.tickCount >= shooter.lifetime()) {
+		int lifetime = Math.max(1, shooter.lifetime());
+		if (shooter.tickCount >= lifetime) {
 			shooter.discard();
 			return false;
 		}
 
 		try {
+			shooter.setOldPosAndRot();
+			shooter.yBodyRotO = shooter.yBodyRot;
+			shooter.yHeadRotO = shooter.yHeadRot;
 			// tick() handles movement, aiStep(), and serverAiStep() (via our override)
 			shooter.tick();
 		} catch (Exception ignored) {
 			shooter.discard();
 			return false;
 		}
-		if (shooter.tickCount >= shooter.lifetime()) {
+		if (shooter.tickCount >= lifetime) {
 			shooter.discard();
 			return false;
 		}

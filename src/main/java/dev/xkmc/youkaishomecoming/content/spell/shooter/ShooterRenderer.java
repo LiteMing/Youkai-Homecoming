@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.shooter;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
@@ -25,12 +26,18 @@ public class ShooterRenderer<T extends ShooterEntity> extends EntityRenderer<T> 
 
 	@Override
 	public void render(T e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
-		SpellCircleLayer.renderImpl(pose, buffer, light, e, pTick, entityRenderDispatcher.cameraOrientation());
+		Quaternionf cameraOrientation = cameraOrientation();
+		SpellCircleLayer.renderImpl(pose, buffer, light, e, pTick, cameraOrientation);
 		if (YSMClientCompat.delegateRender(e, yaw, pTick, pose, buffer, light)) {
 			return;
 		}
-		renderFallbackBody(pose, buffer, light, entityRenderDispatcher.cameraOrientation());
+		renderFallbackBody(pose, buffer, light, cameraOrientation);
 		super.render(e, yaw, pTick, pose, buffer, light);
+	}
+
+	private Quaternionf cameraOrientation() {
+		var override = ProjectileRenderHelper.cameraOrientationOverride;
+		return override != null ? override : entityRenderDispatcher.cameraOrientation();
 	}
 
 	public static void renderFallbackBody(PoseStack pose, MultiBufferSource buffer, int light, Quaternionf cameraOrientation) {

@@ -10,11 +10,9 @@ import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
-import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
 import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
-import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -577,10 +575,6 @@ public class OrthographicViewport {
 
 		ItemDanmakuRenderer<?> cachedDanmakuRenderer = null;
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
-			if (entity instanceof ShooterEntity shooter) {
-				renderShooterPreview(shooter, poseStack, buffer, partialTick, previewOrientation);
-				continue;
-			}
 			if (entity instanceof ItemDanmakuEntity danmaku) {
 				// Fast path: skip dispatcher.getRenderer() for danmaku (all same EntityType)
 				if (cachedDanmakuRenderer == null) {
@@ -699,10 +693,6 @@ public class OrthographicViewport {
 
 		ItemDanmakuRenderer<?> cachedDanmakuRendererP = null;
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
-			if (entity instanceof ShooterEntity shooter) {
-				renderShooterPreview(shooter, poseStack, buffer, partialTick, previewOrientation);
-				continue;
-			}
 			if (entity instanceof ItemDanmakuEntity danmaku) {
 				if (cachedDanmakuRendererP == null) {
 					var r = dispatcher.getRenderer(entity);
@@ -750,23 +740,6 @@ public class OrthographicViewport {
 		poseStack.pushPose();
 		poseStack.translate(ex, ey, ez);
 		YSMClientCompat.renderPreviewCaster(holder, yaw, partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
-		poseStack.popPose();
-	}
-
-	private void renderShooterPreview(ShooterEntity shooter, PoseStack poseStack,
-			MultiBufferSource buffer, float partialTick, Quaternionf previewOrientation) {
-		if (shooter.tickCount <= 0) return;
-
-		double ex = Mth.lerp(partialTick, shooter.xOld, shooter.getX());
-		double ey = Mth.lerp(partialTick, shooter.yOld, shooter.getY());
-		double ez = Mth.lerp(partialTick, shooter.zOld, shooter.getZ());
-
-		poseStack.pushPose();
-		poseStack.translate(ex, ey, ez);
-		SpellCircleLayer.renderImpl(poseStack, buffer, LightTexture.FULL_BRIGHT, shooter, partialTick, previewOrientation);
-		if (!YSMClientCompat.delegateRender(shooter, shooter.getYRot(), partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT)) {
-			ShooterRenderer.renderFallbackBody(poseStack, buffer, LightTexture.FULL_BRIGHT, previewOrientation);
-		}
 		poseStack.popPose();
 	}
 
@@ -862,9 +835,9 @@ public class OrthographicViewport {
 	private <E extends Entity> void renderEntity(
 			EntityRenderDispatcher dispatcher, E entity,
 			PoseStack poseStack, MultiBufferSource buffer, float partialTick) {
-		// Skip entities that haven't been ticked yet — their old/new positions are
-		// both at spawn (caster) causing a ghost frame at the origin.
-		if (entity.tickCount <= 0) return;
+		// Skip unticked entities whose old position may still be the constructor origin.
+		// Preview shooters sync old position when added, so short-lived shooters can render.
+		if (entity.tickCount <= 0 && !(entity instanceof ShooterEntity)) return;
 
 		EntityRenderer<E> renderer = (EntityRenderer<E>) dispatcher.getRenderer(entity);
 		if (renderer == null) return;

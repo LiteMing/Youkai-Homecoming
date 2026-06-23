@@ -72,16 +72,15 @@ public class NumberProviders {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static final Codec<NumberProvider> DISPATCH_CODEC = Codec.STRING.fieldOf("type")
-			.codec()
-			.dispatch(
-					NumberProviders::getType,
-					id -> {
-						var codec = REGISTRY.get(id);
-						if (codec == null) throw new IllegalStateException("Unknown NumberProvider: " + id);
-						return (Codec<NumberProvider>) (Codec<?>) codec;
-					}
-			);
+	private static final Codec<NumberProvider> DISPATCH_CODEC = Codec.STRING.dispatch(
+			"type",
+			NumberProviders::getType,
+			id -> {
+				var codec = REGISTRY.get(id);
+				if (codec == null) throw new IllegalStateException("Unknown NumberProvider: " + id);
+				return (Codec<NumberProvider>) (Codec<?>) codec;
+			}
+	);
 
 	/**
 	 * Main codec: accepts either a bare number (→ Constant) or a typed object.
@@ -360,8 +359,9 @@ public class NumberProviders {
 	 * JSON: {"type": "sqrt", "input": ...}
 	 */
 	public record Sqrt(NumberProvider input) implements NumberProvider {
-		public static final Codec<Sqrt> CODEC = NumberProvider.CODEC
-				.fieldOf("input").codec().xmap(Sqrt::new, Sqrt::input);
+		public static final Codec<Sqrt> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(Sqrt::input)
+		).apply(i, Sqrt::new));
 
 		@Override
 		public double get(SpellContext ctx) {
@@ -372,29 +372,33 @@ public class NumberProviders {
 
 	/** abs(input). */
 	public record Abs(NumberProvider input) implements NumberProvider {
-		public static final Codec<Abs> CODEC = NumberProvider.CODEC
-				.fieldOf("input").codec().xmap(Abs::new, Abs::input);
+		public static final Codec<Abs> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(Abs::input)
+		).apply(i, Abs::new));
 		@Override public double get(SpellContext ctx) { return Math.abs(input.get(ctx)); }
 	}
 
 	/** floor(input). */
 	public record Floor(NumberProvider input) implements NumberProvider {
-		public static final Codec<Floor> CODEC = NumberProvider.CODEC
-				.fieldOf("input").codec().xmap(Floor::new, Floor::input);
+		public static final Codec<Floor> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(Floor::input)
+		).apply(i, Floor::new));
 		@Override public double get(SpellContext ctx) { return Math.floor(input.get(ctx)); }
 	}
 
 	/** ceil(input). */
 	public record Ceil(NumberProvider input) implements NumberProvider {
-		public static final Codec<Ceil> CODEC = NumberProvider.CODEC
-				.fieldOf("input").codec().xmap(Ceil::new, Ceil::input);
+		public static final Codec<Ceil> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(Ceil::input)
+		).apply(i, Ceil::new));
 		@Override public double get(SpellContext ctx) { return Math.ceil(input.get(ctx)); }
 	}
 
 	/** round(input), half-to-even. */
 	public record Round(NumberProvider input) implements NumberProvider {
-		public static final Codec<Round> CODEC = NumberProvider.CODEC
-				.fieldOf("input").codec().xmap(Round::new, Round::input);
+		public static final Codec<Round> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(Round::input)
+		).apply(i, Round::new));
 		@Override public double get(SpellContext ctx) { return Math.rint(input.get(ctx)); }
 	}
 
@@ -421,8 +425,9 @@ public class NumberProviders {
 
 	/** Natural logarithm. */
 	public record Log(NumberProvider input) implements NumberProvider {
-		public static final Codec<Log> CODEC = NumberProvider.CODEC
-				.fieldOf("input").codec().xmap(Log::new, Log::input);
+		public static final Codec<Log> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(Log::input)
+		).apply(i, Log::new));
 		@Override public double get(SpellContext ctx) {
 			double v = input.get(ctx);
 			return v > 0 ? Math.log(v) : 0;
@@ -431,8 +436,9 @@ public class NumberProviders {
 
 	/** exp(input). */
 	public record Exp(NumberProvider input) implements NumberProvider {
-		public static final Codec<Exp> CODEC = NumberProvider.CODEC
-				.fieldOf("input").codec().xmap(Exp::new, Exp::input);
+		public static final Codec<Exp> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("input").forGetter(Exp::input)
+		).apply(i, Exp::new));
 		@Override public double get(SpellContext ctx) { return Math.exp(input.get(ctx)); }
 	}
 
@@ -441,8 +447,9 @@ public class NumberProviders {
 	 * JSON: {"type": "random_choice", "values": [1, -1]}
 	 */
 	public record RandomChoice(java.util.List<Double> values) implements NumberProvider {
-		public static final Codec<RandomChoice> CODEC = Codec.DOUBLE.listOf()
-				.fieldOf("values").codec().xmap(RandomChoice::new, RandomChoice::values);
+		public static final Codec<RandomChoice> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.listOf().fieldOf("values").forGetter(RandomChoice::values)
+		).apply(i, RandomChoice::new));
 
 		@Override
 		public double get(SpellContext ctx) {

@@ -33,14 +33,13 @@ public interface BulletProvider {
 				var pair = bulletResult.result().get();
 				return DataResult.success(Pair.of(new Constant(pair.getFirst()), pair.getSecond()));
 			}
-			return Codec.STRING.fieldOf("type").codec()
-					.decode(ops, input)
-					.flatMap(typePair -> {
-						String type = typePair.getFirst();
+			return ops.getMap(input)
+					.flatMap(map -> ops.getStringValue(map.get("type"))
+							.flatMap(type -> {
 						var codec = REGISTRY.get(type);
 						if (codec == null) return DataResult.error(() -> "Unknown BulletProvider type: " + type);
 						return ((Codec<BulletProvider>) codec).decode(ops, input);
-					});
+					}));
 		}
 
 		@Override
@@ -70,9 +69,9 @@ public interface BulletProvider {
 	}
 
 	record Constant(YHDanmaku.Bullet bullet) implements BulletProvider {
-		public static final Codec<Constant> CODEC = SpellCodecs.BULLET_CODEC
-				.fieldOf("bullet").codec()
-				.xmap(Constant::new, Constant::bullet);
+		public static final Codec<Constant> CODEC = RecordCodecBuilder.create(i -> i.group(
+				SpellCodecs.BULLET_CODEC.fieldOf("bullet").forGetter(Constant::bullet)
+		).apply(i, Constant::new));
 
 		@Override
 		public YHDanmaku.Bullet get(SpellContext ctx) {
@@ -96,9 +95,9 @@ public interface BulletProvider {
 	}
 
 	record RandomChoice(List<YHDanmaku.Bullet> palette) implements BulletProvider {
-		public static final Codec<RandomChoice> CODEC = SpellCodecs.BULLET_CODEC.listOf()
-				.fieldOf("palette").codec()
-				.xmap(RandomChoice::new, RandomChoice::palette);
+		public static final Codec<RandomChoice> CODEC = RecordCodecBuilder.create(i -> i.group(
+				SpellCodecs.BULLET_CODEC.listOf().fieldOf("palette").forGetter(RandomChoice::palette)
+		).apply(i, RandomChoice::new));
 
 		@Override
 		public YHDanmaku.Bullet get(SpellContext ctx) {

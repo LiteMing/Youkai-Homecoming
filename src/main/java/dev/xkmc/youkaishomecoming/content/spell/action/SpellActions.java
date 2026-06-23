@@ -73,16 +73,15 @@ public class SpellActions {
 	}
 
 	@SuppressWarnings("unchecked")
-	static final Codec<SpellAction> DISPATCH_CODEC = Codec.STRING.fieldOf("type")
-			.codec()
-			.dispatch(
-					SpellActions::getType,
-					id -> {
-						var codec = REGISTRY.get(id);
-						if (codec == null) throw new IllegalStateException("Unknown action: " + id);
-						return (Codec<SpellAction>) (Codec<?>) codec;
-					}
-			);
+	static final Codec<SpellAction> DISPATCH_CODEC = Codec.STRING.dispatch(
+			"type",
+			SpellActions::getType,
+			id -> {
+				var codec = REGISTRY.get(id);
+				if (codec == null) throw new IllegalStateException("Unknown action: " + id);
+				return (Codec<SpellAction>) (Codec<?>) codec;
+			}
+	);
 
 	// --- Action implementations ---
 
@@ -211,8 +210,9 @@ public class SpellActions {
 	}
 
 	public record SequenceAction(List<SpellAction> actions) implements SpellAction {
-		public static final Codec<SequenceAction> CODEC = SpellAction.CODEC.listOf()
-				.fieldOf("actions").codec().xmap(SequenceAction::new, SequenceAction::actions);
+		public static final Codec<SequenceAction> CODEC = RecordCodecBuilder.create(i -> i.group(
+				SpellAction.CODEC.listOf().fieldOf("actions").forGetter(SequenceAction::actions)
+		).apply(i, SequenceAction::new));
 
 		@Override
 		public void execute(SpellContext ctx) {
@@ -260,8 +260,9 @@ public class SpellActions {
 	 * Used by the editor to temporarily disable nodes without deleting them.
 	 */
 	public record DisabledAction(SpellAction inner) implements SpellAction {
-		public static final Codec<DisabledAction> CODEC = SpellAction.CODEC
-				.fieldOf("inner").codec().xmap(DisabledAction::new, DisabledAction::inner);
+		public static final Codec<DisabledAction> CODEC = RecordCodecBuilder.create(i -> i.group(
+				SpellAction.CODEC.fieldOf("inner").forGetter(DisabledAction::inner)
+		).apply(i, DisabledAction::new));
 
 		@Override
 		public void execute(SpellContext ctx) {

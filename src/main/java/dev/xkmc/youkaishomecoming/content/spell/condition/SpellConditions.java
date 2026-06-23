@@ -68,22 +68,22 @@ public class SpellConditions {
 	}
 
 	@SuppressWarnings("unchecked")
-	static final Codec<SpellCondition> DISPATCH_CODEC = Codec.STRING.fieldOf("type")
-			.codec()
-			.dispatch(
-					SpellConditions::getType,
-					id -> {
-						var codec = REGISTRY.get(id);
-						if (codec == null) throw new IllegalStateException("Unknown condition: " + id);
-						return (Codec<SpellCondition>) (Codec<?>) codec;
-					}
-			);
+	static final Codec<SpellCondition> DISPATCH_CODEC = Codec.STRING.dispatch(
+			"type",
+			SpellConditions::getType,
+			id -> {
+				var codec = REGISTRY.get(id);
+				if (codec == null) throw new IllegalStateException("Unknown condition: " + id);
+				return (Codec<SpellCondition>) (Codec<?>) codec;
+			}
+	);
 
 	// --- Condition implementations ---
 
 	public record HealthBelow(float threshold) implements SpellCondition {
-		public static final Codec<HealthBelow> CODEC = Codec.FLOAT
-				.fieldOf("threshold").codec().xmap(HealthBelow::new, HealthBelow::threshold);
+		public static final Codec<HealthBelow> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.FLOAT.fieldOf("threshold").forGetter(HealthBelow::threshold)
+		).apply(i, HealthBelow::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -92,8 +92,9 @@ public class SpellConditions {
 	}
 
 	public record HealthAbove(float threshold) implements SpellCondition {
-		public static final Codec<HealthAbove> CODEC = Codec.FLOAT
-				.fieldOf("threshold").codec().xmap(HealthAbove::new, HealthAbove::threshold);
+		public static final Codec<HealthAbove> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.FLOAT.fieldOf("threshold").forGetter(HealthAbove::threshold)
+		).apply(i, HealthAbove::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -102,8 +103,9 @@ public class SpellConditions {
 	}
 
 	public record TickElapsed(int ticks) implements SpellCondition {
-		public static final Codec<TickElapsed> CODEC = Codec.INT
-				.fieldOf("ticks").codec().xmap(TickElapsed::new, TickElapsed::ticks);
+		public static final Codec<TickElapsed> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.INT.fieldOf("ticks").forGetter(TickElapsed::ticks)
+		).apply(i, TickElapsed::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -112,8 +114,9 @@ public class SpellConditions {
 	}
 
 	public record DistanceAbove(double distance) implements SpellCondition {
-		public static final Codec<DistanceAbove> CODEC = Codec.DOUBLE
-				.fieldOf("distance").codec().xmap(DistanceAbove::new, DistanceAbove::distance);
+		public static final Codec<DistanceAbove> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.fieldOf("distance").forGetter(DistanceAbove::distance)
+		).apply(i, DistanceAbove::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -122,8 +125,9 @@ public class SpellConditions {
 	}
 
 	public record DistanceBelow(double distance) implements SpellCondition {
-		public static final Codec<DistanceBelow> CODEC = Codec.DOUBLE
-				.fieldOf("distance").codec().xmap(DistanceBelow::new, DistanceBelow::distance);
+		public static final Codec<DistanceBelow> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.fieldOf("distance").forGetter(DistanceBelow::distance)
+		).apply(i, DistanceBelow::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -132,8 +136,9 @@ public class SpellConditions {
 	}
 
 	public record HitCountCondition(int count) implements SpellCondition {
-		public static final Codec<HitCountCondition> CODEC = Codec.INT
-				.fieldOf("count").codec().xmap(HitCountCondition::new, HitCountCondition::count);
+		public static final Codec<HitCountCondition> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.INT.fieldOf("count").forGetter(HitCountCondition::count)
+		).apply(i, HitCountCondition::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -142,8 +147,9 @@ public class SpellConditions {
 	}
 
 	public record AndCondition(List<SpellCondition> conditions) implements SpellCondition {
-		public static final Codec<AndCondition> CODEC = SpellCondition.CODEC.listOf()
-				.fieldOf("conditions").codec().xmap(AndCondition::new, AndCondition::conditions);
+		public static final Codec<AndCondition> CODEC = RecordCodecBuilder.create(i -> i.group(
+				SpellCondition.CODEC.listOf().fieldOf("conditions").forGetter(AndCondition::conditions)
+		).apply(i, AndCondition::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -152,8 +158,9 @@ public class SpellConditions {
 	}
 
 	public record OrCondition(List<SpellCondition> conditions) implements SpellCondition {
-		public static final Codec<OrCondition> CODEC = SpellCondition.CODEC.listOf()
-				.fieldOf("conditions").codec().xmap(OrCondition::new, OrCondition::conditions);
+		public static final Codec<OrCondition> CODEC = RecordCodecBuilder.create(i -> i.group(
+				SpellCondition.CODEC.listOf().fieldOf("conditions").forGetter(OrCondition::conditions)
+		).apply(i, OrCondition::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -162,8 +169,9 @@ public class SpellConditions {
 	}
 
 	public record NotCondition(SpellCondition condition) implements SpellCondition {
-		public static final Codec<NotCondition> CODEC = SpellCondition.CODEC
-				.fieldOf("condition").codec().xmap(NotCondition::new, NotCondition::condition);
+		public static final Codec<NotCondition> CODEC = RecordCodecBuilder.create(i -> i.group(
+				SpellCondition.CODEC.fieldOf("condition").forGetter(NotCondition::condition)
+		).apply(i, NotCondition::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -194,8 +202,9 @@ public class SpellConditions {
 	}
 
 	public record AlwaysCondition(boolean value) implements SpellCondition {
-		public static final Codec<AlwaysCondition> CODEC = Codec.BOOL
-				.optionalFieldOf("value", true).codec().xmap(AlwaysCondition::new, AlwaysCondition::value);
+		public static final Codec<AlwaysCondition> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.BOOL.optionalFieldOf("value", true).forGetter(AlwaysCondition::value)
+		).apply(i, AlwaysCondition::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -260,8 +269,9 @@ public class SpellConditions {
 	 * probability should be between 0.0 (never) and 1.0 (always).
 	 */
 	public record RandomChance(float probability) implements SpellCondition {
-		public static final Codec<RandomChance> CODEC = Codec.FLOAT
-				.fieldOf("probability").codec().xmap(RandomChance::new, RandomChance::probability);
+		public static final Codec<RandomChance> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.FLOAT.fieldOf("probability").forGetter(RandomChance::probability)
+		).apply(i, RandomChance::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -280,8 +290,9 @@ public class SpellConditions {
 	 * Returns false if the caster is not the expected entity type.
 	 */
 	public record EntityTrait(String trait) implements SpellCondition {
-		public static final Codec<EntityTrait> CODEC = Codec.STRING
-				.fieldOf("trait").codec().xmap(EntityTrait::new, EntityTrait::trait);
+		public static final Codec<EntityTrait> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.STRING.fieldOf("trait").forGetter(EntityTrait::trait)
+		).apply(i, EntityTrait::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -346,8 +357,9 @@ public class SpellConditions {
 	 * JSON: {"type": "target_health_below", "threshold": 0.5}
 	 */
 	public record TargetHealthBelow(float threshold) implements SpellCondition {
-		public static final Codec<TargetHealthBelow> CODEC = Codec.FLOAT
-				.fieldOf("threshold").codec().xmap(TargetHealthBelow::new, TargetHealthBelow::threshold);
+		public static final Codec<TargetHealthBelow> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.FLOAT.fieldOf("threshold").forGetter(TargetHealthBelow::threshold)
+		).apply(i, TargetHealthBelow::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -360,8 +372,9 @@ public class SpellConditions {
 	 * JSON: {"type": "target_health_above", "threshold": 0.5}
 	 */
 	public record TargetHealthAbove(float threshold) implements SpellCondition {
-		public static final Codec<TargetHealthAbove> CODEC = Codec.FLOAT
-				.fieldOf("threshold").codec().xmap(TargetHealthAbove::new, TargetHealthAbove::threshold);
+		public static final Codec<TargetHealthAbove> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.FLOAT.fieldOf("threshold").forGetter(TargetHealthAbove::threshold)
+		).apply(i, TargetHealthAbove::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -403,8 +416,9 @@ public class SpellConditions {
 	 * JSON: {"type": "difficulty_equals", "difficulty": 3}
 	 */
 	public record DifficultyEquals(int difficultyId) implements SpellCondition {
-		public static final Codec<DifficultyEquals> CODEC = Codec.INT
-				.fieldOf("difficulty").codec().xmap(DifficultyEquals::new, DifficultyEquals::difficultyId);
+		public static final Codec<DifficultyEquals> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.INT.fieldOf("difficulty").forGetter(DifficultyEquals::difficultyId)
+		).apply(i, DifficultyEquals::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -418,8 +432,9 @@ public class SpellConditions {
 	 * JSON: {"type": "difficulty_above", "min_difficulty": 2}
 	 */
 	public record DifficultyAbove(int minDifficultyId) implements SpellCondition {
-		public static final Codec<DifficultyAbove> CODEC = Codec.INT
-				.fieldOf("min_difficulty").codec().xmap(DifficultyAbove::new, DifficultyAbove::minDifficultyId);
+		public static final Codec<DifficultyAbove> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.INT.fieldOf("min_difficulty").forGetter(DifficultyAbove::minDifficultyId)
+		).apply(i, DifficultyAbove::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {
@@ -441,8 +456,9 @@ public class SpellConditions {
 	 * JSON: {@code {"type": "entity_flag", "flag": 4}}
 	 */
 	public record EntityFlagCondition(int flag) implements SpellCondition {
-		public static final Codec<EntityFlagCondition> CODEC = Codec.INT
-				.fieldOf("flag").codec().xmap(EntityFlagCondition::new, EntityFlagCondition::flag);
+		public static final Codec<EntityFlagCondition> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.INT.fieldOf("flag").forGetter(EntityFlagCondition::flag)
+		).apply(i, EntityFlagCondition::new));
 
 		@Override
 		public boolean test(SpellContext ctx) {

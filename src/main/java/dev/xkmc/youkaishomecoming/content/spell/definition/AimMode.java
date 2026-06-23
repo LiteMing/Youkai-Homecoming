@@ -74,16 +74,15 @@ public interface AimMode {
 		}
 
 		@SuppressWarnings("unchecked")
-		private static final Codec<AimMode> DISPATCH_CODEC = Codec.STRING.fieldOf("type")
-				.codec()
-				.dispatch(
-						AimModes::getType,
-						id -> {
-							var codec = REGISTRY.get(id);
-							if (codec == null) throw new IllegalStateException("Unknown AimMode: " + id);
-							return (Codec<AimMode>) (Codec<?>) codec;
-						}
-				);
+		private static final Codec<AimMode> DISPATCH_CODEC = Codec.STRING.dispatch(
+				"type",
+				AimModes::getType,
+				id -> {
+					var codec = REGISTRY.get(id);
+					if (codec == null) throw new IllegalStateException("Unknown AimMode: " + id);
+					return (Codec<AimMode>) (Codec<?>) codec;
+				}
+		);
 
 		/**
 		 * Main codec: accepts string shorthand ("target") or typed object.
@@ -138,9 +137,9 @@ public interface AimMode {
 		 * Fixed world direction (= old aimAtTarget=false with default (0,0,1)).
 		 */
 		public record FixedDirection(Vec3 direction) implements AimMode {
-			public static final Codec<FixedDirection> CODEC = SpellCodecs.VEC3_CODEC
-					.fieldOf("direction").codec()
-					.xmap(FixedDirection::new, FixedDirection::direction);
+			public static final Codec<FixedDirection> CODEC = RecordCodecBuilder.create(i -> i.group(
+					SpellCodecs.VEC3_CODEC.fieldOf("direction").forGetter(FixedDirection::direction)
+			).apply(i, FixedDirection::new));
 
 			@Override
 			public Vec3 getBaseDirection(SpellContext ctx) {
@@ -165,9 +164,9 @@ public interface AimMode {
 		 * Useful for rotating patterns: set angle = AddVariable per tick.
 		 */
 		public record AngleOffset(NumberProvider angle) implements AimMode {
-			public static final Codec<AngleOffset> CODEC = NumberProvider.CODEC
-					.fieldOf("angle").codec()
-					.xmap(AngleOffset::new, AngleOffset::angle);
+			public static final Codec<AngleOffset> CODEC = RecordCodecBuilder.create(i -> i.group(
+					NumberProvider.CODEC.fieldOf("angle").forGetter(AngleOffset::angle)
+			).apply(i, AngleOffset::new));
 
 			@Override
 			public Vec3 getBaseDirection(SpellContext ctx) {
@@ -215,9 +214,9 @@ public interface AimMode {
 		 * Useful for per-tick random laser rotation or random spread patterns.
 		 */
 		public record RandomAngle(NumberProvider spread) implements AimMode {
-			public static final Codec<RandomAngle> CODEC = NumberProvider.CODEC
-					.fieldOf("spread").codec()
-					.xmap(RandomAngle::new, RandomAngle::spread);
+			public static final Codec<RandomAngle> CODEC = RecordCodecBuilder.create(i -> i.group(
+					NumberProvider.CODEC.fieldOf("spread").forGetter(RandomAngle::spread)
+			).apply(i, RandomAngle::new));
 
 			@Override
 			public Vec3 getBaseDirection(SpellContext ctx) {
@@ -232,9 +231,9 @@ public interface AimMode {
 		 * Reads angle from a runtime variable (degrees).
 		 */
 		public record VariableAngle(String key) implements AimMode {
-			public static final Codec<VariableAngle> CODEC = Codec.STRING
-					.fieldOf("key").codec()
-					.xmap(VariableAngle::new, VariableAngle::key);
+			public static final Codec<VariableAngle> CODEC = RecordCodecBuilder.create(i -> i.group(
+					Codec.STRING.fieldOf("key").forGetter(VariableAngle::key)
+			).apply(i, VariableAngle::new));
 
 			@Override
 			public Vec3 getBaseDirection(SpellContext ctx) {

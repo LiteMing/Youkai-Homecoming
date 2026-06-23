@@ -85,16 +85,15 @@ public class MoverConfigs {
 	}
 
 	@SuppressWarnings("unchecked")
-	static final Codec<MoverConfig> DISPATCH_CODEC = Codec.STRING.fieldOf("type")
-			.codec()
-			.dispatch(
-					MoverConfigs::getType,
-					id -> {
-						var codec = REGISTRY.get(id);
-						if (codec == null) throw new IllegalStateException("Unknown MoverConfig: " + id);
-						return (Codec<MoverConfig>) (Codec<?>) codec;
-					}
-			);
+	static final Codec<MoverConfig> DISPATCH_CODEC = Codec.STRING.dispatch(
+			"type",
+			MoverConfigs::getType,
+			id -> {
+				var codec = REGISTRY.get(id);
+				if (codec == null) throw new IllegalStateException("Unknown MoverConfig: " + id);
+				return (Codec<MoverConfig>) (Codec<?>) codec;
+			}
+	);
 
 	/**
 	 * Adds acceleration to the projectile (creates RectMover).
@@ -130,9 +129,9 @@ public class MoverConfigs {
 	 * JSON: {"type": "deceleration", "factor": 0.06}
 	 */
 	public record DecelerationConfig(double factor) implements MoverConfig {
-		public static final Codec<DecelerationConfig> CODEC = Codec.DOUBLE
-				.fieldOf("factor").codec()
-				.xmap(DecelerationConfig::new, DecelerationConfig::factor);
+		public static final Codec<DecelerationConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.DOUBLE.fieldOf("factor").forGetter(DecelerationConfig::factor)
+		).apply(i, DecelerationConfig::new));
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
@@ -223,9 +222,9 @@ public class MoverConfigs {
 			).apply(i, Segment::new));
 		}
 
-		public static final Codec<CompositeMoverConfig> CODEC = Segment.CODEC.listOf()
-				.fieldOf("segments").codec()
-				.xmap(CompositeMoverConfig::new, CompositeMoverConfig::segments);
+		public static final Codec<CompositeMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Segment.CODEC.listOf().fieldOf("segments").forGetter(CompositeMoverConfig::segments)
+		).apply(i, CompositeMoverConfig::new));
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
@@ -333,9 +332,9 @@ public class MoverConfigs {
 	 * JSON: {"type": "layered", "layers": [{"type": "acceleration", ...}, {"type": "polar", ...}]}
 	 */
 	public record LayeredMoverConfig(List<MoverConfig> layers) implements MoverConfig {
-		public static final Codec<LayeredMoverConfig> CODEC = MoverConfig.CODEC.listOf()
-				.fieldOf("layers").codec()
-				.xmap(LayeredMoverConfig::new, LayeredMoverConfig::layers);
+		public static final Codec<LayeredMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				MoverConfig.CODEC.listOf().fieldOf("layers").forGetter(LayeredMoverConfig::layers)
+		).apply(i, LayeredMoverConfig::new));
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
@@ -394,9 +393,9 @@ public class MoverConfigs {
 			).apply(i, BezierSegment::new));
 		}
 
-		public static final Codec<MultiBezierMoverConfig> CODEC = BezierSegment.CODEC.listOf()
-				.fieldOf("segments").codec()
-				.xmap(MultiBezierMoverConfig::new, MultiBezierMoverConfig::segments);
+		public static final Codec<MultiBezierMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				BezierSegment.CODEC.listOf().fieldOf("segments").forGetter(MultiBezierMoverConfig::segments)
+		).apply(i, MultiBezierMoverConfig::new));
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {

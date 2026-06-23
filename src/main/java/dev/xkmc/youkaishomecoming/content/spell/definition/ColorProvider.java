@@ -52,14 +52,13 @@ public interface ColorProvider {
 				} catch (IllegalArgumentException ignored) {}
 			}
 			// Fall through to typed dispatch
-			return Codec.STRING.fieldOf("type").codec()
-					.decode(ops, input)
-					.flatMap(typePair -> {
-						String type = typePair.getFirst();
+			return ops.getMap(input)
+					.flatMap(map -> ops.getStringValue(map.get("type"))
+							.flatMap(type -> {
 						var codec = REGISTRY.get(type);
 						if (codec == null) return DataResult.error(() -> "Unknown ColorProvider type: " + type);
 						return ((Codec<ColorProvider>) codec).decode(ops, input);
-					});
+					}));
 		}
 
 		@Override
@@ -96,9 +95,9 @@ public interface ColorProvider {
 
 	/** Fixed color (the most common case). */
 	record Constant(DyeColor color) implements ColorProvider {
-		public static final Codec<Constant> CODEC = SpellCodecs.DYE_COLOR_CODEC
-				.fieldOf("color").codec()
-				.xmap(Constant::new, Constant::color);
+		public static final Codec<Constant> CODEC = RecordCodecBuilder.create(i -> i.group(
+				SpellCodecs.DYE_COLOR_CODEC.fieldOf("color").forGetter(Constant::color)
+		).apply(i, Constant::new));
 
 		@Override
 		public DyeColor get(SpellContext ctx) {
@@ -163,9 +162,9 @@ public interface ColorProvider {
 	 * Useful for per-entity random coloring (e.g. each shooter gets a random color).
 	 */
 	record RandomChoice(List<DyeColor> palette) implements ColorProvider {
-		public static final Codec<RandomChoice> CODEC = SpellCodecs.DYE_COLOR_CODEC.listOf()
-				.fieldOf("palette").codec()
-				.xmap(RandomChoice::new, RandomChoice::palette);
+		public static final Codec<RandomChoice> CODEC = RecordCodecBuilder.create(i -> i.group(
+				SpellCodecs.DYE_COLOR_CODEC.listOf().fieldOf("palette").forGetter(RandomChoice::palette)
+		).apply(i, RandomChoice::new));
 
 		@Override
 		public DyeColor get(SpellContext ctx) {

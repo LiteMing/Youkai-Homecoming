@@ -263,6 +263,8 @@ public class ActionEditorPanel {
 			buildEraseEnemyDanmakuRows(ee);
 		} else if (action instanceof SpellActions.PlaySoundAction ps) {
 			buildPlaySoundRows(ps);
+		} else if (action instanceof RunCommandAction rc) {
+			buildRunCommandRows(rc);
 		} else if (action instanceof SpellActions.ForcePhase fp) {
 			buildForcePhaseRows(fp);
 		} else if (action instanceof SpellActions.ForceSpell fs) {
@@ -308,6 +310,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Clear Screen", () -> selectType("clear_screen"));
 		addFullWidthButton("Erase Enemy Danmaku", () -> selectType("erase_enemy_danmaku"));
 		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
+		addFullWidthButton("Run Command", () -> selectType("run_command"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
 		addFullWidthButton("Force Spell", () -> selectType("force_spell"));
 		addFullWidthButton("Fire Spell", () -> selectType("fire_spell"));
@@ -359,6 +362,8 @@ public class ActionEditorPanel {
 			case "erase_enemy_danmaku" -> new EraseEnemyDanmakuAction(NumberProvider.constant(4), false);
 			case "play_sound" -> new SpellActions.PlaySoundAction(
 					new ResourceLocation("minecraft", "entity.experience_orb.pickup"), 1f, 1f);
+			case "run_command" -> new RunCommandAction(RunCommandAction.Mode.AS_CASTER,
+					"yhspell stop @s 32");
 			case "force_phase" -> new SpellActions.ForcePhase(
 					new ResourceLocation("youkaishomecoming", "main"), true);
 			case "force_spell" -> new SpellActions.ForceSpell(
@@ -1131,6 +1136,13 @@ public class ActionEditorPanel {
 		addFloatRow("Pitch", ps.pitch(), v ->
 				notifySimple(old -> new SpellActions.PlaySoundAction(
 						((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(), v)));
+	}
+
+	private void buildRunCommandRows(RunCommandAction rc) {
+		addEnumRow("Mode", RunCommandAction.Mode.values(), rc.mode(), v ->
+				notifySimple(old -> new RunCommandAction(v, ((RunCommandAction) old).command()), true));
+		addStringRow("Command", rc.command(), v ->
+				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(), v)));
 	}
 
 	// --- ForcePhase rows ---
@@ -4130,6 +4142,7 @@ public class ActionEditorPanel {
 			Map.entry("clear_screen", "Clear Screen"),
 			Map.entry("erase_enemy_danmaku", "Erase Enemy Danmaku"),
 			Map.entry("play_sound", "Play Sound"),
+			Map.entry("run_command", "Run Command"),
 			Map.entry("force_phase", "Force Phase"),
 			Map.entry("force_spell", "Force Spell"),
 			Map.entry("sequence", "Sequence"),

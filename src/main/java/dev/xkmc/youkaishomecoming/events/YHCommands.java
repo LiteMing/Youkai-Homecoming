@@ -8,24 +8,32 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
 import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
 import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeAccess;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -36,12 +44,17 @@ import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.selector.EntitySelector;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.phys.AABB;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 
 @Mod.EventBusSubscriber(modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class YHCommands {
@@ -54,6 +67,7 @@ public class YHCommands {
 			SharedSuggestionProvider.suggest(StgCombatMode.commandNames(), builder);
 	private static final SuggestionProvider<CommandSourceStack> STG_RESOURCE_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(java.util.List.of("life", "bomb", "power", "points"), builder);
+	private static final double DEFAULT_SPELL_STOP_RADIUS = 128.0;
 
 	@SubscribeEvent
 	public static void onServerStarted(ServerStartedEvent event) {
@@ -199,6 +213,11 @@ public class YHCommands {
 		// /yhspell commands
 		event.getDispatcher().register(literal("yhspell")
 				.requires(e -> e.hasPermission(2))
+				.then(literal("stop")
+						.then(argument("targets", EntityArgument.entities())
+								.executes(ctx -> stopSpellTargets(ctx, DEFAULT_SPELL_STOP_RADIUS))
+								.then(argument("radius", DoubleArgumentType.doubleArg(0))
+										.executes(ctx -> stopSpellTargets(ctx, DoubleArgumentType.getDouble(ctx, "radius"))))))
 				.then(literal("set")
 						.then(argument("entity", EntityArgument.entity())
 								.then(argument("spell_id", ResourceLocationArgument.id())
@@ -607,6 +626,96 @@ public class YHCommands {
 
 	protected static <T> RequiredArgumentBuilder<CommandSourceStack, T> argument(String name, ArgumentType<T> type) {
 		return RequiredArgumentBuilder.argument(name, type);
+	}
+
+	private static int stopSpellTargets(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx,
+										double radius)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var targets = EntityArgument.getEntities(ctx, "targets");
+		StopResult result = new StopResult();
+		Set<UUID> stoppedEntities = new HashSet<>();
+		Set<UUID> erasedProjectiles = new HashSet<>();
+		for (Entity target : targets) {
+			stopSpellEntity(target, result, stoppedEntities);
+			stopSpellHostsAround(target, radius, result, stoppedEntities);
+			eraseLooseDanmakuAround(target, radius, result, erasedProjectiles);
+		}
+		if (result.erased > 0) {
+			DanmakuManager.flushErases();
+		}
+		ctx.getSource().sendSuccess(() -> Component.literal("Stopped " + result.stopped +
+				" spell hosts and erased " + result.erased + " danmaku"), true);
+		return result.stopped + result.erased;
+	}
+
+	private static void stopSpellHostsAround(Entity centerEntity, double radius, StopResult result,
+											 Set<UUID> stoppedEntities) {
+		if (!(centerEntity.level() instanceof ServerLevel level)) {
+			return;
+		}
+		AABB area = new AABB(centerEntity.position(), centerEntity.position()).inflate(Math.max(0, radius));
+		for (Entity entity : level.getEntitiesOfClass(Entity.class, area,
+				e -> e instanceof SpellRuntimeHost || e instanceof ServerPlayer)) {
+			stopSpellEntity(entity, result, stoppedEntities);
+		}
+	}
+
+	private static void stopSpellEntity(Entity entity, StopResult result, Set<UUID> stoppedEntities) {
+		if (!stoppedEntities.add(entity.getUUID())) {
+			return;
+		}
+		if (entity instanceof ServerPlayer player) {
+			SpellContainer.clear(player);
+			result.stopped++;
+		}
+		if (entity instanceof DanmakuProxyEntity proxy) {
+			result.erased += proxy.eraseAllDanmakuAndCount(null);
+			proxy.cleanup();
+			result.stopped++;
+			return;
+		}
+		if (entity instanceof EntitySpellProxyEntity proxy) {
+			result.erased += proxy.eraseAllDanmakuAndCount(null);
+			proxy.cleanup();
+			result.stopped++;
+			return;
+		}
+		if (entity instanceof YoukaiEntity youkai) {
+			result.erased += youkai.eraseAllDanmakuAndCount(null);
+			youkai.spellCard = null;
+			youkai.setSpellRuntime(null);
+			result.stopped++;
+			return;
+		}
+		if (entity instanceof SpellRuntimeHost host) {
+			host.eraseDanmaku(null);
+			host.setSpellRuntime(null);
+			host.syncSpellState();
+			result.stopped++;
+		}
+	}
+
+	private static void eraseLooseDanmakuAround(Entity centerEntity, double radius, StopResult result,
+												Set<UUID> erasedProjectiles) {
+		if (!(centerEntity.level() instanceof ServerLevel level)) {
+			return;
+		}
+		AABB area = new AABB(centerEntity.position(), centerEntity.position()).inflate(Math.max(0, radius));
+		for (SimplifiedProjectile projectile : level.getEntitiesOfClass(SimplifiedProjectile.class, area)) {
+			if (!(projectile instanceof IYHDanmaku)) {
+				continue;
+			}
+			if (!erasedProjectiles.add(projectile.getUUID())) {
+				continue;
+			}
+			projectile.markErased(true);
+			result.erased++;
+		}
+	}
+
+	private static final class StopResult {
+		private int stopped;
+		private int erased;
 	}
 
 	private static int spawnEntitySpellProxy(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, int duration)

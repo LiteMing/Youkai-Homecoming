@@ -31,6 +31,7 @@ public class SpellActions {
 		register("force_spell", ForceSpell.CODEC, ForceSpell.class);
 		register("fire_spell", FireSpell.CODEC, FireSpell.class);
 		register("play_sound", PlaySoundAction.CODEC, PlaySoundAction.class);
+		register("run_command", RunCommandAction.CODEC, RunCommandAction.class);
 		register("conditional", ConditionalAction.CODEC, ConditionalAction.class);
 		register("sequence", SequenceAction.CODEC, SequenceAction.class);
 		register("legacy_ticker", LegacyTickerAction.CODEC, LegacyTickerAction.class);

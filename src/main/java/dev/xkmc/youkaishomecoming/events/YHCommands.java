@@ -29,6 +29,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeAccess;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
+import dev.xkmc.youkaishomecoming.content.spell.template.SpellTemplates;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.commands.CommandSourceStack;
@@ -63,6 +64,8 @@ public class YHCommands {
 			SharedSuggestionProvider.suggestResource(
 					SpellRegistry.getAll().keySet(),
 					builder);
+	private static final SuggestionProvider<CommandSourceStack> SPELL_TEMPLATE_SUGGESTIONS = (ctx, builder) ->
+			SharedSuggestionProvider.suggest(SpellTemplates.names(), builder);
 	private static final SuggestionProvider<CommandSourceStack> STG_MODE_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(StgCombatMode.commandNames(), builder);
 	private static final SuggestionProvider<CommandSourceStack> STG_RESOURCE_SUGGESTIONS = (ctx, builder) ->
@@ -493,38 +496,14 @@ public class YHCommands {
 									}
 								})))
 				.then(literal("new")
-						.then(argument("spell_id", ResourceLocationArgument.id())
-								.executes(ctx -> {
-									ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
-									if (SpellRegistry.get(spellId) != null) {
-										ctx.getSource().sendFailure(Component.literal("Spell already exists: " + spellId));
-										return 0;
-									}
-									ResourceLocation phaseId = new ResourceLocation(spellId.getNamespace(), spellId.getPath() + "/main");
-									var phase = new dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition(
-											phaseId,
-											java.util.List.of(),
-											java.util.List.of(),
-											java.util.List.of(),
-											java.util.List.of(),
-											java.util.List.of()
-									);
-									var def = new SpellDefinition(
-											spellId,
-											new dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay(
-													spellId.getPath(), "", java.util.Optional.empty(), java.util.Optional.empty()),
-											dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm.NONE,
-											phaseId,
-											java.util.Map.of(phaseId, phase),
-											dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile.DEFAULT
-									);
-									SpellRegistry.register(def);
-									CustomSpellStorage.saveSpell(ctx.getSource().getServer(), def);
-									ctx.getSource().sendSuccess(
-											() -> Component.literal("Created new spell: " + spellId + " (use /yhspell preview to edit)"), true);
-									openSpellPreview(ctx.getSource(), def);
-									return 1;
-								})))
+						.then(argument("spell_or_template", StringArgumentType.word())
+								.suggests(SPELL_TEMPLATE_SUGGESTIONS)
+								.executes(ctx -> createNewSpell(ctx, StringArgumentType.getString(ctx, "spell_or_template"), null))
+								.then(argument("template", StringArgumentType.word())
+										.suggests(SPELL_TEMPLATE_SUGGESTIONS)
+										.executes(ctx -> createNewSpell(ctx,
+												StringArgumentType.getString(ctx, "spell_or_template"),
+												StringArgumentType.getString(ctx, "template"))))))
 				.then(literal("proxy")
 						.then(literal("entity")
 								.then(argument("host", EntityArgument.entity())
@@ -716,6 +695,46 @@ public class YHCommands {
 	private static final class StopResult {
 		private int stopped;
 		private int erased;
+	}
+
+	private static int createNewSpell(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx,
+									  String spellOrTemplate, @Nullable String explicitTemplate)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		String template = explicitTemplate;
+		ResourceLocation spellId;
+		if (template == null && SpellTemplates.contains(spellOrTemplate)) {
+			template = spellOrTemplate;
+			spellId = SpellTemplates.defaultId(template);
+		} else {
+			spellId = ResourceLocation.tryParse(spellOrTemplate);
+			if (spellId == null) {
+				ctx.getSource().sendFailure(Component.literal("Invalid spell id: " + spellOrTemplate));
+				return 0;
+			}
+		}
+		if (template != null && !SpellTemplates.contains(template)) {
+			ctx.getSource().sendFailure(Component.literal("Unknown spell template: " + template +
+					" (available: " + String.join(", ", SpellTemplates.names()) + ")"));
+			return 0;
+		}
+		if (SpellRegistry.get(spellId) != null) {
+			ctx.getSource().sendFailure(Component.literal("Spell already exists: " + spellId));
+			return 0;
+		}
+		SpellDefinition def;
+		try {
+			def = template == null ? SpellTemplates.empty(spellId) : SpellTemplates.create(spellId, template);
+		} catch (Exception e) {
+			ctx.getSource().sendFailure(Component.literal("Failed to create spell template: " + e.getMessage()));
+			return 0;
+		}
+		SpellRegistry.register(def);
+		CustomSpellStorage.saveSpell(ctx.getSource().getServer(), def);
+		String source = template == null ? "empty spell" : "template '" + template + "'";
+		ctx.getSource().sendSuccess(
+				() -> Component.literal("Created new " + source + ": " + spellId + " (use /yhspell preview to edit)"), true);
+		openSpellPreview(ctx.getSource(), def);
+		return 1;
 	}
 
 	private static int spawnEntitySpellProxy(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, int duration)

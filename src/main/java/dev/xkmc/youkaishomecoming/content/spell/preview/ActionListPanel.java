@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
@@ -2090,7 +2091,7 @@ public class ActionListPanel {
 			String key = collapseKey(path);
 			String custom = customNames.get(key);
 			if (custom != null && !custom.isEmpty()) {
-				return custom;
+				return localizeCustomName(custom);
 			}
 		}
 		String prefix = "";
@@ -2195,7 +2196,14 @@ public class ActionListPanel {
 		if (custom == null || custom.isBlank() || custom.equals(phaseId.getPath())) {
 			return formatPhaseId(phaseId);
 		}
-		return custom + " (" + formatPhaseId(phaseId) + ")";
+		return localizeCustomName(custom) + " (" + formatPhaseId(phaseId) + ")";
+	}
+
+	private static String localizeCustomName(String value) {
+		if (value.startsWith("youkaishomecoming.spell_template.") && I18n.exists(value)) {
+			return I18n.get(value);
+		}
+		return value;
 	}
 
 	private static String formatPhaseId(net.minecraft.resources.ResourceLocation id) {

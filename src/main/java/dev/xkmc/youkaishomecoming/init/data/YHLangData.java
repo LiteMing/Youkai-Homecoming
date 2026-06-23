@@ -179,6 +179,7 @@ public enum YHLangData {
 		pvd.add(YoukaisHomecoming.MODID + ".custom_spell.randomizedSpeed.desc", "Variation of bullet speed in percentage, plus or minus");
 		pvd.add(YoukaisHomecoming.MODID + ".custom_spell.turnTime", "Turn Time");
 		pvd.add(YoukaisHomecoming.MODID + ".custom_spell.turnTime.desc", "Time in tick after which bullet will redirect toward target");
+		genSpellTemplateLang(pvd);
 		pvd.add("key.categories.youkaishomecoming", "Youkai Homecoming");
 		pvd.add("key.youkaishomecoming.open_spell_editor", "Open Spell Editor");
 
@@ -215,6 +216,33 @@ public enum YHLangData {
 				pvd.add(str, pref_name + " of " + name);
 			}
 		}
+	}
+
+	private static void genSpellTemplateLang(RegistrateLangProvider pvd) {
+		String prefix = YoukaisHomecoming.MODID + ".spell_template.";
+		pvd.add(prefix + "basic.name", "Basic Spell Template");
+		pvd.add(prefix + "basic.desc", "A minimal periodic ring pattern for starting a new spell.");
+		pvd.add(prefix + "basic.node.interval", "Fire every 20 ticks");
+		pvd.add(prefix + "basic.node.fire_ring", "Basic ring danmaku");
+		pvd.add(prefix + "ring.name", "Rotating Ring Template");
+		pvd.add(prefix + "ring.desc", "Demonstrates color cycling and dynamic angle expressions.");
+		pvd.add(prefix + "ring.node.interval", "High-frequency interval trigger");
+		pvd.add(prefix + "ring.node.rotating_ring", "Color ring rotating with tick");
+		pvd.add(prefix + "mover.name", "Mover Template");
+		pvd.add(prefix + "mover.desc", "Demonstrates formula mover and explicit radian trig functions.");
+		pvd.add(prefix + "mover.node.interval", "Periodically spawn mover bullets");
+		pvd.add(prefix + "mover.node.sine_wave", "Sine-wave bullet path");
+		pvd.add(prefix + "shooter.name", "Shooter Template");
+		pvd.add(prefix + "shooter.desc", "Demonstrates shooter lifetime, movement, and internal firing logic.");
+		pvd.add(prefix + "shooter.node.interval", "Periodically spawn shooters");
+		pvd.add(prefix + "shooter.node.spawn_shooter", "Spawn orbiting shooter");
+		pvd.add(prefix + "shooter.node.shooter_tick", "Shooter internal interval");
+		pvd.add(prefix + "shooter.node.shooter_fire", "Shooter fires ring danmaku");
+		pvd.add(prefix + "command.name", "Command Action Template");
+		pvd.add(prefix + "command.desc", "Demonstrates run_command action combined with visible danmaku.");
+		pvd.add(prefix + "command.node.run_command", "Run particle command as caster");
+		pvd.add(prefix + "command.node.interval", "Periodic support danmaku");
+		pvd.add(prefix + "command.node.fire_ring", "Visible danmaku after command");
 	}
 
 	private static void genSpellEditorHelp(RegistrateLangProvider pvd) {

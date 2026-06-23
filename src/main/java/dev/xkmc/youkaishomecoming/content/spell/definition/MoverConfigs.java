@@ -714,7 +714,9 @@ public class MoverConfigs {
 	 * This pre-computes the normalized direction at creation time, avoiding long formula strings
 	 * that would bloat network packets.
 	 * <p>
-	 * {@code aim} modes: "target" (toward target), "forward" (caster facing), "none" (use x/y/z formulas)
+	 * {@code aim} modes: "target" (origin to target), "caster_to_target" (caster to target),
+	 * "forward" (pattern base direction), "velocity" (initial projectile velocity),
+	 * "fixed" (x/y/z as a fixed direction), "none" (use x/y/z formulas)
 	 * <p>
 	 * JSON: {"type": "translate", "x": "tick * 0.1", "y": "0", "z": "0"}
 	 * JSON: {"type": "translate", "speed": 0.3, "aim": "target"}
@@ -744,26 +746,9 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
-			// If aim mode is set with speed, use pre-computed direction (no formula strings in serialization)
 			double resolvedSpeed = getNumber(speed, null);
-			if (resolvedSpeed > 0 && !"none".equals(aim)) {
-				Vec3 dir;
-				if ("target".equals(aim)) {
-					dir = targetPos.subtract(origin);
-				} else if ("forward".equals(aim)) {
-					dir = baseDirection;
-				} else {
-					dir = targetPos.subtract(origin);
-				}
-				double len = dir.length();
-				if (len > 1e-4) {
-					dir = dir.scale(1.0 / len);
-				} else {
-					// No valid direction (no target, or target == origin) — zero movement
-					return new TranslateMover(origin, Vec3.ZERO, 0);
-				}
-				// Store only Vec3 direction + double speed — minimal network footprint
-				return new TranslateMover(origin, dir, resolvedSpeed);
+			if (resolvedSpeed != 0 && !"none".equals(aim)) {
+				return new TranslateMover(origin, resolveAimDirection(null, origin, velocity, baseDirection, targetPos, casterPos), resolvedSpeed);
 			}
 			return new TranslateMover(origin, x, y, z, targetPos, casterPos);
 		}
@@ -771,22 +756,33 @@ public class MoverConfigs {
 		@Override
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
 			double resolvedSpeed = getNumber(speed, ctx);
-			if (resolvedSpeed > 0 && !"none".equals(aim)) {
-				Vec3 dir;
-				if ("target".equals(aim)) {
-					dir = targetPos.subtract(origin);
-				} else if ("forward".equals(aim)) {
-					dir = baseDirection;
-				} else {
-					dir = targetPos.subtract(origin);
-				}
-				double len = dir.length();
-				if (len > 1e-4) {
-					return new TranslateMover(origin, dir.scale(1.0 / len), resolvedSpeed);
-				}
-				return new TranslateMover(origin, Vec3.ZERO, 0);
+			if (resolvedSpeed != 0 && !"none".equals(aim)) {
+				return new TranslateMover(origin, resolveAimDirection(ctx, origin, velocity, baseDirection, targetPos, casterPos), resolvedSpeed);
 			}
 			return new TranslateMover(origin, bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx), targetPos, casterPos);
+		}
+
+		private Vec3 resolveAimDirection(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection,
+										 Vec3 targetPos, Vec3 casterPos) {
+			Vec3 dir = switch (aim) {
+				case "forward", "base" -> baseDirection;
+				case "velocity" -> velocity;
+				case "fixed" -> fixedDirection(ctx);
+				case "caster_to_target" -> targetPos.subtract(casterPos);
+				case "target" -> targetPos.subtract(origin);
+				default -> targetPos.subtract(origin);
+			};
+			double len = dir.length();
+			return len > 1e-4 ? dir.scale(1.0 / len) : Vec3.ZERO;
+		}
+
+		private Vec3 fixedDirection(SpellContext ctx) {
+			return new Vec3(evalAtCreation(x, ctx), evalAtCreation(y, ctx), evalAtCreation(z, ctx));
+		}
+
+		private static double evalAtCreation(String formula, SpellContext ctx) {
+			var expr = FormulaExpr.parse(bindFormula(formula, ctx));
+			return expr == null ? 0 : expr.eval(0);
 		}
 	}
 

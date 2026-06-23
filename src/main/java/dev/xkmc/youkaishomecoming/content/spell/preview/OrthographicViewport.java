@@ -14,6 +14,7 @@ import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
 import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
+import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -763,7 +764,9 @@ public class OrthographicViewport {
 		poseStack.pushPose();
 		poseStack.translate(ex, ey, ez);
 		SpellCircleLayer.renderImpl(poseStack, buffer, LightTexture.FULL_BRIGHT, shooter, partialTick, previewOrientation);
-		YSMClientCompat.delegateRender(shooter, shooter.getYRot(), partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
+		if (!YSMClientCompat.delegateRender(shooter, shooter.getYRot(), partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT)) {
+			ShooterRenderer.renderFallbackBody(poseStack, buffer, LightTexture.FULL_BRIGHT, previewOrientation);
+		}
 		poseStack.popPose();
 	}
 

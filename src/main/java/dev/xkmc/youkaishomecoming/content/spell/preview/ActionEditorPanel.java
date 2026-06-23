@@ -1580,6 +1580,7 @@ public class ActionEditorPanel {
 
 	// Top-level mover types (includes "none" for removal and special types like attached)
 	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "translate", "attached", "attached_free_rot", "fixed_dir"};
+	private static final String[] TRANSLATE_AIM_MODES = {"none", "target", "caster_to_target", "forward", "velocity", "fixed"};
 
 	/**
 	 * Sub-mover types available inside composite segments, layered layers, and fixed_dir inner.
@@ -2056,8 +2057,7 @@ public class ActionEditorPanel {
 			});
 		} else if (cfg instanceof MoverConfigs.TranslateMoverConfig tr) {
 			// Translate mover: aim mode + speed, or raw x/y/z formulas
-			String[] aimModes = {"none", "target", "forward"};
-			addStringCycleRow("Aim", aimModes, tr.aim(), v -> {
+			addStringCycleRow("Aim", TRANSLATE_AIM_MODES, tr.aim(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
 					onTypeChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v)));
@@ -2267,8 +2267,7 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (subCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
-			String[] aimModes = {"none", "target", "forward"};
-			addStringCycleRow("  Aim", aimModes, tr.aim(), v -> {
+			addStringCycleRow("  Aim", TRANSLATE_AIM_MODES, tr.aim(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
 					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);
@@ -2434,8 +2433,7 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (layerCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
-			String[] aimModes = {"none", "target", "forward"};
-			addStringCycleRow("  Aim", aimModes, tr.aim(), v -> {
+			addStringCycleRow("  Aim", TRANSLATE_AIM_MODES, tr.aim(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
 					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);

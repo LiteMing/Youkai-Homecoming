@@ -354,7 +354,7 @@ public record SpawnShooterAction(
 			var settings = new PatternEmitter.Settings(count, speed, angleOffset, spread, elevation, pattern,
 					aimMode, origin.rotation(), outerCount, tiltAngle, groupRotation);
 			PatternEmitter.emit(ctx, patternSpawnPos, settings, (vel, baseDir) ->
-					spawnOne(ctx, patternSpawnPos, vel.add(legacyVel), baseDir));
+					spawnOne(ctx, patternSpawnPos, vel, baseDir));
 			return;
 		}
 
@@ -398,7 +398,7 @@ public record SpawnShooterAction(
 	private void spawnOne(SpellContext ctx, Vec3 spawnPos, Vec3 vel, Vec3 baseDir) {
 		var holder = ctx.holder();
 		var shooterSpell = new DataDrivenShooterSpell(body);
-		var data = new ShooterData(health, damage, lifetime);
+		var data = new ShooterData(health, damage, Math.max(1, lifetime));
 		var entity = holder.prepareShooter(data, shooterSpell);
 		entity.inheritDamageFrom(holder);
 		entity.setPos(spawnPos);

@@ -22,6 +22,7 @@ import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.components.MultilineTextField;
 import net.minecraft.client.gui.components.Whence;
 import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
@@ -33,6 +34,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
@@ -151,6 +154,9 @@ public class RawJsonDockPanel implements DockPanel {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (editor != null && editor.isFocused() && editor.handleUndoRedoKey(keyCode)) {
+			return true;
+		}
 		if (keyCode == GLFW.GLFW_KEY_ESCAPE && editor != null && editor.isFocused()) {
 			editor.setFocused(false);
 			return true;
@@ -198,7 +204,12 @@ public class RawJsonDockPanel implements DockPanel {
 		editor = new RawJsonEditBox(font, editorX(), editorY(), editorWidth(), editorHeight(),
 				Component.literal("raw_json"), Component.empty());
 		editor.setCharacterLimit(MAX_JSON_LENGTH);
-		editor.setValueListener(this::onJsonChanged);
+		editor.setValueListener(text -> {
+			if (!suppressChange) {
+				editor.recordUserChange(text);
+			}
+			onJsonChanged(text);
+		});
 		editor.visible = currentVisible;
 		if (!currentText.isEmpty()) {
 			setEditorText(currentText);
@@ -323,6 +334,7 @@ public class RawJsonDockPanel implements DockPanel {
 	private void setEditorText(String text) {
 		suppressChange = true;
 		editor.setValue(text);
+		editor.resetUndoHistory(text);
 		suppressChange = false;
 	}
 
@@ -999,12 +1011,99 @@ public class RawJsonDockPanel implements DockPanel {
 
 	private static final class RawJsonEditBox extends MultiLineEditBox {
 
+		private static final int HISTORY_LIMIT = 100;
 		private static final int LINE_HEIGHT = 9;
 		private static final String[] TEXT_FIELD_NAMES = {"textField", "f_238540_"};
+		private final List<String> undoHistory = new ArrayList<>();
+		private final List<String> redoHistory = new ArrayList<>();
+		private String lastHistoryValue = "";
+		private boolean applyingHistory;
 
 		private RawJsonEditBox(Font font, int x, int y, int width, int height,
 							   Component placeholder, Component message) {
 			super(font, x, y, width, height, placeholder, message);
+		}
+
+		@Override
+		public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+			if (handleUndoRedoKey(keyCode)) {
+				return true;
+			}
+			return super.keyPressed(keyCode, scanCode, modifiers);
+		}
+
+		private boolean handleUndoRedoKey(int keyCode) {
+			if (!Screen.hasControlDown()) {
+				return false;
+			}
+			if (keyCode == GLFW.GLFW_KEY_Z && Screen.hasShiftDown()) {
+				return redoEdit();
+			}
+			if (keyCode == GLFW.GLFW_KEY_Z) {
+				return undoEdit();
+			}
+			if (keyCode == GLFW.GLFW_KEY_Y) {
+				return redoEdit();
+			}
+			return false;
+		}
+
+		private void resetUndoHistory(String text) {
+			undoHistory.clear();
+			redoHistory.clear();
+			lastHistoryValue = text == null ? "" : text;
+		}
+
+		private void recordUserChange(String text) {
+			if (applyingHistory) {
+				return;
+			}
+			String next = text == null ? "" : text;
+			if (next.equals(lastHistoryValue)) {
+				return;
+			}
+			undoHistory.add(lastHistoryValue);
+			if (undoHistory.size() > HISTORY_LIMIT) {
+				undoHistory.remove(0);
+			}
+			redoHistory.clear();
+			lastHistoryValue = next;
+		}
+
+		private boolean undoEdit() {
+			if (undoHistory.isEmpty()) {
+				return false;
+			}
+			String current = getValue();
+			String previous = undoHistory.remove(undoHistory.size() - 1);
+			redoHistory.add(current);
+			applyHistoryValue(previous);
+			return true;
+		}
+
+		private boolean redoEdit() {
+			if (redoHistory.isEmpty()) {
+				return false;
+			}
+			String current = getValue();
+			String next = redoHistory.remove(redoHistory.size() - 1);
+			undoHistory.add(current);
+			if (undoHistory.size() > HISTORY_LIMIT) {
+				undoHistory.remove(0);
+			}
+			applyHistoryValue(next);
+			return true;
+		}
+
+		private void applyHistoryValue(String text) {
+			applyingHistory = true;
+			try {
+				setValue(text);
+			} finally {
+				applyingHistory = false;
+			}
+			lastHistoryValue = text == null ? "" : text;
+			highlightRange(lastHistoryValue.length(), lastHistoryValue.length(), true);
 		}
 
 		private void highlightRange(int start, int end, boolean scrollToRange) {

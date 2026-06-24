@@ -1,9 +1,9 @@
 package dev.xkmc.youkaishomecoming.content.spell.definition;
 
+import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
-import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import net.minecraft.world.item.DyeColor;
@@ -12,18 +12,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Provides a DyeColor that can be dynamically resolved at runtime.
- * Similar to NumberProvider but for colors.
- * <p>
- * Supports a shorthand string form for backward compatibility:
- * "white" → Constant(WHITE).
- */
 public interface ColorProvider {
 
-	DyeColor get(SpellContext ctx);
-
-	// --- Registry ---
+	DanmakuColor get(SpellContext ctx);
 
 	Map<String, Codec<? extends ColorProvider>> REGISTRY = new HashMap<>();
 	Map<Class<?>, String> CLASS_TO_TYPE = new HashMap<>();
@@ -33,39 +24,31 @@ public interface ColorProvider {
 		CLASS_TO_TYPE.put(clazz, id);
 	}
 
-	// --- Codec ---
-
-	/**
-	 * Dispatch codec: either a string (shorthand for constant) or {"type": "...", ...}.
-	 */
 	@SuppressWarnings("unchecked")
 	Codec<ColorProvider> CODEC = new Codec<>() {
 		@Override
 		public <T> DataResult<Pair<ColorProvider, T>> decode(DynamicOps<T> ops, T input) {
-			// Try string shorthand first
 			var strResult = Codec.STRING.decode(ops, input);
 			if (strResult.result().isPresent()) {
-				String s = strResult.result().get().getFirst();
-				try {
-					DyeColor c = DyeColor.valueOf(s.toUpperCase());
-					return DataResult.success(Pair.of(new Constant(c), strResult.result().get().getSecond()));
-				} catch (IllegalArgumentException ignored) {}
+				String text = strResult.result().get().getFirst();
+				var parsed = DanmakuColor.parse(text);
+				if (parsed.isPresent()) {
+					return DataResult.success(Pair.of(new Constant(parsed.get()), strResult.result().get().getSecond()));
+				}
 			}
-			// Fall through to typed dispatch
 			return ops.getMap(input)
 					.flatMap(map -> ops.getStringValue(map.get("type"))
 							.flatMap(type -> {
-						var codec = REGISTRY.get(type);
-						if (codec == null) return DataResult.error(() -> "Unknown ColorProvider type: " + type);
-						return ((Codec<ColorProvider>) codec).decode(ops, input);
-					}));
+								var codec = REGISTRY.get(type);
+								if (codec == null) return DataResult.error(() -> "Unknown ColorProvider type: " + type);
+								return ((Codec<ColorProvider>) codec).decode(ops, input);
+							}));
 		}
 
 		@Override
 		public <T> DataResult<T> encode(ColorProvider value, DynamicOps<T> ops, T prefix) {
-			// Shorthand: constant → just the color string
 			if (value instanceof Constant c) {
-				return Codec.STRING.encode(c.color.name().toLowerCase(), ops, prefix);
+				return Codec.STRING.encode(c.color.format(), ops, prefix);
 			}
 			String type = CLASS_TO_TYPE.get(value.getClass());
 			if (type == null) return DataResult.error(() -> "Unknown ColorProvider class: " + value.getClass());
@@ -75,9 +58,6 @@ public interface ColorProvider {
 		}
 	};
 
-	// --- Implementations ---
-
-	// Registration is triggered by class loading of this field
 	boolean _INIT = _doInit();
 
 	private static boolean _doInit() {
@@ -90,86 +70,78 @@ public interface ColorProvider {
 	}
 
 	static ColorProvider constant(DyeColor color) {
+		return new Constant(DanmakuColor.of(color));
+	}
+
+	static ColorProvider constant(DanmakuColor color) {
 		return new Constant(color);
 	}
 
-	/** Fixed color (the most common case). */
-	record Constant(DyeColor color) implements ColorProvider {
+	record Constant(DanmakuColor color) implements ColorProvider {
 		public static final Codec<Constant> CODEC = RecordCodecBuilder.create(i -> i.group(
-				SpellCodecs.DYE_COLOR_CODEC.fieldOf("color").forGetter(Constant::color)
+				DanmakuColor.CODEC.fieldOf("color").forGetter(Constant::color)
 		).apply(i, Constant::new));
 
 		@Override
-		public DyeColor get(SpellContext ctx) {
+		public DanmakuColor get(SpellContext ctx) {
 			return color;
 		}
 	}
 
-	/**
-	 * Select color from a palette by a runtime variable (floor(value) mod palette.size).
-	 * Useful with repeat's indexVariable.
-	 */
-	record ByVariable(String key, List<DyeColor> palette) implements ColorProvider {
+	record ByVariable(String key, List<DanmakuColor> palette) implements ColorProvider {
 		public static final Codec<ByVariable> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.fieldOf("key").forGetter(ByVariable::key),
-				SpellCodecs.DYE_COLOR_CODEC.listOf().fieldOf("palette").forGetter(ByVariable::palette)
+				DanmakuColor.CODEC.listOf().fieldOf("palette").forGetter(ByVariable::palette)
 		).apply(i, ByVariable::new));
 
 		@Override
-		public DyeColor get(SpellContext ctx) {
-			if (palette.isEmpty()) return DyeColor.WHITE;
+		public DanmakuColor get(SpellContext ctx) {
+			if (palette.isEmpty()) return DanmakuColor.WHITE;
 			int index = ((int) Math.floor(ctx.getVariable(key))) % palette.size();
 			if (index < 0) index += palette.size();
 			return palette.get(index);
 		}
 	}
 
-	record Indexed(NumberProvider index, List<DyeColor> palette) implements ColorProvider {
+	record Indexed(NumberProvider index, List<DanmakuColor> palette) implements ColorProvider {
 		public static final Codec<Indexed> CODEC = RecordCodecBuilder.create(i -> i.group(
 				NumberProvider.CODEC.fieldOf("index").forGetter(Indexed::index),
-				SpellCodecs.DYE_COLOR_CODEC.listOf().fieldOf("palette").forGetter(Indexed::palette)
+				DanmakuColor.CODEC.listOf().fieldOf("palette").forGetter(Indexed::palette)
 		).apply(i, Indexed::new));
 
 		@Override
-		public DyeColor get(SpellContext ctx) {
-			if (palette.isEmpty()) return DyeColor.WHITE;
+		public DanmakuColor get(SpellContext ctx) {
+			if (palette.isEmpty()) return DanmakuColor.WHITE;
 			int id = ((int) Math.floor(index.get(ctx))) % palette.size();
 			if (id < 0) id += palette.size();
 			return palette.get(id);
 		}
 	}
 
-	/**
-	 * Cycle through a palette based on phase tick.
-	 * Color changes every 'interval' ticks.
-	 */
-	record Cycle(List<DyeColor> palette, int interval) implements ColorProvider {
+	record Cycle(List<DanmakuColor> palette, int interval) implements ColorProvider {
 		public static final Codec<Cycle> CODEC = RecordCodecBuilder.create(i -> i.group(
-				SpellCodecs.DYE_COLOR_CODEC.listOf().fieldOf("palette").forGetter(Cycle::palette),
+				DanmakuColor.CODEC.listOf().fieldOf("palette").forGetter(Cycle::palette),
 				Codec.INT.optionalFieldOf("interval", 1).forGetter(Cycle::interval)
 		).apply(i, Cycle::new));
 
 		@Override
-		public DyeColor get(SpellContext ctx) {
-			if (palette.isEmpty()) return DyeColor.WHITE;
+		public DanmakuColor get(SpellContext ctx) {
+			if (palette.isEmpty()) return DanmakuColor.WHITE;
 			int idx = (ctx.phaseTick() / Math.max(1, interval)) % palette.size();
 			return palette.get(idx);
 		}
 	}
 
-	/**
-	 * Randomly picks one color from the palette each time it's evaluated.
-	 * Useful for per-entity random coloring (e.g. each shooter gets a random color).
-	 */
-	record RandomChoice(List<DyeColor> palette) implements ColorProvider {
+	record RandomChoice(List<DanmakuColor> palette) implements ColorProvider {
 		public static final Codec<RandomChoice> CODEC = RecordCodecBuilder.create(i -> i.group(
-				SpellCodecs.DYE_COLOR_CODEC.listOf().fieldOf("palette").forGetter(RandomChoice::palette)
+				DanmakuColor.CODEC.listOf().fieldOf("palette").forGetter(RandomChoice::palette)
 		).apply(i, RandomChoice::new));
 
 		@Override
-		public DyeColor get(SpellContext ctx) {
-			if (palette.isEmpty()) return DyeColor.WHITE;
+		public DanmakuColor get(SpellContext ctx) {
+			if (palette.isEmpty()) return DanmakuColor.WHITE;
 			return palette.get(ctx.holder().random().nextInt(palette.size()));
 		}
 	}
+
 }

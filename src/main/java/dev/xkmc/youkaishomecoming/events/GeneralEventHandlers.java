@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.events;
 
 import dev.xkmc.l2library.init.events.GeneralEventHandler;
+import dev.xkmc.fastprojectileapi.spellcircle.EntitySpellCircleManager;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.block.variants.LeftClickBlock;
 import dev.xkmc.youkaishomecoming.content.capability.FrogGodCapability;
@@ -19,6 +20,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import dev.xkmc.youkaishomecoming.init.registrate.YHItems;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -62,6 +64,14 @@ public class GeneralEventHandlers {
 		var e = event.player;
 		if (e.hasEffect(YHEffects.FAIRY.get()) && CuriosManager.hasAnyWings(e)) {
 			FlyingToken.tickFlying(e);
+		}
+	}
+
+	@SubscribeEvent
+	public static void onLevelTick(TickEvent.LevelTickEvent event) {
+		if (event.phase != TickEvent.Phase.END || event.level.isClientSide()) return;
+		if (event.level instanceof ServerLevel level) {
+			EntitySpellCircleManager.tickServerLevel(level);
 		}
 	}
 
@@ -145,6 +155,9 @@ public class GeneralEventHandlers {
 	public static void startTracking(PlayerEvent.StartTracking event) {
 		if (event.getTarget() instanceof Frog frog) {
 			FrogGodCapability.startTracking(frog, event.getEntity());
+		}
+		if (event.getEntity() instanceof ServerPlayer player) {
+			EntitySpellCircleManager.syncToPlayer(event.getTarget(), player);
 		}
 	}
 

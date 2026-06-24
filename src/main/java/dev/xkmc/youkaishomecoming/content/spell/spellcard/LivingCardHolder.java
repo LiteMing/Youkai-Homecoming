@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -56,10 +57,11 @@ public interface LivingCardHolder extends CardHolder {
 	}
 
 	@Override
-	default ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DyeColor color) {
+	default ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DanmakuColor color) {
 		ItemDanmakuEntity danmaku = new ItemDanmakuEntity(YHEntities.ITEM_DANMAKU.get(), shooter(), self().level());
 		danmaku.setPos(center());
-		danmaku.setItem(type.get(color).asStack());
+		danmaku.setItem(type.stack(color));
+		danmaku.setTint(color.argb());
 		danmaku.setup(getDamage(type),
 				life, true, true, vec);
 		return danmaku;

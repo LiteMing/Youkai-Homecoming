@@ -40,7 +40,7 @@ public record CrossProjectileType(ResourceLocation tex, DisplayType display)
         pose.mulPose(Axis.YP.rotationDegrees(-Mth.lerp(pTick, e.yRotO, e.getYRot())));
         pose.mulPose(Axis.XP.rotationDegrees(Mth.lerp(pTick, e.xRotO, e.getXRot())));
 
-        int col = DanmakuRenderStates.fading(display, -1, r, e);
+        int col = DanmakuRenderStates.fading(display, r.color(e, pTick), r, e);
 
         // First plane (vertical)
         Matrix4f m4a = new Matrix4f(pose.last().pose());

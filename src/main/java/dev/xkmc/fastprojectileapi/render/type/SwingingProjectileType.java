@@ -61,7 +61,7 @@ public record SwingingProjectileType(ResourceLocation tex, DisplayType display, 
         // Apply size scale
         pose.scale(size, size, size);
 
-        int col = DanmakuRenderStates.fading(display, -1, r, e);
+        int col = DanmakuRenderStates.fading(display, r.color(e, pTick), r, e);
         Matrix4f m4 = new Matrix4f(pose.last().pose());
         holder.accept(new Ins(m4, col));
     }

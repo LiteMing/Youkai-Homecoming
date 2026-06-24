@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColorAnimation;
 import dev.xkmc.youkaishomecoming.content.spell.definition.EntityNumberProviderEvaluator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
@@ -14,6 +15,7 @@ import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ItemSupplier;
@@ -62,6 +64,20 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public ItemStack stack = ItemStack.EMPTY;
 	@SerialClass.SerialField
 	public float visualScale = 1;
+	@SerialClass.SerialField
+	private int tint = 0xffffffff;
+	@SerialClass.SerialField
+	private int colorAnimationMode = DanmakuColorAnimation.Resolved.NONE;
+	@SerialClass.SerialField
+	private float colorAnimationPeriod = 120;
+	@SerialClass.SerialField
+	private float colorAnimationHueOffset = 0;
+	@SerialClass.SerialField
+	private float colorAnimationSaturation = 1;
+	@SerialClass.SerialField
+	private float colorAnimationBrightness = 1;
+	@SerialClass.SerialField
+	private float colorAnimationAlpha = 1;
 	public NumberProvider visualScaleFunction = null;
 
 	private static final float VISUAL_SCALE_EPSILON = 1.0E-4f;
@@ -87,8 +103,39 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 
 	public void setItem(ItemStack pStack) {
 		stack = pStack.copyWithCount(1);
+		if (stack.getItem() instanceof DanmakuItem) {
+			tint = DanmakuItem.getColor(stack).argb();
+		}
 		sizeCache = null;
 		refreshDimensions();
+	}
+
+	public void setTint(int tint) {
+		this.tint = tint;
+	}
+
+	public int getTint() {
+		return tint;
+	}
+
+	public void configureColorAnimation(DanmakuColorAnimation.Resolved animation) {
+		colorAnimationMode = animation.mode();
+		colorAnimationPeriod = Math.max(1.0e-3f, animation.period());
+		colorAnimationHueOffset = animation.hueOffset();
+		colorAnimationSaturation = Mth.clamp(animation.saturation(), 0, 1);
+		colorAnimationBrightness = Mth.clamp(animation.brightness(), 0, 1);
+		colorAnimationAlpha = Mth.clamp(animation.alpha(), 0, 1);
+	}
+
+	public int getRenderTint(float pTick) {
+		if (colorAnimationMode == DanmakuColorAnimation.Resolved.HUE_CYCLE) {
+			float hue = colorAnimationHueOffset + (tickCount + pTick) / colorAnimationPeriod;
+			hue -= Mth.floor(hue);
+			int rgb = Mth.hsvToRgb(hue, colorAnimationSaturation, colorAnimationBrightness) & 0xffffff;
+			int alpha = Mth.clamp((int) (colorAnimationAlpha * 255), 0, 255);
+			return alpha << 24 | rgb;
+		}
+		return tint;
 	}
 
 	public void configureVisualScale(float scale, NumberProvider function) {
@@ -246,7 +293,7 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public void poof() {
 		if (!level().isClientSide()) return;
 		if (!(getItem().getItem() instanceof DanmakuItem item)) return;
-		int col = item.color.getTextColor();
+		int col = getRenderTint(0) & 0xffffff;
 		var pos = position().add(0, getBbHeight() / 2, 0);
 		DanmakuParticleHelper.ball(level(), pos, col, getBbWidth() / 2, random);
 	}

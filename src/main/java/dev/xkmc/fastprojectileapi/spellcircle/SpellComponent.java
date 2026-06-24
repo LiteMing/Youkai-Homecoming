@@ -1,16 +1,25 @@
 package dev.xkmc.fastprojectileapi.spellcircle;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @SerialClass
@@ -25,6 +34,9 @@ public class SpellComponent {
 	public ArrayList<Stroke> strokes = new ArrayList<>();
 
 	@SerialClass.SerialField
+	public ArrayList<ItemLayer> items = new ArrayList<>();
+
+	@SerialClass.SerialField
 	public ArrayList<Layer> layers = new ArrayList<>();
 
 	@OnlyIn(Dist.CLIENT)
@@ -33,10 +45,34 @@ public class SpellComponent {
 		for (Stroke stroke : strokes) {
 			stroke.render(handle);
 		}
+		for (ItemLayer item : items) {
+			item.render(handle);
+		}
 		for (Layer layer : layers) {
 			layer.render(handle);
 		}
 		handle.matrix.popPose();
+	}
+
+	public void invalidateCache() {
+		if (strokes == null) {
+			strokes = new ArrayList<>();
+		}
+		if (items == null) {
+			items = new ArrayList<>();
+		}
+		if (layers == null) {
+			layers = new ArrayList<>();
+		}
+		for (Layer layer : layers) {
+			if (layer.children == null) {
+				layer.children = new ArrayList<>();
+			}
+			layer._children = null;
+		}
+		for (ItemLayer item : items) {
+			item.invalidateCache();
+		}
 	}
 
 	@SerialClass
@@ -122,7 +158,7 @@ public class SpellComponent {
 		@SerialClass.SerialField
 		public ArrayList<String> children = new ArrayList<>();
 
-		private List<SpellComponent> _children;
+		private transient List<SpellComponent> _children;
 
 		@Nullable
 		@SerialClass.SerialField
@@ -130,9 +166,11 @@ public class SpellComponent {
 
 		@OnlyIn(Dist.CLIENT)
 		public void render(RenderHandle handle) {
+			if (children == null || children.isEmpty()) {
+				return;
+			}
 			if (_children == null) {
 				_children = children.stream().map(SpellComponent::getFromConfig).collect(Collectors.toList());
-				return;
 			}
 			int n = _children.size();
 			float z = get(z_offset, handle, 0);
@@ -147,6 +185,10 @@ public class SpellComponent {
 			handle.matrix.translate(0, 0, z);
 			handle.matrix.scale(s, s, s);
 			for (SpellComponent child : _children) {
+				if (child == null) {
+					a += 360f / n;
+					continue;
+				}
 				handle.matrix.pushPose();
 				handle.matrix.mulPose(Axis.ZP.rotationDegrees(a));
 				handle.matrix.translate(r, 0, 0);
@@ -166,19 +208,88 @@ public class SpellComponent {
 
 	}
 
+	@SerialClass
+	public static class ItemLayer {
+
+		@SerialClass.SerialField
+		public String item = "minecraft:air";
+
+		@Nullable
+		@SerialClass.SerialField
+		public Value x_offset, y_offset, z_offset, scale, rotation, alpha;
+
+		@Nullable
+		private transient String _item;
+
+		private transient ItemStack _stack = ItemStack.EMPTY;
+
+		@OnlyIn(Dist.CLIENT)
+		public void render(RenderHandle handle) {
+			ItemStack stack = getStack();
+			if (stack.isEmpty()) {
+				return;
+			}
+			float x = get(x_offset, handle, 0);
+			float y = get(y_offset, handle, 0);
+			float z = get(z_offset, handle, 0);
+			float s = get(scale, handle, 16);
+			if (s <= 0) {
+				return;
+			}
+			float a = handle.alpha * get(alpha, handle, 1);
+			if (a <= 0) {
+				return;
+			}
+			handle.matrix.pushPose();
+			handle.matrix.translate(x, y, z);
+			handle.matrix.mulPose(Axis.ZP.rotationDegrees(get(rotation, handle, 0)));
+			handle.matrix.scale(s, -s, s);
+			RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, Math.min(1.0f, a));
+			Minecraft mc = Minecraft.getInstance();
+			mc.getItemRenderer().renderStatic(stack, ItemDisplayContext.GUI, handle.light,
+					OverlayTexture.NO_OVERLAY, handle.matrix, handle.buffer, mc.level, 0);
+			RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+			handle.matrix.popPose();
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private ItemStack getStack() {
+			if (!Objects.equals(_item, item)) {
+				_item = item;
+				ResourceLocation id = ResourceLocation.tryParse(item);
+				_stack = id == null ? ItemStack.EMPTY :
+						BuiltInRegistries.ITEM.getOptional(id).map(ItemStack::new).orElse(ItemStack.EMPTY);
+			}
+			return _stack;
+		}
+
+		public void invalidateCache() {
+			_item = null;
+			_stack = ItemStack.EMPTY;
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private float get(@Nullable Value val, RenderHandle handle, float def) {
+			return val == null ? def : val.get(handle.tick);
+		}
+
+	}
+
 
 	@OnlyIn(Dist.CLIENT)
 	public static class RenderHandle {
 
 		public final PoseStack matrix;
+		public final MultiBufferSource buffer;
 		public final VertexConsumer builder;
 		public final float tick;
 		public final int light;
 
 		public float alpha = 1;
 
-		public RenderHandle(PoseStack matrix, VertexConsumer builder, float tick, int light) {
+		public RenderHandle(PoseStack matrix, MultiBufferSource buffer, VertexConsumer builder, float tick, int light) {
 			this.matrix = matrix;
+			this.buffer = buffer;
 			this.builder = builder;
 			this.tick = tick;
 			this.light = light;

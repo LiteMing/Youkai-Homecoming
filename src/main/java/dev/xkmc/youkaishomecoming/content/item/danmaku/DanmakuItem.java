@@ -14,6 +14,7 @@ import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
@@ -46,6 +47,8 @@ import java.util.List;
 
 public class DanmakuItem extends Item {
 
+	public static final String COLOR_TAG = "DanmakuColor";
+
 	// Track all instances for render cache reset (dev hotswap support)
 	private static final List<WeakReference<DanmakuItem>> ALL_INSTANCES = new ArrayList<>();
 
@@ -75,6 +78,21 @@ public class DanmakuItem extends Item {
 		ALL_INSTANCES.add(new WeakReference<>(this));
 	}
 
+	public static ItemStack withColor(ItemStack stack, DanmakuColor color) {
+		stack.getOrCreateTag().putInt(COLOR_TAG, color.argb());
+		return stack;
+	}
+
+	public static DanmakuColor getColor(ItemStack stack) {
+		if (stack.hasTag() && stack.getTag().contains(COLOR_TAG)) {
+			return new DanmakuColor(stack.getTag().getInt(COLOR_TAG));
+		}
+		if (stack.getItem() instanceof DanmakuItem item) {
+			return DanmakuColor.of(item.color);
+		}
+		return DanmakuColor.WHITE;
+	}
+
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
 		if (GrazeHelper.forbidDanmaku(player))
@@ -85,6 +103,7 @@ public class DanmakuItem extends Item {
 		if (!level.isClientSide) {
 			ItemDanmakuEntity danmaku = new ItemDanmakuEntity(YHEntities.ITEM_DANMAKU.get(), player, level);
 			danmaku.setItem(stack);
+			danmaku.setTint(getColor(stack).argb());
 			danmaku.setup(type.damage(), 40, false, type.bypass(),
 					RayTraceUtil.getRayTerm(Vec3.ZERO, player.getXRot(), player.getYRot(), 2));
 			level.addFreshEntity(danmaku);
@@ -123,13 +142,7 @@ public class DanmakuItem extends Item {
 
 	public ProjTypeHolder<? extends RenderableProjectileType<?, ?>, ?> getTypeForRender() {
 		if (render == null) {
-			// For special bullets, use specific texture names instead of color names
-			String textureName = switch (type) {
-				case ROSE -> "rose";
-				case MOON -> "moon";
-				case GIANT_YINYANG -> color.getName(); // red or blue
-				default -> color.getName();
-			};
+			String textureName = type.textureName(color);
 			var loc = YoukaisHomecoming
 					.loc("textures/entities/bullet/" + type.getName() + "/" + textureName + ".png");
 			RenderableProjectileType<?, ?> r = switch (type) {

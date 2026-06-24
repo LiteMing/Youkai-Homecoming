@@ -34,6 +34,7 @@ public class SpellRuntime {
 	private int phaseTick;
 	private int totalTick;
 	private int hitCount;
+	private boolean enteredCurrentPhase;
 	private final Map<String, Double> variables = new HashMap<>();
 	private final List<ScheduledAction> scheduledActions = new ArrayList<>();
 	private final List<ChildRuntime> childRuntimes = new ArrayList<>();
@@ -127,6 +128,14 @@ public class SpellRuntime {
 		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 		SpellContext ctx = new SpellContext(holder, definition, this, diff);
+		if (!enteredCurrentPhase) {
+			enteredCurrentPhase = true;
+			for (SpellAction action : phase.onEnter) {
+				action.execute(ctx);
+			}
+			phase = definition.getPhase(currentPhaseId);
+			if (phase == null) return;
+		}
 
 		// Execute tick actions
 		for (int i = 0; i < phase.onTick.size(); i++) {
@@ -196,6 +205,7 @@ public class SpellRuntime {
 		phaseTick = 0;
 		totalTick = 0;
 		hitCount = 0;
+		enteredCurrentPhase = false;
 		targetFlyTime = 0;
 		hurtCooldownRemaining = 0;
 		variables.clear();
@@ -257,6 +267,7 @@ public class SpellRuntime {
 
 		currentPhaseId = targetPhase;
 		phaseTick = 0;
+		enteredCurrentPhase = false;
 		scheduledActions.clear();
 
 		PhaseDefinition newPhase = definition.getPhase(currentPhaseId);
@@ -264,6 +275,7 @@ public class SpellRuntime {
 			for (SpellAction action : newPhase.onEnter) {
 				action.execute(ctx);
 			}
+			enteredCurrentPhase = true;
 		}
 		notifyPhaseChange();
 	}
@@ -277,6 +289,7 @@ public class SpellRuntime {
 		phaseTick = 0;
 		totalTick = 0;
 		hitCount = 0;
+		enteredCurrentPhase = false;
 		targetFlyTime = 0;
 		hurtCooldownRemaining = 0;
 		variables.clear();
@@ -286,6 +299,7 @@ public class SpellRuntime {
 		for (SpellAction action : phase.onEnter) {
 			action.execute(ctx);
 		}
+		enteredCurrentPhase = true;
 		notifyPhaseChange();
 	}
 
@@ -315,6 +329,7 @@ public class SpellRuntime {
 		runtime.phaseTick = 0;
 		runtime.totalTick = 0;
 		runtime.hitCount = 0;
+		runtime.enteredCurrentPhase = false;
 		runtime.targetFlyTime = 0;
 		runtime.hurtCooldownRemaining = 0;
 		runtime.variables.clear();
@@ -328,6 +343,7 @@ public class SpellRuntime {
 		for (SpellAction action : phase.onEnter) {
 			action.execute(ctx);
 		}
+		runtime.enteredCurrentPhase = true;
 		runtime.notifyPhaseChange();
 		childRuntimes.add(new ChildRuntime(runtime, duration));
 	}
@@ -421,6 +437,7 @@ public class SpellRuntime {
 		tag.putInt("PhaseTick", phaseTick);
 		tag.putInt("TotalTick", totalTick);
 		tag.putInt("HitCount", hitCount);
+		tag.putBoolean("EnteredCurrentPhase", enteredCurrentPhase);
 		if (!variables.isEmpty()) {
 			var varsTag = new net.minecraft.nbt.CompoundTag();
 			for (var entry : variables.entrySet()) {
@@ -442,6 +459,8 @@ public class SpellRuntime {
 			this.phaseTick = tag.getInt("PhaseTick");
 			this.totalTick = tag.getInt("TotalTick");
 			this.hitCount = tag.getInt("HitCount");
+			this.enteredCurrentPhase = tag.contains("EnteredCurrentPhase") ?
+					tag.getBoolean("EnteredCurrentPhase") : true;
 			if (tag.contains("Variables")) {
 				var varsTag = tag.getCompound("Variables");
 				for (String key : varsTag.getAllKeys()) {

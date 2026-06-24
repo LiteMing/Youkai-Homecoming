@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.events;
 import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
+import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -11,6 +12,8 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.fastprojectileapi.entity.ParallelTicker;
+import dev.xkmc.fastprojectileapi.spellcircle.CustomSpellCircleStorage;
+import dev.xkmc.fastprojectileapi.spellcircle.EntitySpellCircleManager;
 import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
 import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
@@ -66,6 +69,16 @@ public class YHCommands {
 					builder);
 	private static final SuggestionProvider<CommandSourceStack> SPELL_TEMPLATE_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(SpellTemplates.names(), builder);
+	private static final SuggestionProvider<CommandSourceStack> SPELL_CIRCLE_SUGGESTIONS = (ctx, builder) -> {
+		java.util.List<ResourceLocation> ids = new java.util.ArrayList<>();
+		for (String key : YoukaisHomecoming.SPELL.getMerged().map.keySet()) {
+			ResourceLocation id = ResourceLocation.tryParse(key);
+			if (id != null) {
+				ids.add(id);
+			}
+		}
+		return SharedSuggestionProvider.suggestResource(ids, builder);
+	};
 	private static final SuggestionProvider<CommandSourceStack> STG_MODE_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(StgCombatMode.commandNames(), builder);
 	private static final SuggestionProvider<CommandSourceStack> STG_RESOURCE_SUGGESTIONS = (ctx, builder) ->
@@ -75,6 +88,7 @@ public class YHCommands {
 	@SubscribeEvent
 	public static void onServerStarted(ServerStartedEvent event) {
 		CustomSpellStorage.loadAllIntoRegistry(event.getServer());
+		CustomSpellCircleStorage.loadAllIntoConfig(event.getServer());
 	}
 
 	@SubscribeEvent
@@ -216,6 +230,15 @@ public class YHCommands {
 		// /yhspell commands
 		event.getDispatcher().register(literal("yhspell")
 				.requires(e -> e.hasPermission(2))
+				.then(literal("circle")
+						.then(circleSetCommand("set"))
+						.then(circleSetCommand("on"))
+						.then(literal("off")
+								.then(argument("targets", EntityArgument.entities())
+										.executes(YHCommands::hideCircleTargets)))
+						.then(literal("clear")
+								.then(argument("targets", EntityArgument.entities())
+										.executes(YHCommands::clearCircleTargets))))
 				.then(literal("stop")
 						.then(argument("targets", EntityArgument.entities())
 								.executes(ctx -> stopSpellTargets(ctx, DEFAULT_SPELL_STOP_RADIUS))
@@ -605,6 +628,56 @@ public class YHCommands {
 
 	protected static <T> RequiredArgumentBuilder<CommandSourceStack, T> argument(String name, ArgumentType<T> type) {
 		return RequiredArgumentBuilder.argument(name, type);
+	}
+
+	private static LiteralArgumentBuilder<CommandSourceStack> circleSetCommand(String name) {
+		return literal(name)
+				.then(argument("targets", EntityArgument.entities())
+						.then(argument("circle_id", ResourceLocationArgument.id())
+								.suggests(SPELL_CIRCLE_SUGGESTIONS)
+								.executes(ctx -> setCircleTargets(ctx, 1.0f))
+								.then(argument("size", FloatArgumentType.floatArg(0.0f, 64.0f))
+										.executes(ctx -> setCircleTargets(ctx,
+												FloatArgumentType.getFloat(ctx, "size"))))));
+	}
+
+	private static int setCircleTargets(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx,
+										float size)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var targets = EntityArgument.getEntities(ctx, "targets");
+		ResourceLocation circle = ResourceLocationArgument.getId(ctx, "circle_id");
+		if (!YoukaisHomecoming.SPELL.getMerged().map.containsKey(circle.toString())) {
+			ctx.getSource().sendFailure(Component.literal("Unknown spell circle: " + circle));
+			return 0;
+		}
+		for (Entity entity : targets) {
+			EntitySpellCircleManager.setOverride(entity, circle, size);
+		}
+		ctx.getSource().sendSuccess(() -> Component.literal("Set spell circle " + circle +
+				" on " + targets.size() + " entities"), true);
+		return targets.size();
+	}
+
+	private static int hideCircleTargets(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var targets = EntityArgument.getEntities(ctx, "targets");
+		for (Entity entity : targets) {
+			EntitySpellCircleManager.setHidden(entity);
+		}
+		ctx.getSource().sendSuccess(() -> Component.literal("Hidden spell circle on " +
+				targets.size() + " entities"), true);
+		return targets.size();
+	}
+
+	private static int clearCircleTargets(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var targets = EntityArgument.getEntities(ctx, "targets");
+		for (Entity entity : targets) {
+			EntitySpellCircleManager.clearOverride(entity);
+		}
+		ctx.getSource().sendSuccess(() -> Component.literal("Cleared spell circle override on " +
+				targets.size() + " entities"), true);
+		return targets.size();
 	}
 
 	private static int stopSpellTargets(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx,

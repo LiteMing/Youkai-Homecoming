@@ -54,6 +54,11 @@ public class SmallFairy extends FairyEntity implements IHasPowerPoint {
 	}
 
 	@Override
+	public boolean shouldShowSpellCircle() {
+		return false;
+	}
+
+	@Override
 	protected boolean shouldDespawnInPeaceful() {
 		return true;
 	}

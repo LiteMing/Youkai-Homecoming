@@ -21,7 +21,7 @@ public class PatternEmitter {
 
 	@FunctionalInterface
 	public interface Sink {
-		void emit(Vec3 velocity, Vec3 baseDirection);
+		void emit(Vec3 velocity, Vec3 baseDirection, int spawnIndex);
 	}
 
 	public static void emit(SpellContext ctx, Vec3 originPos, Settings settings, Sink sink) {
@@ -72,6 +72,7 @@ public class PatternEmitter {
 			double innerSpread = elevDeg != 0 ? elevDeg : 360.0;
 			boolean innerClosed = Math.abs(innerSpread) >= 360.0;
 			double tilt = settings.tiltAngle().isPresent() ? settings.tiltAngle().get().get(ctx) : 0;
+			int index = 0;
 			for (int o = 0; o < outer; o++) {
 				double outerAngle = (360.0 / outer) * o + angle;
 				Vec3 outerDir = ori.rotateDegrees(outerAngle);
@@ -91,7 +92,7 @@ public class PatternEmitter {
 				for (int j = 0; j < n; j++) {
 					double innerAngle = innerClosed ? (360.0 / Math.max(n, 1)) * j :
 							n > 1 ? -innerSpread / 2.0 + innerSpread * j / (n - 1) : 0;
-					sink.emit(innerOri.rotateDegrees(0, innerAngle).scale(spd), baseDir);
+					sink.emit(innerOri.rotateDegrees(0, innerAngle).scale(spd), baseDir, index++);
 				}
 			}
 			return;
@@ -101,11 +102,12 @@ public class PatternEmitter {
 			int rows = n;
 			int cols = settings.outerCount().map(np -> (int) np.get(ctx)).orElse(n);
 			double rowSpread = spreadDeg;
+			int index = 0;
 			for (int r = 0; r < rows; r++) {
 				double rowAngle = rows > 1 ? rowSpread * (r - (rows - 1) / 2.0) / (rows - 1) : 0;
 				for (int c = 0; c < cols; c++) {
 					double colAngle = cols > 1 ? rowSpread * (c - (cols - 1) / 2.0) / (cols - 1) : 0;
-					sink.emit(ori.rotateDegrees(angle + colAngle, rowAngle).scale(spd), baseDir);
+					sink.emit(ori.rotateDegrees(angle + colAngle, rowAngle).scale(spd), baseDir, index++);
 				}
 			}
 			return;
@@ -145,7 +147,7 @@ public class PatternEmitter {
 				if (lonRange < 360.0) {
 					theta = angle - lonRange / 2.0 + (goldenAngle * i) % lonRange;
 				}
-				sink.emit(ori.rotateDegrees(theta, phi).scale(spd), baseDir);
+				sink.emit(ori.rotateDegrees(theta, phi).scale(spd), baseDir, i);
 			}
 			return;
 		}
@@ -160,7 +162,7 @@ public class PatternEmitter {
 				double sinPhi = sinLatMin + (sinLatMax - sinLatMin) * rand.nextDouble();
 				double phi = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinPhi))));
 				double theta = angle - lonRange / 2.0 + lonRange * rand.nextDouble();
-				sink.emit(ori.rotateDegrees(theta, phi).scale(spd), baseDir);
+				sink.emit(ori.rotateDegrees(theta, phi).scale(spd), baseDir, i);
 			}
 			return;
 		}
@@ -169,7 +171,7 @@ public class PatternEmitter {
 			for (int i = 0; i < n; i++) {
 				double t = n > 1 ? (double) i / (n - 1) : 0;
 				double a = angle + spreadDeg * t;
-				sink.emit(ori.rotateDegrees(a).scale(spd * (0.3 + 0.7 * t)), baseDir);
+				sink.emit(ori.rotateDegrees(a).scale(spd * (0.3 + 0.7 * t)), baseDir, i);
 			}
 			return;
 		}
@@ -181,7 +183,7 @@ public class PatternEmitter {
 			for (int i = 0; i < n; i++) {
 				double a = Math.toRadians(angle + (360.0 / n) * i);
 				Vec3 radial = ori.normal().scale(Math.cos(a)).add(ori.side().scale(Math.sin(a)));
-				sink.emit(ori.forward().scale(sinCone).add(radial.scale(cosCone)).scale(spd), baseDir);
+				sink.emit(ori.forward().scale(sinCone).add(radial.scale(cosCone)).scale(spd), baseDir, i);
 			}
 			return;
 		}
@@ -207,7 +209,7 @@ public class PatternEmitter {
 				default -> {
 				}
 			}
-			sink.emit(ori.rotateDegrees(a, v).scale(spd), baseDir);
+			sink.emit(ori.rotateDegrees(a, v).scale(spd), baseDir, i);
 		}
 	}
 

@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.init;
 import com.github.tartaricacid.touhoulittlemaid.TouhouLittleMaid;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
+import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMRenderHandler;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMCompatConfig;
@@ -16,14 +17,19 @@ import dev.xkmc.youkaishomecoming.content.entity.animal.deer.DeerModelData;
 import dev.xkmc.youkaishomecoming.content.entity.animal.lampery.LampreyModel;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaModel;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuPoofParticle;
+import dev.xkmc.youkaishomecoming.content.entity.fairy.CirnoRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.CirnoModel;
+import dev.xkmc.youkaishomecoming.content.entity.reimu.ReimuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.reimu.ReimuModel;
+import dev.xkmc.youkaishomecoming.content.entity.rumia.RumiaRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.BlackBallModel;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RumiaModel;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiRenderer;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem;
 import dev.xkmc.youkaishomecoming.content.item.fluid.BottleTexture;
 import dev.xkmc.youkaishomecoming.content.item.fluid.BottledDrinkSet;
 import dev.xkmc.youkaishomecoming.content.item.fluid.SlipBottleItem;
+import dev.xkmc.youkaishomecoming.content.spell.client.SpellTitleOverlay;
 import dev.xkmc.youkaishomecoming.content.pot.overlay.HintOverlay;
 import dev.xkmc.youkaishomecoming.content.pot.overlay.TileClientTooltip;
 import dev.xkmc.youkaishomecoming.content.pot.overlay.TileInfoDisplay;
@@ -86,9 +92,14 @@ public class YHClient {
 					(stack, level, user, index) -> SlipBottleItem.texture(stack));
 			ItemProperties.register(YHItems.SAKE_BOTTLE.get(), YoukaisHomecoming.loc("bottle"),
 					(stack, level, user, index) -> BottleTexture.texture(stack));
-			for (var e : YHDanmaku.Bullet.values())
-				for (var d : DyeColor.values())
-					e.get(d).get().getTypeForRender();
+			for (var e : YHDanmaku.Bullet.values()) {
+				if (e.usesDyeTextures()) {
+					for (var d : DyeColor.values())
+						e.get(d).get().getTypeForRender();
+				} else {
+					e.item().get().getTypeForRender();
+				}
+			}
 			for (var e : YHDanmaku.Laser.values())
 				for (var d : DyeColor.values())
 					e.get(d).get().getTypeForRender();
@@ -100,10 +111,16 @@ public class YHClient {
 	@SubscribeEvent
 	public static void registerItemDeco(RegisterItemDecorationsEvent event) {
 		var deco = new DanmakuItemDeco();
-		for (var col : DyeColor.values()) {
-			for (var e : YHDanmaku.Bullet.values()) {
-				event.register(e.get(col), deco);
+		for (var e : YHDanmaku.Bullet.values()) {
+			if (e.usesDyeTextures()) {
+				for (var col : DyeColor.values()) {
+					event.register(e.get(col), deco);
+				}
+			} else {
+				event.register(e.item(), deco);
 			}
+		}
+		for (var col : DyeColor.values()) {
 			for (var e : YHDanmaku.Laser.values()) {
 				event.register(e.get(col), deco);
 			}
@@ -126,6 +143,7 @@ public class YHClient {
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "cuisine_hint", new HintOverlay());
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "power_info", new PowerInfoOverlay());
 		event.registerAbove(VanillaGuiOverlay.BOSS_EVENT_PROGRESS.id(), "pvp_danmaku_status", new PvpDanmakuStatusOverlay());
+		event.registerAbove(VanillaGuiOverlay.BOSS_EVENT_PROGRESS.id(), "spell_title", new SpellTitleOverlay());
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "ysm_debug", YSMClientCompat::renderDebugOverlay);
 	}
 
@@ -190,17 +208,37 @@ public class YHClient {
 		Map<String, EntityRenderer<? extends Player>> skinMap = renderManager.getSkinMap();
 		for (EntityRenderer<? extends Player> renderer : skinMap.values()) {
 			if (renderer instanceof LivingEntityRenderer ler) {
-				addLayer(renderManager, ler);
+				addSpellCircleLayer(renderer, ler);
+				if (ler.getModel() instanceof HumanoidModel<?>) {
+					addHumanoidLayers(ler);
+				}
 			}
 		}
 		renderManager.renderers.forEach((e, r) -> {
-			if (r instanceof LivingEntityRenderer ler && ler.getModel() instanceof HumanoidModel<?>) {
-				addLayer(renderManager, ler);
+			if (r instanceof LivingEntityRenderer ler) {
+				addSpellCircleLayer(r, ler);
+				if (ler.getModel() instanceof HumanoidModel<?>) {
+					addHumanoidLayers(ler);
+				}
 			}
 		});
 	}
 
-	private static <T extends LivingEntity, M extends HumanoidModel<T>> void addLayer(EntityRenderDispatcher manager, LivingEntityRenderer<T, M> ler) {
+	@SuppressWarnings({"rawtypes", "unchecked"})
+	private static void addSpellCircleLayer(EntityRenderer<?> renderer, LivingEntityRenderer ler) {
+		if (!hasDirectSpellCircleRenderer(renderer)) {
+			ler.addLayer(new SpellCircleLayer(ler));
+		}
+	}
+
+	private static boolean hasDirectSpellCircleRenderer(EntityRenderer<?> renderer) {
+		return renderer instanceof GeneralYoukaiRenderer<?> ||
+				renderer instanceof RumiaRenderer ||
+				renderer instanceof ReimuRenderer ||
+				renderer instanceof CirnoRenderer;
+	}
+
+	private static <T extends LivingEntity, M extends HumanoidModel<T>> void addHumanoidLayers(LivingEntityRenderer<T, M> ler) {
 		var mc = Minecraft.getInstance();
 		ler.addLayer(new CirnoWingsLayer<>(ler, mc.getEntityModels()));
 		ler.addLayer(new CamelliaHeadLayer<>(ler, mc.getEntityModels()));

@@ -37,7 +37,7 @@ public record GiantSphereProjectileType(ResourceLocation tex, DisplayType displa
 		float rot = rotationTicks <= 0 ? 0 : (e.tickCount + pTick) * 360f / rotationTicks;
 		pose.mulPose(Axis.YP.rotationDegrees(rot));
 		pose.mulPose(Axis.XP.rotationDegrees(rot * 0.35f));
-		int col = DanmakuRenderStates.fading(display, -1, r, e);
+		int col = DanmakuRenderStates.fading(display, r.color(e, pTick), r, e);
 		var m4 = new Matrix4f(pose.last().pose());
 		float scale = (float) Math.cbrt(Math.abs(m4.determinant3x3()));
 		int seg = segments(scale);

@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.init.registrate;
 
 import com.mojang.serialization.Codec;
+import com.tterrag.registrate.providers.RegistrateLangProvider;
 import com.tterrag.registrate.util.entry.ItemEntry;
 import com.tterrag.registrate.util.entry.RegistryEntry;
 import dev.xkmc.fastprojectileapi.render.core.DisplayType;
@@ -10,6 +11,7 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.custom.data.HomingSpellFormData;
 import dev.xkmc.youkaishomecoming.content.spell.custom.data.RingSpellFormData;
 import dev.xkmc.youkaishomecoming.content.spell.player.*;
@@ -20,6 +22,7 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Rarity;
 import net.minecraftforge.registries.ForgeRegistries;
 
@@ -39,34 +42,49 @@ public class YHDanmaku {
 		BUTTERFLY(1, 4, DisplayType.TRANSPARENT),
 		SPARK(1, 4, DisplayType.SOLID),
 		STAR(2, 6, DisplayType.TRANSPARENT),
-		// Animated sequence frame bullets
-		ROSE(1, 4, DisplayType.TRANSPARENT),
-		// Swinging 3D bullets
+		ROSE(1, 4, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.FIXED, "rose"),
 		TALISMAN(1.5f, 5, DisplayType.TRANSPARENT),
 		KUNAI(1, 4, DisplayType.SOLID),
-		SCALE(1, 4, DisplayType.TRANSPARENT),
+		SCALE(1, 4, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.TINTED, "white"),
 		KNIFE(1.5f, 5, DisplayType.SOLID),
-		// Large bullets (separate registration, not 16 colors)
-		MOON(8, 16, DisplayType.ADDITIVE),
-		GIANT_YINYANG(8, 14, DisplayType.TRANSPARENT),
+		MOON(8, 16, DisplayType.ADDITIVE, BulletCategory.GIANT, BulletColorMode.FIXED, "moon"),
+		GIANT_YINYANG(8, 14, DisplayType.TRANSPARENT, BulletCategory.GIANT, BulletColorMode.FIXED, "white"),
 		;
 
 		public final String name;
 		public final TagKey<Item> tag;
 		public final float size;
+		public final BulletCategory category;
 		private final int damage;
 		private final DisplayType display;
+		private final BulletColorMode colorMode;
+		private final String fixedTexture;
 
 		Bullet(float size, int damage, DisplayType display) {
+			this(size, damage, display, BulletCategory.NORMAL, BulletColorMode.DYE_TEXTURES, null);
+		}
+
+		Bullet(float size, int damage, DisplayType display, BulletCategory category, BulletColorMode colorMode, String fixedTexture) {
 			this.size = size;
 			this.damage = damage;
 			this.display = display;
+			this.category = category;
+			this.colorMode = colorMode;
+			this.fixedTexture = fixedTexture;
 			name = name().toLowerCase(Locale.ROOT);
 			tag = YHTagGen.item("danmaku/" + name);
 		}
 
 		public ItemEntry<DanmakuItem> get(DyeColor color) {
 			return YHDanmaku.DANMAKU[ordinal()][color.ordinal()];
+		}
+
+		public ItemEntry<DanmakuItem> item() {
+			return YHDanmaku.BASE_DANMAKU[ordinal()];
+		}
+
+		public ItemStack stack(DanmakuColor color) {
+			return DanmakuItem.withColor(item().asStack(), color);
 		}
 
 		public int damage() {
@@ -85,14 +103,26 @@ public class YHDanmaku {
 			return display;
 		}
 
-		/**
-		 * Returns true for bullets that should be registered separately
-		 * based on specific texture files, not all 16 dye colors.
-		 */
-		public boolean isSpecial() {
-			return this == MOON || this == GIANT_YINYANG || this == ROSE;
+		public boolean usesDyeTextures() {
+			return colorMode == BulletColorMode.DYE_TEXTURES;
 		}
 
+		public boolean usesTint() {
+			return colorMode == BulletColorMode.TINTED;
+		}
+
+		public String textureName(DyeColor color) {
+			return colorMode == BulletColorMode.DYE_TEXTURES ? color.getName() : fixedTexture;
+		}
+
+	}
+
+	public enum BulletCategory {
+		NORMAL, GIANT
+	}
+
+	public enum BulletColorMode {
+		DYE_TEXTURES, TINTED, FIXED
 	}
 
 	public enum Laser implements IDanmakuType {
@@ -133,6 +163,7 @@ public class YHDanmaku {
 					e -> e.icon(YHDanmaku.DANMAKU[0][DyeColor.RED.ordinal()]::asStack));
 
 	private static final ItemEntry<DanmakuItem>[][] DANMAKU;
+	private static final ItemEntry<DanmakuItem>[] BASE_DANMAKU;
 
 	private static final ItemEntry<LaserItem>[][] LASER;
 
@@ -150,12 +181,6 @@ public class YHDanmaku {
 	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_RING;
 	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_HOMING;
 	public static final ItemEntry<DynamicSpellItem> DYNAMIC_SPELL;
-
-	// Special bullets (not 16 colors)
-	public static final ItemEntry<DanmakuItem> ROSE_DANMAKU;
-	public static final ItemEntry<DanmakuItem> MOON_DANMAKU;
-	public static final ItemEntry<DanmakuItem> GIANT_YINYANG_RED;
-	public static final ItemEntry<DanmakuItem> GIANT_YINYANG_BLUE;
 
 	static {
 
@@ -265,19 +290,37 @@ public class YHDanmaku {
 		}
 
 		DANMAKU = new ItemEntry[Bullet.values().length][DyeColor.values().length];
+		BASE_DANMAKU = new ItemEntry[Bullet.values().length];
 		for (var t : Bullet.values()) {
-			// Skip special bullets - they are registered separately
-			if (t.isSpecial())
-				continue;
-			for (var e : DyeColor.values()) {
-				var ent = YoukaisHomecoming.REGISTRATE
-						.item(e.getName() + "_" + t.name + "_danmaku",
-								p -> new DanmakuItem(p.rarity(Rarity.RARE), t, e, t.size))
+			if (t.usesDyeTextures()) {
+				for (var e : DyeColor.values()) {
+					var ent = YoukaisHomecoming.REGISTRATE
+							.item(e.getName() + "_" + t.name + "_danmaku",
+									p -> new DanmakuItem(p.rarity(Rarity.RARE), t, e, t.size))
+							.model((ctx, pvd) -> pvd.generated(ctx,
+									pvd.modLoc("item/bullet/" + t.name + "/" + e.getName())))
+							.tag(t.tag)
+							.register();
+					DANMAKU[t.ordinal()][e.ordinal()] = ent;
+				}
+				BASE_DANMAKU[t.ordinal()] = DANMAKU[t.ordinal()][DyeColor.WHITE.ordinal()];
+			} else {
+				var builder = YoukaisHomecoming.REGISTRATE
+						.item(t.name + "_danmaku",
+								p -> new DanmakuItem(p.rarity(t.category == BulletCategory.GIANT ? Rarity.EPIC : Rarity.RARE),
+										t, DyeColor.WHITE, t.size))
 						.model((ctx, pvd) -> pvd.generated(ctx,
-								pvd.modLoc("item/bullet/" + t.name + "/" + e.getName())))
+								pvd.modLoc("item/bullet/" + t.name + "/" + t.textureName(DyeColor.WHITE))))
 						.tag(t.tag)
-						.register();
-				DANMAKU[t.ordinal()][e.ordinal()] = ent;
+						.lang(RegistrateLangProvider.toEnglishName(t.name) + " Danmaku");
+				if (t.usesTint()) {
+					builder.color(() -> () -> (stack, i) -> i == 0 ? DanmakuItem.getColor(stack).argb() : 0xffffffff);
+				}
+				var ent = builder.register();
+				BASE_DANMAKU[t.ordinal()] = ent;
+				for (var e : DyeColor.values()) {
+					DANMAKU[t.ordinal()][e.ordinal()] = ent;
+				}
 			}
 		}
 
@@ -294,55 +337,6 @@ public class YHDanmaku {
 						.register();
 				LASER[t.ordinal()][e.ordinal()] = ent;
 			}
-		}
-
-		// Register special bullets with specific textures
-		ROSE_DANMAKU = YoukaisHomecoming.REGISTRATE
-				.item("rose_danmaku",
-						p -> new DanmakuItem(p.rarity(Rarity.EPIC), Bullet.ROSE, DyeColor.PINK, Bullet.ROSE.size))
-				.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/bullet/rose/rose")))
-				.tag(Bullet.ROSE.tag)
-				.register();
-
-		MOON_DANMAKU = YoukaisHomecoming.REGISTRATE
-				.item("moon_danmaku",
-						p -> new DanmakuItem(p.rarity(Rarity.EPIC), Bullet.MOON, DyeColor.YELLOW, Bullet.MOON.size))
-				.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/bullet/moon/moon")))
-				.tag(Bullet.MOON.tag)
-				.register();
-
-		GIANT_YINYANG_RED = YoukaisHomecoming.REGISTRATE
-				.item("red_giant_yinyang_danmaku",
-						p -> new DanmakuItem(p.rarity(Rarity.EPIC), Bullet.GIANT_YINYANG, DyeColor.RED,
-								Bullet.GIANT_YINYANG.size))
-				.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/bullet/giant_yinyang/red")))
-				.tag(Bullet.GIANT_YINYANG.tag)
-				.register();
-
-		GIANT_YINYANG_BLUE = YoukaisHomecoming.REGISTRATE
-				.item("blue_giant_yinyang_danmaku",
-						p -> new DanmakuItem(p.rarity(Rarity.EPIC), Bullet.GIANT_YINYANG, DyeColor.BLUE,
-								Bullet.GIANT_YINYANG.size))
-				.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/bullet/giant_yinyang/blue")))
-				.tag(Bullet.GIANT_YINYANG.tag)
-				.register();
-
-		// Populate DANMAKU array for special bullets to avoid NullPointerException in
-		// Bullet.get()
-		// ROSE: single texture for all colors
-		for (var e : DyeColor.values()) {
-			DANMAKU[Bullet.ROSE.ordinal()][e.ordinal()] = ROSE_DANMAKU;
-		}
-		// MOON: single texture for all colors
-		for (var e : DyeColor.values()) {
-			DANMAKU[Bullet.MOON.ordinal()][e.ordinal()] = MOON_DANMAKU;
-		}
-		// GIANT_YINYANG: red and blue variants
-		for (var e : DyeColor.values()) {
-			DANMAKU[Bullet.GIANT_YINYANG.ordinal()][e
-					.ordinal()] = (e == DyeColor.BLUE || e == DyeColor.LIGHT_BLUE || e == DyeColor.CYAN)
-							? GIANT_YINYANG_BLUE
-							: GIANT_YINYANG_RED;
 		}
 
 		POOF = YoukaisHomecoming.REGISTRATE.simple("danmaku_poof",

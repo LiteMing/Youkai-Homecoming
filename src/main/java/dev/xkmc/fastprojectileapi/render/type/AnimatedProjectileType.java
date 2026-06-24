@@ -36,7 +36,7 @@ public record AnimatedProjectileType(ResourceLocation tex, DisplayType display, 
             float pTick) {
         var m4 = pose.last().pose();
         float scale = (float) Math.cbrt(Math.abs(m4.determinant3x3()));
-        int col = DanmakuRenderStates.fading(display, -1, r, e);
+        int col = DanmakuRenderStates.fading(display, r.color(e, pTick), r, e);
         int frame = (e.tickCount / ticksPerFrame) % frameCount;
         holder.accept(new Ins(m4.m30(), m4.m31(), m4.m32(), scale, col, frame));
     }

@@ -12,4 +12,8 @@ public interface ProjectileRenderer<T extends SimplifiedProjectile> {
 
 	double fading(SimplifiedProjectile e);
 
+	default int color(SimplifiedProjectile e, float pTick) {
+		return 0xffffffff;
+	}
+
 }

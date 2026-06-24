@@ -30,7 +30,7 @@ public record SimpleProjectileType(ResourceLocation tex, DisplayType display)
 		// defer matrix construction to parallel texToArray phase.
 		var m4 = pose.last().pose();
 		float scale = (float) Math.cbrt(Math.abs(m4.determinant3x3()));
-		int col = DanmakuRenderStates.fading(display, -1, r, e);
+		int col = DanmakuRenderStates.fading(display, r.color(e, pTick), r, e);
 		holder.accept(new Ins(m4.m30(), m4.m31(), m4.m32(), scale, col));
 	}
 

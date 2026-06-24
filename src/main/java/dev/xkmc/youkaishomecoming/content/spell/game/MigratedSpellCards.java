@@ -219,7 +219,7 @@ public class MigratedSpellCards {
 		var shooterBody = List.<SpellAction>of(
 				new FireDanmakuAction(
 						YHDanmaku.Bullet.CIRCLE,
-						new ColorProvider.RandomChoice(List.of(DyeColor.GREEN, DyeColor.CYAN)),
+						new ColorProvider.RandomChoice(colors(DyeColor.GREEN, DyeColor.CYAN)),
 						NumberProvider.constant(1), NumberProvider.constant(0.6),
 						NumberProvider.constant(80), NumberProvider.constant(0),
 						NumberProvider.constant(0), NumberProvider.constant(0),
@@ -420,7 +420,7 @@ public class MigratedSpellCards {
 				List.of(new SpellActions.RepeatAction(NumberProvider.constant(5), "petal", List.of(
 						new FireDanmakuAction(
 								YHDanmaku.Bullet.CIRCLE,
-								new ColorProvider.RandomChoice(List.of(DyeColor.PINK, DyeColor.WHITE, DyeColor.MAGENTA)),
+								new ColorProvider.RandomChoice(colors(DyeColor.PINK, DyeColor.WHITE, DyeColor.MAGENTA)),
 								NumberProvider.constant(8),
 								NumberProvider.constant(0.7),
 								NumberProvider.constant(80),
@@ -752,7 +752,7 @@ public class MigratedSpellCards {
 				NumberProvider.constant(0.5),
 				new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(30)));
 
-		var farColors = List.of(DyeColor.LIGHT_BLUE, DyeColor.CYAN, DyeColor.LIME, DyeColor.YELLOW, DyeColor.LIGHT_GRAY);
+		var farColors = colors(DyeColor.LIGHT_BLUE, DyeColor.CYAN, DyeColor.LIME, DyeColor.YELLOW, DyeColor.LIGHT_GRAY);
 
 		// onExpiry: 3发 BALL, SPHERE_RANDOM分布, 颜色=COLORS[$gi] (per-group确定性颜色)
 		// 用 ColorProvider.ByVariable("gi", farColors) 实现 — 如果存在
@@ -1180,7 +1180,7 @@ public class MigratedSpellCards {
 		var timeStopNormal = new SpellActions.RepeatAction(NumberProvider.constant(2), "tsl", List.of(
 				new FireDanmakuAction(
 						YHDanmaku.Bullet.KNIFE,
-						new ColorProvider.ByVariable("tsl", List.of(DyeColor.RED, DyeColor.GRAY)),
+						new ColorProvider.ByVariable("tsl", colors(DyeColor.RED, DyeColor.GRAY)),
 						NumberProvider.constant(24), NumberProvider.constant(0.4), NumberProvider.constant(15),
 						new NumberProviders.Add(new NumberProviders.Variable("rot"),
 								new NumberProviders.Mul(new NumberProviders.Variable("tsl"), NumberProvider.constant(5))),
@@ -1211,7 +1211,7 @@ public class MigratedSpellCards {
 		var timeStopIntense = new SpellActions.RepeatAction(NumberProvider.constant(3), "tsl", List.of(
 				new FireDanmakuAction(
 						YHDanmaku.Bullet.KNIFE,
-						new ColorProvider.ByVariable("tsl", List.of(DyeColor.RED, DyeColor.GRAY, DyeColor.LIGHT_GRAY)),
+						new ColorProvider.ByVariable("tsl", colors(DyeColor.RED, DyeColor.GRAY, DyeColor.LIGHT_GRAY)),
 						NumberProvider.constant(36), NumberProvider.constant(0.83), NumberProvider.constant(12),
 						new NumberProviders.Add(new NumberProviders.Variable("rot"),
 								new NumberProviders.Mul(new NumberProviders.Variable("tsl"), NumberProvider.constant(3.3))),
@@ -1320,7 +1320,7 @@ public class MigratedSpellCards {
 		var knifeStorm = new BurstAction(10, 1, "stm", List.of(
 				new FireDanmakuAction(
 						YHDanmaku.Bullet.KNIFE,
-						new ColorProvider.RandomChoice(List.of(DyeColor.RED, DyeColor.GRAY, DyeColor.LIGHT_GRAY)),
+						new ColorProvider.RandomChoice(colors(DyeColor.RED, DyeColor.GRAY, DyeColor.LIGHT_GRAY)),
 						NumberProvider.constant(10), stormSpeed, stormLife,
 						NumberProvider.constant(0), NumberProvider.constant(45), NumberProvider.constant(30),
 						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
@@ -1467,14 +1467,14 @@ public class MigratedSpellCards {
 
 		// === Phase 2 (33%-0%): SummonFar (下落Shooter, 每tick放标记弹→延迟追踪) ===
 		var farChase = new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE,
-				new ColorProvider.RandomChoice(List.of(DyeColor.MAGENTA, DyeColor.BLUE)),
+				new ColorProvider.RandomChoice(colors(DyeColor.MAGENTA, DyeColor.BLUE)),
 				NumberProvider.constant(1), NumberProvider.constant(1), NumberProvider.constant(40),
 				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
 				PatternType.AIMED, OriginConfig.caster(),
 				new AimMode.AimModes.DirectionToTarget(),
 				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		var farMarker = new FireDanmakuAction(YHDanmaku.Bullet.CIRCLE,
-				new ColorProvider.RandomChoice(List.of(DyeColor.MAGENTA, DyeColor.BLUE)),
+				new ColorProvider.RandomChoice(colors(DyeColor.MAGENTA, DyeColor.BLUE)),
 				NumberProvider.constant(1), NumberProvider.constant(0), NumberProvider.constant(40),
 				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
 				PatternType.AIMED, OriginConfig.caster(),
@@ -1783,7 +1783,7 @@ public class MigratedSpellCards {
 		// === Maze 弹幕螺旋 (环形辐射, 10发/tick) ===
 		var mazeSpiral = new BurstAction(80, 1, "mt", List.of(
 				new FireDanmakuAction(YHDanmaku.Bullet.BALL,
-						new ColorProvider.Cycle(List.of(DyeColor.YELLOW, DyeColor.ORANGE), 1),
+						new ColorProvider.Cycle(colors(DyeColor.YELLOW, DyeColor.ORANGE), 1),
 						NumberProvider.constant(10), NumberProvider.constant(0.05), NumberProvider.constant(80),
 						new NumberProviders.Add(
 								new NumberProviders.Variable("maze_init"),
@@ -2492,6 +2492,10 @@ public class MigratedSpellCards {
 
 	private static ResourceLocation rl(String path) {
 		return new ResourceLocation("touhou_little_maid", path);
+	}
+
+	private static List<DanmakuColor> colors(DyeColor... colors) {
+		return Arrays.stream(colors).map(DanmakuColor::of).toList();
 	}
 }
 

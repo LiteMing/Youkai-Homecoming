@@ -2,7 +2,9 @@ package dev.xkmc.fastprojectileapi.spellcircle;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
@@ -25,26 +27,41 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 	public void render(PoseStack pose, MultiBufferSource buffer, int light, T entity,
 			float swing, float swingAmp, float pTick, float age,
 			float yaw, float pitch) {
-		renderImpl(pose, buffer, light, entity, pTick, null);
+		Quaternionf front = ProjectileRenderHelper.cameraOrientationOverride;
+		if (front == null) {
+			front = Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation();
+		}
+		renderImpl(pose, buffer, light, entity, pTick, front);
 	}
 
 	public static <T extends Entity> void renderImpl(
 			PoseStack pose, MultiBufferSource buffer, int light, T entity,
 			float pTick, @Nullable Quaternionf front) {
-		if (!(entity instanceof SpellCircleHolder e))
-			return;
-		ResourceLocation rl = e.getSpellCircle();
-		if (rl == null)
+		ResourceLocation rl = null;
+		float scale = 0;
+		EntitySpellCircleManager.State override = EntitySpellCircleManager.getClientOverride(entity);
+		if (override != null) {
+			if (!override.enabled() || override.circle() == null)
+				return;
+			rl = override.circle();
+			scale = override.size();
+		} else if (entity instanceof SpellCircleHolder e) {
+			if (!e.shouldShowSpellCircle())
+				return;
+			rl = e.getSpellCircle();
+			scale = e.getCircleSize(pTick);
+		}
+		if (rl == null || scale <= 0)
 			return;
 		SpellComponent component = SpellCircleConfig.getFromConfig(rl);
 		if (component == null)
 			return;
 		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(pose,
+				buffer,
 				buffer.getBuffer(SpellRenderState.getSpell(SPELL)),
 				entity.tickCount + pTick, light);
 		pose.pushPose();
 		pose.translate(0, entity.getBbHeight() / 2, 0);
-		float scale = e.getCircleSize(pTick);
 		pose.scale(scale / 16f, scale / 16f, scale / 16f);
 		if (front != null) {
 			pose.mulPose(front);

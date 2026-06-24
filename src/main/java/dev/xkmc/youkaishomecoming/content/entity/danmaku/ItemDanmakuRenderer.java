@@ -50,6 +50,11 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 		return (1 - Math.min((dist - start) / (end - start), 1) * fading) * global;
 	}
 
+	@Override
+	public int color(SimplifiedProjectile e, float pTick) {
+		return e instanceof ItemDanmakuEntity danmaku ? danmaku.getRenderTint(pTick) : 0xffffffff;
+	}
+
 	public boolean shouldRender(T e, Frustum frustum, double camx, double camy, double camz) {
 		Entity cam = this.entityRenderDispatcher.camera.getEntity();
 		if (e.getOwner() != cam || e.tickCount >= 40) return true;

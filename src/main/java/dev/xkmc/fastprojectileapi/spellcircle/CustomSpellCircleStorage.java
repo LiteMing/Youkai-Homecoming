@@ -7,6 +7,7 @@ import com.google.gson.JsonParser;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.FileWriter;
 import java.nio.file.Files;
+import java.util.Map;
 
 public class CustomSpellCircleStorage {
 
@@ -46,28 +48,40 @@ public class CustomSpellCircleStorage {
 	}
 
 	public static void saveCircle(MinecraftServer server, ResourceLocation id, SpellComponent component) {
-		saveCircle(getCircleFile(server, id), id, component);
+		saveCircles(getCircleFile(server, id), Map.of(id, component));
 	}
 
 	public static File saveGlobalCircle(ResourceLocation id, SpellComponent component) {
 		File file = getGlobalCircleFile(id);
-		saveCircle(file, id, component);
+		saveCircles(file, Map.of(id, component));
 		return file;
 	}
 
-	private static void saveCircle(File file, ResourceLocation id, SpellComponent component) {
+	public static void saveCircles(MinecraftServer server, ResourceLocation id, Map<ResourceLocation, SpellComponent> components) {
+		saveCircles(getCircleFile(server, id), components);
+	}
+
+	public static File saveGlobalCircles(ResourceLocation id, Map<ResourceLocation, SpellComponent> components) {
+		File file = getGlobalCircleFile(id);
+		saveCircles(file, components);
+		return file;
+	}
+
+	private static void saveCircles(File file, Map<ResourceLocation, SpellComponent> components) {
 		try {
-			component.invalidateCache();
 			JsonObject map = new JsonObject();
-			map.add(id.toString(), GSON.toJsonTree(component));
+			for (var entry : components.entrySet()) {
+				entry.getValue().invalidateCache();
+				map.add(entry.getKey().toString(), GSON.toJsonTree(entry.getValue()));
+			}
 			JsonObject root = new JsonObject();
 			root.add("map", map);
 			try (var writer = new FileWriter(file)) {
 				GSON.toJson(root, writer);
 			}
-			LOGGER.info("Saved custom spell circle {} to {}", id, file.getPath());
+			LOGGER.info("Saved {} custom spell circles to {}", components.size(), file.getPath());
 		} catch (Exception e) {
-			LOGGER.error("Failed to save spell circle {} to {}", id, file.getPath(), e);
+			LOGGER.error("Failed to save spell circles to {}", file.getPath(), e);
 		}
 	}
 
@@ -123,6 +137,16 @@ public class CustomSpellCircleStorage {
 			}
 		} catch (Exception e) {
 			LOGGER.warn("Failed to read spell circle file {}: {}", file.getPath(), e.getMessage());
+		}
+	}
+
+	public static void syncAllToPlayer(ServerPlayer player) {
+		for (var entry : YoukaisHomecoming.SPELL.getMerged().map.entrySet()) {
+			ResourceLocation id = ResourceLocation.tryParse(entry.getKey());
+			if (id == null || entry.getValue() == null) {
+				continue;
+			}
+			YoukaisHomecoming.HANDLER.toClientPlayer(new SpellCircleDefinitionToClient(id, entry.getValue()), player);
 		}
 	}
 

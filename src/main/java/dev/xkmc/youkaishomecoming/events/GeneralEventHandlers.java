@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.events;
 
 import dev.xkmc.l2library.init.events.GeneralEventHandler;
+import dev.xkmc.fastprojectileapi.spellcircle.CustomSpellCircleStorage;
 import dev.xkmc.fastprojectileapi.spellcircle.EntitySpellCircleManager;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.block.variants.LeftClickBlock;
@@ -158,6 +159,13 @@ public class GeneralEventHandlers {
 		}
 		if (event.getEntity() instanceof ServerPlayer player) {
 			EntitySpellCircleManager.syncToPlayer(event.getTarget(), player);
+		}
+	}
+
+	@SubscribeEvent
+	public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+		if (event.getEntity() instanceof ServerPlayer player) {
+			CustomSpellCircleStorage.syncAllToPlayer(player);
 		}
 	}
 

@@ -65,10 +65,7 @@ public class SpellComponent {
 			layers = new ArrayList<>();
 		}
 		for (Layer layer : layers) {
-			if (layer.children == null) {
-				layer.children = new ArrayList<>();
-			}
-			layer._children = null;
+			layer.invalidateCache();
 		}
 		for (ItemLayer item : items) {
 			item.invalidateCache();
@@ -119,9 +116,15 @@ public class SpellComponent {
 		@OnlyIn(Dist.CLIENT)
 		private int getColor() {
 			if (color == null) return -1;
-			String str = color;
-			if (str.startsWith("0x")) {
+			String str = color.trim();
+			if (str.startsWith("#")) {
+				str = str.substring(1);
+			}
+			if (str.startsWith("0x") || str.startsWith("0X")) {
 				str = str.substring(2);
+			}
+			if (str.length() <= 6) {
+				return 0xff000000 | Integer.parseUnsignedInt(str, 16);
 			}
 			return Integer.parseUnsignedInt(str, 16);
 		}
@@ -198,6 +201,13 @@ public class SpellComponent {
 			}
 			handle.matrix.popPose();
 			handle.alpha = al;
+		}
+
+		public void invalidateCache() {
+			if (children == null) {
+				children = new ArrayList<>();
+			}
+			_children = null;
 		}
 
 		@OnlyIn(Dist.CLIENT)

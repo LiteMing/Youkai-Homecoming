@@ -26,9 +26,12 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 @OnlyIn(Dist.CLIENT)
@@ -56,10 +59,12 @@ public class MagicCircleDockPanel implements DockPanel {
 	private int scrollOffset;
 	private int contentHeight;
 	private boolean scrollbarDragging;
+	private final Map<ResourceLocation, SpellComponent> linkedComponents = new LinkedHashMap<>();
 	private ResourceLocation selectedId = new ResourceLocation("youkaishomecoming", "custom_circle");
 	private SpellComponent component = createDefaultComponent();
 	private int selectedStroke;
 	private int selectedItem;
+	private int selectedLayer;
 	private float previewSize = 1.0f;
 	private String status = "Magic Circle ready";
 	private int statusColor = 0xFF88AACC;
@@ -80,6 +85,13 @@ public class MagicCircleDockPanel implements DockPanel {
 	private EditBox itemScaleBox;
 	private EditBox itemRotationBox;
 	private EditBox itemAlphaBox;
+	private EditBox layerChildrenBox;
+	private EditBox layerRadiusBox;
+	private EditBox layerRotationBox;
+	private EditBox layerRotationSpeedBox;
+	private EditBox layerScaleBox;
+	private EditBox layerZBox;
+	private EditBox layerAlphaBox;
 
 	private record DropdownOverlay(List<ResourceLocation> values, String[] options, int selectedIndex) {
 	}
@@ -172,6 +184,25 @@ public class MagicCircleDockPanel implements DockPanel {
 		drawLabel(graphics, font, "Scale", labelX, yy - scrollOffset);
 		yy += ROW;
 		drawLabel(graphics, font, "Rot", labelX, yy - scrollOffset);
+		yy += ROW;
+		drawLabel(graphics, font, "Alpha", labelX, yy - scrollOffset);
+		yy += ROW;
+		yy += ROW;
+		drawLabel(graphics, font, "Layer", labelX, yy - scrollOffset);
+		yy += ROW;
+		drawLabel(graphics, font, "Child", labelX, yy - scrollOffset);
+		yy += ROW;
+		drawLabel(graphics, font, "Children", labelX, yy - scrollOffset);
+		yy += ROW;
+		drawLabel(graphics, font, "Radius", labelX, yy - scrollOffset);
+		yy += ROW;
+		drawLabel(graphics, font, "Rot", labelX, yy - scrollOffset);
+		yy += ROW;
+		drawLabel(graphics, font, "Rot Speed", labelX, yy - scrollOffset);
+		yy += ROW;
+		drawLabel(graphics, font, "Scale", labelX, yy - scrollOffset);
+		yy += ROW;
+		drawLabel(graphics, font, "Z", labelX, yy - scrollOffset);
 		yy += ROW;
 		drawLabel(graphics, font, "Alpha", labelX, yy - scrollOffset);
 		yy += ROW;
@@ -383,6 +414,38 @@ public class MagicCircleDockPanel implements DockPanel {
 		itemAlphaBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentItem() == null ? null : currentItem().alpha, 1)),
 				text -> setItemValue(text, "alpha", 1));
 		yy += ROW;
+
+		bx = x + PADDING;
+		bx = addButton(bx, yy, 58, "+Layer", this::addLayer);
+		bx = addButton(bx, yy, 58, "-Layer", this::removeLayer);
+		bx = addButton(bx, yy, 28, "<", this::prevLayer);
+		addButton(bx, yy, 28, ">", this::nextLayer);
+		yy += ROW;
+		bx = x + PADDING;
+		bx = addButton(bx, yy, 70, "+Child", this::addChildComponent);
+		addButton(bx, yy, 78, "Open Child", this::openFirstChildComponent);
+		yy += ROW;
+		layerChildrenBox = addEditBox(font, fieldX, yy, fieldW, currentLayerChildren(), this::setLayerChildren);
+		yy += ROW;
+		layerRadiusBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().radius, 0)),
+				text -> setLayerValue(text, "radius", 0));
+		yy += ROW;
+		layerRotationBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().rotation, 0)),
+				text -> setLayerValue(text, "rotation", 0));
+		yy += ROW;
+		layerRotationSpeedBox = addEditBox(font, fieldX, yy, fieldW, fmt(deltaOf(currentLayer() == null ? null : currentLayer().rotation, 0)),
+				this::setLayerRotationSpeed);
+		yy += ROW;
+		layerScaleBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().scale, 1)),
+				text -> setLayerValue(text, "scale", 1));
+		yy += ROW;
+		layerZBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().z_offset, 0)),
+				text -> setLayerValue(text, "z", 0));
+		yy += ROW;
+		layerAlphaBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().alpha, 1)),
+				text -> setLayerValue(text, "alpha", 1));
+		yy += ROW;
+
 		previewSizeBox = addEditBox(font, fieldX, yy, fieldW, fmt(previewSize), this::setPreviewSize);
 		contentHeight = yy - contentTop() + ROW;
 		clampScrollOffset();
@@ -447,6 +510,14 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (itemScaleBox != null) itemScaleBox.setValue(fmt(valueOf(item == null ? null : item.scale, 16)));
 		if (itemRotationBox != null) itemRotationBox.setValue(fmt(valueOf(item == null ? null : item.rotation, 0)));
 		if (itemAlphaBox != null) itemAlphaBox.setValue(fmt(valueOf(item == null ? null : item.alpha, 1)));
+		SpellComponent.Layer layer = currentLayer();
+		if (layerChildrenBox != null) layerChildrenBox.setValue(currentLayerChildren());
+		if (layerRadiusBox != null) layerRadiusBox.setValue(fmt(valueOf(layer == null ? null : layer.radius, 0)));
+		if (layerRotationBox != null) layerRotationBox.setValue(fmt(valueOf(layer == null ? null : layer.rotation, 0)));
+		if (layerRotationSpeedBox != null) layerRotationSpeedBox.setValue(fmt(deltaOf(layer == null ? null : layer.rotation, 0)));
+		if (layerScaleBox != null) layerScaleBox.setValue(fmt(valueOf(layer == null ? null : layer.scale, 1)));
+		if (layerZBox != null) layerZBox.setValue(fmt(valueOf(layer == null ? null : layer.z_offset, 0)));
+		if (layerAlphaBox != null) layerAlphaBox.setValue(fmt(valueOf(layer == null ? null : layer.alpha, 1)));
 		suppress = false;
 	}
 
@@ -613,6 +684,13 @@ public class MagicCircleDockPanel implements DockPanel {
 	private void publishLocal(boolean syncRaw) {
 		component.invalidateCache();
 		YoukaisHomecoming.SPELL.getMerged().map.put(selectedId.toString(), component);
+		if (!linkedComponents.isEmpty()) {
+			linkedComponents.put(selectedId, cloneComponent(component));
+			for (var entry : linkedComponents.entrySet()) {
+				entry.getValue().invalidateCache();
+				YoukaisHomecoming.SPELL.getMerged().map.put(entry.getKey().toString(), entry.getValue());
+			}
+		}
 		if (previewActive) {
 			viewport.setMagicCirclePreview(selectedId, component, previewSize);
 		}
@@ -629,10 +707,19 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (parsed == null || parsed.component() == null) {
 			throw new IllegalArgumentException("Invalid magic circle JSON");
 		}
+		if (!parsed.components().isEmpty()) {
+			linkedComponents.clear();
+			for (var entry : parsed.components().entrySet()) {
+				SpellComponent value = cloneComponent(entry.getValue());
+				value.invalidateCache();
+				linkedComponents.put(entry.getKey(), value);
+				YoukaisHomecoming.SPELL.getMerged().map.put(entry.getKey().toString(), value);
+			}
+		}
 		if (parsed.id() != null) {
 			selectedId = parsed.id();
 		}
-		component = parsed.component();
+		component = cloneComponent(parsed.component());
 		component.invalidateCache();
 		clampSelection();
 		publishLocal(false);
@@ -659,15 +746,39 @@ public class MagicCircleDockPanel implements DockPanel {
 					? Map.entry(key, map.get(key))
 					: map.entrySet().iterator().next();
 			ResourceLocation id = ResourceLocation.tryParse(entry.getKey());
-			return new ParsedCircle(id, GSON.fromJson(entry.getValue(), SpellComponent.class));
+			Map<ResourceLocation, SpellComponent> components = new LinkedHashMap<>();
+			for (var componentEntry : map.entrySet()) {
+				ResourceLocation componentId = ResourceLocation.tryParse(componentEntry.getKey());
+				if (componentId == null) {
+					throw new IllegalArgumentException("Invalid magic circle id: " + componentEntry.getKey());
+				}
+				SpellComponent component = GSON.fromJson(componentEntry.getValue(), SpellComponent.class);
+				if (component == null) {
+					throw new IllegalArgumentException("Invalid magic circle component: " + componentEntry.getKey());
+				}
+				component.invalidateCache();
+				components.put(componentId, component);
+			}
+			return new ParsedCircle(id, components.get(id), components);
 		}
-		return new ParsedCircle(selectedId, GSON.fromJson(object, SpellComponent.class));
+		SpellComponent component = GSON.fromJson(object, SpellComponent.class);
+		if (component == null) {
+			return null;
+		}
+		component.invalidateCache();
+		Map<ResourceLocation, SpellComponent> components = new LinkedHashMap<>();
+		components.put(selectedId, component);
+		return new ParsedCircle(selectedId, component, components);
 	}
 
 	public String encodeRawJson() {
 		component.invalidateCache();
 		JsonObject map = new JsonObject();
-		map.add(selectedId.toString(), GSON.toJsonTree(component));
+		Map<ResourceLocation, SpellComponent> components = componentsForSave();
+		for (var entry : components.entrySet()) {
+			entry.getValue().invalidateCache();
+			map.add(entry.getKey().toString(), GSON.toJsonTree(entry.getValue()));
+		}
 		JsonObject root = new JsonObject();
 		root.add("map", map);
 		return GSON.toJson(root);
@@ -699,8 +810,10 @@ public class MagicCircleDockPanel implements DockPanel {
 	private void newCircle() {
 		selectedId = nextCustomId();
 		component = createDefaultComponent();
+		linkedComponents.clear();
 		selectedStroke = 0;
 		selectedItem = 0;
+		selectedLayer = 0;
 		scrollOffset = 0;
 		publishLocal(true);
 		rebuildWidgets();
@@ -711,11 +824,12 @@ public class MagicCircleDockPanel implements DockPanel {
 		ResourceLocation id = selectedId;
 		selectedId = id;
 		publishLocal(true);
+		Map<ResourceLocation, SpellComponent> components = componentsForSave();
 		if (global) {
-			SpellCircleEditorNetworkClient.exportGlobal(id, component);
+			SpellCircleEditorNetworkClient.exportGlobal(id, components);
 			setStatus("Magic Circle export sent", 0xFF88FF88);
 		} else {
-			SpellCircleEditorNetworkClient.save(id, component);
+			SpellCircleEditorNetworkClient.save(id, components);
 			setStatus("Magic Circle save sent", 0xFF88FF88);
 		}
 	}
@@ -774,6 +888,76 @@ public class MagicCircleDockPanel implements DockPanel {
 		refreshWidgetValues();
 	}
 
+	private void addLayer() {
+		component.layers.add(defaultLayer());
+		selectedLayer = component.layers.size() - 1;
+		rebuildWidgets();
+		onComponentEdited("Layer added");
+	}
+
+	private void removeLayer() {
+		if (component.layers.isEmpty()) return;
+		component.layers.remove(Math.min(selectedLayer, component.layers.size() - 1));
+		clampSelection();
+		rebuildWidgets();
+		onComponentEdited("Layer removed");
+	}
+
+	private void prevLayer() {
+		if (component.layers.isEmpty()) return;
+		selectedLayer = (selectedLayer - 1 + component.layers.size()) % component.layers.size();
+		refreshWidgetValues();
+	}
+
+	private void nextLayer() {
+		if (component.layers.isEmpty()) return;
+		selectedLayer = (selectedLayer + 1) % component.layers.size();
+		refreshWidgetValues();
+	}
+
+	private void addChildComponent() {
+		if (component.layers == null) {
+			component.layers = new ArrayList<>();
+		}
+		if (component.layers.isEmpty()) {
+			component.layers.add(defaultLayer());
+			selectedLayer = 0;
+		}
+		SpellComponent.Layer layer = currentLayer();
+		if (layer == null) {
+			return;
+		}
+		ResourceLocation childId = nextChildId(selectedId);
+		SpellComponent child = createDefaultComponent();
+		child.invalidateCache();
+		if (layer.children == null) {
+			layer.children = new ArrayList<>();
+		}
+		layer.children.add(childId.toString());
+		layer.invalidateCache();
+		linkedComponents.put(childId, child);
+		YoukaisHomecoming.SPELL.getMerged().map.put(childId.toString(), child);
+		rebuildWidgets();
+		onComponentEdited("Child component added");
+	}
+
+	private void openFirstChildComponent() {
+		SpellComponent.Layer layer = currentLayer();
+		if (layer == null || layer.children == null || layer.children.isEmpty()) {
+			setStatus("No child component", 0xFFFFCC88);
+			return;
+		}
+		for (String child : layer.children) {
+			ResourceLocation id = ResourceLocation.tryParse(child);
+			if (id != null) {
+				selectCircle(id);
+				setStatus("Child component loaded", 0xFF88AACC);
+				return;
+			}
+		}
+		setStatus("No child component", 0xFFFFCC88);
+	}
+
 	private void setStrokeColor(String text) {
 		SpellComponent.Stroke stroke = currentStroke();
 		if (stroke == null) return;
@@ -826,15 +1010,75 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (item == null) return;
 		float value = parseFloat(text, Float.NaN);
 		if (!Float.isFinite(value)) return;
-		SpellComponent.Value val = value(value);
 		if ("scale".equals(field)) {
+			SpellComponent.Value val = editableValue(item.scale, fallback);
+			val.value = value;
 			item.scale = val;
 		} else if ("rotation".equals(field)) {
+			SpellComponent.Value val = editableValue(item.rotation, fallback);
+			val.value = value;
 			item.rotation = val;
 		} else if ("alpha".equals(field)) {
+			SpellComponent.Value val = editableValue(item.alpha, fallback);
+			val.value = value;
 			item.alpha = val;
 		}
 		onComponentEdited("Item changed");
+	}
+
+	private void setLayerChildren(String text) {
+		SpellComponent.Layer layer = currentLayer();
+		if (layer == null) return;
+		ArrayList<String> children = parseChildren(text);
+		if (children.isEmpty() && text != null && !text.isBlank()) {
+			setStatus("Invalid child id", 0xFFFF8888);
+			return;
+		}
+		layer.children = children;
+		layer.invalidateCache();
+		onComponentEdited("Layer children changed");
+	}
+
+	private void setLayerValue(String text, String field, float fallback) {
+		SpellComponent.Layer layer = currentLayer();
+		if (layer == null) return;
+		float value = parseFloat(text, Float.NaN);
+		if (!Float.isFinite(value)) return;
+		if ("radius".equals(field)) {
+			SpellComponent.Value val = editableValue(layer.radius, fallback);
+			val.value = value;
+			layer.radius = val;
+		} else if ("rotation".equals(field)) {
+			SpellComponent.Value val = editableValue(layer.rotation, fallback);
+			val.value = value;
+			layer.rotation = val;
+		} else if ("scale".equals(field)) {
+			SpellComponent.Value val = editableValue(layer.scale, fallback);
+			val.value = value;
+			layer.scale = val;
+		} else if ("z".equals(field)) {
+			SpellComponent.Value val = editableValue(layer.z_offset, fallback);
+			val.value = value;
+			layer.z_offset = val;
+		} else if ("alpha".equals(field)) {
+			SpellComponent.Value val = editableValue(layer.alpha, fallback);
+			val.value = value;
+			layer.alpha = val;
+		}
+		layer.invalidateCache();
+		onComponentEdited("Layer changed");
+	}
+
+	private void setLayerRotationSpeed(String text) {
+		SpellComponent.Layer layer = currentLayer();
+		if (layer == null) return;
+		float value = parseFloat(text, Float.NaN);
+		if (!Float.isFinite(value)) return;
+		SpellComponent.Value rotation = editableValue(layer.rotation, 0);
+		rotation.delta = value;
+		layer.rotation = rotation;
+		layer.invalidateCache();
+		onComponentEdited("Layer changed");
 	}
 
 	private void setPreviewSize(String text) {
@@ -854,6 +1098,12 @@ public class MagicCircleDockPanel implements DockPanel {
 	private SpellComponent.ItemLayer currentItem() {
 		int index = getSelectedItemIndex();
 		return index < 0 ? null : itemAt(index);
+	}
+
+	@Nullable
+	private SpellComponent.Layer currentLayer() {
+		int index = getSelectedLayerIndex();
+		return index < 0 ? null : layerAt(index);
 	}
 
 	public int getItemCount() {
@@ -890,6 +1140,15 @@ public class MagicCircleDockPanel implements DockPanel {
 		refreshWidgetValues();
 		setStatus("Item selected", 0xFF88AACC);
 		return true;
+	}
+
+	public int getLayerCount() {
+		return component.layers == null ? 0 : component.layers.size();
+	}
+
+	public int getSelectedLayerIndex() {
+		int count = getLayerCount();
+		return count == 0 ? -1 : Math.max(0, Math.min(selectedLayer, count - 1));
 	}
 
 	public void moveSelectedItem(double dx, double dy) {
@@ -934,6 +1193,25 @@ public class MagicCircleDockPanel implements DockPanel {
 		return component.items.get(index);
 	}
 
+	@Nullable
+	private SpellComponent.Layer layerAt(int index) {
+		if (component.layers == null || component.layers.isEmpty()) {
+			return null;
+		}
+		if (index < 0 || index >= component.layers.size()) {
+			return null;
+		}
+		return component.layers.get(index);
+	}
+
+	private String currentLayerChildren() {
+		SpellComponent.Layer layer = currentLayer();
+		if (layer == null || layer.children == null || layer.children.isEmpty()) {
+			return "";
+		}
+		return String.join(", ", layer.children);
+	}
+
 	private String currentStrokeColor() {
 		SpellComponent.Stroke stroke = currentStroke();
 		return stroke == null || stroke.color == null ? "0xFFFFFFFF" : stroke.color;
@@ -948,7 +1226,15 @@ public class MagicCircleDockPanel implements DockPanel {
 	}
 
 	private void loadSelectedComponent() {
-		SpellComponent existing = YoukaisHomecoming.SPELL.getMerged().map.get(selectedId.toString());
+		SpellComponent existing = linkedComponents.get(selectedId);
+		if (existing == null) {
+			existing = YoukaisHomecoming.SPELL.getMerged().map.get(selectedId.toString());
+			linkedComponents.clear();
+			if (existing != null) {
+				linkedComponents.put(selectedId, cloneComponent(existing));
+				collectReferencedComponents(linkedComponents);
+			}
+		}
 		component = existing == null ? createDefaultComponent() : cloneComponent(existing);
 		clampSelection();
 		publishLocal(true);
@@ -957,6 +1243,46 @@ public class MagicCircleDockPanel implements DockPanel {
 	private void clampSelection() {
 		selectedStroke = component.strokes.isEmpty() ? 0 : Math.max(0, Math.min(selectedStroke, component.strokes.size() - 1));
 		selectedItem = component.items.isEmpty() ? 0 : Math.max(0, Math.min(selectedItem, component.items.size() - 1));
+		selectedLayer = component.layers.isEmpty() ? 0 : Math.max(0, Math.min(selectedLayer, component.layers.size() - 1));
+	}
+
+	private Map<ResourceLocation, SpellComponent> componentsForSave() {
+		Map<ResourceLocation, SpellComponent> components = new LinkedHashMap<>();
+		for (var entry : linkedComponents.entrySet()) {
+			components.put(entry.getKey(), cloneComponent(entry.getValue()));
+		}
+		components.put(selectedId, cloneComponent(component));
+		collectReferencedComponents(components);
+		return components;
+	}
+
+	private static void collectReferencedComponents(Map<ResourceLocation, SpellComponent> components) {
+		Set<ResourceLocation> seen = new HashSet<>(components.keySet());
+		List<ResourceLocation> queue = new ArrayList<>(components.keySet());
+		for (int i = 0; i < queue.size(); i++) {
+			SpellComponent source = components.get(queue.get(i));
+			if (source == null || source.layers == null) {
+				continue;
+			}
+			for (SpellComponent.Layer layer : source.layers) {
+				if (layer == null || layer.children == null) {
+					continue;
+				}
+				for (String child : layer.children) {
+					ResourceLocation childId = ResourceLocation.tryParse(child);
+					if (childId == null || seen.contains(childId)) {
+						continue;
+					}
+					SpellComponent childComponent = YoukaisHomecoming.SPELL.getMerged().map.get(childId.toString());
+					if (childComponent == null) {
+						continue;
+					}
+					seen.add(childId);
+					components.put(childId, cloneComponent(childComponent));
+					queue.add(childId);
+				}
+			}
+		}
 	}
 
 	private static SpellComponent cloneComponent(SpellComponent component) {
@@ -1002,6 +1328,17 @@ public class MagicCircleDockPanel implements DockPanel {
 		return item;
 	}
 
+	private static SpellComponent.Layer defaultLayer() {
+		SpellComponent.Layer layer = new SpellComponent.Layer();
+		layer.children = new ArrayList<>();
+		layer.radius = value(0);
+		layer.rotation = value(0);
+		layer.scale = value(1);
+		layer.z_offset = value(0);
+		layer.alpha = value(1);
+		return layer;
+	}
+
 	private static SpellComponent.Value value(float value) {
 		SpellComponent.Value val = new SpellComponent.Value();
 		val.value = value;
@@ -1014,6 +1351,10 @@ public class MagicCircleDockPanel implements DockPanel {
 
 	private static float valueOf(@Nullable SpellComponent.Value value, float fallback) {
 		return value == null ? fallback : value.value;
+	}
+
+	private static float deltaOf(@Nullable SpellComponent.Value value, float fallback) {
+		return value == null ? fallback : value.delta;
 	}
 
 	private static float wrapDegrees(float value) {
@@ -1032,6 +1373,18 @@ public class MagicCircleDockPanel implements DockPanel {
 		while (true) {
 			ResourceLocation id = new ResourceLocation("youkaishomecoming", "custom_circle_" + index);
 			if (!YoukaisHomecoming.SPELL.getMerged().map.containsKey(id.toString())) {
+				return id;
+			}
+			index++;
+		}
+	}
+
+	private ResourceLocation nextChildId(ResourceLocation parent) {
+		int index = 1;
+		String path = parent.getPath() + "_child_";
+		while (true) {
+			ResourceLocation id = new ResourceLocation(parent.getNamespace(), path + index);
+			if (!linkedComponents.containsKey(id) && !YoukaisHomecoming.SPELL.getMerged().map.containsKey(id.toString())) {
 				return id;
 			}
 			index++;
@@ -1159,8 +1512,8 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (text == null || text.isBlank()) {
 			return false;
 		}
-		String raw = text.startsWith("0x") || text.startsWith("0X") ? text.substring(2) : text;
-		if (raw.length() > 8) {
+		String raw = normalizeHexColor(text);
+		if (raw == null || raw.length() > 8) {
 			return false;
 		}
 		try {
@@ -1169,6 +1522,39 @@ public class MagicCircleDockPanel implements DockPanel {
 		} catch (NumberFormatException ignored) {
 			return false;
 		}
+	}
+
+	@Nullable
+	private static String normalizeHexColor(String text) {
+		if (text == null) return null;
+		String raw = text.trim();
+		if (raw.startsWith("#")) {
+			raw = raw.substring(1);
+		}
+		if (raw.startsWith("0x") || raw.startsWith("0X")) {
+			raw = raw.substring(2);
+		}
+		if (raw.isBlank()) return null;
+		return raw;
+	}
+
+	private static ArrayList<String> parseChildren(String text) {
+		ArrayList<String> children = new ArrayList<>();
+		if (text == null || text.isBlank()) {
+			return children;
+		}
+		for (String token : text.split("[,\\s]+")) {
+			if (token.isBlank()) {
+				continue;
+			}
+			ResourceLocation id = ResourceLocation.tryParse(token.trim());
+			if (id == null) {
+				children.clear();
+				return children;
+			}
+			children.add(id.toString());
+		}
+		return children;
 	}
 
 	private void setStatus(String status, int color) {
@@ -1180,7 +1566,8 @@ public class MagicCircleDockPanel implements DockPanel {
 		graphics.drawString(font, SpellEditorLocalization.t(text), x, y + 4, 0xFFCCCCCC, false);
 	}
 
-	private record ParsedCircle(@Nullable ResourceLocation id, SpellComponent component) {
+	private record ParsedCircle(@Nullable ResourceLocation id, SpellComponent component,
+								Map<ResourceLocation, SpellComponent> components) {
 	}
 
 }

@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
+import dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
 import dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
@@ -458,6 +459,7 @@ public class ControlsDockPanel implements DockPanel {
 							   java.util.function.Predicate<String> filter,
 							   java.util.function.Consumer<String> onSubmit) {
 		EditBox box = new EditBox(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
+		EditorTextBoxes.configure(box);
 		box.setMaxLength(maxLength);
 		box.setValue(value);
 		box.setHint(Component.literal(SpellEditorLocalization.t(hint)).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));

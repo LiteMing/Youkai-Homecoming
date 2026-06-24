@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellComponent;
+import dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellCircleEditorNetworkClient;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
@@ -463,6 +464,7 @@ public class MagicCircleDockPanel implements DockPanel {
 
 	private EditBox addEditBox(Font font, int x, int y, int w, String value, Consumer<String> responder) {
 		EditBox box = new EditBox(font, x, y, w, 16, Component.empty());
+		EditorTextBoxes.configure(box);
 		box.setMaxLength(1024);
 		box.setValue(value == null ? "" : value);
 		box.setResponder(text -> {

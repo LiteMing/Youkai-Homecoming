@@ -3165,8 +3165,7 @@ public class ActionEditorPanel {
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, boolean overridden) {
 		double value = provider instanceof NumberProviders.Constant c ? c.value() : 0;
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength(256);
 		String unparsed = NumberExprParser.unparse(provider);
 		editBox.setValue(unparsed != null ? unparsed : formatNumber(value));
@@ -3222,8 +3221,7 @@ public class ActionEditorPanel {
 
 	private void addIntRow(String label, int value, Consumer<Integer> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setValue(String.valueOf(value));
 		editBox.setResponder(text -> {
 			try {
@@ -3236,8 +3234,7 @@ public class ActionEditorPanel {
 
 	private void addColorRow(String label, int value, Consumer<Integer> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength(16);
 		editBox.setValue(String.format("0x%08X", value));
 		editBox.setResponder(text -> {
@@ -3251,8 +3248,7 @@ public class ActionEditorPanel {
 
 	private void addFloatRow(String label, float value, Consumer<Float> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setValue(String.format("%.2f", value));
 		editBox.setResponder(text -> {
 			try {
@@ -3265,8 +3261,7 @@ public class ActionEditorPanel {
 
 	private void addDoubleRow(String label, double value, Consumer<Double> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setValue(formatNumber(value));
 		editBox.setResponder(text -> {
 			try {
@@ -3279,8 +3274,7 @@ public class ActionEditorPanel {
 
 	private void addStringRow(String label, String value, Consumer<String> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength(256);
 		editBox.setValue(value);
 		editBox.setResponder(onChange::accept);
@@ -3289,8 +3283,7 @@ public class ActionEditorPanel {
 
 	private void addSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength(256);
 		editBox.setValue(value);
 		editBox.setResponder(onChange::accept);
@@ -3300,14 +3293,18 @@ public class ActionEditorPanel {
 
 	private void addListSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var editBox = new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength(256);
 		editBox.setValue(value);
 		editBox.setResponder(onChange::accept);
 		stringCompletionSuppliers.put(editBox, suggestions);
 		listCompletionTargets.add(editBox);
 		rows.add(new EditorRow(label, editBox, false));
+	}
+
+	private EditBox newEditorEditBox(String label, int widgetW) {
+		return EditorTextBoxes.configure(new EditBox(Minecraft.getInstance().font, 0, 0,
+				widgetW, ROW_HEIGHT - 4, Component.literal(label)));
 	}
 
 	private Integer parseColor(String text) {

@@ -1032,6 +1032,23 @@ public class RawJsonDockPanel implements DockPanel {
 			return super.keyPressed(keyCode, scanCode, modifiers);
 		}
 
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button == 0 && withinContentAreaPoint(mouseX, mouseY)) {
+				setFocused(true);
+				MultilineTextField textField = textField();
+				if (textField != null) {
+					textField.setSelecting(Screen.hasShiftDown());
+					seekCursorToMouse(textField, mouseX, mouseY);
+					if (!Screen.hasShiftDown()) {
+						collapseSelection(textField);
+					}
+					return true;
+				}
+			}
+			return super.mouseClicked(mouseX, mouseY, button);
+		}
+
 		private boolean handleUndoRedoKey(int keyCode) {
 			if (!Screen.hasControlDown()) {
 				return false;
@@ -1104,6 +1121,17 @@ public class RawJsonDockPanel implements DockPanel {
 			}
 			lastHistoryValue = text == null ? "" : text;
 			highlightRange(lastHistoryValue.length(), lastHistoryValue.length(), true);
+		}
+
+		private void seekCursorToMouse(MultilineTextField textField, double mouseX, double mouseY) {
+			double localX = mouseX - getX() - innerPadding();
+			double localY = mouseY - getY() - innerPadding() + scrollAmount();
+			textField.seekCursorToPoint(localX, localY);
+		}
+
+		private void collapseSelection(MultilineTextField textField) {
+			textField.setSelecting(false);
+			textField.seekCursor(Whence.ABSOLUTE, textField.cursor());
 		}
 
 		private void highlightRange(int start, int end, boolean scrollToRange) {

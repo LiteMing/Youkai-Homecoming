@@ -1,6 +1,5 @@
 package dev.xkmc.fastprojectileapi.spellcircle;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
@@ -8,10 +7,12 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -253,13 +254,37 @@ public class SpellComponent {
 			handle.matrix.pushPose();
 			handle.matrix.translate(x, y, z);
 			handle.matrix.mulPose(Axis.ZP.rotationDegrees(get(rotation, handle, 0)));
-			handle.matrix.scale(s, -s, s);
-			RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, Math.min(1.0f, a));
+			handle.matrix.scale(s, s, s);
 			Minecraft mc = Minecraft.getInstance();
-			mc.getItemRenderer().renderStatic(stack, ItemDisplayContext.GUI, handle.light,
-					OverlayTexture.NO_OVERLAY, handle.matrix, handle.buffer, mc.level, 0);
-			RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+			BakedModel model = mc.getItemRenderer().getModel(stack, mc.level, null, 0);
+			renderFlatSprite(handle, model.getParticleIcon(), Math.min(1.0f, a));
 			handle.matrix.popPose();
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private static void renderFlatSprite(RenderHandle handle, TextureAtlasSprite sprite, float alpha) {
+			VertexConsumer builder = handle.buffer.getBuffer(RenderType.entityTranslucent(sprite.atlasLocation()));
+			float u0 = sprite.getU0();
+			float u1 = sprite.getU1();
+			float v0 = sprite.getV0();
+			float v1 = sprite.getV1();
+			vertex(handle, builder, -0.5f, -0.5f, u0, v1, alpha);
+			vertex(handle, builder, 0.5f, -0.5f, u1, v1, alpha);
+			vertex(handle, builder, 0.5f, 0.5f, u1, v0, alpha);
+			vertex(handle, builder, -0.5f, 0.5f, u0, v0, alpha);
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private static void vertex(RenderHandle handle, VertexConsumer builder, float x, float y, float u, float v, float alpha) {
+			int a = (int) (255 * alpha);
+			PoseStack.Pose pose = handle.matrix.last();
+			builder.vertex(pose.pose(), x, y, 0)
+					.color(255, 255, 255, a)
+					.uv(u, v)
+					.overlayCoords(OverlayTexture.NO_OVERLAY)
+					.uv2(handle.light)
+					.normal(pose.normal(), 0, 0, 1)
+					.endVertex();
 		}
 
 		@OnlyIn(Dist.CLIENT)

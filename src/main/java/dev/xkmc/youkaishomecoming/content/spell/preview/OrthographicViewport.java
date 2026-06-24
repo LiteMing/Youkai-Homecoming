@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
+import com.mojang.math.Axis;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
@@ -10,9 +11,13 @@ import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
+import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
+import dev.xkmc.fastprojectileapi.spellcircle.SpellComponent;
+import dev.xkmc.fastprojectileapi.spellcircle.SpellRenderState;
 import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -20,6 +25,7 @@ import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
@@ -84,6 +90,15 @@ public class OrthographicViewport {
 	private static final float MAX_MOVE_SPEED = 5.0f;
 	private static final float LOOK_SENSITIVITY = 0.15f;
 	private static final float PERSP_FOV = 70f; // degrees
+	private static final net.minecraft.resources.ResourceLocation SPELL_CIRCLE_TEXTURE =
+			YoukaisHomecoming.loc("textures/entities/spell_circle.png");
+
+	private boolean magicCirclePreviewActive = false;
+	@Nullable
+	private ResourceLocation magicCirclePreviewId = null;
+	@Nullable
+	private SpellComponent magicCirclePreviewComponent = null;
+	private float magicCirclePreviewSize = 1.0f;
 
 	public void setBounds(int x, int y, int width, int height) {
 		this.x = x;
@@ -299,6 +314,76 @@ public class OrthographicViewport {
 		// Reserved for future rotation gizmo rendering
 	}
 
+	public void setMagicCirclePreview(@Nullable ResourceLocation id, @Nullable SpellComponent component, float size) {
+		this.magicCirclePreviewActive = true;
+		this.magicCirclePreviewId = id;
+		this.magicCirclePreviewComponent = component;
+		this.magicCirclePreviewSize = Float.isFinite(size) ? Math.max(0.0f, Math.min(64.0f, size)) : 1.0f;
+	}
+
+	public void clearMagicCirclePreview() {
+		this.magicCirclePreviewActive = false;
+		this.magicCirclePreviewId = null;
+		this.magicCirclePreviewComponent = null;
+		this.magicCirclePreviewSize = 1.0f;
+	}
+
+	public boolean isMagicCirclePreviewActive() {
+		return magicCirclePreviewActive;
+	}
+
+	public float getMagicCirclePreviewSize() {
+		return magicCirclePreviewSize;
+	}
+
+	public Vec3 magicCircleLocalToScreen(double localX, double localY, double localZ) {
+		if (width <= 0 || height <= 0 || magicCirclePreviewSize <= 0) {
+			return new Vec3(x + width / 2.0, y + height / 2.0, clipDepth);
+		}
+		Matrix4f matrix = magicCirclePreviewMatrix();
+		Vector3f pos = new Vector3f((float) localX, (float) localY, (float) localZ);
+		matrix.transformPosition(pos);
+		return new Vec3(pos.x(), pos.y(), pos.z());
+	}
+
+	public Vec3 screenDeltaToMagicCircleLocalDelta(float dxPixels, float dyPixels, double localZ) {
+		if (width <= 0 || height <= 0 || magicCirclePreviewSize <= 0) {
+			return Vec3.ZERO;
+		}
+		Vec3 center = magicCircleLocalToScreen(0, 0, localZ);
+		Vec3 xAxis = magicCircleLocalToScreen(1, 0, localZ).subtract(center);
+		Vec3 yAxis = magicCircleLocalToScreen(0, 1, localZ).subtract(center);
+		double det = xAxis.x * yAxis.y - xAxis.y * yAxis.x;
+		if (Math.abs(det) < 1.0e-5) {
+			double fallback = 16.0 / (magicCirclePreviewSize * zoom);
+			return new Vec3(dxPixels * fallback, -dyPixels * fallback, 0);
+		}
+		double localX = (dxPixels * yAxis.y - dyPixels * yAxis.x) / det;
+		double localY = (xAxis.x * dyPixels - xAxis.y * dxPixels) / det;
+		return new Vec3(localX, localY, 0);
+	}
+
+	public double magicCircleLocalUnitsToPixels(double localUnits) {
+		if (magicCirclePreviewSize <= 0) {
+			return 0;
+		}
+		return Math.abs(localUnits * magicCirclePreviewSize / 16.0 * zoom);
+	}
+
+	private Matrix4f magicCirclePreviewMatrix() {
+		float xRot = currentXRot();
+		float yRot = currentYRot();
+		PoseStack poseStack = new PoseStack();
+		poseStack.translate(x + width / 2.0, y + height / 2.0, clipDepth);
+		poseStack.scale(zoom, -zoom, zoom);
+		poseStack.translate(-viewX, -viewY, 0);
+		ViewAngle.applyRotation(poseStack, xRot, yRot);
+		poseStack.scale(magicCirclePreviewSize / 16f, magicCirclePreviewSize / 16f, magicCirclePreviewSize / 16f);
+		poseStack.mulPose(ViewAngle.computeOrientation(xRot, yRot));
+		poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+		return new Matrix4f(poseStack.last().pose());
+	}
+
 	/** Pending group offset delta accumulated during drag (consumed by callback). */
 	private Vec3 pendingGroupOffset = Vec3.ZERO;
 	public void addPendingGroupOffset(Vec3 delta) { this.pendingGroupOffset = this.pendingGroupOffset.add(delta); }
@@ -503,11 +588,56 @@ public class OrthographicViewport {
 	public void render(GuiGraphics guiGraphics, VirtualSpellScene scene, float partialTick) {
 		if (width <= 0 || height <= 0) return;
 
+		if (magicCirclePreviewActive) {
+			renderMagicCirclePreview(guiGraphics, partialTick);
+			return;
+		}
 		if (perspectiveMode) {
 			renderPerspective(guiGraphics, scene, partialTick);
 		} else {
 			renderOrthographic(guiGraphics, scene, partialTick);
 		}
+	}
+
+	private void renderMagicCirclePreview(GuiGraphics guiGraphics, float partialTick) {
+		Minecraft mc = Minecraft.getInstance();
+		MultiBufferSource.BufferSource buffer = mc.renderBuffers().bufferSource();
+		float xRot = currentXRot();
+		float yRot = currentYRot();
+
+		guiGraphics.enableScissor(x, y, x + width, y + height);
+		guiGraphics.fill(x, y, x + width, y + height, 0xFF1a1a2e);
+		buffer.endBatch();
+
+		PoseStack poseStack = guiGraphics.pose();
+		poseStack.pushPose();
+		poseStack.translate(x + width / 2.0, y + height / 2.0, clipDepth);
+		poseStack.scale(zoom, -zoom, zoom);
+		poseStack.translate(-viewX, -viewY, 0);
+		ViewAngle.applyRotation(poseStack, xRot, yRot);
+
+		Quaternionf previewOrientation = ViewAngle.computeOrientation(xRot, yRot);
+		ProjectileRenderHelper.cameraOrientationOverride = previewOrientation;
+		RenderSystem.enableDepthTest();
+
+		renderGrid(poseStack);
+		renderAxes(poseStack);
+		if (magicCirclePreviewComponent != null && magicCirclePreviewSize > 0) {
+			float tick = (System.currentTimeMillis() % 1_000_000L) / 50.0f + partialTick;
+			SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(poseStack, buffer,
+					buffer.getBuffer(SpellRenderState.getSpell(SPELL_CIRCLE_TEXTURE)),
+					tick, LightTexture.FULL_BRIGHT);
+			poseStack.pushPose();
+			poseStack.scale(magicCirclePreviewSize / 16f, magicCirclePreviewSize / 16f, magicCirclePreviewSize / 16f);
+			poseStack.mulPose(previewOrientation);
+			poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+			magicCirclePreviewComponent.render(handle);
+			poseStack.popPose();
+		}
+		buffer.endBatch();
+		ProjectileRenderHelper.cameraOrientationOverride = null;
+		poseStack.popPose();
+		guiGraphics.disableScissor();
 	}
 
 	private void renderOrthographic(GuiGraphics guiGraphics, VirtualSpellScene scene, float partialTick) {
@@ -555,6 +685,7 @@ public class OrthographicViewport {
 		renderAxes(poseStack);
 
 		renderYsmPreviewCaster(scene, poseStack, buffer, partialTick);
+		renderPreviewCasterSpellCircle(scene, poseStack, buffer, partialTick, previewOrientation);
 
 		// 8. Render markers
 		renderMarkers(poseStack, scene);
@@ -680,6 +811,7 @@ public class OrthographicViewport {
 		renderAxes(poseStack);
 
 		renderYsmPreviewCaster(scene, poseStack, buffer, partialTick);
+		renderPreviewCasterSpellCircle(scene, poseStack, buffer, partialTick, previewOrientation);
 
 		// 12. Render markers
 		renderMarkers(poseStack, scene);
@@ -740,6 +872,20 @@ public class OrthographicViewport {
 		poseStack.pushPose();
 		poseStack.translate(ex, ey, ez);
 		YSMClientCompat.renderPreviewCaster(holder, yaw, partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
+		poseStack.popPose();
+	}
+
+	private void renderPreviewCasterSpellCircle(VirtualSpellScene scene, PoseStack poseStack,
+											   MultiBufferSource buffer, float partialTick,
+											   @Nullable Quaternionf previewOrientation) {
+		var caster = scene.getHolder().getFakeCaster();
+		double ex = Mth.lerp(partialTick, caster.xOld, caster.getX());
+		double ey = Mth.lerp(partialTick, caster.yOld, caster.getY());
+		double ez = Mth.lerp(partialTick, caster.zOld, caster.getZ());
+		poseStack.pushPose();
+		poseStack.translate(ex, ey, ez);
+		SpellCircleLayer.renderImpl(poseStack, buffer, LightTexture.FULL_BRIGHT,
+				caster, partialTick, previewOrientation);
 		poseStack.popPose();
 	}
 

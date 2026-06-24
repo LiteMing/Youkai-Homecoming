@@ -1,11 +1,13 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleHolder;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
@@ -74,6 +76,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private int ysmModelOverrideUntil = 0;
 	private int ysmTextureOverrideUntil = 0;
 	private int ysmAnimationOverrideUntil = 0;
+	private boolean previewSpellCircleOverride = false;
+	private boolean previewSpellCircleVisible = false;
+	@Nullable
+	private ResourceLocation previewSpellCircle = null;
+	private float previewSpellCircleSize = 1.0f;
 
 	public PreviewCardHolder(Level level) {
 		this.level = level;
@@ -109,10 +116,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	}
 
 	@Override
-	public ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DyeColor color) {
+	public ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DanmakuColor color) {
 		ItemDanmakuEntity danmaku = new ItemDanmakuEntity(YHEntities.ITEM_DANMAKU.get(), fakeCaster, level);
 		danmaku.setPos(center());
-		danmaku.setItem(type.get(color).asStack());
+		danmaku.setItem(type.stack(color));
+		danmaku.setTint(color.argb());
 		danmaku.setup(getDamage(type), life, true, true, vec);
 		return danmaku;
 	}
@@ -318,7 +326,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			shooter.yBodyRotO = shooter.yBodyRot;
 			shooter.yHeadRotO = shooter.yHeadRot;
 			// tick() handles movement, aiStep(), and serverAiStep() (via our override)
+			int beforeTick = shooter.tickCount;
 			shooter.tick();
+			if (shooter.tickCount == beforeTick) {
+				++shooter.tickCount;
+			}
 		} catch (Exception ignored) {
 			shooter.discard();
 			return false;
@@ -343,6 +355,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		pendingEntities.clear();
 		hitEntities.clear();
 		safetyTripped = false;
+		clearPreviewSpellCircle();
 	}
 
 	public void setTargetDistance(float distance) {
@@ -369,6 +382,47 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	public ArmorStand getFakeTarget() {
 		return fakeTarget;
+	}
+
+	public void setPreviewSpellCircle(ResourceLocation circle, float size) {
+		previewSpellCircleOverride = true;
+		previewSpellCircleVisible = true;
+		previewSpellCircle = circle;
+		previewSpellCircleSize = sanitizePreviewSpellCircleSize(size);
+	}
+
+	public void hidePreviewSpellCircle() {
+		previewSpellCircleOverride = true;
+		previewSpellCircleVisible = false;
+		previewSpellCircle = null;
+		previewSpellCircleSize = 1.0f;
+	}
+
+	public void clearPreviewSpellCircle() {
+		previewSpellCircleOverride = false;
+		previewSpellCircleVisible = false;
+		previewSpellCircle = null;
+		previewSpellCircleSize = 1.0f;
+	}
+
+	private boolean shouldShowPreviewSpellCircle() {
+		return previewSpellCircleOverride && previewSpellCircleVisible && previewSpellCircle != null;
+	}
+
+	@Nullable
+	private ResourceLocation getPreviewSpellCircle() {
+		return shouldShowPreviewSpellCircle() ? previewSpellCircle : null;
+	}
+
+	private float getPreviewSpellCircleSize() {
+		return shouldShowPreviewSpellCircle() ? previewSpellCircleSize : 0.0f;
+	}
+
+	private static float sanitizePreviewSpellCircleSize(float size) {
+		if (!Float.isFinite(size)) {
+			return 1.0f;
+		}
+		return Math.max(0.0f, Math.min(64.0f, size));
 	}
 
 	@Override
@@ -607,7 +661,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	 * using {@code getOwner() instanceof CardHolder} checks (AttachedMover,
 	 * terminate trail actions, damage source) will work correctly in preview.
 	 */
-	static class FakeCasterEntity extends ArmorStand implements CardHolder {
+	static class FakeCasterEntity extends ArmorStand implements CardHolder, SpellCircleHolder {
 
 		private final PreviewCardHolder holder;
 
@@ -638,7 +692,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		}
 
 		@Override
-		public ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DyeColor color) {
+		public ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DanmakuColor color) {
 			return holder.prepareDanmaku(life, vec, type, color);
 		}
 
@@ -665,6 +719,22 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		@Override
 		public LivingEntity self() {
 			return this;
+		}
+
+		@Override
+		public boolean shouldShowSpellCircle() {
+			return holder.shouldShowPreviewSpellCircle();
+		}
+
+		@Nullable
+		@Override
+		public ResourceLocation getSpellCircle() {
+			return holder.getPreviewSpellCircle();
+		}
+
+		@Override
+		public float getCircleSize(float pTick) {
+			return holder.getPreviewSpellCircleSize();
 		}
 
 		@Override

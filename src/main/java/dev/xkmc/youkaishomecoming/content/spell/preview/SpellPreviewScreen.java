@@ -56,6 +56,8 @@ public class SpellPreviewScreen extends Screen {
 	private PerfDockPanel perfDockPanel;
 	private HelpDockPanel helpDockPanel;
 	private RawJsonDockPanel rawJsonDockPanel;
+	private MagicCircleDockPanel magicCircleDockPanel;
+	private RawJsonDockPanel.ContentMode rawJsonContext = RawJsonDockPanel.ContentMode.SPELL;
 
 	// Editor panels (direct references for hotkey access)
 	private ActionListPanel actionListPanel;
@@ -223,6 +225,18 @@ public class SpellPreviewScreen extends Screen {
 				this::onRawJsonDefinitionEdited
 		);
 		rawJsonDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
+		magicCircleDockPanel = new MagicCircleDockPanel(viewport);
+		magicCircleDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
+		viewportPanel.setMagicCircleEditor(magicCircleDockPanel);
+		rawJsonDockPanel.setMagicCircleContext(
+				() -> rawJsonContext == RawJsonDockPanel.ContentMode.MAGIC_CIRCLE,
+				() -> magicCircleDockPanel == null ? "" : magicCircleDockPanel.encodeRawJson(),
+				text -> {
+					if (magicCircleDockPanel != null) {
+						magicCircleDockPanel.applyRawJson(text);
+					}
+				}
+		);
 		controlsDockPanel = new ControlsDockPanel(
 				scene, viewport, this::rebuildScreen, () -> resetSelectedPhasePreview(false),
 				spellController::getSpellOptions, spellController::getCurrentSpellSelectionId,
@@ -241,6 +255,7 @@ public class SpellPreviewScreen extends Screen {
 		panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
 		panelMap.put(editorDockPanel.dockId(), editorDockPanel);
 		panelMap.put(rawJsonDockPanel.dockId(), rawJsonDockPanel);
+		panelMap.put(magicCircleDockPanel.dockId(), magicCircleDockPanel);
 		panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
 		panelMap.put(statusDockPanel.dockId(), statusDockPanel);
 		panelMap.put(variablesDockPanel.dockId(), variablesDockPanel);
@@ -256,6 +271,7 @@ public class SpellPreviewScreen extends Screen {
 			boolean savedLayoutHasStatusPanel = DockSerializer.savedLayoutContainsPanel(statusDockPanel.dockId());
 			boolean savedLayoutHasVariablesPanel = DockSerializer.savedLayoutContainsPanel(variablesDockPanel.dockId());
 			boolean savedLayoutHasRawJsonPanel = DockSerializer.savedLayoutContainsPanel(rawJsonDockPanel.dockId());
+			boolean savedLayoutHasMagicCirclePanel = DockSerializer.savedLayoutContainsPanel(magicCircleDockPanel.dockId());
 			DockNode root = DockSerializer.loadLayout(panelMap, SpellPreviewScreen::buildDefaultLayout);
 			dockLayout = new DockLayout(root);
 			if (hadSavedLayout && !savedLayoutHasStatusPanel) {
@@ -266,6 +282,9 @@ public class SpellPreviewScreen extends Screen {
 			}
 			if (hadSavedLayout && (!savedLayoutHasRawJsonPanel || rawJsonSharesEditorGroup())) {
 				relocateMissingRawJsonPanel();
+			}
+			if (hadSavedLayout && !savedLayoutHasMagicCirclePanel) {
+				relocateMissingMagicCirclePanel();
 			}
 		}
 		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
@@ -295,6 +314,7 @@ public class SpellPreviewScreen extends Screen {
 		DockPanel actions = panelMap.get("actions");
 		DockPanel properties = panelMap.get("properties");
 		DockPanel rawJson = panelMap.get("raw_json");
+		DockPanel magicCircle = panelMap.get("magic_circle");
 		DockPanel controls = panelMap.get("controls");
 		DockPanel status = panelMap.get("status");
 		DockPanel variables = panelMap.get("variables");
@@ -304,7 +324,7 @@ public class SpellPreviewScreen extends Screen {
 		DockGroup actionListGroup = new DockGroup(actions);
 		DockGroup editorGroup = new DockGroup(properties);
 		DockGroup controlsGroup = new DockGroup(controls, perf);
-		DockGroup statusGroup = new DockGroup(status, variables, rawJson);
+		DockGroup statusGroup = new DockGroup(status, variables, rawJson, magicCircle);
 		// Help 面板默认不显示
 
 		DockSplit rightSplit = new DockSplit(false, 0.4f, actionListGroup, editorGroup);
@@ -383,6 +403,24 @@ public class SpellPreviewScreen extends Screen {
 			currentGroup.removePanel(rawJsonDockPanel);
 		}
 		statusGroup.addPanel(rawJsonDockPanel);
+	}
+
+	private void relocateMissingMagicCirclePanel() {
+		if (dockLayout == null || magicCircleDockPanel == null || statusDockPanel == null) {
+			return;
+		}
+		DockGroup statusGroup = dockLayout.findGroupContaining(statusDockPanel);
+		if (statusGroup == null) {
+			return;
+		}
+		DockGroup currentGroup = dockLayout.findGroupContaining(magicCircleDockPanel);
+		if (currentGroup == statusGroup) {
+			return;
+		}
+		if (currentGroup != null) {
+			currentGroup.removePanel(magicCircleDockPanel);
+		}
+		statusGroup.addPanel(magicCircleDockPanel);
 	}
 
 	private boolean rawJsonSharesEditorGroup() {
@@ -502,7 +540,24 @@ public class SpellPreviewScreen extends Screen {
 		}
 		if (rawJsonDockPanel != null) {
 			DockGroup rawJsonGroup = dockLayout.findGroupContaining(rawJsonDockPanel);
-			rawJsonDockPanel.setEditorActive(rawJsonGroup != null && rawJsonGroup.getActivePanel() == rawJsonDockPanel);
+			boolean rawJsonActive = rawJsonGroup != null && rawJsonGroup.getActivePanel() == rawJsonDockPanel;
+			DockGroup magicCircleGroup = magicCircleDockPanel == null ? null : dockLayout.findGroupContaining(magicCircleDockPanel);
+			boolean magicCircleActive = magicCircleGroup != null && magicCircleGroup.getActivePanel() == magicCircleDockPanel;
+			if (magicCircleActive) {
+				rawJsonContext = RawJsonDockPanel.ContentMode.MAGIC_CIRCLE;
+			} else if (!rawJsonActive) {
+				rawJsonContext = RawJsonDockPanel.ContentMode.SPELL;
+			}
+			rawJsonDockPanel.setEditorActive(rawJsonActive);
+		}
+		if (magicCircleDockPanel != null) {
+			DockGroup magicCircleGroup = dockLayout.findGroupContaining(magicCircleDockPanel);
+			boolean magicCircleActive = magicCircleGroup != null && magicCircleGroup.getActivePanel() == magicCircleDockPanel;
+			DockGroup rawJsonGroup = rawJsonDockPanel == null ? null : dockLayout.findGroupContaining(rawJsonDockPanel);
+			boolean rawJsonActive = rawJsonGroup != null && rawJsonGroup.getActivePanel() == rawJsonDockPanel;
+			magicCircleDockPanel.setEditorActive(magicCircleActive);
+			magicCircleDockPanel.setPreviewActive(magicCircleActive ||
+					(rawJsonActive && rawJsonContext == RawJsonDockPanel.ContentMode.MAGIC_CIRCLE));
 		}
 	}
 

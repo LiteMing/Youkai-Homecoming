@@ -2110,7 +2110,8 @@ public class ActionListPanel {
 
 	private String getActionLabel(SpellAction action, int index) {
 		if (action instanceof FireDanmakuAction fda) {
-			String colorLabel = fda.color() instanceof ColorProvider.Constant cc ? cc.color().name().toLowerCase() : "dynamic";
+			String colorLabel = fda.color() instanceof ColorProvider.Constant cc ? cc.color().format() : "dynamic";
+			if (fda.colorAnimation().isPresent()) colorLabel += "+anim";
 			String bulletLabel = fda.bulletType() instanceof BulletProvider.Constant bc ? bc.bullet().name().toLowerCase() : "dynamic";
 			return index + ": fire " + bulletLabel + " " + colorLabel;
 		}
@@ -2128,6 +2129,16 @@ public class ActionListPanel {
 			return index + ": erase enemy r=" + formatNumberProvider(ee.radius());
 		}
 		if (action instanceof SpellActions.PlaySoundAction) return index + ": play_sound";
+		if (action instanceof ShowSpellTitleAction sta) {
+			return index + ": show title " + sta.duration() + "t r=" + sta.radius();
+		}
+		if (action instanceof SetSpellCircleAction sca) {
+			return switch (sca.mode()) {
+				case SET -> index + ": spell circle " + formatResourceId(sca.circle()) + " size=" + sca.size();
+				case OFF -> index + ": spell circle off";
+				case CLEAR -> index + ": spell circle clear";
+			};
+		}
 		if (action instanceof SpellActions.SetVariable sv) return index + ": set " + sv.key();
 		if (action instanceof SpellActions.AddVariable av) return index + ": add " + av.key();
 		if (action instanceof SpellActions.ForcePhase fp) {

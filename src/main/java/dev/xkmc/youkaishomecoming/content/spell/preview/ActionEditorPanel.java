@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -265,6 +266,10 @@ public class ActionEditorPanel {
 			buildPlaySoundRows(ps);
 		} else if (action instanceof RunCommandAction rc) {
 			buildRunCommandRows(rc);
+		} else if (action instanceof ShowSpellTitleAction sta) {
+			buildShowSpellTitleRows(sta);
+		} else if (action instanceof SetSpellCircleAction sca) {
+			buildSetSpellCircleRows(sca);
 		} else if (action instanceof SpellActions.ForcePhase fp) {
 			buildForcePhaseRows(fp);
 		} else if (action instanceof SpellActions.ForceSpell fs) {
@@ -311,6 +316,8 @@ public class ActionEditorPanel {
 		addFullWidthButton("Erase Enemy Danmaku", () -> selectType("erase_enemy_danmaku"));
 		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
 		addFullWidthButton("Run Command", () -> selectType("run_command"));
+		addFullWidthButton("Show Spell Title", () -> selectType("show_spell_title"));
+		addFullWidthButton("Custom Magic Circle", () -> selectType("set_spell_circle"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
 		addFullWidthButton("Force Spell", () -> selectType("force_spell"));
 		addFullWidthButton("Fire Spell", () -> selectType("fire_spell"));
@@ -364,6 +371,9 @@ public class ActionEditorPanel {
 					new ResourceLocation("minecraft", "entity.experience_orb.pickup"), 1f, 1f);
 			case "run_command" -> new RunCommandAction(RunCommandAction.Mode.AS_CASTER,
 					"yhspell stop @s 32");
+			case "show_spell_title" -> new ShowSpellTitleAction("", "", 100, 64.0);
+			case "set_spell_circle" -> new SetSpellCircleAction(SetSpellCircleAction.Mode.SET,
+					new ResourceLocation("youkaishomecoming", "test_spell"), 1.0f);
 			case "force_phase" -> new SpellActions.ForcePhase(
 					new ResourceLocation("youkaishomecoming", "main"), true);
 			case "force_spell" -> new SpellActions.ForceSpell(
@@ -399,6 +409,7 @@ public class ActionEditorPanel {
 		// === Base group (always visible) ===
 		addBulletProviderRows(a);
 		addColorProviderRows(a);
+		addColorAnimationRows(a);
 
 		addNumberRow("Count", a.count(), v ->
 				notifyDanmaku(old -> old.withCount(v), false));
@@ -547,6 +558,36 @@ public class ActionEditorPanel {
 		}
 	}
 
+	private void addColorAnimationRows(FireDanmakuAction a) {
+		String mode = a.colorAnimation().map(DanmakuColorAnimation::type).orElse("none");
+		addStringOptionRow("Color Anim",
+				new String[]{"none", "hue_cycle"},
+				new String[]{"None", "Hue Cycle"},
+				mode,
+				next -> notifyDanmaku(old -> old.withColorAnimation(
+						"hue_cycle".equals(next) ? Optional.of(DanmakuColorAnimation.hueCycle()) : Optional.empty()), true));
+		if (a.colorAnimation().orElse(null) instanceof DanmakuColorAnimation.HueCycle hue) {
+			addNumberRow("Hue Period", hue.period(), v ->
+					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
+							v, hue.hueOffset(), hue.indexStep(), hue.saturation(), hue.brightness(), hue.alpha()))), false));
+			addNumberRow("Hue Offset", hue.hueOffset(), v ->
+					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
+							hue.period(), v, hue.indexStep(), hue.saturation(), hue.brightness(), hue.alpha()))), false));
+			addNumberRow("Index Step", hue.indexStep(), v ->
+					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
+							hue.period(), hue.hueOffset(), v, hue.saturation(), hue.brightness(), hue.alpha()))), false));
+			addNumberRow("Saturation", hue.saturation(), v ->
+					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
+							hue.period(), hue.hueOffset(), hue.indexStep(), v, hue.brightness(), hue.alpha()))), false));
+			addNumberRow("Brightness", hue.brightness(), v ->
+					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
+							hue.period(), hue.hueOffset(), hue.indexStep(), hue.saturation(), v, hue.alpha()))), false));
+			addNumberRow("Alpha", hue.alpha(), v ->
+					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
+							hue.period(), hue.hueOffset(), hue.indexStep(), hue.saturation(), hue.brightness(), v))), false));
+		}
+	}
+
 	private void addBulletProviderRows(FireDanmakuAction a) {
 		BulletProvider provider = a.bulletType();
 		String mode = provider instanceof BulletProvider.Indexed ? "indexed" :
@@ -558,8 +599,7 @@ public class ActionEditorPanel {
 				mode,
 				next -> notifyDanmaku(old -> old.withBulletProvider(createBulletProvider(next, provider, fallback)), true));
 		if (provider instanceof BulletProvider.Constant bc) {
-			addEnumRow("Bullet", YHDanmaku.Bullet.values(), bc.bullet(), v ->
-					notifyDanmaku(old -> old.withBulletType(v)));
+			addBulletRow(bc.bullet(), v -> notifyDanmaku(old -> old.withBulletType(v)));
 		} else if (provider instanceof BulletProvider.Indexed indexed) {
 			addNumberRow("Bullet Index", indexed.index(), v ->
 					notifyDanmaku(old -> {
@@ -593,19 +633,20 @@ public class ActionEditorPanel {
 				provider instanceof ColorProvider.ByVariable ? "by_variable" :
 						provider instanceof ColorProvider.Cycle ? "cycle" :
 								provider instanceof ColorProvider.RandomChoice ? "random_choice" : "constant";
-		DyeColor fallback = firstColor(provider);
+		DanmakuColor fallback = firstColor(provider);
 		addStringOptionRow("Color Mode",
 				new String[]{"constant", "indexed", "by_variable", "cycle", "random_choice"},
 				new String[]{"Constant", "Indexed", "Variable", "Cycle", "Random"},
 				mode,
 				next -> notifyDanmaku(old -> old.withColor(createColorProvider(next, provider, fallback)), true));
 		if (provider instanceof ColorProvider.Constant cc) {
-			addEnumRow("Color", DyeColor.values(), cc.color(), v ->
-					notifyDanmaku(old -> old.withColor(ColorProvider.constant(v))));
+			addSuggestStringRow("Color", cc.color().format(), ActionEditorPanel::colorListOptions, v ->
+					DanmakuColor.parse(v).ifPresent(color ->
+							notifyDanmaku(old -> old.withColor(ColorProvider.constant(color)))));
 		} else if (provider instanceof ColorProvider.Indexed indexed) {
 			addNumberRow("Color Index", indexed.index(), v ->
 					notifyDanmaku(old -> {
-						List<DyeColor> palette = old.color() instanceof ColorProvider.Indexed cur ?
+						List<DanmakuColor> palette = old.color() instanceof ColorProvider.Indexed cur ?
 								cur.palette() : indexed.palette();
 						return old.withColor(new ColorProvider.Indexed(v, palette));
 					}, false));
@@ -618,7 +659,7 @@ public class ActionEditorPanel {
 		} else if (provider instanceof ColorProvider.ByVariable variable) {
 			addStringRow("Color Var", variable.key(), v ->
 					notifyDanmaku(old -> {
-						List<DyeColor> palette = old.color() instanceof ColorProvider.ByVariable cur ?
+						List<DanmakuColor> palette = old.color() instanceof ColorProvider.ByVariable cur ?
 								cur.palette() : variable.palette();
 						return old.withColor(new ColorProvider.ByVariable(v, palette));
 					}, true));
@@ -631,7 +672,7 @@ public class ActionEditorPanel {
 		} else if (provider instanceof ColorProvider.Cycle cycle) {
 			addIntRow("Color Interval", cycle.interval(), v ->
 					notifyDanmaku(old -> {
-						List<DyeColor> palette = old.color() instanceof ColorProvider.Cycle cur ?
+						List<DanmakuColor> palette = old.color() instanceof ColorProvider.Cycle cur ?
 								cur.palette() : cycle.palette();
 						return old.withColor(new ColorProvider.Cycle(palette, Math.max(1, v)));
 					}, false));
@@ -647,7 +688,7 @@ public class ActionEditorPanel {
 		}
 	}
 
-	private void addColorPaletteRow(List<DyeColor> palette, Consumer<List<DyeColor>> onChange) {
+	private void addColorPaletteRow(List<DanmakuColor> palette, Consumer<List<DanmakuColor>> onChange) {
 		addListSuggestStringRow("Color List", formatColorList(palette), ActionEditorPanel::colorListOptions, v -> {
 			var parsed = parseColorList(v);
 			if (!parsed.isEmpty()) {
@@ -667,8 +708,8 @@ public class ActionEditorPanel {
 		};
 	}
 
-	private ColorProvider createColorProvider(String mode, ColorProvider old, DyeColor fallback) {
-		List<DyeColor> palette = colorPalette(old, fallback);
+	private ColorProvider createColorProvider(String mode, ColorProvider old, DanmakuColor fallback) {
+		List<DanmakuColor> palette = colorPalette(old, fallback);
 		return switch (mode) {
 			case "indexed" -> old instanceof ColorProvider.Indexed indexed ? indexed :
 					new ColorProvider.Indexed(NumberProvider.constant(0), palette);
@@ -689,13 +730,13 @@ public class ActionEditorPanel {
 		return YHDanmaku.Bullet.CIRCLE;
 	}
 
-	private DyeColor firstColor(ColorProvider provider) {
+	private DanmakuColor firstColor(ColorProvider provider) {
 		if (provider instanceof ColorProvider.Constant c) return c.color();
 		if (provider instanceof ColorProvider.Indexed indexed && !indexed.palette().isEmpty()) return indexed.palette().get(0);
 		if (provider instanceof ColorProvider.ByVariable variable && !variable.palette().isEmpty()) return variable.palette().get(0);
 		if (provider instanceof ColorProvider.Cycle cycle && !cycle.palette().isEmpty()) return cycle.palette().get(0);
 		if (provider instanceof ColorProvider.RandomChoice random && !random.palette().isEmpty()) return random.palette().get(0);
-		return DyeColor.WHITE;
+		return DanmakuColor.WHITE;
 	}
 
 	private List<YHDanmaku.Bullet> bulletPalette(BulletProvider provider, YHDanmaku.Bullet fallback) {
@@ -704,7 +745,7 @@ public class ActionEditorPanel {
 		return List.of(fallback);
 	}
 
-	private List<DyeColor> colorPalette(ColorProvider provider, DyeColor fallback) {
+	private List<DanmakuColor> colorPalette(ColorProvider provider, DanmakuColor fallback) {
 		if (provider instanceof ColorProvider.Indexed indexed && !indexed.palette().isEmpty()) return indexed.palette();
 		if (provider instanceof ColorProvider.ByVariable variable && !variable.palette().isEmpty()) return variable.palette();
 		if (provider instanceof ColorProvider.Cycle cycle && !cycle.palette().isEmpty()) return cycle.palette();
@@ -717,8 +758,8 @@ public class ActionEditorPanel {
 				.collect(java.util.stream.Collectors.joining(", "));
 	}
 
-	private String formatColorList(List<DyeColor> values) {
-		return values.stream().map(e -> e.name().toLowerCase(java.util.Locale.ROOT))
+	private String formatColorList(List<DanmakuColor> values) {
+		return values.stream().map(DanmakuColor::format)
 				.collect(java.util.stream.Collectors.joining(", "));
 	}
 
@@ -735,6 +776,12 @@ public class ActionEditorPanel {
 		for (DyeColor color : DyeColor.values()) {
 			ans.add(color.name().toLowerCase(java.util.Locale.ROOT));
 		}
+		return ans;
+	}
+
+	private static List<String> spellCircleOptions() {
+		List<String> ans = new ArrayList<>(YoukaisHomecoming.SPELL.getMerged().map.keySet());
+		Collections.sort(ans);
 		return ans;
 	}
 
@@ -758,13 +805,10 @@ public class ActionEditorPanel {
 		return ans;
 	}
 
-	private List<DyeColor> parseColorList(String raw) {
-		List<DyeColor> ans = new ArrayList<>();
+	private List<DanmakuColor> parseColorList(String raw) {
+		List<DanmakuColor> ans = new ArrayList<>();
 		for (String token : splitList(raw)) {
-			try {
-				ans.add(DyeColor.valueOf(token.toUpperCase(java.util.Locale.ROOT)));
-			} catch (IllegalArgumentException ignored) {
-			}
+			DanmakuColor.parse(token).ifPresent(ans::add);
 		}
 		return ans;
 	}
@@ -1145,6 +1189,39 @@ public class ActionEditorPanel {
 				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(), v)));
 	}
 
+	private void buildShowSpellTitleRows(ShowSpellTitleAction sta) {
+		addStringRow("Name", sta.name(), v ->
+				notifySimple(old -> new ShowSpellTitleAction(v, ((ShowSpellTitleAction) old).description(),
+						((ShowSpellTitleAction) old).duration(), ((ShowSpellTitleAction) old).radius())));
+		addStringRow("Description", sta.description(), v ->
+				notifySimple(old -> new ShowSpellTitleAction(((ShowSpellTitleAction) old).name(), v,
+						((ShowSpellTitleAction) old).duration(), ((ShowSpellTitleAction) old).radius())));
+		addIntRow("Duration", sta.duration(), v ->
+				notifySimple(old -> new ShowSpellTitleAction(((ShowSpellTitleAction) old).name(),
+						((ShowSpellTitleAction) old).description(), v, ((ShowSpellTitleAction) old).radius())));
+		addDoubleRow("Radius", sta.radius(), v ->
+				notifySimple(old -> new ShowSpellTitleAction(((ShowSpellTitleAction) old).name(),
+						((ShowSpellTitleAction) old).description(), ((ShowSpellTitleAction) old).duration(), v)));
+	}
+
+	private void buildSetSpellCircleRows(SetSpellCircleAction sca) {
+		addEnumRow("Mode", SetSpellCircleAction.Mode.values(), sca.mode(), v ->
+				notifySimple(old -> new SetSpellCircleAction(v, ((SetSpellCircleAction) old).circle(),
+						((SetSpellCircleAction) old).size()), true));
+		if (sca.mode() == SetSpellCircleAction.Mode.SET) {
+			addSuggestStringRow("Circle", sca.circle().toString(), ActionEditorPanel::spellCircleOptions, v -> {
+				ResourceLocation id = ResourceLocation.tryParse(v);
+				if (id != null) {
+					notifySimple(old -> new SetSpellCircleAction(((SetSpellCircleAction) old).mode(), id,
+							((SetSpellCircleAction) old).size()), true);
+				}
+			});
+			addFloatRow("Size", sca.size(), v ->
+					notifySimple(old -> new SetSpellCircleAction(((SetSpellCircleAction) old).mode(),
+							((SetSpellCircleAction) old).circle(), v)));
+		}
+	}
+
 	// --- ForcePhase rows ---
 
 	private void buildForcePhaseRows(SpellActions.ForcePhase fp) {
@@ -1460,6 +1537,12 @@ public class ActionEditorPanel {
 				notifySimple(old -> ((SpawnShooterAction) old).withHealth(v)));
 		addIntRow("Lifetime", ssa.lifetime(), v ->
 				notifySimple(old -> ((SpawnShooterAction) old).withLifetime(v)));
+		addSuggestStringRow("Circle", ssa.circle().toString(), ActionEditorPanel::spellCircleOptions, v -> {
+			ResourceLocation id = ResourceLocation.tryParse(v);
+			if (id != null) {
+				notifySimple(old -> ((SpawnShooterAction) old).withCircle(id), true);
+			}
+		});
 		addNumberRow("Vel X", ssa.velocityX(), v ->
 				notifySimple(old -> ((SpawnShooterAction) old).withVelocityX(v)));
 		addNumberRow("Vel Y", ssa.velocityY(), v ->
@@ -2851,6 +2934,22 @@ public class ActionEditorPanel {
 			openDropdown(displayNames, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
 		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, false));
+	}
+
+	private void addBulletRow(YHDanmaku.Bullet current, Consumer<YHDanmaku.Bullet> onChange) {
+		YHDanmaku.Bullet[] values = YHDanmaku.Bullet.values();
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		String[] displayNames = new String[values.length];
+		for (int i = 0; i < values.length; i++) {
+			String name = SpellEditorLocalization.danmakuBulletShapeName(values[i].name);
+			displayNames[i] = values[i].category == YHDanmaku.BulletCategory.GIANT ? "giant/" + name : name;
+		}
+		int selectedIndex = current.ordinal();
+		int rowIndex = rows.size();
+		var btn = Button.builder(Component.literal(displayNames[selectedIndex] + " \u25BC"), b -> {
+			openDropdown(displayNames, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
+		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
+		rows.add(new EditorRow("Bullet", btn, false));
 	}
 
 	private void addStringCycleRow(String label, String[] values, String current, Consumer<String> onChange) {

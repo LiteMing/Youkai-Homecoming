@@ -47,6 +47,9 @@ public class ViewportDockPanel implements DockPanel {
 	private boolean rotationGizmoActive = false;
 	private double rotationGizmoAxisX, rotationGizmoAxisY, rotationGizmoAxisZ;
 	private java.util.function.DoubleConsumer onRotationSpeedChanged; // degrees_per_tick delta
+	private MagicCircleDockPanel magicCircleEditor;
+	private boolean magicCircleItemDragging = false;
+	private boolean magicCircleItemRotating = false;
 
 	// 透视模式鼠标追踪
 	private double lastMouseX, lastMouseY;
@@ -111,7 +114,20 @@ public class ViewportDockPanel implements DockPanel {
 		var font = Minecraft.getInstance().font;
 		String l1, l2 = null;
 		int c1, c2 = 0;
-		if (viewport.isPerspectiveMode()) {
+		if (isMagicCirclePreviewEditing()) {
+			if (magicCircleItemDragging) {
+				l1 = "Moving item layer";
+				c1 = 0xFF66FF88;
+			} else if (magicCircleItemRotating) {
+				l1 = "Rotating item layer";
+				c1 = 0xFFFFCC66;
+			} else {
+				l1 = "Magic Circle  LMB drag item: move / RMB drag item: rotate";
+				c1 = 0xFFCCCCCC;
+				l2 = "MMB pan / RMB empty orbit / wheel zoom";
+				c2 = 0xFFAAAAAA;
+			}
+		} else if (viewport.isPerspectiveMode()) {
 			if (hasHighlightedGroup()) {
 				l1 = "SELECTED — switch to orthographic to edit";
 				c1 = 0xFFFFAA44;
@@ -152,7 +168,12 @@ public class ViewportDockPanel implements DockPanel {
 			graphics.drawString(font, SpellEditorLocalization.t(dragLabel), mouseX + 8, mouseY - 4, 0xFFFFFFFF, true);
 			return;
 		}
-		if (viewport.isPerspectiveMode() || !viewport.isMouseOver(mouseX, mouseY)) return;
+		if (!viewport.isMouseOver(mouseX, mouseY)) return;
+		if (isMagicCirclePreviewEditing()) {
+			renderMagicCircleInteractionFeedback(graphics, mouseX, mouseY);
+			return;
+		}
+		if (viewport.isPerspectiveMode()) return;
 		int hm = hitTestMarker(mouseX, mouseY);
 		if (hm == 0) {
 			markerRing(graphics, scene.getHolder().getFakeCaster().position(), 7, 0xFFFF5555);
@@ -177,6 +198,8 @@ public class ViewportDockPanel implements DockPanel {
 
 	/** The label for whatever is currently being dragged, or null if no drag is active. */
 	private String activeDragLabel() {
+		if (magicCircleItemDragging) return "Moving item layer";
+		if (magicCircleItemRotating) return "Rotating item layer";
 		if (movingCaster) return "Moving Caster";
 		if (movingTarget) return "Moving Target";
 		if (groupDragging) return "Moving origin";
@@ -197,6 +220,94 @@ public class ViewportDockPanel implements DockPanel {
 		graphics.renderOutline(x0, y0, radius * 2, radius * 2, color);
 	}
 
+	private void renderMagicCircleInteractionFeedback(GuiGraphics graphics, int mouseX, int mouseY) {
+		if (magicCircleEditor == null) {
+			return;
+		}
+		var font = Minecraft.getInstance().font;
+		int selected = magicCircleEditor.getSelectedItemIndex();
+		if (selected >= 0) {
+			Vec3 sp = magicCircleItemScreenPosition(selected);
+			drawRing(graphics, sp.x, sp.y, magicCircleItemRadius(selected) + 2, 0xFFFFDD55);
+		}
+		int hover = hitTestMagicCircleItem(mouseX, mouseY);
+		if (hover >= 0) {
+			Vec3 sp = magicCircleItemScreenPosition(hover);
+			drawRing(graphics, sp.x, sp.y, magicCircleItemRadius(hover), 0xFF66DDFF);
+			String label = hover == selected ? "Item layer - LMB move / RMB rotate" : "Item layer - click to select";
+			graphics.drawString(font, SpellEditorLocalization.t(label), mouseX + 8, mouseY - 4, 0xFF99E6FF, true);
+		}
+	}
+
+	private boolean mouseClickedMagicCircle(double mouseX, double mouseY, int button) {
+		if (magicCircleEditor == null) {
+			return false;
+		}
+		if (button == 0) {
+			int hit = hitTestMagicCircleItem(mouseX, mouseY);
+			if (hit >= 0) {
+				magicCircleEditor.selectItem(hit);
+				magicCircleItemDragging = true;
+			}
+			return true;
+		}
+		if (button == 1) {
+			int hit = hitTestMagicCircleItem(mouseX, mouseY);
+			if (hit >= 0) {
+				magicCircleEditor.selectItem(hit);
+				magicCircleItemRotating = true;
+				return true;
+			}
+			rotating = true;
+			return true;
+		}
+		if (button == 2) {
+			dragging = true;
+			return true;
+		}
+		return true;
+	}
+
+	private boolean isMagicCirclePreviewEditing() {
+		return viewport.isMagicCirclePreviewActive() && magicCircleEditor != null;
+	}
+
+	private int hitTestMagicCircleItem(double screenX, double screenY) {
+		if (!isMagicCirclePreviewEditing() || magicCircleEditor == null) {
+			return -1;
+		}
+		double bestDistSq = Double.POSITIVE_INFINITY;
+		int best = -1;
+		for (int i = magicCircleEditor.getItemCount() - 1; i >= 0; i--) {
+			Vec3 sp = magicCircleItemScreenPosition(i);
+			double dx = sp.x - screenX;
+			double dy = sp.y - screenY;
+			double radius = magicCircleItemRadius(i);
+			double distSq = dx * dx + dy * dy;
+			if (distSq <= radius * radius && distSq < bestDistSq) {
+				bestDistSq = distSq;
+				best = i;
+			}
+		}
+		return best;
+	}
+
+	private Vec3 magicCircleItemScreenPosition(int index) {
+		if (magicCircleEditor == null) {
+			return Vec3.ZERO;
+		}
+		Vec3 pos = magicCircleEditor.getItemPosition(index);
+		return viewport.magicCircleLocalToScreen(pos.x, pos.y, pos.z);
+	}
+
+	private int magicCircleItemRadius(int index) {
+		if (magicCircleEditor == null) {
+			return 8;
+		}
+		double localRadius = Math.max(6.0, Math.abs(magicCircleEditor.getItemScale(index)) * 0.5);
+		return (int) Math.round(Math.max(8.0, viewport.magicCircleLocalUnitsToPixels(localRadius)));
+	}
+
 	private static String axisName(int axis) {
 		return switch (axis) { case 0 -> "X"; case 1 -> "Y"; default -> "Z"; };
 	}
@@ -210,6 +321,10 @@ public class ViewportDockPanel implements DockPanel {
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
 		if (!viewport.isMouseOver(mouseX, mouseY)) return false;
+
+		if (isMagicCirclePreviewEditing()) {
+			return mouseClickedMagicCircle(mouseX, mouseY, button);
+		}
 
 		if (viewport.isPerspectiveMode()) {
 			if (!viewport.isPerspectiveCaptured()) {
@@ -295,6 +410,21 @@ public class ViewportDockPanel implements DockPanel {
 
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+		if (magicCircleItemDragging) {
+			if (magicCircleEditor != null) {
+				int selected = magicCircleEditor.getSelectedItemIndex();
+				double localZ = selected < 0 ? 0 : magicCircleEditor.getItemPosition(selected).z;
+				Vec3 delta = viewport.screenDeltaToMagicCircleLocalDelta((float) deltaX, (float) deltaY, localZ);
+				magicCircleEditor.moveSelectedItem(delta.x, delta.y);
+			}
+			return true;
+		}
+		if (magicCircleItemRotating) {
+			if (magicCircleEditor != null) {
+				magicCircleEditor.rotateSelectedItem(deltaX * 0.5);
+			}
+			return true;
+		}
 		if (viewport.isPerspectiveOrbiting()) {
 			viewport.perspectiveOrbit((float) deltaX, (float) deltaY);
 			return true;
@@ -353,6 +483,14 @@ public class ViewportDockPanel implements DockPanel {
 
 	@Override
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		if (magicCircleItemDragging && button == 0) {
+			magicCircleItemDragging = false;
+			return true;
+		}
+		if (magicCircleItemRotating && button == 1) {
+			magicCircleItemRotating = false;
+			return true;
+		}
 		if (viewport.isPerspectiveOrbiting() && button == 1) {
 			viewport.setPerspectiveOrbiting(false);
 			return true;
@@ -497,6 +635,10 @@ public class ViewportDockPanel implements DockPanel {
 	/** Set the callback for rotation speed changes (degrees_per_tick delta). */
 	public void setOnRotationSpeedChanged(java.util.function.DoubleConsumer callback) {
 		this.onRotationSpeedChanged = callback;
+	}
+
+	public void setMagicCircleEditor(MagicCircleDockPanel editor) {
+		this.magicCircleEditor = editor;
 	}
 
 	/** Whether the rotation gizmo is currently active (selected action has a rotation mover). */

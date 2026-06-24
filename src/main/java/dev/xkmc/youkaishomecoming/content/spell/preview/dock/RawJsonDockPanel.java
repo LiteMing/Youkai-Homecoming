@@ -35,6 +35,7 @@ import java.nio.file.Path;
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -51,6 +52,9 @@ public class RawJsonDockPanel implements DockPanel {
 	private final Supplier<ResourceLocation> phaseSupplier;
 	private final Supplier<ActionListPanel.ActionPath> selectedPathSupplier;
 	private final Consumer<SpellDefinition> applyDefinition;
+	private BooleanSupplier magicCircleModeSupplier = () -> false;
+	private Supplier<String> magicCircleJsonSupplier = () -> "";
+	private Consumer<String> applyMagicCircleJson = ignored -> {};
 
 	private Consumer<AbstractWidget> addWidgetCallback;
 	private Consumer<GuiEventListener> removeWidgetCallback;
@@ -61,8 +65,14 @@ public class RawJsonDockPanel implements DockPanel {
 	private String dirtyDraftMessage = "";
 	private Path dirtyDraftPath;
 	private ActionListPanel.ActionPath highlightedPath;
+	private ContentMode displayedMode;
 	private String status = "";
 	private int statusColor = 0xFF888888;
+
+	public enum ContentMode {
+		SPELL,
+		MAGIC_CIRCLE
+	}
 
 	public RawJsonDockPanel(Supplier<SpellDefinition> definitionSupplier,
 							Supplier<ResourceLocation> phaseSupplier,
@@ -72,6 +82,14 @@ public class RawJsonDockPanel implements DockPanel {
 		this.phaseSupplier = phaseSupplier;
 		this.selectedPathSupplier = selectedPathSupplier;
 		this.applyDefinition = applyDefinition;
+	}
+
+	public void setMagicCircleContext(BooleanSupplier magicCircleModeSupplier,
+									  Supplier<String> magicCircleJsonSupplier,
+									  Consumer<String> applyMagicCircleJson) {
+		this.magicCircleModeSupplier = magicCircleModeSupplier == null ? () -> false : magicCircleModeSupplier;
+		this.magicCircleJsonSupplier = magicCircleJsonSupplier == null ? () -> "" : magicCircleJsonSupplier;
+		this.applyMagicCircleJson = applyMagicCircleJson == null ? ignored -> {} : applyMagicCircleJson;
 	}
 
 	public void setWidgetCallbacks(Consumer<AbstractWidget> addWidgetCallback,
@@ -123,7 +141,7 @@ public class RawJsonDockPanel implements DockPanel {
 	@Override
 	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		graphics.fill(x, y, x + w, y + h, 0xCC000000);
-		syncEditorFromDefinition();
+		syncEditorFromContext();
 		Font font = Minecraft.getInstance().font;
 		String msg = SpellEditorLocalization.t(status);
 		int maxWidth = Math.max(0, w - PADDING * 2);
@@ -158,7 +176,7 @@ public class RawJsonDockPanel implements DockPanel {
 			if (active) {
 				highlightedPath = null;
 				editor.visible = true;
-				syncEditorFromDefinition();
+				syncEditorFromContext();
 			} else {
 				editor.setFocused(false);
 				editor.visible = false;
@@ -224,6 +242,39 @@ public class RawJsonDockPanel implements DockPanel {
 		return Math.max(10, h - PADDING * 2 - STATUS_HEIGHT);
 	}
 
+	private void syncEditorFromContext() {
+		if (magicCircleModeSupplier.getAsBoolean()) {
+			syncEditorFromMagicCircle();
+		} else {
+			syncEditorFromDefinition();
+		}
+	}
+
+	private void syncEditorFromMagicCircle() {
+		if (editor == null || !editor.visible) {
+			return;
+		}
+		String text = magicCircleJsonSupplier.get();
+		if (text == null) {
+			text = "";
+		}
+		boolean modeChanged = displayedMode != ContentMode.MAGIC_CIRCLE;
+		boolean shouldReplaceText = !editor.isFocused() && (modeChanged || !editor.getValue().equals(text));
+		if (shouldReplaceText) {
+			setEditorText(text);
+			highlightedPath = null;
+			selectRange(0, 0, false);
+		}
+		if (!editor.isFocused()) {
+			highlightedPath = null;
+		}
+		displayedMode = ContentMode.MAGIC_CIRCLE;
+		if (status.isBlank() || "Raw JSON ready".equals(status) || "Raw JSON applied".equals(status)
+				|| "Magic Circle JSON ready".equals(status) || "Magic Circle JSON applied".equals(status)) {
+			setStatus("Magic Circle JSON ready", 0xFF88AACC);
+		}
+	}
+
 	private void syncEditorFromDefinition() {
 		if (editor == null || !editor.visible) {
 			return;
@@ -236,7 +287,7 @@ public class RawJsonDockPanel implements DockPanel {
 			setStatus("No action selected", 0xFF888888);
 			return;
 		}
-		if (dirtyInvalidDraft) {
+		if (dirtyInvalidDraft && displayedMode == ContentMode.SPELL) {
 			return;
 		}
 		FormattedJson formatted = encodeDefinition(definition, phaseSupplier.get(), selectedPathSupplier.get());
@@ -244,7 +295,8 @@ public class RawJsonDockPanel implements DockPanel {
 			return;
 		}
 		ActionListPanel.ActionPath selected = selectedPathSupplier.get();
-		boolean shouldReplaceText = !editor.isFocused() && !editor.getValue().equals(formatted.text());
+		boolean modeChanged = displayedMode != ContentMode.SPELL;
+		boolean shouldReplaceText = !editor.isFocused() && (modeChanged || !editor.getValue().equals(formatted.text()));
 		boolean shouldHighlight = !editor.isFocused() && selected != null && !selected.equals(highlightedPath);
 		if (shouldReplaceText) {
 			setEditorText(formatted.text());
@@ -261,9 +313,11 @@ public class RawJsonDockPanel implements DockPanel {
 				highlightedPath = null;
 			}
 		}
-		if (status.isBlank() || "Raw JSON applied".equals(status)) {
+		if (status.isBlank() || "Raw JSON applied".equals(status) || "Magic Circle JSON ready".equals(status)
+				|| "Magic Circle JSON applied".equals(status)) {
 			setStatus("Raw JSON ready", 0xFF88AACC);
 		}
+		displayedMode = ContentMode.SPELL;
 	}
 
 	private void setEditorText(String text) {
@@ -274,6 +328,10 @@ public class RawJsonDockPanel implements DockPanel {
 
 	private void onJsonChanged(String text) {
 		if (suppressChange) {
+			return;
+		}
+		if (displayedMode == ContentMode.MAGIC_CIRCLE || magicCircleModeSupplier.getAsBoolean()) {
+			onMagicCircleJsonChanged(text);
 			return;
 		}
 		try {
@@ -313,6 +371,22 @@ public class RawJsonDockPanel implements DockPanel {
 			markDraft(text, errorStatus("Invalid JSON", e.getMessage()));
 		} catch (RuntimeException e) {
 			markDraft(text, errorStatus("Invalid spell JSON", e.getMessage()));
+		}
+	}
+
+	private void onMagicCircleJsonChanged(String text) {
+		try {
+			applyMagicCircleJson.accept(text);
+			dirtyInvalidDraft = false;
+			dirtyDraftMessage = "";
+			dirtyDraftPath = null;
+			highlightedPath = null;
+			displayedMode = ContentMode.MAGIC_CIRCLE;
+			setStatus("Magic Circle JSON applied", 0xFF88FF88);
+		} catch (JsonSyntaxException e) {
+			setStatus(errorStatus("Invalid JSON", e.getMessage()), 0xFFFF8888);
+		} catch (RuntimeException e) {
+			setStatus(errorStatus("Invalid magic circle JSON", e.getMessage()), 0xFFFF8888);
 		}
 	}
 

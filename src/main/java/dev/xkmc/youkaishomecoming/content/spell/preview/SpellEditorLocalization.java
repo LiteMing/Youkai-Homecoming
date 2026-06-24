@@ -137,10 +137,14 @@ public final class SpellEditorLocalization {
 		if (!isChinese()) {
 			return id;
 		}
+		if (id.equals("scale")) return "鳞弹";
+		if (id.equals("giant_yinyang")) return "巨大阴阳玉";
+		if (id.equals("moon")) return "月球弹";
 		String itemKey = switch (id) {
 			case "rose" -> "item.youkaishomecoming.rose_danmaku";
 			case "moon" -> "item.youkaishomecoming.moon_danmaku";
-			case "giant_yinyang" -> "item.youkaishomecoming.red_giant_yinyang_danmaku";
+			case "giant_yinyang" -> "item.youkaishomecoming.giant_yinyang_danmaku";
+			case "scale" -> "item.youkaishomecoming.scale_danmaku";
 			default -> "item.youkaishomecoming.white_" + id + "_danmaku";
 		};
 		if (I18n.exists(itemKey)) {
@@ -190,6 +194,9 @@ public final class SpellEditorLocalization {
 		if (text.equals("clear_screen")) return "清屏";
 		if (text.startsWith("erase enemy r=")) return "擦除敌弹 r=" + text.substring("erase enemy r=".length());
 		if (text.equals("play_sound")) return "播放声音";
+		if (text.startsWith("show title ")) return text.replace("show title", "显示符卡标题");
+		if (text.startsWith("spell circle ")) return text.replace("spell circle", "魔法阵")
+				.replace(" size=", " 大小=");
 		if (text.startsWith("set ")) return "设置 " + text.substring(4);
 		if (text.startsWith("add ")) return "增加 " + text.substring(4);
 		if (text.startsWith("force ")) return "切换阶段 " + text.substring(6).replace("[clear]", "[清屏]").replace("[keep]", "[保留]");
@@ -223,6 +230,10 @@ public final class SpellEditorLocalization {
 			Map.entry("Editor >>", "编辑器 >>"),
 			Map.entry("Apply", "应用"),
 			Map.entry("Export", "导出"),
+			Map.entry("Prev", "上一个"),
+			Map.entry("Next", "下一个"),
+			Map.entry("New", "新建"),
+			Map.entry("Save", "保存"),
 			Map.entry("Reset", "重置"),
 			Map.entry("Auto:ON", "自动:开"),
 			Map.entry("Auto:OFF", "自动:关"),
@@ -241,6 +252,8 @@ public final class SpellEditorLocalization {
 			Map.entry("Status", "状态"),
 			Map.entry("Perf", "性能"),
 			Map.entry("Viewport", "视口"),
+			Map.entry("Magic Circle", "魔法阵"),
+			Map.entry("Circle", "魔法阵"),
 			Map.entry("No phase", "无阶段"),
 			Map.entry("Add Action", "添加动作"),
 			Map.entry("Select an action", "选择一个动作"),
@@ -267,6 +280,8 @@ public final class SpellEditorLocalization {
 			Map.entry("Erase Enemy Danmaku", "擦除敌弹"),
 			Map.entry("Play Sound", "播放声音"),
 			Map.entry("Run Command", "运行命令"),
+			Map.entry("Show Spell Title", "显示符卡标题"),
+			Map.entry("Custom Magic Circle", "自定义魔法阵"),
 			Map.entry("Force Phase", "强制阶段"),
 			Map.entry("Force Spell", "强制符卡"),
 			Map.entry("Fire Spell", "发射符卡"),
@@ -304,6 +319,13 @@ public final class SpellEditorLocalization {
 			Map.entry("Color Var", "颜色变量"),
 			Map.entry("Color Interval", "颜色间隔"),
 			Map.entry("Color List", "颜色列表"),
+			Map.entry("Color Anim", "颜色动画"),
+			Map.entry("Hue Cycle", "色相循环"),
+			Map.entry("Hue Period", "色相周期"),
+			Map.entry("Hue Offset", "色相偏移"),
+			Map.entry("Index Step", "索引步进"),
+			Map.entry("Saturation", "饱和度"),
+			Map.entry("Brightness", "亮度"),
 			Map.entry("Count", "数量"),
 			Map.entry("Speed", "速度"),
 			Map.entry("Lifetime", "生命周期"),
@@ -371,6 +393,40 @@ public final class SpellEditorLocalization {
 			Map.entry("Duration", "持续时间"),
 			Map.entry("Clear", "清除"),
 			Map.entry("Radius", "半径"),
+			Map.entry("Stroke", "笔画"),
+			Map.entry("Vertex", "顶点"),
+			Map.entry("Rune", "符文"),
+			Map.entry("Item", "物品"),
+			Map.entry("Item ID", "物品 ID"),
+			Map.entry("Scale", "缩放"),
+			Map.entry("Rot", "旋转"),
+			Map.entry("Alpha", "透明度"),
+			Map.entry("Preview", "预览"),
+			Map.entry("+Stroke", "+笔画"),
+			Map.entry("-Stroke", "-笔画"),
+			Map.entry("+Item", "+物品"),
+			Map.entry("-Item", "-物品"),
+			Map.entry("Magic Circle ready", "魔法阵就绪"),
+			Map.entry("Magic Circle loaded", "魔法阵已载入"),
+			Map.entry("Magic Circle created", "魔法阵已创建"),
+			Map.entry("Magic Circle JSON ready", "魔法阵 JSON 就绪"),
+			Map.entry("Magic Circle JSON applied", "魔法阵 JSON 已应用"),
+			Map.entry("Magic Circle save sent", "魔法阵保存已发送"),
+			Map.entry("Magic Circle export sent", "魔法阵导出已发送"),
+			Map.entry("Invalid magic circle JSON", "魔法阵 JSON 无效"),
+			Map.entry("Invalid magic circle id", "魔法阵 ID 无效"),
+			Map.entry("Invalid color", "颜色无效"),
+			Map.entry("Stroke added", "已添加笔画"),
+			Map.entry("Stroke removed", "已移除笔画"),
+			Map.entry("Stroke color changed", "笔画颜色已变更"),
+			Map.entry("Stroke changed", "笔画已变更"),
+			Map.entry("Item node added", "已添加物品节点"),
+			Map.entry("Item node removed", "已移除物品节点"),
+			Map.entry("Item changed", "物品节点已变更"),
+			Map.entry("Item selected", "已选择物品层"),
+			Map.entry("Item moved", "物品层已移动"),
+			Map.entry("Item rotated", "物品层已旋转"),
+			Map.entry("Preview size changed", "预览大小已变更"),
 			Map.entry("ON", "开"),
 			Map.entry("OFF", "关"),
 			Map.entry("Y", "是"),
@@ -529,10 +585,16 @@ public final class SpellEditorLocalization {
 			Map.entry("R rotate · RMB orbit · MMB pan · wheel zoom", "R 旋转 · 右键环绕 · 中键平移 · 滚轮缩放"),
 			Map.entry("LMB select bullet · drag caster/target marker to move", "左键选择弹幕 · 拖拽施法者/目标标记来移动"),
 			Map.entry("RMB orbit · MMB pan · wheel zoom", "右键环绕 · 中键平移 · 滚轮缩放"),
+			Map.entry("Magic Circle  LMB drag item: move / RMB drag item: rotate", "魔法阵  左键拖物品: 移动 / 右键拖物品: 旋转"),
+			Map.entry("MMB pan / RMB empty orbit / wheel zoom", "中键平移 / 右键空白环绕 / 滚轮缩放"),
+			Map.entry("Item layer - LMB move / RMB rotate", "物品层 - 左键移动 / 右键旋转"),
+			Map.entry("Item layer - click to select", "物品层 - 点击选择"),
 			Map.entry("Caster — drag to move", "施法者 - 拖拽移动"),
 			Map.entry("Target — drag to move", "目标 - 拖拽移动"),
 			Map.entry("Danmaku — drag to move origin", "弹幕 - 拖拽移动原点"),
 			Map.entry("Danmaku — click to select", "弹幕 - 点击选择"),
+			Map.entry("Moving item layer", "正在移动物品层"),
+			Map.entry("Rotating item layer", "正在旋转物品层"),
 			Map.entry("Moving Caster", "正在移动施法者"),
 			Map.entry("Moving Target", "正在移动目标"),
 			Map.entry("Moving origin", "正在移动原点"),

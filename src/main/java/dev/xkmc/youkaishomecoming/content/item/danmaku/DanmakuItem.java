@@ -88,6 +88,9 @@ public class DanmakuItem extends Item {
 			return new DanmakuColor(stack.getTag().getInt(COLOR_TAG));
 		}
 		if (stack.getItem() instanceof DanmakuItem item) {
+			if (item.type.usesDyeTextures()) {
+				return DanmakuColor.WHITE;
+			}
 			return DanmakuColor.of(item.color);
 		}
 		return DanmakuColor.WHITE;

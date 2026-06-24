@@ -87,9 +87,6 @@ public abstract class DanmakuRenderStates extends RenderType {
 		double perc = r.fading(e);
 		if (perc == 0) return col;
 		int alpha = (int) ((col >>> 24) * perc);
-		if (display == DisplayType.ADDITIVE) {
-			return 0xff000000 | alpha << 16 | alpha << 8 | alpha;
-		}
 		return (alpha << 24) | col & 0xffffff;
 	}
 

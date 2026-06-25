@@ -175,8 +175,9 @@ public record FireTextDanmakuAction(
 		}
 		if (mover.isPresent()) {
 			Vec3 casterPos = holder.self() != null ? holder.self().position() : pos;
-			Vec3 targetPos = holder.target() != null ? holder.target() : pos;
-			e.mover = mover.get().create(ctx, pos, dir, baseDir, targetPos, casterPos);
+			MoverConfig moverConfig = mover.get();
+			Vec3 targetPos = moverConfig.resolveTargetPos(ctx, pos);
+			e.mover = moverConfig.create(ctx, pos, dir, baseDir, targetPos, casterPos);
 		}
 		holder.shoot(e);
 	}

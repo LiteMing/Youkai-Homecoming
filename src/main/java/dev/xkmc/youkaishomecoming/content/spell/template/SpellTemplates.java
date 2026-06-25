@@ -164,7 +164,6 @@ public final class SpellTemplates {
 				              "health": 20,
 				              "damage": 4,
 				              "lifetime": 120,
-				              "velocity_z": 0.12,
 				              "count": 3,
 				              "speed": 0.1,
 				              "spread": 60,

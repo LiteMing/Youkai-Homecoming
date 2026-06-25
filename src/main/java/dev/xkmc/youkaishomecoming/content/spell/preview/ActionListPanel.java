@@ -7,7 +7,6 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.BulletProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.ColorProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
-import dev.xkmc.youkaishomecoming.content.spell.definition.PatternType;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -2155,7 +2154,7 @@ public class ActionListPanel {
 		if (action instanceof DelayAction da) return index + ": delay(" + da.delayTicks() + "t)";
 		if (action instanceof BurstAction ba) return index + ": burst(" + ba.waves() + "x" + ba.interval() + "t)";
 		if (action instanceof SpawnShooterAction ssa) {
-			String pattern = ssa.pattern() == PatternType.AIMED ? "" : " " + formatNumberProvider(ssa.count()) + "x" + ssa.pattern().name().toLowerCase();
+			String pattern = " " + formatNumberProvider(ssa.count()) + "x" + ssa.pattern().name().toLowerCase();
 			String ysm = "";
 			if (!ssa.ysmModel().isBlank() || !ssa.ysmTexture().isBlank() || !ssa.ysmAnimation().isBlank()) {
 				StringBuilder builder = new StringBuilder(" ysm");

@@ -3,7 +3,6 @@ package dev.xkmc.youkaishomecoming.init;
 import com.github.tartaricacid.touhoulittlemaid.TouhouLittleMaid;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
-import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMRenderHandler;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMCompatConfig;
@@ -17,14 +16,10 @@ import dev.xkmc.youkaishomecoming.content.entity.animal.deer.DeerModelData;
 import dev.xkmc.youkaishomecoming.content.entity.animal.lampery.LampreyModel;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaModel;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuPoofParticle;
-import dev.xkmc.youkaishomecoming.content.entity.fairy.CirnoRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.CirnoModel;
-import dev.xkmc.youkaishomecoming.content.entity.reimu.ReimuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.reimu.ReimuModel;
-import dev.xkmc.youkaishomecoming.content.entity.rumia.RumiaRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.BlackBallModel;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RumiaModel;
-import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiRenderer;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem;
 import dev.xkmc.youkaishomecoming.content.item.fluid.BottleTexture;
 import dev.xkmc.youkaishomecoming.content.item.fluid.BottledDrinkSet;
@@ -208,7 +203,6 @@ public class YHClient {
 		Map<String, EntityRenderer<? extends Player>> skinMap = renderManager.getSkinMap();
 		for (EntityRenderer<? extends Player> renderer : skinMap.values()) {
 			if (renderer instanceof LivingEntityRenderer ler) {
-				addSpellCircleLayer(renderer, ler);
 				if (ler.getModel() instanceof HumanoidModel<?>) {
 					addHumanoidLayers(ler);
 				}
@@ -216,26 +210,11 @@ public class YHClient {
 		}
 		renderManager.renderers.forEach((e, r) -> {
 			if (r instanceof LivingEntityRenderer ler) {
-				addSpellCircleLayer(r, ler);
 				if (ler.getModel() instanceof HumanoidModel<?>) {
 					addHumanoidLayers(ler);
 				}
 			}
 		});
-	}
-
-	@SuppressWarnings({"rawtypes", "unchecked"})
-	private static void addSpellCircleLayer(EntityRenderer<?> renderer, LivingEntityRenderer ler) {
-		if (!hasDirectSpellCircleRenderer(renderer)) {
-			ler.addLayer(new SpellCircleLayer(ler));
-		}
-	}
-
-	private static boolean hasDirectSpellCircleRenderer(EntityRenderer<?> renderer) {
-		return renderer instanceof GeneralYoukaiRenderer<?> ||
-				renderer instanceof RumiaRenderer ||
-				renderer instanceof ReimuRenderer ||
-				renderer instanceof CirnoRenderer;
 	}
 
 	private static <T extends LivingEntity, M extends HumanoidModel<T>> void addHumanoidLayers(LivingEntityRenderer<T, M> ler) {

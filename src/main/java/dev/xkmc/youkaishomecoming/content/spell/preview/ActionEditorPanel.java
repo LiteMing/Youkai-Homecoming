@@ -384,10 +384,9 @@ public class ActionEditorPanel {
 			case "teleport" -> new TeleportAction(OriginConfig.caster(), true);
 			case "spawn_shooter" -> new SpawnShooterAction(40, 4f, 100,
 					OriginConfig.caster(),
-					NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
-					NumberProvider.constant(1), NumberProvider.constant(0),
+					NumberProvider.constant(6), NumberProvider.constant(0.12),
 					NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(0),
-					PatternType.AIMED, new AimMode.AimModes.Target(),
+					PatternType.RING, new AimMode.AimModes.DirectionToTarget(),
 					Optional.empty(), Optional.empty(), Optional.empty(),
 					Optional.empty(), new ArrayList<>());
 		case "burst" -> new BurstAction(3, 5, new ArrayList<>());
@@ -754,7 +753,7 @@ public class ActionEditorPanel {
 	}
 
 	private String formatBulletList(List<YHDanmaku.Bullet> values) {
-		return values.stream().map(e -> e.name().toLowerCase(java.util.Locale.ROOT))
+		return values.stream().map(YHDanmaku.Bullet::getName)
 				.collect(java.util.stream.Collectors.joining(", "));
 	}
 
@@ -766,7 +765,7 @@ public class ActionEditorPanel {
 	private static List<String> bulletListOptions() {
 		List<String> ans = new ArrayList<>();
 		for (YHDanmaku.Bullet bullet : YHDanmaku.Bullet.values()) {
-			ans.add(bullet.name().toLowerCase(java.util.Locale.ROOT));
+			ans.add(bullet.getName());
 		}
 		return ans;
 	}
@@ -786,19 +785,19 @@ public class ActionEditorPanel {
 	}
 
 	private static boolean isBulletOption(String option) {
-		for (YHDanmaku.Bullet bullet : YHDanmaku.Bullet.values()) {
-			if (bullet.name().equalsIgnoreCase(option)) {
-				return true;
-			}
+		try {
+			YHDanmaku.Bullet.byName(option);
+			return true;
+		} catch (IllegalArgumentException ignored) {
+			return false;
 		}
-		return false;
 	}
 
 	private List<YHDanmaku.Bullet> parseBulletList(String raw) {
 		List<YHDanmaku.Bullet> ans = new ArrayList<>();
 		for (String token : splitList(raw)) {
 			try {
-				ans.add(YHDanmaku.Bullet.valueOf(token.toUpperCase(java.util.Locale.ROOT)));
+				ans.add(YHDanmaku.Bullet.byName(token));
 			} catch (IllegalArgumentException ignored) {
 			}
 		}
@@ -1533,46 +1532,27 @@ public class ActionEditorPanel {
 	// --- SpawnShooter rows ---
 
 	private void buildSpawnShooterRows(SpawnShooterAction ssa) {
-		addIntRow("Health", ssa.health(), v ->
-				notifySimple(old -> ((SpawnShooterAction) old).withHealth(v)));
+		var overrides = MoverOverrideResolver.resolve(ssa.mover());
+		addNumberRow("Count", ssa.count(), v ->
+				notifySimple(old -> ((SpawnShooterAction) old).withCount(v), false));
+		addNumberRow("Speed", ssa.speed(), v ->
+				notifySimple(old -> ((SpawnShooterAction) old).withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides));
 		addIntRow("Lifetime", ssa.lifetime(), v ->
 				notifySimple(old -> ((SpawnShooterAction) old).withLifetime(v)));
+		addIntRow("Health", ssa.health(), v ->
+				notifySimple(old -> ((SpawnShooterAction) old).withHealth(v)));
+		addFloatRow("Damage", ssa.damage(), v ->
+				notifySimple(old -> ((SpawnShooterAction) old).withDamage(v)));
 		addSuggestStringRow("Circle", ssa.circle().toString(), ActionEditorPanel::spellCircleOptions, v -> {
 			ResourceLocation id = ResourceLocation.tryParse(v);
 			if (id != null) {
 				notifySimple(old -> ((SpawnShooterAction) old).withCircle(id), true);
 			}
 		});
-		addNumberRow("Vel X", ssa.velocityX(), v ->
-				notifySimple(old -> ((SpawnShooterAction) old).withVelocityX(v)));
-		addNumberRow("Vel Y", ssa.velocityY(), v ->
-				notifySimple(old -> ((SpawnShooterAction) old).withVelocityY(v)));
-		addNumberRow("Vel Z", ssa.velocityZ(), v ->
-				notifySimple(old -> ((SpawnShooterAction) old).withVelocityZ(v)));
-		addFloatRow("Damage", ssa.damage(), v ->
-				notifySimple(old -> ((SpawnShooterAction) old).withDamage(v)));
-		addSectionHeader("YSM");
-		if (!isSectionCollapsed("YSM")) {
-			currentDepth++;
-			addSuggestStringRow("Model ID", ssa.ysmModel(), YSMClientCompat::loadedModelIds, v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmModel(v), true));
-			addSuggestStringRow("Texture", ssa.ysmTexture(), () -> YSMClientCompat.loadedTextureNames(currentYsmModel(ssa)), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmTexture(v)));
-			addSuggestStringRow("Anim Hint", ssa.ysmAnimation(), () -> YSMClientCompat.loadedAnimationNames(currentYsmModel(ssa)), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmAnimation(v)));
-			addIntRow("Duration", ssa.ysmDuration(), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmDuration(v)));
-			addStringOptionRow("Expire Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(ssa.ysmClearTarget(), "changed"), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmClearTarget(v)));
-			currentDepth--;
-		}
+
 		addSectionHeader("Pattern");
 		if (!isSectionCollapsed("Pattern")) {
 			currentDepth++;
-			addNumberRow("Count", ssa.count(), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withCount(v), false));
-			addNumberRow("Speed", ssa.speed(), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withSpeed(v), false));
 			addNumberRow("Angle", ssa.angleOffset(), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withAngleOffset(v), false));
 			addNumberRow("Spread", ssa.spread(), v ->
@@ -1605,8 +1585,9 @@ public class ActionEditorPanel {
 			}
 			currentDepth--;
 		}
-		addSectionHeader("Group Rotation");
-		if (!isSectionCollapsed("Group Rotation")) {
+
+		addSectionHeader("Group Rotation (post-origin/tilt)");
+		if (!isSectionCollapsed("Group Rotation (post-origin/tilt)")) {
 			currentDepth++;
 			if (ssa.groupRotation().isPresent()) {
 				var gr = ssa.groupRotation().get();
@@ -1642,21 +1623,47 @@ public class ActionEditorPanel {
 			}
 			currentDepth--;
 		}
-		addEnumRow("Origin", OriginConfig.OriginMode.values(), ssa.origin().mode(), v -> {
-			notifySimple(old -> {
-				var s = (SpawnShooterAction) old;
-				var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
-						s.origin().offsetZ(), s.origin().rotation());
-				return s.withOrigin(newOrigin);
-			}, true);
-		});
-		// Origin offsets
-		buildOriginOffsetRows(ssa.origin(), newOrigin ->
-				notifySimple(old -> ((SpawnShooterAction) old).withOrigin(newOrigin), false));
-		// Mover
-		buildMoverRows(ssa.mover(),
-				newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover), true),
-				newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover), false));
+
+		addSectionHeader("Origin");
+		if (!isSectionCollapsed("Origin")) {
+			currentDepth++;
+			addEnumRow("Origin", OriginConfig.OriginMode.values(), ssa.origin().mode(), v -> {
+				notifySimple(old -> {
+					var s = (SpawnShooterAction) old;
+					var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
+							s.origin().offsetZ(), s.origin().rotation());
+					return s.withOrigin(newOrigin);
+				}, true);
+			});
+			buildOriginOffsetRows(ssa.origin(), newOrigin ->
+					notifySimple(old -> ((SpawnShooterAction) old).withOrigin(newOrigin), false), overrides);
+			currentDepth--;
+		}
+
+		addSectionHeader("Mover");
+		if (!isSectionCollapsed("Mover")) {
+			currentDepth++;
+			buildMoverRows(ssa.mover(),
+					newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover), true),
+					newMover -> notifySimple(old -> ((SpawnShooterAction) old).withMover(newMover), false));
+			currentDepth--;
+		}
+
+		addSectionHeader("Advanced");
+		if (!isSectionCollapsed("Advanced")) {
+			currentDepth++;
+			addSuggestStringRow("Model ID", ssa.ysmModel(), YSMClientCompat::loadedModelIds, v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmModel(v), true));
+			addSuggestStringRow("Texture", ssa.ysmTexture(), () -> YSMClientCompat.loadedTextureNames(currentYsmModel(ssa)), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmTexture(v)));
+			addSuggestStringRow("Anim Hint", ssa.ysmAnimation(), () -> YSMClientCompat.loadedAnimationNames(currentYsmModel(ssa)), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmAnimation(v)));
+			addIntRow("Duration", ssa.ysmDuration(), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmDuration(v)));
+			addStringOptionRow("Expire Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(ssa.ysmClearTarget(), "changed"), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsmClearTarget(v)));
+			currentDepth--;
+		}
 	}
 
 	// --- Shared Origin/Mover row builders ---

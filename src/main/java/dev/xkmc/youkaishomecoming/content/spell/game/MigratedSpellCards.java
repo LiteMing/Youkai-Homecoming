@@ -231,18 +231,14 @@ public class MigratedSpellCards {
 				)
 		);
 
-		// 每个 shooter: 球面随机位置, 向外飞, health 40, life 60
-		// OriginConfig CASTER + random offset 模拟球面 → 用 CASTER 基点 + 固定半径在 SpawnShooter 中不太准
-		// 更好的方案: repeat 32 次, 每次 spawn_shooter with random velocity direction
-		// 球面随机方向 → velocity_x/y/z 用 random_angle 不太方便, 但 SpawnShooterAction 的 origin 可以用 CASTER
-		// 简化: shooter 从 caster 位置生成, 随机方向飞行
+		// 每个 shooter: 从 caster 位置生成，随机球面方向飞行
 		var spawnShooter = new SpawnShooterAction(
 				40, 4f, 60,
 				OriginConfig.caster(),
-				new NumberProviders.RandomRange(-0.5, 0.5),
-				new NumberProviders.RandomRange(-0.5, 0.5),
-				new NumberProviders.RandomRange(-0.5, 0.5),
-				Optional.empty(),
+				NumberProvider.constant(1), NumberProvider.constant(0.5),
+				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(180),
+				PatternType.SPHERE_RANDOM, new AimMode.AimModes.CasterFacing(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
 				shooterBody
 		);
 
@@ -1428,13 +1424,11 @@ public class MigratedSpellCards {
 						new AimMode.AimModes.CasterFacing(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1));
 		var nearShooter = new SpawnShooterAction(40, 4f, 60,
-				new OriginConfig(OriginConfig.OriginMode.CASTER,
-						NumberProvider.constant(0),
-						new NumberProviders.RandomRange(-30, 30),
-						NumberProvider.constant(0),
-						new NumberProviders.RandomRange(-30, 30)),
-				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0.5),
-				Optional.empty(), nearShooterBody);
+				OriginConfig.caster(),
+				NumberProvider.constant(1), NumberProvider.constant(0.5),
+				new NumberProviders.RandomRange(-30, 30), NumberProvider.constant(0), new NumberProviders.RandomRange(-30, 30),
+				PatternType.AIMED, new AimMode.AimModes.DirectionToTarget(),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), nearShooterBody);
 		var summonNear = new BurstAction(20, 2, "sn", List.of(nearShooter));
 		var p0Action = new SpellActions.ConditionalAction(
 				new SpellConditions.TickInterval(60, 0), List.of(summonNear), List.of());
@@ -1488,8 +1482,10 @@ public class MigratedSpellCards {
 						new NumberProviders.Add(new NumberProviders.TargetY(), NumberProvider.constant(20)),
 						new NumberProviders.Add(new NumberProviders.TargetZ(), new NumberProviders.GaussianRandom(0, 20)),
 						NumberProvider.constant(0)),
-				NumberProvider.constant(0), NumberProvider.constant(-0.5), NumberProvider.constant(0),
-				Optional.empty(), List.of(farMarker));
+				NumberProvider.constant(1), NumberProvider.constant(0.5),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, new AimMode.AimModes.FixedDirection(new Vec3(0, -1, 0)),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), List.of(farMarker));
 		var summonFar = new BurstAction(40, 1, "sf", List.of(farShooter));
 		var p2Action = new SpellActions.ConditionalAction(
 				new SpellConditions.TickInterval(80, 0), List.of(summonFar), List.of());
@@ -2422,15 +2418,17 @@ public class MigratedSpellCards {
 		// Lasers: legacy fires from two lines (±45° from forward), advancing outward each tick.
 		// Each laser is perpendicular to its line direction with random rotation.
 		// Data-driven: spawn two shooters along ±45° axes. Each shooter fires 1 random-direction laser/tick.
-		// Shooter velocity: 0.5 along ±45° axis. Lifetime: 120 ticks.
+		// Shooter motion: 0.5 along ±45° axis. Lifetime: 120 ticks.
 		// Laser shooters: fly along ±45° from caster forward. Each tick fire a laser perpendicular
 		// to forward (toward target). angleOffset=90 + elevation=random(0,360) gives a vertical fan
 		// perpendicular to the caster-to-target axis, approximating legacy's perpendicular-to-flight-axis.
 		var laserShooterRed = new SpawnShooterAction(
 				40, 0, 120,
 				OriginConfig.caster(),
-				NumberProvider.constant(-0.35), NumberProvider.constant(0),
-				NumberProvider.constant(0.35), Optional.empty(),
+				NumberProvider.constant(1), NumberProvider.constant(0.5),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, new AimMode.AimModes.FixedDirection(new Vec3(-1, 0, 1)),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
 				List.of((SpellAction) new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.RED,
 						NumberProvider.constant(100), NumberProvider.constant(80),
 						NumberProvider.constant(90), new NumberProviders.RandomRange(0, 360),
@@ -2441,8 +2439,10 @@ public class MigratedSpellCards {
 		var laserShooterBlue = new SpawnShooterAction(
 				40, 0, 120,
 				OriginConfig.caster(),
-				NumberProvider.constant(0.35), NumberProvider.constant(0),
-				NumberProvider.constant(0.35), Optional.empty(),
+				NumberProvider.constant(1), NumberProvider.constant(0.5),
+				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, new AimMode.AimModes.FixedDirection(new Vec3(1, 0, 1)),
+				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
 				List.of((SpellAction) new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
 						NumberProvider.constant(100), NumberProvider.constant(80),
 						NumberProvider.constant(90), new NumberProviders.RandomRange(0, 360),

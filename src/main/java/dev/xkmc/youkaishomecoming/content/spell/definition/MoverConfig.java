@@ -57,6 +57,15 @@ public interface MoverConfig {
 	}
 
 	/**
+	 * Resolve the target position passed to movers at spawn time.
+	 * Most movers keep the historical no-target fallback of using the spawn origin.
+	 */
+	default Vec3 resolveTargetPos(SpellContext ctx, Vec3 originPos) {
+		Vec3 target = ctx.holder().target();
+		return target != null ? target : originPos;
+	}
+
+	/**
 	 * Create a mover with access to the spell context at projectile spawn time.
 	 * Implementations can snapshot runtime variables into formulas without keeping
 	 * a live SpellRuntime reference on every projectile.

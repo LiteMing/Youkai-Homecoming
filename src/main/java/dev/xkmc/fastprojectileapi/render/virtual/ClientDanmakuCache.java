@@ -6,6 +6,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
+import dev.xkmc.fastprojectileapi.render.core.GiantDanmakuScreenOverlay;
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
@@ -196,13 +197,17 @@ public class ClientDanmakuCache {
 		for (var e : all) {
 			// Billboard fast path for ItemDanmakuEntity
 			if (e instanceof ItemDanmakuEntity danmaku) {
+				DanmakuItem item = danmaku.getItem().getItem() instanceof DanmakuItem di ? di : null;
+				if (item != null) {
+					acceptGiantOverlay(danmaku, item, pTick, camx, camy, camz);
+				}
 				if (cachedRenderer == null) {
 					var r = getRenderer(disp, e);
 					if (r instanceof ItemDanmakuRenderer<?> dr) cachedRenderer = dr;
 				}
 				if (cachedRenderer != null) {
 					if (!((EntityRenderer) cachedRenderer).shouldRender(danmaku, frustum, camx, camy, camz)) continue;
-					if (!(danmaku.getItem().getItem() instanceof DanmakuItem item)) continue;
+					if (item == null) continue;
 
 					var typeHolder = item.getTypeForRender();
 					var type = typeHolder.getType();
@@ -252,6 +257,20 @@ public class ClientDanmakuCache {
 			renderPlayerHitbox(pose, lineBuffers.getBuffer(RenderType.lines()), pl, camx, camy, camz, pTick);
 			lineBuffers.endBatch(RenderType.lines());
 		}
+	}
+
+	private static void acceptGiantOverlay(ItemDanmakuEntity danmaku, DanmakuItem item, float pTick,
+										 double camx, double camy, double camz) {
+		if (!item.isGiant()) return;
+		double x = Mth.lerp(pTick, danmaku.xOld, danmaku.getX());
+		double y = Mth.lerp(pTick, danmaku.yOld, danmaku.getY()) + danmaku.getBbHeight() / 2.0;
+		double z = Mth.lerp(pTick, danmaku.zOld, danmaku.getZ());
+		double radius = Math.max(0.0001, danmaku.scale() * 0.5);
+		double dx = camx - x;
+		double dy = camy - y;
+		double dz = camz - z;
+		float insideScore = (float) ((radius - Math.sqrt(dx * dx + dy * dy + dz * dz)) / radius);
+		GiantDanmakuScreenOverlay.accept(item.giantOverlayTexture(), danmaku.getRenderTint(pTick), insideScore);
 	}
 
 	private <E extends SimplifiedProjectile> void maybeRenderEntity(

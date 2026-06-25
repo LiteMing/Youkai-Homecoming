@@ -151,6 +151,23 @@ public final class DockGroup implements DockNode {
 		for (DockPanel p : panels) {
 			p.setBounds(x, panelY, w, panelH);
 		}
+		syncActivePanelState();
+	}
+
+	public void syncActivePanelState() {
+		if (panels.isEmpty()) {
+			activeIndex = 0;
+			return;
+		}
+		activeIndex = Math.max(0, Math.min(activeIndex, panels.size() - 1));
+		for (int i = 0; i < panels.size(); i++) {
+			DockPanel panel = panels.get(i);
+			if (i == activeIndex) {
+				panel.onActivated();
+			} else {
+				panel.onDeactivated();
+			}
+		}
 	}
 
 	@Override

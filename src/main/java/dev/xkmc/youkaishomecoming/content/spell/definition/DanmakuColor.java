@@ -29,11 +29,45 @@ public record DanmakuColor(int argb) {
 		return argb & 0xffffff;
 	}
 
-	public String format() {
-		if ((argb >>> 24) == 0xff) {
-			return String.format(Locale.ROOT, "#%06X", rgb());
+	public DyeColor toDyeColor() {
+		// Find the closest DyeColor by comparing RGB distance
+		int rgb = rgb();
+		int r = (rgb >> 16) & 0xFF;
+		int g = (rgb >> 8) & 0xFF;
+		int b = rgb & 0xFF;
+
+		DyeColor closest = DyeColor.WHITE;
+		double minDistance = Double.MAX_VALUE;
+
+		for (DyeColor dye : DyeColor.values()) {
+			int dyeRgb = dye.getFireworkColor();
+			int dr = ((dyeRgb >> 16) & 0xFF) - r;
+			int dg = ((dyeRgb >> 8) & 0xFF) - g;
+			int db = (dyeRgb & 0xFF) - b;
+			double distance = dr * dr + dg * dg + db * db;
+
+			if (distance < minDistance) {
+				minDistance = distance;
+				closest = dye;
+			}
 		}
-		return String.format(Locale.ROOT, "#%08X", argb);
+
+		return closest;
+	}
+
+	public String format() {
+		// Try to match a DyeColor name for friendlier display
+		int rgb = rgb();
+		for (DyeColor dye : DyeColor.values()) {
+			if (dye.getFireworkColor() == rgb && (argb >>> 24) == 0xff) {
+				return dye.name().toLowerCase(java.util.Locale.ROOT);
+			}
+		}
+		// Fall back to hex format for custom colors
+		if ((argb >>> 24) == 0xff) {
+			return String.format(java.util.Locale.ROOT, "#%06X", rgb);
+		}
+		return String.format(java.util.Locale.ROOT, "#%08X", argb);
 	}
 
 	public static Optional<DanmakuColor> parse(String raw) {

@@ -6,6 +6,7 @@ import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.BulkDataWriter;
 import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.fastprojectileapi.render.core.DisplayType;
+import dev.xkmc.fastprojectileapi.render.core.GiantDanmakuScreenOverlay;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -16,8 +17,13 @@ import org.joml.Matrix4f;
 import java.util.List;
 import java.util.function.Consumer;
 
-public record GiantSphereProjectileType(ResourceLocation tex, DisplayType display, int segments, int rings, float rotationTicks)
+public record GiantSphereProjectileType(ResourceLocation tex, ResourceLocation overlay, DisplayType display,
+										int segments, int rings, float rotationTicks)
 		implements RenderableDanmakuType<GiantSphereProjectileType, GiantSphereProjectileType.Ins> {
+
+	public GiantSphereProjectileType(ResourceLocation tex, DisplayType display, int segments, int rings, float rotationTicks) {
+		this(tex, tex, display, segments, rings, rotationTicks);
+	}
 
 	@Override
 	public void start(MultiBufferSource buffer, List<Ins> list) {
@@ -25,8 +31,9 @@ public record GiantSphereProjectileType(ResourceLocation tex, DisplayType displa
 		for (var e : list) {
 			quads += e.segments * e.rings;
 		}
-		BulkDataWriter vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmaku(tex, display())), quads);
+		BulkDataWriter vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmakuSphere(tex, display())), quads);
 		for (var e : list) {
+			GiantDanmakuScreenOverlay.accept(overlay, e.color, e.insideScore());
 			e.tex(vc);
 		}
 		vc.flush();
@@ -42,7 +49,7 @@ public record GiantSphereProjectileType(ResourceLocation tex, DisplayType displa
 		float scale = (float) Math.cbrt(Math.abs(m4.determinant3x3()));
 		int seg = segments(scale);
 		int ring = rings(scale);
-		holder.accept(new Ins(m4, col, seg, ring));
+		holder.accept(new Ins(m4, col, seg, ring, scale));
 	}
 
 	private int segments(float scale) {
@@ -64,7 +71,13 @@ public record GiantSphereProjectileType(ResourceLocation tex, DisplayType displa
 		return Mth.clamp(Math.round(base * factor), min, max);
 	}
 
-	public record Ins(Matrix4f m4, int color, int segments, int rings) {
+	public record Ins(Matrix4f m4, int color, int segments, int rings, float scale) {
+
+		private float insideScore() {
+			float radius = Math.max(0.0001f, scale * 0.5f);
+			float dist = (float) Math.sqrt(m4.m30() * m4.m30() + m4.m31() * m4.m31() + m4.m32() * m4.m32());
+			return (radius - dist) / radius;
+		}
 
 		public void tex(BulkDataWriter vc) {
 			for (int y = 0; y < rings; y++) {
@@ -77,15 +90,18 @@ public record GiantSphereProjectileType(ResourceLocation tex, DisplayType displa
 					float u1 = (float) (x + 1) / segments;
 					float phi0 = (float) (Math.PI * 2 * u0);
 					float phi1 = (float) (Math.PI * 2 * u1);
-					vertex(vc, theta0, phi1, u1, v0);
 					vertex(vc, theta0, phi0, u0, v0);
-					vertex(vc, theta1, phi0, u0, v1);
+					vertex(vc, theta0, phi1, u1, v0);
 					vertex(vc, theta1, phi1, u1, v1);
+					vertex(vc, theta1, phi0, u0, v1);
 				}
 			}
 		}
 
 		private void vertex(BulkDataWriter vc, float theta, float phi, float u, float v) {
+			if (v <= 0 || v >= 1) {
+				u = 0.5f;
+			}
 			float sin = (float) Math.sin(theta);
 			float x = sin * (float) Math.cos(phi) * 0.5f;
 			float y = (float) Math.cos(theta) * 0.5f;

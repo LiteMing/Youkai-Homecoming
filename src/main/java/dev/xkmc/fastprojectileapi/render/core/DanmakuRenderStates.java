@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.function.BiFunction;
+import java.util.function.Function;
 
 public abstract class DanmakuRenderStates extends RenderType {
 
@@ -19,6 +20,7 @@ public abstract class DanmakuRenderStates extends RenderType {
 	}
 
 	protected static final ShaderStateShard DANMAKU_SHADER = new ShaderStateShard(GameRenderer::getPositionTexColorShader);
+	protected static final ShaderStateShard DANMAKU_COLOR_SHADER = new ShaderStateShard(GameRenderer::getPositionColorShader);
 
 	private static RenderType create(String name, ResourceLocation tex, boolean cull, DisplayType type, boolean noDepthWrite, boolean isLaserShell) {
 		// sortOnUpload=false: skip per-frame quad distance sorting for danmaku.
@@ -54,8 +56,31 @@ public abstract class DanmakuRenderStates extends RenderType {
 						.createCompositeState(false));
 	}
 
+	private static RenderType createColor(String name, boolean cull, DisplayType type, boolean noDepthWrite) {
+		boolean opaque = type == DisplayType.SOLID;
+		return create(name,
+				DefaultVertexFormat.POSITION_COLOR,
+				VertexFormat.Mode.QUADS,
+				256, true, false,
+				CompositeState.builder()
+						.setShaderState(DANMAKU_COLOR_SHADER)
+						.setTransparencyState(switch (type) {
+							case SOLID -> NO_TRANSPARENCY;
+							case TRANSPARENT -> TRANSLUCENT_TRANSPARENCY;
+							case ADDITIVE -> ADDITIVE_TRANSPARENCY;
+						})
+						.setWriteMaskState((opaque || !noDepthWrite) ? COLOR_DEPTH_WRITE : COLOR_WRITE)
+						.setDepthTestState(LEQUAL_DEPTH_TEST)
+						.setCullState(cull ? CULL : NO_CULL)
+						.createCompositeState(false));
+	}
+
 	private static final BiFunction<ResourceLocation, DisplayType, RenderType> DANMAKU =
 			Util.memoize((rl, type) -> create("danmaku_" + type.getName(), rl, false, type, false, false));
+	private static final BiFunction<ResourceLocation, DisplayType, RenderType> DANMAKU_SPHERE =
+			Util.memoize((rl, type) -> create("danmaku_sphere_" + type.getName(), rl, true, type, true, false));
+	private static final Function<DisplayType, RenderType> DANMAKU_COLOR_SPHERE =
+			Util.memoize(type -> createColor("danmaku_color_sphere_" + type.getName(), true, type, true));
 	private static final BiFunction<ResourceLocation, DisplayType, RenderType> LASER =
 			Util.memoize((rl, type) -> create("laser_" + type.getName(), rl, true, type, false, true));
 	// Laser inner-core uses a separate RenderType so it can be routed into Oculus's DECAL
@@ -73,6 +98,16 @@ public abstract class DanmakuRenderStates extends RenderType {
 	public static RenderType danmaku(ResourceLocation rl, DisplayType type) {
 		if (type == DisplayType.SOLID) type = DisplayType.TRANSPARENT;
 		return DANMAKU.apply(rl, type);
+	}
+
+	public static RenderType danmakuSphere(ResourceLocation rl, DisplayType type) {
+		if (type == DisplayType.SOLID) type = DisplayType.TRANSPARENT;
+		return DANMAKU_SPHERE.apply(rl, type);
+	}
+
+	public static RenderType danmakuColorSphere(DisplayType type) {
+		if (type == DisplayType.SOLID) type = DisplayType.TRANSPARENT;
+		return DANMAKU_COLOR_SPHERE.apply(type);
 	}
 
 	public static RenderType laser(ResourceLocation rl, DisplayType type) {

@@ -25,4 +25,8 @@ public class SpellCircleEditorNetworkClient {
 		YoukaisHomecoming.HANDLER.toServer(new SpellCircleEditorSyncToServer(id, components, true));
 	}
 
+	public static void delete(ResourceLocation id) {
+		YoukaisHomecoming.HANDLER.toServer(SpellCircleEditorSyncToServer.delete(id));
+	}
+
 }

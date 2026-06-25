@@ -270,7 +270,7 @@ public class RawJsonDockPanel implements DockPanel {
 			text = "";
 		}
 		boolean modeChanged = displayedMode != ContentMode.MAGIC_CIRCLE;
-		boolean shouldReplaceText = !editor.isFocused() && (modeChanged || !editor.getValue().equals(text));
+		boolean shouldReplaceText = modeChanged || (!editor.isFocused() && !editor.getValue().equals(text));
 		if (shouldReplaceText) {
 			setEditorText(text);
 			highlightedPath = null;
@@ -307,7 +307,7 @@ public class RawJsonDockPanel implements DockPanel {
 		}
 		ActionListPanel.ActionPath selected = selectedPathSupplier.get();
 		boolean modeChanged = displayedMode != ContentMode.SPELL;
-		boolean shouldReplaceText = !editor.isFocused() && (modeChanged || !editor.getValue().equals(formatted.text()));
+		boolean shouldReplaceText = modeChanged || (!editor.isFocused() && !editor.getValue().equals(formatted.text()));
 		boolean shouldHighlight = !editor.isFocused() && selected != null && !selected.equals(highlightedPath);
 		if (shouldReplaceText) {
 			setEditorText(formatted.text());

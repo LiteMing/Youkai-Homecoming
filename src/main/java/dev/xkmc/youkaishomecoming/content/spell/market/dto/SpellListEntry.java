@@ -21,6 +21,9 @@ public class SpellListEntry {
 	@SerializedName("author_name")
 	public String authorName;
 
+	@SerializedName("author_uuid")
+	public String authorUuid;
+
 	@SerializedName("category")
 	public String category;
 

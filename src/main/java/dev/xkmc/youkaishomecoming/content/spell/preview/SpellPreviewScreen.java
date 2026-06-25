@@ -15,6 +15,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
+import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketLocalization;
+import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketScreen;
 import dev.xkmc.youkaishomecoming.content.spell.preview.dock.*;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -176,17 +178,19 @@ public class SpellPreviewScreen extends Screen {
 			}, fullEdit);
 		}
 		// Reset Layout button
-		addTopBarButton(bx, by, SpellEditorLocalization.t("RstLayout"), 56, btn -> {
+		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("RstLayout"), 56, btn -> {
 			DockSerializer.deleteLayout();
 			rebuildScreen(false);
 		}, fullEdit);
 
-		// Market button - opens spell card market
+		// Market button - opens spell card market, passing current spell for upload
+		// Always active (even in draft mode) so users can browse/upload from any state
+		bx += 10;
 		addTopBarButton(bx, by, SpellMarketLocalization.toMarket().getString(), 50, btn -> {
 			if (minecraft != null) {
-				minecraft.setScreen(new SpellMarketScreen(this));
+				minecraft.setScreen(new SpellMarketScreen(this, definition));
 			}
-		}, fullEdit);
+		}, true);
 
 		// --- Create editor panels ---
 		actionListPanel = new ActionListPanel(

@@ -26,6 +26,10 @@ public class SpellEditorNetworkClient {
 		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.save(definition, true));
 	}
 
+	public static void importMarket(SpellDefinition definition) {
+		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.importMarket(definition));
+	}
+
 	public static Path exportGlobal(SpellDefinition definition) throws IOException {
 		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.exportGlobal(definition));
 		return saveLocalExportCopy(definition);

@@ -1,7 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.market;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.market.dto.LikeResult;
 import dev.xkmc.youkaishomecoming.content.spell.market.dto.SpellListEntry;
 import dev.xkmc.youkaishomecoming.content.spell.market.dto.SpellListResponse;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorNetworkClient;
@@ -11,16 +11,11 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 @OnlyIn(Dist.CLIENT)
 public class SpellMarketScreen extends Screen {
@@ -31,6 +26,7 @@ public class SpellMarketScreen extends Screen {
 
 	private final Screen parent;
 	private final SpellMarketAPI api;
+	private final SpellDefinition pendingDefinition;
 
 	private EditBox searchBox;
 	private Button prevButton, nextButton, refreshButton, uploadButton, editorButton, closeButton;
@@ -42,23 +38,32 @@ public class SpellMarketScreen extends Screen {
 	private String errorMessage = null;
 	private int scrollOffset = 0;
 
-	// 限流和状态
-	private final Set<String> likedSpells = new HashSet<>();
-	private final Map<String, Integer> likeCounts = new HashMap<>();
+	// 搜索防抖
 	private long lastSearchTime = 0;
 	private static final long SEARCH_DEBOUNCE_MS = 500;
 
 	private String currentTag = null;
+	private boolean filterLiked = false;
 	private String pendingSearch = null;
+	private String authorFilterUuid = null;
+	private String authorFilterName = null;
 
 	public SpellMarketScreen(Screen parent) {
+		this(parent, null);
+	}
+
+	public SpellMarketScreen(Screen parent, SpellDefinition pendingDefinition) {
 		super(SpellMarketLocalization.title());
 		this.parent = parent;
 		this.api = SpellMarketManager.getInstance().getAPI();
+		this.pendingDefinition = pendingDefinition;
 	}
 
 	@Override
 	protected void init() {
+		// 从磁盘加载已点赞符卡数据（懒加载，仅首次执行）
+		LikedSpellsStore.load();
+
 		if (api == null) {
 			errorMessage = SpellMarketLocalization.errorDisabled().getString();
 			addRenderableWidget(Button.builder(Component.literal("OK"), btn -> onClose())
@@ -72,6 +77,12 @@ public class SpellMarketScreen extends Screen {
 		searchBox = new EditBox(font, cx - 100, 20, 180, 20, SpellMarketLocalization.search());
 		searchBox.setMaxLength(50);
 		searchBox.setHint(SpellMarketLocalization.search());
+		searchBox.setResponder(text -> {
+			currentPage = 1;
+			currentTag = null;
+			pendingSearch = text;
+			loadList();
+		});
 		addRenderableWidget(searchBox);
 
 		// 刷新
@@ -111,7 +122,22 @@ public class SpellMarketScreen extends Screen {
 	private void reload() {
 		currentPage = 1;
 		currentTag = null;
+		filterLiked = false;
+		authorFilterUuid = null;
+		authorFilterName = null;
 		loadList();
+	}
+
+	@Override
+	public void tick() {
+		super.tick();
+		if (pendingSearch != null && !loading && api != null) {
+			long now = System.currentTimeMillis();
+			if (now - lastSearchTime >= SEARCH_DEBOUNCE_MS) {
+				pendingSearch = null;
+				loadList();
+			}
+		}
 	}
 
 	private void loadList() {
@@ -124,6 +150,7 @@ public class SpellMarketScreen extends Screen {
 			return;
 		}
 		lastSearchTime = now;
+		pendingSearch = null;
 
 		loading = true;
 		errorMessage = null;
@@ -131,17 +158,23 @@ public class SpellMarketScreen extends Screen {
 		if (currentTag != null) search = currentTag;
 
 		api.getSpellList(currentPage, ITEMS_PER_PAGE,
-				search.isEmpty() ? null : search, "latest").thenAccept(resp -> {
+				search.isEmpty() ? null : search, null, authorFilterUuid, authorFilterName).thenAccept(resp -> {
 			Minecraft.getInstance().execute(() -> {
 				loading = false;
 				if (resp != null) {
-					spells = resp.spells;
-					totalPages = Math.max(1, (int) Math.ceil(resp.total / (double) ITEMS_PER_PAGE));
+					spells = resp.spells != null ? new ArrayList<>(resp.spells) : new ArrayList<>();
+					if (filterLiked) {
+						spells.removeIf(e -> !LikedSpellsStore.contains(e.uuid));
+						totalPages = 1;
+					} else {
+						totalPages = Math.max(1, (int) Math.ceil(resp.total / (double) ITEMS_PER_PAGE));
+					}
 					scrollOffset = 0;
 					// 恢复点赞计数
 					for (SpellListEntry e : spells) {
-						if (likeCounts.containsKey(e.uuid)) {
-							e.likesCount = likeCounts.get(e.uuid);
+						int cachedCount = LikedSpellsStore.getLikeCount(e.uuid);
+						if (cachedCount >= 0) {
+							e.likesCount = cachedCount;
 						}
 					}
 				} else {
@@ -152,25 +185,30 @@ public class SpellMarketScreen extends Screen {
 	}
 
 	private void openUpload() {
-		if (api == null || !api.getRateLimiter().canUpload()) {
+		if (api == null) return;
+		if (!api.getRateLimiter().canUpload()) {
 			long secs = api.getRateLimiter().getUploadCooldownRemaining();
 			minecraft.setScreen(msgScreen("Cooldown",
 					SpellMarketLocalization.uploadCooldown(secs).getString()));
 			return;
 		}
-		minecraft.setScreen(new SpellUploadDialog(this, null));
+		minecraft.setScreen(new SpellUploadDialog(this, pendingDefinition));
 	}
 
 	private void openEditor() {
-		// 打开编辑器
-		if (minecraft != null) {
+		if (minecraft == null) return;
+		if (parent instanceof dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen) {
 			minecraft.setScreen(parent);
+		} else if (pendingDefinition != null) {
+			minecraft.setScreen(new dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen(pendingDefinition));
+		} else {
+			minecraft.setScreen(dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen.createDraftEditor());
 		}
 	}
 
 	@Override
 	public void render(GuiGraphics g, int mx, int my, float pt) {
-		renderBackground(g, mx, my, pt);
+		renderBackground(g);
 
 		if (api == null) {
 			g.drawCenteredString(font, errorMessage != null ? errorMessage : "Disabled", width / 2, height / 2, 0xFF5555);
@@ -183,10 +221,8 @@ public class SpellMarketScreen extends Screen {
 		// 分页信息
 		g.drawCenteredString(font, SpellMarketLocalization.page(currentPage, totalPages), width / 2, height - 45, 0xAAAAAA);
 
-		// 筛选提示
-		if (currentTag != null) {
-			g.drawCenteredString(font, SpellMarketLocalization.filterTag(currentTag), width / 2, 45, 0x55FFAA);
-		}
+		// 已选标签栏（始终可见，可点击取消）
+		renderSelectedTags(g, mx, my);
 
 		if (loading) {
 			g.drawCenteredString(font, SpellMarketLocalization.loading(), width / 2, height / 2, 0xFFFFFF);
@@ -201,12 +237,46 @@ public class SpellMarketScreen extends Screen {
 		super.render(g, mx, my, pt);
 	}
 
+	private void renderSelectedTags(GuiGraphics g, int mx, int my) {
+		int y = 42;
+		int x = width / 2 - 100;
+
+		// ♥ Liked 筛选按钮（始终可见，激活时红色背景）
+		String likedLabel = "♥ Liked";
+		int tw = font.width(likedLabel) + 12;
+		boolean lh = mx >= x && mx <= x + tw && my >= y && my <= y + 14;
+		int lbg = filterLiked ? 0x90AA4444 : (lh ? 0x60404040 : 0x40303030);
+		g.fill(x, y, x + tw, y + 14, lbg);
+		g.drawString(font, likedLabel, x + 6, y + 3, filterLiked ? 0xFFDDDD : 0xAAAAAA);
+		x += tw + 6;
+
+		// 当前选中的标签（可点击取消）
+		if (currentTag != null) {
+			tw = font.width(currentTag) + 16;
+			boolean th = mx >= x && mx <= x + tw && my >= y && my <= y + 14;
+			g.fill(x, y, x + tw, y + 14, th ? 0xC055AA55 : 0x8055AA55);
+			g.drawString(font, currentTag, x + 4, y + 3, 0xFFFFFF);
+			g.drawString(font, "\u00D7", x + tw - 10, y + 3, 0xFFAAAA);
+			x += tw + 6;
+		}
+
+		// 作者筛选（可点击取消）
+		if (authorFilterName != null) {
+			String label = "\u263A " + authorFilterName;
+			tw = font.width(label) + 16;
+			boolean ah = mx >= x && mx <= x + tw && my >= y && my <= y + 14;
+			g.fill(x, y, x + tw, y + 14, ah ? 0xC05555AA : 0x805555AA);
+			g.drawString(font, label, x + 4, y + 3, 0xFFFFFF);
+			g.drawString(font, "\u00D7", x + tw - 10, y + 3, 0xFFAAAA);
+		}
+	}
+
 	private void renderList(GuiGraphics g, int mx, int my) {
 		int listH = height - LIST_TOP - 60;
 		int maxScroll = Math.max(0, spells.size() * ITEM_HEIGHT - listH);
 		scrollOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
 
-		RenderSystem.enableScissor(0, LIST_TOP, width, listH);
+		g.enableScissor(0, LIST_TOP, width, LIST_TOP + listH);
 
 		int y = LIST_TOP - scrollOffset;
 		for (SpellListEntry spell : spells) {
@@ -218,9 +288,12 @@ public class SpellMarketScreen extends Screen {
 			g.fill(20, y, width - 20, y + ITEM_HEIGHT - 5, hover ? 0x80404040 : 0x60202020);
 
 			// 名称
-			g.drawString(font, spell.name, 30, y + 5, 0xFFFFFF);
-			// 作者
-			g.drawString(font, "by " + spell.authorName, 30, y + 20, 0xAAAAAA);
+			String spellName = spell.name != null ? spell.name : "Unknown";
+			g.drawString(font, spellName, 30, y + 5, 0xFFFFFF);
+			// 作者（可点击筛选）
+			String authorText = "by " + (spell.authorName != null ? spell.authorName : "Unknown");
+			boolean authorHover = mx >= 30 && mx <= 30 + font.width(authorText) && my >= y + 20 && my <= y + 32;
+			g.drawString(font, authorText, 30, y + 20, authorHover ? 0x55AAFF : 0xAAAAAA);
 			// 分类
 			if (spell.category != null && !spell.category.isEmpty()) {
 				g.drawString(font, "[" + spell.category + "]", 30, y + 35, 0x55FFFF);
@@ -243,32 +316,88 @@ public class SpellMarketScreen extends Screen {
 			g.drawString(font, "❤ " + spell.likesCount + "  ⬇ " + spell.downloadsCount, 30, y + 50, 0xFFDD55);
 			g.drawString(font, formatDate(spell.uploadDate), 30, y + 65, 0x888888);
 
-			// 点赞按钮
-			boolean liked = likedSpells.contains(spell.uuid);
-			int lx = width - 200, ly = y + 25;
+			// 点赞/取消点赞按钮
+			boolean liked = LikedSpellsStore.contains(spell.uuid);
+			int lx = width - 220, ly = y + 25;
 			boolean lh = mx >= lx && mx <= lx + 60 && my >= ly && my <= ly + 20;
 			int lc = liked ? 0xFFFF5555 : (lh ? 0xFFAA5555 : 0xFF885555);
 			g.fill(lx, ly, lx + 60, ly + 20, lc);
-			g.drawCenteredString(font, liked ? SpellMarketLocalization.liked().getString() : SpellMarketLocalization.like().getString(),
+			g.drawCenteredString(font, liked ? "Unlike" : SpellMarketLocalization.like().getString(),
 					lx + 30, ly + 6, 0xFFFFFF);
 
+			// 详情按钮
+			int ix = width - 150, iy = y + 25;
+			boolean ih = mx >= ix && mx <= ix + 70 && my >= iy && my <= iy + 20;
+			g.fill(ix, iy, ix + 70, iy + 20, ih ? 0xFF555588 : 0xFF333366);
+			g.drawCenteredString(font, SpellMarketLocalization.detail().getString(), ix + 35, iy + 6, 0xFFFFFF);
+
 			// 下载按钮
-			int dx = width - 130, dy = y + 50;
+			int dx = width - 150, dy = y + 50;
 			boolean dh = mx >= dx && mx <= dx + 80 && my >= dy && my <= dy + 20;
 			int dc = dh ? 0xFF55AA55 : 0xFF338833;
 			g.fill(dx, dy, dx + 80, dy + 20, dc);
 			g.drawCenteredString(font, SpellMarketLocalization.download().getString(), dx + 40, dy + 6, 0xFFFFFF);
 
+			// 删除按钮（仅本人符卡）
+			if (isOwnSpell(spell)) {
+				int dlx = width - 40, dly = y + 25;
+				boolean dlh = mx >= dlx && mx <= dlx + 20 && my >= dly && my <= dly + 20;
+				g.fill(dlx, dly, dlx + 20, dly + 20, dlh ? 0xFFCC3333 : 0xFF883333);
+				g.drawCenteredString(font, "\u00D7", dlx + 10, dly + 6, 0xFFFFFF);
+			}
+
 			y += ITEM_HEIGHT;
 		}
-		RenderSystem.disableScissor();
+		g.disableScissor();
 	}
 
 	@Override
 	public boolean mouseClicked(double mx, double my, int btn) {
 		if (btn != 0 || loading) return super.mouseClicked(mx, my, btn);
+
+		// 已选标签栏点击处理（y=42~56）
+		if (my >= 42 && my <= 56) {
+			int x = width / 2 - 100;
+			String likedLabel = "\u2665 Liked";
+			int tw = font.width(likedLabel) + 12;
+			if (mx >= x && mx <= x + tw) {
+				filterLiked = !filterLiked;
+				currentPage = 1;
+				loadList();
+				return true;
+			}
+			x += tw + 6;
+			if (currentTag != null) {
+				tw = font.width(currentTag) + 16;
+				if (mx >= x && mx <= x + tw) {
+					currentTag = null;
+					currentPage = 1;
+					loadList();
+					return true;
+				}
+				x += tw + 6;
+			}
+			if (authorFilterName != null) {
+				String label = "\u263A " + authorFilterName;
+				tw = font.width(label) + 16;
+				if (mx >= x && mx <= x + tw) {
+					authorFilterUuid = null;
+					authorFilterName = null;
+					currentPage = 1;
+					loadList();
+					return true;
+				}
+			}
+		}
+
 		int y = LIST_TOP - scrollOffset;
 		for (SpellListEntry spell : spells) {
+			// 作者点击筛选
+			String authorText = "by " + (spell.authorName != null ? spell.authorName : "Unknown");
+			if (mx >= 30 && mx <= 30 + font.width(authorText) && my >= y + 20 && my <= y + 32) {
+				filterByAuthor(spell);
+				return true;
+			}
 			// 标签点击
 			if (spell.tags != null) {
 				int tx = 150, ty = y + 35;
@@ -282,17 +411,31 @@ public class SpellMarketScreen extends Screen {
 					tx += tw + 4;
 				}
 			}
-			// 点赞
-			int lx = width - 200, ly = y + 25;
+			// 点赞/取消点赞
+			int lx = width - 220, ly = y + 25;
 			if (mx >= lx && mx <= lx + 60 && my >= ly && my <= ly + 20) {
-				likeSpell(spell);
+				toggleLike(spell);
+				return true;
+			}
+			// 详情
+			int ix = width - 150, iy = y + 25;
+			if (mx >= ix && mx <= ix + 70 && my >= iy && my <= iy + 20) {
+				openDetail(spell);
 				return true;
 			}
 			// 下载
-			int dx = width - 130, dy = y + 50;
+			int dx = width - 150, dy = y + 50;
 			if (mx >= dx && mx <= dx + 80 && my >= dy && my <= dy + 20) {
 				downloadSpell(spell);
 				return true;
+			}
+			// 删除（仅本人符卡）
+			if (isOwnSpell(spell)) {
+				int dlx = width - 40, dly = y + 25;
+				if (mx >= dlx && mx <= dlx + 20 && my >= dly && my <= dly + 20) {
+					deleteSpell(spell);
+					return true;
+				}
 			}
 			y += ITEM_HEIGHT;
 		}
@@ -300,14 +443,16 @@ public class SpellMarketScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mx, double my, double dx, double dy) {
-		scrollOffset -= (int) (dy * 20);
+	public boolean mouseScrolled(double mx, double my, double delta) {
+		scrollOffset -= (int) (delta * 20);
 		return true;
 	}
 
 	@Override
 	public boolean keyPressed(int key, int scan, int mods) {
 		if (key == 257 || key == 335) {
+			authorFilterUuid = null;
+			authorFilterName = null;
 			currentPage = 1;
 			loadList();
 			return true;
@@ -321,21 +466,102 @@ public class SpellMarketScreen extends Screen {
 		} else {
 			currentTag = tag;
 		}
+		authorFilterUuid = null;
+		authorFilterName = null;
 		currentPage = 1;
 		loadList();
 	}
 
-	private void likeSpell(SpellListEntry entry) {
-		if (api == null || likedSpells.contains(entry.uuid)) return;
-		api.likeSpell(entry.uuid).thenAccept(success -> {
+	private void filterByAuthor(SpellListEntry spell) {
+		if (spell.authorUuid != null && !spell.authorUuid.isEmpty()) {
+			authorFilterUuid = spell.authorUuid;
+			authorFilterName = spell.authorName != null ? spell.authorName : "Unknown";
+		} else if (spell.authorName != null && !spell.authorName.isEmpty()) {
+			authorFilterName = spell.authorName;
+			authorFilterUuid = null;
+		} else {
+			return;
+		}
+		currentTag = null;
+		currentPage = 1;
+		loadList();
+	}
+
+	private void toggleLike(SpellListEntry entry) {
+		if (api == null) return;
+		if (LikedSpellsStore.contains(entry.uuid)) {
+			// 已点赞 → 取消点赞
+			api.unlikeSpell(entry.uuid).thenAccept(success -> {
+				Minecraft.getInstance().execute(() -> {
+					if (success) {
+						LikedSpellsStore.remove(entry.uuid);
+						entry.likesCount = Math.max(0, entry.likesCount - 1);
+					}
+				});
+			});
+		} else {
+			// 未点赞 → 点赞
+			api.likeSpell(entry.uuid).thenAccept(result -> {
+				Minecraft.getInstance().execute(() -> {
+					switch (result) {
+						case SUCCESS:
+							entry.likesCount++;
+							LikedSpellsStore.add(entry.uuid, entry.likesCount);
+							break;
+						case ALREADY_LIKED:
+							LikedSpellsStore.add(entry.uuid, entry.likesCount);
+							break;
+						case ERROR:
+							break;
+					}
+				});
+			});
+		}
+	}
+
+	private void deleteSpell(SpellListEntry entry) {
+		if (api == null) return;
+		String playerUuid = getPlayerUuid();
+		String playerName = "";
+		try { playerName = Minecraft.getInstance().getUser().getName(); } catch (Exception ignored) {}
+		api.deleteSpell(entry.uuid, playerUuid, playerName).thenAccept(success -> {
 			Minecraft.getInstance().execute(() -> {
 				if (success) {
-					likedSpells.add(entry.uuid);
-					entry.likesCount++;
-					likeCounts.put(entry.uuid, entry.likesCount);
+					spells.remove(entry);
+					LikedSpellsStore.remove(entry.uuid);
+				} else {
+					errorMessage = "Delete failed. You may not be authorized.";
 				}
 			});
 		});
+	}
+
+	private void openDetail(SpellListEntry entry) {
+		if (minecraft != null) {
+			minecraft.setScreen(new SpellDetailScreen(this, entry));
+		}
+	}
+
+	private String getPlayerUuid() {
+		try {
+			return Minecraft.getInstance().getUser().getProfileId().toString();
+		} catch (Exception e) {
+			return "";
+		}
+	}
+
+	private boolean isOwnSpell(SpellListEntry spell) {
+		String playerUuid = getPlayerUuid();
+		if (spell.authorUuid != null && !spell.authorUuid.isEmpty()) {
+			return spell.authorUuid.equals(playerUuid);
+		}
+		// 旧符卡没有UUID，用author_name匹配
+		try {
+			String playerName = Minecraft.getInstance().getUser().getName();
+			return spell.authorName != null && spell.authorName.equals(playerName);
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	private void downloadSpell(SpellListEntry entry) {
@@ -346,16 +572,17 @@ public class SpellMarketScreen extends Screen {
 				if (def != null) {
 					// 保存到世界存档
 					try {
-						SpellEditorNetworkClient.save(def);
+						SpellEditorNetworkClient.importMarket(def);
 						minecraft.setScreen(msgScreen("Success",
 								SpellMarketLocalization.downloadSuccess(entry.name).getString()));
 					} catch (Exception e) {
+						org.slf4j.LoggerFactory.getLogger("SpellMarket").error("Error saving downloaded spell '{}'", entry.uuid, e);
 						minecraft.setScreen(msgScreen("Error",
-								SpellMarketLocalization.downloadFail().getString()));
+								"§cSave failed: " + e.getMessage() + "\nCheck game log for details."));
 					}
 				} else {
 					minecraft.setScreen(msgScreen("Error",
-							SpellMarketLocalization.downloadFail().getString()));
+							"§cDownload failed.\nThis spell's format may be incompatible (e.g. uploaded externally).\nCheck game log for parse errors."));
 				}
 			});
 		});
@@ -408,7 +635,7 @@ public class SpellMarketScreen extends Screen {
 
 		@Override
 		public void render(GuiGraphics g, int mx, int my, float pt) {
-			renderBackground(g, mx, my, pt);
+			renderBackground(g);
 			List<String> lines = java.util.List.of(message.split("\n"));
 			int y = height / 2 - 10 - (lines.size() * 12) / 2;
 			for (String line : lines) {

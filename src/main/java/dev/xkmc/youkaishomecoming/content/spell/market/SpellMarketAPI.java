@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.market;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.market.dto.*;
@@ -48,6 +49,10 @@ public class SpellMarketAPI {
 	}
 
 	public CompletableFuture<SpellListResponse> getSpellList(int page, int perPage, String search, String sort) {
+		return getSpellList(page, perPage, search, sort, null, null);
+	}
+
+	public CompletableFuture<SpellListResponse> getSpellList(int page, int perPage, String search, String sort, String authorUuid, String authorName) {
 		if (!rateLimiter.canSearch()) {
 			return CompletableFuture.completedFuture(null);
 		}
@@ -59,6 +64,11 @@ public class SpellMarketAPI {
 		}
 		if (sort != null && !sort.isEmpty()) {
 			url.append("&sort=").append(urlEncode(sort));
+		}
+		if (authorUuid != null && !authorUuid.isEmpty()) {
+			url.append("&author_uuid=").append(urlEncode(authorUuid));
+		} else if (authorName != null && !authorName.isEmpty()) {
+			url.append("&author_name=").append(urlEncode(authorName));
 		}
 
 		HttpRequest request = HttpRequest.newBuilder()
@@ -109,9 +119,30 @@ public class SpellMarketAPI {
 				});
 	}
 
+	public CompletableFuture<SpellDetail> getSpellDetail(String uuid) {
+		HttpRequest request = HttpRequest.newBuilder()
+				.uri(URI.create(baseUrl + "/spells/" + pathSegment(uuid)))
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+
+		return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> {
+					if (response.statusCode() == 200) {
+						return GSON.fromJson(response.body(), SpellDetail.class);
+					}
+					LOGGER.warn("Failed to fetch spell detail: HTTP {}", response.statusCode());
+					return null;
+				})
+				.exceptionally(e -> {
+					LOGGER.error("Error fetching spell detail", e);
+					return null;
+				});
+	}
+
 	public CompletableFuture<UploadResponse> uploadSpell(
 			SpellDefinition definition, String name, String description,
-			String authorName, String category, List<String> tags) {
+			String authorName, String authorUuid, String category, List<String> tags) {
 		if (!rateLimiter.canUpload()) {
 			return CompletableFuture.completedFuture(null);
 		}
@@ -133,6 +164,7 @@ public class SpellMarketAPI {
 			addFormField(body, boundary, "name", name);
 			addFormField(body, boundary, "description", description);
 			addFormField(body, boundary, "author_name", authorName);
+			addFormField(body, boundary, "author_uuid", authorUuid != null ? authorUuid : "");
 			addFormField(body, boundary, "category", category);
 			addFormField(body, boundary, "tags", GSON.toJson(tags));
 
@@ -163,53 +195,155 @@ public class SpellMarketAPI {
 		}
 	}
 
-	public CompletableFuture<Boolean> likeSpell(String uuid) {
+	public CompletableFuture<LikeResult> likeSpell(String uuid) {
 		if (!rateLimiter.canLike(uuid)) {
-			return CompletableFuture.completedFuture(false);
+			return CompletableFuture.completedFuture(LikeResult.ERROR);
 		}
 		rateLimiter.markLike(uuid);
 
-		String fingerprint = getClientFingerprint();
-		String jsonBody = "{\"fingerprint\":\"" + fingerprint + "\"}";
+		JsonObject body = new JsonObject();
+		body.addProperty("fingerprint", getClientFingerprint());
 
 		HttpRequest request = HttpRequest.newBuilder()
 				.uri(URI.create(baseUrl + "/spells/" + uuid + "/like"))
 				.timeout(Duration.ofSeconds(10))
 				.header("Content-Type", "application/json")
-				.POST(HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8))
+				.POST(jsonBody(body))
+				.build();
+
+		return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> {
+					if (response.statusCode() == 200) return LikeResult.SUCCESS;
+					if (response.statusCode() == 400) return LikeResult.ALREADY_LIKED;
+					LOGGER.warn("Failed to like spell: HTTP {}", response.statusCode());
+					return LikeResult.ERROR;
+				})
+				.exceptionally(e -> {
+					LOGGER.error("Error liking spell", e);
+					return LikeResult.ERROR;
+				});
+	}
+
+	public CompletableFuture<Boolean> unlikeSpell(String uuid) {
+		JsonObject body = new JsonObject();
+		body.addProperty("fingerprint", getClientFingerprint());
+
+		HttpRequest request = HttpRequest.newBuilder()
+				.uri(URI.create(baseUrl + "/spells/" + uuid + "/like"))
+				.timeout(Duration.ofSeconds(10))
+				.header("Content-Type", "application/json")
+				.method("DELETE", jsonBody(body))
 				.build();
 
 		return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
 				.thenApply(response -> {
 					if (response.statusCode() == 200) return true;
-					if (response.statusCode() == 400) return false;
-					LOGGER.warn("Failed to like spell: HTTP {}", response.statusCode());
+					LOGGER.warn("Failed to unlike spell: HTTP {}", response.statusCode());
 					return false;
 				})
 				.exceptionally(e -> {
-					LOGGER.error("Error liking spell", e);
+					LOGGER.error("Error unliking spell", e);
+					return false;
+				});
+	}
+
+	public CompletableFuture<Boolean> deleteSpell(String uuid, String authorUuid, String authorName) {
+		JsonObject body = new JsonObject();
+		body.addProperty("author_uuid", authorUuid);
+		body.addProperty("author_name", authorName);
+
+		HttpRequest request = HttpRequest.newBuilder()
+				.uri(URI.create(baseUrl + "/spells/" + uuid))
+				.timeout(Duration.ofSeconds(10))
+				.header("Content-Type", "application/json")
+				.method("DELETE", jsonBody(body))
+				.build();
+
+		return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> {
+					if (response.statusCode() == 200) return true;
+					LOGGER.warn("Failed to delete spell: HTTP {}", response.statusCode());
+					return false;
+				})
+				.exceptionally(e -> {
+					LOGGER.error("Error deleting spell", e);
 					return false;
 				});
 	}
 
 	public CompletableFuture<List<Comment>> getComments(String uuid) {
 		HttpRequest request = HttpRequest.newBuilder()
-				.uri(URI.create(baseUrl + "/spells/" + uuid + "/comments"))
+				.uri(URI.create(baseUrl + "/spells/" + pathSegment(uuid) + "/comments"))
 				.timeout(Duration.ofSeconds(10))
 				.GET()
 				.build();
 
 		return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-				.thenApply(response -> {
+				.<List<Comment>>thenApply(response -> {
 					if (response.statusCode() == 200) {
 						CommentsResponse commentsResponse = GSON.fromJson(response.body(), CommentsResponse.class);
-						return commentsResponse.comments;
+						return commentsResponse != null && commentsResponse.comments != null ?
+								commentsResponse.comments : List.<Comment>of();
 					}
-					return List.of();
+					return List.<Comment>of();
 				})
 				.exceptionally(e -> {
 					LOGGER.error("Error fetching comments", e);
-					return List.of();
+					return List.<Comment>of();
+				});
+	}
+
+	public CompletableFuture<Boolean> addComment(String spellUuid, String content, String imageUrl,
+												 String authorName, String authorUuid) {
+		JsonObject body = new JsonObject();
+		body.addProperty("author_name", authorName);
+		body.addProperty("author_uuid", authorUuid);
+		body.addProperty("content", content);
+		if (imageUrl != null && !imageUrl.isBlank()) {
+			body.addProperty("image_url", imageUrl);
+		}
+
+		HttpRequest request = HttpRequest.newBuilder()
+				.uri(URI.create(baseUrl + "/spells/" + pathSegment(spellUuid) + "/comments"))
+				.timeout(Duration.ofSeconds(10))
+				.header("Content-Type", "application/json")
+				.POST(jsonBody(body))
+				.build();
+
+		return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> {
+					if (response.statusCode() == 200 || response.statusCode() == 201) return true;
+					LOGGER.warn("Failed to add comment: HTTP {} - {}", response.statusCode(), response.body());
+					return false;
+				})
+				.exceptionally(e -> {
+					LOGGER.error("Error adding comment", e);
+					return false;
+				});
+	}
+
+	public CompletableFuture<Boolean> deleteComment(String spellUuid, String commentUuid,
+													String authorUuid, String authorName) {
+		JsonObject body = new JsonObject();
+		body.addProperty("author_uuid", authorUuid);
+		body.addProperty("author_name", authorName);
+
+		HttpRequest request = HttpRequest.newBuilder()
+				.uri(URI.create(baseUrl + "/spells/" + pathSegment(spellUuid) + "/comments/" + pathSegment(commentUuid)))
+				.timeout(Duration.ofSeconds(10))
+				.header("Content-Type", "application/json")
+				.method("DELETE", jsonBody(body))
+				.build();
+
+		return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> {
+					if (response.statusCode() == 200 || response.statusCode() == 204) return true;
+					LOGGER.warn("Failed to delete comment: HTTP {} - {}", response.statusCode(), response.body());
+					return false;
+				})
+				.exceptionally(e -> {
+					LOGGER.error("Error deleting comment", e);
+					return false;
 				});
 	}
 
@@ -223,6 +357,14 @@ public class SpellMarketAPI {
 
 	private String urlEncode(String str) {
 		return java.net.URLEncoder.encode(str, StandardCharsets.UTF_8);
+	}
+
+	private String pathSegment(String str) {
+		return urlEncode(str).replace("+", "%20");
+	}
+
+	private HttpRequest.BodyPublisher jsonBody(JsonObject json) {
+		return HttpRequest.BodyPublishers.ofString(GSON.toJson(json), StandardCharsets.UTF_8);
 	}
 
 	private void addFormField(StringBuilder body, String boundary, String name, String value) {

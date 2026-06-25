@@ -72,6 +72,50 @@ public class SpellMarketLocalization {
 		return YHLangData.MARKET_FILTER_TAG.get(tag).copy();
 	}
 
+	public static MutableComponent detail() {
+		return YHLangData.MARKET_DETAIL.get().copy();
+	}
+
+	public static MutableComponent back() {
+		return YHLangData.MARKET_BACK.get().copy();
+	}
+
+	public static MutableComponent comments() {
+		return YHLangData.MARKET_COMMENTS.get().copy();
+	}
+
+	public static MutableComponent noComments() {
+		return YHLangData.MARKET_NO_COMMENTS.get().copy();
+	}
+
+	public static MutableComponent commentPlaceholder() {
+		return YHLangData.MARKET_COMMENT_PLACEHOLDER.get().copy();
+	}
+
+	public static MutableComponent commentImage() {
+		return YHLangData.MARKET_COMMENT_IMAGE.get().copy();
+	}
+
+	public static MutableComponent commentPost() {
+		return YHLangData.MARKET_COMMENT_POST.get().copy();
+	}
+
+	public static MutableComponent commentDelete() {
+		return YHLangData.MARKET_COMMENT_DELETE.get().copy();
+	}
+
+	public static MutableComponent commentFail() {
+		return YHLangData.MARKET_COMMENT_FAIL.get().copy();
+	}
+
+	public static MutableComponent imageLoading() {
+		return YHLangData.MARKET_IMAGE_LOADING.get().copy();
+	}
+
+	public static MutableComponent imageUnavailable() {
+		return YHLangData.MARKET_IMAGE_UNAVAILABLE.get().copy();
+	}
+
 	public static MutableComponent downloadSuccess(String name) {
 		return YHLangData.MARKET_DOWNLOAD_SUCCESS.get(name).copy();
 	}

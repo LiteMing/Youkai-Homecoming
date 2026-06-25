@@ -68,7 +68,7 @@ public class YHModConfig {
 						.defineInRange("photoOverlayDuration", 80, 20, 600);
 			}
 			builder.pop();
-t		builder.push("spell_market");
+			builder.push("spell_market");
 			{
 				spellMarketEnabled = builder.comment("Enable the spell card market feature")
 						.define("enabled", true);

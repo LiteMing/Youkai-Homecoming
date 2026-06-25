@@ -181,6 +181,13 @@ public class SpellPreviewScreen extends Screen {
 			rebuildScreen(false);
 		}, fullEdit);
 
+		// Market button - opens spell card market
+		addTopBarButton(bx, by, SpellMarketLocalization.toMarket().getString(), 50, btn -> {
+			if (minecraft != null) {
+				minecraft.setScreen(new SpellMarketScreen(this));
+			}
+		}, fullEdit);
+
 		// --- Create editor panels ---
 		actionListPanel = new ActionListPanel(
 				(action, path) -> {
@@ -543,21 +550,14 @@ public class SpellPreviewScreen extends Screen {
 			boolean rawJsonActive = rawJsonGroup != null && rawJsonGroup.getActivePanel() == rawJsonDockPanel;
 			DockGroup magicCircleGroup = magicCircleDockPanel == null ? null : dockLayout.findGroupContaining(magicCircleDockPanel);
 			boolean magicCircleActive = magicCircleGroup != null && magicCircleGroup.getActivePanel() == magicCircleDockPanel;
-			if (magicCircleActive) {
-				rawJsonContext = RawJsonDockPanel.ContentMode.MAGIC_CIRCLE;
-			} else if (!rawJsonActive) {
-				rawJsonContext = RawJsonDockPanel.ContentMode.SPELL;
-			}
+			rawJsonContext = magicCircleActive ? RawJsonDockPanel.ContentMode.MAGIC_CIRCLE : RawJsonDockPanel.ContentMode.SPELL;
 			rawJsonDockPanel.setEditorActive(rawJsonActive);
 		}
 		if (magicCircleDockPanel != null) {
 			DockGroup magicCircleGroup = dockLayout.findGroupContaining(magicCircleDockPanel);
 			boolean magicCircleActive = magicCircleGroup != null && magicCircleGroup.getActivePanel() == magicCircleDockPanel;
-			DockGroup rawJsonGroup = rawJsonDockPanel == null ? null : dockLayout.findGroupContaining(rawJsonDockPanel);
-			boolean rawJsonActive = rawJsonGroup != null && rawJsonGroup.getActivePanel() == rawJsonDockPanel;
 			magicCircleDockPanel.setEditorActive(magicCircleActive);
-			magicCircleDockPanel.setPreviewActive(magicCircleActive ||
-					(rawJsonActive && rawJsonContext == RawJsonDockPanel.ContentMode.MAGIC_CIRCLE));
+			magicCircleDockPanel.setPreviewActive(magicCircleActive);
 		}
 	}
 

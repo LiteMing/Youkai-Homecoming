@@ -31,6 +31,10 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue photoOverlayCorner;
 		public final ForgeConfigSpec.IntValue photoOverlayDuration;
 
+		// Spell Market
+		public final ForgeConfigSpec.BooleanValue spellMarketEnabled;
+		public final ForgeConfigSpec.ConfigValue<String> spellMarketUrl;
+
 		Client(ForgeConfigSpec.Builder builder) {
 			laserRenderAdditive = builder.define("laserRenderAdditive", true);
 			laserRenderInverted = builder.define("laserRenderInverted", true);
@@ -62,6 +66,14 @@ public class YHModConfig {
 						.defineInRange("photoOverlayCorner", 0, 0, 3);
 				photoOverlayDuration = builder.comment("Duration (ticks) to display the photo overlay")
 						.defineInRange("photoOverlayDuration", 80, 20, 600);
+			}
+			builder.pop();
+t		builder.push("spell_market");
+			{
+				spellMarketEnabled = builder.comment("Enable the spell card market feature")
+						.define("enabled", true);
+				spellMarketUrl = builder.comment("Spell market server URL")
+						.define("url", "http://149.13.91.92/api/v1");
 			}
 			builder.pop();
 		}

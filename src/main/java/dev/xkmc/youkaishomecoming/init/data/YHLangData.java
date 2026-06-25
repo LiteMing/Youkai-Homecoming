@@ -95,7 +95,42 @@ public enum YHLangData {
 	KOISHI_REIMU("koishi_reimu", "Reimu: ???", 0, ChatFormatting.RED),
 
 	EDITOR_RESET("custom_spell.reset", "Reset", 0, null),
-	INVALID_TIME("custom_spell.invalid_time", "Max duration of %s allowed. Current duration: %s", 2, ChatFormatting.RED);
+	INVALID_TIME("custom_spell.invalid_time", "Max duration of %s allowed. Current duration: %s", 2, ChatFormatting.RED),
+
+	// Spell Market
+	MARKET_TITLE("spell_market.title", "Spell Card Market", 0, null),
+	MARKET_SEARCH("spell_market.search", "Search...", 0, null),
+	MARKET_REFRESH("spell_market.refresh", "Refresh", 0, null),
+	MARKET_UPLOAD("spell_market.upload", "Upload", 0, null),
+	MARKET_CLOSE("spell_market.close", "Close", 0, null),
+	MARKET_TO_EDITOR("spell_market.to_editor", "Editor", 0, null),
+	MARKET_PREV("spell_market.prev", "Prev", 0, null),
+	MARKET_NEXT("spell_market.next", "Next", 0, null),
+	MARKET_PAGE("spell_market.page", "Page %s / %s", 2, null),
+	MARKET_LOADING("spell_market.loading", "Loading...", 0, null),
+	MARKET_NO_SPELLS("spell_market.no_spells", "No spells found", 0, null),
+	MARKET_DOWNLOAD("spell_market.download", "Download", 0, null),
+	MARKET_LIKE("spell_market.like", "Like", 0, null),
+	MARKET_LIKED("spell_market.liked", "Liked", 0, null),
+	MARKET_FILTER_TAG("spell_market.filter_tag", "Tag: %s (click to clear)", 1, ChatFormatting.GREEN),
+	MARKET_DOWNLOAD_SUCCESS("spell_market.download_success", "Downloaded: %s\nSaved to world storage.\nUse Editor > Export to share globally.", 2, ChatFormatting.GREEN),
+	MARKET_DOWNLOAD_FAIL("spell_market.download_fail", "Download failed", 0, ChatFormatting.RED),
+	MARKET_DOWNLOADING("spell_market.downloading", "Downloading: %s", 1, null),
+	MARKET_UPLOAD_TITLE("spell_market.upload.title", "Upload Spell", 0, null),
+	MARKET_UPLOAD_NAME("spell_market.upload.name", "Name:", 0, null),
+	MARKET_UPLOAD_DESC("spell_market.upload.desc", "Description:", 0, null),
+	MARKET_UPLOAD_AUTHOR("spell_market.upload.author", "Author:", 0, null),
+	MARKET_UPLOAD_CATEGORY("spell_market.upload.category", "Category:", 0, null),
+	MARKET_UPLOAD_TAGS("spell_market.upload.tags", "Tags:", 0, null),
+	MARKET_UPLOAD_ADD_TAG("spell_market.upload.add_tag", "Add Tag", 0, null),
+	MARKET_UPLOAD_BTN("spell_market.upload.button", "Upload", 0, null),
+	MARKET_UPLOAD_CANCEL("spell_market.upload.cancel", "Cancel", 0, null),
+	MARKET_UPLOAD_SUCCESS("spell_market.upload.success", "Upload successful! UUID: %s", 1, ChatFormatting.GREEN),
+	MARKET_UPLOAD_FAIL("spell_market.upload.fail", "Upload failed", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_COOLDOWN("spell_market.upload.cooldown", "Wait %s seconds before uploading again", 1, ChatFormatting.YELLOW),
+	MARKET_ERROR_DISABLED("spell_market.error.disabled", "Market is disabled in config", 0, ChatFormatting.RED),
+	MARKET_ERROR_NETWORK("spell_market.error.network", "Network error. Please check connection.", 0, ChatFormatting.RED),
+	EDITOR_TO_MARKET("spell_editor.to_market", "Market", 0, null);
 
 	private final String key, def;
 	private final int arg;

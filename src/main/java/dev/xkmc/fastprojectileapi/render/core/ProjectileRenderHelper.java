@@ -64,6 +64,7 @@ public class ProjectileRenderHelper {
 		var level = Minecraft.getInstance().level;
 		if (level == null) return;
 		if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+			GiantDanmakuScreenOverlay.beginFrame();
 			var buffer = Minecraft.getInstance().renderBuffers().bufferSource();
 			var cache = ClientDanmakuCache.get(level);
 			cache.renderAll(event.getCamera(), event.getFrustum(), event.getPoseStack(), event.getPartialTick(), buffer);

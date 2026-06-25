@@ -60,8 +60,15 @@ public interface LivingCardHolder extends CardHolder {
 	default ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DanmakuColor color) {
 		ItemDanmakuEntity danmaku = new ItemDanmakuEntity(YHEntities.ITEM_DANMAKU.get(), shooter(), self().level());
 		danmaku.setPos(center());
-		danmaku.setItem(type.stack(color));
-		danmaku.setTint(color.argb());
+		// For DYE_TEXTURES mode: use the specific colored item (has correct texture baked in)
+		// For TINTED/FIXED modes: use BASE_DANMAKU with NBT color and runtime tint
+		if (type.usesDyeTextures()) {
+			DyeColor dyeColor = color.toDyeColor();
+			danmaku.setItem(type.get(dyeColor).asStack());
+		} else {
+			danmaku.setItem(type.stack(color));
+			danmaku.setTint(color.argb());
+		}
 		danmaku.setup(getDamage(type),
 				life, true, true, vec);
 		return danmaku;

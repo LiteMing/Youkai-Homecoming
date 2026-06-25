@@ -42,13 +42,15 @@ public class YHDanmaku {
 		BUTTERFLY(1, 4, DisplayType.TRANSPARENT),
 		SPARK(1, 4, DisplayType.SOLID),
 		STAR(2, 6, DisplayType.TRANSPARENT),
+		YINYANG_2D("yinyang-2d", 2, 6, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.TINTED,
+				"white", "giant_yinyang"),
 		ROSE(1, 4, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.FIXED, "rose"),
 		TALISMAN(1.5f, 5, DisplayType.TRANSPARENT),
 		KUNAI(1, 4, DisplayType.SOLID),
 		SCALE(1, 4, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.TINTED, "white"),
 		KNIFE(1.5f, 5, DisplayType.SOLID),
 		MOON(8, 16, DisplayType.ADDITIVE, BulletCategory.GIANT, BulletColorMode.FIXED, "moon"),
-		GIANT_YINYANG(8, 14, DisplayType.TRANSPARENT, BulletCategory.GIANT, BulletColorMode.FIXED, "white"),
+		GIANT_YINYANG(8, 14, DisplayType.TRANSPARENT, BulletCategory.GIANT, BulletColorMode.TINTED, "white"),
 		;
 
 		public final String name;
@@ -59,20 +61,27 @@ public class YHDanmaku {
 		private final DisplayType display;
 		private final BulletColorMode colorMode;
 		private final String fixedTexture;
+		private final String textureFolder;
 
 		Bullet(float size, int damage, DisplayType display) {
-			this(size, damage, display, BulletCategory.NORMAL, BulletColorMode.DYE_TEXTURES, null);
+			this(null, size, damage, display, BulletCategory.NORMAL, BulletColorMode.DYE_TEXTURES, null, null);
 		}
 
 		Bullet(float size, int damage, DisplayType display, BulletCategory category, BulletColorMode colorMode, String fixedTexture) {
+			this(null, size, damage, display, category, colorMode, fixedTexture, null);
+		}
+
+		Bullet(String name, float size, int damage, DisplayType display, BulletCategory category,
+			   BulletColorMode colorMode, String fixedTexture, String textureFolder) {
 			this.size = size;
 			this.damage = damage;
 			this.display = display;
 			this.category = category;
 			this.colorMode = colorMode;
 			this.fixedTexture = fixedTexture;
-			name = name().toLowerCase(Locale.ROOT);
-			tag = YHTagGen.item("danmaku/" + name);
+			this.textureFolder = textureFolder;
+			this.name = name == null ? name().toLowerCase(Locale.ROOT) : name;
+			tag = YHTagGen.item("danmaku/" + this.name);
 		}
 
 		public ItemEntry<DanmakuItem> get(DyeColor color) {
@@ -113,6 +122,26 @@ public class YHDanmaku {
 
 		public String textureName(DyeColor color) {
 			return colorMode == BulletColorMode.DYE_TEXTURES ? color.getName() : fixedTexture;
+		}
+
+		public String textureFolder() {
+			return textureFolder == null ? name : textureFolder;
+		}
+
+		public String texturePath(DyeColor color) {
+			return textureFolder() + "/" + textureName(color);
+		}
+
+		public static Bullet byName(String id) {
+			String key = normalize(id);
+			for (var e : values()) {
+				if (normalize(e.name).equals(key) || normalize(e.name()).equals(key)) return e;
+			}
+			throw new IllegalArgumentException("Unknown danmaku bullet: " + id);
+		}
+
+		private static String normalize(String id) {
+			return id.toLowerCase(Locale.ROOT).replace('-', '_');
 		}
 
 	}
@@ -298,7 +327,7 @@ public class YHDanmaku {
 							.item(e.getName() + "_" + t.name + "_danmaku",
 									p -> new DanmakuItem(p.rarity(Rarity.RARE), t, e, t.size))
 							.model((ctx, pvd) -> pvd.generated(ctx,
-									pvd.modLoc("item/bullet/" + t.name + "/" + e.getName())))
+									pvd.modLoc("item/bullet/" + t.texturePath(e))))
 							.tag(t.tag)
 							.register();
 					DANMAKU[t.ordinal()][e.ordinal()] = ent;
@@ -310,7 +339,7 @@ public class YHDanmaku {
 								p -> new DanmakuItem(p.rarity(t.category == BulletCategory.GIANT ? Rarity.EPIC : Rarity.RARE),
 										t, DyeColor.WHITE, t.size))
 						.model((ctx, pvd) -> pvd.generated(ctx,
-								pvd.modLoc("item/bullet/" + t.name + "/" + t.textureName(DyeColor.WHITE))))
+								pvd.modLoc("item/bullet/" + t.texturePath(DyeColor.WHITE))))
 						.tag(t.tag)
 						.lang(RegistrateLangProvider.toEnglishName(t.name) + " Danmaku");
 				if (t.usesTint()) {

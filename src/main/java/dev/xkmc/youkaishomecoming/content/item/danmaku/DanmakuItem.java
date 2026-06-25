@@ -5,6 +5,7 @@ import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.ButterflyProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.CrossProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.GiantSphereProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.GiantYinYangSphereProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RenderableProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
@@ -25,6 +26,7 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -96,6 +98,17 @@ public class DanmakuItem extends Item {
 		return DanmakuColor.WHITE;
 	}
 
+	public boolean isGiant() {
+		return type.category == YHDanmaku.BulletCategory.GIANT;
+	}
+
+	public ResourceLocation giantOverlayTexture() {
+		if (type == YHDanmaku.Bullet.GIANT_YINYANG) {
+			return YoukaisHomecoming.loc("textures/entities/bullet/moon/moon.png");
+		}
+		return YoukaisHomecoming.loc("textures/entities/bullet/" + type.texturePath(color) + ".png");
+	}
+
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
 		if (GrazeHelper.forbidDanmaku(player))
@@ -145,13 +158,13 @@ public class DanmakuItem extends Item {
 
 	public ProjTypeHolder<? extends RenderableProjectileType<?, ?>, ?> getTypeForRender() {
 		if (render == null) {
-			String textureName = type.textureName(color);
 			var loc = YoukaisHomecoming
-					.loc("textures/entities/bullet/" + type.getName() + "/" + textureName + ".png");
+					.loc("textures/entities/bullet/" + type.texturePath(color) + ".png");
 			RenderableProjectileType<?, ?> r = switch (type) {
 				case BUTTERFLY -> new ButterflyProjectileType(loc, type.display(), 20);
 				case SPARK -> new RotatingProjectileType(loc, type.display(), 20);
 				case STAR -> new RotatingProjectileType(loc, type.display(), 40);
+				case YINYANG_2D -> new RotatingProjectileType(loc, type.display(), 80);
 				// Animated sequence frame bullets (16 frames for gradient effect)
 				case ROSE -> new AnimatedProjectileType(loc, type.display(), 16, 2);
 				// Swinging 3D bullets (rotations per block, tilt angle in degrees, size in blocks)
@@ -160,9 +173,10 @@ public class DanmakuItem extends Item {
 				// Cross-shaped bullets (like Minecraft saplings)
 				case KUNAI -> new CrossProjectileType(loc, type.display());
 				case KNIFE -> new CrossProjectileType(loc, type.display());
-				// Large bullets use sphere geometry for stronger 3D readability
-				case MOON -> new GiantSphereProjectileType(loc, type.display(), 16, 8, 120);
-				case GIANT_YINYANG -> new GiantSphereProjectileType(loc, type.display(), 16, 8, 80);
+				// Moon uses the textured sphere; giant yinyang uses a no-UV 3D material split.
+				case MOON -> new GiantSphereProjectileType(loc, type.display(), 32, 16, 120);
+				case GIANT_YINYANG -> new GiantYinYangSphereProjectileType(
+						YoukaisHomecoming.loc("textures/entities/bullet/moon/moon.png"), type.display(), 32, 16, 80);
 				default -> new SimpleProjectileType(loc, type.display());
 			};
 			render = ProjTypeHolder.wrap(Wrappers.cast(r));

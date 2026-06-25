@@ -7,6 +7,7 @@ import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -15,6 +16,7 @@ import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -57,11 +59,27 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 
 	public boolean shouldRender(T e, Frustum frustum, double camx, double camy, double camz) {
 		Entity cam = this.entityRenderDispatcher.camera.getEntity();
-		if (e.getOwner() != cam || e.tickCount >= 40) return true;
-		double dh = e.getBbHeight() / 2;
-		double dist = cam.getEyePosition().distanceToSqr(e.position().add(0, dh, 0));
-		double dy = Math.abs(cam.getEyeY() - e.getY() - dh);
-		return dist > 12 || dy > 0.1 + dh * 2 && dist > 4;
+		if (e.getItem().getItem() instanceof DanmakuItem item &&
+				item.type.category == YHDanmaku.BulletCategory.GIANT) {
+			double radius = e.scale() * 0.5 + 0.25;
+			double cy = e.getY() + e.getBbHeight() / 2;
+			Vec3 camera = this.entityRenderDispatcher.camera.getPosition();
+			double dx = camera.x - e.getX();
+			double dy = camera.y - cy;
+			double dz = camera.z - e.getZ();
+			if (dx * dx + dy * dy + dz * dz <= radius * radius) return true;
+			AABB visual = new AABB(
+					e.getX() - radius, cy - radius, e.getZ() - radius,
+					e.getX() + radius, cy + radius, e.getZ() + radius);
+			return frustum.isVisible(visual);
+		}
+		if (e.getOwner() == cam && e.tickCount < 40) {
+			double dh = e.getBbHeight() / 2;
+			double dist = cam.getEyePosition().distanceToSqr(e.position().add(0, dh, 0));
+			double dy = Math.abs(cam.getEyeY() - e.getY() - dh);
+			if (dist <= 12 && (dy <= 0.1 + dh * 2 || dist <= 4)) return false;
+		}
+		return true;
 	}
 
 	@Override

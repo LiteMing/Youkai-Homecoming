@@ -85,6 +85,66 @@ public class CustomSpellCircleStorage {
 		}
 	}
 
+	public static void deleteCircle(MinecraftServer server, ResourceLocation id) {
+		deleteCircleFromDir(getWorldStorageDir(server), id);
+		deleteCircleFromDir(getGlobalStorageDir(), id);
+	}
+
+	private static void deleteCircleFromDir(File dir, ResourceLocation id) {
+		if (!dir.exists() || !dir.isDirectory()) {
+			return;
+		}
+		deleteCircleRecursive(dir, id.toString());
+	}
+
+	private static void deleteCircleRecursive(File file, String id) {
+		if (file.isDirectory()) {
+			File[] children = file.listFiles();
+			if (children != null) {
+				for (File child : children) {
+					deleteCircleRecursive(child, id);
+				}
+			}
+			String[] remain = file.list();
+			if (remain != null && remain.length == 0 && !file.delete()) {
+				LOGGER.warn("Failed to delete empty spell circle directory {}", file.getPath());
+			}
+			return;
+		}
+		if (!file.getName().endsWith(".json")) {
+			return;
+		}
+		deleteCircleFromFile(file, id);
+	}
+
+	private static void deleteCircleFromFile(File file, String id) {
+		try {
+			String content = Files.readString(file.toPath());
+			var json = JsonParser.parseString(content);
+			if (!json.isJsonObject()) {
+				return;
+			}
+			JsonObject object = json.getAsJsonObject();
+			JsonObject map = object.has("map") && object.get("map").isJsonObject()
+					? object.getAsJsonObject("map") : object;
+			if (map.remove(id) == null) {
+				return;
+			}
+			if (map.entrySet().isEmpty()) {
+				if (!file.delete()) {
+					LOGGER.warn("Failed to delete empty spell circle file {}", file.getPath());
+				}
+			} else {
+				try (var writer = new FileWriter(file)) {
+					GSON.toJson(object, writer);
+				}
+			}
+			LOGGER.info("Deleted custom spell circle {} from {}", id, file.getPath());
+		} catch (Exception e) {
+			LOGGER.warn("Failed to delete spell circle {} from {}: {}", id, file.getPath(), e.getMessage());
+		}
+	}
+
 	public static void loadAllIntoConfig(MinecraftServer server) {
 		loadStorageDir("global", getGlobalStorageDir());
 		loadStorageDir("world", getWorldStorageDir(server));

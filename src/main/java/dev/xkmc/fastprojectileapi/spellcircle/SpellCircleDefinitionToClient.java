@@ -18,6 +18,8 @@ public class SpellCircleDefinitionToClient extends SerialPacketBase {
 	public String circleId = "";
 	@SerialClass.SerialField
 	public String componentJson = "";
+	@SerialClass.SerialField
+	public boolean deleted = false;
 
 	@Deprecated
 	public SpellCircleDefinitionToClient() {
@@ -29,6 +31,13 @@ public class SpellCircleDefinitionToClient extends SerialPacketBase {
 		this.componentJson = GSON.toJson(component);
 	}
 
+	public static SpellCircleDefinitionToClient delete(ResourceLocation id) {
+		SpellCircleDefinitionToClient packet = new SpellCircleDefinitionToClient();
+		packet.circleId = id.toString();
+		packet.deleted = true;
+		return packet;
+	}
+
 	@Override
 	public void handle(NetworkEvent.Context context) {
 		Minecraft.getInstance().execute(() -> {
@@ -37,16 +46,30 @@ public class SpellCircleDefinitionToClient extends SerialPacketBase {
 				if (id == null) {
 					return;
 				}
+				if (deleted) {
+					YoukaisHomecoming.SPELL.getMerged().map.remove(id.toString());
+					invalidateAllCachedChildren();
+					return;
+				}
 				SpellComponent component = GSON.fromJson(JsonParser.parseString(componentJson), SpellComponent.class);
 				if (component == null) {
 					return;
 				}
 				component.invalidateCache();
 				YoukaisHomecoming.SPELL.getMerged().map.put(id.toString(), component);
+				invalidateAllCachedChildren();
 			} catch (Exception e) {
 				YoukaisHomecoming.LOGGER.warn("Failed to sync spell circle {}", circleId, e);
 			}
 		});
+	}
+
+	private static void invalidateAllCachedChildren() {
+		for (SpellComponent component : YoukaisHomecoming.SPELL.getMerged().map.values()) {
+			if (component != null) {
+				component.invalidateCache();
+			}
+		}
 	}
 
 }

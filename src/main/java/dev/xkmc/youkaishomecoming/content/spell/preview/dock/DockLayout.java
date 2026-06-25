@@ -56,10 +56,12 @@ public class DockLayout {
 		this.w = w;
 		this.h = h;
 		root.layout(x, y, w, h);
+		syncActivePanelStates();
 	}
 
 	public void relayout() {
 		root.layout(x, y, w, h);
+		syncActivePanelStates();
 	}
 
 	// ---- 渲染 ----
@@ -172,6 +174,21 @@ public class DockLayout {
 	@Nullable
 	public DockGroup findGroupContaining(DockPanel panel) {
 		return root.findGroupContaining(panel);
+	}
+
+	public void syncActivePanelStates() {
+		syncActivePanelStates(root);
+	}
+
+	private void syncActivePanelStates(DockNode node) {
+		if (node instanceof DockGroup group) {
+			group.syncActivePanelState();
+			return;
+		}
+		if (node instanceof DockSplit split) {
+			syncActivePanelStates(split.getFirst());
+			syncActivePanelStates(split.getSecond());
+		}
 	}
 
 	// ---- 拖拽系统 ----

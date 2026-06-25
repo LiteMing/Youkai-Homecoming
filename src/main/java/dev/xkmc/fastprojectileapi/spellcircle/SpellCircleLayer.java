@@ -2,9 +2,7 @@ package dev.xkmc.fastprojectileapi.spellcircle;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
-import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
@@ -27,11 +25,8 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 	public void render(PoseStack pose, MultiBufferSource buffer, int light, T entity,
 			float swing, float swingAmp, float pTick, float age,
 			float yaw, float pitch) {
-		Quaternionf front = ProjectileRenderHelper.cameraOrientationOverride;
-		if (front == null) {
-			front = Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation();
-		}
-		renderImpl(pose, buffer, light, entity, pTick, front);
+		// World-space rendering is handled by SpellCircleWorldRenderer. Rendering from
+		// a living render layer inherits the model pose and can break billboarding.
 	}
 
 	public static <T extends Entity> void renderImpl(

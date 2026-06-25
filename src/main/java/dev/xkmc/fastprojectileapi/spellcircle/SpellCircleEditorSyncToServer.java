@@ -20,25 +20,32 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 
 	private static final Gson GSON = new Gson();
 
+	public enum Action {
+		SAVE,
+		EXPORT_GLOBAL,
+		DELETE
+	}
+
+	@SerialClass.SerialField
+	public Action action = Action.SAVE;
 	@SerialClass.SerialField
 	public String circleId = "";
 	@SerialClass.SerialField
 	public String componentJson = "";
-	@SerialClass.SerialField
-	public boolean exportGlobal = false;
 
 	@Deprecated
 	public SpellCircleEditorSyncToServer() {
 	}
 
 	public SpellCircleEditorSyncToServer(ResourceLocation id, SpellComponent component, boolean exportGlobal) {
+		this.action = exportGlobal ? Action.EXPORT_GLOBAL : Action.SAVE;
 		this.circleId = id.toString();
 		component.invalidateCache();
 		this.componentJson = GSON.toJson(component);
-		this.exportGlobal = exportGlobal;
 	}
 
 	public SpellCircleEditorSyncToServer(ResourceLocation id, Map<ResourceLocation, SpellComponent> components, boolean exportGlobal) {
+		this.action = exportGlobal ? Action.EXPORT_GLOBAL : Action.SAVE;
 		this.circleId = id.toString();
 		JsonObject map = new JsonObject();
 		for (var entry : components.entrySet()) {
@@ -48,7 +55,14 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 		JsonObject root = new JsonObject();
 		root.add("map", map);
 		this.componentJson = GSON.toJson(root);
-		this.exportGlobal = exportGlobal;
+	}
+
+	public static SpellCircleEditorSyncToServer delete(ResourceLocation id) {
+		SpellCircleEditorSyncToServer packet = new SpellCircleEditorSyncToServer();
+		packet.action = Action.DELETE;
+		packet.circleId = id.toString();
+		packet.componentJson = "";
+		return packet;
 	}
 
 	@Override
@@ -64,6 +78,11 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 			if (id == null) {
 				throw new IllegalArgumentException("Invalid spell circle id: " + circleId);
 			}
+			Action op = action == null ? Action.SAVE : action;
+			if (op == Action.DELETE) {
+				deleteCircle(sender, id);
+				return;
+			}
 			Map<ResourceLocation, SpellComponent> components = parseComponents(id);
 			if (components.isEmpty()) {
 				throw new IllegalArgumentException("Spell circle parse returned no results");
@@ -72,7 +91,7 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 				entry.getValue().invalidateCache();
 				YoukaisHomecoming.SPELL.getMerged().map.put(entry.getKey().toString(), entry.getValue());
 			}
-			if (exportGlobal) {
+			if (op == Action.EXPORT_GLOBAL) {
 				var file = CustomSpellCircleStorage.saveGlobalCircles(id, components);
 				sender.sendSystemMessage(Component.literal("[YH] Exported global spell circle " + id + " to " + file.getPath()));
 			} else {
@@ -89,6 +108,15 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 			String msg = e.getMessage();
 			sender.sendSystemMessage(Component.literal("[YH] Spell circle editor sync failed: " +
 					(msg == null ? e.getClass().getSimpleName() : msg)));
+		}
+	}
+
+	private void deleteCircle(ServerPlayer sender, ResourceLocation id) {
+		YoukaisHomecoming.SPELL.getMerged().map.remove(id.toString());
+		CustomSpellCircleStorage.deleteCircle(sender.server, id);
+		sender.sendSystemMessage(Component.literal("[YH] Deleted spell circle " + id));
+		for (ServerPlayer player : sender.server.getPlayerList().getPlayers()) {
+			YoukaisHomecoming.HANDLER.toClientPlayer(SpellCircleDefinitionToClient.delete(id), player);
 		}
 	}
 

@@ -371,7 +371,8 @@ public class MagicCircleDockPanel implements DockPanel {
 		int bx = x + PADDING;
 		bx = addButton(bx, yy, 44, "New", this::newCircle);
 		bx = addButton(bx, yy, 52, "Save", () -> save(false));
-		addButton(bx, yy, 58, "Export", () -> save(true));
+		bx = addButton(bx, yy, 58, "Export", () -> save(true));
+		addButton(bx, yy, 54, "Delete", this::deleteCircle);
 
 		yy += ROW;
 		bx = x + PADDING;
@@ -834,6 +835,76 @@ public class MagicCircleDockPanel implements DockPanel {
 			SpellCircleEditorNetworkClient.save(id, components);
 			setStatus("Magic Circle save sent", 0xFF88FF88);
 		}
+	}
+
+	private void deleteCircle() {
+		ResourceLocation removed = selectedId;
+		List<ResourceLocation> before = circleIds();
+		int removedIndex = before.indexOf(removed);
+		SpellCircleEditorNetworkClient.delete(removed);
+		removeLocalCircle(removed);
+		ResourceLocation next = nextSelectionAfterDelete(removed, removedIndex);
+		if (next == null) {
+			selectedId = nextCustomId();
+			component = createDefaultComponent();
+			linkedComponents.clear();
+			selectedStroke = 0;
+			selectedItem = 0;
+			selectedLayer = 0;
+			scrollOffset = 0;
+			publishLocal(true);
+			rebuildWidgets();
+		} else {
+			selectCircle(next);
+		}
+		setStatus("Magic Circle delete sent", 0xFF88FF88);
+	}
+
+	@Nullable
+	private ResourceLocation nextSelectionAfterDelete(ResourceLocation removed, int removedIndex) {
+		for (ResourceLocation id : linkedComponents.keySet()) {
+			if (!id.equals(removed) && YoukaisHomecoming.SPELL.getMerged().map.containsKey(id.toString())) {
+				return id;
+			}
+		}
+		List<ResourceLocation> ids = circleIds();
+		if (ids.isEmpty()) {
+			return null;
+		}
+		int index = removedIndex < 0 ? 0 : Math.min(removedIndex, ids.size() - 1);
+		return ids.get(index);
+	}
+
+	private void removeLocalCircle(ResourceLocation id) {
+		String key = id.toString();
+		YoukaisHomecoming.SPELL.getMerged().map.remove(key);
+		linkedComponents.remove(id);
+		removeChildReferences(component, key);
+		for (var entry : linkedComponents.entrySet()) {
+			removeChildReferences(entry.getValue(), key);
+			entry.getValue().invalidateCache();
+			YoukaisHomecoming.SPELL.getMerged().map.put(entry.getKey().toString(), entry.getValue());
+		}
+		for (SpellComponent value : YoukaisHomecoming.SPELL.getMerged().map.values()) {
+			if (value != null) {
+				value.invalidateCache();
+			}
+		}
+	}
+
+	private static void removeChildReferences(SpellComponent component, String childId) {
+		if (component == null || component.layers == null) {
+			return;
+		}
+		for (SpellComponent.Layer layer : component.layers) {
+			if (layer == null || layer.children == null) {
+				continue;
+			}
+			if (layer.children.removeIf(childId::equals)) {
+				layer.invalidateCache();
+			}
+		}
+		component.invalidateCache();
 	}
 
 	private void addStroke() {

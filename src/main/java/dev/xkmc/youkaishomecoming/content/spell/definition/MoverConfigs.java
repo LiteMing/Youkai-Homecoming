@@ -762,6 +762,19 @@ public class MoverConfigs {
 			return new TranslateMover(origin, bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx), targetPos, casterPos);
 		}
 
+		@Override
+		public Vec3 resolveTargetPos(SpellContext ctx, Vec3 originPos) {
+			Vec3 target = ctx.holder().target();
+			if (target != null || !"caster_to_target".equals(aim)) {
+				return target != null ? target : originPos;
+			}
+			Vec3 forward = ctx.holder().forward();
+			if (forward.lengthSqr() < 1.0E-8) {
+				return originPos;
+			}
+			return ctx.holder().center().add(forward.normalize().scale(10));
+		}
+
 		private Vec3 resolveAimDirection(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection,
 										 Vec3 targetPos, Vec3 casterPos) {
 			Vec3 dir = switch (aim) {

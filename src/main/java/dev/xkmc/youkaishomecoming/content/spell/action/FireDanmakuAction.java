@@ -207,10 +207,10 @@ public record FireDanmakuAction(
 		}
 		if (mover.isPresent()) {
 			// Pass baseDir, target, and caster positions so movers can use them in expressions.
-			// When no target is available, targetPos = originPos (zero displacement for aim="target").
 			Vec3 casterPos = holder.self() != null ? holder.self().position() : originPos;
-			Vec3 targetPos = holder.target() != null ? holder.target() : originPos;
-			danmaku.mover = mover.get().create(ctx, originPos, dir, baseDir, targetPos, casterPos);
+			MoverConfig moverConfig = mover.get();
+			Vec3 targetPos = moverConfig.resolveTargetPos(ctx, originPos);
+			danmaku.mover = moverConfig.create(ctx, originPos, dir, baseDir, targetPos, casterPos);
 		}
 		if (onExpiry.isPresent()) {
 			var expiryAction = new DataDrivenTrailAction(onExpiry.get(), ctx.runtime(), ctx.definition());

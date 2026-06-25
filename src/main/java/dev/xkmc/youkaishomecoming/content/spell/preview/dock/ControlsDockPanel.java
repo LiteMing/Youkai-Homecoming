@@ -73,6 +73,7 @@ public class ControlsDockPanel implements DockPanel {
 	private int actionMenuHoverIndex = -1;
 	private Consumer<AbstractWidget> addWidgetCallback;
 	private Consumer<GuiEventListener> removeWidgetCallback;
+	private boolean active;
 
 	private record DropdownOverlay(
 			List<ResourceLocation> values,
@@ -154,6 +155,7 @@ public class ControlsDockPanel implements DockPanel {
 		bx = x + 4;
 		if (draftMode) {
 			addSpellControls(bx, row1Y, true);
+			applyWidgetVisibility();
 			return;
 		}
 
@@ -233,6 +235,7 @@ public class ControlsDockPanel implements DockPanel {
 		bx = addMenuButton(bx, row4Y, 48, "Height", this::openTargetHeightMenu);
 		bx = addMenuButton(bx, row4Y, 44, "Focus", this::openFocusMenu);
 		addMenuButton(bx, row4Y, 48, "Reset", this::openResetPositionMenu);
+		applyWidgetVisibility();
 	}
 
 	private int addButton(int bx, int by, int bw, String label, Button.OnPress action) {
@@ -640,17 +643,26 @@ public class ControlsDockPanel implements DockPanel {
 
 	@Override
 	public void onActivated() {
-		for (Button btn : buttons) btn.visible = true;
-		for (EditBox box : editBoxes) box.visible = true;
+		active = true;
+		applyWidgetVisibility();
 	}
 
 	@Override
 	public void onDeactivated() {
+		active = false;
 		closeSpellDropdown();
 		closeSpellDeleteConfirm();
 		closeActionMenu();
-		for (Button btn : buttons) btn.visible = false;
-		for (EditBox box : editBoxes) box.visible = false;
+		applyWidgetVisibility();
+	}
+
+	private void applyWidgetVisibility() {
+		for (Button btn : buttons) {
+			btn.visible = active;
+		}
+		for (EditBox box : editBoxes) {
+			box.visible = active;
+		}
 	}
 
 	public boolean isDropdownOpen() {

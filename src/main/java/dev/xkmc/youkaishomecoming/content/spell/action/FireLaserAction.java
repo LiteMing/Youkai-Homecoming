@@ -169,8 +169,9 @@ public record FireLaserAction(
 					setupPrepare, setupStart);
 		} else if (mover.isPresent()) {
 			Vec3 casterPos = holder.self() != null ? holder.self().position() : originPos;
-			Vec3 targetPos = holder.target() != null ? holder.target() : originPos;
-			laser.mover = mover.get().create(ctx, originPos, dir, baseDir, targetPos, casterPos);
+			MoverConfig moverConfig = mover.get();
+			Vec3 targetPos = moverConfig.resolveTargetPos(ctx, originPos);
+			laser.mover = moverConfig.create(ctx, originPos, dir, baseDir, targetPos, casterPos);
 		}
 		holder.shoot(laser);
 	}

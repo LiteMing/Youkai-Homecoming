@@ -23,8 +23,8 @@ public class SpellCodecs {
 	);
 
 	public static final Codec<YHDanmaku.Bullet> BULLET_CODEC = Codec.STRING.xmap(
-			s -> YHDanmaku.Bullet.valueOf(s.toUpperCase()),
-			b -> b.name().toLowerCase()
+			YHDanmaku.Bullet::byName,
+			YHDanmaku.Bullet::getName
 	);
 
 	public static final Codec<YHDanmaku.Laser> LASER_CODEC = Codec.STRING.xmap(

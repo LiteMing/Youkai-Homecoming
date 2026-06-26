@@ -26,6 +26,24 @@ public record GiantSphereProjectileType(ResourceLocation tex, ResourceLocation o
 	}
 
 	@Override
+	public boolean hasDepthPrepass() {
+		return true;
+	}
+
+	@Override
+	public void startDepth(MultiBufferSource buffer, List<Ins> list) {
+		int quads = 0;
+		for (var e : list) {
+			quads += e.segments * e.rings;
+		}
+		BulkDataWriter vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmakuSphereDepth(tex)), quads);
+		for (var e : list) {
+			e.tex(vc);
+		}
+		vc.flush();
+	}
+
+	@Override
 	public void start(MultiBufferSource buffer, List<Ins> list) {
 		int quads = 0;
 		for (var e : list) {

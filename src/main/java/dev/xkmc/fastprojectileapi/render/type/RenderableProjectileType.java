@@ -15,6 +15,13 @@ public interface RenderableProjectileType<T extends RenderableProjectileType<T, 
 
 	void create(Consumer<I> holder, ProjectileRenderer<?> r, SimplifiedProjectile e, PoseStack pose, float pTick);
 
+	default boolean hasDepthPrepass() {
+		return false;
+	}
+
+	default void startDepth(MultiBufferSource buffer, List<I> list) {
+	}
+
 	@Override
 	default int compareTo(@NotNull RenderableProjectileType<?, ?> o) {
 		if (this == o) return 0;

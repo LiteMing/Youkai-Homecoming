@@ -91,6 +91,20 @@ public class ProjectileRenderHelper {
 
 		public void flush(MultiBufferSource.BufferSource buffer) {
 			int n = lists.length;
+			boolean depthPrepass = false;
+			for (int i = 0; i < n; i++) {
+				var list = lists[i];
+				if (list != null) {
+					var type = ProjTypeHolder.HOLDERS.get(i).type;
+					if (type.hasDepthPrepass()) {
+						type.startDepth(buffer, Wrappers.cast(list));
+						depthPrepass = true;
+					}
+				}
+			}
+			if (depthPrepass) {
+				buffer.endLastBatch();
+			}
 			for (int i = 0; i < n; i++) {
 				var list = lists[i];
 				lists[i] = null;

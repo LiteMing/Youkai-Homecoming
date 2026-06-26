@@ -75,12 +75,33 @@ public abstract class DanmakuRenderStates extends RenderType {
 						.createCompositeState(false));
 	}
 
+	private static RenderType createDepth(String name, ResourceLocation tex, boolean color) {
+		var builder = CompositeState.builder()
+				.setShaderState(color ? DANMAKU_COLOR_SHADER : DANMAKU_SHADER)
+				.setTransparencyState(NO_TRANSPARENCY)
+				.setWriteMaskState(DEPTH_WRITE)
+				.setDepthTestState(LEQUAL_DEPTH_TEST)
+				.setCullState(CULL);
+		if (!color) {
+			builder.setTextureState(new TextureStateShard(tex, false, false));
+		}
+		return create(name,
+				color ? DefaultVertexFormat.POSITION_COLOR : DefaultVertexFormat.POSITION_TEX_COLOR,
+				VertexFormat.Mode.QUADS,
+				256, true, false,
+				builder.createCompositeState(false));
+	}
+
 	private static final BiFunction<ResourceLocation, DisplayType, RenderType> DANMAKU =
 			Util.memoize((rl, type) -> create("danmaku_" + type.getName(), rl, false, type, false, false));
 	private static final BiFunction<ResourceLocation, DisplayType, RenderType> DANMAKU_SPHERE =
 			Util.memoize((rl, type) -> create("danmaku_sphere_" + type.getName(), rl, true, type, true, false));
+	private static final Function<ResourceLocation, RenderType> DANMAKU_SPHERE_DEPTH =
+			Util.memoize(rl -> createDepth("danmaku_sphere_depth", rl, false));
 	private static final Function<DisplayType, RenderType> DANMAKU_COLOR_SPHERE =
 			Util.memoize(type -> createColor("danmaku_color_sphere_" + type.getName(), true, type, true));
+	private static final RenderType DANMAKU_COLOR_SPHERE_DEPTH =
+			createDepth("danmaku_color_sphere_depth", null, true);
 	private static final BiFunction<ResourceLocation, DisplayType, RenderType> LASER =
 			Util.memoize((rl, type) -> create("laser_" + type.getName(), rl, true, type, false, true));
 	// Laser inner-core uses a separate RenderType so it can be routed into Oculus's DECAL
@@ -105,9 +126,17 @@ public abstract class DanmakuRenderStates extends RenderType {
 		return DANMAKU_SPHERE.apply(rl, type);
 	}
 
+	public static RenderType danmakuSphereDepth(ResourceLocation rl) {
+		return DANMAKU_SPHERE_DEPTH.apply(rl);
+	}
+
 	public static RenderType danmakuColorSphere(DisplayType type) {
 		if (type == DisplayType.SOLID) type = DisplayType.TRANSPARENT;
 		return DANMAKU_COLOR_SPHERE.apply(type);
+	}
+
+	public static RenderType danmakuColorSphereDepth() {
+		return DANMAKU_COLOR_SPHERE_DEPTH;
 	}
 
 	public static RenderType laser(ResourceLocation rl, DisplayType type) {

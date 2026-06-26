@@ -519,9 +519,9 @@ public class SpellUploadDialog extends Screen {
 		int h = searchH + visible * DROPDOWN_ROW_HEIGHT;
 		g.fill(dropdown.x - 2, dropdown.y - 2, dropdown.x + dropdown.w + 2, dropdown.y + h + 2, 0xFF000000);
 		g.fill(dropdown.x - 1, dropdown.y - 1, dropdown.x + dropdown.w + 1, dropdown.y + h + 1, 0xFF101010);
-		String searchLabel = SpellMarketLocalization.search().getString() + " " + dropdown.search;
 		g.fill(dropdown.x, dropdown.y, dropdown.x + dropdown.w, dropdown.y + searchH, 0xFF181828);
-		g.drawString(font, font.plainSubstrByWidth(searchLabel, dropdown.w - 8), dropdown.x + 4, dropdown.y + 4, 0xBBBBBB);
+		g.fill(dropdown.x + 2, dropdown.y + 2, dropdown.x + dropdown.w - 2, dropdown.y + searchH - 2, 0xFF050509);
+		renderDropdownSearch(g, dropdown.x + 5, dropdown.y + 4, dropdown.w - 10);
 		g.enableScissor(dropdown.x, dropdown.y + searchH, dropdown.x + dropdown.w, dropdown.y + h);
 		for (int row = 0; row < visible; row++) {
 			int idx = dropdown.scroll + row;
@@ -589,6 +589,7 @@ public class SpellUploadDialog extends Screen {
 		}
 		int searchH = DROPDOWN_ROW_HEIGHT + 2;
 		if (my < dropdown.y + searchH) {
+			dropdown.searchFocused = true;
 			return true;
 		}
 		int idx = dropdown.scroll + (int)((my - dropdown.y - searchH) / DROPDOWN_ROW_HEIGHT);
@@ -681,6 +682,22 @@ public class SpellUploadDialog extends Screen {
 		return SpellMarketLocalization.tag(tag).getString();
 	}
 
+	private void renderDropdownSearch(GuiGraphics g, int x, int y, int maxWidth) {
+		boolean editing = dropdown.searchFocused || !dropdown.search.isEmpty();
+		String text = editing ? dropdown.search : SpellMarketLocalization.search().getString();
+		int color = editing ? 0xFFFFFF : 0x777777;
+		String clipped = font.plainSubstrByWidth(text, Math.max(0, maxWidth - 2));
+		g.drawString(font, clipped, x, y, color);
+		if (editing && cursorVisible()) {
+			int cursorX = x + font.width(clipped);
+			g.fill(cursorX, y - 1, cursorX + 1, y + 10, 0xFFFFFFFF);
+		}
+	}
+
+	private static boolean cursorVisible() {
+		return (System.currentTimeMillis() / 500L) % 2L == 0L;
+	}
+
 	@Override
 	public void onClose() {
 		if (minecraft != null) minecraft.setScreen(parent);
@@ -709,6 +726,7 @@ public class SpellUploadDialog extends Screen {
 		private final String selectedTag;
 		private final Consumer<DropdownOption> onSelect;
 		private String search = "";
+		private boolean searchFocused = false;
 		private int scroll;
 
 		private DropdownState(int x, int y, int w, List<DropdownOption> options, String selectedTag, Consumer<DropdownOption> onSelect) {
@@ -736,11 +754,13 @@ public class SpellUploadDialog extends Screen {
 		}
 
 		private void type(char codePoint) {
+			searchFocused = true;
 			search += codePoint;
 			updateFilter();
 		}
 
 		private void backspace() {
+			searchFocused = true;
 			if (!search.isEmpty()) {
 				search = search.substring(0, search.length() - 1);
 				updateFilter();

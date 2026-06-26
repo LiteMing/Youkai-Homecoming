@@ -28,8 +28,8 @@ public class SpellUploadDialog extends Screen {
 	private static final int SPELL_ITEM_HEIGHT = 16;
 	private static final int SPELL_LIST_TOP = 60;
 	private static final int FORM_TOP = 45;
-	private static final int DROPDOWN_ROW_HEIGHT = 14;
-	private static final int DROPDOWN_MAX_VISIBLE = 10;
+	private static final int DROPDOWN_ROW_HEIGHT = 16;
+	private static final int DROPDOWN_MAX_VISIBLE = 8;
 
 	private final Screen parent;
 	private SpellDefinition definition;
@@ -150,19 +150,19 @@ public class SpellUploadDialog extends Screen {
 		addRenderableWidget(authorBox);
 
 		sourceButton = Button.builder(sourceButtonText(), btn -> openSourceDropdown())
-				.bounds(lx, sy + 125, iw, 20).build();
+				.bounds(lx, sy + 140, iw, 20).build();
 		addRenderableWidget(sourceButton);
 
 		characterButton = Button.builder(characterButtonText(), btn -> openCharacterDropdown())
-				.bounds(lx, sy + 150, iw, 20).build();
+				.bounds(lx, sy + 165, iw, 20).build();
 		addRenderableWidget(characterButton);
 
-		tagsBox = new EditBox(font, lx, sy + 185, iw - 60, 20, SpellMarketLocalization.uploadTags());
+		tagsBox = new EditBox(font, lx, sy + 200, iw - 60, 20, SpellMarketLocalization.uploadTags());
 		tagsBox.setMaxLength(200);
 		addRenderableWidget(tagsBox);
 
 		addRenderableWidget(Button.builder(SpellMarketLocalization.uploadAddTag(), btn -> addTag())
-				.bounds(lx + iw - 55, sy + 185, 55, 20).build());
+				.bounds(lx + iw - 55, sy + 200, 55, 20).build());
 
 		uploadButton = Button.builder(SpellMarketLocalization.uploadButton(), btn -> upload())
 				.bounds(cx - 80, height - 40, 70, 20).build();
@@ -460,11 +460,11 @@ public class SpellUploadDialog extends Screen {
 
 	private void renderUploadForm(GuiGraphics g, int mx, int my) {
 		int cx = width / 2, sy = FORM_TOP, lx = cx - 150;
-		g.drawString(font, SpellMarketLocalization.uploadName().getString(), lx, sy + 10, 0xAAAAAA);
-		g.drawString(font, SpellMarketLocalization.uploadDesc().getString(), lx, sy + 45, 0xAAAAAA);
-		g.drawString(font, SpellMarketLocalization.uploadAuthor().getString(), lx, sy + 80, 0xAAAAAA);
-		g.drawString(font, SpellMarketLocalization.uploadBuiltinTags().getString(), lx, sy + 115, 0xAAAAAA);
-		g.drawString(font, SpellMarketLocalization.uploadTags().getString(), lx, sy + 175, 0xAAAAAA);
+		drawFieldLabel(g, SpellMarketLocalization.uploadName(), nameBox);
+		drawFieldLabel(g, SpellMarketLocalization.uploadDesc(), descBox);
+		drawFieldLabel(g, SpellMarketLocalization.uploadAuthor(), authorBox);
+		drawButtonLabel(g, SpellMarketLocalization.uploadBuiltinTags(), sourceButton);
+		drawFieldLabel(g, SpellMarketLocalization.uploadTags(), tagsBox);
 
 		if (definition != null) {
 			g.drawString(font, SpellMarketLocalization.uploadSpell(definition.id.toString()).getString(),
@@ -472,7 +472,7 @@ public class SpellUploadDialog extends Screen {
 		}
 
 		List<String> builtinTags = selectedBuiltinTags();
-		int labelY = sy + 215;
+		int labelY = tagsBox.getY() + 35;
 		if (!builtinTags.isEmpty()) {
 			g.drawString(font, SpellMarketLocalization.uploadBuiltinTags().getString(), lx, labelY, 0xAAAAAA);
 			renderTagChips(g, builtinTags, lx, labelY + 15, false, mx, my);
@@ -517,10 +517,11 @@ public class SpellUploadDialog extends Screen {
 		int visible = dropdown.visibleRows();
 		int searchH = DROPDOWN_ROW_HEIGHT + 2;
 		int h = searchH + visible * DROPDOWN_ROW_HEIGHT;
-		g.fill(dropdown.x - 1, dropdown.y - 1, dropdown.x + dropdown.w + 1, dropdown.y + h + 1, 0xE0101010);
+		g.fill(dropdown.x - 2, dropdown.y - 2, dropdown.x + dropdown.w + 2, dropdown.y + h + 2, 0xFF000000);
+		g.fill(dropdown.x - 1, dropdown.y - 1, dropdown.x + dropdown.w + 1, dropdown.y + h + 1, 0xFF101010);
 		String searchLabel = SpellMarketLocalization.search().getString() + " " + dropdown.search;
-		g.fill(dropdown.x, dropdown.y, dropdown.x + dropdown.w, dropdown.y + searchH, 0xE0181828);
-		g.drawString(font, font.plainSubstrByWidth(searchLabel, dropdown.w - 8), dropdown.x + 4, dropdown.y + 3, 0xBBBBBB);
+		g.fill(dropdown.x, dropdown.y, dropdown.x + dropdown.w, dropdown.y + searchH, 0xFF181828);
+		g.drawString(font, font.plainSubstrByWidth(searchLabel, dropdown.w - 8), dropdown.x + 4, dropdown.y + 4, 0xBBBBBB);
 		g.enableScissor(dropdown.x, dropdown.y + searchH, dropdown.x + dropdown.w, dropdown.y + h);
 		for (int row = 0; row < visible; row++) {
 			int idx = dropdown.scroll + row;
@@ -528,10 +529,10 @@ public class SpellUploadDialog extends Screen {
 			boolean hover = mx >= dropdown.x && mx <= dropdown.x + dropdown.w &&
 					my >= y && my <= y + DROPDOWN_ROW_HEIGHT;
 			DropdownOption option = dropdown.filtered.get(idx);
-			int bg = option.matches(dropdown.selectedTag) ? 0xC055AA55 : (hover ? 0xC0505050 : 0xC0282828);
+			int bg = option.matches(dropdown.selectedTag) ? 0xFF3F7F3F : (hover ? 0xFF505050 : 0xFF202020);
 			g.fill(dropdown.x, y, dropdown.x + dropdown.w, y + DROPDOWN_ROW_HEIGHT, bg);
 			String label = font.plainSubstrByWidth(option.label().getString(), dropdown.w - 8);
-			g.drawString(font, label, dropdown.x + 4, y + 3, 0xFFFFFF);
+			g.drawString(font, label, dropdown.x + 4, y + 4, 0xFFFFFF);
 		}
 		g.disableScissor();
 		if (dropdown.filtered.size() > visible) {
@@ -541,6 +542,14 @@ public class SpellUploadDialog extends Screen {
 			int barY = dropdown.y + searchH + (maxScroll == 0 ? 0 : (listH - barH) * dropdown.scroll / maxScroll);
 			g.fill(dropdown.x + dropdown.w - 3, barY, dropdown.x + dropdown.w - 1, barY + barH, 0xFFAAAAAA);
 		}
+	}
+
+	private void drawFieldLabel(GuiGraphics g, Component label, EditBox field) {
+		g.drawString(font, label.getString(), field.getX(), field.getY() - 12, 0xAAAAAA);
+	}
+
+	private void drawButtonLabel(GuiGraphics g, Component label, Button button) {
+		g.drawString(font, label.getString(), button.getX(), button.getY() - 12, 0xAAAAAA);
 	}
 
 	// === Input handling ===
@@ -664,7 +673,8 @@ public class SpellUploadDialog extends Screen {
 	}
 
 	private int manualTagChipY() {
-		return FORM_TOP + (selectedBuiltinTags().isEmpty() ? 230 : 260);
+		int base = tagsBox == null ? FORM_TOP + 245 : tagsBox.getY() + 45;
+		return selectedBuiltinTags().isEmpty() ? base : base + 30;
 	}
 
 	private String tagLabel(String tag) {

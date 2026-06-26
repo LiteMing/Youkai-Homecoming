@@ -23,6 +23,19 @@ public record GiantYinYangSphereProjectileType(ResourceLocation overlay, Display
 		implements RenderableDanmakuType<GiantYinYangSphereProjectileType, GiantYinYangSphereProjectileType.Ins> {
 
 	@Override
+	public boolean hasDepthPrepass() {
+		return true;
+	}
+
+	@Override
+	public void startDepth(MultiBufferSource buffer, List<Ins> list) {
+		VertexConsumer vc = buffer.getBuffer(DanmakuRenderStates.danmakuColorSphereDepth());
+		for (var e : list) {
+			e.render(vc);
+		}
+	}
+
+	@Override
 	public void start(MultiBufferSource buffer, List<Ins> list) {
 		VertexConsumer vc = buffer.getBuffer(DanmakuRenderStates.danmakuColorSphere(display()));
 		for (var e : list) {

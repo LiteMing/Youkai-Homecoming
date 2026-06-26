@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.init.data;
 
 import com.tterrag.registrate.providers.RegistrateLangProvider;
 import com.tterrag.registrate.util.entry.RegistryEntry;
+import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketBuiltinTags;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
@@ -112,10 +113,18 @@ public enum YHLangData {
 	MARKET_DOWNLOAD("spell_market.download", "Download", 0, null),
 	MARKET_LIKE("spell_market.like", "Like", 0, null),
 	MARKET_LIKED("spell_market.liked", "Liked", 0, null),
+	MARKET_UNLIKE("spell_market.unlike", "Unlike", 0, null),
+	MARKET_LIKED_FILTER("spell_market.filter_liked", "Liked", 0, null),
 	MARKET_FILTER_TAG("spell_market.filter_tag", "Tag: %s (click to clear)", 1, ChatFormatting.GREEN),
 	MARKET_DETAIL("spell_market.detail", "Details", 0, null),
 	MARKET_BACK("spell_market.back", "Back", 0, null),
+	MARKET_OK("spell_market.ok", "OK", 0, null),
+	MARKET_UNKNOWN("spell_market.unknown", "Unknown", 0, null),
+	MARKET_ANONYMOUS("spell_market.anonymous", "Anonymous", 0, null),
+	MARKET_AUTHOR_BY("spell_market.author_by", "by %s", 1, null),
+	MARKET_DISABLED("spell_market.disabled", "Disabled", 0, ChatFormatting.RED),
 	MARKET_COMMENTS("spell_market.comments", "Comments", 0, null),
+	MARKET_COMMENT_COUNT("spell_market.comment_count", "Comments: %s", 1, null),
 	MARKET_NO_COMMENTS("spell_market.no_comments", "No comments yet", 0, null),
 	MARKET_COMMENT_PLACEHOLDER("spell_market.comment.placeholder", "Write a comment...", 0, null),
 	MARKET_COMMENT_IMAGE("spell_market.comment.image", "Image URL (optional)", 0, null),
@@ -126,19 +135,60 @@ public enum YHLangData {
 	MARKET_IMAGE_UNAVAILABLE("spell_market.image.unavailable", "Image unavailable", 0, ChatFormatting.RED),
 	MARKET_DOWNLOAD_SUCCESS("spell_market.download_success", "Downloaded: %s\nSaved to world storage.\nUse Editor > Export to share globally.", 1, ChatFormatting.GREEN),
 	MARKET_DOWNLOAD_FAIL("spell_market.download_fail", "Download failed", 0, ChatFormatting.RED),
+	MARKET_DOWNLOAD_INCOMPATIBLE("spell_market.download_incompatible", "Download failed.\nThis spell's format may be incompatible.\nCheck game log for parse errors.", 0, ChatFormatting.RED),
+	MARKET_SAVE_FAIL("spell_market.save_fail", "Save failed: %s\nCheck game log for details.", 1, ChatFormatting.RED),
 	MARKET_DOWNLOADING("spell_market.downloading", "Downloading: %s", 1, null),
+	MARKET_DELETE_FAIL("spell_market.delete_fail", "Delete failed. You may not be authorized.", 0, ChatFormatting.RED),
 	MARKET_UPLOAD_TITLE("spell_market.upload.title", "Upload Spell", 0, null),
 	MARKET_UPLOAD_NAME("spell_market.upload.name", "Name:", 0, null),
 	MARKET_UPLOAD_DESC("spell_market.upload.desc", "Description:", 0, null),
 	MARKET_UPLOAD_AUTHOR("spell_market.upload.author", "Author:", 0, null),
 	MARKET_UPLOAD_CATEGORY("spell_market.upload.category", "Category:", 0, null),
+	MARKET_UPLOAD_BUILTIN_TAGS("spell_market.upload.builtin_tags", "Built-in tags:", 0, null),
+	MARKET_UPLOAD_SOURCE("spell_market.upload.source", "Source:", 0, null),
+	MARKET_UPLOAD_CHARACTER("spell_market.upload.character", "Character:", 0, null),
+	MARKET_UPLOAD_NONE("spell_market.upload.none", "None", 0, null),
 	MARKET_UPLOAD_TAGS("spell_market.upload.tags", "Tags:", 0, null),
 	MARKET_UPLOAD_ADD_TAG("spell_market.upload.add_tag", "Add Tag", 0, null),
+	MARKET_UPLOAD_SELECT("spell_market.upload.select", "Select a spell to upload:", 0, null),
+	MARKET_UPLOAD_NO_SPELLS("spell_market.upload.no_spells", "No spells available. Create or load a spell first.", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_CHANGE_SPELL("spell_market.upload.change_spell", "< Change Spell", 0, null),
+	MARKET_UPLOAD_SPELL("spell_market.upload.spell", "Spell: %s", 1, null),
+	MARKET_UPLOAD_ADDED_TAGS("spell_market.upload.added_tags", "Added tags:", 0, null),
+	MARKET_UPLOAD_UPLOADING("spell_market.upload.uploading", "Uploading...", 0, ChatFormatting.YELLOW),
 	MARKET_UPLOAD_BTN("spell_market.upload.button", "Upload", 0, null),
 	MARKET_UPLOAD_CANCEL("spell_market.upload.cancel", "Cancel", 0, null),
 	MARKET_UPLOAD_SUCCESS("spell_market.upload.success", "Upload successful! UUID: %s", 1, ChatFormatting.GREEN),
+	MARKET_UPLOAD_SUCCESS_TITLE("spell_market.upload.success_title", "Upload Successful!", 0, ChatFormatting.GREEN),
 	MARKET_UPLOAD_FAIL("spell_market.upload.fail", "Upload failed", 0, ChatFormatting.RED),
 	MARKET_UPLOAD_COOLDOWN("spell_market.upload.cooldown", "Wait %s seconds before uploading again", 1, ChatFormatting.YELLOW),
+	MARKET_UPLOAD_VALIDATION_NO_SPELL("spell_market.upload.validation.no_spell", "No spell selected", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_ID_MISSING("spell_market.upload.validation.id_missing", "Spell ID is missing", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_DISPLAY_MISSING("spell_market.upload.validation.display_missing", "Spell display info is missing", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_DISPLAY_NAME_EMPTY("spell_market.upload.validation.display_name_empty", "Spell display name is empty", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_ENTRY_PHASE_MISSING("spell_market.upload.validation.entry_phase_missing", "Entry phase is not set", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_NO_PHASES("spell_market.upload.validation.no_phases", "Spell has no phases", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_ENTRY_PHASE_NOT_FOUND("spell_market.upload.validation.entry_phase_not_found", "Entry phase %s not found in spell phases", 1, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_NO_CONTENT("spell_market.upload.validation.no_content", "Spell has no actions or transitions in any phase", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_INVALID_CONTENT("spell_market.upload.validation.invalid_content", "Invalid spell content: %s", 1, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_NAME_REQUIRED("spell_market.upload.validation.name_required", "Name is required", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_DESC_REQUIRED("spell_market.upload.validation.desc_required", "Description is required", 0, ChatFormatting.RED),
+	MARKET_UPLOAD_VALIDATION_TAG_REQUIRED("spell_market.upload.validation.tag_required", "At least one tag is required", 0, ChatFormatting.RED),
+	MARKET_CATEGORY_CANON("spell_market.category.canon", "Canon", 0, null),
+	MARKET_CATEGORY_ORIGINAL("spell_market.category.original", "Original", 0, null),
+	MARKET_CATEGORY_CREATIVE("spell_market.category.creative", "Creative", 0, null),
+	MARKET_CATEGORY_TECH_DEMO("spell_market.category.tech_demo", "Tech Demo", 0, null),
+	MARKET_CATEGORY_TUTORIAL("spell_market.category.tutorial", "Tutorial", 0, null),
+	MARKET_CATEGORY_CHALLENGE("spell_market.category.challenge", "Challenge", 0, null),
+	MARKET_CATEGORY_OTHER("spell_market.category.other", "Other", 0, null),
+	MARKET_COMMAND_INVALID_SPELL("spell_market.command.invalid_spell", "Invalid spell ID: %s", 1, ChatFormatting.RED),
+	MARKET_COMMAND_SPELL_NOT_FOUND("spell_market.command.spell_not_found", "Spell not found: %s", 1, ChatFormatting.RED),
+	MARKET_COMMAND_DISABLED("spell_market.command.disabled", "Spell market is disabled. Check config: spell_market.enabled", 0, ChatFormatting.RED),
+	MARKET_COMMAND_TESTING("spell_market.command.testing", "Testing connection to spell market server...", 0, ChatFormatting.GRAY),
+	MARKET_COMMAND_CONNECTION_FAILED("spell_market.command.connection_failed", "Spell market connection failed. Check logs for details.", 0, ChatFormatting.RED),
+	MARKET_COMMAND_CONNECTED("spell_market.command.connected", "Spell market connected! Total spells available: %s", 1, ChatFormatting.GREEN),
+	MARKET_COMMAND_RELOAD_ENABLED("spell_market.command.reload_enabled", "Spell market config reloaded. Feature is enabled.", 0, ChatFormatting.GREEN),
+	MARKET_COMMAND_RELOAD_DISABLED("spell_market.command.reload_disabled", "Spell market config reloaded. Feature is disabled.", 0, ChatFormatting.YELLOW),
 	MARKET_ERROR_DISABLED("spell_market.error.disabled", "Market is disabled in config", 0, ChatFormatting.RED),
 	MARKET_ERROR_NETWORK("spell_market.error.network", "Network error. Please check connection.", 0, ChatFormatting.RED),
 	EDITOR_TO_MARKET("spell_editor.to_market", "Market", 0, null);
@@ -182,6 +232,14 @@ public enum YHLangData {
 		pvd.add("biome." + YoukaisHomecoming.MODID + ".sakura_taiga", "Sakura Taiga");
 		for (YHLangData lang : YHLangData.values()) {
 			pvd.add(lang.key, lang.def);
+		}
+		for (SpellMarketBuiltinTags.SourceTag source : SpellMarketBuiltinTags.SOURCES) {
+			if (source.defaultName() != null) {
+				pvd.add(source.translationKey(), source.defaultName());
+			}
+		}
+		for (SpellMarketBuiltinTags.CharacterTag character : SpellMarketBuiltinTags.CHARACTERS) {
+			pvd.add(character.translationKey(), character.englishName());
 		}
 		pvd.add(YoukaisHomecoming.MODID + ".subtitle.koishi_ring", "Koishi Phone Call");
 		pvd.add(YoukaisHomecoming.MODID + ".subtitle.graze", "Danmaku Graze");

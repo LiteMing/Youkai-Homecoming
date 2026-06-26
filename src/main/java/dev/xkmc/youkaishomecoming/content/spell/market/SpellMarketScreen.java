@@ -31,9 +31,11 @@ public class SpellMarketScreen extends Screen {
 	private EditBox searchBox;
 	private Button prevButton, nextButton, refreshButton, uploadButton, editorButton, closeButton;
 
+	private List<SpellListEntry> loadedSpells = new ArrayList<>();
 	private List<SpellListEntry> spells = new ArrayList<>();
 	private int currentPage = 1;
 	private int totalPages = 1;
+	private int serverTotalPages = 1;
 	private boolean loading = false;
 	private String errorMessage = null;
 	private int scrollOffset = 0;
@@ -43,6 +45,7 @@ public class SpellMarketScreen extends Screen {
 	private static final long SEARCH_DEBOUNCE_MS = 500;
 
 	private String currentTag = null;
+	private final List<String> excludedTags = new ArrayList<>();
 	private boolean filterLiked = false;
 	private String pendingSearch = null;
 	private String authorFilterUuid = null;
@@ -66,7 +69,7 @@ public class SpellMarketScreen extends Screen {
 
 		if (api == null) {
 			errorMessage = SpellMarketLocalization.errorDisabled().getString();
-			addRenderableWidget(Button.builder(Component.literal("OK"), btn -> onClose())
+			addRenderableWidget(Button.builder(SpellMarketLocalization.ok(), btn -> onClose())
 					.bounds(width / 2 - 50, height / 2 + 20, 100, 20).build());
 			return;
 		}
@@ -122,6 +125,7 @@ public class SpellMarketScreen extends Screen {
 	private void reload() {
 		currentPage = 1;
 		currentTag = null;
+		excludedTags.clear();
 		filterLiked = false;
 		authorFilterUuid = null;
 		authorFilterName = null;
@@ -154,7 +158,7 @@ public class SpellMarketScreen extends Screen {
 
 		loading = true;
 		errorMessage = null;
-		String search = searchBox.getValue();
+		String search = SpellMarketBuiltinTags.resolveSearchQuery(searchBox.getValue());
 		if (currentTag != null) search = currentTag;
 
 		api.getSpellList(currentPage, ITEMS_PER_PAGE,
@@ -162,21 +166,17 @@ public class SpellMarketScreen extends Screen {
 			Minecraft.getInstance().execute(() -> {
 				loading = false;
 				if (resp != null) {
-					spells = resp.spells != null ? new ArrayList<>(resp.spells) : new ArrayList<>();
-					if (filterLiked) {
-						spells.removeIf(e -> !LikedSpellsStore.contains(e.uuid));
-						totalPages = 1;
-					} else {
-						totalPages = Math.max(1, (int) Math.ceil(resp.total / (double) ITEMS_PER_PAGE));
-					}
-					scrollOffset = 0;
+					loadedSpells = resp.spells != null ? new ArrayList<>(resp.spells) : new ArrayList<>();
+					serverTotalPages = Math.max(1, (int) Math.ceil(resp.total / (double) ITEMS_PER_PAGE));
 					// 恢复点赞计数
-					for (SpellListEntry e : spells) {
+					for (SpellListEntry e : loadedSpells) {
 						int cachedCount = LikedSpellsStore.getLikeCount(e.uuid);
 						if (cachedCount >= 0) {
 							e.likesCount = cachedCount;
 						}
 					}
+					applyClientFilters();
+					scrollOffset = 0;
 				} else {
 					errorMessage = SpellMarketLocalization.errorNetwork().getString();
 				}
@@ -188,8 +188,7 @@ public class SpellMarketScreen extends Screen {
 		if (api == null) return;
 		if (!api.getRateLimiter().canUpload()) {
 			long secs = api.getRateLimiter().getUploadCooldownRemaining();
-			minecraft.setScreen(msgScreen("Cooldown",
-					SpellMarketLocalization.uploadCooldown(secs).getString()));
+			minecraft.setScreen(msgScreen(SpellMarketLocalization.uploadCooldown(secs).getString()));
 			return;
 		}
 		minecraft.setScreen(new SpellUploadDialog(this, pendingDefinition));
@@ -211,7 +210,8 @@ public class SpellMarketScreen extends Screen {
 		renderBackground(g);
 
 		if (api == null) {
-			g.drawCenteredString(font, errorMessage != null ? errorMessage : "Disabled", width / 2, height / 2, 0xFF5555);
+			g.drawCenteredString(font, errorMessage != null ? errorMessage :
+					SpellMarketLocalization.disabled().getString(), width / 2, height / 2, 0xFF5555);
 			super.render(g, mx, my, pt);
 			return;
 		}
@@ -242,7 +242,7 @@ public class SpellMarketScreen extends Screen {
 		int x = width / 2 - 100;
 
 		// ♥ Liked 筛选按钮（始终可见，激活时红色背景）
-		String likedLabel = "♥ Liked";
+		String likedLabel = "\u2665 " + SpellMarketLocalization.likedFilter().getString();
 		int tw = font.width(likedLabel) + 12;
 		boolean lh = mx >= x && mx <= x + tw && my >= y && my <= y + 14;
 		int lbg = filterLiked ? 0x90AA4444 : (lh ? 0x60404040 : 0x40303030);
@@ -252,11 +252,22 @@ public class SpellMarketScreen extends Screen {
 
 		// 当前选中的标签（可点击取消）
 		if (currentTag != null) {
-			tw = font.width(currentTag) + 16;
+			String tagLabel = tagLabel(currentTag);
+			tw = font.width(tagLabel) + 16;
 			boolean th = mx >= x && mx <= x + tw && my >= y && my <= y + 14;
 			g.fill(x, y, x + tw, y + 14, th ? 0xC055AA55 : 0x8055AA55);
-			g.drawString(font, currentTag, x + 4, y + 3, 0xFFFFFF);
+			g.drawString(font, tagLabel, x + 4, y + 3, 0xFFFFFF);
 			g.drawString(font, "\u00D7", x + tw - 10, y + 3, 0xFFAAAA);
+			x += tw + 6;
+		}
+
+		for (String tag : excludedTags) {
+			String label = "-" + tagLabel(tag);
+			tw = font.width(label) + 16;
+			boolean eh = mx >= x && mx <= x + tw && my >= y && my <= y + 14;
+			g.fill(x, y, x + tw, y + 14, eh ? 0xC0AA4444 : 0x80AA4444);
+			g.drawString(font, label, x + 4, y + 3, 0xFFFFFF);
+			g.drawString(font, "\u00D7", x + tw - 10, y + 3, 0xFFDDDD);
 			x += tw + 6;
 		}
 
@@ -288,32 +299,36 @@ public class SpellMarketScreen extends Screen {
 			g.fill(20, y, width - 20, y + ITEM_HEIGHT - 5, hover ? 0x80404040 : 0x60202020);
 
 			// 名称
-			String spellName = spell.name != null ? spell.name : "Unknown";
+			String spellName = textOrUnknown(spell.name);
 			g.drawString(font, spellName, 30, y + 5, 0xFFFFFF);
 			// 作者（可点击筛选）
-			String authorText = "by " + (spell.authorName != null ? spell.authorName : "Unknown");
+			String authorText = authorText(spell.authorName);
 			boolean authorHover = mx >= 30 && mx <= 30 + font.width(authorText) && my >= y + 20 && my <= y + 32;
 			g.drawString(font, authorText, 30, y + 20, authorHover ? 0x55AAFF : 0xAAAAAA);
 			// 分类
 			if (spell.category != null && !spell.category.isEmpty()) {
-				g.drawString(font, "[" + spell.category + "]", 30, y + 35, 0x55FFFF);
+				g.drawString(font, "[" + SpellMarketLocalization.category(spell.category).getString() + "]",
+						30, y + 35, 0x55FFFF);
 			}
 			// 标签
 			if (spell.tags != null && !spell.tags.isEmpty()) {
 				int tx = 150, ty = y + 35;
 				for (String tag : spell.tags) {
 					if (tx > width - 250) break;
-					int tw = font.width(tag) + 8;
+					String tagLabel = tagLabel(tag);
+					int tw = font.width(tagLabel) + 8;
 					boolean th = mx >= tx && mx <= tx + tw && my >= ty && my <= ty + 12;
-					int tc = tag.equals(currentTag) ? 0xA055AA55 : (th ? 0xA0606060 : 0x80404040);
+					int tc = SpellMarketBuiltinTags.normalize(tag).equals(currentTag) ? 0xA055AA55 : (th ? 0xA0606060 : 0x80404040);
 					g.fill(tx, ty, tx + tw, ty + 12, tc);
-					g.drawString(font, tag, tx + 4, ty + 2, 0xAAFFAA);
+					g.drawString(font, tagLabel, tx + 4, ty + 2, 0xAAFFAA);
 					tx += tw + 4;
 				}
 			}
 
-			// 点赞和下载统计
-			g.drawString(font, "❤ " + spell.likesCount + "  ⬇ " + spell.downloadsCount, 30, y + 50, 0xFFDD55);
+			// 点赞、下载和评论统计
+			String stats = "❤ " + spell.likesCount + "  ⬇ " + spell.downloadsCount + "  " +
+					SpellMarketLocalization.commentCount(spell.commentsCount).getString();
+			g.drawString(font, stats, 30, y + 50, 0xFFDD55);
 			g.drawString(font, formatDate(spell.uploadDate), 30, y + 65, 0x888888);
 
 			// 点赞/取消点赞按钮
@@ -322,7 +337,7 @@ public class SpellMarketScreen extends Screen {
 			boolean lh = mx >= lx && mx <= lx + 60 && my >= ly && my <= ly + 20;
 			int lc = liked ? 0xFFFF5555 : (lh ? 0xFFAA5555 : 0xFF885555);
 			g.fill(lx, ly, lx + 60, ly + 20, lc);
-			g.drawCenteredString(font, liked ? "Unlike" : SpellMarketLocalization.like().getString(),
+			g.drawCenteredString(font, liked ? SpellMarketLocalization.unlike().getString() : SpellMarketLocalization.like().getString(),
 					lx + 30, ly + 6, 0xFFFFFF);
 
 			// 详情按钮
@@ -353,26 +368,39 @@ public class SpellMarketScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(double mx, double my, int btn) {
-		if (btn != 0 || loading) return super.mouseClicked(mx, my, btn);
+		if ((btn != 0 && btn != 1) || loading) return super.mouseClicked(mx, my, btn);
 
 		// 已选标签栏点击处理（y=42~56）
-		if (my >= 42 && my <= 56) {
+		if (btn == 0 && my >= 42 && my <= 56) {
 			int x = width / 2 - 100;
-			String likedLabel = "\u2665 Liked";
+			String likedLabel = "\u2665 " + SpellMarketLocalization.likedFilter().getString();
 			int tw = font.width(likedLabel) + 12;
 			if (mx >= x && mx <= x + tw) {
 				filterLiked = !filterLiked;
 				currentPage = 1;
-				loadList();
+				scrollOffset = 0;
+				applyClientFilters();
 				return true;
 			}
 			x += tw + 6;
 			if (currentTag != null) {
-				tw = font.width(currentTag) + 16;
+				tw = font.width(tagLabel(currentTag)) + 16;
 				if (mx >= x && mx <= x + tw) {
 					currentTag = null;
 					currentPage = 1;
 					loadList();
+					return true;
+				}
+				x += tw + 6;
+			}
+			for (int i = 0; i < excludedTags.size(); i++) {
+				String label = "-" + tagLabel(excludedTags.get(i));
+				tw = font.width(label) + 16;
+				if (mx >= x && mx <= x + tw) {
+					excludedTags.remove(i);
+					currentPage = 1;
+					scrollOffset = 0;
+					applyClientFilters();
 					return true;
 				}
 				x += tw + 6;
@@ -393,8 +421,8 @@ public class SpellMarketScreen extends Screen {
 		int y = LIST_TOP - scrollOffset;
 		for (SpellListEntry spell : spells) {
 			// 作者点击筛选
-			String authorText = "by " + (spell.authorName != null ? spell.authorName : "Unknown");
-			if (mx >= 30 && mx <= 30 + font.width(authorText) && my >= y + 20 && my <= y + 32) {
+			String authorText = authorText(spell.authorName);
+			if (btn == 0 && mx >= 30 && mx <= 30 + font.width(authorText) && my >= y + 20 && my <= y + 32) {
 				filterByAuthor(spell);
 				return true;
 			}
@@ -403,9 +431,13 @@ public class SpellMarketScreen extends Screen {
 				int tx = 150, ty = y + 35;
 				for (String tag : spell.tags) {
 					if (tx > width - 250) break;
-					int tw = font.width(tag) + 8;
+					int tw = font.width(tagLabel(tag)) + 8;
 					if (mx >= tx && mx <= tx + tw && my >= ty && my <= ty + 12) {
-						filterByTag(tag);
+						if (btn == 1) {
+							filterOutTag(tag);
+						} else {
+							filterByTag(tag);
+						}
 						return true;
 					}
 					tx += tw + 4;
@@ -413,26 +445,26 @@ public class SpellMarketScreen extends Screen {
 			}
 			// 点赞/取消点赞
 			int lx = width - 220, ly = y + 25;
-			if (mx >= lx && mx <= lx + 60 && my >= ly && my <= ly + 20) {
+			if (btn == 0 && mx >= lx && mx <= lx + 60 && my >= ly && my <= ly + 20) {
 				toggleLike(spell);
 				return true;
 			}
 			// 详情
 			int ix = width - 150, iy = y + 25;
-			if (mx >= ix && mx <= ix + 70 && my >= iy && my <= iy + 20) {
+			if (btn == 0 && mx >= ix && mx <= ix + 70 && my >= iy && my <= iy + 20) {
 				openDetail(spell);
 				return true;
 			}
 			// 下载
 			int dx = width - 150, dy = y + 50;
-			if (mx >= dx && mx <= dx + 80 && my >= dy && my <= dy + 20) {
+			if (btn == 0 && mx >= dx && mx <= dx + 80 && my >= dy && my <= dy + 20) {
 				downloadSpell(spell);
 				return true;
 			}
 			// 删除（仅本人符卡）
 			if (isOwnSpell(spell)) {
 				int dlx = width - 40, dly = y + 25;
-				if (mx >= dlx && mx <= dlx + 20 && my >= dly && my <= dly + 20) {
+				if (btn == 0 && mx >= dlx && mx <= dlx + 20 && my >= dly && my <= dly + 20) {
 					deleteSpell(spell);
 					return true;
 				}
@@ -461,6 +493,7 @@ public class SpellMarketScreen extends Screen {
 	}
 
 	private void filterByTag(String tag) {
+		tag = SpellMarketBuiltinTags.normalize(tag);
 		if (tag.equals(currentTag)) {
 			currentTag = null;
 		} else {
@@ -472,10 +505,23 @@ public class SpellMarketScreen extends Screen {
 		loadList();
 	}
 
+	private void filterOutTag(String tag) {
+		tag = SpellMarketBuiltinTags.normalize(tag);
+		if (tag.isBlank()) return;
+		if (excludedTags.contains(tag)) {
+			excludedTags.remove(tag);
+		} else {
+			excludedTags.add(tag);
+		}
+		currentPage = 1;
+		scrollOffset = 0;
+		applyClientFilters();
+	}
+
 	private void filterByAuthor(SpellListEntry spell) {
 		if (spell.authorUuid != null && !spell.authorUuid.isEmpty()) {
 			authorFilterUuid = spell.authorUuid;
-			authorFilterName = spell.authorName != null ? spell.authorName : "Unknown";
+			authorFilterName = textOrUnknown(spell.authorName);
 		} else if (spell.authorName != null && !spell.authorName.isEmpty()) {
 			authorFilterName = spell.authorName;
 			authorFilterUuid = null;
@@ -528,12 +574,24 @@ public class SpellMarketScreen extends Screen {
 			Minecraft.getInstance().execute(() -> {
 				if (success) {
 					spells.remove(entry);
+					loadedSpells.remove(entry);
 					LikedSpellsStore.remove(entry.uuid);
 				} else {
-					errorMessage = "Delete failed. You may not be authorized.";
+					errorMessage = SpellMarketLocalization.deleteFail().getString();
 				}
 			});
 		});
+	}
+
+	private void applyClientFilters() {
+		spells = new ArrayList<>(loadedSpells);
+		if (filterLiked) {
+			spells.removeIf(e -> !LikedSpellsStore.contains(e.uuid));
+		}
+		if (!excludedTags.isEmpty()) {
+			spells.removeIf(this::hasExcludedTag);
+		}
+		totalPages = filterLiked ? 1 : serverTotalPages;
 	}
 
 	private void openDetail(SpellListEntry entry) {
@@ -566,26 +624,46 @@ public class SpellMarketScreen extends Screen {
 
 	private void downloadSpell(SpellListEntry entry) {
 		if (api == null) return;
-		minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloading(entry.name).getString()));
+		String name = textOrUnknown(entry.name);
+		minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloading(name).getString()));
 		api.downloadSpell(entry.uuid).thenAccept(def -> {
 			Minecraft.getInstance().execute(() -> {
 				if (def != null) {
 					// 保存到世界存档
 					try {
 						SpellEditorNetworkClient.importMarket(def);
-						minecraft.setScreen(msgScreen("Success",
-								SpellMarketLocalization.downloadSuccess(entry.name).getString()));
+						minecraft.setScreen(msgScreen(SpellMarketLocalization.downloadSuccess(name).getString()));
 					} catch (Exception e) {
 						org.slf4j.LoggerFactory.getLogger("SpellMarket").error("Error saving downloaded spell '{}'", entry.uuid, e);
-						minecraft.setScreen(msgScreen("Error",
-								"§cSave failed: " + e.getMessage() + "\nCheck game log for details."));
+						minecraft.setScreen(msgScreen(SpellMarketLocalization.saveFail(e.getMessage() == null ? "" : e.getMessage()).getString()));
 					}
 				} else {
-					minecraft.setScreen(msgScreen("Error",
-							"§cDownload failed.\nThis spell's format may be incompatible (e.g. uploaded externally).\nCheck game log for parse errors."));
+					minecraft.setScreen(msgScreen(SpellMarketLocalization.downloadIncompatible().getString()));
 				}
 			});
 		});
+	}
+
+	private static String textOrUnknown(String value) {
+		return value == null || value.isBlank() ? SpellMarketLocalization.unknown().getString() : value;
+	}
+
+	private static String authorText(String authorName) {
+		return SpellMarketLocalization.authorBy(textOrUnknown(authorName)).getString();
+	}
+
+	private String tagLabel(String tag) {
+		return SpellMarketLocalization.tag(tag).getString();
+	}
+
+	private boolean hasExcludedTag(SpellListEntry entry) {
+		if (entry.tags == null || entry.tags.isEmpty()) return false;
+		for (String tag : entry.tags) {
+			if (excludedTags.contains(SpellMarketBuiltinTags.normalize(tag))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private String formatDate(long ts) {
@@ -599,11 +677,11 @@ public class SpellMarketScreen extends Screen {
 	}
 
 	// 简单的提示界面
-	private Screen msgScreen(String title, String msg) {
+	private Screen msgScreen(String msg) {
 		return new InfoScreen(parent, msg) {
 			@Override
 			protected void addButtons() {
-				addRenderableWidget(Button.builder(Component.literal("OK"), b -> {
+				addRenderableWidget(Button.builder(SpellMarketLocalization.ok(), b -> {
 					if (minecraft != null) minecraft.setScreen(SpellMarketScreen.this);
 				}).bounds(width / 2 - 50, height / 2 + 40, 100, 20).build());
 			}
@@ -628,7 +706,7 @@ public class SpellMarketScreen extends Screen {
 		}
 
 		protected void addButtons() {
-			addRenderableWidget(Button.builder(Component.literal("OK"), b -> {
+			addRenderableWidget(Button.builder(SpellMarketLocalization.ok(), b -> {
 				if (minecraft != null) minecraft.setScreen(parent);
 			}).bounds(width / 2 - 50, height / 2 + 40, 100, 20).build());
 		}

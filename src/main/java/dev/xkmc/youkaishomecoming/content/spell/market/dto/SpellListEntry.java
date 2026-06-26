@@ -36,6 +36,9 @@ public class SpellListEntry {
 	@SerializedName("downloads_count")
 	public int downloadsCount;
 
+	@SerializedName(value = "comments_count", alternate = {"comment_count"})
+	public int commentsCount;
+
 	@SerializedName("upload_date")
 	public long uploadDate;
 

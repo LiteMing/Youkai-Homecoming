@@ -11,7 +11,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -50,12 +49,12 @@ public class SpellMarketCommand {
 		String spellId = StringArgumentType.getString(ctx, "spell_id");
 		ResourceLocation id = ResourceLocation.tryParse(spellId);
 		if (id == null) {
-			ctx.getSource().sendFailure(Component.literal("Invalid spell ID: " + spellId));
+			ctx.getSource().sendFailure(SpellMarketLocalization.commandInvalidSpell(spellId));
 			return 0;
 		}
 		SpellDefinition def = SpellRegistry.get(id);
 		if (def == null) {
-			ctx.getSource().sendFailure(Component.literal("Spell not found: " + spellId));
+			ctx.getSource().sendFailure(SpellMarketLocalization.commandSpellNotFound(spellId));
 			return 0;
 		}
 		Minecraft mc = Minecraft.getInstance();
@@ -66,19 +65,19 @@ public class SpellMarketCommand {
 	private static int testConnection(CommandContext<CommandSourceStack> ctx) {
 		SpellMarketManager manager = SpellMarketManager.getInstance();
 		if (!manager.isEnabled() || manager.getAPI() == null) {
-			ctx.getSource().sendFailure(Component.literal("§cSpell market is disabled. Check config: spell_market.enabled"));
+			ctx.getSource().sendFailure(SpellMarketLocalization.commandDisabled());
 			return 0;
 		}
 		SpellMarketAPI api = manager.getAPI();
-		ctx.getSource().sendSuccess(() -> Component.literal("§7Testing connection to spell market server..."), false);
+		ctx.getSource().sendSuccess(SpellMarketLocalization::commandTesting, false);
 		api.getSpellList(1, 1, null, null).thenAccept(response -> {
 			Minecraft mc = Minecraft.getInstance();
 			mc.execute(() -> {
 				if (mc.player == null) return;
 				if (response == null) {
-					mc.player.displayClientMessage(Component.literal("§cSpell market connection failed. Check logs for details."), false);
+					mc.player.displayClientMessage(SpellMarketLocalization.commandConnectionFailed(), false);
 				} else {
-					mc.player.displayClientMessage(Component.literal("§a§l✓ Spell market connected!§r§7 Total spells available: §f" + response.total), false);
+					mc.player.displayClientMessage(SpellMarketLocalization.commandConnected(response.total), false);
 				}
 			});
 		});
@@ -89,9 +88,9 @@ public class SpellMarketCommand {
 		SpellMarketManager.getInstance().reload();
 		boolean enabled = SpellMarketManager.getInstance().isEnabled();
 		if (enabled) {
-			ctx.getSource().sendSuccess(() -> Component.literal("§a✓ Spell market config reloaded. Feature is enabled."), false);
+			ctx.getSource().sendSuccess(SpellMarketLocalization::commandReloadEnabled, false);
 		} else {
-			ctx.getSource().sendSuccess(() -> Component.literal("§e Spell market config reloaded. Feature is disabled."), false);
+			ctx.getSource().sendSuccess(SpellMarketLocalization::commandReloadDisabled, false);
 		}
 		return 1;
 	}

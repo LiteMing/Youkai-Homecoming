@@ -28,8 +28,7 @@ public class SpellDetailScreen extends Screen {
 	private static final int HEADER_TOP = 16;
 	private static final int COMMENTS_TOP = 92;
 	private static final int COMMENT_GAP = 6;
-	private static final int IMAGE_MAX_WIDTH = 160;
-	private static final int IMAGE_MAX_HEIGHT = 92;
+	private static final int IMAGE_STATUS_HEIGHT = 12;
 	private static final Pattern URL_PATTERN = Pattern.compile("https?://\\S+");
 
 	private final Screen parent;
@@ -46,7 +45,8 @@ public class SpellDetailScreen extends Screen {
 	private int scrollOffset = 0;
 
 	public SpellDetailScreen(Screen parent, SpellListEntry entry) {
-		super(Component.literal(entry.name == null || entry.name.isBlank() ? "Spell Details" : entry.name));
+		super(Component.literal(entry.name == null || entry.name.isBlank() ?
+				SpellMarketLocalization.detail().getString() : entry.name));
 		this.parent = parent;
 		this.entry = entry;
 		this.api = SpellMarketManager.getInstance().getAPI();
@@ -94,6 +94,7 @@ public class SpellDetailScreen extends Screen {
 			if (list != null) {
 				comments.addAll(list);
 			}
+			entry.commentsCount = comments.size();
 			scrollOffset = 0;
 		}));
 	}
@@ -108,11 +109,12 @@ public class SpellDetailScreen extends Screen {
 	}
 
 	private void renderHeader(GuiGraphics g) {
-		String name = safe(entry.name, "Unknown");
+		String name = safe(entry.name, SpellMarketLocalization.unknown().getString());
 		g.drawCenteredString(font, name, width / 2, 18, 0xFFFFFF);
-		String meta = "by " + safe(entry.authorName, "Unknown");
+		String meta = SpellMarketLocalization.authorBy(
+				safe(entry.authorName, SpellMarketLocalization.unknown().getString())).getString();
 		if (entry.category != null && !entry.category.isBlank()) {
-			meta += "  [" + entry.category + "]";
+			meta += "  [" + SpellMarketLocalization.category(entry.category).getString() + "]";
 		}
 		g.drawCenteredString(font, meta, width / 2, 34, 0xAAAAAA);
 		if (entry.description != null && !entry.description.isBlank()) {
@@ -163,7 +165,7 @@ public class SpellDetailScreen extends Screen {
 	private void renderComment(GuiGraphics g, Comment comment, int x, int y, int w, int h, int mx, int my) {
 		boolean hover = mx >= x && mx <= x + w && my >= y && my <= y + h;
 		g.fill(x, y, x + w, y + h, hover ? 0x70404040 : 0x50202020);
-		String author = safe(comment.authorName, "Anonymous");
+		String author = safe(comment.authorName, SpellMarketLocalization.anonymous().getString());
 		g.drawString(font, author, x + 8, y + 6, 0xFFFFFF);
 		g.drawString(font, formatDate(comment.timestamp), x + 8 + font.width(author) + 10, y + 6, 0x777777);
 		if (isOwnComment(comment) && comment.uuid != null && !comment.uuid.isBlank()) {
@@ -183,23 +185,22 @@ public class SpellDetailScreen extends Screen {
 		String imageUrl = getImageUrl(comment);
 		if (imageUrl != null) {
 			cy += 3;
-			renderImagePreview(g, imageUrl, x + 8, cy);
+			renderImagePreview(g, imageUrl, x + 8, cy, w - 16);
 		}
 	}
 
-	private void renderImagePreview(GuiGraphics g, String imageUrl, int x, int y) {
+	private void renderImagePreview(GuiGraphics g, String imageUrl, int x, int y, int availableWidth) {
 		MarketImageCache.Preview preview = MarketImageCache.get(imageUrl);
-		g.drawString(font, imageUrl, x, y, 0x55AAFF);
+		int maxWidth = imageMaxWidth(availableWidth);
+		g.drawString(font, font.plainSubstrByWidth(imageUrl, maxWidth), x, y, 0x55AAFF);
 		y += 12;
 		if (preview.state() == MarketImageCache.Preview.State.READY && preview.texture() != null) {
-			int iw = Math.max(1, preview.width());
-			int ih = Math.max(1, preview.height());
-			float scale = Math.min(IMAGE_MAX_WIDTH / (float) iw, IMAGE_MAX_HEIGHT / (float) ih);
-			scale = Math.min(scale, 1.0f);
-			int drawW = Math.max(1, Math.round(iw * scale));
-			int drawH = Math.max(1, Math.round(ih * scale));
+			ImageSize size = previewSize(preview, availableWidth);
+			int drawW = size.width();
+			int drawH = size.height();
 			g.fill(x - 1, y - 1, x + drawW + 1, y + drawH + 1, 0xFF101010);
-			g.blit(preview.texture(), x, y, 0, 0, drawW, drawH, iw, ih);
+			g.blit(preview.texture(), x, y, 0, 0, drawW, drawH,
+					Math.max(1, preview.width()), Math.max(1, preview.height()));
 		} else {
 			String text = preview.state() == MarketImageCache.Preview.State.LOADING ?
 					SpellMarketLocalization.imageLoading().getString() :
@@ -291,6 +292,7 @@ public class SpellDetailScreen extends Screen {
 				Minecraft.getInstance().execute(() -> {
 					if (success) {
 						comments.remove(comment);
+						entry.commentsCount = comments.size();
 					} else {
 						errorMessage = SpellMarketLocalization.commentFail().getString();
 					}
@@ -299,12 +301,13 @@ public class SpellDetailScreen extends Screen {
 
 	private void downloadSpell() {
 		if (api == null || entry.uuid == null || entry.uuid.isBlank()) return;
-		minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloading(entry.name).getString()));
+		String name = safe(entry.name, SpellMarketLocalization.unknown().getString());
+		minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloading(name).getString()));
 		api.downloadSpell(entry.uuid).thenAccept(def -> Minecraft.getInstance().execute(() -> {
 			if (def != null) {
 				try {
 					SpellEditorNetworkClient.importMarket(def);
-					minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloadSuccess(entry.name).getString()));
+					minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloadSuccess(name).getString()));
 				} catch (Exception e) {
 					minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloadFail().getString()));
 				}
@@ -325,10 +328,25 @@ public class SpellDetailScreen extends Screen {
 	private int commentHeight(Comment comment, int width) {
 		int lines = font.split(Component.literal(safe(comment.content, "")), width - 16).size();
 		int h = 30 + Math.max(1, lines) * 10;
-		if (getImageUrl(comment) != null) {
-			h += IMAGE_MAX_HEIGHT + 20;
+		String imageUrl = getImageUrl(comment);
+		if (imageUrl != null) {
+			MarketImageCache.Preview preview = MarketImageCache.get(imageUrl);
+			h += (preview.state() == MarketImageCache.Preview.State.READY ?
+					previewSize(preview, width - 16).height() : IMAGE_STATUS_HEIGHT) + 20;
 		}
 		return Math.max(48, h);
+	}
+
+	private static int imageMaxWidth(int availableWidth) {
+		return Math.max(80, availableWidth);
+	}
+
+	private static ImageSize previewSize(MarketImageCache.Preview preview, int availableWidth) {
+		int iw = Math.max(1, preview.width());
+		int ih = Math.max(1, preview.height());
+		float scale = imageMaxWidth(availableWidth) / (float) iw;
+		scale = Math.min(scale, 1.0f);
+		return new ImageSize(Math.max(1, Math.round(iw * scale)), Math.max(1, Math.round(ih * scale)));
 	}
 
 	private boolean isOwnComment(Comment comment) {
@@ -351,7 +369,7 @@ public class SpellDetailScreen extends Screen {
 		try {
 			return Minecraft.getInstance().getUser().getName();
 		} catch (Exception e) {
-			return "Anonymous";
+			return SpellMarketLocalization.anonymous().getString();
 		}
 	}
 
@@ -411,6 +429,9 @@ public class SpellDetailScreen extends Screen {
 		return new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date(ms));
 	}
 
+	private record ImageSize(int width, int height) {
+	}
+
 	@Override
 	public void onClose() {
 		if (minecraft != null) minecraft.setScreen(parent);
@@ -429,7 +450,7 @@ public class SpellDetailScreen extends Screen {
 
 		@Override
 		protected void init() {
-			addRenderableWidget(Button.builder(Component.literal("OK"), b -> {
+			addRenderableWidget(Button.builder(SpellMarketLocalization.ok(), b -> {
 				if (minecraft != null) minecraft.setScreen(parent);
 			}).bounds(width / 2 - 50, height / 2 + 40, 100, 20).build());
 		}

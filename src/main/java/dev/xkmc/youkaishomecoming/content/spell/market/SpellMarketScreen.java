@@ -176,6 +176,7 @@ public class SpellMarketScreen extends Screen {
 						}
 					}
 					applyClientFilters();
+					refreshCommentCounts(loadedSpells);
 					scrollOffset = 0;
 				} else {
 					errorMessage = SpellMarketLocalization.errorNetwork().getString();
@@ -592,6 +593,21 @@ public class SpellMarketScreen extends Screen {
 			spells.removeIf(this::hasExcludedTag);
 		}
 		totalPages = filterLiked ? 1 : serverTotalPages;
+	}
+
+	private void refreshCommentCounts(List<SpellListEntry> entries) {
+		if (api == null || entries.isEmpty()) return;
+		for (SpellListEntry entry : entries) {
+			if (entry.uuid == null || entry.uuid.isBlank()) continue;
+			api.getComments(entry.uuid).thenAccept(list -> {
+				if (list == null) return;
+				Minecraft.getInstance().execute(() -> {
+					if (!list.isEmpty() || entry.commentsCount == 0) {
+						entry.commentsCount = list.size();
+					}
+				});
+			});
+		}
 	}
 
 	private void openDetail(SpellListEntry entry) {

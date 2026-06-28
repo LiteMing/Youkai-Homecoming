@@ -23,6 +23,12 @@ public class SpellMarketScreen extends Screen {
 	private static final int LIST_TOP = 60;
 	private static final int ITEM_HEIGHT = 85;
 	private static final int ITEMS_PER_PAGE = 5;
+	private static final int ACTION_BUTTON_WIDTH = 72;
+	private static final int ACTION_BUTTON_HEIGHT = 20;
+	private static final int ACTION_BUTTON_GAP = 8;
+	private static final int ACTION_BUTTON_RIGHT_MARGIN = 80;
+	private static final int ACTION_BUTTON_TOP_OFFSET = 25;
+	private static final int ACTION_BUTTON_BOTTOM_OFFSET = 50;
 
 	private final Screen parent;
 	private final SpellMarketAPI api;
@@ -176,7 +182,6 @@ public class SpellMarketScreen extends Screen {
 						}
 					}
 					applyClientFilters();
-					refreshCommentCounts(loadedSpells);
 					scrollOffset = 0;
 				} else {
 					errorMessage = SpellMarketLocalization.errorNetwork().getString();
@@ -334,25 +339,27 @@ public class SpellMarketScreen extends Screen {
 
 			// 点赞/取消点赞按钮
 			boolean liked = LikedSpellsStore.contains(spell.uuid);
-			int lx = width - 220, ly = y + 25;
-			boolean lh = mx >= lx && mx <= lx + 60 && my >= ly && my <= ly + 20;
+			int lx = actionSecondaryX(), ly = y + ACTION_BUTTON_TOP_OFFSET;
+			boolean lh = isActionButtonHovered(mx, my, lx, ly);
 			int lc = liked ? 0xFFFF5555 : (lh ? 0xFFAA5555 : 0xFF885555);
-			g.fill(lx, ly, lx + 60, ly + 20, lc);
+			g.fill(lx, ly, lx + ACTION_BUTTON_WIDTH, ly + ACTION_BUTTON_HEIGHT, lc);
 			g.drawCenteredString(font, liked ? SpellMarketLocalization.unlike().getString() : SpellMarketLocalization.like().getString(),
-					lx + 30, ly + 6, 0xFFFFFF);
+					lx + ACTION_BUTTON_WIDTH / 2, ly + 6, 0xFFFFFF);
 
 			// 详情按钮
-			int ix = width - 150, iy = y + 25;
-			boolean ih = mx >= ix && mx <= ix + 70 && my >= iy && my <= iy + 20;
-			g.fill(ix, iy, ix + 70, iy + 20, ih ? 0xFF555588 : 0xFF333366);
-			g.drawCenteredString(font, SpellMarketLocalization.detail().getString(), ix + 35, iy + 6, 0xFFFFFF);
+			int ix = actionPrimaryX(), iy = y + ACTION_BUTTON_TOP_OFFSET;
+			boolean ih = isActionButtonHovered(mx, my, ix, iy);
+			g.fill(ix, iy, ix + ACTION_BUTTON_WIDTH, iy + ACTION_BUTTON_HEIGHT, ih ? 0xFF555588 : 0xFF333366);
+			g.drawCenteredString(font, SpellMarketLocalization.detail().getString(),
+					ix + ACTION_BUTTON_WIDTH / 2, iy + 6, 0xFFFFFF);
 
 			// 下载按钮
-			int dx = width - 150, dy = y + 50;
-			boolean dh = mx >= dx && mx <= dx + 80 && my >= dy && my <= dy + 20;
+			int dx = actionPrimaryX(), dy = y + ACTION_BUTTON_BOTTOM_OFFSET;
+			boolean dh = isActionButtonHovered(mx, my, dx, dy);
 			int dc = dh ? 0xFF55AA55 : 0xFF338833;
-			g.fill(dx, dy, dx + 80, dy + 20, dc);
-			g.drawCenteredString(font, SpellMarketLocalization.download().getString(), dx + 40, dy + 6, 0xFFFFFF);
+			g.fill(dx, dy, dx + ACTION_BUTTON_WIDTH, dy + ACTION_BUTTON_HEIGHT, dc);
+			g.drawCenteredString(font, SpellMarketLocalization.download().getString(),
+					dx + ACTION_BUTTON_WIDTH / 2, dy + 6, 0xFFFFFF);
 
 			// 删除按钮（仅本人符卡）
 			if (isOwnSpell(spell)) {
@@ -365,6 +372,18 @@ public class SpellMarketScreen extends Screen {
 			y += ITEM_HEIGHT;
 		}
 		g.disableScissor();
+	}
+
+	private int actionPrimaryX() {
+		return width - ACTION_BUTTON_RIGHT_MARGIN - ACTION_BUTTON_WIDTH;
+	}
+
+	private int actionSecondaryX() {
+		return actionPrimaryX() - ACTION_BUTTON_GAP - ACTION_BUTTON_WIDTH;
+	}
+
+	private boolean isActionButtonHovered(double mx, double my, int x, int y) {
+		return mx >= x && mx <= x + ACTION_BUTTON_WIDTH && my >= y && my <= y + ACTION_BUTTON_HEIGHT;
 	}
 
 	@Override
@@ -445,20 +464,20 @@ public class SpellMarketScreen extends Screen {
 				}
 			}
 			// 点赞/取消点赞
-			int lx = width - 220, ly = y + 25;
-			if (btn == 0 && mx >= lx && mx <= lx + 60 && my >= ly && my <= ly + 20) {
+			int lx = actionSecondaryX(), ly = y + ACTION_BUTTON_TOP_OFFSET;
+			if (btn == 0 && isActionButtonHovered(mx, my, lx, ly)) {
 				toggleLike(spell);
 				return true;
 			}
 			// 详情
-			int ix = width - 150, iy = y + 25;
-			if (btn == 0 && mx >= ix && mx <= ix + 70 && my >= iy && my <= iy + 20) {
+			int ix = actionPrimaryX(), iy = y + ACTION_BUTTON_TOP_OFFSET;
+			if (btn == 0 && isActionButtonHovered(mx, my, ix, iy)) {
 				openDetail(spell);
 				return true;
 			}
 			// 下载
-			int dx = width - 150, dy = y + 50;
-			if (btn == 0 && mx >= dx && mx <= dx + 80 && my >= dy && my <= dy + 20) {
+			int dx = actionPrimaryX(), dy = y + ACTION_BUTTON_BOTTOM_OFFSET;
+			if (btn == 0 && isActionButtonHovered(mx, my, dx, dy)) {
 				downloadSpell(spell);
 				return true;
 			}
@@ -593,21 +612,6 @@ public class SpellMarketScreen extends Screen {
 			spells.removeIf(this::hasExcludedTag);
 		}
 		totalPages = filterLiked ? 1 : serverTotalPages;
-	}
-
-	private void refreshCommentCounts(List<SpellListEntry> entries) {
-		if (api == null || entries.isEmpty()) return;
-		for (SpellListEntry entry : entries) {
-			if (entry.uuid == null || entry.uuid.isBlank()) continue;
-			api.getComments(entry.uuid).thenAccept(list -> {
-				if (list == null) return;
-				Minecraft.getInstance().execute(() -> {
-					if (!list.isEmpty() || entry.commentsCount == 0) {
-						entry.commentsCount = list.size();
-					}
-				});
-			});
-		}
 	}
 
 	private void openDetail(SpellListEntry entry) {

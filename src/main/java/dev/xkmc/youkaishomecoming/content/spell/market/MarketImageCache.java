@@ -30,10 +30,11 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -45,22 +46,54 @@ public class MarketImageCache {
 	private static final int MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 	private static final int MAX_GIF_FRAMES = 80;
 	private static final int GIF_TEXTURE_MAX_SIZE = 512;
+	private static final int MAX_CACHE_ENTRIES = 48;
 	private static final Pattern META_IMAGE = Pattern.compile(
 			"(?is)<meta[^>]+(?:property|name)=[\"'](?:og:image|twitter:image)[\"'][^>]+content=[\"']([^\"']+)[\"']");
 	private static final Pattern IMG_SRC = Pattern.compile("(?is)<img[^>]+src=[\"']([^\"']+)[\"']");
+	private static final Pattern ABSOLUTE_IMAGE_URL = Pattern.compile(
+			"(?is)https?://[^\"'<>\\s]+?\\.(?:png|jpe?g|webp|gif)(?:\\?[^\"'<>\\s]*)?");
+	private static final Pattern ROOT_IMAGE_PATH = Pattern.compile(
+			"(?is)/[^\"'<>\\s]+?\\.(?:png|jpe?g|webp|gif)(?:\\?[^\"'<>\\s]*)?");
 
 	private static final HttpClient CLIENT = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(5))
+			.followRedirects(HttpClient.Redirect.NORMAL)
 			.executor(Executors.newFixedThreadPool(2))
 			.build();
-	private static final Map<String, Preview> CACHE = new ConcurrentHashMap<>();
+	private static final Map<String, Preview> CACHE = Collections.synchronizedMap(
+			new LinkedHashMap<String, Preview>(MAX_CACHE_ENTRIES, 0.75f, true) {
+				@Override
+				protected boolean removeEldestEntry(Map.Entry<String, Preview> eldest) {
+					boolean remove = size() > MAX_CACHE_ENTRIES;
+					if (remove) {
+						eldest.getValue().close();
+					}
+					return remove;
+				}
+			});
 
 	public static Preview get(String rawUrl) {
 		String url = normalize(rawUrl);
 		if (url == null) {
 			return Preview.invalid();
 		}
-		return CACHE.computeIfAbsent(url, MarketImageCache::load);
+		synchronized (CACHE) {
+			Preview preview = CACHE.get(url);
+			if (preview == null) {
+				preview = load(url);
+				CACHE.put(url, preview);
+			}
+			return preview;
+		}
+	}
+
+	public static void clear() {
+		synchronized (CACHE) {
+			for (Preview preview : CACHE.values()) {
+				preview.close();
+			}
+			CACHE.clear();
+		}
 	}
 
 	private static Preview load(String url) {
@@ -79,6 +112,7 @@ public class MarketImageCache {
 				.uri(URI.create(url))
 				.timeout(Duration.ofSeconds(12))
 				.header("Accept", "image/png,image/jpeg,image/webp,image/gif,image/*,*/*")
+				.header("User-Agent", "Mozilla/5.0 YoukaiHomecomingSpellMarket/1.0")
 				.GET()
 				.build();
 		CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
@@ -92,7 +126,9 @@ public class MarketImageCache {
 					String contentType = response.headers().firstValue("Content-Type").orElse("");
 					if (isHtml(contentType, body)) {
 						List<String> next = new ArrayList<>(candidates);
-						addCandidate(next, extractHtmlImage(url, body));
+						for (String candidate : extractHtmlImages(url, body)) {
+							addCandidate(next, candidate);
+						}
 						fetch(preview, next, index + 1);
 						return;
 					}
@@ -112,6 +148,11 @@ public class MarketImageCache {
 	}
 
 	private static void registerTexture(Preview preview, DecodedImage decoded) {
+		if (preview.closed()) {
+			closeDecoded(decoded);
+			return;
+		}
+		List<ResourceLocation> registered = new ArrayList<>();
 		try {
 			String hash = Integer.toUnsignedString(preview.url.hashCode(), 16);
 			if (decoded.frames.size() == 1) {
@@ -119,6 +160,7 @@ public class MarketImageCache {
 				ResourceLocation id = new ResourceLocation(YoukaisHomecoming.MODID,
 						"spell_market/comment/" + hash);
 				Minecraft.getInstance().getTextureManager().register(id, new DynamicTexture(image));
+				registered.add(id);
 				preview.ready(id, decoded.width, decoded.height);
 				return;
 			}
@@ -128,13 +170,32 @@ public class MarketImageCache {
 				ResourceLocation id = new ResourceLocation(YoukaisHomecoming.MODID,
 						"spell_market/comment/" + hash + "_" + i);
 				Minecraft.getInstance().getTextureManager().register(id, new DynamicTexture(frame.image));
+				registered.add(id);
 				frames.add(new Preview.Frame(id, frame.delayMs));
 			}
 			preview.readyAnimated(frames, decoded.width, decoded.height);
 		} catch (Exception e) {
+			releaseTextures(registered);
 			LOGGER.warn("Failed to register comment image texture: {}", preview.url, e);
 			preview.fail();
 		}
+	}
+
+	private static void closeDecoded(DecodedImage decoded) {
+		for (DecodedFrame frame : decoded.frames) {
+			frame.image.close();
+		}
+	}
+
+	private static void releaseTextures(List<ResourceLocation> textures) {
+		if (textures.isEmpty()) {
+			return;
+		}
+		Minecraft.getInstance().execute(() -> {
+			for (ResourceLocation texture : textures) {
+				Minecraft.getInstance().getTextureManager().release(texture);
+			}
+		});
 	}
 
 	private static DecodedImage decodeImage(byte[] bytes) throws IOException {
@@ -212,15 +273,6 @@ public class MarketImageCache {
 	private static List<String> candidates(String url) {
 		List<String> list = new ArrayList<>();
 		addCandidate(list, url);
-		try {
-			URI uri = URI.create(url);
-			String path = uri.getRawPath();
-			if ("img.remit.ee".equalsIgnoreCase(uri.getHost()) && path != null && path.startsWith("/preview/")) {
-				addCandidate(list, uri.getScheme() + "://" + uri.getRawAuthority() +
-						"/api/file/" + path.substring("/preview/".length()));
-			}
-		} catch (Exception ignored) {
-		}
 		return list;
 	}
 
@@ -231,20 +283,33 @@ public class MarketImageCache {
 		}
 	}
 
-	private static String extractHtmlImage(String baseUrl, byte[] body) {
-		String html = new String(body, StandardCharsets.UTF_8);
-		String found = firstMatch(META_IMAGE, html);
-		if (found == null) {
-			found = firstMatch(IMG_SRC, html);
+	private static List<String> extractHtmlImages(String baseUrl, byte[] body) {
+		String html = new String(body, StandardCharsets.UTF_8).replace("\\/", "/");
+		List<String> found = new ArrayList<>();
+		addResolvedCandidate(found, baseUrl, firstMatch(META_IMAGE, html));
+		addResolvedCandidate(found, baseUrl, firstMatch(IMG_SRC, html));
+		addPatternCandidates(found, baseUrl, ABSOLUTE_IMAGE_URL, html);
+		addPatternCandidates(found, baseUrl, ROOT_IMAGE_PATH, html);
+		return found;
+	}
+
+	private static void addPatternCandidates(List<String> list, String baseUrl, Pattern pattern, String html) {
+		Matcher matcher = pattern.matcher(html);
+		while (matcher.find() && list.size() < 8) {
+			addResolvedCandidate(list, baseUrl, matcher.group());
 		}
-		if (found == null) {
-			return null;
+	}
+
+	private static void addResolvedCandidate(List<String> list, String baseUrl, String value) {
+		if (value == null || value.isBlank()) {
+			return;
 		}
 		try {
-			String value = found.replace("\\/", "/");
-			return URI.create(baseUrl).resolve(value).toString();
+			String resolved = URI.create(baseUrl).resolve(value).toString();
+			if (normalize(resolved) != null && !list.contains(resolved)) {
+				list.add(resolved);
+			}
 		} catch (Exception e) {
-			return null;
 		}
 	}
 
@@ -439,6 +504,7 @@ public class MarketImageCache {
 		private volatile int height;
 		private volatile int totalDuration;
 		private volatile long animationStart;
+		private volatile boolean closed;
 
 		private Preview(String url) {
 			this.url = url;
@@ -449,6 +515,10 @@ public class MarketImageCache {
 
 		private static Preview invalid() {
 			return INVALID;
+		}
+
+		private boolean closed() {
+			return closed;
 		}
 
 		private void ready(ResourceLocation texture, int width, int height) {
@@ -470,6 +540,25 @@ public class MarketImageCache {
 
 		private void fail() {
 			this.state = State.FAILED;
+		}
+
+		private void close() {
+			if (closed) {
+				return;
+			}
+			closed = true;
+			List<ResourceLocation> textures = new ArrayList<>();
+			List<Frame> activeFrames = frames;
+			if (activeFrames.isEmpty()) {
+				if (texture != null) {
+					textures.add(texture);
+				}
+			} else {
+				for (Frame frame : activeFrames) {
+					textures.add(frame.texture);
+				}
+			}
+			releaseTextures(textures);
 		}
 
 		public State state() {

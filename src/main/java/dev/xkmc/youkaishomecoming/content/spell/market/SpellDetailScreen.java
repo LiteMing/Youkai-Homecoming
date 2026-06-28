@@ -186,17 +186,17 @@ public class SpellDetailScreen extends Screen {
 		String imageUrl = getImageUrl(comment);
 		if (imageUrl != null) {
 			cy += 3;
-			renderImagePreview(g, imageUrl, x + 8, cy, w - 16, imageAvailableHeight(lines.size()));
+			renderImagePreview(g, imageUrl, x + 8, cy, w - 16);
 		}
 	}
 
-	private void renderImagePreview(GuiGraphics g, String imageUrl, int x, int y, int availableWidth, int availableHeight) {
+	private void renderImagePreview(GuiGraphics g, String imageUrl, int x, int y, int availableWidth) {
 		MarketImageCache.Preview preview = MarketImageCache.get(imageUrl);
 		int textWidth = Math.max(80, availableWidth - 56);
 		g.drawString(font, font.plainSubstrByWidth(imageUrl, textWidth), x, y, 0x55AAFF);
 		y += 12;
 		if (preview.state() == MarketImageCache.Preview.State.READY && preview.texture() != null) {
-			ImageSize size = previewSize(preview, availableWidth, availableHeight);
+			ImageSize size = previewSize(preview, availableWidth);
 			int drawW = size.width();
 			int drawH = size.height();
 			g.fill(x - 1, y - 1, x + drawW + 1, y + drawH + 1, 0xFF101010);
@@ -333,26 +333,18 @@ public class SpellDetailScreen extends Screen {
 		if (imageUrl != null) {
 			MarketImageCache.Preview preview = MarketImageCache.get(imageUrl);
 			h += (preview.state() == MarketImageCache.Preview.State.READY ?
-					previewSize(preview, width - 16, imageAvailableHeight(lines)).height() : IMAGE_STATUS_HEIGHT) + 20;
+					previewSize(preview, width - 16).height() : IMAGE_STATUS_HEIGHT) + 20;
 		}
 		return Math.max(48, h);
 	}
 
-	private int imageAvailableHeight(int textLines) {
-		int bottom = height - 64;
-		int listHeight = Math.max(80, bottom - COMMENTS_TOP);
-		int reserved = 44 + Math.max(1, textLines) * 10;
-		return Math.max(80, listHeight - reserved);
-	}
-
-	private ImageSize previewSize(MarketImageCache.Preview preview, int availableWidth, int availableHeight) {
+	private ImageSize previewSize(MarketImageCache.Preview preview, int availableWidth) {
 		int iw = Math.max(1, preview.width());
 		int ih = Math.max(1, preview.height());
 		double guiScale = guiScale();
 		double naturalW = iw / guiScale;
 		double naturalH = ih / guiScale;
-		double scale = Math.min(availableWidth / naturalW, availableHeight / naturalH);
-		scale = Math.min(scale, 1.0d);
+		double scale = availableWidth / naturalW;
 		return new ImageSize(Math.max(1, (int) Math.round(naturalW * scale)),
 				Math.max(1, (int) Math.round(naturalH * scale)));
 	}

@@ -81,12 +81,12 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		ServerPlayer sender = context.getSender();
 		if (sender == null) return;
 		try {
-			if (action == Action.IMPORT_MARKET) {
-				importMarketSpell(sender);
-				return;
-			}
 			if (!sender.hasPermissions(2)) {
 				sender.sendSystemMessage(Component.literal("[YH] No permission to edit spells on this server."));
+				return;
+			}
+			if (action == Action.IMPORT_MARKET) {
+				importMarketSpell(sender);
 				return;
 			}
 			if (action == Action.DELETE) {
@@ -122,9 +122,6 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private void importMarketSpell(ServerPlayer sender) {
 		SpellDefinition definition = parseDefinition();
-		if (!sender.hasPermissions(2)) {
-			validateMarketImport(definition);
-		}
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
 		sender.sendSystemMessage(Component.literal("[YH] Imported market spell " + definition.id));

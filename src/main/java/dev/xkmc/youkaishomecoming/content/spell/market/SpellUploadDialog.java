@@ -137,11 +137,12 @@ public class SpellUploadDialog extends Screen {
 
 		nameBox = new EditBox(font, lx, sy + 20, iw, 20, SpellMarketLocalization.uploadName());
 		nameBox.setMaxLength(100);
-		if (definition != null) nameBox.setValue(definition.id.toString());
+		if (definition != null) nameBox.setValue(defaultUploadName(definition));
 		addRenderableWidget(nameBox);
 
 		descBox = new EditBox(font, lx, sy + 60, iw, 20, SpellMarketLocalization.uploadDesc());
 		descBox.setMaxLength(500);
+		if (definition != null) descBox.setValue(defaultUploadDescription(definition));
 		addRenderableWidget(descBox);
 
 		authorBox = new EditBox(font, lx, sy + 100, iw, 20, SpellMarketLocalization.uploadAuthor());
@@ -171,6 +172,23 @@ public class SpellUploadDialog extends Screen {
 		cancelButton = Button.builder(SpellMarketLocalization.uploadCancel(), btn -> onClose())
 				.bounds(cx + 10, height - 40, 70, 20).build();
 		addRenderableWidget(cancelButton);
+	}
+
+	private String defaultUploadName(SpellDefinition definition) {
+		if (definition.display != null) {
+			String name = definition.display.displayName().getString().trim();
+			if (!name.isEmpty()) {
+				return name;
+			}
+		}
+		return definition.id == null ? "" : definition.id.toString();
+	}
+
+	private String defaultUploadDescription(SpellDefinition definition) {
+		if (definition.display == null) {
+			return "";
+		}
+		return definition.display.displayDesc().getString().trim();
 	}
 
 	private void addCloseButton() {
@@ -412,7 +430,9 @@ public class SpellUploadDialog extends Screen {
 
 		super.render(g, mx, my, pt);
 		if (definition != null) {
+			g.flush();
 			renderDropdown(g, mx, my);
+			g.flush();
 		}
 	}
 
@@ -517,30 +537,36 @@ public class SpellUploadDialog extends Screen {
 		int visible = dropdown.visibleRows();
 		int searchH = DROPDOWN_ROW_HEIGHT + 2;
 		int h = searchH + visible * DROPDOWN_ROW_HEIGHT;
-		g.fill(dropdown.x - 2, dropdown.y - 2, dropdown.x + dropdown.w + 2, dropdown.y + h + 2, 0xFF000000);
-		g.fill(dropdown.x - 1, dropdown.y - 1, dropdown.x + dropdown.w + 1, dropdown.y + h + 1, 0xFF101010);
-		g.fill(dropdown.x, dropdown.y, dropdown.x + dropdown.w, dropdown.y + searchH, 0xFF181828);
-		g.fill(dropdown.x + 2, dropdown.y + 2, dropdown.x + dropdown.w - 2, dropdown.y + searchH - 2, 0xFF050509);
-		renderDropdownSearch(g, dropdown.x + 5, dropdown.y + 4, dropdown.w - 10);
-		g.enableScissor(dropdown.x, dropdown.y + searchH, dropdown.x + dropdown.w, dropdown.y + h);
-		for (int row = 0; row < visible; row++) {
-			int idx = dropdown.scroll + row;
-			int y = dropdown.y + searchH + row * DROPDOWN_ROW_HEIGHT;
-			boolean hover = mx >= dropdown.x && mx <= dropdown.x + dropdown.w &&
-					my >= y && my <= y + DROPDOWN_ROW_HEIGHT;
-			DropdownOption option = dropdown.filtered.get(idx);
-			int bg = option.matches(dropdown.selectedTag) ? 0xFF3F7F3F : (hover ? 0xFF505050 : 0xFF202020);
-			g.fill(dropdown.x, y, dropdown.x + dropdown.w, y + DROPDOWN_ROW_HEIGHT, bg);
-			String label = font.plainSubstrByWidth(option.label().getString(), dropdown.w - 8);
-			g.drawString(font, label, dropdown.x + 4, y + 4, 0xFFFFFF);
-		}
-		g.disableScissor();
-		if (dropdown.filtered.size() > visible) {
-			int listH = visible * DROPDOWN_ROW_HEIGHT;
-			int barH = Math.max(8, listH * visible / dropdown.filtered.size());
-			int maxScroll = dropdown.maxScroll();
-			int barY = dropdown.y + searchH + (maxScroll == 0 ? 0 : (listH - barH) * dropdown.scroll / maxScroll);
-			g.fill(dropdown.x + dropdown.w - 3, barY, dropdown.x + dropdown.w - 1, barY + barH, 0xFFAAAAAA);
+		g.pose().pushPose();
+		g.pose().translate(0, 0, 300);
+		try {
+			g.fill(dropdown.x - 2, dropdown.y - 2, dropdown.x + dropdown.w + 2, dropdown.y + h + 2, 0xFF000000);
+			g.fill(dropdown.x - 1, dropdown.y - 1, dropdown.x + dropdown.w + 1, dropdown.y + h + 1, 0xFF101010);
+			g.fill(dropdown.x, dropdown.y, dropdown.x + dropdown.w, dropdown.y + searchH, 0xFF181828);
+			g.fill(dropdown.x + 2, dropdown.y + 2, dropdown.x + dropdown.w - 2, dropdown.y + searchH - 2, 0xFF050509);
+			renderDropdownSearch(g, dropdown.x + 5, dropdown.y + 4, dropdown.w - 10);
+			g.enableScissor(dropdown.x, dropdown.y + searchH, dropdown.x + dropdown.w, dropdown.y + h);
+			for (int row = 0; row < visible; row++) {
+				int idx = dropdown.scroll + row;
+				int y = dropdown.y + searchH + row * DROPDOWN_ROW_HEIGHT;
+				boolean hover = mx >= dropdown.x && mx <= dropdown.x + dropdown.w &&
+						my >= y && my <= y + DROPDOWN_ROW_HEIGHT;
+				DropdownOption option = dropdown.filtered.get(idx);
+				int bg = option.matches(dropdown.selectedTag) ? 0xFF3F7F3F : (hover ? 0xFF505050 : 0xFF202020);
+				g.fill(dropdown.x, y, dropdown.x + dropdown.w, y + DROPDOWN_ROW_HEIGHT, bg);
+				String label = font.plainSubstrByWidth(option.label().getString(), dropdown.w - 8);
+				g.drawString(font, label, dropdown.x + 4, y + 4, 0xFFFFFF);
+			}
+			g.disableScissor();
+			if (dropdown.filtered.size() > visible) {
+				int listH = visible * DROPDOWN_ROW_HEIGHT;
+				int barH = Math.max(8, listH * visible / dropdown.filtered.size());
+				int maxScroll = dropdown.maxScroll();
+				int barY = dropdown.y + searchH + (maxScroll == 0 ? 0 : (listH - barH) * dropdown.scroll / maxScroll);
+				g.fill(dropdown.x + dropdown.w - 3, barY, dropdown.x + dropdown.w - 1, barY + barH, 0xFFAAAAAA);
+			}
+		} finally {
+			g.pose().popPose();
 		}
 	}
 

@@ -42,6 +42,9 @@ public class SpellPreviewScreen extends Screen {
 	private static final int TOP_BAR_HEIGHT = 20;
 	private static final int BUTTON_HEIGHT = 16;
 	private static final int BUTTON_SPACING = 2;
+	private static final int TOP_BAR_MARGIN = 4;
+	private static final int TOP_BAR_GROUP_GAP = 10;
+	private static final int TOP_BAR_NAME_MIN_WIDTH = 48;
 
 	// Controllers (extracted logic)
 	private final SpellEditorController spellController;
@@ -66,6 +69,8 @@ public class SpellPreviewScreen extends Screen {
 	private ActionEditorPanel actionEditorPanel;
 	private boolean editorVisible = true;
 	private ActionListPanel.AddTarget pendingAddTarget;
+	private int topBarLeftEnd = TOP_BAR_MARGIN;
+	private int topBarMarketX = Integer.MAX_VALUE;
 
 	/** Persists across editor open/close within the same game session. */
 	private static boolean autoReplay = true;
@@ -110,17 +115,27 @@ public class SpellPreviewScreen extends Screen {
 	protected void init() {
 		super.init();
 		boolean fullEdit = !isDraftMode();
-		int bx = 4;
+		int bx = TOP_BAR_MARGIN;
 		int by = 2;
+		String marketLabel = SpellMarketLocalization.toMarket().getString();
+		int marketWidth = Math.min(topBarButtonWidth(marketLabel, 50),
+				Math.max(24, width - TOP_BAR_MARGIN * 2));
+		topBarMarketX = Math.max(TOP_BAR_MARGIN, width - TOP_BAR_MARGIN - marketWidth);
+		addTopBarButtonAt(topBarMarketX, by, marketLabel, marketWidth, btn -> {
+			if (minecraft != null) {
+				minecraft.setScreen(new SpellMarketScreen(this, definition));
+			}
+		}, true);
+		int rightLimit = Math.max(TOP_BAR_MARGIN, topBarMarketX - TOP_BAR_GROUP_GAP);
 		for (ViewAngle angle : ViewAngle.values()) {
-			bx = addTopBarButton(bx, by, SpellEditorLocalization.t(angle.getLabel()), 50, btn -> {
+			bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(angle.getLabel()), 50, btn -> {
 				viewport.setPerspectiveMode(false);
 				viewport.setViewAngle(angle);
-			}, fullEdit);
+			}, fullEdit, rightLimit);
 		}
 		// Perspective / Orthographic toggle
 		String perspLabel = SpellEditorLocalization.t(viewport.isPerspectiveMode() ? "Ortho" : "Persp");
-		bx = addTopBarButton(bx, by, perspLabel, 40, btn -> {
+		bx = addTopBarButtonIfFits(bx, by, perspLabel, 40, btn -> {
 			boolean newPersp = !viewport.isPerspectiveMode();
 			viewport.setPerspectiveMode(newPersp);
 			if (newPersp) {
@@ -128,69 +143,62 @@ public class SpellPreviewScreen extends Screen {
 				viewport.setCameraToTarget(scene.getTargetPos());
 			}
 			rebuildScreen();
-		}, fullEdit);
+		}, fullEdit, rightLimit);
 		// Bind target toggle (only in perspective mode)
 		if (viewport.isPerspectiveMode()) {
 			String bindLabel = SpellEditorLocalization.t(viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt");
-			bx = addTopBarButton(bx, by, bindLabel, 48, btn -> {
+			bx = addTopBarButtonIfFits(bx, by, bindLabel, 48, btn -> {
 				viewport.setTargetBoundToCamera(!viewport.isTargetBoundToCamera());
 				rebuildScreen();
-			}, fullEdit);
+			}, fullEdit, rightLimit);
 		}
 		// Toggle editor button
-		bx += 10;
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.t(editorVisible ? "Editor <<" : "Editor >>"), 60, btn -> {
+		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(editorVisible ? "Editor <<" : "Editor >>"), 60, btn -> {
 			editorVisible = !editorVisible;
 			rebuildScreen();
-		}, fullEdit);
+		}, fullEdit, rightLimit);
 		// Apply button: re-apply edited spell to all entities using it
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit, rightLimit);
 		// Export button: save spell definition as JSON datapack file
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("Export"), 46, btn -> exportToDatapack(), fullEdit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 46, btn -> exportToDatapack(), fullEdit, rightLimit);
 		// Reset button: restore to original (built-in) or open-snapshot (custom)
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit, rightLimit);
 		// Auto Replay toggle
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF"), 52, btn -> {
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF"), 52, btn -> {
 			autoReplay = !autoReplay;
 			rebuildScreen();
-		}, fullEdit);
+		}, fullEdit, rightLimit);
 		// Help button — toggles HelpDockPanel as a docked tab
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("Help"), 32, btn -> {
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Help"), 32, btn -> {
 			toggleHelpPanel();
-		}, fullEdit);
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.modeButtonLabel(), 34, btn -> {
+		}, fullEdit, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.modeButtonLabel(), 34, btn -> {
 			SpellEditorLocalization.toggle();
 			rebuildScreen();
-		}, fullEdit);
+		}, fullEdit, rightLimit);
 		// Collapse All / Expand All
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("\u25B6All"), 34, btn -> {
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("\u25B6All"), 34, btn -> {
 			if (actionListPanel != null) actionListPanel.collapseAll();
-		}, fullEdit);
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("\u25BCAll"), 34, btn -> {
+		}, fullEdit, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("\u25BCAll"), 34, btn -> {
 			if (actionListPanel != null) actionListPanel.expandAll();
-		}, fullEdit);
+		}, fullEdit, rightLimit);
 		// Toggle show all add-buttons
-		if (actionListPanel != null) {
-			String addLabel = SpellEditorLocalization.t(actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel");
-			bx = addTopBarButton(bx, by, addLabel, 42, btn -> {
+		String addLabel = SpellEditorLocalization.t(
+				actionListPanel != null && actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel");
+		bx = addTopBarButtonIfFits(bx, by, addLabel, 42, btn -> {
+			if (actionListPanel != null) {
 				actionListPanel.toggleShowAllAddButtons();
 				rebuildScreen();
-			}, fullEdit);
-		}
+			}
+		}, fullEdit, rightLimit);
 		// Reset Layout button
-		bx = addTopBarButton(bx, by, SpellEditorLocalization.t("RstLayout"), 56, btn -> {
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("RstLayout"), 56, btn -> {
 			DockSerializer.deleteLayout();
 			rebuildScreen(false);
-		}, fullEdit);
-
-		// Market button - opens spell card market, passing current spell for upload
-		// Always active (even in draft mode) so users can browse/upload from any state
-		bx += 10;
-		addTopBarButton(bx, by, SpellMarketLocalization.toMarket().getString(), 50, btn -> {
-			if (minecraft != null) {
-				minecraft.setScreen(new SpellMarketScreen(this, definition));
-			}
-		}, true);
+		}, fullEdit, rightLimit);
+		topBarLeftEnd = Math.max(TOP_BAR_MARGIN, bx - BUTTON_SPACING);
 
 		// --- Create editor panels ---
 		actionListPanel = new ActionListPanel(
@@ -309,12 +317,38 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private int addTopBarButton(int bx, int by, String label, int minWidth, Button.OnPress onPress, boolean active) {
-		int bw = Math.max(minWidth, font.width(label) + 12);
+		int bw = topBarButtonWidth(label, minWidth);
 		Button button = Button.builder(Component.literal(label), onPress)
 				.bounds(bx, by, bw, BUTTON_HEIGHT).build();
 		button.active = active;
 		addRenderableWidget(button);
 		return bx + bw + BUTTON_SPACING;
+	}
+
+	private int addTopBarButtonIfFits(int bx, int by, String label, int minWidth,
+									  Button.OnPress onPress, boolean active, int rightLimit) {
+		int bw = topBarButtonWidth(label, minWidth);
+		if (bx + bw > rightLimit) {
+			return bx;
+		}
+		return addTopBarButtonAt(bx, by, label, bw, onPress, active) + BUTTON_SPACING;
+	}
+
+	private int addTopBarButtonAt(int bx, int by, String label, int width,
+								  Button.OnPress onPress, boolean active) {
+		Button button = Button.builder(Component.literal(label), onPress)
+				.bounds(bx, by, width, BUTTON_HEIGHT).build();
+		button.active = active;
+		addRenderableWidget(button);
+		return bx + width;
+	}
+
+	private int addTopBarGapIfFits(int bx, int gap, int rightLimit) {
+		return bx + gap <= rightLimit ? bx + gap : bx;
+	}
+
+	private int topBarButtonWidth(String label, int minWidth) {
+		return Math.max(minWidth, font.width(label) + 12);
 	}
 
 	/**
@@ -1010,16 +1044,39 @@ public class SpellPreviewScreen extends Screen {
 		// Screen widgets (top bar buttons, control panel buttons)
 		super.render(guiGraphics, mouseX, mouseY, partialTick);
 
+		renderTopBarSpellName(guiGraphics);
+
 		// Dropdown/completion overlay on top of everything
 		if (dockLayout != null) {
 			dockLayout.renderOverlay(guiGraphics, mouseX, mouseY);
 		}
 
-		// Spell name on top bar
-		String spellName = isDraftMode() ? SpellEditorLocalization.t("New Spell") : definition.id.toString();
-		int nameX = width - font.width(spellName) - 4;
-		guiGraphics.drawString(font, spellName, nameX, 5, 0xFFAAAAAA, false);
+	}
 
+	private void renderTopBarSpellName(GuiGraphics guiGraphics) {
+		int textLeft = topBarLeftEnd + TOP_BAR_GROUP_GAP;
+		int textRight = topBarMarketX - TOP_BAR_GROUP_GAP;
+		if (textRight - textLeft < TOP_BAR_NAME_MIN_WIDTH) {
+			return;
+		}
+		String spellName = isDraftMode() ? SpellEditorLocalization.t("New Spell") : definition.id.toString();
+		String display = fitTopBarText(spellName, textRight - textLeft);
+		if (display.isEmpty()) {
+			return;
+		}
+		int nameX = Math.max(textLeft, textRight - font.width(display));
+		guiGraphics.drawString(font, display, nameX, 5, 0xFFAAAAAA, false);
+	}
+
+	private String fitTopBarText(String text, int maxWidth) {
+		if (font.width(text) <= maxWidth) {
+			return text;
+		}
+		int suffixWidth = font.width("...");
+		if (maxWidth <= suffixWidth) {
+			return font.plainSubstrByWidth(text, maxWidth);
+		}
+		return font.plainSubstrByWidth(text, maxWidth - suffixWidth) + "...";
 	}
 
 

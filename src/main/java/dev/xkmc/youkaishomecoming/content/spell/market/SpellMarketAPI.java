@@ -20,6 +20,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -153,7 +154,7 @@ public class SpellMarketAPI {
 					.getOrThrow(false, err -> LOGGER.error("Encode error: {}", err));
 			String jsonString = GSON.toJson(json);
 
-			String boundary = "----SpellMarketBoundary" + System.currentTimeMillis();
+			String boundary = "----SpellMarketBoundary" + UUID.randomUUID();
 			StringBuilder body = new StringBuilder();
 
 			body.append("--").append(boundary).append("\r\n");
@@ -370,7 +371,11 @@ public class SpellMarketAPI {
 	private void addFormField(StringBuilder body, String boundary, String name, String value) {
 		body.append("--").append(boundary).append("\r\n");
 		body.append("Content-Disposition: form-data; name=\"").append(name).append("\"\r\n\r\n");
-		body.append(value).append("\r\n");
+		body.append(safeFormValue(value)).append("\r\n");
+	}
+
+	private static String safeFormValue(String value) {
+		return value == null ? "" : value.replace('\r', ' ').replace('\n', ' ');
 	}
 
 }

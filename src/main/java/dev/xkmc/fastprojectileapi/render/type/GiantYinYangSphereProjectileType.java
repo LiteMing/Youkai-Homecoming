@@ -129,14 +129,14 @@ public record GiantYinYangSphereProjectileType(ResourceLocation overlay, Display
 			float rim = Mth.clamp((float) Math.sqrt(x * x + y * y), 0, 1);
 			light *= 1 - rim * 0.10f;
 			if (black) {
-				int r = Math.round((FastColor.ARGB32.red(color) * 0.055f + 18) * light);
-				int g = Math.round((FastColor.ARGB32.green(color) * 0.055f + 18) * light);
-				int b = Math.round((FastColor.ARGB32.blue(color) * 0.055f + 22) * light);
+				int r = Math.round((FastColor.ARGB32.red(color) * 0.72f + 14) * light);
+				int g = Math.round((FastColor.ARGB32.green(color) * 0.72f + 14) * light);
+				int b = Math.round((FastColor.ARGB32.blue(color) * 0.72f + 18) * light);
 				return alpha << 24 | clamp(r) << 16 | clamp(g) << 8 | clamp(b);
 			}
-			int r = Math.round((FastColor.ARGB32.red(color) * 0.88f + 26) * light);
-			int g = Math.round((FastColor.ARGB32.green(color) * 0.88f + 26) * light);
-			int b = Math.round((FastColor.ARGB32.blue(color) * 0.84f + 34) * light);
+			int r = Math.round(250 * light);
+			int g = Math.round(250 * light);
+			int b = Math.round(252 * light);
 			return alpha << 24 | clamp(r) << 16 | clamp(g) << 8 | clamp(b);
 		}
 

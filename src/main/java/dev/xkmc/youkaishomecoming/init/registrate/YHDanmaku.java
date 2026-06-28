@@ -42,14 +42,17 @@ public class YHDanmaku {
 		BUTTERFLY(1, 4, DisplayType.TRANSPARENT),
 		SPARK(1, 4, DisplayType.SOLID),
 		STAR(2, 6, DisplayType.TRANSPARENT),
-		YINYANG_2D("yinyang-2d", 2, 6, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.TINTED,
-				"white", "giant_yinyang"),
+		YINYANG_2D("yinyang-2d", 2, 6, DisplayType.TRANSPARENT, BulletCategory.NORMAL,
+				BulletColorMode.TINTED_WITH_WHITE, "tint", "giant_yinyang"),
 		ROSE(1, 4, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.FIXED, "rose"),
-		TALISMAN(1.5f, 5, DisplayType.TRANSPARENT),
-		KUNAI(1, 4, DisplayType.SOLID),
+		TALISMAN(1.5f, 5, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.TINTED_WITH_WHITE,
+				"tint"),
+		KUNAI(1, 4, DisplayType.SOLID, BulletCategory.NORMAL, BulletColorMode.TINTED_WITH_WHITE,
+				"tint"),
 		SCALE(1, 4, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.TINTED, "white"),
-		KNIFE(1.5f, 5, DisplayType.SOLID),
-		MOON(8, 16, DisplayType.ADDITIVE, BulletCategory.GIANT, BulletColorMode.FIXED, "moon"),
+		KNIFE(1.5f, 5, DisplayType.SOLID, BulletCategory.NORMAL, BulletColorMode.TINTED_WITH_WHITE,
+				"tint"),
+		MOON(8, 16, DisplayType.ADDITIVE, BulletCategory.GIANT, BulletColorMode.TINTED, "moon"),
 		GIANT_YINYANG(8, 14, DisplayType.TRANSPARENT, BulletCategory.GIANT, BulletColorMode.TINTED, "white"),
 		;
 
@@ -117,7 +120,11 @@ public class YHDanmaku {
 		}
 
 		public boolean usesTint() {
-			return colorMode == BulletColorMode.TINTED;
+			return colorMode == BulletColorMode.TINTED || colorMode == BulletColorMode.TINTED_WITH_WHITE;
+		}
+
+		public boolean usesWhiteOverlayTint() {
+			return colorMode == BulletColorMode.TINTED_WITH_WHITE;
 		}
 
 		public String textureName(DyeColor color) {
@@ -130,6 +137,10 @@ public class YHDanmaku {
 
 		public String texturePath(DyeColor color) {
 			return textureFolder() + "/" + textureName(color);
+		}
+
+		public String whiteOverlayTexturePath() {
+			return textureFolder() + "/white_overlay";
 		}
 
 		public static Bullet byName(String id) {
@@ -151,7 +162,7 @@ public class YHDanmaku {
 	}
 
 	public enum BulletColorMode {
-		DYE_TEXTURES, TINTED, FIXED
+		DYE_TEXTURES, TINTED, TINTED_WITH_WHITE, FIXED
 	}
 
 	public enum Laser implements IDanmakuType {
@@ -338,8 +349,16 @@ public class YHDanmaku {
 						.item(t.name + "_danmaku",
 								p -> new DanmakuItem(p.rarity(t.category == BulletCategory.GIANT ? Rarity.EPIC : Rarity.RARE),
 										t, DyeColor.WHITE, t.size))
-						.model((ctx, pvd) -> pvd.generated(ctx,
-								pvd.modLoc("item/bullet/" + t.texturePath(DyeColor.WHITE))))
+						.model((ctx, pvd) -> {
+							if (t.usesWhiteOverlayTint()) {
+								pvd.generated(ctx,
+										pvd.modLoc("item/bullet/" + t.texturePath(DyeColor.WHITE)),
+										pvd.modLoc("item/bullet/" + t.whiteOverlayTexturePath()));
+							} else {
+								pvd.generated(ctx,
+										pvd.modLoc("item/bullet/" + t.texturePath(DyeColor.WHITE)));
+							}
+						})
 						.tag(t.tag)
 						.lang(RegistrateLangProvider.toEnglishName(t.name) + " Danmaku");
 				if (t.usesTint()) {

@@ -6,6 +6,9 @@ import dev.xkmc.fastprojectileapi.render.type.ButterflyProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.CrossProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.GiantSphereProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.GiantYinYangSphereProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.LayeredCrossProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.LayeredRotatingProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.LayeredSwingingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RenderableProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
@@ -160,19 +163,29 @@ public class DanmakuItem extends Item {
 		if (render == null) {
 			var loc = YoukaisHomecoming
 					.loc("textures/entities/bullet/" + type.texturePath(color) + ".png");
+			var white = YoukaisHomecoming
+					.loc("textures/entities/bullet/" + type.whiteOverlayTexturePath() + ".png");
 			RenderableProjectileType<?, ?> r = switch (type) {
 				case BUTTERFLY -> new ButterflyProjectileType(loc, type.display(), 20);
 				case SPARK -> new RotatingProjectileType(loc, type.display(), 20);
 				case STAR -> new RotatingProjectileType(loc, type.display(), 40);
-				case YINYANG_2D -> new RotatingProjectileType(loc, type.display(), 80);
+				case YINYANG_2D -> type.usesWhiteOverlayTint() ?
+						new LayeredRotatingProjectileType(loc, white, type.display(), 80) :
+						new RotatingProjectileType(loc, type.display(), 80);
 				// Animated sequence frame bullets (16 frames for gradient effect)
-				case ROSE -> new AnimatedProjectileType(loc, type.display(), 16, 2);
+				case ROSE -> new AnimatedProjectileType(loc, type.display(), 32, 2);
 				// Swinging 3D bullets (rotations per block, tilt angle in degrees, size in blocks)
-				case TALISMAN -> new SwingingProjectileType(loc, type.display(), 0.05f, 0f, 0.7f);
+				case TALISMAN -> type.usesWhiteOverlayTint() ?
+						new LayeredSwingingProjectileType(loc, white, type.display(), 0.05f, 0f, 0.7f) :
+						new SwingingProjectileType(loc, type.display(), 0.05f, 0f, 0.7f);
 				case SCALE -> new SwingingProjectileType(loc, type.display(), 0.02f, 30f, 0.5f);
 				// Cross-shaped bullets (like Minecraft saplings)
-				case KUNAI -> new CrossProjectileType(loc, type.display());
-				case KNIFE -> new CrossProjectileType(loc, type.display());
+				case KUNAI -> type.usesWhiteOverlayTint() ?
+						new LayeredCrossProjectileType(loc, white, type.display()) :
+						new CrossProjectileType(loc, type.display());
+				case KNIFE -> type.usesWhiteOverlayTint() ?
+						new LayeredCrossProjectileType(loc, white, type.display()) :
+						new CrossProjectileType(loc, type.display());
 				// Moon uses the textured sphere; giant yinyang uses a no-UV 3D material split.
 				case MOON -> new GiantSphereProjectileType(loc, type.display(), 32, 16, 120);
 				case GIANT_YINYANG -> new GiantYinYangSphereProjectileType(

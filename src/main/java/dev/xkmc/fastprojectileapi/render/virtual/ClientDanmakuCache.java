@@ -10,6 +10,7 @@ import dev.xkmc.fastprojectileapi.render.core.GiantDanmakuScreenOverlay;
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
+import dev.xkmc.fastprojectileapi.render.type.LayeredRotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
 import dev.xkmc.l2serial.util.Wrappers;
@@ -216,14 +217,26 @@ public class ClientDanmakuCache {
 					float wx = (float) (Mth.lerp(pTick, danmaku.xOld, danmaku.getX()) - camx);
 					float wy = (float) (Mth.lerp(pTick, danmaku.yOld, danmaku.getY()) - camy + danmaku.getBbHeight() / 2.0);
 					float wz = (float) (Mth.lerp(pTick, danmaku.zOld, danmaku.getZ()) - camz);
+					int renderColor = cachedRenderer.color(danmaku, pTick);
 
 					if (type instanceof SimpleProjectileType st) {
 						float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
 						float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
 						float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
 						float scale = viewScale * danmaku.scale();
-						int col = DanmakuRenderStates.fading(st.display(), -1, cachedRenderer, danmaku);
+						int col = DanmakuRenderStates.fading(st.display(), renderColor, cachedRenderer, danmaku);
 						((ProjTypeHolder) typeHolder).accept(new SimpleProjectileType.Ins(vx, vy, vz, scale, col));
+						continue;
+					} else if (type instanceof LayeredRotatingProjectileType lt) {
+						float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
+						float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
+						float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
+						float scale = viewScale * danmaku.scale();
+						float zAngle = (float) Math.toRadians((danmaku.tickCount + pTick) * 360f / (float) lt.rot());
+						int tint = DanmakuRenderStates.fading(lt.display(), renderColor, cachedRenderer, danmaku);
+						int white = (tint & 0xff000000) | 0xffffff;
+						((ProjTypeHolder) typeHolder).accept(new LayeredRotatingProjectileType.Ins(
+								vx, vy, vz, scale, zAngle, tint, white));
 						continue;
 					} else if (type instanceof RotatingProjectileType rt) {
 						float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
@@ -231,7 +244,7 @@ public class ClientDanmakuCache {
 						float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
 						float scale = viewScale * danmaku.scale();
 						float zAngle = (float) Math.toRadians((danmaku.tickCount + pTick) * 360f / (float) rt.rot());
-						int col = DanmakuRenderStates.fading(rt.display(), -1, cachedRenderer, danmaku);
+						int col = DanmakuRenderStates.fading(rt.display(), renderColor, cachedRenderer, danmaku);
 						((ProjTypeHolder) typeHolder).accept(new RotatingProjectileType.Ins(vx, vy, vz, scale, zAngle, col));
 						continue;
 					} else if (type instanceof AnimatedProjectileType at) {
@@ -240,7 +253,7 @@ public class ClientDanmakuCache {
 						float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
 						float scale = viewScale * danmaku.scale();
 						int frame = (danmaku.tickCount / at.ticksPerFrame()) % at.frameCount();
-						int col = DanmakuRenderStates.fading(at.display(), -1, cachedRenderer, danmaku);
+						int col = DanmakuRenderStates.fading(at.display(), renderColor, cachedRenderer, danmaku);
 						((ProjTypeHolder) typeHolder).accept(new AnimatedProjectileType.Ins(vx, vy, vz, scale, col, frame));
 						continue;
 					}

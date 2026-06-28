@@ -1527,34 +1527,50 @@ public class MigratedSpellCards {
 		var sweepAngle = new NumberProviders.Add(
 				new NumberProviders.Variable("sweep_base"),
 				new NumberProviders.Mul(new NumberProviders.Variable("swt"), NumberProvider.constant(18)));
-		var sweep = new BurstAction(20, 1, "swt", List.of(
-				// BUBBLE: 快层 speed * [0.8, 1.2] (legacy: lowSpeed ~ highSpeed)
+		var sweepCount = new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(15));
+		var sweepSingle = new SpellActions.RepeatAction(sweepCount, "swi", List.of(
+				new SpellActions.SetVariable("sweep_a",
+						new NumberProviders.Add(sweepAngle, new NumberProviders.RandomRange(-15, 15))),
+				new SpellActions.SetVariable("sweep_e", new NumberProviders.GaussianRandom(0, 8)),
+				new SpellActions.SetVariable("sweep_v0",
+						new NumberProviders.Mul(sweepSpeed, new NumberProviders.RandomRange(0.8, 1.2))),
+				new SpellActions.SetVariable("sweep_mid", new NumberProviders.RandomRange(0.6, 0.9)),
+				new SpellActions.SetVariable("sweep_low", new NumberProviders.RandomRange(0.3, 0.6)),
+				new SpellActions.SetVariable("sweep_t", new NumberProviders.Ceil(
+						new NumberProviders.Mul(
+								new NumberProviders.Div(sweepLife, new NumberProviders.Variable("sweep_v0")),
+								new NumberProviders.RandomRange(1.0, 1.1)))),
 				new FireDanmakuAction(YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.RED),
-						NumberProvider.constant(12),
-						new NumberProviders.Mul(sweepSpeed, new NumberProviders.RandomRange(0.8, 1.2)),
-						sweepLife,
-						sweepAngle, NumberProvider.constant(15),
-						new NumberProviders.GaussianRandom(0, 20),
-						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						NumberProvider.constant(1),
+						new NumberProviders.Variable("sweep_v0"),
+						new NumberProviders.Variable("sweep_t"),
+						new NumberProviders.Variable("sweep_a"), NumberProvider.constant(0),
+						new NumberProviders.Variable("sweep_e"),
+						PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
-				// MENTOS: 中层 speed * [0.4, 0.7] (legacy: mid=0.6+0.3*rand of v0)
 				new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
-						NumberProvider.constant(12),
-						new NumberProviders.Mul(sweepSpeed, new NumberProviders.RandomRange(0.4, 0.7)),
-						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.2)),
-						sweepAngle, NumberProvider.constant(15),
-						new NumberProviders.GaussianRandom(0, 20),
-						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						NumberProvider.constant(1),
+						new NumberProviders.Mul(new NumberProviders.Variable("sweep_v0"), new NumberProviders.Variable("sweep_mid")),
+						new NumberProviders.Mul(
+								new NumberProviders.Div(new NumberProviders.Variable("sweep_t"), new NumberProviders.Variable("sweep_mid")),
+								NumberProvider.constant(0.8)),
+						new NumberProviders.Variable("sweep_a"), NumberProvider.constant(0),
+						new NumberProviders.Variable("sweep_e"),
+						PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
-				// BALL: 慢层 speed * [0.15, 0.45] (legacy: low=0.3+0.3*rand of v0)
 				new FireDanmakuAction(YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.RED),
-						NumberProvider.constant(12),
-						new NumberProviders.Mul(sweepSpeed, new NumberProviders.RandomRange(0.15, 0.45)),
-						new NumberProviders.Mul(sweepLife, NumberProvider.constant(1.5)),
-						sweepAngle, NumberProvider.constant(15),
-						new NumberProviders.GaussianRandom(0, 20),
-						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+						NumberProvider.constant(1),
+						new NumberProviders.Mul(new NumberProviders.Variable("sweep_v0"), new NumberProviders.Variable("sweep_low")),
+						new NumberProviders.Mul(
+								new NumberProviders.Div(new NumberProviders.Variable("sweep_t"), new NumberProviders.Variable("sweep_low")),
+								NumberProvider.constant(0.6)),
+						new NumberProviders.Variable("sweep_a"), NumberProvider.constant(0),
+						new NumberProviders.Variable("sweep_e"),
+						PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+		));
+		var sweep = new BurstAction(20, 1, "swt", List.of(
+				sweepSingle
 		));
 		var sweepInit = new SpellActions.SequenceAction(List.of(
 				new SpellActions.SetVariable("sweep_base", new NumberProviders.RandomRange(0, 360)),
@@ -2330,45 +2346,43 @@ public class MigratedSpellCards {
 				hiddenLasers, hiddenBubbles, hiddenButterflies));
 
 		// === Teleport + hidden when dist > 40, every 5 ticks ===
-		var teleportFar = new TeleportAction(
+		var teleportFarAhead = new TeleportAction(
 				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
 						NumberProvider.constant(0), NumberProvider.constant(0),
-						NumberProvider.constant(32), NumberProvider.constant(0)),
+						new NumberProviders.Add(dist, NumberProvider.constant(32)), NumberProvider.constant(0)),
 				true);
+		var teleportFarBehind = new TeleportAction(
+				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
+						NumberProvider.constant(0), NumberProvider.constant(0),
+						new NumberProviders.Add(dist, NumberProvider.constant(-16)), NumberProvider.constant(0)),
+				true);
+		var farAheadSpeed = new SpellConditions.OrCondition(List.of(
+				new SpellConditions.CompareNumbers(new NumberProviders.TargetSpeed(), "<", NumberProvider.constant(0.5)),
+				new SpellConditions.CompareNumbers(new NumberProviders.TargetSpeed(), ">", NumberProvider.constant(1))));
 		var teleportHiddenAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.DistanceAbove(40),
 						new SpellConditions.TickInterval(5, 0))),
-				List.of(teleportFar, hiddenFull), List.of());
+				List.of(new SpellActions.ConditionalAction(
+						farAheadSpeed,
+						List.of(teleportFarAhead, hiddenFull),
+						List.of(teleportFarBehind, hiddenFull))),
+				List.of());
 
-		// === Butterfly: 100 per color, CompositeMover 5-phase, when dist < 20 ===
-		// Legacy: expand(40t,decel) → reorient(10t) → polar accel(10t) → polar orbit(30t,~114°) → fly off(40t)
-		// Key params: range=12, wvr=0.0667 rad/tick≈3.82°/tick, total=130+rand(40) ticks
-		// Phase 1: constant deceleration (RectMover), speed=0.6, decelerate to 0 over 40t
-		// Phase 2: ZeroMover (reorient to tangent) — approximate with zero mover
-		// Phase 3: PolarMover with angular acceleration (0 → 3.82°/tick over 10t) → angularAccel=0.382
-		// Phase 4: PolarMover with constant angular speed 3.82°/tick for 30t (orbits ~114°)
-		// Phase 5: Convert to linear fly-off (acceleration mover with zero accel = keep velocity)
-		// DecelerationConfig(factor): acc = velocity * (-factor).
-		// To reach v=0 at exactly t0=40: factor = 1/t0 = 0.025
-		// Legacy: va = range*2/t0^2 = 24/1600 = 0.015, vr = va*t0 = 0.6
-		// factor = va/vr = 0.015/0.6 = 0.025
-		var butterflyMover = new MoverConfigs.CompositeMoverConfig(List.of(
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.025)),
-				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
-				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 0, 0.382)),
-				new MoverConfigs.CompositeMoverConfig.Segment(30, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 3.82, 0)),
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
-		var butterflyMoverRev = new MoverConfigs.CompositeMoverConfig(List.of(
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.025)),
-				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
-				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 0, -0.382)),
-				new MoverConfigs.CompositeMoverConfig.Segment(30, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, -3.82, 0)),
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
-		// Speed: legacy va*t0 = (12*2/40^2)*40 = 0.6 blocks/tick
-		// Pattern: RANDOM to give each butterfly independent vertical angle (±45°).
-		// RING only evaluates elevation once for all bullets → thin ring.
-		// Legacy: each butterfly has unique ver=(rand*2-1)*PI/4 → use RANDOM spread=360 elevation=90
+		// === Butterfly: 100 per color, local 3D swirl when dist < 20 ===
+		// Keep this in data composition: formula mover uses each butterfly's own velocity frame,
+		// avoiding the old migrated shared-plane polar config that collapsed into a flat 2D ring.
+		var butterflyMover = new MoverConfigs.FormulaMoverConfig(
+				"12 * (1 - exp(-tick / 16)) + max(0, tick - 90) * 0.45",
+				"min(4, tick * 0.12) * sin_rad(tick * 0.18)",
+				"min(4, tick * 0.12) * cos_rad(tick * 0.18)",
+				0);
+		var butterflyMoverRev = new MoverConfigs.FormulaMoverConfig(
+				"12 * (1 - exp(-tick / 16)) + max(0, tick - 90) * 0.45",
+				"min(4, tick * 0.12) * sin_rad(-tick * 0.18)",
+				"min(4, tick * 0.12) * cos_rad(-tick * 0.18)",
+				0);
+		// Speed is only used to establish each butterfly's local 3D frame; formula mover controls travel.
 		var butterflyCyan = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
 				NumberProvider.constant(100), NumberProvider.constant(0.6),
@@ -2398,7 +2412,7 @@ public class MigratedSpellCards {
 		// Data-driven: fixed ±45° base angle, elevation random for perpendicular spread
 		// At lt==20: shootGroup RED (5 BUBBLE + 50 MENTOS), at lt==40: shootGroup BLUE
 		var shootGroupRed = new SpellActions.ConditionalAction(
-				new SpellConditions.CompareNumbers(new NumberProviders.Variable("lt"), "==", NumberProvider.constant(20)),
+				new SpellConditions.CompareNumbers(new NumberProviders.PhaseTick(), "==", NumberProvider.constant(20)),
 				List.of(new FireDanmakuAction(
 						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(5), NumberProvider.constant(0.8), NumberProvider.constant(70),
@@ -2407,7 +2421,7 @@ public class MigratedSpellCards {
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
 				List.of());
 		var shootGroupBlue = new SpellActions.ConditionalAction(
-				new SpellConditions.CompareNumbers(new NumberProviders.Variable("lt"), "==", NumberProvider.constant(40)),
+				new SpellConditions.CompareNumbers(new NumberProviders.PhaseTick(), "==", NumberProvider.constant(40)),
 				List.of(new FireDanmakuAction(
 						YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.BLUE),
 						NumberProvider.constant(50), NumberProvider.constant(0.7), NumberProvider.constant(70),
@@ -2427,7 +2441,7 @@ public class MigratedSpellCards {
 				OriginConfig.caster(),
 				NumberProvider.constant(1), NumberProvider.constant(0.5),
 				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
-				PatternType.AIMED, new AimMode.AimModes.FixedDirection(new Vec3(-1, 0, 1)),
+				PatternType.AIMED, new AimMode.AimModes.AngleOffset(NumberProvider.constant(-45)),
 				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
 				List.of((SpellAction) new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.RED,
 						NumberProvider.constant(100), NumberProvider.constant(80),
@@ -2441,7 +2455,7 @@ public class MigratedSpellCards {
 				OriginConfig.caster(),
 				NumberProvider.constant(1), NumberProvider.constant(0.5),
 				NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
-				PatternType.AIMED, new AimMode.AimModes.FixedDirection(new Vec3(1, 0, 1)),
+				PatternType.AIMED, new AimMode.AimModes.AngleOffset(NumberProvider.constant(45)),
 				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
 				List.of((SpellAction) new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
 						NumberProvider.constant(100), NumberProvider.constant(80),
@@ -2464,9 +2478,15 @@ public class MigratedSpellCards {
 				new SpellConditions.CompareNumbers(new NumberProviders.Variable("cd"), ">", NumberProvider.constant(0)),
 				List.of(new SpellActions.AddVariable("cd", -1)), List.of());
 
-		// === on_hurt: teleport random + hidden ===
+		// === on_hurt: teleport random + hidden, repeats scale up as health falls ===
+		var hurtCounter = new NumberProviders.ByHealthRatio(1, 3);
+		var hurtTeleportHidden = new SpellActions.RepeatAction(hurtCounter, "hurt_tp", List.of(
+				new DelayAction(
+						new NumberProviders.Mul(new NumberProviders.Variable("hurt_tp"), NumberProvider.constant(4)),
+						List.of(new TeleportRandomAction(32, 0.8, 0.4, 16, true, true), hiddenFull))
+		));
 		var onDamageActions = List.<SpellAction>of(
-				new TeleportRandomAction(32, 0.8, 0.4, 16, true, true), hiddenFull);
+				hurtTeleportHidden);
 
 		var phase = new PhaseDefinition(mainPhase, List.of(),
 				List.of(cdDecrement, teleportHiddenAction, butterflyAction, laserAction),

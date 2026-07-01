@@ -62,7 +62,6 @@ public class MigratedSpellCards {
 	// Legacy: 每 10 tick (且 tick/10%6 < 4 时) 发射弹幕
 	//         120 发中 i/4%2==1 的才发射 (60发)，角度 = (i+offset)*3
 	//         随机 offset，speed 0.8，BALL YELLOW，lifetime 40
-	// 简化: 用 RING 60 发，random angle offset
 	public static SpellDefinition lunaChild() {
 		var id = rl("luna_child");
 		var mainPhase = rl("luna_child/main");
@@ -73,6 +72,28 @@ public class MigratedSpellCards {
 		// Legacy pattern: tick%10==0 && (tick/10%6 < 4)
 		// Equivalent: tick_interval(10, 0) AND (tick%60 < 40), which means NOT (tick%60 in [40,50])
 		// Use: tick_interval(10,0) AND NOT tick_interval(60,40) AND NOT tick_interval(60,50)
+
+		var lunaOffset = new NumberProviders.Mul(new NumberProviders.RandomRange(0, 120), NumberProvider.constant(3));
+		var lunaAngle = new NumberProviders.Add(
+				new NumberProviders.Variable("luna_offset"),
+				new NumberProviders.Add(
+						NumberProvider.constant(12),
+						new NumberProviders.Add(
+								new NumberProviders.Mul(new NumberProviders.Variable("lg"), NumberProvider.constant(24)),
+								new NumberProviders.Mul(new NumberProviders.Variable("lj"), NumberProvider.constant(3)))));
+		var lunaCluster = new SpellActions.RepeatAction(NumberProvider.constant(15), "lg", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(4), "lj", List.of(
+						new FireDanmakuAction(
+								YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.YELLOW),
+								NumberProvider.constant(1), NumberProvider.constant(0.8),
+								NumberProvider.constant(40), lunaAngle,
+								NumberProvider.constant(0), NumberProvider.constant(0),
+								PatternType.AIMED, OriginConfig.caster(),
+								new AimMode.AimModes.Target(),
+								Optional.empty(), Optional.empty(), Optional.empty(),
+								Optional.empty(), 1)
+				))
+		));
 
 		List<SpellAction> tickActions = List.of(
 				new SpellActions.ConditionalAction(
@@ -85,7 +106,7 @@ public class MigratedSpellCards {
 										))
 								)
 						)),
-						List.of(fireDanmakuRing(YHDanmaku.Bullet.BALL, DyeColor.YELLOW, 60, 0.8, 40)),
+						List.of(new SpellActions.SetVariable("luna_offset", lunaOffset), lunaCluster),
 						List.of()
 				)
 		);
@@ -678,6 +699,8 @@ public class MigratedSpellCards {
 		// PENCIL激光, setupTime(1,10,40,1), delayedMover(v0=4.5, v1=1)
 
 		double starOffset = 8 * Math.sin(Math.toRadians(45)); // ≈5.66
+		var starHeight = new NumberProviders.Add(new NumberProviders.TargetY(),
+				new NumberProviders.Mul(new NumberProviders.CasterY(), NumberProvider.constant(-1)));
 
 		var nearLaserRight = new BurstAction(40, 1, "lt", List.of(
 				new FireLaserAction(
@@ -690,7 +713,7 @@ public class MigratedSpellCards {
 								NumberProvider.constant(180)),
 						new AimMode.AimModes.CasterFacing(), // 水平投影方向
 						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-								NumberProvider.constant(starOffset), NumberProvider.constant(0),
+								NumberProvider.constant(starOffset), starHeight,
 								NumberProvider.constant(starOffset), NumberProvider.constant(0)),
 						Optional.empty(),
 						1, 10, 1,
@@ -708,7 +731,7 @@ public class MigratedSpellCards {
 								NumberProvider.constant(0)),
 						new AimMode.AimModes.CasterFacing(),
 						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-								NumberProvider.constant(-starOffset), NumberProvider.constant(0),
+								NumberProvider.constant(-starOffset), starHeight,
 								NumberProvider.constant(starOffset), NumberProvider.constant(0)),
 						Optional.empty(),
 						1, 10, 1,
@@ -741,12 +764,10 @@ public class MigratedSpellCards {
 		//   再加上 angleOffset = $gi*18 实现per-point错开
 
 		// 速度: max(1, distance/30) + targetVelocity*1.5
-		// 近似: distance/30 (Distance NumberProvider), 下限1.0
-		// 暂用 max(1, dist/30) 近似 (无max函数, 用条件或固定值)
-		// 简化: dist/20 保证中远距离效果, 近距离稍快但可接受
 		var farSpeed = new NumberProviders.Add(
-				NumberProvider.constant(0.5),
-				new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(30)));
+				new NumberProviders.Max(NumberProvider.constant(1),
+						new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(30))),
+				new NumberProviders.Mul(new NumberProviders.TargetSpeed(), NumberProvider.constant(1.5)));
 
 		var farColors = colors(DyeColor.LIGHT_BLUE, DyeColor.CYAN, DyeColor.LIME, DyeColor.YELLOW, DyeColor.LIGHT_GRAY);
 
@@ -842,11 +863,12 @@ public class MigratedSpellCards {
 		);
 
 		// === 模式切换 ===
-		// near: 目标在地面 且 距离 < 35
+		// near: 目标离地未满40tick 且 距离 < 35
 		// far: 其他情况
 		var nearMode = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
-						new SpellConditions.TargetOnGround(),
+						new SpellConditions.CompareNumbers(
+								new NumberProviders.TargetFlyTime(), "<", NumberProvider.constant(40)),
 						new SpellConditions.DistanceBelow(35)
 				)),
 				List.of(nearBasicShot, nearLasers),
@@ -1528,10 +1550,15 @@ public class MigratedSpellCards {
 				new NumberProviders.Variable("sweep_base"),
 				new NumberProviders.Mul(new NumberProviders.Variable("swt"), NumberProvider.constant(18)));
 		var sweepCount = new NumberProviders.Mul(sweepSpeed, NumberProvider.constant(15));
+		var sweepVer = new NumberProviders.Add(NumberProvider.constant(5),
+				new NumberProviders.Min(NumberProvider.constant(10),
+						new NumberProviders.Mul(new NumberProviders.TargetSpeed(), NumberProvider.constant(5))));
+		var sweepPlane = new NumberProviders.Variable("sweep_plane");
 		var sweepSingle = new SpellActions.RepeatAction(sweepCount, "swi", List.of(
 				new SpellActions.SetVariable("sweep_a",
 						new NumberProviders.Add(sweepAngle, new NumberProviders.RandomRange(-15, 15))),
-				new SpellActions.SetVariable("sweep_e", new NumberProviders.GaussianRandom(0, 8)),
+				new SpellActions.SetVariable("sweep_e",
+						new NumberProviders.Mul(new NumberProviders.GaussianRandom(0, 1), sweepVer)),
 				new SpellActions.SetVariable("sweep_v0",
 						new NumberProviders.Mul(sweepSpeed, new NumberProviders.RandomRange(0.8, 1.2))),
 				new SpellActions.SetVariable("sweep_mid", new NumberProviders.RandomRange(0.6, 0.9)),
@@ -1547,7 +1574,8 @@ public class MigratedSpellCards {
 						new NumberProviders.Variable("sweep_a"), NumberProvider.constant(0),
 						new NumberProviders.Variable("sweep_e"),
 						PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
-						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
+						Optional.of(sweepPlane)),
 				new FireDanmakuAction(YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(1),
 						new NumberProviders.Mul(new NumberProviders.Variable("sweep_v0"), new NumberProviders.Variable("sweep_mid")),
@@ -1557,7 +1585,8 @@ public class MigratedSpellCards {
 						new NumberProviders.Variable("sweep_a"), NumberProvider.constant(0),
 						new NumberProviders.Variable("sweep_e"),
 						PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
-						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
+						Optional.of(sweepPlane)),
 				new FireDanmakuAction(YHDanmaku.Bullet.BALL, ColorProvider.constant(DyeColor.RED),
 						NumberProvider.constant(1),
 						new NumberProviders.Mul(new NumberProviders.Variable("sweep_v0"), new NumberProviders.Variable("sweep_low")),
@@ -1567,13 +1596,15 @@ public class MigratedSpellCards {
 						new NumberProviders.Variable("sweep_a"), NumberProvider.constant(0),
 						new NumberProviders.Variable("sweep_e"),
 						PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
-						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1,
+						Optional.of(sweepPlane))
 		));
 		var sweep = new BurstAction(20, 1, "swt", List.of(
 				sweepSingle
 		));
 		var sweepInit = new SpellActions.SequenceAction(List.of(
-				new SpellActions.SetVariable("sweep_base", new NumberProviders.RandomRange(0, 360)),
+				new SpellActions.SetVariable("sweep_base", NumberProvider.constant(180)),
+				new SpellActions.SetVariable("sweep_plane", new NumberProviders.RandomRange(-60, 60)),
 				sweep));
 		var sweepAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
@@ -2151,50 +2182,64 @@ public class MigratedSpellCards {
 
 		// === intercept() — steps 3-4 when dist > 40 ===
 		// Simplified: teleport toward target + burst 8×8 BUBBLE YELLOW
-		// Teleport destination: target + direction_to_caster * 24 (behind target from caster's perspective)
-		// Teleport to 24 blocks ahead of target (along caster→target direction)
+		var interceptAhead = new NumberProviders.Max(NumberProvider.constant(24),
+				new NumberProviders.Mul(new NumberProviders.TargetSpeed(), NumberProvider.constant(20)));
+		// Approximate legacy target + targetVelocity.normalize() * max(24, speed * 20).
+		// The composition layer has target speed but not velocity direction, so use caster→target.
 		var interceptTeleport = new TeleportAction(
 				new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
 						NumberProvider.constant(0), NumberProvider.constant(0),
-						new NumberProviders.Max(NumberProvider.constant(24), dist), NumberProvider.constant(0)),
+						new NumberProviders.Add(dist, interceptAhead), NumberProvider.constant(0)),
 				true);
 		// Intercept: legacy is a Ticker running 80 ticks, 8 positions × 8 spinning bullets per tick.
-		// Legacy behavior: bullets spawn at target's outer ring (dist=32 offset), not from caster.
-		// Only triggers when target speed > 0.5.
-		// Simplified: sphere of BUBBLE YELLOW centered at TARGET position for spherical coverage.
-		// Intercept: legacy fires from 8 positions 32 blocks out from target, spinning outward.
-		// Data-driven: SPHERE from target, speed outward + deceleration to form expanding hollow shell.
-		// BurstAction(8, 5) for 8 waves. DecelerationConfig(0.025) = 1/40 so v=0 at lifetime.
-		// Bullets expand outward from target and stop, forming a static shell.
-		var interceptBullets = new BurstAction(8, 5, "iw", List.of(
-				(SpellAction) new FireDanmakuAction(
-						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.YELLOW),
-						NumberProvider.constant(64), NumberProvider.constant(1.5),
-						NumberProvider.constant(40),
-						NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(180),
-						PatternType.SPHERE,
-						new OriginConfig(OriginConfig.OriginMode.TARGET,
-								NumberProvider.constant(0), NumberProvider.constant(0),
-								NumberProvider.constant(0), NumberProvider.constant(0)),
-						new AimMode.AimModes.Target(),
-						Optional.of(new MoverConfigs.DecelerationConfig(0.025)),
-						Optional.empty(), Optional.empty(), Optional.empty(), 1,
-						Optional.empty(), Optional.empty(), Optional.empty(),
-						HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL), Optional.empty())
+		// Data-driven approximation: 8 target-centered outer positions, each firing an inward spinning cone.
+		var interceptRingAngle = new NumberProviders.Mul(new NumberProviders.Variable("ii"), NumberProvider.constant(45));
+		var interceptOrigin = new OriginConfig(OriginConfig.OriginMode.TARGET,
+				new NumberProviders.Mul(new NumberProviders.SinDeg(interceptRingAngle, 1, 0), NumberProvider.constant(32)),
+				NumberProvider.constant(0),
+				new NumberProviders.Mul(new NumberProviders.CosDeg(interceptRingAngle, 1, 0), NumberProvider.constant(32)),
+				NumberProvider.constant(0));
+		var interceptLife = new NumberProviders.Add(
+				new NumberProviders.Min(
+						new NumberProviders.Add(NumberProvider.constant(80),
+								new NumberProviders.Mul(new NumberProviders.Variable("iw"), NumberProvider.constant(-1))),
+						NumberProvider.constant(40)),
+				new NumberProviders.RandomRange(0, 10));
+		var interceptSpin = new NumberProviders.Mul(new NumberProviders.Variable("iw"), NumberProvider.constant(18));
+		var interceptBullets = new BurstAction(80, 1, "iw", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(8), "ii", List.of(
+						(SpellAction) new FireDanmakuAction(
+								YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.YELLOW),
+								NumberProvider.constant(8), NumberProvider.constant(2.236),
+								interceptLife,
+								interceptSpin, NumberProvider.constant(360), NumberProvider.constant(26.565),
+								PatternType.CONE,
+								interceptOrigin,
+								new AimMode.AimModes.DirectionToTarget(),
+								Optional.empty(),
+								Optional.empty(), Optional.empty(), Optional.empty(), 1,
+								Optional.empty(), Optional.empty(), Optional.empty(),
+								HitBehavior.DISCARD, HitBehavior.DISCARD, Optional.of(DanmakuDamageType.ABYSSAL), Optional.empty())
+				))
 		));
 		// Additional condition: target must be moving fast (speed > 0.5)
 		var interceptSpeedCheck = new SpellConditions.CompareNumbers(
 				new NumberProviders.TargetSpeed(), ">", NumberProvider.constant(0.5));
-		var interceptFullCondition = new SpellConditions.AndCondition(List.of(
+		var interceptStepCondition = new SpellConditions.AndCondition(List.of(
 				new SpellConditions.TickInterval(10, 0),
 				new SpellConditions.CompareNumbers(
 						new NumberProviders.Mod(new NumberProviders.PhaseTick(), NumberProvider.constant(50)),
 						">=", NumberProvider.constant(30)),
-				new SpellConditions.DistanceAbove(40),
+				new SpellConditions.DistanceAbove(40)
+		));
+		var interceptBulletCondition = new SpellConditions.AndCondition(List.of(
+				interceptStepCondition,
 				interceptSpeedCheck
 		));
-		var interceptAction = new SpellActions.ConditionalAction(interceptFullCondition,
-				List.of(interceptTeleport, interceptBullets), List.of());
+		var interceptAction = new SpellActions.SequenceAction(List.of(
+				new SpellActions.ConditionalAction(interceptStepCondition, List.of(interceptTeleport), List.of()),
+				new SpellActions.ConditionalAction(interceptBulletCondition, List.of(interceptBullets), List.of())
+		));
 
 		// === border() — 8 BALL YELLOW every tick when border flag is set ===
 		// Legacy: ori.rotateDegrees(360/8*i - angle), fixed ring based on caster facing

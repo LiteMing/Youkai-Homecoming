@@ -2414,33 +2414,29 @@ public class MigratedSpellCards {
 						List.of(teleportFarBehind, hiddenFull))),
 				List.of());
 
-		// === Butterfly: 100 per color, local 3D swirl when dist < 20 ===
-		// Keep this in data composition: formula mover uses each butterfly's own velocity frame,
-		// avoiding the old migrated shared-plane polar config that collapsed into a flat 2D ring.
-		var butterflyMover = new MoverConfigs.FormulaMoverConfig(
+		// === Butterfly: 100 per color, XZ-plane orbital swirl when dist < 20 ===
+		// Use world-Y as the shared orbit axis so the ring rotates horizontally around Yukari.
+		var butterflyMover = new MoverConfigs.OrbitalMoverConfig(
+				NumberProvider.constant(3.8),
 				"12 * (1 - exp(-tick / 16)) + max(0, tick - 90) * 0.45",
-				"min(4, tick * 0.12) * sin_rad(tick * 0.18)",
-				"min(4, tick * 0.12) * cos_rad(tick * 0.18)",
-				0);
-		var butterflyMoverRev = new MoverConfigs.FormulaMoverConfig(
+				"0");
+		var butterflyMoverRev = new MoverConfigs.OrbitalMoverConfig(
+				NumberProvider.constant(-3.8),
 				"12 * (1 - exp(-tick / 16)) + max(0, tick - 90) * 0.45",
-				"min(4, tick * 0.12) * sin_rad(-tick * 0.18)",
-				"min(4, tick * 0.12) * cos_rad(-tick * 0.18)",
-				0);
-		// Speed is only used to establish each butterfly's local 3D frame; formula mover controls travel.
+				"0");
 		var butterflyCyan = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
 				NumberProvider.constant(100), NumberProvider.constant(0.6),
 				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
-				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(90),
-				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0)),
 				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		var butterflyMagenta = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
 				NumberProvider.constant(100), NumberProvider.constant(0.6),
 				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
-				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(90),
-				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0)),
 				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		var butterflyAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
@@ -2454,26 +2450,34 @@ public class MigratedSpellCards {
 		// Legacy: two lines of lasers at ±45° from forward, advancing outward each tick
 		// Each laser is perpendicular to its line direction with random rotation
 		// The spiral effect comes from progressive positioning + random perpendicular direction
-		// Data-driven: fixed ±45° base angle, elevation random for perpendicular spread
-		// At lt==20: shootGroup RED (5 BUBBLE + 50 MENTOS), at lt==40: shootGroup BLUE
-		var shootGroupRed = new SpellActions.ConditionalAction(
-				new SpellConditions.CompareNumbers(new NumberProviders.PhaseTick(), "==", NumberProvider.constant(20)),
-				List.of(new FireDanmakuAction(
+		// Data-driven: fixed ±45° base angle, elevation random for perpendicular spread.
+		// The regular danmaku groups are scheduled on Yukari herself, not emitted by the laser shooters.
+		var shootGroupRed = new SpellActions.SequenceAction(List.of(
+				new FireDanmakuAction(
 						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.RED),
-						NumberProvider.constant(5), NumberProvider.constant(0.8), NumberProvider.constant(70),
+						NumberProvider.constant(5), NumberProvider.constant(1), NumberProvider.constant(70),
 						NumberProvider.constant(0), NumberProvider.constant(30), NumberProvider.constant(30),
-						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
-						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
-				List.of());
-		var shootGroupBlue = new SpellActions.ConditionalAction(
-				new SpellConditions.CompareNumbers(new NumberProviders.PhaseTick(), "==", NumberProvider.constant(40)),
-				List.of(new FireDanmakuAction(
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.RED),
+						NumberProvider.constant(50), NumberProvider.constant(0.75), NumberProvider.constant(70),
+						NumberProvider.constant(0), NumberProvider.constant(30), NumberProvider.constant(30),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)));
+		var shootGroupBlue = new SpellActions.SequenceAction(List.of(
+				new FireDanmakuAction(
+						YHDanmaku.Bullet.BUBBLE, ColorProvider.constant(DyeColor.BLUE),
+						NumberProvider.constant(5), NumberProvider.constant(1), NumberProvider.constant(70),
+						NumberProvider.constant(0), NumberProvider.constant(30), NumberProvider.constant(30),
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1),
+				new FireDanmakuAction(
 						YHDanmaku.Bullet.MENTOS, ColorProvider.constant(DyeColor.BLUE),
-						NumberProvider.constant(50), NumberProvider.constant(0.7), NumberProvider.constant(70),
+						NumberProvider.constant(50), NumberProvider.constant(0.75), NumberProvider.constant(70),
 						NumberProvider.constant(0), NumberProvider.constant(30), NumberProvider.constant(30),
-						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
-						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)),
-				List.of());
+						PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.DirectionToTarget(),
+						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)));
 		// Lasers: legacy fires from two lines (±45° from forward), advancing outward each tick.
 		// Each laser is perpendicular to its line direction with random rotation.
 		// Data-driven: spawn two shooters along ±45° axes. Each shooter fires 1 random-direction laser/tick.
@@ -2493,8 +2497,7 @@ public class MigratedSpellCards {
 						NumberProvider.constant(90), new NumberProviders.RandomRange(0, 360),
 						new AimMode.AimModes.CasterFacing(),
 						OriginConfig.caster(),
-						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
-						shootGroupRed));
+						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL))));
 		var laserShooterBlue = new SpawnShooterAction(
 				40, 0, 120,
 				OriginConfig.caster(),
@@ -2507,9 +2510,11 @@ public class MigratedSpellCards {
 						NumberProvider.constant(90), new NumberProviders.RandomRange(0, 360),
 						new AimMode.AimModes.CasterFacing(),
 						OriginConfig.caster(),
-						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL)),
-						shootGroupBlue));
-		SpellAction spiralLasers = new SpellActions.SequenceAction(List.of(laserShooterRed, laserShooterBlue));
+						Optional.<MoverConfig>empty(), 0, 0, 0, Optional.<Double>empty(), Optional.<Double>empty(), Optional.of(DanmakuDamageType.ABYSSAL))));
+		SpellAction spiralLasers = new SpellActions.SequenceAction(List.of(
+				laserShooterRed, laserShooterBlue,
+				new DelayAction(20, List.of(shootGroupRed)),
+				new DelayAction(40, List.of(shootGroupBlue))));
 		var laserAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.DistanceAbove(20),

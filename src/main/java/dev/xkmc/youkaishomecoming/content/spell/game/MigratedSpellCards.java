@@ -2414,35 +2414,73 @@ public class MigratedSpellCards {
 						List.of(teleportFarBehind, hiddenFull))),
 				List.of());
 
-		// === Butterfly: 100 per color, XZ-plane orbital swirl when dist < 20 ===
-		// Use world-Y as the shared orbit axis so the ring rotates horizontally around Yukari.
+		// === Butterfly: 100 per color, stable multi-plane 3D orbital swirl when dist < 20 ===
+		// Use several shared orbit axes so the swarm has depth without per-projectile local-frame flipping.
+		var butterflyRadius = "12 * (1 - exp(-tick / 16)) + max(0, tick - 90) * 0.45";
 		var butterflyMover = new MoverConfigs.OrbitalMoverConfig(
-				NumberProvider.constant(3.8),
-				"12 * (1 - exp(-tick / 16)) + max(0, tick - 90) * 0.45",
-				"0");
+				NumberProvider.constant(3.8), butterflyRadius, "0");
 		var butterflyMoverRev = new MoverConfigs.OrbitalMoverConfig(
-				NumberProvider.constant(-3.8),
-				"12 * (1 - exp(-tick / 16)) + max(0, tick - 90) * 0.45",
-				"0");
-		var butterflyCyan = new FireDanmakuAction(
+				NumberProvider.constant(-3.8), butterflyRadius, "0");
+		var butterflyLife = new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40));
+		var butterflyHorizontalAxis = new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0));
+		var butterflyForwardAxis = new AimMode.AimModes.Target();
+		var butterflySideAxis = new AimMode.AimModes.AngleOffset(NumberProvider.constant(90));
+		var butterflyDiagAxis = new AimMode.AimModes.AngleOffset(NumberProvider.constant(45));
+		var butterflyCyanHorizontal = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
-				NumberProvider.constant(100), NumberProvider.constant(0.6),
-				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
+				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
 				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0)),
+				PatternType.RING, OriginConfig.caster(), butterflyHorizontalAxis,
 				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var butterflyMagenta = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
-				NumberProvider.constant(100), NumberProvider.constant(0.6),
-				new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40)),
+		var butterflyCyanForward = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
+				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
 				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0)),
+				PatternType.RING, OriginConfig.caster(), butterflyForwardAxis,
+				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var butterflyCyanSide = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
+				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+				PatternType.RING, OriginConfig.caster(), butterflySideAxis,
+				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var butterflyCyanDiag = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
+				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+				PatternType.RING, OriginConfig.caster(), butterflyDiagAxis,
+				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var butterflyMagentaHorizontal = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
+				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+				PatternType.RING, OriginConfig.caster(), butterflyHorizontalAxis,
+				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var butterflyMagentaForward = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
+				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+				PatternType.RING, OriginConfig.caster(), butterflyForwardAxis,
+				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var butterflyMagentaSide = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
+				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+				PatternType.RING, OriginConfig.caster(), butterflySideAxis,
+				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var butterflyMagentaDiag = new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
+				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
+				PatternType.RING, OriginConfig.caster(), butterflyDiagAxis,
 				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
 		var butterflyAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.DistanceBelow(20),
 						new SpellConditions.CompareNumbers(new NumberProviders.Variable("cd"), "<=", NumberProvider.constant(0)))),
-				List.of(butterflyCyan, butterflyMagenta,
+				List.of(
+						butterflyCyanHorizontal, butterflyCyanForward, butterflyCyanSide, butterflyCyanDiag,
+						butterflyMagentaHorizontal, butterflyMagentaForward, butterflyMagentaSide, butterflyMagentaDiag,
 						new SpellActions.SetVariable("cd", 60)),
 				List.of());
 

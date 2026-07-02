@@ -2414,73 +2414,25 @@ public class MigratedSpellCards {
 						List.of(teleportFarBehind, hiddenFull))),
 				List.of());
 
-		// === Butterfly: 100 per color, stable multi-plane 3D orbital swirl when dist < 20 ===
-		// Use several shared orbit axes so the swarm has depth without per-projectile local-frame flipping.
-		var butterflyRadius = "12 * (1 - exp(-tick / 16)) + max(0, tick - 90) * 0.45";
-		var butterflyMover = new MoverConfigs.OrbitalMoverConfig(
-				NumberProvider.constant(3.8), butterflyRadius, "0");
-		var butterflyMoverRev = new MoverConfigs.OrbitalMoverConfig(
-				NumberProvider.constant(-3.8), butterflyRadius, "0");
-		var butterflyLife = new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40));
-		var butterflyHorizontalAxis = new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0));
-		var butterflyForwardAxis = new AimMode.AimModes.Target();
-		var butterflySideAxis = new AimMode.AimModes.AngleOffset(NumberProvider.constant(90));
-		var butterflyDiagAxis = new AimMode.AimModes.AngleOffset(NumberProvider.constant(45));
-		var butterflyCyanHorizontal = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
-				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), butterflyHorizontalAxis,
-				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var butterflyCyanForward = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
-				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), butterflyForwardAxis,
-				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var butterflyCyanSide = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
-				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), butterflySideAxis,
-				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var butterflyCyanDiag = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
-				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), butterflyDiagAxis,
-				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var butterflyMagentaHorizontal = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
-				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), butterflyHorizontalAxis,
-				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var butterflyMagentaForward = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
-				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), butterflyForwardAxis,
-				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var butterflyMagentaSide = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
-				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), butterflySideAxis,
-				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var butterflyMagentaDiag = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
-				NumberProvider.constant(25), NumberProvider.constant(0.6), butterflyLife,
-				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(0),
-				PatternType.RING, OriginConfig.caster(), butterflyDiagAxis,
-				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		// === Butterfly: legacy-like 3D scatter, segmented outward/orbit/escape motion when dist < 20 ===
+		// Radius is split into bands to approximate legacy's per-bullet random range of 4..20.
+		var butterflyCyanNear = yukariButterflyAction(DyeColor.CYAN, 20, 5.6, 1);
+		var butterflyCyanMidLow = yukariButterflyAction(DyeColor.CYAN, 20, 8.8, 1);
+		var butterflyCyanMid = yukariButterflyAction(DyeColor.CYAN, 20, 12, 1);
+		var butterflyCyanMidHigh = yukariButterflyAction(DyeColor.CYAN, 20, 15.2, 1);
+		var butterflyCyanFar = yukariButterflyAction(DyeColor.CYAN, 20, 18.4, 1);
+		var butterflyMagentaNear = yukariButterflyAction(DyeColor.MAGENTA, 20, 5.6, -1);
+		var butterflyMagentaMidLow = yukariButterflyAction(DyeColor.MAGENTA, 20, 8.8, -1);
+		var butterflyMagentaMid = yukariButterflyAction(DyeColor.MAGENTA, 20, 12, -1);
+		var butterflyMagentaMidHigh = yukariButterflyAction(DyeColor.MAGENTA, 20, 15.2, -1);
+		var butterflyMagentaFar = yukariButterflyAction(DyeColor.MAGENTA, 20, 18.4, -1);
 		var butterflyAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.DistanceBelow(20),
 						new SpellConditions.CompareNumbers(new NumberProviders.Variable("cd"), "<=", NumberProvider.constant(0)))),
 				List.of(
-						butterflyCyanHorizontal, butterflyCyanForward, butterflyCyanSide, butterflyCyanDiag,
-						butterflyMagentaHorizontal, butterflyMagentaForward, butterflyMagentaSide, butterflyMagentaDiag,
+						butterflyCyanNear, butterflyCyanMidLow, butterflyCyanMid, butterflyCyanMidHigh, butterflyCyanFar,
+						butterflyMagentaNear, butterflyMagentaMidLow, butterflyMagentaMid, butterflyMagentaMidHigh, butterflyMagentaFar,
 						new SpellActions.SetVariable("cd", 60)),
 				List.of());
 
@@ -2580,6 +2532,65 @@ public class MigratedSpellCards {
 				List.of(cdDecrement, teleportHiddenAction, butterflyAction, laserAction),
 				List.of(), onDamageActions, List.of());
 		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:yukari_yakumo");
+	}
+
+	private static FireDanmakuAction yukariButterflyAction(DyeColor color, int count, double radius, double direction) {
+		var life = new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40));
+		return new FireDanmakuAction(
+				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(color),
+				NumberProvider.constant(count), NumberProvider.constant(radius / 20), life,
+				new NumberProviders.RandomRange(0, 360), NumberProvider.constant(360), NumberProvider.constant(90),
+				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.Target(),
+				Optional.of(yukariButterflyMover(radius, direction)),
+				Optional.empty(), Optional.empty(), Optional.empty(), 1);
+	}
+
+	private static MoverConfigs.FormulaMoverConfig yukariButterflyMover(double radius, double direction) {
+		double angularSpeed = direction * 0.8 / 12.0;
+		double thetaEndValue = 35.0 * angularSpeed;
+		String radialSpeed = formulaNum(radius / 20.0);
+		String radialAccelHalf = formulaNum(radius / 1600.0);
+		String radiusValue = formulaNum(radius);
+		String angularAccelHalf = formulaNum(angularSpeed / 20.0);
+		String angularSpeedValue = formulaNum(angularSpeed);
+		String thetaEnd = formulaNum(thetaEndValue);
+		String escapeXVelocity = formulaNum(-radius * Math.sin(thetaEndValue) * angularSpeed);
+		String escapeZVelocity = formulaNum(radius * Math.cos(thetaEndValue) * angularSpeed);
+		String escapeXStart = formulaNum(radius * Math.cos(thetaEndValue));
+		String escapeZStart = formulaNum(radius * Math.sin(thetaEndValue));
+
+		String t0 = "min(tick, 40)";
+		String polarAccelTicks = "min(max(tick - 50, 0), 10)";
+		String polarConstTicks = "min(max(tick - 60, 0), 30)";
+		String afterHold = "min(max(tick - 50, 0), 1)";
+		String afterOrbit = "min(max(tick - 90, 0), 1)";
+		String escapeTicks = "max(tick - 90, 0)";
+		String outwardX = radialSpeed + " * " + t0 + " - " + radialAccelHalf + " * " + t0 + " * " + t0;
+		String theta = angularAccelHalf + " * " + polarAccelTicks + " * " + polarAccelTicks +
+				" + " + angularSpeedValue + " * " + polarConstTicks;
+		String polarX = radiusValue + " * cos_rad(" + theta + ")";
+		String polarZ = radiusValue + " * sin_rad(" + theta + ")";
+		String escapeX = escapeXStart + " + " + escapeXVelocity + " * " + escapeTicks;
+		String escapeZ = escapeZStart + " + " + escapeZVelocity + " * " + escapeTicks;
+		String x = "(1 - " + afterHold + ") * (" + outwardX + ") + " + afterHold +
+				" * ((1 - " + afterOrbit + ") * (" + polarX + ") + " + afterOrbit + " * (" + escapeX + "))";
+		String z = afterHold +
+				" * ((1 - " + afterOrbit + ") * (" + polarZ + ") + " + afterOrbit + " * (" + escapeZ + "))";
+		return new MoverConfigs.FormulaMoverConfig(x, "0", z, 0);
+	}
+
+	private static String formulaNum(double value) {
+		if (Math.abs(value) < 1e-9) {
+			return "0";
+		}
+		String result = String.format(Locale.ROOT, "%.8f", value);
+		while (result.contains(".") && result.endsWith("0")) {
+			result = result.substring(0, result.length() - 1);
+		}
+		if (result.endsWith(".")) {
+			result = result.substring(0, result.length() - 1);
+		}
+		return result;
 	}
 
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,

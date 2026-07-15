@@ -1,6 +1,8 @@
 package dev.xkmc.youkaishomecoming.events;
 
 import dev.xkmc.l2library.init.events.GeneralEventHandler;
+import dev.xkmc.fastprojectileapi.spellcircle.CustomSpellCircleStorage;
+import dev.xkmc.fastprojectileapi.spellcircle.EntitySpellCircleManager;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.block.variants.LeftClickBlock;
 import dev.xkmc.youkaishomecoming.content.capability.FrogGodCapability;
@@ -20,6 +22,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import dev.xkmc.youkaishomecoming.init.registrate.YHItems;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -66,6 +69,14 @@ public class GeneralEventHandlers {
 	}
 
 	@SubscribeEvent
+	public static void onLevelTick(TickEvent.LevelTickEvent event) {
+		if (event.phase != TickEvent.Phase.END || event.level.isClientSide()) return;
+		if (event.level instanceof ServerLevel level) {
+			EntitySpellCircleManager.tickServerLevel(level);
+		}
+	}
+
+	@SubscribeEvent
 	public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
 		if (event.getItemStack().is(Items.DEBUG_STICK)) return;
 		var level = event.getLevel();
@@ -97,9 +108,7 @@ public class GeneralEventHandlers {
 
 	@SubscribeEvent(priority = EventPriority.LOW)
 	public static void collectBlood(LivingDeathEvent event) {
-		if (event.getEntity() instanceof ServerPlayer player) {
-			SpellContainer.clear(player);
-		}
+		clearPlayerSpells(event.getEntity());
 		if (!event.getEntity().getType().is(YHTagGen.FLESH_SOURCE)) return;
 		if (event.getSource().getEntity() instanceof LivingEntity le) {
 			if (le.getMainHandItem().is(TagRef.TOOLS_KNIVES) &&
@@ -148,6 +157,33 @@ public class GeneralEventHandlers {
 		if (event.getTarget() instanceof Frog frog) {
 			FrogGodCapability.startTracking(frog, event.getEntity());
 		}
+		if (event.getEntity() instanceof ServerPlayer player) {
+			EntitySpellCircleManager.syncToPlayer(event.getTarget(), player);
+		}
+	}
+
+	@SubscribeEvent
+	public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+		if (event.getEntity() instanceof ServerPlayer player) {
+			CustomSpellCircleStorage.syncAllToPlayer(player);
+		}
+	}
+
+	@SubscribeEvent
+	public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+		clearPlayerSpells(event.getEntity());
+	}
+
+	@SubscribeEvent
+	public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+		clearPlayerSpells(event.getEntity());
+	}
+
+	@SubscribeEvent
+	public static void onPlayerClone(PlayerEvent.Clone event) {
+		if (event.isWasDeath()) {
+			clearPlayerSpells(event.getEntity());
+		}
 	}
 
 	@SubscribeEvent
@@ -182,6 +218,12 @@ public class GeneralEventHandlers {
 			return hat.modifyDamageType(stack, le, danmaku, type);
 		}
 		return type;
+	}
+
+	private static void clearPlayerSpells(LivingEntity entity) {
+		if (entity instanceof ServerPlayer player) {
+			SpellContainer.clear(player);
+		}
 	}
 
 }

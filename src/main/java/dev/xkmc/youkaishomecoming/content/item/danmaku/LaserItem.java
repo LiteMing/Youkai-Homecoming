@@ -1,7 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.item.danmaku;
 
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
-import dev.xkmc.fastprojectileapi.render.type.DoubleLayerLaserType;
+import dev.xkmc.fastprojectileapi.render.type.CylinderLaserType;
 import dev.xkmc.fastprojectileapi.render.type.PencilLayerLaserType;
 import dev.xkmc.fastprojectileapi.render.type.RenderableProjectileType;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
@@ -49,11 +49,6 @@ public class LaserItem extends Item {
 
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
-		ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
-		if (!head.is(YHTagGen.TOUHOU_HAT) && !player.getAbilities().instabuild &&
-				!EffectEventHandlers.isCharacter(player)) {
-			return InteractionResultHolder.fail(stack);
-		}
 		if (GrazeHelper.forbidDanmaku(player))
 			return InteractionResultHolder.fail(stack);
 		level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SNOWBALL_THROW, SoundSource.PLAYERS,
@@ -82,12 +77,17 @@ public class LaserItem extends Item {
 				SpellContainer.track(sp, danmaku);
 		}
 		player.awardStat(Stats.ITEM_USED.get(this));
+		ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
 		if (head.is(YHTagGen.TOUHOU_HAT) && head.getItem() instanceof TouhouHatItem item && item.support(color)) {
+			// Hat bonus: no item/buff cost, half cooldown
 			player.getCooldowns().addCooldown(this, cooldown / 2);
 		} else {
 			player.getCooldowns().addCooldown(this, cooldown);
 			if (!player.getAbilities().instabuild) {
-				stack.shrink(1);
+				// Try consuming buff duration as mana; if no buff, consume item
+				if (!EffectEventHandlers.consumeDanmakuBuffCost(player)) {
+					stack.shrink(1);
+				}
 			}
 		}
 		return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
@@ -110,10 +110,10 @@ public class LaserItem extends Item {
 	public ProjTypeHolder<? extends RenderableProjectileType<?, ?>, ?> getTypeForRender() {
 		if (render == null) {
 			render = switch (type) {
-				case LASER -> ProjTypeHolder.wrap(new DoubleLayerLaserType(
+				case LASER -> ProjTypeHolder.wrap(new CylinderLaserType(
 						YoukaisHomecoming.loc("textures/entities/laser_inner.png"),
 						YoukaisHomecoming.loc("textures/entities/laser_outer.png"),
-						0xff000000 | color.getFireworkColor()));
+						0xff000000 | color.getFireworkColor(), 12));
 				case PENCIL -> ProjTypeHolder.wrap(new PencilLayerLaserType(
 						YoukaisHomecoming.loc("textures/entities/laser_inner.png"),
 						YoukaisHomecoming.loc("textures/entities/laser_outer.png"),

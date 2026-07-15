@@ -1,19 +1,14 @@
 package dev.xkmc.youkaishomecoming.compat.touhoulittlemaid;
 
-import com.github.tartaricacid.touhoulittlemaid.init.InitItems;
 import com.tterrag.registrate.providers.loot.RegistrateEntityLootTables;
 import com.tterrag.registrate.util.entry.EntityEntry;
-import dev.xkmc.l2library.util.data.LootTableTemplate;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.fairy.SmallFairy;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.fairy.SmallFairyRenderer;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
-import net.minecraft.world.level.storage.loot.LootPool;
 import net.minecraft.world.level.storage.loot.LootTable;
-
-import static dev.xkmc.youkaishomecoming.init.loot.EntityLootGen.lootCount;
 
 public class TLMRegistries {
 
@@ -26,9 +21,7 @@ public class TLMRegistries {
 			.loot(TLMRegistries::fairyLoot).register();
 
 	private static void fairyLoot(RegistrateEntityLootTables pvd, EntityType<SmallFairy> et) {
-		pvd.add(et, LootTable.lootTable().withPool(LootPool.lootPool()
-				.add(LootTableTemplate.getItem(InitItems.POWER_POINT.get(), 3, 5))
-				.apply(lootCount(1.5f))));
+		pvd.add(et, LootTable.lootTable());
 	}
 
 	public static void init() {

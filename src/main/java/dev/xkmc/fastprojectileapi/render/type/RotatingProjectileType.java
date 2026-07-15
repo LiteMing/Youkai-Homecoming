@@ -6,6 +6,7 @@ import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.BulkDataWriter;
 import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.fastprojectileapi.render.core.DisplayType;
+import dev.xkmc.fastprojectileapi.render.core.ParallelBufferFiller;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
@@ -20,29 +21,46 @@ public record RotatingProjectileType(ResourceLocation tex, DisplayType display, 
 	@Override
 	public void start(MultiBufferSource buffer, List<Ins> list) {
 		BulkDataWriter vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmaku(tex, display())), list.size());
-		for (var e : list) {
-			e.tex(vc);
-		}
+		ParallelBufferFiller.fill(vc, list, 4, (buf, off, ins) -> ins.texToArray(buf, off));
 		vc.flush();
 	}
 
 	@Override
 	public void create(Consumer<Ins> holder, ProjectileRenderer<?> r, SimplifiedProjectile e, PoseStack pose, float pTick) {
-		var sim4 = new Matrix4f(pose.last().pose());
-		sim4.set3x3(new Matrix4f().scale((float) Math.pow(sim4.determinant3x3(), 1 / 3d)));
-		var q4 = Axis.ZP.rotationDegrees((e.tickCount + pTick) * 360f / (float) rot);
-		sim4.rotate(q4);
-		int col = DanmakuRenderStates.fading(display, -1, r, e);
-		holder.accept(new Ins(sim4, col));
+		var m4 = pose.last().pose();
+		float scale = (float) Math.cbrt(Math.abs(m4.determinant3x3()));
+		float zAngle = (float) Math.toRadians((e.tickCount + pTick) * 360f / (float) rot);
+		int col = DanmakuRenderStates.fading(display, r.color(e, pTick), r, e);
+		holder.accept(new Ins(m4.m30(), m4.m31(), m4.m32(), scale, zAngle, col));
 	}
 
-	public record Ins(Matrix4f m4, int color) {
+	public record Ins(float tx, float ty, float tz, float scale, float zAngle, int color) {
 
 		public void tex(BulkDataWriter vc) {
+			var m4 = new Matrix4f().translation(tx, ty, tz).scale(scale)
+					.rotate(new org.joml.Quaternionf().rotateZ(zAngle));
 			vertex(vc, m4, 1, 1, 1, 0, color);
 			vertex(vc, m4, 1, 0, 1, 1, color);
 			vertex(vc, m4, 0, 0, 0, 1, color);
 			vertex(vc, m4, 0, 1, 0, 0, color);
+		}
+
+		public void texToArray(byte[] buf, int off) {
+			int s = BulkDataWriter.STRIDE;
+			// Inline: translate + scale + rotateZ
+			float c = (float) Math.cos(zAngle);
+			float sn = (float) Math.sin(zAngle);
+			vertexRotated(buf, off, 0.5f, 0.5f, 1, 0, c, sn);
+			vertexRotated(buf, off + s, 0.5f, -0.5f, 1, 1, c, sn);
+			vertexRotated(buf, off + s * 2, -0.5f, -0.5f, 0, 1, c, sn);
+			vertexRotated(buf, off + s * 3, -0.5f, 0.5f, 0, 0, c, sn);
+		}
+
+		private void vertexRotated(byte[] buf, int off, float lx, float ly, float u, float v, float c, float sn) {
+			float rx = (lx * c - ly * sn) * scale + tx;
+			float ry = (lx * sn + ly * c) * scale + ty;
+			float rz = tz;
+			BulkDataWriter.writeVertex(buf, off, rx, ry, rz, u, v, color);
 		}
 
 		private static void vertex(BulkDataWriter vc, Matrix4f m4, float x, int y, int u, int v, int color) {

@@ -6,6 +6,7 @@ import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.BulkDataWriter;
 import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.fastprojectileapi.render.core.DisplayType;
+import dev.xkmc.fastprojectileapi.render.core.ParallelBufferFiller;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
@@ -20,11 +21,8 @@ public record ButterflyProjectileType(ResourceLocation overlay, DisplayType disp
 
 	@Override
 	public void start(MultiBufferSource buffer, List<Ins> list) {
-		BulkDataWriter vc;
-		vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmaku(overlay, display())), list.size());
-		for (var e : list) {
-			e.tex(vc);
-		}
+		BulkDataWriter vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.danmaku(overlay, display())), list.size());
+		ParallelBufferFiller.fill(vc, list, 4, (buf, off, ins) -> ins.texToArray(buf, off));
 		vc.flush();
 	}
 
@@ -34,7 +32,7 @@ public record ButterflyProjectileType(ResourceLocation overlay, DisplayType disp
 		pose.mulPose(Axis.XP.rotationDegrees(Mth.lerp(pTick, e.xRotO, e.getXRot())));
 		float time = Math.abs((e.tickCount + pTick) / period % 1 * 4 - 2) - 1;
 		float angle = 60f;
-		int col = DanmakuRenderStates.fading(display, -1, r, e);
+		int col = DanmakuRenderStates.fading(display, r.color(e, pTick), r, e);
 		{
 			pose.pushPose();
 			pose.mulPose(Axis.ZP.rotationDegrees(time * angle));
@@ -68,8 +66,26 @@ public record ButterflyProjectileType(ResourceLocation overlay, DisplayType disp
 			vertex(vc, m4, x0, 1, x0, 0, color);
 		}
 
+		public void texToArray(byte[] buf, int off) {
+			int s = BulkDataWriter.STRIDE;
+			float x0 = 0;
+			float x1 = .5f;
+			if (right) {
+				x0 += 0.5f;
+				x1 += 0.5f;
+			}
+			vertexToArray(buf, off, m4, x1, 1, x1, 0, color);
+			vertexToArray(buf, off + s, m4, x1, 0, x1, 1, color);
+			vertexToArray(buf, off + s * 2, m4, x0, 0, x0, 1, color);
+			vertexToArray(buf, off + s * 3, m4, x0, 1, x0, 0, color);
+		}
+
 		private static void vertex(BulkDataWriter vc, Matrix4f m4, float x, float y, float u, float v, int color) {
 			vc.addVertex(m4, x - 0.5F, 0.0F, y - 0.5F, u, v, color);
+		}
+
+		private static void vertexToArray(byte[] buf, int off, Matrix4f m4, float x, float y, float u, float v, int color) {
+			BulkDataWriter.writeVertex(buf, off, m4, x - 0.5F, 0.0F, y - 0.5F, u, v, color);
 		}
 
 	}

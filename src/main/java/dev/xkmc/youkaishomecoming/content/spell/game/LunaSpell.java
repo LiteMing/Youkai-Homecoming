@@ -7,6 +7,10 @@ import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 
+/**
+ * @deprecated Migrated to data-driven definition. See {@link MigratedSpellCards#lunaChild()}.
+ */
+@Deprecated
 @SerialClass
 public class LunaSpell extends ActualSpellCard {
 

@@ -23,26 +23,40 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 
 	@Override
 	public void render(PoseStack pose, MultiBufferSource buffer, int light, T entity,
-					   float swing, float swingAmp, float pTick, float age,
-					   float yaw, float pitch) {
-		renderImpl(pose, buffer, light, entity, pTick, null);
+			float swing, float swingAmp, float pTick, float age,
+			float yaw, float pitch) {
+		// World-space rendering is handled by SpellCircleWorldRenderer. Rendering from
+		// a living render layer inherits the model pose and can break billboarding.
 	}
 
 	public static <T extends Entity> void renderImpl(
 			PoseStack pose, MultiBufferSource buffer, int light, T entity,
-			float pTick, @Nullable Quaternionf front
-	) {
-		if (!(entity instanceof SpellCircleHolder e)) return;
-		ResourceLocation rl = e.getSpellCircle();
-		if (rl == null) return;
+			float pTick, @Nullable Quaternionf front) {
+		ResourceLocation rl = null;
+		float scale = 0;
+		EntitySpellCircleManager.State override = EntitySpellCircleManager.getClientOverride(entity);
+		if (override != null) {
+			if (!override.enabled() || override.circle() == null)
+				return;
+			rl = override.circle();
+			scale = override.size();
+		} else if (entity instanceof SpellCircleHolder e) {
+			if (!e.shouldShowSpellCircle())
+				return;
+			rl = e.getSpellCircle();
+			scale = e.getCircleSize(pTick);
+		}
+		if (rl == null || scale <= 0)
+			return;
 		SpellComponent component = SpellCircleConfig.getFromConfig(rl);
-		if (component == null) return;
+		if (component == null)
+			return;
 		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(pose,
+				buffer,
 				buffer.getBuffer(SpellRenderState.getSpell(SPELL)),
 				entity.tickCount + pTick, light);
 		pose.pushPose();
 		pose.translate(0, entity.getBbHeight() / 2, 0);
-		float scale = e.getCircleSize(pTick);
 		pose.scale(scale / 16f, scale / 16f, scale / 16f);
 		if (front != null) {
 			pose.mulPose(front);

@@ -1,10 +1,8 @@
 package dev.xkmc.youkaishomecoming.content.spell.spellcard;
 
-import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,11 +37,6 @@ public class ListSpellCard extends SpellCard {
 			card().reset();
 		}
 		card().tick(holder);
-	}
-
-	@Override
-	public ProjectileMovement move(int code, int tickCount, Vec3 vec) {
-		return card().move(code, tickCount, vec);
 	}
 
 	public void hurt(CardHolder holder, DamageSource source, float amount) {

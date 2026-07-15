@@ -10,12 +10,12 @@ public class UserCacheHolder {
 
 	public UserMatrixCache get(ServerLevel sl, LivingEntity user) {
 		if (cache != null) {
-			if (cache.sl == sl && cache.time == sl.getGameTime()) {
+			if (cache.sl == sl && cache.time == sl.getGameTime() && cache.owner() == user) {
 				return cache;
 			}
 		}
 		var bpos = SectionPos.of(user.blockPosition());
-		cache = new UserMatrixCache(sl, bpos.x(), bpos.y(), bpos.z());
+		cache = new UserMatrixCache(sl, user, bpos.x(), bpos.y(), bpos.z());
 		return cache;
 	}
 

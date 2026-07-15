@@ -9,6 +9,7 @@ import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
@@ -28,6 +29,9 @@ public class ClientEventHandlers {
 		oTilt = tilt;
 		float lv = drunkLevel();
 		tilt = Mth.lerp(0.03f, tilt, lv);
+		if (event.phase == TickEvent.Phase.END) {
+			dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();
+		}
 	}
 
 	@SubscribeEvent
@@ -74,6 +78,21 @@ public class ClientEventHandlers {
 		if (level == null) return;
 		if (level.getEntity(id) instanceof YoukaiEntity e) {
 			e.combatProgress.loadFrom(progress);
+		}
+	}
+
+	public static void setSpellState(int entityId,
+									 @org.jetbrains.annotations.Nullable ResourceLocation spellId,
+									 @org.jetbrains.annotations.Nullable ResourceLocation phaseId,
+									 int phaseTick,
+									 boolean inDanmakuCombat) {
+		var level = Minecraft.getInstance().level;
+		if (level == null) return;
+		if (level.getEntity(entityId) instanceof YoukaiEntity e) {
+			e.clientSpellId = spellId;
+			e.clientPhaseId = phaseId;
+			e.clientPhaseTick = phaseTick;
+			e.clientInDanmakuCombat = inDanmakuCombat;
 		}
 	}
 }

@@ -3,6 +3,8 @@ package dev.xkmc.fastprojectileapi.entity;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
@@ -14,6 +16,8 @@ import net.minecraftforge.entity.IEntityAdditionalSpawnData;
 
 import javax.annotation.Nullable;
 import javax.annotation.OverridingMethodsMustInvokeSuper;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 public abstract class SimplifiedProjectile extends SimplifiedEntity implements TraceableEntity, IEntityAdditionalSpawnData, GrazingEntity {
@@ -22,6 +26,7 @@ public abstract class SimplifiedProjectile extends SimplifiedEntity implements T
 	private UUID ownerUUID;
 	@Nullable
 	private Entity cachedOwner;
+	private final Set<UUID> ignoredEntityIds = new HashSet<>();
 
 	public SimplifiedProjectile(EntityType<?> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -33,6 +38,7 @@ public abstract class SimplifiedProjectile extends SimplifiedEntity implements T
 		} else {
 			Entity entity = getOwner();
 			if (entity == null || entity == target) return false;
+			if (ignoresEntity(target)) return false;
 			if (entity.isPassenger() || target.isPassenger()) {
 				if (entity.isPassengerOfSameVehicle(target)) {
 					boolean hostile = false;
@@ -47,6 +53,16 @@ public abstract class SimplifiedProjectile extends SimplifiedEntity implements T
 			}
 			return !entity.isAlliedTo(target);
 		}
+	}
+
+	public void ignoreEntity(@Nullable Entity entity) {
+		if (entity != null) {
+			ignoredEntityIds.add(entity.getUUID());
+		}
+	}
+
+	public boolean ignoresEntity(Entity entity) {
+		return ignoredEntityIds.contains(entity.getUUID());
 	}
 
 	public void lerpMotion(double pX, double pY, double pZ) {
@@ -107,6 +123,15 @@ public abstract class SimplifiedProjectile extends SimplifiedEntity implements T
 		if (ownerUUID != null) {
 			nbt.putUUID("Owner", ownerUUID);
 		}
+		if (!ignoredEntityIds.isEmpty()) {
+			ListTag ignored = new ListTag();
+			for (UUID id : ignoredEntityIds) {
+				CompoundTag tag = new CompoundTag();
+				tag.putUUID("UUID", id);
+				ignored.add(tag);
+			}
+			nbt.put("IgnoredEntities", ignored);
+		}
 		nbt.putInt("Age", tickCount);
 	}
 
@@ -115,6 +140,16 @@ public abstract class SimplifiedProjectile extends SimplifiedEntity implements T
 		if (nbt.hasUUID("Owner")) {
 			ownerUUID = nbt.getUUID("Owner");
 			cachedOwner = null;
+		}
+		ignoredEntityIds.clear();
+		if (nbt.contains("IgnoredEntities", Tag.TAG_LIST)) {
+			ListTag ignored = nbt.getList("IgnoredEntities", Tag.TAG_COMPOUND);
+			for (int i = 0; i < ignored.size(); i++) {
+				CompoundTag tag = ignored.getCompound(i);
+				if (tag.hasUUID("UUID")) {
+					ignoredEntityIds.add(tag.getUUID("UUID"));
+				}
+			}
 		}
 		tickCount = nbt.getInt("Age");
 	}

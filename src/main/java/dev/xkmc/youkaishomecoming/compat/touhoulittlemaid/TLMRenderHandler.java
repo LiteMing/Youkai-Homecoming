@@ -35,7 +35,6 @@ public class TLMRenderHandler {
 
 	public static void addLayers(EntityRenderersEvent.AddLayers event) {
 		RENDERER = new EntityMaidRenderer(event.getContext());
-		addCircle(RENDERER, SpellCircleLayer::new);
 	}
 
 	private static <T extends LivingEntity, M extends EntityModel<T>> void addCircle(LivingEntityRenderer<T, M> renderer, Function<LivingEntityRenderer<T, M>, RenderLayer<T, M>> factory) {

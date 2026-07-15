@@ -33,7 +33,7 @@ public class TargetTracker {
 
 	public Vec3 vel() {
 		if (t1 == null || t2 == null) return Vec3.ZERO;
-		return t2.subtract(t2).scale(0.1);
+		return t2.subtract(t1).scale(0.1);
 	}
 
 	public int flyTime() {

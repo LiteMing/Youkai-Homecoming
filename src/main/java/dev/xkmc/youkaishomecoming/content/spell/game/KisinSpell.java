@@ -10,34 +10,61 @@ import dev.xkmc.youkaishomecoming.content.spell.spellcard.Ticker;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
-
 @SerialClass
 public class KisinSpell extends ActualSpellCard {
+
+	private static final int STAGE_COUNT = 3;
 
 	@SerialClass.SerialField
 	private int cooldown;
 
+	@SerialClass.SerialField
+	private int currentStage = -1;
+
+	@Override
+	public void reset() {
+		super.reset();
+		cooldown = 0;
+		currentStage = -1;
+	}
+
+	private int calculateStage(CardHolder holder) {
+		var self = holder.self();
+		float healthRatio = self.getHealth() / self.getMaxHealth();
+		return Math.min(STAGE_COUNT - 1, (int) (STAGE_COUNT * (1 - healthRatio)));
+	}
+
 	@Override
 	public void tick(CardHolder holder) {
 		super.tick(holder);
-		if (cooldown > 0) cooldown--;
-		if (cooldown > 0) return;
-		var target = holder.target();
-		if (target == null) return;
-		var center = holder.center();
-		double dist = center.distanceTo(target);
-		if (dist < 10) {
-			addTicker(new SummonNear());
-			cooldown = 60;
+		int newStage = calculateStage(holder);
+		if (newStage != currentStage) {
+			getTickers().clear();
+			currentStage = newStage;
+		}
+		tickImpl(holder, currentStage);
+	}
+
+	private void tickImpl(CardHolder holder, int stage) {
+		if (cooldown > 0) {
+			cooldown--;
 			return;
 		}
-		if (dist < 40 && holder.random().nextBoolean()) {
-			addTicker(new Wing());
-			cooldown = 60;
-			return;
+
+		switch (stage) {
+			case 0 -> {
+				addTicker(new SummonNear());
+				cooldown = 60;
+			}
+			case 1 -> {
+				addTicker(new Wing());
+				cooldown = 60;
+			}
+			case 2 -> {
+				addTicker(new SummonFar());
+				cooldown = 80;
+			}
 		}
-		addTicker(new SummonFar());
-		cooldown = 80;
 	}
 
 	@SerialClass
@@ -52,15 +79,22 @@ public class KisinSpell extends ActualSpellCard {
 			int life = 60;
 
 			if (tick % 2 == 0) {
-				var o = DanmakuHelper.getOrientation(target.subtract(holder.center()).normalize());
+				var center = holder.center();
+				var targetDir = target.subtract(center).normalize();
+				var o = DanmakuHelper.getOrientation(targetDir);
 				var x = holder.random().nextDouble() * 60 - 30;
 				var y = holder.random().nextDouble() * 60 - 30;
 				var dir = o.rotateDegrees(x, y);
+
+				// 确保生成位置相对于当前中心点
+				var spawnPos = center.add(dir.scale(2.0)); // 稍微偏移避免重叠
+
 				var e = holder.prepareShooter(
 						new ShooterData(40, holder.getDamage(YHDanmaku.Bullet.CIRCLE), life),
-						new SubSpell().init(dir, life, tick / 2 % 2 == 0 ? DyeColor.YELLOW : DyeColor.ORANGE)
+						new SubSpell().init(dir, life, tick / 2 % 2 == 0 ? DyeColor.YELLOW : DyeColor.ORANGE, center)
 				);
-				e.mover = new RectMover(holder.center(), dir.scale(0.5), Vec3.ZERO);
+				e.setPos(spawnPos);
+				e.mover = new RectMover(spawnPos, dir.scale(0.5), Vec3.ZERO);
 				holder.shoot(e);
 			}
 			return tick > 40;
@@ -75,11 +109,14 @@ public class KisinSpell extends ActualSpellCard {
 			private int life;
 			@SerialClass.SerialField
 			private DyeColor color;
+			@SerialClass.SerialField
+			private Vec3 originCenter; // 添加原点记录
 
-			public SubSpell init(Vec3 dir, int life, DyeColor color) {
-				this.dir = dir;
+			public SubSpell init(Vec3 dir, int life, DyeColor color, Vec3 originCenter) {
+				this.dir = dir.normalize(); // 确保方向向量标准化
 				this.life = life;
 				this.color = color;
+				this.originCenter = originCenter;
 				return this;
 			}
 
@@ -93,15 +130,23 @@ public class KisinSpell extends ActualSpellCard {
 
 				life--;
 				if (life > 0) {
-					holder.shoot(holder.prepareDanmaku(bulletLife, dir.scale(forward),
-							YHDanmaku.Bullet.CIRCLE, color));
-					holder.shoot(holder.prepareDanmaku(bulletLife, dir.scale(backward),
-							YHDanmaku.Bullet.CIRCLE, color));
+					// 使用当前holder的center而不是originCenter，确保弹幕从正确位置发射
+					var currentCenter = holder.center();
+
+					// 前向弹幕
+					var forwardBullet = holder.prepareDanmaku(bulletLife, dir.scale(forward),
+							YHDanmaku.Bullet.CIRCLE, color);
+					forwardBullet.setPos(currentCenter);
+					holder.shoot(forwardBullet);
+
+					// 后向弹幕
+					var backwardBullet = holder.prepareDanmaku(bulletLife, dir.scale(backward),
+							YHDanmaku.Bullet.CIRCLE, color);
+					backwardBullet.setPos(currentCenter);
+					holder.shoot(backwardBullet);
 				}
 			}
-
 		}
-
 	}
 
 	@SerialClass
@@ -203,9 +248,7 @@ public class KisinSpell extends ActualSpellCard {
 					return false;
 				}
 			}
-
 		}
-
 	}
 
 	@SerialClass
@@ -247,9 +290,5 @@ public class KisinSpell extends ActualSpellCard {
 			tick++;
 			return tick > 40;
 		}
-
 	}
-
 }
-
-

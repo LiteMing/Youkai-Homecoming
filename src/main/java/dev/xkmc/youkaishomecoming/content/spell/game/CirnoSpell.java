@@ -13,6 +13,10 @@ import net.minecraft.world.entity.animal.frog.Frog;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
+/**
+ * @deprecated Migrated to data-driven definition. See {@link MigratedSpellCards#cirno()}.
+ */
+@Deprecated
 @SerialClass
 public class CirnoSpell extends ActualSpellCard {
 

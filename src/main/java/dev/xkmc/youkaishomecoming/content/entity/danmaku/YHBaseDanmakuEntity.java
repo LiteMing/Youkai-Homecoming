@@ -9,10 +9,13 @@ import dev.xkmc.l2serial.serialization.codec.TagCodec;
 import dev.xkmc.l2serial.util.Wrappers;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -26,6 +29,9 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	private int life = 0;
 	@SerialClass.SerialField
 	private boolean bypassWall = false, bypassEntity = false;
+
+	public void setBypassWall(boolean bypass) { this.bypassWall = bypass; }
+	public void setBypassEntity(boolean bypass) { this.bypassEntity = bypass; }
 	@SerialClass.SerialField
 	public float damage = 0;
 
@@ -33,12 +39,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		super(pEntityType, pLevel);
 	}
 
-	protected YHBaseDanmakuEntity(EntityType<? extends YHBaseDanmakuEntity> pEntityType, double pX, double pY, double pZ, Level pLevel) {
+	protected YHBaseDanmakuEntity(EntityType<? extends YHBaseDanmakuEntity> pEntityType, double pX, double pY,
+			double pZ, Level pLevel) {
 		this(pEntityType, pLevel);
 		this.setPos(pX, pY, pZ);
 	}
 
-	protected YHBaseDanmakuEntity(EntityType<? extends YHBaseDanmakuEntity> pEntityType, LivingEntity pShooter, Level pLevel) {
+	protected YHBaseDanmakuEntity(EntityType<? extends YHBaseDanmakuEntity> pEntityType, LivingEntity pShooter,
+			Level pLevel) {
 		this(pEntityType, pShooter.getX(), pShooter.getEyeY() - (double) 0.1F, pShooter.getZ(), pLevel);
 		this.setOwner(pShooter);
 	}
@@ -49,7 +57,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		this.bypassWall = bypassWall;
 		this.bypassEntity = bypassEntity;
 		setDeltaMovement(initVec);
-		updateRotation(ProjectileMovement.of(initVec).rot());
+		// Directly set rotation without lerping so initial direction is correct
+		Vec3 rot = ProjectileMovement.of(initVec).rot();
+		float targetXRot = (float) (rot.x * Mth.RAD_TO_DEG);
+		float targetYRot = (float) (rot.y * Mth.RAD_TO_DEG);
+		setXRot(targetXRot);
+		setYRot(targetYRot);
+		xRotO = targetXRot;
+		yRotO = targetYRot;
 	}
 
 	@Override
@@ -95,7 +110,27 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	protected void onHitBlock(BlockHitResult pResult) {
 		super.onHitBlock(pResult);
 		if (!level().isClientSide) {
-			discard();
+			// Execute onHitBlock callback before potential discard
+			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
+				executeHitAction(ide.onHitBlockAction);
+			}
+			if (this instanceof ItemDanmakuEntity ide) {
+				switch (ide.hitBehaviorBlock) {
+					case CONTINUE -> {
+						// Don't remove — let it keep flying until lifetime expires.
+						return;
+					}
+					case EXPIRE -> {
+						expireNow();
+						return;
+					}
+					case DISCARD -> {
+						markErased(false);
+						return;
+					}
+				}
+			}
+			markErased(false);
 		}
 	}
 
@@ -105,17 +140,48 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	}
 
 	@Override
-	public boolean canHitEntity(Entity target) {
-		return super.canHitEntity(target) && shouldHurt(getOwner(), target);
+	public void onHitEntity(EntityHitResult result) {
+		if (level().isClientSide)
+			return;
+		super.onHitEntity(result);
+		hurtTarget(result);
+		// Execute onHitEntity callback before potential discard
+		if (this instanceof ItemDanmakuEntity ide && ide.onHitEntityAction != null) {
+			executeHitAction(ide.onHitEntityAction);
+		}
+		// Data-driven danmaku always collide with entities.
+		// Whether they pierce or stop is controlled by hitBehaviorEntity.
+		if (this instanceof ItemDanmakuEntity ide) {
+			switch (ide.hitBehaviorEntity) {
+				case CONTINUE -> {
+					return;
+				}
+				case EXPIRE -> {
+					expireNow();
+					return;
+				}
+				case DISCARD -> {
+					markErased(false);
+					return;
+				}
+			}
+		} else if (!bypassEntity) {
+			markErased(false);
+		}
 	}
 
-	@Override
-	public void onHitEntity(EntityHitResult result) {
-		if (level().isClientSide) return;
-		hurtTarget(result);
-		if (!bypassEntity) {
-			discard();
-		}
+	private void expireNow() {
+		terminate();
+		markErased(false);
+	}
+
+	/** Helper: execute a TrailAction at the current danmaku position/direction. */
+	private void executeHitAction(TrailAction action) {
+		CardHolder holder = null;
+		Entity e = getOwner();
+		if (e instanceof CardHolder h) holder = h;
+		if (holder != null) action.execute(holder, position(), getDeltaMovement());
+		else action.execute(position(), getDeltaMovement());
 	}
 
 }

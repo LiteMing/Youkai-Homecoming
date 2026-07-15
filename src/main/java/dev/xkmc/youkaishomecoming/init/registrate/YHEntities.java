@@ -14,10 +14,14 @@ import dev.xkmc.youkaishomecoming.content.entity.animal.lampery.LampreyRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaEntity;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.boss.*;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserRenderer;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.*;
 import dev.xkmc.youkaishomecoming.content.entity.misc.FairyIce;
 import dev.xkmc.youkaishomecoming.content.entity.misc.FrozenFrog;
@@ -68,8 +72,11 @@ public class YHEntities {
 	public static final EntityEntry<FairyIce> FAIRY_ICE;
 	public static final EntityEntry<ItemDanmakuEntity> ITEM_DANMAKU;
 	public static final EntityEntry<ItemLaserEntity> ITEM_LASER;
+	public static final EntityEntry<TextDanmakuEntity> TEXT_DANMAKU;
 	public static final EntityEntry<ChairEntity> CHAIR;
 	public static final EntityEntry<ShooterEntity> SHOOTER;
+	public static final EntityEntry<DanmakuProxyEntity> DANMAKU_PROXY;
+	public static final EntityEntry<EntitySpellProxyEntity> ENTITY_SPELL_PROXY;
 
 	static {
 
@@ -292,15 +299,35 @@ public class YHEntities {
 					.renderer(() -> ShooterRenderer::new)
 					.register();
 
-			ITEM_LASER = YoukaisHomecoming.REGISTRATE
-					.<ItemLaserEntity>entity("item_laser", ItemLaserEntity::new, MobCategory.MISC)
-					.properties(e -> e.sized(0.4f, 0.4f).clientTrackingRange(4).updateInterval(1 << 16))
-					.renderer(() -> ItemLaserRenderer::new)
-					.register();
+		ITEM_LASER = YoukaisHomecoming.REGISTRATE
+				.<ItemLaserEntity>entity("item_laser", ItemLaserEntity::new, MobCategory.MISC)
+				.properties(e -> e.sized(0.4f, 0.4f).clientTrackingRange(4).updateInterval(1 << 16))
+				.renderer(() -> ItemLaserRenderer::new)
+				.register();
 
-			CHAIR = YoukaisHomecoming.REGISTRATE
+		TEXT_DANMAKU = YoukaisHomecoming.REGISTRATE
+				.<TextDanmakuEntity>entity("text_danmaku", TextDanmakuEntity::new, MobCategory.MISC)
+				.properties(e -> e.sized(0.4f, 0.4f).clientTrackingRange(4).updateInterval(1 << 16))
+				.renderer(() -> TextDanmakuRenderer::new)
+				.register();
+
+		CHAIR = YoukaisHomecoming.REGISTRATE
 					.<ChairEntity>entity("dining_chair", ChairEntity::new, MobCategory.MISC)
 					.properties(e -> e.sized(0.25f, 0.5f))
+					.renderer(() -> NothingRenderer::new)
+					.register();
+
+			DANMAKU_PROXY = YoukaisHomecoming.REGISTRATE
+					.<DanmakuProxyEntity>entity("danmaku_proxy", DanmakuProxyEntity::new, MobCategory.MISC)
+					.properties(e -> e.sized(0.1f, 0.1f).clientTrackingRange(10).updateInterval(2).noSave())
+					.attributes(DanmakuProxyEntity::createAttributes)
+					.renderer(() -> NothingRenderer::new)
+					.register();
+
+			ENTITY_SPELL_PROXY = YoukaisHomecoming.REGISTRATE
+					.<EntitySpellProxyEntity>entity("entity_spell_proxy", EntitySpellProxyEntity::new, MobCategory.MISC)
+					.properties(e -> e.sized(0.1f, 0.1f).clientTrackingRange(10).updateInterval(2))
+					.attributes(EntitySpellProxyEntity::createAttributes)
 					.renderer(() -> NothingRenderer::new)
 					.register();
 		}

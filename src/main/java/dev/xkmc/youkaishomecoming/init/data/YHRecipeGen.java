@@ -1500,6 +1500,7 @@ public class YHRecipeGen {
 				Item dye = ForgeRegistries.ITEMS.getValue(new ResourceLocation(e.getName() + "_dye"));
 				assert dye != null;
 				for (var t : YHDanmaku.Bullet.values()) {
+					if (!t.usesDyeTextures()) continue;
 					var danmaku = t.get(e).get();
 					unlock(pvd, ShapedRecipeBuilder.shaped(RecipeCategory.COMBAT, danmaku, 8)::unlockedBy, danmaku)
 							.pattern("AAA").pattern("ABA").pattern("AAA")

@@ -16,7 +16,6 @@ public class RumiaRenderer extends MobRenderer<RumiaEntity, RumiaModel<RumiaEnti
 	public RumiaRenderer(EntityRendererProvider.Context context) {
 		super(context, new RumiaModel<>(context.bakeLayer(RumiaModel.LAYER_LOCATION)), 0.2F);
 		addLayer(new BlackBallLayer<>(this, context.getModelSet()));
-		addLayer(new SpellCircleLayer<>(this));
 	}
 
 	public ResourceLocation getTextureLocation(RumiaEntity entity) {
@@ -28,11 +27,13 @@ public class RumiaRenderer extends MobRenderer<RumiaEntity, RumiaModel<RumiaEnti
 			pose.translate(0, 0.2, 0);
 			pose.mulPose(Axis.XP.rotationDegrees(90));
 			pose.translate(0, -0.85, 0);
-		} else super.setupRotations(rumia, pose, age, yaw, pTick);
+		} else
+			super.setupRotations(rumia, pose, age, yaw, pTick);
 	}
 
 	@Override
 	public void render(RumiaEntity rumia, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
+		SpellCircleLayer.renderImpl(pose, buffer, light, rumia, pTick, entityRenderDispatcher.cameraOrientation());
 		super.render(rumia, yaw, pTick, pose, buffer, light);
 	}
 }

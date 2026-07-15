@@ -9,6 +9,8 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
+/** @deprecated Migrated to {@link MigratedSpellCards#starSapphire()}. */
+@Deprecated
 @SerialClass
 public class StarSpell extends ActualSpellCard {
 

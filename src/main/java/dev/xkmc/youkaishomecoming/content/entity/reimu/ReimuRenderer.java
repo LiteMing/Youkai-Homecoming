@@ -15,7 +15,6 @@ public class ReimuRenderer extends MobRenderer<MaidenEntity, ReimuModel<MaidenEn
 
 	public ReimuRenderer(EntityRendererProvider.Context context) {
 		super(context, new ReimuModel<>(context.bakeLayer(ReimuModel.LAYER_LOCATION)), 0.2F);
-		addLayer(new SpellCircleLayer<>(this));
 	}
 
 	public ResourceLocation getTextureLocation(MaidenEntity entity) {
@@ -27,7 +26,9 @@ public class ReimuRenderer extends MobRenderer<MaidenEntity, ReimuModel<MaidenEn
 	}
 
 	@Override
-	public void render(MaidenEntity rumia, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
+	public void render(MaidenEntity rumia, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer,
+			int light) {
+		SpellCircleLayer.renderImpl(pose, buffer, light, rumia, pTick, entityRenderDispatcher.cameraOrientation());
 		super.render(rumia, yaw, pTick, pose, buffer, light);
 	}
 

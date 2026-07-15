@@ -14,7 +14,6 @@ public class CirnoRenderer extends MobRenderer<CirnoEntity, CirnoModel<CirnoEnti
 
 	public CirnoRenderer(EntityRendererProvider.Context context) {
 		super(context, new CirnoModel<>(context.bakeLayer(CirnoModel.LAYER_LOCATION)), 0.2F);
-		addLayer(new SpellCircleLayer<>(this));
 	}
 
 	public ResourceLocation getTextureLocation(CirnoEntity entity) {
@@ -23,6 +22,7 @@ public class CirnoRenderer extends MobRenderer<CirnoEntity, CirnoModel<CirnoEnti
 
 	@Override
 	public void render(CirnoEntity rumia, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
+		SpellCircleLayer.renderImpl(pose, buffer, light, rumia, pTick, entityRenderDispatcher.cameraOrientation());
 		super.render(rumia, yaw, pTick, pose, buffer, light);
 	}
 

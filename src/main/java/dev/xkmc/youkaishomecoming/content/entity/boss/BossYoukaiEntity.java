@@ -1,14 +1,19 @@
 package dev.xkmc.youkaishomecoming.content.entity.boss;
 
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.entity.movement.*;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.BossEvent;
@@ -22,13 +27,19 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.fluids.FluidType;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Objects;
 
 @SerialClass
-public class BossYoukaiEntity extends GeneralYoukaiEntity {
+public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementControlled {
 
 	public static AttributeSupplier.Builder createAttributes() {
 		return YoukaiEntity.createAttributes()
@@ -37,26 +48,183 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 				.add(Attributes.FOLLOW_RANGE, 128);
 	}
 
-	protected final ServerBossEvent bossEvent = new ServerBossEvent(getDisplayName(), BossEvent.BossBarColor.RED, BossEvent.BossBarOverlay.NOTCHED_20);
+	private static final Logger BOSS_LOGGER = LoggerFactory.getLogger("YH-BossChunkForce");
+
+	protected final ServerBossEvent bossEvent = new ServerBossEvent(getDisplayName(), BossEvent.BossBarColor.RED,
+			BossEvent.BossBarOverlay.NOTCHED_20);
 	private boolean ticking = false;
+
+	// 移动控制器
+	private final CompositeMovementController movementController = new CompositeMovementController();
+	private boolean movementInitialized = false;
+
+	// NBT 键名常量
+	private static final String NBT_DODGE = "enableDodge";
+	private static final String NBT_CHASE_FLEE = "enableChaseFlee";
+	private static final String NBT_STRAFE = "enableStrafe";
+
+	// 缓存的标志状态 (用于检测变化)
+	private boolean cachedDodge = false;
+	private boolean cachedChaseFlee = false;
+	private boolean cachedStrafe = false;
 
 	@SerialClass.SerialField
 	private ResourceLocation spawnDimension;
+
+	// ========== 区块强加载 (防止战斗中 Boss 被卸载) ==========
+	private ChunkPos forcedChunkPos = null; // 当前强加载的区块位置，null 表示未强加载
+	/**
+	 * 强加载宽限tick。Boss 目标超出范围后，短暂保持区块加载，
+	 * 让脱战回血流程完成，避免在脱战瞬间被区块卸载。
+	 */
+	private static final int COMBAT_GRACE_TICKS = 60; // 3秒宽限期
+	/**
+	 * 独立的超距离计数器。因为 YoukaiTargetContainer 不检查距离，
+	 * getTarget() 只要玩家存活就的返回非 null，所以 noTargetTime 永远为 0。
+	 * 必须用这个独立计数器来追踪目标超出范围的时间。
+	 */
+	private int outOfRangeTicks = 0;
 
 	public BossYoukaiEntity(EntityType<? extends BossYoukaiEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
 		setPersistenceRequired();
 	}
 
+	// ========== 移动功能开关 (使用 PersistentData) ==========
+
+	/**
+	 * 获取闪避功能是否启用
+	 */
+	public boolean isDodgeEnabled() {
+		return getPersistentData().getBoolean(NBT_DODGE);
+	}
+
+	/**
+	 * 设置闪避功能开关
+	 */
+	public void setDodgeEnabled(boolean enabled) {
+		getPersistentData().putBoolean(NBT_DODGE, enabled);
+	}
+
+	/**
+	 * 获取追逐/逃跑功能是否启用
+	 */
+	public boolean isChaseFleeEnabled() {
+		return getPersistentData().getBoolean(NBT_CHASE_FLEE);
+	}
+
+	/**
+	 * 设置追逐/逃跑功能开关
+	 */
+	public void setChaseFleeEnabled(boolean enabled) {
+		getPersistentData().putBoolean(NBT_CHASE_FLEE, enabled);
+	}
+
+	/**
+	 * 获取斜向移动功能是否启用
+	 */
+	public boolean isStrafeEnabled() {
+		return getPersistentData().getBoolean(NBT_STRAFE);
+	}
+
+	/**
+	 * 设置斜向移动功能开关
+	 */
+	public void setStrafeEnabled(boolean enabled) {
+		getPersistentData().putBoolean(NBT_STRAFE, enabled);
+	}
+
+	/**
+	 * 一次性设置所有移动功能开关
+	 */
+	public void setAllMovementEnabled(boolean enabled) {
+		setDodgeEnabled(enabled);
+		setChaseFleeEnabled(enabled);
+		setStrafeEnabled(enabled);
+	}
+
+	/**
+	 * 刷新移动控制器 (当开关改变时调用)
+	 */
+	private void refreshMovementControllers() {
+		movementController.clear();
+		movementInitialized = false;
+	}
+
+	/**
+	 * 检查移动标志位是否发生变化 (支持 /data merge 实时修改)
+	 */
+	private void checkMovementFlagsChange() {
+		boolean currentDodge = isDodgeEnabled();
+		boolean currentChaseFlee = isChaseFleeEnabled();
+		boolean currentStrafe = isStrafeEnabled();
+
+		if (currentDodge != cachedDodge ||
+				currentChaseFlee != cachedChaseFlee ||
+				currentStrafe != cachedStrafe) {
+			cachedDodge = currentDodge;
+			cachedChaseFlee = currentChaseFlee;
+			cachedStrafe = currentStrafe;
+			refreshMovementControllers();
+		}
+	}
+
+	@Override
+	public CompositeMovementController getMovementController() {
+		// 检查标志位变化 (支持 /data merge 实时修改)
+		checkMovementFlagsChange();
+		if (!movementInitialized) {
+			initMovementControllers();
+			movementInitialized = true;
+		}
+		return movementController;
+	}
+
+	@Override
+	public void initMovementControllers() {
+		// 根据标志位开关添加控制器 (按优先级排序)
+
+		// 1. 闪避控制器 - 最高优先级
+		if (isDodgeEnabled()) {
+			movementController.add(new DodgeController(this)
+					.setScanRadius(10.0)
+					.setDangerRadius(5.0)
+					.setSpeedMultiplier(1.5));
+		}
+
+		// 2. 追逐/逃跑控制器
+		if (isChaseFleeEnabled()) {
+			movementController.add(new ChaseFleeController(this)
+					.setIdealDistance(25.0)
+					.setChaseThreshold(40.0)
+					.setFleeThreshold(10.0)
+					.setDiagonalFactor(0.4));
+		}
+
+		// 3. 斜向移动控制器
+		if (isStrafeEnabled()) {
+			movementController.add(new StrafeController(this)
+					.setSpeedMultiplier(0.7)
+					.setDirectionChangePeriod(80)
+					.setVerticalWave(0.25, 0.08));
+		}
+	}
+
 	@Override
 	public boolean shouldHurt(LivingEntity le) {
-		if (shouldIgnore(le)) return false;
+		if (shouldIgnore(le))
+			return false;
 		return le instanceof Enemy || super.shouldHurt(le);
 	}
 
 	@Override
 	public boolean canBeAffected(MobEffectInstance ins) {
-		return false;
+		// 允许 beaten 效果影响boss，其他效果依然免疫
+		if (ins.getEffect() == YHEffects.BEATEN.get()) {
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	@Override
@@ -75,14 +243,30 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 		validateData();
 		super.tick();
 		ticking = false;
+
+		// 区块强加载逻辑：战斗状态下强制加载 Boss 所在区块
+		if (!level().isClientSide()) {
+			updateChunkForcing();
+		}
 	}
 
 	@Override
 	public void aiStep() {
-		if (hurtCD < 1000) hurtCD++;
+		if (hurtCD < 1000)
+			hurtCD++;
 		super.aiStep();
+
+		// 移除所有效果，但保留 beaten 效果
 		if (!getActiveEffectsMap().isEmpty()) {
-			removeAllEffects();
+			// 创建一个要移除的效果列表
+			var effectsToRemove = getActiveEffectsMap().keySet().stream()
+					.filter(effect -> effect != YHEffects.BEATEN.get())
+					.toList();
+
+			// 移除除 beaten 之外的所有效果
+			for (var effect : effectsToRemove) {
+				removeEffect(effect);
+			}
 		}
 	}
 
@@ -117,7 +301,8 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 				}
 			}
 		}
-		if (getTarget() instanceof Player && !(source.getEntity() instanceof Player)) return false;
+		if (getTarget() instanceof Player && !(source.getEntity() instanceof Player))
+			return false;
 		if (source.getEntity() instanceof LivingEntity le) {
 			setLastHurtByMob(le);
 			targets.checkTarget();
@@ -127,7 +312,8 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 					!(source.getEntity() instanceof LivingEntity))
 				return false;
 			if (source.getEntity() instanceof LivingEntity le) {
-				if (shouldIgnore(le)) return false;
+				if (shouldIgnore(le))
+					return false;
 			}
 			int cd = getCD(source);
 			if (hurtCD < cd) {
@@ -213,15 +399,18 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 
 	@Override
 	protected void hurtFinal(DamageSource source, float amount) {
-		if (!Float.isFinite(amount)) return;
+		if (!Float.isFinite(amount))
+			return;
 		amount = clampDamage(source, amount);
-		if (amount <= 0) return;
+		if (amount <= 0)
+			return;
 		super.hurtFinal(source, amount);
 	}
 
 	@Override
 	public void setHealth(float val) {
-		if (!Float.isFinite(val)) return;
+		if (!Float.isFinite(val))
+			return;
 		if (level().isClientSide()) {
 			setCombatProgress(val);
 		}
@@ -251,7 +440,8 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 	public void heal(float original) {
 		var heal = ForgeEventFactory.onLivingHeal(this, original);
 		heal = Math.max(original, heal);
-		if (heal <= 0) return;
+		if (heal <= 0)
+			return;
 		float f = getCombatProgress();
 		if (f > 0) {
 			setHealth(f + heal);
@@ -264,6 +454,32 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 		if (hasCustomName()) {
 			bossEvent.setName(getDisplayName());
 		}
+
+		// 读取移动开关 NBT 到 PersistentData
+		// PersistentData 会自动从 ForgeData 标签读取，这里处理旧版本兼容
+		if (tag.contains(NBT_DODGE)) {
+			setDodgeEnabled(tag.getBoolean(NBT_DODGE));
+		}
+		if (tag.contains(NBT_CHASE_FLEE)) {
+			setChaseFleeEnabled(tag.getBoolean(NBT_CHASE_FLEE));
+		}
+		if (tag.contains(NBT_STRAFE)) {
+			setStrafeEnabled(tag.getBoolean(NBT_STRAFE));
+		}
+
+		// 刷新移动控制器
+		refreshMovementControllers();
+	}
+
+	@Override
+	public void addAdditionalSaveData(CompoundTag tag) {
+		super.addAdditionalSaveData(tag);
+
+		// PersistentData 会自动保存到 ForgeData 标签
+		// 这里我们仍然写入顶级 NBT 以便使用 /data merge
+		tag.putBoolean(NBT_DODGE, isDodgeEnabled());
+		tag.putBoolean(NBT_CHASE_FLEE, isChaseFleeEnabled());
+		tag.putBoolean(NBT_STRAFE, isStrafeEnabled());
 	}
 
 	public void setCustomName(@Nullable Component pName) {
@@ -320,6 +536,117 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity {
 	@Override
 	public boolean canChangeDimensions() {
 		return YHModConfig.COMMON.canReimuTeleportToOtherDimension.get();
+	}
+
+	// ========== 区块强加载管理 ==========
+
+	/**
+	 * 判断是否应该保持区块强加载。
+	 * 1. 有存活目标且在合理范围内 → 强加载（防止战斗中区块卸载）
+	 * 2. 目标超出范围或无目标 + 宽限期内 → 短暂保持（让脱战回血流程完成）
+	 * 宽限期结束后释放，允许 Boss 自然脱战。
+	 *
+	 * 注意：YoukaiTargetContainer 不检查距离，只要玩家存活 getTarget() 就返回非 null，
+	 * 因此不能依赖 noTargetTime，必须用独立的 outOfRangeTicks 计数。
+	 */
+	private boolean shouldForceLoadChunk() {
+		LivingEntity target = getTarget();
+		double maxRange = getAttributeValue(Attributes.FOLLOW_RANGE) * 1.5; // 128 * 1.5 = 192
+		boolean targetInRange = target != null && target.isAlive()
+				&& distanceToSqr(target) <= maxRange * maxRange;
+
+		if (targetInRange) {
+			outOfRangeTicks = 0; // 目标在范围内，重置计数器
+			return true;
+		}
+
+		// 目标不在范围内（超距离或无目标），递增计数器
+		outOfRangeTicks++;
+
+		// 已经在强加载中且宽限期未过 → 继续保持
+		if (forcedChunkPos != null && outOfRangeTicks < COMBAT_GRACE_TICKS) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * 更新区块强加载状态。
+	 * - 满足强加载条件时，强制加载当前区块
+	 * - 跨区块移动时，更新强加载的区块
+	 * - 条件不再满足时，释放强加载
+	 */
+	private void updateChunkForcing() {
+		if (!(level() instanceof ServerLevel serverLevel))
+			return;
+
+		if (shouldForceLoadChunk()) {
+			ChunkPos currentChunk = new ChunkPos(blockPosition());
+			if (forcedChunkPos == null) {
+				// 进入战斗，开始强加载
+				boolean success = forceChunk(serverLevel, currentChunk, true);
+				forcedChunkPos = currentChunk;
+				BOSS_LOGGER.info("Boss {} 开始强加载区块 [{}, {}], 成功={}",
+						getUUID().toString().substring(0, 8), currentChunk.x, currentChunk.z, success);
+			} else if (!forcedChunkPos.equals(currentChunk)) {
+				// 跨区块移动，更新强加载
+				forceChunk(serverLevel, forcedChunkPos, false);
+				boolean success = forceChunk(serverLevel, currentChunk, true);
+				BOSS_LOGGER.debug("Boss {} 跨区块: [{}, {}] -> [{}, {}], 成功={}",
+						getUUID().toString().substring(0, 8),
+						forcedChunkPos.x, forcedChunkPos.z,
+						currentChunk.x, currentChunk.z, success);
+				forcedChunkPos = currentChunk;
+			}
+		} else {
+			// 条件不再满足，释放强加载
+			if (forcedChunkPos != null) {
+				BOSS_LOGGER.info("Boss {} 释放区块强加载 [{}, {}], noTargetTime={}",
+						getUUID().toString().substring(0, 8),
+						forcedChunkPos.x, forcedChunkPos.z, noTargetTime);
+			}
+			releaseForcing();
+		}
+	}
+
+	/**
+	 * 释放当前强加载的区块
+	 */
+	private void releaseForcing() {
+		if (forcedChunkPos != null && level() instanceof ServerLevel serverLevel) {
+			forceChunk(serverLevel, forcedChunkPos, false);
+			forcedChunkPos = null;
+		}
+	}
+
+	/**
+	 * 执行区块强加载/取消强加载
+	 * 
+	 * @param level 服务端世界
+	 * @param chunk 目标区块坐标
+	 * @param add   true=强加载, false=取消
+	 * @return 操作是否成功
+	 */
+	private boolean forceChunk(ServerLevel level, ChunkPos chunk, boolean add) {
+		return ForgeChunkManager.forceChunk(level, YoukaisHomecoming.MODID, this, chunk.x, chunk.z, add, true);
+	}
+
+	@Override
+	public void checkDespawn() {
+		// Boss 永远不应被原版远距离清除机制移除
+		this.noActionTime = 0;
+	}
+
+	@Override
+	public void remove(RemovalReason reason) {
+		// 实体被移除时（死亡、discard、维度切换等），确保释放强加载
+		if (forcedChunkPos != null) {
+			BOSS_LOGGER.info("Boss {} 被移除({}), 释放区块 [{}, {}]",
+					getUUID().toString().substring(0, 8), reason,
+					forcedChunkPos.x, forcedChunkPos.z);
+		}
+		releaseForcing();
+		super.remove(reason);
 	}
 
 }

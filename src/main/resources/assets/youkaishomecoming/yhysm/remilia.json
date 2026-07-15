@@ -1,0 +1,19 @@
+{
+  "entities": {
+    "youkaishomecoming:remilia_scarlet": {
+      "model": "yh/remilia",
+      "texture": "default"
+    }
+  },
+  "model": "yh/remilia",
+  "expressions": {
+    "angry": [
+      "angry",
+      "combat",
+      "extra10",
+      "attack",
+      "attacked",
+      "idle"
+    ]
+  }
+}

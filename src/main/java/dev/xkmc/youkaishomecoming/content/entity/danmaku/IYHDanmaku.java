@@ -1,10 +1,11 @@
 package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
+import dev.xkmc.fastprojectileapi.collision.EntityInfo;
 import dev.xkmc.fastprojectileapi.entity.GrazingEntity;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
-import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.events.GeneralEventHandlers;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
@@ -32,11 +33,9 @@ public interface IYHDanmaku extends GrazingEntity {
 	}
 
 	@Override
-	default AABB alterHitBox(Entity x, float radius, float graze) {
-		if (self().getOwner() instanceof Player player &&
-				x instanceof YoukaiEntity youkai &&
-				youkai.targets.contains(player)) {
-			return youkai.getBoundingBox().inflate(GRAZE_RANGE);
+	default AABB alterHitBox(EntityInfo x, float radius, float graze) {
+		if (x.ownerTrackedByYoukai() && x.entity() instanceof YoukaiEntity) {
+			return x.boundingBox().inflate(GRAZE_RANGE);
 		}
 		return alterEntityHitBox(x, radius, graze);
 	}
@@ -52,7 +51,24 @@ public interface IYHDanmaku extends GrazingEntity {
 		return true;
 	}
 
+	/**
+	 * Returns the per-danmaku damage type override, or null if none is set.
+	 * Override this in subclasses that support data-driven damage type configuration.
+	 */
+	@Nullable
+	default DanmakuDamageType getDamageTypeOverride() {
+		return null;
+	}
+
 	default DamageSource source() {
+		// Per-danmaku damage type override (set by data-driven fire_danmaku/fire_laser actions)
+		DanmakuDamageType override = getDamageTypeOverride();
+		if (override != null) {
+			DamageSource dmgType = override.resolve(this);
+			if (self().getOwner() instanceof LivingEntity le)
+				dmgType = GeneralEventHandlers.modifyDamageType(le, dmgType, this);
+			return dmgType;
+		}
 		DamageSource dmgType = YHDamageTypes.danmaku(this);
 		if (self().getOwner() instanceof CardHolder youkai) {
 			dmgType = youkai.getDanmakuDamageSource(this);
@@ -84,12 +100,17 @@ public interface IYHDanmaku extends GrazingEntity {
 			youkai.danmakuHitTarget(this, source, target);
 			return;
 		}
-		if (owner instanceof Player player) {
-			if (e instanceof LivingEntity le) {
-				if (!GrazeCapability.HOLDER.get(player).shouldHurt(le)) return;
-			}
-		}
 		e.hurt(source, damage(e));
+	}
+
+	static AABB alterEntityHitBox(EntityInfo x, float radius, float graze) {
+		var box = x.boundingBox();
+		if (graze > 0) return box.inflate(radius + graze);
+		float shrink = -x.hitBoxDelta();
+		return new AABB(
+				box.minX + shrink - radius, box.minY + shrink * 2 - radius, box.minZ + shrink - radius,
+				box.maxX - shrink + radius, box.maxY + radius, box.maxZ - shrink + radius
+		);
 	}
 
 	static AABB alterEntityHitBox(Entity x, float radius, float graze) {

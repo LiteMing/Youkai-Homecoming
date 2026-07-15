@@ -28,19 +28,21 @@ public record DoubleLayerLaserType(ResourceLocation inner, ResourceLocation oute
 		boolean additive = YHModConfig.CLIENT.laserRenderAdditive.get();
 		boolean invert = YHModConfig.CLIENT.laserRenderInverted.get();
 		int n = list.size() * 4;
-		int count = 1;
-		if (invert || !additive) count++;
 		BulkDataWriter vc;
-		vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.laser(inner, DisplayType.TRANSPARENT)), n * count);
+		// Inner core: separate RenderType (DECAL bucket under Oculus) so the translucent
+		// shell never paints over the core when Oculus batches per-RenderType.
+		vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.laserCore(inner, DisplayType.TRANSPARENT)), n);
 		for (var e : list) {
 			e.texInner(vc, e.core);
 		}
+		vc.flush();
 		if (invert || !additive) {
+			vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.laser(inner, DisplayType.TRANSPARENT)), n);
 			for (var e : list) {
 				e.texOuter(invert, vc, e.tran);
 			}
+			vc.flush();
 		}
-		vc.flush();
 		if (additive) {
 			vc = new BulkDataWriter(buffer.getBuffer(DanmakuRenderStates.laser(outer, DisplayType.ADDITIVE)), n);
 			for (var e : list) {

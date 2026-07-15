@@ -42,12 +42,15 @@ public abstract class BasePotRecipeCategory<T extends BasePotRecipe> implements 
 
 	public abstract RecipeType<T> getRecipeType();
 
-	public IDrawable getBackground() {
-		return this.background;
-	}
+
 
 	public IDrawable getIcon() {
 		return this.icon;
+	}
+
+	@Override
+	public IDrawable getBackground() {
+		return this.background;
 	}
 
 	public void setRecipe(IRecipeLayoutBuilder builder, T recipe, IFocusGroup focusGroup) {

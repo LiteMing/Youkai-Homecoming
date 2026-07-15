@@ -12,6 +12,9 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import org.jetbrains.annotations.Nullable;
+import org.joml.Quaternionf;
+
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -19,6 +22,21 @@ import java.util.Collection;
 public class ProjectileRenderHelper {
 
 	private static RenderQueue QUEUE;
+
+	/**
+	 * When non-null, overrides the camera orientation used for billboard rendering.
+	 * Set this before rendering preview entities, and null it after.
+	 */
+	@Nullable
+	public static Quaternionf cameraOrientationOverride = null;
+
+	/**
+	 * Flush the render queue manually. Used by the preview viewport
+	 * which renders in the Screen pass rather than the level render pass.
+	 */
+	public static void flushPreviewQueue(MultiBufferSource.BufferSource buffer) {
+		QUEUE.flush(buffer);
+	}
 
 	public static void setup() {
 		ProjTypeHolder.setup();
@@ -46,6 +64,7 @@ public class ProjectileRenderHelper {
 		var level = Minecraft.getInstance().level;
 		if (level == null) return;
 		if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+			GiantDanmakuScreenOverlay.beginFrame();
 			var buffer = Minecraft.getInstance().renderBuffers().bufferSource();
 			var cache = ClientDanmakuCache.get(level);
 			cache.renderAll(event.getCamera(), event.getFrustum(), event.getPoseStack(), event.getPartialTick(), buffer);
@@ -72,6 +91,20 @@ public class ProjectileRenderHelper {
 
 		public void flush(MultiBufferSource.BufferSource buffer) {
 			int n = lists.length;
+			boolean depthPrepass = false;
+			for (int i = 0; i < n; i++) {
+				var list = lists[i];
+				if (list != null) {
+					var type = ProjTypeHolder.HOLDERS.get(i).type;
+					if (type.hasDepthPrepass()) {
+						type.startDepth(buffer, Wrappers.cast(list));
+						depthPrepass = true;
+					}
+				}
+			}
+			if (depthPrepass) {
+				buffer.endLastBatch();
+			}
 			for (int i = 0; i < n; i++) {
 				var list = lists[i];
 				lists[i] = null;

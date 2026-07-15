@@ -22,7 +22,9 @@ public interface IEntityCache {
 		for (int x = x0; x <= x1; x++) {
 			for (int y = y0; y <= y1; y++) {
 				for (int z = z0; z <= z1; z++) {
-					for (var e : get(x, y, z).intersect(aabb)) {
+					SectionCache cache = get(x, y, z);
+					if (cache == null) continue;
+					for (var e : cache.intersect(aabb)) {
 						var ebox = e.getBoundingBox().expandTowards(e.getDeltaMovement());
 						if (aabb.intersects(ebox) && filter.test(e)) {
 							list.add(e);

@@ -12,6 +12,10 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue laserRenderAdditive;
 		public final ForgeConfigSpec.BooleanValue laserRenderInverted;
 		public final ForgeConfigSpec.DoubleValue laserTransparency;
+		public final ForgeConfigSpec.BooleanValue adaptiveProjectileMesh;
+		public final ForgeConfigSpec.IntValue giantSphereBaseSegments;
+		public final ForgeConfigSpec.IntValue giantSphereBaseRings;
+		public final ForgeConfigSpec.IntValue laserCylinderBaseSegments;
 		public final ForgeConfigSpec.DoubleValue farDanmakuFading;
 		public final ForgeConfigSpec.DoubleValue selfDanmakuFading;
 		public final ForgeConfigSpec.DoubleValue fadingStart;
@@ -21,10 +25,28 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue powerInfoYAnchor;
 		public final ForgeConfigSpec.IntValue powerInfoYOffset;
 
+		// Exposure compat: photo overlay display
+		public final ForgeConfigSpec.DoubleValue photoOverlayAlpha;
+		public final ForgeConfigSpec.DoubleValue photoOverlayScale;
+		public final ForgeConfigSpec.IntValue photoOverlayCorner;
+		public final ForgeConfigSpec.IntValue photoOverlayDuration;
+
+		// Spell Market
+		public final ForgeConfigSpec.BooleanValue spellMarketEnabled;
+		public final ForgeConfigSpec.ConfigValue<String> spellMarketUrl;
+
 		Client(ForgeConfigSpec.Builder builder) {
 			laserRenderAdditive = builder.define("laserRenderAdditive", true);
 			laserRenderInverted = builder.define("laserRenderInverted", true);
 			laserTransparency = builder.defineInRange("laserTransparency", 0.5, 0, 1);
+			adaptiveProjectileMesh = builder.comment("Adapt giant sphere and cylinder laser mesh detail to projectile visual size.")
+					.define("adaptiveProjectileMesh", true);
+			giantSphereBaseSegments = builder.comment("Base longitude segments for giant sphere danmaku when adaptive mesh is enabled.")
+					.defineInRange("giantSphereBaseSegments", 16, 8, 32);
+			giantSphereBaseRings = builder.comment("Base latitude rings for giant sphere danmaku when adaptive mesh is enabled.")
+					.defineInRange("giantSphereBaseRings", 8, 4, 16);
+			laserCylinderBaseSegments = builder.comment("Base side count for cylindrical laser rendering when adaptive mesh is enabled.")
+					.defineInRange("laserCylinderBaseSegments", 12, 4, 24);
 			farDanmakuFading = builder.defineInRange("farDanmakuFading", 0.5d, 0, 1);
 			selfDanmakuFading = builder.defineInRange("selfDanmakuFading", 0.5d, 0, 1);
 			fadingStart = builder.defineInRange("fadingStart", 8d, 0, 128);
@@ -33,6 +55,27 @@ public class YHModConfig {
 			powerInfoXOffset = builder.defineInRange("powerInfoXOffset", -8, -1000, 1000);
 			powerInfoYAnchor = builder.defineInRange("powerInfoYAnchor", 0, -1, 1);
 			powerInfoYOffset = builder.defineInRange("powerInfoYOffset", 0, -1000, 1000);
+
+			builder.push("exposure_compat");
+			{
+				photoOverlayAlpha = builder.comment("Opacity of the photo thumbnail overlay (0=invisible, 1=opaque)")
+						.defineInRange("photoOverlayAlpha", 0.85, 0, 1);
+				photoOverlayScale = builder.comment("Scale of the photo thumbnail overlay")
+						.defineInRange("photoOverlayScale", 0.25, 0.1, 1.0);
+				photoOverlayCorner = builder.comment("Corner for photo overlay: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right")
+						.defineInRange("photoOverlayCorner", 0, 0, 3);
+				photoOverlayDuration = builder.comment("Duration (ticks) to display the photo overlay")
+						.defineInRange("photoOverlayDuration", 80, 20, 600);
+			}
+			builder.pop();
+			builder.push("spell_market");
+			{
+				spellMarketEnabled = builder.comment("Enable the spell card market feature")
+						.define("enabled", true);
+				spellMarketUrl = builder.comment("Spell market server URL")
+						.define("url", "http://149.13.91.92/api/v1");
+			}
+			builder.pop();
 		}
 
 	}
@@ -71,6 +114,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue playerSpellCooldown;
 		public final ForgeConfigSpec.IntValue playerLaserDuration;
 		public final ForgeConfigSpec.BooleanValue invulFrameForDanmaku;
+		public final ForgeConfigSpec.IntValue danmakuBuffCostTicks;
 
 		public final ForgeConfigSpec.BooleanValue rumiaNaturalSpawn;
 		public final ForgeConfigSpec.BooleanValue exRumiaConversion;
@@ -96,6 +140,8 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue ringSpellDanmakuPerItemCost;
 		public final ForgeConfigSpec.IntValue homingSpellDanmakuPerItemCost;
 
+		public final ForgeConfigSpec.BooleanValue useLegacySpellCards;
+
 		public final ForgeConfigSpec.BooleanValue smallFairyReplacement;
 		public final ForgeConfigSpec.DoubleValue smallFairySummonReinforcement;
 		public final ForgeConfigSpec.DoubleValue smallFairySummonStrongFairy;
@@ -110,6 +156,10 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue maxPowerLossOnMiss;
 		public final ForgeConfigSpec.IntValue initialResource;
 		public final ForgeConfigSpec.IntValue initialPower;
+
+		// Exposure compat
+		public final ForgeConfigSpec.IntValue exposureCameraCooldown;
+		public final ForgeConfigSpec.BooleanValue exposureDeactivateAfterShot;
 
 		Common(ForgeConfigSpec.Builder builder) {
 			builder.push("youkaifying_effect");
@@ -190,9 +240,12 @@ public class YHModConfig {
 						.defineInRange("playerSpellCooldown", 40, 5, 1000);
 				playerLaserDuration = builder.comment("Player laser duration")
 						.defineInRange("playerLaserDuration", 100, 5, 1000);
-				invulFrameForDanmaku = builder.comment("Enable danmaku damage invulnerability frame against non-player non-youkai mobs.")
-						.comment("It's always enabled against player and youkais")
-						.define("invulFrameForDanmaku", true);
+			invulFrameForDanmaku = builder.comment("Enable danmaku damage invulnerability frame against non-player non-youkai mobs.")
+					.comment("It's always enabled against player and youkais")
+					.define("invulFrameForDanmaku", true);
+				danmakuBuffCostTicks = builder.comment("Buff duration (ticks) consumed per danmaku/laser shot when player has youkaified/fairy effect.")
+					.comment("Set to 0 to disable buff consumption. Hat bonus bypasses this cost.")
+					.defineInRange("danmakuBuffCostTicks", 40, 0, 10000);
 				danmakuMaxResource = builder.comment("Max resource obtainable from danmaku battle")
 						.defineInRange("danmakuMaxResource", 10, 4, 20);
 				danmakuMaxPower = builder.comment("Max Power player can obtain from grazing")
@@ -275,6 +328,14 @@ public class YHModConfig {
 			}
 			builder.pop();
 
+			builder.push("spell_migration");
+			{
+				useLegacySpellCards = builder.comment("Fallback to legacy Java SpellCard classes instead of data-driven migrated versions.")
+						.comment("Read at startup — restart required to apply.")
+						.define("useLegacySpellCards", false);
+			}
+			builder.pop();
+
 			builder.push("touhou_little_maid");
 			{
 				smallFairyReplacement = builder.comment("Replace Fairies from Touhou Little Maid with a neutral fairy")
@@ -285,6 +346,15 @@ public class YHModConfig {
 						.defineInRange("smallFairySummonStrongFairy", 0.1, 0, 1);
 				smallFairyStrength = builder.comment("Small Fairy spellcard strength")
 						.defineInRange("smallFairyStrength", 2, 0, 4);
+			}
+			builder.pop();
+
+			builder.push("exposure_compat");
+			{
+				exposureCameraCooldown = builder.comment("Cooldown (ticks) applied to camera after photographing danmaku")
+						.defineInRange("exposureCameraCooldown", 40, 0, 600);
+				exposureDeactivateAfterShot = builder.comment("Whether to exit viewfinder after photographing danmaku")
+						.define("exposureDeactivateAfterShot", true);
 			}
 			builder.pop();
 		}

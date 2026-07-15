@@ -29,6 +29,10 @@ public final class RectMover extends TargetPosMover {
 		return pos.add(v.scale(tick)).add(a.scale(tick * tick * 0.5));
 	}
 
+	public Vec3 vel(double tick) {
+		return v.add(a.scale(tick));
+	}
+
 	public RectMover toStatic(int tick) {
 		return new RectMover(pos(tick), v.add(a.scale(tick)), Vec3.ZERO);
 	}

@@ -80,6 +80,12 @@ public final class PolarMover extends TargetPosMover {
 		return this;
 	}
 
+	public record PolarState(Vec3 pos, Vec3 vel) {}
+
+	public PolarState stateAt(int tick) {
+		return new PolarState(pos(tick), dir(tick));
+	}
+
 	public RectMover toRect() {
 		return new RectMover(pos(0), dir(0), Vec3.ZERO);
 	}

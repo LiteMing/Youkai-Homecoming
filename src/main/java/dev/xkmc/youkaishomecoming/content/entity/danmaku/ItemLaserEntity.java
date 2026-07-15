@@ -4,8 +4,12 @@ import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.EntityNumberProviderEvaluator;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.mover.*;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ItemSupplier;
@@ -20,6 +24,22 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	public DanmakuMover mover;
 	@SerialClass.SerialField
 	public ItemStack stack = ItemStack.EMPTY;
+	@SerialClass.SerialField
+	public float visualScale = 1;
+	public NumberProvider visualScaleFunction = null;
+	private static final float VISUAL_SCALE_EPSILON = 1.0E-4f;
+	private float currentVisualScale = 1;
+	/**
+	 * Per-laser damage type override. When non-null, this takes priority over
+	 * the CardHolder/SpellCard damage source resolution chain.
+	 * Set by data-driven {@code fire_laser} actions with a {@code damage_type} field.
+	 */
+	public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType damageTypeOverride = null;
+
+	@Override
+	public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType getDamageTypeOverride() {
+		return damageTypeOverride;
+	}
 
 	public ItemLaserEntity(EntityType<? extends ItemLaserEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -44,31 +64,35 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	}
 
 	@Override
+	public void tick() {
+		if (visualScaleFunction != null) {
+			updateVisualScaleDimensions(false);
+		}
+		super.tick();
+	}
+
+	@Override
 	public TraceableEntity asTraceable() {
 		return this;
 	}
 
-	@Override
-	protected void danmakuMove() {
-		ProjectileMovement movement = updateVelocity(getDeltaMovement(), position());
-		setDeltaMovement(movement.vec());
-		updateRotation(movement.rot());
-		double d2 = getX() + movement.vec().x;
-		double d0 = getY() + movement.vec().y;
-		double d1 = getZ() + movement.vec().z;
-		setPos(d2, d0, d1);
-	}
-
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
 		if (mover != null) {
-			return mover.move(new MoverInfo(tickCount, pos, vec, this));
+			return mover.move(new MoverInfo(tickCount, pos, vec, this, tickData().ownerInfo));
 		}
 		return new ProjectileMovement(vec, rot());
 	}
 
 	public void setItem(ItemStack pStack) {
 		stack = pStack;
+		sizeCache = null;
 		refreshDimensions();
+	}
+
+	public void configureVisualScale(float scale, NumberProvider function) {
+		visualScale = Math.max(0.05f, scale);
+		visualScaleFunction = function;
+		updateVisualScaleDimensions(true);
 	}
 
 	public ItemStack getItem() {
@@ -77,7 +101,32 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 
 	public void readAdditionalSaveData(CompoundTag nbt) {
 		super.readAdditionalSaveData(nbt);
-		refreshDimensions();
+		readScaleFunction(nbt);
+		updateVisualScaleDimensions(true);
+	}
+
+	@Override
+	public void addAdditionalSaveData(CompoundTag nbt) {
+		super.addAdditionalSaveData(nbt);
+		writeScaleFunction(nbt);
+	}
+
+	@Override
+	public void writeSpawnData(FriendlyByteBuf data) {
+		super.writeSpawnData(data);
+		CompoundTag tag = new CompoundTag();
+		writeScaleFunction(tag);
+		data.writeNbt(tag);
+	}
+
+	@Override
+	public void readSpawnData(FriendlyByteBuf data) {
+		super.readSpawnData(data);
+		CompoundTag tag = data.readNbt();
+		if (tag != null) {
+			readScaleFunction(tag);
+		}
+		updateVisualScaleDimensions(true);
 	}
 
 	@Override
@@ -97,7 +146,32 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 				sizeCache = item.size;
 			}
 		}
-		return sizeCache == null ? 1 : sizeCache;
+		return (sizeCache == null ? 1 : sizeCache) * currentVisualScale;
+	}
+
+	private void updateVisualScaleDimensions(boolean force) {
+		float next = visualScaleFunction == null ? visualScale : evaluateVisualScaleFunction();
+		if (force || Math.abs(next - currentVisualScale) > VISUAL_SCALE_EPSILON) {
+			currentVisualScale = next;
+			refreshDimensions();
+		}
+	}
+
+	private float evaluateVisualScaleFunction() {
+		if (visualScaleFunction == null) return visualScale;
+		return Math.max(0.05f, (float) EntityNumberProviderEvaluator.get(visualScaleFunction, tickCount, visualScale, random));
+	}
+
+	private void writeScaleFunction(CompoundTag nbt) {
+		if (visualScaleFunction == null) return;
+		NumberProvider.CODEC.encodeStart(NbtOps.INSTANCE, visualScaleFunction)
+				.result().ifPresent(tag -> nbt.put("visual_scale_function", tag));
+	}
+
+	private void readScaleFunction(CompoundTag nbt) {
+		if (!nbt.contains("visual_scale_function")) return;
+		NumberProvider.CODEC.parse(NbtOps.INSTANCE, nbt.get("visual_scale_function"))
+				.result().ifPresent(provider -> visualScaleFunction = provider);
 	}
 
 	private boolean isErased = false;

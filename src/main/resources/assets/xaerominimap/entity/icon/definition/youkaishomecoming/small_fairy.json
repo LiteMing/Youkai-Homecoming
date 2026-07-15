@@ -1,0 +1,6 @@
+{
+	"variants": {
+		"touhou_little_maid:textures/bedrock/entity/new_maid_fairy/maid_fairy_rick.png": "outlined_sprite:youkaishomecoming/tlm_rick_fairy.png",
+		"default": "outlined_sprite:youkaishomecoming/tlm_fairy.png"
+	}
+}

@@ -3,6 +3,8 @@ package dev.xkmc.youkaishomecoming.content.spell.spellcard;
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -55,10 +57,18 @@ public interface LivingCardHolder extends CardHolder {
 	}
 
 	@Override
-	default ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DyeColor color) {
+	default ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DanmakuColor color) {
 		ItemDanmakuEntity danmaku = new ItemDanmakuEntity(YHEntities.ITEM_DANMAKU.get(), shooter(), self().level());
 		danmaku.setPos(center());
-		danmaku.setItem(type.get(color).asStack());
+		// For DYE_TEXTURES mode: use the specific colored item (has correct texture baked in)
+		// For TINTED/FIXED modes: use BASE_DANMAKU with NBT color and runtime tint
+		if (type.usesDyeTextures()) {
+			DyeColor dyeColor = color.toDyeColor();
+			danmaku.setItem(type.get(dyeColor).asStack());
+		} else {
+			danmaku.setItem(type.stack(color));
+			danmaku.setTint(color.argb());
+		}
 		danmaku.setup(getDamage(type),
 				life, true, true, vec);
 		return danmaku;
@@ -72,6 +82,16 @@ public interface LivingCardHolder extends CardHolder {
 				life, len, true, vec);
 		danmaku.setPos(pos);
 		danmaku.setupLength = type.setupLength();
+		return danmaku;
+	}
+
+	default TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float size, String text, int textColor) {
+		TextDanmakuEntity danmaku = new TextDanmakuEntity(YHEntities.TEXT_DANMAKU.get(), shooter(), self().level());
+		danmaku.setPos(pos);
+		danmaku.configureText(text, size, textColor);
+		// Use PENCIL laser damage type as default for text danmaku
+		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, danmaku.length, true, dir);
+		danmaku.setupLength = YHDanmaku.Laser.PENCIL.setupLength();
 		return danmaku;
 	}
 

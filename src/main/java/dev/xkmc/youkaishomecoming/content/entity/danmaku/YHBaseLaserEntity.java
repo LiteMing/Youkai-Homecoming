@@ -1,7 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
-import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
 import dev.xkmc.fastprojectileapi.entity.BaseLaser;
+import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.PacketCodec;
@@ -18,7 +18,8 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.entity.IEntityAdditionalSpawnData;
 
@@ -131,32 +132,57 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	@Override
-	public void tick() {
-		super.tick();
-		danmakuMove();
+	protected void planMove(TickData data) {
+		data.moveSrc = position();
+		data.inputVelocity = getDeltaMovement();
+		data.plannedMovement = computeMove(data.inputVelocity, data.moveSrc);
+		data.moveDst = data.moveSrc.add(data.plannedMovement.vec());
+	}
+
+	@Override
+	protected void applyMoveTick(TickData data) {
+		if (data.plannedMovement != null) {
+			applyMove(data.plannedMovement);
+		}
+	}
+
+	@Override
+	protected void finishTick(TickData data) {
+		super.finishTick(data);
 		if (!level().isClientSide() && tickCount > life) {
-			discard();
+			markErased(false);
 		}
 	}
 
-	protected void danmakuMove() {
+	protected ProjectileMovement computeMove() {
+		return computeMove(getDeltaMovement(), position());
+	}
 
+	protected ProjectileMovement computeMove(Vec3 vec, Vec3 pos) {
+		return updateVelocity(vec, pos);
+	}
+
+	protected void applyMove(ProjectileMovement movement) {
+		setDeltaMovement(movement.vec());
+		updateRotation(movement.rot());
+		double d2 = getX() + movement.vec().x;
+		double d0 = getY() + movement.vec().y;
+		double d1 = getZ() + movement.vec().z;
+		setPos(d2, d0, d1);
+	}
+
+	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
+		return ProjectileMovement.of(vec);
 	}
 
 	@Override
-	public boolean canHitEntity(Entity target) {
-		return super.canHitEntity(target) && shouldHurt(getOwner(), target);
-	}
-
-	@Override
-	protected void onHit(LaserHitHelper.LaserHitResult hit) {
+	protected void onHit(BlockHitResult blockHit, Iterable<Entity> hitEntities) {
 		if (level().isClientSide()) {
-			if (hit.bhit() != null && hit.bhit().getType() != HitResult.Type.MISS) {
-				earlyTerminate = position().add(0, getBbHeight() / 2f, 0).distanceTo(hit.bhit().getLocation());
-			} else earlyTerminate = -1;
+			Vec3 src = (tickData.moveDst == null ? position() : tickData.moveDst).add(0, getBbHeight() / 2f, 0);
+			earlyTerminate = blockHit == null ? -1 : src.distanceTo(blockHit.getLocation());
 		}
-		for (var e : hit.ehit()) {
-			hurtTarget(e);
+		for (var e : hitEntities) {
+			hurtTarget(new EntityHitResult(e));
 		}
 	}
 

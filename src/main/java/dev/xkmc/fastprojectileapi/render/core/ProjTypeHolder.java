@@ -23,6 +23,11 @@ public class ProjTypeHolder<T extends RenderableProjectileType<T, I>, I> impleme
 		return Wrappers.cast(ans);
 	}
 
+	public static void reset() {
+		HOLDERS.clear();
+		MAP.clear();
+	}
+
 	public static void setup() {
 		HOLDERS.sort(Comparator.comparing(a -> a.type));
 		int n = HOLDERS.size();
@@ -40,6 +45,13 @@ public class ProjTypeHolder<T extends RenderableProjectileType<T, I>, I> impleme
 
 	public void create(ProjectileRenderer<?> r, SimplifiedProjectile e, PoseStack pose, float pTick) {
 		type.create(this, r, e, pose, pTick);
+	}
+
+	/**
+	 * Expose the underlying type for external type checks (e.g., billboard detection).
+	 */
+	public RenderableProjectileType<T, I> getType() {
+		return type;
 	}
 
 	public void accept(I ins) {

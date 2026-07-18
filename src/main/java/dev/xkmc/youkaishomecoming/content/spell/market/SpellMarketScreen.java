@@ -172,7 +172,7 @@ public class SpellMarketScreen extends Screen {
 			Minecraft.getInstance().execute(() -> {
 				loading = false;
 				if (resp != null) {
-					loadedSpells = resp.spells != null ? new ArrayList<>(resp.spells) : new ArrayList<>();
+					loadedSpells = sanitizeEntries(resp.spells);
 					serverTotalPages = Math.max(1, (int) Math.ceil(resp.total / (double) ITEMS_PER_PAGE));
 					// 恢复点赞计数
 					for (SpellListEntry e : loadedSpells) {
@@ -603,8 +603,43 @@ public class SpellMarketScreen extends Screen {
 		});
 	}
 
+	private static List<SpellListEntry> sanitizeEntries(List<SpellListEntry> entries) {
+		List<SpellListEntry> result = new ArrayList<>();
+		if (entries == null || entries.isEmpty()) return result;
+		int rejected = 0;
+		for (SpellListEntry entry : entries) {
+			if (!isValidEntry(entry)) {
+				rejected++;
+				continue;
+			}
+			entry.tags = sanitizeTags(entry.tags);
+			result.add(entry);
+		}
+		if (rejected > 0) {
+			org.slf4j.LoggerFactory.getLogger("SpellMarket").warn("Ignored {} malformed market spell entries", rejected);
+		}
+		return result;
+	}
+
+	private static boolean isValidEntry(SpellListEntry entry) {
+		return entry != null && entry.uuid != null && !entry.uuid.isBlank();
+	}
+
+	private static List<String> sanitizeTags(List<String> tags) {
+		List<String> result = new ArrayList<>();
+		if (tags == null || tags.isEmpty()) return result;
+		for (String tag : tags) {
+			String normalized = SpellMarketBuiltinTags.normalize(tag);
+			if (!normalized.isBlank() && !result.contains(normalized)) {
+				result.add(normalized);
+			}
+		}
+		return result;
+	}
+
 	private void applyClientFilters() {
 		spells = new ArrayList<>(loadedSpells);
+		spells.removeIf(entry -> !isValidEntry(entry));
 		if (filterLiked) {
 			spells.removeIf(e -> !LikedSpellsStore.contains(e.uuid));
 		}
@@ -677,7 +712,7 @@ public class SpellMarketScreen extends Screen {
 	}
 
 	private boolean hasExcludedTag(SpellListEntry entry) {
-		if (entry.tags == null || entry.tags.isEmpty()) return false;
+		if (!isValidEntry(entry) || entry.tags == null || entry.tags.isEmpty()) return false;
 		for (String tag : entry.tags) {
 			if (excludedTags.contains(SpellMarketBuiltinTags.normalize(tag))) {
 				return true;

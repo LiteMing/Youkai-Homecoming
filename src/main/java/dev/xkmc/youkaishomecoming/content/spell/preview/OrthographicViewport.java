@@ -8,7 +8,6 @@ import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
-import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
@@ -949,18 +948,6 @@ public class OrthographicViewport {
 			int col = DanmakuRenderStates.fading(rt.display(), -1, renderer, entity);
 			if (highlighted) col = applyHighlightTint(col);
 			((ProjTypeHolder) typeHolder).accept(new RotatingProjectileType.Ins(vx, vy, vz, scale, zAngle, col));
-		} else if (type instanceof AnimatedProjectileType at) {
-			float wx = (float) Mth.lerp(partialTick, entity.xOld, entity.getX());
-			float wy = (float) (Mth.lerp(partialTick, entity.yOld, entity.getY()) + entity.getBbHeight() / 2.0);
-			float wz = (float) Mth.lerp(partialTick, entity.zOld, entity.getZ());
-			float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
-			float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
-			float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
-			float scale = viewScale * entity.scale();
-			int frame = (entity.tickCount / at.ticksPerFrame()) % at.frameCount();
-			int col = DanmakuRenderStates.fading(at.display(), -1, renderer, entity);
-			if (highlighted) col = applyHighlightTint(col);
-			((ProjTypeHolder) typeHolder).accept(new AnimatedProjectileType.Ins(vx, vy, vz, scale, col, frame));
 		} else {
 			// Non-billboard types (Swinging/Cross/Butterfly): fall back to PoseStack path.
 			// These need full rotation chain in create() and can't be simplified to position+scale.

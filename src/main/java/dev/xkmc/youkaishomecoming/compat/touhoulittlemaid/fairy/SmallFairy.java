@@ -59,6 +59,11 @@ public class SmallFairy extends FairyEntity implements IHasPowerPoint {
 	}
 
 	@Override
+	public boolean shouldTickSpell() {
+		return getTarget() != null;
+	}
+
+	@Override
 	protected boolean shouldDespawnInPeaceful() {
 		return true;
 	}

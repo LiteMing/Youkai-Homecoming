@@ -42,4 +42,10 @@ public class SpellListEntry {
 	@SerializedName("upload_date")
 	public long uploadDate;
 
+	@SerializedName(value = "updated_at", alternate = {"update_date", "updated_date"})
+	public long updatedAt;
+
+	@SerializedName(value = "content_hash", alternate = {"sha256"})
+	public String contentHash;
+
 }

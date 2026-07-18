@@ -26,6 +26,8 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
+import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
+import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketServerManager;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeAccess;
@@ -51,6 +53,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
@@ -89,6 +92,12 @@ public class YHCommands {
 	public static void onServerStarted(ServerStartedEvent event) {
 		CustomSpellStorage.loadAllIntoRegistry(event.getServer());
 		CustomSpellCircleStorage.loadAllIntoConfig(event.getServer());
+		SpellMarketServerManager.start(event.getServer());
+	}
+
+	@SubscribeEvent
+	public static void onServerStopping(ServerStoppingEvent event) {
+		SpellMarketServerManager.stop();
 	}
 
 	@SubscribeEvent
@@ -229,8 +238,18 @@ public class YHCommands {
 
 		// /yhspell commands
 		event.getDispatcher().register(literal("yhspell")
-				.requires(e -> e.hasPermission(2))
-				.then(literal("circle")
+				.then(literal("market")
+						.executes(ctx -> openSpellMarket(ctx.getSource()))
+						.then(opLiteral("sync")
+								.then(argument("tag", StringArgumentType.string())
+										.executes(ctx -> syncMarketTag(ctx, false))))
+						.then(opLiteral("prune")
+								.then(argument("tag", StringArgumentType.string())
+										.executes(ctx -> syncMarketTag(ctx, true))))
+						.then(opLiteral("status")
+								.then(argument("tag", StringArgumentType.string())
+										.executes(YHCommands::marketStatus))))
+				.then(opLiteral("circle")
 						.then(circleSetCommand("set"))
 						.then(circleSetCommand("on"))
 						.then(literal("off")
@@ -239,12 +258,12 @@ public class YHCommands {
 						.then(literal("clear")
 								.then(argument("targets", EntityArgument.entities())
 										.executes(YHCommands::clearCircleTargets))))
-				.then(literal("stop")
+				.then(opLiteral("stop")
 						.then(argument("targets", EntityArgument.entities())
 								.executes(ctx -> stopSpellTargets(ctx, DEFAULT_SPELL_STOP_RADIUS))
 								.then(argument("radius", DoubleArgumentType.doubleArg(0))
 										.executes(ctx -> stopSpellTargets(ctx, DoubleArgumentType.getDouble(ctx, "radius"))))))
-				.then(literal("set")
+				.then(opLiteral("set")
 						.then(argument("entity", EntityArgument.entity())
 								.then(argument("spell_id", ResourceLocationArgument.id())
 										.suggests(SPELL_SUGGESTIONS)
@@ -264,7 +283,7 @@ public class YHCommands {
 											ctx.getSource().sendSuccess(() -> Component.literal("Set spell to " + spellId), true);
 											return 1;
 										}))))
-				.then(literal("phase")
+				.then(opLiteral("phase")
 						.then(argument("entity", EntityArgument.entity())
 								.then(argument("phase_id", ResourceLocationArgument.id())
 										.executes(ctx -> {
@@ -287,7 +306,7 @@ public class YHCommands {
 											ctx.getSource().sendSuccess(() -> Component.literal("Forced phase to " + phaseId), true);
 											return 1;
 										}))))
-				.then(literal("variable")
+				.then(opLiteral("variable")
 						.then(argument("entity", EntityArgument.entity())
 								.then(argument("key", StringArgumentType.string())
 										.then(argument("value", com.mojang.brigadier.arguments.DoubleArgumentType.doubleArg())
@@ -303,7 +322,7 @@ public class YHCommands {
 													ctx.getSource().sendSuccess(() -> Component.literal("Set " + key + " = " + value), true);
 													return 1;
 												})))))
-			.then(literal("reset")
+			.then(opLiteral("reset")
 					.then(argument("entity", EntityArgument.entity())
 							.executes(ctx -> {
 								var entity = EntityArgument.getEntity(ctx, "entity");
@@ -324,6 +343,7 @@ public class YHCommands {
 								// Restore all built-in spells to their defaults
 								for (var entry : SpellRegistry.getAll().entrySet()) {
 									var id = entry.getKey();
+									if (SpellRegistry.getOrigin(id) == SpellRegistry.Origin.MARKET) continue;
 									var defaultDef = SpellRegistry.getDefault(id);
 									if (defaultDef != null) {
 										SpellRegistry.register(defaultDef);
@@ -339,7 +359,8 @@ public class YHCommands {
 								if (deleted > 0) {
 									var allIds = new java.util.ArrayList<>(SpellRegistry.getAll().keySet());
 									for (var id : allIds) {
-										if (SpellRegistry.getDefault(id) == null) {
+										if (SpellRegistry.getDefault(id) == null &&
+												SpellRegistry.getOrigin(id) != SpellRegistry.Origin.MARKET) {
 											SpellRegistry.remove(id);
 										}
 									}
@@ -350,7 +371,7 @@ public class YHCommands {
 										"Reset all spells: " + finalRestored + " restored to default, " + finalDeleted + " custom spells removed"), true);
 								return finalRestored + finalDeleted;
 							})))
-				.then(literal("debug")
+				.then(opLiteral("debug")
 						.then(argument("entity", EntityArgument.entity())
 								.executes(ctx -> {
 									var entity = EntityArgument.getEntity(ctx, "entity");
@@ -380,7 +401,7 @@ public class YHCommands {
 									ctx.getSource().sendSystemMessage(Component.literal(sb.toString()));
 									return 1;
 								})))
-				.then(literal("list")
+				.then(opLiteral("list")
 						.executes(ctx -> {
 							var all = SpellRegistry.getAll();
 							if (all.isEmpty()) {
@@ -393,7 +414,7 @@ public class YHCommands {
 							}
 							return all.size();
 						}))
-				.then(literal("preview")
+				.then(opLiteral("preview")
 						.then(argument("spell_id", ResourceLocationArgument.id())
 								.suggests(SPELL_SUGGESTIONS)
 								.executes(ctx -> {
@@ -407,13 +428,13 @@ public class YHCommands {
 									ctx.getSource().sendSuccess(() -> Component.literal("Opening preview for " + spellId), false);
 									return 1;
 								})))
-				.then(literal("editor")
+				.then(opLiteral("editor")
 						.executes(ctx -> {
 							openDraftSpellEditor(ctx.getSource());
 							ctx.getSource().sendSuccess(() -> Component.literal("Opening spell editor"), false);
 							return 1;
 						}))
-				.then(literal("reapply")
+				.then(opLiteral("reapply")
 						.then(argument("spell_id", ResourceLocationArgument.id())
 								.suggests(SPELL_SUGGESTIONS)
 								.executes(ctx -> {
@@ -430,7 +451,7 @@ public class YHCommands {
 											() -> Component.literal("Reapplied " + spellId + " to " + finalCount + " entities"), true);
 									return count;
 								})))
-				.then(literal("export")
+				.then(opLiteral("export")
 						.then(argument("spell_id", ResourceLocationArgument.id())
 								.suggests(SPELL_SUGGESTIONS)
 								.executes(ctx -> {
@@ -450,7 +471,7 @@ public class YHCommands {
 										return 0;
 									}
 								})))
-				.then(literal("patch")
+				.then(opLiteral("patch")
 						.then(argument("spell_id", ResourceLocationArgument.id())
 								.suggests(SPELL_SUGGESTIONS)
 								.then(argument("json_pointer", StringArgumentType.string())
@@ -479,7 +500,7 @@ public class YHCommands {
 														return 0;
 													}
 												})))))
-				.then(literal("import")
+				.then(opLiteral("import")
 						.then(argument("file_path", StringArgumentType.greedyString())
 								.executes(ctx -> {
 									String filePath = StringArgumentType.getString(ctx, "file_path");
@@ -518,7 +539,7 @@ public class YHCommands {
 										return 0;
 									}
 								})))
-				.then(literal("new")
+				.then(opLiteral("new")
 						.then(argument("spell_or_template", StringArgumentType.word())
 								.suggests(SPELL_TEMPLATE_SUGGESTIONS)
 								.executes(ctx -> createNewSpell(ctx, StringArgumentType.getString(ctx, "spell_or_template"), null))
@@ -527,7 +548,7 @@ public class YHCommands {
 										.executes(ctx -> createNewSpell(ctx,
 												StringArgumentType.getString(ctx, "spell_or_template"),
 												StringArgumentType.getString(ctx, "template"))))))
-				.then(literal("proxy")
+				.then(opLiteral("proxy")
 						.then(literal("entity")
 								.then(argument("host", EntityArgument.entity())
 										.then(argument("spell_id", ResourceLocationArgument.id())
@@ -543,7 +564,7 @@ public class YHCommands {
 										.then(argument("ticks", IntegerArgumentType.integer(1))
 												.executes(ctx -> spawnFixedSpellProxy(ctx,
 														IntegerArgumentType.getInteger(ctx, "ticks")))))))
-			.then(literal("give")
+			.then(opLiteral("give")
 					.then(argument("spell_id", ResourceLocationArgument.id())
 							.suggests(SPELL_SUGGESTIONS)
 							.executes(ctx -> {
@@ -583,7 +604,7 @@ public class YHCommands {
 												() -> Component.literal("Gave spell item [" + spellId + "] (" + ticks + "t) to " + player.getName().getString()), true);
 										return 1;
 									}))))
-				.then(literal("log")
+				.then(opLiteral("log")
 						.then(literal("on")
 								.executes(ctx -> {
 									ParallelTicker.ENABLE_LOG = true;
@@ -607,7 +628,7 @@ public class YHCommands {
 							return 1;
 						}))
 				)
-				.then(literal("async")
+				.then(opLiteral("async")
 						.then(literal("on").executes(ctx -> {
 							ParallelTicker.ENABLE_ASYNC = true;
 							ctx.getSource().sendSuccess(() -> Component.literal("Async dispatch enabled"), true);
@@ -624,6 +645,10 @@ public class YHCommands {
 
 	protected static LiteralArgumentBuilder<CommandSourceStack> literal(String str) {
 		return LiteralArgumentBuilder.literal(str);
+	}
+
+	private static LiteralArgumentBuilder<CommandSourceStack> opLiteral(String str) {
+		return literal(str).requires(e -> e.hasPermission(2));
 	}
 
 	protected static <T> RequiredArgumentBuilder<CommandSourceStack, T> argument(String name, ArgumentType<T> type) {
@@ -857,6 +882,39 @@ public class YHCommands {
 	private static void openDraftSpellEditor(CommandSourceStack source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
 		YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.draftEditor(), player);
+	}
+
+	private static int openSpellMarket(CommandSourceStack source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		YoukaisHomecoming.HANDLER.toClientPlayer(new OpenSpellMarketToClient(), player);
+		return 1;
+	}
+
+	private static int syncMarketTag(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, boolean prune) {
+		String tag = StringArgumentType.getString(ctx, "tag");
+		var manager = SpellMarketServerManager.get(ctx.getSource().getServer());
+		var future = prune ? manager.pruneTag(tag) : manager.syncTag(tag, true);
+		ctx.getSource().sendSuccess(() -> Component.literal((prune ? "Pruning" : "Synchronizing") +
+				" market tag '" + tag + "' asynchronously"), false);
+		future.thenAccept(result -> ctx.getSource().getServer().execute(() -> {
+			String summary = "Market tag '" + result.tag + "': added=" + result.added +
+					", updated=" + result.updated + ", unchanged=" + result.unchanged +
+					", removed=" + result.removed + ", rejected=" + result.rejected;
+			if (result.success) ctx.getSource().sendSuccess(() -> Component.literal(summary), true);
+			else ctx.getSource().sendFailure(Component.literal(summary + " errors=" + result.errors));
+		}));
+		return 1;
+	}
+
+	private static int marketStatus(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		String tag = StringArgumentType.getString(ctx, "tag");
+		var entries = SpellMarketServerManager.get(ctx.getSource().getServer()).listByTag(tag);
+		ctx.getSource().sendSuccess(() -> Component.literal("Managed market tag '" + tag + "': " + entries.size() + " spells"), false);
+		for (var entry : entries) {
+			ctx.getSource().sendSystemMessage(Component.literal("  " + entry.localSpellId + " <- " + entry.marketUuid +
+					" sha256=" + entry.contentHash));
+		}
+		return entries.size();
 	}
 
 	private static void openSpellPreview(CommandSourceStack source, SpellDefinition definition) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

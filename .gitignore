@@ -9,3 +9,6 @@ temp
 /tash
 # Registrate datagen output
 /src/generated/
+
+# Code Mind local runtime
+.codemind/runtime/

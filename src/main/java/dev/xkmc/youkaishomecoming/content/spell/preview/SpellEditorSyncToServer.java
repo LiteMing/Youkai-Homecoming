@@ -13,6 +13,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeAccess;
@@ -81,7 +82,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		ServerPlayer sender = context.getSender();
 		if (sender == null) return;
 		try {
-			if (!sender.hasPermissions(2)) {
+			if (action != Action.IMPORT_MARKET && !sender.hasPermissions(2)) {
 				sender.sendSystemMessage(Component.literal("[YH] No permission to edit spells on this server."));
 				return;
 			}
@@ -122,6 +123,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private void importMarketSpell(ServerPlayer sender) {
 		SpellDefinition definition = parseDefinition();
+		validateMarketImport(definition);
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
 		sender.sendSystemMessage(Component.literal("[YH] Imported market spell " + definition.id));
@@ -137,6 +139,8 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (containsPrivilegedAction(definition)) {
 			throw new IllegalArgumentException("Market spell contains run_command and requires operator permission");
 		}
+		var json = JsonParser.parseString(definitionJson);
+		SpellMarketValidator.validate(definitionJson, json, definition);
 	}
 
 	private void deleteSpell(ServerPlayer sender) {
@@ -146,6 +150,9 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		}
 		if (SpellRegistry.hasDefault(id)) {
 			throw new IllegalArgumentException("Cannot delete built-in spell: " + id);
+		}
+		if (SpellRegistry.getOrigin(id) == SpellRegistry.Origin.MARKET) {
+			throw new IllegalArgumentException("Cannot delete a market-managed spell from the custom editor: " + id);
 		}
 		SpellRegistry.remove(id);
 		CustomSpellStorage.deleteSpell(sender.server, id);

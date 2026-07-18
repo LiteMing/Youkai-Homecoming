@@ -122,6 +122,11 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 	}
 
 	@Override
+	public boolean shouldTickSpell() {
+		return getTarget() != null && !isBlocked() && !isCharged();
+	}
+
+	@Override
 	public @Nullable ResourceLocation getSpellCircle() {
 		if (!shouldShowSpellCircle()) {
 			return null;

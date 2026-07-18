@@ -144,6 +144,37 @@ public class SpellRuntimeAccess {
 		return count;
 	}
 
+	public static int stop(MinecraftServer server, ResourceLocation spellId, boolean eraseProjectiles) {
+		int count = 0;
+		for (var level : server.getAllLevels()) {
+			for (var entity : level.getAllEntities()) {
+				if (!(entity instanceof SpellRuntimeHost host) || !host.hasSpell(spellId)) continue;
+				if (eraseProjectiles) host.eraseDanmaku(null);
+				if (entity instanceof YoukaiEntity youkai) youkai.spellCard = null;
+				host.setSpellRuntime(null);
+				host.syncSpellState();
+				count++;
+			}
+		}
+		return count;
+	}
+
+	/** Stops active runtimes, optionally erases their projectiles and saved world/global files, and does not broadcast a registry snapshot. */
+	public static boolean deleteCustomDestructive(MinecraftServer server, String spellId, boolean confirm,
+										 boolean eraseProjectiles, boolean deleteSavedFiles) {
+		if (!confirm) throw new IllegalArgumentException("Destructive spell deletion requires confirm=true");
+		ResourceLocation id = parseId(spellId);
+		if (SpellRegistry.hasDefault(id)) throw new IllegalArgumentException("Cannot delete built-in/KJS default spell: " + id);
+		if (SpellRegistry.getOrigin(id) == SpellRegistry.Origin.MARKET) {
+			throw new IllegalArgumentException("Use YHSpellMarket.unloadManaged for market-owned spells: " + id);
+		}
+		if (!SpellRegistry.contains(id)) return false;
+		stop(server, id, eraseProjectiles);
+		SpellRegistry.remove(id);
+		if (deleteSavedFiles) CustomSpellStorage.deleteSpell(server, id);
+		return true;
+	}
+
 	public static String pointer(String... parts) {
 		StringBuilder builder = new StringBuilder();
 		for (String part : parts) {

@@ -38,6 +38,7 @@ import dev.xkmc.youkaishomecoming.content.pot.table.item.TableItemManager;
 import dev.xkmc.youkaishomecoming.content.spell.custom.screen.SpellSetToServer;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellTitleToClient;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
+import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorSyncToServer;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
 import dev.xkmc.youkaishomecoming.events.YHAttackListener;
@@ -109,6 +110,7 @@ public class YoukaisHomecoming {
 			e -> e.create(SpellTitleToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(PvpDanmakuStatusToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(OpenSpellPreviewToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(OpenSpellMarketToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",

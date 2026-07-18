@@ -14,25 +14,43 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SpellRegistry {
 
 	private static final Map<ResourceLocation, SpellDefinition> REGISTRY = new ConcurrentHashMap<>();
+	private static final Map<ResourceLocation, Origin> ORIGINS = new ConcurrentHashMap<>();
 	/** Original definitions from code/datapack registration, before any editor modifications. */
 	private static final Map<ResourceLocation, com.google.gson.JsonElement> DEFAULTS = new ConcurrentHashMap<>();
 
 	public static void register(SpellDefinition definition) {
 		REGISTRY.put(definition.id, definition);
+		ORIGINS.put(definition.id, hasDefault(definition.id) ? Origin.BUILTIN : Origin.CUSTOM);
 	}
 
 	public static void register(ResourceLocation id, SpellDefinition definition) {
 		REGISTRY.put(id, definition);
+		ORIGINS.put(id, hasDefault(id) ? Origin.BUILTIN : Origin.CUSTOM);
 	}
 
 	public static void registerDefault(SpellDefinition definition) {
 		REGISTRY.put(definition.id, definition);
 		saveDefault(definition);
+		ORIGINS.put(definition.id, Origin.BUILTIN);
 	}
 
 	public static void registerDefault(ResourceLocation id, SpellDefinition definition) {
 		REGISTRY.put(id, definition);
 		saveDefault(definition);
+		ORIGINS.put(id, Origin.BUILTIN);
+	}
+
+	public static void registerMarket(SpellDefinition definition) {
+		if (hasDefault(definition.id)) {
+			throw new IllegalArgumentException("Cannot replace built-in spell: " + definition.id);
+		}
+		REGISTRY.put(definition.id, definition);
+		ORIGINS.put(definition.id, Origin.MARKET);
+	}
+
+	public static Origin getOrigin(ResourceLocation id) {
+		if (hasDefault(id)) return Origin.BUILTIN;
+		return ORIGINS.getOrDefault(id, REGISTRY.containsKey(id) ? Origin.CUSTOM : null);
 	}
 
 	private static void saveDefault(SpellDefinition def) {
@@ -77,14 +95,21 @@ public class SpellRegistry {
 	}
 
 	public static void remove(ResourceLocation id) {
+		if (hasDefault(id)) return;
 		REGISTRY.remove(id);
+		ORIGINS.remove(id);
 	}
 
 	public static void clear() {
 		REGISTRY.clear();
+		ORIGINS.clear();
 	}
 
 	public static int size() {
 		return REGISTRY.size();
+	}
+
+	public enum Origin {
+		BUILTIN, CUSTOM, MARKET
 	}
 }

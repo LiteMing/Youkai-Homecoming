@@ -312,7 +312,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 			targets.tick(super.getTarget());
 			if (spellRuntime != null) {
 				// New runtime takes priority over legacy
-				if (getTarget() != null && shouldShowSpellCircle()) {
+				if (shouldTickSpell()) {
 					spellRuntime.tick(this);
 					tickDanmaku();
 				} else {
@@ -321,7 +321,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 					danmakuHolder.clearSentQueue();
 				}
 			} else if (spellCard != null) {
-				if (getTarget() != null && shouldShowSpellCircle()) {
+				if (shouldTickSpell()) {
 					spellCard.tick(this);
 					tickDanmaku();
 				} else {
@@ -332,6 +332,14 @@ public abstract class YoukaiEntity extends PathfinderMob
 			}
 		}
 		super.aiStep();
+	}
+
+	/**
+	 * Controls spell execution independently from spell-circle rendering.
+	 * Subclasses with casting restrictions should override this predicate.
+	 */
+	public boolean shouldTickSpell() {
+		return getTarget() != null && shouldShowSpellCircle();
 	}
 
 	public void trySummonReinforcementOnDeath(LivingEntity le) {

@@ -389,10 +389,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	protected void hurtFinalImpl(DamageSource source, float amount) {
 		if (combatProgress == null) return;
 		if (!source.is(YHDamageTypes.DANMAKU_TYPE) && source.getEntity() instanceof Player player) {
-			// Non-danmaku damage from a player without youkai/fairy effect exits the session
-			if (!EffectEventHandlers.isFullCharacter(player)) {
-				GrazeCapability.HOLDER.get(player).stopSession(getUUID());
-			}
+			GrazeCapability.HOLDER.get(player).stopSession(getUUID());
 		}
 		setCombatProgress(getCombatProgress() - amount);
 		if (combatProgress.progress <= 0) {

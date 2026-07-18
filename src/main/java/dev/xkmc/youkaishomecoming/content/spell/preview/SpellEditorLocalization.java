@@ -141,7 +141,6 @@ public final class SpellEditorLocalization {
 		if (id.equals("giant_yinyang")) return "巨大阴阳玉";
 		if (id.equals("moon")) return "月球弹";
 		String itemKey = switch (id) {
-			case "rose" -> "item.youkaishomecoming.rose_danmaku";
 			case "moon" -> "item.youkaishomecoming.moon_danmaku";
 			case "giant_yinyang" -> "item.youkaishomecoming.giant_yinyang_danmaku";
 			case "scale" -> "item.youkaishomecoming.scale_danmaku";

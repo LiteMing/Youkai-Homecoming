@@ -31,10 +31,6 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue photoOverlayCorner;
 		public final ForgeConfigSpec.IntValue photoOverlayDuration;
 
-		// Spell Market
-		public final ForgeConfigSpec.BooleanValue spellMarketEnabled;
-		public final ForgeConfigSpec.ConfigValue<String> spellMarketUrl;
-
 		Client(ForgeConfigSpec.Builder builder) {
 			laserRenderAdditive = builder.define("laserRenderAdditive", true);
 			laserRenderInverted = builder.define("laserRenderInverted", true);
@@ -68,19 +64,17 @@ public class YHModConfig {
 						.defineInRange("photoOverlayDuration", 80, 20, 600);
 			}
 			builder.pop();
-			builder.push("spell_market");
-			{
-				spellMarketEnabled = builder.comment("Enable the spell card market feature")
-						.define("enabled", true);
-				spellMarketUrl = builder.comment("Spell market server URL")
-						.define("url", "http://149.13.91.92/api/v1");
-			}
-			builder.pop();
 		}
 
 	}
 
 	public static class Common {
+		public final ForgeConfigSpec.BooleanValue spellMarketEnabled;
+		public final ForgeConfigSpec.ConfigValue<String> spellMarketUrl;
+		public final ForgeConfigSpec.BooleanValue spellMarketAutoSyncEnabled;
+		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellMarketAutoSyncTags;
+		public final ForgeConfigSpec.IntValue spellMarketPollMinutes;
+		public final ForgeConfigSpec.IntValue spellMarketMaxSpellsPerTag;
 
 		public final ForgeConfigSpec.IntValue youkaifyingTime;
 		public final ForgeConfigSpec.DoubleValue youkaifyingChance;
@@ -162,6 +156,22 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue exposureDeactivateAfterShot;
 
 		Common(ForgeConfigSpec.Builder builder) {
+			builder.push("spell_market");
+			{
+				spellMarketEnabled = builder.comment("Enable spell market browsing and server synchronization")
+						.define("enabled", true);
+				spellMarketUrl = builder.comment("Spell market API URL. Automatic imports require HTTPS")
+						.define("url", "http://149.13.91.92/api/v1");
+				spellMarketAutoSyncEnabled = builder.comment("Periodically synchronize configured exact tags")
+						.define("auto_sync_enabled", false);
+				spellMarketAutoSyncTags = builder.comment("Exact market tags synchronized by the dedicated server")
+						.defineListAllowEmpty("auto_sync_tags", java.util.List.of(), o -> o instanceof String s && !s.isBlank());
+				spellMarketPollMinutes = builder.comment("Minimum interval between automatic synchronizations")
+						.defineInRange("poll_minutes", 30, 5, 1440);
+				spellMarketMaxSpellsPerTag = builder.comment("Maximum number of managed spells imported for one tag")
+						.defineInRange("max_spells_per_tag", 64, 1, 256);
+			}
+			builder.pop();
 			builder.push("youkaifying_effect");
 			{
 				youkaifyingChance = builder.comment("Chance for flesh food to add Youkaifying effect for the first time")

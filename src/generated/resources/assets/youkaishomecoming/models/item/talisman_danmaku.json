@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "youkaishomecoming:item/bullet/talisman/tint",
+    "layer1": "youkaishomecoming:item/bullet/talisman/white_overlay"
+  }
+}

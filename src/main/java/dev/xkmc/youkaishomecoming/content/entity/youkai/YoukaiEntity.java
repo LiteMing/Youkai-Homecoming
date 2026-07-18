@@ -312,7 +312,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 			targets.tick(super.getTarget());
 			if (spellRuntime != null) {
 				// New runtime takes priority over legacy
-				if (getTarget() != null && shouldShowSpellCircle()) {
+				if (shouldTickSpell()) {
 					spellRuntime.tick(this);
 					tickDanmaku();
 				} else {
@@ -321,7 +321,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 					danmakuHolder.clearSentQueue();
 				}
 			} else if (spellCard != null) {
-				if (getTarget() != null && shouldShowSpellCircle()) {
+				if (shouldTickSpell()) {
 					spellCard.tick(this);
 					tickDanmaku();
 				} else {
@@ -332,6 +332,14 @@ public abstract class YoukaiEntity extends PathfinderMob
 			}
 		}
 		super.aiStep();
+	}
+
+	/**
+	 * Controls spell execution independently from spell-circle rendering.
+	 * Subclasses with casting restrictions should override this predicate.
+	 */
+	public boolean shouldTickSpell() {
+		return getTarget() != null && shouldShowSpellCircle();
 	}
 
 	public void trySummonReinforcementOnDeath(LivingEntity le) {
@@ -381,10 +389,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	protected void hurtFinalImpl(DamageSource source, float amount) {
 		if (combatProgress == null) return;
 		if (!source.is(YHDamageTypes.DANMAKU_TYPE) && source.getEntity() instanceof Player player) {
-			// Non-danmaku damage from a player without youkai/fairy effect exits the session
-			if (!EffectEventHandlers.isFullCharacter(player)) {
-				GrazeCapability.HOLDER.get(player).stopSession(getUUID());
-			}
+			GrazeCapability.HOLDER.get(player).stopSession(getUUID());
 		}
 		setCombatProgress(getCombatProgress() - amount);
 		if (combatProgress.progress <= 0) {

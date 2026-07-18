@@ -16,7 +16,10 @@ import dev.xkmc.youkaishomecoming.events.DanmakuLastHitEvent;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
@@ -56,6 +59,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	@SerialClass.SerialField
 	private boolean forcedDanmakuCombat = false;
 	@SerialClass.SerialField
+	private boolean statusInitialized = false;
+	@SerialClass.SerialField
 	private String stgCombatMode = StgCombatMode.NOVICE_AUTO_BOMB.name();
 
 	private boolean dirty = false;
@@ -75,6 +80,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			bomb = 0;
 			weak = 0;
 			forcedDanmakuCombat = false;
+			statusInitialized = false;
 			playerOpponents.clear();
 			dirty = true;
 		}
@@ -86,11 +92,13 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		life = Math.max(initResource, life);
 		bomb = Math.max(initResource, bomb);
 		power = Math.max(initPower, power);
+		statusInitialized = true;
+		dirty = true;
 	}
 
 	@Override
 	public void tick() {
-		boolean full = EffectEventHandlers.canDanmakuCombat(player);
+		boolean activeCombat = isInDanmakuCombat();
 		if (tempGraze > 0) {
 			tempGraze--;
 			double val = GrazeHelper.getGrazeEffectiveness(player);
@@ -108,7 +116,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (life > maxResource) life = maxResource;
 		if (bomb > maxResource) bomb = maxResource;
 		if (player.level() instanceof ServerLevel sl) {
-			if (!full) {
+			if (!activeCombat) {
 				if (!sessions.isEmpty()) {
 					sessions.clear();
 					dirty = true;
@@ -129,6 +137,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 					}
 				}
 			}
+			settleCombatIfIdle();
 			if (dirty)
 				sync();
 			syncPvpOpponentStatus(sl);
@@ -182,13 +191,12 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public HitType performErase(YoukaiEntity e) {
-		if (!EffectEventHandlers.canDanmakuCombat(player)) return HitType.NONE;
-		if (!sessions.containsKey(e.getUUID()) && !forcedDanmakuCombat) return HitType.ERASE;
+		if (!prepareDanmakuHitContext(e)) return HitType.ERASE;
 		return performDanmakuHit(e);
 	}
 
 	public HitType performDanmakuHit(@Nullable LivingEntity source) {
-		if (!EffectEventHandlers.canDanmakuCombat(player)) return HitType.NONE;
+		if (!hasInitializedCombatContext(source)) return HitType.NONE;
 		if (invul > 0) return HitType.INVUL;
 		int erased = eraseActiveDanmakuForHit(source);
 		if (getStgCombatMode().autoBombOnHit() && useBomb()) {
@@ -207,7 +215,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			SpellContainer.clear(sp);
 		}
 		if (life < SHARD) {
-			if (source instanceof YoukaiEntity e && MinecraftForge.EVENT_BUS.post(new DanmakuLastHitEvent(player, e))) {
+			if (source != null && MinecraftForge.EVENT_BUS.post(new DanmakuLastHitEvent(player, source))) {
 				dirty = true;
 				return HitType.LIFE;
 			}
@@ -223,6 +231,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		dirty = true;
 	}
 	public boolean useBomb() {
+		if (!statusInitialized || !isInDanmakuCombat()) return false;
 		if (bomb < SHARD) return false;
 		bomb -= SHARD;
 		invul = YHModConfig.COMMON.bombInvulTime.get();
@@ -306,6 +315,32 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return forcedDanmakuCombat;
 	}
 
+	private void settleCombatIfIdle() {
+		if (isInDanmakuCombat()) return;
+		boolean changed = false;
+		if (statusInitialized) {
+			statusInitialized = false;
+			changed = true;
+		}
+		if (life != 0) {
+			life = 0;
+			changed = true;
+		}
+		if (bomb != 0) {
+			bomb = 0;
+			changed = true;
+		}
+		if (hidden != 0) {
+			hidden = 0;
+			changed = true;
+		}
+		if (step != 0) {
+			step = 0;
+			changed = true;
+		}
+		if (changed) dirty = true;
+	}
+
 	public boolean hasPlayerOpponent(UUID id) {
 		return playerOpponents.contains(id);
 	}
@@ -316,6 +351,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			initStatus();
 		}
 		forcedDanmakuCombat = enabled;
+		if (!enabled) {
+			settleCombatIfIdle();
+		}
 		dirty = true;
 	}
 
@@ -328,11 +366,12 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		playerOpponents.clear();
 		resetPvpOpponentStatus();
 		dirty = true;
+		settleCombatIfIdle();
 	}
 
 	public void initSession(YoukaiEntity youkai) {
+		if (!statusInitialized) initStatus();
 		if (sessions.containsKey(youkai.getUUID())) return;
-		if (!isInDanmakuCombat()) initStatus();
 		sessions.put(youkai.getUUID(), new CombatSession().init(youkai));
 		youkai.targets.add(player);
 		dirty = true;
@@ -340,7 +379,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public void addPlayerOpponent(Player target) {
 		if (target == player || target.level() != player.level()) return;
-		if (!isInDanmakuCombat()) initStatus();
+		if (!statusInitialized) initStatus();
 		if (playerOpponents.add(target.getUUID())) {
 			pvpStatusSyncCooldown = 0;
 			dirty = true;
@@ -348,14 +387,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public void stopSession(UUID uuid) {
-		if (!sessions.containsKey(uuid)) return;
-		sessions.remove(uuid);
-		// Only clear spell proxies when in a full danmaku combat session (has youkai/fairy effect).
-		// Normal players using dynamic spell without effects should keep their spell proxies running.
-		if (sessions.isEmpty() && player instanceof ServerPlayer sp
-				&& EffectEventHandlers.isFullCharacter(player)) {
-			SpellContainer.clear(sp);
-		}
+		CombatSession session = sessions.remove(uuid);
+		if (session == null) return;
+		session.resetTarget(player);
+		settleCombatIfIdle();
 		dirty = true;
 	}
 
@@ -363,8 +398,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (le instanceof YoukaiEntity youkai) {
 			if (weak > 0) return false;
 			if (sessions.containsKey(youkai.getUUID())) return true;
-			if (youkai.targets.contains(player)) return true;
-			if (sessions.isEmpty() && canStartDanmakuSession()) {
+			if (youkai.targets.contains(player) || sessions.isEmpty()) {
 				initSession(youkai);
 				return true;
 			}
@@ -373,22 +407,55 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		}
 		if (!EffectEventHandlers.canDanmakuCombat(player)) return true;
 		if (le instanceof Player target) {
-			return forcedDanmakuCombat || playerOpponents.contains(target.getUUID()) ||
-					EffectEventHandlers.isFullCharacter(player);
+			return forcedDanmakuCombat || playerOpponents.contains(target.getUUID());
 		}
 		return sessions.isEmpty() || le instanceof Mob mob && mob.getTarget() == player;
 	}
 
 	public boolean shouldAbsorbDanmakuFrom(@Nullable LivingEntity source) {
-		if (!EffectEventHandlers.canDanmakuCombat(player)) return false;
+		if (!isInDanmakuCombat()) return false;
 		if (forcedDanmakuCombat) return true;
 		if (source instanceof YoukaiEntity youkai) {
 			return sessions.containsKey(youkai.getUUID());
 		}
 		if (source instanceof Player player) {
-			return playerOpponents.contains(player.getUUID()) || EffectEventHandlers.isFullCharacter(this.player);
+			return playerOpponents.contains(player.getUUID());
 		}
-		return EffectEventHandlers.isFullCharacter(player);
+		return false;
+	}
+
+	/**
+	 * Establishes the explicit STG context for a legitimate first hostile hit.
+	 */
+	public boolean prepareDanmakuHitContext(@Nullable LivingEntity source) {
+		if (forcedDanmakuCombat) {
+			if (!statusInitialized) initStatus();
+			return true;
+		}
+		if (source instanceof YoukaiEntity youkai) {
+			if (!sessions.containsKey(youkai.getUUID())) {
+				if (!youkai.targets.contains(player)) return false;
+				initSession(youkai);
+			} else if (!statusInitialized) {
+				initStatus();
+			}
+			return true;
+		}
+		if (source instanceof Player attacker) {
+			if (attacker.level() != player.level() || attacker.isAlliedTo(player)) return false;
+			if (!playerOpponents.contains(attacker.getUUID())) {
+				addPlayerOpponent(attacker);
+				HOLDER.get(attacker).addPlayerOpponent(player);
+			} else if (!statusInitialized) {
+				initStatus();
+			}
+			return true;
+		}
+		return false;
+	}
+
+	private boolean hasInitializedCombatContext(@Nullable LivingEntity source) {
+		return statusInitialized && shouldAbsorbDanmakuFrom(source);
 	}
 
 	public Optional<LivingEntity> findAny(Player player) {
@@ -549,8 +616,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (owner == null) return false;
 		if (owner.isAlliedTo(player)) return false;
 		if (owner instanceof Player target) {
-			return forcedDanmakuCombat || playerOpponents.contains(target.getUUID()) ||
-					EffectEventHandlers.isFullCharacter(player);
+			return forcedDanmakuCombat || playerOpponents.contains(target.getUUID());
 		}
 		return true;
 	}
@@ -561,24 +627,18 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (owner == null) return false;
 		if (owner.isAlliedTo(player)) return false;
 		if (owner instanceof Player target) {
-			return forcedDanmakuCombat || playerOpponents.contains(target.getUUID()) ||
-					EffectEventHandlers.isFullCharacter(player);
+			return forcedDanmakuCombat || playerOpponents.contains(target.getUUID());
 		}
 		if (owner instanceof YoukaiEntity youkai) {
 			return sessions.containsKey(youkai.getUUID()) || youkai.targets.contains(player);
 		}
 		if (proxy.targetEntity() == player) return true;
-		return forcedDanmakuCombat || owner instanceof Mob mob && mob.getTarget() == player ||
-				EffectEventHandlers.isFullCharacter(player);
+		return forcedDanmakuCombat || owner instanceof Mob mob && mob.getTarget() == player;
 	}
 
 	private static AABB hostSearchArea(Vec3 center, double radius) {
 		double range = Math.max(ACTIVE_DANMAKU_HOST_SEARCH_RANGE, radius);
 		return AABB.ofSize(center, range * 2, range * 2, range * 2);
-	}
-
-	private boolean canStartDanmakuSession() {
-		return forcedDanmakuCombat || EffectEventHandlers.isFullCharacter(player);
 	}
 
 	private boolean shouldRemovePlayerOpponent(ServerLevel sl, UUID id) {
@@ -593,12 +653,14 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		playerOpponents.clear();
 		resetPvpOpponentStatus();
 		dirty = true;
-		if (!reciprocal) return;
-		for (UUID id : ids) {
-			if (sl.getEntity(id) instanceof ServerPlayer target) {
-				HOLDER.get(target).removePlayerOpponent(player.getUUID(), false, true);
+		if (reciprocal) {
+			for (UUID id : ids) {
+				if (sl.getEntity(id) instanceof ServerPlayer target) {
+					HOLDER.get(target).removePlayerOpponent(player.getUUID(), false, true);
+				}
 			}
 		}
+		settleCombatIfIdle();
 	}
 
 	private boolean removePlayerOpponent(UUID id, boolean reciprocal, boolean syncAfter) {
@@ -608,6 +670,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (reciprocal && player.level() instanceof ServerLevel sl && sl.getEntity(id) instanceof ServerPlayer target) {
 			HOLDER.get(target).removePlayerOpponent(player.getUUID(), false, true);
 		}
+		settleCombatIfIdle();
 		if (syncAfter) sync();
 		return true;
 	}
@@ -642,12 +705,44 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		sessions.clear();
 		clearPlayerOpponents();
 		forcedDanmakuCombat = false;
+		statusInitialized = false;
 		weak = WEAK;
+		if (player instanceof ServerPlayer sp) {
+			SpellContainer.clear(sp);
+			sp.displayClientMessage(YHLangData.STG_DEFEAT.get(), true);
+			sp.playNotifySound(SoundEvents.PLAYER_DEATH, SoundSource.PLAYERS, 1.0f, 0.8f);
+			sync();
+		}
+		dirty = true;
+	}
+
+	public void clearCombatState(boolean eraseDanmaku) {
+		if (eraseDanmaku) {
+			eraseActiveDanmaku(0, true);
+			if (player.level() instanceof ServerLevel level) {
+				for (UUID opponentId : playerOpponents) {
+					if (level.getEntity(opponentId) instanceof ServerPlayer opponent) {
+						SpellContainer.clear(opponent);
+					}
+				}
+			}
+		}
+		for (var session : sessions.values()) {
+			session.resetTarget(player);
+		}
+		sessions.clear();
+		clearPlayerOpponents();
+		forcedDanmakuCombat = false;
+		statusInitialized = false;
+		life = 0;
+		bomb = 0;
+		hidden = 0;
+		step = 0;
+		dirty = true;
 		if (player instanceof ServerPlayer sp) {
 			SpellContainer.clear(sp);
 			sync();
 		}
-		dirty = true;
 	}
 
 	public static void register() {

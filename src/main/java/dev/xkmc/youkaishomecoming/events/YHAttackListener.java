@@ -43,7 +43,8 @@ public class YHAttackListener implements AttackListener {
 				source.getEntity() instanceof LivingEntity attacker &&
 				attacker != target) {
 			var targetGraze = GrazeCapability.HOLDER.get(target);
-			if (targetGraze.shouldAbsorbDanmakuFrom(attacker)) {
+			if (targetGraze.prepareDanmakuHitContext(attacker) &&
+					targetGraze.shouldAbsorbDanmakuFrom(attacker)) {
 				var type = targetGraze.performDanmakuHit(attacker);
 				if (type.skipDamage()) {
 					event.setCanceled(true);

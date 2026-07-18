@@ -44,7 +44,6 @@ public class YHDanmaku {
 		STAR(2, 6, DisplayType.TRANSPARENT),
 		YINYANG_2D("yinyang-2d", 2, 6, DisplayType.TRANSPARENT, BulletCategory.NORMAL,
 				BulletColorMode.TINTED_WITH_WHITE, "tint", "giant_yinyang"),
-		ROSE(1, 4, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.FIXED, "rose"),
 		TALISMAN(1.5f, 5, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.TINTED_WITH_WHITE,
 				"tint"),
 		KUNAI(1, 4, DisplayType.SOLID, BulletCategory.NORMAL, BulletColorMode.TINTED_WITH_WHITE,

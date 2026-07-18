@@ -9,7 +9,6 @@ import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.fastprojectileapi.render.core.GiantDanmakuScreenOverlay;
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
-import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.LayeredRotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
@@ -246,15 +245,6 @@ public class ClientDanmakuCache {
 						float zAngle = (float) Math.toRadians((danmaku.tickCount + pTick) * 360f / (float) rt.rot());
 						int col = DanmakuRenderStates.fading(rt.display(), renderColor, cachedRenderer, danmaku);
 						((ProjTypeHolder) typeHolder).accept(new RotatingProjectileType.Ins(vx, vy, vz, scale, zAngle, col));
-						continue;
-					} else if (type instanceof AnimatedProjectileType at) {
-						float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
-						float vy = viewMat.m01() * wx + viewMat.m11() * wy + viewMat.m21() * wz + viewMat.m31();
-						float vz = viewMat.m02() * wx + viewMat.m12() * wy + viewMat.m22() * wz + viewMat.m32();
-						float scale = viewScale * danmaku.scale();
-						int frame = (danmaku.tickCount / at.ticksPerFrame()) % at.frameCount();
-						int col = DanmakuRenderStates.fading(at.display(), renderColor, cachedRenderer, danmaku);
-						((ProjTypeHolder) typeHolder).accept(new AnimatedProjectileType.Ins(vx, vy, vz, scale, col, frame));
 						continue;
 					}
 					// Non-billboard types: fall through to standard path

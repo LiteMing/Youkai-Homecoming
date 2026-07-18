@@ -1,7 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.item.danmaku;
 
 import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
-import dev.xkmc.fastprojectileapi.render.type.AnimatedProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.ButterflyProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.CrossProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.GiantSphereProjectileType;
@@ -172,8 +171,6 @@ public class DanmakuItem extends Item {
 				case YINYANG_2D -> type.usesWhiteOverlayTint() ?
 						new LayeredRotatingProjectileType(loc, white, type.display(), 80) :
 						new RotatingProjectileType(loc, type.display(), 80);
-				// Animated sequence frame bullets (16 frames for gradient effect)
-				case ROSE -> new AnimatedProjectileType(loc, type.display(), 32, 2);
 				// Swinging 3D bullets (rotations per block, tilt angle in degrees, size in blocks)
 				case TALISMAN -> type.usesWhiteOverlayTint() ?
 						new LayeredSwingingProjectileType(loc, white, type.display(), 0.05f, 0f, 0.7f) :

@@ -46,12 +46,11 @@ public class EffectEventHandlers {
 	}
 
 	/**
-	 * Whether a player can participate in danmaku combat (graze, bomb, life, power, session).
-	 * Returns true if the player has youkaified/fairy effect, OR is already in an active combat session.
-	 * This allows players without effects to enter danmaku combat as long as they only use danmaku damage.
+	 * Whether an entity is currently inside an explicit danmaku combat context.
+	 * Youkaified/fairy effects only modify attributes and costs; they do not open combat by themselves.
 	 */
 	public static boolean canDanmakuCombat(LivingEntity e) {
-		if (isFullCharacter(e)) return true;
+		if (e instanceof YoukaiEntity) return true;
 		if (e instanceof Player player) {
 			var cap = GrazeCapability.HOLDER.get(player);
 			return cap.isInDanmakuCombat();

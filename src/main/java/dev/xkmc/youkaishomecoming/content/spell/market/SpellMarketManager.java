@@ -30,8 +30,8 @@ public class SpellMarketManager {
 	}
 
 	public void reload() {
-		if (YHModConfig.CLIENT.spellMarketEnabled.get()) {
-			String url = YHModConfig.CLIENT.spellMarketUrl.get();
+		if (YHModConfig.COMMON.spellMarketEnabled.get()) {
+			String url = YHModConfig.COMMON.spellMarketUrl.get();
 			this.api = new SpellMarketAPI(url);
 			LOGGER.info("Spell market enabled, server URL: {}", url);
 		} else {

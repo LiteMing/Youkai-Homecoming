@@ -33,6 +33,7 @@ public class SpellMarketAPI {
 	private static final Executor EXECUTOR = Executors.newFixedThreadPool(2);
 
 	private final HttpClient client;
+	private final SpellMarketHttpClient transport;
 	private final String baseUrl;
 	private final SpellMarketRateLimiter rateLimiter;
 
@@ -42,6 +43,7 @@ public class SpellMarketAPI {
 				.connectTimeout(Duration.ofSeconds(5))
 				.executor(EXECUTOR)
 				.build();
+		this.transport = new SpellMarketHttpClient(this.baseUrl);
 		this.rateLimiter = new SpellMarketRateLimiter();
 	}
 
@@ -93,26 +95,16 @@ public class SpellMarketAPI {
 	}
 
 	public CompletableFuture<SpellDefinition> downloadSpell(String uuid) {
-		HttpRequest request = HttpRequest.newBuilder()
-				.uri(URI.create(baseUrl + "/spells/" + uuid + "/download"))
-				.timeout(Duration.ofSeconds(30))
-				.GET()
-				.build();
-
-		return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-				.thenApply(response -> {
-					if (response.statusCode() == 200) {
-						try {
-							var json = GSON.fromJson(response.body(), com.google.gson.JsonElement.class);
-							var result = SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json);
-							return result.getOrThrow(false, err -> LOGGER.warn("Parse error: {}", err));
-						} catch (Exception e) {
-							LOGGER.error("Error parsing spell", e);
-							return null;
-						}
+		return transport.download(uuid, null)
+				.thenApply(download -> {
+					try {
+						var json = GSON.fromJson(download.json(), com.google.gson.JsonElement.class);
+						return SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
+								.getOrThrow(false, err -> LOGGER.warn("Parse error: {}", err));
+					} catch (Exception e) {
+						LOGGER.error("Error parsing spell", e);
+						return null;
 					}
-					LOGGER.warn("Failed to download spell: HTTP {}", response.statusCode());
-					return null;
 				})
 				.exceptionally(e -> {
 					LOGGER.error("Error downloading spell", e);

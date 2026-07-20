@@ -75,12 +75,24 @@ public final class SplineMover extends TargetPosMover {
 	 */
 	private Vec3 evalSpline(double t) {
 		int segmentCount = closed ? points.size() : points.size() - 1;
+		if (segmentCount <= 0) {
+			return points.isEmpty() ? Vec3.ZERO : points.get(0);
+		}
+		// Exact endpoint: avoid (int)1.0 → seg overflow clamping back to segment start
+		if (!closed && t >= 1.0) {
+			return points.get(points.size() - 1);
+		}
+		if (t <= 0) {
+			return points.get(0);
+		}
 		double scaledT = t * segmentCount;
 		int seg = (int) scaledT;
 		double localT = scaledT - seg;
 
 		if (!closed) {
-			seg = Math.min(seg, segmentCount - 1);
+			if (seg >= segmentCount) {
+				return points.get(points.size() - 1);
+			}
 			localT = Math.min(localT, 1.0);
 		} else {
 			seg = seg % segmentCount;

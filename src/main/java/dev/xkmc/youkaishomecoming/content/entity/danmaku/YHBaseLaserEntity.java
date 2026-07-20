@@ -99,7 +99,12 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	@Override
 	public boolean checkEntityHit() {
-		return tickCount > start && tickCount < end;
+		return isHitWindowOpen(tickCount);
+	}
+
+	/** Absolute-tick hit window for Pilot prediction (warn/fade are inactive). */
+	public boolean isHitWindowOpen(int absTick) {
+		return absTick > start && absTick < end;
 	}
 
 	@Override

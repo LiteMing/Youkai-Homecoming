@@ -97,6 +97,14 @@ tasks.register('organizeLang', JavaExec) {
     workingDir = project.projectDir
 }
 
+tasks.register('runPilotPredictTest', JavaExec) {
+    group = 'verification'
+    description = 'Run Phase 0 Pilot prediction self-tests (gen.PilotPredictTest).'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'gen.PilotPredictTest'
+    dependsOn tasks.named('testClasses')
+}
+
 mixin {
     add sourceSets.main, "${modid}.refmap.json"
     config "${modid}.mixins.json"

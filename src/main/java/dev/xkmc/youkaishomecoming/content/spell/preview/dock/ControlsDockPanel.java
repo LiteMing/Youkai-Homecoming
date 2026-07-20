@@ -167,6 +167,10 @@ public class ControlsDockPanel implements DockPanel {
 			scene.togglePilot();
 			rebuildCallback.run();
 		});
+		bx = addButton(bx, row1Y, 32, scene.isPilotDebugOverlay() ? "Dbg:ON" : "Dbg", btn -> {
+			scene.togglePilotDebugOverlay();
+			rebuildCallback.run();
+		});
 		bx += 8;
 		addSpellControls(bx, row1Y, false);
 

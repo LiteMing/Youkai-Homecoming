@@ -17,6 +17,12 @@ import net.minecraft.world.phys.Vec3;
 public final class PotentialFieldSolver {
 
 	private Vec3 filtered = Vec3.ZERO;
+	/** Last raw force before velocity mapping (for debug arrow). */
+	private Vec3 lastForce = Vec3.ZERO;
+
+	public Vec3 lastForce() {
+		return lastForce;
+	}
 
 	public Vec3 solve(ThreatSnapshot snapshot, PilotState state, PilotProfile profile) {
 		Vec3 force = Vec3.ZERO;
@@ -35,7 +41,6 @@ public final class PotentialFieldSolver {
 			boolean approaching = false;
 
 			Vec3 prevPos = frames[0].position();
-			double prevDist = distToThreat(selfCenter, frames[0]);
 			for (int t = 1; t < Math.min(horizon, frames.length); t++) {
 				ThreatFrame f = frames[t];
 				if (!f.active()) continue;
@@ -52,7 +57,6 @@ public final class PotentialFieldSolver {
 					bestAway = toSelf.lengthSqr() > 1e-8 ? toSelf.normalize() : null;
 				}
 				prevPos = f.position();
-				prevDist = d;
 			}
 
 			if (bestAway == null || bestDist > profile.approachHorizon()) continue;
@@ -87,6 +91,7 @@ public final class PotentialFieldSolver {
 		if (filtered.lengthSqr() < profile.deadzone() * profile.deadzone()) {
 			filtered = Vec3.ZERO;
 		}
+		lastForce = filtered;
 
 		// Map force to desired velocity (speed-capped)
 		double speed = Math.min(profile.highSpeed(), filtered.length());
@@ -96,6 +101,7 @@ public final class PotentialFieldSolver {
 
 	public void reset() {
 		filtered = Vec3.ZERO;
+		lastForce = Vec3.ZERO;
 	}
 
 	private static double distToThreat(Vec3 selfCenter, ThreatFrame f) {

@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.DodgePilot;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotProfile;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotState;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.debug.PilotDebugView;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.BallisticProvider;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.MoverExactProvider;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ObservedMotionProvider;
@@ -19,7 +20,13 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
+import org.slf4j.Logger;
+import com.mojang.logging.LogUtils;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 
@@ -44,12 +51,15 @@ public class VirtualSpellScene {
 	private long lastTickNanos = 0;
 
 	// --- AI pilot (Phase 2 MVP) ---
+	private static final Logger LOGGER = LogUtils.getLogger();
 	private boolean pilotEnabled = false;
 	private final ThreatProviderRegistry pilotRegistry = new ThreatProviderRegistry();
 	private final ObservedMotionProvider observedProvider = new ObservedMotionProvider();
 	private DodgePilot pilot = new DodgePilot(PilotProfile.ADEPT);
 	private long lastPilotNanos = 0;
 	private double pilotArenaHalf = 12.0;
+	private boolean pilotDebugOverlay = true;
+	private String lastDeathDumpPath = "";
 
 	public static final float[] SPEED_OPTIONS = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f};
 	public static final float[] DISTANCE_OPTIONS = {5f, 10f, 15f, 20f};
@@ -67,6 +77,9 @@ public class VirtualSpellScene {
 		// Wire hit callback: when a danmaku hits the target AABB, notify runtime
 		// Use mobAttack(fakeCaster) so source.getEntity() instanceof LivingEntity passes
 		this.holder.setOnTargetHit(() -> {
+			if (pilotEnabled) {
+				dumpPilotDeath("hit");
+			}
 			var ds = level.damageSources().mobAttack(holder.getFakeCaster());
 			runtime.hurt(holder, ds, 2.0f);
 		});
@@ -74,6 +87,7 @@ public class VirtualSpellScene {
 		pilotRegistry.register(new MoverExactProvider());
 		pilotRegistry.register(new BallisticProvider());
 		pilotRegistry.register(observedProvider);
+		pilot.debugView().enabled = pilotDebugOverlay;
 	}
 
 	public void tick() {
@@ -171,7 +185,54 @@ public class VirtualSpellScene {
 	}
 
 	public void setPilotProfile(PilotProfile profile) {
+		boolean dbg = pilotDebugOverlay;
 		this.pilot = new DodgePilot(profile);
+		this.pilot.debugView().enabled = dbg;
+	}
+
+	public boolean isPilotDebugOverlay() {
+		return pilotDebugOverlay;
+	}
+
+	public void setPilotDebugOverlay(boolean enabled) {
+		this.pilotDebugOverlay = enabled;
+		pilot.debugView().enabled = enabled;
+		if (!enabled) {
+			pilot.debugView().clear();
+		}
+	}
+
+	public void togglePilotDebugOverlay() {
+		setPilotDebugOverlay(!pilotDebugOverlay);
+	}
+
+	public PilotDebugView getPilotDebugView() {
+		return pilot.debugView();
+	}
+
+	public String getLastDeathDumpPath() {
+		return lastDeathDumpPath;
+	}
+
+	/** Write last 60 pilot frames to gameDir/youkaishomecoming_exports/pilot_death_*.json */
+	public Path dumpPilotDeath(String reason) {
+		String spell = definition != null && definition.id != null ? definition.id.toString() : "unknown";
+		String json = pilot.replay().toJson(spell, reason);
+		try {
+			Path dir = Minecraft.getInstance().gameDirectory.toPath().resolve("youkaishomecoming_exports");
+			Files.createDirectories(dir);
+			String name = "pilot_death_" + System.currentTimeMillis() + ".json";
+			Path file = dir.resolve(name);
+			Files.writeString(file, json, StandardCharsets.UTF_8);
+			lastDeathDumpPath = file.toAbsolutePath().toString();
+			LOGGER.info("[Pilot] death replay dumped: {} ({} frames, reason={})",
+					lastDeathDumpPath, pilot.replay().size(), reason);
+			return file;
+		} catch (IOException e) {
+			LOGGER.warn("[Pilot] failed to dump death replay: {}", e.toString());
+			LOGGER.info("[Pilot] death replay json:\n{}", json);
+			return null;
+		}
 	}
 
 	public void play() {

@@ -107,11 +107,19 @@ public class PerfDockPanel implements DockPanel {
 		ty += 12;
 		if (scene.isPilotEnabled()) {
 			double pilotMs = scene.getLastPilotNanos() / 1_000_000.0;
+			var p = scene.getPilot();
+			String mode = p.searchMode() ? "SEARCH" : "APF";
 			String pilotText = SpellEditorLocalization.isChinese()
-					? String.format("AI试飞: ON   pilot: %.2fms", pilotMs)
-					: String.format("AI pilot: ON   pilot: %.2fms", pilotMs);
+					? String.format("AI:ON  %s  %.2fms  clr:%.2f  n:%d", mode, pilotMs, p.lastClearance(), p.lastSearchNodes())
+					: String.format("AI:ON  %s  %.2fms  clr:%.2f  n:%d", mode, pilotMs, p.lastClearance(), p.lastSearchNodes());
 			graphics.drawString(font, pilotText, x + 4, ty, 0xFFFFCC66, false);
-			ty += 4;
+			ty += 12;
+			if (!scene.getLastDeathDumpPath().isEmpty()) {
+				String dump = scene.getLastDeathDumpPath();
+				if (dump.length() > 48) dump = "..." + dump.substring(dump.length() - 45);
+				graphics.drawString(font, "dump: " + dump, x + 4, ty, 0xFF888888, false);
+				ty += 4;
+			}
 		}
 		ty += 12;
 

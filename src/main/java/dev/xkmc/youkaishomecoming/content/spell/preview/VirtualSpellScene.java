@@ -2,7 +2,18 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.DodgePilot;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotProfile;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotState;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.BallisticProvider;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.MoverExactProvider;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ObservedMotionProvider;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ThreatProviderRegistry;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.CollisionOracle;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.SelfBoxModel;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatSnapshot;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import net.minecraft.client.Minecraft;
@@ -32,6 +43,14 @@ public class VirtualSpellScene {
 	/** Duration of the last tick() call in nanoseconds. */
 	private long lastTickNanos = 0;
 
+	// --- AI pilot (Phase 2 MVP) ---
+	private boolean pilotEnabled = false;
+	private final ThreatProviderRegistry pilotRegistry = new ThreatProviderRegistry();
+	private final ObservedMotionProvider observedProvider = new ObservedMotionProvider();
+	private DodgePilot pilot = new DodgePilot(PilotProfile.ADEPT);
+	private long lastPilotNanos = 0;
+	private double pilotArenaHalf = 12.0;
+
 	public static final float[] SPEED_OPTIONS = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f};
 	public static final float[] DISTANCE_OPTIONS = {5f, 10f, 15f, 20f};
 	public static final float[] HP_OPTIONS = {1.0f, 0.75f, 0.5f, 0.25f};
@@ -51,6 +70,10 @@ public class VirtualSpellScene {
 			var ds = level.damageSources().mobAttack(holder.getFakeCaster());
 			runtime.hurt(holder, ds, 2.0f);
 		});
+		// Preview providers: T1 exact → T2 ballistic → T3 observation
+		pilotRegistry.register(new MoverExactProvider());
+		pilotRegistry.register(new BallisticProvider());
+		pilotRegistry.register(observedProvider);
 	}
 
 	public void tick() {
@@ -84,12 +107,71 @@ public class VirtualSpellScene {
 
 	private void doTick() {
 		holder.setCasterHealth(healthRatio);
+		if (pilotEnabled) {
+			runPilotStep();
+		}
 		runtime.tick(holder);
 		holder.tick();
 		// Safety: auto-pause if entity count exceeds limit
 		if (holder.isSafetyTripped()) {
 			playing = false;
 		}
+	}
+
+	private void runPilotStep() {
+		long t0 = System.nanoTime();
+		Vec3 feet = holder.getTargetPos();
+		int horizon = pilot.profile().predictHorizon();
+		int topK = pilot.profile().threatTopK();
+		ThreatSnapshot snap = ThreatSnapshot.capture(
+				holder.getLocalEntities(), pilotRegistry, horizon, topK, feet);
+		PilotState state = new PilotState(feet, holder.targetVelocity() == null ? Vec3.ZERO : holder.targetVelocity(),
+				SelfBoxModel.previewTarget());
+		state.oracle = CollisionOracle.ALWAYS_FREE;
+		state.anchor = new Vec3(0, feet.y, -targetDistance);
+		double h = pilotArenaHalf;
+		state.arena = new AABB(-h, feet.y - h, -h - targetDistance, h, feet.y + h, h - targetDistance);
+		state.tick = runtime.getTotalTick();
+		Vec3 vel = pilot.tick(snap, state);
+		Vec3 next = feet.add(vel);
+		// Clamp into arena
+		if (state.arena != null) {
+			next = new Vec3(
+					Math.max(state.arena.minX, Math.min(state.arena.maxX, next.x)),
+					Math.max(state.arena.minY, Math.min(state.arena.maxY, next.y)),
+					Math.max(state.arena.minZ, Math.min(state.arena.maxZ, next.z))
+			);
+		}
+		holder.setTargetPosAndVelocity(next, vel);
+		lastPilotNanos = System.nanoTime() - t0;
+	}
+
+	public boolean isPilotEnabled() {
+		return pilotEnabled;
+	}
+
+	public void setPilotEnabled(boolean enabled) {
+		this.pilotEnabled = enabled;
+		if (!enabled) {
+			pilot.reset();
+			holder.setTargetVelocity(Vec3.ZERO);
+		}
+	}
+
+	public void togglePilot() {
+		setPilotEnabled(!pilotEnabled);
+	}
+
+	public long getLastPilotNanos() {
+		return lastPilotNanos;
+	}
+
+	public DodgePilot getPilot() {
+		return pilot;
+	}
+
+	public void setPilotProfile(PilotProfile profile) {
+		this.pilot = new DodgePilot(profile);
 	}
 
 	public void play() {
@@ -115,6 +197,9 @@ public class VirtualSpellScene {
 		runtime.reset();
 		holder.clear();
 		holder.clearYsmRenderOverride();
+		pilot.reset();
+		observedProvider.clear();
+		lastPilotNanos = 0;
 		notifyStateChanged();
 	}
 

@@ -163,6 +163,10 @@ public class ControlsDockPanel implements DockPanel {
 		bx = addButton(bx, row1Y, 40, "\u25B6/\u275A\u275A", btn -> scene.togglePlayPause());
 		bx = addButton(bx, row1Y, 20, "\u25A0", btn -> resetPhaseCallback.run());
 		bx = addButton(bx, row1Y, 20, "\u25B8", btn -> scene.step());
+		bx = addButton(bx, row1Y, 28, scene.isPilotEnabled() ? "AI:ON" : "AI", btn -> {
+			scene.togglePilot();
+			rebuildCallback.run();
+		});
 		bx += 8;
 		addSpellControls(bx, row1Y, false);
 

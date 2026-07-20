@@ -104,7 +104,16 @@ public class PerfDockPanel implements DockPanel {
 				? "实体: " + scene.getEntityCount() + "   速度: " + scene.getCurrentSpeed() + "x"
 				: "entities: " + scene.getEntityCount() + "   speed: " + scene.getCurrentSpeed() + "x";
 		graphics.drawString(font, entityText, x + 4, ty, 0xFFAAAACC, false);
-		ty += 16;
+		ty += 12;
+		if (scene.isPilotEnabled()) {
+			double pilotMs = scene.getLastPilotNanos() / 1_000_000.0;
+			String pilotText = SpellEditorLocalization.isChinese()
+					? String.format("AI试飞: ON   pilot: %.2fms", pilotMs)
+					: String.format("AI pilot: ON   pilot: %.2fms", pilotMs);
+			graphics.drawString(font, pilotText, x + 4, ty, 0xFFFFCC66, false);
+			ty += 4;
+		}
+		ty += 12;
 
 		// --- Graph ---
 		int graphW = Math.min(SAMPLE_COUNT, w - 8);

@@ -7,7 +7,9 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -27,11 +29,10 @@ import org.jetbrains.annotations.Nullable;
 public final class ThreatFilters {
 
 	/**
-	 * Below this speed² a non-laser projectile is treated as inert
-	 * (stuck arrow/trident, settled snowball, etc.).
-	 * ~0.01 blocks/tick — still-flying arrows are far above this.
+	 * Below this horizontal speed² a vanilla projectile is treated as inert.
+	 * ~0.05 blocks/tick; stuck arrows often still report tiny residual motion.
 	 */
-	private static final double STATIONARY_SPEED_SQR = 1.0e-4;
+	private static final double STATIONARY_SPEED_SQR = 0.0025;
 
 	private ThreatFilters() {
 	}
@@ -71,19 +72,35 @@ public final class ThreatFilters {
 	}
 
 	/**
-	 * True when a vanilla projectile no longer carries meaningful motion
-	 * (grounded arrows/tridents, settled snowballs). Not applied to YH lasers
-	 * or SimplifiedProjectile danmaku (static zero-mover bullets can still hurt).
-	 * <p>
-	 * Uses velocity only — {@code AbstractArrow.inGround} is package-protected;
-	 * stuck arrows report ~zero delta movement.
+	 * True when a vanilla projectile no longer threatens the player.
+	 * Not applied to YH lasers or SimplifiedProjectile danmaku.
 	 */
 	public static boolean isInertProjectile(Entity projectile) {
 		if (projectile instanceof YHBaseLaserEntity) return false;
 		if (projectile instanceof SimplifiedProjectile) return false;
 		if (!(projectile instanceof Projectile)) return false;
-		// Flying arrows typically >> 0.01; stuck ones sit near zero
-		return projectile.getDeltaMovement().lengthSqr() <= STATIONARY_SPEED_SQR;
+
+		// Arrows / spectral arrows / tridents: official stuck flag (AT-public)
+		if (projectile instanceof AbstractArrow arrow) {
+			if (arrow.inGround) return true;
+			// Shake/pickup residual: nearly no horizontal motion + on ground
+			if (arrow.onGround() && horizontalSpeedSqr(arrow) <= STATIONARY_SPEED_SQR) {
+				return true;
+			}
+		}
+
+		// Other throwables (snowball, egg, etc.): freeze when almost stopped
+		double speed2 = projectile.getDeltaMovement().lengthSqr();
+		if (speed2 <= STATIONARY_SPEED_SQR) return true;
+		if (projectile.onGround() && horizontalSpeedSqr(projectile) <= STATIONARY_SPEED_SQR) {
+			return true;
+		}
+		return false;
+	}
+
+	private static double horizontalSpeedSqr(Entity e) {
+		Vec3 v = e.getDeltaMovement();
+		return v.x * v.x + v.z * v.z;
 	}
 
 	@Nullable

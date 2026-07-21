@@ -67,6 +67,8 @@ public class BallisticProvider implements ThreatProvider {
 		if (entity == null || horizon <= 0) return null;
 		BallisticParams params = table().get(entity.getType());
 		if (params == null) return null;
+		// Stuck arrows/tridents: no trajectory threat
+		if (entity instanceof AbstractArrow arrow && arrow.inGround) return null;
 
 		Vec3 pos = entity.position();
 		Vec3 vel = entity.getDeltaMovement();

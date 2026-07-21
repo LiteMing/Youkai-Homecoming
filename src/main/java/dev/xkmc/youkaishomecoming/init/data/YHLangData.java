@@ -101,6 +101,7 @@ public enum YHLangData {
 	// Spell Market
 	MARKET_TITLE("spell_market.title", "Spell Card Market", 0, null),
 	STG_DEFEAT("message.stg_defeat", "Spell card duel defeated", 0, ChatFormatting.RED),
+	STG_NO_SLEEP("message.stg_no_sleep", "Cannot sleep during a spell card duel", 0, ChatFormatting.RED),
 	MARKET_SEARCH("spell_market.search", "Search...", 0, null),
 	MARKET_REFRESH("spell_market.refresh", "Refresh", 0, null),
 	MARKET_UPLOAD("spell_market.upload", "Upload", 0, null),

@@ -8,6 +8,7 @@ Danmaku System:
   - Resources persist between battles (not refilled free on re-entry)
   - Below-default resources are restored to default on respawn, battle defeat, or sleeping in a bed
   - Above-default resources are kept; sleep only tops up values that are below default
+  - You cannot sleep in a bed while in danmaku battle
 - During danmaku battle, When you are about to get hit by danmaku from character involved in danmaku battle:
   - You will not lose health form this hit
   - All danmaku from all characters involved in danmaku battle will be removed

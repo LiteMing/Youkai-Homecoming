@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.reimu.MaidenEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import dev.xkmc.youkaishomecoming.init.registrate.YHItems;
@@ -121,8 +122,16 @@ public class EffectEventHandlers {
 
 	@SubscribeEvent
 	public static void onSleep(PlayerSleepInBedEvent event) {
-		if (event.getEntity().hasEffect(YHEffects.SOBER.get())) {
+		Player player = event.getEntity();
+		if (player.hasEffect(YHEffects.SOBER.get())) {
 			event.setResult(Player.BedSleepingProblem.OTHER_PROBLEM);
+			return;
+		}
+		if (GrazeCapability.HOLDER.get(player).isInDanmakuCombat()) {
+			event.setResult(Player.BedSleepingProblem.OTHER_PROBLEM);
+			if (!player.level().isClientSide()) {
+				player.displayClientMessage(YHLangData.STG_NO_SLEEP.get(), true);
+			}
 		}
 	}
 

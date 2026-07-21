@@ -197,7 +197,9 @@ dependencies {
     //runtimeOnly fg.deobf("dev.xkmc:better_creative_tabs:0.0.2")
 
     implementation fg.deobf("dev.xkmc.cuisinedelight:cuisinedelight:1.1.16-slim")
-    implementation fg.deobf("dev.xkmc.fruitsdelight:fruitsdelight:1.0.20-slim")
+    // Soft-dep only: compile compat (FruitsDelightCompat*) without loading FD in runClient.
+    // Put a real FD jar in the game pack when you need that content at runtime.
+    compileOnly fg.deobf("dev.xkmc.fruitsdelight:fruitsdelight:1.0.20-slim")
 
     implementation fg.deobf("curse.maven:farmers-delight-398521:8000996")
     //compileOnly fg.deobf("mezz.jei:jei-${jei_minecraft_version}-api:${jei_version}")

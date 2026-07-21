@@ -4,7 +4,6 @@ import com.simibubi.create.Create;
 import com.tterrag.registrate.providers.RegistrateRecipeProvider;
 import com.tterrag.registrate.util.DataIngredient;
 import com.tterrag.registrate.util.entry.ItemEntry;
-import dev.xkmc.fruitsdelight.init.FruitsDelight;
 import dev.xkmc.fruitsdelight.init.food.FDFood;
 import dev.xkmc.fruitsdelight.init.food.FruitType;
 import dev.xkmc.l2library.compat.patchouli.ShapelessPatchouliBuilder;
@@ -1549,31 +1548,31 @@ public class YHRecipeGen {
 					.save(pvd);
 		}
 
-		if (ModList.get().isLoaded(FruitsDelight.MODID)) {
+		if (ModList.get().isLoaded("fruitsdelight")) {
 
 			unlock(pvd, new KettleRecipeBuilder(FruitsDelightCompatDrink.MOON_ROCKET, 100)::unlockedBy, Items.SUGAR)
 					.addIngredient(FDFood.LEMON_SLICE.get())
 					.addIngredient(FDFood.LEMON_SLICE.get())
 					.addIngredient(Items.SUGAR)
-					.save(ConditionalRecipeWrapper.mod(pvd, FruitsDelight.MODID));
+					.save(ConditionalRecipeWrapper.mod(pvd, "fruitsdelight"));
 
 			unlock(pvd, new KettleRecipeBuilder(FruitsDelightCompatDrink.LEMON_BLACK_TEA, 100)::unlockedBy, Items.SUGAR)
 					.addIngredient(YHTagGen.TEA_BLACK)
 					.addIngredient(YHTagGen.TEA_BLACK)
 					.addIngredient(FDFood.LEMON_SLICE.get())
 					.addIngredient(Items.SUGAR)
-					.save(ConditionalRecipeWrapper.mod(pvd, FruitsDelight.MODID));
+					.save(ConditionalRecipeWrapper.mod(pvd, "fruitsdelight"));
 
 			CookingPotRecipeBuilder.cookingPotRecipe(FruitsDelightCompatFood.PEACH_TAPIOCA.item.get(), 1, 200, 0.1f, Items.BOWL)
 					.addIngredient(FruitType.PEACH.getFruitTag())
 					.addIngredient(Items.LILY_PAD)
-					.save(ConditionalRecipeWrapper.mod(pvd, FruitsDelight.MODID), FruitsDelightCompatFood.PEACH_TAPIOCA.item.getId());
+					.save(ConditionalRecipeWrapper.mod(pvd, "fruitsdelight"), FruitsDelightCompatFood.PEACH_TAPIOCA.item.getId());
 
 
 			unlock(pvd, ShapelessRecipeBuilder.shapeless(RecipeCategory.FOOD, FruitsDelightCompatFood.PEACH_YATSUHASHI.item, 2)::unlockedBy, FruitType.PEACH.getFruit())
 					.requires(FruitType.PEACH.getFruitTag())
 					.requires(ModItems.COOKED_RICE.get())
-					.save(ConditionalRecipeWrapper.mod(pvd, FruitsDelight.MODID));
+					.save(ConditionalRecipeWrapper.mod(pvd, "fruitsdelight"));
 
 		}
 

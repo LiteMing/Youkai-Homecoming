@@ -42,7 +42,8 @@ public class ObservedMotionProvider implements ThreatProvider {
 
 		Vec3 pos = entity.position();
 		Vec3 vel = entity.getDeltaMovement();
-		float hitRadius = (float) (entity.getBbWidth() / 2);
+		// Same radius rule as game / MoverExactProvider (giants & bubbles)
+		float hitRadius = MoverExactProvider.danmakuHitRadius(entity);
 
 		int id = entity.getId();
 		Deque<PositionRecord> records = history.computeIfAbsent(id, k -> new ArrayDeque<>());

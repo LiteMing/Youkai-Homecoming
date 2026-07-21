@@ -73,9 +73,12 @@ public final class PotentialFieldSolver {
 			if (bestAway == null || bestDist > profile.approachHorizon()) continue;
 			if (!approaching && bestDist > 2.0) continue;
 
-			// Repulsion ~ 1/d^2 near field
+			// Repulsion ~ 1/d^2 on surface gap; large balls (bubble/moon) already use surface dist
 			double d = Math.max(0.15, bestDist);
-			double mag = profile.repulseGain() / (d * d);
+			// Mild size weight: bigger hitRadius → slightly stronger far-field attention
+			float hr = frames[0].hitRadius();
+			double sizeBoost = 1.0 + Math.min(2.0, hr); // r=0.2→1.2, r=1.6→2.6
+			double mag = profile.repulseGain() * sizeBoost / (d * d);
 			force = force.add(bestAway.scale(mag));
 		}
 
@@ -165,16 +168,13 @@ public final class PotentialFieldSolver {
 	}
 
 	private static double distToThreat(Vec3 selfCenter, ThreatFrame f) {
-		if (f.isLaser() && f.orientation() != null) {
+		if (f.isLaser() && f.orientation() != null && f.orientation().lengthSqr() > 1e-12) {
 			return distPointToSegment(selfCenter, f.position(),
 					f.position().add(f.orientation().normalize().scale(f.length()))) - f.hitRadius();
 		}
-		AABB b = f.bounds();
-		// Distance from point to AABB
-		double dx = Math.max(0, Math.max(b.minX - selfCenter.x, selfCenter.x - b.maxX));
-		double dy = Math.max(0, Math.max(b.minY - selfCenter.y, selfCenter.y - b.maxY));
-		double dz = Math.max(0, Math.max(b.minZ - selfCenter.z, selfCenter.z - b.maxZ));
-		return Math.sqrt(dx * dx + dy * dy + dz * dz);
+		// Point / ball / bubble / giant: surface gap (not AABB cube corners)
+		// hitRadius already includes scale (bubble r≈0.8, moon/giant-yinyang r≈1.6)
+		return selfCenter.distanceTo(f.position()) - f.hitRadius();
 	}
 
 	private static double distPointToSegment(Vec3 p, Vec3 a, Vec3 b) {

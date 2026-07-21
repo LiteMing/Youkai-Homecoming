@@ -89,8 +89,32 @@ public final class ThreatSnapshot {
 		return new ThreatSnapshot(Collections.emptyList(), horizon, 0, false);
 	}
 
+	/**
+	 * Ranking key: squared <b>surface</b> distance (not center).
+	 * Large balls (bubble size 4, moon/giant-yinyang size 8) have hitRadius up to ~1.6;
+	 * sorting by center alone drops them in Top-K when many small bullets are closer by center.
+	 */
 	private static double nearestDistSq(Threat th, Vec3 selfPos) {
 		ThreatFrame f = th.frames()[0];
-		return f.position().distanceToSqr(selfPos);
+		if (!f.active()) return Double.POSITIVE_INFINITY;
+		double surface;
+		if (f.isLaser() && f.orientation() != null && f.orientation().lengthSqr() > 1e-12) {
+			Vec3 end = f.position().add(f.orientation().normalize().scale(f.length()));
+			surface = distPointToSegment(selfPos, f.position(), end) - f.hitRadius();
+		} else {
+			// Point / ball: distance to sphere surface
+			surface = selfPos.distanceTo(f.position()) - f.hitRadius();
+		}
+		// Already overlapping → highest priority
+		if (surface <= 0) return 0;
+		return surface * surface;
+	}
+
+	private static double distPointToSegment(Vec3 p, Vec3 a, Vec3 b) {
+		Vec3 ab = b.subtract(a);
+		double denom = ab.lengthSqr();
+		if (denom < 1e-12) return p.distanceTo(a);
+		double t = Math.max(0, Math.min(1, p.subtract(a).dot(ab) / denom));
+		return p.distanceTo(a.add(ab.scale(t)));
 	}
 }

@@ -72,8 +72,10 @@ public class MoverExactProvider implements ThreatProvider {
 
 		float damage = entity instanceof ItemDanmakuEntity ide ? ide.damage
 				: entity instanceof YHBaseLaserEntity le ? le.damage : 0;
-		float hitRadius = entity instanceof ItemDanmakuEntity ide ? (float) (ide.getBbWidth() / 2)
-				: entity instanceof YHBaseLaserEntity le ? le.getEffectiveHitRadius() : 0;
+		// Game hit uses getBbWidth()/2 after scale() (bubble=4→r0.8, moon/giant=8→r1.6)
+		float hitRadius = isLaser
+				? ((YHBaseLaserEntity) entity).getEffectiveHitRadius()
+				: danmakuHitRadius(entity);
 		float laserLength = isLaser ? (float) ((YHBaseLaserEntity) entity).getLength() : 0f;
 
 		// Laser ray anchor = pos + BbHeight/2 (BaseLaser.java:31)
@@ -159,6 +161,23 @@ public class MoverExactProvider implements ThreatProvider {
 			return laser.isHitWindowOpen(absTick);
 		}
 		return true;
+	}
+
+	/**
+	 * Matches {@code ProjectileHitHelper}: radius = bbWidth/2 after entity scale.
+	 * Giant/bubble scale via {@code ItemDanmakuEntity.scale()} → dimensions.
+	 * Use max(width,height)/2 so non-cube sizes never under-report.
+	 */
+	static float danmakuHitRadius(Entity entity) {
+		if (entity instanceof ItemDanmakuEntity ide) {
+			// Prefer live BB after refreshDimensions; fall back to item size * base 0.4
+			float fromBb = (float) (Math.max(ide.getBbWidth(), ide.getBbHeight()) * 0.5);
+			float scale = ide.scale();
+			float fromScale = 0.4f * scale * 0.5f; // base entity 0.4, half-extent
+			// If BB not refreshed yet (common on first client ticks), scale path is safer
+			return Math.max(fromBb, fromScale);
+		}
+		return (float) (Math.max(entity.getBbWidth(), entity.getBbHeight()) * 0.5);
 	}
 
 	@Nullable

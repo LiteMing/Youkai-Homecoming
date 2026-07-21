@@ -20,10 +20,18 @@ import org.jetbrains.annotations.Nullable;
  * <ul>
  *   <li>not my own / allied bullets</li>
  *   <li>not zero-damage VFX bullets</li>
+ *   <li>not stuck / zero-momentum vanilla projectiles (arrows, tridents…)</li>
  *   <li>still valid</li>
  * </ul>
  */
 public final class ThreatFilters {
+
+	/**
+	 * Below this speed² a non-laser projectile is treated as inert
+	 * (stuck arrow/trident, settled snowball, etc.).
+	 * ~0.01 blocks/tick — still-flying arrows are far above this.
+	 */
+	private static final double STATIONARY_SPEED_SQR = 1.0e-4;
 
 	private ThreatFilters() {
 	}
@@ -43,6 +51,10 @@ public final class ThreatFilters {
 			return false;
 		}
 
+		// Stuck / settled vanilla projectiles (in-ground arrows, tridents, etc.)
+		// YH lasers may be stationary but still lethal — never apply this to lasers.
+		if (isInertProjectile(projectile)) return false;
+
 		Entity owner = resolveOwner(projectile);
 		if (owner != null) {
 			if (sameEntity(self, owner)) return false;
@@ -56,6 +68,22 @@ public final class ThreatFilters {
 		}
 
 		return true;
+	}
+
+	/**
+	 * True when a vanilla projectile no longer carries meaningful motion
+	 * (grounded arrows/tridents, settled snowballs). Not applied to YH lasers
+	 * or SimplifiedProjectile danmaku (static zero-mover bullets can still hurt).
+	 * <p>
+	 * Uses velocity only — {@code AbstractArrow.inGround} is package-protected;
+	 * stuck arrows report ~zero delta movement.
+	 */
+	public static boolean isInertProjectile(Entity projectile) {
+		if (projectile instanceof YHBaseLaserEntity) return false;
+		if (projectile instanceof SimplifiedProjectile) return false;
+		if (!(projectile instanceof Projectile)) return false;
+		// Flying arrows typically >> 0.01; stuck ones sit near zero
+		return projectile.getDeltaMovement().lengthSqr() <= STATIONARY_SPEED_SQR;
 	}
 
 	@Nullable

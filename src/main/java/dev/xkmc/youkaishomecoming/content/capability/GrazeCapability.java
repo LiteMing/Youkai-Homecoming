@@ -60,6 +60,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private boolean forcedDanmakuCombat = false;
 	@SerialClass.SerialField
 	private boolean statusInitialized = false;
+	/** True after resources have been seeded at least once; persists across combat sessions. */
+	@SerialClass.SerialField
+	private boolean resourcesPrimed = false;
 	@SerialClass.SerialField
 	private String stgCombatMode = StgCombatMode.NOVICE_AUTO_BOMB.name();
 
@@ -72,28 +75,62 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	@Override
 	public void onClone(boolean isWasDeath) {
 		if (isWasDeath) {
-			power = 0;
 			hidden = 0;
 			step = 0;
 			invul = 0;
-			life = 0;
-			bomb = 0;
 			weak = 0;
 			forcedDanmakuCombat = false;
 			statusInitialized = false;
 			playerOpponents.clear();
+			// Respawn restores default STG resources (not zero)
+			applyDefaultResources(true);
+			resourcesPrimed = true;
 			dirty = true;
 		}
 	}
 
+	/**
+	 * Marks combat status active. Seeds default resources only on first prime;
+	 * never tops up depleted values on re-entry (that was abusable).
+	 */
 	public void initStatus() {
-		int initResource = GrazeHelper.getInitialResource(player) * SHARD;
-		int initPower = GrazeHelper.getInitialPower(player) * MAX_GRAZE;
-		life = Math.max(initResource, life);
-		bomb = Math.max(initResource, bomb);
-		power = Math.max(initPower, power);
+		if (!resourcesPrimed) {
+			applyDefaultResources(true);
+			resourcesPrimed = true;
+		}
 		statusInitialized = true;
 		dirty = true;
+	}
+
+	/** Force life/bomb/power to config defaults (respawn / battle defeat). */
+	public void resetResourcesToDefault() {
+		applyDefaultResources(true);
+		resourcesPrimed = true;
+		dirty = true;
+	}
+
+	/**
+	 * Raise life/bomb/power up to defaults without lowering above-default values.
+	 * Used after sleeping in a bed.
+	 */
+	public void topUpResourcesToDefault() {
+		applyDefaultResources(false);
+		resourcesPrimed = true;
+		dirty = true;
+	}
+
+	private void applyDefaultResources(boolean forceExact) {
+		int initResource = GrazeHelper.getInitialResource(player) * SHARD;
+		int initPower = GrazeHelper.getInitialPower(player) * MAX_GRAZE;
+		if (forceExact) {
+			life = initResource;
+			bomb = initResource;
+			power = initPower;
+		} else {
+			life = Math.max(initResource, life);
+			bomb = Math.max(initResource, bomb);
+			power = Math.max(initPower, power);
+		}
 	}
 
 	@Override
@@ -322,14 +359,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			statusInitialized = false;
 			changed = true;
 		}
-		if (life != 0) {
-			life = 0;
-			changed = true;
-		}
-		if (bomb != 0) {
-			bomb = 0;
-			changed = true;
-		}
+		// Keep life/bomb/power across sessions so above-default gains persist
+		// and depleted values are not free-refilled on the next initStatus().
 		if (hidden != 0) {
 			hidden = 0;
 			changed = true;
@@ -697,8 +728,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	private void exitDanmakuCombatOnLastHit() {
-		life = 0;
-		bomb = 0;
+		// Defeat restores default resources (same as respawn)
+		resetResourcesToDefault();
 		for (var s : sessions.values()) {
 			s.resetTarget(player);
 		}
@@ -706,6 +737,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		clearPlayerOpponents();
 		forcedDanmakuCombat = false;
 		statusInitialized = false;
+		hidden = 0;
+		step = 0;
 		weak = WEAK;
 		if (player instanceof ServerPlayer sp) {
 			SpellContainer.clear(sp);
@@ -716,6 +749,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		dirty = true;
 	}
 
+	/**
+	 * Clear active combat sessions / opponents.
+	 * Does not wipe life/bomb/power — those persist until death, defeat, or sleep top-up.
+	 */
 	public void clearCombatState(boolean eraseDanmaku) {
 		if (eraseDanmaku) {
 			eraseActiveDanmaku(0, true);
@@ -734,8 +771,6 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		clearPlayerOpponents();
 		forcedDanmakuCombat = false;
 		statusInitialized = false;
-		life = 0;
-		bomb = 0;
 		hidden = 0;
 		step = 0;
 		dirty = true;

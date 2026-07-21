@@ -18,6 +18,7 @@ import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingHealEvent;
 import net.minecraftforge.event.entity.living.MobEffectEvent;
 import net.minecraftforge.event.entity.player.PlayerSleepInBedEvent;
+import net.minecraftforge.event.entity.player.PlayerWakeUpEvent;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -123,6 +124,21 @@ public class EffectEventHandlers {
 		if (event.getEntity().hasEffect(YHEffects.SOBER.get())) {
 			event.setResult(Player.BedSleepingProblem.OTHER_PROBLEM);
 		}
+	}
+
+	/**
+	 * Successful bed rest tops STG resources up to defaults without lowering above-default values.
+	 * Skip wake-ups that did not actually finish sleeping (e.g. interrupted).
+	 */
+	@SubscribeEvent
+	public static void onWakeUp(PlayerWakeUpEvent event) {
+		if (event.getEntity().level().isClientSide()) return;
+		// wakeImmediately / updateLevel: interrupted or forced wake — not a full night rest
+		if (event.wakeImmediately()) return;
+		Player player = event.getEntity();
+		var cap = GrazeCapability.HOLDER.get(player);
+		cap.topUpResourcesToDefault();
+		cap.sync();
 	}
 
 	public static void disableKoishi(Player player) {

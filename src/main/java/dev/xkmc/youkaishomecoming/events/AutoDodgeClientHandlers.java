@@ -13,6 +13,7 @@ import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ObservedMotionProv
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ThreatProviderRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.search.GroundedModel;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.search.SpatioTemporalSearch;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.LevelCollisionOracle;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ScoreResult;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.SelfBoxModel;
@@ -186,6 +187,11 @@ public class AutoDodgeClientHandlers {
 		state.anchor = feet.subtract(lookFlat.normalize().scale(0.5));
 		state.hitBoxDelta = hitDelta;
 		state.tick = player.tickCount;
+		// Hard time budget every path — ground search without deadline freezes the render thread
+		long budget = pilot.profile().timeBudgetNanos();
+		if (budget > 0) {
+			state.deadlineNanos = System.nanoTime() + budget;
+		}
 		state.wallClearanceRadius = cfg.autoDodgeWallClearanceRadius.get();
 		state.wallClearanceGain = cfg.autoDodgeWallClearanceGain.get();
 		state.wallClearanceDangerDist = cfg.autoDodgeWallClearanceDangerDist.get();
@@ -211,6 +217,8 @@ public class AutoDodgeClientHandlers {
 				return;
 			}
 			if (!allowEmergency && emergencyCooldown > 0) return;
+			// Under fire: no wall probes (they dominate cost and steal dodge directions)
+			state.wallClearanceGain = 0;
 			Vec3 pulse = computeRescuePulse(player, snap, state, flying, rescueSpd, rescueJump);
 			if (pulse.lengthSqr() > 1e-6) {
 				applyVelocity(player, pulse, true);
@@ -243,14 +251,36 @@ public class AutoDodgeClientHandlers {
 			return;
 		}
 
+		// amp 2 takeover
 		Vec3 desired;
 		if (flying) {
 			desired = pilot.tick(snap, state);
 		} else {
+			// Ground: always treat present threats as actionable. Old gate required
+			// clr < searchEnter (~0.8), but t=0 clearance to a distant arrow is large —
+			// player stood still until impact. Use predicted hit + generous enter pad.
 			ScoreResult sc = pilot.scorer().score(snap, box, feet, player.getDeltaMovement(), 0, state);
-			if (sc.hardHit() || sc.minClearance() < pilot.profile().searchEnterClearance()) {
+			boolean danger = sc.hardHit()
+					|| sc.minClearance() < Math.max(pilot.profile().searchEnterClearance(), 4.0)
+					|| willHitSoon(pilot, snap, box, feet, player.getDeltaMovement(), horizon);
+			if (danger) {
+				// Emergency ground dodge: wall probes off (freeze source on dense search)
+				state.wallClearanceGain = 0;
+				Vec3 lateral = sideStepAway(player, snap, Math.max(takeoverMin, pilot.profile().highSpeed()));
 				var sr = groundSearch.search(snap, state, pilot.profile());
-				desired = sr.firstStep().lengthSqr() > 1e-10 ? sr.firstStep() : pilot.tick(snap, state);
+				if (sr.firstStep().lengthSqr() > 1e-10) {
+					desired = sr.firstStep();
+					// Prefer pure horizontal on ground unless jump is the only escape
+					if (player.onGround() && desired.y > 0 && desired.horizontalDistance() > 1e-6) {
+						// keep jump component from search
+					} else if (player.onGround() && desired.y < 0) {
+						desired = new Vec3(desired.x, 0, desired.z);
+					}
+				} else if (lateral.lengthSqr() > 1e-10) {
+					desired = lateral;
+				} else {
+					desired = pilot.tick(snap, state);
+				}
 			} else {
 				desired = pilot.tick(snap, state);
 				if (player.onGround() && desired.y < 0) {
@@ -262,8 +292,58 @@ public class AutoDodgeClientHandlers {
 			Vec3 h = new Vec3(desired.x, 0, desired.z).normalize().scale(takeoverMin);
 			desired = new Vec3(h.x, desired.y, h.z);
 		}
+		// Last resort: if still zero with live threats, force MLM-style side step
+		if (desired.lengthSqr() < 1e-10 && !snap.threats().isEmpty()) {
+			desired = sideStepAway(player, snap, Math.max(takeoverMin, 0.35));
+		}
 		applyVelocity(player, desired, true);
-		logDebug(player, amp, threats.size(), snap.size(), pilot.lastClearance(), desired, "takeover");
+		logDebug(player, amp, threats.size(), snap.size(),
+				pilot.lastClearance() < Double.POSITIVE_INFINITY ? pilot.lastClearance()
+						: pilot.scorer().score(snap, box, feet, desired, 0, state).minClearance(),
+				desired, "takeover");
+	}
+
+	/**
+	 * True if any threat frame will hard-hit self within the next few ticks along current motion.
+	 * Used so ground takeover reacts before t=0 clearance collapses.
+	 */
+	private static boolean willHitSoon(DodgePilot pilot, ThreatSnapshot snap, SelfBoxModel box,
+	                                   Vec3 feet, Vec3 motion, int horizon) {
+		int n = Math.min(horizon, Math.min(10, snap.horizon()));
+		if (n <= 0) return false;
+		for (int t = 0; t < n; t++) {
+			ScoreResult sc = pilot.scorer().score(snap, box, feet, motion, t, null);
+			if (sc.hardHit() || sc.minClearance() < 0.35) return true;
+		}
+		return false;
+	}
+
+	/** MLM-style: step perpendicular to the nearest threat velocity / approach vector. */
+	private static Vec3 sideStepAway(LocalPlayer player, ThreatSnapshot snap, double speed) {
+		if (snap.threats().isEmpty()) return Vec3.ZERO;
+		var th = snap.threats().get(0);
+		var frames = th.frames();
+		if (frames.length == 0) return Vec3.ZERO;
+		Vec3 tpos = frames[0].position();
+		Vec3 tvel = frames.length > 1 ? frames[1].position().subtract(frames[0].position()) : Vec3.ZERO;
+		Vec3 forward = new Vec3(tvel.x, 0, tvel.z);
+		if (forward.lengthSqr() < 1e-6) {
+			forward = new Vec3(player.getLookAngle().x, 0, player.getLookAngle().z);
+		}
+		if (forward.lengthSqr() < 1e-6) forward = new Vec3(0, 0, 1);
+		forward = forward.normalize();
+		Vec3 perp = new Vec3(-forward.z, 0, forward.x);
+		Vec3 toPlayer = player.position().add(0, 0.9, 0).subtract(tpos);
+		if (toPlayer.dot(perp) < 0) perp = perp.scale(-1);
+		Vec3 step = perp.scale(speed);
+		// Prefer free side; if blocked try opposite
+		AABB next = player.getBoundingBox().move(step.x, 0, step.z);
+		if (!player.level().noCollision(player, next)) {
+			step = perp.scale(-speed);
+			next = player.getBoundingBox().move(step.x, 0, step.z);
+			if (!player.level().noCollision(player, next)) return Vec3.ZERO;
+		}
+		return step;
 	}
 
 	private static Vec3 computeRescuePulse(LocalPlayer player, ThreatSnapshot snap, PilotState state,
@@ -296,6 +376,11 @@ public class AutoDodgeClientHandlers {
 
 	private static void applyVelocity(LocalPlayer player, Vec3 desired, boolean replace) {
 		if (desired.lengthSqr() < 1e-10) return;
+		// No flight: never inject upward motion while airborne (amp 2 included)
+		if (!canVerticalFlight(player) && !player.onGround() && desired.y > 0) {
+			desired = new Vec3(desired.x, 0, desired.z);
+			if (desired.lengthSqr() < 1e-10) return;
+		}
 		AABB next = player.getBoundingBox().move(desired.x, Math.max(0, desired.y), desired.z);
 		if (!player.level().noCollision(player, next)) {
 			Vec3 h = new Vec3(desired.x, 0, desired.z);
@@ -306,12 +391,23 @@ public class AutoDodgeClientHandlers {
 		if (replace) {
 			Vec3 cur = player.getDeltaMovement();
 			double y = desired.y != 0 ? desired.y : cur.y;
+			// Airborne without flight: preserve gravity, never replace with upward pilot y
+			if (!canVerticalFlight(player) && !player.onGround() && y > 0) {
+				y = cur.y;
+			}
 			player.setDeltaMovement(desired.x, y, desired.z);
 		} else {
 			player.setDeltaMovement(desired);
 		}
 		player.hurtMarked = true;
 		player.hasImpulse = true;
+	}
+
+	/** Creative/spectator fly, mayfly, or elytra — otherwise airborne Y is gravity-only. */
+	private static boolean canVerticalFlight(LocalPlayer player) {
+		return player.getAbilities().flying
+				|| player.getAbilities().mayfly
+				|| player.isFallFlying();
 	}
 
 	private static Vec3 readInputWish(LocalPlayer player) {
@@ -331,6 +427,8 @@ public class AutoDodgeClientHandlers {
 		AABB area = player.getBoundingBox().inflate(scanRadius);
 		List<Entity> list = new ArrayList<>();
 		int worldRaw = 0, cacheRaw = 0, filtered = 0;
+		Vec3 self = player.getBoundingBox().getCenter();
+		double r2 = scanRadius * scanRadius;
 		for (Entity e : player.level().getEntities(player, area, AutoDodgeClientHandlers::isThreatCandidate)) {
 			worldRaw++;
 			if (ThreatFilters.isHostileTo(player, e)) list.add(e);
@@ -340,8 +438,8 @@ public class AutoDodgeClientHandlers {
 			ClientDanmakuCache cache = ClientDanmakuCache.get(player.level());
 			for (SimplifiedProjectile sp : cache.snapshot()) {
 				if (!sp.isValid()) continue;
-				// Distance check by position (BB may be empty/wrong for virtual bullets)
-				if (sp.position().distanceToSqr(player.position()) > scanRadius * scanRadius) continue;
+				// Lasers: distance to segment (muzzle can be far while beam crosses player)
+				if (threatScanDistSqr(sp, self) > r2) continue;
 				cacheRaw++;
 				if (ThreatFilters.isHostileTo(player, sp)) list.add(sp);
 				else filtered++;
@@ -357,6 +455,34 @@ public class AutoDodgeClientHandlers {
 		lastScanCache = cacheRaw;
 		lastScanFiltered = filtered;
 		return list;
+	}
+
+	/**
+	 * Scan distance²: point bullets use center; lasers use nearest point on beam segment
+	 * (same idea as Vertical_radar). Muzzle-only distance drops long beams that already
+	 * cross the player.
+	 */
+	private static double threatScanDistSqr(Entity e, Vec3 self) {
+		if (e instanceof YHBaseLaserEntity laser) {
+			Vec3 start = laser.position().add(0, laser.getBbHeight() / 2.0, 0);
+			Vec3 dir = laser.getLookAngle();
+			if (dir.lengthSqr() < 1e-12) dir = new Vec3(0, 0, 1);
+			dir = dir.normalize();
+			// Prefer full length so warn-phase beams still enter the set
+			float len = (float) Math.max(laser.getLength(), laser.effectiveLength(0f));
+			if (len <= 0.01f) return start.distanceToSqr(self);
+			Vec3 end = start.add(dir.scale(len));
+			return distPointToSegmentSqr(self, start, end);
+		}
+		return e.position().distanceToSqr(self);
+	}
+
+	private static double distPointToSegmentSqr(Vec3 p, Vec3 a, Vec3 b) {
+		Vec3 ab = b.subtract(a);
+		double denom = ab.lengthSqr();
+		if (denom < 1e-12) return p.distanceToSqr(a);
+		double t = Math.max(0, Math.min(1, p.subtract(a).dot(ab) / denom));
+		return p.distanceToSqr(a.add(ab.scale(t)));
 	}
 
 	private static int lastScanWorld, lastScanCache, lastScanFiltered;

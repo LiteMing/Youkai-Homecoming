@@ -109,17 +109,18 @@ public class PerfDockPanel implements DockPanel {
 			double pilotMs = scene.getLastPilotNanos() / 1_000_000.0;
 			var p = scene.getPilot();
 			String mode = p.searchMode() ? "SEARCH" : "APF";
+			String tier = scene.getPilotTierName();
 			String pilotText = SpellEditorLocalization.isChinese()
-					? String.format("AI:ON  %s  %.2fms  clr:%.2f  n:%d", mode, pilotMs, p.lastClearance(), p.lastSearchNodes())
-					: String.format("AI:ON  %s  %.2fms  clr:%.2f  n:%d", mode, pilotMs, p.lastClearance(), p.lastSearchNodes());
+					? String.format("AI:%s  %s  %.2fms  clr:%.2f  n:%d", tier, mode, pilotMs, p.lastClearance(), p.lastSearchNodes())
+					: String.format("AI:%s  %s  %.2fms  clr:%.2f  n:%d", tier, mode, pilotMs, p.lastClearance(), p.lastSearchNodes());
 			graphics.drawString(font, pilotText, x + 4, ty, 0xFFFFCC66, false);
 			ty += 12;
-			if (!scene.getLastDeathDumpPath().isEmpty()) {
-				String dump = scene.getLastDeathDumpPath();
-				if (dump.length() > 48) dump = "..." + dump.substring(dump.length() - 45);
-				graphics.drawString(font, "dump: " + dump, x + 4, ty, 0xFF888888, false);
-				ty += 4;
-			}
+			// Special J: direction flip rate + mode switch rate (rolling ~1s)
+			String jitterText = SpellEditorLocalization.isChinese()
+					? String.format("抖动  翻向:%.1f/s  模式切:%.1f/s", p.flipRatePerSec(), p.modeSwitchRatePerSec())
+					: String.format("jitter  flip:%.1f/s  mode:%.1f/s", p.flipRatePerSec(), p.modeSwitchRatePerSec());
+			graphics.drawString(font, jitterText, x + 4, ty, 0xFFFFAA88, false);
+			ty += 12;
 		}
 		ty += 12;
 

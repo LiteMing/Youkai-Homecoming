@@ -53,8 +53,11 @@ public final class NodeScorer {
 			return ScoreResult.safe(wall, Double.POSITIVE_INFINITY, 0, -1);
 		}
 
-		// Query volume uses larger of the two self boxes so broadphase does not miss
-		AABB queryBody = selfBox.bodyAt(feet).inflate(Math.max(grazeBand, 2.0) + selfDelta.length());
+		// Broadphase pad must cover mid-range projectiles (arrows spawn ~8–16m out).
+		// Old pad (~2) made score() report clr=Infinity while snap still held the arrow,
+		// so ground takeover never entered search and APF/search thought it was safe.
+		double pad = Math.max(16.0, Math.max(grazeBand, 2.0) + selfDelta.length() + 4.0);
+		AABB queryBody = selfBox.bodyAt(feet).inflate(pad);
 		Set<Integer> seen = new HashSet<>();
 		double minClear = Double.POSITIVE_INFINITY;
 		int grazes = 0;
@@ -63,7 +66,8 @@ public final class NodeScorer {
 		int count = 0;
 
 		SpatioTemporalHash hash = snapshot.broadphase();
-		if (hash != null) {
+		// Small threat sets: skip hash (cheap full scan, avoids cell-edge misses)
+		if (hash != null && threats.size() > 12) {
 			hash.query(tick, queryBody, idx -> seen.add(idx));
 		} else {
 			for (int i = 0; i < threats.size(); i++) seen.add(i);

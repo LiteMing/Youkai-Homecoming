@@ -163,10 +163,7 @@ public class ControlsDockPanel implements DockPanel {
 		bx = addButton(bx, row1Y, 40, "\u25B6/\u275A\u275A", btn -> scene.togglePlayPause());
 		bx = addButton(bx, row1Y, 20, "\u25A0", btn -> resetPhaseCallback.run());
 		bx = addButton(bx, row1Y, 20, "\u25B8", btn -> scene.step());
-		bx = addButton(bx, row1Y, 28, scene.isPilotEnabled() ? "AI:ON" : "AI", btn -> {
-			scene.togglePilot();
-			rebuildCallback.run();
-		});
+		bx = addMenuButton(bx, row1Y, 40, scene.getPilotTierLabel(), this::openPilotMenu);
 		bx = addButton(bx, row1Y, 32, scene.isPilotDebugOverlay() ? "Dbg:ON" : "Dbg", btn -> {
 			scene.togglePilotDebugOverlay();
 			rebuildCallback.run();
@@ -286,6 +283,31 @@ public class ControlsDockPanel implements DockPanel {
 			entries.add(new MenuEntry(label, () -> scene.setSpeedIndex(idx), true));
 		}
 		openActionMenu(anchor, "Speed", entries);
+	}
+
+	/** AI tier menu — same amp semantics as player AUTO_DODGE buff (0/1/2). */
+	private void openPilotMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		boolean off = !scene.isPilotEnabled();
+		entries.add(new MenuEntry((off ? "* " : "") + "OFF", () -> {
+			scene.setPilotEnabled(false);
+			rebuildCallback.run();
+		}, true));
+		String[] labels = {
+				"I  Rescue (amp 0)",
+				"II Assist (amp 1)",
+				"III Takeover (amp 2)"
+		};
+		for (int t = 0; t <= 2; t++) {
+			final int tier = t;
+			boolean sel = scene.isPilotEnabled() && scene.getPilotTier() == tier;
+			String label = (sel ? "* " : "") + labels[t];
+			entries.add(new MenuEntry(label, () -> {
+				scene.setPilotTier(tier);
+				rebuildCallback.run();
+			}, true));
+		}
+		openActionMenu(anchor, "AI Pilot Tier", entries);
 	}
 
 	private void openLimitMenu(Button anchor) {

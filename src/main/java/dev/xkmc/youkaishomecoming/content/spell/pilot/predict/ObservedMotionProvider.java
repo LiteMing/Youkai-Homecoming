@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.pilot.predict;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatFilters;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -39,6 +40,10 @@ public class ObservedMotionProvider implements ThreatProvider {
 		if (entity instanceof YHBaseLaserEntity laser) {
 			return captureLaser(laser, horizon);
 		}
+
+		// Critical: BallisticProvider may return null for stuck arrows; without this gate
+		// T3 would still emit a stationary VANILLA threat and dominate APF repulsion.
+		if (ThreatFilters.isInertProjectile(entity)) return null;
 
 		Vec3 pos = entity.position();
 		Vec3 vel = entity.getDeltaMovement();
@@ -93,18 +98,27 @@ public class ObservedMotionProvider implements ThreatProvider {
 	}
 
 	private static Threat captureLaser(YHBaseLaserEntity laser, int horizon) {
+		// Align with Vertical_radar / BaseLaser: anchor at BbHeight/2, look direction
 		Vec3 anchor = laser.position().add(0, laser.getBbHeight() / 2, 0);
-		Vec3 rot = laser.rot();
-		Vec3 orient = rot.equals(Vec3.ZERO)
-				? laser.getLookAngle()
-				: Vec3.directionFromRotation((float) (rot.x * Mth.RAD_TO_DEG), (float) (rot.y * Mth.RAD_TO_DEG));
+		Vec3 orient = laser.getLookAngle();
+		if (orient.lengthSqr() < 1e-12) {
+			Vec3 rot = laser.rot();
+			orient = rot.equals(Vec3.ZERO)
+					? new Vec3(0, 0, 1)
+					: Vec3.directionFromRotation((float) (rot.x * Mth.RAD_TO_DEG), (float) (rot.y * Mth.RAD_TO_DEG));
+		}
 		float hitRadius = laser.getEffectiveHitRadius();
-		float length = (float) laser.getLength();
+		// Full length for geometry (warn-phase still occupies space); active flag for hard-hit
+		float fullLen = (float) laser.getLength();
+		float warnLen = laser.effectiveLength(0f);
+		float length = Math.max(fullLen, warnLen);
 		int t0 = laser.tickCount;
 		ThreatFrame[] frames = new ThreatFrame[horizon];
 		for (int i = 0; i < horizon; i++) {
-			// Orientation frozen on T3 (no pure-rot history); better than a point at the muzzle
-			frames[i] = new ThreatFrame(anchor, orient, hitRadius, length, laser.isHitWindowOpen(t0 + i));
+			boolean open = laser.isHitWindowOpen(t0 + i);
+			// Keep segment present during warn/fade so APF can side-step before open
+			float len = open ? fullLen : Math.max(warnLen, fullLen * 0.5f);
+			frames[i] = new ThreatFrame(anchor, orient, hitRadius, len, open || len > 0.01f);
 		}
 		return new Threat(laser.getId(), frames, ThreatSemantic.DANMAKU, laser, laser.damage);
 	}

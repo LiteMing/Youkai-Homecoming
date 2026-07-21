@@ -68,11 +68,12 @@ public class BallisticProvider implements ThreatProvider {
 		if (entity == null || horizon <= 0) return null;
 		BallisticParams params = table().get(entity.getType());
 		if (params == null) return null;
+		// Stuck / inert: return null so registry does not invent a path.
+		// ObservedMotionProvider also gates inert — both must agree.
+		if (ThreatFilters.isInertProjectile(entity)) return null;
 
 		Vec3 pos = entity.position();
 		Vec3 vel = entity.getDeltaMovement();
-		// MLM-style: no meaningful motion → no ballistic threat (stuck arrows)
-		if (vel.lengthSqr() < ThreatFilters.MIN_PROJECTILE_SPEED_SQR) return null;
 
 		float hitRadius = (float) (entity.getBbWidth() / 2);
 		float damage = 0;

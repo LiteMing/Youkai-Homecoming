@@ -13,6 +13,9 @@ import net.minecraft.world.phys.Vec3;
 /**
  * Artificial potential field: repulsion from predicted closest approach of approaching threats,
  * attraction to anchor. Output clamped + deadzone + low-pass damping via previous velocity.
+ * <p>
+ * Lasers: push away from <b>nearest point on the segment</b> (not muzzle). Static beams
+ * still repel within a generous radius — otherwise pilot walks along the beam into the hit.
  */
 public final class PotentialFieldSolver {
 
@@ -42,43 +45,63 @@ public final class PotentialFieldSolver {
 			double bestDist = Double.POSITIVE_INFINITY;
 			Vec3 bestAway = null;
 			boolean approaching = false;
+			boolean isLaser = frames[0].isLaser();
 
 			Vec3 prevPos = frames[0].position();
-			for (int t = 1; t < Math.min(horizon, frames.length); t++) {
+			// Include t=0 so static lasers (no motion across frames) still contribute
+			int tMax = Math.min(horizon, frames.length);
+			for (int t = 0; t < tMax; t++) {
 				ThreatFrame f = frames[t];
-				if (!f.active()) continue;
+				// Warn/fade: still geometric hazard for dodge (beam is visible / about to hurt)
+				if (!f.active() && !f.isLaser()) continue;
+				if (f.isLaser() && f.length() <= 0.01f) continue;
+
 				double d = distToThreat(selfCenter, f);
-				Vec3 delta = f.position().subtract(prevPos);
-				// Approaching if threat moves toward self
-				Vec3 toSelf = selfCenter.subtract(f.position());
-				if (delta.dot(toSelf) > 0 && d < bestDist) {
+				Vec3 away = awayFromThreat(selfCenter, f, state.tick, threat.entityId());
+
+				if (t > 0) {
+					Vec3 delta = f.position().subtract(prevPos);
+					Vec3 toSelf = selfCenter.subtract(f.isLaser() ? nearestOnFrame(selfCenter, f) : f.position());
+					if (delta.dot(toSelf) > 0 && d < bestDist) {
+						bestDist = d;
+						bestAway = away;
+						approaching = true;
+						prevPos = f.position();
+						continue;
+					}
+				}
+				if (d < bestDist) {
 					bestDist = d;
-					bestAway = toSelf.lengthSqr() > 1e-8 ? toSelf.normalize() : randomAway(state.tick, threat.entityId());
-					approaching = true;
-				} else if (d < bestDist) {
-					bestDist = d;
-					bestAway = toSelf.lengthSqr() > 1e-8 ? toSelf.normalize() : null;
+					bestAway = away;
 				}
 				prevPos = f.position();
 			}
 
-			// Always track nearest active frame at t=0 for safety gate
-			if (frames[0].active()) {
-				minThreatDist = Math.min(minThreatDist, distToThreat(selfCenter, frames[0]));
-			}
 			if (bestDist < Double.POSITIVE_INFINITY) {
 				minThreatDist = Math.min(minThreatDist, bestDist);
 			}
 
-			if (bestAway == null || bestDist > profile.approachHorizon()) continue;
-			if (!approaching && bestDist > 2.0) continue;
+			// Distance gate: approachHorizon is also used as tick cap above; allow farther
+			// approaching VANILLA projectiles (skeleton arrows) so mid-range still repels.
+			// Lasers: static beams must still push within a long radius (not only 2m).
+			double maxDist = Math.max(profile.approachHorizon(), isLaser ? 24.0 : 20.0);
+			if (bestAway == null || bestDist > maxDist) continue;
+			// Static point hazards only when close; lasers always count within maxDist
+			if (!approaching && !isLaser && bestDist > 2.0) continue;
 
-			// Repulsion ~ 1/d^2 on surface gap; large balls (bubble/moon) already use surface dist
+			// Repulsion ~ 1/d^2 on surface gap.
+			// Special J: laser near-field was too steep (sizeBoost×1.8 + fall floor 0.08)
+			// → maxForce + direction flip when beam sweeps past = main jitter source.
 			double d = Math.max(0.15, bestDist);
-			// Mild size weight: bigger hitRadius → slightly stronger far-field attention
 			float hr = frames[0].hitRadius();
-			double sizeBoost = 1.0 + Math.min(2.0, hr); // r=0.2→1.2, r=1.6→2.6
-			double mag = profile.repulseGain() * sizeBoost / (d * d);
+			double sizeBoost = 1.0 + Math.min(2.0, hr);
+			if (isLaser) sizeBoost *= 1.35; // was 1.8 — still above point bullets
+			double fall = approaching ? Math.max(d * d, d * 2.0) : (d * d);
+			// Floor 0.30 (was 0.08): near-field force no longer instantly saturates maxForce
+			if (isLaser && d < 3.0) {
+				fall = Math.max(0.30, d * 0.85);
+			}
+			double mag = profile.repulseGain() * sizeBoost / fall;
 			force = force.add(bestAway.scale(mag));
 		}
 
@@ -167,14 +190,48 @@ public final class PotentialFieldSolver {
 		return force;
 	}
 
+	/** Surface gap to point ball or laser capsule. */
 	private static double distToThreat(Vec3 selfCenter, ThreatFrame f) {
 		if (f.isLaser() && f.orientation() != null && f.orientation().lengthSqr() > 1e-12) {
 			return distPointToSegment(selfCenter, f.position(),
 					f.position().add(f.orientation().normalize().scale(f.length()))) - f.hitRadius();
 		}
-		// Point / ball / bubble / giant: surface gap (not AABB cube corners)
-		// hitRadius already includes scale (bubble r≈0.8, moon/giant-yinyang r≈1.6)
 		return selfCenter.distanceTo(f.position()) - f.hitRadius();
+	}
+
+	/**
+	 * Unit vector pointing away from the hazard surface.
+	 * Lasers: away from nearest point on segment (perpendicular to beam when beside it).
+	 * Points: away from center.
+	 */
+	private static Vec3 awayFromThreat(Vec3 selfCenter, ThreatFrame f, int tick, int id) {
+		if (f.isLaser() && f.orientation() != null && f.orientation().lengthSqr() > 1e-12) {
+			Vec3 nearest = nearestOnFrame(selfCenter, f);
+			Vec3 away = selfCenter.subtract(nearest);
+			if (away.lengthSqr() > 1e-8) return away.normalize();
+			// Inside/on beam: push orthogonal to laser direction
+			Vec3 dir = f.orientation().normalize();
+			Vec3 ortho = dir.cross(new Vec3(0, 1, 0));
+			if (ortho.lengthSqr() < 1e-8) ortho = dir.cross(new Vec3(1, 0, 0));
+			if (ortho.lengthSqr() > 1e-8) return ortho.normalize();
+			return randomAway(tick, id);
+		}
+		Vec3 away = selfCenter.subtract(f.position());
+		if (away.lengthSqr() > 1e-8) return away.normalize();
+		return randomAway(tick, id);
+	}
+
+	private static Vec3 nearestOnFrame(Vec3 selfCenter, ThreatFrame f) {
+		if (f.isLaser() && f.orientation() != null && f.orientation().lengthSqr() > 1e-12) {
+			Vec3 a = f.position();
+			Vec3 b = a.add(f.orientation().normalize().scale(f.length()));
+			Vec3 ab = b.subtract(a);
+			double denom = ab.lengthSqr();
+			if (denom < 1e-12) return a;
+			double t = Math.max(0, Math.min(1, selfCenter.subtract(a).dot(ab) / denom));
+			return a.add(ab.scale(t));
+		}
+		return f.position();
 	}
 
 	private static double distPointToSegment(Vec3 p, Vec3 a, Vec3 b) {

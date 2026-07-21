@@ -7,27 +7,66 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+
+import java.lang.reflect.Field;
 
 /**
  * Shared hostility filters for pilot threat collection.
  * <p>
- * Vanilla projectile inertia follows MovesLikeMafuyu:
- * {@code getDeltaMovement().lengthSqr() < MIN_PROJECTILE_SPEED_SQR} → ignore.
- * No AT / {@code inGround} required — stuck arrows simply report near-zero velocity.
- * <p>
+ * Stuck vanilla projectiles (arrows/tridents on ground) must be dropped before
+ * any provider chain runs. {@link #isInertProjectile} uses:
+ * <ol>
+ *   <li>{@code AbstractArrow.inGround} via reflection (package-private; no AT rebuild)</li>
+ *   <li>MLM-style {@code lengthSqr() < MIN_PROJECTILE_SPEED_SQR}</li>
+ *   <li>near-zero horizontal speed while {@code onGround()}</li>
+ * </ol>
  * YH lasers and static danmaku are exempt (may be stationary but still lethal).
  */
 public final class ThreatFilters {
 
 	/**
 	 * Same threshold as MovesLikeMafuyu AutoDodgeEvent.MIN_PROJECTILE_SPEED_SQR.
-	 * Flying arrows are typically well above; stuck arrows sit near zero.
+	 * Flying arrows are typically well above; pure-zero stuck arrows sit near zero.
+	 * Client residual motion after block-hit may still exceed this — use {@code inGround}.
 	 */
 	public static final double MIN_PROJECTILE_SPEED_SQR = 0.0025;
 
+	/** Cached {@code AbstractArrow.inGround}; null if lookup failed. */
+	@Nullable
+	private static final Field ARROW_IN_GROUND = resolveInGroundField();
+
 	private ThreatFilters() {
+	}
+
+	@Nullable
+	private static Field resolveInGroundField() {
+		try {
+			// Official mappings: inGround; SRG: f_36703_
+			for (String name : new String[]{"inGround", "f_36703_"}) {
+				try {
+					Field f = AbstractArrow.class.getDeclaredField(name);
+					f.setAccessible(true);
+					return f;
+				} catch (NoSuchFieldException ignored) {
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+		return null;
+	}
+
+	/** True when arrow/trident is stuck in a block (vanilla inGround). */
+	public static boolean isArrowInGround(AbstractArrow arrow) {
+		if (ARROW_IN_GROUND == null) return false;
+		try {
+			return ARROW_IN_GROUND.getBoolean(arrow);
+		} catch (Throwable ignored) {
+			return false;
+		}
 	}
 
 	/**
@@ -44,7 +83,7 @@ public final class ThreatFilters {
 			return false;
 		}
 
-		// MLM-style: no meaningful motion → not a threat (arrows/tridents on ground)
+		// Stuck / settled vanilla projectiles must not enter threat set
 		if (isInertProjectile(projectile)) return false;
 
 		Entity owner = resolveOwner(projectile);
@@ -62,14 +101,35 @@ public final class ThreatFilters {
 	}
 
 	/**
-	 * Vanilla projectiles only: require speed ≥ MLM threshold.
+	 * Vanilla projectiles only: stuck arrows/tridents and near-zero motion throwables.
 	 * YH lasers / SimplifiedProjectile danmaku may be still and still hurt.
 	 */
 	public static boolean isInertProjectile(Entity projectile) {
 		if (projectile instanceof YHBaseLaserEntity) return false;
 		if (projectile instanceof SimplifiedProjectile) return false;
 		if (!(projectile instanceof Projectile)) return false;
-		return projectile.getDeltaMovement().lengthSqr() < MIN_PROJECTILE_SPEED_SQR;
+
+		// Authoritative stuck flag (arrow / spectral / trident)
+		if (projectile instanceof AbstractArrow arrow) {
+			if (isArrowInGround(arrow)) return true;
+			// Shake / residual after impact: almost no horizontal motion while grounded
+			if (arrow.onGround() && horizontalSpeedSqr(arrow) < MIN_PROJECTILE_SPEED_SQR) {
+				return true;
+			}
+		}
+
+		// MLM-style: no meaningful motion
+		if (projectile.getDeltaMovement().lengthSqr() < MIN_PROJECTILE_SPEED_SQR) return true;
+		// Settled throwables that still report a tiny residual vector
+		if (projectile.onGround() && horizontalSpeedSqr(projectile) < MIN_PROJECTILE_SPEED_SQR) {
+			return true;
+		}
+		return false;
+	}
+
+	private static double horizontalSpeedSqr(Entity e) {
+		Vec3 v = e.getDeltaMovement();
+		return v.x * v.x + v.z * v.z;
 	}
 
 	@Nullable

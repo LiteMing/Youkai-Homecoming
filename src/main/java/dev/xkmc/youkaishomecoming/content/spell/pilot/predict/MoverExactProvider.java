@@ -140,18 +140,24 @@ public class MoverExactProvider implements ThreatProvider {
 		Vec3 anchor = laser.position().add(0, laser.getBbHeight() / 2, 0);
 		Vec3 orient = unitDirection(laser);
 		float hitRadius = laser.getEffectiveHitRadius();
-		float length = (float) laser.getLength();
+		float fullLen = (float) laser.getLength();
+		float warnLen = laser.effectiveLength(0f);
+		float length = Math.max(fullLen, warnLen);
 		int t0 = laser.tickCount;
 		ThreatFrame[] frames = new ThreatFrame[horizon];
 		for (int i = 0; i < horizon; i++) {
-			frames[i] = new ThreatFrame(anchor, orient, hitRadius, length, laser.isHitWindowOpen(t0 + i));
+			boolean open = laser.isHitWindowOpen(t0 + i);
+			// Geometry present in warn/fade so pilot can leave the beam before open
+			float len = open ? fullLen : Math.max(warnLen, fullLen * 0.5f);
+			frames[i] = new ThreatFrame(anchor, orient, hitRadius, len, open || len > 0.01f);
 		}
 		return new Threat(laser.getId(), frames, ThreatSemantic.DANMAKU, laser, laser.damage);
 	}
 
 	private static ThreatFrame frame(Vec3 pos, @Nullable Vec3 orient, float hitRadius, float laserLength,
 	                                 boolean isLaser, int absTick, Entity entity) {
-		boolean active = !isLaser || isLaserActive(entity, absTick);
+		// Laser: keep segment active for scoring/APF during warn; hard hit still uses length>0
+		boolean active = !isLaser || isLaserActive(entity, absTick) || laserLength > 0.01f;
 		float len = isLaser ? laserLength : 0f;
 		return new ThreatFrame(pos, orient, hitRadius, len, active);
 	}

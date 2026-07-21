@@ -556,7 +556,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 		targets.remove(target.getUUID());
 		setTarget(null);
 		setLastHurtByMob(null);
-		setCombatProgress(combatProgress.maxProgress);
+		// Kill path also stops the session; do not refill HP after lethal damage.
+		if (getCombatProgress() > 0) {
+			setCombatProgress(combatProgress.maxProgress);
+		}
 	}
 
 	public void syncSpellState() {

@@ -150,6 +150,8 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue maxPowerLossOnMiss;
 		public final ForgeConfigSpec.IntValue initialResource;
 		public final ForgeConfigSpec.IntValue initialPower;
+		public final ForgeConfigSpec.BooleanValue applyBeatenOnDefeat;
+		public final ForgeConfigSpec.IntValue beatenDurationTicks;
 
 		// Exposure compat
 		public final ForgeConfigSpec.IntValue exposureCameraCooldown;
@@ -275,6 +277,12 @@ public class YHModConfig {
 						.defineInRange("initialResource", 2, 0, 10);
 				initialPower = builder.comment("Initial power when you initiate a danmaku battle")
 						.defineInRange("initialPower", 1, 0, 10);
+				applyBeatenOnDefeat = builder.comment("Apply the Beaten effect when the player loses the last life in danmaku combat")
+						.comment("Disabled by default; enable for pack-style defeat penalty")
+						.define("applyBeatenOnDefeat", false);
+				beatenDurationTicks = builder.comment("Duration in ticks of the Beaten effect applied on danmaku defeat")
+						.comment("Only used when applyBeatenOnDefeat is true. 1500 ticks = 75 seconds")
+						.defineInRange("beatenDurationTicks", 1500, 1, 1000000);
 			}
 			builder.pop();
 

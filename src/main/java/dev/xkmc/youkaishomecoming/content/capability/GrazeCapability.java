@@ -17,11 +17,13 @@ import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
+import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
@@ -744,6 +746,12 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			SpellContainer.clear(sp);
 			sp.displayClientMessage(YHLangData.STG_DEFEAT.get(), true);
 			sp.playNotifySound(SoundEvents.PLAYER_DEATH, SoundSource.PLAYERS, 1.0f, 0.8f);
+			if (YHModConfig.COMMON.applyBeatenOnDefeat.get()) {
+				int duration = YHModConfig.COMMON.beatenDurationTicks.get();
+				if (duration > 0 && !sp.hasEffect(YHEffects.BEATEN.get())) {
+					sp.addEffect(new MobEffectInstance(YHEffects.BEATEN.get(), duration, 0));
+				}
+			}
 			sync();
 		}
 		dirty = true;

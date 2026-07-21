@@ -177,6 +177,10 @@ public class SpellEditorController {
 		if (isDraftMode()) {
 			return;
 		}
+		// legacy_ticker factory cannot survive JSON encode — skip remote save
+		if (definition.hasLegacyTicker()) {
+			return;
+		}
 		SpellRegistry.register(definition);
 		SpellEditorNetworkClient.save(definition);
 	}
@@ -193,6 +197,15 @@ public class SpellEditorController {
 		}
 		if (restored == null) return;
 
+		// For legacy defaults, switch to the live instance (factory not copyable via phases map)
+		if (restored.hasLegacyTicker()) {
+			skipSaveOnNextDefinitionSwitch = true;
+			scene.pause();
+			scene.switchSpellDefinition(restored, true);
+			displayEditorMessage("[YH] Spell reset to default");
+			return;
+		}
+
 		definition.phases.clear();
 		definition.phases.putAll(restored.phases);
 		definition.customNames.clear();
@@ -203,6 +216,10 @@ public class SpellEditorController {
 
 	public void exportToDatapack() {
 		if (isDraftMode()) {
+			return;
+		}
+		if (definition.hasLegacyTicker()) {
+			displayEditorMessage("[YH] Cannot export legacy_ticker spell (Java factory is not serializable)");
 			return;
 		}
 		try {

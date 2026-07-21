@@ -42,9 +42,13 @@ public class SpellPreviewChunkToClient extends SerialPacketBase {
 
 	/**
 	 * Encode definition and push one or more packets to the player, then client opens preview.
-	 * Always sends the full server-side definition (no id-only shortcut).
+	 * Legacy-ticker definitions must not use this path — factory is lost on encode.
 	 */
 	public static void sendOpenPreview(ServerPlayer player, SpellDefinition definition) {
+		if (definition.hasLegacyTicker()) {
+			OpenSpellPreviewToClient.sendPreview(player, definition);
+			return;
+		}
 		String id = definition.id != null ? definition.id.toString() : "";
 		String body;
 		try {

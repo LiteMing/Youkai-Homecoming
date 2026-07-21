@@ -2,11 +2,16 @@ package dev.xkmc.youkaishomecoming.content.spell.definition;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import dev.xkmc.youkaishomecoming.content.spell.action.DelayAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.LegacyTickerAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class SpellDefinition {
@@ -68,5 +73,52 @@ public class SpellDefinition {
 	@Nullable
 	public String getModelId() {
 		return display.modelIdOrNull() != null ? display.modelIdOrNull().toString() : null;
+	}
+
+	/**
+	 * True when any phase uses {@link LegacyTickerAction}.
+	 * Those actions hold a non-serializable Java factory; JSON encode/decode drops it.
+	 */
+	public boolean hasLegacyTicker() {
+		for (PhaseDefinition phase : phases.values()) {
+			if (actionsHaveLegacyTicker(phase.onEnter)
+					|| actionsHaveLegacyTicker(phase.onTick)
+					|| actionsHaveLegacyTicker(phase.onExit)
+					|| actionsHaveLegacyTicker(phase.onDamage)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean actionsHaveLegacyTicker(List<SpellAction> actions) {
+		for (SpellAction action : actions) {
+			if (actionHasLegacyTicker(action)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean actionHasLegacyTicker(SpellAction action) {
+		if (action instanceof LegacyTickerAction) {
+			return true;
+		}
+		if (action instanceof SpellActions.ConditionalAction cond) {
+			return actionsHaveLegacyTicker(cond.ifTrue()) || actionsHaveLegacyTicker(cond.ifFalse());
+		}
+		if (action instanceof SpellActions.SequenceAction seq) {
+			return actionsHaveLegacyTicker(seq.actions());
+		}
+		if (action instanceof SpellActions.RepeatAction rep) {
+			return actionsHaveLegacyTicker(rep.body());
+		}
+		if (action instanceof SpellActions.DisabledAction disabled) {
+			return actionHasLegacyTicker(disabled.inner());
+		}
+		if (action instanceof DelayAction delay) {
+			return actionsHaveLegacyTicker(delay.body());
+		}
+		return false;
 	}
 }

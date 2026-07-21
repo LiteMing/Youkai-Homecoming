@@ -38,6 +38,17 @@ public class SpellPreviewClientHandler {
 				return;
 			}
 		}
+		// Id-only open (used for legacy_ticker spells — factory cannot survive JSON)
+		if (packet.spellId != null && !packet.spellId.isBlank()) {
+			ResourceLocation id = ResourceLocation.tryParse(packet.spellId);
+			if (id != null) {
+				SpellDefinition local = SpellRegistry.get(id);
+				if (local != null) {
+					openLocalDefinition(local);
+					return;
+				}
+			}
+		}
 		if (mc.player != null) {
 			mc.player.displayClientMessage(Component.literal("[YH] Unknown spell: " + packet.spellId), false);
 		}
@@ -83,7 +94,20 @@ public class SpellPreviewClientHandler {
 	}
 
 	private static void openDefinition(SpellDefinition definition) {
+		// Do not overwrite a live legacy_ticker definition with a decoded empty shell
+		if (definition.hasLegacyTicker()) {
+			SpellDefinition local = SpellRegistry.get(definition.id);
+			if (local != null && local.hasLegacyTicker()) {
+				openLocalDefinition(local);
+				return;
+			}
+		}
 		SpellRegistry.register(definition);
+		Minecraft.getInstance().setScreen(new SpellPreviewScreen(definition));
+	}
+
+	/** Open preview without re-registering (keeps non-serializable factory intact). */
+	private static void openLocalDefinition(SpellDefinition definition) {
 		Minecraft.getInstance().setScreen(new SpellPreviewScreen(definition));
 	}
 

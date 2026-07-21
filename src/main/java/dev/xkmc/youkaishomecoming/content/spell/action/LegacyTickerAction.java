@@ -45,4 +45,9 @@ public class LegacyTickerAction implements SpellAction {
 	public SpellCard getCard() {
 		return card;
 	}
+
+	/** False after JSON decode (Codec.unit drops the factory). */
+	public boolean isBound() {
+		return factory != null || card != null;
+	}
 }

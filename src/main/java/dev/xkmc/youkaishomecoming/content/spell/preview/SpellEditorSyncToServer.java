@@ -55,6 +55,9 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	}
 
 	public static SpellEditorSyncToServer save(SpellDefinition definition, boolean reapply) {
+		if (definition.hasLegacyTicker()) {
+			throw new IllegalArgumentException("Cannot save legacy_ticker spell via JSON: " + definition.id);
+		}
 		var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 				.getOrThrow(false, s -> {});
 		return new SpellEditorSyncToServer(reapply ? Action.SAVE_AND_REAPPLY : Action.SAVE,
@@ -62,12 +65,18 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	}
 
 	public static SpellEditorSyncToServer importMarket(SpellDefinition definition) {
+		if (definition.hasLegacyTicker()) {
+			throw new IllegalArgumentException("Cannot import legacy_ticker spell via JSON: " + definition.id);
+		}
 		var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 				.getOrThrow(false, s -> {});
 		return new SpellEditorSyncToServer(Action.IMPORT_MARKET, definition.id.toString(), GSON.toJson(json));
 	}
 
 	public static SpellEditorSyncToServer exportGlobal(SpellDefinition definition) {
+		if (definition.hasLegacyTicker()) {
+			throw new IllegalArgumentException("Cannot export legacy_ticker spell via JSON: " + definition.id);
+		}
 		var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 				.getOrThrow(false, s -> {});
 		return new SpellEditorSyncToServer(Action.EXPORT_GLOBAL, definition.id.toString(), GSON.toJson(json));

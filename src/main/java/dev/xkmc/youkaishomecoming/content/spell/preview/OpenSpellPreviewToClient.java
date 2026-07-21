@@ -3,15 +3,16 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
 /**
  * Opens spell preview on the client.
  * <p>
- * Draft editor uses this packet alone. Full definitions always go through
- * {@link SpellPreviewChunkToClient#sendOpenPreview} so large JSON is chunked
- * under the 32767 {@code writeUtf} limit while still syncing server content.
+ * Draft editor and legacy-ticker spells use this packet alone (id-only).
+ * Data-driven definitions go through {@link SpellPreviewChunkToClient#sendOpenPreview}
+ * so large JSON is chunked under the 32767 {@code writeUtf} limit.
  */
 @SerialClass
 public class OpenSpellPreviewToClient extends SerialPacketBase {
@@ -38,8 +39,18 @@ public class OpenSpellPreviewToClient extends SerialPacketBase {
 		return new OpenSpellPreviewToClient(true, "", "");
 	}
 
-	/** Preferred: always full server definition, chunked if needed. */
+	/**
+	 * Open preview for a spell definition.
+	 * Legacy-ticker spells skip JSON encode (factory is not serializable) and open by id only.
+	 * Data-driven spells still send the full definition, chunked if needed.
+	 */
 	public static void sendPreview(ServerPlayer player, SpellDefinition definition) {
+		if (definition.hasLegacyTicker()) {
+			String id = definition.id != null ? definition.id.toString() : "";
+			YoukaisHomecoming.HANDLER.toClientPlayer(
+					new OpenSpellPreviewToClient(false, id, ""), player);
+			return;
+		}
 		SpellPreviewChunkToClient.sendOpenPreview(player, definition);
 	}
 

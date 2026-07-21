@@ -945,7 +945,7 @@ public class MigratedSpellCards {
 						NumberProvider.constant(80),
 						NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
 						PatternType.AIMED, OriginConfig.caster(),
-						new AimMode.AimModes.Target(),
+						new AimMode.AimModes.DirectionToTarget(),
 						Optional.empty(), Optional.empty(), Optional.empty(),
 						Optional.empty(), 1
 				)
@@ -2372,20 +2372,27 @@ public class MigratedSpellCards {
 						PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
-		// Legacy: i in [-3,3] (7 cols, 10° spacing horizontal), k in [-2,2] (5 rows, 10° spacing vertical)
-		// GRID: count = rows (vertical), outerCount = cols (horizontal). Spread controls angular range.
-		// 7 cols × 5 rows × 3 speed layers = 105 butterflies total
-		var hiddenButterflies = new SpellActions.RepeatAction(NumberProvider.constant(3), "bsp", List.of(
-				(SpellAction) new FireDanmakuAction(
-						YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.PURPLE),
-						NumberProvider.constant(5),
-						new NumberProviders.Add(NumberProvider.constant(1.4),
-								new NumberProviders.Mul(new NumberProviders.Variable("bsp"), NumberProvider.constant(0.2))),
-						NumberProvider.constant(40), NumberProvider.constant(0),
-						NumberProvider.constant(60), NumberProvider.constant(40),
-						PatternType.GRID, OriginConfig.caster(), new AimMode.AimModes.Target(),
-						Optional.<MoverConfig>empty(), Optional.of(NumberProvider.constant(7)),
-						Optional.<List<SpellAction>>empty(), Optional.<List<SpellAction>>empty(), 1)
+		// Legacy: i in [-3,3] (7 cols, 10° horizontal steps), k in [-2,2] (5 rows, 10° vertical steps),
+		// 3 speed layers (1.4/1.6/1.8) = 105 butterflies. Nested repeats with per-bullet AIMED angles
+		// keep the exact 10° grid pitch (GRID pattern would stretch rows to ±30° instead of ±20°).
+		var hiddenButterflies = new SpellActions.RepeatAction(NumberProvider.constant(7), "hbc", List.of(
+				(SpellAction) new SpellActions.RepeatAction(NumberProvider.constant(5), "hbr", List.of(
+						(SpellAction) new SpellActions.RepeatAction(NumberProvider.constant(3), "bsp", List.of(
+								(SpellAction) new FireDanmakuAction(
+										YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.PURPLE),
+										NumberProvider.constant(1),
+										new NumberProviders.Add(NumberProvider.constant(1.4),
+												new NumberProviders.Mul(new NumberProviders.Variable("bsp"), NumberProvider.constant(0.2))),
+										NumberProvider.constant(40),
+										new NumberProviders.Mul(new NumberProviders.Add(
+												new NumberProviders.Variable("hbc"), NumberProvider.constant(-3)), NumberProvider.constant(10)),
+										NumberProvider.constant(0),
+										new NumberProviders.Mul(new NumberProviders.Add(
+												new NumberProviders.Variable("hbr"), NumberProvider.constant(-2)), NumberProvider.constant(10)),
+										PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.Target(),
+										Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
+						))
+				))
 		));
 		SpellAction hiddenFull = new SpellActions.SequenceAction(List.of(
 				hiddenLasers, hiddenBubbles, hiddenButterflies));
@@ -2414,40 +2421,42 @@ public class MigratedSpellCards {
 						List.of(teleportFarBehind, hiddenFull))),
 				List.of());
 
-		// === Butterfly: restore the earlier 5-phase CODEC composition when dist < 20 ===
-		// This version keeps the 3D RANDOM launch and accepts that only the polar middle phase
-		// is compressed by current shared-plane PolarMoverConfig semantics.
-		var butterflyMover = new MoverConfigs.CompositeMoverConfig(List.of(
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.025)),
-				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
-				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 0, 0.382)),
-				new MoverConfigs.CompositeMoverConfig.Segment(30, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 3.82, 0)),
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
-		var butterflyMoverRev = new MoverConfigs.CompositeMoverConfig(List.of(
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.DecelerationConfig(0.025)),
-				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.ZeroMoverConfig()),
-				new MoverConfigs.CompositeMoverConfig.Segment(10, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, 0, -0.382)),
-				new MoverConfigs.CompositeMoverConfig.Segment(30, new MoverConfigs.PolarMoverConfig(12, 0, 0, 0, -3.82, 0)),
-				new MoverConfigs.CompositeMoverConfig.Segment(40, new MoverConfigs.AccelerationConfig(Vec3.ZERO))));
+		// === Butterfly: dist < 20 — exact legacy launchButterfly (pure data, no shared plane) ===
+		// Legacy: 100 bullets per color, even azimuth (3.6° steps) around caster forward with
+		// random ±45° elevation; each flies out decelerating over 40t to its OWN random radius
+		// $br (12±8, approach speed coupled as $br/20 so all arrive together), hovers 10t,
+		// spins up over 10t to 3.82°/t (0.0667 rad/t), orbits 30t, then releases tangentially.
+		// The orbit plane is PER-BULLET: FormulaMover's local frame (forward=launch dir a1,
+		// right=a1×vn, up=vn) is the same basis legacy PolarMover.ofPlane(pos, a1, vn) rotates in,
+		// so the closed-form piecewise trajectory below reproduces the 3D swirling shell —
+		// NOT the flat shared-plane ring that PolarMoverConfig produces.
+		String bfRho = "$br*(min(t,40)*0.05-min(t,40)*min(t,40)*0.000625)";
+		String bfTh = "(0.0033333333*min(max(t-50,0),10)*min(max(t-50,0),10)+0.0666666667*min(max(t-60,0),30))";
+		String bfX = bfRho + "*cos_rad(" + bfTh + ")-$br*0.0666666667*sin_rad(" + bfTh + ")*max(t-90,0)";
+		String bfY = bfRho + "*sin_rad(" + bfTh + ")+$br*0.0666666667*cos_rad(" + bfTh + ")*max(t-90,0)";
 		var butterflyLife = new NumberProviders.Add(NumberProvider.constant(130), new NumberProviders.RandomRange(0, 40));
+		var butterflyAzimuth = new NumberProviders.Mul(new NumberProviders.Variable("bf"), NumberProvider.constant(3.6));
 		var butterflyCyan = new FireDanmakuAction(
 				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.CYAN),
-				NumberProvider.constant(100), NumberProvider.constant(0.6), butterflyLife,
-				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(90),
-				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
-				Optional.of(butterflyMover), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		var butterflyMagenta = new FireDanmakuAction(
-				YHDanmaku.Bullet.BUTTERFLY, ColorProvider.constant(DyeColor.MAGENTA),
-				NumberProvider.constant(100), NumberProvider.constant(0.6), butterflyLife,
-				NumberProvider.constant(0), NumberProvider.constant(360), NumberProvider.constant(90),
-				PatternType.RANDOM, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
-				Optional.of(butterflyMoverRev), Optional.empty(), Optional.empty(), Optional.empty(), 1);
+				NumberProvider.constant(1), NumberProvider.constant(1), butterflyLife,
+				butterflyAzimuth, NumberProvider.constant(0), new NumberProviders.RandomRange(-45, 45),
+				PatternType.AIMED, OriginConfig.caster(), new AimMode.AimModes.CasterFacing(),
+				Optional.of(new MoverConfigs.FormulaMoverConfig(bfX, bfY, "0")),
+				Optional.empty(), Optional.empty(), Optional.empty(), 1);
+		var butterflyMagenta = butterflyCyan
+				.withColor(ColorProvider.constant(DyeColor.MAGENTA))
+				.withMover(Optional.of(new MoverConfigs.FormulaMoverConfig(bfX, "-(" + bfY + ")", "0")));
 		var butterflyAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.DistanceBelow(20),
 						new SpellConditions.CompareNumbers(new NumberProviders.Variable("cd"), "<=", NumberProvider.constant(0)))),
 				List.of(
-						butterflyCyan, butterflyMagenta,
+						new SpellActions.RepeatAction(NumberProvider.constant(100), "bf", List.of(
+								new SpellActions.SetVariable("br", new NumberProviders.RandomRange(4, 20)),
+								butterflyCyan)),
+						new SpellActions.RepeatAction(NumberProvider.constant(100), "bf", List.of(
+								new SpellActions.SetVariable("br", new NumberProviders.RandomRange(4, 20)),
+								butterflyMagenta)),
 						new SpellActions.SetVariable("cd", 60)),
 				List.of());
 

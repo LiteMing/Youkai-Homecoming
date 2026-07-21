@@ -35,13 +35,15 @@ public final class ThreatFilters {
 			if (isAllied(self, owner)) return false;
 		}
 
-		// YH danmaku: respect shouldHurt + zero damage
+		// YH danmaku: zero damage (pure VFX) is never a threat
 		if (projectile instanceof IYHDanmaku yh) {
-			if (!yh.shouldHurt(owner, self)) return false;
 			float dmg = damageOf(yh, projectile, self);
 			if (dmg <= 0f) return false;
+			// shouldHurt(null, ...) is always false — only call when owner is known
+			if (owner != null && !yh.shouldHurt(owner, self)) return false;
 		}
 
+		// owner unresolved on client: still treat as hostile if not filtered above
 		return true;
 	}
 

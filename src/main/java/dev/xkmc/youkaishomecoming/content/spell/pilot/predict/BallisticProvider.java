@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.pilot.predict;
 
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatFilters;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.projectile.*;
@@ -67,11 +68,12 @@ public class BallisticProvider implements ThreatProvider {
 		if (entity == null || horizon <= 0) return null;
 		BallisticParams params = table().get(entity.getType());
 		if (params == null) return null;
-		// Stuck arrows/tridents: no trajectory threat
-		if (entity instanceof AbstractArrow arrow && arrow.inGround) return null;
 
 		Vec3 pos = entity.position();
 		Vec3 vel = entity.getDeltaMovement();
+		// MLM-style: no meaningful motion → no ballistic threat (stuck arrows)
+		if (vel.lengthSqr() < ThreatFilters.MIN_PROJECTILE_SPEED_SQR) return null;
+
 		float hitRadius = (float) (entity.getBbWidth() / 2);
 		float damage = 0;
 

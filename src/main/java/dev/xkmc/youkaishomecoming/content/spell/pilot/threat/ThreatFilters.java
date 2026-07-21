@@ -7,32 +7,25 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
-import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Shared hostility filters for pilot threat collection.
  * <p>
- * Intentionally does <b>not</b> call {@code IYHDanmaku.shouldHurt} /
- * {@code YoukaiEntity.shouldHurt}: those depend on server combat target lists
- * that are often empty/incomplete on the client, which would drop all enemy
- * danmaku (e.g. star_sapphire). Pilot only needs:
- * <ul>
- *   <li>not my own / allied bullets</li>
- *   <li>not zero-damage VFX bullets</li>
- *   <li>not stuck / zero-momentum vanilla projectiles (arrows, tridents…)</li>
- *   <li>still valid</li>
- * </ul>
+ * Vanilla projectile inertia follows MovesLikeMafuyu:
+ * {@code getDeltaMovement().lengthSqr() < MIN_PROJECTILE_SPEED_SQR} → ignore.
+ * No AT / {@code inGround} required — stuck arrows simply report near-zero velocity.
+ * <p>
+ * YH lasers and static danmaku are exempt (may be stationary but still lethal).
  */
 public final class ThreatFilters {
 
 	/**
-	 * Below this horizontal speed² a vanilla projectile is treated as inert.
-	 * ~0.05 blocks/tick; stuck arrows often still report tiny residual motion.
+	 * Same threshold as MovesLikeMafuyu AutoDodgeEvent.MIN_PROJECTILE_SPEED_SQR.
+	 * Flying arrows are typically well above; stuck arrows sit near zero.
 	 */
-	private static final double STATIONARY_SPEED_SQR = 0.0025;
+	public static final double MIN_PROJECTILE_SPEED_SQR = 0.0025;
 
 	private ThreatFilters() {
 	}
@@ -45,15 +38,13 @@ public final class ThreatFilters {
 	public static boolean isHostileTo(Entity self, Entity projectile) {
 		if (self == null || projectile == null || projectile == self) return false;
 
-		// Virtual client danmaku may not be "alive" in world terms; use isValid for SP
 		if (projectile instanceof SimplifiedProjectile sp) {
 			if (!sp.isValid()) return false;
 		} else if (!projectile.isAlive()) {
 			return false;
 		}
 
-		// Stuck / settled vanilla projectiles (in-ground arrows, tridents, etc.)
-		// YH lasers may be stationary but still lethal — never apply this to lasers.
+		// MLM-style: no meaningful motion → not a threat (arrows/tridents on ground)
 		if (isInertProjectile(projectile)) return false;
 
 		Entity owner = resolveOwner(projectile);
@@ -62,7 +53,6 @@ public final class ThreatFilters {
 			if (isAllied(self, owner)) return false;
 		}
 
-		// YH: drop pure VFX (damage field 0). Do not use shouldHurt(owner,self).
 		if (projectile instanceof IYHDanmaku yh) {
 			float dmg = damageOf(yh, projectile, self);
 			if (dmg <= 0f) return false;
@@ -72,35 +62,14 @@ public final class ThreatFilters {
 	}
 
 	/**
-	 * True when a vanilla projectile no longer threatens the player.
-	 * Not applied to YH lasers or SimplifiedProjectile danmaku.
+	 * Vanilla projectiles only: require speed ≥ MLM threshold.
+	 * YH lasers / SimplifiedProjectile danmaku may be still and still hurt.
 	 */
 	public static boolean isInertProjectile(Entity projectile) {
 		if (projectile instanceof YHBaseLaserEntity) return false;
 		if (projectile instanceof SimplifiedProjectile) return false;
 		if (!(projectile instanceof Projectile)) return false;
-
-		// Arrows / spectral arrows / tridents: official stuck flag (AT-public)
-		if (projectile instanceof AbstractArrow arrow) {
-			if (arrow.inGround) return true;
-			// Shake/pickup residual: nearly no horizontal motion + on ground
-			if (arrow.onGround() && horizontalSpeedSqr(arrow) <= STATIONARY_SPEED_SQR) {
-				return true;
-			}
-		}
-
-		// Other throwables (snowball, egg, etc.): freeze when almost stopped
-		double speed2 = projectile.getDeltaMovement().lengthSqr();
-		if (speed2 <= STATIONARY_SPEED_SQR) return true;
-		if (projectile.onGround() && horizontalSpeedSqr(projectile) <= STATIONARY_SPEED_SQR) {
-			return true;
-		}
-		return false;
-	}
-
-	private static double horizontalSpeedSqr(Entity e) {
-		Vec3 v = e.getDeltaMovement();
-		return v.x * v.x + v.z * v.z;
+		return projectile.getDeltaMovement().lengthSqr() < MIN_PROJECTILE_SPEED_SQR;
 	}
 
 	@Nullable
@@ -133,7 +102,6 @@ public final class ThreatFilters {
 		try {
 			return yh.damage(self);
 		} catch (Throwable ignored) {
-			// Unknown YH type without synced damage: keep as threat
 			return 1f;
 		}
 	}

@@ -65,7 +65,7 @@ public final class DodgePilot {
 			state.deadlineNanos = t0 + profile.timeBudgetNanos();
 		}
 
-		ScoreResult now = scorer.score(snapshot, state.selfBox, state.feet, state.velocity, 0);
+		ScoreResult now = scorer.score(snapshot, state.selfBox, state.feet, state.velocity, 0, state);
 		lastClearance = now.minClearance();
 		lastHardHit = now.hardHit();
 		if (now.hardHit() || now.minClearance() < profile.searchEnterClearance()) {

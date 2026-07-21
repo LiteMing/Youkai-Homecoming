@@ -51,6 +51,8 @@ public class MoverExactProvider implements ThreatProvider {
 	@Override
 	public boolean supports(Entity entity) {
 		if (entity == null) return false;
+		// Static / mover-less lasers still need T1 segment geometry (not T3 point)
+		if (entity instanceof YHBaseLaserEntity) return true;
 		DanmakuMover mover = getMover(entity);
 		return mover != null && isPredictable(mover);
 	}
@@ -60,9 +62,14 @@ public class MoverExactProvider implements ThreatProvider {
 	public Threat capture(Entity entity, int horizon) {
 		if (entity == null || horizon <= 0) return null;
 		DanmakuMover mover = getMover(entity);
+		boolean isLaser = entity instanceof YHBaseLaserEntity;
+
+		// Laser without predictable mover: still emit segment frames from current pose
+		if (isLaser && (mover == null || !isPredictable(mover))) {
+			return captureStaticLaser((YHBaseLaserEntity) entity, horizon);
+		}
 		if (mover == null || !isPredictable(mover)) return null;
 
-		boolean isLaser = entity instanceof YHBaseLaserEntity;
 		float damage = entity instanceof ItemDanmakuEntity ide ? ide.damage
 				: entity instanceof YHBaseLaserEntity le ? le.damage : 0;
 		float hitRadius = entity instanceof ItemDanmakuEntity ide ? (float) (ide.getBbWidth() / 2)
@@ -117,6 +124,20 @@ public class MoverExactProvider implements ThreatProvider {
 		}
 
 		return new Threat(entity.getId(), frames, semantic, entity, damage);
+	}
+
+	/** Laser with null/unpredictable mover: freeze pose, keep segment length + hit window. */
+	private static Threat captureStaticLaser(YHBaseLaserEntity laser, int horizon) {
+		Vec3 anchor = laser.position().add(0, laser.getBbHeight() / 2, 0);
+		Vec3 orient = unitDirection(laser);
+		float hitRadius = laser.getEffectiveHitRadius();
+		float length = (float) laser.getLength();
+		int t0 = laser.tickCount;
+		ThreatFrame[] frames = new ThreatFrame[horizon];
+		for (int i = 0; i < horizon; i++) {
+			frames[i] = new ThreatFrame(anchor, orient, hitRadius, length, laser.isHitWindowOpen(t0 + i));
+		}
+		return new Threat(laser.getId(), frames, ThreatSemantic.DANMAKU, laser, laser.damage);
 	}
 
 	private static ThreatFrame frame(Vec3 pos, @Nullable Vec3 orient, float hitRadius, float laserLength,

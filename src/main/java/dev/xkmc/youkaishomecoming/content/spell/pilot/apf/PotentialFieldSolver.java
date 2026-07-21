@@ -30,6 +30,9 @@ public final class PotentialFieldSolver {
 		AABB self = box.hardAt(state.feet);
 		Vec3 selfCenter = SweptCollision.center(self);
 
+		// Track nearest threat distance for wall-safety gate (dodge first, space second)
+		double minThreatDist = Double.POSITIVE_INFINITY;
+
 		int horizon = Math.min(snapshot.horizon(), (int) Math.ceil(profile.approachHorizon()));
 		for (Threat threat : snapshot.threats()) {
 			ThreatFrame[] frames = threat.frames();
@@ -59,6 +62,14 @@ public final class PotentialFieldSolver {
 				prevPos = f.position();
 			}
 
+			// Always track nearest active frame at t=0 for safety gate
+			if (frames[0].active()) {
+				minThreatDist = Math.min(minThreatDist, distToThreat(selfCenter, frames[0]));
+			}
+			if (bestDist < Double.POSITIVE_INFINITY) {
+				minThreatDist = Math.min(minThreatDist, bestDist);
+			}
+
 			if (bestAway == null || bestDist > profile.approachHorizon()) continue;
 			if (!approaching && bestDist > 2.0) continue;
 
@@ -73,6 +84,21 @@ public final class PotentialFieldSolver {
 		double ad = toAnchor.length();
 		if (ad > 1e-4) {
 			force = force.add(toAnchor.scale(profile.attractGain() / Math.max(1.0, ad)));
+		}
+
+		// Soft wall clearance only when relatively safe — never steal necessary dodge
+		double wallScale = state.wallSafetyFactor(minThreatDist);
+		if (wallScale > 1e-4) {
+			Vec3 wall = wallClearanceForce(state, box);
+			// Cap wall contribution so it cannot dominate threat repulsion
+			double wallCap = profile.maxForce() * 0.35 * wallScale;
+			double wl = wall.length();
+			if (wl > wallCap && wl > 1e-8) {
+				wall = wall.scale(wallCap / wl);
+			} else {
+				wall = wall.scale(wallScale);
+			}
+			force = force.add(wall);
 		}
 
 		// Clamp
@@ -102,6 +128,40 @@ public final class PotentialFieldSolver {
 	public void reset() {
 		filtered = Vec3.ZERO;
 		lastForce = Vec3.ZERO;
+	}
+
+	/**
+	 * Probe six axial directions; if a solid is within wallClearanceRadius, push away.
+	 * Strength scales with (radius - freeDist) / radius * wallClearanceGain.
+	 */
+	private static Vec3 wallClearanceForce(PilotState state, SelfBoxModel box) {
+		double radius = state.wallClearanceRadius;
+		double gain = state.wallClearanceGain;
+		if (radius <= 0 || gain <= 0 || state.oracle == null) return Vec3.ZERO;
+
+		Vec3[] dirs = {
+				new Vec3(1, 0, 0), new Vec3(-1, 0, 0),
+				new Vec3(0, 1, 0), new Vec3(0, -1, 0),
+				new Vec3(0, 0, 1), new Vec3(0, 0, -1)
+		};
+		Vec3 force = Vec3.ZERO;
+		double step = 0.25;
+		for (Vec3 dir : dirs) {
+			double free = radius;
+			for (double d = step; d <= radius + 1e-6; d += step) {
+				AABB probe = box.hardAt(state.feet.add(dir.scale(d)));
+				if (!state.oracle.isFree(probe)) {
+					free = d;
+					break;
+				}
+			}
+			if (free < radius) {
+				double mag = gain * (radius - free) / radius;
+				// Wall lies in +dir → push opposite
+				force = force.add(dir.scale(-mag));
+			}
+		}
+		return force;
 	}
 
 	private static double distToThreat(Vec3 selfCenter, ThreatFrame f) {

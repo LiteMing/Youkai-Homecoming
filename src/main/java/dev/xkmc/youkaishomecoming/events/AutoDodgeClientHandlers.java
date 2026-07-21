@@ -186,6 +186,10 @@ public class AutoDodgeClientHandlers {
 		state.anchor = feet.subtract(lookFlat.normalize().scale(0.5));
 		state.hitBoxDelta = hitDelta;
 		state.tick = player.tickCount;
+		state.wallClearanceRadius = cfg.autoDodgeWallClearanceRadius.get();
+		state.wallClearanceGain = cfg.autoDodgeWallClearanceGain.get();
+		state.wallClearanceDangerDist = cfg.autoDodgeWallClearanceDangerDist.get();
+		state.wallClearanceSafeDist = cfg.autoDodgeWallClearanceSafeDist.get();
 		double r = 10;
 		state.arena = new AABB(feet.x - r, feet.y - 4, feet.z - r, feet.x + r, feet.y + 6, feet.z + r);
 
@@ -201,7 +205,7 @@ public class AutoDodgeClientHandlers {
 		double rescueJump = cfg.autoDodgeRescueJump.get();
 
 		if (amp == 0) {
-			ScoreResult sc = pilot.scorer().score(snap, box, feet, player.getDeltaMovement(), 0);
+			ScoreResult sc = pilot.scorer().score(snap, box, feet, player.getDeltaMovement(), 0, state);
 			if (!sc.hardHit() && sc.minClearance() > rescueClr) {
 				logDebug(player, amp, threats.size(), snap.size(), sc.minClearance(), Vec3.ZERO, "safe");
 				return;
@@ -243,7 +247,7 @@ public class AutoDodgeClientHandlers {
 		if (flying) {
 			desired = pilot.tick(snap, state);
 		} else {
-			ScoreResult sc = pilot.scorer().score(snap, box, feet, player.getDeltaMovement(), 0);
+			ScoreResult sc = pilot.scorer().score(snap, box, feet, player.getDeltaMovement(), 0, state);
 			if (sc.hardHit() || sc.minClearance() < pilot.profile().searchEnterClearance()) {
 				var sr = groundSearch.search(snap, state, pilot.profile());
 				desired = sr.firstStep().lengthSqr() > 1e-10 ? sr.firstStep() : pilot.tick(snap, state);

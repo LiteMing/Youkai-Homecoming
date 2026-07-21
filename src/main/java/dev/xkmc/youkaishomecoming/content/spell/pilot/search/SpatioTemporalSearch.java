@@ -70,7 +70,7 @@ public final class SpatioTemporalSearch {
 				if (!state.oracle.isFree(nextBox)) continue;
 
 				int tick = Math.min(cur.depth, snapshot.horizon() - 1);
-				ScoreResult sc = scorer.score(snapshot, state.selfBox, cur.feet, act.velocity(), tick);
+				ScoreResult sc = scorer.score(snapshot, state.selfBox, cur.feet, act.velocity(), tick, state);
 				boolean dead = sc.hardHit() || !sc.isAlive();
 				// MaxiMin: path score = min(parent path, this node safety)
 				double nodeSafety = dead ? Double.NEGATIVE_INFINITY : sc.score() + sc.minClearance();

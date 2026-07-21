@@ -177,6 +177,10 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue autoDodgeThreatTopK;
 		public final ForgeConfigSpec.IntValue autoDodgePredictHorizon;
 		public final ForgeConfigSpec.IntValue autoDodgeDebugLogInterval;
+		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceRadius;
+		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceGain;
+		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceDangerDist;
+		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceSafeDist;
 
 		Common(ForgeConfigSpec.Builder builder) {
 			builder.push("spell_market");
@@ -435,6 +439,21 @@ public class YHModConfig {
 						.defineInRange("predictHorizon", 16, 4, 40);
 				autoDodgeDebugLogInterval = builder.comment("Log [AutoDodge] every N ticks (0 = off; rescue/takeover still log)")
 						.defineInRange("debugLogInterval", 40, 0, 200);
+				autoDodgeWallClearanceRadius = builder.comment(
+								"Soft wall clearance probe radius in blocks (0 = off).",
+								"When safe from bullets, pilot prefers staying this far from solids to keep escape room.")
+						.defineInRange("wallClearanceRadius", 1.5, 0.0, 8.0);
+				autoDodgeWallClearanceGain = builder.comment(
+								"Max soft wall repulsion when fully safe (threat clearance >= wallClearanceSafeDist).",
+								"Does not override necessary bullet dodge; hard collisions still blocked.")
+						.defineInRange("wallClearanceGain", 0.75, 0.0, 10.0);
+				autoDodgeWallClearanceDangerDist = builder.comment(
+								"Threat clearance at or below this → wall force fully off (dodge bullets first).")
+						.defineInRange("wallClearanceDangerDist", 0.85, 0.05, 8.0);
+				autoDodgeWallClearanceSafeDist = builder.comment(
+								"Threat clearance at or above this → full wall force (claim free space).",
+								"Between danger and safe: linear ramp.")
+						.defineInRange("wallClearanceSafeDist", 2.5, 0.1, 16.0);
 			}
 			builder.pop();
 		}

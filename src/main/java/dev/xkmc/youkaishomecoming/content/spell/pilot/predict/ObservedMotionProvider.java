@@ -1,6 +1,9 @@
 package dev.xkmc.youkaishomecoming.content.spell.pilot.predict;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.phys.Vec3;
@@ -15,6 +18,7 @@ import java.util.Map;
  * T3 observation fallback: last 2–3 tick positions → velocity (+ acceleration) extrapolation.
  * {@link #supports} is always true for Projectile / SimplifiedProjectile — universal catch-all.
  * History &lt; 2 ticks degrades to T4 straight-line from current velocity.
+ * Lasers always emit segment frames (never point threats).
  */
 public class ObservedMotionProvider implements ThreatProvider {
 
@@ -30,6 +34,11 @@ public class ObservedMotionProvider implements ThreatProvider {
 	@Nullable
 	public Threat capture(Entity entity, int horizon) {
 		if (entity == null || horizon <= 0) return null;
+
+		// Lasers must stay segments even on T3 (position-only fit would collapse to a point)
+		if (entity instanceof YHBaseLaserEntity laser) {
+			return captureLaser(laser, horizon);
+		}
 
 		Vec3 pos = entity.position();
 		Vec3 vel = entity.getDeltaMovement();
@@ -78,7 +87,25 @@ public class ObservedMotionProvider implements ThreatProvider {
 			frames[i] = new ThreatFrame(p, null, hitRadius, 0f, true);
 		}
 
-		return new Threat(entity.getId(), frames, ThreatSemantic.VANILLA, entity, 0);
+		ThreatSemantic sem = entity instanceof IYHDanmaku ? ThreatSemantic.DANMAKU : ThreatSemantic.VANILLA;
+		return new Threat(entity.getId(), frames, sem, entity, 0);
+	}
+
+	private static Threat captureLaser(YHBaseLaserEntity laser, int horizon) {
+		Vec3 anchor = laser.position().add(0, laser.getBbHeight() / 2, 0);
+		Vec3 rot = laser.rot();
+		Vec3 orient = rot.equals(Vec3.ZERO)
+				? laser.getLookAngle()
+				: Vec3.directionFromRotation((float) (rot.x * Mth.RAD_TO_DEG), (float) (rot.y * Mth.RAD_TO_DEG));
+		float hitRadius = laser.getEffectiveHitRadius();
+		float length = (float) laser.getLength();
+		int t0 = laser.tickCount;
+		ThreatFrame[] frames = new ThreatFrame[horizon];
+		for (int i = 0; i < horizon; i++) {
+			// Orientation frozen on T3 (no pure-rot history); better than a point at the muzzle
+			frames[i] = new ThreatFrame(anchor, orient, hitRadius, length, laser.isHitWindowOpen(t0 + i));
+		}
+		return new Threat(laser.getId(), frames, ThreatSemantic.DANMAKU, laser, laser.damage);
 	}
 
 	public void evict(int entityId) {

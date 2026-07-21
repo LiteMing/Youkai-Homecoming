@@ -14,11 +14,11 @@ import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ThreatProviderRegi
 import dev.xkmc.youkaishomecoming.content.spell.pilot.search.GroundedModel;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.search.SpatioTemporalSearch;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.LevelCollisionOracle;
-import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.NodeScorer;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ScoreResult;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.SelfBoxModel;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatSnapshot;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -39,29 +39,21 @@ import java.util.List;
 
 /**
  * Client-authoritative player auto-dodge (Phase 7).
- * Amp 0 = rescue pulse, 1 = soft APF assist, 2+ = full pilot takeover.
- * <p>
- * YH danmaku on client lives in {@link ClientDanmakuCache} (not world entities).
- * Must scan that cache; {@code level.getEntities} alone sees only vanilla projectiles.
+ * Amp 0 = rescue, 1 = assist, 2+ = takeover.
+ * Parameters from {@link YHModConfig.Common} {@code auto_dodge} (COMMON config).
  */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class AutoDodgeClientHandlers {
 
 	private static final Logger LOGGER = LogUtils.getLogger();
-	private static final double SCAN_RADIUS = 16.0;
-	private static final int EMERGENCY_COOLDOWN = 4;
-	private static final double RESCUE_CLEARANCE = 1.25;
-	private static final double INPUT_PRIORITY = 0.25;
-	/** Debug log every N ticks when effect active (0 = off). */
-	private static final int DEBUG_LOG_INTERVAL = 40;
 
 	private static final ThreatProviderRegistry REGISTRY = new ThreatProviderRegistry();
 	private static final ObservedMotionProvider OBSERVED = new ObservedMotionProvider();
-	private static final DodgePilot PILOT_I = new DodgePilot(PilotProfile.NOVICE);
-	private static final DodgePilot PILOT_II = new DodgePilot(PilotProfile.ADEPT);
-	private static final DodgePilot PILOT_III = new DodgePilot(PilotProfile.LUNATIC);
-	private static final SpatioTemporalSearch GROUND_SEARCH =
-			new SpatioTemporalSearch(new GroundedModel(), NodeScorer.defaults());
+	private static DodgePilot pilotI = new DodgePilot(PilotProfile.NOVICE);
+	private static DodgePilot pilotII = new DodgePilot(PilotProfile.ADEPT);
+	private static DodgePilot pilotIII = new DodgePilot(PilotProfile.LUNATIC);
+	private static SpatioTemporalSearch groundSearch =
+			new SpatioTemporalSearch(new GroundedModel(), pilotI.scorer());
 
 	private static boolean providersReady;
 	private static int emergencyCooldown;
@@ -69,6 +61,8 @@ public class AutoDodgeClientHandlers {
 	private static Entity joinedEntity;
 	private static int lastAmp = -1;
 	private static int debugTick;
+	/** Fingerprint of speed/topK/horizon config so pilots rebuild after /reload. */
+	private static long profileFingerprint = Long.MIN_VALUE;
 
 	private static void ensureProviders() {
 		if (providersReady) return;
@@ -78,6 +72,29 @@ public class AutoDodgeClientHandlers {
 		providersReady = true;
 	}
 
+	private static void refreshProfilesIfNeeded() {
+		var c = YHModConfig.COMMON;
+		long fp = Double.doubleToLongBits(c.autoDodgeTierIHighSpeed.get())
+				^ Double.doubleToLongBits(c.autoDodgeTierILowSpeed.get()) * 31
+				^ Double.doubleToLongBits(c.autoDodgeTierIIHighSpeed.get()) * 37
+				^ Double.doubleToLongBits(c.autoDodgeTierIILowSpeed.get()) * 41
+				^ Double.doubleToLongBits(c.autoDodgeTierIIIHighSpeed.get()) * 43
+				^ Double.doubleToLongBits(c.autoDodgeTierIIILowSpeed.get()) * 47
+				^ ((long) c.autoDodgeThreatTopK.get() << 16)
+				^ c.autoDodgePredictHorizon.get();
+		if (fp == profileFingerprint) return;
+		profileFingerprint = fp;
+		int topK = c.autoDodgeThreatTopK.get();
+		int horizon = c.autoDodgePredictHorizon.get();
+		pilotI = new DodgePilot(PilotProfile.NOVICE.withMotion(
+				c.autoDodgeTierIHighSpeed.get(), c.autoDodgeTierILowSpeed.get(), topK, horizon));
+		pilotII = new DodgePilot(PilotProfile.ADEPT.withMotion(
+				c.autoDodgeTierIIHighSpeed.get(), c.autoDodgeTierIILowSpeed.get(), topK, horizon));
+		pilotIII = new DodgePilot(PilotProfile.LUNATIC.withMotion(
+				c.autoDodgeTierIIIHighSpeed.get(), c.autoDodgeTierIIILowSpeed.get(), topK, horizon));
+		groundSearch = new SpatioTemporalSearch(new GroundedModel(), pilotI.scorer());
+	}
+
 	@SubscribeEvent
 	public static void onClientTick(TickEvent.ClientTickEvent event) {
 		if (event.phase != TickEvent.Phase.END) return;
@@ -85,6 +102,14 @@ public class AutoDodgeClientHandlers {
 		if (mc.isPaused() || mc.player == null || mc.level == null) return;
 		LocalPlayer player = mc.player;
 		if (!player.isLocalPlayer() || player.isSpectator()) return;
+
+		if (!YHModConfig.COMMON.autoDodgeEnabled.get()) {
+			if (lastAmp >= 0) {
+				resetPilots();
+				lastAmp = -1;
+			}
+			return;
+		}
 
 		MobEffectInstance eff = player.getEffect(YHEffects.AUTO_DODGE.get());
 		if (eff == null) {
@@ -96,6 +121,7 @@ public class AutoDodgeClientHandlers {
 		}
 
 		ensureProviders();
+		refreshProfilesIfNeeded();
 		if (emergencyCooldown > 0) emergencyCooldown--;
 
 		int amp = Math.min(2, eff.getAmplifier());
@@ -112,6 +138,7 @@ public class AutoDodgeClientHandlers {
 
 	@SubscribeEvent
 	public static void onEntityJoin(EntityJoinLevelEvent event) {
+		if (!YHModConfig.COMMON.autoDodgeEnabled.get()) return;
 		Minecraft mc = Minecraft.getInstance();
 		LocalPlayer player = mc.player;
 		if (player == null || player.level() != event.getLevel()) return;
@@ -123,6 +150,7 @@ public class AutoDodgeClientHandlers {
 		joinedEntity = e;
 		joinScanTicks = 3;
 		ensureProviders();
+		refreshProfilesIfNeeded();
 		MobEffectInstance eff = player.getEffect(YHEffects.AUTO_DODGE.get());
 		if (eff != null) {
 			tryDodge(player, Math.min(2, eff.getAmplifier()), e, false);
@@ -130,10 +158,10 @@ public class AutoDodgeClientHandlers {
 	}
 
 	private static void tryDodge(LocalPlayer player, int amp, Entity extra, boolean allowEmergency) {
-		List<Entity> threats = collectThreats(player, extra);
+		var cfg = YHModConfig.COMMON;
+		List<Entity> threats = collectThreats(player, extra, cfg.autoDodgeScanRadius.get());
 		if (threats.isEmpty()) {
 			logDebug(player, amp, 0, 0, Double.POSITIVE_INFINITY, Vec3.ZERO, "no-threats");
-			// Amp 0: nothing to rescue. Amp 1/2: still idle.
 			return;
 		}
 
@@ -152,7 +180,6 @@ public class AutoDodgeClientHandlers {
 
 		PilotState state = new PilotState(feet, player.getDeltaMovement(), box);
 		state.oracle = new LevelCollisionOracle(player.level(), player);
-		// Anchor slightly behind look so APF has a soft home without freezing in place
 		Vec3 lookFlat = player.getLookAngle().multiply(1, 0, 1);
 		if (lookFlat.lengthSqr() < 1e-8) lookFlat = new Vec3(0, 0, 1);
 		state.anchor = feet.subtract(lookFlat.normalize().scale(0.5));
@@ -162,18 +189,27 @@ public class AutoDodgeClientHandlers {
 		state.arena = new AABB(feet.x - r, feet.y - 4, feet.z - r, feet.x + r, feet.y + 6, feet.z + r);
 
 		boolean flying = player.getAbilities().flying || player.isFallFlying() || !player.onGround();
+		double rescueClr = cfg.autoDodgeRescueClearance.get();
+		int emergCd = cfg.autoDodgeEmergencyCooldown.get();
+		double inputPri = cfg.autoDodgeInputPriority.get();
+		double assistPilotW = cfg.autoDodgeAssistPilotWeight.get();
+		double assistCurW = cfg.autoDodgeAssistCurrentWeight.get();
+		double assistCap = cfg.autoDodgeAssistSpeedCap.get();
+		double takeoverMin = cfg.autoDodgeTakeoverMinSpeed.get();
+		double rescueSpd = cfg.autoDodgeRescuePulseSpeed.get();
+		double rescueJump = cfg.autoDodgeRescueJump.get();
 
 		if (amp == 0) {
 			ScoreResult sc = pilot.scorer().score(snap, box, feet, player.getDeltaMovement(), 0);
-			if (!sc.hardHit() && sc.minClearance() > RESCUE_CLEARANCE) {
+			if (!sc.hardHit() && sc.minClearance() > rescueClr) {
 				logDebug(player, amp, threats.size(), snap.size(), sc.minClearance(), Vec3.ZERO, "safe");
 				return;
 			}
 			if (!allowEmergency && emergencyCooldown > 0) return;
-			Vec3 pulse = computeRescuePulse(player, snap, state, flying);
+			Vec3 pulse = computeRescuePulse(player, snap, state, flying, rescueSpd, rescueJump);
 			if (pulse.lengthSqr() > 1e-6) {
 				applyVelocity(player, pulse, true);
-				emergencyCooldown = EMERGENCY_COOLDOWN;
+				emergencyCooldown = emergCd;
 				logDebug(player, amp, threats.size(), snap.size(), sc.minClearance(), pulse, "rescue");
 			}
 			return;
@@ -182,18 +218,17 @@ public class AutoDodgeClientHandlers {
 		if (amp == 1) {
 			Vec3 desired = pilot.tick(snap, state);
 			Vec3 input = readInputWish(player);
-			if (input.lengthSqr() > INPUT_PRIORITY * INPUT_PRIORITY) {
+			if (input.lengthSqr() > inputPri * inputPri) {
 				desired = input.normalize().scale(player.getDeltaMovement().horizontalDistance() + 0.05)
 						.add(desired.scale(0.35));
 			} else {
 				Vec3 cur = player.getDeltaMovement();
-				desired = cur.scale(0.35).add(desired.scale(0.65));
+				desired = cur.scale(assistCurW).add(desired.scale(assistPilotW));
 			}
-			// Keep some vertical from current motion when grounded assist
 			if (player.onGround()) {
 				desired = new Vec3(desired.x, Math.max(0, desired.y), desired.z);
 			}
-			double cap = Math.max(0.28, pilot.profile().highSpeed());
+			double cap = Math.max(assistCap, pilot.profile().highSpeed());
 			if (desired.horizontalDistance() > cap) {
 				Vec3 h = new Vec3(desired.x, 0, desired.z).normalize().scale(cap);
 				desired = new Vec3(h.x, desired.y, h.z);
@@ -203,14 +238,13 @@ public class AutoDodgeClientHandlers {
 			return;
 		}
 
-		// Amp 2+: full takeover — stronger speeds via profile
 		Vec3 desired;
 		if (flying) {
 			desired = pilot.tick(snap, state);
 		} else {
 			ScoreResult sc = pilot.scorer().score(snap, box, feet, player.getDeltaMovement(), 0);
 			if (sc.hardHit() || sc.minClearance() < pilot.profile().searchEnterClearance()) {
-				var sr = GROUND_SEARCH.search(snap, state, pilot.profile());
+				var sr = groundSearch.search(snap, state, pilot.profile());
 				desired = sr.firstStep().lengthSqr() > 1e-10 ? sr.firstStep() : pilot.tick(snap, state);
 			} else {
 				desired = pilot.tick(snap, state);
@@ -219,26 +253,25 @@ public class AutoDodgeClientHandlers {
 				}
 			}
 		}
-		// Boost takeover horizontal so it's visible vs vanilla walk
-		if (desired.horizontalDistance() > 1e-6 && desired.horizontalDistance() < 0.2) {
-			Vec3 h = new Vec3(desired.x, 0, desired.z).normalize().scale(0.35);
+		if (desired.horizontalDistance() > 1e-6 && desired.horizontalDistance() < takeoverMin) {
+			Vec3 h = new Vec3(desired.x, 0, desired.z).normalize().scale(takeoverMin);
 			desired = new Vec3(h.x, desired.y, h.z);
 		}
 		applyVelocity(player, desired, true);
 		logDebug(player, amp, threats.size(), snap.size(), pilot.lastClearance(), desired, "takeover");
 	}
 
-	private static Vec3 computeRescuePulse(LocalPlayer player, ThreatSnapshot snap, PilotState state, boolean flying) {
+	private static Vec3 computeRescuePulse(LocalPlayer player, ThreatSnapshot snap, PilotState state,
+	                                       boolean flying, double rescueSpd, double rescueJump) {
 		if (flying) {
-			return PILOT_I.tick(snap, state);
+			return pilotI.tick(snap, state);
 		}
-		var sr = GROUND_SEARCH.search(snap, state, PilotProfile.NOVICE);
+		var sr = groundSearch.search(snap, state, pilotI.profile());
 		if (sr.firstStep().lengthSqr() > 1e-10) {
 			Vec3 step = sr.firstStep();
-			// Ensure visible horizontal kick
-			if (step.horizontalDistance() < 0.2 && step.horizontalDistance() > 1e-6) {
-				Vec3 h = new Vec3(step.x, 0, step.z).normalize().scale(0.35);
-				step = new Vec3(h.x, Math.max(step.y, 0.12), h.z);
+			if (step.horizontalDistance() < rescueSpd * 0.5 && step.horizontalDistance() > 1e-6) {
+				Vec3 h = new Vec3(step.x, 0, step.z).normalize().scale(rescueSpd);
+				step = new Vec3(h.x, Math.max(step.y, rescueJump * 0.6), h.z);
 			}
 			return step;
 		}
@@ -247,13 +280,13 @@ public class AutoDodgeClientHandlers {
 			Vec3 tpos = snap.threats().get(0).frames()[0].position();
 			away = player.position().subtract(tpos);
 			away = new Vec3(away.x, 0, away.z);
-			if (away.lengthSqr() > 1e-8) away = away.normalize().scale(0.4);
+			if (away.lengthSqr() > 1e-8) away = away.normalize().scale(rescueSpd);
 		}
 		if (away.lengthSqr() < 1e-8) {
 			Vec3 look = player.getLookAngle();
-			away = new Vec3(-look.z, 0, look.x).normalize().scale(0.4);
+			away = new Vec3(-look.z, 0, look.x).normalize().scale(rescueSpd);
 		}
-		return away.add(0, 0.2, 0);
+		return away.add(0, rescueJump, 0);
 	}
 
 	private static void applyVelocity(LocalPlayer player, Vec3 desired, boolean replace) {
@@ -278,31 +311,23 @@ public class AutoDodgeClientHandlers {
 
 	private static Vec3 readInputWish(LocalPlayer player) {
 		float fwd = player.input.forwardImpulse;
-		// leftImpulse: +1 = A (left), -1 = D (right) — KeyboardInput
+		// leftImpulse: +1 = A (left), -1 = D (right)
 		float str = player.input.leftImpulse;
 		if (Math.abs(fwd) < 1e-4 && Math.abs(str) < 1e-4) return Vec3.ZERO;
 		Vec3 look = player.getLookAngle();
 		Vec3 flat = new Vec3(look.x, 0, look.z);
 		if (flat.lengthSqr() < 1e-8) flat = new Vec3(0, 0, 1);
 		flat = flat.normalize();
-		// left = forward × up (Y-up): (fz, 0, -fx); do NOT use right × (+leftImpulse)
 		Vec3 left = new Vec3(flat.z, 0, -flat.x);
 		return flat.scale(fwd).add(left.scale(str));
 	}
 
-	/**
-	 * World projectiles + virtual client danmaku cache.
-	 */
-	private static List<Entity> collectThreats(LocalPlayer player, Entity extra) {
-		AABB area = player.getBoundingBox().inflate(SCAN_RADIUS);
+	private static List<Entity> collectThreats(LocalPlayer player, Entity extra, double scanRadius) {
+		AABB area = player.getBoundingBox().inflate(scanRadius);
 		List<Entity> list = new ArrayList<>();
-
-		// 1) Vanilla / real world projectiles
 		for (Entity e : player.level().getEntities(player, area, AutoDodgeClientHandlers::isThreat)) {
 			list.add(e);
 		}
-
-		// 2) YH virtual danmaku (client-only, not in world)
 		try {
 			ClientDanmakuCache cache = ClientDanmakuCache.get(player.level());
 			for (SimplifiedProjectile sp : cache.snapshot()) {
@@ -313,7 +338,6 @@ public class AutoDodgeClientHandlers {
 		} catch (Throwable t) {
 			LOGGER.warn("[AutoDodge] ClientDanmakuCache scan failed: {}", t.toString());
 		}
-
 		if (extra != null && extra.isAlive() && isThreat(extra) && !list.contains(extra)) {
 			list.add(extra);
 		}
@@ -327,16 +351,16 @@ public class AutoDodgeClientHandlers {
 
 	private static DodgePilot pilotFor(int amp) {
 		return switch (amp) {
-			case 0 -> PILOT_I;
-			case 1 -> PILOT_II;
-			default -> PILOT_III;
+			case 0 -> pilotI;
+			case 1 -> pilotII;
+			default -> pilotIII;
 		};
 	}
 
 	private static void resetPilots() {
-		PILOT_I.reset();
-		PILOT_II.reset();
-		PILOT_III.reset();
+		pilotI.reset();
+		pilotII.reset();
+		pilotIII.reset();
 		OBSERVED.clear();
 		emergencyCooldown = 0;
 		debugTick = 0;
@@ -344,8 +368,9 @@ public class AutoDodgeClientHandlers {
 
 	private static void logDebug(LocalPlayer player, int amp, int rawThreats, int snapSize,
 	                             double clearance, Vec3 vel, String tag) {
-		if (DEBUG_LOG_INTERVAL <= 0) return;
-		if ((++debugTick) % DEBUG_LOG_INTERVAL != 0 && !"rescue".equals(tag) && !"takeover".equals(tag)) {
+		int interval = YHModConfig.COMMON.autoDodgeDebugLogInterval.get();
+		if (interval <= 0) return;
+		if ((++debugTick) % interval != 0 && !"rescue".equals(tag) && !"takeover".equals(tag)) {
 			return;
 		}
 		int cacheSize = 0;

@@ -155,6 +155,29 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue exposureCameraCooldown;
 		public final ForgeConfigSpec.BooleanValue exposureDeactivateAfterShot;
 
+		// Auto-dodge buff (player pilot) — COMMON / youkaishomecoming-common.toml
+		// Movement runs on local client; use matching values on multiplayer clients.
+		public final ForgeConfigSpec.BooleanValue autoDodgeEnabled;
+		public final ForgeConfigSpec.DoubleValue autoDodgeScanRadius;
+		public final ForgeConfigSpec.IntValue autoDodgeEmergencyCooldown;
+		public final ForgeConfigSpec.DoubleValue autoDodgeRescueClearance;
+		public final ForgeConfigSpec.DoubleValue autoDodgeInputPriority;
+		public final ForgeConfigSpec.DoubleValue autoDodgeAssistPilotWeight;
+		public final ForgeConfigSpec.DoubleValue autoDodgeAssistCurrentWeight;
+		public final ForgeConfigSpec.DoubleValue autoDodgeAssistSpeedCap;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTakeoverMinSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeRescuePulseSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeRescueJump;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIHighSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierILowSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIHighSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIILowSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIIHighSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIILowSpeed;
+		public final ForgeConfigSpec.IntValue autoDodgeThreatTopK;
+		public final ForgeConfigSpec.IntValue autoDodgePredictHorizon;
+		public final ForgeConfigSpec.IntValue autoDodgeDebugLogInterval;
+
 		Common(ForgeConfigSpec.Builder builder) {
 			builder.push("spell_market");
 			{
@@ -365,6 +388,53 @@ public class YHModConfig {
 						.defineInRange("exposureCameraCooldown", 40, 0, 600);
 				exposureDeactivateAfterShot = builder.comment("Whether to exit viewfinder after photographing danmaku")
 						.define("exposureDeactivateAfterShot", true);
+			}
+			builder.pop();
+
+			builder.push("auto_dodge");
+			{
+				builder.comment("Player AUTO_DODGE buff (amp 0=rescue, 1=assist, 2=takeover).",
+						"Movement is applied on the local client; set the same values on multiplayer clients.");
+				autoDodgeEnabled = builder.comment("Master switch for player auto-dodge buff logic")
+						.define("enabled", true);
+				autoDodgeScanRadius = builder.comment("Threat scan radius in blocks (world projectiles + client danmaku cache)")
+						.defineInRange("scanRadius", 16.0, 4.0, 48.0);
+				autoDodgeEmergencyCooldown = builder.comment("Cooldown ticks after a rescue (tier I) pulse")
+						.defineInRange("emergencyCooldown", 4, 0, 40);
+				autoDodgeRescueClearance = builder.comment("Tier I: only act when min clearance is at or below this")
+						.defineInRange("rescueClearance", 1.25, 0.1, 8.0);
+				autoDodgeInputPriority = builder.comment("Tier II: player input length above this prefers steering over pilot")
+						.defineInRange("inputPriority", 0.25, 0.0, 2.0);
+				autoDodgeAssistPilotWeight = builder.comment("Tier II: blend weight of pilot velocity when idle (0-1)")
+						.defineInRange("assistPilotWeight", 0.65, 0.0, 1.0);
+				autoDodgeAssistCurrentWeight = builder.comment("Tier II: blend weight of current velocity when idle (0-1)")
+						.defineInRange("assistCurrentWeight", 0.35, 0.0, 1.0);
+				autoDodgeAssistSpeedCap = builder.comment("Tier II: max horizontal speed while assisting")
+						.defineInRange("assistSpeedCap", 0.28, 0.05, 1.5);
+				autoDodgeTakeoverMinSpeed = builder.comment("Tier III: boost horizontal speed up to at least this when non-zero")
+						.defineInRange("takeoverMinSpeed", 0.35, 0.05, 1.5);
+				autoDodgeRescuePulseSpeed = builder.comment("Tier I fallback horizontal kick speed")
+						.defineInRange("rescuePulseSpeed", 0.4, 0.05, 1.5);
+				autoDodgeRescueJump = builder.comment("Tier I fallback upward impulse")
+						.defineInRange("rescueJump", 0.2, 0.0, 1.0);
+				autoDodgeTierIHighSpeed = builder.comment("Tier I pilot profile high speed")
+						.defineInRange("tierIHighSpeed", 0.25, 0.05, 2.0);
+				autoDodgeTierILowSpeed = builder.comment("Tier I pilot profile low speed")
+						.defineInRange("tierILowSpeed", 0.12, 0.02, 1.0);
+				autoDodgeTierIIHighSpeed = builder.comment("Tier II pilot profile high speed")
+						.defineInRange("tierIIHighSpeed", 0.35, 0.05, 2.0);
+				autoDodgeTierIILowSpeed = builder.comment("Tier II pilot profile low speed")
+						.defineInRange("tierIILowSpeed", 0.16, 0.02, 1.0);
+				autoDodgeTierIIIHighSpeed = builder.comment("Tier III pilot profile high speed")
+						.defineInRange("tierIIIHighSpeed", 0.45, 0.05, 2.0);
+				autoDodgeTierIIILowSpeed = builder.comment("Tier III pilot profile low speed")
+						.defineInRange("tierIIILowSpeed", 0.2, 0.02, 1.0);
+				autoDodgeThreatTopK = builder.comment("Max threats kept per tick after nearest-sort (Top-K)")
+						.defineInRange("threatTopK", 80, 8, 256);
+				autoDodgePredictHorizon = builder.comment("Prediction horizon in ticks")
+						.defineInRange("predictHorizon", 16, 4, 40);
+				autoDodgeDebugLogInterval = builder.comment("Log [AutoDodge] every N ticks (0 = off; rescue/takeover still log)")
+						.defineInRange("debugLogInterval", 40, 0, 200);
 			}
 			builder.pop();
 		}

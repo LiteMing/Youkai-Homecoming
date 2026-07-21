@@ -76,4 +76,13 @@ public record PilotProfile(
 			0.5, 1.0,
 			500_000L
 	);
+
+	/** Copy with speed / topK / horizon overrides (config-driven player dodge). */
+	public PilotProfile withMotion(double high, double low, int topK, int horizon) {
+		return new PilotProfile(
+				name, high, low, deadzone, damping, repulseGain, attractGain, maxForce,
+				approachHorizon, searchDepth, nodeBudget, directionRays,
+				topK, horizon, grazeBand, searchEnterClearance, searchExitClearance, timeBudgetNanos
+		);
+	}
 }

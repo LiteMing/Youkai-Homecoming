@@ -278,14 +278,16 @@ public class AutoDodgeClientHandlers {
 
 	private static Vec3 readInputWish(LocalPlayer player) {
 		float fwd = player.input.forwardImpulse;
+		// leftImpulse: +1 = A (left), -1 = D (right) — KeyboardInput
 		float str = player.input.leftImpulse;
 		if (Math.abs(fwd) < 1e-4 && Math.abs(str) < 1e-4) return Vec3.ZERO;
 		Vec3 look = player.getLookAngle();
 		Vec3 flat = new Vec3(look.x, 0, look.z);
 		if (flat.lengthSqr() < 1e-8) flat = new Vec3(0, 0, 1);
 		flat = flat.normalize();
-		Vec3 right = new Vec3(-flat.z, 0, flat.x);
-		return flat.scale(fwd).add(right.scale(str));
+		// left = forward × up (Y-up): (fz, 0, -fx); do NOT use right × (+leftImpulse)
+		Vec3 left = new Vec3(flat.z, 0, -flat.x);
+		return flat.scale(fwd).add(left.scale(str));
 	}
 
 	/**

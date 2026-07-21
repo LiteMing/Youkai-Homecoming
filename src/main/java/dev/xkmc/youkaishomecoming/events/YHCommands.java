@@ -919,7 +919,8 @@ public class YHCommands {
 
 	private static void openSpellPreview(CommandSourceStack source, SpellDefinition definition) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
-		YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.preview(definition), player);
+		// Always stream full server definition (chunked if > writeUtf limit)
+		OpenSpellPreviewToClient.sendPreview(player, definition);
 	}
 
 	private static int setStgResource(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, boolean add) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

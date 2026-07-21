@@ -1,9 +1,11 @@
 package dev.xkmc.youkaishomecoming.compat.curios;
 
+import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
 import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fml.ModList;
 import top.theillusivec4.curios.api.CuriosApi;
 
@@ -42,6 +44,22 @@ public class CuriosManager {
 					.isPresent();
 		}
 		return false;
+	}
+
+	public static boolean hasAnySpellItem(LivingEntity le) {
+		if (!ModList.get().isLoaded("curios")) return false;
+		return CuriosApi.getCuriosInventory(le).resolve().map(handler -> {
+			for (var stacksHandler : handler.getCurios().values()) {
+				var stacks = stacksHandler.getStacks();
+				for (int i = 0; i < stacks.getSlots(); i++) {
+					ItemStack stack = stacks.getStackInSlot(i);
+					if (!stack.isEmpty() && stack.getItem() instanceof ISpellItem) {
+						return true;
+					}
+				}
+			}
+			return false;
+		}).orElse(false);
 	}
 
 }

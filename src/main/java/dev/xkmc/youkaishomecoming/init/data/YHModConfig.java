@@ -152,6 +152,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue initialPower;
 		public final ForgeConfigSpec.BooleanValue applyBeatenOnDefeat;
 		public final ForgeConfigSpec.IntValue beatenDurationTicks;
+		public final ForgeConfigSpec.BooleanValue manualDanmakuCombat;
 
 		// Exposure compat
 		public final ForgeConfigSpec.IntValue exposureCameraCooldown;
@@ -283,6 +284,9 @@ public class YHModConfig {
 				beatenDurationTicks = builder.comment("Duration in ticks of the Beaten effect applied on danmaku defeat")
 						.comment("Only used when applyBeatenOnDefeat is true. 1500 ticks = 75 seconds")
 						.defineInRange("beatenDurationTicks", 1500, 1, 1000000);
+				manualDanmakuCombat = builder.comment("When true (default), players must enable STG combat manually (Shift+RMB spell card)")
+						.comment("and are not auto-entered by enemy danmaku. When false, restores legacy auto-entry behavior.")
+						.define("manualDanmakuCombat", true);
 			}
 			builder.pop();
 

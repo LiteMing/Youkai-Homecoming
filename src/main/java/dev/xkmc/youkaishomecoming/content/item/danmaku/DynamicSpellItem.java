@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.ChatFormatting;
@@ -73,6 +74,12 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
+		if (player.isShiftKeyDown() && GrazeHelper.isManualCombatMode()) {
+			if (!level.isClientSide) {
+				GrazeHelper.tryToggleManualCombat(player);
+			}
+			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
 		if (GrazeHelper.forbidDanmaku(player))
 			return InteractionResultHolder.fail(stack);
 		if (!castSpell(stack, player, !player.getAbilities().instabuild, true)) {
@@ -114,6 +121,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 	@Override
 	public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> list, TooltipFlag flag) {
+		if (GrazeHelper.isManualCombatMode()) {
+			list.add(YHLangData.STG_TOGGLE_TIP.get());
+		}
 		SpellDefinition def = getSpellDefinition(stack);
 		if (def != null) {
 			list.add(def.display.displayName().copy().withStyle(ChatFormatting.GOLD));

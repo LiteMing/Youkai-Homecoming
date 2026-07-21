@@ -156,10 +156,12 @@ public final class YHStgApi {
 
 	public static void setDanmakuCombat(ServerPlayer player, boolean enabled) {
 		var cap = cap(player);
-		cap.setForcedDanmakuCombat(enabled);
+		// Debug/admin path: bypass spell-card requirement; disable clears full combat state
 		if (!enabled) {
-			cap.clearPlayerOpponents();
+			cap.clearCombatState(true);
+			return;
 		}
+		cap.setForcedDanmakuCombat(true, true);
 		cap.sync();
 	}
 

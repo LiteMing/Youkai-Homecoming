@@ -48,6 +48,12 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
+		if (player.isShiftKeyDown() && GrazeHelper.isManualCombatMode()) {
+			if (!level.isClientSide) {
+				GrazeHelper.tryToggleManualCombat(player);
+			}
+			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
 		if (GrazeHelper.forbidDanmaku(player))
 			return InteractionResultHolder.fail(stack);
 		boolean consume = !player.getAbilities().instabuild && !(player instanceof FakePlayer);
@@ -81,6 +87,9 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 
 	@Override
 	public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> list, TooltipFlag flag) {
+		if (GrazeHelper.isManualCombatMode()) {
+			list.add(YHLangData.STG_TOGGLE_TIP.get());
+		}
 		list.add(YHLangData.SPELL_COST.get(1, pred.get().getName(pred.get().getDefaultInstance())));
 		if (requireTarget) {
 			list.add(YHLangData.SPELL_TARGET.get());

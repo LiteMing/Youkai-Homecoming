@@ -3,15 +3,18 @@ package dev.xkmc.youkaishomecoming.content.capability;
 import dev.xkmc.fastprojectileapi.entity.GrazingEntity;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
 import dev.xkmc.youkaishomecoming.events.DanmakuGrazeEvent;
-import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHAttributes;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.network.NetworkEvent;
 import org.jetbrains.annotations.Nullable;
@@ -36,18 +39,96 @@ public class GrazeHelper {
 		return GrazeCapability.HOLDER.get(player).findAny(player).orElse(null);
 	}
 
+	public static boolean isManualCombatMode() {
+		return YHModConfig.COMMON.manualDanmakuCombat.get();
+	}
+
+	public static boolean hasSpellCard(Player player) {
+		if (isSpellStack(player.getMainHandItem()) || isSpellStack(player.getOffhandItem())) {
+			return true;
+		}
+		var inv = player.getInventory();
+		for (int i = 0; i < inv.getContainerSize(); i++) {
+			if (isSpellStack(inv.getItem(i))) {
+				return true;
+			}
+		}
+		return CuriosManager.hasAnySpellItem(player);
+	}
+
+	public static boolean isSpellStack(ItemStack stack) {
+		return !stack.isEmpty() && stack.getItem() instanceof ISpellItem;
+	}
+
+	/**
+	 * Shift+RMB toggle for players. Requires a spell card when entering in manual mode.
+	 * Exit clears combat state without wiping life/bomb/power.
+	 */
+	public static boolean tryToggleManualCombat(Player player) {
+		if (player.level().isClientSide()) return false;
+		if (!(player instanceof ServerPlayer sp)) return false;
+		if (!isManualCombatMode()) return false;
+		var cap = GrazeCapability.HOLDER.get(sp);
+		if (cap.isForcedDanmakuCombat()) {
+			cap.clearCombatState(true);
+			sp.displayClientMessage(YHLangData.STG_EXIT.get(), true);
+			return true;
+		}
+		if (!hasSpellCard(sp)) {
+			sp.displayClientMessage(YHLangData.STG_NEED_SPELL.get(), true);
+			return false;
+		}
+		cap.setForcedDanmakuCombat(true, false);
+		cap.sync();
+		sp.displayClientMessage(YHLangData.STG_ENTER.get(), true);
+		return true;
+	}
+
 	public static void addSession(Player player, LivingEntity target) {
 		if (player.level().isClientSide()) return;
 		var cap = GrazeCapability.HOLDER.get(player);
 		if (target instanceof YoukaiEntity e) {
-			if (e.targets.contains(player)) return;
+			if (isManualCombatMode() && !cap.isInDanmakuCombat()) return;
+			if (cap.isInSession(e.getUUID())) return;
 			cap.initSession(e);
 			return;
 		}
 		if (target instanceof Player opponent) {
-			cap.addPlayerOpponent(opponent);
-			GrazeCapability.HOLDER.get(opponent).addPlayerOpponent(player);
+			enterPvpSpellDuel(player, opponent);
 		}
+	}
+
+	/**
+	 * PvP: spell targeting pulls both players into STG when they each have a spell card.
+	 * Opponent without spell cards is left out (HP damage path).
+	 */
+	public static void enterPvpSpellDuel(Player attacker, Player opponent) {
+		if (attacker.level().isClientSide()) return;
+		if (attacker == opponent || attacker.level() != opponent.level()) return;
+		var atkCap = GrazeCapability.HOLDER.get(attacker);
+		var defCap = GrazeCapability.HOLDER.get(opponent);
+
+		if (isManualCombatMode()) {
+			if (!atkCap.isForcedDanmakuCombat() && !hasSpellCard(attacker)) return;
+			if (!atkCap.isForcedDanmakuCombat()) {
+				atkCap.setForcedDanmakuCombat(true, false);
+			}
+			if (hasSpellCard(opponent) || defCap.isForcedDanmakuCombat()) {
+				if (!defCap.isForcedDanmakuCombat()) {
+					defCap.setForcedDanmakuCombat(true, false);
+				}
+				atkCap.addPlayerOpponent(opponent);
+				defCap.addPlayerOpponent(attacker);
+				defCap.sync();
+			}
+			atkCap.sync();
+			return;
+		}
+
+		atkCap.addPlayerOpponent(opponent);
+		defCap.addPlayerOpponent(attacker);
+		atkCap.sync();
+		defCap.sync();
 	}
 
 	public static boolean forbidDanmaku(Player player) {
@@ -56,7 +137,7 @@ public class GrazeHelper {
 	}
 
 	public static void onDanmakuKill(Player player, YoukaiEntity e) {
-		 GrazeCapability.HOLDER.get(player).stopSession(e.getUUID());
+		GrazeCapability.HOLDER.get(player).stopSession(e.getUUID());
 	}
 
 	public static int getInitialResource(Player player) {

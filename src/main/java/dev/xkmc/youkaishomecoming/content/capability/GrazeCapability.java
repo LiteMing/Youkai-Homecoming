@@ -60,6 +60,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private Set<UUID> playerOpponents = new LinkedHashSet<>();
 	@SerialClass.SerialField
 	private boolean forcedDanmakuCombat = false;
+	/** Debug/admin forced combat may ignore the spell-card inventory requirement. */
+	@SerialClass.SerialField
+	private boolean combatAdminBypass = false;
 	@SerialClass.SerialField
 	private boolean statusInitialized = false;
 	/** True after resources have been seeded at least once; persists across combat sessions. */
@@ -82,6 +85,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			invul = 0;
 			weak = 0;
 			forcedDanmakuCombat = false;
+			combatAdminBypass = false;
 			statusInitialized = false;
 			playerOpponents.clear();
 			// Respawn restores default STG resources (not zero)
@@ -137,6 +141,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	@Override
 	public void tick() {
+		if (player.level() instanceof ServerLevel && GrazeHelper.isManualCombatMode()
+				&& isInDanmakuCombat() && !combatAdminBypass && !GrazeHelper.hasSpellCard(player)) {
+			// No spell card left: leave STG without wiping life/bomb/power
+			clearCombatState(true);
+		}
 		boolean activeCombat = isInDanmakuCombat();
 		if (tempGraze > 0) {
 			tempGraze--;
@@ -379,12 +388,19 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public void setForcedDanmakuCombat(boolean enabled) {
-		if (forcedDanmakuCombat == enabled) return;
-		if (enabled && !isInDanmakuCombat()) {
-			initStatus();
-		}
-		forcedDanmakuCombat = enabled;
-		if (!enabled) {
+		setForcedDanmakuCombat(enabled, false);
+	}
+
+	public void setForcedDanmakuCombat(boolean enabled, boolean adminBypass) {
+		if (enabled) {
+			if (!isInDanmakuCombat()) {
+				initStatus();
+			}
+			forcedDanmakuCombat = true;
+			combatAdminBypass = adminBypass;
+		} else if (forcedDanmakuCombat) {
+			forcedDanmakuCombat = false;
+			combatAdminBypass = false;
 			settleCombatIfIdle();
 		}
 		dirty = true;
@@ -431,6 +447,12 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (le instanceof YoukaiEntity youkai) {
 			if (weak > 0) return false;
 			if (sessions.containsKey(youkai.getUUID())) return true;
+			if (GrazeHelper.isManualCombatMode()) {
+				// Manual mode: only open/continue sessions while already in STG combat
+				if (!isInDanmakuCombat()) return true;
+				initSession(youkai);
+				return true;
+			}
 			if (youkai.targets.contains(player) || sessions.isEmpty()) {
 				initSession(youkai);
 				return true;
@@ -466,22 +488,26 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			return true;
 		}
 		if (source instanceof YoukaiEntity youkai) {
-			if (!sessions.containsKey(youkai.getUUID())) {
-				if (!youkai.targets.contains(player)) return false;
-				initSession(youkai);
-			} else if (!statusInitialized) {
-				initStatus();
+			if (sessions.containsKey(youkai.getUUID())) {
+				if (!statusInitialized) initStatus();
+				return true;
 			}
+			// Manual mode: never auto-enter from enemy danmaku alone
+			if (GrazeHelper.isManualCombatMode()) return false;
+			if (!youkai.targets.contains(player)) return false;
+			initSession(youkai);
 			return true;
 		}
 		if (source instanceof Player attacker) {
 			if (attacker.level() != player.level() || attacker.isAlliedTo(player)) return false;
-			if (!playerOpponents.contains(attacker.getUUID())) {
-				addPlayerOpponent(attacker);
-				HOLDER.get(attacker).addPlayerOpponent(player);
-			} else if (!statusInitialized) {
-				initStatus();
+			if (playerOpponents.contains(attacker.getUUID())) {
+				if (!statusInitialized) initStatus();
+				return true;
 			}
+			// Manual mode: PvP absorb only after explicit spell-target duel setup
+			if (GrazeHelper.isManualCombatMode()) return false;
+			addPlayerOpponent(attacker);
+			HOLDER.get(attacker).addPlayerOpponent(player);
 			return true;
 		}
 		return false;
@@ -738,6 +764,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		sessions.clear();
 		clearPlayerOpponents();
 		forcedDanmakuCombat = false;
+		combatAdminBypass = false;
 		statusInitialized = false;
 		hidden = 0;
 		step = 0;
@@ -778,6 +805,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		sessions.clear();
 		clearPlayerOpponents();
 		forcedDanmakuCombat = false;
+		combatAdminBypass = false;
 		statusInitialized = false;
 		hidden = 0;
 		step = 0;

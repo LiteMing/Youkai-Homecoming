@@ -58,7 +58,6 @@ public final class SpatioTemporalSearch {
 
 			List<ActionModel.Action> acts = model.actions(cur, profile.highSpeed(), profile.lowSpeed());
 			boolean anyChildAlive = false;
-			double bestChildScore = Double.NEGATIVE_INFINITY;
 
 			for (ActionModel.Action act : acts) {
 				Vec3 nextFeet = cur.feet.add(act.velocity());
@@ -66,7 +65,8 @@ public final class SpatioTemporalSearch {
 					// Soft clamp: skip out-of-arena
 					continue;
 				}
-				var nextBox = state.selfBox.hardAt(nextFeet);
+				// Terrain uses full body box
+				var nextBox = state.selfBox.bodyAt(nextFeet);
 				if (!state.oracle.isFree(nextBox)) continue;
 
 				int tick = Math.min(cur.depth, snapshot.horizon() - 1);
@@ -84,7 +84,6 @@ public final class SpatioTemporalSearch {
 
 				if (!dead) {
 					anyChildAlive = true;
-					bestChildScore = Math.max(bestChildScore, pathScore);
 					open.add(child);
 					if (child.depth > longestSurvive.depth
 							|| (child.depth == longestSurvive.depth && child.pathScore > longestSurvive.pathScore)) {

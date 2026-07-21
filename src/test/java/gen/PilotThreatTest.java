@@ -157,23 +157,24 @@ public class PilotThreatTest {
 	}
 
 	private static void testSelfBoxPlayerShrinkVsVanilla() {
-		System.out.println("[SelfBoxModel shrink]");
+		System.out.println("[SelfBoxModel shrink + per-semantic box]");
 		SelfBoxModel full = SelfBoxModel.vanillaPlayer();
-		SelfBoxModel shrunk = SelfBoxModel.playerDanmaku(-0.2f); // Fairy-like
+		SelfBoxModel player = SelfBoxModel.playerDanmaku(-0.2f); // Fairy-like
 		Vec3 feet = Vec3.ZERO;
 		AABB a = full.hardAt(feet);
-		AABB b = shrunk.hardAt(feet);
-		check("shrunk narrower X", (b.maxX - b.minX) < (a.maxX - a.minX));
-		check("shrunk shorter bottom lift", b.minY > a.minY);
-		// Top not shrunk relative to height change: maxY same as vanilla 1.8
-		approx("top unshrunk", b.maxY, 1.8, 1e-6);
-		// Same threat may hit full but miss shrunk
+		AABB danmakuBox = player.hitBoxAt(feet, ThreatSemantic.DANMAKU);
+		AABB vanillaBox = player.hitBoxAt(feet, ThreatSemantic.VANILLA);
+		check("danmaku box narrower X than vanilla", (danmakuBox.maxX - danmakuBox.minX) < (vanillaBox.maxX - vanillaBox.minX));
+		check("vanilla box matches full player width", Math.abs((vanillaBox.maxX - vanillaBox.minX) - 0.6) < 1e-6);
+		check("danmaku bottom lifted", danmakuBox.minY > vanillaBox.minY);
+		approx("danmaku top unshrunk", danmakuBox.maxY, 1.8, 1e-6);
+		// Edge bullet hits full/vanilla but may miss shrunk danmaku box
 		AABB bullet = new AABB(0.28, 0.1, -0.05, 0.35, 0.2, 0.05);
-		boolean hitFull = SweptCollision.clearance(a, bullet) <= 0;
-		boolean hitShrunk = SweptCollision.clearance(b, bullet) <= 0;
-		check("full may hit edge bullet", hitFull);
-		check("shrunk may miss edge bullet", !hitShrunk || hitFull); // at least different or both miss
-		check("results differ or shrink works", (b.maxX - b.minX) < 0.6);
+		boolean hitVanilla = SweptCollision.clearance(vanillaBox, bullet) <= 0;
+		boolean hitDanmaku = SweptCollision.clearance(danmakuBox, bullet) <= 0;
+		check("vanilla may hit edge bullet", hitVanilla);
+		check("danmaku box may miss same edge bullet", !hitDanmaku);
+		check("results differ (semantic wired)", hitVanilla != hitDanmaku || (danmakuBox.maxX - danmakuBox.minX) < 0.6);
 		System.out.println();
 	}
 
@@ -210,19 +211,24 @@ public class PilotThreatTest {
 			}
 			list.add(new Threat(i, frames, ThreatSemantic.DANMAKU, null, 1));
 		}
-		long t0 = System.nanoTime();
-		ThreatSnapshot snap = ThreatSnapshot.of(list, horizon);
+		// Plan: build snapshot (20-tick horizon) + one full score pass ≤0.5ms ideal / 1ms CI
+		// Warmup JIT
+		ThreatSnapshot warm = ThreatSnapshot.of(list, horizon);
 		NodeScorer scorer = NodeScorer.defaults();
 		SelfBoxModel self = SelfBoxModel.previewTarget();
 		Vec3 feet = new Vec3(15, 0, 5);
-		for (int t = 0; t < horizon; t++) {
-			scorer.score(snap, self, feet, new Vec3(0, 0, 0.2), t);
-		}
+		scorer.score(warm, self, feet, new Vec3(0, 0, 0.2), 0);
+
+		long t0 = System.nanoTime();
+		ThreatSnapshot snap = ThreatSnapshot.of(list, horizon);
+		scorer.score(snap, self, feet, new Vec3(0, 0, 0.2), 0);
 		long dt = System.nanoTime() - t0;
 		double ms = dt / 1e6;
-		System.out.println("  info: " + ms + " ms for build+score horizon");
-		// Budget 0.5ms ideal, CI allow 5ms (dev machines vary)
-		check("perf under 5ms", ms < 5.0);
+		System.out.println("  info: " + ms + " ms for build + 1 score pass (plan: ≤0.5 ideal, ≤1 CI)");
+		if (ms > 0.5) {
+			System.out.println("  warn: exceeds ideal 0.5ms budget");
+		}
+		check("perf under 1ms (CI)", ms < 1.0);
 		check("snapshot size 100", snap.size() == 100);
 		check("broadphase present", snap.broadphase() != null);
 		System.out.println();

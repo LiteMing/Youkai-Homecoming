@@ -53,8 +53,8 @@ public final class NodeScorer {
 			return ScoreResult.safe(wall, Double.POSITIVE_INFINITY, 0, -1);
 		}
 
-		AABB hard = selfBox.hardAt(feet);
-		AABB query = hard.inflate(Math.max(grazeBand, 2.0) + selfDelta.length());
+		// Query volume uses larger of the two self boxes so broadphase does not miss
+		AABB queryBody = selfBox.bodyAt(feet).inflate(Math.max(grazeBand, 2.0) + selfDelta.length());
 		Set<Integer> seen = new HashSet<>();
 		double minClear = Double.POSITIVE_INFINITY;
 		int grazes = 0;
@@ -64,7 +64,7 @@ public final class NodeScorer {
 
 		SpatioTemporalHash hash = snapshot.broadphase();
 		if (hash != null) {
-			hash.query(tick, query, idx -> seen.add(idx));
+			hash.query(tick, queryBody, idx -> seen.add(idx));
 		} else {
 			for (int i = 0; i < threats.size(); i++) seen.add(i);
 		}
@@ -75,6 +75,9 @@ public final class NodeScorer {
 			if (tick >= frames.length) continue;
 			ThreatFrame f = frames[tick];
 			if (!f.active()) continue;
+
+			// Per-threat self box: shrink only for DANMAKU, full box for VANILLA arrows
+			AABB hard = selfBox.hitBoxAt(feet, threat.semantic());
 
 			Vec3 threatDelta = Vec3.ZERO;
 			if (tick + 1 < frames.length) {
@@ -160,7 +163,8 @@ public final class NodeScorer {
 		for (Vec3 dir : dirs) {
 			double free = radius;
 			for (double d = step; d <= radius + 1e-6; d += step) {
-				if (!state.oracle.isFree(box.hardAt(feet.add(dir.scale(d))))) {
+				// Terrain uses full body box, not danmaku-shrunk hitbox
+				if (!state.oracle.isFree(box.bodyAt(feet.add(dir.scale(d))))) {
 					free = d;
 					break;
 				}

@@ -149,7 +149,7 @@ public final class PotentialFieldSolver {
 		for (Vec3 dir : dirs) {
 			double free = radius;
 			for (double d = step; d <= radius + 1e-6; d += step) {
-				AABB probe = box.hardAt(state.feet.add(dir.scale(d)));
+				AABB probe = box.bodyAt(state.feet.add(dir.scale(d)));
 				if (!state.oracle.isFree(probe)) {
 					free = d;
 					break;

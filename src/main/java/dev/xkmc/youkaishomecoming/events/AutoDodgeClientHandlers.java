@@ -326,16 +326,21 @@ public class AutoDodgeClientHandlers {
 	private static List<Entity> collectThreats(LocalPlayer player, Entity extra, double scanRadius) {
 		AABB area = player.getBoundingBox().inflate(scanRadius);
 		List<Entity> list = new ArrayList<>();
-		for (Entity e : player.level().getEntities(player, area, e -> isThreatCandidate(e) && ThreatFilters.isHostileTo(player, e))) {
-			list.add(e);
+		int worldRaw = 0, cacheRaw = 0, filtered = 0;
+		for (Entity e : player.level().getEntities(player, area, AutoDodgeClientHandlers::isThreatCandidate)) {
+			worldRaw++;
+			if (ThreatFilters.isHostileTo(player, e)) list.add(e);
+			else filtered++;
 		}
 		try {
 			ClientDanmakuCache cache = ClientDanmakuCache.get(player.level());
 			for (SimplifiedProjectile sp : cache.snapshot()) {
 				if (!sp.isValid()) continue;
-				if (!area.contains(sp.position()) && !area.intersects(sp.getBoundingBox())) continue;
-				if (!ThreatFilters.isHostileTo(player, sp)) continue;
-				list.add(sp);
+				// Distance check by position (BB may be empty/wrong for virtual bullets)
+				if (sp.position().distanceToSqr(player.position()) > scanRadius * scanRadius) continue;
+				cacheRaw++;
+				if (ThreatFilters.isHostileTo(player, sp)) list.add(sp);
+				else filtered++;
 			}
 		} catch (Throwable t) {
 			LOGGER.warn("[AutoDodge] ClientDanmakuCache scan failed: {}", t.toString());
@@ -343,8 +348,14 @@ public class AutoDodgeClientHandlers {
 		if (extra != null && isThreatCandidate(extra) && ThreatFilters.isHostileTo(player, extra) && !list.contains(extra)) {
 			list.add(extra);
 		}
+		// Stash for debug log
+		lastScanWorld = worldRaw;
+		lastScanCache = cacheRaw;
+		lastScanFiltered = filtered;
 		return list;
 	}
+
+	private static int lastScanWorld, lastScanCache, lastScanFiltered;
 
 	private static boolean isThreatCandidate(Entity e) {
 		return e instanceof Projectile || e instanceof SimplifiedProjectile;
@@ -379,8 +390,9 @@ public class AutoDodgeClientHandlers {
 			cacheSize = ClientDanmakuCache.get(player.level()).size();
 		} catch (Throwable ignored) {
 		}
-		LOGGER.info("[AutoDodge] amp={} tag={} world+cacheThreats={} snap={} cacheSize={} clr={} vel=({},{},{})",
+		LOGGER.info("[AutoDodge] amp={} tag={} threats={} snap={} cacheSize={} scan(w={},c={},filt={}) clr={} vel=({},{},{})",
 				amp, tag, rawThreats, snapSize, cacheSize,
+				lastScanWorld, lastScanCache, lastScanFiltered,
 				String.format("%.2f", clearance),
 				String.format("%.3f", vel.x), String.format("%.3f", vel.y), String.format("%.3f", vel.z));
 	}

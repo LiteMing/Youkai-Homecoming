@@ -12,7 +12,16 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Shared hostility filters for pilot threat collection.
- * Drops self-owned, allied, and non-damaging projectiles so pilot does not dodge own bullets.
+ * <p>
+ * Intentionally does <b>not</b> call {@code IYHDanmaku.shouldHurt} /
+ * {@code YoukaiEntity.shouldHurt}: those depend on server combat target lists
+ * that are often empty/incomplete on the client, which would drop all enemy
+ * danmaku (e.g. star_sapphire). Pilot only needs:
+ * <ul>
+ *   <li>not my own / allied bullets</li>
+ *   <li>not zero-damage VFX bullets</li>
+ *   <li>still valid</li>
+ * </ul>
  */
 public final class ThreatFilters {
 
@@ -26,24 +35,26 @@ public final class ThreatFilters {
 	 */
 	public static boolean isHostileTo(Entity self, Entity projectile) {
 		if (self == null || projectile == null || projectile == self) return false;
-		if (!projectile.isAlive()) return false;
-		if (projectile instanceof SimplifiedProjectile sp && !sp.isValid()) return false;
+
+		// Virtual client danmaku may not be "alive" in world terms; use isValid for SP
+		if (projectile instanceof SimplifiedProjectile sp) {
+			if (!sp.isValid()) return false;
+		} else if (!projectile.isAlive()) {
+			return false;
+		}
 
 		Entity owner = resolveOwner(projectile);
 		if (owner != null) {
-			if (owner == self || owner.getUUID().equals(self.getUUID())) return false;
+			if (sameEntity(self, owner)) return false;
 			if (isAllied(self, owner)) return false;
 		}
 
-		// YH danmaku: zero damage (pure VFX) is never a threat
+		// YH: drop pure VFX (damage field 0). Do not use shouldHurt(owner,self).
 		if (projectile instanceof IYHDanmaku yh) {
 			float dmg = damageOf(yh, projectile, self);
 			if (dmg <= 0f) return false;
-			// shouldHurt(null, ...) is always false — only call when owner is known
-			if (owner != null && !yh.shouldHurt(owner, self)) return false;
 		}
 
-		// owner unresolved on client: still treat as hostile if not filtered above
 		return true;
 	}
 
@@ -58,6 +69,11 @@ public final class ThreatFilters {
 		return null;
 	}
 
+	private static boolean sameEntity(Entity a, Entity b) {
+		if (a == b) return true;
+		return a.getUUID().equals(b.getUUID());
+	}
+
 	private static boolean isAllied(Entity self, Entity owner) {
 		if (self instanceof LivingEntity se && owner instanceof LivingEntity oe) {
 			return se.isAlliedTo(oe) || oe.isAlliedTo(se);
@@ -66,14 +82,14 @@ public final class ThreatFilters {
 	}
 
 	private static float damageOf(IYHDanmaku yh, Entity projectile, Entity self) {
-		// Prefer field on concrete types (stable on client virtual danmaku)
 		if (projectile instanceof YHBaseDanmakuEntity d) return d.damage;
 		if (projectile instanceof ItemDanmakuEntity d) return d.damage;
 		if (projectile instanceof YHBaseLaserEntity d) return d.damage;
 		try {
 			return yh.damage(self);
 		} catch (Throwable ignored) {
-			return 1f; // if damage() needs server state, keep as potential threat
+			// Unknown YH type without synced damage: keep as threat
+			return 1f;
 		}
 	}
 }

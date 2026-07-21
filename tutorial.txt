@@ -4,8 +4,10 @@ Danmaku System:
 - You can initiate danmaku battle by using danmaku to attack a character that is not targeting you
 - You can add characters not targeting you to danmaku battle with you by using spell targeting them
 - Some character will initiate danmaku battle with you when they are triggered to spawn
-- Once entering danmaku battle, you gain some "power", "life" and "bomb"
-  - You would not get this when you are already in danmaku battle with some characters
+- Once entering danmaku battle the first time, you gain default "power", "life" and "bomb"
+  - Resources persist between battles (not refilled free on re-entry)
+  - Below-default resources are restored to default on respawn, battle defeat, or sleeping in a bed
+  - Above-default resources are kept; sleep only tops up values that are below default
 - During danmaku battle, When you are about to get hit by danmaku from character involved in danmaku battle:
   - You will not lose health form this hit
   - All danmaku from all characters involved in danmaku battle will be removed

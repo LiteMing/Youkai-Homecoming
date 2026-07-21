@@ -2,6 +2,9 @@ package dev.xkmc.youkaishomecoming.content.item.danmaku;
 
 import dev.xkmc.l2library.util.raytrace.IGlowingTarget;
 import dev.xkmc.l2library.util.raytrace.RayTraceUtil;
+import dev.xkmc.youkaishomecoming.compat.kubejs.spell.DynamicSpellCastEventJS;
+import dev.xkmc.youkaishomecoming.compat.kubejs.spell.DynamicSpellSingleUseEventJS;
+import dev.xkmc.youkaishomecoming.compat.kubejs.spell.YHSpellKubeJSEvents;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -23,6 +26,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
+import net.minecraftforge.fml.ModList;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -35,6 +39,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 	private static final String TAG_SPELL_ID = "spell_id";
 	private static final String TAG_DURATION = "duration";
+	private static final String TAG_SINGLE_USE = "single_use";
 	/** Sentinel: run until the spell naturally finishes (no fixed duration). */
 	public static final int DURATION_NATURAL = -1;
 
@@ -50,15 +55,44 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		return SpellRegistry.get(new ResourceLocation(id));
 	}
 
+	@Nullable
+	public static ResourceLocation getSpellId(ItemStack stack) {
+		if (!stack.hasTag()) return null;
+		String id = stack.getTag().getString(TAG_SPELL_ID);
+		if (id.isEmpty()) return null;
+		return new ResourceLocation(id);
+	}
+
+	public static boolean isSingleUse(ItemStack stack) {
+		return stack.hasTag() && stack.getTag().getBoolean(TAG_SINGLE_USE);
+	}
+
+	public static void setSingleUse(ItemStack stack, boolean singleUse) {
+		if (singleUse) {
+			stack.getOrCreateTag().putBoolean(TAG_SINGLE_USE, true);
+		} else if (stack.hasTag()) {
+			stack.getTag().remove(TAG_SINGLE_USE);
+		}
+	}
+
 	public static ItemStack createStack(Item item, ResourceLocation spellId) {
+		return createStack(item, spellId, false);
+	}
+
+	public static ItemStack createStack(Item item, ResourceLocation spellId, boolean singleUse) {
 		ItemStack stack = new ItemStack(item);
 		stack.getOrCreateTag().putString(TAG_SPELL_ID, spellId.toString());
+		setSingleUse(stack, singleUse);
 		return stack;
 	}
 
 	/** Create a stack with an explicit fixed duration (for /yhspell give). */
 	public static ItemStack createStackWithDuration(Item item, ResourceLocation spellId, int duration) {
-		ItemStack stack = createStack(item, spellId);
+		return createStackWithDuration(item, spellId, duration, false);
+	}
+
+	public static ItemStack createStackWithDuration(Item item, ResourceLocation spellId, int duration, boolean singleUse) {
+		ItemStack stack = createStack(item, spellId, singleUse);
 		stack.getOrCreateTag().putInt(TAG_DURATION, duration);
 		return stack;
 	}
@@ -92,6 +126,18 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
 		SpellDefinition def = getSpellDefinition(stack);
 		if (def == null) return false;
+		ResourceLocation spellId = getSpellId(stack);
+		if (spellId == null) return false;
+
+		boolean singleUse = isSingleUse(stack);
+
+		if (player instanceof ServerPlayer sp && ModList.get().isLoaded("kubejs")
+				&& YHSpellKubeJSEvents.DYNAMIC_SPELL_CAST.hasListeners()) {
+			var castEvent = new DynamicSpellCastEventJS(sp, stack, spellId, singleUse, consume, cooldown);
+			if (YHSpellKubeJSEvents.DYNAMIC_SPELL_CAST.post(castEvent).interruptFalse()) {
+				return false;
+			}
+		}
 
 		LivingEntity target = RayTraceUtil.serverGetTarget(player);
 		if (target != null) GrazeHelper.addSession(player, target);
@@ -115,6 +161,15 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 				int cd = def.itemForm.cooldown() > 0 ? def.itemForm.cooldown() : YHModConfig.COMMON.playerSpellCooldown.get();
 				sp.getCooldowns().addCooldown(this, cd);
 			}
+			if (singleUse) {
+				ItemStack consumed = stack.copy();
+				consumed.setCount(1);
+				stack.shrink(1);
+				if (ModList.get().isLoaded("kubejs") && YHSpellKubeJSEvents.DYNAMIC_SPELL_SINGLE_USE.hasListeners()) {
+					YHSpellKubeJSEvents.DYNAMIC_SPELL_SINGLE_USE.post(
+							new DynamicSpellSingleUseEventJS(sp, consumed, spellId));
+				}
+			}
 		}
 		return true;
 	}
@@ -123,6 +178,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> list, TooltipFlag flag) {
 		if (GrazeHelper.isManualCombatMode()) {
 			list.add(YHLangData.STG_TOGGLE_TIP.get());
+		}
+		if (isSingleUse(stack)) {
+			list.add(YHLangData.SPELL_SINGLE_USE.get());
 		}
 		SpellDefinition def = getSpellDefinition(stack);
 		if (def != null) {

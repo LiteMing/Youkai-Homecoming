@@ -567,43 +567,18 @@ public class YHCommands {
 			.then(opLiteral("give")
 					.then(argument("spell_id", ResourceLocationArgument.id())
 							.suggests(SPELL_SUGGESTIONS)
-							.executes(ctx -> {
-								// Natural end mode (default)
-								ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
-								SpellDefinition def = SpellRegistry.get(spellId);
-								if (def == null) {
-									ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
-									return 0;
-								}
-								ServerPlayer player = ctx.getSource().getPlayerOrException();
-								ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId);
-								if (!player.getInventory().add(stack)) {
-									player.drop(stack, false);
-								}
-								ctx.getSource().sendSuccess(
-										() -> Component.literal("Gave spell item [" + spellId + "] to " + player.getName().getString()), true);
-								return 1;
-							})
+							.executes(ctx -> giveDynamicSpell(ctx, DynamicSpellItem.DURATION_NATURAL, false))
 							.then(argument("ticks", IntegerArgumentType.integer(1))
-									.executes(ctx -> {
-										// Fixed duration mode
-										ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
-										int ticks = IntegerArgumentType.getInteger(ctx, "ticks");
-										SpellDefinition def = SpellRegistry.get(spellId);
-										if (def == null) {
-											ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
-											return 0;
-										}
-										ServerPlayer player = ctx.getSource().getPlayerOrException();
-										ItemStack stack = DynamicSpellItem.createStackWithDuration(
-												YHDanmaku.DYNAMIC_SPELL.get(), spellId, ticks);
-										if (!player.getInventory().add(stack)) {
-											player.drop(stack, false);
-										}
-										ctx.getSource().sendSuccess(
-												() -> Component.literal("Gave spell item [" + spellId + "] (" + ticks + "t) to " + player.getName().getString()), true);
-										return 1;
-									}))))
+									.executes(ctx -> giveDynamicSpell(ctx,
+											IntegerArgumentType.getInteger(ctx, "ticks"), false))
+									.then(argument("single_use", BoolArgumentType.bool())
+											.executes(ctx -> giveDynamicSpell(ctx,
+													IntegerArgumentType.getInteger(ctx, "ticks"),
+													BoolArgumentType.getBool(ctx, "single_use")))))
+							.then(argument("single_use", BoolArgumentType.bool())
+									.executes(ctx -> giveDynamicSpell(ctx,
+											DynamicSpellItem.DURATION_NATURAL,
+											BoolArgumentType.getBool(ctx, "single_use"))))))
 				.then(opLiteral("log")
 						.then(literal("on")
 								.executes(ctx -> {
@@ -832,6 +807,28 @@ public class YHCommands {
 		ctx.getSource().sendSuccess(
 				() -> Component.literal("Created new " + source + ": " + spellId + " (use /yhspell preview to edit)"), true);
 		openSpellPreview(ctx.getSource(), def);
+		return 1;
+	}
+
+	private static int giveDynamicSpell(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx,
+										 int duration, boolean singleUse)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		ResourceLocation spellId = ResourceLocationArgument.getId(ctx, "spell_id");
+		SpellDefinition def = SpellRegistry.get(spellId);
+		if (def == null) {
+			ctx.getSource().sendFailure(Component.literal("Unknown spell: " + spellId));
+			return 0;
+		}
+		ServerPlayer player = ctx.getSource().getPlayerOrException();
+		ItemStack stack = duration == DynamicSpellItem.DURATION_NATURAL
+				? DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId, singleUse)
+				: DynamicSpellItem.createStackWithDuration(YHDanmaku.DYNAMIC_SPELL.get(), spellId, duration, singleUse);
+		if (!player.getInventory().add(stack)) {
+			player.drop(stack, false);
+		}
+		String detail = formatDuration(duration) + (singleUse ? ", single-use" : "");
+		ctx.getSource().sendSuccess(
+				() -> Component.literal("Gave spell item [" + spellId + "]" + detail + " to " + player.getName().getString()), true);
 		return 1;
 	}
 

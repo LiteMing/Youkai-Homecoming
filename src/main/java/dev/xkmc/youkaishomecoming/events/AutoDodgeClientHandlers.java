@@ -16,6 +16,7 @@ import dev.xkmc.youkaishomecoming.content.spell.pilot.search.SpatioTemporalSearc
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.LevelCollisionOracle;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ScoreResult;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.SelfBoxModel;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatFilters;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatSnapshot;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
@@ -144,7 +145,7 @@ public class AutoDodgeClientHandlers {
 		if (player == null || player.level() != event.getLevel()) return;
 		if (!player.hasEffect(YHEffects.AUTO_DODGE.get())) return;
 		Entity e = event.getEntity();
-		if (!(e instanceof Projectile) && !(e instanceof SimplifiedProjectile)) {
+		if (!isThreatCandidate(e) || !ThreatFilters.isHostileTo(player, e)) {
 			return;
 		}
 		joinedEntity = e;
@@ -325,7 +326,7 @@ public class AutoDodgeClientHandlers {
 	private static List<Entity> collectThreats(LocalPlayer player, Entity extra, double scanRadius) {
 		AABB area = player.getBoundingBox().inflate(scanRadius);
 		List<Entity> list = new ArrayList<>();
-		for (Entity e : player.level().getEntities(player, area, AutoDodgeClientHandlers::isThreat)) {
+		for (Entity e : player.level().getEntities(player, area, e -> isThreatCandidate(e) && ThreatFilters.isHostileTo(player, e))) {
 			list.add(e);
 		}
 		try {
@@ -333,20 +334,20 @@ public class AutoDodgeClientHandlers {
 			for (SimplifiedProjectile sp : cache.snapshot()) {
 				if (!sp.isValid()) continue;
 				if (!area.contains(sp.position()) && !area.intersects(sp.getBoundingBox())) continue;
+				if (!ThreatFilters.isHostileTo(player, sp)) continue;
 				list.add(sp);
 			}
 		} catch (Throwable t) {
 			LOGGER.warn("[AutoDodge] ClientDanmakuCache scan failed: {}", t.toString());
 		}
-		if (extra != null && extra.isAlive() && isThreat(extra) && !list.contains(extra)) {
+		if (extra != null && isThreatCandidate(extra) && ThreatFilters.isHostileTo(player, extra) && !list.contains(extra)) {
 			list.add(extra);
 		}
 		return list;
 	}
 
-	private static boolean isThreat(Entity e) {
-		if (e instanceof Projectile) return true;
-		return e instanceof SimplifiedProjectile;
+	private static boolean isThreatCandidate(Entity e) {
+		return e instanceof Projectile || e instanceof SimplifiedProjectile;
 	}
 
 	private static DodgePilot pilotFor(int amp) {

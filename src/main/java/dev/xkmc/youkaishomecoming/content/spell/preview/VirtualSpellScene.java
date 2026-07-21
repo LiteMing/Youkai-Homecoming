@@ -12,7 +12,9 @@ import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ObservedMotionProv
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ThreatProviderRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.CollisionOracle;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.SelfBoxModel;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatFilters;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatSnapshot;
+import net.minecraft.world.entity.Entity;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -50,9 +52,18 @@ public class VirtualSpellScene {
 	/** Duration of the last tick() call in nanoseconds. */
 	private long lastTickNanos = 0;
 
-	// --- AI pilot (Phase 2 MVP) ---
+	// --- AI pilot (aligned with player AUTO_DODGE amp 0/1/2) ---
 	private static final Logger LOGGER = LogUtils.getLogger();
+	/** 0 = rescue, 1 = assist, 2 = takeover (buff amp mapping). */
+	public static final int PILOT_TIER_RESCUE = 0;
+	public static final int PILOT_TIER_ASSIST = 1;
+	public static final int PILOT_TIER_TAKEOVER = 2;
+	private static final double PILOT_RESCUE_CLEARANCE = 1.25;
+	private static final int PILOT_RESCUE_COOLDOWN = 4;
+
 	private boolean pilotEnabled = false;
+	private int pilotTier = PILOT_TIER_ASSIST;
+	private int pilotRescueCooldown = 0;
 	private final ThreatProviderRegistry pilotRegistry = new ThreatProviderRegistry();
 	private final ObservedMotionProvider observedProvider = new ObservedMotionProvider();
 	private DodgePilot pilot = new DodgePilot(PilotProfile.ADEPT);
@@ -134,27 +145,68 @@ public class VirtualSpellScene {
 
 	private void runPilotStep() {
 		long t0 = System.nanoTime();
+		if (pilotRescueCooldown > 0) pilotRescueCooldown--;
+
 		Vec3 feet = holder.getTargetPos();
+		Vec3 curVel = holder.targetVelocity() == null ? Vec3.ZERO : holder.targetVelocity();
 		int horizon = pilot.profile().predictHorizon();
 		int topK = pilot.profile().threatTopK();
-		ThreatSnapshot snap = ThreatSnapshot.capture(
-				holder.getLocalEntities(), pilotRegistry, horizon, topK, feet);
-		PilotState state = new PilotState(feet, holder.targetVelocity() == null ? Vec3.ZERO : holder.targetVelocity(),
-				SelfBoxModel.previewTarget());
+		// Self = preview target; exclude target-owned / zero-damage (caster bullets remain hostile)
+		Entity self = holder.getFakeTarget();
+		java.util.List<Entity> hostile = new java.util.ArrayList<>();
+		for (Entity e : holder.getLocalEntities()) {
+			if (ThreatFilters.isHostileTo(self, e)) hostile.add(e);
+		}
+		ThreatSnapshot snap = ThreatSnapshot.capture(hostile, pilotRegistry, horizon, topK, feet);
+		PilotState state = new PilotState(feet, curVel, SelfBoxModel.previewTarget());
 		state.oracle = CollisionOracle.ALWAYS_FREE;
 		state.anchor = new Vec3(0, feet.y, -targetDistance);
 		double h = pilotArenaHalf;
 		state.arena = new AABB(-h, feet.y - h, -h - targetDistance, h, feet.y + h, h - targetDistance);
 		state.tick = runtime.getTotalTick();
-		Vec3 vel = pilot.tick(snap, state);
+
+		Vec3 vel = Vec3.ZERO;
+		int tier = Math.max(0, Math.min(2, pilotTier));
+		if (tier == PILOT_TIER_RESCUE) {
+			// I: only move when clearance is critical (buff amp 0)
+			var sc = pilot.scorer().score(snap, state.selfBox, feet, curVel, 0);
+			boolean danger = sc.hardHit() || sc.minClearance() <= PILOT_RESCUE_CLEARANCE;
+			if (danger && pilotRescueCooldown <= 0) {
+				vel = pilot.tick(snap, state);
+				if (vel.lengthSqr() < 1e-6 && snap.size() > 0) {
+					// Fallback lateral kick
+					var th = snap.threats().get(0);
+					if (th.frames().length > 0) {
+						Vec3 away = feet.subtract(th.frames()[0].position());
+						away = new Vec3(away.x, away.y, away.z);
+						if (away.lengthSqr() > 1e-8) {
+							vel = away.normalize().scale(pilot.profile().highSpeed());
+						}
+					}
+				}
+				pilotRescueCooldown = PILOT_RESCUE_COOLDOWN;
+			}
+		} else if (tier == PILOT_TIER_ASSIST) {
+			// II: soft APF blend — full pilot output scaled down (buff amp 1)
+			Vec3 full = pilot.tick(snap, state);
+			vel = curVel.scale(0.4).add(full.scale(0.6));
+			double cap = Math.max(0.2, pilot.profile().lowSpeed() * 1.4);
+			if (vel.length() > cap) {
+				vel = vel.normalize().scale(cap);
+			}
+		} else {
+			// III: full takeover (buff amp 2)
+			vel = pilot.tick(snap, state);
+		}
+
 		Vec3 next = feet.add(vel);
-		// Clamp into arena
 		if (state.arena != null) {
 			next = new Vec3(
 					Math.max(state.arena.minX, Math.min(state.arena.maxX, next.x)),
 					Math.max(state.arena.minY, Math.min(state.arena.maxY, next.y)),
 					Math.max(state.arena.minZ, Math.min(state.arena.maxZ, next.z))
 			);
+			vel = next.subtract(feet);
 		}
 		holder.setTargetPosAndVelocity(next, vel);
 		lastPilotNanos = System.nanoTime() - t0;
@@ -168,12 +220,50 @@ public class VirtualSpellScene {
 		this.pilotEnabled = enabled;
 		if (!enabled) {
 			pilot.reset();
+			pilotRescueCooldown = 0;
 			holder.setTargetVelocity(Vec3.ZERO);
 		}
 	}
 
 	public void togglePilot() {
 		setPilotEnabled(!pilotEnabled);
+	}
+
+	/** 0 = I rescue, 1 = II assist, 2 = III takeover. Enables pilot. */
+	public void setPilotTier(int tier) {
+		this.pilotTier = Math.max(0, Math.min(2, tier));
+		this.pilotEnabled = true;
+		this.pilotRescueCooldown = 0;
+		setPilotProfile(profileForTier(this.pilotTier));
+	}
+
+	public int getPilotTier() {
+		return pilotTier;
+	}
+
+	public String getPilotTierLabel() {
+		if (!pilotEnabled) return "AI:OFF";
+		return switch (pilotTier) {
+			case PILOT_TIER_RESCUE -> "AI:I";
+			case PILOT_TIER_ASSIST -> "AI:II";
+			default -> "AI:III";
+		};
+	}
+
+	public String getPilotTierName() {
+		return switch (pilotTier) {
+			case PILOT_TIER_RESCUE -> "I Rescue";
+			case PILOT_TIER_ASSIST -> "II Assist";
+			default -> "III Takeover";
+		};
+	}
+
+	private static PilotProfile profileForTier(int tier) {
+		return switch (tier) {
+			case PILOT_TIER_RESCUE -> PilotProfile.NOVICE;
+			case PILOT_TIER_ASSIST -> PilotProfile.ADEPT;
+			default -> PilotProfile.LUNATIC;
+		};
 	}
 
 	public long getLastPilotNanos() {

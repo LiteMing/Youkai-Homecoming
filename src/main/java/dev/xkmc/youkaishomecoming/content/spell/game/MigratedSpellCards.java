@@ -1987,7 +1987,7 @@ public class MigratedSpellCards {
 				new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.BLUE,
 						NumberProvider.constant(40), NumberProvider.constant(60),
 						laserSwing,
-						NumberProvider.constant(75),
+						NumberProvider.constant(15),
 						new AimMode.AimModes.FixedDirection(new Vec3(0, 1, 0)),
 						new OriginConfig(OriginConfig.OriginMode.ABSOLUTE, lissX, lissY, lissZ, NumberProvider.constant(0)),
 						Optional.empty(), 10, 4, 4, Optional.empty(), Optional.empty())

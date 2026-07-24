@@ -137,7 +137,16 @@ public class GrazeHelper {
 	}
 
 	public static void onDanmakuKill(Player player, YoukaiEntity e) {
-		GrazeCapability.HOLDER.get(player).stopSession(e.getUUID());
+		var cap = GrazeCapability.HOLDER.get(player);
+		if (player instanceof net.minecraft.server.level.ServerPlayer sp) {
+			var snap = cap.snapshotOpponents();
+			net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+					new dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent.Victory(
+							sp, e, snap.ids(), snap.entities()));
+			// Victory before session removal so listeners still see this Youkai in the snapshot.
+		}
+		cap.stopSession(e.getUUID(),
+				dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent.SessionEndReason.VICTORY);
 	}
 
 	public static int getInitialResource(Player player) {

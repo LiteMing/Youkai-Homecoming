@@ -8,6 +8,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
 import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
+import dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
@@ -267,7 +268,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 				dirty = true;
 				return HitType.LIFE;
 			}
-			exitDanmakuCombatOnLastHit();
+			exitDanmakuCombatOnLastHit(source);
 			return HitType.LAST;
 		}
 		life -= SHARD;
@@ -424,6 +425,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		sessions.put(youkai.getUUID(), new CombatSession().init(youkai));
 		youkai.targets.add(player);
 		dirty = true;
+		if (player instanceof ServerPlayer sp) {
+			OpponentSnapshot snap = snapshotOpponents(sp);
+			MinecraftForge.EVENT_BUS.post(new StgCombatEvent.SessionStart(sp, youkai, snap.ids(), snap.entities()));
+		}
 	}
 
 	public void addPlayerOpponent(Player target) {
@@ -436,9 +441,24 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public void stopSession(UUID uuid) {
+		stopSession(uuid, StgCombatEvent.SessionEndReason.CLEARED);
+	}
+
+	/**
+	 * Ends one Youkai session and fires {@link StgCombatEvent.SessionEnd}.
+	 * Prefer {@link StgCombatEvent.SessionEndReason#VICTORY} when the Youkai combat progress was cleared.
+	 */
+	public void stopSession(UUID uuid, StgCombatEvent.SessionEndReason reason) {
 		CombatSession session = sessions.remove(uuid);
 		if (session == null) return;
+		LivingEntity opponent = session.getTarget(player);
 		session.resetTarget(player);
+		if (player instanceof ServerPlayer sp) {
+			OpponentSnapshot snap = snapshotOpponents(sp);
+			MinecraftForge.EVENT_BUS.post(new StgCombatEvent.SessionEnd(
+					sp, uuid, opponent, reason == null ? StgCombatEvent.SessionEndReason.CLEARED : reason,
+					snap.ids(), snap.entities()));
+		}
 		settleCombatIfIdle();
 		dirty = true;
 	}
@@ -756,6 +776,17 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	private void exitDanmakuCombatOnLastHit() {
+		exitDanmakuCombatOnLastHit(null);
+	}
+
+	/**
+	 * Full STG defeat: clear sessions, reset resources, apply weak/beaten, fire {@link StgCombatEvent.Defeat}.
+	 */
+	private void exitDanmakuCombatOnLastHit(@Nullable LivingEntity fatalSource) {
+		// Snapshot opponents before clearing so external mods can settle dialogue/score.
+		OpponentSnapshot snap = player instanceof ServerPlayer sp
+				? snapshotOpponents(sp)
+				: new OpponentSnapshot(List.of(), List.of());
 		// Defeat restores default resources (same as respawn)
 		resetResourcesToDefault();
 		for (var s : sessions.values()) {
@@ -779,9 +810,40 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 					sp.addEffect(new MobEffectInstance(YHEffects.BEATEN.get(), duration, 0));
 				}
 			}
+			MinecraftForge.EVENT_BUS.post(new StgCombatEvent.Defeat(sp, fatalSource, snap.ids(), snap.entities()));
 			sync();
 		}
 		dirty = true;
+	}
+
+	/** Snapshot of active Youkai sessions + player opponents for public STG events. */
+	public OpponentSnapshot snapshotOpponents() {
+		if (player instanceof ServerPlayer sp) return snapshotOpponents(sp);
+		return new OpponentSnapshot(List.of(), List.of());
+	}
+
+	private OpponentSnapshot snapshotOpponents(ServerPlayer sp) {
+		LinkedHashSet<UUID> ids = new LinkedHashSet<>();
+		ArrayList<LivingEntity> entities = new ArrayList<>();
+		for (var entry : sessions.entrySet()) {
+			ids.add(entry.getKey());
+			LivingEntity le = entry.getValue().getTarget(player);
+			if (le != null && !entities.contains(le)) entities.add(le);
+		}
+		if (sp.level() instanceof ServerLevel sl) {
+			for (UUID id : playerOpponents) {
+				ids.add(id);
+				if (sl.getEntity(id) instanceof LivingEntity le && !entities.contains(le)) {
+					entities.add(le);
+				}
+			}
+		} else {
+			ids.addAll(playerOpponents);
+		}
+		return new OpponentSnapshot(List.copyOf(ids), List.copyOf(entities));
+	}
+
+	public record OpponentSnapshot(List<UUID> ids, List<LivingEntity> entities) {
 	}
 
 	/**

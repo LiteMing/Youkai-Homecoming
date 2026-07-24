@@ -154,6 +154,27 @@ public final class YHStgApi {
 		return cap(player).isForcedDanmakuCombat();
 	}
 
+	/** True when the player has at least one active Youkai STG session. */
+	public static boolean hasActiveYoukaiSession(ServerPlayer player) {
+		return cap(player).isInSession();
+	}
+
+	/**
+	 * Snapshot of current STG opponent entity UUIDs (Youkai sessions + PvP opponents).
+	 * Empty when not in danmaku combat.
+	 */
+	public static java.util.List<java.util.UUID> getOpponentIds(ServerPlayer player) {
+		return cap(player).snapshotOpponents().ids();
+	}
+
+	/**
+	 * Loaded living opponents for the player's current STG combat snapshot.
+	 * Prefer this over raw UUIDs for dialogue / targeting hooks.
+	 */
+	public static java.util.List<LivingEntity> getOpponents(ServerPlayer player) {
+		return cap(player).snapshotOpponents().entities();
+	}
+
 	public static void setDanmakuCombat(ServerPlayer player, boolean enabled) {
 		var cap = cap(player);
 		// Debug/admin path: bypass spell-card requirement; disable clears full combat state

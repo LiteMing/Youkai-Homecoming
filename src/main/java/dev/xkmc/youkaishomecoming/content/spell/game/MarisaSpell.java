@@ -106,8 +106,11 @@ public class MarisaSpell extends ActualSpellCard {
 
 		@SerialClass.SerialField
 		private Vec3 target; // 冲刺目标方向
+		@SerialClass.SerialField
 		private int dashCount = 0; // 冲刺次数计数器
-		private int maxDashCount; // 最大冲刺次数（1~3次）
+		@SerialClass.SerialField
+		private int maxDashCount = 1; // 最大冲刺次数（1~3次）
+		@SerialClass.SerialField
 		private Vec3 dashDirection; // 当前冲刺方向
 
 		public DashStarSpell() {
@@ -126,6 +129,10 @@ public class MarisaSpell extends ActualSpellCard {
 			var tar = holder.target();
 
 			if (tar == null) return true;
+			if (maxDashCount < 1) maxDashCount = 1;
+			if (dashDirection == null) {
+				dashDirection = tar.subtract(cen).normalize();
+			}
 
 			// 如果当前冲刺次数未达到最大值，则继续冲刺
 			if (dashCount < maxDashCount) {

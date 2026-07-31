@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.events;
 
 import dev.xkmc.l2library.base.effects.EffectBuilder;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.reimu.MaidenEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
@@ -25,8 +26,14 @@ import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+
 @Mod.EventBusSubscriber(modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class EffectEventHandlers {
+
+	private static final Set<UUID> RESTORE_COMBAT_AFTER_SLEEP = new HashSet<>();
 
 	public static boolean isYoukai(LivingEntity e) {
 		return
@@ -127,7 +134,13 @@ public class EffectEventHandlers {
 			event.setResult(Player.BedSleepingProblem.OTHER_PROBLEM);
 			return;
 		}
-		if (GrazeCapability.HOLDER.get(player).isInDanmakuCombat()) {
+		var cap = GrazeCapability.HOLDER.get(player);
+		if (cap.isInDanmakuCombat() && GrazeHelper.isManualCombatMode()) {
+			if (!player.level().isClientSide()) {
+				RESTORE_COMBAT_AFTER_SLEEP.add(player.getUUID());
+				cap.clearCombatState(true);
+			}
+		} else if (cap.isInDanmakuCombat()) {
 			event.setResult(Player.BedSleepingProblem.OTHER_PROBLEM);
 			if (!player.level().isClientSide()) {
 				player.displayClientMessage(YHLangData.STG_NO_SLEEP.get(), true);
@@ -142,12 +155,20 @@ public class EffectEventHandlers {
 	@SubscribeEvent
 	public static void onWakeUp(PlayerWakeUpEvent event) {
 		if (event.getEntity().level().isClientSide()) return;
-		// wakeImmediately / updateLevel: interrupted or forced wake — not a full night rest
-		if (event.wakeImmediately()) return;
 		Player player = event.getEntity();
 		var cap = GrazeCapability.HOLDER.get(player);
-		cap.topUpResourcesToDefault();
+		// wakeImmediately / updateLevel: interrupted or forced wake — not a full night rest
+		if (!event.wakeImmediately()) {
+			cap.topUpResourcesToDefault();
+		}
+		restoreCombatAfterSleep(player, cap);
 		cap.sync();
+	}
+
+	private static void restoreCombatAfterSleep(Player player, GrazeCapability cap) {
+		if (RESTORE_COMBAT_AFTER_SLEEP.remove(player.getUUID())) {
+			cap.setForcedDanmakuCombat(true, false);
+		}
 	}
 
 	public static void disableKoishi(Player player) {
@@ -189,6 +210,12 @@ public class EffectEventHandlers {
 	@SubscribeEvent
 	public static void onTick(LivingEvent.LivingTickEvent event) {
 		var e = event.getEntity();
+		if (e instanceof Player player && !player.level().isClientSide() && !player.isSleeping() &&
+				RESTORE_COMBAT_AFTER_SLEEP.contains(player.getUUID())) {
+			var cap = GrazeCapability.HOLDER.get(player);
+			restoreCombatAfterSleep(player, cap);
+			cap.sync();
+		}
 		if (e.hasEffect(YHEffects.THICK.get()) && e.hasEffect(MobEffects.WITHER)) {
 			e.removeEffect(MobEffects.WITHER);
 		}

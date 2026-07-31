@@ -36,7 +36,7 @@ import java.util.UUID;
  * the same path used by boss youkai entities.
  */
 public class DanmakuProxyEntity extends PathfinderMob
-		implements SpellRuntimeHost, EntityCachingUser {
+		implements SpellRuntimeHost, EntityCachingUser, DanmakuHostProxy {
 
 	// ==================== Virtual danmaku infrastructure ====================
 
@@ -366,6 +366,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 	@Override
 	public boolean isInvulnerableTo(DamageSource source) {
 		return true;
+	}
+
+	@Override
+	public boolean hurt(DamageSource source, float amount) {
+		return false;
 	}
 
 	@Override

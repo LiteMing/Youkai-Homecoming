@@ -41,7 +41,7 @@ public interface IYHDanmaku extends GrazingEntity {
 	}
 
 	default boolean shouldHurt(@Nullable Entity owner, Entity e) {
-		if (owner == null) return false;
+		if (owner == null || e instanceof DanmakuHostProxy) return false;
 		if (owner instanceof YoukaiEntity youkai) {
 			if (e instanceof LivingEntity le) {
 				return youkai.shouldHurt(le);
@@ -81,6 +81,7 @@ public interface IYHDanmaku extends GrazingEntity {
 	default void hurtTarget(EntityHitResult result) {
 		if (self().level().isClientSide) return;
 		var e = result.getEntity();
+		if (e instanceof DanmakuHostProxy) return;
 		var source = source();
 		if (e instanceof LivingEntity le) {
 			if (le.hurtTime > 0 && (YHModConfig.COMMON.invulFrameForDanmaku.get() || e instanceof Player || e instanceof YoukaiEntity)) {

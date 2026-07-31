@@ -143,6 +143,8 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	public void onHitEntity(EntityHitResult result) {
 		if (level().isClientSide)
 			return;
+		if (result.getEntity() instanceof DanmakuHostProxy)
+			return;
 		super.onHitEntity(result);
 		hurtTarget(result);
 		// Execute onHitEntity callback before potential discard

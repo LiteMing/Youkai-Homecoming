@@ -1,5 +1,6 @@
 package dev.xkmc.fastprojectileapi.collision;
 
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHostProxy;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -10,7 +11,7 @@ public enum HitTestType {
 	ENEMY {
 		@Override
 		public boolean canHitEntity(LivingEntity owner, Entity target) {
-			if (!target.canBeHitByProjectile() || owner == target) {
+			if (target instanceof DanmakuHostProxy || !target.canBeHitByProjectile() || owner == target) {
 				return false;
 			}
 			if (owner.isPassenger() || target.isPassenger()) {

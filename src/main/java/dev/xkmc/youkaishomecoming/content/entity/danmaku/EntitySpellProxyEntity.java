@@ -44,7 +44,7 @@ import java.util.UUID;
  * </ul>
  */
 public class EntitySpellProxyEntity extends PathfinderMob
-		implements SpellRuntimeHost, EntityCachingUser {
+		implements SpellRuntimeHost, EntityCachingUser, DanmakuHostProxy {
 
 	// ==================== Virtual danmaku infrastructure ====================
 
@@ -443,6 +443,11 @@ public class EntitySpellProxyEntity extends PathfinderMob
 	@Override
 	public boolean isInvulnerableTo(DamageSource source) {
 		return true;
+	}
+
+	@Override
+	public boolean hurt(DamageSource source, float amount) {
+		return false;
 	}
 
 	@Override

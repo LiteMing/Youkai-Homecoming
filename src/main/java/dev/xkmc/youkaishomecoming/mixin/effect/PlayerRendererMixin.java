@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.mixin.effect;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.entity.player.PlayerRenderer;
@@ -28,7 +29,13 @@ public abstract class PlayerRendererMixin {
 	private void youkaishomecoming$applyBeatenPose(AbstractClientPlayer player, PoseStack pose, float ageInTicks,
 			float rotationYaw, float partialTick, CallbackInfo ci) {
 		if (player.hasEffect(YHEffects.BEATEN.get())) {
-			LivingEntityRendererMixin.applyProneRotation(pose, 1);
+			applyProneRotation(pose);
 		}
+	}
+
+	private static void applyProneRotation(PoseStack pose) {
+		pose.translate(0, 0.2F, 0);
+		pose.mulPose(Axis.XP.rotationDegrees(90));
+		pose.translate(0, -0.85F, 0);
 	}
 }

@@ -30,7 +30,7 @@ public abstract class LivingEntityRendererMixin {
 		applyProneRotation(pose, progress);
 	}
 
-	static void applyProneRotation(PoseStack pose, float progress) {
+	private static void applyProneRotation(PoseStack pose, float progress) {
 		pose.translate(0, 0.2F * progress, 0);
 		pose.mulPose(Axis.XP.rotationDegrees(90 * progress));
 		pose.translate(0, -0.85F * progress, 0);

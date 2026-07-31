@@ -137,6 +137,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue useLegacySpellCards;
 
 		public final ForgeConfigSpec.BooleanValue smallFairyReplacement;
+		public final ForgeConfigSpec.BooleanValue smallFairyCanBeBeaten;
 		public final ForgeConfigSpec.DoubleValue smallFairySummonReinforcement;
 		public final ForgeConfigSpec.DoubleValue smallFairySummonStrongFairy;
 		public final ForgeConfigSpec.IntValue smallFairyStrength;
@@ -401,6 +402,8 @@ public class YHModConfig {
 			{
 				smallFairyReplacement = builder.comment("Replace Fairies from Touhou Little Maid with a neutral fairy")
 						.define("smallFairyReplacement", false);
+				smallFairyCanBeBeaten = builder.comment("Allow small fairies to enter the Beaten state instead of dying")
+						.define("smallFairyCanBeBeaten", false);
 				smallFairySummonReinforcement = builder.comment("Chance for small fairies to summon other fairies when killed by non-danmaku damage")
 						.defineInRange("smallFairySummonReinforcement", 0.25, 0, 1);
 				smallFairySummonStrongFairy = builder.comment("Chance for small fairies to summon stronger fairies when they are set to summon reinforcements")

@@ -5,6 +5,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.FairyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -35,6 +36,11 @@ public class SmallFairy extends FairyEntity implements IHasPowerPoint {
 	@Override
 	public int getPowerPoint() {
 		return MIN_POWER_POINT + random().nextInt(MAX_POWER_POINT - MIN_POWER_POINT + 1);
+	}
+
+	@Override
+	public boolean canEnterBeatenState() {
+		return YHModConfig.COMMON.smallFairyCanBeBeaten.get();
 	}
 
 	@Override

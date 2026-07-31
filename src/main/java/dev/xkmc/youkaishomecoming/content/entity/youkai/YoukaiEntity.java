@@ -646,6 +646,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 		setDeltaMovement(Vec3.ZERO);
 	}
 
+	public boolean canEnterBeatenState() {
+		return true;
+	}
+
 	public void tickBeatenState() {
 		if (level().isClientSide()) return;
 		clearVanillaDefeatState();

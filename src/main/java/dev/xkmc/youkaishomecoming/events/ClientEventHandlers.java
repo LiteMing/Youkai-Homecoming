@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.MovementInputUpdateEvent;
@@ -23,6 +24,7 @@ import net.minecraftforge.fml.common.Mod;
 public class ClientEventHandlers {
 
 	private static float oTilt, tilt;
+	private static boolean beatenPoseForced;
 
 	@SubscribeEvent
 	public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -30,7 +32,23 @@ public class ClientEventHandlers {
 		float lv = drunkLevel();
 		tilt = Mth.lerp(0.03f, tilt, lv);
 		if (event.phase == TickEvent.Phase.END) {
+			syncBeatenPose();
 			dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();
+		}
+	}
+
+	private static void syncBeatenPose() {
+		var player = Minecraft.getInstance().player;
+		if (player == null) {
+			beatenPoseForced = false;
+			return;
+		}
+		if (player.hasEffect(YHEffects.BEATEN.get())) {
+			player.setForcedPose(Pose.SWIMMING);
+			beatenPoseForced = true;
+		} else if (beatenPoseForced) {
+			player.setForcedPose(null);
+			beatenPoseForced = false;
 		}
 	}
 

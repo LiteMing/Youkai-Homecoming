@@ -13,6 +13,7 @@ import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -387,11 +388,14 @@ public class YSMClientCompat {
 	private static String selectAnimation(LivingEntity e, String modelId) {
 		if (e instanceof YoukaiEntity youkai && youkai.isBeaten()) {
 			return switch (youkai.getBeatenPhase()) {
-				case YoukaiEntity.BEATEN_DEFEAT -> "defeat=death+die+attacked";
-				case YoukaiEntity.BEATEN_FALLING -> "falling=jump+fall+fly";
-				case YoukaiEntity.BEATEN_PRONE -> "climbing";
-				default -> "defeat=death+die+attacked";
+				case YoukaiEntity.BEATEN_DEFEAT -> "beaten=defeat";
+				case YoukaiEntity.BEATEN_FALLING -> "beaten=falling";
+				case YoukaiEntity.BEATEN_PRONE -> "beaten=prone";
+				default -> "beaten=defeat";
 			};
+		}
+		if (e.hasEffect(YHEffects.BEATEN.get())) {
+			return "beaten=prone";
 		}
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
@@ -521,7 +525,8 @@ public class YSMClientCompat {
 		}
 		List<String> result = new ArrayList<>(List.of(
 				"special", "cast", "charge", "angry", "fly", "walk", "calm",
-				"defeat", "falling", "climb", "climbing"
+				"defeat", "falling", "climb", "climbing", "beaten",
+				"beaten_defeat", "beaten_falling", "beaten_prone"
 		));
 		if (modelId == null || modelId.isBlank()) {
 			for (String id : loadedModelIds()) {

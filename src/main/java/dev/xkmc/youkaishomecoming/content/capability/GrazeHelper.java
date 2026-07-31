@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.entity.GrazingEntity;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
+import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
 import dev.xkmc.youkaishomecoming.events.DanmakuGrazeEvent;
@@ -12,6 +13,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHAttributes;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -137,13 +139,22 @@ public class GrazeHelper {
 	}
 
 	public static void onDanmakuKill(Player player, YoukaiEntity e) {
+		onDanmakuKill(player, e, player.damageSources().playerAttack(player));
+	}
+
+	public static void onDanmakuKill(Player player, YoukaiEntity e, DamageSource source) {
 		var cap = GrazeCapability.HOLDER.get(player);
+		boolean danmakuVictory = cap.isInSession(e.getUUID());
 		if (player instanceof net.minecraft.server.level.ServerPlayer sp) {
 			var snap = cap.snapshotOpponents();
 			net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
 					new dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent.Victory(
 							sp, e, snap.ids(), snap.entities()));
 			// Victory before session removal so listeners still see this Youkai in the snapshot.
+		}
+		if (danmakuVictory) {
+			e.dropDanmakuDefeatLoot(player, source);
+			BeatenEffect.applyDanmakuDefeat(e);
 		}
 		cap.stopSession(e.getUUID(),
 				dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent.SessionEndReason.VICTORY);

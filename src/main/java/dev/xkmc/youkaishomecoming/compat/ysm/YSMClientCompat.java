@@ -11,6 +11,7 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMCompatConfig.RenderBinding;
 import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -87,6 +88,7 @@ public class YSMClientCompat {
 	private static Method modelAnimationNamesMethod;
 	private static Method modelDefaultTextureNameMethod;
 	private static boolean unavailable;
+	private static int delegatedRenderDepth;
 	private static boolean textureListUnavailable;
 	private static boolean animationListUnavailable;
 	private static boolean defaultTextureUnavailable;
@@ -104,6 +106,9 @@ public class YSMClientCompat {
 	}
 
 	public static boolean delegateRender(LivingEntity e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
+		if (delegatedRenderDepth > 0) {
+			return false;
+		}
 		RenderRequest request = resolveRenderRequest(e);
 		if (!LOADED || unavailable || request == null) {
 			return false;
@@ -112,6 +117,7 @@ public class YSMClientCompat {
 		if (method == null) {
 			return false;
 		}
+		delegatedRenderDepth++;
 		try {
 			Object result = method.invoke(null, e, request.modelId(), request.textureName(), request.animationHint(), yaw, pTick, pose, buffer, light);
 			return result instanceof Boolean value && value;
@@ -119,7 +125,13 @@ public class YSMClientCompat {
 			unavailable = true;
 			YoukaisHomecoming.LOGGER.warn("Failed to delegate youkai rendering to Yes Steve Model", ex);
 			return false;
+		} finally {
+			delegatedRenderDepth--;
 		}
+	}
+
+	public static boolean isDelegatingRender() {
+		return delegatedRenderDepth > 0;
 	}
 
 	@SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -373,6 +385,14 @@ public class YSMClientCompat {
 	}
 
 	private static String selectAnimation(LivingEntity e, String modelId) {
+		if (e instanceof YoukaiEntity youkai && youkai.isBeaten()) {
+			return switch (youkai.getBeatenPhase()) {
+				case YoukaiEntity.BEATEN_DEFEAT -> "defeat=death+die+attacked";
+				case YoukaiEntity.BEATEN_FALLING -> "falling=jump+fall+fly";
+				case YoukaiEntity.BEATEN_PRONE -> "climbing";
+				default -> "defeat=death+die+attacked";
+			};
+		}
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
 		boolean flying = e.isNoGravity();
@@ -417,7 +437,8 @@ public class YSMClientCompat {
 
 	private static String actionAnimationToken(String modelId, String token) {
 		String key = hintKey(token);
-		if (key.isBlank() || token.contains("=") || "fly".equals(key) || "walk".equals(key) || "calm".equals(key)) {
+		if (key.isBlank() || token.contains("=") || "fly".equals(key) || "walk".equals(key) ||
+				"calm".equals(key) || "climb".equals(key) || "climbing".equals(key)) {
 			return token;
 		}
 		String semantic = YSMCompatConfig.expressionToken(modelId, key);
@@ -498,7 +519,10 @@ public class YSMClientCompat {
 		if (cached != null && isCacheFresh(cached.loadedAt(), now)) {
 			return new ArrayList<>(cached.values());
 		}
-		List<String> result = new ArrayList<>(List.of("special", "cast", "charge", "angry", "fly", "walk", "calm"));
+		List<String> result = new ArrayList<>(List.of(
+				"special", "cast", "charge", "angry", "fly", "walk", "calm",
+				"defeat", "falling", "climb", "climbing"
+		));
 		if (modelId == null || modelId.isBlank()) {
 			for (String id : loadedModelIds()) {
 				addAllUnique(result, loadedAnimationNames(id));

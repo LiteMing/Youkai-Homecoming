@@ -23,7 +23,9 @@ public class RumiaRenderer extends MobRenderer<RumiaEntity, RumiaModel<RumiaEnti
 	}
 
 	protected void setupRotations(RumiaEntity rumia, PoseStack pose, float age, float yaw, float pTick) {
-		if (rumia.isBlocked()) {
+		if (rumia.isBeaten()) {
+			super.setupRotations(rumia, pose, age, yaw, pTick);
+		} else if (rumia.isBlocked()) {
 			pose.translate(0, 0.2, 0);
 			pose.mulPose(Axis.XP.rotationDegrees(90));
 			pose.translate(0, -0.85, 0);

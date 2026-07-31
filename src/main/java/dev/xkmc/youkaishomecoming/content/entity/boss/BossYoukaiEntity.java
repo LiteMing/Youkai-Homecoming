@@ -492,6 +492,10 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 
 	@Override
 	protected void customServerAiStep() {
+		if (isBeaten()) {
+			bossEvent.setProgress(getCombatProgress() / getMaxHealth());
+			return;
+		}
 		super.customServerAiStep();
 		if (combatProgress != null && getCombatProgress() != combatProgress.progress) {
 			bossEvent.setProgress(random().nextFloat());

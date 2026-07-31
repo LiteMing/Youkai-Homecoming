@@ -23,7 +23,10 @@
 	],
 	"client": [
 		"CriterionGridMixin",
-		"effect.GameRendererMixin"
+		"effect.GameRendererMixin",
+		"effect.HumanoidModelMixin",
+		"effect.LivingEntityRendererMixin",
+		"effect.PlayerRendererMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

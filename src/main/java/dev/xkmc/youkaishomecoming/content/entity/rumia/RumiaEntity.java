@@ -141,7 +141,7 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 
 	@Override
 	public boolean canBeAffected(MobEffectInstance ins) {
-		return !isEx() && super.canBeAffected(ins);
+		return ins.getEffect() == YHEffects.BEATEN.get() || !isEx() && super.canBeAffected(ins);
 	}
 
 

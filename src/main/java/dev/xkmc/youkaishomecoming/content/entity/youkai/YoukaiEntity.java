@@ -26,6 +26,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
+import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.nbt.CompoundTag;
@@ -43,6 +44,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.control.FlyingMoveControl;
@@ -74,6 +76,14 @@ public abstract class YoukaiEntity extends PathfinderMob
 	protected static final SyncedData YOUKAI_DATA = new SyncedData(YoukaiEntity::defineId);
 
 	protected static final EntityDataAccessor<Integer> DATA_FLAGS_ID = YOUKAI_DATA.define(SyncedData.INT, 0, "youkai_flags");
+	private static final EntityDataAccessor<Integer> DATA_BEATEN_PHASE = YOUKAI_DATA.define(SyncedData.INT, 0, "beaten_phase");
+	private static final EntityDataAccessor<Integer> DATA_BEATEN_PHASE_START = YOUKAI_DATA.define(SyncedData.INT, 0, "beaten_phase_start");
+
+	public static final int BEATEN_NONE = 0;
+	public static final int BEATEN_DEFEAT = 1;
+	public static final int BEATEN_FALLING = 2;
+	public static final int BEATEN_PRONE = 3;
+	public static final int DEFEAT_ANIMATION_TICKS = 20;
 
 	public static AttributeSupplier.Builder createAttributes() {
 		return Monster.createMonsterAttributes()
@@ -85,6 +95,8 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public final MoveControl walkCtrl, flyCtrl;
 	public final PathNavigation walkNav, fltNav;
 	private final YoukaiDodgePilot dodgePilot = new YoukaiDodgePilot();
+	@SerialClass.SerialField
+	private boolean recoverFromBeaten;
 
 	@SerialClass.SerialField
 	public final YoukaiTargetContainer targets;
@@ -217,6 +229,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	public boolean isInvulnerableTo(DamageSource pSource) {
+		if (hasEffect(YHEffects.BEATEN.get())) {
+			return true;
+		}
 		if (pSource.getEntity() instanceof LivingEntity le && shouldIgnore(le)) {
 			return true;
 		}
@@ -307,35 +322,45 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	public void aiStep() {
 		if (!level().isClientSide()) {
-			if (!this.onGround() && this.getDeltaMovement().y < 0.0D) {
+			if (recoverFromBeaten && !hasEffect(YHEffects.BEATEN.get())) {
+				recoverFromBeaten = false;
+				setCombatProgress(combatProgress.maxProgress);
+				validateData();
+			}
+			boolean beaten = hasEffect(YHEffects.BEATEN.get());
+			if (!beaten && !this.onGround() && this.getDeltaMovement().y < 0.0D) {
 				double fall = getTarget() != null ? 0.6 : 0.8;
 				this.setDeltaMovement(this.getDeltaMovement().multiply(1.0D, fall, 1.0D));
 			}
-			targets.tick(super.getTarget());
-			if (spellRuntime != null) {
-				// New runtime takes priority over legacy
-				if (shouldTickSpell()) {
-					spellRuntime.tick(this);
-					tickDanmaku();
-				} else {
-					spellRuntime.reset();
-					eraseAllDanmaku(null);
-					danmakuHolder.clearSentQueue();
-				}
-			} else if (spellCard != null) {
-				if (shouldTickSpell()) {
-					spellCard.tick(this);
-					tickDanmaku();
-				} else {
-					spellCard.reset();
-					eraseAllDanmaku(null);
-					danmakuHolder.clearSentQueue();
+			if (!beaten) {
+				targets.tick(super.getTarget());
+				if (spellRuntime != null) {
+					// New runtime takes priority over legacy
+					if (shouldTickSpell()) {
+						spellRuntime.tick(this);
+						tickDanmaku();
+					} else {
+						spellRuntime.reset();
+						eraseAllDanmaku(null);
+						danmakuHolder.clearSentQueue();
+					}
+				} else if (spellCard != null) {
+					if (shouldTickSpell()) {
+						spellCard.tick(this);
+						tickDanmaku();
+					} else {
+						spellCard.reset();
+						eraseAllDanmaku(null);
+						danmakuHolder.clearSentQueue();
+					}
 				}
 			}
 		}
 		super.aiStep();
 		if (!level().isClientSide()) {
-			dodgePilot.tick(this);
+			if (!hasEffect(YHEffects.BEATEN.get())) {
+				dodgePilot.tick(this);
+			}
 		}
 	}
 
@@ -400,7 +425,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 		if (combatProgress.progress <= 0) {
 			eraseAllDanmaku(null);
 			if (source.getEntity() instanceof Player player) {
-				GrazeHelper.onDanmakuKill(player, this);
+				GrazeHelper.onDanmakuKill(player, this, source);
 			}
 		}
 	}
@@ -563,8 +588,94 @@ public abstract class YoukaiEntity extends PathfinderMob
 		setLastHurtByMob(null);
 		// Kill path also stops the session; do not refill HP after lethal damage.
 		if (getCombatProgress() > 0) {
-			setCombatProgress(combatProgress.maxProgress);
+			float health = hasEffect(YHEffects.BEATEN.get()) ? getMaxHealth() : combatProgress.maxProgress;
+			setCombatProgress(health);
 		}
+	}
+
+	public void queueBeatenRecovery() {
+		setBeatenPhase(BEATEN_NONE);
+		setSwimming(false);
+		setWalking();
+		setNoAi(false);
+		setPose(Pose.STANDING);
+		recoverFromBeaten = true;
+	}
+
+	public void beginDanmakuDefeat() {
+		recoverFromBeaten = false;
+		setBeatenPhase(BEATEN_DEFEAT);
+		setSwimming(false);
+		setPose(Pose.STANDING);
+		setSprinting(false);
+		setAggressive(false);
+		setNoAi(true);
+		setNoGravity(true);
+		getNavigation().stop();
+		setDeltaMovement(Vec3.ZERO);
+	}
+
+	public void tickBeatenState() {
+		if (level().isClientSide()) return;
+		if (getBeatenPhase() == BEATEN_NONE) {
+			beginDanmakuDefeat();
+		}
+		setNoAi(true);
+		setSprinting(false);
+		setAggressive(false);
+		getNavigation().stop();
+		switch (getBeatenPhase()) {
+			case BEATEN_DEFEAT -> {
+				setSwimming(false);
+				setPose(Pose.STANDING);
+				setNoGravity(true);
+				setDeltaMovement(Vec3.ZERO);
+				if (getBeatenPhaseTicks() >= DEFEAT_ANIMATION_TICKS) {
+					setWalking();
+					setBeatenPhase(BEATEN_FALLING);
+				}
+			}
+			case BEATEN_FALLING -> {
+				setSwimming(false);
+				setPose(Pose.STANDING);
+				setWalking();
+				if (onGround()) {
+					setDeltaMovement(Vec3.ZERO);
+					setPose(Pose.SWIMMING);
+					setBeatenPhase(BEATEN_PRONE);
+				}
+			}
+			case BEATEN_PRONE -> {
+				setNoGravity(false);
+				setSwimming(false);
+				setPose(Pose.SWIMMING);
+				setDeltaMovement(Vec3.ZERO);
+			}
+		}
+	}
+
+	public int getBeatenPhase() {
+		return entityData.get(DATA_BEATEN_PHASE);
+	}
+
+	public int getBeatenPhaseTicks() {
+		return Math.max(0, tickCount - entityData.get(DATA_BEATEN_PHASE_START));
+	}
+
+	public boolean isBeaten() {
+		return getBeatenPhase() != BEATEN_NONE || hasEffect(YHEffects.BEATEN.get());
+	}
+
+	private void setBeatenPhase(int phase) {
+		if (entityData.get(DATA_BEATEN_PHASE) == phase) return;
+		entityData.set(DATA_BEATEN_PHASE, phase);
+		entityData.set(DATA_BEATEN_PHASE_START, tickCount);
+	}
+
+	public void dropDanmakuDefeatLoot(Player winner, DamageSource source) {
+		if (level().isClientSide()) return;
+		setLastHurtByPlayer(winner);
+		dropAllDeathLoot(source);
 	}
 
 	public void syncSpellState() {

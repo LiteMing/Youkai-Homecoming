@@ -671,7 +671,11 @@ public abstract class YoukaiEntity extends PathfinderMob
 				setSwimming(false);
 				setPose(Pose.STANDING);
 				setWalking();
-				if (onGround()) {
+				boolean landed = getBeatenPhaseTicks() > 1 && onGround();
+				if (!landed) {
+					Vec3 motion = getDeltaMovement();
+					setDeltaMovement(motion.x, Math.min(motion.y, -0.1D), motion.z);
+				} else {
 					setDeltaMovement(Vec3.ZERO);
 					setPose(Pose.SWIMMING);
 					setBeatenPhase(BEATEN_PRONE);

@@ -143,6 +143,10 @@ public class GrazeHelper {
 	}
 
 	public static void onDanmakuKill(Player player, YoukaiEntity e, DamageSource source) {
+		tryDanmakuDefeat(player, e, source);
+	}
+
+	public static boolean tryDanmakuDefeat(Player player, YoukaiEntity e, DamageSource source) {
 		var cap = GrazeCapability.HOLDER.get(player);
 		boolean danmakuVictory = cap.isInSession(e.getUUID());
 		if (player instanceof net.minecraft.server.level.ServerPlayer sp) {
@@ -152,12 +156,13 @@ public class GrazeHelper {
 							sp, e, snap.ids(), snap.entities()));
 			// Victory before session removal so listeners still see this Youkai in the snapshot.
 		}
-		if (danmakuVictory) {
+		boolean defeated = danmakuVictory && BeatenEffect.tryApplyDanmakuDefeat(e);
+		if (defeated) {
 			e.dropDanmakuDefeatLoot(player, source);
-			BeatenEffect.applyDanmakuDefeat(e);
 		}
 		cap.stopSession(e.getUUID(),
 				dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent.SessionEndReason.VICTORY);
+		return defeated;
 	}
 
 	public static int getInitialResource(Player player) {

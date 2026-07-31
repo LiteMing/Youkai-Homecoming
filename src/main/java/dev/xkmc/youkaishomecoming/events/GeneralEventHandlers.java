@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.block.variants.LeftClickBlock;
 import dev.xkmc.youkaishomecoming.content.capability.FrogGodCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.KoishiAttackCapability;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHostProxy;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RumiaEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
@@ -38,8 +39,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.living.ShieldBlockEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
@@ -49,6 +52,26 @@ import net.minecraftforge.fml.common.Mod;
 
 @Mod.EventBusSubscriber(modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class GeneralEventHandlers {
+
+	@SubscribeEvent(priority = EventPriority.HIGHEST)
+	public static void isolateDanmakuProxy(LivingAttackEvent event) {
+		if (event.getEntity() instanceof DanmakuHostProxy) event.setCanceled(true);
+	}
+
+	@SubscribeEvent(priority = EventPriority.HIGHEST)
+	public static void isolateDanmakuProxy(LivingHurtEvent event) {
+		if (event.getEntity() instanceof DanmakuHostProxy) event.setCanceled(true);
+	}
+
+	@SubscribeEvent(priority = EventPriority.HIGHEST)
+	public static void isolateDanmakuProxy(LivingDamageEvent event) {
+		if (event.getEntity() instanceof DanmakuHostProxy) event.setCanceled(true);
+	}
+
+	@SubscribeEvent(priority = EventPriority.HIGHEST)
+	public static void isolateDanmakuProxy(LivingDeathEvent event) {
+		if (event.getEntity() instanceof DanmakuHostProxy) event.setCanceled(true);
+	}
 
 	@SubscribeEvent
 	public static void registerCapabilities(AttachCapabilitiesEvent<ItemStack> event) {

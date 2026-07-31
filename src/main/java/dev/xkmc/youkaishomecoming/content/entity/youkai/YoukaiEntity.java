@@ -321,6 +321,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 	// combat
 
 	public void aiStep() {
+		if (isBeaten()) {
+			clearVanillaDefeatState();
+		}
 		if (!level().isClientSide()) {
 			if (recoverFromBeaten && !hasEffect(YHEffects.BEATEN.get())) {
 				recoverFromBeaten = false;
@@ -421,20 +424,35 @@ public abstract class YoukaiEntity extends PathfinderMob
 		if (!source.is(YHDamageTypes.DANMAKU_TYPE) && source.getEntity() instanceof Player player) {
 			GrazeCapability.HOLDER.get(player).stopSession(getUUID());
 		}
-		setCombatProgress(getCombatProgress() - amount);
-		if (combatProgress.progress <= 0) {
-			eraseAllDanmaku(null);
-			if (source.getEntity() instanceof Player player) {
-				GrazeHelper.onDanmakuKill(player, this, source);
-			}
+		float remaining = getCombatProgress() - amount;
+		if (remaining > 0) {
+			setCombatProgress(remaining);
+			return;
+		}
+		eraseAllDanmaku(null);
+		boolean defeated = source.getEntity() instanceof Player player &&
+				GrazeHelper.tryDanmakuDefeat(player, this, source);
+		if (!defeated) {
+			setCombatProgress(remaining);
 		}
 	}
 
 	public void validateData() {
 		if (combatProgress == null || getCombatProgress() != combatProgress.progress || getCombatProgress() > 0) {
-			if (deathTime > 0) deathTime = 0;
-			if (dead) dead = false;
+			clearVanillaDeathState();
 		}
+	}
+
+	private void clearVanillaDeathState() {
+		deathTime = 0;
+		dead = false;
+	}
+
+	private void clearVanillaDefeatState() {
+		clearVanillaDeathState();
+		hurtTime = 0;
+		hurtDuration = 0;
+		lastHurt = 0;
 	}
 
 	@Override
@@ -445,6 +463,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	protected boolean isImmobile() {
+		if (combatProgress != null && isBeaten()) return true;
 		if (combatProgress == null || getCombatProgress() != combatProgress.progress)
 			return false;
 		return this.getCombatProgress() <= 0.0F;
@@ -452,6 +471,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	public boolean isDeadOrDying() {
+		if (combatProgress != null && isBeaten()) return false;
 		if (combatProgress == null || getCombatProgress() != combatProgress.progress)
 			return false;
 		return this.getCombatProgress() <= 0.0F;
@@ -459,6 +479,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	public boolean isAlive() {
 		if (isRemoved()) return false;
+		if (combatProgress != null && isBeaten()) return true;
 		if (combatProgress == null || getCombatProgress() != combatProgress.progress)
 			return true;
 		return this.getCombatProgress() > 0.0F;
@@ -489,6 +510,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	protected void tickDeath() {
+		if (combatProgress != null && isBeaten()) {
+			clearVanillaDefeatState();
+			return;
+		}
 		if (combatProgress == null || getCombatProgress() != combatProgress.progress)
 			return;
 		if (getCombatProgress() > 0) return;
@@ -497,6 +522,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	public void die(DamageSource source) {
+		if (combatProgress != null && isBeaten()) {
+			clearVanillaDefeatState();
+			return;
+		}
 		if (combatProgress == null || getCombatProgress() != combatProgress.progress)
 			return;
 		if (getCombatProgress() > 0) return;
@@ -594,6 +623,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	public void queueBeatenRecovery() {
+		clearVanillaDefeatState();
 		setBeatenPhase(BEATEN_NONE);
 		setSwimming(false);
 		setWalking();
@@ -603,6 +633,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	public void beginDanmakuDefeat() {
+		clearVanillaDefeatState();
 		recoverFromBeaten = false;
 		setBeatenPhase(BEATEN_DEFEAT);
 		setSwimming(false);
@@ -617,6 +648,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	public void tickBeatenState() {
 		if (level().isClientSide()) return;
+		clearVanillaDefeatState();
 		if (getBeatenPhase() == BEATEN_NONE) {
 			beginDanmakuDefeat();
 		}

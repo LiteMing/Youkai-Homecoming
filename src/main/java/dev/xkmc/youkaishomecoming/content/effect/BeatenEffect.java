@@ -61,6 +61,10 @@ public class BeatenEffect extends MobEffect {
 	}
 
 	public static void applyDanmakuDefeat(YoukaiEntity entity) {
+		tryApplyDanmakuDefeat(entity);
+	}
+
+	public static boolean tryApplyDanmakuDefeat(YoukaiEntity entity) {
 		int duration = YHModConfig.COMMON.beatenDurationTicks.get();
 		MobEffectInstance current = entity.getEffect(YHEffects.BEATEN.get());
 		if (current == null || current.getDuration() < duration) {
@@ -70,7 +74,9 @@ public class BeatenEffect extends MobEffect {
 			entity.setCombatProgress(entity.getMaxHealth());
 			entity.validateData();
 			entity.beginDanmakuDefeat();
+			return true;
 		}
+		return false;
 	}
 
 	@Override

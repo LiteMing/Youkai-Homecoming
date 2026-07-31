@@ -5,7 +5,6 @@ import com.mojang.math.Axis;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -19,20 +18,14 @@ public abstract class LivingEntityRendererMixin {
 	private void youkaishomecoming$applyBeatenPose(LivingEntity entity, PoseStack pose, float ageInTicks,
 			float rotationYaw, float partialTick, CallbackInfo ci) {
 		if (!(entity instanceof YoukaiEntity youkai) || YSMClientCompat.isDelegatingRender()) return;
-		float progress = switch (youkai.getBeatenPhase()) {
-			case YoukaiEntity.BEATEN_DEFEAT -> Mth.clamp(
-					(youkai.getBeatenPhaseTicks() + partialTick) / YoukaiEntity.DEFEAT_ANIMATION_TICKS, 0, 1);
-			case YoukaiEntity.BEATEN_FALLING, YoukaiEntity.BEATEN_PRONE -> 1;
-			default -> 0;
-		};
-		if (progress <= 0) return;
-		progress = progress * progress * (3 - 2 * progress);
-		applyProneRotation(pose, progress);
+		if (youkai.getBeatenPhase() == YoukaiEntity.BEATEN_PRONE) {
+			applyProneRotation(pose);
+		}
 	}
 
-	private static void applyProneRotation(PoseStack pose, float progress) {
-		pose.translate(0, 0.2F * progress, 0);
-		pose.mulPose(Axis.XP.rotationDegrees(90 * progress));
-		pose.translate(0, -0.85F * progress, 0);
+	private static void applyProneRotation(PoseStack pose) {
+		pose.translate(0, 0.2F, 0);
+		pose.mulPose(Axis.XP.rotationDegrees(90));
+		pose.translate(0, -0.85F, 0);
 	}
 }

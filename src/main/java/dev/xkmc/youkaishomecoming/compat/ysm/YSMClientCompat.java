@@ -11,7 +11,6 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMCompatConfig.RenderBinding;
 import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
-import dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -23,6 +22,7 @@ import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.EntityHitResult;
@@ -31,7 +31,9 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
+import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -52,10 +54,9 @@ import java.util.UUID;
 public class YSMClientCompat {
 
 	private static final String MOD_ID = "yes_steve_model";
-	private static final String MODEL_REMILIA = "yh/remilia";
-	private static final String MODEL_FLANDRE = "yh/flandre";
+	private static final String MODEL_REMILIA = "YH内置/remilia";
 	private static final String TEXTURE_DEFAULT = "default";
-	private static final ArgumentType<String> YSM_ID_ARGUMENT = new TokenArgument("Expected YSM id", List.of("yh/remilia", "yh/flandre", "namespace:path/model"));
+	private static final ArgumentType<String> YSM_ID_ARGUMENT = new TokenArgument("Expected YSM id", List.of(MODEL_REMILIA, "namespace:path/model"));
 	private static final ArgumentType<String> ENTITY_TARGET_ARGUMENT = new TokenArgument("Expected entity target", List.of("@e[limit=1,sort=nearest]", "@a", "00000000-0000-0000-0000-000000000000"));
 	private static final boolean LOADED = ModList.get().isLoaded(MOD_ID);
 	private static final Map<ResourceLocation, RenderBinding> TYPE_DEBUG_OVERRIDES = new LinkedHashMap<>();
@@ -79,7 +80,6 @@ public class YSMClientCompat {
 	};
 
 	private static Method renderMethod;
-	private static Method previewRenderMethod;
 	private static Method clearDebugMethod;
 	private static Method debugSnapshotMethod;
 	private static Method loadedModelIdsMethod;
@@ -87,7 +87,6 @@ public class YSMClientCompat {
 	private static Method modelAnimationNamesMethod;
 	private static Method modelDefaultTextureNameMethod;
 	private static boolean unavailable;
-	private static boolean previewRenderUnavailable;
 	private static boolean textureListUnavailable;
 	private static boolean animationListUnavailable;
 	private static boolean defaultTextureUnavailable;
@@ -123,50 +122,14 @@ public class YSMClientCompat {
 		}
 	}
 
-	public static boolean renderPreviewCaster(PreviewCardHolder holder, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
-		if (!LOADED || unavailable) {
-			return false;
+	@SubscribeEvent(priority = EventPriority.HIGHEST)
+	public static void renderMappedLivingEntity(RenderLivingEvent.Pre<?, ?> event) {
+		LivingEntity entity = event.getEntity();
+		float yaw = Mth.rotLerp(event.getPartialTick(), entity.yBodyRotO, entity.yBodyRot);
+		if (delegateRender(entity, yaw, event.getPartialTick(), event.getPoseStack(),
+				event.getMultiBufferSource(), event.getPackedLight())) {
+			event.setCanceled(true);
 		}
-		String modelId = holder.getYsmModelOverride();
-		if (modelId.isBlank()) {
-			modelId = MODEL_REMILIA;
-		}
-		String textureName = holder.getYsmTextureOverride();
-		if (textureName.isBlank()) {
-			textureName = defaultTextureName(modelId);
-		}
-		String animationHint = selectPreviewAnimation(holder, modelId);
-		Method method = getPreviewRenderMethod();
-		if (method == null) {
-			method = getRenderMethod();
-		}
-		if (method == null) {
-			return false;
-		}
-		LivingEntity caster = holder.getFakeCaster();
-		boolean invisible = caster.isInvisible();
-		caster.setInvisible(false);
-		try {
-			Object result = method.invoke(null, caster, modelId, textureName, animationHint, yaw, pTick, pose, buffer, light);
-			return result instanceof Boolean value && value;
-		} catch (IllegalAccessException | InvocationTargetException ex) {
-			YoukaisHomecoming.LOGGER.warn("Failed to render preview caster with Yes Steve Model", ex);
-			return false;
-		} finally {
-			caster.setInvisible(invisible);
-		}
-	}
-
-	private static String selectPreviewAnimation(PreviewCardHolder holder, String modelId) {
-		String actionHint = actionAnimationHint(modelId, holder.getYsmAnimationOverride());
-		List<String> hints = new ArrayList<>(2);
-		if (!hasHintToken(actionHint, "fly") && !hasHintToken(actionHint, "walk")) {
-			hints.add("calm");
-		}
-		if (!actionHint.isBlank()) {
-			hints.add(actionHint);
-		}
-		return hints.isEmpty() ? null : String.join(" ", hints);
 	}
 
 	private static Method getRenderMethod() {
@@ -232,34 +195,6 @@ public class YSMClientCompat {
 			return loadedModelIdsMethod;
 		} catch (ClassNotFoundException | NoSuchMethodException ex) {
 			YoukaisHomecoming.LOGGER.warn("Yes Steve Model loaded model id API is unavailable", ex);
-			return null;
-		}
-	}
-
-	private static Method getPreviewRenderMethod() {
-		if (previewRenderUnavailable) {
-			return null;
-		}
-		if (previewRenderMethod != null) {
-			return previewRenderMethod;
-		}
-		try {
-			previewRenderMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
-					"renderPreview",
-					LivingEntity.class,
-					String.class,
-					String.class,
-					String.class,
-					float.class,
-					float.class,
-					PoseStack.class,
-					MultiBufferSource.class,
-					int.class
-			);
-			return previewRenderMethod;
-		} catch (ClassNotFoundException | NoSuchMethodException ex) {
-			previewRenderUnavailable = true;
-			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living preview renderer API is unavailable; falling back to normal render", ex);
 			return null;
 		}
 	}
@@ -366,7 +301,7 @@ public class YSMClientCompat {
 		if (isCacheFresh(loadedModelIdsCacheAt, now)) {
 			return new ArrayList<>(loadedModelIdsCache);
 		}
-		List<String> result = new ArrayList<>(List.of(MODEL_REMILIA, MODEL_FLANDRE));
+		List<String> result = new ArrayList<>(List.of(MODEL_REMILIA));
 		if (!LOADED) {
 			loadedModelIdsCache = List.copyOf(result);
 			loadedModelIdsCacheAt = now;

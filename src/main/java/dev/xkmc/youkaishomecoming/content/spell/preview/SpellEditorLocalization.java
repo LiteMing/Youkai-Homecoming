@@ -108,9 +108,6 @@ public final class SpellEditorLocalization {
 		if (text.startsWith("Target Marker: ")) {
 			return italic + prefix + "目标标记: " + t(text.substring("Target Marker: ".length()));
 		}
-		if (text.startsWith("YSM Caster: ")) {
-			return italic + prefix + "YSM 施法者: " + t(text.substring("YSM Caster: ".length()));
-		}
 		if (text.startsWith("Ground: ")) {
 			return italic + prefix + "在地面: " + t(text.substring("Ground: ".length()));
 		}

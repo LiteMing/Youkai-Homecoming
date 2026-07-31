@@ -1,11 +1,11 @@
 {
   "entities": {
     "youkaishomecoming:remilia_scarlet": {
-      "model": "yh/remilia",
+      "model": "YH内置/remilia",
       "texture": "default"
     }
   },
-  "model": "yh/remilia",
+  "model": "YH内置/remilia",
   "expressions": {
     "angry": [
       "angry",

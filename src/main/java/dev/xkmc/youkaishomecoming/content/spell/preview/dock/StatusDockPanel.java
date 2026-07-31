@@ -135,7 +135,6 @@ public class StatusDockPanel implements DockPanel {
 			appendWrapped(lines, font, width, "视图: " + SpellEditorLocalization.t(viewport.getViewLabel()), 0xFF8CC6FF);
 			appendWrapped(lines, font, width, "目标: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
 			appendWrapped(lines, font, width, "施法者: " + formatVec(scene.getCasterPos()), 0xFFFF9A9A);
-			appendWrapped(lines, font, width, "YSM 施法者: " + scene.describeYsmPreviewCaster(), 0xFFB8E6FF);
 			appendWrapped(lines, font, width,
 					"距离: " + formatDecimal(scene.getTargetDistance()) +
 							"  施法者HP: " + Math.round(scene.getHealthRatio() * 100) + "%" +
@@ -162,7 +161,6 @@ public class StatusDockPanel implements DockPanel {
 			appendWrapped(lines, font, width, "view: " + viewport.getViewLabel(), 0xFF8CC6FF);
 			appendWrapped(lines, font, width, "target: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
 			appendWrapped(lines, font, width, "caster: " + formatVec(scene.getCasterPos()), 0xFFFF9A9A);
-			appendWrapped(lines, font, width, "ysm caster: " + scene.describeYsmPreviewCaster(), 0xFFB8E6FF);
 			appendWrapped(lines, font, width,
 					"dist: " + formatDecimal(scene.getTargetDistance()) +
 							"  casterHP: " + Math.round(scene.getHealthRatio() * 100) + "%" +

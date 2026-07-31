@@ -91,6 +91,19 @@ public class ClientDanmakuCache {
 		map.put(sp.getId(), sp);
 	}
 
+	/**
+	 * Snapshot of virtual client danmaku (not in world entity list).
+	 * Used by player auto-dodge pilot threat scan.
+	 */
+	public List<SimplifiedProjectile> snapshot() {
+		if (all.isEmpty()) return List.of();
+		return new ArrayList<>(all);
+	}
+
+	public int size() {
+		return all.size();
+	}
+
 	public void erase(int id, boolean kill) {
 		var e = map.get(id);
 		if (e != null) {

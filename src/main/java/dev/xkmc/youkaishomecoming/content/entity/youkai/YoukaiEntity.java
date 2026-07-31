@@ -16,6 +16,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RestrictData;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.YoukaiDodgePilot;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.events.YoukaiFightEvent;
@@ -83,6 +84,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	public final MoveControl walkCtrl, flyCtrl;
 	public final PathNavigation walkNav, fltNav;
+	private final YoukaiDodgePilot dodgePilot = new YoukaiDodgePilot();
 
 	@SerialClass.SerialField
 	public final YoukaiTargetContainer targets;
@@ -332,6 +334,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 			}
 		}
 		super.aiStep();
+		if (!level().isClientSide()) {
+			dodgePilot.tick(this);
+		}
 	}
 
 	/**

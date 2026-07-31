@@ -100,7 +100,7 @@ public final class YSMCompatConfig {
 	}
 
 	private static void loadBuiltinDefaults() {
-		DEFAULT_BINDINGS.put(YoukaisHomecoming.loc("remilia_scarlet"), RenderBinding.enabled("yh/remilia", DEFAULT_TEXTURE));
+		DEFAULT_BINDINGS.put(YoukaisHomecoming.loc("remilia_scarlet"), RenderBinding.enabled("YH内置/remilia", DEFAULT_TEXTURE));
 	}
 
 	private static void loadBinding(ResourceLocation source, String entityIdText, JsonObject object) {

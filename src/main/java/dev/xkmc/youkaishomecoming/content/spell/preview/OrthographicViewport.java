@@ -14,7 +14,6 @@ import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellComponent;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellRenderState;
 import dev.xkmc.l2serial.util.Wrappers;
-import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
@@ -32,6 +31,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.debug.PilotDebugView;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
@@ -683,11 +683,11 @@ public class OrthographicViewport {
 		renderGrid(poseStack);
 		renderAxes(poseStack);
 
-		renderYsmPreviewCaster(scene, poseStack, buffer, partialTick);
 		renderPreviewCasterSpellCircle(scene, poseStack, buffer, partialTick, previewOrientation);
 
 		// 8. Render markers
 		renderMarkers(poseStack, scene);
+		renderPilotDebug(poseStack, scene);
 
 		// 9. Render all entities
 		// Set highlight index before rendering so renderDanmakuDirect can apply tint
@@ -809,11 +809,11 @@ public class OrthographicViewport {
 		renderGrid(poseStack);
 		renderAxes(poseStack);
 
-		renderYsmPreviewCaster(scene, poseStack, buffer, partialTick);
 		renderPreviewCasterSpellCircle(scene, poseStack, buffer, partialTick, previewOrientation);
 
 		// 12. Render markers
 		renderMarkers(poseStack, scene);
+		renderPilotDebug(poseStack, scene);
 
 		// 13. Render all entities (same fast path as orthographic)
 		dispatcher.setRenderShadow(false);
@@ -855,23 +855,6 @@ public class OrthographicViewport {
 
 		// 18. Restore GUI projection
 		RenderSystem.setProjectionMatrix(savedProjection, com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z);
-	}
-
-	private void renderYsmPreviewCaster(VirtualSpellScene scene, PoseStack poseStack, MultiBufferSource buffer, float partialTick) {
-		if (!scene.isYsmPreviewCasterEnabled()) {
-			return;
-		}
-		var holder = scene.getHolder();
-		holder.syncFakeCasterFacing();
-		var caster = holder.getFakeCaster();
-		double ex = Mth.lerp(partialTick, caster.xOld, caster.getX());
-		double ey = Mth.lerp(partialTick, caster.yOld, caster.getY());
-		double ez = Mth.lerp(partialTick, caster.zOld, caster.getZ());
-		float yaw = Mth.rotLerp(partialTick, caster.yBodyRotO, caster.yBodyRot);
-		poseStack.pushPose();
-		poseStack.translate(ex, ey, ez);
-		YSMClientCompat.renderPreviewCaster(holder, yaw, partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
-		poseStack.popPose();
 	}
 
 	private void renderPreviewCasterSpellCircle(VirtualSpellScene scene, PoseStack poseStack,
@@ -1078,6 +1061,76 @@ public class OrthographicViewport {
 
 		tesselator.end();
 		RenderSystem.lineWidth(1.0f);
+	}
+
+	/**
+	 * Pilot debug overlay: predicted threat trajectories (cyan), self trail (yellow),
+	 * force arrow (magenta), desired velocity (lime), anchor (blue).
+	 */
+	private void renderPilotDebug(PoseStack poseStack, VirtualSpellScene scene) {
+		if (!scene.isPilotEnabled() || !scene.isPilotDebugOverlay()) return;
+		PilotDebugView dbg = scene.getPilotDebugView();
+		if (dbg == null || !dbg.enabled) return;
+
+		var tesselator = Tesselator.getInstance();
+		var builder = tesselator.getBuilder();
+		Matrix4f mat = poseStack.last().pose();
+
+		RenderSystem.setShader(GameRenderer::getPositionColorShader);
+		RenderSystem.enableBlend();
+		RenderSystem.defaultBlendFunc();
+		RenderSystem.lineWidth(2.0f);
+		builder.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+
+		// Threat predicted paths
+		for (var line : dbg.trajectories) {
+			for (int i = 1; i < line.size(); i++) {
+				Vec3 a = line.get(i - 1);
+				Vec3 b = line.get(i);
+				float alpha = 0.35f + 0.5f * (1f - (float) i / line.size());
+				builder.vertex(mat, (float) a.x, (float) a.y, (float) a.z).color(0.3f, 0.9f, 1f, alpha).endVertex();
+				builder.vertex(mat, (float) b.x, (float) b.y, (float) b.z).color(0.3f, 0.9f, 1f, alpha).endVertex();
+			}
+		}
+
+		// Self trail
+		var trail = dbg.selfTrail;
+		for (int i = 1; i < trail.size(); i++) {
+			Vec3 a = trail.get(i - 1);
+			Vec3 b = trail.get(i);
+			float alpha = 0.2f + 0.7f * ((float) i / trail.size());
+			builder.vertex(mat, (float) a.x, (float) a.y, (float) a.z).color(1f, 0.9f, 0.2f, alpha).endVertex();
+			builder.vertex(mat, (float) b.x, (float) b.y, (float) b.z).color(1f, 0.9f, 0.2f, alpha).endVertex();
+		}
+
+		Vec3 feet = dbg.feet;
+		// Desired velocity (lime), scaled for visibility
+		if (dbg.velocity.lengthSqr() > 1e-8) {
+			Vec3 tip = feet.add(dbg.velocity.normalize().scale(Math.max(0.5, dbg.velocity.length() * 8)));
+			line(builder, mat, feet, tip, 0.4f, 1f, 0.3f, 1f);
+		}
+		// Force arrow (magenta)
+		if (dbg.force.lengthSqr() > 1e-8) {
+			Vec3 tip = feet.add(dbg.force.normalize().scale(Math.min(3.0, 0.5 + dbg.force.length() * 4)));
+			line(builder, mat, feet, tip, 1f, 0.2f, 0.9f, 1f);
+		}
+		// Anchor (blue)
+		if (dbg.anchor.distanceToSqr(feet) > 1e-4) {
+			line(builder, mat, feet, dbg.anchor, 0.3f, 0.5f, 1f, 0.5f);
+		}
+		// Search mode: red ring hint at feet
+		if (dbg.searchMode) {
+			drawDiamond(builder, mat, (float) feet.x, (float) feet.y, (float) feet.z, 0.6f, 1f, 0.2f, 0.2f, 0.9f);
+		}
+
+		tesselator.end();
+		RenderSystem.lineWidth(1.0f);
+	}
+
+	private static void line(BufferBuilder builder, Matrix4f mat, Vec3 a, Vec3 b,
+	                         float r, float g, float bl, float al) {
+		builder.vertex(mat, (float) a.x, (float) a.y, (float) a.z).color(r, g, bl, al).endVertex();
+		builder.vertex(mat, (float) b.x, (float) b.y, (float) b.z).color(r, g, bl, al).endVertex();
 	}
 
 	/** Draw a diamond outline in both XY and XZ planes. */

@@ -2,12 +2,29 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.DodgePilot;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotProfile;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotState;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.debug.PilotDebugView;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.BallisticProvider;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.MoverExactProvider;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ObservedMotionProvider;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ThreatProviderRegistry;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.CollisionOracle;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.SelfBoxModel;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatFilters;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatSnapshot;
+import net.minecraft.world.entity.Entity;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import org.slf4j.Logger;
+import com.mojang.logging.LogUtils;
 
 import java.util.Map;
 import java.util.Set;
@@ -27,10 +44,25 @@ public class VirtualSpellScene {
 	private float targetDistance = 10f;
 	private float healthRatio = 1.0f;
 	private Runnable onStateChanged;
-	private boolean ysmPreviewCasterEnabled = false;
 
 	/** Duration of the last tick() call in nanoseconds. */
 	private long lastTickNanos = 0;
+
+	// --- AI pilot (aligned with player AUTO_DODGE amp 0/1/2) ---
+	private static final Logger LOGGER = LogUtils.getLogger();
+	/** 0 = rescue, 1 = assist, 2 = takeover (buff amp mapping). */
+	public static final int PILOT_TIER_RESCUE = 0;
+	public static final int PILOT_TIER_ASSIST = 1;
+	public static final int PILOT_TIER_TAKEOVER = 2;
+	private boolean pilotEnabled = false;
+	private int pilotTier = PILOT_TIER_ASSIST;
+	private int pilotRescueCooldown = 0;
+	private final ThreatProviderRegistry pilotRegistry = new ThreatProviderRegistry();
+	private final ObservedMotionProvider observedProvider = new ObservedMotionProvider();
+	private DodgePilot pilot = new DodgePilot(PilotProfile.ADEPT);
+	private long pilotProfileFingerprint = Long.MIN_VALUE;
+	private long lastPilotNanos = 0;
+	private boolean pilotDebugOverlay = true;
 
 	public static final float[] SPEED_OPTIONS = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f};
 	public static final float[] DISTANCE_OPTIONS = {5f, 10f, 15f, 20f};
@@ -51,6 +83,11 @@ public class VirtualSpellScene {
 			var ds = level.damageSources().mobAttack(holder.getFakeCaster());
 			runtime.hurt(holder, ds, 2.0f);
 		});
+		// Preview providers: T1 exact → T2 ballistic → T3 observation
+		pilotRegistry.register(new MoverExactProvider());
+		pilotRegistry.register(new BallisticProvider());
+		pilotRegistry.register(observedProvider);
+		pilot.debugView().enabled = pilotDebugOverlay;
 	}
 
 	public void tick() {
@@ -84,12 +121,196 @@ public class VirtualSpellScene {
 
 	private void doTick() {
 		holder.setCasterHealth(healthRatio);
+		if (pilotEnabled) {
+			runPilotStep();
+		}
 		runtime.tick(holder);
 		holder.tick();
 		// Safety: auto-pause if entity count exceeds limit
 		if (holder.isSafetyTripped()) {
 			playing = false;
 		}
+	}
+
+	private void runPilotStep() {
+		long t0 = System.nanoTime();
+		refreshPilotProfileIfNeeded();
+		var config = YHModConfig.COMMON;
+		if (pilotRescueCooldown > 0) pilotRescueCooldown--;
+
+		Vec3 feet = holder.getTargetPos();
+		Vec3 curVel = holder.targetVelocity() == null ? Vec3.ZERO : holder.targetVelocity();
+		int horizon = pilot.profile().predictHorizon();
+		int topK = pilot.profile().threatTopK();
+		// Self = preview target; exclude target-owned / zero-damage (caster bullets remain hostile)
+		Entity self = holder.getFakeTarget();
+		java.util.List<Entity> hostile = new java.util.ArrayList<>();
+		for (Entity e : holder.getLocalEntities()) {
+			if (ThreatFilters.isHostileTo(self, e)) hostile.add(e);
+		}
+		ThreatSnapshot snap = ThreatSnapshot.capture(hostile, pilotRegistry, horizon, topK, feet);
+		PilotState state = new PilotState(feet, curVel, SelfBoxModel.previewTarget());
+		state.oracle = CollisionOracle.ALWAYS_FREE;
+		state.anchor = new Vec3(0, feet.y, -targetDistance);
+		double h = config.previewPilotArenaHalf.get();
+		state.arena = new AABB(-h, feet.y - h, -h - targetDistance, h, feet.y + h, h - targetDistance);
+		state.tick = runtime.getTotalTick();
+
+		Vec3 vel = Vec3.ZERO;
+		int tier = Math.max(0, Math.min(2, pilotTier));
+		if (tier == PILOT_TIER_RESCUE) {
+			// I: only move when clearance is critical (buff amp 0)
+			var sc = pilot.scorer().score(snap, state.selfBox, feet, curVel, 0);
+			boolean danger = sc.hardHit() || sc.minClearance() <= config.autoDodgeRescueClearance.get();
+			if (danger && pilotRescueCooldown <= 0) {
+				vel = pilot.tick(snap, state);
+				if (vel.lengthSqr() < 1e-6 && snap.size() > 0) {
+					// Fallback lateral kick
+					var th = snap.threats().get(0);
+					if (th.frames().length > 0) {
+						Vec3 away = feet.subtract(th.frames()[0].position());
+						away = new Vec3(away.x, away.y, away.z);
+						if (away.lengthSqr() > 1e-8) {
+							vel = away.normalize().scale(pilot.profile().highSpeed());
+						}
+					}
+				}
+				pilotRescueCooldown = config.autoDodgeEmergencyCooldown.get();
+			}
+		} else if (tier == PILOT_TIER_ASSIST) {
+			// II: soft APF blend — full pilot output scaled down (buff amp 1)
+			Vec3 full = pilot.tick(snap, state);
+			vel = curVel.scale(config.autoDodgeAssistCurrentWeight.get())
+					.add(full.scale(config.autoDodgeAssistPilotWeight.get()));
+			double cap = config.autoDodgeAssistSpeedCap.get();
+			if (vel.length() > cap) {
+				vel = vel.normalize().scale(cap);
+			}
+		} else {
+			// III: full takeover (buff amp 2)
+			vel = pilot.tick(snap, state);
+		}
+
+		Vec3 next = feet.add(vel);
+		if (state.arena != null) {
+			next = new Vec3(
+					Math.max(state.arena.minX, Math.min(state.arena.maxX, next.x)),
+					Math.max(state.arena.minY, Math.min(state.arena.maxY, next.y)),
+					Math.max(state.arena.minZ, Math.min(state.arena.maxZ, next.z))
+			);
+			vel = next.subtract(feet);
+		}
+		holder.setTargetPosAndVelocity(next, vel);
+		lastPilotNanos = System.nanoTime() - t0;
+	}
+
+	public boolean isPilotEnabled() {
+		return pilotEnabled;
+	}
+
+	public void setPilotEnabled(boolean enabled) {
+		this.pilotEnabled = enabled;
+		if (!enabled) {
+			pilot.reset();
+			pilotRescueCooldown = 0;
+			holder.setTargetVelocity(Vec3.ZERO);
+		}
+	}
+
+	public void togglePilot() {
+		setPilotEnabled(!pilotEnabled);
+	}
+
+	/** 0 = I rescue, 1 = II assist, 2 = III takeover. Enables pilot. */
+	public void setPilotTier(int tier) {
+		this.pilotTier = Math.max(0, Math.min(2, tier));
+		this.pilotEnabled = true;
+		this.pilotRescueCooldown = 0;
+		this.pilotProfileFingerprint = Long.MIN_VALUE;
+		refreshPilotProfileIfNeeded();
+	}
+
+	public int getPilotTier() {
+		return pilotTier;
+	}
+
+	public String getPilotTierLabel() {
+		if (!pilotEnabled) return "AI:OFF";
+		return switch (pilotTier) {
+			case PILOT_TIER_RESCUE -> "AI:I";
+			case PILOT_TIER_ASSIST -> "AI:II";
+			default -> "AI:III";
+		};
+	}
+
+	public String getPilotTierName() {
+		return switch (pilotTier) {
+			case PILOT_TIER_RESCUE -> "I Rescue";
+			case PILOT_TIER_ASSIST -> "II Assist";
+			default -> "III Takeover";
+		};
+	}
+
+	private void refreshPilotProfileIfNeeded() {
+		var config = YHModConfig.COMMON;
+		double high = switch (pilotTier) {
+			case PILOT_TIER_RESCUE -> config.autoDodgeTierIHighSpeed.get();
+			case PILOT_TIER_ASSIST -> config.autoDodgeTierIIHighSpeed.get();
+			default -> config.autoDodgeTierIIIHighSpeed.get();
+		};
+		double low = switch (pilotTier) {
+			case PILOT_TIER_RESCUE -> config.autoDodgeTierILowSpeed.get();
+			case PILOT_TIER_ASSIST -> config.autoDodgeTierIILowSpeed.get();
+			default -> config.autoDodgeTierIIILowSpeed.get();
+		};
+		long fingerprint = pilotTier
+				^ Double.doubleToLongBits(high) * 31
+				^ Double.doubleToLongBits(low) * 37
+				^ ((long) config.autoDodgeThreatTopK.get() << 16)
+				^ config.autoDodgePredictHorizon.get();
+		if (fingerprint == pilotProfileFingerprint) return;
+		pilotProfileFingerprint = fingerprint;
+		PilotProfile base = switch (pilotTier) {
+			case PILOT_TIER_RESCUE -> PilotProfile.NOVICE;
+			case PILOT_TIER_ASSIST -> PilotProfile.ADEPT;
+			default -> PilotProfile.LUNATIC;
+		};
+		setPilotProfile(base.withMotion(high, low,
+				config.autoDodgeThreatTopK.get(), config.autoDodgePredictHorizon.get()));
+	}
+
+	public long getLastPilotNanos() {
+		return lastPilotNanos;
+	}
+
+	public DodgePilot getPilot() {
+		return pilot;
+	}
+
+	public void setPilotProfile(PilotProfile profile) {
+		boolean dbg = pilotDebugOverlay;
+		this.pilot = new DodgePilot(profile);
+		this.pilot.debugView().enabled = dbg;
+	}
+
+	public boolean isPilotDebugOverlay() {
+		return pilotDebugOverlay;
+	}
+
+	public void setPilotDebugOverlay(boolean enabled) {
+		this.pilotDebugOverlay = enabled;
+		pilot.debugView().enabled = enabled;
+		if (!enabled) {
+			pilot.debugView().clear();
+		}
+	}
+
+	public void togglePilotDebugOverlay() {
+		setPilotDebugOverlay(!pilotDebugOverlay);
+	}
+
+	public PilotDebugView getPilotDebugView() {
+		return pilot.debugView();
 	}
 
 	public void play() {
@@ -115,6 +336,9 @@ public class VirtualSpellScene {
 		runtime.reset();
 		holder.clear();
 		holder.clearYsmRenderOverride();
+		pilot.reset();
+		observedProvider.clear();
+		lastPilotNanos = 0;
 		notifyStateChanged();
 	}
 
@@ -173,21 +397,6 @@ public class VirtualSpellScene {
 
 	public void resetCasterPos() {
 		holder.getFakeCaster().setPos(0, 0, 0);
-	}
-
-	public boolean isYsmPreviewCasterEnabled() {
-		return ysmPreviewCasterEnabled;
-	}
-
-	public void setYsmPreviewCasterEnabled(boolean enabled) {
-		this.ysmPreviewCasterEnabled = enabled;
-	}
-
-	public String describeYsmPreviewCaster() {
-		if (!ysmPreviewCasterEnabled) {
-			return "disabled";
-		}
-		return holder.hasYsmRenderOverride() ? holder.describeYsmRenderOverride() : "default yh/remilia";
 	}
 
 	public void resetTargetPos() {

@@ -132,6 +132,15 @@ public class YHEffects {
 	public static final RegistryEntry<MobEffect> BEATEN = genEffect("beaten",
 			() -> new BeatenEffect(MobEffectCategory.NEUTRAL, 0x8B0000),
 			"Severely wounded, forces crawling and reduces max health by half. Duration reduces when healing.");
+
+	/**
+	 * Client auto-dodge pilot. Amplifier: 0 rescue, 1 assist, 2+ takeover.
+	 * Movement is applied on local client only (see AutoDodgeClientHandlers).
+	 */
+	public static final RegistryEntry<MobEffect> AUTO_DODGE = genEffect("auto_dodge",
+			() -> new AutoDodgeEffect(MobEffectCategory.BENEFICIAL, 0x88CCFF),
+			"Automatically dodge projectiles and danmaku. Higher levels assist more aggressively.");
+
 	private static <T extends MobEffect> RegistryEntry<T> genEffect(String name, NonNullSupplier<T> sup, String desc) {
 		return YoukaisHomecoming.REGISTRATE.effect(name, sup, desc).lang(MobEffect::getDescriptionId).register();
 	}

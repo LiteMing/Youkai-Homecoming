@@ -158,6 +158,45 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue exposureCameraCooldown;
 		public final ForgeConfigSpec.BooleanValue exposureDeactivateAfterShot;
 
+		// Shared autonomous dodge — COMMON / youkaishomecoming-common.toml
+		public final ForgeConfigSpec.BooleanValue autoDodgeEnabled;
+		public final ForgeConfigSpec.DoubleValue autoDodgeScanRadius;
+		public final ForgeConfigSpec.IntValue autoDodgeEmergencyCooldown;
+		public final ForgeConfigSpec.DoubleValue autoDodgeRescueClearance;
+		public final ForgeConfigSpec.DoubleValue autoDodgeInputPriority;
+		public final ForgeConfigSpec.DoubleValue autoDodgeAssistPilotWeight;
+		public final ForgeConfigSpec.DoubleValue autoDodgeAssistCurrentWeight;
+		public final ForgeConfigSpec.DoubleValue autoDodgeAssistSpeedCap;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTakeoverMinSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeRescuePulseSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeRescueJump;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIHighSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierILowSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIHighSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIILowSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIIHighSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIILowSpeed;
+		public final ForgeConfigSpec.IntValue autoDodgeThreatTopK;
+		public final ForgeConfigSpec.IntValue autoDodgePredictHorizon;
+		public final ForgeConfigSpec.IntValue autoDodgeDebugLogInterval;
+		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceRadius;
+		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceGain;
+		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceDangerDist;
+		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceSafeDist;
+		public final ForgeConfigSpec.DoubleValue previewPilotArenaHalf;
+		public final ForgeConfigSpec.BooleanValue youkaiAutoDodgeEnabled;
+		public final ForgeConfigSpec.IntValue youkaiAutoDodgeTickInterval;
+		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeScanRadius;
+		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeHighSpeed;
+		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeLowSpeed;
+		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeMaxSpeed;
+		public final ForgeConfigSpec.IntValue youkaiAutoDodgeThreatTopK;
+		public final ForgeConfigSpec.IntValue youkaiAutoDodgePredictHorizon;
+		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeWallClearanceRadius;
+		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeWallClearanceGain;
+		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeWallClearanceDangerDist;
+		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeWallClearanceSafeDist;
+
 		Common(ForgeConfigSpec.Builder builder) {
 			builder.push("spell_market");
 			{
@@ -377,6 +416,96 @@ public class YHModConfig {
 						.defineInRange("exposureCameraCooldown", 40, 0, 600);
 				exposureDeactivateAfterShot = builder.comment("Whether to exit viewfinder after photographing danmaku")
 						.define("exposureDeactivateAfterShot", true);
+			}
+			builder.pop();
+
+			builder.push("auto_dodge");
+			{
+				builder.comment("Autonomous dodge shared by preview, players and live youkai entities.",
+						"Player movement is local-client authoritative; keep client values aligned on multiplayer.");
+				autoDodgeEnabled = builder.comment("Master switch for player auto-dodge buff logic")
+						.define("enabled", true);
+				autoDodgeScanRadius = builder.comment("Threat scan radius in blocks (world projectiles + client danmaku cache)")
+						.defineInRange("scanRadius", 16.0, 4.0, 48.0);
+				autoDodgeEmergencyCooldown = builder.comment("Cooldown ticks after a rescue (tier I) pulse")
+						.defineInRange("emergencyCooldown", 4, 0, 40);
+				autoDodgeRescueClearance = builder.comment("Tier I: only act when min clearance is at or below this")
+						.defineInRange("rescueClearance", 1.25, 0.1, 8.0);
+				autoDodgeInputPriority = builder.comment("Tier II: player input length above this prefers steering over pilot")
+						.defineInRange("inputPriority", 0.25, 0.0, 2.0);
+				autoDodgeAssistPilotWeight = builder.comment("Tier II: blend weight of pilot velocity when idle (0-1)")
+						.defineInRange("assistPilotWeight", 0.65, 0.0, 1.0);
+				autoDodgeAssistCurrentWeight = builder.comment("Tier II: blend weight of current velocity when idle (0-1)")
+						.defineInRange("assistCurrentWeight", 0.35, 0.0, 1.0);
+				autoDodgeAssistSpeedCap = builder.comment("Tier II: max horizontal speed while assisting")
+						.defineInRange("assistSpeedCap", 0.28, 0.05, 1.5);
+				autoDodgeTakeoverMinSpeed = builder.comment("Tier III: boost horizontal speed up to at least this when non-zero")
+						.defineInRange("takeoverMinSpeed", 0.35, 0.05, 1.5);
+				autoDodgeRescuePulseSpeed = builder.comment("Tier I fallback horizontal kick speed")
+						.defineInRange("rescuePulseSpeed", 0.4, 0.05, 1.5);
+				autoDodgeRescueJump = builder.comment("Tier I fallback upward impulse")
+						.defineInRange("rescueJump", 0.2, 0.0, 1.0);
+				autoDodgeTierIHighSpeed = builder.comment("Tier I pilot profile high speed")
+						.defineInRange("tierIHighSpeed", 0.25, 0.05, 2.0);
+				autoDodgeTierILowSpeed = builder.comment("Tier I pilot profile low speed")
+						.defineInRange("tierILowSpeed", 0.12, 0.02, 1.0);
+				autoDodgeTierIIHighSpeed = builder.comment("Tier II pilot profile high speed")
+						.defineInRange("tierIIHighSpeed", 0.35, 0.05, 2.0);
+				autoDodgeTierIILowSpeed = builder.comment("Tier II pilot profile low speed")
+						.defineInRange("tierIILowSpeed", 0.16, 0.02, 1.0);
+				autoDodgeTierIIIHighSpeed = builder.comment("Tier III pilot profile high speed")
+						.defineInRange("tierIIIHighSpeed", 0.45, 0.05, 2.0);
+				autoDodgeTierIIILowSpeed = builder.comment("Tier III pilot profile low speed")
+						.defineInRange("tierIIILowSpeed", 0.2, 0.02, 1.0);
+				autoDodgeThreatTopK = builder.comment("Max threats kept per tick after nearest-sort (Top-K)")
+						.defineInRange("threatTopK", 80, 8, 256);
+				autoDodgePredictHorizon = builder.comment("Prediction horizon in ticks")
+						.defineInRange("predictHorizon", 16, 4, 40);
+				autoDodgeDebugLogInterval = builder.comment("Log [AutoDodge] every N ticks (0 = off; rescue/takeover still log)")
+						.defineInRange("debugLogInterval", 40, 0, 200);
+				autoDodgeWallClearanceRadius = builder.comment(
+								"Soft wall clearance probe radius in blocks (0 = off).",
+								"When safe from bullets, pilot prefers staying this far from solids to keep escape room.")
+						.defineInRange("wallClearanceRadius", 1.5, 0.0, 8.0);
+				autoDodgeWallClearanceGain = builder.comment(
+								"Max soft wall repulsion when fully safe (threat clearance >= wallClearanceSafeDist).",
+								"Does not override necessary bullet dodge; hard collisions still blocked.")
+						.defineInRange("wallClearanceGain", 0.75, 0.0, 10.0);
+				autoDodgeWallClearanceDangerDist = builder.comment(
+								"Threat clearance at or below this → wall force fully off (dodge bullets first).")
+						.defineInRange("wallClearanceDangerDist", 0.85, 0.05, 8.0);
+				autoDodgeWallClearanceSafeDist = builder.comment(
+								"Threat clearance at or above this → full wall force (claim free space).",
+								"Between danger and safe: linear ramp.")
+						.defineInRange("wallClearanceSafeDist", 2.5, 0.1, 16.0);
+				previewPilotArenaHalf = builder.comment("Preview pilot arena half-size in blocks")
+						.defineInRange("previewArenaHalfSize", 12.0, 2.0, 64.0);
+
+				builder.comment("Server-side autonomous dodge for live YoukaiEntity instances.");
+				youkaiAutoDodgeEnabled = builder.comment("Enable the server-side youkai pilot while in combat")
+						.define("youkaiEnabled", true);
+				youkaiAutoDodgeTickInterval = builder.comment("Ticks between full youkai threat scans; the last dodge velocity is held between scans")
+						.defineInRange("youkaiTickInterval", 2, 1, 20);
+				youkaiAutoDodgeScanRadius = builder.comment("Youkai threat scan radius in blocks")
+						.defineInRange("youkaiScanRadius", 16.0, 4.0, 48.0);
+				youkaiAutoDodgeHighSpeed = builder.comment("Youkai pilot high speed")
+						.defineInRange("youkaiHighSpeed", 0.3, 0.05, 2.0);
+				youkaiAutoDodgeLowSpeed = builder.comment("Youkai pilot low speed")
+						.defineInRange("youkaiLowSpeed", 0.14, 0.02, 1.0);
+				youkaiAutoDodgeMaxSpeed = builder.comment("Hard cap for pilot-applied youkai velocity")
+						.defineInRange("youkaiMaxSpeed", 0.5, 0.05, 2.0);
+				youkaiAutoDodgeThreatTopK = builder.comment("Max threats retained per youkai scan")
+						.defineInRange("youkaiThreatTopK", 32, 4, 128);
+				youkaiAutoDodgePredictHorizon = builder.comment("Youkai prediction horizon in ticks")
+						.defineInRange("youkaiPredictHorizon", 8, 2, 30);
+				youkaiAutoDodgeWallClearanceRadius = builder.comment("Youkai soft wall-clearance probe radius (0 = off)")
+						.defineInRange("youkaiWallClearanceRadius", 1.5, 0.0, 8.0);
+				youkaiAutoDodgeWallClearanceGain = builder.comment("Youkai soft wall-repulsion gain")
+						.defineInRange("youkaiWallClearanceGain", 0.75, 0.0, 10.0);
+				youkaiAutoDodgeWallClearanceDangerDist = builder.comment("Youkai threat clearance below which wall bias is disabled")
+						.defineInRange("youkaiWallClearanceDangerDist", 0.85, 0.05, 8.0);
+				youkaiAutoDodgeWallClearanceSafeDist = builder.comment("Youkai threat clearance at which full wall bias is applied")
+						.defineInRange("youkaiWallClearanceSafeDist", 2.5, 0.1, 16.0);
 			}
 			builder.pop();
 		}

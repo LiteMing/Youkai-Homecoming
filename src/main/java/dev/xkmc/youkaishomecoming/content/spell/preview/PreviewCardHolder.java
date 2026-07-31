@@ -65,6 +65,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private float targetHealthRatio = 1.0f;
 	private boolean targetFlying = false;
 	private boolean targetFallFlying = false;
+	/** Real target velocity for aim-lead spells (updated by setTargetPos diff or pilot). */
+	private Vec3 targetVelocity = Vec3.ZERO;
 
 	/** Current action index being executed — set by SpellRuntime during tick, used to tag spawned danmaku. */
 	private int currentSpawningActionIndex = -1;
@@ -239,7 +241,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	@Nullable
 	@Override
 	public Vec3 targetVelocity() {
-		return Vec3.ZERO;
+		return targetVelocity;
+	}
+
+	public void setTargetVelocity(Vec3 velocity) {
+		this.targetVelocity = velocity == null ? Vec3.ZERO : velocity;
 	}
 
 	@Nullable
@@ -362,6 +368,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		pendingEntities.clear();
 		hitEntities.clear();
 		safetyTripped = false;
+		targetVelocity = Vec3.ZERO;
 		clearPreviewSpellCircle();
 	}
 
@@ -371,7 +378,16 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	}
 
 	public void setTargetPos(Vec3 pos) {
+		Vec3 prev = fakeTarget.position();
 		fakeTarget.setPos(pos);
+		// Maintain velocity by finite difference unless explicitly set the same tick by pilot
+		this.targetVelocity = pos.subtract(prev);
+	}
+
+	/** Set position and velocity together (pilot path — avoids double-diff). */
+	public void setTargetPosAndVelocity(Vec3 pos, Vec3 velocity) {
+		fakeTarget.setPos(pos);
+		this.targetVelocity = velocity == null ? Vec3.ZERO : velocity;
 	}
 
 	public Vec3 getTargetPos() {
@@ -752,7 +768,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		@Nullable
 		@Override
 		public Vec3 targetVelocity() {
-			return Vec3.ZERO;
+			return holder.targetVelocity();
 		}
 
 		@Nullable

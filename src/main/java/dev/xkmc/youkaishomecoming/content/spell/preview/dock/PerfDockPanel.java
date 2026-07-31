@@ -104,7 +104,25 @@ public class PerfDockPanel implements DockPanel {
 				? "实体: " + scene.getEntityCount() + "   速度: " + scene.getCurrentSpeed() + "x"
 				: "entities: " + scene.getEntityCount() + "   speed: " + scene.getCurrentSpeed() + "x";
 		graphics.drawString(font, entityText, x + 4, ty, 0xFFAAAACC, false);
-		ty += 16;
+		ty += 12;
+		if (scene.isPilotEnabled()) {
+			double pilotMs = scene.getLastPilotNanos() / 1_000_000.0;
+			var p = scene.getPilot();
+			String mode = p.searchMode() ? "SEARCH" : "APF";
+			String tier = scene.getPilotTierName();
+			String pilotText = SpellEditorLocalization.isChinese()
+					? String.format("AI:%s  %s  %.2fms  clr:%.2f  n:%d", tier, mode, pilotMs, p.lastClearance(), p.lastSearchNodes())
+					: String.format("AI:%s  %s  %.2fms  clr:%.2f  n:%d", tier, mode, pilotMs, p.lastClearance(), p.lastSearchNodes());
+			graphics.drawString(font, pilotText, x + 4, ty, 0xFFFFCC66, false);
+			ty += 12;
+			// Special J: direction flip rate + mode switch rate (rolling ~1s)
+			String jitterText = SpellEditorLocalization.isChinese()
+					? String.format("抖动  翻向:%.1f/s  模式切:%.1f/s", p.flipRatePerSec(), p.modeSwitchRatePerSec())
+					: String.format("jitter  flip:%.1f/s  mode:%.1f/s", p.flipRatePerSec(), p.modeSwitchRatePerSec());
+			graphics.drawString(font, jitterText, x + 4, ty, 0xFFFFAA88, false);
+			ty += 12;
+		}
+		ty += 12;
 
 		// --- Graph ---
 		int graphW = Math.min(SAMPLE_COUNT, w - 8);

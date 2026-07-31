@@ -1,6 +1,5 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
-import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
 import dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder;
@@ -163,6 +162,11 @@ public class ControlsDockPanel implements DockPanel {
 		bx = addButton(bx, row1Y, 40, "\u25B6/\u275A\u275A", btn -> scene.togglePlayPause());
 		bx = addButton(bx, row1Y, 20, "\u25A0", btn -> resetPhaseCallback.run());
 		bx = addButton(bx, row1Y, 20, "\u25B8", btn -> scene.step());
+		bx = addMenuButton(bx, row1Y, 40, scene.getPilotTierLabel(), this::openPilotMenu);
+		bx = addButton(bx, row1Y, 32, scene.isPilotDebugOverlay() ? "Dbg:ON" : "Dbg", btn -> {
+			scene.togglePilotDebugOverlay();
+			rebuildCallback.run();
+		});
 		bx += 8;
 		addSpellControls(bx, row1Y, false);
 
@@ -280,6 +284,31 @@ public class ControlsDockPanel implements DockPanel {
 		openActionMenu(anchor, "Speed", entries);
 	}
 
+	/** AI tier menu — same amp semantics as player AUTO_DODGE buff (0/1/2). */
+	private void openPilotMenu(Button anchor) {
+		List<MenuEntry> entries = new ArrayList<>();
+		boolean off = !scene.isPilotEnabled();
+		entries.add(new MenuEntry((off ? "* " : "") + "OFF", () -> {
+			scene.setPilotEnabled(false);
+			rebuildCallback.run();
+		}, true));
+		String[] labels = {
+				"I  Rescue (amp 0)",
+				"II Assist (amp 1)",
+				"III Takeover (amp 2)"
+		};
+		for (int t = 0; t <= 2; t++) {
+			final int tier = t;
+			boolean sel = scene.isPilotEnabled() && scene.getPilotTier() == tier;
+			String label = (sel ? "* " : "") + labels[t];
+			entries.add(new MenuEntry(label, () -> {
+				scene.setPilotTier(tier);
+				rebuildCallback.run();
+			}, true));
+		}
+		openActionMenu(anchor, "AI Pilot Tier", entries);
+	}
+
 	private void openLimitMenu(Button anchor) {
 		List<MenuEntry> entries = new ArrayList<>();
 		for (int lim : new int[]{10_000, 50_000, 100_000, 500_000}) {
@@ -334,11 +363,6 @@ public class ControlsDockPanel implements DockPanel {
 			viewport.setShowTargetMarker(!viewport.isShowTargetMarker());
 			rebuildCallback.run();
 		}, true));
-		entries.add(new MenuEntry(!YSMClientCompat.isLoaded() ? "YSM Caster: N/A" :
-				scene.isYsmPreviewCasterEnabled() ? "YSM Caster: ON" : "YSM Caster: OFF", () -> {
-			scene.setYsmPreviewCasterEnabled(!scene.isYsmPreviewCasterEnabled());
-			rebuildCallback.run();
-		}, YSMClientCompat.isLoaded()));
 		openActionMenu(anchor, "Markers", entries);
 	}
 

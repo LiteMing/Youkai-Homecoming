@@ -43,6 +43,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -84,6 +85,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public static final int BEATEN_FALLING = 2;
 	public static final int BEATEN_PRONE = 3;
 	public static final int DEFEAT_ANIMATION_TICKS = 20;
+	private static final double BEATEN_FALL_STEP = 0.2D;
 
 	public static AttributeSupplier.Builder createAttributes() {
 		return Monster.createMonsterAttributes()
@@ -675,10 +677,11 @@ public abstract class YoukaiEntity extends PathfinderMob
 				setSwimming(false);
 				setPose(Pose.STANDING);
 				setWalking();
+				setNoGravity(true);
 				boolean landed = getBeatenPhaseTicks() > 1 && onGround();
 				if (!landed) {
-					Vec3 motion = getDeltaMovement();
-					setDeltaMovement(motion.x, Math.min(motion.y, -0.1D), motion.z);
+					move(MoverType.SELF, new Vec3(0, -BEATEN_FALL_STEP, 0));
+					setDeltaMovement(Vec3.ZERO);
 				} else {
 					setDeltaMovement(Vec3.ZERO);
 					setPose(Pose.SWIMMING);

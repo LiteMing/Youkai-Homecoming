@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.compat.touhoulittlemaid;
 
 import com.github.tartaricacid.touhoulittlemaid.TouhouLittleMaid;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.fairy.SmallFairy;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.FairyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
@@ -10,6 +11,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fml.ModList;
@@ -76,7 +78,10 @@ public class TouhouConditionalSpawns {
 			}
 		}
 		e.setPos(pos);
-		e.setTargetAndInitSession(le);
+		e.setTarget(le);
+		if (le instanceof Player player) {
+			GrazeHelper.addSession(player, e);
+		}
 		ReimuEventHandlers.setRandomizedPos(le, e, e.blockPosition, 5);
 		le.level().addFreshEntity(e);
 	}

@@ -164,7 +164,14 @@
 		"grilled_boarchop": "烤野猪肉",
 		"grilled_boarchop_bits": "烤野猪肉丁",
 		"raw_boarchop": "生野猪肉",
-		"raw_boarchop_bits": "生野猪肉丁"
+		"raw_boarchop_bits": "生野猪肉丁",
+		"yinyang-2d_danmaku": "阴阳玉",
+		"talisman_danmaku": "灵符",
+		"kunai_danmaku": "苦无",
+		"scale_danmaku": "鳞弹",
+		"knife_danmaku": "小刀",
+		"moon_danmaku": "月弹",
+		"giant_yinyang_danmaku": "巨大阴阳玉"
 	},
 	"fluid.youkaishomecoming":{
 		"cream": "奶油"
@@ -259,7 +266,10 @@
 					"champagne": "香槟气泡甜白葡萄酒",
 					"red_wine": "经典红葡萄酒",
 					"van_allen": "范艾伦干红葡萄酒",
-					"white_wine": "白桦森林半干白葡萄酒"
+					"white_wine": "白桦森林半干白葡萄酒",
+					"dodge_sake": "闪避酒·救场",
+					"dodge_sake_ii": "闪避酒·辅助",
+					"dodge_sake_iii": "闪避酒·接管"
 				}
 			]
 		},

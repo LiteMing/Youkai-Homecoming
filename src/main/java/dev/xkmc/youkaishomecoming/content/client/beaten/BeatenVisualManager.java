@@ -14,6 +14,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
@@ -63,6 +64,17 @@ public final class BeatenVisualManager {
 		Vec3 origin = youkai.position().add(0, youkai.getBbHeight() * 0.54f, 0);
 		ACTIVE.removeIf(v -> v.entityId == youkai.getId() && v.kind == BeatenVisual.Kind.DEFEAT);
 		add(new BeatenVisual(level, youkai.getId(), origin, scale,
+				level.random.nextFloat() * Mth.TWO_PI, ticks, BeatenVisual.Kind.DEFEAT));
+	}
+
+	/** Player life-shard loss in danmaku combat: same defeat burst at the player. */
+	public static void startPlayerHit(Player player) {
+		if (!(player.level() instanceof ClientLevel level)) return;
+		ensureLevel(level);
+		float scale = Mth.clamp(player.getBbHeight() * 0.72f, 0.85f, 3.2f);
+		Vec3 origin = player.position().add(0, player.getBbHeight() * 0.54f, 0);
+		ACTIVE.removeIf(v -> v.entityId == player.getId() && v.kind == BeatenVisual.Kind.DEFEAT);
+		add(new BeatenVisual(level, player.getId(), origin, scale,
 				level.random.nextFloat() * Mth.TWO_PI, ticks, BeatenVisual.Kind.DEFEAT));
 	}
 

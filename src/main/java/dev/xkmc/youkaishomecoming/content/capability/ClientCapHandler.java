@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.capability;
 
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.TagCodec;
+import dev.xkmc.youkaishomecoming.content.client.beaten.BeatenVisualManager;
 import dev.xkmc.youkaishomecoming.init.registrate.YHSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.particles.DustColorTransitionOptions;
@@ -55,6 +56,7 @@ public class ClientCapHandler {
 		var player = Minecraft.getInstance().player;
 		if (player == null) return;
 		player.playSound(YHSounds.MISS.get(), 0.7f, 1);
+		BeatenVisualManager.startPlayerHit(player);
 	}
 
 }

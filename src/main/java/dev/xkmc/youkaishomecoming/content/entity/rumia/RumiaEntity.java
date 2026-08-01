@@ -262,7 +262,9 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 		return isBlocked() ? FALL.scale(getScale()) : super.getDimensions(pPose);
 	}
 
+	@Override
 	public void onSyncedDataUpdated(EntityDataAccessor<?> pKey) {
+		super.onSyncedDataUpdated(pKey);
 		if (DATA_FLAGS_ID.equals(pKey)) {
 			this.refreshDimensions();
 		}

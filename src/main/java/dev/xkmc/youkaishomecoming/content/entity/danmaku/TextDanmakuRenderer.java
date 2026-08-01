@@ -36,7 +36,7 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		if (entityRenderDispatcher.camera.getEntity() == e.getOwner()) {
 			return YHModConfig.CLIENT.selfDanmakuFading.get();
 		}
-		return GrazeHelper.globalInvulTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
+		return GrazeHelper.globalForbidTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
 	}
 
 	@Override

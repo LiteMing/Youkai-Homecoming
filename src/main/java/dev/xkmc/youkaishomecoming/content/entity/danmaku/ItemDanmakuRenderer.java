@@ -43,7 +43,7 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 			return Math.min((dist - 2) / 12, 1) * fading;
 		}
 		double fading = YHModConfig.CLIENT.farDanmakuFading.get();
-		double global = GrazeHelper.globalInvulTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
+		double global = GrazeHelper.globalForbidTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
 		if (fading == 0) return global;
 		double dist = entityRenderDispatcher.camera.getPosition().distanceTo(e.position());
 		double start = YHModConfig.CLIENT.fadingStart.get();

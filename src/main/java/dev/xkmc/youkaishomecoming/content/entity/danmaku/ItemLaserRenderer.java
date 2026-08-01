@@ -43,7 +43,7 @@ public class ItemLaserRenderer<T extends ItemLaserEntity> extends EntityRenderer
 		if (entityRenderDispatcher.camera.getEntity() == e.getOwner()) {
 			return YHModConfig.CLIENT.selfDanmakuFading.get();
 		}
-		return GrazeHelper.globalInvulTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
+		return GrazeHelper.globalForbidTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
 	}
 
 	@Override

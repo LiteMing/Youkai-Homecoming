@@ -259,6 +259,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		power -= loss;
 		dirty = true;
 		invul = YHModConfig.COMMON.missInvulTime.get();
+		// legacy behaviour: a miss also leaves the player weak for the same duration —
+		// enemy danmaku fades out, own danmaku deals no damage and firing is disabled.
+		// (danmaku losing effect on a miss matches the source-game convention)
+		weak = Math.max(weak, invul);
 		if (player instanceof ServerPlayer sp) {
 			YoukaisHomecoming.HANDLER.toClientPlayer(new GrazeHelper.GrazeToClient().set(1), sp);
 			SpellContainer.clear(sp);

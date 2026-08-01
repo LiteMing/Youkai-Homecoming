@@ -26,6 +26,8 @@ import java.util.List;
 @Mod.EventBusSubscriber
 public class BeatenEffect extends MobEffect {
 
+	private static boolean rebuildingBeaten;
+
 	public BeatenEffect(MobEffectCategory category, int color) {
 		super(category, color);
 		String uuid = MathHelper.getUUIDFromString("beaten").toString();
@@ -99,15 +101,24 @@ public class BeatenEffect extends MobEffect {
 				float healAmount = event.getAmount();
 				int durationReduction = (int) (healAmount * 20);
 				int newDuration = Math.max(0, beatenEffect.getDuration() - durationReduction);
-				if (newDuration <= 0) {
-					player.removeEffect(YHEffects.BEATEN.get());
-				} else {
+			if (newDuration <= 0) {
+				player.removeEffect(YHEffects.BEATEN.get());
+			} else {
+				// rebuild the instance in place: remove+add would fire MobEffectEvent.Remove and
+				// restoreState() would clear the forced pose for one tick, making the player flash
+				// standing up on every heal. The effect data is only flushed to clients once per tick,
+				// so the client never observes the rebuild — only the pose flash must be suppressed.
+				rebuildingBeaten = true;
+				try {
 					player.removeEffect(YHEffects.BEATEN.get());
 					player.addEffect(new MobEffectInstance(
 							YHEffects.BEATEN.get(), newDuration, beatenEffect.getAmplifier(),
 							beatenEffect.isAmbient(), beatenEffect.isVisible(), beatenEffect.showIcon()
 					));
+				} finally {
+					rebuildingBeaten = false;
 				}
+			}
 			}
 			if (player.getHealth() >= 0.5 * player.getMaxHealth() && player.hasEffect(YHEffects.BEATEN.get())) {
 				event.setAmount(0);
@@ -117,7 +128,7 @@ public class BeatenEffect extends MobEffect {
 
 	@SubscribeEvent(priority = EventPriority.LOWEST)
 	public static void onMobEffectRemoved(MobEffectEvent.Remove event) {
-		if (event.getEffect() == YHEffects.BEATEN.get()) {
+		if (event.getEffect() == YHEffects.BEATEN.get() && !rebuildingBeaten) {
 			restoreState(event.getEntity());
 		}
 	}
@@ -125,7 +136,7 @@ public class BeatenEffect extends MobEffect {
 	@SubscribeEvent(priority = EventPriority.LOWEST)
 	public static void onMobEffectExpired(MobEffectEvent.Expired event) {
 		MobEffectInstance effect = event.getEffectInstance();
-		if (effect != null && effect.getEffect() == YHEffects.BEATEN.get()) {
+		if (effect != null && effect.getEffect() == YHEffects.BEATEN.get() && !rebuildingBeaten) {
 			restoreState(event.getEntity());
 		}
 	}

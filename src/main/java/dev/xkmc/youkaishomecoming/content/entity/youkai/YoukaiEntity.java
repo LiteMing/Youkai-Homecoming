@@ -19,6 +19,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.YoukaiDodgePilot;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
+import dev.xkmc.youkaishomecoming.events.YoukaiBeatenPhaseEvent;
 import dev.xkmc.youkaishomecoming.events.YoukaiFightEvent;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
@@ -41,6 +42,7 @@ import net.minecraft.stats.Stats;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MoverType;
@@ -85,6 +87,8 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public static final int BEATEN_FALLING = 2;
 	public static final int BEATEN_PRONE = 3;
 	public static final int DEFEAT_ANIMATION_TICKS = 20;
+	public static final int FALL_ANIMATION_MIN_TICKS = 6;
+	public static final int FALL_SPIN_TICKS = 12;
 	private static final double BEATEN_FALL_STEP = 0.2D;
 
 	public static AttributeSupplier.Builder createAttributes() {
@@ -652,6 +656,15 @@ public abstract class YoukaiEntity extends PathfinderMob
 		return true;
 	}
 
+	@Override
+	public EntityDimensions getDimensions(Pose pose) {
+		if (isBeaten() && getBeatenPhase() == BEATEN_PRONE) {
+			// keep the crawl-sized box the SWIMMING pose used to provide, now that PRONE stays STANDING
+			return EntityDimensions.scalable(0.6F, 0.6F);
+		}
+		return super.getDimensions(pose);
+	}
+
 	public void tickBeatenState() {
 		if (level().isClientSide()) return;
 		clearVanillaDefeatState();
@@ -678,7 +691,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 				setPose(Pose.STANDING);
 				setWalking();
 				setNoGravity(true);
-				boolean landed = getBeatenPhaseTicks() > 1 && onGround();
+				boolean landed = getBeatenPhaseTicks() >= FALL_ANIMATION_MIN_TICKS && onGround();
 				if (!landed) {
 					move(MoverType.SELF, new Vec3(0, -BEATEN_FALL_STEP, 0));
 					setDeltaMovement(Vec3.ZERO);
@@ -691,7 +704,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 			case BEATEN_PRONE -> {
 				setNoGravity(false);
 				setSwimming(false);
-				setPose(Pose.SWIMMING);
+				// STANDING keeps TLM SwimAnimation (which would counter-rotate the prone pose by -90 deg) inactive;
+				// the crawl-sized hitbox is preserved via getDimensions() instead.
+				setPose(Pose.STANDING);
 				setDeltaMovement(Vec3.ZERO);
 			}
 		}
@@ -701,8 +716,16 @@ public abstract class YoukaiEntity extends PathfinderMob
 		return entityData.get(DATA_BEATEN_PHASE);
 	}
 
+	@Override
+	public void onSyncedDataUpdated(EntityDataAccessor<?> accessor) {
+		super.onSyncedDataUpdated(accessor);
+		if (level().isClientSide() && accessor.equals(DATA_BEATEN_PHASE)) {
+			MinecraftForge.EVENT_BUS.post(new YoukaiBeatenPhaseEvent(this, getBeatenPhase()));
+		}
+	}
+
 	public int getBeatenPhaseTicks() {
-		return Math.max(0, tickCount - entityData.get(DATA_BEATEN_PHASE_START));
+		return Math.max(0, (int) level().getGameTime() - entityData.get(DATA_BEATEN_PHASE_START));
 	}
 
 	public boolean isBeaten() {
@@ -712,7 +735,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	private void setBeatenPhase(int phase) {
 		if (entityData.get(DATA_BEATEN_PHASE) == phase) return;
 		entityData.set(DATA_BEATEN_PHASE, phase);
-		entityData.set(DATA_BEATEN_PHASE_START, tickCount);
+		entityData.set(DATA_BEATEN_PHASE_START, (int) level().getGameTime());
 	}
 
 	public void dropDanmakuDefeatLoot(Player winner, DamageSource source) {

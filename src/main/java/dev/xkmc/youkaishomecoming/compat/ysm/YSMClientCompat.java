@@ -121,12 +121,7 @@ public class YSMClientCompat {
 		delegatedRenderDepth++;
 		try {
 			Object result = method.invoke(null, e, request.modelId(), request.textureName(), request.animationHint(), yaw, pTick, pose, buffer, light);
-			boolean rendered = result instanceof Boolean value && value;
-			if (e instanceof YoukaiEntity y && y.isBeaten() && e.tickCount % 3 == 0) {
-				YoukaisHomecoming.LOGGER.info("[YSM-debug] beaten hint={} rendered={} model={} snapshot={}",
-						request.animationHint(), rendered, request.modelId(), getYsmDebugSnapshot(e));
-			}
-			return rendered;
+			return result instanceof Boolean value && value;
 		} catch (IllegalAccessException | InvocationTargetException ex) {
 			unavailable = true;
 			YoukaisHomecoming.LOGGER.warn("Failed to delegate youkai rendering to Yes Steve Model", ex);

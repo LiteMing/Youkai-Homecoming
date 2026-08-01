@@ -646,7 +646,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 		setSprinting(false);
 		setAggressive(false);
 		setNoAi(true);
-		setNoGravity(true);
+		// keep no-gravity off for the whole beaten state: isNoGravity() drives the YSM fly
+		// animation (wing flapping) via ctrl.fly, so leaving it on keeps flapping after landing
+		setNoGravity(false);
 		getNavigation().stop();
 		setDeltaMovement(Vec3.ZERO);
 	}
@@ -669,7 +671,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 			case BEATEN_DEFEAT -> {
 				setSwimming(false);
 				setPose(Pose.STANDING);
-				setNoGravity(true);
+				setNoGravity(false);
 				setDeltaMovement(Vec3.ZERO);
 				if (getBeatenPhaseTicks() >= DEFEAT_ANIMATION_TICKS) {
 					setWalking();
@@ -680,7 +682,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 				setSwimming(false);
 				setPose(Pose.STANDING);
 				setWalking();
-				setNoGravity(true);
+				setNoGravity(false);
 				boolean landed = getBeatenPhaseTicks() >= FALL_ANIMATION_MIN_TICKS && onGround();
 				if (!landed) {
 					move(MoverType.SELF, new Vec3(0, -BEATEN_FALL_STEP, 0));

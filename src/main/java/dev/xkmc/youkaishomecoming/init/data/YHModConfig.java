@@ -36,7 +36,8 @@ public class YHModConfig {
 					.define("laserRenderAdditive", true);
 			laserRenderInverted = builder.translation("config.youkaishomecoming.client.laserRenderInverted")
 					.define("laserRenderInverted", true);
-			laserTransparency = builder.translation("config.youkaishomecoming.client.laserTransparency")
+			laserTransparency = builder.comment("Transparency of laser rendering.")
+					.translation("config.youkaishomecoming.client.laserTransparency")
 					.defineInRange("laserTransparency", 0.5, 0, 1);
 			adaptiveProjectileMesh = builder.comment("Adapt giant sphere and cylinder laser mesh detail to projectile visual size.")
 					.translation("config.youkaishomecoming.client.adaptiveProjectileMesh")
@@ -50,21 +51,29 @@ public class YHModConfig {
 			laserCylinderBaseSegments = builder.comment("Base side count for cylindrical laser rendering when adaptive mesh is enabled.")
 					.translation("config.youkaishomecoming.client.laserCylinderBaseSegments")
 					.defineInRange("laserCylinderBaseSegments", 12, 4, 24);
-			farDanmakuFading = builder.translation("config.youkaishomecoming.client.farDanmakuFading")
+			farDanmakuFading = builder.comment("Fade factor for distant danmaku.")
+					.translation("config.youkaishomecoming.client.farDanmakuFading")
 					.defineInRange("farDanmakuFading", 0.5d, 0, 1);
-			selfDanmakuFading = builder.translation("config.youkaishomecoming.client.selfDanmakuFading")
+			selfDanmakuFading = builder.comment("Fade factor for self danmaku.")
+					.translation("config.youkaishomecoming.client.selfDanmakuFading")
 					.defineInRange("selfDanmakuFading", 0.5d, 0, 1);
-			fadingStart = builder.translation("config.youkaishomecoming.client.fadingStart")
+			fadingStart = builder.comment("Distance where distant danmaku fading begins.")
+					.translation("config.youkaishomecoming.client.fadingStart")
 					.defineInRange("fadingStart", 8d, 0, 128);
-			fadingEnd = builder.translation("config.youkaishomecoming.client.fadingEnd")
+			fadingEnd = builder.comment("Distance where distant danmaku fading completes.")
+					.translation("config.youkaishomecoming.client.fadingEnd")
 					.defineInRange("fadingEnd", 64d, 0, 128);
-			powerInfoXAnchor = builder.translation("config.youkaishomecoming.client.powerInfoXAnchor")
+			powerInfoXAnchor = builder.comment("Horizontal anchor of the power info overlay.")
+					.translation("config.youkaishomecoming.client.powerInfoXAnchor")
 					.defineInRange("powerInfoXAnchor", 1, -1, 1);
-			powerInfoXOffset = builder.translation("config.youkaishomecoming.client.powerInfoXOffset")
+			powerInfoXOffset = builder.comment("Horizontal offset of the power info overlay.")
+					.translation("config.youkaishomecoming.client.powerInfoXOffset")
 					.defineInRange("powerInfoXOffset", -8, -1000, 1000);
-			powerInfoYAnchor = builder.translation("config.youkaishomecoming.client.powerInfoYAnchor")
+			powerInfoYAnchor = builder.comment("Vertical anchor of the power info overlay.")
+					.translation("config.youkaishomecoming.client.powerInfoYAnchor")
 					.defineInRange("powerInfoYAnchor", 0, -1, 1);
-			powerInfoYOffset = builder.translation("config.youkaishomecoming.client.powerInfoYOffset")
+			powerInfoYOffset = builder.comment("Vertical offset of the power info overlay.")
+					.translation("config.youkaishomecoming.client.powerInfoYOffset")
 					.defineInRange("powerInfoYOffset", 0, -1000, 1000);
 
 			builder.translation("config.youkaishomecoming.client.exposure_compat").push("exposure_compat");
@@ -126,6 +135,8 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue playerLaserCooldown;
 		public final ForgeConfigSpec.IntValue playerSpellCooldown;
 		public final ForgeConfigSpec.IntValue playerLaserDuration;
+		public final ForgeConfigSpec.IntValue spellBombCost;
+		public final ForgeConfigSpec.IntValue spellXpCost;
 		public final ForgeConfigSpec.BooleanValue invulFrameForDanmaku;
 		public final ForgeConfigSpec.IntValue danmakuBuffCostTicks;
 
@@ -343,6 +354,12 @@ public class YHModConfig {
 				playerSpellCooldown = builder.comment("Player item cooldown for using spellcard")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerSpellCooldown")
 						.defineInRange("playerSpellCooldown", 40, 5, 1000);
+				spellBombCost = builder.comment("Bomb cost to cast a spellcard inside STG danmaku combat")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellBombCost")
+						.defineInRange("spellBombCost", 1, 0, 20);
+				spellXpCost = builder.comment("XP levels cost to cast a spellcard outside STG danmaku combat")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellXpCost")
+						.defineInRange("spellXpCost", 5, 0, 100);
 				playerLaserDuration = builder.comment("Player laser duration")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerLaserDuration")
 						.defineInRange("playerLaserDuration", 100, 5, 1000);

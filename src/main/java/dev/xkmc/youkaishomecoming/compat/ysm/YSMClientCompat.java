@@ -121,7 +121,12 @@ public class YSMClientCompat {
 		delegatedRenderDepth++;
 		try {
 			Object result = method.invoke(null, e, request.modelId(), request.textureName(), request.animationHint(), yaw, pTick, pose, buffer, light);
-			return result instanceof Boolean value && value;
+			boolean rendered = result instanceof Boolean value && value;
+			if (e instanceof YoukaiEntity y && y.isBeaten() && e.tickCount % 3 == 0) {
+				YoukaisHomecoming.LOGGER.info("[YSM-debug] beaten hint={} rendered={} model={} snapshot={}",
+						request.animationHint(), rendered, request.modelId(), getYsmDebugSnapshot(e));
+			}
+			return rendered;
 		} catch (IllegalAccessException | InvocationTargetException ex) {
 			unavailable = true;
 			YoukaisHomecoming.LOGGER.warn("Failed to delegate youkai rendering to Yes Steve Model", ex);
@@ -387,15 +392,20 @@ public class YSMClientCompat {
 
 	private static String selectAnimation(LivingEntity e, String modelId) {
 		if (e instanceof YoukaiEntity youkai && youkai.isBeaten()) {
+			// Route beaten poses through the special= group: the base-predicate keys
+			// (defeat/falling/climbing) are only consumed when OpenYSM's base controller runs,
+			// which model state machines can replace. The cap controller resolves special=
+			// via resolveSpecialAnimationHint with a + fallback chain, so any model works:
+			// own beaten_* animations first, then ubiquitous generic ones.
 			return switch (youkai.getBeatenPhase()) {
-				case YoukaiEntity.BEATEN_DEFEAT -> "beaten=defeat";
-				case YoukaiEntity.BEATEN_FALLING -> "beaten=falling";
-				case YoukaiEntity.BEATEN_PRONE -> "beaten=prone";
-				default -> "beaten=defeat";
+				case YoukaiEntity.BEATEN_DEFEAT -> "special=beaten_defeat+defeat+death+die+attacked";
+				case YoukaiEntity.BEATEN_FALLING -> "special=beaten_falling+falling+fall+jump+fly";
+				case YoukaiEntity.BEATEN_PRONE -> "special=beaten_prone+prone+climbing+climb+sleep";
+				default -> "special=beaten_defeat+defeat+death+die+attacked";
 			};
 		}
 		if (e.hasEffect(YHEffects.BEATEN.get())) {
-			return "beaten=prone";
+			return "special=beaten_prone+prone+climbing+climb+sleep";
 		}
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;

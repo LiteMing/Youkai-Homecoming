@@ -42,7 +42,6 @@ import net.minecraft.stats.Stats;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MoverType;
@@ -656,15 +655,6 @@ public abstract class YoukaiEntity extends PathfinderMob
 		return true;
 	}
 
-	@Override
-	public EntityDimensions getDimensions(Pose pose) {
-		if (isBeaten() && getBeatenPhase() == BEATEN_PRONE) {
-			// keep the crawl-sized box the SWIMMING pose used to provide, now that PRONE stays STANDING
-			return EntityDimensions.scalable(0.6F, 0.6F);
-		}
-		return super.getDimensions(pose);
-	}
-
 	public void tickBeatenState() {
 		if (level().isClientSide()) return;
 		clearVanillaDefeatState();
@@ -697,7 +687,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 					setDeltaMovement(Vec3.ZERO);
 				} else {
 					setDeltaMovement(Vec3.ZERO);
-					setPose(Pose.SWIMMING);
+					setPose(Pose.STANDING);
 					setBeatenPhase(BEATEN_PRONE);
 				}
 			}

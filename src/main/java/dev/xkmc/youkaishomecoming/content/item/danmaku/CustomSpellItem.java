@@ -85,6 +85,9 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 				consumeAmmo(ammo, toCost, player, true);
 		}
 		if (player instanceof ServerPlayer sp) {
+			if (consume && !SpellItemCost.tryPay(sp)) {
+				return false;
+			}
 			SpellContainer.castSpell(sp, data::createInstance, target);
 			if (cooldown) {
 				player.getCooldowns().addCooldown(this, data.getDuration());
@@ -98,6 +101,7 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 		ISpellFormData<?> data = getData(stack);
 		var item = data.getAmmoCost();
 		list.add(YHLangData.SPELL_COST.get(data.cost(), item.getName(item.getDefaultInstance())));
+		SpellItemCost.appendCostTooltip(list);
 		if (requireTarget) {
 			list.add(YHLangData.SPELL_TARGET.get());
 		}

@@ -31,6 +31,8 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 
 	public static final List<SpellItem> LIST = new ArrayList<>();
 
+	private static final String TAG_SINGLE_USE = "single_use";
+
 	private final Supplier<ItemSpell> spell;
 	private final boolean requireTarget;
 	private final Supplier<Item> pred;
@@ -42,6 +44,18 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 		this.pred = pred;
 		synchronized (LIST) {
 			LIST.add(this);
+		}
+	}
+
+	public static boolean isSingleUse(ItemStack stack) {
+		return stack.hasTag() && stack.getTag().getBoolean(TAG_SINGLE_USE);
+	}
+
+	public static void setSingleUse(ItemStack stack, boolean singleUse) {
+		if (singleUse) {
+			stack.getOrCreateTag().putBoolean(TAG_SINGLE_USE, true);
+		} else if (stack.hasTag()) {
+			stack.getTag().remove(TAG_SINGLE_USE);
 		}
 	}
 
@@ -63,10 +77,8 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 		return InteractionResultHolder.consume(stack);
 	}
 
+	@Override
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
-		ItemStack ammo = !consume ? ItemStack.EMPTY : player.getProjectile(stack);
-		if (consume && ammo.isEmpty())
-			return false;
 		LivingEntity target = RayTraceUtil.serverGetTarget(player);
 		if (target != null) GrazeHelper.addSession(player, target);
 		if (target == null && requireTarget) {
@@ -74,12 +86,16 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 			if (target == null) return false;
 		}
 		if (player instanceof ServerPlayer sp) {
-			if (consume)
-				ammo.shrink(1);
+			if (consume && !SpellItemCost.tryPay(sp)) {
+				return false;
+			}
 			SpellContainer.castSpell(sp, spell, target);
 			if (cooldown) {
 				int cd = YHModConfig.COMMON.playerSpellCooldown.get();
 				sp.getCooldowns().addCooldown(this, cd);
+			}
+			if (isSingleUse(stack)) {
+				stack.shrink(1);
 			}
 		}
 		return true;
@@ -90,7 +106,10 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 		if (GrazeHelper.isManualCombatMode()) {
 			list.add(YHLangData.STG_TOGGLE_TIP.get());
 		}
-		list.add(YHLangData.SPELL_COST.get(1, pred.get().getName(pred.get().getDefaultInstance())));
+		SpellItemCost.appendCostTooltip(list);
+		if (isSingleUse(stack)) {
+			list.add(YHLangData.SPELL_SINGLE_USE.get());
+		}
 		if (requireTarget) {
 			list.add(YHLangData.SPELL_TARGET.get());
 		}

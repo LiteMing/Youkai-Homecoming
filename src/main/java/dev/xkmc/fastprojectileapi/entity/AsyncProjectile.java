@@ -33,6 +33,22 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 
 	@Override
 	public void tick() {
+		prepareParallelTick();
+		tickAfterParallelPreparation();
+	}
+
+	/**
+	 * Captures live state on the game thread before movement may run in parallel.
+	 */
+	public final void prepareParallelTick() {
+		prepareMoveState();
+	}
+
+	protected void prepareMoveState() {
+	}
+
+	/** Runs one projectile tick after {@link #prepareParallelTick()} has completed. */
+	public final void tickAfterParallelPreparation() {
 		TickData data = tickData;
 		data.reset();
 		beginTick(data);

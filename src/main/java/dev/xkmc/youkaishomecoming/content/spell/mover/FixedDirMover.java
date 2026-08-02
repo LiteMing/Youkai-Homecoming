@@ -21,6 +21,11 @@ public class FixedDirMover extends DanmakuMover {
 	}
 
 	@Override
+	public void prepare(MoverOwner owner) {
+		mover.prepare(owner);
+	}
+
+	@Override
 	public ProjectileMovement move(MoverInfo info) {
 		return new ProjectileMovement(mover.move(info).vec(),
 				ProjectileMovement.of(dir).rot());

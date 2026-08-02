@@ -528,6 +528,7 @@ public final class SpellEditorLocalization {
 			Map.entry("formula", "公式"),
 			Map.entry("orbital", "轨道"),
 			Map.entry("translate", "平移"),
+			Map.entry("homing", "追踪"),
 			Map.entry("attached", "附着"),
 			Map.entry("attached_free_rot", "附着自由旋转"),
 			Map.entry("caster_to_target", "施法者到目标"),

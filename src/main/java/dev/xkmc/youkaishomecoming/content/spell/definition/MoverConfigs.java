@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.definition;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.mover.*;
 import net.minecraft.world.phys.Vec3;
@@ -35,6 +36,7 @@ public class MoverConfigs {
 		register("fixed_dir", FixedDirMoverConfig.CODEC, FixedDirMoverConfig.class);
 		register("orbital", OrbitalMoverConfig.CODEC, OrbitalMoverConfig.class);
 		register("translate", TranslateMoverConfig.CODEC, TranslateMoverConfig.class);
+		register("homing", HomingMoverConfig.CODEC, HomingMoverConfig.class);
 	}
 
 	public static void register(String id, Codec<? extends MoverConfig> codec, Class<? extends MoverConfig> clazz) {
@@ -796,6 +798,53 @@ public class MoverConfigs {
 		private static double evalAtCreation(String formula, SpellContext ctx) {
 			var expr = FormulaExpr.parse(bindFormula(formula, ctx));
 			return expr == null ? 0 : expr.eval(0);
+		}
+	}
+
+	/**
+	 * Experimental smooth homing movement toward the holder's live target.
+	 * Speed and turn rate are snapshotted from NumberProviders at projectile creation.
+	 * JSON: {"type":"homing","speed":0.45,"turn_rate":6,"delay":8}
+	 */
+	public record HomingMoverConfig(NumberProvider speed, NumberProvider turnRate, NumberProvider delay) implements MoverConfig {
+		public static final Codec<HomingMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
+				NumberProvider.CODEC.fieldOf("speed").forGetter(HomingMoverConfig::speed),
+				NumberProvider.CODEC.optionalFieldOf("turn_rate", NumberProvider.constant(6)).forGetter(HomingMoverConfig::turnRate),
+				NumberProvider.CODEC.optionalFieldOf("delay", NumberProvider.constant(0)).forGetter(HomingMoverConfig::delay)
+		).apply(i, HomingMoverConfig::new));
+
+		public HomingMoverConfig(double speed, double turnRate, int delay) {
+			this(NumberProvider.constant(speed), NumberProvider.constant(turnRate), NumberProvider.constant(delay));
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
+			Vec3 dir = velocity.lengthSqr() > 1.0e-8 ? velocity.normalize() : new Vec3(0, 0, 1);
+			Vec3 targetPos = origin.add(dir.scale(GrazeHelper.SPELL_TARGET_RANGE));
+			return new HomingMover(velocity, getNumber(speed, null), getNumber(turnRate, null),
+					getTicks(delay, null), null, targetPos);
+		}
+
+		@Override
+		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
+			return new HomingMover(velocity, getNumber(speed, null), getNumber(turnRate, null),
+					getTicks(delay, null), null, targetPos);
+		}
+
+		@Override
+		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection,
+								   Vec3 targetPos, Vec3 casterPos) {
+			return new HomingMover(velocity, getNumber(speed, ctx), getNumber(turnRate, ctx),
+					getTicks(delay, ctx), ctx.holder().targetEntity(), targetPos);
+		}
+
+		@Override
+		public Vec3 resolveTargetPos(SpellContext ctx, Vec3 originPos) {
+			Vec3 target = ctx.holder().target();
+			if (target != null) return target;
+			Vec3 forward = ctx.holder().forward();
+			if (forward.lengthSqr() <= 1.0e-8) forward = new Vec3(0, 0, 1);
+			return originPos.add(forward.normalize().scale(GrazeHelper.SPELL_TARGET_RANGE));
 		}
 	}
 

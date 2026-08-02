@@ -40,6 +40,13 @@ public class LayeredMover extends TargetPosMover {
 	}
 
 	@Override
+	public void prepare(MoverOwner owner) {
+		for (DanmakuMover layer : layers) {
+			layer.prepare(owner);
+		}
+	}
+
+	@Override
 	public Vec3 pos(MoverInfo info) {
 		Vec3 totalOffset = Vec3.ZERO;
 

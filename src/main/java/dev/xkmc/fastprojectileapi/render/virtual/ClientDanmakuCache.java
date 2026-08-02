@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.logging.LogUtils;
+import dev.xkmc.fastprojectileapi.entity.AsyncProjectile;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.fastprojectileapi.render.core.GiantDanmakuScreenOverlay;
@@ -142,6 +143,11 @@ public class ClientDanmakuCache {
 
 		// Snapshot to ArrayList for indexed parallel access
 		List<SimplifiedProjectile> snapshot = new ArrayList<>(all);
+		for (SimplifiedProjectile projectile : snapshot) {
+			if (projectile instanceof AsyncProjectile async) {
+				async.prepareParallelTick();
+			}
+		}
 
 		// Parallel: full tick for each entity
 		try {
@@ -159,7 +165,8 @@ public class ClientDanmakuCache {
 						var e = snapshot.get(i);
 						e.setOldPosAndRot();
 						++e.tickCount;
-						e.tick();
+						if (e instanceof AsyncProjectile async) async.tickAfterParallelPreparation();
+						else e.tick();
 					}
 				});
 			}
@@ -171,7 +178,8 @@ public class ClientDanmakuCache {
 			for (var e : snapshot) {
 				e.setOldPosAndRot();
 				++e.tickCount;
-				e.tick();
+				if (e instanceof AsyncProjectile async) async.tickAfterParallelPreparation();
+				else e.tick();
 			}
 		}
 

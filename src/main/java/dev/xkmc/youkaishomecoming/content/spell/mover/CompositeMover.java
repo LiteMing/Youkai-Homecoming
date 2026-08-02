@@ -33,6 +33,13 @@ public class CompositeMover extends TargetPosMover {
 	}
 
 	@Override
+	public void prepare(MoverOwner owner) {
+		for (Entry entry : list) {
+			entry.mover.prepare(owner);
+		}
+	}
+
+	@Override
 	public Vec3 pos(MoverInfo info) {
 		if (list.isEmpty()) return info.prevPos();
 

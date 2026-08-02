@@ -158,6 +158,11 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	}
 
 	@Override
+	protected void prepareMoveState() {
+		if (mover != null) mover.prepare(this);
+	}
+
+	@Override
 	protected void terminate() {
 		if (afterExpiry == null) return;
 		CardHolder holder = null;

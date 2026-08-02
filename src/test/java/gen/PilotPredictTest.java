@@ -1,5 +1,9 @@
 package gen;
 
+import com.google.gson.JsonParser;
+import com.mojang.serialization.JsonOps;
+import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfig;
+import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfigs;
 import dev.xkmc.youkaishomecoming.content.spell.mover.*;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.*;
 import net.minecraft.world.phys.Vec3;
@@ -28,6 +32,8 @@ public class PilotPredictTest {
 		testZeroMoverPrediction();
 		testRotateMoverPrediction();
 		testTranslateMoverAimPrediction();
+		testHomingMoverSteering();
+		testHomingMoverCodec();
 		testFormulaMoverPrediction();
 		testOrbitalMoverPrediction();
 		testSplineMoverPrediction();
@@ -233,6 +239,46 @@ public class PilotPredictTest {
 		System.out.println();
 	}
 
+	// --- Experimental: smooth homing mover ---
+
+	private static void testHomingMoverSteering() {
+		System.out.println("[HomingMover steering]");
+		var homing = new HomingMover(new Vec3(1, 0, 0), 1, 10, 2,
+				null, new Vec3(0, 0, 20));
+		var delayed = homing.move(new MoverInfo(1, Vec3.ZERO, new Vec3(1, 0, 0), null, null));
+		approx("delay preserves heading", delayed.vec(), new Vec3(1, 0, 0), 1e-8);
+
+		var turned = homing.move(new MoverInfo(3, Vec3.ZERO, delayed.vec(), null, null));
+		double angle = Math.toRadians(10);
+		approx("turn is angle-limited", turned.vec(), new Vec3(Math.cos(angle), 0, Math.sin(angle)), 1e-8);
+		approx("configured speed is preserved", turned.vec().length(), 1, 1e-8);
+
+		var opposite = new HomingMover(new Vec3(1, 0, 0), 0.5, 5, 0,
+				null, new Vec3(-10, 0, 0));
+		var oppositeTurn = opposite.move(new MoverInfo(1, Vec3.ZERO, new Vec3(0.5, 0, 0), null, null));
+		check("opposite target remains finite", Double.isFinite(oppositeTurn.vec().x)
+				&& Double.isFinite(oppositeTurn.vec().y) && Double.isFinite(oppositeTurn.vec().z));
+		approx("opposite turn preserves speed", oppositeTurn.vec().length(), 0.5, 1e-8);
+
+		var fallback = new HomingMover(new Vec3(0, 0, 1), 1, 20, 0,
+				null, new Vec3(0, 0, 10));
+		fallback.move(new MoverInfo(1, Vec3.ZERO, new Vec3(0, 0, 1), null, null));
+		var afterPassing = fallback.move(new MoverInfo(12, new Vec3(0, 0, 11),
+				new Vec3(0, 0, 1), null, null));
+		approx("fixed fallback does not circle back", afterPassing.vec(), new Vec3(0, 0, 1), 1e-8);
+		System.out.println();
+	}
+
+	private static void testHomingMoverCodec() {
+		System.out.println("[HomingMover codec]");
+		var json = JsonParser.parseString("{\"type\":\"homing\",\"speed\":0.45,\"turn_rate\":6,\"delay\":8}");
+		MoverConfig decoded = MoverConfig.CODEC.parse(JsonOps.INSTANCE, json).result().orElse(null);
+		check("homing JSON decodes", decoded instanceof MoverConfigs.HomingMoverConfig);
+		var encoded = decoded == null ? null : MoverConfig.CODEC.encodeStart(JsonOps.INSTANCE, decoded).result().orElse(null);
+		check("homing JSON round-trips", encoded != null && encoded.toString().contains("\"homing\""));
+		System.out.println();
+	}
+
 	// --- T1: FormulaMover ---
 
 	private static void testFormulaMoverPrediction() {
@@ -394,6 +440,9 @@ public class PilotPredictTest {
 		// FixedDirMover / CompositeMover / LayeredMover / Attached* are not TargetPosMover
 		DanmakuMover fixed = new FixedDirMover();
 		check("FixedDirMover not TargetPos", !(fixed instanceof TargetPosMover));
+		DanmakuMover homing = new HomingMover(new Vec3(1, 0, 0), 0.45, 6, 0,
+				null, new Vec3(10, 0, 0));
+		check("HomingMover stays out of exact prediction", !(homing instanceof TargetPosMover));
 		System.out.println();
 	}
 

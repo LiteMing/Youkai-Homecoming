@@ -23,7 +23,7 @@ public final class MoverOverrideResolver {
 
 	private static final Set<String> POSITION_CONTROLLING = Set.of(
 			"polar", "bezier", "multi_bezier", "spline", "formula",
-			"orbital", "translate", "zero"
+			"orbital", "translate", "homing", "zero"
 	);
 
 	private static final Set<String> ATTACHED_TYPES = Set.of(

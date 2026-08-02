@@ -105,6 +105,11 @@ public class TextDanmakuEntity extends YHBaseLaserEntity implements MoverOwner {
 	}
 
 	@Override
+	protected void prepareMoveState() {
+		if (mover != null) mover.prepare(this);
+	}
+
+	@Override
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
 		if (mover != null) {
 			return mover.move(new MoverInfo(tickCount, pos, vec, this, tickData().ownerInfo));

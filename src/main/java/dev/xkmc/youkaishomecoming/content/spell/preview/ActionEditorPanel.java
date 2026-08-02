@@ -1669,7 +1669,7 @@ public class ActionEditorPanel {
 	// --- Shared Origin/Mover row builders ---
 
 	// Top-level mover types (includes "none" for removal and special types like attached)
-	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "translate", "attached", "attached_free_rot", "fixed_dir"};
+	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "translate", "homing", "attached", "attached_free_rot", "fixed_dir"};
 	private static final String[] TRANSLATE_AIM_MODES = {"none", "target", "caster_to_target", "forward", "velocity", "fixed"};
 
 	/**
@@ -2177,6 +2177,25 @@ public class ActionEditorPanel {
 					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim())));
 				}
 			});
+		} else if (cfg instanceof MoverConfigs.HomingMoverConfig homing) {
+			addNumberRow("Speed", homing.speed(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.HomingMoverConfig h) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.HomingMoverConfig(v, h.turnRate(), h.delay())));
+				}
+			});
+			addNumberRow("Turn °/t", homing.turnRate(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.HomingMoverConfig h) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.HomingMoverConfig(h.speed(), v, h.delay())));
+				}
+			});
+			addNumberRow("Delay", homing.delay(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.HomingMoverConfig h) {
+					onParamChanged.accept(Optional.of(new MoverConfigs.HomingMoverConfig(h.speed(), h.turnRate(), v)));
+				}
+			});
 		} else if (cfg instanceof MoverConfigs.AttachedMoverConfig) {
 			// No parameters; show a hint
 			addStringRow("Mode", "Locks pos to owner", v -> {});
@@ -2212,6 +2231,7 @@ public class ActionEditorPanel {
 		if (cfg instanceof MoverConfigs.FormulaMoverConfig) return "formula";
 		if (cfg instanceof MoverConfigs.OrbitalMoverConfig) return "orbital";
 		if (cfg instanceof MoverConfigs.TranslateMoverConfig) return "translate";
+		if (cfg instanceof MoverConfigs.HomingMoverConfig) return "homing";
 		if (cfg instanceof MoverConfigs.AttachedMoverConfig) return "attached";
 		if (cfg instanceof MoverConfigs.AttachedFreeRotMoverConfig) return "attached_free_rot";
 		if (cfg instanceof MoverConfigs.FixedDirMoverConfig) return "fixed_dir";
@@ -2247,6 +2267,7 @@ public class ActionEditorPanel {
 					"0", "3 * sin_rad(tick * 0.15)", "3 * cos_rad(tick * 0.15)", 0.3));
 			case "orbital" -> Optional.of(new MoverConfigs.OrbitalMoverConfig(5.0, "3 * sin_rad(tick * 0.05)", "0"));
 			case "translate" -> Optional.of(new MoverConfigs.TranslateMoverConfig("0", "0", "0", 0.3, "target"));
+			case "homing" -> Optional.of(new MoverConfigs.HomingMoverConfig(0.45, 6.0, 8));
 			case "attached" -> Optional.of(new MoverConfigs.AttachedMoverConfig());
 			case "attached_free_rot" -> Optional.of(new MoverConfigs.AttachedFreeRotMoverConfig());
 			case "fixed_dir" -> Optional.of(new MoverConfigs.FixedDirMoverConfig(new MoverConfigs.ZeroMoverConfig()));

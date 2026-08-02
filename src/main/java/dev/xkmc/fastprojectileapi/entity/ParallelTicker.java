@@ -44,7 +44,15 @@ public class ParallelTicker {
 		MoverInfo.OwnerInfo sharedOwnerInfo = active.isEmpty()
 				? null : active.get(0).snapshotOwnerInfo(active.get(0).getOwner());
 
-		trace.planNanos = runStageAsync(active, shouldStop, (e, data) -> {
+		long prepareStart = System.nanoTime();
+		if (!shouldStop.getAsBoolean()) {
+			for (AsyncProjectile projectile : active) {
+				projectile.prepareParallelTick();
+			}
+		}
+		long prepareNanos = System.nanoTime() - prepareStart;
+
+		trace.planNanos = prepareNanos + runStageAsync(active, shouldStop, (e, data) -> {
 				e.setOldPosAndRot();
 				++e.tickCount;
 				data.reset();

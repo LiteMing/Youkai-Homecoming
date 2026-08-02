@@ -52,8 +52,13 @@ public class BeatenEffect extends MobEffect {
 		if (entity instanceof YoukaiEntity youkai) {
 			youkai.tickBeatenState();
 		} else if (entity instanceof Player player) {
-			player.getAbilities().mayfly = false;
-			player.getAbilities().flying = false;
+			// mayfly is permission owned by the game mode or a flight provider. Clearing it here
+			// outlives the effect and can permanently revoke flight, so only stop active flight.
+			var abilities = player.getAbilities();
+			if (abilities.flying) {
+				abilities.flying = false;
+				player.onUpdateAbilities();
+			}
 			if (player.getHealth() >= 5) {
 				player.setHealth(player.getMaxHealth() / 2);
 			}

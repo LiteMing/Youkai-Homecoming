@@ -18,6 +18,7 @@
 		"effect.EntityMixin",
 		"effect.LivingEntityMixin",
 		"effect.PhantomSpawnerMixin",
+		"effect.PlayerBeatenElytraMixin",
 		"effect.RandomizableContainerBlockEntityMixin",
 		"effect.VillagerMixin"
 	],

@@ -96,24 +96,6 @@ public final class SpellEditorLocalization {
 		if (text.startsWith("Height:")) {
 			return italic + prefix + "高度:" + text.substring("Height:".length());
 		}
-		if (text.startsWith("W:")) {
-			return italic + prefix + "宽:" + text.substring(2);
-		}
-		if (text.startsWith("H:")) {
-			return italic + prefix + "高:" + text.substring(2);
-		}
-		if (text.startsWith("D:")) {
-			return italic + prefix + "深:" + text.substring(2);
-		}
-		if (text.startsWith("BX:")) {
-			return italic + prefix + "方块X:" + text.substring(3);
-		}
-		if (text.startsWith("BY:")) {
-			return italic + prefix + "方块Y:" + text.substring(3);
-		}
-		if (text.startsWith("BZ:")) {
-			return italic + prefix + "方块Z:" + text.substring(3);
-		}
 		if (text.startsWith("THP:")) {
 			return italic + prefix + "目标HP:" + text.substring("THP:".length());
 		}
@@ -425,6 +407,9 @@ public final class SpellEditorLocalization {
 			Map.entry("Z", "Z"),
 			Map.entry("Alpha", "透明度"),
 			Map.entry("Preview", "预览"),
+			Map.entry("Entity Target", "实体目标"),
+			Map.entry("Block Target", "方块目标"),
+			Map.entry("State", "状态"),
 			Map.entry("+Stroke", "+笔画"),
 			Map.entry("-Stroke", "-笔画"),
 			Map.entry("+Item", "+物品"),

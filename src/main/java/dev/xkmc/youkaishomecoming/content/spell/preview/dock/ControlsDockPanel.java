@@ -60,6 +60,7 @@ public class ControlsDockPanel implements DockPanel {
 	private int x, y, w, h;
 	private final List<Button> buttons = new ArrayList<>();
 	private final List<EditBox> editBoxes = new ArrayList<>();
+	private final List<ControlLabel> labels = new ArrayList<>();
 	private Button spellDropdownButton;
 	private Button spellNewButton;
 	private Button spellDeleteButton;
@@ -86,6 +87,8 @@ public class ControlsDockPanel implements DockPanel {
 	private record MenuEntry(String label, Runnable action, boolean active) {}
 
 	private record ActionMenuOverlay(String title, List<MenuEntry> entries) {}
+
+	private record ControlLabel(int x, int y, String text) {}
 
 	public ControlsDockPanel(VirtualSpellScene scene,
 							 OrthographicViewport viewport,
@@ -172,23 +175,19 @@ public class ControlsDockPanel implements DockPanel {
 		bx += 8;
 		addSpellControls(bx, row1Y, false);
 
-		// Row 2: frequently edited numeric state, with presets hidden behind menus.
+		// Row 3: compact preview simulation settings.
 		bx = x + 4;
-		bx = addMenuButton(bx, row2Y, 62, "Speed", this::openSpeedMenu);
+		bx = addLabel(bx, row3Y, 44, "Preview");
+		bx = addMenuButton(bx, row3Y, 62, "Speed", this::openSpeedMenu);
 		int curLimit = PreviewCardHolder.getMaxEntityCount();
 		String limitHint = curLimit >= 1000 ? "Limit:" + (curLimit / 1000) + "k" : "Limit:" + curLimit;
-		bx = addEditBox(bx, row2Y, 52, limitHint, val -> {
+		bx = addEditBox(bx, row3Y, 52, limitHint, val -> {
 			try {
 				String s = val.toLowerCase().replace("k", "000").trim();
 				PreviewCardHolder.setMaxEntityCount(Integer.parseInt(s));
 			} catch (NumberFormatException ignored) {}
 		});
-		bx = addMenuButton(bx, row2Y, 48, "Limit", this::openLimitMenu);
-		bx = addEditBox(bx, row2Y, 46, "Dist:" + (int) scene.getTargetDistance(), val -> {
-			try { scene.setTargetDistance(Float.parseFloat(val)); } catch (NumberFormatException ignored) {}
-		});
-		bx = addMenuButton(bx, row2Y, 42, "Dist", this::openDistanceMenu);
-		bx = addEditBox(bx, row2Y, 46, "HP:" + (int) (scene.getHealthRatio() * 100) + "%", val -> {
+		bx = addEditBox(bx, row3Y, 46, "HP:" + (int) (scene.getHealthRatio() * 100) + "%", val -> {
 			try {
 				String s = val.replace("%", "").trim();
 				float v = Float.parseFloat(s);
@@ -196,32 +195,37 @@ public class ControlsDockPanel implements DockPanel {
 				scene.setHealthRatio(v);
 			} catch (NumberFormatException ignored) {}
 		});
-		addMenuButton(bx, row2Y, 36, "HP", this::openHealthMenu);
+		bx = addMenuButton(bx, row3Y, 48, "Range", this::openRangeMenu);
+		bx = addMenuButton(bx, row3Y, 58, "Markers", this::openMarkerMenu);
+		bx = addMenuButton(bx, row3Y, 44, "Focus", this::openFocusMenu);
+		addMenuButton(bx, row3Y, 48, "Reset", this::openResetPositionMenu);
 
-		// Row 3: Phase selection
+		// Row 2: phase selection.
 		bx = x + 4;
-		bx = addButton(bx, row3Y, 40, "Label:", btn -> {});
-		bx = addButton(bx, row3Y, 16, "<", btn -> cyclePhaseCallback.accept(-1));
-		bx = addTextEditBox(bx, row3Y, 84,
+		bx = addButton(bx, row2Y, 40, "Label:", btn -> {});
+		bx = addButton(bx, row2Y, 16, "<", btn -> cyclePhaseCallback.accept(-1));
+		bx = addTextEditBox(bx, row2Y, 84,
 				currentPhaseNameSupplier.get(),
 				"Display Name", 48,
 				s -> !s.contains("\n") && !s.contains("\r"),
 				renamePhaseCallback);
-		bx = addButton(bx, row3Y, 16, ">", btn -> cyclePhaseCallback.accept(1));
-		bx = addButton(bx, row3Y, 20, "+", btn -> addPhaseCallback.run());
+		bx = addButton(bx, row2Y, 16, ">", btn -> cyclePhaseCallback.accept(1));
+		bx = addButton(bx, row2Y, 20, "+", btn -> addPhaseCallback.run());
 		Button deleteButton = Button.builder(Component.literal("-"), btn -> deletePhaseCallback.run())
-				.bounds(bx, row3Y, 20, BUTTON_HEIGHT).build();
+				.bounds(bx, row2Y, 20, BUTTON_HEIGHT).build();
 		deleteButton.active = canDeletePhaseSupplier.get();
 		buttons.add(deleteButton);
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(deleteButton);
 		}
 
-		// Row 4: Secondary settings menus
+		// Row 4: entity-target simulation state.
 		bx = x + 4;
-		bx = addMenuButton(bx, row4Y, 48, "Range", this::openRangeMenu);
-		bx = addMenuButton(bx, row4Y, 58, "Markers", this::openMarkerMenu);
-		bx = addMenuButton(bx, row4Y, 50, "Target", this::openTargetStateMenu);
+		bx = addLabel(bx, row4Y, 70, "Entity Target");
+		bx = addEditBox(bx, row4Y, 46, "Dist:" + (int) scene.getTargetDistance(), val -> {
+			try { scene.setTargetDistance(Float.parseFloat(val)); } catch (NumberFormatException ignored) {}
+		});
+		bx = addMenuButton(bx, row4Y, 46, "State", this::openTargetStateMenu);
 		bx = addEditBox(bx, row4Y, 48, "THP:" + (int) (scene.getTargetHealthRatio() * 100) + "%", val -> {
 			try {
 				String s = val.replace("%", "").trim();
@@ -231,51 +235,20 @@ public class ControlsDockPanel implements DockPanel {
 				rebuildCallback.run();
 			} catch (NumberFormatException ignored) {}
 		});
-		bx = addMenuButton(bx, row4Y, 40, "THP", this::openTargetHealthMenu);
 		bx = addEditBox(bx, row4Y, 50, "Height:" + (int) scene.getTargetHeight(), val -> {
 			try {
 				scene.setTargetHeight(Double.parseDouble(val));
 				rebuildCallback.run();
 			} catch (NumberFormatException ignored) {}
 		});
-		bx = addMenuButton(bx, row4Y, 48, "Height", this::openTargetHeightMenu);
-		bx = addMenuButton(bx, row4Y, 44, "Focus", this::openFocusMenu);
-		addMenuButton(bx, row4Y, 48, "Reset", this::openResetPositionMenu);
 
-		// Row 5: preview-only block target transform. This state is never serialized into spell JSON.
+		// Row 5: compact preview-only block target transform. This state is never serialized into spell JSON.
 		bx = x + 4;
 		var blockPos = scene.getBlockTargetPos();
 		var boxSize = scene.getTargetBoxSize();
-		bx = addEditBox(bx, row5Y, 52, "BX:" + formatDimension(blockPos.x), val -> {
-			try {
-				scene.setBlockTargetX(Double.parseDouble(val));
-			} catch (NumberFormatException ignored) {}
-		});
-		bx = addEditBox(bx, row5Y, 52, "BY:" + formatDimension(blockPos.y), val -> {
-			try {
-				scene.setBlockTargetY(Double.parseDouble(val));
-			} catch (NumberFormatException ignored) {}
-		});
-		bx = addEditBox(bx, row5Y, 52, "BZ:" + formatDimension(blockPos.z), val -> {
-			try {
-				scene.setBlockTargetZ(Double.parseDouble(val));
-			} catch (NumberFormatException ignored) {}
-		});
-		bx = addEditBox(bx, row5Y, 48, "W:" + formatDimension(boxSize.x), val -> {
-			try {
-				scene.setTargetBoxWidth(Double.parseDouble(val));
-			} catch (NumberFormatException ignored) {}
-		});
-		bx = addEditBox(bx, row5Y, 48, "H:" + formatDimension(boxSize.y), val -> {
-			try {
-				scene.setTargetBoxHeight(Double.parseDouble(val));
-			} catch (NumberFormatException ignored) {}
-		});
-		addEditBox(bx, row5Y, 48, "D:" + formatDimension(boxSize.z), val -> {
-			try {
-				scene.setTargetBoxDepth(Double.parseDouble(val));
-			} catch (NumberFormatException ignored) {}
-		});
+		bx = addLabel(bx, row5Y, 70, "Block Target");
+		bx = addVectorEditBox(bx, row5Y, 170, "XYZ", blockPos, scene::setBlockTargetPos);
+		addVectorEditBox(bx, row5Y, 170, "WHD", boxSize, scene::setTargetBoxSize);
 		applyWidgetVisibility();
 	}
 
@@ -300,6 +273,13 @@ public class ControlsDockPanel implements DockPanel {
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(btn);
 		}
+		return bx + bw + BUTTON_SPACING;
+	}
+
+	private int addLabel(int bx, int by, int bw, String label) {
+		String text = SpellEditorLocalization.t(label);
+		bw = Math.max(bw, Minecraft.getInstance().font.width(text) + 8);
+		labels.add(new ControlLabel(bx + 2, by + 4, text));
 		return bx + bw + BUTTON_SPACING;
 	}
 
@@ -346,38 +326,6 @@ public class ControlsDockPanel implements DockPanel {
 		openActionMenu(anchor, "AI Pilot Tier", entries);
 	}
 
-	private void openLimitMenu(Button anchor) {
-		List<MenuEntry> entries = new ArrayList<>();
-		for (int lim : new int[]{10_000, 50_000, 100_000, 500_000}) {
-			String label = lim >= 1000 ? (lim / 1000) + "k" : String.valueOf(lim);
-			final int fl = lim;
-			entries.add(new MenuEntry(label, () -> {
-				PreviewCardHolder.setMaxEntityCount(fl);
-				rebuildCallback.run();
-			}, true));
-		}
-		openActionMenu(anchor, "Safety Limit", entries);
-	}
-
-	private void openDistanceMenu(Button anchor) {
-		List<MenuEntry> entries = new ArrayList<>();
-		for (float dist : VirtualSpellScene.DISTANCE_OPTIONS) {
-			final float d = dist;
-			entries.add(new MenuEntry(String.valueOf((int) dist), () -> scene.setTargetDistance(d), true));
-		}
-		openActionMenu(anchor, "Distance", entries);
-	}
-
-	private void openHealthMenu(Button anchor) {
-		List<MenuEntry> entries = new ArrayList<>();
-		for (float hp : VirtualSpellScene.HP_OPTIONS) {
-			String label = ((int) (hp * 100)) + "%";
-			final float h = hp;
-			entries.add(new MenuEntry(label, () -> scene.setHealthRatio(h), true));
-		}
-		openActionMenu(anchor, "Caster HP", entries);
-	}
-
 	private void openRangeMenu(Button anchor) {
 		List<MenuEntry> entries = new ArrayList<>();
 		for (int range : new int[]{50, 100, 200, 500}) {
@@ -418,32 +366,6 @@ public class ControlsDockPanel implements DockPanel {
 					rebuildCallback.run();
 				}, true)
 		));
-	}
-
-	private void openTargetHealthMenu(Button anchor) {
-		List<MenuEntry> entries = new ArrayList<>();
-		for (float hp : new float[]{0.25f, 0.5f, 0.75f, 1.0f}) {
-			String label = ((int) (hp * 100)) + "%";
-			final float h = hp;
-			entries.add(new MenuEntry(label, () -> {
-				scene.setTargetHealthRatio(h);
-				rebuildCallback.run();
-			}, true));
-		}
-		openActionMenu(anchor, "Target HP", entries);
-	}
-
-	private void openTargetHeightMenu(Button anchor) {
-		List<MenuEntry> entries = new ArrayList<>();
-		for (double hgt : new double[]{0, 1, 2, 5, 10, 20}) {
-			String label = String.valueOf((int) hgt);
-			final double finalH = hgt;
-			entries.add(new MenuEntry(label, () -> {
-				scene.setTargetHeight(finalH);
-				rebuildCallback.run();
-			}, true));
-		}
-		openActionMenu(anchor, "Target Height", entries);
 	}
 
 	private void openFocusMenu(Button anchor) {
@@ -529,6 +451,28 @@ public class ControlsDockPanel implements DockPanel {
 		return text.replaceAll("0+$", "").replaceAll("\\.$", "");
 	}
 
+	private int addVectorEditBox(int bx, int by, int bw, String label, net.minecraft.world.phys.Vec3 value,
+								 java.util.function.Consumer<net.minecraft.world.phys.Vec3> onSubmit) {
+		String hint = label + ": " + formatDimension(value.x) + ", " + formatDimension(value.y) + ", " + formatDimension(value.z);
+		return addTextEditBox(bx, by, bw, "", hint, 64,
+				s -> s.matches("[0-9eE+.,;\\s\\-]*"),
+				s -> parseVector(s).ifPresent(value3 -> {
+					onSubmit.accept(value3);
+					rebuildCallback.run();
+				}));
+	}
+
+	private static java.util.Optional<net.minecraft.world.phys.Vec3> parseVector(String input) {
+		String[] values = input.trim().split("[,;\\s]+", -1);
+		if (values.length != 3) return java.util.Optional.empty();
+		try {
+			return java.util.Optional.of(new net.minecraft.world.phys.Vec3(
+					Double.parseDouble(values[0]), Double.parseDouble(values[1]), Double.parseDouble(values[2])));
+		} catch (NumberFormatException ignored) {
+			return java.util.Optional.empty();
+		}
+	}
+
 	private int addTextEditBox(int bx, int by, int bw, String value, String hint, int maxLength,
 							   java.util.function.Predicate<String> filter,
 							   java.util.function.Consumer<String> onSubmit) {
@@ -564,6 +508,7 @@ public class ControlsDockPanel implements DockPanel {
 		}
 		buttons.clear();
 		editBoxes.clear();
+		labels.clear();
 		editBoxSubmits.clear();
 		spellDropdownButton = null;
 		spellNewButton = null;
@@ -611,6 +556,9 @@ public class ControlsDockPanel implements DockPanel {
 	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		graphics.fill(x, y, x + w, y + h, 0xCC000000);
 		Font font = Minecraft.getInstance().font;
+		for (ControlLabel label : labels) {
+			graphics.drawString(font, label.text(), label.x(), label.y(), 0xFF8CC6FF, false);
+		}
 		int row1Y = y + 4;
 		if (isDraftMode()) {
 			graphics.drawString(font,

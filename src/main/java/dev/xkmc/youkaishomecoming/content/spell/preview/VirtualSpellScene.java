@@ -456,36 +456,6 @@ public class VirtualSpellScene {
 
 	public void resetBlockTargetPos() { holder.setBlockTargetPos(Vec3.ZERO); }
 
-	public void setBlockTargetX(double x) {
-		Vec3 pos = holder.getBlockTargetPos();
-		holder.setBlockTargetPos(new Vec3(x, pos.y, pos.z));
-	}
-
-	public void setBlockTargetY(double y) {
-		Vec3 pos = holder.getBlockTargetPos();
-		holder.setBlockTargetPos(new Vec3(pos.x, y, pos.z));
-	}
-
-	public void setBlockTargetZ(double z) {
-		Vec3 pos = holder.getBlockTargetPos();
-		holder.setBlockTargetPos(new Vec3(pos.x, pos.y, z));
-	}
-
-	public void setTargetBoxWidth(double width) {
-		Vec3 size = holder.getTargetBoxSize();
-		holder.setTargetBoxSize(new Vec3(width, size.y, size.z));
-	}
-
-	public void setTargetBoxHeight(double height) {
-		Vec3 size = holder.getTargetBoxSize();
-		holder.setTargetBoxSize(new Vec3(size.x, height, size.z));
-	}
-
-	public void setTargetBoxDepth(double depth) {
-		Vec3 size = holder.getTargetBoxSize();
-		holder.setTargetBoxSize(new Vec3(size.x, size.y, depth));
-	}
-
 	public AABB getEntityTargetCollisionBox() { return holder.getEntityTargetCollisionBox(); }
 	public AABB getBlockTargetCollisionBox() { return holder.getBlockTargetCollisionBox(); }
 

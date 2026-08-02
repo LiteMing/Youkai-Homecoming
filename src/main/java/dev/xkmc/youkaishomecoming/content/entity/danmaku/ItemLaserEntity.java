@@ -84,7 +84,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	}
 
 	public void setItem(ItemStack pStack) {
-		stack = pStack;
+		stack = pStack.copyWithCount(1);
 		sizeCache = null;
 		refreshDimensions();
 	}

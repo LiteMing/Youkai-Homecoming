@@ -1,6 +1,6 @@
 package dev.xkmc.youkaishomecoming.mixin.effect;
 
-import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
+import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.world.entity.LivingEntity;
@@ -23,7 +23,7 @@ public abstract class HumanoidModelMixin {
 	@Inject(method = "setupAnim(Lnet/minecraft/world/entity/LivingEntity;FFFFF)V", at = @At("TAIL"))
 	private void youkaishomecoming$fixBeatenLimbs(LivingEntity entity, float limbSwing, float limbSwingAmount,
 			float ageInTicks, float netHeadYaw, float headPitch, CallbackInfo ci) {
-		if (!(entity instanceof Player) || !entity.hasEffect(YHEffects.BEATEN.get())) return;
+		if (!(entity instanceof Player player) || !BeatenEffect.shouldForcePlayerCrawl(player)) return;
 		resetRotation(body);
 		resetRotation(rightArm);
 		resetRotation(leftArm);

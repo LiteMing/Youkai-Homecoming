@@ -5,6 +5,7 @@ import com.mojang.math.Axis;
 import dev.xkmc.l2damagetracker.contents.curios.AttrTooltip;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.CombatProgress;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
@@ -43,7 +44,7 @@ public class ClientEventHandlers {
 			beatenPoseForced = false;
 			return;
 		}
-		if (player.hasEffect(YHEffects.BEATEN.get())) {
+		if (BeatenEffect.shouldForcePlayerCrawl(player)) {
 			player.setForcedPose(Pose.SWIMMING);
 			beatenPoseForced = true;
 		} else if (beatenPoseForced) {

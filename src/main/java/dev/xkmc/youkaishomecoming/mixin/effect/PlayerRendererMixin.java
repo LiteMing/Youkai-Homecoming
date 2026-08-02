@@ -2,7 +2,7 @@ package dev.xkmc.youkaishomecoming.mixin.effect;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
-import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
+import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.entity.player.PlayerRenderer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,7 +19,7 @@ public abstract class PlayerRendererMixin {
 			at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/AbstractClientPlayer;getSwimAmount(F)F")
 	)
 	private float youkaishomecoming$disableBeatenSwimRotation(AbstractClientPlayer player, float partialTick) {
-		return player.hasEffect(YHEffects.BEATEN.get()) ? 0 : player.getSwimAmount(partialTick);
+		return BeatenEffect.shouldForcePlayerCrawl(player) ? 0 : player.getSwimAmount(partialTick);
 	}
 
 	@Inject(
@@ -28,7 +28,7 @@ public abstract class PlayerRendererMixin {
 	)
 	private void youkaishomecoming$applyBeatenPose(AbstractClientPlayer player, PoseStack pose, float ageInTicks,
 			float rotationYaw, float partialTick, CallbackInfo ci) {
-		if (player.hasEffect(YHEffects.BEATEN.get())) {
+		if (BeatenEffect.shouldForcePlayerCrawl(player)) {
 			applyProneRotation(pose);
 		}
 	}

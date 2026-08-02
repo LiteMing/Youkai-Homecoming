@@ -26,12 +26,20 @@ import java.util.List;
 @Mod.EventBusSubscriber
 public class BeatenEffect extends MobEffect {
 
+	/** Players regain normal walking during the final 30 seconds of the effect. */
+	public static final int PLAYER_WALK_GRACE_TICKS = 30 * 20;
+
 	private static boolean rebuildingBeaten;
 
 	public BeatenEffect(MobEffectCategory category, int color) {
 		super(category, color);
 		String uuid = MathHelper.getUUIDFromString("beaten").toString();
 		addAttributeModifier(Attributes.MAX_HEALTH, uuid, -0.5, AttributeModifier.Operation.MULTIPLY_BASE);
+	}
+
+	public static boolean shouldForcePlayerCrawl(Player player) {
+		MobEffectInstance effect = player.getEffect(YHEffects.BEATEN.get());
+		return effect != null && effect.getDuration() >= PLAYER_WALK_GRACE_TICKS;
 	}
 
 	@Override
@@ -51,7 +59,7 @@ public class BeatenEffect extends MobEffect {
 			}
 			player.getCapability(GrazeCapability.CAPABILITY).ifPresent(cap -> cap.setWeak(beatenEffect.getDuration()));
 			player.setSprinting(false);
-			player.setForcedPose(Pose.SWIMMING);
+			player.setForcedPose(shouldForcePlayerCrawl(player) ? Pose.SWIMMING : null);
 		} else if (entity instanceof Mob mob) {
 			mob.getNavigation().stop();
 			mob.setDeltaMovement(0, 0, 0);

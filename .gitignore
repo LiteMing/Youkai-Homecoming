@@ -12,3 +12,6 @@ temp
 
 # Code Mind local runtime
 .codemind/runtime/
+
+# Local dev guidance (not part of the repo)
+AGENTS.md

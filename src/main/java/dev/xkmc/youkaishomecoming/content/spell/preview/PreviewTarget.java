@@ -37,11 +37,13 @@ public final class PreviewTarget {
 	}
 
 	/**
-	 * Returns the first point where a swept center line touches one of the six box faces.
-	 * A segment wholly inside the box does not hit because the preview target has no solid interior.
+	 * Returns the first point where a swept center line enters through one of the six box faces.
+	 * Sweeps starting inside are ignored so the default box at the caster origin does not consume
+	 * newly spawned projectiles as they leave it.
 	 */
 	public static Optional<Vec3> firstSurfaceIntersection(AABB box, Vec3 from, Vec3 to) {
 		if (isOnSurface(box, from)) return Optional.of(from);
+		if (box.contains(from)) return Optional.empty();
 		Vec3 delta = to.subtract(from);
 		double bestT = Double.POSITIVE_INFINITY;
 

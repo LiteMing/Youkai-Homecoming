@@ -350,15 +350,21 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		java.util.Optional<Vec3> hit;
 		if (projectile instanceof YHBaseLaserEntity laser) {
 			if (!laser.checkEntityHit()) return java.util.Optional.empty();
+			if (type == PreviewTarget.HitType.ENTITY) {
+				targetBox = targetBox.inflate(laser.getEffectiveHitRadius());
+			}
 			from = laser.position().add(0, laser.getBbHeight() / 2, 0);
 			to = from.add(laser.getForward().scale(laser.effectiveLength(0)));
 			hit = type == PreviewTarget.HitType.BLOCK
 					? PreviewTarget.firstSurfaceIntersection(targetBox, from, to)
 					: PreviewTarget.firstVolumeIntersection(targetBox, from, to);
 		} else {
-			double halfHeight = projectile.getBbHeight() * 0.5;
-			from = new Vec3(projectile.xOld, projectile.yOld + halfHeight, projectile.zOld);
-			to = projectile.position().add(0, halfHeight, 0);
+			if (type == PreviewTarget.HitType.ENTITY) {
+				targetBox = targetBox.inflate(projectile.getBbWidth() * 0.5);
+			}
+			// BaseProjectile sweeps from position(), while lasers use their vertical center line.
+			from = new Vec3(projectile.xOld, projectile.yOld, projectile.zOld);
+			to = projectile.position();
 			if (type == PreviewTarget.HitType.BLOCK) {
 				hit = PreviewTarget.firstSurfaceIntersection(targetBox, from, to);
 			} else {

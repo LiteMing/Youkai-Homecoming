@@ -24,6 +24,7 @@ public class ViewportDockPanel implements DockPanel {
 
 	// 正交模式下的交互状态
 	private boolean movingTarget = false;
+	private boolean movingBlockTarget = false;
 	private boolean movingCaster = false;
 	private boolean dragging = false;  // 中键平移
 	private boolean rotating = false;  // 右键旋转
@@ -146,7 +147,7 @@ public class ViewportDockPanel implements DockPanel {
 			l2 = "R rotate · RMB orbit · MMB pan · wheel zoom";
 			c2 = 0xFF99CCAA;
 		} else {
-			l1 = "LMB select bullet · drag caster/target marker to move";
+			l1 = "LMB select bullet · drag caster/entity/block target";
 			c1 = 0xFFCCCCCC;
 			l2 = "RMB orbit · MMB pan · wheel zoom";
 			c2 = 0xFFAAAAAA;
@@ -182,7 +183,12 @@ public class ViewportDockPanel implements DockPanel {
 		}
 		if (hm == 1) {
 			markerRing(graphics, scene.getHolder().getFakeTarget().position(), 7, 0xFFFFEE55);
-			graphics.drawString(font, SpellEditorLocalization.t("Target — drag to move"), mouseX + 8, mouseY - 4, 0xFFFFEE77, true);
+			graphics.drawString(font, SpellEditorLocalization.t("Entity Target — drag to move"), mouseX + 8, mouseY - 4, 0xFFFFEE77, true);
+			return;
+		}
+		if (hm == 2) {
+			markerRing(graphics, scene.getBlockTargetHandlePos(), 7, 0xFF55CCFF);
+			graphics.drawString(font, SpellEditorLocalization.t("Block Target — drag to move"), mouseX + 8, mouseY - 4, 0xFF77DDFF, true);
 			return;
 		}
 		ItemDanmakuEntity d = pickDanmaku(mouseX, mouseY);
@@ -202,6 +208,7 @@ public class ViewportDockPanel implements DockPanel {
 		if (magicCircleItemRotating) return "Rotating item layer";
 		if (movingCaster) return "Moving Caster";
 		if (movingTarget) return "Moving Target";
+		if (movingBlockTarget) return "Moving Block Target";
 		if (groupDragging) return "Moving origin";
 		if (groupRotating) return "Rotating " + axisName(rotateAxis);
 		if (rotating || viewport.isPerspectiveOrbiting()) return "Orbit view";
@@ -369,6 +376,10 @@ public class ViewportDockPanel implements DockPanel {
 					movingTarget = true;
 					return true;
 				}
+				if (hitMarker == 2) {
+					movingBlockTarget = true;
+					return true;
+				}
 
 				// Click a danmaku: select its action. If it is already the selected action,
 				// begin an origin drag instead (grab the bullets and drag to move the origin).
@@ -438,6 +449,11 @@ public class ViewportDockPanel implements DockPanel {
 			scene.moveTarget(delta);
 			return true;
 		}
+		if (movingBlockTarget) {
+			var delta = viewport.screenDeltaToWorldDelta((float) deltaX, (float) deltaY);
+			scene.moveBlockTarget(delta);
+			return true;
+		}
 		if (movingCaster) {
 			var delta = viewport.screenDeltaToWorldDelta((float) deltaX, (float) deltaY);
 			scene.moveCaster(delta);
@@ -501,6 +517,10 @@ public class ViewportDockPanel implements DockPanel {
 		}
 		if (movingTarget && button == 0) {
 			movingTarget = false;
+			return true;
+		}
+		if (movingBlockTarget && button == 0) {
+			movingBlockTarget = false;
 			return true;
 		}
 		if (movingCaster && button == 0) {
@@ -653,7 +673,7 @@ public class ViewportDockPanel implements DockPanel {
 
 	/**
 	 * Hit-test: detect caster/target marker under the given screen coordinates.
-	 * Returns 0 = caster, 1 = target, -1 = none. Markers are skipped when their
+	 * Returns 0 = caster, 1 = entity target, 2 = block target, -1 = none.
 	 * visibility toggle is off in OrthographicViewport. Perspective mode is unsupported.
 	 */
 	private int hitTestMarker(double screenX, double screenY) {
@@ -681,6 +701,14 @@ public class ViewportDockPanel implements DockPanel {
 			if (distSq <= bestDistSq) {
 				bestDistSq = distSq;
 				bestKind = 1;
+			}
+			Vec3 bp = scene.getBlockTargetHandlePos();
+			sp = viewport.worldToScreen(bp);
+			dx = sp.x - screenX;
+			dy = sp.y - screenY;
+			distSq = dx * dx + dy * dy;
+			if (distSq <= bestDistSq) {
+				bestKind = 2;
 			}
 		}
 		return bestKind;

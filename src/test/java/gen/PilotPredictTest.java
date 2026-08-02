@@ -6,6 +6,8 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfigs;
 import dev.xkmc.youkaishomecoming.content.spell.mover.*;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.*;
+import dev.xkmc.youkaishomecoming.content.spell.preview.PreviewTarget;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -34,6 +36,7 @@ public class PilotPredictTest {
 		testTranslateMoverAimPrediction();
 		testHomingMoverSteering();
 		testHomingMoverCodec();
+		testPreviewTargetSurface();
 		testFormulaMoverPrediction();
 		testOrbitalMoverPrediction();
 		testSplineMoverPrediction();
@@ -236,6 +239,37 @@ public class PilotPredictTest {
 			Vec3 actual = translate.pos(t);
 			approx("t=" + t, actual, expected, 1e-8);
 		}
+		System.out.println();
+	}
+
+	private static void testPreviewTargetSurface() {
+		System.out.println("[Preview target surface]");
+		AABB box = PreviewTarget.boxAt(Vec3.ZERO, new Vec3(2, 4, 6));
+		approx("box width", box.getXsize(), 2, 1e-8);
+		approx("box height", box.getYsize(), 4, 1e-8);
+		approx("box depth", box.getZsize(), 6, 1e-8);
+		check("outside segment crosses face", PreviewTarget.firstSurfaceIntersection(
+				box, new Vec3(-2, 2, 0), new Vec3(2, 2, 0)).isPresent());
+		check("outside segment misses", PreviewTarget.firstSurfaceIntersection(
+				box, new Vec3(-2, 5, 0), new Vec3(2, 5, 0)).isEmpty());
+		check("inside segment does not hit volume", PreviewTarget.firstSurfaceIntersection(
+				box, new Vec3(0, 1, 0), new Vec3(0.5, 2, 0.5)).isEmpty());
+		check("inside segment hits exit face", PreviewTarget.firstSurfaceIntersection(
+				box, new Vec3(0, 2, 0), new Vec3(2, 2, 0)).isPresent());
+		check("surface start counts as face hit", PreviewTarget.firstSurfaceIntersection(
+				box, new Vec3(-1, 2, 0), new Vec3(0, 2, 0)).isPresent());
+		check("surface-parallel segment counts as face hit", PreviewTarget.firstSurfaceIntersection(
+				box, new Vec3(-1, 2, 0), new Vec3(-1, 3, 0)).isPresent());
+		check("entity volume counts an inside segment", PreviewTarget.firstVolumeIntersection(
+				box, new Vec3(0, 1, 0), new Vec3(0.5, 2, 0.5)).isPresent());
+		Vec3 sweepStart = new Vec3(0, 0.5, 0);
+		Vec3 sweepEnd = new Vec3(0, 0.5, -10);
+		Vec3 entityHit = PreviewTarget.firstVolumeIntersection(
+				PreviewTarget.boxAt(new Vec3(0, 0, -3), PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).orElseThrow();
+		Vec3 blockHit = PreviewTarget.firstSurfaceIntersection(
+				PreviewTarget.boxAt(new Vec3(0, 0, -7), PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).orElseThrow();
+		check("nearest target hit can be selected by sweep distance",
+				sweepStart.distanceToSqr(entityHit) < sweepStart.distanceToSqr(blockHit));
 		System.out.println();
 	}
 

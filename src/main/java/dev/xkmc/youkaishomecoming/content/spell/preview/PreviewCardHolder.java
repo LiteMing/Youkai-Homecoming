@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
@@ -26,6 +27,7 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -51,20 +53,23 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	/** Whether the safety limit has been tripped. */
 	private boolean safetyTripped = false;
 	private final RandomSource random = RandomSource.create();
-	/** Callback invoked when a danmaku hits the target AABB */
+	/** Callback invoked when a danmaku uses entity-hit semantics on the preview target. */
 	private Runnable onTargetHit = null;
 	/** Callback invoked when the preview runtime should switch to another spell definition. */
 	private BiConsumer<SpellDefinition, Boolean> onSpellSwitch = null;
 	/** Callback invoked when the preview runtime should switch to another phase. */
 	private BiConsumer<ResourceLocation, Boolean> onPhaseSwitch = null;
-	/** Set of entity IDs that have already hit the target (prevent double-counting) */
-	private final java.util.Set<Integer> hitEntities = new java.util.HashSet<>();
+	/** Per-target hit history prevents a persistent projectile from firing the same callback every tick. */
+	private final java.util.Set<Integer> entityHitProjectiles = new java.util.HashSet<>();
+	private final java.util.Set<Integer> blockHitProjectiles = new java.util.HashSet<>();
 
 	// Simulated target properties for preview
 	private boolean targetOnGround = true;
 	private float targetHealthRatio = 1.0f;
 	private boolean targetFlying = false;
 	private boolean targetFallFlying = false;
+	private Vec3 blockTargetPos = Vec3.ZERO;
+	private Vec3 targetBoxSize = PreviewTarget.DEFAULT_BOX_SIZE;
 	/** Real target velocity for aim-lead spells (updated by setTargetPos diff or pilot). */
 	private Vec3 targetVelocity = Vec3.ZERO;
 
@@ -102,7 +107,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	@Override
 	public Vec3 forward() {
 		Vec3 t = target();
-		if (t == null) return new Vec3(0, 0, 1);
+		if (t == null) return new Vec3(0, 0, -1);
 		return t.subtract(center()).normalize();
 	}
 
@@ -174,7 +179,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				}
 			}
 		};
-		shooter.setup(fakeCaster, fakeTarget, data, spell);
+		shooter.setup(fakeCaster, targetEntity(), data, spell);
 		return shooter;
 	}
 
@@ -310,21 +315,85 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			pendingEntities.clear();
 		}
 		ticking = false;
-		// Check collision with target bounding box for hit counting.
-		// Direct scan: spatial hash was a net negative for single-target scenarios
-		// (insert overhead 4.35% vs query savings 0.03% per spark profiling).
-		if (onTargetHit != null) {
-			var targetBB = fakeTarget.getBoundingBox().inflate(0.3); // slightly larger for forgiving hits
-			for (int i = 0, size = localEntities.size(); i < size; i++) {
-				Entity e = localEntities.get(i);
-				if (e instanceof SimplifiedProjectile && !hitEntities.contains(e.getId())) {
-					if (targetBB.contains(e.position()) || targetBB.intersects(e.getBoundingBox())) {
-						hitEntities.add(e.getId());
-						onTargetHit.run();
-					}
-				}
+		detectTargetHits();
+	}
+
+	private void detectTargetHits() {
+		for (int i = 0, size = localEntities.size(); i < size; i++) {
+			Entity entity = localEntities.get(i);
+			if (!(entity instanceof SimplifiedProjectile projectile) || projectile.tickCount <= 0) continue;
+			List<PreviewHit> hits = new ArrayList<>(2);
+			int id = entity.getId();
+			if (!entityHitProjectiles.contains(id)) {
+				findTargetHit(projectile, getEntityTargetCollisionBox(), PreviewTarget.HitType.ENTITY)
+						.ifPresent(hits::add);
+			}
+			if (!blockHitProjectiles.contains(id)) {
+				findTargetHit(projectile, getBlockTargetCollisionBox(), PreviewTarget.HitType.BLOCK)
+						.ifPresent(hits::add);
+			}
+			hits.sort(java.util.Comparator.comparingDouble(PreviewHit::distanceSqr));
+			for (PreviewHit hit : hits) {
+				if (!projectile.isValid()) break;
+				if (hit.type() == PreviewTarget.HitType.ENTITY) entityHitProjectiles.add(id);
+				else blockHitProjectiles.add(id);
+				handlePreviewTargetHit(projectile, hit);
 			}
 		}
+		localEntities.removeIf(entity -> entity instanceof SimplifiedProjectile projectile && !projectile.isValid());
+	}
+
+	private java.util.Optional<PreviewHit> findTargetHit(SimplifiedProjectile projectile, AABB targetBox,
+												 PreviewTarget.HitType type) {
+		Vec3 from;
+		Vec3 to;
+		java.util.Optional<Vec3> hit;
+		if (projectile instanceof YHBaseLaserEntity laser) {
+			if (!laser.checkEntityHit()) return java.util.Optional.empty();
+			from = laser.position().add(0, laser.getBbHeight() / 2, 0);
+			to = from.add(laser.getForward().scale(laser.effectiveLength(0)));
+			hit = type == PreviewTarget.HitType.BLOCK
+					? PreviewTarget.firstSurfaceIntersection(targetBox, from, to)
+					: PreviewTarget.firstVolumeIntersection(targetBox, from, to);
+		} else {
+			double halfHeight = projectile.getBbHeight() * 0.5;
+			from = new Vec3(projectile.xOld, projectile.yOld + halfHeight, projectile.zOld);
+			to = projectile.position().add(0, halfHeight, 0);
+			if (type == PreviewTarget.HitType.BLOCK) {
+				hit = PreviewTarget.firstSurfaceIntersection(targetBox, from, to);
+			} else {
+				hit = PreviewTarget.firstVolumeIntersection(targetBox, from, to);
+			}
+		}
+		return hit.map(pos -> new PreviewHit(type, pos, from.distanceToSqr(pos)));
+	}
+
+	private void handlePreviewTargetHit(SimplifiedProjectile projectile, PreviewHit hit) {
+		if (hit.type() == PreviewTarget.HitType.ENTITY && onTargetHit != null) {
+			onTargetHit.run();
+		}
+		if (!(projectile instanceof ItemDanmakuEntity danmaku)) return;
+		var hitAction = hit.type() == PreviewTarget.HitType.ENTITY
+				? danmaku.onHitEntityAction : danmaku.onHitBlockAction;
+		if (hitAction != null) {
+			hitAction.execute(this, hit.position(), danmaku.getDeltaMovement());
+		}
+		var behavior = hit.type() == PreviewTarget.HitType.ENTITY
+				? danmaku.hitBehaviorEntity : danmaku.hitBehaviorBlock;
+		switch (behavior) {
+			case CONTINUE -> {
+			}
+			case DISCARD -> danmaku.markErased(false);
+			case EXPIRE -> {
+				if (danmaku.afterExpiry != null) {
+					danmaku.afterExpiry.execute(this, hit.position(), danmaku.getDeltaMovement());
+				}
+				danmaku.markErased(false);
+			}
+		}
+	}
+
+	private record PreviewHit(PreviewTarget.HitType type, Vec3 position, double distanceSqr) {
 	}
 
 	private boolean tickShooter(ShooterEntity shooter) {
@@ -366,7 +435,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	public void clear() {
 		localEntities.clear();
 		pendingEntities.clear();
-		hitEntities.clear();
+		entityHitProjectiles.clear();
+		blockHitProjectiles.clear();
 		safetyTripped = false;
 		targetVelocity = Vec3.ZERO;
 		clearPreviewSpellCircle();
@@ -392,6 +462,14 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	public Vec3 getTargetPos() {
 		return fakeTarget.position();
+	}
+
+	public AABB getEntityTargetCollisionBox() {
+		return fakeTarget.getBoundingBox().inflate(0.3);
+	}
+
+	public AABB getBlockTargetCollisionBox() {
+		return PreviewTarget.boxAt(blockTargetPos, targetBoxSize);
 	}
 
 	public void setCasterHealth(float ratio) {
@@ -655,6 +733,18 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	public void setTargetFallFlying(boolean fallFlying) { this.targetFallFlying = fallFlying; }
 	public boolean isTargetFallFlying() { return targetFallFlying; }
+
+	public void setBlockTargetPos(Vec3 pos) {
+		blockTargetPos = pos == null ? Vec3.ZERO : pos;
+		blockHitProjectiles.clear();
+	}
+	public Vec3 getBlockTargetPos() { return blockTargetPos; }
+
+	public void setTargetBoxSize(Vec3 size) {
+		targetBoxSize = PreviewTarget.sanitizeSize(size);
+		blockHitProjectiles.clear();
+	}
+	public Vec3 getTargetBoxSize() { return targetBoxSize; }
 
 	public void setOnTargetHit(Runnable callback) { this.onTargetHit = callback; }
 	public void setOnSpellSwitch(BiConsumer<SpellDefinition, Boolean> callback) { this.onSpellSwitch = callback; }

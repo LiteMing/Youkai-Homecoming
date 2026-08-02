@@ -96,6 +96,24 @@ public final class SpellEditorLocalization {
 		if (text.startsWith("Height:")) {
 			return italic + prefix + "高度:" + text.substring("Height:".length());
 		}
+		if (text.startsWith("W:")) {
+			return italic + prefix + "宽:" + text.substring(2);
+		}
+		if (text.startsWith("H:")) {
+			return italic + prefix + "高:" + text.substring(2);
+		}
+		if (text.startsWith("D:")) {
+			return italic + prefix + "深:" + text.substring(2);
+		}
+		if (text.startsWith("BX:")) {
+			return italic + prefix + "方块X:" + text.substring(3);
+		}
+		if (text.startsWith("BY:")) {
+			return italic + prefix + "方块Y:" + text.substring(3);
+		}
+		if (text.startsWith("BZ:")) {
+			return italic + prefix + "方块Z:" + text.substring(3);
+		}
 		if (text.startsWith("THP:")) {
 			return italic + prefix + "目标HP:" + text.substring("THP:".length());
 		}
@@ -580,6 +598,7 @@ public final class SpellEditorLocalization {
 			Map.entry("Caster", "施法者"),
 			Map.entry("Reset Position", "重置位置"),
 			Map.entry("Target Position", "目标位置"),
+			Map.entry("Block Target Position", "方块目标位置"),
 			Map.entry("Caster Position", "施法者位置"),
 			Map.entry("Range", "范围"),
 			Map.entry("Limit", "上限"),
@@ -601,20 +620,22 @@ public final class SpellEditorLocalization {
 			Map.entry("X/Y/Z axis · Esc/R exit · RMB orbit", "X/Y/Z 轴 · Esc/R 退出 · 右键环绕"),
 			Map.entry("SELECTED  LMB drag bullets: move origin · LMB empty: deselect", "已选中  左键拖弹幕: 移动原点 · 左键空白: 取消选择"),
 			Map.entry("R rotate · RMB orbit · MMB pan · wheel zoom", "R 旋转 · 右键环绕 · 中键平移 · 滚轮缩放"),
-			Map.entry("LMB select bullet · drag caster/target marker to move", "左键选择弹幕 · 拖拽施法者/目标标记来移动"),
+			Map.entry("LMB select bullet · drag caster/entity/block target", "左键选择弹幕 · 拖拽施法者/实体目标/方块目标"),
 			Map.entry("RMB orbit · MMB pan · wheel zoom", "右键环绕 · 中键平移 · 滚轮缩放"),
 			Map.entry("Magic Circle  LMB drag item: move / RMB drag item: rotate", "魔法阵  左键拖物品: 移动 / 右键拖物品: 旋转"),
 			Map.entry("MMB pan / RMB empty orbit / wheel zoom", "中键平移 / 右键空白环绕 / 滚轮缩放"),
 			Map.entry("Item layer - LMB move / RMB rotate", "物品层 - 左键移动 / 右键旋转"),
 			Map.entry("Item layer - click to select", "物品层 - 点击选择"),
 			Map.entry("Caster — drag to move", "施法者 - 拖拽移动"),
-			Map.entry("Target — drag to move", "目标 - 拖拽移动"),
+			Map.entry("Entity Target — drag to move", "实体目标 - 拖拽移动"),
+			Map.entry("Block Target — drag to move", "方块目标 - 拖拽移动"),
 			Map.entry("Danmaku — drag to move origin", "弹幕 - 拖拽移动原点"),
 			Map.entry("Danmaku — click to select", "弹幕 - 点击选择"),
 			Map.entry("Moving item layer", "正在移动物品层"),
 			Map.entry("Rotating item layer", "正在旋转物品层"),
 			Map.entry("Moving Caster", "正在移动施法者"),
 			Map.entry("Moving Target", "正在移动目标"),
+			Map.entry("Moving Block Target", "正在移动方块目标"),
 			Map.entry("Moving origin", "正在移动原点"),
 			Map.entry("Orbit view", "环绕视图"),
 			Map.entry("Pan view", "平移视图"),

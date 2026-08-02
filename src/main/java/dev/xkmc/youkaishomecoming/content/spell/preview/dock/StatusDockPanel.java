@@ -133,7 +133,10 @@ public class StatusDockPanel implements DockPanel {
 							"  安全: " + (scene.isSafetyTripped() ? "触发" : "正常"),
 					scene.isSafetyTripped() ? 0xFFFFAA55 : 0xFFAED8AE);
 			appendWrapped(lines, font, width, "视图: " + SpellEditorLocalization.t(viewport.getViewLabel()), 0xFF8CC6FF);
-			appendWrapped(lines, font, width, "目标: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
+			appendWrapped(lines, font, width, "实体目标: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
+			appendWrapped(lines, font, width,
+					"方块目标: " + formatVec(scene.getBlockTargetPos()) +
+							"  尺寸:" + formatVec(scene.getTargetBoxSize()), 0xFF66CCFF);
 			appendWrapped(lines, font, width, "施法者: " + formatVec(scene.getCasterPos()), 0xFFFF9A9A);
 			appendWrapped(lines, font, width,
 					"距离: " + formatDecimal(scene.getTargetDistance()) +
@@ -159,7 +162,10 @@ public class StatusDockPanel implements DockPanel {
 							"  safety: " + (scene.isSafetyTripped() ? "TRIPPED" : "OK"),
 					scene.isSafetyTripped() ? 0xFFFFAA55 : 0xFFAED8AE);
 			appendWrapped(lines, font, width, "view: " + viewport.getViewLabel(), 0xFF8CC6FF);
-			appendWrapped(lines, font, width, "target: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
+			appendWrapped(lines, font, width, "entity target: " + formatVec(scene.getTargetPos()), 0xFFFFD36B);
+			appendWrapped(lines, font, width,
+					"block target: " + formatVec(scene.getBlockTargetPos()) +
+							"  size:" + formatVec(scene.getTargetBoxSize()), 0xFF66CCFF);
 			appendWrapped(lines, font, width, "caster: " + formatVec(scene.getCasterPos()), 0xFFFF9A9A);
 			appendWrapped(lines, font, width,
 					"dist: " + formatDecimal(scene.getTargetDistance()) +

@@ -19,6 +19,7 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -148,6 +149,7 @@ public class ControlsDockPanel implements DockPanel {
 		int row2Y = row1Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row3Y = row2Y + BUTTON_HEIGHT + BUTTON_SPACING;
 		int row4Y = row3Y + BUTTON_HEIGHT + BUTTON_SPACING;
+		int row5Y = row4Y + BUTTON_HEIGHT + BUTTON_SPACING;
 
 		int bx;
 
@@ -239,6 +241,41 @@ public class ControlsDockPanel implements DockPanel {
 		bx = addMenuButton(bx, row4Y, 48, "Height", this::openTargetHeightMenu);
 		bx = addMenuButton(bx, row4Y, 44, "Focus", this::openFocusMenu);
 		addMenuButton(bx, row4Y, 48, "Reset", this::openResetPositionMenu);
+
+		// Row 5: preview-only block target transform. This state is never serialized into spell JSON.
+		bx = x + 4;
+		var blockPos = scene.getBlockTargetPos();
+		var boxSize = scene.getTargetBoxSize();
+		bx = addEditBox(bx, row5Y, 52, "BX:" + formatDimension(blockPos.x), val -> {
+			try {
+				scene.setBlockTargetX(Double.parseDouble(val));
+			} catch (NumberFormatException ignored) {}
+		});
+		bx = addEditBox(bx, row5Y, 52, "BY:" + formatDimension(blockPos.y), val -> {
+			try {
+				scene.setBlockTargetY(Double.parseDouble(val));
+			} catch (NumberFormatException ignored) {}
+		});
+		bx = addEditBox(bx, row5Y, 52, "BZ:" + formatDimension(blockPos.z), val -> {
+			try {
+				scene.setBlockTargetZ(Double.parseDouble(val));
+			} catch (NumberFormatException ignored) {}
+		});
+		bx = addEditBox(bx, row5Y, 48, "W:" + formatDimension(boxSize.x), val -> {
+			try {
+				scene.setTargetBoxWidth(Double.parseDouble(val));
+			} catch (NumberFormatException ignored) {}
+		});
+		bx = addEditBox(bx, row5Y, 48, "H:" + formatDimension(boxSize.y), val -> {
+			try {
+				scene.setTargetBoxHeight(Double.parseDouble(val));
+			} catch (NumberFormatException ignored) {}
+		});
+		addEditBox(bx, row5Y, 48, "D:" + formatDimension(boxSize.z), val -> {
+			try {
+				scene.setTargetBoxDepth(Double.parseDouble(val));
+			} catch (NumberFormatException ignored) {}
+		});
 		applyWidgetVisibility();
 	}
 
@@ -412,6 +449,7 @@ public class ControlsDockPanel implements DockPanel {
 	private void openFocusMenu(Button anchor) {
 		openActionMenu(anchor, "Focus", List.of(
 				new MenuEntry("Target", () -> viewport.focusOnWorldPos(scene.getTargetPos()), true),
+				new MenuEntry("Block Target", () -> viewport.focusOnWorldPos(scene.getBlockTargetPos()), true),
 				new MenuEntry("Caster", () -> viewport.focusOnWorldPos(scene.getCasterPos()), true)
 		));
 	}
@@ -420,6 +458,10 @@ public class ControlsDockPanel implements DockPanel {
 		openActionMenu(anchor, "Reset Position", List.of(
 				new MenuEntry("Target Position", () -> {
 					scene.resetTargetPos();
+					rebuildCallback.run();
+				}, true),
+				new MenuEntry("Block Target Position", () -> {
+					scene.resetBlockTargetPos();
 					rebuildCallback.run();
 				}, true),
 				new MenuEntry("Caster Position", () -> {
@@ -480,6 +522,11 @@ public class ControlsDockPanel implements DockPanel {
 
 	private int addEditBox(int bx, int by, int bw, String hint, java.util.function.Consumer<String> onSubmit) {
 		return addTextEditBox(bx, by, bw, "", hint, 16, s -> s.matches("[0-9.%\\-]*"), onSubmit);
+	}
+
+	private static String formatDimension(double value) {
+		String text = String.format(Locale.ROOT, "%.2f", value);
+		return text.replaceAll("0+$", "").replaceAll("\\.$", "");
 	}
 
 	private int addTextEditBox(int bx, int by, int bw, String value, String hint, int maxLength,

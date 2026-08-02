@@ -26,6 +26,7 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
@@ -1057,6 +1058,10 @@ public class OrthographicViewport {
 			float ts = 1.0f;
 			drawCross3D(builder, mat, tx, ty, tz, ts, 1f, 1f, 0.2f, 1f);
 			drawDiamond(builder, mat, tx, ty, tz, ts, 1f, 0.8f, 0f, 1f);
+			Vec3 bp = scene.getBlockTargetHandlePos();
+			drawCross3D(builder, mat, (float) bp.x, (float) bp.y, (float) bp.z,
+					0.7f, 0.25f, 0.8f, 1f, 1f);
+			drawAabb(builder, mat, scene.getBlockTargetCollisionBox(), 0.25f, 0.8f, 1f, 0.9f);
 		}
 
 		tesselator.end();
@@ -1166,6 +1171,30 @@ public class OrthographicViewport {
 		builder.vertex(mat, x, y + s, z).color(r, g, b, a).endVertex();
 		builder.vertex(mat, x, y, z - s).color(r, g, b, a).endVertex();
 		builder.vertex(mat, x, y, z + s).color(r, g, b, a).endVertex();
+	}
+
+	private static void drawAabb(BufferBuilder builder, Matrix4f mat, AABB box,
+							 float r, float g, float b, float a) {
+		Vec3 nnn = new Vec3(box.minX, box.minY, box.minZ);
+		Vec3 nnp = new Vec3(box.minX, box.minY, box.maxZ);
+		Vec3 npn = new Vec3(box.minX, box.maxY, box.minZ);
+		Vec3 npp = new Vec3(box.minX, box.maxY, box.maxZ);
+		Vec3 pnn = new Vec3(box.maxX, box.minY, box.minZ);
+		Vec3 pnp = new Vec3(box.maxX, box.minY, box.maxZ);
+		Vec3 ppn = new Vec3(box.maxX, box.maxY, box.minZ);
+		Vec3 ppp = new Vec3(box.maxX, box.maxY, box.maxZ);
+		line(builder, mat, nnn, nnp, r, g, b, a);
+		line(builder, mat, nnn, npn, r, g, b, a);
+		line(builder, mat, nnn, pnn, r, g, b, a);
+		line(builder, mat, ppp, ppn, r, g, b, a);
+		line(builder, mat, ppp, pnp, r, g, b, a);
+		line(builder, mat, ppp, npp, r, g, b, a);
+		line(builder, mat, nnp, npp, r, g, b, a);
+		line(builder, mat, nnp, pnp, r, g, b, a);
+		line(builder, mat, npn, npp, r, g, b, a);
+		line(builder, mat, npn, ppn, r, g, b, a);
+		line(builder, mat, pnn, pnp, r, g, b, a);
+		line(builder, mat, pnn, ppn, r, g, b, a);
 	}
 
 	/**

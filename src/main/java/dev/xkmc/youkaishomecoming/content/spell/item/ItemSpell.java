@@ -1,9 +1,9 @@
 package dev.xkmc.youkaishomecoming.content.spell.item;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
-import dev.xkmc.l2library.util.raytrace.RayTraceUtil;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.util.Wrappers;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.Ticker;
 import net.minecraft.server.level.ServerLevel;
@@ -34,12 +34,12 @@ public class ItemSpell {
 	protected CardHolder holder;
 
 	public void start(Player player, @Nullable LivingEntity target) {
-		this.dir = RayTraceUtil.getRayTerm(Vec3.ZERO, player.getXRot(), player.getYRot(), 1);
+		this.dir = GrazeHelper.getAimDirection(player);
 		if (target != null) {
 			targetId = target.getUUID();
-			targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
 			targetCache = target;
 		}
+		updateTargetPosition(player, target);
 	}
 
 	@Nullable
@@ -65,11 +65,20 @@ public class ItemSpell {
 	public boolean tick(Player player) {
 		if (!(player instanceof ServerPlayer sp)) return true;
 		var target = getTarget(sp.serverLevel());
-		if (target != null) targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
+		updateTargetPosition(player, target);
 		holder = new PlayerHolder(player, dir, this, target);
 		tickers.removeIf(e -> e.tick(holder, Wrappers.cast(this)));
 		cache.removeIf(e -> !e.isValid());
 		return tickers.isEmpty();
+	}
+
+	protected void updateTargetPosition(Player player, @Nullable LivingEntity target) {
+		if (target != null) {
+			targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
+		} else {
+			targetPos = player.position().add(0, player.getBbHeight() / 2, 0)
+					.add(dir.scale(GrazeHelper.SPELL_TARGET_RANGE));
+		}
 	}
 
 	protected <T extends ItemSpell> void addTicker(Ticker<T> tick) {

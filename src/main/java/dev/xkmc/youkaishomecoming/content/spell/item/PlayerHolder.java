@@ -38,7 +38,8 @@ public record PlayerHolder(
 	public Vec3 forward() {
 		var target = target();
 		if (target == null) return spell.dir;
-		return target.subtract(center()).normalize();
+		Vec3 delta = target.subtract(center());
+		return delta.lengthSqr() < 1e-6 ? spell.dir : delta.normalize();
 	}
 
 	@Override

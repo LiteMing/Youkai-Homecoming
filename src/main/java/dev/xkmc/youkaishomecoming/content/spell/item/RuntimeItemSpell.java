@@ -38,7 +38,7 @@ public class RuntimeItemSpell extends ItemSpell {
 
 		if (!(player instanceof net.minecraft.server.level.ServerPlayer sp)) return true;
 		var target = getTarget(sp.serverLevel());
-		if (target != null) targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
+		updateTargetPosition(player, target);
 		holder = new PlayerHolder(player, dir, this, target);
 
 		runtime.tick(holder);

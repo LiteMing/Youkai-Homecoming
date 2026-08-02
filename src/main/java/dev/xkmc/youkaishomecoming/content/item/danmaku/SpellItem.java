@@ -79,12 +79,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 
 	@Override
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
-		LivingEntity target = RayTraceUtil.serverGetTarget(player);
-		if (target != null) GrazeHelper.addSession(player, target);
-		if (target == null && requireTarget) {
-			target = GrazeHelper.getTarget(player);
-			if (target == null) return false;
-		}
+		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 		if (player instanceof ServerPlayer sp) {
 			if (consume && !SpellItemCost.tryPay(sp)) {
 				return false;
@@ -118,7 +113,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 	@Override
 	public void inventoryTick(ItemStack stack, Level level, Entity user, int slot, boolean sel) {
 		if (user instanceof Player player && level.isClientSide && sel) {
-			RayTraceUtil.clientUpdateTarget(player, 64);
+			RayTraceUtil.clientUpdateTarget(player, GrazeHelper.SPELL_TARGET_RANGE);
 		}
 	}
 
@@ -134,7 +129,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 
 	@Override
 	public int getDistance(ItemStack itemStack) {
-		return 64;
+		return GrazeHelper.SPELL_TARGET_RANGE;
 	}
 
 }

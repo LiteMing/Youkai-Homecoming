@@ -542,7 +542,20 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public Optional<LivingEntity> findAny(Player player) {
-		return sessions.values().stream().findAny().map(e -> e.getTarget(player));
+		for (CombatSession session : sessions.values()) {
+			LivingEntity target = session.getTarget(player);
+			if (target != null && target.isAlive() && target.level() == player.level()) {
+				return Optional.of(target);
+			}
+		}
+		if (player.level() instanceof ServerLevel level) {
+			for (UUID id : playerOpponents) {
+				if (level.getEntity(id) instanceof LivingEntity target && target.isAlive()) {
+					return Optional.of(target);
+				}
+			}
+		}
+		return Optional.empty();
 	}
 
 	public void remove(UUID uuid) {

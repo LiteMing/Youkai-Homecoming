@@ -32,7 +32,8 @@ public interface LivingCardHolder extends CardHolder {
 	default Vec3 forward() {
 		var target = target();
 		if (target != null) {
-			return target.subtract(center()).normalize();
+			Vec3 delta = target.subtract(center());
+			if (delta.lengthSqr() >= 1e-6) return delta.normalize();
 		}
 		return self().getForward();
 	}

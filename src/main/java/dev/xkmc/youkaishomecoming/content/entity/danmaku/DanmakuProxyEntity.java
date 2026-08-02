@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
@@ -106,6 +107,9 @@ public class DanmakuProxyEntity extends PathfinderMob
 		this.setYRot(player.getYRot());
 		this.setXRot(player.getXRot());
 		this.setYHeadRot(player.getYHeadRot());
+		if (target == null) {
+			updateAimTarget(player);
+		}
 	}
 
 	// ==================== Core tick ====================
@@ -172,7 +176,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 			}
 		}
 		if (targetId == null) {
-			targetPos = null;
+			updateAimTarget(ownerPlayer);
 			return;
 		}
 		if (!(level() instanceof ServerLevel sl)) return;
@@ -182,8 +186,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 			targetPos = le.position().add(0, le.getBbHeight() / 2, 0);
 		} else {
 			targetId = null;
-			targetPos = null;
+			updateAimTarget(ownerPlayer);
 		}
+	}
+
+	private void updateAimTarget(ServerPlayer player) {
+		targetPos = GrazeHelper.getAimTarget(player, center());
 	}
 
 	// ==================== Virtual danmaku methods (from YoukaiEntity) ====================

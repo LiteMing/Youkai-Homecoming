@@ -70,12 +70,7 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 	private boolean castSpellImpl(ISpellFormData<?> data, Player player, boolean consume, boolean cooldown) {
 		if (GrazeHelper.forbidDanmaku(player))
 			return false;
-		LivingEntity target = RayTraceUtil.serverGetTarget(player);
-		if (target != null) GrazeHelper.addSession(player, target);
-		if (requireTarget && target == null) {
-			target = GrazeHelper.getTarget(player);
-			if (target == null) return false;
-		}
+		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 		if (consume) {
 			Item ammo = data.getAmmoCost();
 			int toCost = data.cost();
@@ -124,13 +119,13 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 	@Override
 	public void inventoryTick(ItemStack stack, Level level, Entity user, int slot, boolean sel) {
 		if (user instanceof Player player && level.isClientSide && sel) {
-			RayTraceUtil.clientUpdateTarget(player, 64);
+			RayTraceUtil.clientUpdateTarget(player, GrazeHelper.SPELL_TARGET_RANGE);
 		}
 	}
 
 	@Override
 	public int getDistance(ItemStack stack) {
-		return 64;
+		return GrazeHelper.SPELL_TARGET_RANGE;
 	}
 
 }

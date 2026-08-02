@@ -413,7 +413,7 @@
   "config.youkaishomecoming.common.auto_dodge.wallClearanceSafeDist": "Wall Clearance Safe Dist",
   "config.youkaishomecoming.common.auto_dodge.wallClearanceSafeDist.tooltip": "Threat clearance at or above this → full wall force (claim free space). Between danger and safe: linear ramp.",
   "config.youkaishomecoming.common.auto_dodge.youkaiEnabled": "Youkai Auto Dodge",
-  "config.youkaishomecoming.common.auto_dodge.youkaiEnabled.tooltip": "Enable the server-side youkai pilot while in combat",
+  "config.youkaishomecoming.common.auto_dodge.youkaiEnabled.tooltip": "Enable the server-side pilot for youkai with the Auto Dodge effect",
   "config.youkaishomecoming.common.auto_dodge.youkaiHighSpeed": "Youkai High Speed",
   "config.youkaishomecoming.common.auto_dodge.youkaiHighSpeed.tooltip": "Youkai pilot high speed",
   "config.youkaishomecoming.common.auto_dodge.youkaiLowSpeed": "Youkai Low Speed",

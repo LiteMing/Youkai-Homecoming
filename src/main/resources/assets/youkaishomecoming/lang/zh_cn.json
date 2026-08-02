@@ -563,7 +563,7 @@
   "config.youkaishomecoming.common.auto_dodge.previewArenaHalfSize": "预览场地半宽",
   "config.youkaishomecoming.common.auto_dodge.previewArenaHalfSize.tooltip": "预览飞行员场地的一半边长（格）",
   "config.youkaishomecoming.common.auto_dodge.youkaiEnabled": "妖怪自动闪避",
-  "config.youkaishomecoming.common.auto_dodge.youkaiEnabled.tooltip": "战斗中是否启用服务端妖怪飞行员",
+  "config.youkaishomecoming.common.auto_dodge.youkaiEnabled.tooltip": "是否为拥有自动闪避效果的妖怪启用服务端飞行员",
   "config.youkaishomecoming.common.auto_dodge.youkaiTickInterval": "妖怪扫描间隔",
   "config.youkaishomecoming.common.auto_dodge.youkaiTickInterval.tooltip": "两次完整妖怪威胁扫描之间的间隔（刻）；两次扫描之间保持上次闪避速度",
   "config.youkaishomecoming.common.auto_dodge.youkaiScanRadius": "妖怪扫描半径",

@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.SelfBoxModel;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatFilters;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatSnapshot;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.phys.Vec3;
@@ -36,7 +37,8 @@ public final class YoukaiDodgePilot {
 
 	public void tick(YoukaiEntity entity) {
 		var config = YHModConfig.COMMON;
-		if (!config.youkaiAutoDodgeEnabled.get() || entity.getTarget() == null || !entity.isAlive()) {
+		if (!config.youkaiAutoDodgeEnabled.get() || !entity.hasEffect(YHEffects.AUTO_DODGE.get()) ||
+				entity.getTarget() == null || !entity.isAlive()) {
 			reset();
 			return;
 		}

@@ -219,12 +219,7 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 
 	@Override
 	public boolean canBeAffected(MobEffectInstance ins) {
-		// 允许 beaten 效果影响boss，其他效果依然免疫
-		if (ins.getEffect() == YHEffects.BEATEN.get()) {
-			return true;
-		} else {
-			return false;
-		}
+		return ins.getEffect() == YHEffects.BEATEN.get() || ins.getEffect() == YHEffects.AUTO_DODGE.get();
 	}
 
 	@Override
@@ -256,14 +251,12 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 			hurtCD++;
 		super.aiStep();
 
-		// 移除所有效果，但保留 beaten 效果
+		// Preserve the two YH effects that are explicitly allowed on bosses.
 		if (!getActiveEffectsMap().isEmpty()) {
-			// 创建一个要移除的效果列表
 			var effectsToRemove = getActiveEffectsMap().keySet().stream()
-					.filter(effect -> effect != YHEffects.BEATEN.get())
+					.filter(effect -> effect != YHEffects.BEATEN.get() && effect != YHEffects.AUTO_DODGE.get())
 					.toList();
 
-			// 移除除 beaten 之外的所有效果
 			for (var effect : effectsToRemove) {
 				removeEffect(effect);
 			}

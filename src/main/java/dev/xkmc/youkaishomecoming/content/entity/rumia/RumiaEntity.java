@@ -141,7 +141,8 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 
 	@Override
 	public boolean canBeAffected(MobEffectInstance ins) {
-		return ins.getEffect() == YHEffects.BEATEN.get() || !isEx() && super.canBeAffected(ins);
+		return ins.getEffect() == YHEffects.BEATEN.get() || ins.getEffect() == YHEffects.AUTO_DODGE.get() ||
+				!isEx() && super.canBeAffected(ins);
 	}
 
 
@@ -160,7 +161,12 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 		super.aiStep();
 		state.tick();
 		if (isEx() && !getActiveEffectsMap().isEmpty()) {
-			removeAllEffects();
+			var effectsToRemove = getActiveEffectsMap().keySet().stream()
+					.filter(effect -> effect != YHEffects.BEATEN.get() && effect != YHEffects.AUTO_DODGE.get())
+					.toList();
+			for (var effect : effectsToRemove) {
+				removeEffect(effect);
+			}
 		}
 	}
 

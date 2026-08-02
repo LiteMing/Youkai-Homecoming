@@ -482,7 +482,7 @@ public enum YHLangData {
 			Map.entry("config.youkaishomecoming.common.auto_dodge.previewArenaHalfSize", "Preview Arena Half Size"),
 			Map.entry("config.youkaishomecoming.common.auto_dodge.previewArenaHalfSize.tooltip", "Preview pilot arena half-size in blocks"),
 			Map.entry("config.youkaishomecoming.common.auto_dodge.youkaiEnabled", "Youkai Auto Dodge"),
-			Map.entry("config.youkaishomecoming.common.auto_dodge.youkaiEnabled.tooltip", "Enable the server-side youkai pilot while in combat"),
+			Map.entry("config.youkaishomecoming.common.auto_dodge.youkaiEnabled.tooltip", "Enable the server-side pilot for youkai with the Auto Dodge effect"),
 			Map.entry("config.youkaishomecoming.common.auto_dodge.youkaiTickInterval", "Youkai Scan Interval"),
 			Map.entry("config.youkaishomecoming.common.auto_dodge.youkaiTickInterval.tooltip", "Ticks between full youkai threat scans; the last dodge velocity is held between scans"),
 			Map.entry("config.youkaishomecoming.common.auto_dodge.youkaiScanRadius", "Youkai Scan Radius"),

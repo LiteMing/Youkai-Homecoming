@@ -624,7 +624,7 @@ public class YHModConfig {
 						.defineInRange("previewArenaHalfSize", 12.0, 2.0, 64.0);
 
 				builder.comment("Server-side autonomous dodge for live YoukaiEntity instances.");
-				youkaiAutoDodgeEnabled = builder.comment("Enable the server-side youkai pilot while in combat")
+			youkaiAutoDodgeEnabled = builder.comment("Enable the server-side pilot for youkai with the Auto Dodge effect")
 						.translation("config.youkaishomecoming.common.auto_dodge.youkaiEnabled")
 						.define("youkaiEnabled", true);
 				youkaiAutoDodgeTickInterval = builder.comment("Ticks between full youkai threat scans; the last dodge velocity is held between scans")

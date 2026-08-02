@@ -74,7 +74,11 @@ minecraft {
             property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
 
             // Specify the modid for data generation, where to output the resulting resource, and where to look for existing resources.
-            args '--mod', "${modid}", '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+            // DATA GENERATION IS DISABLED in this fork: runData is slow/hangs and en_us is now
+            // hand-maintained under src/main/resources/assets/youkaishomecoming/lang/en_us.json
+            // (see AGENTS.md). To restore data gen, uncomment the line below and delete the
+            // hand-maintained en_us.json so the generator does not overwrite it twice.
+            // args '--mod', "${modid}", '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
 
             mods {
                 "${modid}" {

@@ -14,6 +14,14 @@ import java.util.stream.Collectors;
 
 public class LangFileOrganizer extends ResourceOrganizer {
 
+	/**
+	 * Locales maintained as split sources under src/test/resources/&lt;modid&gt;/lang/.
+	 * Any locale NOT listed here is hand-maintained as a single flat JSON under
+	 * src/main/resources/assets/&lt;modid&gt;/lang/ (e.g. en_us.json, ru_ru.json) and
+	 * must NOT be regenerated from split sources.
+	 */
+	private static final Set<String> SPLIT_LOCALES = Set.of("zh_cn");
+
 	public LangFileOrganizer() {
 		super(Type.ASSETS, "lang", "lang/");
 	}
@@ -24,6 +32,8 @@ public class LangFileOrganizer extends ResourceOrganizer {
 			if (!fi.isDirectory())
 				continue;
 			String name = fi.getName();
+			if (!SPLIT_LOCALES.contains(name))
+				continue;
 			File target = new File(getTargetFolder() + name + ".json");
 			check(target);
 			JsonObject dst_json = new JsonObject();

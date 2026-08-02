@@ -224,6 +224,8 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	public boolean shouldIgnore(LivingEntity e) {
+		if (e.hasEffect(YHEffects.BEATEN.get()))
+			return true;
 		if (e.getType().is(YHTagGen.YOUKAI_IGNORE))
 			return true;
 		if (invalidTarget(e))
@@ -620,11 +622,20 @@ public abstract class YoukaiEntity extends PathfinderMob
 		targets.remove(target.getUUID());
 		setTarget(null);
 		setLastHurtByMob(null);
+		setAggressive(false);
+		getNavigation().stop();
 		// Kill path also stops the session; do not refill HP after lethal damage.
 		if (getCombatProgress() > 0) {
 			float health = hasEffect(YHEffects.BEATEN.get()) ? getMaxHealth() : combatProgress.maxProgress;
 			setCombatProgress(health);
 		}
+	}
+
+	/** Starts a fresh STG health bar without changing the vanilla aggro that selected this opponent. */
+	public void resetCombatProgressForDanmakuSession() {
+		if (level().isClientSide() || combatProgress == null || isBeaten()) return;
+		setCombatProgress(combatProgress.maxProgress);
+		validateData();
 	}
 
 	public void queueBeatenRecovery() {

@@ -426,6 +426,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	public void initSession(YoukaiEntity youkai) {
 		if (!statusInitialized) initStatus();
 		if (sessions.containsKey(youkai.getUUID())) return;
+		if (!hasActiveSession(youkai)) {
+			youkai.resetCombatProgressForDanmakuSession();
+		}
 		sessions.put(youkai.getUUID(), new CombatSession().init(youkai));
 		youkai.targets.add(player);
 		dirty = true;
@@ -433,6 +436,15 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			OpponentSnapshot snap = snapshotOpponents(sp);
 			MinecraftForge.EVENT_BUS.post(new StgCombatEvent.SessionStart(sp, youkai, snap.ids(), snap.entities()));
 		}
+	}
+
+	private static boolean hasActiveSession(YoukaiEntity youkai) {
+		for (LivingEntity target : youkai.targets.getTargets()) {
+			if (target instanceof Player player && HOLDER.get(player).isInSession(youkai.getUUID())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public void addPlayerOpponent(Player target) {
@@ -804,6 +816,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		OpponentSnapshot snap = player instanceof ServerPlayer sp
 				? snapshotOpponents(sp)
 				: new OpponentSnapshot(List.of(), List.of());
+		eraseDefeatDanmaku();
 		// Defeat restores default resources (same as respawn)
 		resetResourcesToDefault();
 		for (var s : sessions.values()) {
@@ -831,6 +844,44 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			sync();
 		}
 		dirty = true;
+	}
+
+	private void eraseDefeatDanmaku() {
+		// Session hosts own the normal boss projectiles. Clear them before removing session metadata.
+		eraseActiveDanmaku(0, true);
+		if (!(player.level() instanceof ServerLevel level)) return;
+
+		for (UUID opponentId : playerOpponents) {
+			if (level.getEntity(opponentId) instanceof ServerPlayer opponent) {
+				SpellContainer.clear(opponent);
+			}
+		}
+
+		Set<UUID> sessionIds = Set.copyOf(sessions.keySet());
+		Set<UUID> cleanedProxies = new HashSet<>();
+		cleanupDefeatSpellProxies(level, hostSearchArea(player.position(), ACTIVE_DANMAKU_HOST_SEARCH_RANGE),
+				sessionIds, cleanedProxies);
+		for (CombatSession session : sessions.values()) {
+			LivingEntity opponent = session.getTarget(player);
+			if (opponent != null) {
+				cleanupDefeatSpellProxies(level,
+						hostSearchArea(opponent.position(), ACTIVE_DANMAKU_HOST_SEARCH_RANGE),
+						sessionIds, cleanedProxies);
+			}
+		}
+	}
+
+	private void cleanupDefeatSpellProxies(ServerLevel level, AABB area, Set<UUID> sessionIds,
+										 Set<UUID> cleanedProxies) {
+		for (EntitySpellProxyEntity proxy : level.getEntitiesOfClass(EntitySpellProxyEntity.class, area)) {
+			if (!cleanedProxies.add(proxy.getUUID())) continue;
+			LivingEntity owner = proxy.owner();
+			boolean sessionOwner = owner != null && sessionIds.contains(owner.getUUID());
+			boolean targetsDefeatedPlayer = proxy.targetEntity() == player;
+			if ((sessionOwner || targetsDefeatedPlayer) && (owner == null || !owner.isAlliedTo(player))) {
+				proxy.cleanup();
+			}
+		}
 	}
 
 	/** Snapshot of active Youkai sessions + player opponents for public STG events. */

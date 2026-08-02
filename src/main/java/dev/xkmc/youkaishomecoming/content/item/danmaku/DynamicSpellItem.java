@@ -147,6 +147,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		}
 
 		if (player instanceof ServerPlayer sp) {
+			if (consume && !SpellItemCost.tryPay(sp)) {
+				return false;
+			}
 			int duration = getStackDuration(stack);
 			if (duration == DURATION_NATURAL && def.itemForm.cooldown() > 0) {
 				// item_form.cooldown acts as fixed duration when set, unless overridden by NBT
@@ -179,6 +182,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (GrazeHelper.isManualCombatMode()) {
 			list.add(YHLangData.STG_TOGGLE_TIP.get());
 		}
+		SpellItemCost.appendCostTooltip(list);
 		if (isSingleUse(stack)) {
 			list.add(YHLangData.SPELL_SINGLE_USE.get());
 		}

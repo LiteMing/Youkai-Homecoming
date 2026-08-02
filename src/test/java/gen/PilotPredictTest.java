@@ -254,8 +254,8 @@ public class PilotPredictTest {
 				box, new Vec3(-2, 5, 0), new Vec3(2, 5, 0)).isEmpty());
 		check("inside segment does not hit volume", PreviewTarget.firstSurfaceIntersection(
 				box, new Vec3(0, 1, 0), new Vec3(0.5, 2, 0.5)).isEmpty());
-		check("inside segment ignores exit face", PreviewTarget.firstSurfaceIntersection(
-				box, new Vec3(0, 2, 0), new Vec3(2, 2, 0)).isEmpty());
+		check("inside segment crosses exit face", PreviewTarget.firstSurfaceIntersection(
+				box, new Vec3(0, 2, 0), new Vec3(2, 2, 0)).isPresent());
 		check("surface start counts as face hit", PreviewTarget.firstSurfaceIntersection(
 				box, new Vec3(-1, 2, 0), new Vec3(0, 2, 0)).isPresent());
 		check("surface-parallel segment counts as face hit", PreviewTarget.firstSurfaceIntersection(
@@ -264,8 +264,8 @@ public class PilotPredictTest {
 				box, new Vec3(0, 1, 0), new Vec3(0.5, 2, 0.5)).isPresent());
 		Vec3 sweepStart = new Vec3(0, 0.5, 0);
 		Vec3 sweepEnd = new Vec3(0, 0.5, -10);
-		check("origin block does not consume an outward shot", PreviewTarget.firstSurfaceIntersection(
-				PreviewTarget.boxAt(Vec3.ZERO, PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).isEmpty());
+		check("origin block catches an outward shot at its exit face", PreviewTarget.firstSurfaceIntersection(
+				PreviewTarget.boxAt(Vec3.ZERO, PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).isPresent());
 		Vec3 entityHit = PreviewTarget.firstVolumeIntersection(
 				PreviewTarget.boxAt(new Vec3(0, 0, -3), PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).orElseThrow();
 		Vec3 blockHit = PreviewTarget.firstSurfaceIntersection(

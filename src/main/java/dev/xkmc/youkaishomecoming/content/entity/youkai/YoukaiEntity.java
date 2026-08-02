@@ -100,6 +100,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public final MoveControl walkCtrl, flyCtrl;
 	public final PathNavigation walkNav, fltNav;
 	private final YoukaiDodgePilot dodgePilot = new YoukaiDodgePilot();
+	private boolean deathSpellCleanupDone;
 	@SerialClass.SerialField
 	private boolean recoverFromBeaten;
 
@@ -342,7 +343,8 @@ public abstract class YoukaiEntity extends PathfinderMob
 				double fall = getTarget() != null ? 0.6 : 0.8;
 				this.setDeltaMovement(this.getDeltaMovement().multiply(1.0D, fall, 1.0D));
 			}
-			if (!beaten) {
+			if (!beaten && isAlive() && deathTime == 0 && !dead) {
+				deathSpellCleanupDone = false;
 				targets.tick(super.getTarget());
 				if (spellRuntime != null) {
 					// New runtime takes priority over legacy
@@ -364,6 +366,8 @@ public abstract class YoukaiEntity extends PathfinderMob
 						danmakuHolder.clearSentQueue();
 					}
 				}
+			} else if (!beaten) {
+				stopSpellsAndClearDanmaku();
 			}
 		}
 		super.aiStep();
@@ -524,6 +528,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 		if (combatProgress == null || getCombatProgress() != combatProgress.progress)
 			return;
 		if (getCombatProgress() > 0) return;
+		stopSpellsAndClearDanmaku();
 		super.tickDeath();
 	}
 
@@ -536,7 +541,16 @@ public abstract class YoukaiEntity extends PathfinderMob
 		if (combatProgress == null || getCombatProgress() != combatProgress.progress)
 			return;
 		if (getCombatProgress() > 0) return;
+		stopSpellsAndClearDanmaku();
 		super.die(source);
+	}
+
+	private void stopSpellsAndClearDanmaku() {
+		if (level().isClientSide() || deathSpellCleanupDone) return;
+		deathSpellCleanupDone = true;
+		if (spellRuntime != null) spellRuntime.reset();
+		if (spellCard != null) spellCard.reset();
+		danmakuHolder.cleanup(this);
 	}
 
 	@Override

@@ -103,6 +103,8 @@ public class VirtualDanmakuHolder {
 			else e.erase(player);
 		}
 		allDanmakus.clear();
+		if (temp != null) temp.clear();
+		toBeSent.clear();
 		removeDanmaku = true;
 		DanmakuManager.flushErases();
 		DanmakuManager.setTrackingOverride(null);

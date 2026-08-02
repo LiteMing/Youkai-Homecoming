@@ -207,9 +207,18 @@ public class EntitySpellProxyEntity extends PathfinderMob
 			resolveHost();
 		}
 		if (hostEntity == null) {
+			if (hostId == null) {
+				return true;
+			}
+			if (destroyWhenHostDies) {
+				cleanup();
+				return false;
+			}
+			hostId = null;
 			return true;
 		}
-		if (!hostEntity.isRemoved() && hostEntity.isAlive()) {
+		boolean dying = hostEntity instanceof LivingEntity living && living.deathTime > 0;
+		if (!hostEntity.isRemoved() && hostEntity.isAlive() && !dying) {
 			return true;
 		}
 		if (destroyWhenHostDies) {
@@ -329,7 +338,7 @@ public class EntitySpellProxyEntity extends PathfinderMob
 	}
 
 	private LivingEntity trackingHost() {
-		return hostEntity instanceof LivingEntity le ? le : this;
+		return hostEntity instanceof LivingEntity le && !le.isRemoved() ? le : this;
 	}
 
 	// ==================== LivingCardHolder implementation ====================

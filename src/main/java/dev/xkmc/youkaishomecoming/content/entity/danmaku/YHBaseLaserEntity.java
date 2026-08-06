@@ -205,6 +205,20 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		return computeMove(getDeltaMovement(), position());
 	}
 
+	/**
+	 * Lasers must follow the mover's true direction exactly. The base class
+	 * smooths rotation with lerpRotation (0.2/tick), which makes the beam lag
+	 * the mover by ~4x its angular rate and swing the long way around when the
+	 * Euler yaw/pitch flips near the vertical. Hit detection already uses the
+	 * exact target rot (plannedMovement.rot()), so rendering with the exact
+	 * rot keeps the rendered beam and the actual hit line consistent.
+	 */
+	@Override
+	protected void updateRotation(Vec3 rot) {
+		setXRot((float) (rot.x * Mth.RAD_TO_DEG));
+		setYRot((float) (rot.y * Mth.RAD_TO_DEG));
+	}
+
 	protected ProjectileMovement computeMove(Vec3 vec, Vec3 pos) {
 		return updateVelocity(vec, pos);
 	}

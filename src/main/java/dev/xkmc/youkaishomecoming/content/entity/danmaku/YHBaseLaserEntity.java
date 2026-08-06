@@ -10,6 +10,7 @@ import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.spell.mover.CompositeMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.RectMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.ZeroMover;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.util.Mth;
@@ -36,6 +37,28 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	public float damage = 0, length = 0;
 	@SerialClass.SerialField
 	public boolean setupLength;
+
+	@SerialClass.SerialField
+	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry = null;
+
+	/** Per-tick trail action: executed every {@link #trailInterval} ticks during flight. */
+	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction onTrail = null;
+	public int trailInterval = 1;
+
+	/** Action executed when this laser hits a living entity. */
+	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction onHitEntityAction = null;
+	/** Action executed when this laser hits a block. */
+	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction onHitBlockAction = null;
+	/**
+	 * Behavior after hitting an entity:
+	 * DISCARD = remove immediately, EXPIRE = trigger expiry immediately, CONTINUE = keep flying.
+	 */
+	public HitBehavior hitBehaviorEntity = HitBehavior.CONTINUE;
+	/**
+	 * Behavior after hitting a block:
+	 * DISCARD = remove immediately, EXPIRE = trigger expiry immediately, CONTINUE = keep flying.
+	 */
+	public HitBehavior hitBehaviorBlock = HitBehavior.CONTINUE;
 
 	public double earlyTerminate = -1;
 
@@ -90,6 +113,10 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	@Override
 	public boolean checkBlockHit() {
 		return !bypassWall;
+	}
+
+	public void setBypassWall(boolean bypassWall) {
+		this.bypassWall = bypassWall;
 	}
 
 	@Override
@@ -154,7 +181,22 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	@Override
 	protected void finishTick(TickData data) {
 		super.finishTick(data);
+		// Per-tick trail action (mirror ItemDanmakuEntity.commitPreMoveEffects).
+		// Like danmaku, the hook is transient (server-only); the client copy has no onTrail.
+		if (onTrail != null && tickCount > 0 && tickCount % trailInterval == 0) {
+			CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
+			Vec3 pos = data.moveSrc == null ? position() : data.moveSrc;
+			Vec3 vec = data.inputVelocity == null ? getDeltaMovement() : data.inputVelocity;
+			if (holder != null) onTrail.execute(holder, pos, vec);
+			else onTrail.execute(pos, vec);
+		}
 		if (!level().isClientSide() && tickCount > life) {
+			// On-expiry action before removal (mirror ItemDanmakuEntity.terminate)
+			if (afterExpiry != null) {
+				CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
+				if (holder != null) afterExpiry.execute(holder, position(), getDeltaMovement());
+				else afterExpiry.execute(position(), getDeltaMovement());
+			}
 			markErased(false);
 		}
 	}
@@ -186,9 +228,60 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 			Vec3 src = (tickData.moveDst == null ? position() : tickData.moveDst).add(0, getBbHeight() / 2f, 0);
 			earlyTerminate = blockHit == null ? -1 : src.distanceTo(blockHit.getLocation());
 		}
+		boolean hitEntity = false;
 		for (var e : hitEntities) {
 			hurtTarget(new EntityHitResult(e));
+			hitEntity = true;
 		}
+		if (level().isClientSide()) return;
+		if (hitEntity) {
+			// Execute onHitEntity callback before potential discard
+			if (onHitEntityAction != null) executeHitAction(onHitEntityAction);
+			switch (hitBehaviorEntity) {
+				case CONTINUE -> {
+				}
+				case EXPIRE -> {
+					expireLaserNow();
+					return;
+				}
+				case DISCARD -> {
+					markErased(false);
+					return;
+				}
+			}
+		}
+		if (blockHit != null) {
+			// Execute onHitBlock callback before potential discard
+			if (onHitBlockAction != null) executeHitAction(onHitBlockAction);
+			switch (hitBehaviorBlock) {
+				case CONTINUE -> {
+				}
+				case EXPIRE -> {
+					expireLaserNow();
+					return;
+				}
+				case DISCARD -> {
+					markErased(false);
+					return;
+				}
+			}
+		}
+	}
+
+	private void expireLaserNow() {
+		if (afterExpiry != null) {
+			CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
+			if (holder != null) afterExpiry.execute(holder, position(), getDeltaMovement());
+			else afterExpiry.execute(position(), getDeltaMovement());
+		}
+		markErased(false);
+	}
+
+	/** Helper: execute a TrailAction at the current laser position/direction. */
+	private void executeHitAction(dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action) {
+		CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
+		if (holder != null) action.execute(holder, position(), getDeltaMovement());
+		else action.execute(position(), getDeltaMovement());
 	}
 
 	@Override

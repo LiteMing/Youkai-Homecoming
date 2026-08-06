@@ -6,6 +6,7 @@ import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.action.BurstAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.DelayAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
@@ -232,6 +233,13 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 							containsPrivilegedAction(danmaku.onTrail().orElse(List.of())) ||
 							containsPrivilegedAction(danmaku.onHitEntity().orElse(List.of())) ||
 							containsPrivilegedAction(danmaku.onHitBlock().orElse(List.of())))) {
+				return true;
+			}
+			if (action instanceof FireLaserAction laser &&
+					(containsPrivilegedAction(laser.onExpiry().orElse(List.of())) ||
+							containsPrivilegedAction(laser.onTrail().orElse(List.of())) ||
+							containsPrivilegedAction(laser.onHitEntity().orElse(List.of())) ||
+							containsPrivilegedAction(laser.onHitBlock().orElse(List.of())))) {
 				return true;
 			}
 		}

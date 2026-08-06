@@ -905,6 +905,24 @@ public class ActionEditorPanel {
 					notifyLaser(old -> old.withDamageType(Optional.of(
 							dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.ABYSSAL))));
 		}
+
+		// === Advanced group (action hooks, mirror FireDanmakuAction) ===
+		addSectionHeader("Advanced");
+		if (!isSectionCollapsed("Advanced")) {
+			currentDepth++;
+			// Trail interval (only show if onTrail is used)
+			if (a.onTrail().isPresent()) {
+				addIntRow("Trail Intv", a.trailInterval(), v ->
+						notifyLaser(old -> old.withTrailInterval(v), false));
+			}
+
+			// Hit behavior: separate entity/block controls
+			addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
+					notifyLaser(old -> old.withHitBehaviorEntity(v)));
+			addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
+					notifyLaser(old -> old.withHitBehaviorBlock(v)));
+			currentDepth--;
+		}
 	}
 
 	// --- FireTextDanmaku rows ---

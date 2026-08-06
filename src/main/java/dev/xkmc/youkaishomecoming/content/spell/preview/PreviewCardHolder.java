@@ -200,6 +200,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		if (danmaku instanceof ItemDanmakuEntity e && e.afterExpiry != null) {
 			e.afterExpiry.setup(this);
 		}
+		if (danmaku instanceof ItemLaserEntity e && e.afterExpiry != null) {
+			e.afterExpiry.setup(this);
+		}
 		if (danmaku instanceof ShooterEntity shooter) {
 			shooter.setOldPosAndRot();
 			shooter.yBodyRotO = shooter.yBodyRot;
@@ -295,6 +298,13 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 						if (trailHolder == null) danmaku.afterExpiry.execute(danmaku.position(), danmaku.getDeltaMovement());
 						else danmaku.afterExpiry.execute(trailHolder, danmaku.position(), danmaku.getDeltaMovement());
 					}
+					if (e instanceof ItemLaserEntity laser && laser.afterExpiry != null) {
+						CardHolder trailHolder = null;
+						Entity owner = laser.getOwner();
+						if (owner instanceof CardHolder h) trailHolder = h;
+						if (trailHolder == null) laser.afterExpiry.execute(laser.position(), laser.getDeltaMovement());
+						else laser.afterExpiry.execute(trailHolder, laser.position(), laser.getDeltaMovement());
+					}
 					iterator.remove();
 				}
 			} else if (e instanceof ShooterEntity shooter) {
@@ -378,23 +388,35 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		if (hit.type() == PreviewTarget.HitType.ENTITY && onTargetHit != null) {
 			onTargetHit.run();
 		}
-		if (!(projectile instanceof ItemDanmakuEntity danmaku)) return;
-		var hitAction = hit.type() == PreviewTarget.HitType.ENTITY
-				? danmaku.onHitEntityAction : danmaku.onHitBlockAction;
-		if (hitAction != null) {
-			hitAction.execute(this, hit.position(), danmaku.getDeltaMovement());
+		if (projectile instanceof ItemDanmakuEntity danmaku) {
+			handlePreviewProjectileHook(projectile, hit,
+					hit.type() == PreviewTarget.HitType.ENTITY ? danmaku.onHitEntityAction : danmaku.onHitBlockAction,
+					hit.type() == PreviewTarget.HitType.ENTITY ? danmaku.hitBehaviorEntity : danmaku.hitBehaviorBlock,
+					danmaku.afterExpiry);
+		} else if (projectile instanceof ItemLaserEntity laser) {
+			handlePreviewProjectileHook(projectile, hit,
+					hit.type() == PreviewTarget.HitType.ENTITY ? laser.onHitEntityAction : laser.onHitBlockAction,
+					hit.type() == PreviewTarget.HitType.ENTITY ? laser.hitBehaviorEntity : laser.hitBehaviorBlock,
+					laser.afterExpiry);
 		}
-		var behavior = hit.type() == PreviewTarget.HitType.ENTITY
-				? danmaku.hitBehaviorEntity : danmaku.hitBehaviorBlock;
+	}
+
+	private void handlePreviewProjectileHook(SimplifiedProjectile projectile, PreviewHit hit,
+											 dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction hitAction,
+											 dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior behavior,
+											 dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry) {
+		if (hitAction != null) {
+			hitAction.execute(this, hit.position(), projectile.getDeltaMovement());
+		}
 		switch (behavior) {
 			case CONTINUE -> {
 			}
-			case DISCARD -> danmaku.markErased(false);
+			case DISCARD -> projectile.markErased(false);
 			case EXPIRE -> {
-				if (danmaku.afterExpiry != null) {
-					danmaku.afterExpiry.execute(this, hit.position(), danmaku.getDeltaMovement());
+				if (afterExpiry != null) {
+					afterExpiry.execute(this, hit.position(), projectile.getDeltaMovement());
 				}
-				danmaku.markErased(false);
+				projectile.markErased(false);
 			}
 		}
 	}

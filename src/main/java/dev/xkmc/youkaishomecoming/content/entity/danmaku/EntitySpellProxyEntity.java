@@ -307,6 +307,11 @@ public class EntitySpellProxyEntity extends PathfinderMob
 				e.afterExpiry.setup(this);
 			}
 		}
+		if (danmaku instanceof ItemLaserEntity e) {
+			if (e.afterExpiry != null) {
+				e.afterExpiry.setup(this);
+			}
+		}
 		if (!danmakuHolder.shoot(danmaku)) {
 			SpellRuntimeHost.super.shoot(danmaku);
 		}

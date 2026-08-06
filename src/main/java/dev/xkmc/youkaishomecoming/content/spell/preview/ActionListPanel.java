@@ -152,10 +152,16 @@ public class ActionListPanel {
 
 	// Drop target: either a gap between top-level rows or an AddTarget (branch insert)
 	private int dragIndicatorY = -1;       // Y for the indicator line (reorder mode)
-	private int dragInsertIndex = -1;      // index for reorder within section
+	private int dragInsertIndex = -1;      // index for reorder within container
 	private String dragInsertSection = null;
+	// null = top-level section list; otherwise parent path entries (last entry carries the branch)
+	private List<PathEntry> dragInsertContainerPrefix = null;
 	private AddTarget dragBranchTarget = null;  // non-null when dropping into a branch
 	private int dragBranchHighlightY = -1; // Y of the highlighted add-button row
+
+	// Last known mouse position (used for hover-based paste targets)
+	private double lastMouseX = -1;
+	private double lastMouseY = -1;
 
 	private final BiConsumer<SpellAction, ActionPath> onSelect;
 	private final Consumer<AddTarget> onRequestAdd;
@@ -519,6 +525,8 @@ public class ActionListPanel {
 	// --- Rendering ---
 
 	public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+		lastMouseX = mouseX;
+		lastMouseY = mouseY;
 		Font font = Minecraft.getInstance().font;
 		g.fill(x, y, x + w, y + h, 0xCC1a1a2e);
 		g.fill(x, y, x + 1, y + h, 0xFF444466);
@@ -813,6 +821,7 @@ public class ActionListPanel {
 		dragIndicatorY = -1;
 		dragInsertIndex = -1;
 		dragInsertSection = null;
+		dragInsertContainerPrefix = null;
 		dragBranchTarget = null;
 		dragBranchHighlightY = -1;
 		dragThresholdMet = false;
@@ -895,48 +904,61 @@ public class ActionListPanel {
 			}
 		}
 
-		// === Check gaps between top-level action rows (reorder) ===
-		List<Row> sectionRows = new ArrayList<>();
+		// === Check gaps between action rows in the same container (reorder) ===
+		// A container is either the top-level section list, or a branch list
+		// (if_true/if_false/body/onExpiry/...) of a parent action. Rows are grouped
+		// by their container prefix path (all entries except the leaf).
+		java.util.Map<List<PathEntry>, List<Row>> containers = new java.util.LinkedHashMap<>();
 		String currentSection = null;
 		for (Row row : rows) {
 			if (row.kind == RowKind.SECTION) {
 				currentSection = row.section;
+				continue;
 			}
-			if (row.kind == RowKind.ACTION && currentSection != null
-					&& currentSection.equals(sourceSection)
-					&& row.path != null && !row.path.isNested()) {
-				sectionRows.add(row);
-			}
+			if (row.kind != RowKind.ACTION || row.path == null) continue;
+			if (!sourceSection.equals(currentSection)) continue;
+			int n = row.path.path().size();
+			List<PathEntry> prefix = row.path.path().subList(0, n - 1);
+			containers.computeIfAbsent(prefix, k -> new ArrayList<>()).add(row);
 		}
-		if (sectionRows.isEmpty()) return;
-
-		for (int i = 0; i <= sectionRows.size(); i++) {
-			int gapY;
-			if (i == 0) {
-				gapY = sectionRows.get(0).y;
-			} else if (i == sectionRows.size()) {
-				Row lastRow = sectionRows.get(sectionRows.size() - 1);
-				gapY = findBottomOfActionTree(lastRow);
-			} else {
-				gapY = sectionRows.get(i).y;
+		for (var entry : containers.entrySet()) {
+			List<Row> group = entry.getValue();
+			List<PathEntry> prefix = entry.getKey();
+			if (!prefix.isEmpty()) {
+				// Top-level sources keep the old top-level-only gap behavior;
+				// branch insertion from top level is done via add-button drop targets.
+				if (!dragSourcePath.isNested()) continue;
+				// Skip containers inside the dragged action's own subtree (self-drop)
+				ActionPath containerPath = new ActionPath(sourceSection, prefix);
+				if (isSameActionOrDescendant(containerPath, dragSourcePath)) continue;
 			}
-			double dist = Math.abs(mouseY - gapY);
-			if (dist < bestDist) {
-				bestDist = dist;
-				dragIndicatorY = gapY;
-				dragInsertIndex = i;
-				dragInsertSection = sourceSection;
-				// Clear branch target
-				dragBranchTarget = null;
-				dragBranchHighlightY = -1;
+			for (int i = 0; i <= group.size(); i++) {
+				int gapY;
+				if (i < group.size()) {
+					gapY = group.get(i).y;
+				} else {
+					gapY = findBottomOfRowSubtree(group.get(group.size() - 1));
+				}
+				double dist = Math.abs(mouseY - gapY);
+				if (dist < bestDist) {
+					bestDist = dist;
+					dragIndicatorY = gapY;
+					dragInsertIndex = i;
+					dragInsertSection = sourceSection;
+					dragInsertContainerPrefix = prefix.isEmpty() ? null : new ArrayList<>(prefix);
+					// Clear branch target
+					dragBranchTarget = null;
+					dragBranchHighlightY = -1;
+				}
 			}
 		}
 	}
 
 	/**
-	 * Find the bottom Y of an action tree (including nested children).
+	 * Find the bottom Y of an action's subtree (including nested children and
+	 * add-buttons that belong to the subtree).
 	 */
-	private int findBottomOfActionTree(Row actionRow) {
+	private int findBottomOfRowSubtree(Row actionRow) {
 		int bottomY = actionRow.y + ROW_HEIGHT;
 		boolean found = false;
 		for (Row row : rows) {
@@ -944,14 +966,20 @@ public class ActionListPanel {
 				found = true;
 				continue;
 			}
-			if (found) {
-				if (row.kind == RowKind.ACTION && row.path != null && !row.path.isNested()) {
-					break; // hit next top-level action
-				}
-				if (row.kind == RowKind.SECTION) {
-					break; // hit next section
-				}
+			if (!found) continue;
+			if (row.kind == RowKind.SECTION) {
+				break;
+			}
+			if (row.kind == RowKind.ACTION) {
+				if (!isSameActionOrDescendant(row.path, actionRow.path)) break;
 				bottomY = row.y + ROW_HEIGHT;
+			} else if (row.kind == RowKind.ADD_BUTTON) {
+				if (row.addTarget != null && row.addTarget.parentPath() != null
+						&& isSameActionOrDescendant(row.addTarget.parentPath(), actionRow.path)) {
+					bottomY = row.y + ROW_HEIGHT;
+				} else {
+					break;
+				}
 			}
 		}
 		return bottomY;
@@ -995,13 +1023,68 @@ public class ActionListPanel {
 			onMoved.run();
 
 		} else if (dragInsertIndex >= 0 && dragInsertSection != null) {
-			// === Reorder mode (top-level within same section) ===
+			// === Reorder mode (gap within a container) ===
 			if (!dragSourcePath.section.equals(dragInsertSection)) return;
 
-			if (dragSourcePath.isNested()) {
-				// Source is nested: remove from branch, insert at top level
+			if (dragInsertContainerPrefix == null) {
+				// === Top-level container ===
+				if (dragSourcePath.isNested()) {
+					// Source is nested: remove from branch, insert at top level
+					PhaseDefinition beforeDrop = copyPhase(phase);
+					pushUndo();
+					boolean removed = doDeleteAt(dragSourcePath);
+					if (!removed) {
+						restoreDropSnapshot(beforeDrop);
+						return;
+					}
+					dirty = true;
+
+					List<SpellAction> list = getSectionList(dragInsertSection);
+					if (list == null) {
+						restoreDropSnapshot(beforeDrop);
+						return;
+					}
+					int actualDst = Math.max(0, Math.min(dragInsertIndex, list.size()));
+					list.add(actualDst, action);
+					selectedPath = ActionPath.topLevel(dragInsertSection, actualDst);
+					onSelect.accept(action, selectedPath);
+					onMoved.run();
+				} else {
+					// Source is top-level: simple swap
+					List<SpellAction> list = getSectionList(dragSourcePath.section);
+					if (list == null) return;
+
+					int srcIdx = dragSourcePath.leafIndex();
+					int dstIdx = dragInsertIndex;
+					if (srcIdx < 0 || srcIdx >= list.size()) return;
+					if (dstIdx == srcIdx || dstIdx == srcIdx + 1) return; // no-op
+
+					pushUndo();
+					list.remove(srcIdx);
+					int actualDst = dstIdx > srcIdx ? dstIdx - 1 : dstIdx;
+					actualDst = Math.max(0, Math.min(actualDst, list.size()));
+					list.add(actualDst, action);
+
+					selectedPath = ActionPath.topLevel(dragSourcePath.section, actualDst);
+					dirty = true;
+					onSelect.accept(action, selectedPath);
+					onMoved.run();
+				}
+			} else {
+				// === Nested container (branch list) ===
+				boolean sameContainer = dragSourcePath.path
+						.subList(0, dragSourcePath.path.size() - 1)
+						.equals(dragInsertContainerPrefix);
+				if (sameContainer) {
+					int srcIdx = dragSourcePath.leafIndex();
+					int dstIdx = dragInsertIndex;
+					if (dstIdx == srcIdx || dstIdx == srcIdx + 1) return; // no-op
+				}
+
 				PhaseDefinition beforeDrop = copyPhase(phase);
 				pushUndo();
+
+				// Remove from source
 				boolean removed = doDeleteAt(dragSourcePath);
 				if (!removed) {
 					restoreDropSnapshot(beforeDrop);
@@ -1009,33 +1092,33 @@ public class ActionListPanel {
 				}
 				dirty = true;
 
-				List<SpellAction> list = getSectionList(dragInsertSection);
-				if (list == null) {
+				// Adjust the target container path for the delete
+				ActionPath adjustedContainer = adjustPathAfterDelete(
+						new ActionPath(dragInsertSection, dragInsertContainerPrefix), dragSourcePath);
+				if (adjustedContainer == null) {
 					restoreDropSnapshot(beforeDrop);
 					return;
 				}
-				int actualDst = Math.max(0, Math.min(dragInsertIndex, list.size()));
-				list.add(actualDst, action);
-				selectedPath = ActionPath.topLevel(dragInsertSection, actualDst);
-				onSelect.accept(action, selectedPath);
-				onMoved.run();
-			} else {
-				// Source is top-level: simple swap
-				List<SpellAction> list = getSectionList(dragSourcePath.section);
-				if (list == null) return;
+				List<PathEntry> adjustedPrefix = adjustedContainer.path();
+				if (adjustedPrefix.isEmpty()) {
+					restoreDropSnapshot(beforeDrop);
+					return;
+				}
+				String branch = adjustedPrefix.get(adjustedPrefix.size() - 1).branch();
+				if (branch == null) {
+					restoreDropSnapshot(beforeDrop);
+					return;
+				}
+				ActionPath parentPath = new ActionPath(dragInsertSection, adjustedPrefix);
+				int insertIndex = dragInsertIndex;
+				if (sameContainer && dragSourcePath.leafIndex() < insertIndex) insertIndex--;
 
-				int srcIdx = dragSourcePath.leafIndex();
-				int dstIdx = dragInsertIndex;
-				if (srcIdx < 0 || srcIdx >= list.size()) return;
-				if (dstIdx == srcIdx || dstIdx == srcIdx + 1) return; // no-op
-
-				pushUndo();
-				list.remove(srcIdx);
-				int actualDst = dstIdx > srcIdx ? dstIdx - 1 : dstIdx;
-				actualDst = Math.max(0, Math.min(actualDst, list.size()));
-				list.add(actualDst, action);
-
-				selectedPath = ActionPath.topLevel(dragSourcePath.section, actualDst);
+				List<SpellAction> list = getSectionList(dragInsertSection);
+				if (list == null || !doInsert(list, parentPath.path(), 0, branch, action, parentPath, insertIndex)) {
+					restoreDropSnapshot(beforeDrop);
+					return;
+				}
+				selectedAddTarget = null;
 				dirty = true;
 				onSelect.accept(action, selectedPath);
 				onMoved.run();
@@ -1340,6 +1423,11 @@ public class ActionListPanel {
 
 	private boolean doInsert(List<SpellAction> list, List<PathEntry> path, int depth,
 							 String targetBranch, SpellAction newAction, ActionPath parentPath) {
+		return doInsert(list, path, depth, targetBranch, newAction, parentPath, -1);
+	}
+
+	private boolean doInsert(List<SpellAction> list, List<PathEntry> path, int depth,
+							 String targetBranch, SpellAction newAction, ActionPath parentPath, int insertIndex) {
 		PathEntry entry = path.get(depth);
 		if (entry.index >= list.size()) return false;
 
@@ -1350,77 +1438,87 @@ public class ActionListPanel {
 			if (current instanceof SpellActions.ConditionalAction cond) {
 				boolean isTrue = "true".equals(targetBranch);
 				List<SpellAction> branch = new ArrayList<>(isTrue ? cond.ifTrue() : cond.ifFalse());
-				branch.add(newAction);
+				int pos = insertIndex < 0 ? branch.size() : Math.min(insertIndex, branch.size());
+				branch.add(pos, newAction);
 
 				SpellActions.ConditionalAction rebuilt = isTrue
 						? new SpellActions.ConditionalAction(cond.condition(), branch, cond.ifFalse())
 						: new SpellActions.ConditionalAction(cond.condition(), cond.ifTrue(), branch);
 				list.set(entry.index, rebuilt);
 
-				selectedPath = parentPath.child(targetBranch, branch.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			if (current instanceof SpellActions.RepeatAction repeat && "body".equals(targetBranch)) {
 				List<SpellAction> body = new ArrayList<>(repeat.body());
-				body.add(newAction);
+				int pos = insertIndex < 0 ? body.size() : Math.min(insertIndex, body.size());
+				body.add(pos, newAction);
 				list.set(entry.index, new SpellActions.RepeatAction(repeat.count(), repeat.indexVariable(), body));
-				selectedPath = parentPath.child(targetBranch, body.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			if (current instanceof DelayAction delay && "body".equals(targetBranch)) {
 				List<SpellAction> body = new ArrayList<>(delay.body());
-				body.add(newAction);
+				int pos = insertIndex < 0 ? body.size() : Math.min(insertIndex, body.size());
+				body.add(pos, newAction);
 				list.set(entry.index, new DelayAction(delay.delayTicks(), body));
-				selectedPath = parentPath.child(targetBranch, body.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			if (current instanceof BurstAction burst && "body".equals(targetBranch)) {
 				List<SpellAction> body = new ArrayList<>(burst.body());
-				body.add(newAction);
+				int pos = insertIndex < 0 ? body.size() : Math.min(insertIndex, body.size());
+				body.add(pos, newAction);
 				list.set(entry.index, new BurstAction(burst.waves(), burst.interval(), burst.waveVariable(), body));
-				selectedPath = parentPath.child(targetBranch, body.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			if (current instanceof SpawnShooterAction ssa && "body".equals(targetBranch)) {
 				List<SpellAction> body = new ArrayList<>(ssa.body());
-				body.add(newAction);
+				int pos = insertIndex < 0 ? body.size() : Math.min(insertIndex, body.size());
+				body.add(pos, newAction);
 				list.set(entry.index, ssa.withBody(body));
-				selectedPath = parentPath.child(targetBranch, body.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			if (current instanceof FireDanmakuAction fda && "onExpiry".equals(targetBranch)) {
 				List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
-				expiryActions.add(newAction);
+				int pos = insertIndex < 0 ? expiryActions.size() : Math.min(insertIndex, expiryActions.size());
+				expiryActions.add(pos, newAction);
 				list.set(entry.index, fda.withOnExpiry(Optional.of(expiryActions)));
-				selectedPath = parentPath.child(targetBranch, expiryActions.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			if (current instanceof FireDanmakuAction fda && "onTrail".equals(targetBranch)) {
 				List<SpellAction> trailActions = new ArrayList<>(fda.onTrail().orElse(new ArrayList<>()));
-				trailActions.add(newAction);
+				int pos = insertIndex < 0 ? trailActions.size() : Math.min(insertIndex, trailActions.size());
+				trailActions.add(pos, newAction);
 				list.set(entry.index, fda.withOnTrail(Optional.of(trailActions)));
-				selectedPath = parentPath.child(targetBranch, trailActions.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			if (current instanceof FireDanmakuAction fda && "onHitEntity".equals(targetBranch)) {
 				List<SpellAction> hitActions = new ArrayList<>(fda.onHitEntity().orElse(new ArrayList<>()));
-				hitActions.add(newAction);
+				int pos = insertIndex < 0 ? hitActions.size() : Math.min(insertIndex, hitActions.size());
+				hitActions.add(pos, newAction);
 				list.set(entry.index, fda.withOnHitEntity(Optional.of(hitActions)));
-				selectedPath = parentPath.child(targetBranch, hitActions.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			if (current instanceof FireDanmakuAction fda && "onHitBlock".equals(targetBranch)) {
 				List<SpellAction> hitActions = new ArrayList<>(fda.onHitBlock().orElse(new ArrayList<>()));
-				hitActions.add(newAction);
+				int pos = insertIndex < 0 ? hitActions.size() : Math.min(insertIndex, hitActions.size());
+				hitActions.add(pos, newAction);
 				list.set(entry.index, fda.withOnHitBlock(Optional.of(hitActions)));
-				selectedPath = parentPath.child(targetBranch, hitActions.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			if (current instanceof SpellActions.SequenceAction seq && "actions".equals(targetBranch)) {
 				List<SpellAction> actions = new ArrayList<>(seq.actions());
-				actions.add(newAction);
+				int pos = insertIndex < 0 ? actions.size() : Math.min(insertIndex, actions.size());
+				actions.add(pos, newAction);
 				list.set(entry.index, new SpellActions.SequenceAction(actions));
-				selectedPath = parentPath.child(targetBranch, actions.size() - 1);
+				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
 			return false;
@@ -1430,7 +1528,7 @@ public class ActionListPanel {
 		if (current instanceof SpellActions.ConditionalAction cond && entry.branch != null) {
 			boolean isTrue = "true".equals(entry.branch);
 			List<SpellAction> childList = new ArrayList<>(isTrue ? cond.ifTrue() : cond.ifFalse());
-			if (!doInsert(childList, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(childList, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 
 			SpellActions.ConditionalAction rebuilt = isTrue
 					? new SpellActions.ConditionalAction(cond.condition(), childList, cond.ifFalse())
@@ -1440,55 +1538,55 @@ public class ActionListPanel {
 		}
 		if (current instanceof SpellActions.RepeatAction repeat && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(repeat.body());
-			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, new SpellActions.RepeatAction(repeat.count(), repeat.indexVariable(), body));
 			return true;
 		}
 		if (current instanceof DelayAction delay && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(delay.body());
-			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
 			return true;
 		}
 		if (current instanceof BurstAction burst && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(burst.body());
-			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, new BurstAction(burst.waves(), burst.interval(), burst.waveVariable(), body));
 			return true;
 		}
 		if (current instanceof SpawnShooterAction ssa && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(ssa.body());
-			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, ssa.withBody(body));
 			return true;
 		}
 		if (current instanceof FireDanmakuAction fda && "onExpiry".equals(entry.branch)) {
 			List<SpellAction> expiryActions = new ArrayList<>(fda.onExpiry().orElse(new ArrayList<>()));
-			if (!doInsert(expiryActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(expiryActions, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, fda.withOnExpiry(Optional.of(expiryActions)));
 			return true;
 		}
 		if (current instanceof FireDanmakuAction fda && "onTrail".equals(entry.branch)) {
 			List<SpellAction> trailActions = new ArrayList<>(fda.onTrail().orElse(new ArrayList<>()));
-			if (!doInsert(trailActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(trailActions, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, fda.withOnTrail(Optional.of(trailActions)));
 			return true;
 		}
 		if (current instanceof FireDanmakuAction fda && "onHitEntity".equals(entry.branch)) {
 			List<SpellAction> hitActions = new ArrayList<>(fda.onHitEntity().orElse(new ArrayList<>()));
-			if (!doInsert(hitActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(hitActions, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, fda.withOnHitEntity(Optional.of(hitActions)));
 			return true;
 		}
 		if (current instanceof FireDanmakuAction fda && "onHitBlock".equals(entry.branch)) {
 			List<SpellAction> hitActions = new ArrayList<>(fda.onHitBlock().orElse(new ArrayList<>()));
-			if (!doInsert(hitActions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(hitActions, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, fda.withOnHitBlock(Optional.of(hitActions)));
 			return true;
 		}
 		if (current instanceof SpellActions.SequenceAction seq && "actions".equals(entry.branch)) {
 			List<SpellAction> actions = new ArrayList<>(seq.actions());
-			if (!doInsert(actions, path, depth + 1, targetBranch, newAction, parentPath)) return false;
+			if (!doInsert(actions, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, new SpellActions.SequenceAction(actions));
 			return true;
 		}
@@ -1592,26 +1690,53 @@ public class ActionListPanel {
 
 	// --- Clipboard ---
 
-	private static SpellAction clipboard = null;
+	private static List<SpellAction> clipboard = null;
 
-	/**
-	 * Deep-copy selected action to clipboard via Codec round-trip.
-	 */
-	public boolean copySelected() {
-		if (selectedPath == null || phase == null) return false;
-		SpellAction action = getActionAt(selectedPath);
-		if (action == null) return false;
+	/** Deep-copy an action via Codec round-trip, falling back to the original. */
+	private static SpellAction deepCopy(SpellAction action) {
 		try {
 			var json = SpellAction.CODEC.encodeStart(
 					com.mojang.serialization.JsonOps.INSTANCE, action).result().orElse(null);
 			if (json != null) {
-				clipboard = SpellAction.CODEC.parse(
+				SpellAction parsed = SpellAction.CODEC.parse(
 						com.mojang.serialization.JsonOps.INSTANCE, json).result().orElse(null);
+				if (parsed != null) return parsed;
 			}
 		} catch (Exception e) {
-			clipboard = action; // fallback: shallow copy
+			// fallback: shallow copy
 		}
-		return clipboard != null;
+		return action;
+	}
+
+	/** Selected paths in tree (visual) order. */
+	private List<ActionPath> getSelectedPathsInTreeOrder() {
+		buildRowsIfDirty();
+		List<ActionPath> list = new ArrayList<>();
+		for (Row row : rows) {
+			if (row.kind == RowKind.ACTION && row.path != null && isSelected(row.path)) {
+				list.add(row.path);
+			}
+		}
+		return list;
+	}
+
+	/**
+	 * Deep-copy all selected actions (multi-select aware) to clipboard.
+	 */
+	public boolean copySelected() {
+		if (phase == null) return false;
+		List<ActionPath> paths = getSelectedPathsInTreeOrder();
+		if (paths.isEmpty()) return false;
+		List<SpellAction> copied = new ArrayList<>();
+		for (ActionPath path : paths) {
+			SpellAction action = getActionAt(path);
+			if (action != null) {
+				copied.add(deepCopy(action));
+			}
+		}
+		if (copied.isEmpty()) return false;
+		clipboard = copied;
+		return true;
 	}
 
 	public boolean cutSelected() {
@@ -1662,64 +1787,105 @@ public class ActionListPanel {
 	 */
 	private boolean cutMultipleSelected() {
 		if (selectedPaths.size() <= 1) return false;
-		// Copy the first selected action to clipboard (for simple paste compatibility)
-		var paths = new ArrayList<>(selectedPaths);
-		SpellAction first = getActionAt(paths.get(0));
-		if (first != null) {
-			try {
-				var json = SpellAction.CODEC.encodeStart(
-						com.mojang.serialization.JsonOps.INSTANCE, first).result().orElse(null);
-				if (json != null) clipboard = SpellAction.CODEC.parse(
-						com.mojang.serialization.JsonOps.INSTANCE, json).result().orElse(first);
-				else clipboard = first;
-			} catch (Exception e) {
-				clipboard = first;
-			}
-		}
+		if (!copySelected()) return false;
 		return deleteMultipleSelected();
 	}
 
+	/** Find the add-button row under the mouse (hover-based paste target). */
+	@Nullable
+	private AddTarget findAddButtonAt(double mouseX, double mouseY) {
+		if (phase == null) return null;
+		buildRowsIfDirty();
+		for (Row row : rows) {
+			if (row.kind != RowKind.ADD_BUTTON || row.addTarget == null) continue;
+			if (mouseX >= x && mouseX < x + w && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
+				return row.addTarget;
+			}
+		}
+		return null;
+	}
+
+	/** Insert all actions into the given branch at the given running index. */
+	private boolean insertManyIntoBranch(String section, List<PathEntry> parentEntries, String branch,
+										 int startIndex, List<SpellAction> actions) {
+		ActionPath parentPath = new ActionPath(section, parentEntries);
+		List<SpellAction> list = getSectionList(section);
+		if (list == null) return false;
+		for (int i = 0; i < actions.size(); i++) {
+			if (!doInsert(list, parentPath.path(), 0, branch, actions.get(i), parentPath, startIndex + i)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	public boolean pasteAfterSelected() {
-		if (clipboard == null || phase == null) return false;
+		if (clipboard == null || clipboard.isEmpty() || phase == null) return false;
 		// Deep copy clipboard for paste
-		SpellAction toPaste;
-		try {
-			var json = SpellAction.CODEC.encodeStart(
-					com.mojang.serialization.JsonOps.INSTANCE, clipboard).result().orElse(null);
-			toPaste = json != null ? SpellAction.CODEC.parse(
-					com.mojang.serialization.JsonOps.INSTANCE, json).result().orElse(clipboard) : clipboard;
-		} catch (Exception e) {
-			toPaste = clipboard;
+		List<SpellAction> toPaste = new ArrayList<>();
+		for (SpellAction a : clipboard) {
+			toPaste.add(deepCopy(a));
+		}
+		if (toPaste.isEmpty()) return false;
+
+		// If hovering an add-button (e.g. "+ if_true"), paste into that branch
+		AddTarget hovered = findAddButtonAt(lastMouseX, lastMouseY);
+		if (hovered != null && hovered.isBranch()) {
+			pushUndo();
+			for (SpellAction a : toPaste) {
+				if (!insertActionInternal(hovered, a)) break;
+			}
+			selectedAddTarget = null;
+			dirty = true;
+			SpellAction last = getSelectedAction();
+			if (last != null) onSelect.accept(last, selectedPath);
+			return true;
 		}
 
-		// If an add-button is selected, paste into that branch
+		// If an add-button is selected, paste into that branch/section
 		if (selectedAddTarget != null) {
-			insertAction(selectedAddTarget, toPaste);
+			pushUndo();
+			for (SpellAction a : toPaste) {
+				if (!insertActionInternal(selectedAddTarget, a)) break;
+			}
+			selectedAddTarget = null;
 			dirty = true;
+			SpellAction last = getSelectedAction();
+			if (last != null) onSelect.accept(last, selectedPath);
 			return true;
 		}
 
 		if (selectedPath != null) {
-			// Insert after selected action in the same list
 			List<SpellAction> list = getSectionList(selectedPath.section);
-			if (list != null && !selectedPath.isNested()) {
-				int idx = selectedPath.leafIndex();
+			if (list != null) {
 				pushUndo();
-				list.add(idx + 1, toPaste);
-				selectedPath = ActionPath.topLevel(selectedPath.section, idx + 1);
+				if (!selectedPath.isNested()) {
+					// Insert after selected action in the same top-level list
+					int idx = selectedPath.leafIndex();
+					list.addAll(idx + 1, toPaste);
+					selectedPath = ActionPath.topLevel(selectedPath.section, idx + toPaste.size());
+				} else {
+					// Insert after selected action within its own branch
+					int idx = selectedPath.leafIndex();
+					List<PathEntry> parentEntries = selectedPath.path.subList(0, selectedPath.path.size() - 1);
+					String branch = selectedPath.path.get(selectedPath.path.size() - 2).branch();
+					insertManyIntoBranch(selectedPath.section, parentEntries, branch, idx + 1, toPaste);
+				}
 				dirty = true;
-				onSelect.accept(toPaste, selectedPath);
+				SpellAction last = getSelectedAction();
+				if (last != null) onSelect.accept(last, selectedPath);
 				return true;
 			}
 		}
 		// Default: add to onTick
-		var list = getSectionList("tick");
-		if (list != null) {
+		var tickList = getSectionList("tick");
+		if (tickList != null) {
 			pushUndo();
-			list.add(toPaste);
-			selectedPath = ActionPath.topLevel("tick", list.size() - 1);
+			tickList.addAll(toPaste);
+			selectedPath = ActionPath.topLevel("tick", tickList.size() - 1);
 			dirty = true;
-			onSelect.accept(toPaste, selectedPath);
+			SpellAction last = getSelectedAction();
+			if (last != null) onSelect.accept(last, selectedPath);
 			return true;
 		}
 		return false;

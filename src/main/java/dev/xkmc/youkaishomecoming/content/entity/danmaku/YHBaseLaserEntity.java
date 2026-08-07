@@ -212,11 +212,21 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	 * Euler yaw/pitch flips near the vertical. Hit detection already uses the
 	 * exact target rot (plannedMovement.rot()), so rendering with the exact
 	 * rot keeps the rendered beam and the actual hit line consistent.
+	 * <p>
+	 * The new Euler angles are unwrapped to stay within ±180° of the previous
+	 * tick's rotation, so the renderer's partial-tick interpolation
+	 * (getViewYRot/getViewXRot, a plain lerp between yRotO/xRotO and the new
+	 * value) never crosses the ±180° seam: +179° → -179° becomes
+	 * +179° → +181°, a real 2° turn instead of a 358° wrong-way detour.
 	 */
 	@Override
 	protected void updateRotation(Vec3 rot) {
-		setXRot((float) (rot.x * Mth.RAD_TO_DEG));
-		setYRot((float) (rot.y * Mth.RAD_TO_DEG));
+		float targetX = (float) (rot.x * Mth.RAD_TO_DEG);
+		float targetY = (float) (rot.y * Mth.RAD_TO_DEG);
+		targetX = xRotO + Mth.wrapDegrees(targetX - xRotO);
+		targetY = yRotO + Mth.wrapDegrees(targetY - yRotO);
+		setXRot(targetX);
+		setYRot(targetY);
 	}
 
 	protected ProjectileMovement computeMove(Vec3 vec, Vec3 pos) {

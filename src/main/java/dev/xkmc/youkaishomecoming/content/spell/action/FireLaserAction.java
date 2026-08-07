@@ -269,7 +269,7 @@ public record FireLaserAction(
 		if (setupPrepare > 0 || setupStart > 0 || setupEnd > 0) {
 			laser.setupTime(setupPrepare, setupStart, life, setupEnd);
 		}
-		// Delayed mover: prepare → slow expand → full speed
+		// Delayed mover: prepare → slow expand → full speed (spawn-relative, skip init)
 		if (delayedV0.isPresent() && delayedV1.isPresent()) {
 			laser.setDelayedMover(delayedV0.get().floatValue(), delayedV1.get().floatValue(),
 					setupPrepare, setupStart);
@@ -278,10 +278,10 @@ public record FireLaserAction(
 			MoverConfig moverConfig = mover.get();
 			Vec3 targetPos = moverConfig.resolveTargetPos(ctx, originPos);
 			laser.mover = moverConfig.create(ctx, originPos, dir, baseDir, targetPos, casterPos);
+			// Must happen after mover assignment and before shoot/network serialization:
+			// place the laser at the mover's pos(0) and seed rotation from pos(1) - pos(0).
+			laser.initializeMoverAtSpawn();
 		}
-		// Must happen after mover assignment and before shoot/network serialization:
-		// place the laser at the mover's pos(0) and seed rotation from pos(1) - pos(0).
-		laser.initializeMoverAtSpawn();
 		holder.shoot(laser);
 	}
 

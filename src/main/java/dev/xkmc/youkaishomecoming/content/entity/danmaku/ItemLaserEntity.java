@@ -76,6 +76,9 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 		if (!(mover instanceof TargetPosMover targetMover)) {
 			return;
 		}
+		// Mirror the per-tick pipeline so stateful movers (Composite/Homing/Layered)
+		// sample the same live state they would on the first real tick.
+		mover.prepare(this);
 		MoverInfo.OwnerInfo ownerInfo = snapshotOwnerInfo(getOwner());
 		Vec3 originalVelocity = getDeltaMovement();
 

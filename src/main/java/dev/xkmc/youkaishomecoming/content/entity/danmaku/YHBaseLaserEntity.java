@@ -98,6 +98,10 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		setupTime(20, 20, life, 20);
 		setYRot(rY);
 		setXRot(rX);
+		// Initialize previous rotation to the same direction (mirror YHBaseDanmakuEntity.setup).
+		// Prevents tick-0 interpolation/angle unwrapping from starting at the default 0°.
+		yRotO = rY;
+		xRotO = rX;
 	}
 
 	@Override
@@ -336,6 +340,11 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	public void readSpawnData(FriendlyByteBuf data) {
 		super.readSpawnData(data);
 		PacketCodec.from(data, getClass(), Wrappers.cast(this));
+		// Spawn packets carry only the current rotation, not the previous render
+		// tick's. Sync the old rotation so partial-tick interpolation and angle
+		// unwrapping start from the actual spawn direction instead of 0°.
+		xRotO = getXRot();
+		yRotO = getYRot();
 	}
 
 	@Override

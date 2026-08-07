@@ -123,6 +123,16 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		this.bypassWall = bypassWall;
 	}
 
+	/** Set rotation and old rotation without lerp (used at spawn to seed the real first path segment). */
+	public void setInitialRotation(Vec3 rot) {
+		float pitch = (float) (rot.x * Mth.RAD_TO_DEG);
+		float yaw = (float) (rot.y * Mth.RAD_TO_DEG);
+		setXRot(pitch);
+		setYRot(yaw);
+		xRotO = pitch;
+		yRotO = yaw;
+	}
+
 	@Override
 	public float getEffectiveHitRadius() {
 		return getBbWidth() / 4f;

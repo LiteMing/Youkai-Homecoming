@@ -63,6 +63,32 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 		this.mover = m;
 	}
 
+	/**
+	 * Target-position movers define an absolute trajectory: {@code pos(0)} may
+	 * differ from the spawn anchor (e.g. PolarMover starts at center + radius
+	 * offset). The entity must be placed at {@code pos(0)} and seeded with the
+	 * real first path segment {@code pos(1) - pos(0)}, otherwise the first tick
+	 * moves radially from the anchor instead of tangentially along the path.
+	 * Must be called after {@code mover} is assigned and before
+	 * {@code holder.shoot()} so spawn data carries the corrected state.
+	 */
+	public void initializeMoverAtSpawn() {
+		if (!(mover instanceof TargetPosMover targetMover)) {
+			return;
+		}
+		MoverInfo.OwnerInfo ownerInfo = snapshotOwnerInfo(getOwner());
+		Vec3 originalVelocity = getDeltaMovement();
+
+		MoverInfo zeroInfo = new MoverInfo(0, position(), originalVelocity, this, ownerInfo);
+		Vec3 startPos = targetMover.pos(zeroInfo);
+		setPos(startPos);
+
+		MoverInfo firstInfo = new MoverInfo(1, startPos, originalVelocity, this, ownerInfo);
+		ProjectileMovement firstMove = targetMover.move(firstInfo);
+		setDeltaMovement(firstMove.vec());
+		setInitialRotation(firstMove.rot());
+	}
+
 	@Override
 	public void tick() {
 		if (visualScaleFunction != null) {

@@ -279,6 +279,9 @@ public record FireLaserAction(
 			Vec3 targetPos = moverConfig.resolveTargetPos(ctx, originPos);
 			laser.mover = moverConfig.create(ctx, originPos, dir, baseDir, targetPos, casterPos);
 		}
+		// Must happen after mover assignment and before shoot/network serialization:
+		// place the laser at the mover's pos(0) and seed rotation from pos(1) - pos(0).
+		laser.initializeMoverAtSpawn();
 		holder.shoot(laser);
 	}
 

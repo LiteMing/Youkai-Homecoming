@@ -666,7 +666,7 @@ public class YHCommands {
 										.executes(ctx -> abortCertification(ctx))))
 						.then(literal("claim")
 								.then(argument("targets", EntityArgument.players())
-										.executes(ctx -> claimCertifiedRewards(ctx)))));
+										.executes(ctx -> claimCertifiedRewards(ctx))))));
 
 		// /yhspell capability commands (Phase 6)
 		event.getDispatcher().register(literal("yhspell")

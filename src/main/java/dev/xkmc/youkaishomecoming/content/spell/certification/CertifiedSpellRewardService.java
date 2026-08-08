@@ -43,7 +43,7 @@ public final class CertifiedSpellRewardService {
 		}
 		// try immediate hand-over into a free inventory slot
 		if (tryAddToInventory(author, stack)) {
-			dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellRewardToClient.send(certificate.definitionHash(), definition.display.name());
+			dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellRewardToClient.send(author, certificate.definitionHash(), definition.display.name());
 			return;
 		}
 		// otherwise spawn the world item locked to the creator
@@ -52,7 +52,7 @@ public final class CertifiedSpellRewardService {
 		item.setGlowingTag(true);
 		item.setInvulnerable(true);
 		if (YHModConfig.COMMON.certificationRewardNeverDespawn.get()) {
-			item.setUnlimitedLifetime(true);
+			item.setUnlimitedLifetime();
 		}
 		item.setPickUpDelay(YHModConfig.COMMON.certificationRewardOwnerLockTicks.get());
 		item.setThrower(author.getUUID());

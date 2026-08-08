@@ -24,8 +24,8 @@ public class CertifiedSpellRewardToClient extends SerialPacketBase {
 		this.spellName = spellName;
 	}
 
-	public static void send(String definitionHash, String spellName) {
-		dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toAllPlayers(new CertifiedSpellRewardToClient(definitionHash, spellName));
+	public static void send(net.minecraft.server.level.ServerPlayer player, String definitionHash, String spellName) {
+		dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toClientPlayer(new CertifiedSpellRewardToClient(definitionHash, spellName), player);
 	}
 
 	@Override

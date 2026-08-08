@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.compat.kubejs.spell.DynamicSpellSingleUseEvent
 import dev.xkmc.youkaishomecoming.compat.kubejs.spell.YHSpellKubeJSEvents;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;

@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.certification;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.JsonOps;
@@ -38,7 +39,7 @@ public final class CertifiedSpellStorage {
 			Files.createDirectories(dir);
 			JsonObject root = new JsonObject();
 			root.add("certificate", GSON.toJsonTree(certificate));
-			JsonObject defJson = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
+			JsonElement defJson = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 					.result().orElseThrow(() -> new IllegalStateException("cannot encode certified definition"));
 			root.add("definition", defJson);
 			Files.writeString(dir.resolve(certificate.definitionHash() + ".json"),

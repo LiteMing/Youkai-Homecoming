@@ -162,6 +162,8 @@ public class SpellPreviewScreen extends Screen {
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit, rightLimit);
 		// Export button: save spell definition as JSON datapack file
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 46, btn -> exportToDatapack(), fullEdit, rightLimit);
+		// Certify button: open the server certification dialog (design §5.2)
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Certify"), 44, btn -> openCertification(), fullEdit, rightLimit);
 		// Reset button: restore to original (built-in) or open-snapshot (custom)
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit, rightLimit);
 		// Auto Replay toggle
@@ -764,6 +766,13 @@ public class SpellPreviewScreen extends Screen {
 	private void exportToDatapack() {
 		syncCustomNamesToDefinition();
 		spellController.exportToDatapack();
+	}
+
+	/** Opens the server certification dialog for the current definition. */
+	private void openCertification() {
+		syncCustomNamesToDefinition();
+		net.minecraft.client.Minecraft.getInstance().setScreen(
+				new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition));
 	}
 
 	/**

@@ -36,6 +36,7 @@ public enum YHLangData {
 	CERT_DISABLED("cert.disabled", "Spell certification is disabled on this server", 0, ChatFormatting.RED),
 	CERT_QUOTE_FAIL("cert.quote_fail", "Certification quote failed: %s", 1, ChatFormatting.RED),
 	CERT_START_FAIL("cert.start_fail", "Certification start failed: %s", 1, ChatFormatting.RED),
+	CERT_CAST_REJECTED("cert.cast_rejected", "This certified spell is no longer valid (definition modified or capabilities revoked)", 0, ChatFormatting.RED),
 	KETTLE_INFO("tooltip.kettle", "Right click with water bucket or water bottle to fill water", 0, ChatFormatting.GRAY),
 	DRYING_RACK("tooltip.drying_rack", "Only works directly under the sun", 0, ChatFormatting.GRAY),
 	CAMELLIA("tooltip.camellia", "Prevent Phantom spawn when equipped", 0, ChatFormatting.GRAY),

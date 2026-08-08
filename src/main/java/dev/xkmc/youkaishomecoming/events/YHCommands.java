@@ -27,7 +27,13 @@ import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
+
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellStorage;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
+import dev.xkmc.youkaishomecoming.content.spell.certification.PendingRewardStorage;
+import dev.xkmc.youkaishomecoming.content.spell.certification.SpellCertificate;
+
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
@@ -99,6 +105,25 @@ public class YHCommands {
 		CustomSpellCircleStorage.loadAllIntoConfig(event.getServer());
 		SpellMarketServerManager.start(event.getServer());
 		runHeadlessSelfTest(event.getServer());
+	}
+
+	/** Re-delivers pending certified rewards when the creator logs in (design doc §16). */
+	@SubscribeEvent
+	public static void onPlayerLoggedIn(net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent event) {
+		if (!(event.getEntity() instanceof ServerPlayer player)) return;
+		String hash = PendingRewardStorage.peek(player.server, player.getUUID());
+		if (hash == null) return;
+		SpellCertificate certificate = CertifiedSpellStorage.loadCertificate(player.server, hash);
+		SpellDefinition definition = CertifiedSpellStorage.loadDefinition(player.server, hash);
+		if (certificate == null || definition == null) return;
+		ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), definition.id, true);
+		CertifiedSpellValidator.tagCertified(stack, certificate);
+		if (player.getInventory().add(stack)) {
+			PendingRewardStorage.claim(player.server, player.getUUID(), hash);
+			player.displayClientMessage(Component.literal("[YH] Pending certified spell delivered: " + definition.display.name()), false);
+		} else {
+			player.displayClientMessage(Component.literal("[YH] Certified reward waiting (inventory full): " + definition.display.name()), false);
+		}
 	}
 
 	@SubscribeEvent
@@ -660,6 +685,30 @@ public class YHCommands {
 			ctx.getSource().sendSystemMessage(Component.literal("[YH] certification failed: " + e.getMessage()));
 			return 0;
 		}
+	}
+
+	private static int claimCertifiedRewards(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var player = EntityArgument.getPlayer(ctx, "targets");
+		String hash = PendingRewardStorage.peek(player.server, player.getUUID());
+		if (hash == null) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] no pending certified rewards"));
+			return 0;
+		}
+		SpellCertificate certificate = CertifiedSpellStorage.loadCertificate(player.server, hash);
+		SpellDefinition definition = CertifiedSpellStorage.loadDefinition(player.server, hash);
+		if (certificate == null || definition == null) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] pending reward data missing"));
+			return 0;
+		}
+		ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), definition.id, true);
+		CertifiedSpellValidator.tagCertified(stack, certificate);
+		if (player.getInventory().add(stack)) {
+			PendingRewardStorage.claim(player.server, player.getUUID(), hash);
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] claimed: " + definition.display.name()));
+			return 1;
+		}
+		ctx.getSource().sendSystemMessage(Component.literal("[YH] inventory full"));
+		return 0;
 	}
 
 	private static int abortCertification(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

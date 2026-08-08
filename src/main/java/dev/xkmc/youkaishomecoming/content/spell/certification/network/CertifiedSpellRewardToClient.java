@@ -24,6 +24,10 @@ public class CertifiedSpellRewardToClient extends SerialPacketBase {
 		this.spellName = spellName;
 	}
 
+	public static void send(String definitionHash, String spellName) {
+		dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toAllPlayers(new CertifiedSpellRewardToClient(definitionHash, spellName));
+	}
+
 	@Override
 	public void handle(NetworkEvent.Context context) {
 		CertificationClientHandler.acceptReward(definitionHash, spellName);

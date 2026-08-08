@@ -71,6 +71,8 @@ public class CertificationController {
 		return elapsedTicks;
 	}
 
+	public SpellDefinition definition() { return definition; }
+	public CertificationQuote quote() { return quote; }
 	public int targetTicks() {
 		return quote.durationTicks();
 	}
@@ -221,7 +223,7 @@ public class CertificationController {
 		e.eraseAllDanmaku(null);
 		e.getDanmakuHolder().clearSentQueue();
 		syncState();
-		// Phase 4: issue the certified spell item / pending reward here.
+		CertifiedSpellRewardService.issue(e);
 	}
 
 	private void fail(SpellCertificationEntity e, CertificationFailReason reason) {

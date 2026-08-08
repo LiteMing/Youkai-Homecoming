@@ -131,6 +131,18 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 		boolean singleUse = isSingleUse(stack);
 
+		// Certified items (design doc §15, §22): resolve the immutable definition from
+		// world certificate storage, verify hash and capability policy; tampered NBT,
+		// overwritten storage or revoked capabilities reject the cast.
+		if (player instanceof ServerPlayer sp0 && CertifiedSpellValidator.isCertified(stack)) {
+			SpellDefinition certified = CertifiedSpellValidator.resolveCertifiedDefinition(sp0, stack);
+			if (certified == null) {
+				sp0.displayClientMessage(YHLangData.CERT_CAST_REJECTED.get(), false);
+				return false;
+			}
+			def = certified;
+		}
+
 		if (player instanceof ServerPlayer sp && ModList.get().isLoaded("kubejs")
 				&& YHSpellKubeJSEvents.DYNAMIC_SPELL_CAST.hasListeners()) {
 			var castEvent = new DynamicSpellCastEventJS(sp, stack, spellId, singleUse, consume, cooldown);
@@ -149,6 +161,13 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			if (duration == DURATION_NATURAL && def.itemForm.cooldown() > 0) {
 				// item_form.cooldown acts as fixed duration when set, unless overridden by NBT
 				duration = def.itemForm.cooldown();
+			}
+			if (CertifiedSpellValidator.isCertified(stack)) {
+				// certified duration is the hard maximum (§2.4)
+				int certifiedDuration = CertifiedSpellValidator.getCertifiedDuration(stack);
+				if (duration == DURATION_NATURAL || duration > certifiedDuration) {
+					duration = certifiedDuration;
+				}
 			}
 			DanmakuProxyEntity proxy = new DanmakuProxyEntity(
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());

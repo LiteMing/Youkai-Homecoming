@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.init.data;
 
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
@@ -105,6 +106,12 @@ public class YHModConfig {
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellMarketAutoSyncTags;
 		public final ForgeConfigSpec.IntValue spellMarketPollMinutes;
 		public final ForgeConfigSpec.IntValue spellMarketMaxSpellsPerTag;
+
+		// Certification analysis hard limits (SpellAnalyzer CERTIFICATION profile, Phase 0)
+		public final ForgeConfigSpec.IntValue certificationMaxSpawnPerTick;
+		public final ForgeConfigSpec.IntValue certificationMaxPeakAlive;
+		public final ForgeConfigSpec.LongValue certificationMaxProjectileTicks;
+		public final ForgeConfigSpec.LongValue certificationMaxHookExecutions;
 
 		public final ForgeConfigSpec.IntValue youkaifyingTime;
 		public final ForgeConfigSpec.DoubleValue youkaifyingChance;
@@ -251,6 +258,22 @@ public class YHModConfig {
 				spellMarketMaxSpellsPerTag = builder.comment("Maximum number of managed spells imported for one tag")
 						.translation("config.youkaishomecoming.common.spell_market.max_spells_per_tag")
 						.defineInRange("max_spells_per_tag", 64, 1, 256);
+			}
+			builder.pop();
+			builder.translation("config.youkaishomecoming.common.certification").push("certification");
+			{
+				certificationMaxSpawnPerTick = builder.comment("Max projectiles any single server tick may spawn during certification")
+						.translation("config.youkaishomecoming.common.certification.maxSpawnPerTick")
+						.defineInRange("maxSpawnPerTick", SpellAnalysisLimits.DEFAULT_MAX_SPAWN_PER_TICK, 1, 100000);
+				certificationMaxPeakAlive = builder.comment("Conservative concurrent-alive projectile upper bound during certification")
+						.translation("config.youkaishomecoming.common.certification.maxPeakAlive")
+						.defineInRange("maxPeakAlive", SpellAnalysisLimits.DEFAULT_MAX_PEAK_ALIVE, 1, 1000000);
+				certificationMaxProjectileTicks = builder.comment("Conservative total projectile-tick upper bound during certification")
+						.translation("config.youkaishomecoming.common.certification.maxProjectileTicks")
+						.defineInRange("maxProjectileTicks", SpellAnalysisLimits.DEFAULT_MAX_PROJECTILE_TICKS, 1L, 100_000_000_000L);
+				certificationMaxHookExecutions = builder.comment("Conservative total hook execution upper bound during certification")
+						.translation("config.youkaishomecoming.common.certification.maxHookExecutions")
+						.defineInRange("maxHookExecutions", SpellAnalysisLimits.DEFAULT_MAX_HOOK_EXECUTIONS, 1L, 100_000_000_000L);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.youkaifying_effect").push("youkaifying_effect");

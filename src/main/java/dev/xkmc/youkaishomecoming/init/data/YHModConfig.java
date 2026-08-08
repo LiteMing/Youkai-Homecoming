@@ -146,6 +146,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue playerLaserDuration;
 		public final ForgeConfigSpec.IntValue spellBombCost;
 		public final ForgeConfigSpec.IntValue spellXpCost;
+		public final ForgeConfigSpec.BooleanValue lifePaymentEnabled;
 		public final ForgeConfigSpec.BooleanValue invulFrameForDanmaku;
 		public final ForgeConfigSpec.IntValue danmakuBuffCostTicks;
 
@@ -385,6 +386,9 @@ public class YHModConfig {
 				spellXpCost = builder.comment("XP levels cost to cast a spellcard outside STG danmaku combat")
 						.translation("config.youkaishomecoming.common.danmaku_battle.spellXpCost")
 						.defineInRange("spellXpCost", 5, 0, 100);
+				lifePaymentEnabled = builder.comment("Allow the life payment provider (high-cost overload casting). Never deducted silently by default")
+						.translation("config.youkaishomecoming.common.danmaku_battle.lifePaymentEnabled")
+						.define("lifePaymentEnabled", false);
 				playerLaserDuration = builder.comment("Player laser duration")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerLaserDuration")
 						.defineInRange("playerLaserDuration", 100, 5, 1000);

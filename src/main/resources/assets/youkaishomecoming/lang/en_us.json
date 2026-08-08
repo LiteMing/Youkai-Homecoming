@@ -501,6 +501,8 @@
   "config.youkaishomecoming.common.danmaku_battle.spellBombCost.tooltip": "Bomb cost to cast a spellcard inside STG danmaku combat",
   "config.youkaishomecoming.common.danmaku_battle.spellXpCost": "Spellcard XP Cost",
   "config.youkaishomecoming.common.danmaku_battle.spellXpCost.tooltip": "XP levels cost to cast a spellcard outside STG danmaku combat",
+  "config.youkaishomecoming.common.danmaku_battle.lifePaymentEnabled": "Life Payment",
+  "config.youkaishomecoming.common.danmaku_battle.lifePaymentEnabled.tooltip": "Allow the life payment provider (high-cost overload casting). Never deducted silently by default",
   "config.youkaishomecoming.common.danmaku_battle.tooltip": "Damage, cooldown and resource settings for danmaku battle",
   "config.youkaishomecoming.common.exposure_compat": "Exposure Compat",
   "config.youkaishomecoming.common.exposure_compat.exposureCameraCooldown": "Camera Cooldown (Ticks)",

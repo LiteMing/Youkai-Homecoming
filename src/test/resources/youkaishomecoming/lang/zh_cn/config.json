@@ -133,6 +133,8 @@
 	"config.youkaishomecoming.common.danmaku_battle.spellBombCost.tooltip": "STG 弹幕战内释放符卡的炸弹消耗",
 	"config.youkaishomecoming.common.danmaku_battle.spellXpCost": "符卡经验消耗",
 	"config.youkaishomecoming.common.danmaku_battle.spellXpCost.tooltip": "STG 弹幕战外释放符卡消耗的经验等级",
+	"config.youkaishomecoming.common.danmaku_battle.lifePaymentEnabled": "生命支付",
+	"config.youkaishomecoming.common.danmaku_battle.lifePaymentEnabled.tooltip": "是否允许生命支付 Provider（高成本超载施放）。默认关闭，绝不静默扣生命",
 	"config.youkaishomecoming.common.danmaku_battle.invulFrameForDanmaku": "弹幕无敌帧",
 	"config.youkaishomecoming.common.danmaku_battle.invulFrameForDanmaku.tooltip": "弹幕对非玩家、非妖怪生物造成的伤害是否启用无敌帧。对玩家和妖怪始终启用",
 	"config.youkaishomecoming.common.danmaku_battle.danmakuBuffCostTicks": "强化消耗时长",

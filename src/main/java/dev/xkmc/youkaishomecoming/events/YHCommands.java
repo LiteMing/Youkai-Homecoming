@@ -770,7 +770,7 @@ public class YHCommands {
 	}
 
 	private static int runAnalyzerSelfTest(CommandSourceStack source) {
-		var result = SpellAnalyzerSelfCheck.run();
+		var result = SpellAnalyzerSelfCheck.run(source.getPlayer());
 		source.sendSystemMessage(Component.literal("[YH] spell analyzer self-test: " + result.passed() + "/" + result.total() + " passed"));
 		if (!result.allPassed()) {
 			for (String failure : result.failures()) {

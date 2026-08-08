@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Server-side self-test for the Phase 0 analyzer contract (P0.5).
@@ -44,7 +45,12 @@ public final class SpellAnalyzerSelfCheck {
 	}
 
 	public static Result run() {
-		return new Runner().run();
+		return new Runner().run(null);
+	}
+
+	/** Player-scoped run (command context); headless runs pass null and skip player-gated checks. */
+	public static Result run(net.minecraft.server.level.ServerPlayer player) {
+		return new Runner().run(player);
 	}
 
 	private static final class Runner {
@@ -482,7 +488,7 @@ public final class SpellAnalyzerSelfCheck {
 			return spell(sb.toString());
 		}
 
-		Result run() {
+		Result run(@Nullable net.minecraft.server.level.ServerPlayer player) {
 			try {
 				codecAndHash();
 				analyzerTraversal();
@@ -505,6 +511,9 @@ public final class SpellAnalyzerSelfCheck {
 				marketFacade();
 				unknownAction();
 				hashOrderIndependence();
+				if (player != null) {
+					certificationQuoteSanity(player);
+				}
 			} catch (Exception | AssertionError t) {
 				// never crash the command: surface the real error as a failure entry.
 				// VirtualMachineError/ThreadDeath are intentionally not caught (review B)
@@ -951,6 +960,21 @@ public final class SpellAnalyzerSelfCheck {
 			@Override
 			public void execute(SpellContext ctx) {
 			}
+		}
+
+		/** Phase 7 sanity: the quote pipeline produces a positive, clamped cost for a
+		 * certification-eligible definition. Requires a player (command context). */
+		private void certificationQuoteSanity(net.minecraft.server.level.ServerPlayer player) {
+			SpellDefinition def = parse(FIRE24);
+			dev.xkmc.youkaishomecoming.content.spell.certification.CertificationQuote q =
+					dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService.quote(player, def, 99999, 999);
+			check("quote clamps duration to max",
+					q.durationTicks() <= dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationMaxDurationTicks.get());
+			check("quote clamps arena to max",
+					q.arenaHalfSize() <= dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationMaxArenaHalfSize.get());
+			check("quote cost positive and floored by minProof",
+					q.startCostUnits() >= 1 && q.startCostUnits() >= dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationMinProofMultiplier.get());
+			check("quote hash stable", q.definitionHash().equals(SpellHash.canonicalHash(def)));
 		}
 
 		@FunctionalInterface

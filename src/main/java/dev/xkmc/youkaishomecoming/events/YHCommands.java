@@ -24,6 +24,7 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
@@ -616,6 +617,20 @@ public class YHCommands {
 						}))
 				)
 		);
+
+		// /yhdev developer commands
+		event.getDispatcher().register(literal("yhdev")
+				.requires(e -> e.hasPermission(2))
+				.then(literal("spell_analyzer_self_test")
+						.executes(ctx -> runAnalyzerSelfTest(ctx.getSource()))));
+	}
+
+	private static int runAnalyzerSelfTest(CommandSourceStack source) {
+		var result = SpellAnalyzerSelfCheck.run();
+		String summary = "[YH] spell analyzer self-test: " + result.passed() + "/" + result.total() + " passed"
+				+ (result.allPassed() ? "" : ", FIRST FAILURE: " + result.firstFailureDetail());
+		source.sendSystemMessage(Component.literal(summary));
+		return result.allPassed() ? 1 : 0;
 	}
 
 	protected static LiteralArgumentBuilder<CommandSourceStack> literal(String str) {

@@ -45,6 +45,7 @@ public class SpellAnalyzerSelfTest {
 		testPhaseTickUnbounded();
 		testDistanceAndPositionsUnbounded();
 		testGaussianUnbounded();
+		testPowRootUnbounded();
 		testSinBoundedByAmplitude();
 		testArithmeticCombined();
 		testDivByZeroUnbounded();
@@ -135,6 +136,17 @@ public class SpellAnalyzerSelfTest {
 
 	private static void testGaussianUnbounded() {
 		checkUnbounded("gaussian", NumberBounds.resolve(new NumberProviders.GaussianRandom(0, 5)));
+	}
+
+	private static void testPowRootUnbounded() {
+		// corner sampling is not a valid interval operation for pow/root; the resolver
+		// must fail open to UNBOUNDED rather than return a wrong lower bound
+		checkUnbounded("pow with zero-crossing base", NumberBounds.resolve(
+				new NumberProviders.Pow(new NumberProviders.RandomRange(-2, 2), new NumberProviders.Constant(2))));
+		checkUnbounded("pow with plain constants", NumberBounds.resolve(
+				new NumberProviders.Pow(new NumberProviders.Constant(2), new NumberProviders.Constant(3))));
+		checkUnbounded("root", NumberBounds.resolve(
+				new NumberProviders.Root(new NumberProviders.Constant(8), new NumberProviders.Constant(3))));
 	}
 
 	private static void testSinBoundedByAmplitude() {

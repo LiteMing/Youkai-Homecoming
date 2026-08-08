@@ -103,8 +103,11 @@ public record NumberBounds(double min, double max) {
 			double hi = Math.exp(Math.max(0, i.max()));
 			return of(lo, hi);
 		}
-		if (provider instanceof NumberProviders.Pow p) return powBounds(p.base(), p.exponent());
-		if (provider instanceof NumberProviders.Root r) return rootBounds(r.value(), r.degree());
+		// pow/root corner sampling is not a valid interval operation (e.g. base [-2,2],
+		// exponent 2 only samples 4, missing 0); fail open to UNBOUNDED rather than
+		// returning a wrong lower bound (acceptance review issue 9)
+		if (provider instanceof NumberProviders.Pow) return UNBOUNDED;
+		if (provider instanceof NumberProviders.Root) return UNBOUNDED;
 		if (provider instanceof NumberProviders.Max m) {
 			NumberBounds a = resolve(m.a());
 			NumberBounds b = resolve(m.b());
@@ -160,46 +163,6 @@ public record NumberBounds(double min, double max) {
 		double hi = fn.applyAsDouble(i.max());
 		if (Double.isNaN(lo) || Double.isNaN(hi)) return UNBOUNDED;
 		return of(Math.min(lo, hi), Math.max(lo, hi));
-	}
-
-	private static NumberBounds powBounds(NumberProvider base, NumberProvider exponent) {
-		NumberBounds b = resolve(base);
-		NumberBounds e = resolve(exponent);
-		if (!b.bounded() || !e.bounded()) return UNBOUNDED;
-		// negative exponent with a base range that may touch zero is unbounded
-		if (e.min() < 0 && b.min() <= 0 && b.max() >= 0) return UNBOUNDED;
-		double[] corners = {
-				Math.pow(b.min(), e.min()),
-				Math.pow(b.min(), e.max()),
-				Math.pow(b.max(), e.min()),
-				Math.pow(b.max(), e.max())
-		};
-		double lo = corners[0], hi = corners[0];
-		for (int i = 1; i < 4; i++) {
-			if (Double.isNaN(corners[i])) return UNBOUNDED;
-			lo = Math.min(lo, corners[i]);
-			hi = Math.max(hi, corners[i]);
-		}
-		return of(lo, hi);
-	}
-
-	private static NumberBounds rootBounds(NumberProvider value, NumberProvider degree) {
-		NumberBounds v = resolve(value);
-		NumberBounds d = resolve(degree);
-		if (!v.bounded() || !d.bounded() || d.min() <= 0 && d.max() >= 0) return UNBOUNDED;
-		double[] corners = {
-				Math.pow(v.min(), 1.0 / d.min()),
-				Math.pow(v.min(), 1.0 / d.max()),
-				Math.pow(v.max(), 1.0 / d.min()),
-				Math.pow(v.max(), 1.0 / d.max())
-		};
-		double lo = corners[0], hi = corners[0];
-		for (int i = 1; i < 4; i++) {
-			if (Double.isNaN(corners[i])) return UNBOUNDED;
-			lo = Math.min(lo, corners[i]);
-			hi = Math.max(hi, corners[i]);
-		}
-		return of(lo, hi);
 	}
 
 	private static NumberBounds boundsOfList(List<Double> values) {

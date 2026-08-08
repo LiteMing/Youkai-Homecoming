@@ -60,7 +60,8 @@ import java.util.Set;
  */
 public final class SpellAnalyzer {
 
-	private final SpellDefinition definition;	private final SpellAnalysisProfile profile;
+	private final SpellDefinition definition;
+	private final SpellAnalysisProfile profile;
 	private final SpellAnalysisLimits limits;
 
 	// semantic counters
@@ -75,10 +76,16 @@ public final class SpellAnalyzer {
 	private long certShooters;
 	private long certOneShotSpawns;
 	private long certPerTickSpawns;
+	private long certMaxOneShotBurst;
+	private long certShooterTickSpawns;
+	private long certShooterPeakAlive;
 	private long hookExecutionsOnce;
 	private long hookExecutionsPerTick;
 	private long lifetimeUpperMax;
 	private long expressionOps;
+	private boolean inOneShotGroup;
+	private long burstAccum;
+	private int hookDepth;
 
 	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits) {
 		this.definition = definition;
@@ -103,7 +110,7 @@ public final class SpellAnalyzer {
 
 	private SpellAnalysis run() {
 		checkStructural();
-		if (profile == SpellAnalysisProfile.CERTIFICATION && hasLegacyTicker(definition)) {
+		if (profile == SpellAnalysisProfile.CERTIFICATION && SpellEligibility.hasLegacyTicker(definition)) {
 			throw rejected("legacy_ticker", "LegacyTickerAction definitions cannot be serialized or certified (D9 precheck)");
 		}
 		genericWalk(definition, 0);
@@ -139,45 +146,11 @@ public final class SpellAnalyzer {
 	}
 
 	/**
-	 * Legacy detection equivalent to SpellDefinition.hasLegacyTicker, but implemented
-	 * with instanceof only: calling the instance method would initialize SpellDefinition's
-	 * CODEC chain (SpellActions → YHDanmaku), which is not safe outside FML.
-	 * Also covers legacy tickers inside Burst/SpawnShooter bodies, which the original
-	 * container recursion missed.
+	 * Legacy precheck lives in {@link SpellEligibility} — the single shared recursive
+	 * scan (D9). It is implemented with instanceof only: calling
+	 * SpellDefinition.hasLegacyTicker() would initialize the CODEC chain
+	 * (SpellActions → YHDanmaku), which is not safe outside FML.
 	 */
-	private static boolean hasLegacyTicker(SpellDefinition def) {
-		for (PhaseDefinition phase : def.phases.values()) {
-			if (actionsHaveLegacy(phase.onEnter)
-					|| actionsHaveLegacy(phase.onTick)
-					|| actionsHaveLegacy(phase.onExit)
-					|| actionsHaveLegacy(phase.onDamage)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private static boolean actionsHaveLegacy(List<SpellAction> actions) {
-		for (SpellAction action : actions) {
-			if (actionHasLegacy(action)) return true;
-		}
-		return false;
-	}
-
-	private static boolean actionHasLegacy(SpellAction action) {
-		if (action instanceof LegacyTickerAction) return true;
-		if (action instanceof SpellActions.ConditionalAction cond) {
-			return actionsHaveLegacy(cond.ifTrue()) || actionsHaveLegacy(cond.ifFalse());
-		}
-		if (action instanceof SpellActions.SequenceAction seq) return actionsHaveLegacy(seq.actions());
-		if (action instanceof SpellActions.RepeatAction rep) return actionsHaveLegacy(rep.body());
-		if (action instanceof SpellActions.DisabledAction disabled) return actionHasLegacy(disabled.inner());
-		if (action instanceof DelayAction delay) return actionsHaveLegacy(delay.body());
-		if (action instanceof BurstAction burst) return actionsHaveLegacy(burst.body());
-		if (action instanceof SpawnShooterAction shooter) return actionsHaveLegacy(shooter.body());
-		return false;
-	}
-
 	private void checkTransitions(PhaseDefinition phase) {
 		if (profile != SpellAnalysisProfile.CERTIFICATION) return;
 		for (Transition transition : phase.transitions) {
@@ -248,9 +221,12 @@ public final class SpellAnalyzer {
 		if (node instanceof Number || node instanceof Boolean || clazz.isEnum()) return;
 		if (node instanceof LegacyTickerAction) return; // runtime-only factory/card, never walk
 		if (node instanceof SpellAction) wideActions++;
-		if (node instanceof NumberProvider) {
-			wideActions++;
+		if (node instanceof NumberProvider p) {
 			expressionOps++;
+			// historical market counting only counted JSON objects with a "type" key;
+			// bare numeric literals decode to Constant and must NOT inflate the action
+			// budget (acceptance review issue 1b)
+			if (!(p instanceof NumberProviders.Constant)) wideActions++;
 		}
 		if (node instanceof SpellCondition || node instanceof MoverConfig) wideActions++;
 		// only walk mod-owned data types; registries/RLs/Components are opaque
@@ -279,6 +255,11 @@ public final class SpellAnalyzer {
 	// ------------------------------------------------------------ semantic walk
 
 	private void walkList(String label, List<SpellAction> list, boolean perTick, long mult) {
+		boolean outerGroup = !perTick && !inOneShotGroup;
+		if (outerGroup) {
+			inOneShotGroup = true;
+			burstAccum = 0;
+		}
 		push(label);
 		int index = 0;
 		for (SpellAction action : list) {
@@ -288,6 +269,10 @@ public final class SpellAnalyzer {
 			index++;
 		}
 		pop();
+		if (outerGroup) {
+			inOneShotGroup = false;
+			if (burstAccum > certMaxOneShotBurst) certMaxOneShotBurst = burstAccum;
+		}
 	}
 
 	private void walkAction(SpellAction action, boolean perTick, long mult, boolean insideDisabled) {
@@ -304,7 +289,7 @@ public final class SpellAnalyzer {
 			if (isMarketBanned(action)) {
 				throw banned(bannedTypeName(action));
 			}
-			for (SpellAction child : containerChildren(action)) {
+			for (SpellAction child : containerChildrenIncludingHooks(action)) {
 				walkAction(child, perTick, mult, true);
 			}
 			return;
@@ -313,6 +298,7 @@ public final class SpellAnalyzer {
 		if (actions > limits.maxActions()) {
 			throw new SpellAnalysisException("Spell contains too many actions: " + actions);
 		}
+		boolean handled = true;
 		if (action instanceof FireDanmakuAction a) {
 			handleFire(a, perTick, mult);
 		} else if (action instanceof FireLaserAction a) {
@@ -364,14 +350,42 @@ public final class SpellAnalyzer {
 			addCap(SpellCapability.SHOW_SPELL_TITLE);
 		} else if (action instanceof YsmRenderAction) {
 			addCap(SpellCapability.YSM_RENDER);
+		} else if (action instanceof LegacyTickerAction) {
+			// rejected by the certification precheck (D9); market keeps the historical
+			// behavior of accepting it (runtime factory is lost → no-op)
+			handled = true;
+		} else if (isSafeNoCostAction(action)) {
+			// SetVariable / AddVariable / ForcePhase / Noop / PlaySoundAction:
+			// explicitly whitelisted, no capability, no cost.
+			handled = true;
+		} else {
+			handled = false;
 		}
-		// SetVariable / AddVariable / ForcePhase / Noop / PlaySoundAction: no capability, no cost.
-		// LegacyTickerAction is rejected by the certification precheck (D9); the market
-		// profile keeps its historical behavior of accepting it (runtime factory is lost,
-		// so it degrades to a no-op there).
+		if (!handled) {
+			// unknown action: fail closed in certification — a future action type that
+			// the analyzer does not understand must never pass as "safe" (reverse of
+			// the unknown-capability default-DENY principle)
+			if (profile == SpellAnalysisProfile.CERTIFICATION) {
+				throw rejected("unknown_action",
+						"Unsupported action in certification: " + action.getClass().getName());
+			}
+		}
 	}
 
-	private static List<SpellAction> containerChildren(SpellAction action) {
+	private static boolean isSafeNoCostAction(SpellAction action) {
+		return action instanceof SpellActions.SetVariable
+				|| action instanceof SpellActions.AddVariable
+				|| action instanceof SpellActions.ForcePhase
+				|| action instanceof SpellActions.NoopAction
+				|| action instanceof SpellActions.PlaySoundAction;
+	}
+
+	/**
+	 * All nested actions reachable from this action, including fire/laser hook lists.
+	 * Used by the MARKET disabled penetration scan so banned actions cannot hide
+	 * inside on_expiry / on_trail / on_hit subtrees.
+	 */
+	private static List<SpellAction> containerChildrenIncludingHooks(SpellAction action) {
 		if (action instanceof SpellActions.ConditionalAction a) {
 			List<SpellAction> out = new ArrayList<>(a.ifTrue());
 			out.addAll(a.ifFalse());
@@ -382,7 +396,19 @@ public final class SpellAnalyzer {
 		if (action instanceof DelayAction a) return a.body();
 		if (action instanceof BurstAction a) return a.body();
 		if (action instanceof SpawnShooterAction a) return a.body();
+		if (action instanceof FireDanmakuAction f) return hookLists(f.onExpiry(), f.onTrail(), f.onHitEntity(), f.onHitBlock());
+		if (action instanceof FireLaserAction f) return hookLists(f.onExpiry(), f.onTrail(), f.onHitEntity(), f.onHitBlock());
 		return List.of();
+	}
+
+	private static List<SpellAction> hookLists(Optional<List<SpellAction>> expiry, Optional<List<SpellAction>> trail,
+											   Optional<List<SpellAction>> hitEntity, Optional<List<SpellAction>> hitBlock) {
+		List<SpellAction> out = new ArrayList<>();
+		expiry.ifPresent(out::addAll);
+		trail.ifPresent(out::addAll);
+		hitEntity.ifPresent(out::addAll);
+		hitBlock.ifPresent(out::addAll);
+		return out;
 	}
 
 	// ------------------------------------------------------------ fire actions
@@ -452,9 +478,17 @@ public final class SpellAnalyzer {
 			if (perTick) hookExecutionsPerTick = satAdd(hookExecutionsPerTick, executions);
 			else hookExecutionsOnce = satAdd(hookExecutionsOnce, executions);
 		}
-		// market keeps the historical flat multiplier (no hook fanout); cert amplifies
-		long childMult = profile == SpellAnalysisProfile.MARKET ? mult : satMul(mult, executions);
-		walkList(label, list, perTick, childMult);
+		// market keeps the historical flat multiplier (no hook fanout); cert amplifies.
+		// executions already carries the full path multiplier (mult × outer × count × hits),
+		// so the child multiplier is executions itself — multiplying by mult again would
+		// square the parent factor (acceptance review issue 4).
+		long childMult = profile == SpellAnalysisProfile.MARKET ? mult : executions;
+		hookDepth++;
+		try {
+			walkList(label, list, perTick, childMult);
+		} finally {
+			hookDepth--;
+		}
 	}
 
 	private void handleShooter(SpawnShooterAction a, boolean perTick, long mult) {
@@ -466,12 +500,30 @@ public final class SpellAnalyzer {
 			return;
 		}
 		certShooters = satAdd(certShooters, shooterCount);
-		// body fires every tick while the shooter lives; spawns are per-tick for
-		// concurrency accounting and total over lifetime for the duration projection
-		long before = certPerTickSpawns;
+		// shooter entity concurrency: one-shot spawn → count alive; recurring spawn
+		// (on_tick) → count × min(lifetime, window) alive at once
+		long lifetime = Math.max(0, a.lifetime());
+		long shooterPeak = perTick
+				? satMul(shooterCount, Math.min(lifetime, limits.certificationWindowTicks()))
+				: shooterCount;
+		// body spawns are modeled independently and NOT merged into the top-level
+		// per-tick bucket: that would double-charge them (window + lifetime) and
+		// understate the shooter concurrency (acceptance review issue 3)
+		long savedPerTick = certPerTickSpawns;
+		long savedOneShot = certOneShotSpawns;
+		long savedBurst = certMaxOneShotBurst;
 		walkList("body", a.body(), true, shooterCount);
-		long bodyPerTick = certPerTickSpawns - before;
-		certOneShotSpawns = satAdd(certOneShotSpawns, satMul(bodyPerTick, Math.max(0, a.lifetime())));
+		long bodyPerTick = certPerTickSpawns - savedPerTick;
+		certPerTickSpawns = savedPerTick;
+		certOneShotSpawns = savedOneShot;
+		certMaxOneShotBurst = savedBurst;
+		// per-tick body spawns (for maxSpawnPerTick), body totals over shooter lifetime
+		certShooterTickSpawns = satAdd(certShooterTickSpawns, bodyPerTick);
+		certOneShotSpawns = satAdd(certOneShotSpawns, satMul(bodyPerTick, lifetime));
+		// body projectiles peak ≈ bodyPerTick × min(global lifetime bound, window)
+		certShooterPeakAlive = satAdd(certShooterPeakAlive, shooterPeak);
+		certShooterPeakAlive = satAdd(certShooterPeakAlive,
+				satMul(bodyPerTick, Math.min(Math.max(1, lifetimeUpperMax), limits.certificationWindowTicks())));
 	}
 
 	// ------------------------------------------------------------ helpers
@@ -481,8 +533,15 @@ public final class SpellAnalyzer {
 			marketProjectiles = satAdd(marketProjectiles, contrib);
 			return;
 		}
-		if (perTick) certPerTickSpawns = satAdd(certPerTickSpawns, contrib);
-		else certOneShotSpawns = satAdd(certOneShotSpawns, contrib);
+		if (perTick) {
+			certPerTickSpawns = satAdd(certPerTickSpawns, contrib);
+		} else {
+			certOneShotSpawns = satAdd(certOneShotSpawns, contrib);
+			// one-shot spawns of the same tick group (a full on_enter/on_exit list runs
+			// in a single tick) count toward maxSpawnPerTick; hook-derived spawns are
+			// spread over projectile lifetimes and must not join the same-tick group
+			if (hookDepth == 0 && inOneShotGroup) burstAccum = satAdd(burstAccum, contrib);
+		}
 		if (lifetimeUpper > lifetimeUpperMax) lifetimeUpperMax = lifetimeUpper;
 	}
 
@@ -523,11 +582,11 @@ public final class SpellAnalyzer {
 		return new SpellAnalysisException("Automatic market imports may not use action: " + typeId);
 	}
 
-	/** Market: literal-only counts ≤ maxRepeat (historical behavior). Cert: any bounded provider. */
+	/** Market: literal-only counts ≤ maxRepeat, truncated like the historical getAsLong (acceptance review issue 1c). Cert: any bounded provider. */
 	private long boundCount(NumberProvider provider, String label) {
 		if (profile == SpellAnalysisProfile.MARKET) {
 			if (provider instanceof NumberProviders.Constant c) {
-				long value = (long) Math.ceil(c.value());
+				long value = (long) c.value();
 				if (value < 0 || value > limits.maxRepeat()) {
 					throw new SpellAnalysisException(label + " exceeds " + limits.maxRepeat());
 				}
@@ -551,12 +610,19 @@ public final class SpellAnalyzer {
 		return Math.max(0, (long) Math.ceil(bounds.max()));
 	}
 
-	/** Certification only: lifetime must be bounded and within maxLifetime. Market: no check. */
+	/**
+	 * Lifetime bound. Market: only bare literal values were ever checked historically
+	 * (raw JSON numbers with the "lifetime" key), so only Constants are checked there —
+	 * object-form providers pass untouched like before (acceptance review issue 1a).
+	 * Certification: any bounded provider, fail-closed on unbounded, capped at maxLifetime.
+	 */
 	private long boundLifetimeUpper(NumberProvider provider) {
-		if (profile == SpellAnalysisProfile.MARKET) return 0;
 		NumberBounds bounds = NumberBounds.resolve(provider);
 		if (!bounds.bounded()) {
-			throw rejected("unbounded_value", "lifetime cannot be bounded statically");
+			if (profile == SpellAnalysisProfile.CERTIFICATION) {
+				throw rejected("unbounded_value", "lifetime cannot be bounded statically");
+			}
+			return 0;
 		}
 		long upper = Math.max(0, (long) Math.ceil(bounds.max()));
 		if (upper > limits.maxLifetime()) {
@@ -597,9 +663,13 @@ public final class SpellAnalyzer {
 			}
 			long window = limits.certificationWindowTicks();
 			long life = Math.max(1, lifetimeUpperMax);
-			maxSpawnPerTick = certPerTickSpawns;
+			// single-tick spawn ceiling: recurring per-tick spawns, the largest one-shot
+			// tick group (a full on_enter/on_exit list), and shooter body per-tick spawns
+			maxSpawnPerTick = Math.max(certPerTickSpawns,
+					Math.max(certMaxOneShotBurst, certShooterTickSpawns));
 			totalSpawnUpperBound = satAdd(certOneShotSpawns, satMul(certPerTickSpawns, window));
-			peakAliveUpperBound = satAdd(certOneShotSpawns, satMul(certPerTickSpawns, Math.min(life, window)));
+			peakAliveUpperBound = satAdd(satAdd(certOneShotSpawns,
+					satMul(certPerTickSpawns, Math.min(life, window))), certShooterPeakAlive);
 			projectileTicks = satMul(totalSpawnUpperBound, life);
 			hookExecutionUpperBound = satAdd(hookExecutionsOnce, satMul(hookExecutionsPerTick, window));
 			if (maxSpawnPerTick > limits.maxSpawnPerTick()) {

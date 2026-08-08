@@ -105,6 +105,19 @@ public final class SpellAnalyzerSelfCheck {
 					.orElseThrow(() -> new IllegalStateException("fixture parse failed"));
 		}
 
+		/** Analyze with diagnostics: on failure stores the real exception in lastError. */
+		private String lastError;
+
+		private SpellAnalysis analysis(String fixture, SpellAnalysisProfile profile, SpellAnalysisLimits limits) {
+			lastError = null;
+			try {
+				return SpellAnalyzer.analyze(parse(fixture), profile, limits);
+			} catch (Throwable t) {
+				lastError = t.getClass().getSimpleName() + ": " + t.getMessage();
+				return null;
+			}
+		}
+
 		private static SpellAction firstTickAction(SpellDefinition def) {
 			return def.phases.values().iterator().next().onTick.get(0);
 		}
@@ -135,14 +148,14 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String AMP = spell("{\"type\": \"repeat\", \"count\": 8, \"body\": [{\"type\": \"burst\", \"waves\": 4, \"body\": [" + fire(6) + "]}]}");
 		private static final String OUTER = spell("{\"type\": \"repeat\", \"count\": 8, \"body\": [{\"type\": \"burst\", \"waves\": 4, \"body\": ["
 				+ fire(6).replace("\"lifetime\": 60}", "\"lifetime\": 60, \"outer_count\": 3}") + "]}]}");
-		private static final String SHOOTER = spell("{\"type\": \"spawn_shooter\", \"count\": 3, \"lifetime\": 100, \"body\": [" + fire(4) + "]}");
+		private static final String SHOOTER = spell("{\"type\": \"spawn_shooter\", \"count\": 3, \"speed\": 0.5, \"lifetime\": 100, \"body\": [" + fire(4) + "]}");
 		private static final String TRAIL = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 24, \"speed\": 0.5, \"lifetime\": 60,\n"
 				+ "  \"trail_interval\": 5, \"on_trail\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
 		private static final String ON_HIT = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 24, \"speed\": 0.5, \"lifetime\": 60,\n"
 				+ "  \"hit_behavior_entity\": \"continue\", \"on_hit_entity\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
 		private static final String LEGACY = spell("{\"type\": \"legacy_ticker\"}");
 		private static final String LEGACY_IN_BURST = spell("{\"type\": \"burst\", \"waves\": 3, \"body\": [{\"type\": \"legacy_ticker\"}]}");
-		private static final String LEGACY_DEEP = spell("{\"type\": \"delay\", \"delay_ticks\": 10, \"body\": [{\"type\": \"repeat\", \"count\": 2, \"body\": [{\"type\": \"spawn_shooter\", \"count\": 1, \"lifetime\": 20, \"body\": [{\"type\": \"legacy_ticker\"}]}]}]}");
+		private static final String LEGACY_DEEP = spell("{\"type\": \"delay\", \"delay_ticks\": 10, \"body\": [{\"type\": \"repeat\", \"count\": 2, \"body\": [{\"type\": \"spawn_shooter\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 20, \"body\": [{\"type\": \"legacy_ticker\"}]}]}]}");
 		private static final String RUNCMD = spell("{\"type\": \"run_command\", \"command\": \"say hi\"}");
 		private static final String RUNCMD_DISABLED = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"run_command\", \"command\": \"say hi\"}}");
 		private static final String TELEPORT = spell("{\"type\": \"teleport\", \"destination\": {\"mode\": \"caster\"}}");
@@ -182,9 +195,7 @@ public final class SpellAnalyzerSelfCheck {
 				"        {\"type\": \"clear_screen\"},\n" +
 				"        {\"type\": \"confine_target\", \"max_distance\": 10},\n" +
 				"        {\"type\": \"set_spell_circle\"},\n" +
-				"        {\"type\": \"show_spell_title\", \"name\": \"t\"},\n" +
-				"        {\"type\": \"force_spell\", \"spell_id\": \"youkaishomecoming:x\"},\n" +
-				"        {\"type\": \"fire_spell\", \"spell_id\": \"youkaishomecoming:x\"}],\n" +
+				"        {\"type\": \"show_spell_title\", \"name\": \"t\"}],\n" +
 				"      \"on_damage\": [" + fire(2) + "]\n" +
 				"    }\n" +
 				"  }\n" +
@@ -210,11 +221,11 @@ public final class SpellAnalyzerSelfCheck {
 				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
 				"  \"phases\": {\n" +
 				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
-				"      \"on_enter\": [{\"type\": \"spawn_shooter\", \"count\": 3, \"lifetime\": 100, \"body\": [" + fire(4) + "]}]}\n" +
+				"      \"on_enter\": [{\"type\": \"spawn_shooter\", \"count\": 3, \"speed\": 0.5, \"lifetime\": 100, \"body\": [" + fire(4) + "]}]}\n" +
 				"  }\n" +
 				"}";
 		private static final String SAME_TICK = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 400, \"speed\": 0.5, \"lifetime\": 60},\n"
-				+ "  {\"type\": \"spawn_shooter\", \"count\": 1, \"lifetime\": 100, \"body\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 4, \"speed\": 0.5, \"lifetime\": 60}]}");
+				+ "  {\"type\": \"spawn_shooter\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 100, \"body\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 4, \"speed\": 0.5, \"lifetime\": 60}]}");
 		private static final String EXPIRY_BURST = "{\n" +
 				"  \"id\": \"youkaishomecoming:analyzer_expiry_burst\",\n" +
 				"  \"display\": {\"name\": \"ExpiryBurst\"},\n" +
@@ -385,18 +396,31 @@ public final class SpellAnalyzerSelfCheck {
 			// on_tick: 3 shooters/tick, lifetime 100, body fire 4/tick
 			//   shooterPeak = 3 x 100 = 300; bodyPerGlobalTick = 300 x 4 = 1200
 			//   bodyTotal = 1200 x window 1000 = 1,200,000
-			SpellAnalysis shooter = SpellAnalyzer.analyze(parse(SHOOTER), SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("recurring shooter maxSpawnPerTick = 300 x 4 = 1200", shooter.maxSpawnPerTick() == 1200);
-			check("recurring shooter total = 1200 x 1000 = 1,200,000", shooter.totalSpawnUpperBound() == 1_200_000);
+			SpellAnalysis shooter = analysis(SHOOTER, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("recurring shooter maxSpawnPerTick = 300 x 4 = 1200",
+					shooter != null && shooter.maxSpawnPerTick() == 1200,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + shooter.maxSpawnPerTick());
+			check("recurring shooter total = 1200 x 1000 = 1,200,000",
+					shooter != null && shooter.totalSpawnUpperBound() == 1_200_000,
+					lastError != null ? lastError : "actual total=" + shooter.totalSpawnUpperBound());
 			check("recurring shooter peak = 1,200,000 + 300 + 72,000 = 1,272,300",
-					shooter.peakAliveUpperBound() == 1_272_300);
+					shooter != null && shooter.peakAliveUpperBound() == 1_272_300,
+					lastError != null ? lastError : "actual peak=" + shooter.peakAliveUpperBound());
 			// on_enter: same shooter fired once — body scales with lifetime only
-			SpellAnalysis enter = SpellAnalyzer.analyze(parse(ENTER_SHOOTER), SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("one-shot shooter maxSpawnPerTick = max(3 entities, 12 body) = 12", enter.maxSpawnPerTick() == 12);
-			check("one-shot shooter total = 3 x 4 x 100 = 1200", enter.totalSpawnUpperBound() == 1200);
-			check("one-shot shooter peak = 1200 + 3 + 12 x 60 = 1923", enter.peakAliveUpperBound() == 1923);
-			SpellAnalysis market = SpellAnalyzer.analyze(parse(SHOOTER), SpellAnalysisProfile.MARKET);
-			check("market shooter: 3 shooters, 12 projectiles", market.totalSpawnUpperBound() == 12);
+			SpellAnalysis enter = analysis(ENTER_SHOOTER, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("one-shot shooter maxSpawnPerTick = max(3 entities, 12 body) = 12",
+					enter != null && enter.maxSpawnPerTick() == 12,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (enter == null ? "null" : enter.maxSpawnPerTick()));
+			check("one-shot shooter total = 3 x 4 x 100 = 1200",
+					enter != null && enter.totalSpawnUpperBound() == 1200,
+					lastError != null ? lastError : "actual total=" + (enter == null ? "null" : enter.totalSpawnUpperBound()));
+			check("one-shot shooter peak = 1200 + 3 + 12 x 60 = 1923",
+					enter != null && enter.peakAliveUpperBound() == 1923,
+					lastError != null ? lastError : "actual peak=" + (enter == null ? "null" : enter.peakAliveUpperBound()));
+			SpellAnalysis market = analysis(SHOOTER, SpellAnalysisProfile.MARKET, SpellAnalysisLimits.market());
+			check("market shooter: 3 shooters, 12 projectiles",
+					market != null && market.totalSpawnUpperBound() == 12,
+					lastError != null ? lastError : "actual total=" + (market == null ? "null" : market.totalSpawnUpperBound()));
 		}
 
 		/** Top-level on_tick spawns and alive shooter bodies fire in the same tick:
@@ -404,9 +428,10 @@ public final class SpellAnalyzerSelfCheck {
 		private void sameTickSum() {
 			// on_tick: fire 400 + spawn_shooter 1 (lifetime 100, body fire 4)
 			//   bodyPerGlobalTick = 1 x 100 x 4 = 400 → ordinary = 400 + 400 = 800
-			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(SAME_TICK), SpellAnalysisProfile.CERTIFICATION, CERT);
+			SpellAnalysis analysis = this.analysis(SAME_TICK, SpellAnalysisProfile.CERTIFICATION, CERT);
 			check("top-level + shooter body same tick summed (400 + 400 = 800)",
-					analysis.maxSpawnPerTick() == 800);
+					analysis != null && analysis.maxSpawnPerTick() == 800,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
 		}
 
 		/** A batch of identical-lifetime one-shot projectiles can expire together; the
@@ -414,20 +439,28 @@ public final class SpellAnalyzerSelfCheck {
 		private void deferredHookBurst() {
 			// on_enter: fire 1000 (lifetime 60) with on_expiry [fire 10]
 			//   executions = 1000; child spawns = 1000 x 10 = 10,000 in one tick
-			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(EXPIRY_BURST), SpellAnalysisProfile.CERTIFICATION, CERT);
+			SpellAnalysis analysis = this.analysis(EXPIRY_BURST, SpellAnalysisProfile.CERTIFICATION, CERT);
 			check("deferred hook burst 1000 x 10 = 10000 counted in maxSpawnPerTick",
-					analysis.maxSpawnPerTick() == 10_000);
-			check("deferred hook executions = 1000 (once)", analysis.hookExecutionUpperBound() == 1000);
+					analysis != null && analysis.maxSpawnPerTick() == 10_000,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
+			check("deferred hook executions = 1000 (once)",
+					analysis != null && analysis.hookExecutionUpperBound() == 1000,
+					lastError != null ? lastError : "actual hooks=" + (analysis == null ? "null" : analysis.hookExecutionUpperBound()));
 		}
 
 		/** Hook child multiplier must not square the parent factor (issue 4). */
 		private void hookMultiplier() {
 			// repeat 10 -> fire count 2 (contrib 20/tick) -> on_hit_entity fire count 1
-			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(HOOK_REPEAT), SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("hook executions = 20/tick (no squaring)", analysis.hookExecutionUpperBound() == 20L * 1000);
+			SpellAnalysis analysis = this.analysis(HOOK_REPEAT, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("hook executions = 20/tick (no squaring)",
+					analysis != null && analysis.hookExecutionUpperBound() == 20L * 1000,
+					lastError != null ? lastError : "actual hooks=" + (analysis == null ? "null" : analysis.hookExecutionUpperBound()));
 			check("hook child spawns = 20/tick, total = (20+20) x 1000 = 40000",
-					analysis.totalSpawnUpperBound() == 40000);
-			check("hook multiplier maxSpawnPerTick = 40", analysis.maxSpawnPerTick() == 40);
+					analysis != null && analysis.totalSpawnUpperBound() == 40000,
+					lastError != null ? lastError : "actual total=" + (analysis == null ? "null" : analysis.totalSpawnUpperBound()));
+			check("hook multiplier maxSpawnPerTick = 40",
+					analysis != null && analysis.maxSpawnPerTick() == 40,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
 		}
 
 		private void profileDifferences() {
@@ -458,9 +491,17 @@ public final class SpellAnalyzerSelfCheck {
 					&& capsSet.contains(SpellCapability.CONFINED_TARGET)
 					&& capsSet.contains(SpellCapability.SET_SPELL_CIRCLE)
 					&& capsSet.contains(SpellCapability.SHOW_SPELL_TITLE)
-					&& capsSet.contains(SpellCapability.BOSS_ON_DAMAGE)
-					&& capsSet.contains(SpellCapability.FORCE_SPELL)
-					&& capsSet.contains(SpellCapability.FIRE_SPELL));
+					&& capsSet.contains(SpellCapability.BOSS_ON_DAMAGE));
+			// force_spell / fire_spell are market-banned: they must be rejected with the
+			// verbatim historical message, not extracted as capabilities
+			String forceMsg = rejectMessage(() -> SpellAnalyzer.analyze(parse(
+					spell("{\"type\": \"force_spell\", \"spell_id\": \"youkaishomecoming:x\"}")), SpellAnalysisProfile.MARKET));
+			check("market rejects force_spell verbatim", forceMsg != null
+					&& forceMsg.equals("Automatic market imports may not use action: force_spell"));
+			String fireSpellMsg = rejectMessage(() -> SpellAnalyzer.analyze(parse(
+					spell("{\"type\": \"fire_spell\", \"spell_id\": \"youkaishomecoming:x\"}")), SpellAnalysisProfile.MARKET));
+			check("market rejects fire_spell verbatim", fireSpellMsg != null
+					&& fireSpellMsg.equals("Automatic market imports may not use action: fire_spell"));
 			// same definition across profiles: only expected differences
 			SpellAnalysis marketTeleport = SpellAnalyzer.analyze(parse(TELEPORT), SpellAnalysisProfile.MARKET);
 			String certTeleport = rejectMessage(() -> SpellAnalyzer.analyze(parse(TELEPORT), SpellAnalysisProfile.CERTIFICATION, CERT));

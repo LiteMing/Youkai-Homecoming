@@ -77,8 +77,10 @@ public final class SpellAnalyzer {
 	private long certOneShotSpawns;
 	private long certPerTickSpawns;
 	private long certMaxOneShotBurst;
+	private long certMaxDeferredHookBurst;
 	private long certShooterTickSpawns;
 	private long certShooterPeakAlive;
+	private long certPeakShooters;
 	private long hookExecutionsOnce;
 	private long hookExecutionsPerTick;
 	private long lifetimeUpperMax;
@@ -484,11 +486,20 @@ public final class SpellAnalyzer {
 		// square the parent factor (acceptance review issue 4).
 		long childMult = profile == SpellAnalysisProfile.MARKET ? mult : executions;
 		hookDepth++;
+		long beforePerTick = certPerTickSpawns;
+		long beforeOneShot = certOneShotSpawns;
 		try {
 			walkList(label, list, perTick, childMult);
 		} finally {
 			hookDepth--;
 		}
+		// a single hook callback batch may fire in one tick: e.g. on_enter spawns 1000
+		// projectiles with identical lifetimes and each on_expiry spawns 10 more — the
+		// whole batch expires together. Conservative principle: all eligible projectiles
+		// of the batch trigger together, so the hook-derived burst must be tracked as a
+		// deferred tick burst (acceptance review issue 4).
+		long hookBurst = satAdd(certPerTickSpawns - beforePerTick, certOneShotSpawns - beforeOneShot);
+		if (hookBurst > certMaxDeferredHookBurst) certMaxDeferredHookBurst = hookBurst;
 	}
 
 	private void handleShooter(SpawnShooterAction a, boolean perTick, long mult) {
@@ -500,30 +511,43 @@ public final class SpellAnalyzer {
 			return;
 		}
 		certShooters = satAdd(certShooters, shooterCount);
-		// shooter entity concurrency: one-shot spawn → count alive; recurring spawn
-		// (on_tick) → count × min(lifetime, window) alive at once
 		long lifetime = Math.max(0, a.lifetime());
-		long shooterPeak = perTick
-				? satMul(shooterCount, Math.min(lifetime, limits.certificationWindowTicks()))
-				: shooterCount;
-		// body spawns are modeled independently and NOT merged into the top-level
-		// per-tick bucket: that would double-charge them (window + lifetime) and
-		// understate the shooter concurrency (acceptance review issue 3)
+		long window = limits.certificationWindowTicks();
+		// body per single shooter per tick (multiplier 1: the body semantics are
+		// "each shooter executes the body once per tick")
 		long savedPerTick = certPerTickSpawns;
 		long savedOneShot = certOneShotSpawns;
 		long savedBurst = certMaxOneShotBurst;
-		walkList("body", a.body(), true, shooterCount);
-		long bodyPerTick = certPerTickSpawns - savedPerTick;
+		walkList("body", a.body(), true, 1);
+		long bodyPerShooterTick = certPerTickSpawns - savedPerTick;
 		certPerTickSpawns = savedPerTick;
 		certOneShotSpawns = savedOneShot;
 		certMaxOneShotBurst = savedBurst;
-		// per-tick body spawns (for maxSpawnPerTick), body totals over shooter lifetime
-		certShooterTickSpawns = satAdd(certShooterTickSpawns, bodyPerTick);
-		certOneShotSpawns = satAdd(certOneShotSpawns, satMul(bodyPerTick, lifetime));
-		// body projectiles peak ≈ bodyPerTick × min(global lifetime bound, window)
+		// concurrency and body totals depend on whether shooters are spawned once
+		// (on_enter/on_exit) or recurring (on_tick). The recurring model multiplies by
+		// the alive cohort count × window; it may slightly overestimate window edges
+		// but must never underestimate (acceptance review issue 2).
+		long shooterPeak;
+		long bodyPerGlobalTick;
+		long bodyTotal;
+		if (perTick) {
+			shooterPeak = satMul(shooterCount, Math.min(lifetime, window));
+			bodyPerGlobalTick = satMul(bodyPerShooterTick, shooterPeak);
+			bodyTotal = satMul(bodyPerGlobalTick, window);
+		} else {
+			shooterPeak = shooterCount;
+			bodyPerGlobalTick = satMul(bodyPerShooterTick, shooterCount);
+			bodyTotal = satMul(bodyPerGlobalTick, lifetime);
+			// the shooter entities themselves are one-shot spawns of this tick group
+			if (inOneShotGroup) burstAccum = satAdd(burstAccum, shooterCount);
+		}
+		if (shooterPeak > certPeakShooters) certPeakShooters = shooterPeak;
+		certShooterTickSpawns = satAdd(certShooterTickSpawns, bodyPerGlobalTick);
+		certOneShotSpawns = satAdd(certOneShotSpawns, bodyTotal);
+		// body projectiles alive at once ≈ bodyPerGlobalTick × min(global lifetime, window)
 		certShooterPeakAlive = satAdd(certShooterPeakAlive, shooterPeak);
 		certShooterPeakAlive = satAdd(certShooterPeakAlive,
-				satMul(bodyPerTick, Math.min(Math.max(1, lifetimeUpperMax), limits.certificationWindowTicks())));
+				satMul(bodyPerGlobalTick, Math.min(Math.max(1, lifetimeUpperMax), window)));
 	}
 
 	// ------------------------------------------------------------ helpers
@@ -611,18 +635,17 @@ public final class SpellAnalyzer {
 	}
 
 	/**
-	 * Lifetime bound. Market: only bare literal values were ever checked historically
-	 * (raw JSON numbers with the "lifetime" key), so only Constants are checked there —
-	 * object-form providers pass untouched like before (acceptance review issue 1a).
-	 * Certification: any bounded provider, fail-closed on unbounded, capped at maxLifetime.
+	 * Lifetime bound. MARKET: historical hard limits are exclusively enforced by the
+	 * raw-JSON guard (HistoricalMarketJsonGuard); the analyzer must not add a second,
+	 * stricter rule for object-form providers (e.g. random lifetime with max > 12000
+	 * passed historically and must keep passing — acceptance review issue B). Only
+	 * certification performs full boundedness analysis.
 	 */
 	private long boundLifetimeUpper(NumberProvider provider) {
+		if (profile == SpellAnalysisProfile.MARKET) return 0;
 		NumberBounds bounds = NumberBounds.resolve(provider);
 		if (!bounds.bounded()) {
-			if (profile == SpellAnalysisProfile.CERTIFICATION) {
-				throw rejected("unbounded_value", "lifetime cannot be bounded statically");
-			}
-			return 0;
+			throw rejected("unbounded_value", "lifetime cannot be bounded statically");
 		}
 		long upper = Math.max(0, (long) Math.ceil(bounds.max()));
 		if (upper > limits.maxLifetime()) {
@@ -658,15 +681,25 @@ public final class SpellAnalyzer {
 			if (actions > limits.maxActions()) {
 				throw new SpellAnalysisException("Spell contains too many actions: " + actions);
 			}
-			if (certShooters > limits.maxShooters()) {
+			// shooter budget covers both the total spawn count and the concurrent peak
+			// (recurring shooters: count × min(lifetime, window) alive at once)
+			long shooterBudget = Math.max(certShooters, certPeakShooters);
+			if (shooterBudget > limits.maxShooters()) {
 				throw new SpellAnalysisException("Spell shooter budget exceeds " + limits.maxShooters());
 			}
 			long window = limits.certificationWindowTicks();
 			long life = Math.max(1, lifetimeUpperMax);
-			// single-tick spawn ceiling: recurring per-tick spawns, the largest one-shot
-			// tick group (a full on_enter/on_exit list), and shooter body per-tick spawns
-			maxSpawnPerTick = Math.max(certPerTickSpawns,
-					Math.max(certMaxOneShotBurst, certShooterTickSpawns));
+			// single-tick spawn ceiling — the runtime executes on_enter and on_tick in
+			// the SAME server tick, and alive shooter bodies fire in the same tick as
+			// top-level on_tick spawns; when events cannot be proven to interleave,
+			// they are summed, not maxed (acceptance review issue 3):
+			//   ordinaryTickBurst = top-level per-tick + shooter body per global tick
+			//   phaseEntryBurst  = one-shot tick group + ordinaryTickBurst
+			//   deferredHookBurst = largest single-tick hook-derived batch
+			long ordinaryTickBurst = satAdd(certPerTickSpawns, certShooterTickSpawns);
+			long phaseEntryBurst = satAdd(certMaxOneShotBurst, ordinaryTickBurst);
+			maxSpawnPerTick = Math.max(phaseEntryBurst,
+					Math.max(ordinaryTickBurst, certMaxDeferredHookBurst));
 			totalSpawnUpperBound = satAdd(certOneShotSpawns, satMul(certPerTickSpawns, window));
 			peakAliveUpperBound = satAdd(satAdd(certOneShotSpawns,
 					satMul(certPerTickSpawns, Math.min(life, window))), certShooterPeakAlive);

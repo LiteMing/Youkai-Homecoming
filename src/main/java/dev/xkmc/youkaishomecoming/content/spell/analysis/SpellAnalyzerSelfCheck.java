@@ -31,8 +31,8 @@ import java.util.Set;
 public final class SpellAnalyzerSelfCheck {
 
 	/** Deterministic certification limits independent of server config (window 1000 ticks). */
-	private static final SpellAnalysisLimits CERT = new SpellAnalysisLimits(64, 4096, 32, 256, 8192, 256, 12000, 512,
-			100_000, 1_000_000, 1_000_000_000L, 1_000_000_000L, 4, 1000);
+	private static final SpellAnalysisLimits CERT = new SpellAnalysisLimits(64, 4096, 32, 256, 8192, 4096, 12000, 512,
+			100_000, 10_000_000, 1_000_000_000L, 1_000_000_000L, 4, 1000);
 
 	private SpellAnalyzerSelfCheck() {
 	}
@@ -87,6 +87,9 @@ public final class SpellAnalyzerSelfCheck {
 					sb.append(" [").append(e.diagnostics().get(0)).append("]");
 				}
 				return sb.toString();
+			} catch (IllegalArgumentException e) {
+				// HistoricalMarketJsonGuard throws plain IAE; its messages must be readable
+				return e.getMessage();
 			} catch (Exception e) {
 				return "WRONG_EXCEPTION: " + e.getClass().getName();
 			}
@@ -191,6 +194,8 @@ public final class SpellAnalyzerSelfCheck {
 			analyzerTraversal();
 			oneShotBurst();
 			shooterModel();
+			sameTickSum();
+			deferredHookBurst();
 			hookMultiplier();
 			profileDifferences();
 			disabledSemantics();
@@ -280,7 +285,8 @@ public final class SpellAnalyzerSelfCheck {
 			check("cycle totals bounded by window (12 x 1000 = 12000)", cycle.totalSpawnUpperBound() == 12000);
 		}
 
-		/** One-shot spawn bursts (on_enter/on_exit) must count toward maxSpawnPerTick (issue 2). */
+		/** One-shot spawn bursts (on_enter/on_exit) must count toward maxSpawnPerTick (issue 2),
+		 * and on_enter + on_tick share the phase-entry tick, so they are summed (issue 3). */
 		private void oneShotBurst() {
 			String json = "{\n" +
 					"  \"id\": \"youkaishomecoming:analyzer_burst\",\n" +
@@ -293,21 +299,72 @@ public final class SpellAnalyzerSelfCheck {
 					"  }\n" +
 					"}";
 			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(json), SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("one-shot burst 1000 counted in maxSpawnPerTick", analysis.maxSpawnPerTick() == 1000);
+			check("phase-entry tick sums on_enter + on_tick (1000 + 6 = 1006)",
+					analysis.maxSpawnPerTick() == 1006);
 			check("one-shot burst total = 1000 + 6 x 1000", analysis.totalSpawnUpperBound() == 7000);
 			check("one-shot burst peak = 1000 + 6 x min(60, window) = 1360", analysis.peakAliveUpperBound() == 1360);
 		}
 
-		/** Shooter independent model: no window+lifetime double charge, concurrency counted (issue 3). */
+		/** Shooter independent model: recurring shooters scale with alive cohort × window
+		 * and never underestimate; one-shot shooters scale with lifetime only (issue 2). */
 		private void shooterModel() {
+			// on_tick: 3 shooters/tick, lifetime 100, body fire 4/tick
+			//   shooterPeak = 3 x 100 = 300; bodyPerGlobalTick = 300 x 4 = 1200
+			//   bodyTotal = 1200 x window 1000 = 1,200,000
 			SpellAnalysis shooter = SpellAnalyzer.analyze(parse(SHOOTER), SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("shooter body per-tick spawns counted in maxSpawnPerTick (12)", shooter.maxSpawnPerTick() == 12);
-			check("shooter total = body x lifetime only (12 x 100 = 1200, no window double charge)",
-					shooter.totalSpawnUpperBound() == 1200);
-			check("shooter peak covers shooters + body (1200 + 300 + 720 = 2220)",
-					shooter.peakAliveUpperBound() == 2220);
+			check("recurring shooter maxSpawnPerTick = 300 x 4 = 1200", shooter.maxSpawnPerTick() == 1200);
+			check("recurring shooter total = 1200 x 1000 = 1,200,000", shooter.totalSpawnUpperBound() == 1_200_000);
+			check("recurring shooter peak = 1,200,000 + 300 + 72,000 = 1,272,300",
+					shooter.peakAliveUpperBound() == 1_272_300);
+			// on_enter: same shooter fired once — body scales with lifetime only
+			String enterJson = "{\n" +
+					"  \"id\": \"youkaishomecoming:analyzer_shooter_enter\",\n" +
+					"  \"display\": {\"name\": \"ShooterEnter\"},\n" +
+					"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+					"  \"phases\": {\n" +
+					"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+					"      \"on_enter\": [{\"type\": \"spawn_shooter\", \"count\": 3, \"lifetime\": 100, \"body\": [" + fire(4) + "]}]}\n" +
+					"  }\n" +
+					"}";
+			SpellAnalysis enter = SpellAnalyzer.analyze(parse(enterJson), SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("one-shot shooter maxSpawnPerTick = max(3 entities, 12 body) = 12", enter.maxSpawnPerTick() == 12);
+			check("one-shot shooter total = 3 x 4 x 100 = 1200", enter.totalSpawnUpperBound() == 1200);
+			check("one-shot shooter peak = 1200 + 3 + 12 x 60 = 1923", enter.peakAliveUpperBound() == 1923);
 			SpellAnalysis market = SpellAnalyzer.analyze(parse(SHOOTER), SpellAnalysisProfile.MARKET);
 			check("market shooter: 3 shooters, 12 projectiles", market.totalSpawnUpperBound() == 12);
+		}
+
+		/** Top-level on_tick spawns and alive shooter bodies fire in the same tick:
+		 * they must be summed for maxSpawnPerTick (issue 3). */
+		private void sameTickSum() {
+			// on_tick: fire 400 + spawn_shooter 1 (lifetime 100, body fire 4)
+			//   bodyPerGlobalTick = 1 x 100 x 4 = 400 → ordinary = 400 + 400 = 800
+			String json = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 400, \"speed\": 0.5, \"lifetime\": 60},\n"
+					+ "  {\"type\": \"spawn_shooter\", \"count\": 1, \"lifetime\": 100, \"body\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 4, \"speed\": 0.5, \"lifetime\": 60}]}");
+			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(json), SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("top-level + shooter body same tick summed (400 + 400 = 800)",
+					analysis.maxSpawnPerTick() == 800);
+		}
+
+		/** A batch of identical-lifetime one-shot projectiles can expire together; the
+		 * whole on_expiry batch fires in one tick and must be tracked (issue 4). */
+		private void deferredHookBurst() {
+			// on_enter: fire 1000 (lifetime 60) with on_expiry [fire 10]
+			//   executions = 1000; child spawns = 1000 x 10 = 10,000 in one tick
+			String json = "{\n" +
+					"  \"id\": \"youkaishomecoming:analyzer_expiry_burst\",\n" +
+					"  \"display\": {\"name\": \"ExpiryBurst\"},\n" +
+					"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+					"  \"phases\": {\n" +
+					"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+					"      \"on_enter\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1000, \"speed\": 0.5, \"lifetime\": 60,\n" +
+					"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]}\n" +
+					"  }\n" +
+					"}";
+			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(json), SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("deferred hook burst 1000 x 10 = 10000 counted in maxSpawnPerTick",
+					analysis.maxSpawnPerTick() == 10_000);
+			check("deferred hook executions = 1000 (once)", analysis.hookExecutionUpperBound() == 1000);
 		}
 
 		/** Hook child multiplier must not square the parent factor (issue 4). */
@@ -319,6 +376,7 @@ public final class SpellAnalyzerSelfCheck {
 			check("hook executions = 20/tick (no squaring)", analysis.hookExecutionUpperBound() == 20L * 1000);
 			check("hook child spawns = 20/tick, total = (20+20) x 1000 = 40000",
 					analysis.totalSpawnUpperBound() == 40000);
+			check("hook multiplier maxSpawnPerTick = 40", analysis.maxSpawnPerTick() == 40);
 		}
 
 		private void profileDifferences() {
@@ -392,6 +450,15 @@ public final class SpellAnalyzerSelfCheck {
 			String lifetimeMsg = rejectMessage(() -> SpellMarketValidator.validate(longLifetime, JsonParser.parseString(longLifetime), parse(longLifetime)));
 			check("market rejects bare lifetime 20000 verbatim", lifetimeMsg != null
 					&& lifetimeMsg.equals("lifetime exceeds 12000"));
+			// object-form lifetime passes market historically (guard checks only raw numbers)
+			String objLifetime = FIRE24.replace("\"lifetime\": 60}",
+					"\"lifetime\": {\"type\": \"random\", \"min\": 1, \"max\": 20000}}");
+			SpellMarketValidator.validate(objLifetime, JsonParser.parseString(objLifetime), parse(objLifetime));
+			check("market accepts object-form lifetime (historical behavior)", true);
+			// certification still rejects it: bounded but above the hard cap
+			String certLifetime = rejectMessage(() -> SpellAnalyzer.analyze(parse(objLifetime), SpellAnalysisProfile.CERTIFICATION, CERT));
+			check("cert rejects object-form lifetime above cap", certLifetime != null
+					&& certLifetime.contains("lifetime exceeds 12000"));
 			// banned action inside disabled > fire > on_hit cannot hide (issue 1d)
 			String disabledHook = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60,\n"
 					+ "  \"on_hit_entity\": [{\"type\": \"run_command\", \"command\": \"say hi\"}]}}");

@@ -27,31 +27,38 @@ public class CertificationStateToClient extends SerialPacketBase {
 	@SerialClass.SerialField
 	@Nullable
 	public String failReason = null;
+	/** True when this packet was sent to the trial author (D4: own trial state). */
+	@SerialClass.SerialField
+	public boolean mine = false;
 
 	public CertificationStateToClient() {
 	}
 
 	private CertificationStateToClient(int entityId, CertificationState state, int elapsedTicks,
-									   int targetTicks, @Nullable String failReason) {
+									   int targetTicks, @Nullable String failReason, boolean mine) {
 		this.entityId = entityId;
 		this.state = state.name();
 		this.elapsedTicks = elapsedTicks;
 		this.targetTicks = targetTicks;
 		this.failReason = failReason;
+		this.mine = mine;
 	}
 
 	public static void send(SpellCertificationEntity entity, CertificationState state,
 							int elapsedTicks, int targetTicks, @Nullable String failReason) {
-		var packet = new CertificationStateToClient(entity.getId(), state, elapsedTicks, targetTicks, failReason);
-		YoukaisHomecoming.HANDLER.toTrackingPlayers(packet, entity);
 		ServerPlayer author = entity.controller() == null ? null : entity.controller().author();
 		if (author != null) {
-			YoukaisHomecoming.HANDLER.toClientPlayer(packet, author);
+			YoukaisHomecoming.HANDLER.toClientPlayer(
+					new CertificationStateToClient(entity.getId(), state, elapsedTicks, targetTicks, failReason, true),
+					author);
 		}
+		YoukaisHomecoming.HANDLER.toTrackingPlayers(
+				new CertificationStateToClient(entity.getId(), state, elapsedTicks, targetTicks, failReason, false),
+				entity);
 	}
 
 	@Override
 	public void handle(NetworkEvent.Context context) {
-		CertificationClientHandler.acceptState(entityId, state, elapsedTicks, targetTicks, failReason);
+		CertificationClientHandler.acceptState(entityId, state, elapsedTicks, targetTicks, failReason, mine);
 	}
 }

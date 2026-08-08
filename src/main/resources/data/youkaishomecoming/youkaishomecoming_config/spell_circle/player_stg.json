@@ -1,0 +1,40 @@
+{
+  "map": {
+	"youkaishomecoming:player_stg": {
+	  "strokes": [
+		{
+		  "vertex": 64,
+		  "cycle": 1,
+		  "rune": 1,
+		  "color": "0xFF4FC3F7",
+		  "width": 2,
+		  "radius": 32,
+		  "z": 0,
+		  "angle": 0
+		},
+		{
+		  "vertex": 32,
+		  "cycle": 2,
+		  "rune": 0,
+		  "color": "0xFF4FC3F7",
+		  "width": 1,
+		  "radius": 24,
+		  "z": 0,
+		  "angle": 0
+		},
+		{
+		  "vertex": 8,
+		  "cycle": 1,
+		  "rune": 0,
+		  "color": "0xFF29B6F6",
+		  "width": 2,
+		  "radius": 36,
+		  "z": 0,
+		  "angle": 22.5
+		}
+	  ],
+	  "items": [],
+	  "layers": []
+	}
+  }
+}

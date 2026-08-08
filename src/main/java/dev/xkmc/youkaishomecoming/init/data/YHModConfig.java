@@ -224,6 +224,9 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue applyBeatenOnDefeat;
 		public final ForgeConfigSpec.IntValue beatenDurationTicks;
 		public final ForgeConfigSpec.BooleanValue manualDanmakuCombat;
+		public final ForgeConfigSpec.DoubleValue spellCirclePlayerFadeStartLife;
+		public final ForgeConfigSpec.DoubleValue spellCirclePlayerMinAlpha;
+		public final ForgeConfigSpec.IntValue spellCircleMaxResourceSubCircles;
 
 		// Exposure compat
 		public final ForgeConfigSpec.IntValue exposureCameraCooldown;
@@ -554,6 +557,15 @@ public class YHModConfig {
 						.comment("and are not auto-entered by enemy danmaku. When false, restores legacy auto-entry behavior.")
 						.translation("config.youkaishomecoming.common.danmaku_battle.manualDanmakuCombat")
 						.define("manualDanmakuCombat", true);
+				spellCirclePlayerFadeStartLife = builder.comment("Player STG spell circle starts fading below this life (2.8 default; disabled during certification)")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerFadeStartLife")
+						.defineInRange("spellCirclePlayerFadeStartLife", 2.8, 0.5, 20.0);
+				spellCirclePlayerMinAlpha = builder.comment("Player STG spell circle global alpha floor when life is at 0")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerMinAlpha")
+						.defineInRange("spellCirclePlayerMinAlpha", 0.15, 0.0, 1.0);
+				spellCircleMaxResourceSubCircles = builder.comment("Max bomb sub-circle slots rendered on the player STG spell circle")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCircleMaxResourceSubCircles")
+						.defineInRange("spellCircleMaxResourceSubCircles", 8, 1, 32);
 			}
 			builder.pop();
 

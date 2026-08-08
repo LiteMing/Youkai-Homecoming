@@ -28,19 +28,37 @@ public final class CertificationClientHandler {
 	}
 
 	private static final Map<Integer, ClientState> STATES = new HashMap<>();
+	@Nullable
+	private static ClientState myState;
 
 	private CertificationClientHandler() {
 	}
 
 	public static void acceptState(int entityId, String state, int elapsedTicks, int targetTicks,
-								   @Nullable String failReason) {
+								   @Nullable String failReason, boolean mine) {
 		CertificationState parsed;
 		try {
 			parsed = CertificationState.valueOf(state);
 		} catch (IllegalArgumentException e) {
 			parsed = CertificationState.DRAFT;
 		}
-		STATES.put(entityId, new ClientState(parsed, elapsedTicks, targetTicks, failReason));
+		ClientState clientState = new ClientState(parsed, elapsedTicks, targetTicks, failReason);
+		if (mine) {
+			myState = clientState;
+		} else {
+			STATES.put(entityId, clientState);
+		}
+	}
+
+	/** The author's own certification state (D4: alpha fade disabled while active). */
+	@Nullable
+	public static ClientState getMyState() {
+		return myState;
+	}
+
+	/** True while the author's own trial is preparing or active (alpha pinned to 1, D4). */
+	public static boolean inMyTrial() {
+		return myState != null && myState.active();
 	}
 
 	@Nullable

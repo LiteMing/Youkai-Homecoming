@@ -32,6 +32,12 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 	public static <T extends Entity> void renderImpl(
 			PoseStack pose, MultiBufferSource buffer, int light, T entity,
 			float pTick, @Nullable Quaternionf front) {
+		// Player STG battle spell circle (design §17.2-17.3, D4): rendered instead of
+		// the override/holder path so bomb sub-circles and the life alpha curve apply.
+		if (entity instanceof net.minecraft.world.entity.player.Player player) {
+			PlayerStgSpellCircle.render(pose, buffer, light, player, pTick, front);
+			return;
+		}
 		ResourceLocation rl = null;
 		float scale = 0;
 		EntitySpellCircleManager.State override = EntitySpellCircleManager.getClientOverride(entity);

@@ -34,6 +34,7 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -77,13 +78,24 @@ public final class SpellAnalyzer {
 	private long certOneShotSpawns;
 	private long certPerTickSpawns;
 	private long certMaxOneShotBurst;
-	private long certMaxOneShotDeferredBurst;
-	private long oneShotDeferredAccum;
+	/** Sum of every one-shot hook batch across groups: batches created at different
+	 * times can still expire on the same future tick (creation tick + lifetime), and
+	 * without a full event scheduler we cannot prove exclusivity — fail closed by
+	 * summing (acceptance review round 5, A3). */
+	private long certPotentialOneShotDeferredBurst;
+	/** Sum of every Delay body burst: equal delays fire in the same scheduled tick
+	 * and cannot be proven exclusive (round 5, A1). */
+	private long delayedBurstSum;
 	private long certShooterTotalSpawns;
 	private long certShooterTickSpawns;
 	private long certRecurringShooterEntitySpawns;
 	private long certShooterPeakAlive;
 	private long certPeakShooters;
+	/** Direct one-shot burst of each phase's on_enter/on_exit, for transition-edge
+	 * summation: on_exit of the old phase and on_enter of the new phase run in the
+	 * same doTransition tick (round 5, A2). */
+	private final Map<ResourceLocation, Long> enterBurstByPhase = new HashMap<>();
+	private final Map<ResourceLocation, Long> exitBurstByPhase = new HashMap<>();
 	private long hookExecutionsOnce;
 	private long hookExecutionsPerTick;
 	private long lifetimeUpperMax;
@@ -122,9 +134,9 @@ public final class SpellAnalyzer {
 		for (var entry : definition.phases.entrySet()) {
 			push("phase/" + entry.getKey());
 			PhaseDefinition phase = entry.getValue();
-			walkList("on_enter", phase.onEnter, false, 1, true);
+			enterBurstByPhase.put(entry.getKey(), walkList("on_enter", phase.onEnter, false, 1, true));
 			walkList("on_tick", phase.onTick, true, 1, true);
-			walkList("on_exit", phase.onExit, false, 1, true);
+			exitBurstByPhase.put(entry.getKey(), walkList("on_exit", phase.onExit, false, 1, true));
 			if (!phase.onDamage.isEmpty()) {
 				addCap(SpellCapability.BOSS_ON_DAMAGE);
 			}
@@ -265,22 +277,22 @@ public final class SpellAnalyzer {
 	 * <ul>
 	 *   <li>phase root lists (on_enter/on_tick/on_exit/on_damage) start a new group;</li>
 	 *   <li>immediate containers (Sequence/Repeat/Burst/Conditional/Disabled bodies)
-	 *   inherit the current group — lexical nesting is NOT a runtime time boundary
-	 *   (acceptance review A2);</li>
+	 *   inherit the current group — lexical nesting is NOT a runtime time boundary;</li>
 	 *   <li>Delay bodies start a new group (they fire at a later tick);</li>
-	 *   <li>hook callbacks inherit: conservative same-tick expiry assumption.</li>
+	 *   <li>hook callbacks inherit the group for spawn accounting (their batches are
+	 *   aggregated globally for the deferred burst instead).</li>
 	 * </ul>
+	 * Returns the committed direct-spawn burst of a new one-shot group (0 otherwise),
+	 * used for phase enter/exit and delay burst accounting (round 5, A1/A2).
 	 */
-	private void walkList(String label, List<SpellAction> list, boolean perTick, long mult, boolean newGroup) {
+	private long walkList(String label, List<SpellAction> list, boolean perTick, long mult, boolean newGroup) {
 		boolean startsGroup = !perTick && newGroup;
 		long savedBurst = 0;
-		long savedDeferred = 0;
 		boolean savedInGroup = inOneShotGroup;
+		long committed = 0;
 		if (startsGroup) {
 			savedBurst = burstAccum;
-			savedDeferred = oneShotDeferredAccum;
 			burstAccum = 0;
-			oneShotDeferredAccum = 0;
 			inOneShotGroup = true;
 		}
 		push(label);
@@ -293,15 +305,12 @@ public final class SpellAnalyzer {
 		}
 		pop();
 		if (startsGroup) {
-			// one-shot tick group commit: direct spawns and deferred hook batches of the
-			// same group fire in the same tick, so they are summed within the group and
-			// compared across groups (acceptance reviews A1/A2)
 			if (burstAccum > certMaxOneShotBurst) certMaxOneShotBurst = burstAccum;
-			if (oneShotDeferredAccum > certMaxOneShotDeferredBurst) certMaxOneShotDeferredBurst = oneShotDeferredAccum;
+			committed = burstAccum;
 			burstAccum = savedBurst;
-			oneShotDeferredAccum = savedDeferred;
 			inOneShotGroup = savedInGroup;
 		}
+		return committed;
 	}
 
 	private void walkAction(SpellAction action, boolean perTick, long mult, boolean insideDisabled) {
@@ -348,7 +357,9 @@ public final class SpellAnalyzer {
 				diagnostics.add(SpellDiagnostic.warning("unbounded_delay", path(),
 						"delay_ticks cannot be bounded statically"));
 			}
-			walkList("body", a.body(), perTick, mult, true);
+			// equal delays run in the same scheduled tick; without a full scheduler we
+			// cannot prove exclusivity, so delay groups are SUMMED (round 5, A1)
+			delayedBurstSum = satAdd(delayedBurstSum, walkList("body", a.body(), perTick, mult, true));
 		} else if (action instanceof SpellActions.ConditionalAction a) {
 			walkList("if_true", a.ifTrue(), perTick, mult, false);
 			walkList("if_false", a.ifFalse(), perTick, mult, false);
@@ -525,10 +536,11 @@ public final class SpellAnalyzer {
 		// whole batch expires together. Conservative principle: all eligible projectiles
 		// of the batch trigger together. Per-tick (recurring) hook spawns are already
 		// inside certPerTickSpawns via the child multiplier, so they must NOT be added
-		// again; only one-shot batches join the one-shot deferred group, which later
-		// adds to the ordinary tick burst (acceptance reviews A1/A2).
+		// again. One-shot batches are SUMMED globally: batches created at different
+		// times can still expire on the same future tick (creation tick + lifetime),
+		// which cannot be proven exclusive (round 5, A3).
 		long hookBurst = satAdd(certPerTickSpawns - beforePerTick, certOneShotSpawns - beforeOneShot);
-		if (!perTick) oneShotDeferredAccum = satAdd(oneShotDeferredAccum, hookBurst);
+		if (!perTick) certPotentialOneShotDeferredBurst = satAdd(certPotentialOneShotDeferredBurst, hookBurst);
 	}
 
 	private void handleShooter(SpawnShooterAction a, boolean perTick, long mult) {
@@ -724,20 +736,31 @@ public final class SpellAnalyzer {
 			}
 			long window = limits.certificationWindowTicks();
 			long life = Math.max(1, lifetimeUpperMax);
-			// single-tick spawn ceiling — the runtime executes on_enter and on_tick in
-			// the SAME server tick, alive shooter bodies fire in the same tick as
-			// top-level on_tick spawns, and one-shot deferred batches (identical-lifetime
-			// projectiles expiring together) overlap an ordinary tick as well. When
-			// events cannot be proven to interleave, they are summed, not maxed:
+			// Layered conservative single-tick ceiling (round 5 closure). Groups whose
+			// events cannot be proven exclusive are SUMMED, never maxed:
 			//   ordinaryTickBurst = top-level per-tick + shooter body + recurring entities
-			//   phaseEntryBurst  = one-shot tick group + ordinaryTickBurst
-			//   deferredTickBurst = one-shot deferred group + ordinaryTickBurst
-			// (recurring hook spawns are already inside the ordinary bucket, no double charge)
+			//   oneShot groups: largest single group, OR phase transition edges
+			//     (old on_exit + new on_enter run in the same doTransition tick)
+			//   delayedBurstSum: equal delays share the scheduled tick
+			//   certPotentialOneShotDeferredBurst: batches from different creation times
+			//     can expire together (creation tick + lifetime)
+			// Each overlaps an ordinary tick, so it is added to ordinaryTickBurst.
 			long ordinaryTickBurst = satAdd(satAdd(certPerTickSpawns, certShooterTickSpawns),
 					certRecurringShooterEntitySpawns);
-			long phaseEntryBurst = satAdd(certMaxOneShotBurst, ordinaryTickBurst);
-			long deferredTickBurst = satAdd(certMaxOneShotDeferredBurst, ordinaryTickBurst);
-			maxSpawnPerTick = Math.max(ordinaryTickBurst, Math.max(phaseEntryBurst, deferredTickBurst));
+			long oneShotSum = certMaxOneShotBurst;
+			long entryExitSum = enterBurstByPhase.getOrDefault(definition.entryPhase, 0L);
+			for (var entry : definition.phases.entrySet()) {
+				for (Transition transition : entry.getValue().transitions) {
+					long edgeSum = satAdd(exitBurstByPhase.getOrDefault(entry.getKey(), 0L),
+							enterBurstByPhase.getOrDefault(transition.targetPhase(), 0L));
+					if (edgeSum > entryExitSum) entryExitSum = edgeSum;
+				}
+			}
+			if (entryExitSum > oneShotSum) oneShotSum = entryExitSum;
+			maxSpawnPerTick = Math.max(ordinaryTickBurst,
+					Math.max(satAdd(ordinaryTickBurst, oneShotSum),
+							Math.max(satAdd(ordinaryTickBurst, delayedBurstSum),
+									satAdd(ordinaryTickBurst, certPotentialOneShotDeferredBurst))));
 			// totals: direct one-shot + direct per-tick × window + shooter body totals.
 			// Shooter body totals must NOT appear in the peak formula — window totals are
 			// not concurrently alive (acceptance review issue 3).

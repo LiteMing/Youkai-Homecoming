@@ -289,6 +289,52 @@ public final class SpellAnalyzerSelfCheck {
 				"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"yellow\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]}\n" +
 				"  }\n" +
 				"}";
+		/** Equal delays share the same scheduled tick; their bursts must SUM (round 5 A1). */
+		private static final String PARALLEL_DELAY = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_parallel_delay\",\n" +
+				"  \"display\": {\"name\": \"ParallelDelay\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [{\"type\": \"delay\", \"delay_ticks\": 60, \"body\": [" + fire(400) + "]},\n" +
+				"        {\"type\": \"delay\", \"delay_ticks\": 60, \"body\": [" + fire(400) + "]}]}\n" +
+				"  }\n" +
+				"}";
+		/** Equal delays plus an ordinary on_tick in the same server tick (round 5 A1). */
+		private static final String PARALLEL_DELAY_TICK = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_parallel_delay_tick\",\n" +
+				"  \"display\": {\"name\": \"ParallelDelayTick\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [{\"type\": \"delay\", \"delay_ticks\": 60, \"body\": [" + fire(400) + "]},\n" +
+				"        {\"type\": \"delay\", \"delay_ticks\": 60, \"body\": [" + fire(400) + "]}],\n" +
+				"      \"on_tick\": [" + fire(100) + "]}\n" +
+				"  }\n" +
+				"}";
+		/** on_exit of the old phase and on_enter of the new phase run in the same
+		 * doTransition tick; their bursts must SUM (round 5 A2). */
+		private static final String TRANSITION_BURST = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_transition_burst\",\n" +
+				"  \"display\": {\"name\": \"TransitionBurst\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:a\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:a\": {\"id\": \"youkaishomecoming:a\", \"on_exit\": [" + fire(500) + "],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 100}, \"target_phase\": \"youkaishomecoming:b\"}]},\n" +
+				"    \"youkaishomecoming:b\": {\"id\": \"youkaishomecoming:b\", \"on_enter\": [" + fire(500) + "]}\n" +
+				"  }\n" +
+				"}";
+		/** Transition tick also overlaps the old phase ordinary on_tick (round 5 A2). */
+		private static final String TRANSITION_BURST_TICK = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_transition_burst_tick\",\n" +
+				"  \"display\": {\"name\": \"TransitionBurstTick\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:a\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:a\": {\"id\": \"youkaishomecoming:a\", \"on_tick\": [" + fire(100) + "], \"on_exit\": [" + fire(500) + "],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 100}, \"target_phase\": \"youkaishomecoming:b\"}]},\n" +
+				"    \"youkaishomecoming:b\": {\"id\": \"youkaishomecoming:b\", \"on_enter\": [" + fire(500) + "]}\n" +
+				"  }\n" +
+				"}";
 
 		private static String deepNest() {
 			StringBuilder sb = new StringBuilder(fire(6));
@@ -326,6 +372,8 @@ public final class SpellAnalyzerSelfCheck {
 				parallelExpiryBursts();
 				deferredPlusOrdinary();
 				nestedExpiry();
+				parallelDelays();
+				transitionBurst();
 				hookMultiplier();
 				profileDifferences();
 				disabledSemantics();
@@ -526,6 +574,30 @@ public final class SpellAnalyzerSelfCheck {
 			check("nested immediate container inherits group (10000 + 10000 = 20000)",
 					analysis != null && analysis.maxSpawnPerTick() == 20_000,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
+		}
+
+		/** Equal delays run in the same scheduled tick; bursts must sum (round 5 A1). */
+		private void parallelDelays() {
+			SpellAnalysis plain = this.analysis(PARALLEL_DELAY, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("equal delays sum (400 + 400 = 800)",
+					plain != null && plain.maxSpawnPerTick() == 800,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (plain == null ? "null" : plain.maxSpawnPerTick()));
+			SpellAnalysis withTick = this.analysis(PARALLEL_DELAY_TICK, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("equal delays + ordinary on_tick (800 + 100 = 900)",
+					withTick != null && withTick.maxSpawnPerTick() == 900,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (withTick == null ? "null" : withTick.maxSpawnPerTick()));
+		}
+
+		/** on_exit + on_enter run in the same transition tick; bursts must sum (round 5 A2). */
+		private void transitionBurst() {
+			SpellAnalysis plain = this.analysis(TRANSITION_BURST, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("transition tick sums on_exit + on_enter (500 + 500 = 1000)",
+					plain != null && plain.maxSpawnPerTick() == 1000,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (plain == null ? "null" : plain.maxSpawnPerTick()));
+			SpellAnalysis withTick = this.analysis(TRANSITION_BURST_TICK, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("transition tick + ordinary on_tick (1000 + 100 = 1100)",
+					withTick != null && withTick.maxSpawnPerTick() == 1100,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (withTick == null ? "null" : withTick.maxSpawnPerTick()));
 		}
 
 		/** A batch of identical-lifetime one-shot projectiles can expire together; the

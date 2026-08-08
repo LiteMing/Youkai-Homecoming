@@ -114,7 +114,9 @@ public class YoukaisHomecoming {
 			e -> e.create(OpenSpellPreviewToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellPreviewChunkToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(OpenSpellMarketToClient.class, NetworkDirection.PLAY_TO_CLIENT),
-			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT));
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",
 			SpellCircleConfig.class);

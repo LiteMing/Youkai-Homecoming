@@ -22,6 +22,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -628,9 +629,7 @@ public class YSMClientCompat {
 						.executes(YSMClientCompat::showLoadedModels))
 				.then(Commands.literal("reset")
 						.executes(ctx -> {
-							TYPE_DEBUG_OVERRIDES.clear();
-							ENTITY_DEBUG_OVERRIDES.clear();
-							ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] Debug render mappings reset."));
+							sendOverrideRequest(ctx, "reset", null, "", "", List.of());
 							return 1;
 						}))
 				.then(Commands.literal("debug")
@@ -903,8 +902,7 @@ public class YSMClientCompat {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Model and texture must not be blank."));
 			return 0;
 		}
-		TYPE_DEBUG_OVERRIDES.put(entityId, RenderBinding.enabled(modelId, textureName));
-		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] type " + entityId + " -> " + modelId + " / " + textureName));
+		sendOverrideRequest(ctx, "type_set", entityId.toString(), modelId, textureName, List.of());
 		return 1;
 	}
 
@@ -913,8 +911,7 @@ public class YSMClientCompat {
 		if (entityId == null) {
 			return 0;
 		}
-		TYPE_DEBUG_OVERRIDES.put(entityId, RenderBinding.disabled());
-		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] type " + entityId + " YSM rendering disabled."));
+		sendOverrideRequest(ctx, "type_off", entityId.toString(), "", "", List.of());
 		return 1;
 	}
 
@@ -923,8 +920,7 @@ public class YSMClientCompat {
 		if (entityId == null) {
 			return 0;
 		}
-		TYPE_DEBUG_OVERRIDES.remove(entityId);
-		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] type " + entityId + " uses its default mapping."));
+		sendOverrideRequest(ctx, "type_unset", entityId.toString(), "", "", List.of());
 		return 1;
 	}
 
@@ -938,10 +934,8 @@ public class YSMClientCompat {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Model and texture must not be blank."));
 			return 0;
 		}
-		for (Entity entity : entities) {
-			ENTITY_DEBUG_OVERRIDES.put(entity.getUUID(), RenderBinding.enabled(modelId, textureName));
-		}
-		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + entities.size() + " entity override(s) -> " + modelId + " / " + textureName));
+		sendOverrideRequest(ctx, "entity_set", null, modelId, textureName,
+				entities.stream().map(Entity::getUUID).toList());
 		return entities.size();
 	}
 
@@ -950,10 +944,8 @@ public class YSMClientCompat {
 		if (entities.isEmpty()) {
 			return 0;
 		}
-		for (Entity entity : entities) {
-			ENTITY_DEBUG_OVERRIDES.put(entity.getUUID(), RenderBinding.disabled());
-		}
-		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + entities.size() + " entity override(s) disabled."));
+		sendOverrideRequest(ctx, "entity_off", null, "", "",
+				entities.stream().map(Entity::getUUID).toList());
 		return entities.size();
 	}
 
@@ -962,11 +954,52 @@ public class YSMClientCompat {
 		if (entities.isEmpty()) {
 			return 0;
 		}
-		for (Entity entity : entities) {
-			ENTITY_DEBUG_OVERRIDES.remove(entity.getUUID());
-		}
-		ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] " + entities.size() + " entity override(s) removed."));
+		sendOverrideRequest(ctx, "entity_unset", null, "", "",
+				entities.stream().map(Entity::getUUID).toList());
 		return entities.size();
+	}
+
+	/**
+	 * Send a manual model override request to the server. The server validates
+	 * permissions and targets, persists the change and broadcasts the resulting
+	 * table (with a confirmation message) to all clients.
+	 */
+	private static void sendOverrideRequest(CommandContext<CommandSourceStack> ctx, String action,
+											@org.jetbrains.annotations.Nullable String entityType,
+											String modelId, String textureName, List<UUID> entities) {
+		if (Minecraft.getInstance().getConnection() == null) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Not connected to a server; cannot apply overrides."));
+			return;
+		}
+		String uuidList = entities.isEmpty() ? ""
+				: entities.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+		YoukaisHomecoming.HANDLER.toServer(new YsmOverrideRequestToServer(action, entityType, modelId, textureName, uuidList));
+	}
+
+	/**
+	 * Apply the server-authoritative override table (from {@link YsmOverrideSyncToClient}).
+	 * Called on the network thread; runs on the client thread.
+	 */
+	public static void applySyncedOverrides(CompoundTag typeTag, CompoundTag entityTag, String message) {
+		Minecraft.getInstance().execute(() -> {
+			TYPE_DEBUG_OVERRIDES.clear();
+			for (String key : typeTag.getAllKeys()) {
+				ResourceLocation id = ResourceLocation.tryParse(key);
+				if (id != null) {
+					TYPE_DEBUG_OVERRIDES.put(id, YsmOverrideData.bindingFromTag(typeTag.getCompound(key)));
+				}
+			}
+			ENTITY_DEBUG_OVERRIDES.clear();
+			for (String key : entityTag.getAllKeys()) {
+				try {
+					ENTITY_DEBUG_OVERRIDES.put(UUID.fromString(key), YsmOverrideData.bindingFromTag(entityTag.getCompound(key)));
+				} catch (IllegalArgumentException ignored) {
+				}
+			}
+			if (!message.isBlank() && Minecraft.getInstance().player != null) {
+				Minecraft.getInstance().player.displayClientMessage(Component.literal(message), false);
+			}
+		});
 	}
 
 	private static ResourceLocation parseEntityType(CommandContext<CommandSourceStack> ctx) {

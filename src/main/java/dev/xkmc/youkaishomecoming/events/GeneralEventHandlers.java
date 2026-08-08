@@ -190,6 +190,7 @@ public class GeneralEventHandlers {
 	public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
 		if (event.getEntity() instanceof ServerPlayer player) {
 			CustomSpellCircleStorage.syncAllToPlayer(player);
+			dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideServerHandler.syncToPlayer(player);
 		}
 	}
 

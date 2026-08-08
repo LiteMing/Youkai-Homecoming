@@ -1,0 +1,33 @@
+name: Nightly Build
+
+on:
+  schedule:
+    # UTC 20:00 daily (= 04:00 CST)
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - '0.22.0/feat-spell-certification'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '0.22.0/feat-spell-certification'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+      - name: Build jar
+        run: ./gradlew build --no-daemon
+        timeout-minutes: 60
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: youkaishomecoming-nightly
+          path: build/libs/*.jar
+          retention-days: 7

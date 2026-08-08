@@ -34,6 +34,7 @@ public class SpellAnalyzerSelfTest {
 	private static int failed = 0;
 
 	public static void main(String[] args) throws Exception {
+		testHeadlessFlagParsing();
 		testSelfCheckFixtureJsonValid();
 		testConstantBounded();
 		testRandomRangeBounded();
@@ -81,6 +82,26 @@ public class SpellAnalyzerSelfTest {
 	}
 
 	// ----------------------------------------------------------------- tests
+
+	/**
+	 * Headless flags must parse strictly: "false"/"0"/empty never enable the switch
+	 * (review B). Only property path is testable in a pure JVM (env is not settable).
+	 */
+	private static void testHeadlessFlagParsing() {
+		// property path (env is not settable in a pure JVM; code path is shared)
+		System.setProperty("yhdev.selftest", "false");
+		check("flag=false disabled", !dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags.enabled("yhdev.selftest", "YHDEV_SELFTEST"));
+		System.setProperty("yhdev.selftest", "0");
+		check("flag=0 disabled", !dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags.enabled("yhdev.selftest", "YHDEV_SELFTEST"));
+		System.setProperty("yhdev.selftest", "true");
+		check("flag=true enabled", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags.enabled("yhdev.selftest", "YHDEV_SELFTEST"));
+		System.setProperty("yhdev.selftest", "1");
+		check("flag=1 enabled", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags.enabled("yhdev.selftest", "YHDEV_SELFTEST"));
+		System.setProperty("yhdev.selftest", "");
+		check("flag empty disabled", !dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags.enabled("yhdev.selftest", "YHDEV_SELFTEST"));
+		System.clearProperty("yhdev.selftest");
+		check("flag absent disabled", !dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags.enabled("yhdev.selftest", "YHDEV_SELFTEST"));
+	}
 
 	/**
 	 * Every JSON fixture of the server self-check must parse with plain Gson.

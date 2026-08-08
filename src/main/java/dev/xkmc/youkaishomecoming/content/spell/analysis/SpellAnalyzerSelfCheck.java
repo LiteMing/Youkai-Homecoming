@@ -112,7 +112,8 @@ public final class SpellAnalyzerSelfCheck {
 			lastError = null;
 			try {
 				return SpellAnalyzer.analyze(parse(fixture), profile, limits);
-			} catch (Throwable t) {
+			} catch (Exception | AssertionError t) {
+				// VirtualMachineError/ThreadDeath propagate (review B)
 				lastError = t.getClass().getSimpleName() + ": " + t.getMessage();
 				return null;
 			}
@@ -262,6 +263,32 @@ public final class SpellAnalyzerSelfCheck {
 				"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"yellow\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]}\n" +
 				"  }\n" +
 				"}";
+		/** Deferred one-shot batch overlapping an ordinary on_tick (review A1). */
+		private static final String DEFERRED_ORDINARY = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_deferred_ordinary\",\n" +
+				"  \"display\": {\"name\": \"DeferredOrdinary\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1000, \"speed\": 0.5, \"lifetime\": 60,\n" +
+				"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}],\n" +
+				"      \"on_tick\": [" + fire(400) + "]}\n" +
+				"  }\n" +
+				"}";
+		/** Immediate container must inherit the outer group: nested and sibling deferred
+		 * batches share the expiry tick (review A2). */
+		private static final String NESTED_EXPIRY = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_nested_expiry\",\n" +
+				"  \"display\": {\"name\": \"NestedExpiry\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [{\"type\": \"sequence\", \"actions\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1000, \"speed\": 0.5, \"lifetime\": 60,\n" +
+				"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]},\n" +
+				"        {\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"green\", \"count\": 1000, \"speed\": 0.5, \"lifetime\": 60,\n" +
+				"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"yellow\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]}\n" +
+				"  }\n" +
+				"}";
 
 		private static String deepNest() {
 			StringBuilder sb = new StringBuilder(fire(6));
@@ -297,14 +324,17 @@ public final class SpellAnalyzerSelfCheck {
 				parallelShooters();
 				deferredHookBurst();
 				parallelExpiryBursts();
+				deferredPlusOrdinary();
+				nestedExpiry();
 				hookMultiplier();
 				profileDifferences();
 				disabledSemantics();
 				marketFacade();
 				unknownAction();
 				hashOrderIndependence();
-			} catch (Throwable t) {
-				// never crash the command: surface the real error as a failure entry
+			} catch (Exception | AssertionError t) {
+				// never crash the command: surface the real error as a failure entry.
+				// VirtualMachineError/ThreadDeath are intentionally not caught (review B)
 				total++;
 				if (firstFailure == null) {
 					firstFailure = "CRASH: " + t.getClass().getName() + ": " + t.getMessage();
@@ -474,6 +504,26 @@ public final class SpellAnalyzerSelfCheck {
 			//   deferred group = 10,000 + 10,000 = 20,000 in one tick
 			SpellAnalysis analysis = this.analysis(PARALLEL_EXPIRY, SpellAnalysisProfile.CERTIFICATION, CERT);
 			check("parallel expiry batches sum deferred burst (10000 + 10000 = 20000)",
+					analysis != null && analysis.maxSpawnPerTick() == 20_000,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
+		}
+
+		/** A deferred one-shot batch overlaps the ordinary on_tick burst (review A1). */
+		private void deferredPlusOrdinary() {
+			// on_enter: 1000 x on_expiry 10 = 10,000 deferred; on_tick: 400 ordinary
+			//   deferredTickBurst = 10,000 + 400 = 10,400
+			SpellAnalysis analysis = this.analysis(DEFERRED_ORDINARY, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("deferred batch + ordinary on_tick summed (10000 + 400 = 10400)",
+					analysis != null && analysis.maxSpawnPerTick() == 10_400,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
+		}
+
+		/** Immediate containers inherit the outer execution group (review A2). */
+		private void nestedExpiry() {
+			// on_enter: Sequence[Fire A 1000 expiry 10] + Fire B 1000 expiry 10
+			//   both batches share the expiry tick → 10,000 + 10,000 = 20,000
+			SpellAnalysis analysis = this.analysis(NESTED_EXPIRY, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("nested immediate container inherits group (10000 + 10000 = 20000)",
 					analysis != null && analysis.maxSpawnPerTick() == 20_000,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
 		}

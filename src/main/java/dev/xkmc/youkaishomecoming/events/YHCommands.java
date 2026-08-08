@@ -25,6 +25,7 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
@@ -645,7 +646,7 @@ public class YHCommands {
 	 * logged and written to {@code <serverDir>/yhdev-selftest-result.txt}.
 	 */
 	private static void runHeadlessSelfTest(MinecraftServer server) {
-		boolean enabled = System.getProperty("yhdev.selftest") != null || System.getenv("YHDEV_SELFTEST") != null;
+		boolean enabled = SpellSelfTestFlags.enabled("yhdev.selftest", "YHDEV_SELFTEST");
 		if (!enabled) return;
 		var result = SpellAnalyzerSelfCheck.run();
 		StringBuilder sb = new StringBuilder("[YH] spell analyzer self-test: ")
@@ -662,8 +663,7 @@ public class YHCommands {
 		} catch (Exception e) {
 			YoukaisHomecoming.LOGGER.error("Failed to write selftest result file", e);
 		}
-		boolean stop = System.getProperty("yhdev.selftest.stop") != null || System.getenv("YHDEV_SELFTEST_STOP") != null;
-		if (stop) {
+		if (SpellSelfTestFlags.enabled("yhdev.selftest.stop", "YHDEV_SELFTEST_STOP")) {
 			server.halt(false);
 		}
 	}

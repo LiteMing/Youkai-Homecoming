@@ -77,8 +77,8 @@ public final class SpellAnalyzer {
 	private long certOneShotSpawns;
 	private long certPerTickSpawns;
 	private long certMaxOneShotBurst;
-	private long certMaxDeferredHookBurst;
-	private long deferredBurstAccum;
+	private long certMaxOneShotDeferredBurst;
+	private long oneShotDeferredAccum;
 	private long certShooterTotalSpawns;
 	private long certShooterTickSpawns;
 	private long certRecurringShooterEntitySpawns;
@@ -122,13 +122,13 @@ public final class SpellAnalyzer {
 		for (var entry : definition.phases.entrySet()) {
 			push("phase/" + entry.getKey());
 			PhaseDefinition phase = entry.getValue();
-			walkList("on_enter", phase.onEnter, false, 1);
-			walkList("on_tick", phase.onTick, true, 1);
-			walkList("on_exit", phase.onExit, false, 1);
+			walkList("on_enter", phase.onEnter, false, 1, true);
+			walkList("on_tick", phase.onTick, true, 1, true);
+			walkList("on_exit", phase.onExit, false, 1, true);
 			if (!phase.onDamage.isEmpty()) {
 				addCap(SpellCapability.BOSS_ON_DAMAGE);
 			}
-			walkList("on_damage", phase.onDamage, false, 1);
+			walkList("on_damage", phase.onDamage, false, 1, true);
 			checkTransitions(phase);
 			pop();
 		}
@@ -259,17 +259,30 @@ public final class SpellAnalyzer {
 
 	// ------------------------------------------------------------ semantic walk
 
-	private void walkList(String label, List<SpellAction> list, boolean perTick, long mult) {
-		boolean outerGroup = !perTick && !inOneShotGroup;
-		if (outerGroup) {
-			inOneShotGroup = true;
+	/**
+	 * Execution-group aware list walk. A "group" is one server tick in which the
+	 * listed actions run together:
+	 * <ul>
+	 *   <li>phase root lists (on_enter/on_tick/on_exit/on_damage) start a new group;</li>
+	 *   <li>immediate containers (Sequence/Repeat/Burst/Conditional/Disabled bodies)
+	 *   inherit the current group — lexical nesting is NOT a runtime time boundary
+	 *   (acceptance review A2);</li>
+	 *   <li>Delay bodies start a new group (they fire at a later tick);</li>
+	 *   <li>hook callbacks inherit: conservative same-tick expiry assumption.</li>
+	 * </ul>
+	 */
+	private void walkList(String label, List<SpellAction> list, boolean perTick, long mult, boolean newGroup) {
+		boolean startsGroup = !perTick && newGroup;
+		long savedBurst = 0;
+		long savedDeferred = 0;
+		boolean savedInGroup = inOneShotGroup;
+		if (startsGroup) {
+			savedBurst = burstAccum;
+			savedDeferred = oneShotDeferredAccum;
 			burstAccum = 0;
+			oneShotDeferredAccum = 0;
+			inOneShotGroup = true;
 		}
-		// per-list deferred hook aggregation: all hook callbacks of the same execution
-		// group (one-shot list, or one tick of a recurring list) fire in the same tick,
-		// so their bursts must be summed, not maxed (acceptance review issue 5)
-		long savedDeferred = deferredBurstAccum;
-		deferredBurstAccum = 0;
 		push(label);
 		int index = 0;
 		for (SpellAction action : list) {
@@ -279,11 +292,15 @@ public final class SpellAnalyzer {
 			index++;
 		}
 		pop();
-		if (deferredBurstAccum > certMaxDeferredHookBurst) certMaxDeferredHookBurst = deferredBurstAccum;
-		deferredBurstAccum = savedDeferred;
-		if (outerGroup) {
-			inOneShotGroup = false;
+		if (startsGroup) {
+			// one-shot tick group commit: direct spawns and deferred hook batches of the
+			// same group fire in the same tick, so they are summed within the group and
+			// compared across groups (acceptance reviews A1/A2)
 			if (burstAccum > certMaxOneShotBurst) certMaxOneShotBurst = burstAccum;
+			if (oneShotDeferredAccum > certMaxOneShotDeferredBurst) certMaxOneShotDeferredBurst = oneShotDeferredAccum;
+			burstAccum = savedBurst;
+			oneShotDeferredAccum = savedDeferred;
+			inOneShotGroup = savedInGroup;
 		}
 	}
 
@@ -321,22 +338,22 @@ public final class SpellAnalyzer {
 			handleShooter(a, perTick, mult);
 		} else if (action instanceof SpellActions.RepeatAction a) {
 			long count = boundCount(a.count(), "repeat count");
-			walkList("body", a.body(), perTick, satMul(mult, count));
+			walkList("body", a.body(), perTick, satMul(mult, count), false);
 		} else if (action instanceof BurstAction a) {
 			// conservative: all waves counted within the same tick accounting
-			walkList("body", a.body(), perTick, satMul(mult, a.waves()));
+			walkList("body", a.body(), perTick, satMul(mult, a.waves()), false);
 		} else if (action instanceof DelayAction a) {
 			if (profile == SpellAnalysisProfile.CERTIFICATION
 					&& !NumberBounds.resolve(a.delayTicks()).bounded()) {
 				diagnostics.add(SpellDiagnostic.warning("unbounded_delay", path(),
 						"delay_ticks cannot be bounded statically"));
 			}
-			walkList("body", a.body(), perTick, mult);
+			walkList("body", a.body(), perTick, mult, true);
 		} else if (action instanceof SpellActions.ConditionalAction a) {
-			walkList("if_true", a.ifTrue(), perTick, mult);
-			walkList("if_false", a.ifFalse(), perTick, mult);
+			walkList("if_true", a.ifTrue(), perTick, mult, false);
+			walkList("if_false", a.ifFalse(), perTick, mult, false);
 		} else if (action instanceof SpellActions.SequenceAction a) {
-			walkList("actions", a.actions(), perTick, mult);
+			walkList("actions", a.actions(), perTick, mult, false);
 		} else if (action instanceof TeleportAction || action instanceof TeleportRandomAction) {
 			addCap(SpellCapability.TELEPORT);
 		} else if (action instanceof ConfineTargetAction) {
@@ -499,18 +516,19 @@ public final class SpellAnalyzer {
 		long beforePerTick = certPerTickSpawns;
 		long beforeOneShot = certOneShotSpawns;
 		try {
-			walkList(label, list, perTick, childMult);
+			walkList(label, list, perTick, childMult, false);
 		} finally {
 			hookDepth--;
 		}
 		// a single hook callback batch may fire in one tick: e.g. on_enter spawns 1000
 		// projectiles with identical lifetimes and each on_expiry spawns 10 more — the
 		// whole batch expires together. Conservative principle: all eligible projectiles
-		// of the batch trigger together, so the hook-derived burst must be tracked as a
-		// deferred tick burst. Bursts of the same execution group are summed in
-		// deferredBurstAccum and committed by walkList (acceptance review issues 4/5).
+		// of the batch trigger together. Per-tick (recurring) hook spawns are already
+		// inside certPerTickSpawns via the child multiplier, so they must NOT be added
+		// again; only one-shot batches join the one-shot deferred group, which later
+		// adds to the ordinary tick burst (acceptance reviews A1/A2).
 		long hookBurst = satAdd(certPerTickSpawns - beforePerTick, certOneShotSpawns - beforeOneShot);
-		deferredBurstAccum = satAdd(deferredBurstAccum, hookBurst);
+		if (!perTick) oneShotDeferredAccum = satAdd(oneShotDeferredAccum, hookBurst);
 	}
 
 	private void handleShooter(SpawnShooterAction a, boolean perTick, long mult) {
@@ -518,7 +536,7 @@ public final class SpellAnalyzer {
 		long shooterCount = satMul(mult, count);
 		if (profile == SpellAnalysisProfile.MARKET) {
 			marketShooters = satAdd(marketShooters, shooterCount);
-			walkList("body", a.body(), true, shooterCount);
+			walkList("body", a.body(), true, shooterCount, false);
 			return;
 		}
 		certShooters = satAdd(certShooters, shooterCount);
@@ -529,7 +547,7 @@ public final class SpellAnalyzer {
 		long savedPerTick = certPerTickSpawns;
 		long savedOneShot = certOneShotSpawns;
 		long savedBurst = certMaxOneShotBurst;
-		walkList("body", a.body(), true, 1);
+		walkList("body", a.body(), true, 1, false);
 		long bodyPerShooterTick = certPerTickSpawns - savedPerTick;
 		certPerTickSpawns = savedPerTick;
 		certOneShotSpawns = savedOneShot;
@@ -707,17 +725,19 @@ public final class SpellAnalyzer {
 			long window = limits.certificationWindowTicks();
 			long life = Math.max(1, lifetimeUpperMax);
 			// single-tick spawn ceiling — the runtime executes on_enter and on_tick in
-			// the SAME server tick, and alive shooter bodies fire in the same tick as
-			// top-level on_tick spawns; when events cannot be proven to interleave,
-			// they are summed, not maxed (acceptance review issue 3):
-			//   ordinaryTickBurst = top-level per-tick + shooter body + recurring shooter entities
+			// the SAME server tick, alive shooter bodies fire in the same tick as
+			// top-level on_tick spawns, and one-shot deferred batches (identical-lifetime
+			// projectiles expiring together) overlap an ordinary tick as well. When
+			// events cannot be proven to interleave, they are summed, not maxed:
+			//   ordinaryTickBurst = top-level per-tick + shooter body + recurring entities
 			//   phaseEntryBurst  = one-shot tick group + ordinaryTickBurst
-			//   deferredHookBurst = largest single-tick hook-derived batch (summed per group)
+			//   deferredTickBurst = one-shot deferred group + ordinaryTickBurst
+			// (recurring hook spawns are already inside the ordinary bucket, no double charge)
 			long ordinaryTickBurst = satAdd(satAdd(certPerTickSpawns, certShooterTickSpawns),
 					certRecurringShooterEntitySpawns);
 			long phaseEntryBurst = satAdd(certMaxOneShotBurst, ordinaryTickBurst);
-			maxSpawnPerTick = Math.max(phaseEntryBurst,
-					Math.max(ordinaryTickBurst, certMaxDeferredHookBurst));
+			long deferredTickBurst = satAdd(certMaxOneShotDeferredBurst, ordinaryTickBurst);
+			maxSpawnPerTick = Math.max(ordinaryTickBurst, Math.max(phaseEntryBurst, deferredTickBurst));
 			// totals: direct one-shot + direct per-tick × window + shooter body totals.
 			// Shooter body totals must NOT appear in the peak formula — window totals are
 			// not concurrently alive (acceptance review issue 3).

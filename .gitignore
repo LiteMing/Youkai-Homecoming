@@ -2,6 +2,7 @@
 .gradle
 run/
 build/
+logs/
 .DS_Store
 secrets.properties
 temp

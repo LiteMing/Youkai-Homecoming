@@ -831,6 +831,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	private final VirtualDanmakuHolder danmakuHolder = new VirtualDanmakuHolder();
+	public VirtualDanmakuHolder getDanmakuHolder() { return danmakuHolder; }
 
 	public void shoot(Entity danmaku) {
 		if (!danmakuHolder.shoot(danmaku)) {

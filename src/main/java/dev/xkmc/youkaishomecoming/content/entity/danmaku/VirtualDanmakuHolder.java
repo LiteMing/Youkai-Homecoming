@@ -56,6 +56,12 @@ public class VirtualDanmakuHolder {
 		return false;
 	}
 
+	/** Number of virtual projectiles currently tracked by this holder (certification
+	 * active-threat accounting, design doc D6). */
+	public int activeProjectileCount() {
+		return allDanmakus.size();
+	}
+
 	// ==================== Tick ====================
 
 	/**

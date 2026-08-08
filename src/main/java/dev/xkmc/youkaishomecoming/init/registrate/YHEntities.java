@@ -15,6 +15,7 @@ import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaEntity;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.boss.*;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
@@ -56,6 +57,7 @@ public class YHEntities {
 
 	public static final EntityEntry<BossYoukaiEntity> GENERAL_YOUKAI;
 	public static final EntityEntry<FairyEntity> FAIRY;
+	public static final EntityEntry<SpellCertificationEntity> SPELL_CERTIFICATION;
 	public static final EntityEntry<YukariEntity> YUKARI;
 	public static final EntityEntry<SanaeEntity> SANAE;
 	public static final EntityEntry<MarisaEntity> MARISA;
@@ -173,6 +175,13 @@ public class YHEntities {
 					.attributes(FairyEntity::createAttributes)
 					.renderer(() -> GeneralYoukaiRenderer::new)
 					.spawnEgg(0x000000, 0x000000).build()
+					.loot(EntityLootGen::noLoot).register();
+
+			SPELL_CERTIFICATION = YoukaisHomecoming.REGISTRATE
+					.entity("spell_certification", SpellCertificationEntity::new, MobCategory.MISC)
+					.properties(e -> e.sized(0.6F, 1.8f).clientTrackingRange(10).updateInterval(1))
+					.attributes(SpellCertificationEntity::createAttributes)
+					.renderer(() -> GeneralYoukaiRenderer::new)
 					.loot(EntityLootGen::noLoot).register();
 
 			YUKARI = YoukaisHomecoming.REGISTRATE

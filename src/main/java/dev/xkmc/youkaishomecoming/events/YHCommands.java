@@ -26,6 +26,8 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
@@ -624,7 +626,52 @@ public class YHCommands {
 		event.getDispatcher().register(literal("yhdev")
 				.requires(e -> e.hasPermission(2))
 				.then(literal("spell_analyzer_self_test")
-						.executes(ctx -> runAnalyzerSelfTest(ctx.getSource()))));
+						.executes(ctx -> runAnalyzerSelfTest(ctx.getSource())))
+				.then(literal("certification")
+						.then(literal("test")
+								.then(argument("targets", EntityArgument.players())
+										.then(argument("spell", ResourceLocationArgument.id())
+												.then(argument("ticks", IntegerArgumentType.integer(100, 60000))
+														.then(argument("halfSize", DoubleArgumentType.doubleArg(4, 256))
+																.executes(ctx -> runCertificationTest(ctx)))))))
+						.then(literal("abort")
+								.then(argument("targets", EntityArgument.players())
+										.executes(ctx -> abortCertification(ctx))))));
+	}
+
+	private static int runCertificationTest(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var player = EntityArgument.getPlayer(ctx, "targets");
+		var spellId = ResourceLocationArgument.getId(ctx, "spell");
+		int ticks = IntegerArgumentType.getInteger(ctx, "ticks");
+		double halfSize = DoubleArgumentType.getDouble(ctx, "halfSize");
+		var definition = SpellRegistry.get(spellId);
+		if (definition == null) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] unknown spell: " + spellId));
+			return 0;
+		}
+		try {
+			var quote = CertificationService.quote(player, definition, ticks, halfSize);
+			CertificationManager.INSTANCE.setQuote(player, quote, definition);
+			boolean started = CertificationService.start(player, quote);
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] certification started=" + started
+					+ " cost=" + quote.startCostUnits() + " hash=" + quote.definitionHash().substring(0, 8)));
+			return started ? 1 : 0;
+		} catch (Exception e) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] certification failed: " + e.getMessage()));
+			return 0;
+		}
+	}
+
+	private static int abortCertification(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var player = EntityArgument.getPlayer(ctx, "targets");
+		var trial = CertificationManager.INSTANCE.getActiveTrial(player);
+		if (trial == null) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] no active certification for player"));
+			return 0;
+		}
+		trial.abort();
+		ctx.getSource().sendSystemMessage(Component.literal("[YH] certification aborted"));
+		return 1;
 	}
 
 	private static int runAnalyzerSelfTest(CommandSourceStack source) {

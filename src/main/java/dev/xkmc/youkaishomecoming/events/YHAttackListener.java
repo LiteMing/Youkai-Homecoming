@@ -7,10 +7,13 @@ import dev.xkmc.l2library.base.effects.EffectBuilder;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.effect.UdumbaraEffect;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaEntity;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationContactGateway;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -38,6 +41,15 @@ public class YHAttackListener implements AttackListener {
 		var event = cache.getLivingHurtEvent();
 		assert event != null;
 		var source = event.getSource();
+		// Certification legacy/fallback path (D8): any danmaku damage event still
+		// surfacing from the certification enemy against the creator is a No-Hit
+		// contact and must fail the trial before any Graze handling.
+		if (source.getEntity() instanceof SpellCertificationEntity cert
+				&& cache.getAttackTarget() instanceof ServerPlayer sp) {
+			CertificationContactGateway.onCertificationContact(cert, sp);
+			event.setCanceled(true);
+			return;
+		}
 		if (source.is(YHDamageTypes.DANMAKU_TYPE) &&
 				cache.getAttackTarget() instanceof Player target &&
 				source.getEntity() instanceof LivingEntity attacker &&

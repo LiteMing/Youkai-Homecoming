@@ -59,4 +59,9 @@ public final class SpellPaymentRouter {
 	public static ResourceLocation providerId(ServerPlayer player, SpellCostContext context) {
 		return defaultProvider(context).id();
 	}
+
+	/** Refund through the provider named on the receipt. */
+	public static void refund(ServerPlayer player, PaymentReceipt receipt) {
+		receipt.provider().refund(player, receipt);
+	}
 }

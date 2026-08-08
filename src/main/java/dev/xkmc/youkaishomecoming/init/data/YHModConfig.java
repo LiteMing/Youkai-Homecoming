@@ -113,6 +113,36 @@ public class YHModConfig {
 		public final ForgeConfigSpec.LongValue certificationMaxProjectileTicks;
 		public final ForgeConfigSpec.LongValue certificationMaxHookExecutions;
 
+		// Certification gameplay (Phase 2)
+		public final ForgeConfigSpec.BooleanValue certificationEnabled;
+		public final ForgeConfigSpec.IntValue certificationMinDurationTicks;
+		public final ForgeConfigSpec.IntValue certificationMaxDurationTicks;
+		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends Integer>> certificationDurationPresets;
+		public final ForgeConfigSpec.IntValue certificationMinArenaHalfSize;
+		public final ForgeConfigSpec.IntValue certificationMaxArenaHalfSize;
+		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends Integer>> certificationArenaPresets;
+		public final ForgeConfigSpec.IntValue certificationCountdownTicks;
+		public final ForgeConfigSpec.DoubleValue certificationRequiredActiveThreatRatio;
+		public final ForgeConfigSpec.ConfigValue<String> certificationMovementPolicy;
+		public final ForgeConfigSpec.DoubleValue certificationMaxDisplacementPerTick;
+		public final ForgeConfigSpec.BooleanValue certificationEnemyRandomMovementEnabled;
+		public final ForgeConfigSpec.IntValue certificationEnemyWaypointMinTicks;
+		public final ForgeConfigSpec.IntValue certificationEnemyWaypointMaxTicks;
+		public final ForgeConfigSpec.DoubleValue certificationEnemyMaxSpeed;
+		public final ForgeConfigSpec.DoubleValue certificationEnemyAcceleration;
+		public final ForgeConfigSpec.DoubleValue certificationEnemyBoundaryMargin;
+		public final ForgeConfigSpec.DoubleValue certificationEnemyMinimumTravelDistance;
+		public final ForgeConfigSpec.IntValue certificationMaxConcurrentTrials;
+		public final ForgeConfigSpec.IntValue certificationMaxTrialsPerPlayer;
+		public final ForgeConfigSpec.LongValue certificationStartCostUnits;
+		public final ForgeConfigSpec.DoubleValue certificationRefundOnFailure;
+		public final ForgeConfigSpec.DoubleValue certificationMinProofMultiplier;
+		public final ForgeConfigSpec.ConfigValue<String> certificationStartPaymentProvider;
+		public final ForgeConfigSpec.BooleanValue certificationIssueFeeEnabled;
+		public final ForgeConfigSpec.BooleanValue certificationPublicRendering;
+		public final ForgeConfigSpec.IntValue certificationRewardOwnerLockTicks;
+		public final ForgeConfigSpec.BooleanValue certificationRewardNeverDespawn;
+
 		public final ForgeConfigSpec.IntValue youkaifyingTime;
 		public final ForgeConfigSpec.DoubleValue youkaifyingChance;
 		public final ForgeConfigSpec.IntValue youkaifyingConfusionTime;
@@ -275,6 +305,90 @@ public class YHModConfig {
 				certificationMaxHookExecutions = builder.comment("Conservative total hook execution upper bound during certification")
 						.translation("config.youkaishomecoming.common.certification.maxHookExecutions")
 						.defineInRange("maxHookExecutions", SpellAnalysisLimits.DEFAULT_MAX_HOOK_EXECUTIONS, 1L, 100_000_000_000L);
+				certificationEnabled = builder.comment("Master switch for the survival spell certification system")
+						.translation("config.youkaishomecoming.common.certification.enabled")
+						.define("enabled", true);
+				certificationMinDurationTicks = builder.comment("Minimum selectable certification duration in ticks")
+						.translation("config.youkaishomecoming.common.certification.minDurationTicks")
+						.defineInRange("minDurationTicks", 600, 100, 6000);
+				certificationMaxDurationTicks = builder.comment("Maximum selectable certification duration in ticks")
+						.translation("config.youkaishomecoming.common.certification.maxDurationTicks")
+						.defineInRange("maxDurationTicks", 6000, 600, 60000);
+				certificationDurationPresets = builder.comment("Preset certification durations in ticks (editor quick pick)")
+						.translation("config.youkaishomecoming.common.certification.durationPresets")
+						.defineListAllowEmpty("durationPresets", java.util.List.of(600, 1200, 2400), o -> o instanceof Integer);
+				certificationMinArenaHalfSize = builder.comment("Minimum certification arena half size in blocks")
+						.translation("config.youkaishomecoming.common.certification.minArenaHalfSize")
+						.defineInRange("minArenaHalfSize", 6, 4, 32);
+				certificationMaxArenaHalfSize = builder.comment("Maximum certification arena half size in blocks")
+						.translation("config.youkaishomecoming.common.certification.maxArenaHalfSize")
+						.defineInRange("maxArenaHalfSize", 64, 8, 256);
+				certificationArenaPresets = builder.comment("Preset arena half sizes in blocks (editor quick pick)")
+						.translation("config.youkaishomecoming.common.certification.arenaPresets")
+						.defineListAllowEmpty("arenaPresets", java.util.List.of(6, 8, 12, 16), o -> o instanceof Integer);
+				certificationCountdownTicks = builder.comment("PREPARE countdown ticks before ACTIVE begins")
+						.translation("config.youkaishomecoming.common.certification.countdownTicks")
+						.defineInRange("countdownTicks", 100, 20, 600);
+				certificationRequiredActiveThreatRatio = builder.comment("Fraction of ACTIVE ticks that must carry active threat for full duration discount")
+						.translation("config.youkaishomecoming.common.certification.requiredActiveThreatRatio")
+						.defineInRange("requiredActiveThreatRatio", 0.6, 0.0, 1.0);
+				certificationMovementPolicy = builder.comment("Movement policy: CANONICAL (fixed speeds/judge box) or MODPACK (legal equipment and other-mod movement)")
+						.translation("config.youkaishomecoming.common.certification.movementPolicy")
+						.define("movementPolicy", "CANONICAL");
+				certificationMaxDisplacementPerTick = builder.comment("Max allowed player displacement per tick in blocks (illegal move / teleport protection)")
+						.translation("config.youkaishomecoming.common.certification.maxDisplacementPerTick")
+						.defineInRange("maxDisplacementPerTick", 8.0, 1.0, 64.0);
+				certificationEnemyRandomMovementEnabled = builder.comment("Enable server-authoritative bounded random waypoint movement for the certification enemy")
+						.translation("config.youkaishomecoming.common.certification.enemyRandomMovementEnabled")
+						.define("enemyRandomMovementEnabled", true);
+				certificationEnemyWaypointMinTicks = builder.comment("Minimum dwell ticks per waypoint")
+						.translation("config.youkaishomecoming.common.certification.enemyWaypointMinTicks")
+						.defineInRange("enemyWaypointMinTicks", 40, 5, 600);
+				certificationEnemyWaypointMaxTicks = builder.comment("Maximum dwell ticks per waypoint")
+						.translation("config.youkaishomecoming.common.certification.enemyWaypointMaxTicks")
+						.defineInRange("enemyWaypointMaxTicks", 120, 10, 1200);
+				certificationEnemyMaxSpeed = builder.comment("Certification enemy max speed in blocks/tick")
+						.translation("config.youkaishomecoming.common.certification.enemyMaxSpeed")
+						.defineInRange("enemyMaxSpeed", 0.5, 0.05, 4.0);
+				certificationEnemyAcceleration = builder.comment("Certification enemy acceleration lerp factor (0..1 per tick)")
+						.translation("config.youkaishomecoming.common.certification.enemyAcceleration")
+						.defineInRange("enemyAcceleration", 0.05, 0.01, 1.0);
+				certificationEnemyBoundaryMargin = builder.comment("Waypoint safety margin from the arena walls in blocks")
+						.translation("config.youkaishomecoming.common.certification.enemyBoundaryMargin")
+						.defineInRange("enemyBoundaryMargin", 2.0, 0.0, 16.0);
+				certificationEnemyMinimumTravelDistance = builder.comment("Minimum distance between consecutive waypoints in blocks")
+						.translation("config.youkaishomecoming.common.certification.enemyMinimumTravelDistance")
+						.defineInRange("enemyMinimumTravelDistance", 6.0, 0.0, 32.0);
+				certificationMaxConcurrentTrials = builder.comment("Server-wide maximum concurrent certification trials")
+						.translation("config.youkaishomecoming.common.certification.maxConcurrentTrials")
+						.defineInRange("maxConcurrentTrials", 3, 1, 64);
+				certificationMaxTrialsPerPlayer = builder.comment("Max active trials per player (MVP fixed at 1)")
+						.translation("config.youkaishomecoming.common.certification.maxTrialsPerPlayer")
+						.defineInRange("maxTrialsPerPlayer", 1, 1, 8);
+				certificationStartCostUnits = builder.comment("Base certification start fee in abstract cost units")
+						.translation("config.youkaishomecoming.common.certification.startCostUnits")
+						.defineInRange("startCostUnits", 100L, 0L, 1_000_000L);
+				certificationRefundOnFailure = builder.comment("Refund ratio of the start fee for normal No-Hit failure and manual abort (SYSTEM_ERROR always refunds in full)")
+						.translation("config.youkaishomecoming.common.certification.refundOnFailure")
+						.defineInRange("refundOnFailure", 0.5, 0.0, 1.0);
+				certificationMinProofMultiplier = builder.comment("Floor for the proof discount multiplier (design doc §13)")
+						.translation("config.youkaishomecoming.common.certification.minProofMultiplier")
+						.defineInRange("minProofMultiplier", 0.45, 0.1, 1.0);
+				certificationStartPaymentProvider = builder.comment("Payment provider id for the certification start fee")
+						.translation("config.youkaishomecoming.common.certification.startPaymentProvider")
+						.define("startPaymentProvider", "youkaishomecoming:points");
+				certificationIssueFeeEnabled = builder.comment("Whether the certified spell issuance fee is deducted on success (otherwise free)")
+						.translation("config.youkaishomecoming.common.certification.issueFeeEnabled")
+						.define("issueFeeEnabled", false);
+				certificationPublicRendering = builder.comment("Whether other players can spectate certification trials")
+						.translation("config.youkaishomecoming.common.certification.publicRendering")
+						.define("publicRendering", true);
+				certificationRewardOwnerLockTicks = builder.comment("Ticks the reward item stays locked to the creator")
+						.translation("config.youkaishomecoming.common.certification.rewardOwnerLockTicks")
+						.defineInRange("rewardOwnerLockTicks", 600, 0, 12000);
+				certificationRewardNeverDespawn = builder.comment("Certified spell reward items never despawn naturally")
+						.translation("config.youkaishomecoming.common.certification.rewardNeverDespawn")
+						.define("rewardNeverDespawn", true);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.youkaifying_effect").push("youkaifying_effect");

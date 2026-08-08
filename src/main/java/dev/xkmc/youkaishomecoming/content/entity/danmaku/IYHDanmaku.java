@@ -4,12 +4,15 @@ import dev.xkmc.fastprojectileapi.collision.EntityInfo;
 import dev.xkmc.fastprojectileapi.entity.GrazingEntity;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationContactGateway;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.events.GeneralEventHandlers;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -82,6 +85,12 @@ public interface IYHDanmaku extends GrazingEntity {
 		if (self().level().isClientSide) return;
 		var e = result.getEntity();
 		if (e instanceof DanmakuHostProxy) return;
+		// Certification No-Hit contact must precede hurt-time invul checks, auto-bomb
+		// and damage events (design doc §8, D8): a hit is a hit even under i-frames.
+		if (e instanceof ServerPlayer sp && self().getOwner() instanceof SpellCertificationEntity cert) {
+			CertificationContactGateway.onCertificationContact(cert, sp);
+			return;
+		}
 		var source = source();
 		if (e instanceof LivingEntity le) {
 			if (le.hurtTime > 0 && (YHModConfig.COMMON.invulFrameForDanmaku.get() || e instanceof Player || e instanceof YoukaiEntity)) {

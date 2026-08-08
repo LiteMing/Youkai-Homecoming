@@ -627,12 +627,14 @@ public class YHCommands {
 
 	private static int runAnalyzerSelfTest(CommandSourceStack source) {
 		var result = SpellAnalyzerSelfCheck.run();
-		String summary = "[YH] spell analyzer self-test: " + result.passed() + "/" + result.total() + " passed"
-				+ (result.allPassed() ? "" : ", FIRST FAILURE: " + result.firstFailureDetail());
-		source.sendSystemMessage(Component.literal(summary));
+		source.sendSystemMessage(Component.literal("[YH] spell analyzer self-test: " + result.passed() + "/" + result.total() + " passed"));
+		if (!result.allPassed()) {
+			for (String failure : result.failures()) {
+				source.sendSystemMessage(Component.literal("[YH] FAIL: " + failure));
+			}
+		}
 		return result.allPassed() ? 1 : 0;
 	}
-
 	protected static LiteralArgumentBuilder<CommandSourceStack> literal(String str) {
 		return LiteralArgumentBuilder.literal(str);
 	}

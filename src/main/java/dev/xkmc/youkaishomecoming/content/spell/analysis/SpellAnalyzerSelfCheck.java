@@ -37,7 +37,7 @@ public final class SpellAnalyzerSelfCheck {
 	private SpellAnalyzerSelfCheck() {
 	}
 
-	public record Result(int total, int passed, String firstFailureDetail) {
+	public record Result(int total, int passed, String firstFailureDetail, List<String> failures) {
 		public boolean allPassed() {
 			return passed == total;
 		}
@@ -52,13 +52,16 @@ public final class SpellAnalyzerSelfCheck {
 		private int total;
 		private int passed;
 		private String firstFailure;
+		private final List<String> failures = new ArrayList<>();
 
 		private void check(String name, boolean ok, String detail) {
 			total++;
 			if (ok) {
 				passed++;
-			} else if (firstFailure == null) {
-				firstFailure = name + " | " + detail;
+			} else {
+				String line = detail == null || detail.isEmpty() ? name : name + " | " + detail;
+				if (firstFailure == null) firstFailure = line;
+				failures.add(line);
 			}
 		}
 
@@ -283,8 +286,9 @@ public final class SpellAnalyzerSelfCheck {
 						}
 					}
 				}
+				failures.add("CRASH: " + t.getClass().getName() + ": " + t.getMessage());
 			}
-			return new Result(total, passed, firstFailure);
+			return new Result(total, passed, firstFailure, List.copyOf(failures));
 		}
 
 		private void codecAndHash() {

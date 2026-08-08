@@ -180,43 +180,45 @@ public final class SpellAnalyzer {
 	}
 
 	/** Phase cycles are normal (certification Runtime loops a spell; design §5.4), reported as INFO only. */
+	/**
+	 * Phase cycles are normal for certification Runtime loops (design §5.4), reported
+	 * as INFO only. Cyclic membership is computed per node via reachability:
+	 * O(V x (V+E)) with ≤64 phases — a back-edge path walk misses SCC members joined
+	 * through cross edges (acceptance review round 7).
+	 */
 	private void detectPhaseCycles() {
 		if (profile != SpellAnalysisProfile.CERTIFICATION) return;
-		Set<ResourceLocation> visited = new HashSet<>();
-		Set<ResourceLocation> stack = new HashSet<>();
 		for (ResourceLocation id : definition.phases.keySet()) {
-			if (!visited.contains(id)) dfsCycle(id, visited, stack);
+			if (canReachSelf(id)) {
+				cyclicPhases.add(id);
+				diagnostics.add(SpellDiagnostic.info("phase_cycle", "phase/" + id,
+						"Phase transition cycle detected: " + id));
+			}
 		}
 	}
 
-	private final ArrayDeque<ResourceLocation> dfsPath = new ArrayDeque<>();
 	private final Set<ResourceLocation> cyclicPhases = new HashSet<>();
 
-	private void dfsCycle(ResourceLocation id, Set<ResourceLocation> visited, Set<ResourceLocation> stack) {
-		visited.add(id);
-		stack.add(id);
-		dfsPath.addLast(id);
-		PhaseDefinition phase = definition.phases.get(id);
-		if (phase != null) {
-			for (Transition transition : phase.transitions) {
-				ResourceLocation target = transition.targetPhase();
-				if (!visited.contains(target)) {
-					dfsCycle(target, visited, stack);
-				} else if (stack.contains(target)) {
-					// back edge: every phase on the current path from target to here is
-					// part of a cycle; its on_enter/on_exit can run repeatedly
-					boolean mark = false;
-					for (ResourceLocation p : dfsPath) {
-						if (p.equals(target)) mark = true;
-						if (mark) cyclicPhases.add(p);
-					}
-					diagnostics.add(SpellDiagnostic.info("phase_cycle", "phase/" + id,
-							"Phase transition cycle: " + id + " -> " + target));
-				}
-			}
+	/** True when any transition path from start leads back to start. */
+	private boolean canReachSelf(ResourceLocation start) {
+		PhaseDefinition phase = definition.phases.get(start);
+		if (phase == null) return false;
+		Set<ResourceLocation> visited = new HashSet<>();
+		for (Transition transition : phase.transitions) {
+			if (canReach(transition.targetPhase(), start, visited)) return true;
 		}
-		dfsPath.removeLast();
-		stack.remove(id);
+		return false;
+	}
+
+	private boolean canReach(ResourceLocation from, ResourceLocation target, Set<ResourceLocation> visited) {
+		if (from.equals(target)) return true;
+		if (!visited.add(from)) return false;
+		PhaseDefinition phase = definition.phases.get(from);
+		if (phase == null) return false;
+		for (Transition transition : phase.transitions) {
+			if (canReach(transition.targetPhase(), target, visited)) return true;
+		}
+		return false;
 	}
 
 	/**

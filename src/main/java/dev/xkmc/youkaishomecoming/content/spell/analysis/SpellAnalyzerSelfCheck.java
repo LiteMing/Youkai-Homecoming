@@ -418,6 +418,45 @@ public final class SpellAnalyzerSelfCheck {
 				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:a\"}]}\n" +
 				"  }\n" +
 				"}";
+		/** SCC member joined through a cross edge must also be detected (round 8). */
+		private static final String CYCLIC_BRANCH_MEMBER = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_cyclic_branch\",\n" +
+				"  \"display\": {\"name\": \"CyclicBranch\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:a\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:a\": {\"id\": \"youkaishomecoming:a\",\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:b\"},\n" +
+				"        {\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:d\"}]},\n" +
+				"    \"youkaishomecoming:b\": {\"id\": \"youkaishomecoming:b\",\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:c\"}]},\n" +
+				"    \"youkaishomecoming:c\": {\"id\": \"youkaishomecoming:c\",\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:a\"}]},\n" +
+				"    \"youkaishomecoming:d\": {\"id\": \"youkaishomecoming:d\", \"on_enter\": [" + fire(100) + "],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:c\"}]}\n" +
+				"  }\n" +
+				"}";
+		/** Self-loop is a cycle (round 8). */
+		private static final String CYCLIC_SELF_LOOP = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_cyclic_selfloop\",\n" +
+				"  \"display\": {\"name\": \"CyclicSelfLoop\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:a\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:a\": {\"id\": \"youkaishomecoming:a\", \"on_enter\": [" + fire(100) + "],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:a\"}]}\n" +
+				"  }\n" +
+				"}";
+		/** Disabled spawn inside a cyclic on_enter never executes: still passes (round 8). */
+		private static final String CYCLIC_ENTER_DISABLED = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_cyclic_disabled\",\n" +
+				"  \"display\": {\"name\": \"CyclicDisabled\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:a\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:a\": {\"id\": \"youkaishomecoming:a\", \"on_enter\": [{\"type\": \"disabled\", \"inner\": " + fire(100) + "}],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:b\"}]},\n" +
+				"    \"youkaishomecoming:b\": {\"id\": \"youkaishomecoming:b\",\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:a\"}]}\n" +
+				"  }\n" +
+				"}";
 
 		private static String deepNest() {
 			StringBuilder sb = new StringBuilder(fire(6));
@@ -701,6 +740,17 @@ public final class SpellAnalyzerSelfCheck {
 			// spawn-free cyclic enter/exit still passes (on_tick cycles unchanged)
 			SpellAnalysis safe = SpellAnalyzer.analyze(parse(CYCLIC_ENTER_SAFE), SpellAnalysisProfile.CERTIFICATION, CERT);
 			check("cyclic spawn-free on_enter passes", safe != null);
+			// cross-edge SCC member must be detected (round 8)
+			String branch = rejectMessage(() -> SpellAnalyzer.analyze(parse(CYCLIC_BRANCH_MEMBER), SpellAnalysisProfile.CERTIFICATION, CERT));
+			check("cross-edge SCC member rejected", branch != null && branch.contains("cyclic_phase_spawn"));
+			check("cross-edge SCC member accepted by MARKET (historical)",
+					!rejects(() -> SpellAnalyzer.analyze(parse(CYCLIC_BRANCH_MEMBER), SpellAnalysisProfile.MARKET)));
+			// self-loop is a cycle (round 8)
+			String selfLoop = rejectMessage(() -> SpellAnalyzer.analyze(parse(CYCLIC_SELF_LOOP), SpellAnalysisProfile.CERTIFICATION, CERT));
+			check("self-loop spawn rejected", selfLoop != null && selfLoop.contains("cyclic_phase_spawn"));
+			// disabled spawn inside a cycle never executes: still passes (round 8)
+			SpellAnalysis disabled = SpellAnalyzer.analyze(parse(CYCLIC_ENTER_DISABLED), SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("cyclic disabled spawn passes (never executes)", disabled != null);
 		}
 
 		/** Equal delays run in the same scheduled tick; bursts must sum (round 5 A1). */

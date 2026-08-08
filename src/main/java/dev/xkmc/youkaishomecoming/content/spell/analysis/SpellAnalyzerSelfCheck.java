@@ -187,21 +187,103 @@ public final class SpellAnalyzerSelfCheck {
 				"  }\n" +
 				"}";
 
-		// ------------------------------------------------------------- runner
+		// local fixtures hoisted to static constants so the pure-JVM build-time
+		// validation (gen.SpellAnalyzerSelfTest) covers their JSON syntax
+		private static final String DISABLED_FIRE = spell("{\"type\": \"disabled\", \"inner\": " + fire(24) + "}");
+		private static final String SAT = spell("{\"type\": \"repeat\", \"count\": 1000, \"body\": [{\"type\": \"burst\", \"waves\": 1000, \"body\": [" + fire(1000) + "]}]}");
+		private static final String ONE_SHOT_BURST = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_burst\",\n" +
+				"  \"display\": {\"name\": \"Burst\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [" + fire(1000) + "],\n" +
+				"      \"on_tick\": [" + fire(6) + "]}\n" +
+				"  }\n" +
+				"}";
+		private static final String ENTER_SHOOTER = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_shooter_enter\",\n" +
+				"  \"display\": {\"name\": \"ShooterEnter\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [{\"type\": \"spawn_shooter\", \"count\": 3, \"lifetime\": 100, \"body\": [" + fire(4) + "]}]}\n" +
+				"  }\n" +
+				"}";
+		private static final String SAME_TICK = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 400, \"speed\": 0.5, \"lifetime\": 60},\n"
+				+ "  {\"type\": \"spawn_shooter\", \"count\": 1, \"lifetime\": 100, \"body\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 4, \"speed\": 0.5, \"lifetime\": 60}]}");
+		private static final String EXPIRY_BURST = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_expiry_burst\",\n" +
+				"  \"display\": {\"name\": \"ExpiryBurst\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1000, \"speed\": 0.5, \"lifetime\": 60,\n" +
+				"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]}\n" +
+				"  }\n" +
+				"}";
+		private static final String HOOK_REPEAT = spell("{\"type\": \"repeat\", \"count\": 10, \"body\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 2, \"speed\": 0.5, \"lifetime\": 60,\n"
+				+ "  \"on_hit_entity\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}]}");
+		private static final String LONG_LIFETIME = FIRE24.replace("\"lifetime\": 60}", "\"lifetime\": 20000}");
+		private static final String OBJ_LIFETIME = FIRE24.replace("\"lifetime\": 60}",
+				"\"lifetime\": {\"type\": \"random\", \"min\": 1, \"max\": 20000}}");
+		private static final String DISABLED_HOOK = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60,\n"
+				+ "  \"on_hit_entity\": [{\"type\": \"run_command\", \"command\": \"say hi\"}]}}");
+		private static final String DEEP_NEST = deepNest();
+		private static final String LONG_STR = longStr();
+		private static final String EMPTY_PHASES = "{\"id\": \"youkaishomecoming:x\", \"display\": {\"name\": \"x\"}, \"entry_phase\": \"youkaishomecoming:main\", \"phases\": {}}";
+		private static final String MANY_ACTIONS = manyActions();
+
+		private static String deepNest() {
+			StringBuilder sb = new StringBuilder(fire(6));
+			for (int i = 0; i < 40; i++) {
+				sb.insert(0, "{\"type\": \"sequence\", \"actions\": [");
+				sb.append("]}");
+			}
+			return spell(sb.toString());
+		}
+
+		private static String longStr() {
+			String longValue = "x".repeat(600);
+			return spell(fire(6)).replace("\"display\": {\"name\": \"Analyzer Test\"},",
+					"\"display\": {\"name\": \"Analyzer Test\"}, \"custom_names\": {\"long\": \"" + longValue + "\"},");
+		}
+
+		private static String manyActions() {
+			StringBuilder sb = new StringBuilder();
+			for (int i = 0; i < 500; i++) {
+				if (i > 0) sb.append(',');
+				sb.append(fire(6));
+			}
+			return spell(sb.toString());
+		}
 
 		Result run() {
-			codecAndHash();
-			analyzerTraversal();
-			oneShotBurst();
-			shooterModel();
-			sameTickSum();
-			deferredHookBurst();
-			hookMultiplier();
-			profileDifferences();
-			disabledSemantics();
-			marketFacade();
-			unknownAction();
-			hashOrderIndependence();
+			try {
+				codecAndHash();
+				analyzerTraversal();
+				oneShotBurst();
+				shooterModel();
+				sameTickSum();
+				deferredHookBurst();
+				hookMultiplier();
+				profileDifferences();
+				disabledSemantics();
+				marketFacade();
+				unknownAction();
+				hashOrderIndependence();
+			} catch (Throwable t) {
+				// never crash the command: surface the real error as a failure entry
+				total++;
+				if (firstFailure == null) {
+					firstFailure = "CRASH: " + t.getClass().getName() + ": " + t.getMessage();
+					for (StackTraceElement e : t.getStackTrace()) {
+						if (e.getClassName().contains("youkaishomecoming")) {
+							firstFailure += " | " + e;
+						}
+					}
+				}
+			}
 			return new Result(total, passed, firstFailure);
 		}
 
@@ -225,9 +307,8 @@ public final class SpellAnalyzerSelfCheck {
 			check("hash changes on phase id change",
 					!SpellHash.canonicalHash(parse(FIRE24)).equals(SpellHash.canonicalHash(parse(FIRE24.replace("youkaishomecoming:main", "youkaishomecoming:main2")))));
 			// 5. disabled toggle changes hash
-			String disabledFire = spell("{\"type\": \"disabled\", \"inner\": " + fire(24) + "}");
 			check("hash changes when action toggles disabled",
-					!SpellHash.canonicalHash(parse(FIRE24)).equals(SpellHash.canonicalHash(parse(disabledFire))));
+					!SpellHash.canonicalHash(parse(FIRE24)).equals(SpellHash.canonicalHash(parse(DISABLED_FIRE))));
 			// 6. legacy rejected before hash (D9)
 			check("hash rejects legacy_ticker", rejects(() -> SpellHash.canonicalHash(parse(LEGACY))));
 			// 7. non-round-trippable definition cannot produce a hash: legacy is the only
@@ -274,8 +355,7 @@ public final class SpellAnalyzerSelfCheck {
 			check("cert accepts bounded random count (10)",
 					SpellAnalyzer.analyze(parse(RANDOM_COUNT), SpellAnalysisProfile.CERTIFICATION, CERT).maxSpawnPerTick() == 10);
 			// saturation: no overflow, no negative values, clean rejection
-			String sat = spell("{\"type\": \"repeat\", \"count\": 1000, \"body\": [{\"type\": \"burst\", \"waves\": 1000, \"body\": [" + fire(1000) + "]}]}");
-			String satMsg = rejectMessage(() -> SpellAnalyzer.analyze(parse(sat), SpellAnalysisProfile.CERTIFICATION, CERT));
+			String satMsg = rejectMessage(() -> SpellAnalyzer.analyze(parse(SAT), SpellAnalysisProfile.CERTIFICATION, CERT));
 			check("saturated over-limit rejected cleanly", satMsg != null && satMsg.contains("maxSpawnPerTick"));
 			// phase cycle: INFO only, totals bounded by the certification window
 			SpellAnalysis cycle = SpellAnalyzer.analyze(parse(CYCLE), SpellAnalysisProfile.CERTIFICATION, CERT);
@@ -288,17 +368,7 @@ public final class SpellAnalyzerSelfCheck {
 		/** One-shot spawn bursts (on_enter/on_exit) must count toward maxSpawnPerTick (issue 2),
 		 * and on_enter + on_tick share the phase-entry tick, so they are summed (issue 3). */
 		private void oneShotBurst() {
-			String json = "{\n" +
-					"  \"id\": \"youkaishomecoming:analyzer_burst\",\n" +
-					"  \"display\": {\"name\": \"Burst\"},\n" +
-					"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
-					"  \"phases\": {\n" +
-					"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
-					"      \"on_enter\": [" + fire(1000) + "],\n" +
-					"      \"on_tick\": [" + fire(6) + "]}\n" +
-					"  }\n" +
-					"}";
-			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(json), SpellAnalysisProfile.CERTIFICATION, CERT);
+			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(ONE_SHOT_BURST), SpellAnalysisProfile.CERTIFICATION, CERT);
 			check("phase-entry tick sums on_enter + on_tick (1000 + 6 = 1006)",
 					analysis.maxSpawnPerTick() == 1006);
 			check("one-shot burst total = 1000 + 6 x 1000", analysis.totalSpawnUpperBound() == 7000);
@@ -317,16 +387,7 @@ public final class SpellAnalyzerSelfCheck {
 			check("recurring shooter peak = 1,200,000 + 300 + 72,000 = 1,272,300",
 					shooter.peakAliveUpperBound() == 1_272_300);
 			// on_enter: same shooter fired once — body scales with lifetime only
-			String enterJson = "{\n" +
-					"  \"id\": \"youkaishomecoming:analyzer_shooter_enter\",\n" +
-					"  \"display\": {\"name\": \"ShooterEnter\"},\n" +
-					"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
-					"  \"phases\": {\n" +
-					"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
-					"      \"on_enter\": [{\"type\": \"spawn_shooter\", \"count\": 3, \"lifetime\": 100, \"body\": [" + fire(4) + "]}]" + "\n" +
-					"  }\n" +
-					"}";
-			SpellAnalysis enter = SpellAnalyzer.analyze(parse(enterJson), SpellAnalysisProfile.CERTIFICATION, CERT);
+			SpellAnalysis enter = SpellAnalyzer.analyze(parse(ENTER_SHOOTER), SpellAnalysisProfile.CERTIFICATION, CERT);
 			check("one-shot shooter maxSpawnPerTick = max(3 entities, 12 body) = 12", enter.maxSpawnPerTick() == 12);
 			check("one-shot shooter total = 3 x 4 x 100 = 1200", enter.totalSpawnUpperBound() == 1200);
 			check("one-shot shooter peak = 1200 + 3 + 12 x 60 = 1923", enter.peakAliveUpperBound() == 1923);
@@ -339,9 +400,7 @@ public final class SpellAnalyzerSelfCheck {
 		private void sameTickSum() {
 			// on_tick: fire 400 + spawn_shooter 1 (lifetime 100, body fire 4)
 			//   bodyPerGlobalTick = 1 x 100 x 4 = 400 → ordinary = 400 + 400 = 800
-			String json = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 400, \"speed\": 0.5, \"lifetime\": 60},\n"
-					+ "  {\"type\": \"spawn_shooter\", \"count\": 1, \"lifetime\": 100, \"body\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 4, \"speed\": 0.5, \"lifetime\": 60}]}");
-			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(json), SpellAnalysisProfile.CERTIFICATION, CERT);
+			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(SAME_TICK), SpellAnalysisProfile.CERTIFICATION, CERT);
 			check("top-level + shooter body same tick summed (400 + 400 = 800)",
 					analysis.maxSpawnPerTick() == 800);
 		}
@@ -351,17 +410,7 @@ public final class SpellAnalyzerSelfCheck {
 		private void deferredHookBurst() {
 			// on_enter: fire 1000 (lifetime 60) with on_expiry [fire 10]
 			//   executions = 1000; child spawns = 1000 x 10 = 10,000 in one tick
-			String json = "{\n" +
-					"  \"id\": \"youkaishomecoming:analyzer_expiry_burst\",\n" +
-					"  \"display\": {\"name\": \"ExpiryBurst\"},\n" +
-					"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
-					"  \"phases\": {\n" +
-					"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
-					"      \"on_enter\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1000, \"speed\": 0.5, \"lifetime\": 60,\n" +
-					"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]" + "\n" +
-					"  }\n" +
-					"}";
-			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(json), SpellAnalysisProfile.CERTIFICATION, CERT);
+			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(EXPIRY_BURST), SpellAnalysisProfile.CERTIFICATION, CERT);
 			check("deferred hook burst 1000 x 10 = 10000 counted in maxSpawnPerTick",
 					analysis.maxSpawnPerTick() == 10_000);
 			check("deferred hook executions = 1000 (once)", analysis.hookExecutionUpperBound() == 1000);
@@ -370,9 +419,7 @@ public final class SpellAnalyzerSelfCheck {
 		/** Hook child multiplier must not square the parent factor (issue 4). */
 		private void hookMultiplier() {
 			// repeat 10 -> fire count 2 (contrib 20/tick) -> on_hit_entity fire count 1
-			String json = spell("{\"type\": \"repeat\", \"count\": 10, \"body\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 2, \"speed\": 0.5, \"lifetime\": 60,\n"
-					+ "  \"on_hit_entity\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}]}");
-			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(json), SpellAnalysisProfile.CERTIFICATION, CERT);
+			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(HOOK_REPEAT), SpellAnalysisProfile.CERTIFICATION, CERT);
 			check("hook executions = 20/tick (no squaring)", analysis.hookExecutionUpperBound() == 20L * 1000);
 			check("hook child spawns = 20/tick, total = (20+20) x 1000 = 40000",
 					analysis.totalSpawnUpperBound() == 40000);
@@ -446,51 +493,30 @@ public final class SpellAnalyzerSelfCheck {
 					&& msg.equals("Automatic market imports may not use action: run_command"));
 			// historical raw-JSON guard: bare numeric lifetime above the cap is rejected
 			// verbatim even though it decodes to a NumberProvider object (issue 1a)
-			String longLifetime = FIRE24.replace("\"lifetime\": 60}", "\"lifetime\": 20000}");
-			String lifetimeMsg = rejectMessage(() -> SpellMarketValidator.validate(longLifetime, JsonParser.parseString(longLifetime), parse(longLifetime)));
+			String lifetimeMsg = rejectMessage(() -> SpellMarketValidator.validate(LONG_LIFETIME, JsonParser.parseString(LONG_LIFETIME), parse(LONG_LIFETIME)));
 			check("market rejects bare lifetime 20000 verbatim", lifetimeMsg != null
 					&& lifetimeMsg.equals("lifetime exceeds 12000"));
 			// object-form lifetime passes market historically (guard checks only raw numbers)
-			String objLifetime = FIRE24.replace("\"lifetime\": 60}",
-					"\"lifetime\": {\"type\": \"random\", \"min\": 1, \"max\": 20000}}");
-			SpellMarketValidator.validate(objLifetime, JsonParser.parseString(objLifetime), parse(objLifetime));
+			SpellMarketValidator.validate(OBJ_LIFETIME, JsonParser.parseString(OBJ_LIFETIME), parse(OBJ_LIFETIME));
 			check("market accepts object-form lifetime (historical behavior)", true);
 			// certification still rejects it: bounded but above the hard cap
-			String certLifetime = rejectMessage(() -> SpellAnalyzer.analyze(parse(objLifetime), SpellAnalysisProfile.CERTIFICATION, CERT));
+			String certLifetime = rejectMessage(() -> SpellAnalyzer.analyze(parse(OBJ_LIFETIME), SpellAnalysisProfile.CERTIFICATION, CERT));
 			check("cert rejects object-form lifetime above cap", certLifetime != null
 					&& certLifetime.contains("lifetime exceeds 12000"));
 			// banned action inside disabled > fire > on_hit cannot hide (issue 1d)
-			String disabledHook = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60,\n"
-					+ "  \"on_hit_entity\": [{\"type\": \"run_command\", \"command\": \"say hi\"}]}}");
-			String hiddenMsg = rejectMessage(() -> SpellMarketValidator.validate(disabledHook, JsonParser.parseString(disabledHook), parse(disabledHook)));
+			String hiddenMsg = rejectMessage(() -> SpellMarketValidator.validate(DISABLED_HOOK, JsonParser.parseString(DISABLED_HOOK), parse(DISABLED_HOOK)));
 			check("market rejects banned action inside disabled>on_hit", hiddenMsg != null
 					&& hiddenMsg.contains("may not use action: run_command"));
 			// golden historical messages (raw-JSON guard)
-			StringBuilder deep = new StringBuilder(fire(6));
-			for (int i = 0; i < 40; i++) {
-				deep.insert(0, "{\"type\": \"sequence\", \"actions\": [");
-				deep.append("]}");
-			}
-			String deepJson = spell(deep.toString());
-			String nestMsg = rejectMessage(() -> SpellMarketValidator.validate(deepJson, JsonParser.parseString(deepJson), parse(deepJson)));
+			String nestMsg = rejectMessage(() -> SpellMarketValidator.validate(DEEP_NEST, JsonParser.parseString(DEEP_NEST), parse(DEEP_NEST)));
 			check("market nesting message verbatim", nestMsg != null && nestMsg.equals("Spell nesting exceeds 32"));
-			String longValue = "x".repeat(600);
-			String longStr = spell(fire(6)).replace("\"display\": {\"name\": \"Analyzer Test\"},",
-					"\"display\": {\"name\": \"Analyzer Test\"}, \"custom_names\": {\"long\": \"" + longValue + "\"},");
-			String strMsg = rejectMessage(() -> SpellMarketValidator.validate(longStr, JsonParser.parseString(longStr), parse(longStr)));
+			String strMsg = rejectMessage(() -> SpellMarketValidator.validate(LONG_STR, JsonParser.parseString(LONG_STR), parse(LONG_STR)));
 			check("market string length message verbatim", strMsg != null && strMsg.equals("Spell string/expression exceeds 512 characters"));
 			// analyzer structural messages preserved through the facade
-			String emptyPhases = "{\"id\": \"youkaishomecoming:x\", \"display\": {\"name\": \"x\"}, \"entry_phase\": \"youkaishomecoming:main\", \"phases\": {}}";
-			String phaseMsg = rejectMessage(() -> SpellMarketValidator.validate(emptyPhases, JsonParser.parseString(emptyPhases), parse(emptyPhases)));
+			String phaseMsg = rejectMessage(() -> SpellMarketValidator.validate(EMPTY_PHASES, JsonParser.parseString(EMPTY_PHASES), parse(EMPTY_PHASES)));
 			check("market phase count message verbatim", phaseMsg != null && phaseMsg.equals("Spell phase count must be between 1 and 64"));
 			// action budget parity: many bare numeric fields must not inflate the count (issue 1b)
-			StringBuilder many = new StringBuilder();
-			for (int i = 0; i < 500; i++) {
-				if (i > 0) many.append(',');
-				many.append(fire(6));
-			}
-			String manyJson = spell(many.toString());
-			SpellMarketValidator.validate(manyJson, JsonParser.parseString(manyJson), parse(manyJson));
+			SpellMarketValidator.validate(MANY_ACTIONS, JsonParser.parseString(MANY_ACTIONS), parse(MANY_ACTIONS));
 			check("market accepts 500 actions with many bare numbers (action budget parity)", true);
 		}
 

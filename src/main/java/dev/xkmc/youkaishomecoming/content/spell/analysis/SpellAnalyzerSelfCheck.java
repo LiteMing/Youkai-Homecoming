@@ -335,6 +335,42 @@ public final class SpellAnalyzerSelfCheck {
 				"    \"youkaishomecoming:b\": {\"id\": \"youkaishomecoming:b\", \"on_enter\": [" + fire(500) + "]}\n" +
 				"  }\n" +
 				"}";
+		/** delay <= 0 executes immediately in the current tick: its burst joins the
+		 * direct entry burst (round 6, issue 1). */
+		private static final String ZERO_DELAY_IMMEDIATE = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_zero_delay\",\n" +
+				"  \"display\": {\"name\": \"ZeroDelay\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [" + fire(500) + ",\n" +
+				"        {\"type\": \"delay\", \"delay_ticks\": 0, \"body\": [" + fire(500) + "]}]}\n" +
+				"  }\n" +
+				"}";
+		private static final String ZERO_DELAY_IMMEDIATE_TICK = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_zero_delay_tick\",\n" +
+				"  \"display\": {\"name\": \"ZeroDelayTick\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [" + fire(500) + ",\n" +
+				"        {\"type\": \"delay\", \"delay_ticks\": 0, \"body\": [" + fire(500) + "]}],\n" +
+				"      \"on_tick\": [" + fire(100) + "]}\n" +
+				"  }\n" +
+				"}";
+		/** A positive Delay and an expiry batch can land on the same tick (round 6,
+		 * issue 2): direct (1) + delayed (500) + deferred (10,000) all sum. */
+		private static final String DELAY_DEFERRED_MERGE = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_delay_deferred_merge\",\n" +
+				"  \"display\": {\"name\": \"DelayDeferredMerge\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60,\n" +
+				"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 10000, \"speed\": 0.5, \"lifetime\": 30}]},\n" +
+				"        {\"type\": \"delay\", \"delay_ticks\": 60, \"body\": [" + fire(500) + "]}]}\n" +
+				"  }\n" +
+				"}";
 
 		private static String deepNest() {
 			StringBuilder sb = new StringBuilder(fire(6));
@@ -374,6 +410,8 @@ public final class SpellAnalyzerSelfCheck {
 				nestedExpiry();
 				parallelDelays();
 				transitionBurst();
+				zeroDelay();
+				delayDeferredMerge();
 				hookMultiplier();
 				profileDifferences();
 				disabledSemantics();
@@ -546,33 +584,58 @@ public final class SpellAnalyzerSelfCheck {
 		}
 
 		/** Two identical-lifetime expiry batches in one group expire together; their
-		 * deferred bursts must sum (issue 5). */
+		 * deferred bursts must sum (issue 5). Round-6 full-sum model: direct root
+		 * (2 x 1000) + deferred (20,000) are all added. */
 		private void parallelExpiryBursts() {
 			// on_enter: fire A (1000, on_expiry 10) + fire B (1000, on_expiry 10)
-			//   deferred group = 10,000 + 10,000 = 20,000 in one tick
+			//   direct = 2000; deferred = 20,000; full sum = 22,000
 			SpellAnalysis analysis = this.analysis(PARALLEL_EXPIRY, SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("parallel expiry batches sum deferred burst (10000 + 10000 = 20000)",
-					analysis != null && analysis.maxSpawnPerTick() == 20_000,
+			check("parallel expiry full sum (direct 2000 + deferred 20000 = 22000)",
+					analysis != null && analysis.maxSpawnPerTick() == 22_000,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
 		}
 
-		/** A deferred one-shot batch overlaps the ordinary on_tick burst (review A1). */
+		/** A deferred one-shot batch overlaps the ordinary on_tick burst; round-6 model
+		 * also adds the direct root burst (review A1). */
 		private void deferredPlusOrdinary() {
-			// on_enter: 1000 x on_expiry 10 = 10,000 deferred; on_tick: 400 ordinary
-			//   deferredTickBurst = 10,000 + 400 = 10,400
+			// on_enter: 1000 direct + 10,000 deferred; on_tick: 400 ordinary
+			//   full sum = 400 + 1000 + 0 + 10,000 = 11,400
 			SpellAnalysis analysis = this.analysis(DEFERRED_ORDINARY, SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("deferred batch + ordinary on_tick summed (10000 + 400 = 10400)",
-					analysis != null && analysis.maxSpawnPerTick() == 10_400,
+			check("deferred + direct + ordinary full sum (400 + 1000 + 10000 = 11400)",
+					analysis != null && analysis.maxSpawnPerTick() == 11_400,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
 		}
 
-		/** Immediate containers inherit the outer execution group (review A2). */
+		/** Immediate containers inherit the outer execution group; round-6 full sum
+		 * includes the direct root burst (review A2). */
 		private void nestedExpiry() {
 			// on_enter: Sequence[Fire A 1000 expiry 10] + Fire B 1000 expiry 10
-			//   both batches share the expiry tick → 10,000 + 10,000 = 20,000
+			//   direct = 2000; deferred = 20,000; full sum = 22,000
 			SpellAnalysis analysis = this.analysis(NESTED_EXPIRY, SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("nested immediate container inherits group (10000 + 10000 = 20000)",
-					analysis != null && analysis.maxSpawnPerTick() == 20_000,
+			check("nested expiry full sum (direct 2000 + deferred 20000 = 22000)",
+					analysis != null && analysis.maxSpawnPerTick() == 22_000,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
+		}
+
+		/** delay <= 0 executes immediately (round 6, issue 1). */
+		private void zeroDelay() {
+			SpellAnalysis plain = this.analysis(ZERO_DELAY_IMMEDIATE, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("delay 0 joins entry burst (500 + 500 = 1000)",
+					plain != null && plain.maxSpawnPerTick() == 1000,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (plain == null ? "null" : plain.maxSpawnPerTick()));
+			SpellAnalysis withTick = this.analysis(ZERO_DELAY_IMMEDIATE_TICK, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("delay 0 + ordinary on_tick (1000 + 100 = 1100)",
+					withTick != null && withTick.maxSpawnPerTick() == 1100,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (withTick == null ? "null" : withTick.maxSpawnPerTick()));
+		}
+
+		/** Positive delay and expiry batch can share a tick (round 6, issue 2). */
+		private void delayDeferredMerge() {
+			// on_enter: fire 1 (expiry 10,000) + delay 60 -> fire 500
+			//   full sum = 0 ordinary + 1 direct + 500 delayed + 10,000 deferred = 10,501
+			SpellAnalysis analysis = this.analysis(DELAY_DEFERRED_MERGE, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("delay + deferred full sum (1 + 500 + 10000 = 10501)",
+					analysis != null && analysis.maxSpawnPerTick() == 10_501,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
 		}
 
@@ -601,13 +664,15 @@ public final class SpellAnalyzerSelfCheck {
 		}
 
 		/** A batch of identical-lifetime one-shot projectiles can expire together; the
-		 * whole on_expiry batch fires in one tick and must be tracked (issue 4). */
+		 * whole on_expiry batch fires in one tick and must be tracked (issue 4).
+		 * Round-6 full sum: direct root (1000) + deferred (10,000). */
 		private void deferredHookBurst() {
 			// on_enter: fire 1000 (lifetime 60) with on_expiry [fire 10]
 			//   executions = 1000; child spawns = 1000 x 10 = 10,000 in one tick
+			//   full sum = 0 ordinary + 1000 direct + 0 delay + 10,000 deferred = 11,000
 			SpellAnalysis analysis = this.analysis(EXPIRY_BURST, SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("deferred hook burst 1000 x 10 = 10000 counted in maxSpawnPerTick",
-					analysis != null && analysis.maxSpawnPerTick() == 10_000,
+			check("deferred hook full sum (direct 1000 + deferred 10000 = 11000)",
+					analysis != null && analysis.maxSpawnPerTick() == 11_000,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
 			check("deferred hook executions = 1000 (once)",
 					analysis != null && analysis.hookExecutionUpperBound() == 1000,

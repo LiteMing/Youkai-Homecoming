@@ -77,7 +77,7 @@ public final class SpellAnalyzer {
 	private long certShooters;
 	private long certOneShotSpawns;
 	private long certPerTickSpawns;
-	private long certMaxOneShotBurst;
+	private long certMaxDirectOneShotBurst;
 	/** Sum of every one-shot hook batch across groups: batches created at different
 	 * times can still expire on the same future tick (creation tick + lifetime), and
 	 * without a full event scheduler we cannot prove exclusivity — fail closed by
@@ -134,13 +134,13 @@ public final class SpellAnalyzer {
 		for (var entry : definition.phases.entrySet()) {
 			push("phase/" + entry.getKey());
 			PhaseDefinition phase = entry.getValue();
-			enterBurstByPhase.put(entry.getKey(), walkList("on_enter", phase.onEnter, false, 1, true));
-			walkList("on_tick", phase.onTick, true, 1, true);
-			exitBurstByPhase.put(entry.getKey(), walkList("on_exit", phase.onExit, false, 1, true));
+			enterBurstByPhase.put(entry.getKey(), walkList("on_enter", phase.onEnter, false, 1, GroupKind.ROOT));
+			walkList("on_tick", phase.onTick, true, 1, GroupKind.ROOT);
+			exitBurstByPhase.put(entry.getKey(), walkList("on_exit", phase.onExit, false, 1, GroupKind.ROOT));
 			if (!phase.onDamage.isEmpty()) {
 				addCap(SpellCapability.BOSS_ON_DAMAGE);
 			}
-			walkList("on_damage", phase.onDamage, false, 1, true);
+			walkList("on_damage", phase.onDamage, false, 1, GroupKind.ROOT);
 			checkTransitions(phase);
 			pop();
 		}
@@ -283,10 +283,15 @@ public final class SpellAnalyzer {
 	 *   aggregated globally for the deferred burst instead).</li>
 	 * </ul>
 	 * Returns the committed direct-spawn burst of a new one-shot group (0 otherwise),
-	 * used for phase enter/exit and delay burst accounting (round 5, A1/A2).
+	 * used for phase enter/exit and delay burst accounting (round 5/6).
+	 * <p>
+	 * Group kinds (round 6): ROOT groups (phase on_enter/on_exit/on_damage) commit to
+	 * the direct one-shot bucket; DELAY groups commit to the delay bucket only (their
+	 * burst must not inflate the direct maximum, otherwise the final sum would double
+	 * count the largest delay — acceptance review round 5, bucket boundary).
 	 */
-	private long walkList(String label, List<SpellAction> list, boolean perTick, long mult, boolean newGroup) {
-		boolean startsGroup = !perTick && newGroup;
+	private long walkList(String label, List<SpellAction> list, boolean perTick, long mult, GroupKind kind) {
+		boolean startsGroup = !perTick && kind != GroupKind.NONE;
 		long savedBurst = 0;
 		boolean savedInGroup = inOneShotGroup;
 		long committed = 0;
@@ -305,12 +310,18 @@ public final class SpellAnalyzer {
 		}
 		pop();
 		if (startsGroup) {
-			if (burstAccum > certMaxOneShotBurst) certMaxOneShotBurst = burstAccum;
+			if (kind == GroupKind.ROOT && burstAccum > certMaxDirectOneShotBurst) {
+				certMaxDirectOneShotBurst = burstAccum;
+			}
 			committed = burstAccum;
 			burstAccum = savedBurst;
 			inOneShotGroup = savedInGroup;
 		}
 		return committed;
+	}
+
+	private enum GroupKind {
+		NONE, ROOT, DELAY
 	}
 
 	private void walkAction(SpellAction action, boolean perTick, long mult, boolean insideDisabled) {
@@ -347,10 +358,10 @@ public final class SpellAnalyzer {
 			handleShooter(a, perTick, mult);
 		} else if (action instanceof SpellActions.RepeatAction a) {
 			long count = boundCount(a.count(), "repeat count");
-			walkList("body", a.body(), perTick, satMul(mult, count), false);
+			walkList("body", a.body(), perTick, satMul(mult, count), GroupKind.NONE);
 		} else if (action instanceof BurstAction a) {
 			// conservative: all waves counted within the same tick accounting
-			walkList("body", a.body(), perTick, satMul(mult, a.waves()), false);
+			walkList("body", a.body(), perTick, satMul(mult, a.waves()), GroupKind.NONE);
 		} else if (action instanceof DelayAction a) {
 			if (profile == SpellAnalysisProfile.CERTIFICATION
 					&& !NumberBounds.resolve(a.delayTicks()).bounded()) {
@@ -359,12 +370,12 @@ public final class SpellAnalyzer {
 			}
 			// equal delays run in the same scheduled tick; without a full scheduler we
 			// cannot prove exclusivity, so delay groups are SUMMED (round 5, A1)
-			delayedBurstSum = satAdd(delayedBurstSum, walkList("body", a.body(), perTick, mult, true));
+			delayedBurstSum = satAdd(delayedBurstSum, walkList("body", a.body(), perTick, mult, GroupKind.DELAY));
 		} else if (action instanceof SpellActions.ConditionalAction a) {
-			walkList("if_true", a.ifTrue(), perTick, mult, false);
-			walkList("if_false", a.ifFalse(), perTick, mult, false);
+			walkList("if_true", a.ifTrue(), perTick, mult, GroupKind.NONE);
+			walkList("if_false", a.ifFalse(), perTick, mult, GroupKind.NONE);
 		} else if (action instanceof SpellActions.SequenceAction a) {
-			walkList("actions", a.actions(), perTick, mult, false);
+			walkList("actions", a.actions(), perTick, mult, GroupKind.NONE);
 		} else if (action instanceof TeleportAction || action instanceof TeleportRandomAction) {
 			addCap(SpellCapability.TELEPORT);
 		} else if (action instanceof ConfineTargetAction) {
@@ -527,7 +538,7 @@ public final class SpellAnalyzer {
 		long beforePerTick = certPerTickSpawns;
 		long beforeOneShot = certOneShotSpawns;
 		try {
-			walkList(label, list, perTick, childMult, false);
+			walkList(label, list, perTick, childMult, GroupKind.NONE);
 		} finally {
 			hookDepth--;
 		}
@@ -548,7 +559,7 @@ public final class SpellAnalyzer {
 		long shooterCount = satMul(mult, count);
 		if (profile == SpellAnalysisProfile.MARKET) {
 			marketShooters = satAdd(marketShooters, shooterCount);
-			walkList("body", a.body(), true, shooterCount, false);
+			walkList("body", a.body(), true, shooterCount, GroupKind.NONE);
 			return;
 		}
 		certShooters = satAdd(certShooters, shooterCount);
@@ -558,12 +569,12 @@ public final class SpellAnalyzer {
 		// "each shooter executes the body once per tick")
 		long savedPerTick = certPerTickSpawns;
 		long savedOneShot = certOneShotSpawns;
-		long savedBurst = certMaxOneShotBurst;
-		walkList("body", a.body(), true, 1, false);
+		long savedBurst = certMaxDirectOneShotBurst;
+		walkList("body", a.body(), true, 1, GroupKind.NONE);
 		long bodyPerShooterTick = certPerTickSpawns - savedPerTick;
 		certPerTickSpawns = savedPerTick;
 		certOneShotSpawns = savedOneShot;
-		certMaxOneShotBurst = savedBurst;
+		certMaxDirectOneShotBurst = savedBurst;
 		// concurrency and totals depend on whether shooters are spawned once
 		// (on_enter/on_exit) or recurring (on_tick). The recurring model multiplies by
 		// the alive cohort count × window; it may slightly overestimate window edges
@@ -736,18 +747,22 @@ public final class SpellAnalyzer {
 			}
 			long window = limits.certificationWindowTicks();
 			long life = Math.max(1, lifetimeUpperMax);
-			// Layered conservative single-tick ceiling (round 5 closure). Groups whose
-			// events cannot be proven exclusive are SUMMED, never maxed:
+			// Layered conservative single-tick ceiling (round 6 closure). Buckets whose
+			// events cannot be proven exclusive are ALL summed, never maxed:
 			//   ordinaryTickBurst = top-level per-tick + shooter body + recurring entities
-			//   oneShot groups: largest single group, OR phase transition edges
+			//   maxDirectOneShotEvent = largest direct root group OR phase transition edge
 			//     (old on_exit + new on_enter run in the same doTransition tick)
-			//   delayedBurstSum: equal delays share the scheduled tick
-			//   certPotentialOneShotDeferredBurst: batches from different creation times
-			//     can expire together (creation tick + lifetime)
-			// Each overlaps an ordinary tick, so it is added to ordinaryTickBurst.
+			//   delayedBurstSum = all Delay bodies (equal delays share the scheduled tick;
+			//     delay <= 0 executes immediately in the current tick)
+			//   certPotentialOneShotDeferredBurst = all one-shot hook batches (creation
+			//     tick + lifetime can coincide)
+			// Independent layers may overlap one tick (delay <= 0 with the entry burst,
+			// scheduled delay with expiry batches, transition with ordinary, ...), so
+			// every layer is saturated-added. This overestimates cross-phase pairs; the
+			// intended fail-closed P0 model (round 6), refinable in Phase 6.
 			long ordinaryTickBurst = satAdd(satAdd(certPerTickSpawns, certShooterTickSpawns),
 					certRecurringShooterEntitySpawns);
-			long oneShotSum = certMaxOneShotBurst;
+			long maxDirectOneShotEvent = certMaxDirectOneShotBurst;
 			long entryExitSum = enterBurstByPhase.getOrDefault(definition.entryPhase, 0L);
 			for (var entry : definition.phases.entrySet()) {
 				for (Transition transition : entry.getValue().transitions) {
@@ -756,11 +771,10 @@ public final class SpellAnalyzer {
 					if (edgeSum > entryExitSum) entryExitSum = edgeSum;
 				}
 			}
-			if (entryExitSum > oneShotSum) oneShotSum = entryExitSum;
-			maxSpawnPerTick = Math.max(ordinaryTickBurst,
-					Math.max(satAdd(ordinaryTickBurst, oneShotSum),
-							Math.max(satAdd(ordinaryTickBurst, delayedBurstSum),
-									satAdd(ordinaryTickBurst, certPotentialOneShotDeferredBurst))));
+			if (entryExitSum > maxDirectOneShotEvent) maxDirectOneShotEvent = entryExitSum;
+			maxSpawnPerTick = satAdd(ordinaryTickBurst, maxDirectOneShotEvent);
+			maxSpawnPerTick = satAdd(maxSpawnPerTick, delayedBurstSum);
+			maxSpawnPerTick = satAdd(maxSpawnPerTick, certPotentialOneShotDeferredBurst);
 			// totals: direct one-shot + direct per-tick × window + shooter body totals.
 			// Shooter body totals must NOT appear in the peak formula — window totals are
 			// not concurrently alive (acceptance review issue 3).

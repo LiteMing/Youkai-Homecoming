@@ -323,7 +323,7 @@ public final class SpellAnalyzerSelfCheck {
 					"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
 					"  \"phases\": {\n" +
 					"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
-					"      \"on_enter\": [{\"type\": \"spawn_shooter\", \"count\": 3, \"lifetime\": 100, \"body\": [" + fire(4) + "]}]}\n" +
+					"      \"on_enter\": [{\"type\": \"spawn_shooter\", \"count\": 3, \"lifetime\": 100, \"body\": [" + fire(4) + "]}]" + "\n" +
 					"  }\n" +
 					"}";
 			SpellAnalysis enter = SpellAnalyzer.analyze(parse(enterJson), SpellAnalysisProfile.CERTIFICATION, CERT);
@@ -358,7 +358,7 @@ public final class SpellAnalyzerSelfCheck {
 					"  \"phases\": {\n" +
 					"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
 					"      \"on_enter\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1000, \"speed\": 0.5, \"lifetime\": 60,\n" +
-					"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]}\n" +
+					"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]" + "\n" +
 					"  }\n" +
 					"}";
 			SpellAnalysis analysis = SpellAnalyzer.analyze(parse(json), SpellAnalysisProfile.CERTIFICATION, CERT);

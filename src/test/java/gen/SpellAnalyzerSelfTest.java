@@ -1,5 +1,6 @@
 package gen;
 
+import com.google.gson.JsonParser;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.NumberBounds;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
@@ -33,6 +34,7 @@ public class SpellAnalyzerSelfTest {
 	private static int failed = 0;
 
 	public static void main(String[] args) throws Exception {
+		testSelfCheckFixtureJsonValid();
 		testConstantBounded();
 		testRandomRangeBounded();
 		testLerpBounded();
@@ -79,6 +81,32 @@ public class SpellAnalyzerSelfTest {
 	}
 
 	// ----------------------------------------------------------------- tests
+
+	/**
+	 * Every JSON fixture of the server self-check must parse with plain Gson.
+	 * Loading SpellAnalyzerSelfCheck only initializes String constants (no codec
+	 * chain), so this runs in the pure-JVM harness and prevents fixture syntax
+	 * regressions like the extra "}" that crashed /yhdev on a live server.
+	 */
+	private static void testSelfCheckFixtureJsonValid() throws Exception {
+		Class<?> runner = Class.forName("dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck$Runner");
+		java.lang.reflect.Field[] fields = runner.getDeclaredFields();
+		int validated = 0;
+		for (java.lang.reflect.Field f : fields) {
+			if (f.getType() != String.class || !java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+			f.setAccessible(true);
+			String json = (String) f.get(null);
+			if (json == null) continue;
+			try {
+				JsonParser.parseString(json);
+				validated++;
+			} catch (Exception e) {
+				failed++;
+				System.out.println("FAIL  self-check fixture JSON invalid: " + f.getName() + " -> " + e.getMessage());
+			}
+		}
+		check("self-check fixtures parse (" + validated + " strings)", validated > 0);
+	}
 
 	private static void testConstantBounded() {
 		checkBounds("constant", NumberBounds.resolve(new NumberProviders.Constant(5)), true, 5, 5);

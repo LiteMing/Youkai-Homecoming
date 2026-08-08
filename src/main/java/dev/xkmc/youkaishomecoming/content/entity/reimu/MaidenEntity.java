@@ -17,7 +17,6 @@ public class MaidenEntity extends BossYoukaiEntity {
 
 	public MaidenEntity(EntityType<? extends MaidenEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
-		bossEvent.setVisible(false);
 		if (walkNav instanceof GroundPathNavigation nav) {
 			nav.setCanPassDoors(true);
 			nav.setCanOpenDoors(true);
@@ -44,12 +43,6 @@ public class MaidenEntity extends BossYoukaiEntity {
 	@Override
 	protected void customServerAiStep() {
 		super.customServerAiStep();
-		if (noTargetTime == 0) {
-			bossEvent.setVisible(true);
-		}
-		if (noTargetTime > 40) {
-			bossEvent.setVisible(false);
-		}
 		if (noTargetTime > 100 && tickCount % 20 == 0 && !level().isClientSide()) {
 			var e = level().getNearestPlayer(this, 32);
 			if (e == null || e.isSpectator()) {

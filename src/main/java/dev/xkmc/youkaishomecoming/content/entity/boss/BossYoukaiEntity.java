@@ -88,6 +88,8 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 	public BossYoukaiEntity(EntityType<? extends BossYoukaiEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
 		setPersistenceRequired();
+		// Boss bar only shows during combat (see customServerAiStep).
+		bossEvent.setVisible(false);
 	}
 
 	// ========== 移动功能开关 (使用 PersistentData) ==========
@@ -513,6 +515,15 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 			}
 		} else {
 			noTargetTime = 0;
+		}
+		// Boss bar only during combat: shown while a target exists, hidden
+		// 40 ticks after losing it (mirrors MaidenEntity; moved here so all
+		// bosses share the same non-combat visibility behavior).
+		if (noTargetTime == 0) {
+			bossEvent.setVisible(true);
+		}
+		if (noTargetTime > 40) {
+			bossEvent.setVisible(false);
 		}
 	}
 

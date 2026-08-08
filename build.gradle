@@ -117,6 +117,14 @@ tasks.register('runPilotThreatTest', JavaExec) {
     dependsOn tasks.named('testClasses')
 }
 
+tasks.register('runSpellAnalyzerSelfTest', JavaExec) {
+    group = 'verification'
+    description = 'Run Phase 0 spell analyzer self-tests (gen.SpellAnalyzerSelfTest).'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'gen.SpellAnalyzerSelfTest'
+    dependsOn tasks.named('testClasses')
+}
+
 mixin {
     add sourceSets.main, "${modid}.refmap.json"
     config "${modid}.mixins.json"

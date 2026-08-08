@@ -145,6 +145,7 @@ public final class SpellAnalyzer {
 			pop();
 		}
 		detectPhaseCycles();
+		rejectCyclicPhaseSpawns();
 		return finish();
 	}
 
@@ -188,9 +189,13 @@ public final class SpellAnalyzer {
 		}
 	}
 
+	private final ArrayDeque<ResourceLocation> dfsPath = new ArrayDeque<>();
+	private final Set<ResourceLocation> cyclicPhases = new HashSet<>();
+
 	private void dfsCycle(ResourceLocation id, Set<ResourceLocation> visited, Set<ResourceLocation> stack) {
 		visited.add(id);
 		stack.add(id);
+		dfsPath.addLast(id);
 		PhaseDefinition phase = definition.phases.get(id);
 		if (phase != null) {
 			for (Transition transition : phase.transitions) {
@@ -198,12 +203,64 @@ public final class SpellAnalyzer {
 				if (!visited.contains(target)) {
 					dfsCycle(target, visited, stack);
 				} else if (stack.contains(target)) {
+					// back edge: every phase on the current path from target to here is
+					// part of a cycle; its on_enter/on_exit can run repeatedly
+					boolean mark = false;
+					for (ResourceLocation p : dfsPath) {
+						if (p.equals(target)) mark = true;
+						if (mark) cyclicPhases.add(p);
+					}
 					diagnostics.add(SpellDiagnostic.info("phase_cycle", "phase/" + id,
 							"Phase transition cycle: " + id + " -> " + target));
 				}
 			}
 		}
+		dfsPath.removeLast();
 		stack.remove(id);
+	}
+
+	/**
+	 * Cyclic phases re-run on_enter/on_exit on every transition tick; the one-shot
+	 * accounting would understate their spawn totals, hook executions, shooter
+	 * cohorts and peaks. Without a full scheduler we cannot recur-cycle them
+	 * accurately, so certification fails closed (acceptance review round 7, plan B):
+	 * a cycle whose on_enter/on_exit produces projectiles is rejected with an
+	 * explicit diagnostic; pure on_tick cycles and spawn-free enter/exit pass.
+	 */
+	private void rejectCyclicPhaseSpawns() {
+		if (profile != SpellAnalysisProfile.CERTIFICATION) return;
+		for (ResourceLocation id : cyclicPhases) {
+			PhaseDefinition phase = definition.phases.get(id);
+			if (phase != null && (actionsProduceSpawns(phase.onEnter) || actionsProduceSpawns(phase.onExit))) {
+				throw rejected("cyclic_phase_spawn",
+						"Cyclic phase " + id + " spawns projectiles from on_enter/on_exit; move spawning into on_tick");
+			}
+		}
+	}
+
+	private static boolean actionsProduceSpawns(List<SpellAction> actions) {
+		for (SpellAction action : actions) {
+			if (actionProducesSpawns(action)) return true;
+		}
+		return false;
+	}
+
+	private static boolean actionProducesSpawns(SpellAction action) {
+		if (action instanceof FireDanmakuAction
+				|| action instanceof FireLaserAction
+				|| action instanceof FireTextDanmakuAction
+				|| action instanceof SpawnShooterAction
+				|| action instanceof DelayAction) {
+			return true;
+		}
+		if (action instanceof SpellActions.ConditionalAction c) {
+			return actionsProduceSpawns(c.ifTrue()) || actionsProduceSpawns(c.ifFalse());
+		}
+		if (action instanceof SpellActions.SequenceAction s) return actionsProduceSpawns(s.actions());
+		if (action instanceof SpellActions.RepeatAction r) return actionsProduceSpawns(r.body());
+		if (action instanceof BurstAction b) return actionsProduceSpawns(b.body());
+		// DisabledAction never executes: its contents do not spawn
+		return false;
 	}
 
 	// ------------------------------------------------------------ generic walk

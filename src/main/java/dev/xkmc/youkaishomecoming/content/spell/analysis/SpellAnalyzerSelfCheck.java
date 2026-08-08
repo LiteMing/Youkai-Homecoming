@@ -371,6 +371,53 @@ public final class SpellAnalyzerSelfCheck {
 				"        {\"type\": \"delay\", \"delay_ticks\": 60, \"body\": [" + fire(500) + "]}]}\n" +
 				"  }\n" +
 				"}";
+		/** Cyclic phase spawning from on_enter must be rejected (round 7, plan B). */
+		private static final String CYCLIC_ENTER_DIRECT = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_cyclic_enter\",\n" +
+				"  \"display\": {\"name\": \"CyclicEnter\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:a\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:a\": {\"id\": \"youkaishomecoming:a\", \"on_enter\": [" + fire(100) + "],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:b\"}]},\n" +
+				"    \"youkaishomecoming:b\": {\"id\": \"youkaishomecoming:b\", \"on_enter\": [" + fire(100) + "],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:a\"}]}\n" +
+				"  }\n" +
+				"}";
+		private static final String CYCLIC_ENTER_HOOK = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_cyclic_enter_hook\",\n" +
+				"  \"display\": {\"name\": \"CyclicEnterHook\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:a\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:a\": {\"id\": \"youkaishomecoming:a\", \"on_enter\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 60,\n" +
+				"      \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 2, \"speed\": 0.5, \"lifetime\": 30}]}],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:b\"}]},\n" +
+				"    \"youkaishomecoming:b\": {\"id\": \"youkaishomecoming:b\",\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:a\"}]}\n" +
+				"  }\n" +
+				"}";
+		private static final String CYCLIC_ENTER_SHOOTER = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_cyclic_enter_shooter\",\n" +
+				"  \"display\": {\"name\": \"CyclicEnterShooter\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:a\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:a\": {\"id\": \"youkaishomecoming:a\", \"on_enter\": [{\"type\": \"spawn_shooter\", \"count\": 3, \"speed\": 0.5, \"lifetime\": 100, \"body\": [" + fire(4) + "]}],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:b\"}]},\n" +
+				"    \"youkaishomecoming:b\": {\"id\": \"youkaishomecoming:b\",\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:a\"}]}\n" +
+				"  }\n" +
+				"}";
+		/** Cyclic phase with spawn-free on_enter/on_exit still passes (round 7). */
+		private static final String CYCLIC_ENTER_SAFE = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_cyclic_enter_safe\",\n" +
+				"  \"display\": {\"name\": \"CyclicEnterSafe\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:a\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:a\": {\"id\": \"youkaishomecoming:a\", \"on_enter\": [{\"type\": \"play_sound\", \"sound\": \"minecraft:block.note_block.pling\", \"volume\": 1.0, \"pitch\": 1.0}],\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:b\"}]},\n" +
+				"    \"youkaishomecoming:b\": {\"id\": \"youkaishomecoming:b\",\n" +
+				"      \"transitions\": [{\"condition\": {\"type\": \"tick_elapsed\", \"ticks\": 1}, \"target_phase\": \"youkaishomecoming:a\"}]}\n" +
+				"  }\n" +
+				"}";
 
 		private static String deepNest() {
 			StringBuilder sb = new StringBuilder(fire(6));
@@ -412,6 +459,7 @@ public final class SpellAnalyzerSelfCheck {
 				transitionBurst();
 				zeroDelay();
 				delayDeferredMerge();
+				cyclicPhaseSpawns();
 				hookMultiplier();
 				profileDifferences();
 				disabledSemantics();
@@ -637,6 +685,22 @@ public final class SpellAnalyzerSelfCheck {
 			check("delay + deferred full sum (1 + 500 + 10000 = 10501)",
 					analysis != null && analysis.maxSpawnPerTick() == 10_501,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
+		}
+
+		/** Cyclic phases re-run on_enter/on_exit every transition tick; certification
+		 * fails closed when they spawn (round 7, plan B). */
+		private void cyclicPhaseSpawns() {
+			String direct = rejectMessage(() -> SpellAnalyzer.analyze(parse(CYCLIC_ENTER_DIRECT), SpellAnalysisProfile.CERTIFICATION, CERT));
+			check("cyclic on_enter direct spawn rejected", direct != null && direct.contains("cyclic_phase_spawn"));
+			check("cyclic on_enter spawn rejected also for MARKET profile",
+					!rejects(() -> SpellAnalyzer.analyze(parse(CYCLIC_ENTER_DIRECT), SpellAnalysisProfile.MARKET)));
+			String hook = rejectMessage(() -> SpellAnalyzer.analyze(parse(CYCLIC_ENTER_HOOK), SpellAnalysisProfile.CERTIFICATION, CERT));
+			check("cyclic on_enter hook spawn rejected", hook != null && hook.contains("cyclic_phase_spawn"));
+			String shooter = rejectMessage(() -> SpellAnalyzer.analyze(parse(CYCLIC_ENTER_SHOOTER), SpellAnalysisProfile.CERTIFICATION, CERT));
+			check("cyclic on_enter shooter rejected", shooter != null && shooter.contains("cyclic_phase_spawn"));
+			// spawn-free cyclic enter/exit still passes (on_tick cycles unchanged)
+			SpellAnalysis safe = SpellAnalyzer.analyze(parse(CYCLIC_ENTER_SAFE), SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("cyclic spawn-free on_enter passes", safe != null);
 		}
 
 		/** Equal delays run in the same scheduled tick; bursts must sum (round 5 A1). */

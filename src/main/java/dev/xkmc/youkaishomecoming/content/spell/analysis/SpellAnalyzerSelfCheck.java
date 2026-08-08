@@ -247,6 +247,21 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String LONG_STR = longStr();
 		private static final String EMPTY_PHASES = "{\"id\": \"youkaishomecoming:x\", \"display\": {\"name\": \"x\"}, \"entry_phase\": \"youkaishomecoming:main\", \"phases\": {}}";
 		private static final String MANY_ACTIONS = manyActions();
+		private static final String PARALLEL_SHOOTERS = spell(
+				"{\"type\": \"spawn_shooter\", \"count\": 3, \"speed\": 0.5, \"lifetime\": 100, \"body\": [" + fire(4) + "]},\n"
+						+ "  {\"type\": \"spawn_shooter\", \"count\": 3, \"speed\": 0.5, \"lifetime\": 100, \"body\": [" + fire(4) + "]}");
+		private static final String PARALLEL_EXPIRY = "{\n" +
+				"  \"id\": \"youkaishomecoming:analyzer_parallel_expiry\",\n" +
+				"  \"display\": {\"name\": \"ParallelExpiry\"},\n" +
+				"  \"entry_phase\": \"youkaishomecoming:main\",\n" +
+				"  \"phases\": {\n" +
+				"    \"youkaishomecoming:main\": {\"id\": \"youkaishomecoming:main\",\n" +
+				"      \"on_enter\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1000, \"speed\": 0.5, \"lifetime\": 60,\n" +
+				"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]},\n" +
+				"        {\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"green\", \"count\": 1000, \"speed\": 0.5, \"lifetime\": 60,\n" +
+				"        \"on_expiry\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"yellow\", \"count\": 10, \"speed\": 0.5, \"lifetime\": 30}]}]}\n" +
+				"  }\n" +
+				"}";
 
 		private static String deepNest() {
 			StringBuilder sb = new StringBuilder(fire(6));
@@ -279,7 +294,9 @@ public final class SpellAnalyzerSelfCheck {
 				oneShotBurst();
 				shooterModel();
 				sameTickSum();
+				parallelShooters();
 				deferredHookBurst();
+				parallelExpiryBursts();
 				hookMultiplier();
 				profileDifferences();
 				disabledSemantics();
@@ -396,26 +413,30 @@ public final class SpellAnalyzerSelfCheck {
 			// on_tick: 3 shooters/tick, lifetime 100, body fire 4/tick
 			//   shooterPeak = 3 x 100 = 300; bodyPerGlobalTick = 300 x 4 = 1200
 			//   bodyTotal = 1200 x window 1000 = 1,200,000
+			//   maxSpawnPerTick = 1200 body + 3 recurring entities = 1203
+			//   peakAlive = 300 shooters + 1200 x min(60, window) = 72,300 (no window total)
 			SpellAnalysis shooter = analysis(SHOOTER, SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("recurring shooter maxSpawnPerTick = 300 x 4 = 1200",
-					shooter != null && shooter.maxSpawnPerTick() == 1200,
+			check("recurring shooter maxSpawnPerTick = 1200 body + 3 entities = 1203",
+					shooter != null && shooter.maxSpawnPerTick() == 1203,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + shooter.maxSpawnPerTick());
 			check("recurring shooter total = 1200 x 1000 = 1,200,000",
 					shooter != null && shooter.totalSpawnUpperBound() == 1_200_000,
 					lastError != null ? lastError : "actual total=" + shooter.totalSpawnUpperBound());
-			check("recurring shooter peak = 1,200,000 + 300 + 72,000 = 1,272,300",
-					shooter != null && shooter.peakAliveUpperBound() == 1_272_300,
+			check("recurring shooter peak = 300 + 72,000 = 72,300 (no window total in peak)",
+					shooter != null && shooter.peakAliveUpperBound() == 72_300,
 					lastError != null ? lastError : "actual peak=" + shooter.peakAliveUpperBound());
 			// on_enter: same shooter fired once — body scales with lifetime only
+			//   maxSpawnPerTick = 3 entities + 12 body = 15 (conservative same-tick)
+			//   peakAlive = 3 + 12 x min(60, window) = 723 (no lifetime total in peak)
 			SpellAnalysis enter = analysis(ENTER_SHOOTER, SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("one-shot shooter maxSpawnPerTick = max(3 entities, 12 body) = 12",
-					enter != null && enter.maxSpawnPerTick() == 12,
+			check("one-shot shooter maxSpawnPerTick = 3 entities + 12 body = 15",
+					enter != null && enter.maxSpawnPerTick() == 15,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + (enter == null ? "null" : enter.maxSpawnPerTick()));
 			check("one-shot shooter total = 3 x 4 x 100 = 1200",
 					enter != null && enter.totalSpawnUpperBound() == 1200,
 					lastError != null ? lastError : "actual total=" + (enter == null ? "null" : enter.totalSpawnUpperBound()));
-			check("one-shot shooter peak = 1200 + 3 + 12 x 60 = 1923",
-					enter != null && enter.peakAliveUpperBound() == 1923,
+			check("one-shot shooter peak = 3 + 720 = 723 (no lifetime total in peak)",
+					enter != null && enter.peakAliveUpperBound() == 723,
 					lastError != null ? lastError : "actual peak=" + (enter == null ? "null" : enter.peakAliveUpperBound()));
 			SpellAnalysis market = analysis(SHOOTER, SpellAnalysisProfile.MARKET, SpellAnalysisLimits.market());
 			check("market shooter: 3 shooters, 12 projectiles",
@@ -427,10 +448,33 @@ public final class SpellAnalyzerSelfCheck {
 		 * they must be summed for maxSpawnPerTick (issue 3). */
 		private void sameTickSum() {
 			// on_tick: fire 400 + spawn_shooter 1 (lifetime 100, body fire 4)
-			//   bodyPerGlobalTick = 1 x 100 x 4 = 400 → ordinary = 400 + 400 = 800
+			//   bodyPerGlobalTick = 1 x 100 x 4 = 400; ordinary = 400 + 400 + 1 entity = 801
 			SpellAnalysis analysis = this.analysis(SAME_TICK, SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("top-level + shooter body same tick summed (400 + 400 = 800)",
-					analysis != null && analysis.maxSpawnPerTick() == 800,
+			check("top-level + shooter body + entity same tick summed (400 + 400 + 1 = 801)",
+					analysis != null && analysis.maxSpawnPerTick() == 801,
+					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
+		}
+
+		/** Two parallel recurring shooters must sum their concurrent peaks (issue 4). */
+		private void parallelShooters() {
+			// on_tick: shooter A (3/tick, lifetime 100, body 4) + shooter B (same)
+			//   certPeakShooters = 300 + 300 = 600
+			//   bodyPerGlobalTick = 1200 + 1200 = 2400
+			//   peakAlive = 600 shooters + 2400 x min(60, window) = 600 + 144,000 = 144,600
+			SpellAnalysis analysis = this.analysis(PARALLEL_SHOOTERS, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("parallel shooters peak sums concurrency (600 + 144,000 = 144,600)",
+					analysis != null && analysis.peakAliveUpperBound() == 144_600,
+					lastError != null ? lastError : "actual peak=" + (analysis == null ? "null" : analysis.peakAliveUpperBound()));
+		}
+
+		/** Two identical-lifetime expiry batches in one group expire together; their
+		 * deferred bursts must sum (issue 5). */
+		private void parallelExpiryBursts() {
+			// on_enter: fire A (1000, on_expiry 10) + fire B (1000, on_expiry 10)
+			//   deferred group = 10,000 + 10,000 = 20,000 in one tick
+			SpellAnalysis analysis = this.analysis(PARALLEL_EXPIRY, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("parallel expiry batches sum deferred burst (10000 + 10000 = 20000)",
+					analysis != null && analysis.maxSpawnPerTick() == 20_000,
 					lastError != null ? lastError : "actual maxSpawnPerTick=" + (analysis == null ? "null" : analysis.maxSpawnPerTick()));
 		}
 

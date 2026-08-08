@@ -78,7 +78,10 @@ public final class SpellAnalyzer {
 	private long certPerTickSpawns;
 	private long certMaxOneShotBurst;
 	private long certMaxDeferredHookBurst;
+	private long deferredBurstAccum;
+	private long certShooterTotalSpawns;
 	private long certShooterTickSpawns;
+	private long certRecurringShooterEntitySpawns;
 	private long certShooterPeakAlive;
 	private long certPeakShooters;
 	private long hookExecutionsOnce;
@@ -262,6 +265,11 @@ public final class SpellAnalyzer {
 			inOneShotGroup = true;
 			burstAccum = 0;
 		}
+		// per-list deferred hook aggregation: all hook callbacks of the same execution
+		// group (one-shot list, or one tick of a recurring list) fire in the same tick,
+		// so their bursts must be summed, not maxed (acceptance review issue 5)
+		long savedDeferred = deferredBurstAccum;
+		deferredBurstAccum = 0;
 		push(label);
 		int index = 0;
 		for (SpellAction action : list) {
@@ -271,6 +279,8 @@ public final class SpellAnalyzer {
 			index++;
 		}
 		pop();
+		if (deferredBurstAccum > certMaxDeferredHookBurst) certMaxDeferredHookBurst = deferredBurstAccum;
+		deferredBurstAccum = savedDeferred;
 		if (outerGroup) {
 			inOneShotGroup = false;
 			if (burstAccum > certMaxOneShotBurst) certMaxOneShotBurst = burstAccum;
@@ -497,9 +507,10 @@ public final class SpellAnalyzer {
 		// projectiles with identical lifetimes and each on_expiry spawns 10 more — the
 		// whole batch expires together. Conservative principle: all eligible projectiles
 		// of the batch trigger together, so the hook-derived burst must be tracked as a
-		// deferred tick burst (acceptance review issue 4).
+		// deferred tick burst. Bursts of the same execution group are summed in
+		// deferredBurstAccum and committed by walkList (acceptance review issues 4/5).
 		long hookBurst = satAdd(certPerTickSpawns - beforePerTick, certOneShotSpawns - beforeOneShot);
-		if (hookBurst > certMaxDeferredHookBurst) certMaxDeferredHookBurst = hookBurst;
+		deferredBurstAccum = satAdd(deferredBurstAccum, hookBurst);
 	}
 
 	private void handleShooter(SpawnShooterAction a, boolean perTick, long mult) {
@@ -523,10 +534,10 @@ public final class SpellAnalyzer {
 		certPerTickSpawns = savedPerTick;
 		certOneShotSpawns = savedOneShot;
 		certMaxOneShotBurst = savedBurst;
-		// concurrency and body totals depend on whether shooters are spawned once
+		// concurrency and totals depend on whether shooters are spawned once
 		// (on_enter/on_exit) or recurring (on_tick). The recurring model multiplies by
 		// the alive cohort count × window; it may slightly overestimate window edges
-		// but must never underestimate (acceptance review issue 2).
+		// but must never underestimate.
 		long shooterPeak;
 		long bodyPerGlobalTick;
 		long bodyTotal;
@@ -534,6 +545,8 @@ public final class SpellAnalyzer {
 			shooterPeak = satMul(shooterCount, Math.min(lifetime, window));
 			bodyPerGlobalTick = satMul(bodyPerShooterTick, shooterPeak);
 			bodyTotal = satMul(bodyPerGlobalTick, window);
+			// recurring shooter entities spawn every tick and join the ordinary tick burst
+			certRecurringShooterEntitySpawns = satAdd(certRecurringShooterEntitySpawns, shooterCount);
 		} else {
 			shooterPeak = shooterCount;
 			bodyPerGlobalTick = satMul(bodyPerShooterTick, shooterCount);
@@ -541,10 +554,14 @@ public final class SpellAnalyzer {
 			// the shooter entities themselves are one-shot spawns of this tick group
 			if (inOneShotGroup) burstAccum = satAdd(burstAccum, shooterCount);
 		}
-		if (shooterPeak > certPeakShooters) certPeakShooters = shooterPeak;
+		// concurrent peak across actions sums (fail-closed: two shooters in one tick
+		// group may coexist, even if cross-phase summation slightly overestimates)
+		certPeakShooters = satAdd(certPeakShooters, shooterPeak);
 		certShooterTickSpawns = satAdd(certShooterTickSpawns, bodyPerGlobalTick);
-		certOneShotSpawns = satAdd(certOneShotSpawns, bodyTotal);
-		// body projectiles alive at once ≈ bodyPerGlobalTick × min(global lifetime, window)
+		// body totals must NOT feed the peak formula: window-total spawns are not
+		// concurrently alive (acceptance review issue 3)
+		certShooterTotalSpawns = satAdd(certShooterTotalSpawns, bodyTotal);
+		// peak alive: shooter entities + body bullets alive at once
 		certShooterPeakAlive = satAdd(certShooterPeakAlive, shooterPeak);
 		certShooterPeakAlive = satAdd(certShooterPeakAlive,
 				satMul(bodyPerGlobalTick, Math.min(Math.max(1, lifetimeUpperMax), window)));
@@ -693,14 +710,19 @@ public final class SpellAnalyzer {
 			// the SAME server tick, and alive shooter bodies fire in the same tick as
 			// top-level on_tick spawns; when events cannot be proven to interleave,
 			// they are summed, not maxed (acceptance review issue 3):
-			//   ordinaryTickBurst = top-level per-tick + shooter body per global tick
+			//   ordinaryTickBurst = top-level per-tick + shooter body + recurring shooter entities
 			//   phaseEntryBurst  = one-shot tick group + ordinaryTickBurst
-			//   deferredHookBurst = largest single-tick hook-derived batch
-			long ordinaryTickBurst = satAdd(certPerTickSpawns, certShooterTickSpawns);
+			//   deferredHookBurst = largest single-tick hook-derived batch (summed per group)
+			long ordinaryTickBurst = satAdd(satAdd(certPerTickSpawns, certShooterTickSpawns),
+					certRecurringShooterEntitySpawns);
 			long phaseEntryBurst = satAdd(certMaxOneShotBurst, ordinaryTickBurst);
 			maxSpawnPerTick = Math.max(phaseEntryBurst,
 					Math.max(ordinaryTickBurst, certMaxDeferredHookBurst));
-			totalSpawnUpperBound = satAdd(certOneShotSpawns, satMul(certPerTickSpawns, window));
+			// totals: direct one-shot + direct per-tick × window + shooter body totals.
+			// Shooter body totals must NOT appear in the peak formula — window totals are
+			// not concurrently alive (acceptance review issue 3).
+			totalSpawnUpperBound = satAdd(satAdd(certOneShotSpawns, certShooterTotalSpawns),
+					satMul(certPerTickSpawns, window));
 			peakAliveUpperBound = satAdd(satAdd(certOneShotSpawns,
 					satMul(certPerTickSpawns, Math.min(life, window))), certShooterPeakAlive);
 			projectileTicks = satMul(totalSpawnUpperBound, life);

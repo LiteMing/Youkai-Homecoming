@@ -39,6 +39,7 @@ import dev.xkmc.youkaishomecoming.content.spell.template.SpellTemplates;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -94,6 +95,7 @@ public class YHCommands {
 		CustomSpellStorage.loadAllIntoRegistry(event.getServer());
 		CustomSpellCircleStorage.loadAllIntoConfig(event.getServer());
 		SpellMarketServerManager.start(event.getServer());
+		runHeadlessSelfTest(event.getServer());
 	}
 
 	@SubscribeEvent
@@ -103,8 +105,7 @@ public class YHCommands {
 
 	@SubscribeEvent
 	public static void register(RegisterCommandsEvent event) {
-		event.getDispatcher().register(literal("danmaku")
-				.requires(e -> e.hasPermission(2))
+		event.getDispatcher().register(literal("danmaku")				.requires(e -> e.hasPermission(2))
 				.then(literal("resetRender")
 						.requires(e -> e.hasPermission(2))
 						.executes(ctx -> {
@@ -634,6 +635,37 @@ public class YHCommands {
 			}
 		}
 		return result.allPassed() ? 1 : 0;
+	}
+
+	/**
+	 * Headless self-test for scripts/CI — no client/chat interaction required.
+	 * Trigger with system property {@code -Dyhdev.selftest=true} OR environment
+	 * variable {@code YHDEV_SELFTEST=1}; add {@code yhdev.selftest.stop} /
+	 * {@code YHDEV_SELFTEST_STOP=1} to halt the server right after. Results are
+	 * logged and written to {@code <serverDir>/yhdev-selftest-result.txt}.
+	 */
+	private static void runHeadlessSelfTest(MinecraftServer server) {
+		boolean enabled = System.getProperty("yhdev.selftest") != null || System.getenv("YHDEV_SELFTEST") != null;
+		if (!enabled) return;
+		var result = SpellAnalyzerSelfCheck.run();
+		StringBuilder sb = new StringBuilder("[YH] spell analyzer self-test: ")
+				.append(result.passed()).append("/").append(result.total()).append(" passed");
+		if (!result.allPassed()) {
+			for (String failure : result.failures()) {
+				sb.append('\n').append("[YH] FAIL: ").append(failure);
+			}
+		}
+		YoukaisHomecoming.LOGGER.info(sb.toString());
+		try {
+			java.nio.file.Path out = server.getServerDirectory().toPath().resolve("yhdev-selftest-result.txt");
+			java.nio.file.Files.writeString(out, sb.toString());
+		} catch (Exception e) {
+			YoukaisHomecoming.LOGGER.error("Failed to write selftest result file", e);
+		}
+		boolean stop = System.getProperty("yhdev.selftest.stop") != null || System.getenv("YHDEV_SELFTEST_STOP") != null;
+		if (stop) {
+			server.halt(false);
+		}
 	}
 	protected static LiteralArgumentBuilder<CommandSourceStack> literal(String str) {
 		return LiteralArgumentBuilder.literal(str);

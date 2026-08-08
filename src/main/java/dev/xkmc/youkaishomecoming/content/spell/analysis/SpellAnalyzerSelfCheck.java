@@ -855,8 +855,8 @@ public final class SpellAnalyzerSelfCheck {
 							&& certTeleport != null && certTeleport.contains("capability teleport"));
 			SpellAnalysis marketHook = SpellAnalyzer.analyze(parse(TRAIL), SpellAnalysisProfile.MARKET);
 			SpellAnalysis certHook = SpellAnalyzer.analyze(parse(TRAIL), SpellAnalysisProfile.CERTIFICATION, CERT);
-			check("hook spell: market flat (24) vs cert amplified",
-					marketHook.totalSpawnUpperBound() == 24 && certHook.totalSpawnUpperBound() > 24
+			check("hook spell: market flat (24 + 1 trail child) vs cert amplified",
+					marketHook.totalSpawnUpperBound() == 25 && certHook.totalSpawnUpperBound() > 25
 							&& marketHook.hookExecutionUpperBound() == 0 && certHook.hookExecutionUpperBound() > 0);
 		}
 

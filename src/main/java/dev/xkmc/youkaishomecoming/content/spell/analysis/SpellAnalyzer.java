@@ -574,12 +574,19 @@ public final class SpellAnalyzer {
 		}
 		if (onHitEntity.isPresent() || onHitBlock.isPresent()) {
 			addCap(SpellCapability.HOOK_ON_HIT);
-			// CONTINUE may hit repeatedly up to the server hard cap (design §10)
-			long hits = hitBehaviorEntity == HitBehavior.CONTINUE || hitBehaviorBlock == HitBehavior.CONTINUE
-					? limits.maxHitsPerProjectile() : 1;
-			long execs = satMul(contrib, hits);
-			if (onHitEntity.isPresent()) walkHook("on_hit_entity", onHitEntity.get(), execs, perTick, mult);
-			if (onHitBlock.isPresent()) walkHook("on_hit_block", onHitBlock.get(), execs, perTick, mult);
+			// CONTINUE may hit repeatedly up to the server hard cap (design §10).
+			// Entity and block behaviors are independent: a spell with only an
+			// on_hit_entity hook must not inherit the block default (CONTINUE)
+			// — hit count is derived per hook list from its own behavior.
+			long maxHits = limits.maxHitsPerProjectile();
+			if (onHitEntity.isPresent()) {
+				long execs = satMul(contrib, hitBehaviorEntity == HitBehavior.CONTINUE ? maxHits : 1);
+				walkHook("on_hit_entity", onHitEntity.get(), execs, perTick, mult);
+			}
+			if (onHitBlock.isPresent()) {
+				long execs = satMul(contrib, hitBehaviorBlock == HitBehavior.CONTINUE ? maxHits : 1);
+				walkHook("on_hit_block", onHitBlock.get(), execs, perTick, mult);
+			}
 		}
 	}
 

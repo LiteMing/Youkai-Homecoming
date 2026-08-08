@@ -18,6 +18,10 @@ public final class SpellCapabilityPolicies {
 
 	private static final Map<SpellCapability, SpellCapabilityPolicy> CERTIFICATION_DEFAULTS = new EnumMap<>(SpellCapability.class);
 
+	/** Runtime overrides (Phase 6 commands / scripts); queried on every certification
+	 * start and cast so policy changes apply immediately. */
+	private static final Map<SpellCapability, SpellCapabilityPolicy> OVERRIDES = new EnumMap<>(SpellCapability.class);
+
 	static {
 		put(SpellCapability.BASE_FIRE, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.HOOK_ON_EXPIRY, SpellCapabilityPolicy.ALLOW);
@@ -52,5 +56,23 @@ public final class SpellCapabilityPolicies {
 	public static SpellCapabilityPolicy defaultPolicy(SpellCapability cap) {
 		if (cap == null) return SpellCapabilityPolicy.DENY;
 		return CERTIFICATION_DEFAULTS.getOrDefault(cap, SpellCapabilityPolicy.DENY);
+	}
+
+	/** Current effective policy: runtime override first, then the default table. */
+	public static SpellCapabilityPolicy currentPolicy(SpellCapability cap) {
+		if (cap == null) return SpellCapabilityPolicy.DENY;
+		return OVERRIDES.getOrDefault(cap, defaultPolicy(cap));
+	}
+
+	public static void setPolicy(SpellCapability cap, SpellCapabilityPolicy policy) {
+		if (policy == null || policy == defaultPolicy(cap)) {
+			OVERRIDES.remove(cap);
+		} else {
+			OVERRIDES.put(cap, policy);
+		}
+	}
+
+	public static void clearOverrides() {
+		OVERRIDES.clear();
 	}
 }

@@ -222,8 +222,18 @@ public class CertificationController {
 		state = CertificationState.SUCCESS;
 		e.eraseAllDanmaku(null);
 		e.getDanmakuHolder().clearSentQueue();
+		postCertificationEvent();
 		syncState();
 		CertifiedSpellRewardService.issue(e);
+	}
+
+	private void postCertificationEvent() {
+		if (!net.minecraftforge.fml.ModList.get().isLoaded("kubejs")) return;
+		if (!dev.xkmc.youkaishomecoming.compat.kubejs.spell.YHSpellKubeJSEvents.CERTIFICATION.hasListeners()) return;
+		dev.xkmc.youkaishomecoming.compat.kubejs.spell.YHSpellKubeJSEvents.CERTIFICATION.post(
+				new dev.xkmc.youkaishomecoming.compat.kubejs.spell.CertificationEventJS(
+						author, state, definitionHash,
+						failReason == null ? "" : failReason.id()));
 	}
 
 	private void fail(SpellCertificationEntity e, CertificationFailReason reason) {
@@ -238,6 +248,7 @@ public class CertificationController {
 		refund();
 		e.eraseAllDanmaku(null);
 		e.getDanmakuHolder().clearSentQueue();
+		postCertificationEvent();
 		syncState();
 	}
 

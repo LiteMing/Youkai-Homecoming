@@ -867,7 +867,7 @@ public final class SpellAnalyzer {
 						+ " exceeds limit " + limits.maxHookExecutions());
 			}
 			for (SpellCapability cap : capabilities) {
-				SpellCapabilityPolicy policy = SpellCapabilityPolicies.defaultPolicy(cap);
+				SpellCapabilityPolicy policy = SpellCapabilityPolicies.currentPolicy(cap);
 				if (!policy.allowsCertification()) {
 					throw new SpellAnalysisException("Certification rejected: capability " + cap.id()
 							+ " policy " + policy);

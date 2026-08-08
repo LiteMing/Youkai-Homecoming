@@ -12,5 +12,6 @@ public class YHSpellKubeJSEvents {
 	public static final EventHandler DYNAMIC_SPELL_CAST = GROUP.server("dynamicSpellCast", () -> DynamicSpellCastEventJS.class).hasResult();
 	public static final EventHandler DYNAMIC_SPELL_SINGLE_USE = GROUP.server("dynamicSpellSingleUse", () -> DynamicSpellSingleUseEventJS.class);
 	public static final EventHandler SPELL_PAYMENT = GROUP.server("spellPayment", () -> SpellPaymentEventJS.class).hasResult();
+	public static final EventHandler CERTIFICATION = GROUP.server("certification", () -> CertificationEventJS.class);
 
 }

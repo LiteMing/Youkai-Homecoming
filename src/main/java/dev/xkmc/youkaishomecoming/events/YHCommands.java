@@ -25,6 +25,9 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicy;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
 
@@ -648,8 +651,7 @@ public class YHCommands {
 		);
 
 		// /yhdev developer commands
-		event.getDispatcher().register(literal("yhdev")
-				.requires(e -> e.hasPermission(2))
+		event.getDispatcher().register(literal("yhdev")				.requires(e -> e.hasPermission(2))
 				.then(literal("spell_analyzer_self_test")
 						.executes(ctx -> runAnalyzerSelfTest(ctx.getSource())))
 				.then(literal("certification")
@@ -661,7 +663,51 @@ public class YHCommands {
 																.executes(ctx -> runCertificationTest(ctx)))))))
 						.then(literal("abort")
 								.then(argument("targets", EntityArgument.players())
-										.executes(ctx -> abortCertification(ctx))))));
+										.executes(ctx -> abortCertification(ctx))))
+						.then(literal("claim")
+								.then(argument("targets", EntityArgument.players())
+										.executes(ctx -> claimCertifiedRewards(ctx)))));
+
+		// /yhspell capability commands (Phase 6)
+		event.getDispatcher().register(literal("yhspell")
+				.then(opLiteral("capability")
+						.then(literal("get")
+								.then(argument("id", StringArgumentType.string())
+										.executes(ctx -> capabilityGet(ctx))))
+						.then(literal("set")
+								.then(argument("id", StringArgumentType.string())
+										.then(argument("policy", StringArgumentType.string())
+												.suggests((ctx2, builder) -> SharedSuggestionProvider.suggest(
+														new String[]{"allow", "experimental", "deny", "op_only"}, builder))
+												.executes(ctx -> capabilitySet(ctx)))))));
+	}
+
+	private static int capabilityGet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		SpellCapability cap = SpellCapability.byId(StringArgumentType.getString(ctx, "id"));
+		ctx.getSource().sendSystemMessage(Component.literal("[YH] capability " + cap.id() + " policy: "
+				+ SpellCapabilityPolicies.currentPolicy(cap)));
+		return 1;
+	}
+
+	private static int capabilitySet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		try {
+			SpellCapability cap = SpellCapability.byId(StringArgumentType.getString(ctx, "id"));
+			String policyName = StringArgumentType.getString(ctx, "policy");
+			SpellCapabilityPolicy policy = switch (policyName) {
+				case "allow" -> SpellCapabilityPolicy.ALLOW;
+				case "experimental" -> SpellCapabilityPolicy.EXPERIMENTAL;
+				case "deny" -> SpellCapabilityPolicy.DENY;
+				case "op_only" -> SpellCapabilityPolicy.OP_ONLY;
+				default -> throw new IllegalArgumentException("unknown policy: " + policyName);
+			};
+			SpellCapabilityPolicies.setPolicy(cap, policy);
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] capability " + cap.id()
+					+ " policy set to " + SpellCapabilityPolicies.currentPolicy(cap)));
+			return 1;
+		} catch (IllegalArgumentException e) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] " + e.getMessage()));
+			return 0;
+		}
 	}
 
 	private static int runCertificationTest(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

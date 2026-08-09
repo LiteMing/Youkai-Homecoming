@@ -192,6 +192,17 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
 		if (player.isShiftKeyDown() && GrazeHelper.isManualCombatMode()) {
+			// unfinished (or blank) cards cannot declare danmaku combat mode, but
+			// shift+right-click still exits an active forced combat
+			boolean forced = dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER
+					.get(player).isForcedDanmakuCombat();
+			boolean complete = CertifiedSpellValidator.isCertified(stack) || isComplete(stack);
+			if (!forced && !complete) {
+				if (!level.isClientSide && player instanceof ServerPlayer sp) {
+					sp.displayClientMessage(YHLangData.SPELL_UNFINISHED_NO_COMBAT.get(), true);
+				}
+				return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+			}
 			if (!level.isClientSide) {
 				GrazeHelper.tryToggleManualCombat(player);
 			}

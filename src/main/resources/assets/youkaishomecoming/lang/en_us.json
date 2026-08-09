@@ -1563,6 +1563,7 @@
   "youkaishomecoming.tooltip.spell_single_use": "Single-use: consumed after casting",
   "youkaishomecoming.tooltip.spell_unfinished": "Unfinished spell card: right-click to edit again; certification turns it into a complete spell card",
   "youkaishomecoming.tooltip.spell_op_quota": "Experimental nodes available: %s (teleport / confine / erase / clear / flags / force-fire / on-damage / hooks)",
+  "youkaishomecoming.tooltip.spell_unfinished_no_combat": "Unfinished spell card: cannot declare danmaku combat mode",
   "youkaishomecoming.tooltip.spell_target": "Requires targeting an entity to activate",
   "youkaishomecoming.tooltip.taste_half_youkai": "Strange flavor...",
   "youkaishomecoming.tooltip.taste_human": "Unappealing smell...",

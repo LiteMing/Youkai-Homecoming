@@ -1504,6 +1504,7 @@
   "youkaishomecoming.tooltip.spell_single_use": "一次性符卡：释放后消耗",
   "youkaishomecoming.tooltip.spell_unfinished": "未完成符卡：右键可再次编辑，认证后成为完整符卡",
   "youkaishomecoming.tooltip.spell_op_quota": "实验性节点可用：%s 个（传送/束缚/清除/旗帜/强制弹幕/受击钩子等）",
+  "youkaishomecoming.tooltip.spell_unfinished_no_combat": "未完成符卡：无法进入弹幕模式",
   "youkaishomecoming.tooltip.spell_target": "需要瞄准目标发动",
   "youkaishomecoming.tooltip.taste_half_youkai": "奇怪的味道...",
   "youkaishomecoming.tooltip.taste_human": "不详的气味...",

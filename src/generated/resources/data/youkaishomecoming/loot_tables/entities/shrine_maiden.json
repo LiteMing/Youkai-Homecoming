@@ -34,7 +34,7 @@
             },
             {
               "function": "minecraft:set_nbt",
-              "tag": "{single_use:1b,spell_id:\"touhou_little_maid:hakurei_reimu\"}"
+              "tag": "{single_use:1b}"
             }
           ],
           "name": "youkaishomecoming:spell_reimu"

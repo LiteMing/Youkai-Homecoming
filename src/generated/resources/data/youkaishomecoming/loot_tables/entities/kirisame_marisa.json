@@ -34,7 +34,7 @@
             },
             {
               "function": "minecraft:set_nbt",
-              "tag": "{single_use:1b,spell_id:\"touhou_little_maid:kirisame_marisa\"}"
+              "tag": "{single_use:1b}"
             }
           ],
           "name": "youkaishomecoming:spell_marisa"

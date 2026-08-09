@@ -222,8 +222,6 @@ public class YHDanmaku {
 	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_RING;
 	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_HOMING;
 	public static final ItemEntry<DynamicSpellItem> DYNAMIC_SPELL;
-	public static final RegistryEntry<RecipeType<dev.xkmc.youkaishomecoming.content.spell.recipe.SpellDraftConversionRecipe>> SPELL_DRAFT_CONVERSION_RT;
-	public static final RegistryEntry<RecipeSerializer<dev.xkmc.youkaishomecoming.content.spell.recipe.SpellDraftConversionRecipe>> SPELL_DRAFT_CONVERSION_RS;
 
 	static {
 
@@ -250,13 +248,6 @@ public class YHDanmaku {
 					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/custom_spell")))
 					.color(() -> () -> (stack, i) -> i == 0 ? DynamicSpellItem.getColor(stack).argb() : 0xffffffff)
 					.register();
-
-			// boss-drop spell card -> dynamic spell draft conversion
-			SPELL_DRAFT_CONVERSION_RT = YoukaisHomecoming.REGISTRATE.recipe("spell_draft_conversion");
-			SPELL_DRAFT_CONVERSION_RS = YoukaisHomecoming.REGISTRATE.simple("spell_draft_conversion",
-					ForgeRegistries.Keys.RECIPE_SERIALIZERS,
-					() -> dev.xkmc.youkaishomecoming.content.spell.recipe.SpellDraftConversionRecipe
-							.SpellDraftConversionSerializer.INSTANCE);
 
 			REIMU_SPELL = YoukaisHomecoming.REGISTRATE
 					.item("spell_reimu", p -> new SpellItem(

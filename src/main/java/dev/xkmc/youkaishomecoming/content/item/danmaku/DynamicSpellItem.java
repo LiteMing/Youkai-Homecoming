@@ -50,9 +50,10 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	/** Mark on OP-given cards: a complete spell card that casts directly (no editor). */
 	private static final String TAG_COMPLETE = "complete";
 	/**
-	 * OP action node quota: how many run_command nodes the final certified card
-	 * may carry. Set on boss-drop drafts; the editor save and certification
-	 * both enforce it (strict quantity control).
+	 * Special-node quota: how many EXPERIMENTAL nodes (teleport, confine, erase,
+	 * clear, flags, force/fire spell, on_damage / fire / laser hooks) the final
+	 * certified card may carry. Derives from the boss's original definition;
+	 * run_command stays operator-only and is never part of a quota.
 	 */
 	private static final String TAG_OP_QUOTA = "yh_op_quota";
 	/** Sentinel: run until the spell naturally finishes (no fixed duration). */
@@ -115,38 +116,19 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		}
 	}
 
-	/** OP action node quota of a draft card (0 = no run_command allowed). */
-	public static int getOpQuota(ItemStack stack) {
-		if (stack.hasTag() && stack.getTag().contains(TAG_OP_QUOTA)) {
-			return Math.max(0, stack.getTag().getInt(TAG_OP_QUOTA));
-		}
-		return 0;
-	}
-
-	public static void setOpQuota(ItemStack stack, int quota) {
-		if (quota > 0) {
-			stack.getOrCreateTag().putInt(TAG_OP_QUOTA, quota);
-		} else if (stack.hasTag()) {
-			stack.getTag().remove(TAG_OP_QUOTA);
-		}
-	}
-
 	/**
-	 * Convert a boss-drop spell card (SpellItem carrying spell_id / single_use
-	 * NBT) into a bound draft card: right-click opens the editor. The draft's
-	 * special-node quota is derived dynamically from the boss's own spell
-	 * definition (the count of teleport/confine/erase/clear/flag/force/fire
-	 * nodes and on_damage / fire / laser hooks); run_command stays operator-only.
+	 * Special-node quota of a draft card: derived dynamically from the ORIGINAL
+	 * (built-in default) definition bound by spell_id — the count of special
+	 * nodes (teleport/confine/erase/clear/flag/force/fire + on_damage / fire /
+	 * laser hooks) in the boss's own spell. Stable: player edits to the working
+	 * definition never change the quota. run_command is never part of it.
 	 */
-	public static ItemStack draftFromDrop(ItemStack drop, ResourceLocation spellId) {
-		ItemStack draft = createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId, false);
-		if (SpellItem.isSingleUse(drop)) {
-			setSingleUse(draft, true);
-		}
-		SpellDefinition bossDef = SpellRegistry.get(spellId);
-		int quota = bossDef == null ? 0 : dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter.count(bossDef);
-		setOpQuota(draft, quota);
-		return draft;
+	public static int getOpQuota(ItemStack stack) {
+		ResourceLocation id = getSpellId(stack);
+		if (id == null) return 0;
+		SpellDefinition original = SpellRegistry.getDefault(id);
+		if (original == null) return 0;
+		return dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter.count(original);
 	}
 
 	public static void setSingleUse(ItemStack stack, boolean singleUse) {

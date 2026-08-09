@@ -132,16 +132,19 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	}
 
 	/**
-	 * Convert a boss-drop spell card (SpellItem carrying spell_id / single_use /
-	 * yh_op_quota NBT) into a bound draft card: right-click opens the editor and
-	 * the certification chain enforces the carried OP node quota.
+	 * Convert a boss-drop spell card (SpellItem carrying spell_id / single_use
+	 * NBT) into a bound draft card: right-click opens the editor. The draft's
+	 * special-node quota is derived dynamically from the boss's own spell
+	 * definition (the count of teleport/confine/erase/clear/flag/force/fire
+	 * nodes and on_damage / fire / laser hooks); run_command stays operator-only.
 	 */
 	public static ItemStack draftFromDrop(ItemStack drop, ResourceLocation spellId) {
 		ItemStack draft = createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId, false);
 		if (SpellItem.isSingleUse(drop)) {
 			setSingleUse(draft, true);
 		}
-		int quota = drop.getOrCreateTag().getInt("yh_op_quota");
+		SpellDefinition bossDef = SpellRegistry.get(spellId);
+		int quota = bossDef == null ? 0 : dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter.count(bossDef);
 		setOpQuota(draft, quota);
 		return draft;
 	}

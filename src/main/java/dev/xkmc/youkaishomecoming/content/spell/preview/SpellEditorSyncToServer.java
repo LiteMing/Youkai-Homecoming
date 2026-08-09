@@ -14,7 +14,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
-import dev.xkmc.youkaishomecoming.content.spell.analysis.OpNodeCounter;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
@@ -326,10 +326,12 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	}
 
 	/**
-	 * Enforce the draft OP node quota: if the player holds a draft card bound to
-	 * this spell id, the definition's run_command count must not exceed the
-	 * quota carried on that draft (0 = no run_command allowed). Without a draft
-	 * card, {@code defaultQuota} applies (-1 = no restriction, operators only).
+	 * Enforce the draft special-node quota: if the player holds a draft card
+	 * bound to this spell id, the definition's special node count (teleport,
+	 * confine, erase, clear, flags, force/fire spell, on_damage / fire / laser
+	 * hooks — NOT run_command, which stays operator-only) must not exceed the
+	 * quota carried on that draft. Without a draft card, {@code defaultQuota}
+	 * applies (-1 = no restriction, operators only).
 	 */
 	private static void enforceOpQuota(ServerPlayer sender, SpellDefinition definition, int defaultQuota) {
 		int quota = -2;
@@ -347,10 +349,10 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (quota < 0) {
 			return; // operator path without a draft: unrestricted
 		}
-		int count = OpNodeCounter.count(definition);
+		int count = SpecialNodeCounter.count(definition);
 		if (count > quota) {
 			throw new IllegalArgumentException(
-					"run_command nodes (" + count + ") exceed the draft quota (" + quota + ")");
+					"special nodes (" + count + ") exceed the draft quota (" + quota + ")");
 		}
 	}
 

@@ -34,7 +34,7 @@
             },
             {
               "function": "minecraft:set_nbt",
-              "tag": "{single_use:1b,spell_id:\"touhou_little_maid:mystia_lorelei\",yh_op_quota:1}"
+              "tag": "{single_use:1b,spell_id:\"touhou_little_maid:mystia_lorelei\"}"
             }
           ],
           "name": "youkaishomecoming:spell_mystia"

@@ -25,7 +25,7 @@ public record CertificationQuote(
 		/** Break HP of the certification enemy in seconds (each player hit reduces it by 1s). */
 		int breakHpSeconds,
 		/** Draft op-node quota that allowed run_command nodes in this certification (0 = none). */
-		int opNodeQuota,
+		int specialNodeQuota,
 		SpellAnalysis analysis,
 		long issuedAtGameTime
 ) {

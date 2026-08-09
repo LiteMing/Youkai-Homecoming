@@ -22,7 +22,7 @@ public record SpellCertificate(
 		long costUnits,
 		Set<SpellCapability> capabilities,
 		/** Draft op-node quota that allowed run_command nodes in this certification. */
-		int opNodeQuota,
+		int specialNodeQuota,
 		int analysisVersion,
 		int certificationRulesVersion,
 		long issuedAtGameTime

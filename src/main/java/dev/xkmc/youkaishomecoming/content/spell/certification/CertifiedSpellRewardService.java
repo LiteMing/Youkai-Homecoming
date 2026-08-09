@@ -38,7 +38,7 @@ public final class CertifiedSpellRewardService {
 		CertifiedSpellValidator.tagCertified(stack, certificate);
 		// the certified card carries the op-node quota that was allowed at draft
 		// time (recorded on the certificate; shown for reference)
-		DynamicSpellItem.setOpQuota(stack, certificate.opNodeQuota());
+		DynamicSpellItem.setOpQuota(stack, certificate.specialNodeQuota());
 		// spell color = blended average of the danmaku colors inside the definition,
 		// with a small jitter; falls back to fully random when nothing is readable
 		RandomSource random = RandomSource.create();
@@ -113,7 +113,7 @@ public final class CertifiedSpellRewardService {
 				"AABB",
 				cost,
 				capabilities,
-				controller.quote().opNodeQuota(),
+				controller.quote().specialNodeQuota(),
 				SpellCertificate.CURRENT_ANALYSIS_VERSION,
 				SpellCertificate.CURRENT_RULES_VERSION,
 				entity.level().getGameTime()

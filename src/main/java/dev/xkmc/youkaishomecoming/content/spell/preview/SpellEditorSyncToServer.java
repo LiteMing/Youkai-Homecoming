@@ -241,10 +241,12 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		}
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
+		// Bind the held blank card on ANY save (owner check above passed, so this
+		// is the player's own spell; bound cards are never rebound).
+		bindBlankCardInHand(sender, id);
 		if (origin == null) {
-			// brand-new self-made spell: claim ownership and bind the held blank card
+			// brand-new self-made spell: claim ownership
 			CustomSpellStorage.saveOwner(sender.server, id, sender.getUUID());
-			bindBlankCardInHand(sender, id);
 			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id + " and bound your spell card"));
 		} else {
 			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id));
@@ -307,14 +309,12 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private void saveSpell(ServerPlayer sender, boolean reapply) {
 		SpellDefinition definition = parseDefinition();
-		// Snapshot origin BEFORE registering: a brand-new id has none, and only
-		// that case binds the held blank card (one card -> one id, never rebind).
-		boolean brandNew = SpellRegistry.getOrigin(definition.id) == null;
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
-		if (brandNew) {
-			bindBlankCardInHand(sender, definition.id);
-		}
+		// Bind the held blank card on ANY save: cards already bound are skipped,
+		// so editing an existing spell never rebinds, while naming an id that the
+		// server already knows (e.g. after a restart) still binds the card.
+		bindBlankCardInHand(sender, definition.id);
 		int count = reapply ? SpellRuntimeAccess.reapply(sender.server, definition.id, true) : 0;
 		if (reapply) {
 			sender.sendSystemMessage(Component.literal("[YH] Applied & saved spell to " + count + " entities"));

@@ -657,6 +657,17 @@ public class YHCommands {
 				.then(literal("spell_analyzer_self_test")
 						.executes(ctx -> runAnalyzerSelfTest(ctx.getSource())))
 				.then(literal("certification")
+						.then(literal("boss")
+								// OP/console: summon a boss spell certification using ANY
+								// registered spell (built-in cards included). Non-OP players
+								// are limited to self-made spell cards via the in-game UI path.
+								.then(argument("targets", EntityArgument.players())
+										.then(argument("spell", ResourceLocationArgument.id())
+												.suggests(SPELL_SUGGESTIONS)
+												.then(argument("ticks", IntegerArgumentType.integer(100, 60000))
+														.executes(ctx -> runCertificationTest(ctx))
+														.then(argument("halfSize", DoubleArgumentType.doubleArg(4, 256))
+																.executes(ctx -> runCertificationTest(ctx)))))))
 						.then(literal("test")
 								.then(argument("targets", EntityArgument.players())
 										.then(argument("spell", ResourceLocationArgument.id())
@@ -717,7 +728,12 @@ public class YHCommands {
 		var player = EntityArgument.getPlayer(ctx, "targets");
 		var spellId = ResourceLocationArgument.getId(ctx, "spell");
 		int ticks = IntegerArgumentType.getInteger(ctx, "ticks");
-		double halfSize = DoubleArgumentType.getDouble(ctx, "halfSize");
+		double halfSize = 8.0;
+		try {
+			halfSize = DoubleArgumentType.getDouble(ctx, "halfSize");
+		} catch (IllegalArgumentException ignored) {
+			// optional on the boss path; defaults to the config-clamped 8
+		}
 		var definition = SpellRegistry.get(spellId);
 		if (definition == null) {
 			ctx.getSource().sendSystemMessage(Component.literal("[YH] unknown spell: " + spellId));

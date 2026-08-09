@@ -37,7 +37,8 @@
     "prepare": "认证倒计时 %s 秒——待在场地内",
     "active": "认证开始！坚持 %s 秒（无伤）",
     "success": "认证成功！",
-    "fail": "认证失败：%s"
+    "fail": "认证失败：%s",
+    "self_made_only": "只能使用自己制作的符卡进行认证"
   },
   "tooltip": {
       "chance": " %2$s%%概率获得%1$s",

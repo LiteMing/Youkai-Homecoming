@@ -41,6 +41,7 @@ public enum YHLangData {
 	CERT_ACTIVE("cert.active", "Certification started! Survive %s seconds (No-Hit)", 1, ChatFormatting.GOLD),
 	CERT_SUCCESS("cert.success", "Certification succeeded!", 0, ChatFormatting.GREEN),
 	CERT_FAIL("cert.fail", "Certification failed: %s", 1, ChatFormatting.RED),
+	CERT_SELF_MADE_ONLY("cert.self_made_only", "Only spell cards you created yourself can be certified", 0, ChatFormatting.RED),
 	KETTLE_INFO("tooltip.kettle", "Right click with water bucket or water bottle to fill water", 0, ChatFormatting.GRAY),
 	DRYING_RACK("tooltip.drying_rack", "Only works directly under the sun", 0, ChatFormatting.GRAY),
 	CAMELLIA("tooltip.camellia", "Prevent Phantom spawn when equipped", 0, ChatFormatting.GRAY),

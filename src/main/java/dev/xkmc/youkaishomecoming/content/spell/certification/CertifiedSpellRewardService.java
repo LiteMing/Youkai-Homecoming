@@ -10,7 +10,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 
 import java.util.Set;
 import java.util.UUID;
@@ -72,19 +74,47 @@ public final class CertifiedSpellRewardService {
 			return;
 		}
 		// the reward is NEVER handed straight into the inventory: it floats in
-		// place, glowing and weightless, for the player to pick up
-		ItemEntity item = new ItemEntity(level, author.getX(), author.getY() + 0.5, author.getZ(), stack);
+		// place, glowing and weightless, at the certification enemy's death spot,
+		// and only the creator can pick it up (immediately, no long delay)
+		ItemEntity item = new CertifiedRewardItem(level, entity.getX(), entity.getY() + 0.5,
+				entity.getZ(), stack, author.getUUID());
 		item.setNoGravity(true);
 		item.setGlowingTag(true);
 		item.setInvulnerable(true);
 		if (YHModConfig.COMMON.certificationRewardNeverDespawn.get()) {
 			item.setUnlimitedLifetime();
 		}
-		item.setPickUpDelay(YHModConfig.COMMON.certificationRewardOwnerLockTicks.get());
-		item.setThrower(author.getUUID());
+		item.setPickUpDelay(0);
 		level.addFreshEntity(item);
 		// redundant pending marker: guarantees the reward survives chunk unload/restart
 		PendingRewardStorage.save(level.getServer(), author.getUUID(), certificate.definitionHash());
+	}
+
+	/**
+	 * Owner-locked reward item: only the certification creator may pick it up;
+	 * everyone else cannot touch it at all.
+	 */
+	public static final class CertifiedRewardItem extends ItemEntity {
+
+		private final UUID ownerId;
+
+		public UUID ownerId() {
+			return ownerId;
+		}
+
+		public CertifiedRewardItem(Level level, double x, double y, double z,
+								   ItemStack stack, UUID ownerId) {
+			super(level, x, y, z, stack);
+			this.ownerId = ownerId;
+		}
+
+		@Override
+		public void playerTouch(Player player) {
+			if (!player.getUUID().equals(ownerId)) {
+				return;
+			}
+			super.playerTouch(player);
+		}
 	}
 
 	private static SpellCertificate buildCertificate(SpellCertificationEntity entity) {

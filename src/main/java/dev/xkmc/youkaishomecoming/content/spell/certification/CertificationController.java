@@ -275,7 +275,14 @@ public class CertificationController {
 			return;
 		}
 		failReason = reason;
-		restoreCombatState();
+		// A No-Hit contact is a lost battle: run the full danmaku defeat flow
+		// (resource reset, weak, beaten animation, Defeat event) instead of a
+		// quiet combat-state restore.
+		if (reason == CertificationFailReason.HIT) {
+			defeatPlayer();
+		} else {
+			restoreCombatState();
+		}
 		logState("fail " + reason.id());
 		state = reason == CertificationFailReason.SYSTEM_ERROR
 				|| reason == CertificationFailReason.RUNTIME_LIMIT
@@ -286,6 +293,13 @@ public class CertificationController {
 		postCertificationEvent();
 		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_FAIL.get(reason.id()), false);
 		syncState();
+	}
+
+	/** HIT failure: full danmaku battle defeat flow (design doc §5.6). */
+	private void defeatPlayer() {
+		combatForcedByCertification = false;
+		entity.targets.remove(author.getUUID());
+		dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.defeat(author);
 	}
 
 	private void restoreCombatState() {

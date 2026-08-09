@@ -804,6 +804,15 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		dirty = true;
 	}
 
+	/**
+	 * Public defeat entry (used by the certification No-Hit failure): run the
+	 * full danmaku battle defeat flow — clear sessions, reset resources, apply
+	 * weak/beaten, fire {@link StgCombatEvent.Defeat}.
+	 */
+	public void defeat(@Nullable LivingEntity fatalSource) {
+		exitDanmakuCombatOnLastHit(fatalSource);
+	}
+
 	private void exitDanmakuCombatOnLastHit() {
 		exitDanmakuCombatOnLastHit(null);
 	}

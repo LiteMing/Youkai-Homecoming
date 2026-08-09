@@ -186,6 +186,16 @@ public final class YHStgApi {
 		cap.sync();
 	}
 
+	/**
+	 * Full danmaku battle defeat flow: clear sessions, reset life/bomb/power to
+	 * defaults, apply weak/beaten and fire {@code StgCombatEvent.Defeat}. Used by
+	 * the certification No-Hit failure so a failed attempt behaves like a lost
+	 * battle.
+	 */
+	public static void defeat(ServerPlayer player) {
+		cap(player).defeat(null);
+	}
+
 	public static boolean isWeak(ServerPlayer player) {
 		return cap(player).isWeak();
 	}

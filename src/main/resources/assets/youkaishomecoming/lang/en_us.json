@@ -1565,6 +1565,7 @@
   "youkaishomecoming.tooltip.spell_op_quota": "Experimental nodes available: %s (teleport / erase enemy danmaku / clear screen / on-damage / danmaku hooks)",
   "youkaishomecoming.tooltip.stg_toggle": "Shift + Right Click: toggle danmaku combat",
   "youkaishomecoming.tooltip.spell_unfinished_no_combat": "Unfinished spell card: cannot declare danmaku combat mode",
+  "youkaishomecoming.tooltip.spell_no_danmaku_now": "Cannot use danmaku right now (a spell card is being released)",
   "youkaishomecoming.tooltip.spell_target": "Requires targeting an entity to activate",
   "youkaishomecoming.tooltip.taste_half_youkai": "Strange flavor...",
   "youkaishomecoming.tooltip.taste_human": "Unappealing smell...",

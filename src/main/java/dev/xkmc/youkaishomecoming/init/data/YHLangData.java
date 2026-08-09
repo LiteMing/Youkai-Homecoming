@@ -125,6 +125,7 @@ public enum YHLangData {
 	SPELL_UNFINISHED("tooltip.spell_unfinished", "Unfinished spell card: right-click to edit again; certification turns it into a complete spell card", 0, ChatFormatting.DARK_GRAY),
 	SPELL_OP_QUOTA("tooltip.spell_op_quota", "Experimental nodes available: %s (teleport / erase enemy danmaku / clear screen / on-damage / danmaku hooks)", 1, ChatFormatting.LIGHT_PURPLE),
 	SPELL_UNFINISHED_NO_COMBAT("tooltip.spell_unfinished_no_combat", "Unfinished spell card: cannot declare danmaku combat mode", 0, ChatFormatting.RED),
+	SPELL_NO_DANMAKU_NOW("tooltip.spell_no_danmaku_now", "Cannot use danmaku right now (a spell card is being released)", 0, ChatFormatting.RED),
 	MARKET_SEARCH("spell_market.search", "Search...", 0, null),
 	MARKET_REFRESH("spell_market.refresh", "Refresh", 0, null),
 	MARKET_UPLOAD("spell_market.upload", "Upload", 0, null),

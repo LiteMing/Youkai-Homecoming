@@ -30,16 +30,24 @@ public class CertificationScreen extends Screen {
 	private double halfSize;
 	private String status = "";
 	private net.minecraft.client.gui.components.EditBox durationBox;
-	private net.minecraft.client.gui.components.EditBox hpBox;
+	private net.minecraft.client.gui.components.Button hpLabel;
 
 	public CertificationScreen(SpellDefinition definition) {
 		super(Component.literal("Spell Certification"));
 		this.definition = definition;
 		// the spell's declared duration is the certification timeout; the player
-		// can adjust duration and HP right here (overriding the definition for
-		// this certification — the definition is sent as full JSON to the server)
+		// can adjust it here (overriding the definition for this certification —
+		// the definition is sent as full JSON to the server). HP is derived from
+		// the duration and shown read-only.
 		this.durationTicks = Math.max(20, definition.itemForm.duration());
 		this.halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
+	}
+
+	private void refreshHpLabel() {
+		double ratio = YHModConfig.COMMON.certificationHpRegenRatio.get();
+		int hp = (int) Math.max(1, Math.round(durationTicks / 20.0 * 10.0 * ratio));
+		hpLabel.setMessage(Component.literal(String.format(Locale.ROOT,
+				"Spell HP: %d (derived: %ds x 10 x %.1f)", hp, durationTicks / 20, ratio)));
 	}
 
 	@Override
@@ -54,6 +62,7 @@ public class CertificationScreen extends Screen {
 		durationBox.setResponder(s -> {
 			try {
 				durationTicks = Math.max(20, Integer.parseInt(s.trim()));
+				refreshHpLabel();
 			} catch (NumberFormatException ignored) {
 				// keep last valid value
 			}
@@ -63,21 +72,11 @@ public class CertificationScreen extends Screen {
 						b -> {
 						}).bounds(cx - 10, y, 120, 20).build());
 
-		hpBox = new net.minecraft.client.gui.components.EditBox(this.font,
-				cx - 160, y + 24, 150, 20, Component.literal("Spell HP"));
-		hpBox.setMaxLength(8);
-		hpBox.setValue(String.valueOf(Math.max(1, definition.itemForm.hp())));
-		hpBox.setResponder(s -> {
-			try {
-				definition.itemForm = definition.itemForm.withHp(Math.max(1, Integer.parseInt(s.trim())));
-			} catch (NumberFormatException ignored) {
-				// keep last valid value
-			}
-		});
-		addRenderableWidget(hpBox);
-		addRenderableWidget(Button.builder(Component.literal("Spell HP"),
-						b -> {
-						}).bounds(cx - 10, y + 24, 120, 20).build());
+		// HP is derived from the duration (seconds x 10 x ratio): read-only
+		hpLabel = Button.builder(Component.literal(""), b -> {
+						}).bounds(cx - 160, y + 24, 320, 20).build();
+		refreshHpLabel();
+		addRenderableWidget(hpLabel);
 		y += 60;
 
 		// the arena half size is fixed by config (UI selection is ignored)

@@ -231,17 +231,6 @@ public class CertificationController {
 			fail(e, CertificationFailReason.OTHER_BATTLE);
 			return;
 		}
-		// HP follows the elapsed time: +10 HP per second x the regen ratio
-		// (both max and current health grow, so slower breaks get harder)
-		float regenPerSecond = 10.0f * YHModConfig.COMMON.certificationHpRegenRatio.get().floatValue();
-		if (regenPerSecond > 0) {
-			float regen = regenPerSecond / 20.0f;
-			var maxAttr = entity.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
-			if (maxAttr != null) {
-				maxAttr.setBaseValue(maxAttr.getBaseValue() + regen);
-			}
-			entity.heal(regen);
-		}
 		// movement + runtime loop — the certification enemy stands still by
 		// default so the player can attack it down; it only moves when the spell
 		// declares caster_moves.

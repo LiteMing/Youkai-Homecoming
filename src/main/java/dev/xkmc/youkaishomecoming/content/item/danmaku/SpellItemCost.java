@@ -53,15 +53,21 @@ public final class SpellItemCost {
 	}
 
 	public static void appendCostTooltip(List<Component> list, int durationTicks) {
-		long units = durationTicks > 0
-				? dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(durationTicks)
-				: legacyConfigUnits(SpellCostContext.SPELL_CAST_NON_STG);
-		double bombs = units / 100.0;
-		if (bombs > 0) {
+		if (durationTicks > 0) {
+			long units = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(durationTicks);
+			double bombs = units / 100.0;
 			list.add(YHLangData.SPELL_COST_BOMB.get(String.format(java.util.Locale.ROOT, "%.1f", bombs)));
-		}
-		if (units > 0) {
 			list.add(YHLangData.SPELL_COST_XP.get(Math.max(1, Math.round(units / 20.0f))));
+		} else {
+			// legacy cards without a declared duration: show the configured costs
+			int bomb = YHModConfig.COMMON.spellBombCost.get();
+			int xp = YHModConfig.COMMON.spellXpCost.get();
+			if (bomb > 0) {
+				list.add(YHLangData.SPELL_COST_BOMB.get(bomb));
+			}
+			if (xp > 0) {
+				list.add(YHLangData.SPELL_COST_XP.get(xp));
+			}
 		}
 	}
 }

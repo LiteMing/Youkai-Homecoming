@@ -40,17 +40,15 @@ public final class CertificationService {
 	public static CertificationQuote quote(ServerPlayer player, SpellDefinition definition,
 										   int requestedDurationTicks, double requestedHalfSize) {
 		// The spell's own declared duration is the certification timeout; the
-		// declared HP is the certification enemy's plain health. Both must be set
-		// by the creator (no UI selection anymore).
+		// enemy HP is derived directly from the seconds: duration seconds x 10 x
+		// the regen ratio (a fixed total, not a growth over time).
 		int spellDuration = definition.itemForm.duration();
 		if (spellDuration <= 0) {
 			throw new IllegalArgumentException("This spell card does not declare a duration (item_form.duration)");
 		}
-		int spellHp = definition.itemForm.hp();
-		if (spellHp <= 0) {
-			throw new IllegalArgumentException("This spell card does not declare HP (item_form.hp)");
-		}
 		int durationTicks = clampDuration(spellDuration);
+		int spellHp = (int) Math.max(1, Math.round(durationTicks / 20.0 * 10.0
+				* YHModConfig.COMMON.certificationHpRegenRatio.get()));
 		// the arena half size is fixed by config (UI selection is ignored)
 		double halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
 		// Special-node quota: EXPERIMENTAL capabilities (teleport, erase, clear,

@@ -1506,6 +1506,7 @@
   "youkaishomecoming.tooltip.spell_op_quota": "实验性节点可用：%s 个（传送/清除敌弹/清屏/受击钩子/弹幕钩子）",
   "youkaishomecoming.tooltip.stg_toggle": "Shift + 右键：切换弹幕模式",
   "youkaishomecoming.tooltip.spell_unfinished_no_combat": "未完成符卡：无法进入弹幕模式",
+  "youkaishomecoming.tooltip.spell_no_danmaku_now": "当前无法使用弹幕（正在释放符卡）",
   "youkaishomecoming.tooltip.spell_target": "需要瞄准目标发动",
   "youkaishomecoming.tooltip.taste_half_youkai": "奇怪的味道...",
   "youkaishomecoming.tooltip.taste_human": "不详的气味...",

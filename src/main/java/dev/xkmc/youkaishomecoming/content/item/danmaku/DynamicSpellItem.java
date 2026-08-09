@@ -228,7 +228,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (GrazeHelper.forbidDanmaku(player))
+		if (GrazeHelper.forbidDanmakuWithMessage(player))
 			return InteractionResultHolder.fail(stack);
 		if (!castSpell(stack, player, !player.getAbilities().instabuild, true)) {
 			return InteractionResultHolder.fail(stack);
@@ -327,9 +327,6 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		}
 		SpellDefinition def = getSpellDefinition(stack);
 		SpellItemCost.appendCostTooltip(list, def != null ? def.itemForm.duration() : 0);
-		if (def != null && def.itemForm.hp() > 0) {
-			list.add(YHLangData.SPELL_HP.get(def.itemForm.hp()));
-		}
 		int quota = getOpQuota(stack);
 		if (quota > 0) {
 			// boss-base draft: how many experimental nodes this draft may use

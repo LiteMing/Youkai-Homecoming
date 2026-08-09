@@ -165,6 +165,18 @@ public class GrazeHelper {
 		return dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveProxy(player);
 	}
 
+	/** Like {@link #forbidDanmaku} but tells the player why (red action bar). */
+	public static boolean forbidDanmakuWithMessage(Player player) {
+		if (!forbidDanmaku(player)) {
+			return false;
+		}
+		if (!player.level().isClientSide && player instanceof net.minecraft.server.level.ServerPlayer sp) {
+			sp.displayClientMessage(
+					dev.xkmc.youkaishomecoming.init.data.YHLangData.SPELL_NO_DANMAKU_NOW.get(), true);
+		}
+		return true;
+	}
+
 	public static void onDanmakuKill(Player player, YoukaiEntity e) {
 		onDanmakuKill(player, e, player.damageSources().playerAttack(player));
 	}

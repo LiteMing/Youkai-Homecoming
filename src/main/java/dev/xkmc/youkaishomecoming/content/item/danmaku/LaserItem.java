@@ -49,7 +49,7 @@ public class LaserItem extends Item {
 
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
-		if (GrazeHelper.forbidDanmaku(player))
+		if (GrazeHelper.forbidDanmakuWithMessage(player))
 			return InteractionResultHolder.fail(stack);
 		level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SNOWBALL_THROW, SoundSource.PLAYERS,
 				0.5F, 0.4F / (level.getRandom().nextFloat() * 0.4F + 0.8F));

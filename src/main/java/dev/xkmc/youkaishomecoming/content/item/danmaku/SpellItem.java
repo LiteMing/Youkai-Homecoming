@@ -68,7 +68,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (GrazeHelper.forbidDanmaku(player))
+		if (GrazeHelper.forbidDanmakuWithMessage(player))
 			return InteractionResultHolder.fail(stack);
 		boolean consume = !player.getAbilities().instabuild && !(player instanceof FakePlayer);
 		if (!castSpell(stack, player, consume, true)) {

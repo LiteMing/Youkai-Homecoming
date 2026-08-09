@@ -76,12 +76,13 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 			int toCost = data.cost();
 			if (!consumeAmmo(ammo, toCost, player, false))
 				return false;
-			if (player instanceof ServerPlayer)
-				consumeAmmo(ammo, toCost, player, true);
 		}
 		if (player instanceof ServerPlayer sp) {
 			if (consume && !SpellItemCost.tryPay(sp, 0)) {
 				return false;
+			}
+			if (consume) {
+				consumeAmmo(data.getAmmoCost(), data.cost(), player, true);
 			}
 			SpellContainer.castSpell(sp, data::createInstance, target);
 			if (cooldown) {

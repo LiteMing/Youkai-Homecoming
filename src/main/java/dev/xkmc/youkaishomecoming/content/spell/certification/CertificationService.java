@@ -189,7 +189,8 @@ public final class CertificationService {
 		// registry reloads or config changes must invalidate an old quote.
 		if (!quote.definitionHash().equals(SpellHash.canonicalHash(definition))
 				|| quote.durationTicks() != clampDuration(quote.durationTicks())
-				|| quote.arenaHalfSize() != YHModConfig.COMMON.certificationFixedArenaHalfSize.get()) {
+				|| quote.arenaHalfSize() != YHModConfig.COMMON.certificationFixedArenaHalfSize.get()
+				|| !quoteCostsMatchCurrentConfig(quote)) {
 			if (startReceipt != null) {
 				SpellPaymentRouter.refund(player, startReceipt);
 			}
@@ -231,6 +232,13 @@ public final class CertificationService {
 		player.level().addFreshEntity(entity);
 		controller.beginPrepare();
 		return true;
+	}
+
+	private static boolean quoteCostsMatchCurrentConfig(CertificationQuote quote) {
+		long castCost = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(
+				rewardDurationTicks(quote.durationTicks()));
+		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
+		return quote.castCostUnits() == castCost && quote.issueCostUnits() == issueCost;
 	}
 
 	/**

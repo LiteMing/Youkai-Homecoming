@@ -34,12 +34,30 @@ public final class CertificationService {
 		double halfSize = clampHalfSize(requestedHalfSize);
 		SpellAnalysis analysis = SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION);
 		String hash = SpellHash.canonicalHash(definition);
-		long rawCost = rawCostUnits(analysis);
-		double proof = proofMultiplier(durationTicks, halfSize);
-		long startCost = Math.max(1, (long) Math.ceil(rawCost * proof));
-		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? startCost : 0;
+		// Start fee is a fixed anti-spam toll (design §14), decoupled from spell power —
+		// spam protection lives in maxTrialsPerPlayer / maxConcurrentTrials.
+		long startCost = YHModConfig.COMMON.certificationStartCostUnits.get();
+		// Issue fee scales mildly with spell power so certified casts cost a few
+		// bombs/XP levels, not tens of thousands (Phase 7 balance).
+		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get()
+				? scaledCastCost(analysis) : 0;
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
 				startCost, issueCost, analysis, player.level().getGameTime());
+	}
+
+	/**
+	 * Mildly scaled cast fee: projectile-ticks and per-tick spawns map to a few
+	 * provider units after rate conversion (e.g. 100 units = 1 bomb/1 XP level).
+	 */
+	private static long scaledCastCost(SpellAnalysis analysis) {
+		long ticks = Math.max(1, analysis.projectileTicks());
+		long perTick = Math.max(1, analysis.maxSpawnPerTick());
+		long units = (long) Math.ceil(ticks / 1_000_000.0) * 10
+				+ (long) Math.ceil(perTick / 100.0) * 2;
+		long discounted = (long) Math.ceil(units * proofMultiplier(
+				YHModConfig.COMMON.certificationMaxDurationTicks.get(),
+				YHModConfig.COMMON.certificationMaxArenaHalfSize.get()));
+		return Math.max(1, discounted);
 	}
 
 	public static int clampDuration(int requested) {
@@ -50,17 +68,6 @@ public final class CertificationService {
 	public static double clampHalfSize(double requested) {
 		return Math.max(YHModConfig.COMMON.certificationMinArenaHalfSize.get(),
 				Math.min(YHModConfig.COMMON.certificationMaxArenaHalfSize.get(), requested));
-	}
-
-	/**
-	 * Design doc §13: raw cost before proof discount. First-pass linear model,
-	 * refined in Phase 7 balance (server work, power, hooks all contribute).
-	 */
-	private static long rawCostUnits(SpellAnalysis analysis) {
-		double units = analysis.serverWork() / 100.0
-				+ analysis.gameplayPower() / 50.0
-				+ analysis.expressionOps() / 200.0;
-		return Math.max(1, (long) Math.ceil(units));
 	}
 
 	/**
@@ -94,9 +101,24 @@ public final class CertificationService {
 		PaymentResult payment = SpellPaymentRouter.pay(player, quote.startCostUnits(),
 				SpellCostContext.CERTIFICATION_START);
 		if (!payment.success()) return false;
+		return spawnTrial(player, quote, payment.receipt());
+	}
+
+	/** OP test path: starts without paying the start fee. */
+	public static boolean startFree(ServerPlayer player, CertificationQuote quote) {
+		if (!YHModConfig.COMMON.certificationEnabled.get()) return false;
+		if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.isInDanmakuSession(player)) return false;
+		if (CertificationManager.INSTANCE.hasActiveTrial(player)) return false;
+		return spawnTrial(player, quote, null);
+	}
+
+	private static boolean spawnTrial(ServerPlayer player, CertificationQuote quote,
+									  @Nullable PaymentReceipt startReceipt) {
 		SpellDefinition definition = CertificationManager.INSTANCE.getQuoteDefinition(quote.quoteId());
 		if (definition == null) {
-			SpellPaymentRouter.refund(player, payment.receipt());
+			if (startReceipt != null) {
+				SpellPaymentRouter.refund(player, startReceipt);
+			}
 			return false;
 		}
 		String definitionHash = quote.definitionHash();
@@ -107,8 +129,13 @@ public final class CertificationService {
 		entity.initCertification(player, definition, definitionHash, quote, movementSeed);
 		CertificationController controller = entity.controller();
 		if (!CertificationManager.INSTANCE.register(player, controller)) {
-			SpellPaymentRouter.refund(player, payment.receipt());
+			if (startReceipt != null) {
+				SpellPaymentRouter.refund(player, startReceipt);
+			}
 			return false;
+		}
+		if (startReceipt != null) {
+			controller.setStartReceipt(startReceipt);
 		}
 		player.level().addFreshEntity(entity);
 		controller.beginPrepare();

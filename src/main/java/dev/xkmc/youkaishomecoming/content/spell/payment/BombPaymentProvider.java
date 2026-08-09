@@ -25,6 +25,9 @@ public class BombPaymentProvider implements SpellPaymentProvider {
 		long bomb = costUnits;
 		if (context == SpellCostContext.SPELL_CAST_STG) {
 			bomb = YHModConfig.COMMON.spellBombCost.get();
+		} else {
+			// abstract units -> bomb display units: 100 units = 1 bomb (Phase 7 rate)
+			bomb = Math.max(1, (long) Math.ceil(costUnits / 100.0));
 		}
 		return new PaymentQuote(this, context, costUnits, bomb, "bomb");
 	}

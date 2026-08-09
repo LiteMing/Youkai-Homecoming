@@ -23,7 +23,9 @@ public class PointsPaymentProvider implements SpellPaymentProvider {
 
 	@Override
 	public PaymentQuote quote(ServerPlayer player, long costUnits, SpellCostContext context) {
-		return new PaymentQuote(this, context, costUnits, costUnits, "points");
+		// abstract units -> points: 10 units = 1 point (Phase 7 rate)
+		long points = Math.max(1, (long) Math.ceil(costUnits / 10.0));
+		return new PaymentQuote(this, context, costUnits, points, "points");
 	}
 
 	@Override

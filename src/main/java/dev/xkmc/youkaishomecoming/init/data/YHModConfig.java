@@ -379,7 +379,7 @@ public class YHModConfig {
 						.defineInRange("minProofMultiplier", 0.45, 0.1, 1.0);
 				certificationStartPaymentProvider = builder.comment("Payment provider id for the certification start fee")
 						.translation("config.youkaishomecoming.common.certification.startPaymentProvider")
-						.define("startPaymentProvider", "youkaishomecoming:points");
+						.define("startPaymentProvider", "youkaishomecoming:experience");
 				certificationIssueFeeEnabled = builder.comment("Whether the certified spell issuance fee is deducted on success (otherwise free)")
 						.translation("config.youkaishomecoming.common.certification.issueFeeEnabled")
 						.define("issueFeeEnabled", false);

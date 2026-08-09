@@ -25,7 +25,9 @@ public class LifePaymentProvider implements SpellPaymentProvider {
 
 	@Override
 	public PaymentQuote quote(ServerPlayer player, long costUnits, SpellCostContext context) {
-		return new PaymentQuote(this, context, costUnits, costUnits, "life");
+		// abstract units -> life display units: 1000 units = 1 life (Phase 7 rate)
+		long life = Math.max(1, (long) Math.ceil(costUnits / 1000.0));
+		return new PaymentQuote(this, context, costUnits, life, "life");
 	}
 
 	@Override

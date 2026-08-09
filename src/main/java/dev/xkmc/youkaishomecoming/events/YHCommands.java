@@ -724,7 +724,9 @@ public class YHCommands {
 		try {
 			var quote = CertificationService.quote(player, definition, ticks, halfSize);
 			CertificationManager.INSTANCE.setQuote(player, quote, definition);
-			boolean started = CertificationService.start(player, quote);
+			// OP test command: skip the start fee so certification can be exercised
+			// without resources; the in-game UI path pays through SpellPaymentRouter.
+			boolean started = CertificationService.startFree(player, quote);
 			ctx.getSource().sendSystemMessage(Component.literal("[YH] certification started=" + started
 					+ " cost=" + quote.startCostUnits() + " hash=" + quote.definitionHash().substring(0, 8)));
 			return started ? 1 : 0;

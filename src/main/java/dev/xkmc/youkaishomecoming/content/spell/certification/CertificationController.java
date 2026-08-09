@@ -40,6 +40,10 @@ public class CertificationController {
 	private int illegalMoveCooldown;
 	@Nullable private CertificationFailReason failReason;
 	@Nullable private PaymentReceipt startReceipt;
+
+	public void setStartReceipt(PaymentReceipt receipt) {
+		this.startReceipt = receipt;
+	}
 	@Nullable private Vec3 lastPlayerPos;
 	private long lastSyncTick = -1;
 

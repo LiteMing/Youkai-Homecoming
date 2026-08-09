@@ -36,6 +36,7 @@ public class CertificationController {
 	private CertificationState state = CertificationState.DEPOSIT_PAID;
 	private int countdown;
 	private int elapsedTicks;
+	private int successTicks;
 	private int activeThreatTicks;
 	private int illegalMoveCooldown;
 	@Nullable private CertificationFailReason failReason;
@@ -70,6 +71,10 @@ public class CertificationController {
 
 	public boolean isActive() {
 		return state == CertificationState.ACTIVE;
+	}
+
+	public boolean isSuccess() {
+		return state == CertificationState.SUCCESS;
 	}
 
 	public int elapsedTicks() {
@@ -215,8 +220,11 @@ public class CertificationController {
 	}
 
 	private void tickSuccess(SpellCertificationEntity e) {
-		// Phase 4 wires reward issuance here; cleanup happens after the reward flow.
-		cleanup(e, true);
+		// the defeat animation (beaten, exactly 1 second) plays before cleanup
+		successTicks++;
+		if (successTicks >= 20) {
+			cleanup(e, true);
+		}
 	}
 
 	private void tickTerminal(SpellCertificationEntity e) {
@@ -282,8 +290,14 @@ public class CertificationController {
 
 	private void success(SpellCertificationEntity e) {
 		state = CertificationState.SUCCESS;
+		successTicks = 0;
 		e.eraseAllDanmaku(null);
 		e.getDanmakuHolder().clearSentQueue();
+		// the broken spell card plays the defeat animation: beaten for exactly
+		// 1 second (defeat -> falling -> prone) before the entity is cleaned up
+		e.addEffect(new net.minecraft.world.effect.MobEffectInstance(
+				dev.xkmc.youkaishomecoming.init.registrate.YHEffects.BEATEN.get(), 20, 0));
+		e.beginDanmakuDefeat();
 		restoreCombatState();
 		logState("success");
 		postCertificationEvent();

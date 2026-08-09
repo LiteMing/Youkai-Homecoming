@@ -127,7 +127,8 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 		if (!level().isClientSide() && controller != null) {
 			controller.tick(this);
 		}
-		if (controller == null || controller.isActive()) {
+		// SUCCESS keeps ticking so the 1-second beaten defeat animation plays
+		if (controller == null || controller.isActive() || controller.isSuccess()) {
 			super.aiStep();
 		}
 	}

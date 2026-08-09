@@ -81,6 +81,9 @@ public final class CertifiedSpellRewardService {
 		item.setNoGravity(true);
 		item.setGlowingTag(true);
 		item.setInvulnerable(true);
+		// ItemEntity constructor scatters a random velocity — the reward must
+		// hover perfectly still at the break spot
+		item.setDeltaMovement(0, 0, 0);
 		if (YHModConfig.COMMON.certificationRewardNeverDespawn.get()) {
 			item.setUnlimitedLifetime();
 		}

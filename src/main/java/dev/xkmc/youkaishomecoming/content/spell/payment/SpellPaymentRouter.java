@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.payment;
 
 import dev.xkmc.youkaishomecoming.compat.kubejs.spell.SpellPaymentEventJS;
 import dev.xkmc.youkaishomecoming.compat.kubejs.spell.YHSpellKubeJSEvents;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.fml.ModList;
@@ -21,9 +22,24 @@ public final class SpellPaymentRouter {
 		return switch (context) {
 			case SPELL_CAST_STG -> SpellPaymentProviders.get(SpellPaymentProviders.BOMB);
 			case SPELL_CAST_NON_STG -> SpellPaymentProviders.get(SpellPaymentProviders.EXPERIENCE);
-			case CERTIFICATION_START, CERTIFICATION_ISSUE ->
-					SpellPaymentProviders.get(SpellPaymentProviders.POINTS);
+			// INV-8: the certification start/issue provider is config-driven
+			// (certification.startPaymentProvider, default experience) — never
+			// hard-code a second default here.
+			case CERTIFICATION_START, CERTIFICATION_ISSUE -> providerFromConfig(
+					YHModConfig.COMMON.certificationStartPaymentProvider.get());
 		};
+	}
+
+	private static SpellPaymentProvider providerFromConfig(String id) {
+		ResourceLocation parsed = ResourceLocation.tryParse(id);
+		if (parsed == null) {
+			return SpellPaymentProviders.get(SpellPaymentProviders.EXPERIENCE);
+		}
+		try {
+			return SpellPaymentProviders.get(parsed);
+		} catch (IllegalArgumentException e) {
+			return SpellPaymentProviders.get(SpellPaymentProviders.EXPERIENCE);
+		}
 	}
 
 	public static PaymentResult pay(ServerPlayer player, long costUnits, SpellCostContext context) {

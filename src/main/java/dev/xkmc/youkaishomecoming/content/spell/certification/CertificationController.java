@@ -45,6 +45,8 @@ public class CertificationController {
 	private boolean combatForcedByCertification;
 	/** The draft card consumed at trial start; returned (same path as the reward) when the trial fails. */
 	@Nullable private ItemStack consumedDraft;
+	/** Floating spell-card display following the (invisible) certification enemy. */
+	@Nullable private net.minecraft.world.entity.item.ItemEntity displayItem;
 
 	public void setStartReceipt(PaymentReceipt receipt) {
 		this.startReceipt = receipt;
@@ -130,6 +132,20 @@ public class CertificationController {
 		entity.targets.add(author);
 		dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.setDanmakuCombat(author, true);
 		combatForcedByCertification = true;
+		// the floating spell card: the consumed draft (or a blank card) hovers at
+		// the enemy's spot — the only visible representation of the enemy
+		if (!(entity.level() instanceof net.minecraft.server.level.ServerLevel level)) {
+			logState("begin prepare");
+			author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_PREPARE.get(countdown / 20), false);
+			syncState();
+			return;
+		}
+		ItemStack shown = consumedDraft != null && !consumedDraft.isEmpty()
+				? consumedDraft.copy()
+				: new ItemStack(dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku.DYNAMIC_SPELL.get());
+		displayItem = new dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellRewardService.SpellDisplayItem(
+				level, entity.getX(), entity.getY() + 0.5, entity.getZ(), shown);
+		level.addFreshEntity(displayItem);
 		logState("begin prepare");
 		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_PREPARE.get(countdown / 20), false);
 		syncState();
@@ -148,6 +164,10 @@ public class CertificationController {
 		if (state == CertificationState.PREPARE || state == CertificationState.ACTIVE) {
 			e.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
 					author.getEyePosition());
+		}
+		// the floating spell card follows the enemy exactly
+		if (displayItem != null && !displayItem.isRemoved()) {
+			displayItem.setPos(e.getX(), e.getY() + 0.5, e.getZ());
 		}
 		long gameTime = e.level().getGameTime();
 		if (gameTime - lastSyncTick >= 20) {
@@ -318,6 +338,8 @@ public class CertificationController {
 		successTicks = 0;
 		e.eraseAllDanmaku(null);
 		e.getDanmakuHolder().clearSentQueue();
+		// the floating draft display is replaced by the actual reward item
+		removeDisplayItem();
 		// the broken spell card plays the defeat animation: beaten for exactly
 		// 1 second (defeat -> falling -> prone) before the entity is cleaned up
 		e.addEffect(new net.minecraft.world.effect.MobEffectInstance(
@@ -367,6 +389,7 @@ public class CertificationController {
 		e.getDanmakuHolder().clearSentQueue();
 		// a failed trial returns the consumed draft card along the same path as
 		// the reward (glowing, weightless, owner-locked at the enemy spot)
+		removeDisplayItem();
 		returnDraft(e);
 		postCertificationEvent();
 		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_FAIL.get(reason.id()), false);
@@ -436,6 +459,7 @@ public class CertificationController {
 		if (e.isRemoved()) return;
 		restoreCombatState();
 		logState("cleanup");
+		removeDisplayItem();
 		if (!success && startReceipt != null && failReason != null && failReason.fullRefund()) {
 			// refund already handled in fail(); guard against double refund
 			startReceipt = null;
@@ -444,6 +468,13 @@ public class CertificationController {
 		if (e.getDanmakuHolder() != null) e.getDanmakuHolder().clearSentQueue();
 		CertificationManager.INSTANCE.remove(authorId);
 		e.discard();
+	}
+
+	private void removeDisplayItem() {
+		if (displayItem != null && !displayItem.isRemoved()) {
+			displayItem.discard();
+		}
+		displayItem = null;
 	}
 
 	private void syncState() {

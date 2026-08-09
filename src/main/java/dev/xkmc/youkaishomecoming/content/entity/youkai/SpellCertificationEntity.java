@@ -37,6 +37,9 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 		// reliably land; knockback is disabled for the same reason (INV-3: gravity
 		// handling is explicit — floating is the intended behaviour for the target).
 		setNoGravity(true);
+		// the enemy itself is invisible: the player sees the floating spell card
+		// (the consumed draft) instead of a youkai model
+		setInvisible(true);
 	}
 
 	@Override

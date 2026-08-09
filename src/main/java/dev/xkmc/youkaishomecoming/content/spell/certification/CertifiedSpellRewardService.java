@@ -120,6 +120,27 @@ public final class CertifiedSpellRewardService {
 		}
 	}
 
+	/**
+	 * Pure display item: the floating spell card shown while the certification
+	 * enemy is invisible. Never pickable, weightless, motionless — the
+	 * controller re-positions it every tick to follow the enemy.
+	 */
+	public static final class SpellDisplayItem extends ItemEntity {
+
+		public SpellDisplayItem(Level level, double x, double y, double z, ItemStack stack) {
+			super(level, x, y, z, stack);
+			setNoGravity(true);
+			setInvulnerable(true);
+			setPickUpDelay(Integer.MAX_VALUE);
+			setDeltaMovement(0, 0, 0);
+		}
+
+		@Override
+		public void playerTouch(Player player) {
+			// never pickable
+		}
+	}
+
 	private static SpellCertificate buildCertificate(SpellCertificationEntity entity) {
 		var controller = entity.controller();
 		SpellDefinition definition = controller.definition();

@@ -27,6 +27,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @SerialClass
 public class SpellEditorSyncToServer extends SerialPacketBase {
@@ -47,6 +49,18 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	public String spellId = "";
 	@SerialClass.SerialField
 	public String definitionJson = "";
+	// Chunked transfer fields: totalChunks == 0 means the definition is inline.
+	// Large definitions (e.g. a custom card assembled from many copied actions)
+	// would otherwise exceed FriendlyByteBuf.writeUtf's 32767 limit and kill the
+	// connection — chunks stay well under it, mirroring SpellPreviewChunkToClient.
+	@SerialClass.SerialField
+	public int transferId;
+	@SerialClass.SerialField
+	public int totalChunks;
+	@SerialClass.SerialField
+	public int chunkIndex;
+	@SerialClass.SerialField
+	public String chunk = "";
 
 	@Deprecated
 	public SpellEditorSyncToServer() {
@@ -56,6 +70,17 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		this.action = action;
 		this.spellId = spellId;
 		this.definitionJson = definitionJson;
+	}
+
+	/** Build a single transfer chunk of an editor packet. */
+	public static SpellEditorSyncToServer chunk(SpellEditorSyncToServer base, int transferId,
+												int chunkIndex, int totalChunks, String chunk) {
+		SpellEditorSyncToServer packet = new SpellEditorSyncToServer(base.action, base.spellId, "");
+		packet.transferId = transferId;
+		packet.chunkIndex = chunkIndex;
+		packet.totalChunks = totalChunks;
+		packet.chunk = chunk;
+		return packet;
 	}
 
 	public static SpellEditorSyncToServer save(SpellDefinition definition, boolean reapply) {
@@ -94,6 +119,65 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	public void handle(NetworkEvent.Context context) {
 		ServerPlayer sender = context.getSender();
 		if (sender == null) return;
+		try {
+			if (totalChunks > 0) {
+				handleChunk(sender);
+				return;
+			}
+			execute(sender);
+		} catch (Exception e) {
+			String msg = e.getMessage();
+			sender.sendSystemMessage(Component.literal("[YH] Spell editor sync failed: " +
+					(msg == null ? e.getClass().getSimpleName() : msg)));
+		}
+	}
+
+	// ------------------------------------------------------------ chunking
+
+	private static final Map<String, Assembly> ASSEMBLIES = new ConcurrentHashMap<>();
+
+	private static final class Assembly {
+		final Action action;
+		final String spellId;
+		final int totalChunks;
+		final String[] parts;
+		int received;
+
+		Assembly(Action action, String spellId, int total) {
+			this.action = action;
+			this.spellId = spellId;
+			this.totalChunks = total;
+			this.parts = new String[total];
+		}
+	}
+
+	private void handleChunk(ServerPlayer sender) {
+		if (chunkIndex < 0 || chunkIndex >= totalChunks) {
+			return;
+		}
+		String key = sender.getStringUUID() + "#" + transferId;
+		Assembly assembly = ASSEMBLIES.computeIfAbsent(key,
+				k -> new Assembly(action, spellId, totalChunks));
+		assembly.parts[chunkIndex] = chunk;
+		assembly.received++;
+		if (assembly.received < assembly.totalChunks) {
+			return;
+		}
+		ASSEMBLIES.remove(key);
+		StringBuilder sb = new StringBuilder(assembly.totalChunks * SpellPreviewChunkToClient.MAX_CHUNK_CHARS);
+		for (String part : assembly.parts) {
+			if (part == null) {
+				return; // incomplete (should not happen: reliable channel, all chunks arrive)
+			}
+			sb.append(part);
+		}
+		definitionJson = sb.toString();
+		action = assembly.action;
+		spellId = assembly.spellId;
+		execute(sender);
+	}
+
+	private void execute(ServerPlayer sender) {
 		try {
 			if (action != Action.IMPORT_MARKET && !sender.hasPermissions(2)) {
 				// Non-OP players may save a NEW self-made spell (crafted blank card,

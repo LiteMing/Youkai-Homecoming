@@ -19,24 +19,48 @@ public class SpellEditorNetworkClient {
 	private static final String EXPORT_DIR = "youkaishomecoming_spells";
 
 	public static void save(SpellDefinition definition) {
-		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.save(definition, false));
+		sendChunked(SpellEditorSyncToServer.save(definition, false));
 	}
 
 	public static void saveAndReapply(SpellDefinition definition) {
-		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.save(definition, true));
+		sendChunked(SpellEditorSyncToServer.save(definition, true));
 	}
 
 	public static void importMarket(SpellDefinition definition) {
-		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.importMarket(definition));
+		sendChunked(SpellEditorSyncToServer.importMarket(definition));
 	}
 
 	public static Path exportGlobal(SpellDefinition definition) throws IOException {
-		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.exportGlobal(definition));
+		sendChunked(SpellEditorSyncToServer.exportGlobal(definition));
 		return saveLocalExportCopy(definition);
 	}
 
 	public static void delete(ResourceLocation spellId) {
 		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.delete(spellId));
+	}
+
+	/**
+	 * Send an editor packet, splitting the definition into UTF-safe chunks when it
+	 * exceeds the {@code writeUtf} limit (32767 chars). The server reassembles the
+	 * chunks keyed by (player, transferId) before executing the action.
+	 */
+	private static void sendChunked(SpellEditorSyncToServer packet) {
+		String json = packet.definitionJson;
+		if (json.length() <= SpellPreviewChunkToClient.MAX_CHUNK_CHARS) {
+			YoukaisHomecoming.HANDLER.toServer(packet);
+			return;
+		}
+		int transferId = (packet.spellId.hashCode() ^ json.hashCode() ^ (int) System.nanoTime()) & 0x7fff_ffff;
+		int total = (json.length() + SpellPreviewChunkToClient.MAX_CHUNK_CHARS - 1)
+				/ SpellPreviewChunkToClient.MAX_CHUNK_CHARS;
+		for (int i = 0; i < total; i++) {
+			int from = i * SpellPreviewChunkToClient.MAX_CHUNK_CHARS;
+			int to = Math.min(json.length(), from + SpellPreviewChunkToClient.MAX_CHUNK_CHARS);
+			YoukaisHomecoming.HANDLER.toServer(
+					SpellEditorSyncToServer.chunk(packet, transferId, i, total, json.substring(from, to)));
+		}
+		YoukaisHomecoming.LOGGER.info("[SpellEditor] sent {} in {} chunks ({} chars)",
+				packet.spellId, total, json.length());
 	}
 
 	private static Path saveLocalExportCopy(SpellDefinition definition) throws IOException {

@@ -658,6 +658,7 @@ public class YHCommands {
 						.then(literal("test")
 								.then(argument("targets", EntityArgument.players())
 										.then(argument("spell", ResourceLocationArgument.id())
+												.suggests(SPELL_SUGGESTIONS)
 												.then(argument("ticks", IntegerArgumentType.integer(100, 60000))
 														.then(argument("halfSize", DoubleArgumentType.doubleArg(4, 256))
 																.executes(ctx -> runCertificationTest(ctx)))))))

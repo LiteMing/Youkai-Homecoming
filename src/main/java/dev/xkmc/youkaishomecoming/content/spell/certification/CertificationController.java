@@ -39,7 +39,8 @@ public class CertificationController {
 	private int activeThreatTicks;
 	private int illegalMoveCooldown;
 	@Nullable private CertificationFailReason failReason;
-	@Nullable private PaymentReceipt startReceipt;
+	private @Nullable PaymentReceipt startReceipt;
+	private boolean combatForcedByCertification;
 
 	public void setStartReceipt(PaymentReceipt receipt) {
 		this.startReceipt = receipt;
@@ -107,7 +108,19 @@ public class CertificationController {
 	public void beginPrepare() {
 		state = CertificationState.PREPARE;
 		countdown = YHModConfig.COMMON.certificationCountdownTicks.get();
+		// the author becomes the enemy's target so spell aim (AimMode.Target) works,
+		// and enters STG combat state so the battle circle / resources display (D3/D4)
+		entity.targets.add(author);
+		dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.setDanmakuCombat(author, true);
+		combatForcedByCertification = true;
+		logState("begin prepare");
 		syncState();
+	}
+
+	private void logState(String event) {
+		dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.LOGGER.info(
+				"[Certification] {} state={} elapsed={}/{} threat={}",
+				event, state, elapsedTicks, quote.durationTicks(), activeThreatTicks);
 	}
 
 	public void tick(SpellCertificationEntity e) {
@@ -139,6 +152,7 @@ public class CertificationController {
 			lastPlayerPos = author.position();
 			// fresh runtime: spell loops are restarted by the controller (D6/D5)
 			e.setSpellRuntime(new SpellRuntime(definition));
+			logState("active start");
 			syncState();
 		}
 	}
@@ -179,6 +193,8 @@ public class CertificationController {
 		elapsedTicks++;
 		if (elapsedTicks >= quote.durationTicks()) {
 			success(e);
+		} else if ((elapsedTicks & 63) == 0) {
+			logState("tick");
 		}
 	}
 
@@ -226,9 +242,15 @@ public class CertificationController {
 		state = CertificationState.SUCCESS;
 		e.eraseAllDanmaku(null);
 		e.getDanmakuHolder().clearSentQueue();
+		restoreCombatState();
+		logState("success");
 		postCertificationEvent();
 		syncState();
-		CertifiedSpellRewardService.issue(e);
+		try {
+			CertifiedSpellRewardService.issue(e);
+		} catch (Exception ex) {
+			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.LOGGER.error("Failed to issue certified reward", ex);
+		}
 	}
 
 	private void postCertificationEvent() {
@@ -246,6 +268,8 @@ public class CertificationController {
 			return;
 		}
 		failReason = reason;
+		restoreCombatState();
+		logState("fail " + reason.id());
 		state = reason == CertificationFailReason.SYSTEM_ERROR
 				|| reason == CertificationFailReason.RUNTIME_LIMIT
 				? CertificationState.SYSTEM_ERROR : CertificationState.FAILED;
@@ -254,6 +278,14 @@ public class CertificationController {
 		e.getDanmakuHolder().clearSentQueue();
 		postCertificationEvent();
 		syncState();
+	}
+
+	private void restoreCombatState() {
+		if (combatForcedByCertification) {
+			combatForcedByCertification = false;
+			dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.setDanmakuCombat(author, false);
+		}
+		entity.targets.remove(author.getUUID());
 	}
 
 	private void refund() {
@@ -279,6 +311,8 @@ public class CertificationController {
 
 	private void cleanup(SpellCertificationEntity e, boolean success) {
 		if (e.isRemoved()) return;
+		restoreCombatState();
+		logState("cleanup");
 		if (!success && startReceipt != null && failReason != null && failReason.fullRefund()) {
 			// refund already handled in fail(); guard against double refund
 			startReceipt = null;

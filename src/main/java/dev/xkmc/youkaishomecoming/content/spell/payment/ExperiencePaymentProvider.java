@@ -25,8 +25,8 @@ public class ExperiencePaymentProvider implements SpellPaymentProvider {
 		if (context == SpellCostContext.SPELL_CAST_NON_STG) {
 			levels = YHModConfig.COMMON.spellXpCost.get();
 		} else {
-			// abstract units -> XP levels: 100 units = 1 level (Phase 7 rate)
-			levels = Math.max(1, (long) Math.ceil(costUnits / 100.0));
+			// abstract units -> XP levels: 20 units = 1 level (100 units = 5 levels baseline)
+			levels = Math.max(1, (long) Math.ceil(costUnits / 20.0));
 		}
 		return new PaymentQuote(this, context, costUnits, levels, "experience");
 	}

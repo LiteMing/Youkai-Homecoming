@@ -394,6 +394,12 @@ public class YHModConfig {
 				certificationRewardNeverDespawn = builder.comment("Certified spell reward items never despawn naturally")
 						.translation("config.youkaishomecoming.common.certification.rewardNeverDespawn")
 						.define("rewardNeverDespawn", true);
+				certificationRewardDurationShortRatio = builder.comment("Reward cast duration as a fraction of the certified duration for the shortest certification (curve endpoint, 1/3)")
+						.translation("config.youkaishomecoming.common.certification.rewardDurationShortRatio")
+						.defineInRange("rewardDurationShortRatio", 0.3333, 0.05, 1.0);
+				certificationRewardDurationLongRatio = builder.comment("Reward cast duration as a fraction of the certified duration for the longest certification (curve endpoint, 1/10)")
+						.translation("config.youkaishomecoming.common.certification.rewardDurationLongRatio")
+						.defineInRange("rewardDurationLongRatio", 0.1, 0.02, 1.0);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.youkaifying_effect").push("youkaifying_effect");

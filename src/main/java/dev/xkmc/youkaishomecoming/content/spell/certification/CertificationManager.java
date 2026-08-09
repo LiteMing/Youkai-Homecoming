@@ -20,7 +20,6 @@ public final class CertificationManager {
 	private final Map<UUID, CertificationController> activeTrials = new HashMap<>();
 	private final Map<UUID, CertificationQuote> pendingQuotes = new HashMap<>();
 	private final Map<String, SpellDefinition> quoteDefinitions = new HashMap<>();
-	private static final long QUOTE_TTL_TICKS = 1200;
 
 	private CertificationManager() {
 	}
@@ -29,7 +28,7 @@ public final class CertificationManager {
 		CertificationQuote quote = pendingQuotes.get(player.getUUID());
 		if (quote == null) return null;
 		long age = player.level().getGameTime() - quote.issuedAtGameTime();
-		if (age < 0 || age > QUOTE_TTL_TICKS) {
+		if (age < 0 || age > quoteTtlTicks()) {
 			pendingQuotes.remove(player.getUUID());
 			quoteDefinitions.remove(quote.quoteId());
 			return null;
@@ -81,11 +80,15 @@ public final class CertificationManager {
 		while (iterator.hasNext()) {
 			var entry = iterator.next();
 			long age = now - entry.getValue().issuedAtGameTime();
-			if (age < 0 || age > QUOTE_TTL_TICKS) {
+			if (age < 0 || age > quoteTtlTicks()) {
 				quoteDefinitions.remove(entry.getValue().quoteId());
 				iterator.remove();
 			}
 		}
+	}
+
+	private static long quoteTtlTicks() {
+		return YHModConfig.COMMON.certificationMaxDurationTicks.get();
 	}
 
 	public int activeCount() {

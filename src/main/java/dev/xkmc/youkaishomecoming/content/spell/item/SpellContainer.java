@@ -58,6 +58,9 @@ public class SpellContainer extends ConditionalToken {
 		return !data.proxies.isEmpty();
 	}
 
+	@Nullable
+	private net.minecraft.world.phys.Vec3 lockPos;
+
 	// ------------------------------------------------------------ player-use spell bar
 
 	/**
@@ -155,15 +158,10 @@ public class SpellContainer extends ConditionalToken {
 		}
 		cache.removeIf(e -> !e.isValid());
 		proxies.removeIf(DanmakuProxyEntity::isRemoved);
-		if (!proxies.isEmpty()) {
-			// while releasing a spell card the player stands still (no movement
-			// besides spell-declared motion; zero every tick server-side)
-			if (player instanceof ServerPlayer sp) {
-				sp.setDeltaMovement(0, 0, 0);
-			}
-		} else if (spellBar != null) {
+		if (proxies.isEmpty() && spellBar != null) {
 			// spell ended naturally: drop the bar
 			endSpellBar(player);
+			lockPos = null;
 		}
 		return spells.isEmpty() && cache.isEmpty() && proxies.isEmpty();
 	}

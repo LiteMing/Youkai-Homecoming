@@ -132,6 +132,11 @@ public final class YHStgApi {
 	}
 
 	public static boolean tryManualBomb(ServerPlayer player) {
+		// No-bomb rule: using a bomb during a certification trial fails it.
+		var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE.getActiveTrial(player);
+		if (trial != null && trial.isActive()) {
+			trial.onPlayerBomb();
+		}
 		var cap = cap(player);
 		if (!cap.useBomb()) {
 			return false;

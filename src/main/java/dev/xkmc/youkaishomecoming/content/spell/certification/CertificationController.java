@@ -38,6 +38,8 @@ public class CertificationController {
 	private int elapsedTicks;
 	private int activeThreatTicks;
 	private int illegalMoveCooldown;
+	private final int breakHpSeconds;
+	private int breakHpLeftSeconds;
 	@Nullable private CertificationFailReason failReason;
 	private @Nullable PaymentReceipt startReceipt;
 	private boolean combatForcedByCertification;
@@ -60,6 +62,8 @@ public class CertificationController {
 		this.arena = new CertificationArena(entity.position(), quote.arenaHalfSize());
 		this.movementSeed = movementSeed;
 		this.movement = new CertificationEnemyMovement(arena, movementSeed);
+		this.breakHpSeconds = quote.breakHpSeconds();
+		this.breakHpLeftSeconds = breakHpSeconds;
 	}
 
 	// ------------------------------------------------------------ accessors
@@ -80,6 +84,14 @@ public class CertificationController {
 	public CertificationQuote quote() { return quote; }
 	public int targetTicks() {
 		return quote.durationTicks();
+	}
+
+	public int breakHpTotalSeconds() {
+		return breakHpSeconds;
+	}
+
+	public int breakHpLeftSeconds() {
+		return breakHpLeftSeconds;
 	}
 
 	@Nullable
@@ -178,13 +190,22 @@ public class CertificationController {
 		}
 		illegalMoveCooldown = 10;
 		lastPlayerPos = author.position();
+		// Caster movement: unless the spell declares caster_moves, the player is
+		// rooted during the trial (cannot move on their own).
+		if (!definition.itemForm.casterMoves()) {
+			author.setDeltaMovement(0, 0, 0);
+		}
 		if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.hasActiveYoukaiSession(author)) {
 			// another boss battle entered mid-certification (D15)
 			fail(e, CertificationFailReason.OTHER_BATTLE);
 			return;
 		}
-		// movement + runtime loop
-		movement.tick(e);
+		// movement + runtime loop — the certification enemy stands still by
+		// default so the player can attack it down; it only moves when the spell
+		// declares caster_moves.
+		if (definition.itemForm.casterMoves()) {
+			movement.tick(e);
+		}
 		if (e.spellRuntime == null || e.spellRuntime.isFinished()) {
 			// spell naturally ended: restart it for the remaining certification time (§5.4)
 			e.setSpellRuntime(new SpellRuntime(definition));
@@ -193,8 +214,9 @@ public class CertificationController {
 			activeThreatTicks++;
 		}
 		elapsedTicks++;
+		// timeout countdown: failing to break the spell before the timeout is a loss
 		if (elapsedTicks >= quote.durationTicks()) {
-			success(e);
+			fail(e, CertificationFailReason.TIMEOUT);
 		} else if ((elapsedTicks & 63) == 0) {
 			logState("tick");
 		}
@@ -215,6 +237,33 @@ public class CertificationController {
 		if (state != CertificationState.ACTIVE) return;
 		if (!target.getUUID().equals(authorId)) return;
 		fail(entity, CertificationFailReason.HIT);
+	}
+
+	/**
+	 * Player attack on the certification enemy: every hit removes exactly
+	 * 1 second of break HP. Reaching zero = the spell is broken (requires the
+	 * whole run to be no-hit/no-bomb — any hit or bomb already failed the trial).
+	 */
+	public void onEntityHit() {
+		if (state != CertificationState.ACTIVE) return;
+		breakHpLeftSeconds--;
+		if (breakHpLeftSeconds <= 0) {
+			success(entity);
+		} else if ((breakHpLeftSeconds & 15) == 0) {
+			syncState();
+		}
+	}
+
+	/** Player cast a different spell card mid-trial: no-bomb/no-hit forbids it. */
+	public void onPlayerCastsOtherSpell() {
+		if (state != CertificationState.ACTIVE) return;
+		fail(entity, CertificationFailReason.OTHER_SPELL);
+	}
+
+	/** Player used a bomb mid-trial: no-bomb/no-hit forbids it. */
+	public void onPlayerBomb() {
+		if (state != CertificationState.ACTIVE) return;
+		fail(entity, CertificationFailReason.BOMB);
 	}
 
 	public void abort() {
@@ -348,6 +397,7 @@ public class CertificationController {
 	private void syncState() {
 		dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStateToClient.send(
 				entity, state, elapsedTicks, quote.durationTicks(),
+				breakHpSeconds, breakHpLeftSeconds,
 				failReason == null ? null : failReason.id());
 	}
 }

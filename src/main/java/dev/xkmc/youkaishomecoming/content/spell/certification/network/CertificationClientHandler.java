@@ -16,6 +16,7 @@ import java.util.Map;
 public final class CertificationClientHandler {
 
 	public record ClientState(CertificationState state, int elapsedTicks, int targetTicks,
+							  int breakHpTotalSeconds, int breakHpLeftSeconds,
 							  @Nullable String failReason) {
 
 		public boolean active() {
@@ -35,6 +36,7 @@ public final class CertificationClientHandler {
 	}
 
 	public static void acceptState(int entityId, String state, int elapsedTicks, int targetTicks,
+								   int breakHpTotalSeconds, int breakHpLeftSeconds,
 								   @Nullable String failReason, boolean mine) {
 		CertificationState parsed;
 		try {
@@ -42,7 +44,8 @@ public final class CertificationClientHandler {
 		} catch (IllegalArgumentException e) {
 			parsed = CertificationState.DRAFT;
 		}
-		ClientState clientState = new ClientState(parsed, elapsedTicks, targetTicks, failReason);
+		ClientState clientState = new ClientState(parsed, elapsedTicks, targetTicks,
+				breakHpTotalSeconds, breakHpLeftSeconds, failReason);
 		if (mine) {
 			myState = clientState;
 		} else {

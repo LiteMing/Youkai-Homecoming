@@ -13,6 +13,9 @@ public enum CertificationFailReason {
 	OTHER_BATTLE("other_battle", false),
 	DISCONNECT("disconnect", false),
 	ILLEGAL_MOVE("illegal_move", false),
+	TIMEOUT("timeout", false),
+	OTHER_SPELL("other_spell", false),
+	BOMB("bomb", false),
 	ABORTED("aborted", false),
 	SYSTEM_ERROR("system_error", true),
 	RUNTIME_LIMIT("runtime_limit", true);

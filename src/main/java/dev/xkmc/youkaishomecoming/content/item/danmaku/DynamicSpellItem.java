@@ -7,6 +7,8 @@ import dev.xkmc.youkaishomecoming.compat.kubejs.spell.DynamicSpellSingleUseEvent
 import dev.xkmc.youkaishomecoming.compat.kubejs.spell.YHSpellKubeJSEvents;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
@@ -211,6 +213,12 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 
 		if (player instanceof ServerPlayer sp) {
+			// No-bomb/no-hit certification rule: casting a DIFFERENT spell during
+			// the trial fails it (the certified spell itself is the allowed attack).
+			var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE.getActiveTrial(sp);
+			if (trial != null && trial.isActive() && !trial.definitionHash().equals(SpellHash.canonicalHash(def))) {
+				trial.onPlayerCastsOtherSpell();
+			}
 			if (consume && !SpellItemCost.tryPay(sp)) {
 				return false;
 			}

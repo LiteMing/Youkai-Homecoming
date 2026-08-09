@@ -20,8 +20,10 @@ public record CertificationQuote(
 		long startCostUnits,
 		long issueCostUnits,
 		long castCostUnits,
-		/** Final cast duration of the certified reward item (curve 1/3 → 1/10 of the certified duration). */
+		/** Final cast duration of the certified reward item (curve 1/3 → 1/10 of the break HP). */
 		int rewardDurationTicks,
+		/** Break HP of the certification enemy in seconds (each player hit reduces it by 1s). */
+		int breakHpSeconds,
 		SpellAnalysis analysis,
 		long issuedAtGameTime
 ) {

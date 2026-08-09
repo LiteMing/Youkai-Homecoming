@@ -144,6 +144,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue certificationRewardNeverDespawn;
 		public final ForgeConfigSpec.DoubleValue certificationRewardDurationShortRatio;
 		public final ForgeConfigSpec.DoubleValue certificationRewardDurationLongRatio;
+		public final ForgeConfigSpec.DoubleValue certificationBreakHpRatio;
 
 		public final ForgeConfigSpec.IntValue youkaifyingTime;
 		public final ForgeConfigSpec.DoubleValue youkaifyingChance;
@@ -313,12 +314,12 @@ public class YHModConfig {
 				certificationEnabled = builder.comment("Master switch for the survival spell certification system")
 						.translation("config.youkaishomecoming.common.certification.enabled")
 						.define("enabled", true);
-				certificationMinDurationTicks = builder.comment("Minimum selectable certification duration in ticks")
+				certificationMinDurationTicks = builder.comment("Minimum certification timeout in ticks (60s default; timeout is the natural countdown)")
 						.translation("config.youkaishomecoming.common.certification.minDurationTicks")
-						.defineInRange("minDurationTicks", 600, 100, 6000);
-				certificationMaxDurationTicks = builder.comment("Maximum selectable certification duration in ticks")
+						.defineInRange("minDurationTicks", 1200, 100, 6000);
+				certificationMaxDurationTicks = builder.comment("Maximum certification timeout in ticks (120s cap; timeout is the natural countdown)")
 						.translation("config.youkaishomecoming.common.certification.maxDurationTicks")
-						.defineInRange("maxDurationTicks", 6000, 600, 60000);
+						.defineInRange("maxDurationTicks", 2400, 600, 60000);
 				certificationDurationPresets = builder.comment("Preset certification durations in ticks (editor quick pick)")
 						.translation("config.youkaishomecoming.common.certification.durationPresets")
 						.defineListAllowEmpty("durationPresets", java.util.List.of(600, 1200, 2400), o -> o instanceof Integer);
@@ -400,6 +401,9 @@ public class YHModConfig {
 				certificationRewardDurationLongRatio = builder.comment("Reward cast duration as a fraction of the certified duration for the longest certification (curve endpoint, 1/10)")
 						.translation("config.youkaishomecoming.common.certification.rewardDurationLongRatio")
 						.defineInRange("rewardDurationLongRatio", 0.1, 0.02, 1.0);
+				certificationBreakHpRatio = builder.comment("Break HP (seconds) = timeout seconds x this ratio; the timeout is ~0.66x of the break HP the player must attack down (1 second per hit)")
+						.translation("config.youkaishomecoming.common.certification.breakHpRatio")
+						.defineInRange("breakHpRatio", 1.5, 1.0, 3.0);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.youkaifying_effect").push("youkaifying_effect");

@@ -141,11 +141,12 @@ public class CertificationScreen extends Screen {
 		gui.drawCenteredString(this.font, Component.literal(status), cx, 120, 0xFFFFFFAA);
 		var quote = CertificationClientHandler.getPendingQuote();
 		if (quote != null) {
-			// Info panel: certification duration, final cast duration of the
-			// certified item (reward curve) and the full cost breakdown.
+			// Info panel: timeout, break HP (each hit -1s), final cast duration of
+			// the certified item (reward curve on break HP) and the cost breakdown.
 			String durationLine = String.format(Locale.ROOT,
-					"Certification: %ds  |  Final cast: %ds  |  Arena: %.0f",
-					quote.durationTicks / 20, quote.rewardDurationTicks / 20, quote.arenaHalfSize);
+					"Timeout: %ds  |  Break HP: %ds (hit -1s)  |  Final cast: %ds  |  Arena: %.0f",
+					quote.durationTicks / 20, quote.breakHpSeconds,
+					quote.rewardDurationTicks / 20, quote.arenaHalfSize);
 			String costLine = String.format(Locale.ROOT,
 					"Cost: start %d (≈%d XP) / cast %d / issue %d  |  maxSpawn/tick: %d",
 					quote.startCostUnits, xpLevels(quote.startCostUnits), quote.castCostUnits,

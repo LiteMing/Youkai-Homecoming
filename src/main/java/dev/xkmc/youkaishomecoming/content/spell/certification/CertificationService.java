@@ -47,9 +47,20 @@ public final class CertificationService {
 		// multiplier; the weakest built-in spells sit at multiplier 1 (Phase 7).
 		long castCost = Math.max(1, startCost) * powerMultiplier(analysis);
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
+		int breakHpSeconds = breakHpSeconds(durationTicks);
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
 				startCost, issueCost, castCost, rewardDurationTicks(durationTicks),
-				analysis, player.level().getGameTime());
+				breakHpSeconds, analysis, player.level().getGameTime());
+	}
+
+	/**
+	 * Break HP of the certification enemy in seconds: timeout seconds x
+	 * {@code certificationBreakHpRatio} (default 1.5 — the timeout is roughly
+	 * 0.66x of the HP the player must attack down; each hit removes exactly 1s).
+	 */
+	public static int breakHpSeconds(int durationTicks) {
+		double ratio = YHModConfig.COMMON.certificationBreakHpRatio.get();
+		return Math.max(10, (int) Math.ceil(durationTicks / 20.0 * ratio));
 	}
 
 	/**
@@ -167,11 +178,12 @@ public final class CertificationService {
 
 	/**
 	 * Reward cast duration curve: the certified item runs for a fraction of the
-	 * certified duration — 1/3 at the shortest certification, falling linearly to
-	 * 1/10 at the longest (curve endpoints configurable). The certified duration
-	 * itself remains the hard cap at cast time (design §2.4).
+	 * certification break HP — 1/3 at the shortest certification, falling linearly
+	 * to 1/10 at the longest (curve endpoints configurable; the final duration is
+	 * derived from the break HP, which itself scales with the timeout).
 	 */
 	public static int rewardDurationTicks(int certifiedDurationTicks) {
+		int breakHpSeconds = breakHpSeconds(certifiedDurationTicks);
 		int minD = YHModConfig.COMMON.certificationMinDurationTicks.get();
 		int maxD = YHModConfig.COMMON.certificationMaxDurationTicks.get();
 		double span = Math.max(1, maxD - minD);
@@ -179,6 +191,6 @@ public final class CertificationService {
 		double shortRatio = YHModConfig.COMMON.certificationRewardDurationShortRatio.get();
 		double longRatio = YHModConfig.COMMON.certificationRewardDurationLongRatio.get();
 		double ratio = shortRatio + (longRatio - shortRatio) * t;
-		return Math.max(20, (int) Math.round(certifiedDurationTicks * ratio));
+		return Math.max(20, (int) Math.round(breakHpSeconds * 20 * ratio));
 	}
 }

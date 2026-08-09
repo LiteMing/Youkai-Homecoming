@@ -37,7 +37,9 @@ public final class CertificationHud {
 				status = "preparing...";
 			} else {
 				int remaining = Math.max(0, state.targetTicks() - state.elapsedTicks());
-				status = String.format(java.util.Locale.ROOT, "%.1fs", remaining / 20.0);
+				status = String.format(java.util.Locale.ROOT, "%.1fs | Break HP %d/%ds",
+						remaining / 20.0,
+						Math.max(0, state.breakHpLeftSeconds()), state.breakHpTotalSeconds());
 			}
 			gui.drawString(font, Component.literal("[YH] No-Hit " + status),
 					width / 2 - 40, 6, 0xFFFFFFFF);

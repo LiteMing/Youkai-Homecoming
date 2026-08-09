@@ -76,7 +76,11 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 
 	@Override
 	protected void actuallyHurt(DamageSource source, float amount) {
-		// the certification enemy cannot be hurt or killed
+		// The certification enemy cannot be killed, but it CAN be attacked: each
+		// hit removes exactly 1 second of break HP (player breaks the spell).
+		if (!level().isClientSide && controller != null) {
+			controller.onEntityHit();
+		}
 	}
 
 	@Override

@@ -6,6 +6,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisProfile;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzer;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentReceipt;
 import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentResult;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellCostContext;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellPaymentRouter;

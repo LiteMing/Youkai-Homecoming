@@ -15,6 +15,8 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
 
@@ -24,6 +26,8 @@ import java.util.UUID;
  * re-clamped here.
  */
 public final class CertificationService {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger("YoukaiHomecoming/Certification");
 
 	private CertificationService() {
 	}
@@ -94,16 +98,29 @@ public final class CertificationService {
 	 * so the client can never swap the definition (design doc §18).
 	 */
 	public static boolean start(ServerPlayer player, CertificationQuote quote) {
-		if (!YHModConfig.COMMON.certificationEnabled.get()) return false;
-		if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.isInDanmakuSession(player)) {
-			// D15: a normal boss battle is running — cannot start a certification
+		if (!YHModConfig.COMMON.certificationEnabled.get()) {
+			LOGGER.info("[YH] start rejected: certification disabled in config");
 			return false;
 		}
-		if (CertificationManager.INSTANCE.hasActiveTrial(player)) return false;
+		if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.isInDanmakuSession(player)) {
+			// D15: a normal boss battle is running — cannot start a certification
+			LOGGER.info("[YH] start rejected: player is in danmaku combat (D15)");
+			return false;
+		}
+		if (CertificationManager.INSTANCE.hasActiveTrial(player)) {
+			LOGGER.info("[YH] start rejected: player already has an active trial");
+			return false;
+		}
 		PaymentResult payment = SpellPaymentRouter.pay(player, quote.startCostUnits(),
 				SpellCostContext.CERTIFICATION_START);
-		if (!payment.success()) return false;
-		return spawnTrial(player, quote, payment.receipt());
+		if (!payment.success()) {
+			LOGGER.info("[YH] start rejected: payment failed: {}", payment);
+			return false;
+		}
+		boolean started = spawnTrial(player, quote, payment.receipt());
+		LOGGER.info("[YH] start result: started={} cost={} hash={}",
+				started, quote.startCostUnits(), quote.definitionHash().substring(0, Math.min(8, quote.definitionHash().length())));
+		return started;
 	}
 
 	/** OP test path: starts without paying the start fee. */

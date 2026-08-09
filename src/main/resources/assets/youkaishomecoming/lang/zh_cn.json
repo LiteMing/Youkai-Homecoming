@@ -1501,6 +1501,7 @@
   "youkaishomecoming.tooltip.spell_cost_no_bomb": "BOMB 不足（需要 %s，现有 %s）",
   "youkaishomecoming.tooltip.spell_cost_no_xp": "经验等级不足（需要 %s，现有 %s）",
   "youkaishomecoming.tooltip.spell_single_use": "一次性符卡：释放后消耗",
+  "youkaishomecoming.tooltip.spell_unfinished": "未完成符卡：右键可再次编辑，认证后成为完整符卡",
   "youkaishomecoming.tooltip.spell_target": "需要瞄准目标发动",
   "youkaishomecoming.tooltip.taste_half_youkai": "奇怪的味道...",
   "youkaishomecoming.tooltip.taste_human": "不详的气味...",

@@ -13,14 +13,17 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeAccess;
+import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.List;
@@ -93,6 +96,12 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (sender == null) return;
 		try {
 			if (action != Action.IMPORT_MARKET && !sender.hasPermissions(2)) {
+				// Non-OP players may save a NEW self-made spell (crafted blank card,
+				// editor save path). Anything else stays operator-only.
+				if (action == Action.SAVE) {
+					saveSelfMadeSpell(sender);
+					return;
+				}
 				sender.sendSystemMessage(Component.literal("[YH] No permission to edit spells on this server."));
 				return;
 			}
@@ -111,6 +120,40 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 			String msg = e.getMessage();
 			sender.sendSystemMessage(Component.literal("[YH] Spell editor sync failed: " +
 					(msg == null ? e.getClass().getSimpleName() : msg)));
+		}
+	}
+
+	/**
+	 * Non-operator save path: the spell must be a custom (self-made) definition —
+	 * never a built-in or market-managed id — and must not contain run_command.
+	 * On success the bound spell card (reusable DynamicSpellItem) is handed to
+	 * the player, closing the certification loop for non-OP players.
+	 */
+	private void saveSelfMadeSpell(ServerPlayer sender) {
+		SpellDefinition definition = parseDefinition();
+		ResourceLocation id = definition.id;
+		if (id == null) {
+			throw new IllegalArgumentException("Spell id is missing");
+		}
+		SpellRegistry.Origin origin = SpellRegistry.getOrigin(id);
+		if (origin != null && origin != SpellRegistry.Origin.CUSTOM) {
+			throw new IllegalArgumentException("Cannot save this spell without operator permission: " + id);
+		}
+		if (containsPrivilegedAction(definition)) {
+			throw new IllegalArgumentException("run_command requires operator permission");
+		}
+		SpellRegistry.register(definition);
+		CustomSpellStorage.saveSpell(sender.server, definition);
+		if (origin == null) {
+			// brand-new self-made spell: hand the player the bound (unfinished) card.
+			// Editing an existing card never issues a second card.
+			ItemStack card = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), id, false);
+			if (!sender.getInventory().add(card)) {
+				sender.drop(card, false);
+			}
+			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id + " and handed you the spell card"));
+		} else {
+			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id));
 		}
 	}
 

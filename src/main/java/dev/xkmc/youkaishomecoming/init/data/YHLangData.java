@@ -121,6 +121,7 @@ public enum YHLangData {
 	STG_NEED_SPELL("message.stg_need_spell", "Need a spell card in inventory or curios to enter danmaku combat", 0, ChatFormatting.RED),
 	STG_TOGGLE_TIP("tooltip.stg_toggle", "Shift + Right Click: toggle danmaku combat", 0, ChatFormatting.DARK_AQUA),
 	SPELL_SINGLE_USE("tooltip.spell_single_use", "Single-use: consumed after casting", 0, ChatFormatting.GOLD),
+	SPELL_UNFINISHED("tooltip.spell_unfinished", "Unfinished spell card: right-click to edit again; certification turns it into a complete spell card", 0, ChatFormatting.DARK_GRAY),
 	MARKET_SEARCH("spell_market.search", "Search...", 0, null),
 	MARKET_REFRESH("spell_market.refresh", "Refresh", 0, null),
 	MARKET_UPLOAD("spell_market.upload", "Upload", 0, null),

@@ -10,7 +10,9 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
+import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
@@ -136,6 +138,27 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
+		// State machine: blank card -> create a self-made spell in the editor;
+		// unfinished card (bound, not certified) -> re-enter the editor. Only a
+		// certified (complete) spell card casts; completeness comes from the
+		// certification phase.
+		if (getSpellId(stack) == null) {
+			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.draftEditor(), sp);
+			}
+			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
+		if (!CertifiedSpellValidator.isCertified(stack)) {
+			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				SpellDefinition def = getSpellDefinition(stack);
+				if (def == null) {
+					sp.displayClientMessage(Component.literal("Unknown spell: " + getSpellId(stack)), false);
+					return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+				}
+				OpenSpellPreviewToClient.sendPreview(sp, def);
+			}
+			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
 		if (GrazeHelper.forbidDanmaku(player))
 			return InteractionResultHolder.fail(stack);
 		if (!castSpell(stack, player, !player.getAbilities().instabuild, true)) {
@@ -227,6 +250,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			list.add(def.display.displayName().copy().withStyle(ChatFormatting.GOLD));
 			if (!def.display.description().isEmpty()) {
 				list.add(def.display.displayDesc().copy().withStyle(ChatFormatting.GRAY));
+			}
+			if (!CertifiedSpellValidator.isCertified(stack)) {
+				list.add(YHLangData.SPELL_UNFINISHED.get());
 			}
 			int dur = getStackDuration(stack);
 			if (dur > 0) {

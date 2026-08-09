@@ -49,16 +49,19 @@ public final class CertificationQuoteRequestHandler {
 
 	/**
 	 * The player must actually hold the spell card in their inventory: the item
-	 * must be a DynamicSpellItem whose spell_id matches the requested definition.
-	 * Built-in spells (which have a code default) never pass this check — they are
-	 * reserved for the OP/console boss certification command.
+	 * must be a DynamicSpellItem whose spell_id matches the requested definition,
+	 * and it must be an UNFINISHED card (not yet certified — a complete certified
+	 * card cannot be certified again). Built-in spells (which have a code default)
+	 * never pass this check — they are reserved for the OP/console boss
+	 * certification command.
 	 */
 	private static boolean holdsOwnSpell(ServerPlayer player, SpellDefinition definition) {
 		ResourceLocation id = definition.id;
 		if (id == null || SpellRegistry.hasDefault(id)) return false;
 		for (ItemStack stack : player.getInventory().items) {
 			if (stack.getItem() instanceof DynamicSpellItem
-					&& id.equals(DynamicSpellItem.getSpellId(stack))) {
+					&& id.equals(DynamicSpellItem.getSpellId(stack))
+					&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
 				return true;
 			}
 		}

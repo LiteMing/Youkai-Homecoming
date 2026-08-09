@@ -306,6 +306,11 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			list.add(YHLangData.STG_TOGGLE_TIP.get());
 		}
 		SpellItemCost.appendCostTooltip(list);
+		int quota = getOpQuota(stack);
+		if (quota > 0) {
+			// boss-base draft: how many experimental nodes this draft may use
+			list.add(YHLangData.SPELL_OP_QUOTA.get(quota));
+		}
 		if (isSingleUse(stack)) {
 			list.add(YHLangData.SPELL_SINGLE_USE.get());
 		}

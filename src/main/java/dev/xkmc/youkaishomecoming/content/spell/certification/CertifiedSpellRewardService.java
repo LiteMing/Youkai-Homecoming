@@ -71,12 +71,8 @@ public final class CertifiedSpellRewardService {
 			PendingRewardStorage.save(level.getServer(), certification.controller().authorId(), certificate.definitionHash());
 			return;
 		}
-		// try immediate hand-over into a free inventory slot
-		if (tryAddToInventory(author, stack)) {
-			dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellRewardToClient.send(author, certificate.definitionHash(), definition.display.name());
-			return;
-		}
-		// otherwise spawn the world item locked to the creator
+		// the reward is NEVER handed straight into the inventory: it floats in
+		// place, glowing and weightless, for the player to pick up
 		ItemEntity item = new ItemEntity(level, author.getX(), author.getY() + 0.5, author.getZ(), stack);
 		item.setNoGravity(true);
 		item.setGlowingTag(true);
@@ -89,13 +85,6 @@ public final class CertifiedSpellRewardService {
 		level.addFreshEntity(item);
 		// redundant pending marker: guarantees the reward survives chunk unload/restart
 		PendingRewardStorage.save(level.getServer(), author.getUUID(), certificate.definitionHash());
-	}
-
-	private static boolean tryAddToInventory(ServerPlayer player, ItemStack stack) {
-		if (player.getInventory().add(stack)) {
-			return true;
-		}
-		return false;
 	}
 
 	private static SpellCertificate buildCertificate(SpellCertificationEntity entity) {

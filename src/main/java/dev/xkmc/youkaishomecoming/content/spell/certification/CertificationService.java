@@ -199,6 +199,8 @@ public final class CertificationService {
 			maxHealth.setBaseValue(Math.max(1, quote.spellHp()));
 		}
 		entity.setHealth(entity.getMaxHealth());
+		// the certification enemy glows so the player can always find their target
+		entity.setGlowingTag(true);
 		entity.setPos(player.position());
 		entity.initCertification(player, definition, definitionHash, quote, movementSeed);
 		CertificationController controller = entity.controller();

@@ -748,8 +748,10 @@ public class YHCommands {
 				ctx.getSource().sendSystemMessage(Component.literal("[YH] certification disabled in config"));
 				return 0;
 			}
-			if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.isInDanmakuSession(player)) {
-				ctx.getSource().sendSystemMessage(Component.literal("[YH] player is already in danmaku combat (D15)"));
+			if (dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(player).isInSession()
+					|| !dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(player)
+					.snapshotOpponents().ids().isEmpty()) {
+				ctx.getSource().sendSystemMessage(Component.literal("[YH] player is in a real battle (D15)"));
 				return 0;
 			}
 			if (CertificationManager.INSTANCE.hasActiveTrial(player)) {

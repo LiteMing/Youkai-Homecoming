@@ -158,9 +158,11 @@ public final class CertificationService {
 			LOGGER.info("[YH] start rejected: certification disabled in config");
 			return false;
 		}
-		if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.isInDanmakuSession(player)) {
-			// D15: a normal boss battle is running — cannot start a certification
-			LOGGER.info("[YH] start rejected: player is in danmaku combat (D15)");
+		if (inRealBattle(player)) {
+			// D15: a real boss battle or PvP duel is running — cannot start a
+			// certification. A plain forced combat (player-declared or leftover)
+			// is taken over by the certification instead.
+			LOGGER.info("[YH] start rejected: player is in a real battle (D15)");
 			return false;
 		}
 		if (CertificationManager.INSTANCE.hasActiveTrial(player)) {
@@ -179,10 +181,16 @@ public final class CertificationService {
 		return started;
 	}
 
+	/** A real opponent battle (Youkai session or PvP duel); forced combat alone is fine. */
+	private static boolean inRealBattle(ServerPlayer player) {
+		var cap = dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(player);
+		return cap.isInSession() || !cap.snapshotOpponents().ids().isEmpty();
+	}
+
 	/** OP test path: starts without paying the start fee. */
 	public static boolean startFree(ServerPlayer player, CertificationQuote quote) {
 		if (!YHModConfig.COMMON.certificationEnabled.get()) return false;
-		if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.isInDanmakuSession(player)) return false;
+		if (inRealBattle(player)) return false;
 		if (CertificationManager.INSTANCE.hasActiveTrial(player)) return false;
 		return spawnTrial(player, quote, null);
 	}

@@ -145,6 +145,10 @@ public class CustomSpellStorage {
 		if (file.exists()) {
 			file.delete();
 		}
+		File ownerFile = getOwnerFile(file);
+		if (ownerFile.exists()) {
+			ownerFile.delete();
+		}
 		// Clean up empty namespace directory
 		File nsDir = file.getParentFile();
 		if (nsDir != null && nsDir.isDirectory() && nsDir.list().length == 0) {

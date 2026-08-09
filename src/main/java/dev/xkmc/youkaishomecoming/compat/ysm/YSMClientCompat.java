@@ -139,6 +139,11 @@ public class YSMClientCompat {
 	@SubscribeEvent(priority = EventPriority.HIGHEST)
 	public static void renderMappedLivingEntity(RenderLivingEvent.Pre<?, ?> event) {
 		LivingEntity entity = event.getEntity();
+		// This event fires before the entity renderer and can bypass
+		// GeneralYoukaiRenderer's invisible guard.
+		if (entity.isInvisible()) {
+			return;
+		}
 		float yaw = Mth.rotLerp(event.getPartialTick(), entity.yBodyRotO, entity.yBodyRot);
 		if (delegateRender(entity, yaw, event.getPartialTick(), event.getPoseStack(),
 				event.getMultiBufferSource(), event.getPackedLight())) {

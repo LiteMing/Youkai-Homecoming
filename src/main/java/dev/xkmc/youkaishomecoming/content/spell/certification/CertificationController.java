@@ -135,6 +135,12 @@ public class CertificationController {
 
 	public void tick(SpellCertificationEntity e) {
 		if (e.level().isClientSide) return;
+		// lock-on: the certification enemy always faces the player while the
+		// trial prepares or runs (death animation takes over afterwards)
+		if (state == CertificationState.PREPARE || state == CertificationState.ACTIVE) {
+			e.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
+					author.getEyePosition());
+		}
 		long gameTime = e.level().getGameTime();
 		if (gameTime - lastSyncTick >= 20) {
 			lastSyncTick = gameTime;

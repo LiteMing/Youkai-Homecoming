@@ -3,7 +3,6 @@ package dev.xkmc.youkaishomecoming.content.spell.certification.network;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
-import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import net.minecraft.network.chat.Component;
@@ -12,9 +11,8 @@ import net.minecraftforge.network.NetworkEvent;
 
 /**
  * Client → server: request a firm certification quote for a candidate
- * definition (design doc §18). Carries either the full candidate JSON or a
- * server-side spell id; the server re-parses, re-analyzes and re-clamps
- * everything.
+	 * definition (design doc §18). The client supplies only the id; the server
+	 * resolves the canonical definition from its registry.
  */
 @SerialClass
 public class CertificationQuoteRequestToServer extends SerialPacketBase {
@@ -50,16 +48,12 @@ public class CertificationQuoteRequestToServer extends SerialPacketBase {
 		if (player == null) return;
 		context.enqueueWork(() -> {
 			try {
-				SpellDefinition definition = null;
-				if (!spellId.isEmpty()) {
-					definition = SpellRegistry.get(new net.minecraft.resources.ResourceLocation(spellId));
+				if (spellId.isEmpty()) {
+					player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get("missing spell id"), false);
+					return;
 				}
-				if (definition == null && !definitionJson.isEmpty()) {
-					definition = SpellDefinition.CODEC
-							.parse(com.mojang.serialization.JsonOps.INSTANCE,
-									com.google.gson.JsonParser.parseString(definitionJson))
-							.result().orElse(null);
-				}
+				var id = net.minecraft.resources.ResourceLocation.tryParse(spellId);
+				var definition = id == null ? null : SpellRegistry.get(id);
 				if (definition == null) {
 					player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get("unknown definition"), false);
 					return;

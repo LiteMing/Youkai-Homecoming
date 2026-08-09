@@ -20,15 +20,26 @@ public final class CertificationManager {
 	private final Map<UUID, CertificationController> activeTrials = new HashMap<>();
 	private final Map<UUID, CertificationQuote> pendingQuotes = new HashMap<>();
 	private final Map<String, SpellDefinition> quoteDefinitions = new HashMap<>();
+	private static final long QUOTE_TTL_TICKS = 1200;
 
 	private CertificationManager() {
 	}
 
 	public CertificationQuote getQuote(ServerPlayer player) {
-		return pendingQuotes.get(player.getUUID());
+		CertificationQuote quote = pendingQuotes.get(player.getUUID());
+		if (quote == null) return null;
+		long age = player.level().getGameTime() - quote.issuedAtGameTime();
+		if (age < 0 || age > QUOTE_TTL_TICKS) {
+			pendingQuotes.remove(player.getUUID());
+			quoteDefinitions.remove(quote.quoteId());
+			return null;
+		}
+		return quote;
 	}
 
 	public CertificationQuote setQuote(ServerPlayer player, CertificationQuote quote, SpellDefinition definition) {
+		CertificationQuote previous = pendingQuotes.get(player.getUUID());
+		if (previous != null) quoteDefinitions.remove(previous.quoteId());
 		quoteDefinitions.put(quote.quoteId(), definition);
 		return pendingQuotes.put(player.getUUID(), quote);
 	}

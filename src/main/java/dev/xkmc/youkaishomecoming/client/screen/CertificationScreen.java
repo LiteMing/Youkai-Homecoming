@@ -39,7 +39,7 @@ public class CertificationScreen extends Screen {
 		// can adjust it here (overriding the definition for this certification —
 		// the definition is sent as full JSON to the server). HP is derived from
 		// the duration and shown read-only.
-		this.durationTicks = Math.max(20, definition.itemForm.duration());
+		this.durationTicks = clampDuration(definition.itemForm.duration());
 		this.halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
 	}
 
@@ -58,10 +58,10 @@ public class CertificationScreen extends Screen {
 		durationBox = new net.minecraft.client.gui.components.EditBox(this.font,
 				cx - 160, y, 150, 20, Component.literal("Duration"));
 		durationBox.setMaxLength(8);
-		durationBox.setValue(String.valueOf(Math.max(20, definition.itemForm.duration())));
+		durationBox.setValue(String.valueOf(durationTicks));
 		durationBox.setResponder(s -> {
 			try {
-				durationTicks = Math.max(20, Integer.parseInt(s.trim()));
+				durationTicks = clampDuration(Integer.parseInt(s.trim()));
 				refreshHpLabel();
 			} catch (NumberFormatException ignored) {
 				// keep last valid value
@@ -97,21 +97,16 @@ public class CertificationScreen extends Screen {
 	}
 
 	private void requestQuote() {
-		// apply the typed duration, then send the full definition JSON so the
-		// server quotes against the adjusted duration/HP
-		definition.itemForm = definition.itemForm.withDuration(Math.max(20, durationTicks));
-		String json;
-		try {
-			var encoded = dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition.CODEC
-					.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, definition)
-					.getOrThrow(false, s -> {});
-			json = new com.google.gson.Gson().toJson(encoded);
-		} catch (Exception e) {
-			status = "encode failed: " + e.getMessage();
-			return;
-		}
-		YoukaisHomecoming.HANDLER.toServer(new CertificationQuoteRequestToServer(json, durationTicks, halfSize));
+		// Only the server-owned spell id crosses the wire. The server applies the
+		// configured duration bounds and reads the canonical action tree itself.
+		YoukaisHomecoming.HANDLER.toServer(new CertificationQuoteRequestToServer(
+				definition, durationTicks, halfSize));
 		status = "quote requested...";
+	}
+
+	private static int clampDuration(int requested) {
+		return Math.max(YHModConfig.COMMON.certificationMinDurationTicks.get(),
+				Math.min(YHModConfig.COMMON.certificationMaxDurationTicks.get(), requested));
 	}
 
 	private void startCertification() {

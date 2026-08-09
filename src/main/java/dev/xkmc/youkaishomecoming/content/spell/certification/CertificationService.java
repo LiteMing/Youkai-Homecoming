@@ -42,11 +42,7 @@ public final class CertificationService {
 		// The spell's own declared duration is the certification timeout; the
 		// enemy HP is derived directly from the seconds: duration seconds x 10 x
 		// the regen ratio (a fixed total, not a growth over time).
-		int spellDuration = definition.itemForm.duration();
-		if (spellDuration <= 0) {
-			throw new IllegalArgumentException("This spell card does not declare a duration (item_form.duration)");
-		}
-		int durationTicks = clampDuration(spellDuration);
+		int durationTicks = clampDuration(requestedDurationTicks);
 		int spellHp = (int) Math.max(1, Math.round(durationTicks / 20.0 * 10.0
 				* YHModConfig.COMMON.certificationHpRegenRatio.get()));
 		// the arena half size is fixed by config (UI selection is ignored)
@@ -183,6 +179,16 @@ public final class CertificationService {
 									  @Nullable PaymentReceipt startReceipt) {
 		SpellDefinition definition = CertificationManager.INSTANCE.getQuoteDefinition(quote.quoteId());
 		if (definition == null) {
+			if (startReceipt != null) {
+				SpellPaymentRouter.refund(player, startReceipt);
+			}
+			return false;
+		}
+		// Re-check the cached definition and current bounds at the payment boundary;
+		// registry reloads or config changes must invalidate an old quote.
+		if (!quote.definitionHash().equals(SpellHash.canonicalHash(definition))
+				|| quote.durationTicks() != clampDuration(quote.durationTicks())
+				|| quote.arenaHalfSize() != YHModConfig.COMMON.certificationFixedArenaHalfSize.get()) {
 			if (startReceipt != null) {
 				SpellPaymentRouter.refund(player, startReceipt);
 			}

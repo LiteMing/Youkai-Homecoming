@@ -120,8 +120,6 @@ public class GeneralEventHandlers {
 			}
 		}
 	}
-		}
-	}
 
 	@SubscribeEvent
 	public static void onLevelTick(TickEvent.LevelTickEvent event) {

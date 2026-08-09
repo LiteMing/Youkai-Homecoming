@@ -236,6 +236,10 @@ public class CertificationController {
 		}
 		failReason = CertificationFailReason.SYSTEM_ERROR;
 		state = CertificationState.SYSTEM_ERROR;
+		// Must restore forced danmaku combat here too: the player would otherwise
+		// be stuck in D15 (certification start always rejected) after the enemy
+		// entity is killed or unloaded mid-trial.
+		restoreCombatState();
 		refund();
 		CertificationManager.INSTANCE.remove(authorId);
 	}

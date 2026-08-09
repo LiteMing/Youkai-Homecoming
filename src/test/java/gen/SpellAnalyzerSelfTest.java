@@ -260,9 +260,9 @@ public class SpellAnalyzerSelfTest {
 				&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.HOOK_ON_TRAIL) == SpellCapabilityPolicy.ALLOW
 				&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.HOOK_ON_HIT) == SpellCapabilityPolicy.ALLOW);
 		check("boss_on_damage EXPERIMENTAL", SpellCapabilityPolicies.defaultPolicy(SpellCapability.BOSS_ON_DAMAGE) == SpellCapabilityPolicy.EXPERIMENTAL);
-		check("origin target/absolute EXPERIMENTAL",
-				SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_TARGET) == SpellCapabilityPolicy.EXPERIMENTAL
-						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_ABSOLUTE) == SpellCapabilityPolicy.EXPERIMENTAL);
+		check("origin target/absolute ALLOW",
+				SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_TARGET) == SpellCapabilityPolicy.ALLOW
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_ABSOLUTE) == SpellCapabilityPolicy.ALLOW);
 		check("confine/teleport/erase/clear/flag/force/fire EXPERIMENTAL",
 				SpellCapabilityPolicies.defaultPolicy(SpellCapability.CONFINED_TARGET) == SpellCapabilityPolicy.EXPERIMENTAL
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.TELEPORT) == SpellCapabilityPolicy.EXPERIMENTAL

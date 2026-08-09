@@ -2,11 +2,13 @@ package dev.xkmc.youkaishomecoming.content.spell.certification;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 
@@ -34,8 +36,15 @@ public final class CertifiedSpellRewardService {
 		ItemStack stack = DynamicSpellItem.createStackWithDuration(
 				YHDanmaku.DYNAMIC_SPELL.get(), definition.id, castDuration, false);
 		CertifiedSpellValidator.tagCertified(stack, certificate);
-		// programmatic random spell color (#RRGGBB), same mechanism as dynamic-color danmaku
-		DynamicSpellItem.withRandomColor(stack, net.minecraft.util.RandomSource.create());
+		// spell color = blended average of the danmaku colors inside the definition,
+		// with a small jitter; falls back to fully random when nothing is readable
+		RandomSource random = RandomSource.create();
+		DanmakuColor color = SpellColorExtractor.extractWithJitter(definition, random);
+		if (color == null) {
+			DynamicSpellItem.withRandomColor(stack, random);
+		} else {
+			DynamicSpellItem.withColor(stack, color);
+		}
 		return stack;
 	}
 

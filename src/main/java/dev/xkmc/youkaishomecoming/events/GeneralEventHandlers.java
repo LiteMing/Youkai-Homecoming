@@ -109,15 +109,17 @@ public class GeneralEventHandlers {
 	 * creator cannot claim a second copy via /yhdev certification claim.
 	 */
 	@SubscribeEvent
-	public static void onItemPickup(net.minecraftforge.event.entity.player.ItemEntityPickupEvent event) {
-		var itemEntity = event.getItem();
+	public static void onItemPickup(net.minecraftforge.event.entity.player.PlayerEvent.ItemPickupEvent event) {
+		var itemEntity = event.getOriginalEntity();
 		if (itemEntity instanceof dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellRewardService.CertifiedRewardItem reward) {
 			String hash = dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator
 					.getCertifiedHash(reward.getItem());
-			if (!hash.isEmpty() && event.getPlayer() instanceof net.minecraft.server.level.ServerPlayer sp) {
+			if (!hash.isEmpty() && event.getEntity() instanceof net.minecraft.server.level.ServerPlayer sp) {
 				dev.xkmc.youkaishomecoming.content.spell.certification.PendingRewardStorage.claim(
 						sp.server, reward.ownerId(), hash);
 			}
+		}
+	}
 		}
 	}
 

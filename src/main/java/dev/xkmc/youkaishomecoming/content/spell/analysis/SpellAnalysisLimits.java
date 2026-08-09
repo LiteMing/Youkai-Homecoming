@@ -46,10 +46,17 @@ public record SpellAnalysisLimits(
 
 	// --- certification spec defaults (single source for YHModConfig defineInRange) ---
 
-	public static final int DEFAULT_MAX_SPAWN_PER_TICK = 512;
-	public static final int DEFAULT_MAX_PEAK_ALIVE = 2048;
-	public static final long DEFAULT_MAX_PROJECTILE_TICKS = 2_000_000L;
-	public static final long DEFAULT_MAX_HOOK_EXECUTIONS = 250_000L;
+	/**
+	 * Certification hard-limit defaults are deliberately LOOSE: the analyzer must
+	 * never reject reasonable spells out of the box (the weakest built-in spell,
+	 * sunny_milk, conservatively peaks at ~9600 concurrent projectiles and ~69M
+	 * projectile-ticks). Real limits are set by yhdev in the YHModConfig
+	 * "certification" section — the config is the only tuning source (INV-8).
+	 */
+	public static final int DEFAULT_MAX_SPAWN_PER_TICK = 100_000;
+	public static final int DEFAULT_MAX_PEAK_ALIVE = 1_000_000;
+	public static final long DEFAULT_MAX_PROJECTILE_TICKS = 10_000_000_000L;
+	public static final long DEFAULT_MAX_HOOK_EXECUTIONS = 10_000_000L;
 	public static final int DEFAULT_MAX_HITS_PER_PROJECTILE = 4;
 	/** 7200 ticks = 360s > the 300s max certification duration (design doc §5.2). */
 	public static final long DEFAULT_CERTIFICATION_WINDOW_TICKS = 7200;

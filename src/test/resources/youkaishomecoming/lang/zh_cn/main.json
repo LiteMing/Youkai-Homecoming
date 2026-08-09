@@ -33,7 +33,13 @@
       "basin": "踩踏",
       "cooking": "煮饭"
     },
-    "tooltip": {
+    "cert": {
+    "prepare": "认证倒计时 %s 秒——待在场地内",
+    "active": "认证开始！坚持 %s 秒（无伤）",
+    "success": "认证成功！",
+    "fail": "认证失败：%s"
+  },
+  "tooltip": {
       "chance": " %2$s%%概率获得%1$s",
       "place": "可被放置于地上",
       "danmaku_bypass": "穿透实体",

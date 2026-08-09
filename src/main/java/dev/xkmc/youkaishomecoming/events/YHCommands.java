@@ -32,6 +32,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
 
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellRewardService;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.certification.PendingRewardStorage;
@@ -749,8 +750,7 @@ public class YHCommands {
 			ctx.getSource().sendSystemMessage(Component.literal("[YH] pending reward data missing"));
 			return 0;
 		}
-		ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), definition.id, true);
-		CertifiedSpellValidator.tagCertified(stack, certificate);
+		ItemStack stack = CertifiedSpellRewardService.buildCertifiedStack(player.server, certificate, definition);
 		if (player.getInventory().add(stack)) {
 			PendingRewardStorage.claim(player.server, player.getUUID(), hash);
 			ctx.getSource().sendSystemMessage(Component.literal("[YH] claimed: " + definition.display.name()));

@@ -146,4 +146,21 @@ public final class CertificationService {
 	public static ResourceLocation startProvider() {
 		return new ResourceLocation(YHModConfig.COMMON.certificationStartPaymentProvider.get());
 	}
+
+	/**
+	 * Reward cast duration curve: the certified item runs for a fraction of the
+	 * certified duration — 1/3 at the shortest certification, falling linearly to
+	 * 1/10 at the longest (curve endpoints configurable). The certified duration
+	 * itself remains the hard cap at cast time (design §2.4).
+	 */
+	public static int rewardDurationTicks(int certifiedDurationTicks) {
+		int minD = YHModConfig.COMMON.certificationMinDurationTicks.get();
+		int maxD = YHModConfig.COMMON.certificationMaxDurationTicks.get();
+		double span = Math.max(1, maxD - minD);
+		double t = Math.min(1, Math.max(0, (certifiedDurationTicks - minD) / span));
+		double shortRatio = YHModConfig.COMMON.certificationRewardDurationShortRatio.get();
+		double longRatio = YHModConfig.COMMON.certificationRewardDurationLongRatio.get();
+		double ratio = shortRatio + (longRatio - shortRatio) * t;
+		return Math.max(20, (int) Math.round(certifiedDurationTicks * ratio));
+	}
 }

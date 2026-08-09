@@ -114,6 +114,7 @@ public class CertificationController {
 		dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.setDanmakuCombat(author, true);
 		combatForcedByCertification = true;
 		logState("begin prepare");
+		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_PREPARE.get(countdown / 20), false);
 		syncState();
 	}
 
@@ -153,6 +154,7 @@ public class CertificationController {
 			// fresh runtime: spell loops are restarted by the controller (D6/D5)
 			e.setSpellRuntime(new SpellRuntime(definition));
 			logState("active start");
+			author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_ACTIVE.get(quote.durationTicks() / 20), false);
 			syncState();
 		}
 	}
@@ -245,6 +247,7 @@ public class CertificationController {
 		restoreCombatState();
 		logState("success");
 		postCertificationEvent();
+		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_SUCCESS.get(), false);
 		syncState();
 		try {
 			CertifiedSpellRewardService.issue(e);
@@ -277,6 +280,7 @@ public class CertificationController {
 		e.eraseAllDanmaku(null);
 		e.getDanmakuHolder().clearSentQueue();
 		postCertificationEvent();
+		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_FAIL.get(reason.id()), false);
 		syncState();
 	}
 

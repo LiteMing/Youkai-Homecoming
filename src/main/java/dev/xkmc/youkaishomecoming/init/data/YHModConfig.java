@@ -142,6 +142,8 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue certificationPublicRendering;
 		public final ForgeConfigSpec.IntValue certificationRewardOwnerLockTicks;
 		public final ForgeConfigSpec.BooleanValue certificationRewardNeverDespawn;
+		public final ForgeConfigSpec.DoubleValue certificationRewardDurationShortRatio;
+		public final ForgeConfigSpec.DoubleValue certificationRewardDurationLongRatio;
 
 		public final ForgeConfigSpec.IntValue youkaifyingTime;
 		public final ForgeConfigSpec.DoubleValue youkaifyingChance;

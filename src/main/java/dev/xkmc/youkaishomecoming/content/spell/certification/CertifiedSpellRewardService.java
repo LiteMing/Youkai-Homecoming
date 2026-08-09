@@ -24,6 +24,19 @@ public final class CertifiedSpellRewardService {
 	private CertifiedSpellRewardService() {
 	}
 
+	/**
+	 * Builds the reusable certified spell item: not single-use, with a cast
+	 * duration from the certified-duration curve (design §16; Phase 7 balance).
+	 */
+	public static ItemStack buildCertifiedStack(net.minecraft.server.MinecraftServer server,
+												SpellCertificate certificate, SpellDefinition definition) {
+		int castDuration = CertificationService.rewardDurationTicks(certificate.certifiedDuration());
+		ItemStack stack = DynamicSpellItem.createStackWithDuration(
+				YHDanmaku.DYNAMIC_SPELL.get(), definition.id, castDuration, false);
+		CertifiedSpellValidator.tagCertified(stack, certificate);
+		return stack;
+	}
+
 	public static void issue(SpellCertificationEntity entity) {
 		ServerLevel level = (ServerLevel) entity.level();
 		SpellCertificationEntity certification = entity;
@@ -31,8 +44,7 @@ public final class CertifiedSpellRewardService {
 		SpellDefinition definition = certification.controller().definition();
 		CertifiedSpellStorage.save(level.getServer(), certificate, definition);
 
-		ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), definition.id, true);
-		CertifiedSpellValidator.tagCertified(stack, certificate);
+		ItemStack stack = buildCertifiedStack(level.getServer(), certificate, definition);
 
 		ServerPlayer author = certification.controller().author();
 		boolean offline = author == null || !author.isAlive()

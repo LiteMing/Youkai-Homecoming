@@ -39,4 +39,14 @@ public record SpellItemForm(
 	public ResourceLocation iconItemOrNull() {
 		return iconItem.orElse(null);
 	}
+
+	/** Copy with a new declared duration (ticks = certification timeout). */
+	public SpellItemForm withDuration(int newDuration) {
+		return new SpellItemForm(generate, cooldown, requiresTarget, iconItem, casterMoves, newDuration, hp);
+	}
+
+	/** Copy with a new spell HP (certification enemy max health). */
+	public SpellItemForm withHp(int newHp) {
+		return new SpellItemForm(generate, cooldown, requiresTarget, iconItem, casterMoves, duration, newHp);
+	}
 }

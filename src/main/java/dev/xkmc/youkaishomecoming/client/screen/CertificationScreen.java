@@ -29,12 +29,15 @@ public class CertificationScreen extends Screen {
 	private int durationTicks;
 	private double halfSize;
 	private String status = "";
+	private net.minecraft.client.gui.components.EditBox durationBox;
+	private net.minecraft.client.gui.components.EditBox hpBox;
 
 	public CertificationScreen(SpellDefinition definition) {
 		super(Component.literal("Spell Certification"));
 		this.definition = definition;
-		// the spell's own declared duration is the certification timeout (fixed,
-		// no UI selection); the arena stays selectable
+		// the spell's declared duration is the certification timeout; the player
+		// can adjust duration and HP right here (overriding the definition for
+		// this certification — the definition is sent as full JSON to the server)
 		this.durationTicks = Math.max(20, definition.itemForm.duration());
 		this.halfSize = clampInt(YHModConfig.COMMON.certificationMinArenaHalfSize.get(),
 				YHModConfig.COMMON.certificationMaxArenaHalfSize.get(), 8);
@@ -47,9 +50,40 @@ public class CertificationScreen extends Screen {
 	@Override
 	protected void init() {
 		int cx = this.width / 2;
-		int y = 40;
-		guiTitleLine(cx, y);
-		y += 24;
+		int y = 34;
+
+		durationBox = new net.minecraft.client.gui.components.EditBox(this.font,
+				cx - 160, y, 150, 20, Component.literal("Duration"));
+		durationBox.setMaxLength(8);
+		durationBox.setValue(String.valueOf(Math.max(20, definition.itemForm.duration())));
+		durationBox.setResponder(s -> {
+			try {
+				durationTicks = Math.max(20, Integer.parseInt(s.trim()));
+			} catch (NumberFormatException ignored) {
+				// keep last valid value
+			}
+		});
+		addRenderableWidget(durationBox);
+		addRenderableWidget(Button.builder(Component.literal("Duration (ticks)"),
+						b -> {
+						}).bounds(cx - 10, y, 120, 20).build());
+
+		hpBox = new net.minecraft.client.gui.components.EditBox(this.font,
+				cx - 160, y + 24, 150, 20, Component.literal("Spell HP"));
+		hpBox.setMaxLength(8);
+		hpBox.setValue(String.valueOf(Math.max(1, definition.itemForm.hp())));
+		hpBox.setResponder(s -> {
+			try {
+				definition.itemForm = definition.itemForm.withHp(Math.max(1, Integer.parseInt(s.trim())));
+			} catch (NumberFormatException ignored) {
+				// keep last valid value
+			}
+		});
+		addRenderableWidget(hpBox);
+		addRenderableWidget(Button.builder(Component.literal("Spell HP"),
+						b -> {
+						}).bounds(cx - 10, y + 24, 120, 20).build());
+		y += 60;
 
 		int minArena = YHModConfig.COMMON.certificationMinArenaHalfSize.get();
 		int maxArena = Math.max(minArena, YHModConfig.COMMON.certificationMaxArenaHalfSize.get());
@@ -78,21 +112,6 @@ public class CertificationScreen extends Screen {
 						b -> onClose()).bounds(cx - 40, y, 80, 20).build());
 	}
 
-	/** Fixed spell info header: timeout and HP come from the spell definition. */
-	private void guiTitleLine(int cx, int y) {
-		int duration = Math.max(20, definition.itemForm.duration());
-		int hp = definition.itemForm.hp();
-		String line;
-		if (hp > 0) {
-			line = String.format(Locale.ROOT, "Spell: %ds timeout / %d HP", duration / 20, hp);
-		} else {
-			line = String.format(Locale.ROOT, "Spell: %ds timeout / HP not set", duration / 20);
-		}
-		addRenderableWidget(Button.builder(Component.literal(line),
-						b -> {
-						}).bounds(cx - 160, y, 320, 20).build());
-	}
-
 	private static double arenaProgress(int min, int max, double half) {
 		if (max <= min) return 0;
 		return (half - min) / (double) (max - min);
@@ -108,7 +127,20 @@ public class CertificationScreen extends Screen {
 	}
 
 	private void requestQuote() {
-		YoukaisHomecoming.HANDLER.toServer(new CertificationQuoteRequestToServer(definition, durationTicks, halfSize));
+		// apply the typed duration, then send the full definition JSON so the
+		// server quotes against the adjusted duration/HP
+		definition.itemForm = definition.itemForm.withDuration(Math.max(20, durationTicks));
+		String json;
+		try {
+			var encoded = dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition.CODEC
+					.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, definition)
+					.getOrThrow(false, s -> {});
+			json = new com.google.gson.Gson().toJson(encoded);
+		} catch (Exception e) {
+			status = "encode failed: " + e.getMessage();
+			return;
+		}
+		YoukaisHomecoming.HANDLER.toServer(new CertificationQuoteRequestToServer(json, durationTicks, halfSize));
 		status = "quote requested...";
 	}
 

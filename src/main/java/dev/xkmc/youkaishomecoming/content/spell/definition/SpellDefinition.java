@@ -32,7 +32,8 @@ public class SpellDefinition {
 
 	public final ResourceLocation id;
 	public final SpellDisplay display;
-	public final SpellItemForm itemForm;
+	/** Mutable so the editor can update duration/HP in place (kept as one object). */
+	public SpellItemForm itemForm;
 	public final ResourceLocation entryPhase;
 	public final Map<ResourceLocation, PhaseDefinition> phases;
 	public final DifficultyProfile difficulty;

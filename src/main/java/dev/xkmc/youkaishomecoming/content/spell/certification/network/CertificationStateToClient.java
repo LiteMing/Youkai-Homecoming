@@ -5,6 +5,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationState;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 import org.jetbrains.annotations.Nullable;
@@ -61,10 +62,12 @@ public class CertificationStateToClient extends SerialPacketBase {
 							healthTotal, healthLeft, failReason, true),
 					author);
 		}
-		YoukaisHomecoming.HANDLER.toTrackingPlayers(
-				new CertificationStateToClient(entity.getId(), state, elapsedTicks, targetTicks,
-						healthTotal, healthLeft, failReason, false),
-				entity);
+		if (YHModConfig.COMMON.certificationPublicRendering.get()) {
+			YoukaisHomecoming.HANDLER.toTrackingPlayers(
+					new CertificationStateToClient(entity.getId(), state, elapsedTicks, targetTicks,
+							healthTotal, healthLeft, failReason, false),
+					entity);
+		}
 	}
 
 	@Override

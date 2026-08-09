@@ -11,9 +11,13 @@ import net.minecraftforge.fml.loading.FMLPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.io.File;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.nio.file.Files;
+import java.util.UUID;
 
 /**
  * JSON file-based storage for custom spell definitions.
@@ -66,6 +70,38 @@ public class CustomSpellStorage {
 		nsDir.mkdirs();
 		String fileName = id.getPath().replace('/', '_') + ".json";
 		return new File(nsDir, fileName);
+	}
+
+	/**
+	 * Ownership metadata lives in a sidecar file next to the spell JSON
+	 * ({@code <spell>.json.owner}) so the definition format itself stays intact.
+	 * Created by the editor save path; non-OP players may only edit/delete spells
+	 * they created themselves.
+	 */
+	private static File getOwnerFile(File spellFile) {
+		return new File(spellFile.getPath() + ".owner");
+	}
+
+	public static void saveOwner(MinecraftServer server, ResourceLocation id, UUID owner) {
+		File file = getOwnerFile(getSpellFile(server, id));
+		try {
+			Files.writeString(file.toPath(), owner.toString());
+		} catch (IOException e) {
+			LOGGER.error("Failed to save owner for spell {}: {}", id, file.getPath(), e);
+		}
+	}
+
+	@Nullable
+	public static UUID loadOwner(MinecraftServer server, ResourceLocation id) {
+		File file = getOwnerFile(getSpellFile(server, id));
+		if (!file.exists()) {
+			return null;
+		}
+		try {
+			return UUID.fromString(Files.readString(file.toPath()).trim());
+		} catch (Exception e) {
+			return null;
+		}
 	}
 
 	/**

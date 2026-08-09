@@ -103,6 +103,18 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		return createStack(item, spellId, false);
 	}
 
+	/**
+	 * Bind a spell id onto a BLANK card in place (the card the player was holding
+	 * when they opened the editor). Idempotent: cards already bound to an id are
+	 * never rebound — one spell card binds exactly one spell id.
+	 */
+	public static void bindSpellId(ItemStack stack, ResourceLocation spellId) {
+		if (stack.hasTag() && stack.getTag().contains(TAG_SPELL_ID)) {
+			return;
+		}
+		stack.getOrCreateTag().putString(TAG_SPELL_ID, spellId.toString());
+	}
+
 	public static ItemStack createStack(Item item, ResourceLocation spellId, boolean singleUse) {
 		ItemStack stack = new ItemStack(item);
 		stack.getOrCreateTag().putString(TAG_SPELL_ID, spellId.toString());

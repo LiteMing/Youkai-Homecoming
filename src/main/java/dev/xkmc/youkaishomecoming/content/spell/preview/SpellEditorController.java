@@ -9,6 +9,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
@@ -150,10 +151,45 @@ public class SpellEditorController {
 		SpellDefinition created = createEmptySpellDefinition(spellId);
 		SpellRegistry.register(created);
 		SpellEditorNetworkClient.save(created);
+		// Bind the blank card the player is holding the moment the id is created —
+		// the card and the spell id become one from here on (server re-binds on
+		// save as authority, so OP saves get the card too).
+		bindHeldBlankCard(spellId);
 		skipSaveOnNextDefinitionSwitch = true;
 		scene.pause();
 		scene.switchSpellDefinition(created, true);
 		displayEditorMessage("[YH] Created spell " + formatResourceId(spellId));
+	}
+
+	/**
+	 * Apply the newly created spell id to the blank DynamicSpellItem the player is
+	 * holding (main hand, then offhand, then first blank card in the inventory).
+	 * Only cards without a bound id are touched.
+	 */
+	private void bindHeldBlankCard(ResourceLocation spellId) {
+		var player = Minecraft.getInstance().player;
+		if (player == null) {
+			return;
+		}
+		for (ItemStack stack : new ItemStack[]{player.getMainHandItem(), player.getOffhandItem()}) {
+			if (tryBind(stack, spellId)) {
+				return;
+			}
+		}
+		for (ItemStack stack : player.getInventory().items) {
+			if (tryBind(stack, spellId)) {
+				return;
+			}
+		}
+	}
+
+	private static boolean tryBind(ItemStack stack, ResourceLocation spellId) {
+		if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+				&& dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack) == null) {
+			dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.bindSpellId(stack, spellId);
+			return true;
+		}
+		return false;
 	}
 
 	public void deleteSelectedSpell() {

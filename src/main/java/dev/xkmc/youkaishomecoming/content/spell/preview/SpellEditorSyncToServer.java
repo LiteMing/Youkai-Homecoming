@@ -19,7 +19,6 @@ import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeAccess;
-import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -28,6 +27,7 @@ import net.minecraftforge.network.NetworkEvent;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @SerialClass
@@ -181,9 +181,14 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		try {
 			if (action != Action.IMPORT_MARKET && !sender.hasPermissions(2)) {
 				// Non-OP players may save a NEW self-made spell (crafted blank card,
-				// editor save path). Anything else stays operator-only.
+				// editor save path) or delete a spell they created themselves.
+				// Anything else stays operator-only.
 				if (action == Action.SAVE) {
 					saveSelfMadeSpell(sender);
+					return;
+				}
+				if (action == Action.DELETE) {
+					deleteOwnSpell(sender);
 					return;
 				}
 				sender.sendSystemMessage(Component.literal("[YH] No permission to edit spells on this server."));
@@ -210,8 +215,10 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	/**
 	 * Non-operator save path: the spell must be a custom (self-made) definition —
 	 * never a built-in or market-managed id — and must not contain run_command.
-	 * On success the bound spell card (reusable DynamicSpellItem) is handed to
-	 * the player, closing the certification loop for non-OP players.
+	 * A brand-new id is claimed by this player (owner sidecar file); existing
+	 * spells may only be overwritten by their creator. No card is issued here —
+	 * the card the player holds is bound in place (server authority), so OP and
+	 * non-OP saves behave identically.
 	 */
 	private void saveSelfMadeSpell(ServerPlayer sender) {
 		SpellDefinition definition = parseDefinition();
@@ -226,19 +233,69 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (containsPrivilegedAction(definition)) {
 			throw new IllegalArgumentException("run_command requires operator permission");
 		}
+		if (origin != null) {
+			UUID owner = CustomSpellStorage.loadOwner(sender.server, id);
+			if (owner == null || !owner.equals(sender.getUUID())) {
+				throw new IllegalArgumentException("Only the creator can edit this spell card: " + id);
+			}
+		}
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
 		if (origin == null) {
-			// brand-new self-made spell: hand the player the bound (unfinished) card.
-			// Editing an existing card never issues a second card.
-			ItemStack card = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), id, false);
-			if (!sender.getInventory().add(card)) {
-				sender.drop(card, false);
-			}
-			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id + " and handed you the spell card"));
+			// brand-new self-made spell: claim ownership and bind the held blank card
+			CustomSpellStorage.saveOwner(sender.server, id, sender.getUUID());
+			bindBlankCardInHand(sender, id);
+			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id + " and bound your spell card"));
 		} else {
 			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id));
 		}
+	}
+
+	/**
+	 * Bind a spell id onto the blank DynamicSpellItem the player is holding
+	 * (main hand, then offhand, then first blank card in the inventory). Cards
+	 * already bound to an id are never rebound.
+	 */
+	private static void bindBlankCardInHand(ServerPlayer sender, ResourceLocation id) {
+		for (ItemStack stack : new ItemStack[]{sender.getMainHandItem(), sender.getOffhandItem()}) {
+			if (tryBindBlankCard(stack, id)) {
+				return;
+			}
+		}
+		for (ItemStack stack : sender.getInventory().items) {
+			if (tryBindBlankCard(stack, id)) {
+				return;
+			}
+		}
+	}
+
+	private static boolean tryBindBlankCard(ItemStack stack, ResourceLocation id) {
+		if (stack.getItem() instanceof DynamicSpellItem && DynamicSpellItem.getSpellId(stack) == null) {
+			DynamicSpellItem.bindSpellId(stack, id);
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Non-operator delete: only the creator may delete their own spell card.
+	 * Operators keep full control through the regular delete path.
+	 */
+	private void deleteOwnSpell(ServerPlayer sender) {
+		ResourceLocation id = ResourceLocation.tryParse(spellId);
+		if (id == null) {
+			throw new IllegalArgumentException("Invalid spell id: " + spellId);
+		}
+		UUID owner = CustomSpellStorage.loadOwner(sender.server, id);
+		if (owner == null || !owner.equals(sender.getUUID())) {
+			throw new IllegalArgumentException("Only the creator can delete this spell card: " + id);
+		}
+		if (SpellRegistry.hasDefault(id)) {
+			throw new IllegalArgumentException("Cannot delete built-in spell: " + id);
+		}
+		SpellRegistry.remove(id);
+		CustomSpellStorage.deleteSpell(sender.server, id);
+		sender.sendSystemMessage(Component.literal("[YH] Deleted spell " + id));
 	}
 
 	private void exportGlobalSpell(ServerPlayer sender) {
@@ -250,8 +307,14 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private void saveSpell(ServerPlayer sender, boolean reapply) {
 		SpellDefinition definition = parseDefinition();
+		// Snapshot origin BEFORE registering: a brand-new id has none, and only
+		// that case binds the held blank card (one card -> one id, never rebind).
+		boolean brandNew = SpellRegistry.getOrigin(definition.id) == null;
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
+		if (brandNew) {
+			bindBlankCardInHand(sender, definition.id);
+		}
 		int count = reapply ? SpellRuntimeAccess.reapply(sender.server, definition.id, true) : 0;
 		if (reapply) {
 			sender.sendSystemMessage(Component.literal("[YH] Applied & saved spell to " + count + " entities"));

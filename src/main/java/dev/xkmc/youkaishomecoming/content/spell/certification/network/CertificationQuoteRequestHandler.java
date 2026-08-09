@@ -57,12 +57,21 @@ public final class CertificationQuoteRequestHandler {
 	 */
 	private static boolean holdsOwnSpell(ServerPlayer player, SpellDefinition definition) {
 		ResourceLocation id = definition.id;
-		if (id == null || SpellRegistry.hasDefault(id)) return false;
+		if (id == null || SpellRegistry.hasDefault(id)) {
+			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.LOGGER.info(
+					"[YH] cert reject: id={} default={}", id, id != null && SpellRegistry.hasDefault(id));
+			return false;
+		}
 		for (ItemStack stack : player.getInventory().items) {
-			if (stack.getItem() instanceof DynamicSpellItem
-					&& id.equals(DynamicSpellItem.getSpellId(stack))
-					&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
-				return true;
+			if (stack.getItem() instanceof DynamicSpellItem) {
+				dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.LOGGER.info(
+						"[YH] cert scan: bound={} certified={}",
+						DynamicSpellItem.getSpellId(stack),
+						dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack));
+				if (id.equals(DynamicSpellItem.getSpellId(stack))
+						&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
+					return true;
+				}
 			}
 		}
 		return false;

@@ -39,12 +39,7 @@ public class CertificationScreen extends Screen {
 		// can adjust duration and HP right here (overriding the definition for
 		// this certification — the definition is sent as full JSON to the server)
 		this.durationTicks = Math.max(20, definition.itemForm.duration());
-		this.halfSize = clampInt(YHModConfig.COMMON.certificationMinArenaHalfSize.get(),
-				YHModConfig.COMMON.certificationMaxArenaHalfSize.get(), 8);
-	}
-
-	private static int clampInt(int min, int max, int value) {
-		return Math.max(min, Math.min(max, value));
+		this.halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
 	}
 
 	@Override
@@ -85,22 +80,12 @@ public class CertificationScreen extends Screen {
 						}).bounds(cx - 10, y + 24, 120, 20).build());
 		y += 60;
 
-		int minArena = YHModConfig.COMMON.certificationMinArenaHalfSize.get();
-		int maxArena = Math.max(minArena, YHModConfig.COMMON.certificationMaxArenaHalfSize.get());
-		addRenderableWidget(new AbstractSliderButton(cx - 160, y, 320, 20,
-				Component.literal(""), arenaProgress(minArena, maxArena, halfSize)) {
-			@Override
-			protected void updateMessage() {
-				halfSize = sliderValue(minArena, maxArena, ARENA_STEP_BLOCKS, this.value);
-				setMessage(Component.literal(String.format(Locale.ROOT, "Arena half-size: %.0f blocks", halfSize)));
-			}
-
-			@Override
-			protected void applyValue() {
-				halfSize = sliderValue(minArena, maxArena, ARENA_STEP_BLOCKS, this.value);
-				status = "arena: " + halfSize;
-			}
-		});
+		// the arena half size is fixed by config (UI selection is ignored)
+		halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
+		addRenderableWidget(Button.builder(Component.literal(
+						String.format(Locale.ROOT, "Arena half-size: %.0f blocks (fixed)", halfSize)),
+						b -> {
+						}).bounds(cx - 160, y, 320, 20).build());
 		y += 34;
 
 		addRenderableWidget(Button.builder(Component.literal("Request Quote"),
@@ -110,20 +95,6 @@ public class CertificationScreen extends Screen {
 		y += 24;
 		addRenderableWidget(Button.builder(Component.literal("Cancel"),
 						b -> onClose()).bounds(cx - 40, y, 80, 20).build());
-	}
-
-	private static double arenaProgress(int min, int max, double half) {
-		if (max <= min) return 0;
-		return (half - min) / (double) (max - min);
-	}
-
-	/** Convert a slider value (0..1) to a stepped int within [min, max]. */
-	private static int sliderValue(int min, int max, int step, double value) {
-		int raw = min + (int) Math.round(value * (max - min));
-		if (step > 1) {
-			raw = min + Math.round((float) (raw - min) / step) * step;
-		}
-		return clampInt(min, max, raw);
 	}
 
 	private void requestQuote() {

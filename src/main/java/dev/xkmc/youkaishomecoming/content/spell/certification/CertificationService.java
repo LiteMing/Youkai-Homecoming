@@ -51,7 +51,8 @@ public final class CertificationService {
 			throw new IllegalArgumentException("This spell card does not declare HP (item_form.hp)");
 		}
 		int durationTicks = clampDuration(spellDuration);
-		double halfSize = clampHalfSize(requestedHalfSize);
+		// the arena half size is fixed by config (UI selection is ignored)
+		double halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
 		// Special-node quota: EXPERIMENTAL capabilities (teleport, erase, clear,
 		// on_damage) are denied by default; a boss-drop draft card may carry a
 		// quota (the count of such nodes in the boss's own definition).
@@ -189,6 +190,9 @@ public final class CertificationService {
 			}
 			return false;
 		}
+		// entering the certification ends and clears any spell card the player
+		// is currently releasing (their danmaku would pollute the trial)
+		dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.clear(player);
 		String definitionHash = quote.definitionHash();
 		long movementSeed = player.level().random.nextLong();
 		SpellCertificationEntity entity = new SpellCertificationEntity(

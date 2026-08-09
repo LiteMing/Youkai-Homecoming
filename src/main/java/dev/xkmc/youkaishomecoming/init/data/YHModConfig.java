@@ -145,6 +145,8 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue certificationRewardDurationShortRatio;
 		public final ForgeConfigSpec.DoubleValue certificationRewardDurationLongRatio;
 		public final ForgeConfigSpec.DoubleValue certificationPlayerUseHpRatio;
+		public final ForgeConfigSpec.DoubleValue certificationFixedArenaHalfSize;
+		public final ForgeConfigSpec.DoubleValue certificationHpRegenRatio;
 
 		public final ForgeConfigSpec.IntValue youkaifyingTime;
 		public final ForgeConfigSpec.DoubleValue youkaifyingChance;
@@ -404,6 +406,12 @@ public class YHModConfig {
 				certificationPlayerUseHpRatio = builder.comment("When a player uses a certified spell card, its break HP bar (boss bar) is this fraction of the certification HP (default 0.5)")
 						.translation("config.youkaishomecoming.common.certification.playerUseHpRatio")
 						.defineInRange("playerUseHpRatio", 0.5, 0.05, 1.0);
+				certificationFixedArenaHalfSize = builder.comment("Fixed certification arena half size in blocks (always used, UI selection ignored)")
+						.translation("config.youkaishomecoming.common.certification.fixedArenaHalfSize")
+						.defineInRange("fixedArenaHalfSize", 64.0, 8.0, 256.0);
+				certificationHpRegenRatio = builder.comment("Certification enemy HP grows over time: +10 HP per second x this ratio (default 1)")
+						.translation("config.youkaishomecoming.common.certification.hpRegenRatio")
+						.defineInRange("hpRegenRatio", 1.0, 0.0, 10.0);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.youkaifying_effect").push("youkaifying_effect");

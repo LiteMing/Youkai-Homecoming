@@ -27,19 +27,26 @@ public final class SpellCapabilityPolicies {
 		put(SpellCapability.HOOK_ON_EXPIRY, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.HOOK_ON_TRAIL, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.HOOK_ON_HIT, SpellCapabilityPolicy.ALLOW);
+		// Player-facing experimental nodes: unlockable within a boss-draft's
+		// special-node quota. on_damage, teleport, and the screen/erase nodes are
+		// legitimate certification tactics (the player attacks the certification
+		// enemy with danmaku and may clear their own mechanics).
 		put(SpellCapability.BOSS_ON_DAMAGE, SpellCapabilityPolicy.EXPERIMENTAL);
+		put(SpellCapability.TELEPORT, SpellCapabilityPolicy.EXPERIMENTAL);
+		put(SpellCapability.ERASE_ENEMY_DANMAKU, SpellCapabilityPolicy.EXPERIMENTAL);
+		put(SpellCapability.CLEAR_SCREEN, SpellCapabilityPolicy.EXPERIMENTAL);
 		// TARGET/ABSOLUTE origins are common in built-in spells; certification keeps
 		// them allowed — wrong-place spawning is neutralized by the active-threat
 		// discount (D6) and point-blank spawning is a legitimate danmaku challenge.
 		put(SpellCapability.ORIGIN_TARGET, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.ORIGIN_ABSOLUTE, SpellCapabilityPolicy.ALLOW);
-		put(SpellCapability.CONFINED_TARGET, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.TELEPORT, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.ERASE_ENEMY_DANMAKU, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.CLEAR_SCREEN, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.SET_ENTITY_FLAG, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.FORCE_SPELL, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.FIRE_SPELL, SpellCapabilityPolicy.EXPERIMENTAL);
+		// Boss/creator-facing freedom nodes: confine, entity flags and force/fire
+		// spell are OP_ONLY — players must not bypass limits with them, they exist
+		// for boss spell creators only.
+		put(SpellCapability.CONFINED_TARGET, SpellCapabilityPolicy.OP_ONLY);
+		put(SpellCapability.SET_ENTITY_FLAG, SpellCapabilityPolicy.OP_ONLY);
+		put(SpellCapability.FORCE_SPELL, SpellCapabilityPolicy.OP_ONLY);
+		put(SpellCapability.FIRE_SPELL, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.LEGACY_TICKER, SpellCapabilityPolicy.DENY);
 		put(SpellCapability.RUN_COMMAND, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.SET_SPELL_CIRCLE, SpellCapabilityPolicy.ALLOW);

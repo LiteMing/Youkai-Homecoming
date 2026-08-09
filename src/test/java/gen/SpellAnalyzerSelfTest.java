@@ -260,17 +260,18 @@ public class SpellAnalyzerSelfTest {
 				&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.HOOK_ON_TRAIL) == SpellCapabilityPolicy.ALLOW
 				&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.HOOK_ON_HIT) == SpellCapabilityPolicy.ALLOW);
 		check("boss_on_damage EXPERIMENTAL", SpellCapabilityPolicies.defaultPolicy(SpellCapability.BOSS_ON_DAMAGE) == SpellCapabilityPolicy.EXPERIMENTAL);
+		check("teleport/erase/clear EXPERIMENTAL",
+				SpellCapabilityPolicies.defaultPolicy(SpellCapability.TELEPORT) == SpellCapabilityPolicy.EXPERIMENTAL
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.ERASE_ENEMY_DANMAKU) == SpellCapabilityPolicy.EXPERIMENTAL
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.CLEAR_SCREEN) == SpellCapabilityPolicy.EXPERIMENTAL);
 		check("origin target/absolute ALLOW",
 				SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_TARGET) == SpellCapabilityPolicy.ALLOW
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_ABSOLUTE) == SpellCapabilityPolicy.ALLOW);
-		check("confine/teleport/erase/clear/flag/force/fire EXPERIMENTAL",
-				SpellCapabilityPolicies.defaultPolicy(SpellCapability.CONFINED_TARGET) == SpellCapabilityPolicy.EXPERIMENTAL
-						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.TELEPORT) == SpellCapabilityPolicy.EXPERIMENTAL
-						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.ERASE_ENEMY_DANMAKU) == SpellCapabilityPolicy.EXPERIMENTAL
-						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.CLEAR_SCREEN) == SpellCapabilityPolicy.EXPERIMENTAL
-						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.SET_ENTITY_FLAG) == SpellCapabilityPolicy.EXPERIMENTAL
-						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.FORCE_SPELL) == SpellCapabilityPolicy.EXPERIMENTAL
-						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.FIRE_SPELL) == SpellCapabilityPolicy.EXPERIMENTAL);
+		check("confine/flag/force/fire OP_ONLY",
+				SpellCapabilityPolicies.defaultPolicy(SpellCapability.CONFINED_TARGET) == SpellCapabilityPolicy.OP_ONLY
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.SET_ENTITY_FLAG) == SpellCapabilityPolicy.OP_ONLY
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.FORCE_SPELL) == SpellCapabilityPolicy.OP_ONLY
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.FIRE_SPELL) == SpellCapabilityPolicy.OP_ONLY);
 		check("legacy DENY", SpellCapabilityPolicies.defaultPolicy(SpellCapability.LEGACY_TICKER) == SpellCapabilityPolicy.DENY);
 		check("run_command OP_ONLY", SpellCapabilityPolicies.defaultPolicy(SpellCapability.RUN_COMMAND) == SpellCapabilityPolicy.OP_ONLY);
 		check("visual ALLOW",

@@ -31,19 +31,18 @@ import java.util.Optional;
 public final class SpecialNodeCounter {
 
 	/**
-	 * The capability set that is EXPERIMENTAL by default (denied in certification
-	 * unless the draft quota covers it). run_command intentionally stays OUT —
-	 * it is OP_ONLY forever and never unlocked by draft quotas.
+	 * The capability set unlockable through a boss-draft's special-node quota:
+	 * on_damage, teleport, erase enemy danmaku and clear screen (legitimate
+	 * certification tactics). Confine/entity flags/force/fire spell and
+	 * run_command are OP_ONLY — boss/creator-facing freedom, never unlocked for
+	 * players. Danmaku hooks (HOOK_ON_*) stay ALLOW but still count toward the
+	 * quota (quantity control).
 	 */
 	public static final java.util.Set<SpellCapability> EXPERIMENTAL_CAPS = java.util.Set.of(
 			SpellCapability.BOSS_ON_DAMAGE,
 			SpellCapability.TELEPORT,
-			SpellCapability.CONFINED_TARGET,
 			SpellCapability.ERASE_ENEMY_DANMAKU,
-			SpellCapability.CLEAR_SCREEN,
-			SpellCapability.SET_ENTITY_FLAG,
-			SpellCapability.FORCE_SPELL,
-			SpellCapability.FIRE_SPELL
+			SpellCapability.CLEAR_SCREEN
 	);
 
 	private SpecialNodeCounter() {

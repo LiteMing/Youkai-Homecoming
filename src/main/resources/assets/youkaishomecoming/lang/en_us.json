@@ -1562,7 +1562,7 @@
   "youkaishomecoming.tooltip.spell_cost_no_xp": "Not enough XP levels (needs %s, have %s)",
   "youkaishomecoming.tooltip.spell_single_use": "Single-use: consumed after casting",
   "youkaishomecoming.tooltip.spell_unfinished": "Unfinished spell card: right-click to edit again; certification turns it into a complete spell card",
-  "youkaishomecoming.tooltip.spell_op_quota": "Experimental nodes available: %s (teleport / confine / erase / clear / flags / force-fire / on-damage / hooks)",
+  "youkaishomecoming.tooltip.spell_op_quota": "Experimental nodes available: %s (teleport / erase enemy danmaku / clear screen / on-damage / danmaku hooks)",
   "youkaishomecoming.tooltip.spell_unfinished_no_combat": "Unfinished spell card: cannot declare danmaku combat mode",
   "youkaishomecoming.tooltip.spell_target": "Requires targeting an entity to activate",
   "youkaishomecoming.tooltip.taste_half_youkai": "Strange flavor...",

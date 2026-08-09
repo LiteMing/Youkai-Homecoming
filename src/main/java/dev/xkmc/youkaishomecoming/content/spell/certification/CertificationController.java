@@ -39,7 +39,6 @@ public class CertificationController {
 	private int elapsedTicks;
 	private int successTicks;
 	private int activeThreatTicks;
-	private int illegalMoveCooldown;
 	@Nullable private CertificationFailReason failReason;
 	private @Nullable PaymentReceipt startReceipt;
 	private boolean combatForcedByCertification;
@@ -211,7 +210,7 @@ public class CertificationController {
 			fail(e, CertificationFailReason.OUT_OF_ARENA);
 			return;
 		}
-		if (illegalMoveCooldown <= 0 && lastPlayerPos != null) {
+		if (lastPlayerPos != null) {
 			double moved = author.position().distanceToSqr(lastPlayerPos);
 			double max = YHModConfig.COMMON.certificationMaxDisplacementPerTick.get();
 			if (moved > max * max) {
@@ -219,7 +218,6 @@ public class CertificationController {
 				return;
 			}
 		}
-		illegalMoveCooldown = 10;
 		lastPlayerPos = author.position();
 		// During the spell release the player may not move at all: there is no
 		// spell-declared player motion yet, so every tick zeroes their velocity
@@ -314,6 +312,13 @@ public class CertificationController {
 		}
 		failReason = CertificationFailReason.SYSTEM_ERROR;
 		state = CertificationState.SYSTEM_ERROR;
+		// Removal can happen before the normal terminal tick. Run the same
+		// resource/entity cleanup here so /kill and unload cannot leak projectiles,
+		// the display item, or the consumed draft card.
+		entity.eraseAllDanmaku(null);
+		if (entity.getDanmakuHolder() != null) entity.getDanmakuHolder().clearSentQueue();
+		removeDisplayItem();
+		returnDraft(entity);
 		// Must restore forced danmaku combat here too: the player would otherwise
 		// be stuck in D15 (certification start always rejected) after the enemy
 		// entity is killed or unloaded mid-trial.

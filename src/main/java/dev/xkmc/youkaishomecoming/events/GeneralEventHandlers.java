@@ -90,18 +90,6 @@ public class GeneralEventHandlers {
 		if (e.hasEffect(YHEffects.FAIRY.get()) && CuriosManager.hasAnyWings(e)) {
 			FlyingToken.tickFlying(e);
 		}
-		// while releasing a spell card the player can barely move: clamp their
-		// velocity to a tiny magnitude (walking AND flying) instead of zeroing
-		// or re-anchoring the position — no rubber-banding, no jitter
-		if (e instanceof net.minecraft.server.level.ServerPlayer sp
-				&& dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveProxy(sp)) {
-			var vel = sp.getDeltaMovement();
-			double max = 0.002;
-			double len = vel.length();
-			if (len > max) {
-				sp.setDeltaMovement(vel.scale(max / len));
-			}
-		}
 	}
 
 	/**

@@ -38,7 +38,7 @@ public class CertificationQuoteToClient extends SerialPacketBase {
 	@SerialClass.SerialField
 	public int rewardDurationTicks = 0;
 	@SerialClass.SerialField
-	public int breakHpSeconds = 0;
+	public int spellHp = 0;
 	@SerialClass.SerialField
 	public int specialNodeQuota = 0;
 	@SerialClass.SerialField
@@ -60,7 +60,7 @@ public class CertificationQuoteToClient extends SerialPacketBase {
 		this.maxSpawnPerTick = quote.analysis().maxSpawnPerTick();
 		this.hookExecutionUpperBound = quote.analysis().hookExecutionUpperBound();
 		this.rewardDurationTicks = quote.rewardDurationTicks();
-		this.breakHpSeconds = quote.breakHpSeconds();
+		this.spellHp = quote.spellHp();
 		this.specialNodeQuota = quote.specialNodeQuota();
 		this.capabilities = quote.analysis().requiredCapabilities().toString();
 	}

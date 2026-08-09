@@ -20,11 +20,11 @@ public record CertificationQuote(
 		long startCostUnits,
 		long issueCostUnits,
 		long castCostUnits,
-		/** Final cast duration of the certified reward item (curve 1/3 → 1/10 of the break HP). */
+		/** Final cast duration of the certified reward item (curve 1/3 → 1/10 of the timeout). */
 		int rewardDurationTicks,
-		/** Break HP of the certification enemy in seconds (each player hit reduces it by 1s). */
-		int breakHpSeconds,
-		/** Draft op-node quota that allowed run_command nodes in this certification (0 = none). */
+		/** Spell card HP: plain max health of the certification enemy (player-set). */
+		int spellHp,
+		/** Draft special-node quota that allowed experimental nodes in this certification (0 = none). */
 		int specialNodeQuota,
 		SpellAnalysis analysis,
 		long issuedAtGameTime

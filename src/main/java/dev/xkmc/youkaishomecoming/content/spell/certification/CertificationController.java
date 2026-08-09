@@ -38,8 +38,6 @@ public class CertificationController {
 	private int elapsedTicks;
 	private int activeThreatTicks;
 	private int illegalMoveCooldown;
-	private final int breakHpSeconds;
-	private int breakHpLeftSeconds;
 	@Nullable private CertificationFailReason failReason;
 	private @Nullable PaymentReceipt startReceipt;
 	private boolean combatForcedByCertification;
@@ -62,8 +60,6 @@ public class CertificationController {
 		this.arena = new CertificationArena(entity.position(), quote.arenaHalfSize());
 		this.movementSeed = movementSeed;
 		this.movement = new CertificationEnemyMovement(arena, movementSeed);
-		this.breakHpSeconds = quote.breakHpSeconds();
-		this.breakHpLeftSeconds = breakHpSeconds;
 	}
 
 	// ------------------------------------------------------------ accessors
@@ -86,12 +82,8 @@ public class CertificationController {
 		return quote.durationTicks();
 	}
 
-	public int breakHpTotalSeconds() {
-		return breakHpSeconds;
-	}
-
-	public int breakHpLeftSeconds() {
-		return breakHpLeftSeconds;
+	public int spellHp() {
+		return quote.spellHp();
 	}
 
 	@Nullable
@@ -190,11 +182,11 @@ public class CertificationController {
 		}
 		illegalMoveCooldown = 10;
 		lastPlayerPos = author.position();
-		// Caster movement: unless the spell declares caster_moves, the player is
-		// rooted during the trial (cannot move on their own).
-		if (!definition.itemForm.casterMoves()) {
-			author.setDeltaMovement(0, 0, 0);
-		}
+		// During the spell release the player may not move at all: there is no
+		// spell-declared player motion yet, so every tick zeroes their velocity
+		// (the certification enemy moves only when the spell declares
+		// caster_moves — the spell's specified motion).
+		author.setDeltaMovement(0, 0, 0);
 		if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.hasActiveYoukaiSession(author)) {
 			// another boss battle entered mid-certification (D15)
 			fail(e, CertificationFailReason.OTHER_BATTLE);
@@ -240,18 +232,13 @@ public class CertificationController {
 	}
 
 	/**
-	 * Player attack on the certification enemy: every hit removes exactly
-	 * 1 second of break HP. Reaching zero = the spell is broken (requires the
-	 * whole run to be no-hit/no-bomb — any hit or bomb already failed the trial).
+	 * The certification enemy's plain health reached zero: the spell is broken
+	 * (requires the whole run to be no-hit/no-bomb — any hit or bomb already
+	 * failed the trial).
 	 */
-	public void onEntityHit() {
+	public void onSpellBroken() {
 		if (state != CertificationState.ACTIVE) return;
-		breakHpLeftSeconds--;
-		if (breakHpLeftSeconds <= 0) {
-			success(entity);
-		} else if ((breakHpLeftSeconds & 15) == 0) {
-			syncState();
-		}
+		success(entity);
 	}
 
 	/** Player cast a different spell card mid-trial: no-bomb/no-hit forbids it. */
@@ -397,7 +384,7 @@ public class CertificationController {
 	private void syncState() {
 		dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStateToClient.send(
 				entity, state, elapsedTicks, quote.durationTicks(),
-				breakHpSeconds, breakHpLeftSeconds,
+				(int) entity.getMaxHealth(), (int) Math.max(0, entity.getHealth()),
 				failReason == null ? null : failReason.id());
 	}
 }

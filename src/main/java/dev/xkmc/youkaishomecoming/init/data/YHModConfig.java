@@ -144,7 +144,6 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue certificationRewardNeverDespawn;
 		public final ForgeConfigSpec.DoubleValue certificationRewardDurationShortRatio;
 		public final ForgeConfigSpec.DoubleValue certificationRewardDurationLongRatio;
-		public final ForgeConfigSpec.DoubleValue certificationBreakHpRatio;
 
 		public final ForgeConfigSpec.IntValue youkaifyingTime;
 		public final ForgeConfigSpec.DoubleValue youkaifyingChance;
@@ -401,9 +400,6 @@ public class YHModConfig {
 				certificationRewardDurationLongRatio = builder.comment("Reward cast duration as a fraction of the certified duration for the longest certification (curve endpoint, 1/10)")
 						.translation("config.youkaishomecoming.common.certification.rewardDurationLongRatio")
 						.defineInRange("rewardDurationLongRatio", 0.1, 0.02, 1.0);
-				certificationBreakHpRatio = builder.comment("Break HP (seconds) = timeout seconds x this ratio; the timeout is ~0.66x of the break HP the player must attack down (1 second per hit)")
-						.translation("config.youkaishomecoming.common.certification.breakHpRatio")
-						.defineInRange("breakHpRatio", 1.5, 1.0, 3.0);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.youkaifying_effect").push("youkaifying_effect");

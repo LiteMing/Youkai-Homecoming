@@ -25,9 +25,9 @@ public class CertificationStateToClient extends SerialPacketBase {
 	@SerialClass.SerialField
 	public int targetTicks = 0;
 	@SerialClass.SerialField
-	public int breakHpTotalSeconds = 0;
+	public int healthTotal = 0;
 	@SerialClass.SerialField
-	public int breakHpLeftSeconds = 0;
+	public int healthLeft = 0;
 	@SerialClass.SerialField
 	@Nullable
 	public String failReason = null;
@@ -39,37 +39,37 @@ public class CertificationStateToClient extends SerialPacketBase {
 	}
 
 	private CertificationStateToClient(int entityId, CertificationState state, int elapsedTicks,
-									   int targetTicks, int breakHpTotalSeconds, int breakHpLeftSeconds,
+									   int targetTicks, int healthTotal, int healthLeft,
 									   @Nullable String failReason, boolean mine) {
 		this.entityId = entityId;
 		this.state = state.name();
 		this.elapsedTicks = elapsedTicks;
 		this.targetTicks = targetTicks;
-		this.breakHpTotalSeconds = breakHpTotalSeconds;
-		this.breakHpLeftSeconds = breakHpLeftSeconds;
+		this.healthTotal = healthTotal;
+		this.healthLeft = healthLeft;
 		this.failReason = failReason;
 		this.mine = mine;
 	}
 
 	public static void send(SpellCertificationEntity entity, CertificationState state,
-							int elapsedTicks, int targetTicks, int breakHpTotalSeconds,
-							int breakHpLeftSeconds, @Nullable String failReason) {
+							int elapsedTicks, int targetTicks, int healthTotal,
+							int healthLeft, @Nullable String failReason) {
 		ServerPlayer author = entity.controller() == null ? null : entity.controller().author();
 		if (author != null) {
 			YoukaisHomecoming.HANDLER.toClientPlayer(
 					new CertificationStateToClient(entity.getId(), state, elapsedTicks, targetTicks,
-							breakHpTotalSeconds, breakHpLeftSeconds, failReason, true),
+							healthTotal, healthLeft, failReason, true),
 					author);
 		}
 		YoukaisHomecoming.HANDLER.toTrackingPlayers(
 				new CertificationStateToClient(entity.getId(), state, elapsedTicks, targetTicks,
-						breakHpTotalSeconds, breakHpLeftSeconds, failReason, false),
+						healthTotal, healthLeft, failReason, false),
 				entity);
 	}
 
 	@Override
 	public void handle(NetworkEvent.Context context) {
 		CertificationClientHandler.acceptState(entityId, state, elapsedTicks, targetTicks,
-				breakHpTotalSeconds, breakHpLeftSeconds, failReason, mine);
+				healthTotal, healthLeft, failReason, mine);
 	}
 }

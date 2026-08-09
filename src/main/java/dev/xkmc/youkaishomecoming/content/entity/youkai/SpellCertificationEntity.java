@@ -85,11 +85,19 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 
 	@Override
 	protected void actuallyHurt(DamageSource source, float amount) {
-		// The certification enemy cannot be killed, but it CAN be attacked: each
-		// DANMAKU hit removes exactly 1 second of break HP (the player breaks the
-		// spell with their own danmaku — melee/other damage sources are ignored).
-		if (!level().isClientSide && controller != null && isDanmakuDamage(source)) {
-			controller.onEntityHit();
+		// The certification enemy cannot be killed, but it CAN be damaged: only
+		// danmaku damage counts (the player breaks the spell with their own
+		// danmaku — melee/other damage sources are ignored). Plain health: the
+		// spell is broken when it reaches zero.
+		if (level().isClientSide || controller == null || !isDanmakuDamage(source)) {
+			return;
+		}
+		if (controller.state() != dev.xkmc.youkaishomecoming.content.spell.certification.CertificationState.ACTIVE) {
+			return;
+		}
+		this.setHealth(Math.max(0, this.getHealth() - amount));
+		if (this.getHealth() <= 0) {
+			controller.onSpellBroken();
 		}
 	}
 

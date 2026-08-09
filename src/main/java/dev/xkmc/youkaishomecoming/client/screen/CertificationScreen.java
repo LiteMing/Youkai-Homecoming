@@ -23,7 +23,6 @@ import java.util.Locale;
  */
 public class CertificationScreen extends Screen {
 
-	private static final int DURATION_STEP_TICKS = 100;
 	private static final int ARENA_STEP_BLOCKS = 1;
 
 	private final SpellDefinition definition;
@@ -34,8 +33,9 @@ public class CertificationScreen extends Screen {
 	public CertificationScreen(SpellDefinition definition) {
 		super(Component.literal("Spell Certification"));
 		this.definition = definition;
-		this.durationTicks = clampInt(YHModConfig.COMMON.certificationMinDurationTicks.get(),
-				YHModConfig.COMMON.certificationMaxDurationTicks.get(), 1200);
+		// the spell's own declared duration is the certification timeout (fixed,
+		// no UI selection); the arena stays selectable
+		this.durationTicks = Math.max(20, definition.itemForm.duration());
 		this.halfSize = clampInt(YHModConfig.COMMON.certificationMinArenaHalfSize.get(),
 				YHModConfig.COMMON.certificationMaxArenaHalfSize.get(), 8);
 	}
@@ -48,24 +48,7 @@ public class CertificationScreen extends Screen {
 	protected void init() {
 		int cx = this.width / 2;
 		int y = 40;
-
-		int minDur = YHModConfig.COMMON.certificationMinDurationTicks.get();
-		int maxDur = Math.max(minDur, YHModConfig.COMMON.certificationMaxDurationTicks.get());
-		addRenderableWidget(new AbstractSliderButton(cx - 160, y, 320, 20,
-				Component.literal(""), durationProgress(minDur, maxDur, durationTicks)) {
-			@Override
-			protected void updateMessage() {
-				durationTicks = sliderValue(minDur, maxDur, DURATION_STEP_TICKS, this.value);
-				setMessage(Component.literal(String.format(Locale.ROOT, "Duration: %.0fs (%d ticks)",
-						durationTicks / 20.0, durationTicks)));
-			}
-
-			@Override
-			protected void applyValue() {
-				durationTicks = sliderValue(minDur, maxDur, DURATION_STEP_TICKS, this.value);
-				status = "duration: " + durationTicks + " ticks";
-			}
-		});
+		guiTitleLine(cx, y);
 		y += 24;
 
 		int minArena = YHModConfig.COMMON.certificationMinArenaHalfSize.get();
@@ -95,11 +78,19 @@ public class CertificationScreen extends Screen {
 						b -> onClose()).bounds(cx - 40, y, 80, 20).build());
 	}
 
-	/** Slider position (0..1) for a tick value stepped by DURATION_STEP_TICKS. */
-	private static double durationProgress(int min, int max, int ticks) {
-		if (max <= min) return 0;
-		int steppedMin = min - (min % DURATION_STEP_TICKS);
-		return (ticks - steppedMin) / (double) (max - steppedMin);
+	/** Fixed spell info header: timeout and HP come from the spell definition. */
+	private void guiTitleLine(int cx, int y) {
+		int duration = Math.max(20, definition.itemForm.duration());
+		int hp = definition.itemForm.hp();
+		String line;
+		if (hp > 0) {
+			line = String.format(Locale.ROOT, "Spell: %ds timeout / %d HP", duration / 20, hp);
+		} else {
+			line = String.format(Locale.ROOT, "Spell: %ds timeout / HP not set", duration / 20);
+		}
+		addRenderableWidget(Button.builder(Component.literal(line),
+						b -> {
+						}).bounds(cx - 160, y, 320, 20).build());
 	}
 
 	private static double arenaProgress(int min, int max, double half) {
@@ -141,11 +132,11 @@ public class CertificationScreen extends Screen {
 		gui.drawCenteredString(this.font, Component.literal(status), cx, 120, 0xFFFFFFAA);
 		var quote = CertificationClientHandler.getPendingQuote();
 		if (quote != null) {
-			// Info panel: timeout, break HP (each hit -1s), final cast duration of
-			// the certified item (reward curve on break HP) and the cost breakdown.
+			// Info panel: fixed timeout/HP from the spell definition, final cast
+			// duration of the certified item (reward curve) and the cost breakdown.
 			String durationLine = String.format(Locale.ROOT,
-					"Timeout: %ds  |  Break HP: %ds (hit -1s)  |  Final cast: %ds  |  Arena: %.0f",
-					quote.durationTicks / 20, quote.breakHpSeconds,
+					"Timeout: %ds  |  Spell HP: %d  |  Final cast: %ds  |  Arena: %.0f",
+					quote.durationTicks / 20, quote.spellHp,
 					quote.rewardDurationTicks / 20, quote.arenaHalfSize);
 			String costLine = String.format(Locale.ROOT,
 					"Cost: start %d (≈%d XP) / cast %d / issue %d  |  maxSpawn/tick: %d",

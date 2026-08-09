@@ -39,13 +39,23 @@ public final class CertificationService {
 
 	public static CertificationQuote quote(ServerPlayer player, SpellDefinition definition,
 										   int requestedDurationTicks, double requestedHalfSize) {
-		int durationTicks = clampDuration(requestedDurationTicks);
+		// The spell's own declared duration is the certification timeout; the
+		// declared HP is the certification enemy's plain health. Both must be set
+		// by the creator (no UI selection anymore).
+		int spellDuration = definition.itemForm.duration();
+		if (spellDuration <= 0) {
+			throw new IllegalArgumentException("This spell card does not declare a duration (item_form.duration)");
+		}
+		int spellHp = definition.itemForm.hp();
+		if (spellHp <= 0) {
+			throw new IllegalArgumentException("This spell card does not declare HP (item_form.hp)");
+		}
+		int durationTicks = clampDuration(spellDuration);
 		double halfSize = clampHalfSize(requestedHalfSize);
-		// Special-node quota: EXPERIMENTAL capabilities (teleport, confine, erase,
-		// clear, flags, force/fire spell, on_damage / fire / laser hooks) are
-		// denied by default; a boss-drop draft card may carry a quota (the count
-		// of such nodes in the boss's own definition) that allows that many.
-		// run_command stays operator-only and is never unlocked here.
+		// Special-node quota: EXPERIMENTAL capabilities (teleport, erase, clear,
+		// on_damage) are denied by default; a boss-drop draft card may carry a
+		// quota (the count of such nodes in the boss's own definition).
+		// run_command and creator nodes stay operator-only.
 		int specialNodeQuota = draftOpQuota(player, definition);
 		SpellAnalysis analysis;
 		try {
@@ -69,10 +79,9 @@ public final class CertificationService {
 		// multiplier; the weakest built-in spells sit at multiplier 1 (Phase 7).
 		long castCost = Math.max(1, startCost) * powerMultiplier(analysis);
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
-		int breakHpSeconds = breakHpSeconds(durationTicks);
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
 				startCost, issueCost, castCost, rewardDurationTicks(durationTicks),
-				breakHpSeconds, specialNodeQuota, analysis, player.level().getGameTime());
+				spellHp, specialNodeQuota, analysis, player.level().getGameTime());
 	}
 
 	/**
@@ -96,16 +105,6 @@ public final class CertificationService {
 			}
 		}
 		return blankQuota;
-	}
-
-	/**
-	 * Break HP of the certification enemy in seconds: timeout seconds x
-	 * {@code certificationBreakHpRatio} (default 1.5 — the timeout is roughly
-	 * 0.66x of the HP the player must attack down; each hit removes exactly 1s).
-	 */
-	public static int breakHpSeconds(int durationTicks) {
-		double ratio = YHModConfig.COMMON.certificationBreakHpRatio.get();
-		return Math.max(10, (int) Math.ceil(durationTicks / 20.0 * ratio));
 	}
 
 	/**
@@ -208,6 +207,12 @@ public final class CertificationService {
 		long movementSeed = player.level().random.nextLong();
 		SpellCertificationEntity entity = new SpellCertificationEntity(
 				YHEntities.SPELL_CERTIFICATION.get(), player.level());
+		// plain spell HP: the enemy's max health comes from the spell definition
+		var maxHealth = entity.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
+		if (maxHealth != null) {
+			maxHealth.setBaseValue(Math.max(1, quote.spellHp()));
+		}
+		entity.setHealth(entity.getMaxHealth());
 		entity.setPos(player.position());
 		entity.initCertification(player, definition, definitionHash, quote, movementSeed);
 		CertificationController controller = entity.controller();
@@ -231,12 +236,10 @@ public final class CertificationService {
 
 	/**
 	 * Reward cast duration curve: the certified item runs for a fraction of the
-	 * certification break HP — 1/3 at the shortest certification, falling linearly
-	 * to 1/10 at the longest (curve endpoints configurable; the final duration is
-	 * derived from the break HP, which itself scales with the timeout).
+	 * certified timeout — 1/3 at the shortest certification, falling linearly
+	 * to 1/10 at the longest (curve endpoints configurable).
 	 */
 	public static int rewardDurationTicks(int certifiedDurationTicks) {
-		int breakHpSeconds = breakHpSeconds(certifiedDurationTicks);
 		int minD = YHModConfig.COMMON.certificationMinDurationTicks.get();
 		int maxD = YHModConfig.COMMON.certificationMaxDurationTicks.get();
 		double span = Math.max(1, maxD - minD);
@@ -244,6 +247,6 @@ public final class CertificationService {
 		double shortRatio = YHModConfig.COMMON.certificationRewardDurationShortRatio.get();
 		double longRatio = YHModConfig.COMMON.certificationRewardDurationLongRatio.get();
 		double ratio = shortRatio + (longRatio - shortRatio) * t;
-		return Math.max(20, (int) Math.round(breakHpSeconds * 20 * ratio));
+		return Math.max(20, (int) Math.round(certifiedDurationTicks * ratio));
 	}
 }

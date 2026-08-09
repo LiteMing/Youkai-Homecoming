@@ -26,6 +26,8 @@ public class CertificationQuoteToClient extends SerialPacketBase {
 	@SerialClass.SerialField
 	public long issueCostUnits = 0;
 	@SerialClass.SerialField
+	public long castCostUnits = 0;
+	@SerialClass.SerialField
 	public long totalSpawnUpperBound = 0;
 	@SerialClass.SerialField
 	public long projectileTicks = 0;
@@ -33,6 +35,8 @@ public class CertificationQuoteToClient extends SerialPacketBase {
 	public int maxSpawnPerTick = 0;
 	@SerialClass.SerialField
 	public long hookExecutionUpperBound = 0;
+	@SerialClass.SerialField
+	public int rewardDurationTicks = 0;
 	@SerialClass.SerialField
 	public String capabilities = "";
 
@@ -46,10 +50,12 @@ public class CertificationQuoteToClient extends SerialPacketBase {
 		this.arenaHalfSize = quote.arenaHalfSize();
 		this.startCostUnits = quote.startCostUnits();
 		this.issueCostUnits = quote.issueCostUnits();
+		this.castCostUnits = quote.castCostUnits();
 		this.totalSpawnUpperBound = quote.analysis().totalSpawnUpperBound();
 		this.projectileTicks = quote.analysis().projectileTicks();
 		this.maxSpawnPerTick = quote.analysis().maxSpawnPerTick();
 		this.hookExecutionUpperBound = quote.analysis().hookExecutionUpperBound();
+		this.rewardDurationTicks = quote.rewardDurationTicks();
 		this.capabilities = quote.analysis().requiredCapabilities().toString();
 	}
 

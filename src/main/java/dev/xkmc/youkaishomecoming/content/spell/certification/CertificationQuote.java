@@ -20,6 +20,8 @@ public record CertificationQuote(
 		long startCostUnits,
 		long issueCostUnits,
 		long castCostUnits,
+		/** Final cast duration of the certified reward item (curve 1/3 → 1/10 of the certified duration). */
+		int rewardDurationTicks,
 		SpellAnalysis analysis,
 		long issuedAtGameTime
 ) {

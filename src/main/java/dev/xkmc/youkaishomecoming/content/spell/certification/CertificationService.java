@@ -44,7 +44,8 @@ public final class CertificationService {
 		long castCost = Math.max(1, startCost) * powerMultiplier(analysis);
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
-				startCost, issueCost, castCost, analysis, player.level().getGameTime());
+				startCost, issueCost, castCost, rewardDurationTicks(durationTicks),
+				analysis, player.level().getGameTime());
 	}
 
 	/**

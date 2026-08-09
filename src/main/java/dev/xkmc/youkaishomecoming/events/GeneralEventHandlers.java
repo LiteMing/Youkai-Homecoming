@@ -90,6 +90,14 @@ public class GeneralEventHandlers {
 		if (e.hasEffect(YHEffects.FAIRY.get()) && CuriosManager.hasAnyWings(e)) {
 			FlyingToken.tickFlying(e);
 		}
+		// while releasing a spell card the player stands still: clear movement
+		// input (walking AND flying) and zero velocity every tick — zeroing only
+		// velocity is not enough because input re-generates it each tick
+		if (e instanceof net.minecraft.server.level.ServerPlayer sp
+				&& dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveProxy(sp)) {
+			sp.input = net.minecraft.world.entity.player.PlayerInput.EMPTY;
+			sp.setDeltaMovement(0, 0, 0);
+		}
 	}
 
 	@SubscribeEvent

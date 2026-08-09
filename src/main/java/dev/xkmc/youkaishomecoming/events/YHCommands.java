@@ -727,6 +727,18 @@ public class YHCommands {
 			CertificationManager.INSTANCE.setQuote(player, quote, definition);
 			// OP test command: skip the start fee so certification can be exercised
 			// without resources; the in-game UI path pays through SpellPaymentRouter.
+			if (!YHModConfig.COMMON.certificationEnabled.get()) {
+				ctx.getSource().sendSystemMessage(Component.literal("[YH] certification disabled in config"));
+				return 0;
+			}
+			if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.isInDanmakuSession(player)) {
+				ctx.getSource().sendSystemMessage(Component.literal("[YH] player is already in danmaku combat (D15)"));
+				return 0;
+			}
+			if (CertificationManager.INSTANCE.hasActiveTrial(player)) {
+				ctx.getSource().sendSystemMessage(Component.literal("[YH] player already has an active certification trial"));
+				return 0;
+			}
 			boolean started = CertificationService.startFree(player, quote);
 			ctx.getSource().sendSystemMessage(Component.literal("[YH] certification started=" + started
 					+ " cost=" + quote.startCostUnits() + " hash=" + quote.definitionHash().substring(0, 8)));

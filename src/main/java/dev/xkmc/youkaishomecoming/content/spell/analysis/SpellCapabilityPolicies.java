@@ -28,8 +28,11 @@ public final class SpellCapabilityPolicies {
 		put(SpellCapability.HOOK_ON_TRAIL, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.HOOK_ON_HIT, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.BOSS_ON_DAMAGE, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.ORIGIN_TARGET, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.ORIGIN_ABSOLUTE, SpellCapabilityPolicy.EXPERIMENTAL);
+		// TARGET/ABSOLUTE origins are common in built-in spells; certification keeps
+		// them allowed — wrong-place spawning is neutralized by the active-threat
+		// discount (D6) and point-blank spawning is a legitimate danmaku challenge.
+		put(SpellCapability.ORIGIN_TARGET, SpellCapabilityPolicy.ALLOW);
+		put(SpellCapability.ORIGIN_ABSOLUTE, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.CONFINED_TARGET, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.TELEPORT, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.ERASE_ENEMY_DANMAKU, SpellCapabilityPolicy.EXPERIMENTAL);

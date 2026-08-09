@@ -31,6 +31,10 @@
                 "min": 1.0
               },
               "function": "minecraft:set_count"
+            },
+            {
+              "function": "minecraft:set_nbt",
+              "tag": "{single_use:1b,spell_id:\"touhou_little_maid:komeiji_koishi\",yh_op_quota:1}"
             }
           ],
           "name": "youkaishomecoming:spell_koishi"

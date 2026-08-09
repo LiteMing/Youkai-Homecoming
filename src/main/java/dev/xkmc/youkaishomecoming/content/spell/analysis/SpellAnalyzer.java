@@ -104,10 +104,19 @@ public final class SpellAnalyzer {
 	private long burstAccum;
 	private int hookDepth;
 
+	/** Capabilities allowed beyond their default policy (draft op-node quota path). */
+	private final java.util.Set<SpellCapability> extraAllowed;
+
 	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits) {
+		this(definition, profile, limits, java.util.Set.of());
+	}
+
+	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits,
+						  java.util.Set<SpellCapability> extraAllowed) {
 		this.definition = definition;
 		this.profile = profile;
 		this.limits = limits;
+		this.extraAllowed = extraAllowed;
 	}
 
 	public static SpellAnalysis analyze(SpellDefinition definition) {
@@ -121,6 +130,16 @@ public final class SpellAnalyzer {
 
 	public static SpellAnalysis analyze(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits) {
 		return new SpellAnalyzer(definition, profile, limits).run();
+	}
+
+	/**
+	 * Analyze with extra capabilities allowed despite their default policy.
+	 * Used by the certification path when a draft card's op-node quota covers
+	 * the definition's run_command count.
+	 */
+	public static SpellAnalysis analyze(SpellDefinition definition, SpellAnalysisProfile profile,
+										SpellAnalysisLimits limits, java.util.Set<SpellCapability> extraAllowed) {
+		return new SpellAnalyzer(definition, profile, limits, extraAllowed).run();
 	}
 
 	// ------------------------------------------------------------------ pipeline
@@ -868,7 +887,7 @@ public final class SpellAnalyzer {
 			}
 			for (SpellCapability cap : capabilities) {
 				SpellCapabilityPolicy policy = SpellCapabilityPolicies.currentPolicy(cap);
-				if (!policy.allowsCertification()) {
+				if (!policy.allowsCertification() && !extraAllowed.contains(cap)) {
 					throw new SpellAnalysisException("Certification rejected: capability " + cap.id()
 							+ " policy " + policy);
 				}

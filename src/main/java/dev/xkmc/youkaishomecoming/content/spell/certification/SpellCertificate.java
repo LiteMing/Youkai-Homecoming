@@ -21,6 +21,8 @@ public record SpellCertificate(
 		String arenaShape,
 		long costUnits,
 		Set<SpellCapability> capabilities,
+		/** Draft op-node quota that allowed run_command nodes in this certification. */
+		int opNodeQuota,
 		int analysisVersion,
 		int certificationRulesVersion,
 		long issuedAtGameTime

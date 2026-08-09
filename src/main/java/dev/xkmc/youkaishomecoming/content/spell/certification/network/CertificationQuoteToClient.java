@@ -40,6 +40,8 @@ public class CertificationQuoteToClient extends SerialPacketBase {
 	@SerialClass.SerialField
 	public int breakHpSeconds = 0;
 	@SerialClass.SerialField
+	public int opNodeQuota = 0;
+	@SerialClass.SerialField
 	public String capabilities = "";
 
 	public CertificationQuoteToClient() {
@@ -59,6 +61,7 @@ public class CertificationQuoteToClient extends SerialPacketBase {
 		this.hookExecutionUpperBound = quote.analysis().hookExecutionUpperBound();
 		this.rewardDurationTicks = quote.rewardDurationTicks();
 		this.breakHpSeconds = quote.breakHpSeconds();
+		this.opNodeQuota = quote.opNodeQuota();
 		this.capabilities = quote.analysis().requiredCapabilities().toString();
 	}
 

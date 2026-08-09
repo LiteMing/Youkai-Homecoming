@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.OpNodeCounter;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
@@ -230,9 +231,9 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (origin != null && origin != SpellRegistry.Origin.CUSTOM) {
 			throw new IllegalArgumentException("Cannot save this spell without operator permission: " + id);
 		}
-		if (containsPrivilegedAction(definition)) {
-			throw new IllegalArgumentException("run_command requires operator permission");
-		}
+		// run_command nodes are allowed only within the draft quota (0 without a
+		// draft card); this replaces the previous blanket ban for non-OP saves.
+		enforceOpQuota(sender, definition, 0);
 		if (origin != null) {
 			UUID owner = CustomSpellStorage.loadOwner(sender.server, id);
 			if (owner == null || !owner.equals(sender.getUUID())) {
@@ -309,6 +310,9 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private void saveSpell(ServerPlayer sender, boolean reapply) {
 		SpellDefinition definition = parseDefinition();
+		// OP node quota: a draft card bound to this id caps how many run_command
+		// nodes the definition may carry (quantity control for boss-drop drafts).
+		enforceOpQuota(sender, definition, -1);
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
 		// Bind the held blank card on ANY save: cards already bound are skipped,
@@ -318,6 +322,35 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		int count = reapply ? SpellRuntimeAccess.reapply(sender.server, definition.id, true) : 0;
 		if (reapply) {
 			sender.sendSystemMessage(Component.literal("[YH] Applied & saved spell to " + count + " entities"));
+		}
+	}
+
+	/**
+	 * Enforce the draft OP node quota: if the player holds a draft card bound to
+	 * this spell id, the definition's run_command count must not exceed the
+	 * quota carried on that draft (0 = no run_command allowed). Without a draft
+	 * card, {@code defaultQuota} applies (-1 = no restriction, operators only).
+	 */
+	private static void enforceOpQuota(ServerPlayer sender, SpellDefinition definition, int defaultQuota) {
+		int quota = -2;
+		for (ItemStack stack : sender.getInventory().items) {
+			if (stack.getItem() instanceof DynamicSpellItem
+					&& definition.id.equals(DynamicSpellItem.getSpellId(stack))
+					&& !DynamicSpellItem.isComplete(stack)) {
+				quota = DynamicSpellItem.getOpQuota(stack);
+				break;
+			}
+		}
+		if (quota == -2) {
+			quota = defaultQuota;
+		}
+		if (quota < 0) {
+			return; // operator path without a draft: unrestricted
+		}
+		int count = OpNodeCounter.count(definition);
+		if (count > quota) {
+			throw new IllegalArgumentException(
+					"run_command nodes (" + count + ") exceed the draft quota (" + quota + ")");
 		}
 	}
 

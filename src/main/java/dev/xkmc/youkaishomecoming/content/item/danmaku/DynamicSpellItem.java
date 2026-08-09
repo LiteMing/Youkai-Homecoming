@@ -16,6 +16,7 @@ import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
+import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.ChatFormatting;
@@ -48,6 +49,12 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	private static final String TAG_COLOR = "SpellColor";
 	/** Mark on OP-given cards: a complete spell card that casts directly (no editor). */
 	private static final String TAG_COMPLETE = "complete";
+	/**
+	 * OP action node quota: how many run_command nodes the final certified card
+	 * may carry. Set on boss-drop drafts; the editor save and certification
+	 * both enforce it (strict quantity control).
+	 */
+	private static final String TAG_OP_QUOTA = "yh_op_quota";
 	/** Sentinel: run until the spell naturally finishes (no fixed duration). */
 	public static final int DURATION_NATURAL = -1;
 
@@ -106,6 +113,37 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		} else if (stack.hasTag()) {
 			stack.getTag().remove(TAG_COMPLETE);
 		}
+	}
+
+	/** OP action node quota of a draft card (0 = no run_command allowed). */
+	public static int getOpQuota(ItemStack stack) {
+		if (stack.hasTag() && stack.getTag().contains(TAG_OP_QUOTA)) {
+			return Math.max(0, stack.getTag().getInt(TAG_OP_QUOTA));
+		}
+		return 0;
+	}
+
+	public static void setOpQuota(ItemStack stack, int quota) {
+		if (quota > 0) {
+			stack.getOrCreateTag().putInt(TAG_OP_QUOTA, quota);
+		} else if (stack.hasTag()) {
+			stack.getTag().remove(TAG_OP_QUOTA);
+		}
+	}
+
+	/**
+	 * Convert a boss-drop spell card (SpellItem carrying spell_id / single_use /
+	 * yh_op_quota NBT) into a bound draft card: right-click opens the editor and
+	 * the certification chain enforces the carried OP node quota.
+	 */
+	public static ItemStack draftFromDrop(ItemStack drop, ResourceLocation spellId) {
+		ItemStack draft = createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId, false);
+		if (SpellItem.isSingleUse(drop)) {
+			setSingleUse(draft, true);
+		}
+		int quota = drop.getOrCreateTag().getInt("yh_op_quota");
+		setOpQuota(draft, quota);
+		return draft;
 	}
 
 	public static void setSingleUse(ItemStack stack, boolean singleUse) {

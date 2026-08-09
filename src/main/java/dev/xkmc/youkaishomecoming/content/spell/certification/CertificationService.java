@@ -1,7 +1,9 @@
 package dev.xkmc.youkaishomecoming.content.spell.certification;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.OpNodeCounter;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysis;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisProfile;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzer;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash;
@@ -14,6 +16,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +41,24 @@ public final class CertificationService {
 										   int requestedDurationTicks, double requestedHalfSize) {
 		int durationTicks = clampDuration(requestedDurationTicks);
 		double halfSize = clampHalfSize(requestedHalfSize);
-		SpellAnalysis analysis = SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION);
+		// Draft op-node quota: run_command is OP_ONLY by default; a boss-drop
+		// draft card may carry a quota that allows that many run_command nodes
+		// in the certified spell.
+		int opNodeQuota = draftOpQuota(player, definition);
+		SpellAnalysis analysis;
+		try {
+			analysis = SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION,
+					SpellAnalysisLimits.certification(),
+					opNodeQuota > 0 ? java.util.Set.of(dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability.RUN_COMMAND)
+							: java.util.Set.of());
+		} catch (dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException e) {
+			// quota-eligible spell rejected for something other than run_command
+			// count: fall back to a plain analysis so the original error surfaces.
+			if (OpNodeCounter.count(definition) > 0 && opNodeQuota <= 0) {
+				throw new IllegalArgumentException("run_command nodes require a draft card quota: " + e.getMessage());
+			}
+			throw e;
+		}
 		String hash = SpellHash.canonicalHash(definition);
 		// Start fee is a fixed anti-spam toll (design §14), decoupled from spell power —
 		// spam protection lives in maxTrialsPerPlayer / maxConcurrentTrials.
@@ -50,7 +70,23 @@ public final class CertificationService {
 		int breakHpSeconds = breakHpSeconds(durationTicks);
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
 				startCost, issueCost, castCost, rewardDurationTicks(durationTicks),
-				breakHpSeconds, analysis, player.level().getGameTime());
+				breakHpSeconds, opNodeQuota, analysis, player.level().getGameTime());
+	}
+
+	/**
+	 * OP node quota carried by the draft card bound to this definition in the
+	 * player's inventory (0 when no draft card is held).
+	 */
+	private static int draftOpQuota(ServerPlayer player, SpellDefinition definition) {
+		for (ItemStack stack : player.getInventory().items) {
+			if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+					&& definition.id != null && definition.id.equals(
+					dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack))
+					&& !dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.isComplete(stack)) {
+				return dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getOpQuota(stack);
+			}
+		}
+		return 0;
 	}
 
 	/**

@@ -33,7 +33,75 @@
       "basin": "踩踏",
       "cooking": "煮饭"
     },
-    "cert": {
+    "spell": {
+    "touhou_little_maid": {
+    "cirno": {
+      "name": "琪露诺",
+      "desc": "琪露诺的符卡"
+    },
+    "clownpiece": {
+      "name": "克劳恩皮丝",
+      "desc": "克劳恩皮丝的符卡"
+    },
+    "doremy_sweet": {
+      "name": "哆来咪·苏伊特",
+      "desc": "哆来咪·苏伊特的符卡"
+    },
+    "eternity_larva": {
+      "name": "爱塔妮缇·拉尔瓦",
+      "desc": "爱塔妮缇·拉尔瓦的符卡"
+    },
+    "hakurei_reimu": {
+      "name": "博丽灵梦",
+      "desc": "博丽灵梦的符卡"
+    },
+    "izayoi_sakuya": {
+      "name": "十六夜咲夜",
+      "desc": "十六夜咲夜的符卡"
+    },
+    "kisin_sagume": {
+      "name": "稀神探女",
+      "desc": "稀神探女的符卡"
+    },
+    "kochiya_sanae": {
+      "name": "东风谷早苗",
+      "desc": "东风谷早苗的符卡"
+    },
+    "komeiji_koishi": {
+      "name": "古明地恋",
+      "desc": "古明地恋的符卡"
+    },
+    "konpaku_youmu": {
+      "name": "魂魄妖梦",
+      "desc": "魂魄妖梦的符卡"
+    },
+    "luna_child": {
+      "name": "露娜·柴尔德",
+      "desc": "露娜·柴尔德的符卡"
+    },
+    "mystia_lorelei": {
+      "name": "米斯蒂娅·萝蕾拉",
+      "desc": "米斯蒂娅·萝蕾拉的符卡"
+    },
+    "remilia_scarlet": {
+      "name": "蕾米莉亚·斯卡蕾特",
+      "desc": "蕾米莉亚·斯卡蕾特的符卡"
+    },
+    "star_sapphire": {
+      "name": "丝塔·萨菲尔",
+      "desc": "丝塔·萨菲尔的符卡"
+    },
+    "sunny_milk": {
+      "name": "桑妮·米尔克",
+      "desc": "桑妮·米尔克的符卡"
+    },
+    "yukari_yakumo": {
+      "name": "八云紫",
+      "desc": "八云紫的符卡"
+    }
+    }
+  },
+  "cert": {
     "prepare": "认证倒计时 %s 秒——待在场地内",
     "active": "认证开始！坚持 %s 秒（无伤）",
     "success": "认证成功！",

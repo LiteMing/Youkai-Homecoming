@@ -244,6 +244,7 @@ public class YHDanmaku {
 			DYNAMIC_SPELL = YoukaisHomecoming.REGISTRATE
 					.item("dynamic_spell", p -> new DynamicSpellItem(p.stacksTo(1)))
 					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/custom_spell")))
+					.color(() -> () -> (stack, i) -> i == 0 ? DynamicSpellItem.getColor(stack).argb() : 0xffffffff)
 					.register();
 
 			REIMU_SPELL = YoukaisHomecoming.REGISTRATE

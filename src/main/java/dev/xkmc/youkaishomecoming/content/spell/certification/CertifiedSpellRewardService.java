@@ -34,6 +34,8 @@ public final class CertifiedSpellRewardService {
 		ItemStack stack = DynamicSpellItem.createStackWithDuration(
 				YHDanmaku.DYNAMIC_SPELL.get(), definition.id, castDuration, false);
 		CertifiedSpellValidator.tagCertified(stack, certificate);
+		// programmatic random spell color (#RRGGBB), same mechanism as dynamic-color danmaku
+		DynamicSpellItem.withRandomColor(stack, net.minecraft.util.RandomSource.create());
 		return stack;
 	}
 

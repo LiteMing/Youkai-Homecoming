@@ -41,11 +41,32 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	private static final String TAG_SPELL_ID = "spell_id";
 	private static final String TAG_DURATION = "duration";
 	private static final String TAG_SINGLE_USE = "single_use";
+	private static final String TAG_COLOR = "SpellColor";
 	/** Sentinel: run until the spell naturally finishes (no fixed duration). */
 	public static final int DURATION_NATURAL = -1;
 
 	public DynamicSpellItem(Properties properties) {
 		super(properties);
+	}
+
+	/** Spell color stored like dynamic-color danmaku (DanmakuColor.argb in NBT). */
+	public static ItemStack withColor(ItemStack stack, dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor color) {
+		stack.getOrCreateTag().putInt(TAG_COLOR, color.argb());
+		return stack;
+	}
+
+	/** Random #RRGGBB spell color (used by certified rewards). */
+	public static ItemStack withRandomColor(ItemStack stack, net.minecraft.util.RandomSource random) {
+		int rgb = 0xFF000000 | (random.nextInt(256) << 16) | (random.nextInt(256) << 8) | random.nextInt(256);
+		stack.getOrCreateTag().putInt(TAG_COLOR, rgb);
+		return stack;
+	}
+
+	public static dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor getColor(ItemStack stack) {
+		if (stack.hasTag() && stack.getTag().contains(TAG_COLOR)) {
+			return new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor(stack.getTag().getInt(TAG_COLOR));
+		}
+		return dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor.WHITE;
 	}
 
 	@Nullable

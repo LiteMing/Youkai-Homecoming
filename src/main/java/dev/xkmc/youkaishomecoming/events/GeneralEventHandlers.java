@@ -215,11 +215,19 @@ public class GeneralEventHandlers {
 	@SubscribeEvent
 	public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
 		clearPlayerSpells(event.getEntity());
+		if (event.getEntity() instanceof ServerPlayer player) {
+			dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+					.clearQuote(player.getUUID());
+		}
 	}
 
 	@SubscribeEvent
 	public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
 		clearPlayerSpells(event.getEntity());
+		if (event.getEntity() instanceof ServerPlayer player) {
+			dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+					.clearQuote(player.getUUID());
+		}
 	}
 
 	@SubscribeEvent

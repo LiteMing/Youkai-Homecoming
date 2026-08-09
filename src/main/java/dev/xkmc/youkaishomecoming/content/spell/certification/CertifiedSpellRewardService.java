@@ -65,10 +65,11 @@ public final class CertifiedSpellRewardService {
 		SpellDefinition definition = certification.controller().definition();
 		ServerPlayer author = certification.controller().author();
 		long issueCost = certification.controller().quote().issueCostUnits();
+		boolean offline = author == null || !author.isAlive() || author.level() != level;
+		if (offline) {
+			return false;
+		}
 		if (issueCost > 0) {
-			if (author == null || !author.isAlive() || author.level() != level) {
-				return false;
-			}
 			PaymentResult payment = SpellPaymentRouter.pay(author, issueCost, SpellCostContext.CERTIFICATION_ISSUE);
 			if (!payment.success()) {
 				author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_FAIL.get("issue payment"), false);
@@ -79,11 +80,6 @@ public final class CertifiedSpellRewardService {
 
 		ItemStack stack = buildCertifiedStack(level.getServer(), certificate, definition);
 
-		boolean offline = author == null || !author.isAlive()
-				|| !author.level().equals(level);
-		if (offline) {
-			return false;
-		}
 		// the reward is NEVER handed straight into the inventory: it floats in
 		// place, glowing and weightless, at the certification enemy's death spot,
 		// and only the creator can pick it up (immediately, no long delay)

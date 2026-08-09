@@ -38,6 +38,7 @@ public final class CertificationManager {
 	}
 
 	public CertificationQuote setQuote(ServerPlayer player, CertificationQuote quote, SpellDefinition definition) {
+		purgeExpired(player.level().getGameTime());
 		CertificationQuote previous = pendingQuotes.get(player.getUUID());
 		if (previous != null) quoteDefinitions.remove(previous.quoteId());
 		quoteDefinitions.put(quote.quoteId(), definition);
@@ -65,9 +66,26 @@ public final class CertificationManager {
 	}
 
 	public void remove(UUID playerId) {
+		clearQuote(playerId);
+		activeTrials.remove(playerId);
+	}
+
+	/** Drops a pending quote without touching an active controller. */
+	public void clearQuote(UUID playerId) {
 		CertificationQuote quote = pendingQuotes.remove(playerId);
 		if (quote != null) quoteDefinitions.remove(quote.quoteId());
-		activeTrials.remove(playerId);
+	}
+
+	private void purgeExpired(long now) {
+		var iterator = pendingQuotes.entrySet().iterator();
+		while (iterator.hasNext()) {
+			var entry = iterator.next();
+			long age = now - entry.getValue().issuedAtGameTime();
+			if (age < 0 || age > QUOTE_TTL_TICKS) {
+				quoteDefinitions.remove(entry.getValue().quoteId());
+				iterator.remove();
+			}
+		}
 	}
 
 	public int activeCount() {

@@ -33,6 +33,15 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 
 	public SpellCertificationEntity(EntityType<? extends GeneralYoukaiEntity> type, Level level) {
 		super(type, level);
+		// Certification target hovers in place (no gravity) so player shots can
+		// reliably land; knockback is disabled for the same reason (INV-3: gravity
+		// handling is explicit — floating is the intended behaviour for the target).
+		setNoGravity(true);
+	}
+
+	@Override
+	public void knockback(double strength, double dx, double dz) {
+		// the certification target never gets knocked back by player attacks
 	}
 
 	/**

@@ -1046,6 +1046,8 @@ public class YHCommands {
 		ItemStack stack = duration == DynamicSpellItem.DURATION_NATURAL
 				? DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId, singleUse)
 				: DynamicSpellItem.createStackWithDuration(YHDanmaku.DYNAMIC_SPELL.get(), spellId, duration, singleUse);
+		// OP-given cards are complete: right-click casts directly, never the editor.
+		DynamicSpellItem.setComplete(stack, true);
 		if (!player.getInventory().add(stack)) {
 			player.drop(stack, false);
 		}

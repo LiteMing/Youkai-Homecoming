@@ -46,6 +46,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	private static final String TAG_DURATION = "duration";
 	private static final String TAG_SINGLE_USE = "single_use";
 	private static final String TAG_COLOR = "SpellColor";
+	/** Mark on OP-given cards: a complete spell card that casts directly (no editor). */
+	private static final String TAG_COMPLETE = "complete";
 	/** Sentinel: run until the spell naturally finishes (no fixed duration). */
 	public static final int DURATION_NATURAL = -1;
 
@@ -91,6 +93,19 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 	public static boolean isSingleUse(ItemStack stack) {
 		return stack.hasTag() && stack.getTag().getBoolean(TAG_SINGLE_USE);
+	}
+
+	/** Complete (OP-given) cards cast directly; only unfinished self-made cards open the editor. */
+	public static boolean isComplete(ItemStack stack) {
+		return stack.hasTag() && stack.getTag().getBoolean(TAG_COMPLETE);
+	}
+
+	public static void setComplete(ItemStack stack, boolean complete) {
+		if (complete) {
+			stack.getOrCreateTag().putBoolean(TAG_COMPLETE, true);
+		} else if (stack.hasTag()) {
+			stack.getTag().remove(TAG_COMPLETE);
+		}
 	}
 
 	public static void setSingleUse(ItemStack stack, boolean singleUse) {
@@ -153,16 +168,15 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
 		// State machine: blank card -> create a self-made spell in the editor;
-		// unfinished card (bound, not certified) -> re-enter the editor. Only a
-		// certified (complete) spell card casts; completeness comes from the
-		// certification phase.
+		// unfinished card (bound, not certified, not complete) -> re-enter the
+		// editor. Certified (complete) and OP-given (complete) cards cast.
 		if (getSpellId(stack) == null) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
 				YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.draftEditor(), sp);
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (!CertifiedSpellValidator.isCertified(stack)) {
+		if (!CertifiedSpellValidator.isCertified(stack) && !isComplete(stack)) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
 				SpellDefinition def = getSpellDefinition(stack);
 				if (def == null) {

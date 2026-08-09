@@ -9,6 +9,7 @@ import dev.xkmc.youkaishomecoming.content.spell.payment.SpellPaymentRouter;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,9 +43,16 @@ public class CertificationController {
 	@Nullable private CertificationFailReason failReason;
 	private @Nullable PaymentReceipt startReceipt;
 	private boolean combatForcedByCertification;
+	/** The draft card consumed at trial start; returned (same path as the reward) when the trial fails. */
+	@Nullable private ItemStack consumedDraft;
 
 	public void setStartReceipt(PaymentReceipt receipt) {
 		this.startReceipt = receipt;
+	}
+
+	/** The draft card consumed at trial start; returned on failure. */
+	public void setConsumedDraft(ItemStack draft) {
+		this.consumedDraft = draft.copy();
 	}
 	@Nullable private Vec3 lastPlayerPos;
 	private long lastSyncTick = -1;
@@ -357,6 +365,9 @@ public class CertificationController {
 		refund();
 		e.eraseAllDanmaku(null);
 		e.getDanmakuHolder().clearSentQueue();
+		// a failed trial returns the consumed draft card along the same path as
+		// the reward (glowing, weightless, owner-locked at the enemy spot)
+		returnDraft(e);
 		postCertificationEvent();
 		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_FAIL.get(reason.id()), false);
 		syncState();
@@ -367,6 +378,29 @@ public class CertificationController {
 		combatForcedByCertification = false;
 		entity.targets.remove(author.getUUID());
 		dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.defeat(author);
+	}
+
+	/**
+	 * Return the consumed draft card as a floating, glowing, owner-locked item
+	 * at the certification enemy's spot (same path as the certified reward).
+	 */
+	private void returnDraft(SpellCertificationEntity e) {
+		if (consumedDraft == null || consumedDraft.isEmpty()) {
+			return;
+		}
+		ItemStack stack = consumedDraft;
+		consumedDraft = null;
+		if (!(e.level() instanceof net.minecraft.server.level.ServerLevel level)) {
+			return;
+		}
+		var item = new dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellRewardService.CertifiedRewardItem(
+				level, e.getX(), e.getY() + 0.5, e.getZ(), stack, authorId);
+		item.setNoGravity(true);
+		item.setGlowingTag(true);
+		item.setInvulnerable(true);
+		item.setDeltaMovement(0, 0, 0);
+		item.setPickUpDelay(0);
+		level.addFreshEntity(item);
 	}
 
 	private void restoreCombatState() {

@@ -217,9 +217,36 @@ public final class CertificationService {
 		if (startReceipt != null) {
 			controller.setStartReceipt(startReceipt);
 		}
+		// starting a certification consumes the player's draft card (survival);
+		// a failed trial returns it along the same path as the reward
+		ItemStack consumed = consumeDraft(player, definition.id);
+		if (consumed != null) {
+			controller.setConsumedDraft(consumed);
+		}
 		player.level().addFreshEntity(entity);
 		controller.beginPrepare();
 		return true;
+	}
+
+	/**
+	 * Removes one draft card (unfinished dynamic spell, not certified/complete)
+	 * bound to this definition from the player's inventory; returns a copy for
+	 * the fail-return. Null when no draft card is held (e.g. operator give cards).
+	 */
+	@Nullable
+	private static ItemStack consumeDraft(ServerPlayer player, ResourceLocation definitionId) {
+		for (ItemStack stack : player.getInventory().items) {
+			if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+					&& definitionId != null && definitionId.equals(
+					dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack))
+					&& !dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.isComplete(stack)
+					&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
+				ItemStack copy = stack.copy();
+				stack.shrink(1);
+				return copy;
+			}
+		}
+		return null;
 	}
 
 	public static ResourceLocation startProvider() {

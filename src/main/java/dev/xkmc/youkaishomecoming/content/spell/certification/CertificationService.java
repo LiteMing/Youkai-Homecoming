@@ -72,10 +72,11 @@ public final class CertificationService {
 		long startCost = YHModConfig.COMMON.certificationStartCostUnits.get();
 		// Cast/issue cost is duration-driven only (1 + 0.2/s up to 5s, +0.4/s
 		// beyond); projectile volume no longer affects bomb/XP costs.
-		long castCost = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(durationTicks);
+		int rewardDuration = rewardDurationTicks(durationTicks);
+		long castCost = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(rewardDuration);
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
-				startCost, issueCost, castCost, rewardDurationTicks(durationTicks),
+				startCost, issueCost, castCost, rewardDuration,
 				spellHp, specialNodeQuota, analysis, player.level().getGameTime());
 	}
 

@@ -38,6 +38,14 @@ public final class CertifiedSpellValidator {
 		return stack.hasTag() ? stack.getTag().getInt(TAG_CERTIFIED_DURATION) : 0;
 	}
 
+	public static long getCertifiedCost(ItemStack stack) {
+		return stack.hasTag() ? stack.getTag().getLong(TAG_CERTIFIED_COST) : 0;
+	}
+
+	public static int getCertifiedCastDuration(ItemStack stack) {
+		return CertificationService.rewardDurationTicks(getCertifiedDuration(stack));
+	}
+
 	public static void tagCertified(ItemStack stack, SpellCertificate certificate) {
 		stack.getOrCreateTag().putString(TAG_CERTIFICATE_ID, certificate.certificateId().toString());
 		stack.getOrCreateTag().putString(TAG_CERTIFIED_HASH, certificate.definitionHash());
@@ -56,6 +64,15 @@ public final class CertifiedSpellValidator {
 		if (hash == null || hash.isEmpty()) return null;
 		SpellCertificate certificate = CertifiedSpellStorage.loadCertificate(player.server, hash);
 		if (certificate == null) return null;
+		if (certificate.certificateId() == null
+				|| !hash.equals(certificate.definitionHash())
+				|| certificate.certifiedDuration() <= 0
+				|| !certificate.certificateId().toString().equals(stack.getTag().getString(TAG_CERTIFICATE_ID))
+				|| getCertifiedDuration(stack) != certificate.certifiedDuration()
+				|| getCertifiedCost(stack) != certificate.costUnits()
+				|| certificate.costUnits() < 0) {
+			return null;
+		}
 		SpellDefinition def = CertifiedSpellStorage.loadDefinition(player.server, hash);
 		if (def == null) return null;
 		String actual = SpellHash.canonicalHash(def);

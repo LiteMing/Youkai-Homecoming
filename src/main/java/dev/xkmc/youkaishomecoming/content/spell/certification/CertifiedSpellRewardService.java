@@ -4,6 +4,9 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentResult;
+import dev.xkmc.youkaishomecoming.content.spell.payment.SpellCostContext;
+import dev.xkmc.youkaishomecoming.content.spell.payment.SpellPaymentRouter;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.server.level.ServerLevel;
@@ -34,11 +37,9 @@ public final class CertifiedSpellRewardService {
 	 */
 	public static ItemStack buildCertifiedStack(net.minecraft.server.MinecraftServer server,
 												SpellCertificate certificate, SpellDefinition definition) {
-		// the certified card keeps the spell's declared duration (and HP shows on
-		// the tooltip); the reward curve is only a fallback when duration is unset
-		int castDuration = definition.itemForm.duration() > 0
-				? definition.itemForm.duration()
-				: CertificationService.rewardDurationTicks(certificate.certifiedDuration());
+		// The quote owns the final cast duration; do not trust the mutable source
+		// definition or an item-stack duration tag here.
+		int castDuration = CertificationService.rewardDurationTicks(certificate.certifiedDuration());
 		ItemStack stack = DynamicSpellItem.createStackWithDuration(
 				YHDanmaku.DYNAMIC_SPELL.get(), definition.id, castDuration, false);
 		CertifiedSpellValidator.tagCertified(stack, certificate);
@@ -57,21 +58,31 @@ public final class CertifiedSpellRewardService {
 		return stack;
 	}
 
-	public static void issue(SpellCertificationEntity entity) {
+	public static boolean issue(SpellCertificationEntity entity) {
 		ServerLevel level = (ServerLevel) entity.level();
 		SpellCertificationEntity certification = entity;
 		SpellCertificate certificate = buildCertificate(certification);
 		SpellDefinition definition = certification.controller().definition();
+		ServerPlayer author = certification.controller().author();
+		long issueCost = certification.controller().quote().issueCostUnits();
+		if (issueCost > 0) {
+			if (author == null || !author.isAlive() || author.level() != level) {
+				return false;
+			}
+			PaymentResult payment = SpellPaymentRouter.pay(author, issueCost, SpellCostContext.CERTIFICATION_ISSUE);
+			if (!payment.success()) {
+				author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_FAIL.get("issue payment"), false);
+				return false;
+			}
+		}
 		CertifiedSpellStorage.save(level.getServer(), certificate, definition);
 
 		ItemStack stack = buildCertifiedStack(level.getServer(), certificate, definition);
 
-		ServerPlayer author = certification.controller().author();
 		boolean offline = author == null || !author.isAlive()
 				|| !author.level().equals(level);
 		if (offline) {
-			PendingRewardStorage.save(level.getServer(), certification.controller().authorId(), certificate.definitionHash());
-			return;
+			return false;
 		}
 		// the reward is NEVER handed straight into the inventory: it floats in
 		// place, glowing and weightless, at the certification enemy's death spot,
@@ -91,6 +102,7 @@ public final class CertifiedSpellRewardService {
 		level.addFreshEntity(item);
 		// redundant pending marker: guarantees the reward survives chunk unload/restart
 		PendingRewardStorage.save(level.getServer(), author.getUUID(), certificate.definitionHash());
+		return true;
 	}
 
 	/**
@@ -147,7 +159,7 @@ public final class CertifiedSpellRewardService {
 		String hash = controller.definitionHash();
 		UUID authorId = controller.authorId();
 		String authorName = controller.author().getGameProfile().getName();
-		long cost = controller.quote().startCostUnits();
+		long cost = controller.quote().castCostUnits();
 		Set<dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability> capabilities =
 				controller.quote().analysis().requiredCapabilities();
 		return new SpellCertificate(

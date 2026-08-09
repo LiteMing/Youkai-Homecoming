@@ -34,6 +34,13 @@ public final class SpellItemCost {
 				// volume no longer affects bomb/XP costs
 				? dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(durationTicks)
 				: legacyConfigUnits(context);
+		return tryPayUnits(sp, costUnits);
+	}
+
+	/** Pays a pre-validated certificate cost without recomputing it from mutable NBT. */
+	public static boolean tryPayUnits(ServerPlayer sp, long costUnits) {
+		SpellCostContext context = YHStgApi.isInDanmakuSession(sp)
+				? SpellCostContext.SPELL_CAST_STG : SpellCostContext.SPELL_CAST_NON_STG;
 		PaymentResult result = SpellPaymentRouter.pay(sp, costUnits, context);
 		if (result.success()) {
 			return true;

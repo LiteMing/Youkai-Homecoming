@@ -268,8 +268,11 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 
 		if (player instanceof ServerPlayer sp) {
-			if (consume && !SpellItemCost.tryPay(sp, def.itemForm.duration())) {
-				return false;
+			if (consume) {
+				boolean paid = CertifiedSpellValidator.isCertified(stack)
+						? SpellItemCost.tryPayUnits(sp, CertifiedSpellValidator.getCertifiedCost(stack))
+						: SpellItemCost.tryPay(sp, def.itemForm.duration());
+				if (!paid) return false;
 			}
 			int duration = getStackDuration(stack);
 			if (duration == DURATION_NATURAL && def.itemForm.cooldown() > 0) {
@@ -277,11 +280,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 				duration = def.itemForm.cooldown();
 			}
 			if (CertifiedSpellValidator.isCertified(stack)) {
-				// certified duration is the hard maximum (§2.4)
-				int certifiedDuration = CertifiedSpellValidator.getCertifiedDuration(stack);
-				if (duration == DURATION_NATURAL || duration > certifiedDuration) {
-					duration = certifiedDuration;
-				}
+				// Certified cards always use the immutable reward duration.
+				duration = CertifiedSpellValidator.getCertifiedCastDuration(stack);
 			}
 			DanmakuProxyEntity proxy = new DanmakuProxyEntity(
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());

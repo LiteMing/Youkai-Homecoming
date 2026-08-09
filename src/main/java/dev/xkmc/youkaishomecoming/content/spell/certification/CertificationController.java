@@ -345,7 +345,12 @@ public class CertificationController {
 		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_SUCCESS.get(), false);
 		syncState();
 		try {
-			CertifiedSpellRewardService.issue(e);
+			if (!CertifiedSpellRewardService.issue(e)) {
+				// Issuance fees are paid at the success boundary. If the player
+				// disconnected or cannot pay, return the consumed draft instead of
+				// creating an unbacked pending reward.
+				returnDraft(e);
+			}
 		} catch (Exception ex) {
 			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.LOGGER.error("Failed to issue certified reward", ex);
 		}

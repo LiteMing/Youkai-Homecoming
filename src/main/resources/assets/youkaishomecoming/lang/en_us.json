@@ -1473,6 +1473,8 @@
   "youkaishomecoming.spell_market.source.other": "Other",
   "youkaishomecoming.spell_market.source.seihou": "Seihou Project",
   "youkaishomecoming.spell_market.title": "Spell Card Market",
+  "youkaishomecoming.message.stg_enter": "Danmaku combat enabled",
+  "youkaishomecoming.message.stg_exit": "Danmaku combat disabled",
   "youkaishomecoming.spell_market.to_editor": "Editor",
   "youkaishomecoming.spell_market.unknown": "Unknown",
   "youkaishomecoming.spell_market.unlike": "Unlike",

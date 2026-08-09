@@ -68,7 +68,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (GrazeHelper.forbidDanmakuWithMessage(player))
+		if (GrazeHelper.forbidSpellCardWithMessage(player))
 			return InteractionResultHolder.fail(stack);
 		boolean consume = !player.getAbilities().instabuild && !(player instanceof FakePlayer);
 		if (!castSpell(stack, player, consume, true)) {
@@ -79,6 +79,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 
 	@Override
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
+		if (GrazeHelper.forbidSpellCardWithMessage(player)) return false;
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 		if (player instanceof ServerPlayer sp) {
 			if (consume && !SpellItemCost.tryPay(sp, 0)) {

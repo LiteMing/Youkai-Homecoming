@@ -256,6 +256,19 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			dirty = true;
 			return HitType.LIFE;
 		}
+		// Auto-bomb is still a bomb use for certification purposes. Fail the
+		// trial, but leave resources untouched and absorb this contact so the
+		// player is not double-punished by a normal miss in the same tick.
+		if (player instanceof ServerPlayer sp) {
+			var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+					.getActiveTrial(sp);
+			if (trial != null && trial.isActive()) {
+				trial.onPlayerBomb();
+				invul = YHModConfig.COMMON.missInvulTime.get();
+				dirty = true;
+				return HitType.INVUL;
+			}
+		}
 		if (getStgCombatMode().autoBombOnHit() && useBomb()) {
 			if (player instanceof ServerPlayer sp) {
 				MinecraftForge.EVENT_BUS.post(new StgBombEvent.Auto(sp, source, erased));

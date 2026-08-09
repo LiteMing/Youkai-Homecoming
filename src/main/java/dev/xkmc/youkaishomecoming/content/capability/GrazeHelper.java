@@ -165,6 +165,27 @@ public class GrazeHelper {
 		return dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveProxy(player);
 	}
 
+	/**
+	 * Spell-card-only gate used by ISpellItem implementations. Normal danmaku
+	 * and laser shots remain available during certification so the player can
+	 * break the certification target; bombs and other spell cards do not.
+	 */
+	public static boolean forbidSpellCardWithMessage(Player player) {
+		if (forbidDanmakuWithMessage(player)) {
+			return true;
+		}
+		if (player instanceof net.minecraft.server.level.ServerPlayer sp) {
+			var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+					.getActiveTrial(sp);
+			if (trial != null && trial.isActive()) {
+				trial.onPlayerCastsOtherSpell();
+				sp.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.SPELL_NO_DANMAKU_NOW.get(), true);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Like {@link #forbidDanmaku} but tells the player why (red action bar). */
 	public static boolean forbidDanmakuWithMessage(Player player) {
 		if (!forbidDanmaku(player)) {

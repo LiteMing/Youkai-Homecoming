@@ -68,7 +68,7 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 	}
 
 	private boolean castSpellImpl(ISpellFormData<?> data, Player player, boolean consume, boolean cooldown) {
-		if (GrazeHelper.forbidDanmakuWithMessage(player))
+		if (GrazeHelper.forbidSpellCardWithMessage(player))
 			return false;
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 		if (consume) {

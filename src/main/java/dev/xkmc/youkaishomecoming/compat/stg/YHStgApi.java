@@ -136,6 +136,8 @@ public final class YHStgApi {
 		var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE.getActiveTrial(player);
 		if (trial != null && trial.isActive()) {
 			trial.onPlayerBomb();
+			// A failed certification must not also consume the player's bomb.
+			return false;
 		}
 		var cap = cap(player);
 		if (!cap.useBomb()) {
@@ -148,6 +150,10 @@ public final class YHStgApi {
 	}
 
 	public static int eraseActiveDanmaku(ServerPlayer player, double radius, boolean sessionsOnly) {
+		var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE.getActiveTrial(player);
+		if (trial != null && trial.isActive()) {
+			return 0;
+		}
 		return cap(player).eraseActiveDanmaku(Math.max(0, radius), sessionsOnly);
 	}
 

@@ -7,7 +7,6 @@ import dev.xkmc.youkaishomecoming.compat.kubejs.spell.DynamicSpellSingleUseEvent
 import dev.xkmc.youkaishomecoming.compat.kubejs.spell.YHSpellKubeJSEvents;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
-import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -228,7 +227,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (GrazeHelper.forbidDanmakuWithMessage(player))
+		if (GrazeHelper.forbidSpellCardWithMessage(player))
 			return InteractionResultHolder.fail(stack);
 		if (!castSpell(stack, player, !player.getAbilities().instabuild, true)) {
 			return InteractionResultHolder.fail(stack);
@@ -238,6 +237,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 	@Override
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
+		if (GrazeHelper.forbidSpellCardWithMessage(player)) return false;
 		SpellDefinition def = getSpellDefinition(stack);
 		if (def == null) return false;
 		ResourceLocation spellId = getSpellId(stack);
@@ -268,12 +268,6 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 
 		if (player instanceof ServerPlayer sp) {
-			// No-bomb/no-hit certification rule: casting a DIFFERENT spell during
-			// the trial fails it (the certified spell itself is the allowed attack).
-			var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE.getActiveTrial(sp);
-			if (trial != null && trial.isActive() && !trial.definitionHash().equals(SpellHash.canonicalHash(def))) {
-				trial.onPlayerCastsOtherSpell();
-			}
 			if (consume && !SpellItemCost.tryPay(sp, def.itemForm.duration())) {
 				return false;
 			}

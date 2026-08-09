@@ -1538,14 +1538,9 @@ public class YHRecipeGen {
 						.requires(YHDanmaku.Laser.LASER.get(e))
 						.save(pvd, YHDanmaku.Laser.PENCIL.get(e).getId().withSuffix("_upgrade"));
 			}
-
-			unlock(pvd, ShapelessRecipeBuilder.shapeless(RecipeCategory.COMBAT, YHDanmaku.CUSTOM_SPELL_RING)::unlockedBy, Items.INK_SAC)
-					.requires(YHTagGen.PRESET_SPELL).requires(Items.PAPER).requires(Items.INK_SAC)
-					.save(pvd);
-
-			unlock(pvd, ShapelessRecipeBuilder.shapeless(RecipeCategory.COMBAT, YHDanmaku.CUSTOM_SPELL_HOMING)::unlockedBy, Items.GLOW_INK_SAC)
-					.requires(YHTagGen.PRESET_SPELL).requires(Items.PAPER).requires(Items.GLOW_INK_SAC)
-					.save(pvd);
+			// legacy custom spell cards are deprecated: their crafting recipes were
+			// removed (preset spell card + paper + ink sac now yields the blank
+			// spell draft for the certification chain instead).
 		}
 
 		if (ModList.get().isLoaded("fruitsdelight")) {

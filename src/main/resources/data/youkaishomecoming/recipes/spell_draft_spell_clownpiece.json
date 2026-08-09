@@ -14,6 +14,6 @@
   ],
   "result": {
     "item": "youkaishomecoming:dynamic_spell",
-    "nbt": "{spell_id:\"touhou_little_maid:clownpiece\"}"
+    "nbt": "{yh_op_quota:1}"
   }
 }

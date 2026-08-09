@@ -326,28 +326,36 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	}
 
 	/**
-	 * Enforce the draft special-node quota: if the player holds a draft card
-	 * bound to this spell id, the definition's special node count (teleport,
-	 * confine, erase, clear, flags, force/fire spell, on_damage / fire / laser
-	 * hooks — NOT run_command, which stays operator-only) must not exceed the
-	 * quota carried on that draft. Without a draft card, {@code defaultQuota}
-	 * applies (-1 = no restriction, operators only).
+	 * Enforce the draft special-node quota: if the player holds a spell card
+	 * with a special-node quota (a blank boss-base card, or a card already bound
+	 * to this spell id), the definition's special node count (teleport, confine,
+	 * erase, clear, flags, force/fire spell, on_damage / fire / laser hooks —
+	 * NOT run_command, which stays operator-only) must not exceed the quota.
+	 * Without such a card, {@code defaultQuota} applies (-1 = no restriction,
+	 * operators only).
 	 */
 	private static void enforceOpQuota(ServerPlayer sender, SpellDefinition definition, int defaultQuota) {
 		int quota = -2;
+		int blankQuota = 0;
 		for (ItemStack stack : sender.getInventory().items) {
-			if (stack.getItem() instanceof DynamicSpellItem
-					&& definition.id.equals(DynamicSpellItem.getSpellId(stack))
-					&& !DynamicSpellItem.isComplete(stack)) {
-				quota = DynamicSpellItem.getOpQuota(stack);
-				break;
+			if (stack.getItem() instanceof DynamicSpellItem && !DynamicSpellItem.isComplete(stack)) {
+				ResourceLocation bound = DynamicSpellItem.getSpellId(stack);
+				int cardQuota = DynamicSpellItem.getOpQuota(stack);
+				if (bound != null && definition.id.equals(bound)) {
+					if (cardQuota > 0) {
+						quota = cardQuota;
+						break;
+					}
+				} else if (bound == null && cardQuota > 0 && blankQuota == 0) {
+					blankQuota = cardQuota;
+				}
 			}
 		}
 		if (quota == -2) {
-			quota = defaultQuota;
+			quota = blankQuota > 0 ? blankQuota : defaultQuota;
 		}
 		if (quota < 0) {
-			return; // operator path without a draft: unrestricted
+			return; // operator path without a quota card: unrestricted
 		}
 		int count = SpecialNodeCounter.count(definition);
 		if (count > quota) {

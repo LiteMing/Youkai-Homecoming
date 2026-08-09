@@ -76,19 +76,26 @@ public final class CertificationService {
 	}
 
 	/**
-	 * Special-node quota carried by the draft card bound to this definition in
-	 * the player's inventory (0 when no draft card is held).
+	 * Special-node quota carried by the spell card in the player's inventory:
+	 * first a card bound to this definition, then any blank quota card.
 	 */
 	private static int draftOpQuota(ServerPlayer player, SpellDefinition definition) {
+		int blankQuota = 0;
 		for (ItemStack stack : player.getInventory().items) {
 			if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
-					&& definition.id != null && definition.id.equals(
-					dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack))
 					&& !dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.isComplete(stack)) {
-				return dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getOpQuota(stack);
+				ResourceLocation bound = dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack);
+				int quota = dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getOpQuota(stack);
+				if (bound != null && definition.id != null && definition.id.equals(bound)) {
+					if (quota > 0) {
+						return quota;
+					}
+				} else if (bound == null && quota > 0 && blankQuota == 0) {
+					blankQuota = quota;
+				}
 			}
 		}
-		return 0;
+		return blankQuota;
 	}
 
 	/**

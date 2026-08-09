@@ -36,8 +36,9 @@ public final class CertifiedSpellRewardService {
 		ItemStack stack = DynamicSpellItem.createStackWithDuration(
 				YHDanmaku.DYNAMIC_SPELL.get(), definition.id, castDuration, false);
 		CertifiedSpellValidator.tagCertified(stack, certificate);
-		// the certified card's special-node quota is derived dynamically from the
-		// boss's original definition (see DynamicSpellItem.getOpQuota)
+		// the certified card keeps the special-node quota granted at draft time
+		// (recorded on the certificate; shown for reference)
+		DynamicSpellItem.setOpQuota(stack, certificate.specialNodeQuota());
 		// spell color = blended average of the danmaku colors inside the definition,
 		// with a small jitter; falls back to fully random when nothing is readable
 		RandomSource random = RandomSource.create();

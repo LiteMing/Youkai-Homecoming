@@ -117,18 +117,25 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	}
 
 	/**
-	 * Special-node quota of a draft card: derived dynamically from the ORIGINAL
-	 * (built-in default) definition bound by spell_id — the count of special
-	 * nodes (teleport/confine/erase/clear/flag/force/fire + on_damage / fire /
-	 * laser hooks) in the boss's own spell. Stable: player edits to the working
-	 * definition never change the quota. run_command is never part of it.
+	 * Special-node quota of a (blank) spell card: how many EXPERIMENTAL nodes
+	 * (teleport, confine, erase, clear, flags, force/fire spell, on_damage /
+	 * fire / laser hooks) the card may carry. Written onto the blank card by the
+	 * boss-base crafting recipes; survives naming/saving. run_command is never
+	 * part of a quota.
 	 */
 	public static int getOpQuota(ItemStack stack) {
-		ResourceLocation id = getSpellId(stack);
-		if (id == null) return 0;
-		SpellDefinition original = SpellRegistry.getDefault(id);
-		if (original == null) return 0;
-		return dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter.count(original);
+		if (stack.hasTag() && stack.getTag().contains(TAG_OP_QUOTA)) {
+			return Math.max(0, stack.getTag().getInt(TAG_OP_QUOTA));
+		}
+		return 0;
+	}
+
+	public static void setOpQuota(ItemStack stack, int quota) {
+		if (quota > 0) {
+			stack.getOrCreateTag().putInt(TAG_OP_QUOTA, quota);
+		} else if (stack.hasTag()) {
+			stack.getTag().remove(TAG_OP_QUOTA);
+		}
 	}
 
 	public static void setSingleUse(ItemStack stack, boolean singleUse) {

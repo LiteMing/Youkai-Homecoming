@@ -274,7 +274,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			if (trial != null && trial.isActive() && !trial.definitionHash().equals(SpellHash.canonicalHash(def))) {
 				trial.onPlayerCastsOtherSpell();
 			}
-			if (consume && !SpellItemCost.tryPay(sp)) {
+			if (consume && !SpellItemCost.tryPay(sp, def.itemForm.duration())) {
 				return false;
 			}
 			int duration = getStackDuration(stack);
@@ -294,6 +294,15 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			proxy.init(sp, def, duration, target);
 			sp.serverLevel().addFreshEntity(proxy);
 			SpellContainer.trackProxy(sp, proxy);
+			// certified cards show the player-use spell bar: a fraction of the
+			// certification HP (boss bar); misses shrink it instead of costing life
+			if (CertifiedSpellValidator.isCertified(stack)) {
+				int hp = def.itemForm.hp();
+				if (hp > 0) {
+					double ratio = YHModConfig.COMMON.certificationPlayerUseHpRatio.get();
+					SpellContainer.startSpellBar(sp, (int) Math.max(1, hp * ratio));
+				}
+			}
 			if (cooldown) {
 				int cd = def.itemForm.cooldown() > 0 ? def.itemForm.cooldown() : YHModConfig.COMMON.playerSpellCooldown.get();
 				sp.getCooldowns().addCooldown(this, cd);
@@ -316,7 +325,11 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (GrazeHelper.isManualCombatMode()) {
 			list.add(YHLangData.STG_TOGGLE_TIP.get());
 		}
-		SpellItemCost.appendCostTooltip(list);
+		SpellDefinition def = getSpellDefinition(stack);
+		SpellItemCost.appendCostTooltip(list, def != null ? def.itemForm.duration() : 0);
+		if (def != null && def.itemForm.hp() > 0) {
+			list.add(YHLangData.SPELL_HP.get(def.itemForm.hp()));
+		}
 		int quota = getOpQuota(stack);
 		if (quota > 0) {
 			// boss-base draft: how many experimental nodes this draft may use
@@ -325,7 +338,6 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (isSingleUse(stack)) {
 			list.add(YHLangData.SPELL_SINGLE_USE.get());
 		}
-		SpellDefinition def = getSpellDefinition(stack);
 		if (def != null) {
 			list.add(def.display.displayName().copy().withStyle(ChatFormatting.GOLD));
 			if (!def.display.description().isEmpty()) {

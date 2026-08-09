@@ -248,6 +248,14 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (!hasInitializedCombatContext(source)) return HitType.NONE;
 		if (invul > 0) return HitType.INVUL;
 		int erased = eraseActiveDanmakuForHit(source);
+		// a certified spell card's break-HP bar absorbs misses: shrink it by 1,
+		// break (interrupt) the spell at zero — no power/life loss for this hit
+		if (player instanceof ServerPlayer sp
+				&& dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.consumeSpellBarHit(sp)) {
+			invul = YHModConfig.COMMON.missInvulTime.get();
+			dirty = true;
+			return HitType.LIFE;
+		}
 		if (getStgCombatMode().autoBombOnHit() && useBomb()) {
 			if (player instanceof ServerPlayer sp) {
 				MinecraftForge.EVENT_BUS.post(new StgBombEvent.Auto(sp, source, erased));

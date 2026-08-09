@@ -81,7 +81,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 		if (player instanceof ServerPlayer sp) {
-			if (consume && !SpellItemCost.tryPay(sp)) {
+			if (consume && !SpellItemCost.tryPay(sp, 0)) {
 				return false;
 			}
 			SpellContainer.castSpell(sp, spell, target);
@@ -101,7 +101,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 		if (GrazeHelper.isManualCombatMode()) {
 			list.add(YHLangData.STG_TOGGLE_TIP.get());
 		}
-		SpellItemCost.appendCostTooltip(list);
+		SpellItemCost.appendCostTooltip(list, 0);
 		if (isSingleUse(stack)) {
 			list.add(YHLangData.SPELL_SINGLE_USE.get());
 		}

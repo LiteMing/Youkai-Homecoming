@@ -32,7 +32,11 @@ public final class CertifiedSpellRewardService {
 	 */
 	public static ItemStack buildCertifiedStack(net.minecraft.server.MinecraftServer server,
 												SpellCertificate certificate, SpellDefinition definition) {
-		int castDuration = CertificationService.rewardDurationTicks(certificate.certifiedDuration());
+		// the certified card keeps the spell's declared duration (and HP shows on
+		// the tooltip); the reward curve is only a fallback when duration is unset
+		int castDuration = definition.itemForm.duration() > 0
+				? definition.itemForm.duration()
+				: CertificationService.rewardDurationTicks(certificate.certifiedDuration());
 		ItemStack stack = DynamicSpellItem.createStackWithDuration(
 				YHDanmaku.DYNAMIC_SPELL.get(), definition.id, castDuration, false);
 		CertifiedSpellValidator.tagCertified(stack, certificate);

@@ -75,9 +75,9 @@ public final class CertificationService {
 		// Start fee is a fixed anti-spam toll (design §14), decoupled from spell power —
 		// spam protection lives in maxTrialsPerPlayer / maxConcurrentTrials.
 		long startCost = YHModConfig.COMMON.certificationStartCostUnits.get();
-		// Cast cost = base (default 100 = 5 XP levels / 1 bomb) x logarithmic power
-		// multiplier; the weakest built-in spells sit at multiplier 1 (Phase 7).
-		long castCost = Math.max(1, startCost) * powerMultiplier(analysis);
+		// Cast/issue cost is duration-driven only (1 + 0.2/s up to 5s, +0.4/s
+		// beyond); projectile volume no longer affects bomb/XP costs.
+		long castCost = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(durationTicks);
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
 				startCost, issueCost, castCost, rewardDurationTicks(durationTicks),
@@ -105,20 +105,6 @@ public final class CertificationService {
 			}
 		}
 		return blankQuota;
-	}
-
-	/**
-	 * Logarithmic power multiplier relative to the weakest built-in spell baseline
-	 * (~64M conservative projectile-ticks ≈ sunny_milk). Every 4x projectile-ticks
-	 * raises the multiplier by 1, capped at 8. Costs are multipliers, never a
-	 * re-derivation from absolute projectile counts.
-	 */
-	private static long powerMultiplier(SpellAnalysis analysis) {
-		double ratio = analysis.projectileTicks() / 64_000_000.0;
-		if (ratio <= 1) return 1;
-		long tiers = (long) Math.ceil(Math.log(ratio) / Math.log(2) / 2.0);
-		// cap at 10x base = 10 bombs / 50 XP levels (default upper bound)
-		return Math.max(1, Math.min(10, tiers));
 	}
 
 	public static int clampDuration(int requested) {

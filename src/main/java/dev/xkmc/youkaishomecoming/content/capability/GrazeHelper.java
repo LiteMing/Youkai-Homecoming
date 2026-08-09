@@ -157,7 +157,12 @@ public class GrazeHelper {
 
 	public static boolean forbidDanmaku(Player player) {
 		var cap = GrazeCapability.HOLDER.get(player);
-		return cap.isInvul() || cap.isWeak();
+		if (cap.isInvul() || cap.isWeak()) {
+			return true;
+		}
+		// while releasing a spell card, other danmaku (and other spell cards)
+		// cannot be used
+		return dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveProxy(player);
 	}
 
 	public static void onDanmakuKill(Player player, YoukaiEntity e) {

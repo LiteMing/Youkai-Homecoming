@@ -26,11 +26,14 @@ public final class SpellItemCost {
 	private SpellItemCost() {
 	}
 
-	public static boolean tryPay(ServerPlayer sp) {
+	public static boolean tryPay(ServerPlayer sp, int durationTicks) {
 		SpellCostContext context = YHStgApi.isInDanmakuSession(sp)
 				? SpellCostContext.SPELL_CAST_STG : SpellCostContext.SPELL_CAST_NON_STG;
-		long costUnits = context == SpellCostContext.SPELL_CAST_STG
-				? YHModConfig.COMMON.spellBombCost.get() : YHModConfig.COMMON.spellXpCost.get();
+		long costUnits = durationTicks > 0
+				// duration-driven cost: 1 + 0.2/s (first 5s) + 0.4/s beyond; projectile
+				// volume no longer affects bomb/XP costs
+				? dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(durationTicks)
+				: legacyConfigUnits(context);
 		PaymentResult result = SpellPaymentRouter.pay(sp, costUnits, context);
 		if (result.success()) {
 			return true;
@@ -43,12 +46,22 @@ public final class SpellItemCost {
 		return false;
 	}
 
-	public static void appendCostTooltip(List<Component> list) {
-		if (YHModConfig.COMMON.spellBombCost.get() > 0) {
-			list.add(YHLangData.SPELL_COST_BOMB.get(YHModConfig.COMMON.spellBombCost.get()));
+	/** Legacy fixed config cost (used by cards without a declared duration). */
+	private static long legacyConfigUnits(SpellCostContext context) {
+		return context == SpellCostContext.SPELL_CAST_STG
+				? YHModConfig.COMMON.spellBombCost.get() : YHModConfig.COMMON.spellXpCost.get();
+	}
+
+	public static void appendCostTooltip(List<Component> list, int durationTicks) {
+		long units = durationTicks > 0
+				? dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(durationTicks)
+				: legacyConfigUnits(SpellCostContext.SPELL_CAST_NON_STG);
+		double bombs = units / 100.0;
+		if (bombs > 0) {
+			list.add(YHLangData.SPELL_COST_BOMB.get(String.format(java.util.Locale.ROOT, "%.1f", bombs)));
 		}
-		if (YHModConfig.COMMON.spellXpCost.get() > 0) {
-			list.add(YHLangData.SPELL_COST_XP.get(YHModConfig.COMMON.spellXpCost.get()));
+		if (units > 0) {
+			list.add(YHLangData.SPELL_COST_XP.get(Math.max(1, Math.round(units / 20.0f))));
 		}
 	}
 }

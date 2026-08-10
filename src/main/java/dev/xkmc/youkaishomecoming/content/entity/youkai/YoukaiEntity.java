@@ -832,8 +832,11 @@ public abstract class YoukaiEntity extends PathfinderMob
 				&& YHModConfig.COMMON.bossDanmakuDefeatOutsideCombat.get()
 				&& !EffectEventHandlers.canDanmakuCombat(player)
 				&& !player.hasEffect(YHEffects.BEATEN.get())) {
-			// Use the same server-authoritative defeat flow as a last-life failure.
-			GrazeCapability.HOLDER.get(player).defeatWithBeaten(this);
+			int duration = YHModConfig.COMMON.beatenDurationTicks.get();
+			if (duration > 0) {
+				player.addEffect(new net.minecraft.world.effect.MobEffectInstance(
+						YHEffects.BEATEN.get(), duration, 0));
+			}
 		}
 		if (immune) {
 			onDanmakuImmune(target, self, source);

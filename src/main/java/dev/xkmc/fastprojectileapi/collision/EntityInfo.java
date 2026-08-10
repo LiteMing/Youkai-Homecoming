@@ -2,12 +2,17 @@ package dev.xkmc.fastprojectileapi.collision;
 
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import net.minecraftforge.entity.PartEntity;
+
+import java.util.UUID;
 
 public class EntityInfo {
 
@@ -16,6 +21,8 @@ public class EntityInfo {
 	private final Vec3 deltaMovement;
 	private final float hitBoxDelta;
 	private final boolean ownerTrackedByYoukai;
+	private final UUID rootUuid;
+	private final boolean hostileForUntargetedPlayerSpell;
 	private final boolean[] hitTestResults;
 
 	public EntityInfo(LivingEntity owner, Entity entity) {
@@ -24,6 +31,10 @@ public class EntityInfo {
 		this.deltaMovement = entity.getDeltaMovement();
 		this.hitBoxDelta = entity instanceof Player player ? GrazeHelper.getHitBoxDelta(player) : 0;
 		this.ownerTrackedByYoukai = owner instanceof Player player && entity instanceof YoukaiEntity youkai && youkai.targets.contains(player);
+		Entity root = entity;
+		while (root instanceof PartEntity<?> part) root = part.getParent();
+		this.rootUuid = root.getUUID();
+		this.hostileForUntargetedPlayerSpell = root instanceof Enemy && !(root instanceof NeutralMob);
 		this.hitTestResults = new boolean[HitTestType.values().length];
 		for (HitTestType type : HitTestType.values()) {
 			hitTestResults[type.ordinal()] = type.canHitEntity(owner, entity);
@@ -48,6 +59,14 @@ public class EntityInfo {
 
 	public boolean ownerTrackedByYoukai() {
 		return ownerTrackedByYoukai;
+	}
+
+	public UUID rootUuid() {
+		return rootUuid;
+	}
+
+	public boolean hostileForUntargetedPlayerSpell() {
+		return hostileForUntargetedPlayerSpell;
 	}
 
 	public boolean canHit(HitTestType type) {

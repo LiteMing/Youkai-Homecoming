@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 import dev.xkmc.fastprojectileapi.entity.BaseProjectile;
 import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.collision.EntityInfo;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.PacketCodec;
 import dev.xkmc.l2serial.serialization.codec.TagCodec;
@@ -19,8 +20,10 @@ import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.UUID;
 
 @SerialClass
 public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
@@ -29,6 +32,11 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	private int life = 0;
 	@SerialClass.SerialField
 	private boolean bypassWall = false, bypassEntity = false;
+	@SerialClass.SerialField
+	private boolean playerSpellDamageRestricted = false;
+	@Nullable
+	@SerialClass.SerialField
+	private UUID playerSpellTargetId = null;
 
 	public void setBypassWall(boolean bypass) { this.bypassWall = bypass; }
 	public void setBypassEntity(boolean bypass) { this.bypassEntity = bypass; }
@@ -70,6 +78,17 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	@Override
 	public SimplifiedProjectile self() {
 		return this;
+	}
+
+	@Override
+	public void restrictPlayerSpellDamage(@Nullable LivingEntity target) {
+		playerSpellDamageRestricted = true;
+		playerSpellTargetId = target == null ? null : target.getUUID();
+	}
+
+	@Override
+	public boolean canHitDanmakuTarget(EntityInfo target) {
+		return IYHDanmaku.canPlayerSpellHit(target, playerSpellDamageRestricted, playerSpellTargetId);
 	}
 
 	@Override

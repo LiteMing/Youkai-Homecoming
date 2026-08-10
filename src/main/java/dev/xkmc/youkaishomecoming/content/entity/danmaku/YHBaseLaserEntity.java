@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 import dev.xkmc.fastprojectileapi.entity.BaseLaser;
 import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.collision.EntityInfo;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.PacketCodec;
 import dev.xkmc.l2serial.serialization.codec.TagCodec;
@@ -24,8 +25,10 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.entity.IEntityAdditionalSpawnData;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.UUID;
 
 @SerialClass
 public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpawnData, IYHDanmaku {
@@ -34,6 +37,11 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	protected int life = 0, prepare, start, end;
 	@SerialClass.SerialField
 	private boolean bypassWall = false;
+	@SerialClass.SerialField
+	private boolean playerSpellDamageRestricted = false;
+	@Nullable
+	@SerialClass.SerialField
+	private UUID playerSpellTargetId = null;
 	@SerialClass.SerialField
 	public float damage = 0, length = 0;
 	@SerialClass.SerialField
@@ -111,6 +119,17 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	@Override
 	public SimplifiedProjectile self() {
 		return this;
+	}
+
+	@Override
+	public void restrictPlayerSpellDamage(@Nullable LivingEntity target) {
+		playerSpellDamageRestricted = true;
+		playerSpellTargetId = target == null ? null : target.getUUID();
+	}
+
+	@Override
+	public boolean canHitDanmakuTarget(EntityInfo target) {
+		return IYHDanmaku.canPlayerSpellHit(target, playerSpellDamageRestricted, playerSpellTargetId);
 	}
 
 	@Override

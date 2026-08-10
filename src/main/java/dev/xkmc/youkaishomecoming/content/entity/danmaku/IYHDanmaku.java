@@ -30,6 +30,19 @@ public interface IYHDanmaku extends GrazingEntity {
 
 	SimplifiedProjectile self();
 
+	default boolean canHitDanmakuTarget(EntityInfo target) {
+		return true;
+	}
+
+	default void restrictPlayerSpellDamage(@Nullable LivingEntity target) {
+	}
+
+	static boolean canPlayerSpellHit(EntityInfo candidate, boolean restricted, @Nullable java.util.UUID targetId) {
+		if (!restricted) return true;
+		return targetId == null ? candidate.hostileForUntargetedPlayerSpell()
+				: targetId.equals(candidate.rootUuid());
+	}
+
 	@Override
 	default float grazeRange() {
 		return GRAZE_RANGE;

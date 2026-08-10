@@ -218,6 +218,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 		danmakuHolder.tickDanmaku(this, shooter());
 	}
 
+	@Override
+	public int activeDanmakuCount() {
+		return danmakuHolder.activeProjectileCount();
+	}
+
 	public void eraseAllDanmaku(@Nullable Player player) {
 		eraseAllDanmakuAndCount(player);
 	}

@@ -25,6 +25,15 @@ public interface SpellRuntimeHost extends LivingCardHolder {
 
 	void syncSpellState();
 
+	/** Number of live danmaku currently owned by this spell host. */
+	default int activeDanmakuCount() {
+		return 0;
+	}
+
+	/** Completes the normal host defeat path when a timed health segment has no transition. */
+	default void settleSpellHealthTimeout() {
+	}
+
 	boolean isBossHost();
 
 	default boolean isPlayerHost() {

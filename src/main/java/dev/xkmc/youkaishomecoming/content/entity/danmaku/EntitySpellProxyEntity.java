@@ -347,6 +347,11 @@ public class EntitySpellProxyEntity extends PathfinderMob
 		return hostEntity instanceof LivingEntity le && !le.isRemoved() ? le : this;
 	}
 
+	@Override
+	public int activeDanmakuCount() {
+		return danmakuHolder.activeProjectileCount();
+	}
+
 	// ==================== LivingCardHolder implementation ====================
 
 	@Override

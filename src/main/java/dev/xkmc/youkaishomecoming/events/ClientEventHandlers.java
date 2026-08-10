@@ -105,7 +105,20 @@ public class ClientEventHandlers {
 									 @org.jetbrains.annotations.Nullable ResourceLocation phaseId,
 									 int phaseTick,
 									 boolean inDanmakuCombat,
-									 int spellMaxHealth, int spellElapsedTicks, int spellDurationTicks) {
+								 int spellMaxHealth, int spellElapsedTicks, int spellDurationTicks) {
+		setSpellState(entityId, spellId, phaseId, phaseTick, inDanmakuCombat,
+				spellMaxHealth, spellElapsedTicks, spellDurationTicks, spellMaxHealth, 0, 1,
+				spellMaxHealth > 0 ? new int[]{spellMaxHealth} : new int[0]);
+	}
+
+	public static void setSpellState(int entityId,
+								 @org.jetbrains.annotations.Nullable ResourceLocation spellId,
+								 @org.jetbrains.annotations.Nullable ResourceLocation phaseId,
+								 int phaseTick,
+								 boolean inDanmakuCombat,
+								 int spellMaxHealth, int spellElapsedTicks, int spellDurationTicks,
+								 int spellHealthTotal, int spellHealthCompleted, int spellHealthSegmentCount,
+								 int[] spellHealthSegments) {
 		var level = Minecraft.getInstance().level;
 		if (level == null) return;
 		if (level.getEntity(entityId) instanceof YoukaiEntity e) {
@@ -116,6 +129,10 @@ public class ClientEventHandlers {
 			e.clientSpellMaxHealth = Math.max(0, spellMaxHealth);
 			e.clientSpellElapsedTicks = Math.max(0, spellElapsedTicks);
 			e.clientSpellDurationTicks = Math.max(0, spellDurationTicks);
+			e.clientSpellHealthTotal = Math.max(0, spellHealthTotal);
+			e.clientSpellHealthCompleted = Math.max(0, spellHealthCompleted);
+			e.clientSpellHealthSegmentCount = Math.max(0, spellHealthSegmentCount);
+			e.clientSpellHealthSegments = spellHealthSegments == null ? new int[0] : spellHealthSegments.clone();
 			e.clientSpellStateReceivedTick = e.tickCount;
 		}
 	}

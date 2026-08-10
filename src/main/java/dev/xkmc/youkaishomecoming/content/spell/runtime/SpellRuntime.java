@@ -28,6 +28,7 @@ import java.util.function.Consumer;
  * Does NOT extend SpellCard — it replaces the old runtime model.
  */
 public class SpellRuntime {
+	private static final int MAX_SPELL_HEALTH_SEGMENTS = 32;
 
 	private final SpellDefinition definition;
 
@@ -43,6 +44,9 @@ public class SpellRuntime {
 	private int spellMaxHealth;
 	private int spellDurationTicks;
 	private int spellStartTick;
+	/** Max HP of every spell-health segment encountered in this spell definition. */
+	private final List<Integer> spellHealthSegments = new ArrayList<>();
+	private int spellHealthCompleted;
 	@Nullable
 	private SpellAction spellTimeoutAction;
 	@Nullable
@@ -103,6 +107,24 @@ public class SpellRuntime {
 		return spellDurationTicks;
 	}
 
+	public int getSpellHealthTotal() {
+		long total = 0;
+		for (int segment : spellHealthSegments) total += Math.max(0, segment);
+		return (int) Math.min(Integer.MAX_VALUE, total);
+	}
+
+	public int getSpellHealthCompleted() {
+		return Math.max(0, Math.min(getSpellHealthTotal(), spellHealthCompleted));
+	}
+
+	public int getSpellHealthSegmentCount() {
+		return spellHealthSegments.size();
+	}
+
+	public int[] getSpellHealthSegments() {
+		return spellHealthSegments.stream().mapToInt(Integer::intValue).toArray();
+	}
+
 	public int getSpellElapsedTicks() {
 		return spellMaxHealth > 0 ? Math.max(0, totalTick - spellStartTick) : 0;
 	}
@@ -113,14 +135,44 @@ public class SpellRuntime {
 
 	public void setSpellHealth(int maxHealth, int durationTicks,
 			@Nullable SpellAction onTimeout, @Nullable SpellAction onBreak) {
+		boolean hadCurrentSegment = spellMaxHealth > 0;
 		spellMaxHealth = Math.max(1, maxHealth);
 		spellDurationTicks = Math.max(0, durationTicks);
 		spellStartTick = totalTick;
+		if (spellHealthSegments.isEmpty() || !hadCurrentSegment) {
+			appendSpellHealthSegment(spellMaxHealth);
+		} else {
+			spellHealthSegments.set(spellHealthSegments.size() - 1, spellMaxHealth);
+		}
 		spellTimeoutAction = validSpellHealthTarget(onTimeout);
 		spellBreakAction = validSpellHealthTarget(onBreak);
 	}
 
 	public void clearSpellHealth() {
+		spellHealthSegments.clear();
+		spellHealthCompleted = 0;
+		clearCurrentSpellHealth();
+	}
+
+	/** Ends the current segment while retaining its contribution to the spell ring. */
+	private void completeCurrentSpellHealth() {
+		if (spellMaxHealth > 0) {
+			spellHealthCompleted = (int) Math.min(getSpellHealthTotal(),
+					(long) spellHealthCompleted + spellMaxHealth);
+		}
+		clearCurrentSpellHealth();
+	}
+
+	private void appendSpellHealthSegment(int maxHealth) {
+		if (spellHealthSegments.size() >= MAX_SPELL_HEALTH_SEGMENTS) {
+			long merged = (long) spellHealthSegments.get(0) + spellHealthSegments.get(1);
+			spellHealthSegments.set(0, (int) Math.min(Integer.MAX_VALUE, merged));
+			spellHealthSegments.remove(1);
+		}
+		spellHealthSegments.add(Math.max(1, maxHealth));
+	}
+
+	private void clearCurrentSpellHealth() {
 		spellMaxHealth = 0;
 		spellDurationTicks = 0;
 		spellStartTick = totalTick;
@@ -129,32 +181,68 @@ public class SpellRuntime {
 	}
 
 	public boolean triggerSpellHealthBreak(CardHolder holder) {
-		if (spellMaxHealth <= 0 || spellBreakAction == null) return false;
-		return executeSpellHealthTarget(holder, spellBreakAction);
+		return triggerSpellHealthBreak(holder, null);
+	}
+
+	public boolean triggerSpellHealthBreak(CardHolder holder, @Nullable DamageSource source) {
+		if (spellMaxHealth <= 0) return false;
+		if (spellBreakAction == null) {
+			postSpellHealthEvent(holder,
+					dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.Outcome.BROKEN, source);
+			clearSpellHealth();
+			return false;
+		}
+		return executeSpellHealthTarget(holder, spellBreakAction,
+				dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.Outcome.BROKEN, source);
 	}
 
 	private boolean triggerSpellHealthTimeout(CardHolder holder) {
-		if (spellMaxHealth <= 0 || spellDurationTicks <= 0 || spellTimeoutAction == null) return false;
+		if (spellMaxHealth <= 0 || spellDurationTicks <= 0) return false;
 		if (getSpellElapsedTicks() < spellDurationTicks) return false;
-		return executeSpellHealthTarget(holder, spellTimeoutAction);
+		if (spellTimeoutAction == null) {
+			postSpellHealthEvent(holder,
+					dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.Outcome.TIMEOUT, null);
+			clearSpellHealth();
+			if (holder instanceof SpellRuntimeHost host) host.settleSpellHealthTimeout();
+			return false;
+		}
+		boolean transitioned = executeSpellHealthTarget(holder, spellTimeoutAction,
+				dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.Outcome.TIMEOUT, null);
+		if (!transitioned && holder instanceof SpellRuntimeHost host) host.settleSpellHealthTimeout();
+		return transitioned;
 	}
 
-	private boolean executeSpellHealthTarget(CardHolder holder, SpellAction target) {
+	private boolean executeSpellHealthTarget(CardHolder holder, SpellAction target,
+			dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.Outcome outcome,
+			@Nullable DamageSource source) {
 		if (target instanceof SpellActions.ForcePhase phase
 				&& definition.getPhase(phase.phaseId()) == null) {
+			postSpellHealthEvent(holder, outcome, source);
 			clearSpellHealth();
 			return false;
 		}
 		if (target instanceof SpellActions.ForceSpell spell
 				&& SpellRegistry.get(spell.spellId()) == null) {
+			postSpellHealthEvent(holder, outcome, source);
 			clearSpellHealth();
 			return false;
 		}
+		postSpellHealthEvent(holder, outcome, source);
 		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 		SpellContext ctx = new SpellContext(holder, definition, this, definition.difficulty.resolve(healthRatio));
-		clearSpellHealth();
+		if (target instanceof SpellActions.ForcePhase) {
+			completeCurrentSpellHealth();
+		} else {
+			clearSpellHealth();
+		}
 		target.execute(ctx);
 		return true;
+	}
+
+	private void postSpellHealthEvent(CardHolder holder,
+			dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.Outcome outcome,
+			@Nullable DamageSource source) {
+		dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.post(holder, this, outcome, source);
 	}
 
 	@Nullable
@@ -358,7 +446,7 @@ public class SpellRuntime {
 		phaseTick = 0;
 		enteredCurrentPhase = false;
 		scheduledActions.clear();
-		clearSpellHealth();
+		completeCurrentSpellHealth();
 
 		PhaseDefinition newPhase = definition.getPhase(currentPhaseId);
 		if (newPhase != null) {
@@ -531,6 +619,10 @@ public class SpellRuntime {
 		tag.putInt("SpellMaxHealth", spellMaxHealth);
 		tag.putInt("SpellDurationTicks", spellDurationTicks);
 		tag.putInt("SpellStartTick", spellStartTick);
+		if (!spellHealthSegments.isEmpty()) {
+			tag.putIntArray("SpellHealthSegments", getSpellHealthSegments());
+			tag.putInt("SpellHealthCompleted", spellHealthCompleted);
+		}
 		writeAction(tag, "SpellTimeoutAction", spellTimeoutAction);
 		writeAction(tag, "SpellBreakAction", spellBreakAction);
 		tag.putBoolean("EnteredCurrentPhase", enteredCurrentPhase);
@@ -558,6 +650,15 @@ public class SpellRuntime {
 			this.spellMaxHealth = Math.max(0, tag.getInt("SpellMaxHealth"));
 			this.spellDurationTicks = Math.max(0, tag.getInt("SpellDurationTicks"));
 			this.spellStartTick = Math.max(0, tag.getInt("SpellStartTick"));
+			this.spellHealthSegments.clear();
+			for (int segment : tag.getIntArray("SpellHealthSegments")) {
+				if (segment > 0) appendSpellHealthSegment(segment);
+			}
+			if (this.spellHealthSegments.isEmpty() && this.spellMaxHealth > 0) {
+				appendSpellHealthSegment(this.spellMaxHealth);
+			}
+			this.spellHealthCompleted = Math.max(0,
+					Math.min(getSpellHealthTotal(), tag.getInt("SpellHealthCompleted")));
 			this.spellTimeoutAction = readAction(tag, "SpellTimeoutAction");
 			this.spellBreakAction = readAction(tag, "SpellBreakAction");
 			this.enteredCurrentPhase = tag.contains("EnteredCurrentPhase") ?

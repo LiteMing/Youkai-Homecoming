@@ -154,6 +154,7 @@ public class ActionListPanel {
 	private static final int DRAG_THRESHOLD = 4;
 	private static final int DRAG_INDENT_THRESHOLD = 12;
 	private boolean dragThresholdMet = false;
+	private List<ActionPath> dragSourceRoots = List.of();
 	@Nullable
 	private ActionPath pendingSingleSelection = null;
 
@@ -162,6 +163,7 @@ public class ActionListPanel {
 
 	// Drop target: either a gap between top-level rows or an AddTarget (branch insert)
 	private int dragIndicatorY = -1;       // Y for the indicator line (reorder mode)
+	private int dragIndicatorIndent = -1;  // actual tree level of the reorder target
 	private int dragInsertIndex = -1;      // index for reorder within container
 	private String dragInsertSection = null;
 	// null = top-level section list; otherwise parent path entries (last entry carries the branch)
@@ -555,8 +557,9 @@ public class ActionListPanel {
 		// Unwrap DisabledAction for child rendering
 		SpellAction inner = selfDisabled ? ((SpellActions.DisabledAction) action).inner() : action;
 
-		// If this node is collapsed, skip all children
-		if (hasChildren(inner) && collapsedPaths.contains(collapseKey(actionPath))) {
+		// Dragged roots are visually collapsed without changing the saved collapse state.
+		if (hasChildren(inner) && (collapsedPaths.contains(collapseKey(actionPath))
+				|| isDragSourceRoot(actionPath))) {
 			return cy;
 		}
 
@@ -771,7 +774,8 @@ public class ActionListPanel {
 				// Collapse/expand indicator for nodes with children
 				SpellAction checkAction = displayAction;
 				if (checkAction != null && row.path != null && hasChildren(checkAction)) {
-					boolean collapsed = collapsedPaths.contains(collapseKey(row.path));
+					boolean collapsed = collapsedPaths.contains(collapseKey(row.path))
+							|| isDragSourceRoot(row.path);
 					String indicator = collapsed ? "\u25B6" : "\u25BC"; // ▶ or ▼
 					boolean indicatorHovered = mouseX >= ix && mouseX < ix + font.width(indicator) + 2
 							&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT;
@@ -817,9 +821,11 @@ public class ActionListPanel {
 				g.fill(x + 1, dragBranchHighlightY, x + w, dragBranchHighlightY + ROW_HEIGHT, 0x6644AA44);
 				g.fill(x + 1, dragBranchHighlightY, x + 3, dragBranchHighlightY + ROW_HEIGHT, 0xFF44FF44);
 			} else if (dragIndicatorY >= y && dragIndicatorY <= y + h) {
-				g.fill(x + 2, dragIndicatorY - 1, x + w - 2, dragIndicatorY + 1, 0xFFFFFF44);
-				// Small markers at edges
-				g.fill(x + 2, dragIndicatorY - 3, x + 6, dragIndicatorY + 3, 0xFFFFFF44);
+				int indicatorX = Math.min(x + w - 8,
+						Math.max(x + 2, x + PADDING + Math.max(0, dragIndicatorIndent) * INDENT_PX));
+				g.fill(indicatorX, dragIndicatorY - 1, x + w - 2, dragIndicatorY + 1, 0xFFFFFF44);
+				// The left marker moves with the target indentation to expose the insertion level.
+				g.fill(indicatorX, dragIndicatorY - 4, indicatorX + 4, dragIndicatorY + 4, 0xFFFFFF44);
 				g.fill(x + w - 6, dragIndicatorY - 3, x + w - 2, dragIndicatorY + 3, 0xFFFFFF44);
 			}
 		}
@@ -999,9 +1005,11 @@ public class ActionListPanel {
 			double dx = mouseX - dragStartX;
 			double dy = mouseY - dragStartY;
 			if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return false;
+			dragSourceRoots = getDragSourcePaths();
 			dragThresholdMet = true;
 			isDragging = true;
 			pendingSingleSelection = null;
+			dirty = true;
 		}
 
 		// Find the insertion point closest to mouse Y
@@ -1031,6 +1039,7 @@ public class ActionListPanel {
 		dragSourcePath = null;
 		dragSourceSection = null;
 		dragIndicatorY = -1;
+		dragIndicatorIndent = -1;
 		dragInsertIndex = -1;
 		dragInsertSection = null;
 		dragInsertContainerPrefix = null;
@@ -1038,7 +1047,8 @@ public class ActionListPanel {
 		dragBranchHighlightY = -1;
 		dragThresholdMet = false;
 		pendingSingleSelection = null;
-		if (!dragExpandedPaths.isEmpty()) {
+		if (!dragSourceRoots.isEmpty() || !dragExpandedPaths.isEmpty()) {
+			dragSourceRoots = List.of();
 			dragExpandedPaths.clear();
 			dirty = true;
 		}
@@ -1052,6 +1062,7 @@ public class ActionListPanel {
 	 */
 	private void updateDragInsertPoint(double mouseX, double mouseY) {
 		dragIndicatorY = -1;
+		dragIndicatorIndent = -1;
 		dragInsertIndex = -1;
 		dragInsertSection = null;
 		dragBranchTarget = null;
@@ -1087,6 +1098,7 @@ public class ActionListPanel {
 			if (row.kind != RowKind.SECTION) continue;
 			if (intentIndent == 0 && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 				dragIndicatorY = row.y + ROW_HEIGHT;
+				dragIndicatorIndent = 1;
 				dragInsertIndex = 0;
 				dragInsertSection = row.section;
 				dragInsertContainerPrefix = null;
@@ -1102,6 +1114,7 @@ public class ActionListPanel {
 			List<PathEntry> prefix = row.path.path().subList(0, row.path.path().size() - 1);
 			boolean after = mouseY >= row.y + ROW_HEIGHT / 2.0;
 			dragIndicatorY = after ? findBottomOfRowSubtree(row) : row.y;
+			dragIndicatorIndent = row.indent;
 			dragInsertIndex = row.path.leafIndex() + (after ? 1 : 0);
 			dragInsertSection = row.path.section();
 			dragInsertContainerPrefix = prefix.isEmpty() ? null : new ArrayList<>(prefix);
@@ -1123,6 +1136,7 @@ public class ActionListPanel {
 					bestDist = dist;
 					// Clear reorder target
 					dragIndicatorY = -1;
+					dragIndicatorIndent = -1;
 					dragInsertIndex = -1;
 					dragInsertSection = null;
 					// Set branch target
@@ -1171,6 +1185,7 @@ public class ActionListPanel {
 				if (dist < bestDist) {
 					bestDist = dist;
 					dragIndicatorY = gapY;
+					dragIndicatorIndent = group.get(0).indent;
 					dragInsertIndex = i;
 					dragInsertSection = section;
 					dragInsertContainerPrefix = prefix.isEmpty() ? null : new ArrayList<>(prefix);
@@ -1191,6 +1206,7 @@ public class ActionListPanel {
 			if (dist < bestDist) {
 				bestDist = dist;
 				dragIndicatorY = gapY;
+				dragIndicatorIndent = 1;
 				dragInsertIndex = 0;
 				dragInsertSection = row.section;
 				dragInsertContainerPrefix = null;
@@ -1225,8 +1241,13 @@ public class ActionListPanel {
 		return false;
 	}
 
+	private boolean isDragSourceRoot(ActionPath path) {
+		return isDragging && dragSourceRoots.contains(path);
+	}
+
 	/** Selected roots in visual order; descendants of another selected node are implicit. */
 	private List<ActionPath> getDragSourcePaths() {
+		if (isDragging && !dragSourceRoots.isEmpty()) return dragSourceRoots;
 		List<ActionPath> selected = getSelectedPathsInTreeOrder();
 		if (!selected.contains(dragSourcePath)) selected = List.of(dragSourcePath);
 		return selectedRootPaths(selected);

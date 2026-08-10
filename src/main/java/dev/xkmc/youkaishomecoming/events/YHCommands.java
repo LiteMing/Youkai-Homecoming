@@ -665,17 +665,19 @@ public class YHCommands {
 								.then(argument("targets", EntityArgument.players())
 										.then(argument("spell", ResourceLocationArgument.id())
 												.suggests(SPELL_SUGGESTIONS)
-												.then(argument("ticks", IntegerArgumentType.integer(100, 60000))
-														.executes(ctx -> runCertificationTest(ctx))
-														.then(argument("halfSize", DoubleArgumentType.doubleArg(4, 256))
-																.executes(ctx -> runCertificationTest(ctx)))))))
+										.then(argument("ticks", IntegerArgumentType.integer(100, 60000))
+												.executes(ctx -> runCertificationTest(ctx, false))
+												.then(argument("halfSize", DoubleArgumentType.doubleArg(4, 256))
+														.executes(ctx -> runCertificationTest(ctx, false)))))))
 						.then(literal("test")
 								.then(argument("targets", EntityArgument.players())
 										.then(argument("spell", ResourceLocationArgument.id())
 												.suggests(SPELL_SUGGESTIONS)
-												.then(argument("ticks", IntegerArgumentType.integer(100, 60000))
-														.then(argument("halfSize", DoubleArgumentType.doubleArg(4, 256))
-																.executes(ctx -> runCertificationTest(ctx)))))))
+										.then(argument("ticks", IntegerArgumentType.integer(100, 60000))
+												.then(argument("halfSize", DoubleArgumentType.doubleArg(4, 256))
+														.executes(ctx -> runCertificationTest(ctx, true))
+														.then(argument("breakHealth", FloatArgumentType.floatArg(1, 1_000_000))
+																.executes(ctx -> runCertificationTest(ctx, true))))))))
 						.then(literal("abort")
 								.then(argument("targets", EntityArgument.players())
 										.executes(ctx -> abortCertification(ctx))))
@@ -725,7 +727,8 @@ public class YHCommands {
 		}
 	}
 
-	private static int runCertificationTest(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+	private static int runCertificationTest(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx,
+			boolean noHitDefault) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
 		var player = EntityArgument.getPlayer(ctx, "targets");
 		var spellId = ResourceLocationArgument.getId(ctx, "spell");
 		int ticks = IntegerArgumentType.getInteger(ctx, "ticks");
@@ -734,6 +737,12 @@ public class YHCommands {
 			halfSize = DoubleArgumentType.getDouble(ctx, "halfSize");
 		} catch (IllegalArgumentException ignored) {
 			// optional on the boss path; defaults to the config-clamped 8
+		}
+		Float breakHealth = null;
+		try {
+			breakHealth = FloatArgumentType.getFloat(ctx, "breakHealth");
+		} catch (IllegalArgumentException ignored) {
+			// certification test defaults to an invulnerable no-hit survival trial
 		}
 		var definition = SpellRegistry.get(spellId);
 		if (definition == null) {
@@ -759,9 +768,12 @@ public class YHCommands {
 				ctx.getSource().sendSystemMessage(Component.literal("[YH] player already has an active certification trial"));
 				return 0;
 			}
-			boolean started = CertificationService.startFree(player, quote);
+			if (!noHitDefault && breakHealth == null) breakHealth = (float) quote.spellHp();
+			boolean started = CertificationService.startFree(player, quote, breakHealth);
 			ctx.getSource().sendSystemMessage(Component.literal("[YH] certification started=" + started
-					+ " cost=" + quote.startCostUnits() + " hash=" + quote.definitionHash().substring(0, 8)));
+					+ " cost=" + quote.startCostUnits() + " breakHealth="
+					+ (breakHealth == null ? "no-hit" : breakHealth)
+					+ " hash=" + quote.definitionHash().substring(0, 8)));
 			return started ? 1 : 0;
 		} catch (Exception e) {
 			ctx.getSource().sendSystemMessage(Component.literal("[YH] certification failed: " + e.getMessage()));

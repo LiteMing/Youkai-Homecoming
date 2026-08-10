@@ -65,9 +65,10 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 	 */
 	public void initCertification(ServerPlayer author, SpellDefinition definition, String definitionHash,
 								  dev.xkmc.youkaishomecoming.content.spell.certification.CertificationQuote quote,
-								  long movementSeed) {
+								  long movementSeed, boolean timeoutCompletes) {
 		this.authorId = author.getUUID();
-		this.controller = new CertificationController(this, author, definition, definitionHash, quote, movementSeed);
+		this.controller = new CertificationController(this, author, definition, definitionHash, quote,
+				movementSeed, timeoutCompletes);
 	}
 
 	@Nullable
@@ -123,7 +124,7 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 		// danmaku damage counts (the player breaks the spell with their own
 		// danmaku — melee/other damage sources are ignored). Plain health: the
 		// spell is broken when it reaches zero.
-		if (level().isClientSide || controller == null || !isDanmakuDamage(source)) {
+		if (level().isClientSide || controller == null || !controller.canBeBroken() || !isDanmakuDamage(source)) {
 			return;
 		}
 		if (controller.state() != dev.xkmc.youkaishomecoming.content.spell.certification.CertificationState.ACTIVE) {

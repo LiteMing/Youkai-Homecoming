@@ -35,6 +35,7 @@ public class CertificationController {
 	private final CertificationArena arena;
 	private final long movementSeed;
 	private final CertificationEnemyMovement movement;
+	private final boolean timeoutCompletes;
 
 	private CertificationState state = CertificationState.DEPOSIT_PAID;
 	private int countdown;
@@ -62,7 +63,7 @@ public class CertificationController {
 
 	public CertificationController(SpellCertificationEntity entity, ServerPlayer author,
 								   SpellDefinition definition, String definitionHash,
-								   CertificationQuote quote, long movementSeed) {
+								   CertificationQuote quote, long movementSeed, boolean timeoutCompletes) {
 		this.entity = entity;
 		this.author = author;
 		this.authorId = author.getUUID();
@@ -72,6 +73,7 @@ public class CertificationController {
 		this.arena = new CertificationArena(entity.position(), quote.arenaHalfSize());
 		this.movementSeed = movementSeed;
 		this.movement = new CertificationEnemyMovement(arena, movementSeed);
+		this.timeoutCompletes = timeoutCompletes;
 	}
 
 	// ------------------------------------------------------------ accessors
@@ -100,6 +102,10 @@ public class CertificationController {
 
 	public int spellHp() {
 		return quote.spellHp();
+	}
+
+	public boolean canBeBroken() {
+		return !timeoutCompletes;
 	}
 
 	@Nullable
@@ -266,9 +272,11 @@ public class CertificationController {
 			activeThreatTicks++;
 		}
 		elapsedTicks++;
-		// timeout countdown: failing to break the spell before the timeout is a loss
+		// Operator no-hit tests complete by surviving the whole duration. Normal
+		// certification and tests with break health still require a break in time.
 		if (quote.durationTicks() > 0 && elapsedTicks >= quote.durationTicks()) {
-			fail(e, CertificationFailReason.TIMEOUT);
+			if (timeoutCompletes) success(e);
+			else fail(e, CertificationFailReason.TIMEOUT);
 		} else if ((elapsedTicks & 63) == 0) {
 			logState("tick");
 		}

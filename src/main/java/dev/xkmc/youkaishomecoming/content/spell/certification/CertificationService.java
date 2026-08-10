@@ -171,7 +171,7 @@ public final class CertificationService {
 			LOGGER.info("[YH] start rejected: payment failed: {}", payment);
 			return false;
 		}
-		boolean started = spawnTrial(player, quote, payment.receipt());
+		boolean started = spawnTrial(player, quote, payment.receipt(), quote.spellHp(), false);
 		LOGGER.info("[YH] start result: started={} cost={} hash={}",
 				started, quote.startCostUnits(), quote.definitionHash().substring(0, Math.min(8, quote.definitionHash().length())));
 		return started;
@@ -185,14 +185,21 @@ public final class CertificationService {
 
 	/** OP test path: starts without paying the start fee. */
 	public static boolean startFree(ServerPlayer player, CertificationQuote quote) {
+		return startFree(player, quote, (float) quote.spellHp());
+	}
+
+	/** OP test path with optional break health; null means no-hit survival completion. */
+	public static boolean startFree(ServerPlayer player, CertificationQuote quote, @Nullable Float breakHealth) {
 		if (!YHModConfig.COMMON.certificationEnabled.get()) return false;
 		if (inRealBattle(player)) return false;
 		if (CertificationManager.INSTANCE.hasActiveTrial(player)) return false;
-		return spawnTrial(player, quote, null);
+		int hp = breakHealth == null ? quote.spellHp() : Math.max(1, Math.round(breakHealth));
+		return spawnTrial(player, quote, null, hp, breakHealth == null);
 	}
 
 	private static boolean spawnTrial(ServerPlayer player, CertificationQuote quote,
-									  @Nullable PaymentReceipt startReceipt) {
+									  @Nullable PaymentReceipt startReceipt, int breakHealth,
+									  boolean timeoutCompletes) {
 		SpellDefinition definition = CertificationManager.INSTANCE.getQuoteDefinition(quote.quoteId());
 		if (definition == null) {
 			if (startReceipt != null) {
@@ -221,13 +228,13 @@ public final class CertificationService {
 		// plain spell HP: the enemy's max health comes from the spell definition
 		var maxHealth = entity.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
 		if (maxHealth != null) {
-			maxHealth.setBaseValue(Math.max(1, quote.spellHp()));
+			maxHealth.setBaseValue(Math.max(1, breakHealth));
 		}
 		entity.setHealth(entity.getMaxHealth());
 		// the certification enemy glows so the player can always find their target
 		entity.setGlowingTag(true);
 		entity.setPos(player.position());
-		entity.initCertification(player, definition, definitionHash, quote, movementSeed);
+		entity.initCertification(player, definition, definitionHash, quote, movementSeed, timeoutCompletes);
 		CertificationController controller = entity.controller();
 		if (!CertificationManager.INSTANCE.register(player, controller)) {
 			if (startReceipt != null) {

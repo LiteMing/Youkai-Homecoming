@@ -39,6 +39,7 @@ public class SpellContainer extends ConditionalToken {
 		data.cache.clear();
 		data.spells.clear();
 		data.proxies.clear();
+		data.endSpellBar(sp);
 		DanmakuManager.flushErases();
 	}
 
@@ -55,7 +56,24 @@ public class SpellContainer extends ConditionalToken {
 	/** True while the player is releasing a spell card (an active proxy exists). */
 	public static boolean hasActiveProxy(Player player) {
 		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
-		return !data.proxies.isEmpty();
+		return data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved());
+	}
+
+	/** True while either a legacy or data-driven player spell is being released. */
+	public static boolean hasActiveSpell(Player player) {
+		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
+		return !data.spells.isEmpty() ||
+				data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved());
+	}
+
+	/** Clear all player-owned spell output when a beaten state starts. */
+	public static void clearForBeaten(ServerPlayer sp) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		boolean active = !data.spells.isEmpty() || !data.cache.isEmpty() ||
+				data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved());
+		if (active) {
+			clear(sp);
+		}
 	}
 
 	/** True when an active data-driven spell currently owns the player's movement. */

@@ -69,6 +69,12 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	/** True after resources have been seeded at least once; persists across combat sessions. */
 	@SerialClass.SerialField
 	private boolean resourcesPrimed = false;
+	/** Synced client projection used by inventory overlays. */
+	@SerialClass.SerialField
+	private boolean playerSpellActive = false;
+	/** STG spell casts own invulnerability until their active caster ends. */
+	@SerialClass.SerialField
+	private boolean spellInvulnerable = false;
 	@SerialClass.SerialField
 	private String stgCombatMode = StgCombatMode.NOVICE_AUTO_BOMB.name();
 
@@ -85,6 +91,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			step = 0;
 			invul = 0;
 			weak = 0;
+			playerSpellActive = false;
+			spellInvulnerable = false;
 			forcedDanmakuCombat = false;
 			combatAdminBypass = false;
 			statusInitialized = false;
@@ -143,9 +151,23 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	@Override
 	public void tick() {
 		if (player.level() instanceof ServerLevel && GrazeHelper.isManualCombatMode()
-				&& isInDanmakuCombat() && !combatAdminBypass && !GrazeHelper.hasSpellCard(player)) {
-			// No spell card left: leave STG without wiping life/bomb/power
+				&& forcedDanmakuCombat && !combatAdminBypass
+				&& sessions.isEmpty() && playerOpponents.isEmpty()
+				&& !SpellContainer.hasActiveSpell(player) && !GrazeHelper.hasSpellCard(player)) {
+			// Do not strand a manual-mode player after their last card ends. Active
+			// boss/PvP opponents keep combat alive so a cardless hit still costs life.
 			clearCombatState(true);
+		}
+		if (player.level() instanceof ServerLevel) {
+			boolean activeSpell = SpellContainer.hasActiveSpell(player);
+			if (playerSpellActive != activeSpell) {
+				playerSpellActive = activeSpell;
+				dirty = true;
+			}
+			if (spellInvulnerable && !activeSpell) {
+				spellInvulnerable = false;
+				dirty = true;
+			}
 		}
 		boolean activeCombat = isInDanmakuCombat();
 		if (tempGraze > 0) {
@@ -193,13 +215,13 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		}
 		dirty = false;
 		if (player.level().isClientSide) {
-			GrazeHelper.globalInvulTime = invul;
-			GrazeHelper.globalForbidTime = Math.max(invul, weak);
+			GrazeHelper.globalForbidTime = playerSpellActive
+					? Math.max(1, Math.max(invul, weak)) : Math.max(invul, weak);
 		}
 	}
 
 	public boolean graze() {
-		if (invul > 0) return false;
+		if (isInvul()) return false;
 		if (!EffectEventHandlers.canDanmakuCombat(player)) return false;
 		if (tempGraze < GRAZE_CACHE)
 			tempGraze++;
@@ -246,7 +268,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public HitType performDanmakuHit(@Nullable LivingEntity source) {
 		if (!hasInitializedCombatContext(source)) return HitType.NONE;
-		if (invul > 0) return HitType.INVUL;
+		if (isInvul()) return HitType.INVUL;
 		int erased = eraseActiveDanmakuForHit(source);
 		// a certified spell card's break-HP bar absorbs misses: shrink it by 1,
 		// break (interrupt) the spell at zero — no power/life loss for this hit
@@ -269,10 +291,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 				return HitType.INVUL;
 			}
 		}
-		if (getStgCombatMode().autoBombOnHit() && useBomb()) {
-			if (player instanceof ServerPlayer sp) {
-				MinecraftForge.EVENT_BUS.post(new StgBombEvent.Auto(sp, source, erased));
-			}
+		if (getStgCombatMode().autoBombOnHit() && player instanceof ServerPlayer sp
+				&& GrazeHelper.tryCastBombSpell(sp)) {
+			MinecraftForge.EVENT_BUS.post(new StgBombEvent.Auto(sp, source, erased));
 			return HitType.BOMB;
 		}
 		int maxLoss = (int) (YHModConfig.COMMON.maxPowerLossOnMiss.get() * MAX_GRAZE);
@@ -304,13 +325,14 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		weak = duration;
 		dirty = true;
 	}
-	public boolean useBomb() {
-		if (!statusInitialized || !isInDanmakuCombat()) return false;
-		if (bomb < SHARD) return false;
-		bomb -= SHARD;
-		invul = YHModConfig.COMMON.bombInvulTime.get();
+
+	public void startPlayerSpell() {
+		playerSpellActive = true;
+		if (isInDanmakuCombat()) {
+			spellInvulnerable = true;
+		}
 		dirty = true;
-		return true;
+		sync();
 	}
 
 	public int eraseActiveDanmaku(double radius, boolean sessionsOnly) {
@@ -648,7 +670,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public boolean isInvul() {
-		return invul > 0;
+		return invul > 0 || spellInvulnerable;
+	}
+
+	public boolean isPlayerSpellActive() {
+		return playerSpellActive;
 	}
 
 	public boolean isWeak() {
@@ -866,6 +892,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		forcedDanmakuCombat = false;
 		combatAdminBypass = false;
 		statusInitialized = false;
+		playerSpellActive = false;
+		spellInvulnerable = false;
 		hidden = 0;
 		step = 0;
 		weak = WEAK;
@@ -976,6 +1004,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		forcedDanmakuCombat = false;
 		combatAdminBypass = false;
 		statusInitialized = false;
+		playerSpellActive = false;
+		spellInvulnerable = false;
 		hidden = 0;
 		step = 0;
 		dirty = true;

@@ -190,6 +190,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
+		if (GrazeHelper.forbidSpellCardWithMessage(player))
+			return InteractionResultHolder.fail(stack);
 		if (player.isShiftKeyDown() && GrazeHelper.isManualCombatMode()) {
 			// unfinished (or blank) cards cannot declare danmaku combat mode, but
 			// shift+right-click still exits an active forced combat
@@ -227,8 +229,6 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (GrazeHelper.forbidSpellCardWithMessage(player))
-			return InteractionResultHolder.fail(stack);
 		if (!castSpell(stack, player, !player.getAbilities().instabuild, true)) {
 			return InteractionResultHolder.fail(stack);
 		}
@@ -288,6 +288,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			proxy.init(sp, def, duration, target);
 			sp.serverLevel().addFreshEntity(proxy);
 			SpellContainer.trackProxy(sp, proxy);
+			GrazeHelper.onPlayerSpellCast(sp);
 			// certified cards show the player-use spell bar: a fraction of the
 			// certification HP (boss bar); misses shrink it instead of costing life
 			if (CertifiedSpellValidator.isCertified(stack)) {

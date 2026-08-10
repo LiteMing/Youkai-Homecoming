@@ -62,14 +62,14 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
+		if (GrazeHelper.forbidSpellCardWithMessage(player))
+			return InteractionResultHolder.fail(stack);
 		if (player.isShiftKeyDown() && GrazeHelper.isManualCombatMode()) {
 			if (!level.isClientSide) {
 				GrazeHelper.tryToggleManualCombat(player);
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (GrazeHelper.forbidSpellCardWithMessage(player))
-			return InteractionResultHolder.fail(stack);
 		boolean consume = !player.getAbilities().instabuild && !(player instanceof FakePlayer);
 		if (!castSpell(stack, player, consume, true)) {
 			return InteractionResultHolder.fail(stack);
@@ -86,6 +86,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 				return false;
 			}
 			SpellContainer.castSpell(sp, spell, target);
+			GrazeHelper.onPlayerSpellCast(sp);
 			if (cooldown) {
 				int cd = YHModConfig.COMMON.playerSpellCooldown.get();
 				sp.getCooldowns().addCooldown(this, cd);

@@ -124,6 +124,7 @@ public class YHClient {
 		}
 		event.register(YHDanmaku.CUSTOM_SPELL_RING.get(), deco);
 		event.register(YHDanmaku.CUSTOM_SPELL_HOMING.get(), deco);
+		event.register(YHDanmaku.DYNAMIC_SPELL.get(), deco);
 		for (var e : SpellItem.LIST) {
 			event.register(e, deco);
 		}

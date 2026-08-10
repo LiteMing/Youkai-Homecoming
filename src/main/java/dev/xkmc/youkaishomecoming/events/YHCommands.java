@@ -241,7 +241,8 @@ public class YHCommands {
 								.executes(ctx -> {
 									ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
 									if (!YHStgApi.tryManualBomb(player)) {
-										ctx.getSource().sendFailure(Component.literal("Manual Bomb failed: no Bomb available"));
+										ctx.getSource().sendFailure(Component.literal(
+												"Manual Bomb failed: no usable spell card or payment available"));
 										return 0;
 									}
 									ctx.getSource().sendSuccess(() -> Component.literal(

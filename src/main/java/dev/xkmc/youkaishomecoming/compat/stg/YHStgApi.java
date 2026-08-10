@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgPowerHudEvent;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
@@ -132,6 +133,10 @@ public final class YHStgApi {
 	}
 
 	public static boolean tryManualBomb(ServerPlayer player) {
+		var cap = cap(player);
+		if (!cap.isInDanmakuCombat()) {
+			return false;
+		}
 		// No-bomb rule: using a bomb during a certification trial fails it.
 		var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE.getActiveTrial(player);
 		if (trial != null && trial.isActive()) {
@@ -139,14 +144,21 @@ public final class YHStgApi {
 			// A failed certification must not also consume the player's bomb.
 			return false;
 		}
-		var cap = cap(player);
-		if (!cap.useBomb()) {
-			return false;
-		}
+		if (!GrazeHelper.tryCastBombSpell(player)) return false;
 		int erased = cap.eraseActiveDanmaku(0, true);
 		cap.sync();
 		MinecraftForge.EVENT_BUS.post(new StgBombEvent.Manual(player, erased));
 		return true;
+	}
+
+	/** Cast a script-supplied card using its normal payment and cooldown rules. */
+	public static boolean castSpell(ServerPlayer player, ItemStack stack) {
+		return GrazeHelper.castSpell(player, stack);
+	}
+
+	/** Cast the first available card (offhand, main hand, inventory, then Curios). */
+	public static boolean castSpell(ServerPlayer player) {
+		return GrazeHelper.castSpell(player);
 	}
 
 	public static int eraseActiveDanmaku(ServerPlayer player, double radius, boolean sessionsOnly) {

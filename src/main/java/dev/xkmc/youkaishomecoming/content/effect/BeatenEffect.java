@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.effect;
 import dev.xkmc.l2library.util.math.MathHelper;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.world.effect.MobEffect;
@@ -14,6 +15,7 @@ import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.entity.living.LivingHealEvent;
 import net.minecraftforge.event.entity.living.MobEffectEvent;
@@ -52,6 +54,9 @@ public class BeatenEffect extends MobEffect {
 		if (entity instanceof YoukaiEntity youkai) {
 			youkai.tickBeatenState();
 		} else if (entity instanceof Player player) {
+			if (player instanceof ServerPlayer sp) {
+				SpellContainer.clearForBeaten(sp);
+			}
 			// mayfly is permission owned by the game mode or a flight provider. Clearing it here
 			// outlives the effect and can permanently revoke flight, so only stop active flight.
 			var abilities = player.getAbilities();

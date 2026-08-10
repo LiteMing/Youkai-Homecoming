@@ -47,19 +47,16 @@ public class CuriosManager {
 	}
 
 	public static boolean hasAnySpellItem(LivingEntity le) {
-		if (!ModList.get().isLoaded("curios")) return false;
-		return CuriosApi.getCuriosInventory(le).resolve().map(handler -> {
-			for (var stacksHandler : handler.getCurios().values()) {
-				var stacks = stacksHandler.getStacks();
-				for (int i = 0; i < stacks.getSlots(); i++) {
-					ItemStack stack = stacks.getStackInSlot(i);
-					if (!stack.isEmpty() && stack.getItem() instanceof ISpellItem) {
-						return true;
-					}
-				}
-			}
-			return false;
-		}).orElse(false);
+		return !findFirstSpellItem(le).isEmpty();
+	}
+
+	/** Returns the first spell card in Curios order, or an empty stack. */
+	public static ItemStack findFirstSpellItem(LivingEntity le) {
+		if (!ModList.get().isLoaded("curios")) return ItemStack.EMPTY;
+		return CuriosApi.getCuriosInventory(le).resolve()
+				.flatMap(handler -> handler.findFirstCurio(stack -> stack.getItem() instanceof ISpellItem))
+				.map(result -> result.stack())
+				.orElse(ItemStack.EMPTY);
 	}
 
 }

@@ -49,6 +49,8 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
 		if (hand != InteractionHand.MAIN_HAND) return InteractionResultHolder.fail(stack);
+		if (GrazeHelper.forbidSpellCardWithMessage(player))
+			return InteractionResultHolder.fail(stack);
 		ISpellFormData<?> data = getData(stack);
 		if (player.isShiftKeyDown()) {
 			if (level.isClientSide()) {
@@ -85,6 +87,7 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 				consumeAmmo(data.getAmmoCost(), data.cost(), player, true);
 			}
 			SpellContainer.castSpell(sp, data::createInstance, target);
+			GrazeHelper.onPlayerSpellCast(sp);
 			if (cooldown) {
 				player.getCooldowns().addCooldown(this, data.getDuration());
 			}

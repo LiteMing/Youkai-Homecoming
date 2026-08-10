@@ -3,6 +3,8 @@ package dev.xkmc.youkaishomecoming.mixin;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.FlyingToken;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -22,14 +24,18 @@ public abstract class PlayerMixin extends LivingEntity {
 
 	@Inject(method = "travel", at = @At("HEAD"), cancellable = true)
 	private void youkaishomecoming$freezeSpellMovement(Vec3 travelVector, CallbackInfo ci) {
-		if (!((Object) this instanceof net.minecraft.server.level.ServerPlayer sp)) {
-			return;
+		Player player = (Player) (Object) this;
+		boolean restricted = GrazeCapability.HOLDER.get(player).isSpellMovementRestricted();
+		if (player instanceof net.minecraft.server.level.ServerPlayer sp) {
+			// The capability flag is only a client projection. The server must use the
+			// live runtime so a finished spell cannot leave one extra frozen tick.
+			restricted = SpellContainer.restrictsManualMovement(sp);
+			var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+					.getActiveTrial(sp);
+			restricted |= trial != null && trial.restrictsAuthorMovement();
 		}
-		var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
-				.getActiveTrial(sp);
-		if (dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.restrictsManualMovement(sp)
-				|| trial != null && trial.restrictsAuthorMovement()) {
-			sp.setDeltaMovement(Vec3.ZERO);
+		if (restricted) {
+			player.setDeltaMovement(Vec3.ZERO);
 			ci.cancel();
 		}
 	}

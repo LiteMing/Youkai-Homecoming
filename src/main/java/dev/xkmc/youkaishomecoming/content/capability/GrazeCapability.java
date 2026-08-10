@@ -72,6 +72,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	/** Synced client projection used by inventory overlays. */
 	@SerialClass.SerialField
 	private boolean playerSpellActive = false;
+	/** Synced client projection: the active spell currently owns player movement. */
+	@SerialClass.SerialField
+	private boolean spellMovementRestricted = false;
 	/** STG spell casts own invulnerability until their active caster ends. */
 	@SerialClass.SerialField
 	private boolean spellInvulnerable = false;
@@ -92,6 +95,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			invul = 0;
 			weak = 0;
 			playerSpellActive = false;
+			spellMovementRestricted = false;
 			spellInvulnerable = false;
 			forcedDanmakuCombat = false;
 			combatAdminBypass = false;
@@ -162,6 +166,16 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			boolean activeSpell = SpellContainer.hasActiveSpell(player);
 			if (playerSpellActive != activeSpell) {
 				playerSpellActive = activeSpell;
+				dirty = true;
+			}
+			boolean movementRestricted = SpellContainer.restrictsManualMovement(player);
+			if (player instanceof ServerPlayer sp) {
+				var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+						.getActiveTrial(sp);
+				movementRestricted |= trial != null && trial.restrictsAuthorMovement();
+			}
+			if (spellMovementRestricted != movementRestricted) {
+				spellMovementRestricted = movementRestricted;
 				dirty = true;
 			}
 			if (spellInvulnerable && !activeSpell) {
@@ -677,6 +691,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return playerSpellActive;
 	}
 
+	public boolean isSpellMovementRestricted() {
+		return spellMovementRestricted;
+	}
+
 	public boolean isWeak() {
 		return weak > 0;
 	}
@@ -880,6 +898,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		combatAdminBypass = false;
 		statusInitialized = false;
 		playerSpellActive = false;
+		spellMovementRestricted = false;
 		spellInvulnerable = false;
 		hidden = 0;
 		step = 0;
@@ -990,6 +1009,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		combatAdminBypass = false;
 		statusInitialized = false;
 		playerSpellActive = false;
+		spellMovementRestricted = false;
 		spellInvulnerable = false;
 		hidden = 0;
 		step = 0;

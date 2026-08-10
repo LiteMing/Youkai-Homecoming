@@ -409,7 +409,7 @@ public class ActionEditorPanel {
 				notifySimple(old -> {
 					var current = (CasterMovesAction) old;
 					return new CasterMovesAction(mode, current.x(), current.y(), current.z());
-				}));
+				}, true));
 		if (action.mode() == SpellMovementDirective.Mode.RELATIVE
 				|| action.mode() == SpellMovementDirective.Mode.ABSOLUTE) {
 			addNumberRow("X", action.x(), v -> notifySimple(old -> {

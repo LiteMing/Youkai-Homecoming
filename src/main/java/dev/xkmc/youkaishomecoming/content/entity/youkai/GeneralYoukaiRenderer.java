@@ -23,8 +23,13 @@ public class GeneralYoukaiRenderer<T extends GeneralYoukaiEntity> extends MobRen
 	@Override
 	public void render(T e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
 		SpellCircleLayer.renderImpl(pose, buffer, light, e, pTick, entityRenderDispatcher.cameraOrientation());
-		// invisible certification enemies render nothing but the spell circle:
-		// the player sees the floating spell card item instead of the model
+		// Certification targets are hidden unless an explicit OYSM binding renders
+		// them. Never fall through to TLM or the placeholder model.
+		if (e instanceof SpellCertificationEntity) {
+			YSMClientCompat.delegateRender(e, yaw, pTick, pose, buffer, light);
+			return;
+		}
+		// Other invisible youkai render nothing but the spell circle.
 		if (e.isInvisible()) {
 			return;
 		}

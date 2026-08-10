@@ -42,6 +42,16 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 		setInvisible(true);
 	}
 
+	/**
+	 * Certification targets are never rendered by the vanilla/TLM paths. The
+	 * dedicated renderer may still explicitly delegate them to OYSM when a model
+	 * binding is configured.
+	 */
+	@Override
+	public boolean isInvisible() {
+		return true;
+	}
+
 	@Override
 	public void knockback(double strength, double dx, double dz) {
 		// the certification target never gets knocked back by player attacks

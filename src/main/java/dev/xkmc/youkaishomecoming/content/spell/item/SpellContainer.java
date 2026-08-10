@@ -25,27 +25,31 @@ public class SpellContainer extends ConditionalToken {
 
 	public static void clear(ServerPlayer sp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
-		for (var spell : data.spells) {
-			for (var e : spell.cache) {
-				e.markErased(true);
-			}
-		}
-		for (var e : data.cache) {
-			e.markErased(true);
-		}
-		for (var proxy : data.proxies) {
-			if (!proxy.isRemoved()) proxy.cleanup();
-		}
-		data.cache.clear();
-		data.spells.clear();
-		data.proxies.clear();
-		data.endSpellBar(sp);
+		data.clearSpellState(sp);
+		erase(data.combatItemCache);
+		erase(data.ambientItemCache);
 		DanmakuManager.flushErases();
 	}
 
-	public static void track(ServerPlayer sp, SimplifiedProjectile e) {
+	/** Clear spell output and item projectiles fired during the current STG combat only. */
+	public static void clearCombat(ServerPlayer sp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
-		data.cache.add(e);
+		data.clearSpellState(sp);
+		erase(data.combatItemCache);
+		DanmakuManager.flushErases();
+	}
+
+	/** Remove loose item projectiles from before STG combat without touching the new combat state. */
+	public static void clearOutsideCombat(ServerPlayer sp) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		erase(data.ambientItemCache);
+		DanmakuManager.flushErases();
+	}
+
+	/** Track a loose item projectile in the combat domain it was fired from. */
+	public static void track(ServerPlayer sp, SimplifiedProjectile e, boolean combatScoped) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		(combatScoped ? data.combatItemCache : data.ambientItemCache).add(e);
 	}
 
 	public static void trackProxy(ServerPlayer sp, DanmakuProxyEntity proxy) {
@@ -70,6 +74,7 @@ public class SpellContainer extends ConditionalToken {
 	public static void clearForBeaten(ServerPlayer sp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		boolean active = !data.spells.isEmpty() || !data.cache.isEmpty() ||
+				!data.combatItemCache.isEmpty() || !data.ambientItemCache.isEmpty() ||
 				data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved());
 		if (active) {
 			clear(sp);
@@ -166,8 +171,30 @@ public class SpellContainer extends ConditionalToken {
 	private final List<ItemSpell> spells = new LinkedList<>();
 
 	private final List<SimplifiedProjectile> cache = new LinkedList<>();
+	private final List<SimplifiedProjectile> combatItemCache = new LinkedList<>();
+	private final List<SimplifiedProjectile> ambientItemCache = new LinkedList<>();
 
 	private final List<DanmakuProxyEntity> proxies = new ArrayList<>();
+
+	private void clearSpellState(ServerPlayer sp) {
+		for (var spell : spells) {
+			erase(spell.cache);
+		}
+		erase(cache);
+		for (var proxy : proxies) {
+			if (!proxy.isRemoved()) proxy.cleanup();
+		}
+		spells.clear();
+		proxies.clear();
+		endSpellBar(sp);
+	}
+
+	private static void erase(List<SimplifiedProjectile> projectiles) {
+		for (var projectile : projectiles) {
+			projectile.markErased(true);
+		}
+		projectiles.clear();
+	}
 
 	@Override
 	public boolean tick(Player player) {
@@ -181,13 +208,16 @@ public class SpellContainer extends ConditionalToken {
 			}
 		}
 		cache.removeIf(e -> !e.isValid());
+		combatItemCache.removeIf(e -> !e.isValid());
+		ambientItemCache.removeIf(e -> !e.isValid());
 		proxies.removeIf(DanmakuProxyEntity::isRemoved);
 		if (proxies.isEmpty() && spellBar != null) {
 			// spell ended naturally: drop the bar
 			endSpellBar(player);
 			lockPos = null;
 		}
-		return spells.isEmpty() && cache.isEmpty() && proxies.isEmpty();
+		return spells.isEmpty() && cache.isEmpty() && combatItemCache.isEmpty() &&
+				ambientItemCache.isEmpty() && proxies.isEmpty();
 	}
 
 	private record Provider() implements TokenProvider<SpellContainer, Provider>, Context {

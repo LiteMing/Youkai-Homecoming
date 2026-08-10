@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
 import dev.xkmc.fastprojectileapi.render.type.CylinderLaserType;
 import dev.xkmc.fastprojectileapi.render.type.PencilLayerLaserType;
 import dev.xkmc.fastprojectileapi.render.type.RenderableProjectileType;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
@@ -74,7 +75,7 @@ public class LaserItem extends Item {
 			}
 			level.addFreshEntity(danmaku);
 			if (player instanceof ServerPlayer sp)
-				SpellContainer.track(sp, danmaku);
+				SpellContainer.track(sp, danmaku, GrazeCapability.HOLDER.get(sp).isInDanmakuCombat());
 		}
 		player.awardStat(Stats.ITEM_USED.get(this));
 		ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);

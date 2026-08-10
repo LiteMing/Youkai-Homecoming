@@ -316,7 +316,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		weak = Math.max(weak, invul);
 		if (player instanceof ServerPlayer sp) {
 			YoukaisHomecoming.HANDLER.toClientPlayer(new GrazeHelper.GrazeToClient().set(1), sp);
-			SpellContainer.clear(sp);
+			SpellContainer.clearCombat(sp);
 		}
 		if (life < SHARD) {
 			if (source != null && MinecraftForge.EVENT_BUS.post(new DanmakuLastHitEvent(player, source))) {
@@ -451,6 +451,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	public void setForcedDanmakuCombat(boolean enabled, boolean adminBypass) {
 		if (enabled) {
 			if (!isInDanmakuCombat()) {
+				if (player instanceof ServerPlayer sp) {
+					SpellContainer.clearOutsideCombat(sp);
+				}
 				initStatus();
 			}
 			forcedDanmakuCombat = true;
@@ -854,7 +857,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private int eraseActiveDanmakuForHit(@Nullable LivingEntity source) {
 		int erased = eraseActiveDanmaku(0, true);
 		if (source instanceof ServerPlayer sp) {
-			SpellContainer.clear(sp);
+			SpellContainer.clearCombat(sp);
 		}
 		return erased;
 	}
@@ -919,7 +922,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 		for (UUID opponentId : playerOpponents) {
 			if (level.getEntity(opponentId) instanceof ServerPlayer opponent) {
-				SpellContainer.clear(opponent);
+				SpellContainer.clearCombat(opponent);
 			}
 		}
 
@@ -990,7 +993,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			if (player.level() instanceof ServerLevel level) {
 				for (UUID opponentId : playerOpponents) {
 					if (level.getEntity(opponentId) instanceof ServerPlayer opponent) {
-						SpellContainer.clear(opponent);
+						SpellContainer.clearCombat(opponent);
 					}
 				}
 			}
@@ -1010,7 +1013,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		step = 0;
 		dirty = true;
 		if (player instanceof ServerPlayer sp) {
-			SpellContainer.clear(sp);
+			SpellContainer.clearCombat(sp);
 			sync();
 		}
 	}

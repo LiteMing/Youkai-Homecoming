@@ -282,7 +282,7 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 			}
 		}
 		if (level().isClientSide()) {
-			if (isAggressive()) {
+			if (shouldShowSpellCircle()) {
 				if (tickAggressive < 20)
 					tickAggressive++;
 			} else if (tickAggressive > 0) {
@@ -293,7 +293,7 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 
 	@Override
 	public boolean shouldShowSpellCircle() {
-		return level().isClientSide() ? isAggressive() : getTarget() != null;
+		return level().isClientSide() ? clientInDanmakuCombat || isAggressive() : getTarget() != null;
 	}
 
 	@Override

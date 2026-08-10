@@ -46,10 +46,9 @@ public final class CertificationClientHandler {
 		}
 		ClientState clientState = new ClientState(parsed, elapsedTicks, targetTicks,
 				healthTotal, healthLeft, failReason);
+		STATES.put(entityId, clientState);
 		if (mine) {
 			myState = clientState;
-		} else {
-			STATES.put(entityId, clientState);
 		}
 	}
 

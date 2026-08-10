@@ -56,14 +56,16 @@ public record SetSpellCircleAction(Mode mode, ResourceLocation circle, float siz
 			}
 			return;
 		}
-		var self = ctx.self();
-		if (self.level().isClientSide()) {
+		var host = ctx.host();
+		if (host == null || ctx.self().level().isClientSide()) {
 			return;
 		}
+		var display = host.spellCircleDisplayEntity();
+		var source = host.spellCircleSourceEntity();
 		switch (mode) {
-			case SET -> EntitySpellCircleManager.setOverride(self, circle, size);
-			case OFF -> EntitySpellCircleManager.setHidden(self);
-			case CLEAR -> EntitySpellCircleManager.clearOverride(self);
+			case SET -> EntitySpellCircleManager.setTemporaryOverride(display, source, circle, size);
+			case OFF -> EntitySpellCircleManager.setTemporaryHidden(display, source);
+			case CLEAR -> EntitySpellCircleManager.clearTemporaryOverride(display, source);
 		}
 	}
 

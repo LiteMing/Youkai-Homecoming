@@ -62,7 +62,6 @@ public final class SpellProgressCircleRenderer {
 	private static Progress resolve(Entity entity) {
 		if (entity instanceof SpellCertificationEntity) {
 			var state = CertificationClientHandler.getState(entity.getId());
-			if (state == null) state = CertificationClientHandler.getMyState();
 			if (state == null || !state.active()) return null;
 			return new Progress(state.healthLeft(), state.healthTotal(),
 					state.elapsedTicks(), state.targetTicks(), 0);

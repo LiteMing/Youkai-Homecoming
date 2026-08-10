@@ -357,7 +357,11 @@ public abstract class YoukaiEntity extends PathfinderMob
 						spellRuntime.tick(this);
 						applySpellMovement();
 						tickDanmaku();
+						if (spellRuntime.isFinished()) {
+							clearTemporarySpellCircle();
+						}
 					} else {
+						clearTemporarySpellCircle();
 						spellRuntime.reset();
 						eraseAllDanmaku(null);
 						danmakuHolder.clearSentQueue();
@@ -557,6 +561,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	private void stopSpellsAndClearDanmaku() {
 		if (level().isClientSide() || deathSpellCleanupDone) return;
 		deathSpellCleanupDone = true;
+		clearTemporarySpellCircle();
 		if (spellRuntime != null) spellRuntime.reset();
 		if (spellCard != null) spellCard.reset();
 		danmakuHolder.cleanup(this);
@@ -892,6 +897,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	public void remove(RemovalReason reason) {
+		clearTemporarySpellCircle();
 		if (!danmakuHolder.isEmpty()) {
 			danmakuHolder.cleanup(this);
 		}

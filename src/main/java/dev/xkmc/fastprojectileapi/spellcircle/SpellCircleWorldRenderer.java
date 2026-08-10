@@ -82,13 +82,13 @@ public class SpellCircleWorldRenderer {
 	}
 
 	private static boolean hasRenderableSpellCircle(Entity entity, float pTick) {
-		if (entity instanceof net.minecraft.world.entity.player.Player player) {
-			return GrazeCapability.HOLDER.get(player) != null
-					&& GrazeCapability.HOLDER.get(player).isInDanmakuCombat();
-		}
 		EntitySpellCircleManager.State state = EntitySpellCircleManager.getClientOverride(entity);
 		if (state != null) {
 			return state.enabled() && state.circle() != null && state.size() > 0;
+		}
+		if (entity instanceof net.minecraft.world.entity.player.Player player) {
+			GrazeCapability cap = GrazeCapability.HOLDER.get(player);
+			return cap != null && (cap.isInDanmakuCombat() || cap.isPlayerSpellActive());
 		}
 		if (entity instanceof SpellCircleHolder holder) {
 			return holder.shouldShowSpellCircle() && holder.getSpellCircle() != null && holder.getCircleSize(pTick) > 0;

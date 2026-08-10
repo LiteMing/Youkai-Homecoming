@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.WeakHashMap;
 
 public class EntitySpellCircleManager {
 
@@ -24,13 +25,17 @@ public class EntitySpellCircleManager {
 
 	private static final Map<Integer, State> CLIENT_OVERRIDES = new HashMap<>();
 	private static final Map<UUID, State> SERVER_SYNCED = new HashMap<>();
+	private static final Map<Entity, TemporaryState> TEMPORARY_OVERRIDES = new WeakHashMap<>();
 
 	public record State(String uuid, boolean enabled, @Nullable ResourceLocation circle, float size) {
 	}
 
+	private record TemporaryState(UUID sourceId, State state) {
+	}
+
 	public static boolean setOverride(Entity entity, ResourceLocation circle, float size) {
 		State next = new State(entity.getUUID().toString(), true, circle, sanitizeSize(size));
-		if (next.equals(getServerOverride(entity))) {
+		if (next.equals(getStoredOverride(entity))) {
 			return false;
 		}
 		CompoundTag tag = new CompoundTag();
@@ -44,7 +49,7 @@ public class EntitySpellCircleManager {
 
 	public static boolean setHidden(Entity entity) {
 		State next = new State(entity.getUUID().toString(), false, null, DEFAULT_SIZE);
-		if (next.equals(getServerOverride(entity))) {
+		if (next.equals(getStoredOverride(entity))) {
 			return false;
 		}
 		CompoundTag tag = new CompoundTag();
@@ -66,6 +71,12 @@ public class EntitySpellCircleManager {
 
 	@Nullable
 	public static State getServerOverride(Entity entity) {
+		TemporaryState temporary = TEMPORARY_OVERRIDES.get(entity);
+		return temporary == null ? getStoredOverride(entity) : temporary.state();
+	}
+
+	@Nullable
+	private static State getStoredOverride(Entity entity) {
 		CompoundTag root = entity.getPersistentData();
 		if (!root.contains(TAG, Tag.TAG_COMPOUND)) {
 			return null;
@@ -78,6 +89,48 @@ public class EntitySpellCircleManager {
 		}
 		float size = tag.contains(KEY_SIZE, Tag.TAG_ANY_NUMERIC) ? tag.getFloat(KEY_SIZE) : DEFAULT_SIZE;
 		return new State(entity.getUUID().toString(), enabled, circle, sanitizeSize(size));
+	}
+
+	public static boolean setTemporaryOverride(Entity entity, Entity source, ResourceLocation circle, float size) {
+		State state = new State(entity.getUUID().toString(), true, circle, sanitizeSize(size));
+		return setTemporary(entity, source, state);
+	}
+
+	public static boolean setTemporaryHidden(Entity entity, Entity source) {
+		State state = new State(entity.getUUID().toString(), false, null, DEFAULT_SIZE);
+		return setTemporary(entity, source, state);
+	}
+
+	public static boolean clearTemporaryOverride(Entity entity, Entity source) {
+		TemporaryState current = TEMPORARY_OVERRIDES.get(entity);
+		if (current == null || !current.sourceId().equals(source.getUUID())) {
+			return false;
+		}
+		TEMPORARY_OVERRIDES.remove(entity);
+		syncTracking(entity);
+		return true;
+	}
+
+	public static void clearTemporaryOverrides(Entity source) {
+		UUID sourceId = source.getUUID();
+		var affected = TEMPORARY_OVERRIDES.entrySet().stream()
+				.filter(entry -> entry.getValue().sourceId().equals(sourceId))
+				.map(Map.Entry::getKey)
+				.toList();
+		for (Entity entity : affected) {
+			TEMPORARY_OVERRIDES.remove(entity);
+			syncTracking(entity);
+		}
+	}
+
+	private static boolean setTemporary(Entity entity, Entity source, State state) {
+		TemporaryState next = new TemporaryState(source.getUUID(), state);
+		if (next.equals(TEMPORARY_OVERRIDES.get(entity))) {
+			return false;
+		}
+		TEMPORARY_OVERRIDES.put(entity, next);
+		syncTracking(entity);
+		return true;
 	}
 
 	@Nullable

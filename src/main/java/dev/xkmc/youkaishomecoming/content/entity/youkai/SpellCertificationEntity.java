@@ -3,6 +3,8 @@ package dev.xkmc.youkaishomecoming.content.entity.youkai;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationContactGateway;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationController;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationState;
+import dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationClientHandler;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
@@ -88,6 +90,18 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 	@Override
 	public boolean shouldTickSpell() {
 		return controller != null && controller.isActive();
+	}
+
+	@Override
+	public boolean shouldShowSpellCircle() {
+		if (level().isClientSide()) {
+			var state = CertificationClientHandler.getState(getId());
+			return state != null && state.active();
+		}
+		if (controller == null) {
+			return false;
+		}
+		return controller.state() == CertificationState.PREPARE || controller.state() == CertificationState.ACTIVE;
 	}
 
 	@Override

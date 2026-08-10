@@ -337,6 +337,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 */
 	@Override
 	public void remove(RemovalReason reason) {
+		clearTemporarySpellCircle();
 		if (!danmakuHolder.isEmpty()) {
 			eraseAllDanmaku(null);
 		}

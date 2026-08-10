@@ -1,8 +1,10 @@
 package dev.xkmc.youkaishomecoming.content.spell.runtime;
 
+import dev.xkmc.fastprojectileapi.spellcircle.EntitySpellCircleManager;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.player.Player;
@@ -49,6 +51,19 @@ public interface SpellRuntimeHost extends LivingCardHolder {
 		return runtime != null && runtime.getMovementDirective().restrictsManualMovement();
 	}
 
+	default LivingEntity spellCircleDisplayEntity() {
+		LivingEntity owner = owner();
+		return owner == null ? self() : owner;
+	}
+
+	default Entity spellCircleSourceEntity() {
+		return this instanceof Entity entity ? entity : self();
+	}
+
+	default void clearTemporarySpellCircle() {
+		EntitySpellCircleManager.clearTemporaryOverrides(spellCircleSourceEntity());
+	}
+
 	/** Applies the current action-selected displacement after the spell tick. */
 	default void applySpellMovement() {
 		SpellRuntime runtime = getSpellRuntime();
@@ -87,6 +102,7 @@ public interface SpellRuntimeHost extends LivingCardHolder {
 		if (clearScreen) {
 			eraseDanmaku(null);
 		}
+		clearTemporarySpellCircle();
 		setSpellRuntime(new SpellRuntime(definition));
 	}
 

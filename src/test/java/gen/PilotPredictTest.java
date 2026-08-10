@@ -519,6 +519,16 @@ public class PilotPredictTest {
 		check("warn inactive t=10", !(10 > start && 10 < end));
 		check("active t=50", 50 > start && 50 < end);
 		check("fade inactive t=90", !(90 > start && 90 < end));
+
+		// A wall clips the collision segment; the laser anchor remains the ray origin.
+		Vec3 wallHit = anchor.add(orient.scale(4));
+		approx("wall clips laser length", anchor.distanceTo(wallHit), 4, 1e-10);
+		AABB beforeWall = new AABB(2.9, 0.9, -0.1, 3.1, 1.1, 0.1);
+		AABB behindWall = new AABB(4.9, 0.9, -0.1, 5.1, 1.1, 0.1);
+		check("laser hits target before wall",
+				beforeWall.clip(anchor, wallHit).isPresent());
+		check("laser does not hit target behind wall",
+				behindWall.clip(anchor, wallHit).isEmpty());
 		System.out.println();
 	}
 }

@@ -30,8 +30,8 @@ public abstract class BaseLaser extends AsyncProjectile {
 		if (checkEntityHit()) {
 			Vec3 src = pos.add(0, getBbHeight() / 2f, 0);
 			Vec3 direction = Vec3.directionFromRotation((float) Math.toDegrees(rot.x), (float) Math.toDegrees(rot.y)).scale(getLength());
-			Vec3 dst = src.add(direction);
-			LaserHitHelper.collectEntityHitOnProjection(this, pos, src, dst, direction, data.hitEntities, iterator);
+			Vec3 dst = data.blockHit == null ? src.add(direction) : data.blockHit.getLocation();
+			LaserHitHelper.collectEntityHitOnProjection(this, pos, src, dst, dst.subtract(src), data.hitEntities, iterator);
 		}
 	}
 
@@ -45,9 +45,9 @@ public abstract class BaseLaser extends AsyncProjectile {
 		Vec3 dst = src.add(Vec3.directionFromRotation((float) Math.toDegrees(rot.x), (float) Math.toDegrees(rot.y)).scale(getLength()));
 		var hit = LaserHitHelper.getBlockHitResultOnProjection(this, src, dst);
 		if (hit != null) {
+			// moveDst is the laser's next anchor, not a projectile endpoint. Replacing it with
+			// the wall hit makes later stages cast from the wall and renders a zero-length beam.
 			data.blockHit = hit;
-			Vec3 delta = hit.getLocation().subtract(src);
-			data.moveDst = pos.add(delta);
 		}
 	}
 

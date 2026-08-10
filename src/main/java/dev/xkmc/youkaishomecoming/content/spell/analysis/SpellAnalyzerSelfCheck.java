@@ -10,6 +10,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.template.SpellTemplates;
 import net.minecraft.resources.ResourceLocation;
 
@@ -563,6 +564,20 @@ public final class SpellAnalyzerSelfCheck {
 			check("boss template scopes phase node names",
 					bossTemplate.customNames.containsKey("intro/enter/0")
 							&& bossTemplate.customNames.containsKey("final/enter/0"));
+			SpellRuntime bossRuntime = new SpellRuntime(bossTemplate);
+			check("boss health plan exposes all phase arcs before transition",
+					java.util.Arrays.equals(bossRuntime.getSpellHealthSegments(), new int[]{500, 800}));
+			check("boss phases share one combined timeout ring",
+					bossRuntime.getSpellDurationTicks() == 1500);
+			bossRuntime.setSpellHealth(500, 600);
+			check("entering first boss phase keeps planned arc proportions",
+					java.util.Arrays.equals(bossRuntime.getSpellHealthSegments(), new int[]{500, 800})
+							&& bossRuntime.getSpellHealthTotal() == 1300);
+			SpellRuntime restoredBossRuntime = new SpellRuntime(bossTemplate);
+			restoredBossRuntime.loadFromTag(bossRuntime.saveToTag());
+			check("shared boss rings survive runtime persistence",
+					java.util.Arrays.equals(restoredBossRuntime.getSpellHealthSegments(), new int[]{500, 800})
+							&& restoredBossRuntime.getSpellDurationTicks() == 1500);
 			// 3. JSON object field order does not affect hash
 			check("hash independent of JSON field order",
 					SpellHash.canonicalHash(parse(REORDERED)).equals(SpellHash.canonicalHash(parse(FIRE24))));
@@ -862,9 +877,22 @@ public final class SpellAnalyzerSelfCheck {
 			check("cert rejects operator spell health", certHealth != null && certHealth.contains("operator-only"));
 			SpellAnalysis opHealth = SpellAnalyzer.analyzeOperatorTest(parse(SPELL_HEALTH), CERT);
 			check("operator test permits spell health", opHealth != null);
-			// 19 stable capability IDs
-			check("19 stable capability IDs", SpellCapability.values().length == 19
-					&& Set.of(SpellCapability.values()).stream().map(SpellCapability::id).distinct().count() == 19);
+			String forcePhaseSpell = spell("{\"type\": \"force_phase\", "
+					+ "\"phase_id\": \"youkaishomecoming:main\"}");
+			String certForcePhase = rejectMessage(() -> SpellAnalyzer.analyze(
+					parse(forcePhaseSpell), SpellAnalysisProfile.CERTIFICATION, CERT));
+			check("cert rejects operator-only force_phase",
+					certForcePhase != null && certForcePhase.contains("capability force_phase"));
+			SpellAnalysis opForcePhase = SpellAnalyzer.analyzeOperatorTest(parse(forcePhaseSpell), CERT);
+			check("operator test permits force_phase",
+					opForcePhase.requiredCapabilities().contains(SpellCapability.FORCE_PHASE));
+			String marketForcePhase = rejectMessage(() -> SpellAnalyzer.analyze(
+					parse(forcePhaseSpell), SpellAnalysisProfile.MARKET));
+			check("market rejects force_phase",
+					"Automatic market imports may not use action: force_phase".equals(marketForcePhase));
+			// 20 stable capability IDs
+			check("20 stable capability IDs", SpellCapability.values().length == 20
+					&& Set.of(SpellCapability.values()).stream().map(SpellCapability::id).distinct().count() == 20);
 			// certification extracts the expected capability set from a comprehensive fixture
 			SpellAnalysis caps = SpellAnalyzer.analyze(parse(ALL_CAPS), SpellAnalysisProfile.MARKET);
 			var capsSet = caps.requiredCapabilities();

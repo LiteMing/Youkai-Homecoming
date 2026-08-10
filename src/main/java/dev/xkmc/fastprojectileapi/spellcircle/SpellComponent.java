@@ -141,12 +141,13 @@ public class SpellComponent {
 			int col = getColor();
 			float dv = (rune > 0 ? 8 : 1) / 128f;
 			float du = (int) (Math.PI * 2 * radius * cycle / width * 8) / 8f / vertex * dv;
+			float direction = cycle < 0 ? -1 : 1;
 			for (int i = first; i < last; i++) {
 				float left = Math.max(start, i / (float) vertex);
 				float right = Math.min(end, (i + 1) / (float) vertex);
 				if (right <= left) continue;
-				float a = angle + (float) (Math.PI * 2) * left;
-				float segmentDa = (float) (Math.PI * 2) * (right - left);
+				float a = angle + (float) (Math.PI * 2) * direction * left;
+				float segmentDa = (float) (Math.PI * 2) * direction * (right - left);
 				float segmentWidth = width / (float) Math.cos(segmentDa / 2);
 				rect(handle, a, segmentDa, radius, segmentWidth, z, col, i * du,
 						rune == 0 ? 0 : (rune - 1) * dv, du, dv);

@@ -98,6 +98,6 @@ public final class SpellCardEvent extends LivingEvent {
 		int active = holder instanceof SpellRuntimeHost host ? host.activeDanmakuCount() : 0;
 		MinecraftForge.EVENT_BUS.post(new SpellCardEvent(caster, opponent,
 				runtime.getDefinition().id, runtime.getCurrentPhaseId(), outcome,
-				runtime.getSpellElapsedTicks(), active));
+				runtime.getBattleElapsedTicks(), active));
 	}
 }

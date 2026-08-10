@@ -33,15 +33,15 @@ public final class SpellProgressCircleRenderer {
 				pose, buffer, builder, entity.tickCount + pTick, light);
 		handle.alpha = alpha;
 		pose.pushPose();
-		SpellComponent.Stroke hpBackground = stroke(52, 3.0f, "0x55330000");
+		SpellComponent.Stroke hpBackground = stroke(52, 3.0f, "0x55445555");
 		renderHealthProgress(handle, hpBackground, progress, true);
-		SpellComponent.Stroke hp = stroke(52, 3.0f, "0xFFFF3344");
+		SpellComponent.Stroke hp = stroke(52, 3.0f, "0xFFFFFFFF");
 		renderHealthProgress(handle, hp, progress, false);
 		if (progress.durationTicks() > 0) {
 			SpellComponent.Stroke timeBackground = stroke(46, 1.6f, "0x55445555");
 			timeBackground.render(handle);
 			SpellComponent.Stroke time = stroke(46, 1.6f, "0xFF55D9FF");
-			time.renderProgress(handle, progress.timeRatio(entity, pTick));
+			renderRemainingProgress(handle, time, progress.timeRatio(entity, pTick));
 		}
 		pose.popPose();
 	}
@@ -49,10 +49,10 @@ public final class SpellProgressCircleRenderer {
 	private static SpellComponent.Stroke stroke(float radius, float width, String color) {
 		SpellComponent.Stroke stroke = new SpellComponent.Stroke();
 		stroke.vertex = SEGMENTS;
-		stroke.cycle = 1;
+		stroke.cycle = -1;
 		stroke.radius = radius;
 		stroke.width = width;
-		stroke.angle = (float) -Math.PI / 2;
+		stroke.angle = (float) Math.PI / 2;
 		stroke.z = 0.05f;
 		stroke.color = color;
 		return stroke;
@@ -63,7 +63,7 @@ public final class SpellProgressCircleRenderer {
 		int[] healthSegments = progress.healthSegments();
 		int segmentCount = healthSegments.length > 0 ? healthSegments.length : progress.segmentCount();
 		if (segmentCount <= 1) {
-			stroke.renderProgress(handle, background ? 1 : progress.healthRatio());
+			renderRemainingProgress(handle, stroke, background ? 1 : progress.healthRatio());
 			return;
 		}
 		int count = Math.min(32, Math.max(1, segmentCount));
@@ -73,18 +73,36 @@ public final class SpellProgressCircleRenderer {
 		}
 		if (totalHealth <= 0) totalHealth = count;
 		long cursor = 0;
+		long completed = Math.max(0, Math.min(totalHealth, progress.completedHealth()));
 		for (int i = 0; i < count; i++) {
 			long size = healthSegments.length >= count ? Math.max(0, healthSegments[i]) : 1;
+			long segmentHealthStart = cursor;
 			float rawStart = cursor / (float) totalHealth;
 			cursor += size;
 			float rawEnd = cursor / (float) totalHealth;
 			float gap = Math.min(Math.min(0.018f, 0.24f / count), (rawEnd - rawStart) * 0.2f);
 			float segmentStart = rawStart + gap;
 			float segmentEnd = rawEnd - gap;
-			float segmentProgress = background ? 1 : i + 1 < count ? 0 : progress.currentHealthRatio();
-			float end = segmentStart + (segmentEnd - segmentStart) * segmentProgress;
-			stroke.renderProgressRange(handle, segmentStart, end);
+			float segmentProgress;
+			if (background) {
+				segmentProgress = 1;
+			} else if (completed >= cursor) {
+				segmentProgress = 0;
+			} else if (completed <= segmentHealthStart) {
+				segmentProgress = completed == segmentHealthStart
+						? progress.currentHealthRatio() : 1;
+			} else {
+				segmentProgress = progress.currentHealthRatio();
+			}
+			float start = segmentEnd - (segmentEnd - segmentStart) * segmentProgress;
+			stroke.renderProgressRange(handle, start, segmentEnd);
 		}
+	}
+
+	private static void renderRemainingProgress(SpellComponent.RenderHandle handle,
+			SpellComponent.Stroke stroke, float ratio) {
+		float clamped = Math.max(0, Math.min(1, ratio));
+		stroke.renderProgressRange(handle, 1 - clamped, 1);
 	}
 
 	@Nullable

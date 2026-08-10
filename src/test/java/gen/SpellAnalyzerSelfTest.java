@@ -277,9 +277,10 @@ public class SpellAnalyzerSelfTest {
 		check("origin target/absolute ALLOW",
 				SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_TARGET) == SpellCapabilityPolicy.ALLOW
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_ABSOLUTE) == SpellCapabilityPolicy.ALLOW);
-		check("confine/flag/force/fire OP_ONLY",
+		check("confine/flag/phase/force/fire OP_ONLY",
 				SpellCapabilityPolicies.defaultPolicy(SpellCapability.CONFINED_TARGET) == SpellCapabilityPolicy.OP_ONLY
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.SET_ENTITY_FLAG) == SpellCapabilityPolicy.OP_ONLY
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.FORCE_PHASE) == SpellCapabilityPolicy.OP_ONLY
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.FORCE_SPELL) == SpellCapabilityPolicy.OP_ONLY
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.FIRE_SPELL) == SpellCapabilityPolicy.OP_ONLY);
 		check("legacy DENY", SpellCapabilityPolicies.defaultPolicy(SpellCapability.LEGACY_TICKER) == SpellCapabilityPolicy.DENY);

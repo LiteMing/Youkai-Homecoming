@@ -45,6 +45,7 @@ public final class SpellCapabilityPolicies {
 		// for boss spell creators only.
 		put(SpellCapability.CONFINED_TARGET, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.SET_ENTITY_FLAG, SpellCapabilityPolicy.OP_ONLY);
+		put(SpellCapability.FORCE_PHASE, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.FORCE_SPELL, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.FIRE_SPELL, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.LEGACY_TICKER, SpellCapabilityPolicy.DENY);

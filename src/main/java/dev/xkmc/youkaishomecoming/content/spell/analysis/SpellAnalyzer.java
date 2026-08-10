@@ -479,6 +479,9 @@ public final class SpellAnalyzer {
 			addCap(SpellCapability.CLEAR_SCREEN);
 		} else if (action instanceof SetEntityFlagAction) {
 			addCap(SpellCapability.SET_ENTITY_FLAG);
+		} else if (action instanceof SpellActions.ForcePhase) {
+			checkMarketBanned(action);
+			addCap(SpellCapability.FORCE_PHASE);
 		} else if (action instanceof SpellActions.ForceSpell) {
 			checkMarketBanned(action);
 			addCap(SpellCapability.FORCE_SPELL);
@@ -752,6 +755,7 @@ public final class SpellAnalyzer {
 	 */
 	private static boolean isMarketBanned(SpellAction action) {
 		return action instanceof RunCommandAction
+				|| action instanceof SpellActions.ForcePhase
 				|| action instanceof SpellActions.ForceSpell
 				|| action instanceof SpellActions.FireSpell
 				|| action instanceof SetSpellHealthAction;
@@ -759,6 +763,7 @@ public final class SpellAnalyzer {
 
 	private static String bannedTypeName(SpellAction action) {
 		if (action instanceof RunCommandAction) return "run_command";
+		if (action instanceof SpellActions.ForcePhase) return "force_phase";
 		if (action instanceof SpellActions.ForceSpell) return "force_spell";
 		if (action instanceof SpellActions.FireSpell) return "fire_spell";
 		if (action instanceof SetSpellHealthAction) return "set_spell_health";

@@ -1,8 +1,10 @@
 package dev.xkmc.youkaishomecoming.content.spell.runtime;
 
 import dev.xkmc.youkaishomecoming.content.spell.action.LegacyTickerAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.Transition;
@@ -18,8 +20,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -42,11 +46,16 @@ public class SpellRuntime {
 	private final List<ChildRuntime> childRuntimes = new ArrayList<>();
 	private SpellMovementDirective movementDirective = SpellMovementDirective.random();
 	private int spellMaxHealth;
+	/** Timeout of the current health phase; the public getter exposes the whole spell plan. */
 	private int spellDurationTicks;
 	private int spellStartTick;
-	/** Max HP of every spell-health segment encountered in this spell definition. */
+	/** Stable phase order and weights for the current spell-health ring. */
+	private final List<String> spellHealthPlanPhases = new ArrayList<>();
 	private final List<Integer> spellHealthSegments = new ArrayList<>();
+	private final List<Integer> spellDurationSegments = new ArrayList<>();
+	private int spellHealthSegmentIndex = -1;
 	private int spellHealthCompleted;
+	private int spellDurationCompleted;
 	@Nullable
 	private SpellAction spellTimeoutAction;
 	@Nullable
@@ -65,6 +74,7 @@ public class SpellRuntime {
 	public SpellRuntime(SpellDefinition definition) {
 		this.definition = definition;
 		this.currentPhaseId = definition.entryPhase;
+		initializeStaticSpellHealthPlan(definition.entryPhase);
 	}
 
 	public SpellDefinition getDefinition() {
@@ -104,7 +114,8 @@ public class SpellRuntime {
 	}
 
 	public int getSpellDurationTicks() {
-		return spellDurationTicks;
+		int total = sumSegments(spellDurationSegments, spellDurationSegments.size());
+		return total > 0 ? total : spellDurationTicks;
 	}
 
 	public int getSpellHealthTotal() {
@@ -126,7 +137,23 @@ public class SpellRuntime {
 	}
 
 	public int getSpellElapsedTicks() {
-		return spellMaxHealth > 0 ? Math.max(0, totalTick - spellStartTick) : 0;
+		if (spellMaxHealth <= 0) return 0;
+		int currentElapsed = getCurrentSpellElapsedTicks();
+		if (spellDurationTicks > 0) {
+			currentElapsed = Math.min(currentElapsed, spellDurationTicks);
+		} else {
+			currentElapsed = 0;
+		}
+		return Math.min(getSpellDurationTicks(), saturatedAdd(spellDurationCompleted, currentElapsed));
+	}
+
+	/** Real runtime age used by lifecycle events; unlike the ring it does not skip unused phase time. */
+	public int getBattleElapsedTicks() {
+		return Math.max(0, totalTick);
+	}
+
+	private int getCurrentSpellElapsedTicks() {
+		return Math.max(0, totalTick - spellStartTick);
 	}
 
 	public void setSpellHealth(int maxHealth, int durationTicks) {
@@ -139,37 +166,54 @@ public class SpellRuntime {
 		spellMaxHealth = Math.max(1, maxHealth);
 		spellDurationTicks = Math.max(0, durationTicks);
 		spellStartTick = totalTick;
-		if (spellHealthSegments.isEmpty() || !hadCurrentSegment) {
-			appendSpellHealthSegment(spellMaxHealth);
+		int plannedIndex = spellHealthPlanPhases.indexOf(currentPhaseId.toString());
+		if (plannedIndex >= 0) {
+			spellHealthSegmentIndex = plannedIndex;
+			spellHealthSegments.set(plannedIndex, spellMaxHealth);
+			spellDurationSegments.set(plannedIndex, spellDurationTicks);
+			spellHealthCompleted = sumSegments(spellHealthSegments, plannedIndex);
+			spellDurationCompleted = sumSegments(spellDurationSegments, plannedIndex);
+		} else if (hadCurrentSegment && spellHealthSegmentIndex >= 0
+				&& spellHealthSegmentIndex < spellHealthSegments.size()) {
+			spellHealthSegments.set(spellHealthSegmentIndex, spellMaxHealth);
+			spellDurationSegments.set(spellHealthSegmentIndex, spellDurationTicks);
 		} else {
-			spellHealthSegments.set(spellHealthSegments.size() - 1, spellMaxHealth);
+			appendSpellHealthSegment(currentPhaseId, spellMaxHealth, spellDurationTicks);
 		}
 		spellTimeoutAction = validSpellHealthTarget(onTimeout);
 		spellBreakAction = validSpellHealthTarget(onBreak);
 	}
 
 	public void clearSpellHealth() {
+		spellHealthPlanPhases.clear();
 		spellHealthSegments.clear();
+		spellDurationSegments.clear();
+		spellHealthSegmentIndex = -1;
 		spellHealthCompleted = 0;
+		spellDurationCompleted = 0;
 		clearCurrentSpellHealth();
 	}
 
 	/** Ends the current segment while retaining its contribution to the spell ring. */
 	private void completeCurrentSpellHealth() {
-		if (spellMaxHealth > 0) {
-			spellHealthCompleted = (int) Math.min(getSpellHealthTotal(),
-					(long) spellHealthCompleted + spellMaxHealth);
+		if (spellMaxHealth > 0 && spellHealthSegmentIndex >= 0) {
+			spellHealthCompleted = sumSegments(spellHealthSegments, spellHealthSegmentIndex + 1);
+			spellDurationCompleted = sumSegments(spellDurationSegments, spellHealthSegmentIndex + 1);
 		}
+		spellHealthSegmentIndex = -1;
 		clearCurrentSpellHealth();
 	}
 
-	private void appendSpellHealthSegment(int maxHealth) {
+	private void appendSpellHealthSegment(ResourceLocation phaseId, int maxHealth, int durationTicks) {
 		if (spellHealthSegments.size() >= MAX_SPELL_HEALTH_SEGMENTS) {
-			long merged = (long) spellHealthSegments.get(0) + spellHealthSegments.get(1);
-			spellHealthSegments.set(0, (int) Math.min(Integer.MAX_VALUE, merged));
-			spellHealthSegments.remove(1);
+			return;
 		}
+		spellHealthPlanPhases.add(phaseId.toString());
 		spellHealthSegments.add(Math.max(1, maxHealth));
+		spellDurationSegments.add(Math.max(0, durationTicks));
+		spellHealthSegmentIndex = spellHealthSegments.size() - 1;
+		spellHealthCompleted = sumSegments(spellHealthSegments, spellHealthSegmentIndex);
+		spellDurationCompleted = sumSegments(spellDurationSegments, spellHealthSegmentIndex);
 	}
 
 	private void clearCurrentSpellHealth() {
@@ -178,6 +222,77 @@ public class SpellRuntime {
 		spellStartTick = totalTick;
 		spellTimeoutAction = null;
 		spellBreakAction = null;
+	}
+
+	private void initializeStaticSpellHealthPlan(ResourceLocation startPhase) {
+		spellHealthPlanPhases.clear();
+		spellHealthSegments.clear();
+		spellDurationSegments.clear();
+		spellHealthSegmentIndex = -1;
+		spellHealthCompleted = 0;
+		spellDurationCompleted = 0;
+		Set<ResourceLocation> visited = new HashSet<>();
+		ResourceLocation phaseId = startPhase;
+		while (phaseId != null && visited.add(phaseId)
+				&& spellHealthSegments.size() < MAX_SPELL_HEALTH_SEGMENTS) {
+			PhaseDefinition phase = definition.getPhase(phaseId);
+			SetSpellHealthAction health = phase == null ? null : findStaticHealthAction(phase.onEnter);
+			if (health == null || health.mode() != SetSpellHealthAction.Mode.SET
+					|| !(health.health() instanceof NumberProviders.Constant hp)
+					|| !(health.duration() instanceof NumberProviders.Constant duration)) {
+				break;
+			}
+			appendSpellHealthSegment(phaseId,
+					clampPlannedValue(hp.value(), 1, 1_000_000),
+					clampPlannedValue(duration.value(), 0, 1_000_000));
+			phaseId = deterministicNextPhase(health);
+		}
+		spellHealthSegmentIndex = -1;
+		spellHealthCompleted = 0;
+		spellDurationCompleted = 0;
+	}
+
+	@Nullable
+	private static SetSpellHealthAction findStaticHealthAction(List<SpellAction> actions) {
+		SetSpellHealthAction found = null;
+		for (SpellAction action : actions) {
+			if (action instanceof SetSpellHealthAction health) {
+				found = health;
+			} else if (action instanceof SpellActions.SequenceAction sequence) {
+				SetSpellHealthAction nested = findStaticHealthAction(sequence.actions());
+				if (nested != null) found = nested;
+			}
+		}
+		return found;
+	}
+
+	@Nullable
+	private static ResourceLocation deterministicNextPhase(SetSpellHealthAction health) {
+		ResourceLocation next = null;
+		for (var target : List.of(health.onTimeout(), health.onBreak())) {
+			if (target.isEmpty()) continue;
+			if (!(target.get() instanceof SpellActions.ForcePhase phase)) return null;
+			if (next != null && !next.equals(phase.phaseId())) return null;
+			next = phase.phaseId();
+		}
+		return next;
+	}
+
+	private static int clampPlannedValue(double value, int min, int max) {
+		if (!Double.isFinite(value)) return min;
+		return Math.max(min, Math.min(max, (int) Math.round(value)));
+	}
+
+	private static int sumSegments(List<Integer> segments, int endExclusive) {
+		long total = 0;
+		for (int i = 0; i < Math.min(endExclusive, segments.size()); i++) {
+			total += Math.max(0, segments.get(i));
+		}
+		return (int) Math.min(Integer.MAX_VALUE, total);
+	}
+
+	private static int saturatedAdd(int a, int b) {
+		return (int) Math.min(Integer.MAX_VALUE, (long) Math.max(0, a) + Math.max(0, b));
 	}
 
 	public boolean triggerSpellHealthBreak(CardHolder holder) {
@@ -198,7 +313,7 @@ public class SpellRuntime {
 
 	private boolean triggerSpellHealthTimeout(CardHolder holder) {
 		if (spellMaxHealth <= 0 || spellDurationTicks <= 0) return false;
-		if (getSpellElapsedTicks() < spellDurationTicks) return false;
+		if (getCurrentSpellElapsedTicks() < spellDurationTicks) return false;
 		if (spellTimeoutAction == null) {
 			postSpellHealthEvent(holder,
 					dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.Outcome.TIMEOUT, null);
@@ -388,6 +503,7 @@ public class SpellRuntime {
 		childRuntimes.clear();
 		movementDirective = SpellMovementDirective.random();
 		clearSpellHealth();
+		initializeStaticSpellHealthPlan(currentPhaseId);
 
 		// Reset any legacy ticker actions
 		resetLegacyActions(definition.getPhase(currentPhaseId));
@@ -474,6 +590,7 @@ public class SpellRuntime {
 		scheduledActions.clear();
 		childRuntimes.clear();
 		clearSpellHealth();
+		initializeStaticSpellHealthPlan(targetPhase);
 		resetLegacyActions(phase);
 		for (SpellAction action : phase.onEnter) {
 			action.execute(ctx);
@@ -505,6 +622,7 @@ public class SpellRuntime {
 			return;
 		}
 		runtime.currentPhaseId = targetPhase;
+		runtime.initializeStaticSpellHealthPlan(targetPhase);
 		runtime.phaseTick = 0;
 		runtime.totalTick = 0;
 		runtime.hitCount = 0;
@@ -621,7 +739,16 @@ public class SpellRuntime {
 		tag.putInt("SpellStartTick", spellStartTick);
 		if (!spellHealthSegments.isEmpty()) {
 			tag.putIntArray("SpellHealthSegments", getSpellHealthSegments());
+			tag.putIntArray("SpellDurationSegments",
+					spellDurationSegments.stream().mapToInt(Integer::intValue).toArray());
+			var phases = new net.minecraft.nbt.ListTag();
+			for (String phase : spellHealthPlanPhases) {
+				phases.add(net.minecraft.nbt.StringTag.valueOf(phase));
+			}
+			tag.put("SpellHealthPlanPhases", phases);
+			tag.putInt("SpellHealthSegmentIndex", spellHealthSegmentIndex);
 			tag.putInt("SpellHealthCompleted", spellHealthCompleted);
+			tag.putInt("SpellDurationCompleted", spellDurationCompleted);
 		}
 		writeAction(tag, "SpellTimeoutAction", spellTimeoutAction);
 		writeAction(tag, "SpellBreakAction", spellBreakAction);
@@ -650,15 +777,61 @@ public class SpellRuntime {
 			this.spellMaxHealth = Math.max(0, tag.getInt("SpellMaxHealth"));
 			this.spellDurationTicks = Math.max(0, tag.getInt("SpellDurationTicks"));
 			this.spellStartTick = Math.max(0, tag.getInt("SpellStartTick"));
-			this.spellHealthSegments.clear();
-			for (int segment : tag.getIntArray("SpellHealthSegments")) {
-				if (segment > 0) appendSpellHealthSegment(segment);
+			int[] savedHealth = tag.getIntArray("SpellHealthSegments");
+			if (savedHealth.length > 0) {
+				this.spellHealthSegments.clear();
+				for (int segment : savedHealth) {
+					if (segment > 0 && this.spellHealthSegments.size() < MAX_SPELL_HEALTH_SEGMENTS) {
+						this.spellHealthSegments.add(segment);
+					}
+				}
+			}
+			int[] savedDurations = tag.getIntArray("SpellDurationSegments");
+			if (savedDurations.length > 0) {
+				this.spellDurationSegments.clear();
+				for (int duration : savedDurations) {
+					if (this.spellDurationSegments.size() >= this.spellHealthSegments.size()) break;
+					this.spellDurationSegments.add(Math.max(0, duration));
+				}
+			}
+			while (this.spellDurationSegments.size() < this.spellHealthSegments.size()) {
+				this.spellDurationSegments.add(this.spellDurationSegments.isEmpty()
+						? this.spellDurationTicks : 0);
+			}
+			while (this.spellDurationSegments.size() > this.spellHealthSegments.size()) {
+				this.spellDurationSegments.remove(this.spellDurationSegments.size() - 1);
+			}
+			if (tag.contains("SpellHealthPlanPhases", net.minecraft.nbt.Tag.TAG_LIST)) {
+				this.spellHealthPlanPhases.clear();
+				var phases = tag.getList("SpellHealthPlanPhases", net.minecraft.nbt.Tag.TAG_STRING);
+				for (int i = 0; i < phases.size() && i < this.spellHealthSegments.size(); i++) {
+					this.spellHealthPlanPhases.add(phases.getString(i));
+				}
 			}
 			if (this.spellHealthSegments.isEmpty() && this.spellMaxHealth > 0) {
-				appendSpellHealthSegment(this.spellMaxHealth);
+				appendSpellHealthSegment(phaseId, this.spellMaxHealth, this.spellDurationTicks);
 			}
+			if (this.spellHealthPlanPhases.size() != this.spellHealthSegments.size()) {
+				this.spellHealthPlanPhases.clear();
+				for (int i = 0; i < this.spellHealthSegments.size(); i++) {
+					this.spellHealthPlanPhases.add(i + 1 == this.spellHealthSegments.size()
+							? phaseId.toString() : "");
+				}
+			}
+			this.spellHealthSegmentIndex = tag.contains("SpellHealthSegmentIndex")
+					? tag.getInt("SpellHealthSegmentIndex") : this.spellHealthPlanPhases.indexOf(phaseId.toString());
+			if (this.spellHealthSegmentIndex < 0 && this.spellMaxHealth > 0) {
+				this.spellHealthSegmentIndex = Math.max(0, this.spellHealthSegments.size() - 1);
+			}
+			this.spellHealthSegmentIndex = Math.min(this.spellHealthSegmentIndex,
+					this.spellHealthSegments.size() - 1);
 			this.spellHealthCompleted = Math.max(0,
 					Math.min(getSpellHealthTotal(), tag.getInt("SpellHealthCompleted")));
+			int restoredDurationCompleted = tag.contains("SpellDurationCompleted")
+					? tag.getInt("SpellDurationCompleted")
+					: sumSegments(this.spellDurationSegments, Math.max(0, this.spellHealthSegmentIndex));
+			this.spellDurationCompleted = Math.max(0,
+					Math.min(getSpellDurationTicks(), restoredDurationCompleted));
 			this.spellTimeoutAction = readAction(tag, "SpellTimeoutAction");
 			this.spellBreakAction = readAction(tag, "SpellBreakAction");
 			this.enteredCurrentPhase = tag.contains("EnteredCurrentPhase") ?

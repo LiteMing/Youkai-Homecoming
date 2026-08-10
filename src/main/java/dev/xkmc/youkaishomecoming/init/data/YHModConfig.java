@@ -173,6 +173,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue danmakuMinPHPDamage;
 		public final ForgeConfigSpec.DoubleValue danmakuPlayerPHPDamage;
 		public final ForgeConfigSpec.DoubleValue danmakuHealOnHitTarget;
+		public final ForgeConfigSpec.BooleanValue bossDanmakuDefeatOutsideCombat;
 		public final ForgeConfigSpec.IntValue playerDanmakuCooldown;
 		public final ForgeConfigSpec.IntValue playerLaserCooldown;
 		public final ForgeConfigSpec.IntValue playerSpellCooldown;
@@ -500,6 +501,9 @@ public class YHModConfig {
 				danmakuHealOnHitTarget = builder.comment("When danmaku hits target, heal youkai health by percentage of max health")
 						.translation("config.youkaishomecoming.common.danmaku_battle.danmakuHealOnHitTarget")
 						.defineInRange("danmakuHealOnHitTarget", 0.2, 0, 1);
+				bossDanmakuDefeatOutsideCombat = builder.comment("When a player outside danmaku combat is hit by boss danmaku, apply the Beaten effect")
+						.translation("config.youkaishomecoming.common.danmaku_battle.bossDanmakuDefeatOutsideCombat")
+						.define("bossDanmakuDefeatOutsideCombat", true);
 				playerDanmakuCooldown = builder.comment("Player item cooldown for using danmaku")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerDanmakuCooldown")
 						.defineInRange("playerDanmakuCooldown", 20, 5, 1000);

@@ -333,6 +333,8 @@ public enum YHLangData {
 			Map.entry("config.youkaishomecoming.common.danmaku_battle.danmakuPlayerPHPDamage.tooltip", "Minimum damage youkai danmaku will deal against player"),
 			Map.entry("config.youkaishomecoming.common.danmaku_battle.danmakuHealOnHitTarget", "Heal on Hit"),
 			Map.entry("config.youkaishomecoming.common.danmaku_battle.danmakuHealOnHitTarget.tooltip", "When danmaku hits target, heal youkai health by percentage of max health"),
+			Map.entry("config.youkaishomecoming.common.danmaku_battle.bossDanmakuDefeatOutsideCombat", "Beaten by Boss Danmaku Outside Combat"),
+			Map.entry("config.youkaishomecoming.common.danmaku_battle.bossDanmakuDefeatOutsideCombat.tooltip", "When a player outside danmaku combat is hit by boss danmaku, apply the Beaten effect"),
 			Map.entry("config.youkaishomecoming.common.danmaku_battle.playerDanmakuCooldown", "Danmaku Cooldown (Ticks)"),
 			Map.entry("config.youkaishomecoming.common.danmaku_battle.playerDanmakuCooldown.tooltip", "Player item cooldown for using danmaku"),
 			Map.entry("config.youkaishomecoming.common.danmaku_battle.playerLaserCooldown", "Laser Cooldown (Ticks)"),

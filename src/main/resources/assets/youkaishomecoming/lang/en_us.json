@@ -465,6 +465,8 @@
   "config.youkaishomecoming.common.danmaku_battle.danmakuBuffCostTicks.tooltip": "Buff duration (ticks) consumed per danmaku/laser shot when player has youkaified/fairy effect. Set to 0 to disable buff consumption. Hat bonus bypasses this cost.",
   "config.youkaishomecoming.common.danmaku_battle.danmakuHealOnHitTarget": "Heal on Hit",
   "config.youkaishomecoming.common.danmaku_battle.danmakuHealOnHitTarget.tooltip": "When danmaku hits target, heal youkai health by percentage of max health",
+  "config.youkaishomecoming.common.danmaku_battle.bossDanmakuDefeatOutsideCombat": "Beaten by Boss Danmaku Outside Combat",
+  "config.youkaishomecoming.common.danmaku_battle.bossDanmakuDefeatOutsideCombat.tooltip": "When a player outside danmaku combat is hit by boss danmaku, apply the Beaten effect",
   "config.youkaishomecoming.common.danmaku_battle.danmakuMaxPower": "Max Power",
   "config.youkaishomecoming.common.danmaku_battle.danmakuMaxPower.tooltip": "Max Power player can obtain from grazing",
   "config.youkaishomecoming.common.danmaku_battle.danmakuMaxResource": "Max Resource",

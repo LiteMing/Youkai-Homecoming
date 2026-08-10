@@ -125,6 +125,8 @@
 	"config.youkaishomecoming.common.danmaku_battle.danmakuPlayerPHPDamage.tooltip": "妖怪弹幕对玩家造成的最小伤害",
 	"config.youkaishomecoming.common.danmaku_battle.danmakuHealOnHitTarget": "命中治疗比例",
 	"config.youkaishomecoming.common.danmaku_battle.danmakuHealOnHitTarget.tooltip": "弹幕命中目标时，按最大生命值百分比治疗妖怪",
+	"config.youkaishomecoming.common.danmaku_battle.bossDanmakuDefeatOutsideCombat": "非弹幕战中Boss弹幕导致满身疮痍",
+	"config.youkaishomecoming.common.danmaku_battle.bossDanmakuDefeatOutsideCombat.tooltip": "玩家在非弹幕战状态下受到Boss弹幕攻击时，直接进入满身疮痍状态",
 	"config.youkaishomecoming.common.danmaku_battle.playerDanmakuCooldown": "弹幕冷却（刻）",
 	"config.youkaishomecoming.common.danmaku_battle.playerDanmakuCooldown.tooltip": "玩家使用弹幕的物品冷却时间（刻）",
 	"config.youkaishomecoming.common.danmaku_battle.playerLaserCooldown": "激光冷却（刻）",

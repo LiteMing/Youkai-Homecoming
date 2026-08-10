@@ -11,6 +11,7 @@ import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TouhouConditionalSpawns;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RestrictData;
@@ -826,6 +827,14 @@ public abstract class YoukaiEntity extends PathfinderMob
 		float ahp = target.getHealth();
 		if (ahp >= hp && ahp > 0) immune = true;
 		onDanmakuHit(target, self);
+		if (target instanceof ServerPlayer player
+				&& this instanceof BossYoukaiEntity
+				&& YHModConfig.COMMON.bossDanmakuDefeatOutsideCombat.get()
+				&& !EffectEventHandlers.canDanmakuCombat(player)
+				&& !player.hasEffect(YHEffects.BEATEN.get())) {
+			// Use the same server-authoritative defeat flow as a last-life failure.
+			GrazeCapability.HOLDER.get(player).defeatWithBeaten(this);
+		}
 		if (immune) {
 			onDanmakuImmune(target, self, source);
 		}

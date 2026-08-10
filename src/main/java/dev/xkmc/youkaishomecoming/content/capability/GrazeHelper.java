@@ -73,7 +73,7 @@ public class GrazeHelper {
 	}
 
 	public static boolean isSpellStack(ItemStack stack) {
-		return !stack.isEmpty() && stack.getItem() instanceof ISpellItem;
+		return !stack.isEmpty() && stack.getItem() instanceof ISpellItem spell && spell.isCastReady(stack);
 	}
 
 	/**

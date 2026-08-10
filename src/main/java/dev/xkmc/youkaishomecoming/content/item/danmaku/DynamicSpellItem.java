@@ -107,6 +107,11 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		return stack.hasTag() && stack.getTag().getBoolean(TAG_COMPLETE);
 	}
 
+	@Override
+	public boolean isCastReady(ItemStack stack) {
+		return CertifiedSpellValidator.isCertified(stack) || isComplete(stack);
+	}
+
 	public static void setComplete(ItemStack stack, boolean complete) {
 		if (complete) {
 			stack.getOrCreateTag().putBoolean(TAG_COMPLETE, true);
@@ -239,7 +244,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
 		// Bomb and integration APIs call this method directly, bypassing use().
 		// Keep draft validation at the authoritative cast boundary.
-		if (!CertifiedSpellValidator.isCertified(stack) && !isComplete(stack)) return false;
+		if (!isCastReady(stack)) return false;
 		if (GrazeHelper.forbidSpellCardWithMessage(player)) return false;
 		SpellDefinition def = getSpellDefinition(stack);
 		if (def == null) return false;

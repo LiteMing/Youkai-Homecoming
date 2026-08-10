@@ -54,7 +54,8 @@ public class CuriosManager {
 	public static ItemStack findFirstSpellItem(LivingEntity le) {
 		if (!ModList.get().isLoaded("curios")) return ItemStack.EMPTY;
 		return CuriosApi.getCuriosInventory(le).resolve()
-				.flatMap(handler -> handler.findFirstCurio(stack -> stack.getItem() instanceof ISpellItem))
+				.flatMap(handler -> handler.findFirstCurio(stack ->
+						stack.getItem() instanceof ISpellItem spell && spell.isCastReady(stack)))
 				.map(result -> result.stack())
 				.orElse(ItemStack.EMPTY);
 	}

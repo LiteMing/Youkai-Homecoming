@@ -860,23 +860,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		exitDanmakuCombatOnLastHit(fatalSource);
 	}
 
-	/** Runs the full defeat flow and applies Beaten regardless of the general defeat setting. */
-	public void defeatWithBeaten(@Nullable LivingEntity fatalSource) {
-		exitDanmakuCombatOnLastHit(fatalSource, true);
-	}
-
-	private void exitDanmakuCombatOnLastHit() {
-		exitDanmakuCombatOnLastHit(null);
-	}
-
-	private void exitDanmakuCombatOnLastHit(@Nullable LivingEntity fatalSource) {
-		exitDanmakuCombatOnLastHit(fatalSource, false);
-	}
-
 	/**
 	 * Full STG defeat: clear sessions, reset resources, apply weak/beaten, fire {@link StgCombatEvent.Defeat}.
 	 */
-	private void exitDanmakuCombatOnLastHit(@Nullable LivingEntity fatalSource, boolean forceBeaten) {
+	private void exitDanmakuCombatOnLastHit(@Nullable LivingEntity fatalSource) {
 		// Snapshot opponents before clearing so external mods can settle dialogue/score.
 		OpponentSnapshot snap = player instanceof ServerPlayer sp
 				? snapshotOpponents(sp)
@@ -901,11 +888,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			SpellContainer.clear(sp);
 			sp.displayClientMessage(YHLangData.STG_DEFEAT.get(), true);
 			sp.playNotifySound(SoundEvents.PLAYER_DEATH, SoundSource.PLAYERS, 1.0f, 0.8f);
-			if (forceBeaten || YHModConfig.COMMON.applyBeatenOnDefeat.get()) {
-				int duration = YHModConfig.COMMON.beatenDurationTicks.get();
-				if (duration > 0 && !sp.hasEffect(YHEffects.BEATEN.get())) {
-					sp.addEffect(new MobEffectInstance(YHEffects.BEATEN.get(), duration, 0));
-				}
+			int duration = YHModConfig.COMMON.beatenDurationTicks.get();
+			if (duration > 0 && !sp.hasEffect(YHEffects.BEATEN.get())) {
+				sp.addEffect(new MobEffectInstance(YHEffects.BEATEN.get(), duration, 0));
 			}
 			MinecraftForge.EVENT_BUS.post(new StgCombatEvent.Defeat(sp, fatalSource, snap.ids(), snap.entities()));
 			sync();

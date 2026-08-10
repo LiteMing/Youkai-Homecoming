@@ -221,11 +221,9 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue danmakuPowerBonus;
 		public final ForgeConfigSpec.DoubleValue grazeEffectiveness;
 		public final ForgeConfigSpec.IntValue missInvulTime;
-		public final ForgeConfigSpec.IntValue bombInvulTime;
 		public final ForgeConfigSpec.DoubleValue maxPowerLossOnMiss;
 		public final ForgeConfigSpec.IntValue initialResource;
 		public final ForgeConfigSpec.IntValue initialPower;
-		public final ForgeConfigSpec.BooleanValue applyBeatenOnDefeat;
 		public final ForgeConfigSpec.IntValue beatenDurationTicks;
 		public final ForgeConfigSpec.BooleanValue manualDanmakuCombat;
 		public final ForgeConfigSpec.DoubleValue spellCirclePlayerFadeStartLife;
@@ -548,9 +546,6 @@ public class YHModConfig {
 				missInvulTime = builder.comment("Danmaku invulnerability and disabled time when you take a hit")
 						.translation("config.youkaishomecoming.common.danmaku_battle.missInvulTime")
 						.defineInRange("missInvulTime", 60, 10, 100);
-				bombInvulTime = builder.comment("Danmaku invulnerability and disabled time when you use a bomb")
-						.translation("config.youkaishomecoming.common.danmaku_battle.bombInvulTime")
-						.defineInRange("bombInvulTime", 30, 10, 100);
 				maxPowerLossOnMiss = builder.comment("Maximum loss of power when you take a hit")
 						.translation("config.youkaishomecoming.common.danmaku_battle.maxPowerLossOnMiss")
 						.defineInRange("maxPowerLossOnMiss", 1d, 0, 10);
@@ -561,12 +556,8 @@ public class YHModConfig {
 				initialPower = builder.comment("Initial power when you initiate a danmaku battle")
 						.translation("config.youkaishomecoming.common.danmaku_battle.initialPower")
 						.defineInRange("initialPower", 1, 0, 10);
-				applyBeatenOnDefeat = builder.comment("Apply the Beaten effect when the player loses the last life in danmaku combat")
-						.comment("Disabled by default; enable for pack-style defeat penalty")
-						.translation("config.youkaishomecoming.common.danmaku_battle.applyBeatenOnDefeat")
-						.define("applyBeatenOnDefeat", false);
 				beatenDurationTicks = builder.comment("Duration in ticks of the Beaten effect applied on danmaku defeat")
-						.comment("Only used when applyBeatenOnDefeat is true. 1500 ticks = 75 seconds")
+						.comment("1500 ticks = 75 seconds")
 						.translation("config.youkaishomecoming.common.danmaku_battle.beatenDurationTicks")
 						.defineInRange("beatenDurationTicks", 1500, 1, 1000000);
 				manualDanmakuCombat = builder.comment("When true (default), players must enable STG combat manually (Shift+RMB spell card)")

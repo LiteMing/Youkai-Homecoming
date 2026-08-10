@@ -39,6 +39,9 @@ public class SpellRuntime {
 	private final List<ScheduledAction> scheduledActions = new ArrayList<>();
 	private final List<ChildRuntime> childRuntimes = new ArrayList<>();
 	private SpellMovementDirective movementDirective = SpellMovementDirective.random();
+	private int spellMaxHealth;
+	private int spellDurationTicks;
+	private int spellStartTick;
 	/** Tracks how many consecutive ticks the target has been off the ground. Reset on ground contact. */
 	private int targetFlyTime;
 	@Nullable
@@ -85,6 +88,30 @@ public class SpellRuntime {
 
 	public int getTargetFlyTime() {
 		return targetFlyTime;
+	}
+
+	public int getSpellMaxHealth() {
+		return spellMaxHealth;
+	}
+
+	public int getSpellDurationTicks() {
+		return spellDurationTicks;
+	}
+
+	public int getSpellElapsedTicks() {
+		return spellMaxHealth > 0 ? Math.max(0, totalTick - spellStartTick) : 0;
+	}
+
+	public void setSpellHealth(int maxHealth, int durationTicks) {
+		spellMaxHealth = Math.max(1, maxHealth);
+		spellDurationTicks = Math.max(0, durationTicks);
+		spellStartTick = totalTick;
+	}
+
+	public void clearSpellHealth() {
+		spellMaxHealth = 0;
+		spellDurationTicks = 0;
+		spellStartTick = totalTick;
 	}
 
 	public double getVariable(String key) {
@@ -222,6 +249,7 @@ public class SpellRuntime {
 		scheduledActions.clear();
 		childRuntimes.clear();
 		movementDirective = SpellMovementDirective.random();
+		clearSpellHealth();
 
 		// Reset any legacy ticker actions
 		resetLegacyActions(definition.getPhase(currentPhaseId));
@@ -280,6 +308,7 @@ public class SpellRuntime {
 		phaseTick = 0;
 		enteredCurrentPhase = false;
 		scheduledActions.clear();
+		clearSpellHealth();
 
 		PhaseDefinition newPhase = definition.getPhase(currentPhaseId);
 		if (newPhase != null) {
@@ -306,6 +335,7 @@ public class SpellRuntime {
 		variables.clear();
 		scheduledActions.clear();
 		childRuntimes.clear();
+		clearSpellHealth();
 		resetLegacyActions(phase);
 		for (SpellAction action : phase.onEnter) {
 			action.execute(ctx);
@@ -448,6 +478,9 @@ public class SpellRuntime {
 		tag.putInt("PhaseTick", phaseTick);
 		tag.putInt("TotalTick", totalTick);
 		tag.putInt("HitCount", hitCount);
+		tag.putInt("SpellMaxHealth", spellMaxHealth);
+		tag.putInt("SpellDurationTicks", spellDurationTicks);
+		tag.putInt("SpellStartTick", spellStartTick);
 		tag.putBoolean("EnteredCurrentPhase", enteredCurrentPhase);
 		if (!variables.isEmpty()) {
 			var varsTag = new net.minecraft.nbt.CompoundTag();
@@ -470,6 +503,9 @@ public class SpellRuntime {
 			this.phaseTick = tag.getInt("PhaseTick");
 			this.totalTick = tag.getInt("TotalTick");
 			this.hitCount = tag.getInt("HitCount");
+			this.spellMaxHealth = Math.max(0, tag.getInt("SpellMaxHealth"));
+			this.spellDurationTicks = Math.max(0, tag.getInt("SpellDurationTicks"));
+			this.spellStartTick = Math.max(0, tag.getInt("SpellStartTick"));
 			this.enteredCurrentPhase = tag.contains("EnteredCurrentPhase") ?
 					tag.getBoolean("EnteredCurrentPhase") : true;
 			if (tag.contains("Variables")) {

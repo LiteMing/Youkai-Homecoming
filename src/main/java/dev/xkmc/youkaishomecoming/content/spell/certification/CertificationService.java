@@ -39,6 +39,18 @@ public final class CertificationService {
 
 	public static CertificationQuote quote(ServerPlayer player, SpellDefinition definition,
 										   int requestedDurationTicks, double requestedHalfSize) {
+		return quote(player, definition, requestedDurationTicks, requestedHalfSize, false);
+	}
+
+	/** OP-only /yhdev quote: keeps certification limits but permits operator actions. */
+	public static CertificationQuote quoteOperatorTest(ServerPlayer player, SpellDefinition definition,
+											   int requestedDurationTicks, double requestedHalfSize) {
+		return quote(player, definition, requestedDurationTicks, requestedHalfSize, true);
+	}
+
+	private static CertificationQuote quote(ServerPlayer player, SpellDefinition definition,
+										 int requestedDurationTicks, double requestedHalfSize,
+										 boolean operatorTest) {
 		// The spell's own declared duration is the certification timeout; the
 		// enemy HP is derived directly from the seconds: duration seconds x 10 x
 		// the regen ratio (a fixed total, not a growth over time).
@@ -54,8 +66,11 @@ public final class CertificationService {
 		int specialNodeQuota = draftOpQuota(player, definition);
 		SpellAnalysis analysis;
 		try {
-			analysis = SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION);
+			analysis = operatorTest
+					? SpellAnalyzer.analyzeOperatorTest(definition, SpellAnalysisLimits.certification())
+					: SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION);
 		} catch (dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException e) {
+			if (operatorTest) throw e;
 			int count = SpecialNodeCounter.count(definition);
 			if (count > 0 && count <= specialNodeQuota) {
 				// the draft quota covers the special nodes: re-run with those

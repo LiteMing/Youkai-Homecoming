@@ -53,7 +53,8 @@ public class SpellMarketValidator {
 		private static final int MAX_SHOOTERS = 256;
 		private static final int MAX_LIFETIME = 12000;
 		private static final int MAX_EXPRESSION_LENGTH = 512;
-		private static final Set<String> BANNED_ACTIONS = Set.of("run_command", "force_spell", "fire_spell");
+		private static final Set<String> BANNED_ACTIONS = Set.of(
+				"run_command", "force_spell", "fire_spell", "set_spell_health");
 
 		private int actions;
 		private long projectiles;

@@ -286,6 +286,7 @@ public final class SpellEditorLocalization {
 			Map.entry("YSM Render", "YSM 渲染"),
 			Map.entry("Teleport Random", "随机传送"),
 			Map.entry("Caster Moves", "施法者移动"),
+			Map.entry("Spell Health (OP)", "符卡血量（仅 OP）"),
 			Map.entry("Noop", "空操作"),
 			Map.entry("Legacy Ticker", "旧版计时器"),
 			Map.entry("\u26A0 DISABLED (press D to enable)", "\u26A0 已禁用 (按 D 启用)"),

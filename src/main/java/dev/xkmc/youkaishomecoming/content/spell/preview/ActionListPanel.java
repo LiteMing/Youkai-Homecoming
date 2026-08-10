@@ -2503,6 +2503,12 @@ public class ActionListPanel {
 				case CLEAR -> index + ": spell circle clear";
 			};
 		}
+		if (action instanceof SetSpellHealthAction sha) {
+			return sha.mode() == SetSpellHealthAction.Mode.CLEAR
+					? index + ": spell health clear"
+					: index + ": spell health hp=" + formatNumberProvider(sha.health())
+					+ " duration=" + formatNumberProvider(sha.duration());
+		}
 		if (action instanceof SpellActions.SetVariable sv) return index + ": set " + sv.key();
 		if (action instanceof SpellActions.AddVariable av) return index + ": add " + av.key();
 		if (action instanceof SpellActions.ForcePhase fp) {

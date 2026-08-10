@@ -741,7 +741,7 @@ public class YHCommands {
 			return 0;
 		}
 		try {
-			var quote = CertificationService.quote(player, definition, ticks, halfSize);
+			var quote = CertificationService.quoteOperatorTest(player, definition, ticks, halfSize);
 			CertificationManager.INSTANCE.setQuote(player, quote, definition);
 			// OP test command: skip the start fee so certification can be exercised
 			// without resources; the in-game UI path pays through SpellPaymentRouter.

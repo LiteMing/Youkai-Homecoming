@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.LegacyTickerAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetEntityFlagAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellCircleAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellTitleAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
@@ -106,6 +107,8 @@ public final class SpellAnalyzer {
 
 	/** Capabilities allowed beyond their default policy (draft op-node quota path). */
 	private final java.util.Set<SpellCapability> extraAllowed;
+	/** Explicitly authorized /yhdev path; certification limits still apply. */
+	private final boolean operatorTest;
 
 	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits) {
 		this(definition, profile, limits, java.util.Set.of());
@@ -113,10 +116,16 @@ public final class SpellAnalyzer {
 
 	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits,
 						  java.util.Set<SpellCapability> extraAllowed) {
+		this(definition, profile, limits, extraAllowed, false);
+	}
+
+	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits,
+						  java.util.Set<SpellCapability> extraAllowed, boolean operatorTest) {
 		this.definition = definition;
 		this.profile = profile;
 		this.limits = limits;
 		this.extraAllowed = extraAllowed;
+		this.operatorTest = operatorTest;
 	}
 
 	public static SpellAnalysis analyze(SpellDefinition definition) {
@@ -140,6 +149,12 @@ public final class SpellAnalyzer {
 	public static SpellAnalysis analyze(SpellDefinition definition, SpellAnalysisProfile profile,
 										SpellAnalysisLimits limits, java.util.Set<SpellCapability> extraAllowed) {
 		return new SpellAnalyzer(definition, profile, limits, extraAllowed).run();
+	}
+
+	/** Certification-grade analysis with OP-only actions enabled for /yhdev. */
+	public static SpellAnalysis analyzeOperatorTest(SpellDefinition definition, SpellAnalysisLimits limits) {
+		return new SpellAnalyzer(definition, SpellAnalysisProfile.CERTIFICATION, limits,
+				java.util.Set.of(), true).run();
 	}
 
 	// ------------------------------------------------------------------ pipeline
@@ -473,6 +488,14 @@ public final class SpellAnalyzer {
 		} else if (action instanceof RunCommandAction) {
 			checkMarketBanned(action);
 			addCap(SpellCapability.RUN_COMMAND);
+		} else if (action instanceof SetSpellHealthAction) {
+			if (profile == SpellAnalysisProfile.MARKET) {
+				throw banned("set_spell_health");
+			}
+			if (!operatorTest) {
+				throw rejected("operator_only", "set_spell_health is operator-only and cannot be certified");
+			}
+			handled = true;
 		} else if (action instanceof SetSpellCircleAction) {
 			addCap(SpellCapability.SET_SPELL_CIRCLE);
 		} else if (action instanceof ShowSpellTitleAction) {
@@ -730,13 +753,15 @@ public final class SpellAnalyzer {
 	private static boolean isMarketBanned(SpellAction action) {
 		return action instanceof RunCommandAction
 				|| action instanceof SpellActions.ForceSpell
-				|| action instanceof SpellActions.FireSpell;
+				|| action instanceof SpellActions.FireSpell
+				|| action instanceof SetSpellHealthAction;
 	}
 
 	private static String bannedTypeName(SpellAction action) {
 		if (action instanceof RunCommandAction) return "run_command";
 		if (action instanceof SpellActions.ForceSpell) return "force_spell";
 		if (action instanceof SpellActions.FireSpell) return "fire_spell";
+		if (action instanceof SetSpellHealthAction) return "set_spell_health";
 		return "unknown";
 	}
 
@@ -886,11 +911,13 @@ public final class SpellAnalyzer {
 				throw new SpellAnalysisException("Certification rejected: hookExecutions " + hookExecutionUpperBound
 						+ " exceeds limit " + limits.maxHookExecutions());
 			}
-			for (SpellCapability cap : capabilities) {
-				SpellCapabilityPolicy policy = SpellCapabilityPolicies.currentPolicy(cap);
-				if (!policy.allowsCertification() && !extraAllowed.contains(cap)) {
-					throw new SpellAnalysisException("Certification rejected: capability " + cap.id()
-							+ " policy " + policy);
+			if (!operatorTest) {
+				for (SpellCapability cap : capabilities) {
+					SpellCapabilityPolicy policy = SpellCapabilityPolicies.currentPolicy(cap);
+					if (!policy.allowsCertification() && !extraAllowed.contains(cap)) {
+						throw new SpellAnalysisException("Certification rejected: capability " + cap.id()
+								+ " policy " + policy);
+					}
 				}
 			}
 		}

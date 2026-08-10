@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.DelayAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
@@ -231,8 +232,9 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (origin != null && origin != SpellRegistry.Origin.CUSTOM) {
 			throw new IllegalArgumentException("Cannot save this spell without operator permission: " + id);
 		}
-		// run_command nodes are allowed only within the draft quota (0 without a
-		// draft card); this replaces the previous blanket ban for non-OP saves.
+		if (containsPrivilegedAction(definition)) {
+			throw new IllegalArgumentException("Spell contains an operator-only action");
+		}
 		enforceOpQuota(sender, definition, 0);
 		if (origin != null) {
 			UUID owner = CustomSpellStorage.loadOwner(sender.server, id);
@@ -436,7 +438,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private boolean containsPrivilegedAction(List<SpellAction> actions) {
 		for (SpellAction action : actions) {
-			if (action instanceof RunCommandAction) {
+			if (action instanceof RunCommandAction || action instanceof SetSpellHealthAction) {
 				return true;
 			}
 			if (action instanceof SpellActions.ConditionalAction cond &&

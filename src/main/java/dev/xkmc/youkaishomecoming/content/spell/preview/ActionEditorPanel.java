@@ -271,6 +271,8 @@ public class ActionEditorPanel {
 			buildShowSpellTitleRows(sta);
 		} else if (action instanceof SetSpellCircleAction sca) {
 			buildSetSpellCircleRows(sca);
+		} else if (action instanceof SetSpellHealthAction sha) {
+			buildSetSpellHealthRows(sha);
 		} else if (action instanceof SpellActions.ForcePhase fp) {
 			buildForcePhaseRows(fp);
 		} else if (action instanceof SpellActions.ForceSpell fs) {
@@ -321,6 +323,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Run Command", () -> selectType("run_command"));
 		addFullWidthButton("Show Spell Title", () -> selectType("show_spell_title"));
 		addFullWidthButton("Custom Magic Circle", () -> selectType("set_spell_circle"));
+		addFullWidthButton("Spell Health (OP)", () -> selectType("set_spell_health"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
 		addFullWidthButton("Force Spell", () -> selectType("force_spell"));
 		addFullWidthButton("Fire Spell", () -> selectType("fire_spell"));
@@ -378,6 +381,8 @@ public class ActionEditorPanel {
 			case "show_spell_title" -> new ShowSpellTitleAction("", "", 100, 64.0);
 			case "set_spell_circle" -> new SetSpellCircleAction(SetSpellCircleAction.Mode.SET,
 					new ResourceLocation("youkaishomecoming", "test_spell"), 1.0f);
+			case "set_spell_health" -> new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
+					NumberProvider.constant(100), NumberProvider.constant(1200));
 			case "force_phase" -> new SpellActions.ForcePhase(
 					new ResourceLocation("youkaishomecoming", "main"), true);
 			case "force_spell" -> new SpellActions.ForceSpell(
@@ -1264,6 +1269,20 @@ public class ActionEditorPanel {
 			addFloatRow("Size", sca.size(), v ->
 					notifySimple(old -> new SetSpellCircleAction(((SetSpellCircleAction) old).mode(),
 							((SetSpellCircleAction) old).circle(), v)));
+		}
+	}
+
+	private void buildSetSpellHealthRows(SetSpellHealthAction action) {
+		addEnumRow("Mode", SetSpellHealthAction.Mode.values(), action.mode(), v ->
+				notifySimple(old -> new SetSpellHealthAction(v,
+						((SetSpellHealthAction) old).health(), ((SetSpellHealthAction) old).duration()), true));
+		if (action.mode() == SetSpellHealthAction.Mode.SET) {
+			addNumberRow("Health", action.health(), v -> notifySimple(old ->
+					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(), v,
+							((SetSpellHealthAction) old).duration())));
+			addNumberRow("Duration", action.duration(), v -> notifySimple(old ->
+					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(),
+							((SetSpellHealthAction) old).health(), v)));
 		}
 	}
 
@@ -4324,6 +4343,7 @@ public class ActionEditorPanel {
 			Map.entry("set_entity_flag", "Set Entity Flag"),
 			Map.entry("ysm_render", "YSM Render"),
 			Map.entry("caster_moves", "Caster Moves"),
+			Map.entry("set_spell_health", "Spell Health (OP)"),
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);

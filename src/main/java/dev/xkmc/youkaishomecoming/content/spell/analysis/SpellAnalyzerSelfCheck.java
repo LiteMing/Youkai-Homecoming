@@ -165,6 +165,7 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String LEGACY_DEEP = spell("{\"type\": \"delay\", \"delay_ticks\": 10, \"body\": [{\"type\": \"repeat\", \"count\": 2, \"body\": [{\"type\": \"spawn_shooter\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 20, \"body\": [{\"type\": \"legacy_ticker\"}]}]}]}");
 		private static final String RUNCMD = spell("{\"type\": \"run_command\", \"command\": \"say hi\"}");
 		private static final String RUNCMD_DISABLED = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"run_command\", \"command\": \"say hi\"}}");
+		private static final String SPELL_HEALTH = spell("{\"type\": \"set_spell_health\", \"health\": 100, \"duration\": 120}");
 		private static final String TELEPORT = spell("{\"type\": \"teleport\", \"destination\": {\"mode\": \"caster\"}}");
 		private static final String CASTER_MOVES = spell("{\"type\": \"caster_moves\", \"mode\": \"relative\", \"x\": \"tick * 0.01\", \"y\": 0, \"z\": 0.1}," + fire(1));
 		private static final String UNBOUNDED_COUNT = spell(
@@ -835,6 +836,11 @@ public final class SpellAnalyzerSelfCheck {
 			// historical market banned text verbatim
 			String banned = rejectMessage(() -> SpellAnalyzer.analyze(parse(RUNCMD), SpellAnalysisProfile.MARKET));
 			check("market banned text verbatim", banned != null && banned.equals("Automatic market imports may not use action: run_command"));
+			String certHealth = rejectMessage(() -> SpellAnalyzer.analyze(
+					parse(SPELL_HEALTH), SpellAnalysisProfile.CERTIFICATION, CERT));
+			check("cert rejects operator spell health", certHealth != null && certHealth.contains("operator-only"));
+			SpellAnalysis opHealth = SpellAnalyzer.analyzeOperatorTest(parse(SPELL_HEALTH), CERT);
+			check("operator test permits spell health", opHealth != null);
 			// 19 stable capability IDs
 			check("19 stable capability IDs", SpellCapability.values().length == 19
 					&& Set.of(SpellCapability.values()).stream().map(SpellCapability::id).distinct().count() == 19);

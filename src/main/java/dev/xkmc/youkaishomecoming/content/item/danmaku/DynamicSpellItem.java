@@ -237,6 +237,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 	@Override
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
+		// Bomb and integration APIs call this method directly, bypassing use().
+		// Keep draft validation at the authoritative cast boundary.
+		if (!CertifiedSpellValidator.isCertified(stack) && !isComplete(stack)) return false;
 		if (GrazeHelper.forbidSpellCardWithMessage(player)) return false;
 		SpellDefinition def = getSpellDefinition(stack);
 		if (def == null) return false;

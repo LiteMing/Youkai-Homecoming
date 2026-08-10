@@ -88,7 +88,7 @@ public class SpellCircleWorldRenderer {
 		}
 		if (entity instanceof net.minecraft.world.entity.player.Player player) {
 			GrazeCapability cap = GrazeCapability.HOLDER.get(player);
-			return cap != null && (cap.isInDanmakuCombat() || cap.isPlayerSpellActive());
+			return cap != null && cap.shouldRenderPlayerStgCircle();
 		}
 		if (entity instanceof SpellCircleHolder holder) {
 			return holder.shouldShowSpellCircle() && holder.getSpellCircle() != null && holder.getCircleSize(pTick) > 0;

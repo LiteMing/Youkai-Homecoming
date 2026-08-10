@@ -40,7 +40,7 @@ public final class PlayerStgSpellCircle {
 	public static void render(PoseStack pose, MultiBufferSource buffer, int light,
 							  Player player, float pTick, @Nullable Quaternionf front) {
 		GrazeCapability cap = GrazeCapability.HOLDER.get(player);
-		if (cap == null || (!cap.isInDanmakuCombat() && !cap.isPlayerSpellActive())) return;
+		if (cap == null || !cap.shouldRenderPlayerStgCircle()) return;
 		SpellComponent component = SpellComponent.getFromConfig(PLAYER_STG.toString());
 		if (component == null) return;
 

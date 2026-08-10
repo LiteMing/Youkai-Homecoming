@@ -54,7 +54,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private static final double ACTIVE_DANMAKU_HOST_SEARCH_RANGE = 128.0;
 
 	@SerialClass.SerialField
-	private int power, hidden, step, bomb, life, invul, weak;
+	private int power, hidden, step, invul, weak;
+	@SerialClass.SerialField(toTracking = true)
+	private int bomb, life;
 	@SerialClass.SerialField
 	private Map<UUID, CombatSession> sessions = new LinkedHashMap<>();
 	@SerialClass.SerialField
@@ -70,8 +72,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	@SerialClass.SerialField
 	private boolean resourcesPrimed = false;
 	/** Synced client projection used by inventory overlays. */
-	@SerialClass.SerialField
+	@SerialClass.SerialField(toTracking = true)
 	private boolean playerSpellActive = false;
+	/** Tracked-client projection; session ownership remains server-authoritative. */
+	@SerialClass.SerialField(toTracking = true)
+	private boolean trackedDanmakuCombat = false;
 	/** Synced client projection: the active spell currently owns player movement. */
 	@SerialClass.SerialField
 	private boolean spellMovementRestricted = false;
@@ -105,6 +110,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			invul = 0;
 			weak = 0;
 			playerSpellActive = false;
+			trackedDanmakuCombat = false;
 			spellMovementRestricted = false;
 			spellInvulnerable = false;
 			playerSpellHealth = 0;
@@ -703,6 +709,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return playerSpellActive;
 	}
 
+	/** Client rendering predicate shared by the base player STG circle passes. */
+	public boolean shouldRenderPlayerStgCircle() {
+		return playerSpellActive || trackedDanmakuCombat || isInDanmakuCombat();
+	}
+
 	public boolean isSpellMovementRestricted() {
 		return spellMovementRestricted;
 	}
@@ -741,8 +752,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public void sync() {
-		if (player instanceof ServerPlayer sp)
+		if (player instanceof ServerPlayer sp) {
+			trackedDanmakuCombat = isInDanmakuCombat();
 			HOLDER.network.toClientSyncAll(sp);
+			HOLDER.network.toTracking(sp);
+		}
 	}
 
 	private void syncPvpOpponentStatus(ServerLevel sl) {

@@ -6,6 +6,7 @@ import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserBlockHitEffect;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
@@ -299,11 +300,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 						else danmaku.afterExpiry.execute(trailHolder, danmaku.position(), danmaku.getDeltaMovement());
 					}
 					if (e instanceof ItemLaserEntity laser && laser.afterExpiry != null) {
-						CardHolder trailHolder = null;
-						Entity owner = laser.getOwner();
-						if (owner instanceof CardHolder h) trailHolder = h;
-						if (trailHolder == null) laser.afterExpiry.execute(laser.position(), laser.getDeltaMovement());
-						else laser.afterExpiry.execute(trailHolder, laser.position(), laser.getDeltaMovement());
+						laser.runExpiryActionOnce(this, laser.position(), laser.getDeltaMovement());
 					}
 					iterator.remove();
 				}
@@ -334,14 +331,16 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			if (!(entity instanceof SimplifiedProjectile projectile) || projectile.tickCount <= 0) continue;
 			List<PreviewHit> hits = new ArrayList<>(2);
 			int id = entity.getId();
+			java.util.Optional<PreviewHit> blockHit = findTargetHit(
+					projectile, getBlockTargetCollisionBox(), PreviewTarget.HitType.BLOCK);
+			if (projectile instanceof YHBaseLaserEntity laser) {
+				laser.earlyTerminate = blockHit.map(hit -> Math.sqrt(hit.distanceSqr())).orElse(-1.0);
+			}
 			if (!entityHitProjectiles.contains(id)) {
 				findTargetHit(projectile, getEntityTargetCollisionBox(), PreviewTarget.HitType.ENTITY)
 						.ifPresent(hits::add);
 			}
-			if (!blockHitProjectiles.contains(id)) {
-				findTargetHit(projectile, getBlockTargetCollisionBox(), PreviewTarget.HitType.BLOCK)
-						.ifPresent(hits::add);
-			}
+			if (!blockHitProjectiles.contains(id)) blockHit.ifPresent(hits::add);
 			hits.sort(java.util.Comparator.comparingDouble(PreviewHit::distanceSqr));
 			for (PreviewHit hit : hits) {
 				if (!projectile.isValid()) break;
@@ -359,12 +358,16 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		Vec3 to;
 		java.util.Optional<Vec3> hit;
 		if (projectile instanceof YHBaseLaserEntity laser) {
-			if (!laser.checkEntityHit()) return java.util.Optional.empty();
+			if (type == PreviewTarget.HitType.ENTITY && !laser.checkEntityHit()) {
+				return java.util.Optional.empty();
+			}
 			if (type == PreviewTarget.HitType.ENTITY) {
 				targetBox = targetBox.inflate(laser.getEffectiveHitRadius());
 			}
 			from = laser.position().add(0, laser.getBbHeight() / 2, 0);
-			to = from.add(laser.getForward().scale(laser.effectiveLength(0)));
+			float length = type == PreviewTarget.HitType.BLOCK
+					? (float) laser.getLength() : laser.effectiveLength(0);
+			to = from.add(laser.getForward().scale(length));
 			hit = type == PreviewTarget.HitType.BLOCK
 					? PreviewTarget.firstSurfaceIntersection(targetBox, from, to)
 					: PreviewTarget.firstVolumeIntersection(targetBox, from, to);
@@ -394,10 +397,27 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 					hit.type() == PreviewTarget.HitType.ENTITY ? danmaku.hitBehaviorEntity : danmaku.hitBehaviorBlock,
 					danmaku.afterExpiry);
 		} else if (projectile instanceof ItemLaserEntity laser) {
-			handlePreviewProjectileHook(projectile, hit,
+			handlePreviewLaserHook(laser, hit,
 					hit.type() == PreviewTarget.HitType.ENTITY ? laser.onHitEntityAction : laser.onHitBlockAction,
 					hit.type() == PreviewTarget.HitType.ENTITY ? laser.hitBehaviorEntity : laser.hitBehaviorBlock,
 					laser.afterExpiry);
+		}
+	}
+
+	private void handlePreviewLaserHook(ItemLaserEntity laser, PreviewHit hit,
+			dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction hitAction,
+			dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior behavior,
+			dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry) {
+		if (hit.type() != PreviewTarget.HitType.BLOCK) {
+			handlePreviewProjectileHook(laser, hit, hitAction, behavior, afterExpiry);
+			return;
+		}
+		if (hitAction != null) hitAction.execute(this, hit.position(), laser.getForward());
+		switch (LaserBlockHitEffect.from(behavior)) {
+			case CLIP_ONLY -> {
+			}
+			case CLIP_AND_SUPPRESS_EXPIRY -> laser.suppressExpiryAction();
+			case CLIP_AND_RUN_EXPIRY -> laser.runExpiryActionOnce(this, hit.position(), laser.getForward());
 		}
 	}
 

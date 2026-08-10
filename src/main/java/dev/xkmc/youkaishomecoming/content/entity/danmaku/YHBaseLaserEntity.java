@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.content.spell.mover.CompositeMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.RectMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.ZeroMover;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.util.Mth;
@@ -56,11 +57,14 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	public HitBehavior hitBehaviorEntity = HitBehavior.CONTINUE;
 	/**
 	 * Behavior after hitting a block:
-	 * DISCARD = remove immediately, EXPIRE = trigger expiry immediately, CONTINUE = keep flying.
+	 * All modes clip the beam at the wall without removing its visible prefix.
+	 * DISCARD suppresses expiry, EXPIRE triggers expiry once, and CONTINUE defers expiry to lifetime end.
 	 */
 	public HitBehavior hitBehaviorBlock = HitBehavior.CONTINUE;
 
 	public double earlyTerminate = -1;
+	private boolean expiryActionConsumed = false;
+	private BlockPos activeBlockHit = null;
 
 	protected YHBaseLaserEntity(EntityType<? extends YHBaseLaserEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -169,12 +173,8 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	public float effectiveLength(float pTick) {
-		if (setupLength) {
-			return percentLoad(pTick) * length;
-		}
-		if (earlyTerminate >= 0)
-			return (float) earlyTerminate;
-		return length;
+		float visualLength = setupLength ? percentLoad(pTick) * length : length;
+		return LaserBlockHitEffect.clipLength(visualLength, earlyTerminate);
 	}
 
 	@Override
@@ -195,6 +195,12 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	@Override
 	protected void finishTick(TickData data) {
 		super.finishTick(data);
+		if (level().isClientSide()) {
+			Vec3 src = (data.moveDst == null ? position() : data.moveDst).add(0, getBbHeight() / 2f, 0);
+			earlyTerminate = data.blockHit == null ? -1 : src.distanceTo(data.blockHit.getLocation());
+		} else if (data.blockHit == null) {
+			activeBlockHit = null;
+		}
 		// Per-tick trail action (mirror ItemDanmakuEntity.commitPreMoveEffects).
 		// Like danmaku, the hook is transient (server-only); the client copy has no onTrail.
 		if (onTrail != null && tickCount > 0 && tickCount % trailInterval == 0) {
@@ -205,12 +211,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 			else onTrail.execute(pos, vec);
 		}
 		if (!level().isClientSide() && tickCount > life) {
-			// On-expiry action before removal (mirror ItemDanmakuEntity.terminate)
-			if (afterExpiry != null) {
-				CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-				if (holder != null) afterExpiry.execute(holder, position(), getDeltaMovement());
-				else afterExpiry.execute(position(), getDeltaMovement());
-			}
+			runExpiryActionOnce(null, position(), getDeltaMovement());
 			markErased(false);
 		}
 	}
@@ -262,10 +263,6 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	@Override
 	protected void onHit(BlockHitResult blockHit, Iterable<Entity> hitEntities) {
-		if (level().isClientSide()) {
-			Vec3 src = (tickData.moveDst == null ? position() : tickData.moveDst).add(0, getBbHeight() / 2f, 0);
-			earlyTerminate = blockHit == null ? -1 : src.distanceTo(blockHit.getLocation());
-		}
 		boolean hitEntity = false;
 		for (var e : hitEntities) {
 			hurtTarget(new EntityHitResult(e));
@@ -289,21 +286,18 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 			}
 		}
 		if (blockHit != null) {
-			// Execute onHitBlock callback before potential discard
 			Vec3 hitPos = blockHit.getLocation();
 			Vec3 hitDirection = getForward();
-			if (onHitBlockAction != null) executeHitAction(onHitBlockAction, hitPos, hitDirection);
-			switch (hitBehaviorBlock) {
-				case CONTINUE -> {
+			BlockPos blockPos = blockHit.getBlockPos();
+			if (!blockPos.equals(activeBlockHit) && onHitBlockAction != null) {
+				executeHitAction(onHitBlockAction, hitPos, hitDirection);
+			}
+			activeBlockHit = blockPos;
+			switch (LaserBlockHitEffect.from(hitBehaviorBlock)) {
+				case CLIP_ONLY -> {
 				}
-				case EXPIRE -> {
-					expireLaserNow(hitPos, hitDirection);
-					return;
-				}
-				case DISCARD -> {
-					markErased(false);
-					return;
-				}
+				case CLIP_AND_RUN_EXPIRY -> runExpiryActionOnce(null, hitPos, hitDirection);
+				case CLIP_AND_SUPPRESS_EXPIRY -> suppressExpiryAction();
 			}
 		}
 	}
@@ -313,12 +307,23 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	private void expireLaserNow(Vec3 pos, Vec3 direction) {
-		if (afterExpiry != null) {
-			CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-			if (holder != null) afterExpiry.execute(holder, pos, direction);
-			else afterExpiry.execute(pos, direction);
-		}
+		runExpiryActionOnce(null, pos, direction);
 		markErased(false);
+	}
+
+	/** Runs the expiry hook at most once, using an explicit holder for local preview entities. */
+	public void runExpiryActionOnce(CardHolder fallbackHolder, Vec3 pos, Vec3 direction) {
+		if (expiryActionConsumed) return;
+		expiryActionConsumed = true;
+		if (afterExpiry == null) return;
+		CardHolder holder = getOwner() instanceof CardHolder h ? h : fallbackHolder;
+		if (holder != null) afterExpiry.execute(holder, pos, direction);
+		else afterExpiry.execute(pos, direction);
+	}
+
+	/** DISCARD at a wall removes only the blocked suffix and must not trigger on_expiry later. */
+	public void suppressExpiryAction() {
+		expiryActionConsumed = true;
 	}
 
 	/** Execute a TrailAction at the supplied impact position and direction. */
@@ -342,6 +347,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	public void addAdditionalSaveData(CompoundTag nbt) {
 		super.addAdditionalSaveData(nbt);
 		nbt.put("auto-serial", Objects.requireNonNull(TagCodec.toTag(new CompoundTag(), this)));
+		nbt.putBoolean("ExpiryActionConsumed", expiryActionConsumed);
 	}
 
 	public void readAdditionalSaveData(CompoundTag nbt) {
@@ -349,6 +355,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		if (nbt.contains("auto-serial")) {
 			Wrappers.run(() -> TagCodec.fromTag(nbt.getCompound("auto-serial"), getClass(), this, (f) -> true));
 		}
+		expiryActionConsumed = nbt.getBoolean("ExpiryActionConsumed");
 	}
 
 	@Override

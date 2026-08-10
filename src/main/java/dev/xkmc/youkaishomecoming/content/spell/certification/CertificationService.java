@@ -68,7 +68,7 @@ public final class CertificationService {
 		}
 		String hash = SpellHash.canonicalHash(definition);
 		// Start fee is a fixed anti-spam toll (design §14), decoupled from spell power —
-		// spam protection lives in maxTrialsPerPlayer / maxConcurrentTrials.
+		// spam protection lives in maxConcurrentTrials and quote expiration.
 		long startCost = YHModConfig.COMMON.certificationStartCostUnits.get();
 		// Cast/issue cost is duration-driven only (1 + 0.2/s up to 5s, +0.4/s
 		// beyond); projectile volume no longer affects bomb/XP costs.

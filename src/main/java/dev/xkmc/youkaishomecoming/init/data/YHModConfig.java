@@ -122,7 +122,6 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue certificationMaxArenaHalfSize;
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends Integer>> certificationArenaPresets;
 		public final ForgeConfigSpec.IntValue certificationCountdownTicks;
-		public final ForgeConfigSpec.DoubleValue certificationRequiredActiveThreatRatio;
 		public final ForgeConfigSpec.ConfigValue<String> certificationMovementPolicy;
 		public final ForgeConfigSpec.DoubleValue certificationMaxDisplacementPerTick;
 		public final ForgeConfigSpec.BooleanValue certificationEnemyRandomMovementEnabled;
@@ -133,7 +132,6 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue certificationEnemyBoundaryMargin;
 		public final ForgeConfigSpec.DoubleValue certificationEnemyMinimumTravelDistance;
 		public final ForgeConfigSpec.IntValue certificationMaxConcurrentTrials;
-		public final ForgeConfigSpec.IntValue certificationMaxTrialsPerPlayer;
 		public final ForgeConfigSpec.LongValue certificationStartCostUnits;
 		public final ForgeConfigSpec.DoubleValue certificationRefundOnFailure;
 		public final ForgeConfigSpec.DoubleValue certificationMinProofMultiplier;
@@ -337,9 +335,6 @@ public class YHModConfig {
 				certificationCountdownTicks = builder.comment("PREPARE countdown ticks before ACTIVE begins")
 						.translation("config.youkaishomecoming.common.certification.countdownTicks")
 						.defineInRange("countdownTicks", 100, 20, 600);
-				certificationRequiredActiveThreatRatio = builder.comment("Fraction of ACTIVE ticks that must carry active threat for full duration discount")
-						.translation("config.youkaishomecoming.common.certification.requiredActiveThreatRatio")
-						.defineInRange("requiredActiveThreatRatio", 0.6, 0.0, 1.0);
 				certificationMovementPolicy = builder.comment("Movement policy: CANONICAL (fixed speeds/judge box) or MODPACK (legal equipment and other-mod movement)")
 						.translation("config.youkaishomecoming.common.certification.movementPolicy")
 						.define("movementPolicy", "CANONICAL");
@@ -370,9 +365,6 @@ public class YHModConfig {
 				certificationMaxConcurrentTrials = builder.comment("Server-wide maximum concurrent certification trials")
 						.translation("config.youkaishomecoming.common.certification.maxConcurrentTrials")
 						.defineInRange("maxConcurrentTrials", 3, 1, 64);
-				certificationMaxTrialsPerPlayer = builder.comment("Max active trials per player (MVP fixed at 1)")
-						.translation("config.youkaishomecoming.common.certification.maxTrialsPerPlayer")
-						.defineInRange("maxTrialsPerPlayer", 1, 1, 8);
 				certificationStartCostUnits = builder.comment("Base certification start fee in abstract cost units")
 						.translation("config.youkaishomecoming.common.certification.startCostUnits")
 						.defineInRange("startCostUnits", 100L, 0L, 1_000_000L);

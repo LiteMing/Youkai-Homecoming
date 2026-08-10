@@ -123,17 +123,10 @@ public class CertificationController {
 		return movementSeed;
 	}
 
-	/** Whether the current spell action owns the author's manual movement. */
-	public boolean restrictsAuthorMovement() {
-		if (!isActive()) return false;
-		SpellRuntime runtime = entity.getSpellRuntime();
-		return runtime != null && runtime.getMovementDirective().restrictsManualMovement();
-	}
-
 	/**
-	 * Applies the directive selected by the just-finished spell tick. The
-	 * certification author is rooted for scripted caster motion, while random
-	 * movement leaves the player unrestricted as required by the default rule.
+	 * Applies the directive selected by the just-finished spell tick to the
+	 * certification entity. The submitted spell belongs to the certification
+	 * enemy; it must not take ownership of the player's input movement.
 	 */
 	public void applySpellMovement(SpellCertificationEntity e, SpellMovementDirective directive) {
 		if (state != CertificationState.ACTIVE) return;
@@ -143,7 +136,6 @@ public class CertificationController {
 			return;
 		}
 
-		author.setDeltaMovement(Vec3.ZERO);
 		if (mode == SpellMovementDirective.Mode.NONE) {
 			e.setDeltaMovement(Vec3.ZERO);
 			return;

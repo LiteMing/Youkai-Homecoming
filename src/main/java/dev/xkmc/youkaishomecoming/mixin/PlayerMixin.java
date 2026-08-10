@@ -30,9 +30,6 @@ public abstract class PlayerMixin extends LivingEntity {
 			// The capability flag is only a client projection. The server must use the
 			// live runtime so a finished spell cannot leave one extra frozen tick.
 			restricted = SpellContainer.restrictsManualMovement(sp);
-			var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
-					.getActiveTrial(sp);
-			restricted |= trial != null && trial.restrictsAuthorMovement();
 		}
 		if (restricted) {
 			player.setDeltaMovement(Vec3.ZERO);

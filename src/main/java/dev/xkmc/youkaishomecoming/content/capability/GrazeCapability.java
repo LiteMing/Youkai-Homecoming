@@ -169,11 +169,6 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 				dirty = true;
 			}
 			boolean movementRestricted = SpellContainer.restrictsManualMovement(player);
-			if (player instanceof ServerPlayer sp) {
-				var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
-						.getActiveTrial(sp);
-				movementRestricted |= trial != null && trial.restrictsAuthorMovement();
-			}
 			if (spellMovementRestricted != movementRestricted) {
 				spellMovementRestricted = movementRestricted;
 				dirty = true;

@@ -213,6 +213,8 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	public void markErased(boolean kill) {
 		if (!isErased)
 			super.markErased(kill);
+		tickData().removed = true;
+		tickData().stopTick = true;
 		isErased = true;
 	}
 

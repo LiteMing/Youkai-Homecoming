@@ -290,12 +290,14 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		}
 		if (blockHit != null) {
 			// Execute onHitBlock callback before potential discard
-			if (onHitBlockAction != null) executeHitAction(onHitBlockAction);
+			Vec3 hitPos = blockHit.getLocation();
+			Vec3 hitDirection = getForward();
+			if (onHitBlockAction != null) executeHitAction(onHitBlockAction, hitPos, hitDirection);
 			switch (hitBehaviorBlock) {
 				case CONTINUE -> {
 				}
 				case EXPIRE -> {
-					expireLaserNow();
+					expireLaserNow(hitPos, hitDirection);
 					return;
 				}
 				case DISCARD -> {
@@ -307,19 +309,28 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	private void expireLaserNow() {
+		expireLaserNow(position(), getDeltaMovement());
+	}
+
+	private void expireLaserNow(Vec3 pos, Vec3 direction) {
 		if (afterExpiry != null) {
 			CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-			if (holder != null) afterExpiry.execute(holder, position(), getDeltaMovement());
-			else afterExpiry.execute(position(), getDeltaMovement());
+			if (holder != null) afterExpiry.execute(holder, pos, direction);
+			else afterExpiry.execute(pos, direction);
 		}
 		markErased(false);
 	}
 
-	/** Helper: execute a TrailAction at the current laser position/direction. */
+	/** Execute a TrailAction at the supplied impact position and direction. */
 	private void executeHitAction(dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action) {
+		executeHitAction(action, position(), getDeltaMovement());
+	}
+
+	private void executeHitAction(dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action,
+			Vec3 pos, Vec3 direction) {
 		CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-		if (holder != null) action.execute(holder, position(), getDeltaMovement());
-		else action.execute(position(), getDeltaMovement());
+		if (holder != null) action.execute(holder, pos, direction);
+		else action.execute(pos, direction);
 	}
 
 	@Override

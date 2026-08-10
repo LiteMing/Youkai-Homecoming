@@ -25,6 +25,7 @@ import java.util.UUID;
  * /kill, unload, disconnect or dimension changes never leak virtual danmaku.
  */
 public class CertificationController {
+	private static final int DISPLAY_ITEM_SYNC_INTERVAL = 2;
 
 	private final SpellCertificationEntity entity;
 	private final ServerPlayer author;
@@ -207,6 +208,11 @@ public class CertificationController {
 		// the floating spell card follows the enemy exactly
 		if (displayItem != null && !displayItem.isRemoved()) {
 			displayItem.setPos(e.getX(), e.getY() + 0.5, e.getZ());
+			if (e.level() instanceof net.minecraft.server.level.ServerLevel level
+					&& e.tickCount % DISPLAY_ITEM_SYNC_INTERVAL == 0) {
+				level.getChunkSource().broadcastAndSend(displayItem,
+						new net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket(displayItem));
+			}
 		}
 		long gameTime = e.level().getGameTime();
 		if (gameTime - lastSyncTick >= 20) {

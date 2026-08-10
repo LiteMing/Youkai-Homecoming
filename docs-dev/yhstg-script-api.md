@@ -28,3 +28,24 @@ if (YHStg.castSpell(player)) {
 
 Certification no-Bomb/no-other-spell rules and Beaten/active-spell restrictions
 remain authoritative for script-triggered casts.
+
+## Spell-card completion events (0.22.1)
+
+The server posts `dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent`
+on the Forge event bus when a boss `set_spell_health` segment is broken or
+times out immediately before its embedded transition action runs. The event is
+informational and does not cancel the transition.
+
+Available fields:
+
+- `getOutcome()` is `Outcome.BROKEN` or `Outcome.TIMEOUT`; `isBroken()` and
+  `isTimeout()` are convenience checks.
+- `getCaster()` is the spell host; `getOpponent()` is the damage attacker when
+  available, otherwise the current host target (nullable).
+- `getSpellId()` and `getPhaseId()` identify the segment that ended.
+- `getBattleDurationTicks()` is the elapsed duration of that segment.
+- `getActiveDanmakuCount()` is the number of active danmaku owned by the host
+  at the event point.
+
+Listeners should treat the entity references as server-side objects and avoid
+using this event to infer client rendering state.

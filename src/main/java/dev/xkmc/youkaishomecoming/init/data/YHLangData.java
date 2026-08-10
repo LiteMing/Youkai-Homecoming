@@ -672,6 +672,14 @@ public enum YHLangData {
 		pvd.add(prefix + "command.node.run_command", "Run particle command as caster");
 		pvd.add(prefix + "command.node.interval", "Periodic support danmaku");
 		pvd.add(prefix + "command.node.fire_ring", "Visible danmaku after command");
+		pvd.add(prefix + "boss.name", "Boss Spell Template");
+		pvd.add(prefix + "boss.desc", "Two health phases with timeout and break phase transitions.");
+		pvd.add(prefix + "boss.node.intro_health", "Intro spell health and transitions");
+		pvd.add(prefix + "boss.node.intro_interval", "Intro phase danmaku");
+		pvd.add(prefix + "boss.node.timeout_phase", "Timeout transition to final phase");
+		pvd.add(prefix + "boss.node.break_phase", "Break transition to final phase");
+		pvd.add(prefix + "boss.node.final_health", "Final spell health");
+		pvd.add(prefix + "boss.node.final_interval", "Final phase danmaku");
 	}
 
 	private static void genSpellEditorHelp(RegistrateLangProvider pvd) {

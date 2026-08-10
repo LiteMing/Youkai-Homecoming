@@ -81,6 +81,13 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 	}
 
 	@Override
+	public void applySpellMovement() {
+		if (controller != null && spellRuntime != null) {
+			controller.applySpellMovement(this, spellRuntime.getMovementDirective());
+		}
+	}
+
+	@Override
 	public boolean shouldHurt(LivingEntity target) {
 		// certification danmaku may only hit the creator (D13)
 		return target instanceof ServerPlayer p && p.getUUID().equals(authorId);

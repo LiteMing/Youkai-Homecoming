@@ -142,6 +142,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		// Drive the spell runtime
 		if (runtime != null) {
 			runtime.tick(this);
+			applySpellMovement();
 			tickDanmaku();
 		}
 

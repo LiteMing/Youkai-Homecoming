@@ -38,6 +38,7 @@ public class SpellRuntime {
 	private final Map<String, Double> variables = new HashMap<>();
 	private final List<ScheduledAction> scheduledActions = new ArrayList<>();
 	private final List<ChildRuntime> childRuntimes = new ArrayList<>();
+	private SpellMovementDirective movementDirective = SpellMovementDirective.random();
 	/** Tracks how many consecutive ticks the target has been off the ground. Reset on ground contact. */
 	private int targetFlyTime;
 	@Nullable
@@ -98,6 +99,14 @@ public class SpellRuntime {
 		return Collections.unmodifiableMap(variables);
 	}
 
+	public SpellMovementDirective getMovementDirective() {
+		return movementDirective;
+	}
+
+	public void setMovementDirective(SpellMovementDirective movementDirective) {
+		this.movementDirective = movementDirective;
+	}
+
 	public void setOnPhaseChange(@Nullable Consumer<SpellRuntime> listener) {
 		this.onPhaseChange = listener;
 	}
@@ -109,6 +118,7 @@ public class SpellRuntime {
 	public void tick(CardHolder holder) {
 		PhaseDefinition phase = definition.getPhase(currentPhaseId);
 		if (phase == null) return;
+		movementDirective = SpellMovementDirective.random();
 
 		// Track target fly time — use the same logic as SpellContext.targetOnGround()
 		// so preview mode uses the simulated targetOnGround property instead of entity physics.
@@ -211,6 +221,7 @@ public class SpellRuntime {
 		variables.clear();
 		scheduledActions.clear();
 		childRuntimes.clear();
+		movementDirective = SpellMovementDirective.random();
 
 		// Reset any legacy ticker actions
 		resetLegacyActions(definition.getPhase(currentPhaseId));

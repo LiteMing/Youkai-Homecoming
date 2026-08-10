@@ -58,6 +58,12 @@ public class SpellContainer extends ConditionalToken {
 		return !data.proxies.isEmpty();
 	}
 
+	/** True when an active data-driven spell currently owns the player's movement. */
+	public static boolean restrictsManualMovement(Player player) {
+		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
+		return data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved() && proxy.restrictsManualMovement());
+	}
+
 	@Nullable
 	private net.minecraft.world.phys.Vec3 lockPos;
 

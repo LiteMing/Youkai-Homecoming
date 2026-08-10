@@ -85,6 +85,10 @@ public class SpellContext {
 		runtime.setVariable(key, value);
 	}
 
+	public void setMovementDirective(SpellMovementDirective directive) {
+		runtime.setMovementDirective(directive);
+	}
+
 	public void clearDanmaku() {
 		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
 			preview.clear();

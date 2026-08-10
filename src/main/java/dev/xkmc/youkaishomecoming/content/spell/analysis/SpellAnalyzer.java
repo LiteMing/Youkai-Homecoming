@@ -506,7 +506,8 @@ public final class SpellAnalyzer {
 				|| action instanceof SpellActions.AddVariable
 				|| action instanceof SpellActions.ForcePhase
 				|| action instanceof SpellActions.NoopAction
-				|| action instanceof SpellActions.PlaySoundAction;
+				|| action instanceof SpellActions.PlaySoundAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.CasterMovesAction;
 	}
 
 	/**

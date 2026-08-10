@@ -350,6 +350,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 					// New runtime takes priority over legacy
 					if (shouldTickSpell()) {
 						spellRuntime.tick(this);
+						applySpellMovement();
 						tickDanmaku();
 					} else {
 						spellRuntime.reset();

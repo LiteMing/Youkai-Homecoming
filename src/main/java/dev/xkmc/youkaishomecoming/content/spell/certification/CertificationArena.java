@@ -15,6 +15,14 @@ public record CertificationArena(Vec3 center, double halfSize) {
 				&& pos.z >= center.z - halfSize && pos.z <= center.z + halfSize;
 	}
 
+	public Vec3 clamp(Vec3 pos, double margin) {
+		double range = Math.max(0, halfSize - Math.max(0, margin));
+		return new Vec3(
+				Math.max(center.x - range, Math.min(center.x + range, pos.x)),
+				Math.max(center.y - range, Math.min(center.y + range, pos.y)),
+				Math.max(center.z - range, Math.min(center.z + range, pos.z)));
+	}
+
 	public Vec3 randomPoint(net.minecraft.util.RandomSource random, double margin) {
 		double range = halfSize - margin;
 		return center.add(

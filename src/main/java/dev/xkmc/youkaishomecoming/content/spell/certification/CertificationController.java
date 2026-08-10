@@ -7,8 +7,10 @@ import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentResult;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellCostContext;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellPaymentRouter;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellMovementDirective;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -121,6 +123,46 @@ public class CertificationController {
 		return movementSeed;
 	}
 
+	/** Whether the current spell action owns the author's manual movement. */
+	public boolean restrictsAuthorMovement() {
+		if (!isActive()) return false;
+		SpellRuntime runtime = entity.getSpellRuntime();
+		return runtime != null && runtime.getMovementDirective().restrictsManualMovement();
+	}
+
+	/**
+	 * Applies the directive selected by the just-finished spell tick. The
+	 * certification author is rooted for scripted caster motion, while random
+	 * movement leaves the player unrestricted as required by the default rule.
+	 */
+	public void applySpellMovement(SpellCertificationEntity e, SpellMovementDirective directive) {
+		if (state != CertificationState.ACTIVE) return;
+		SpellMovementDirective.Mode mode = directive.mode();
+		if (mode == SpellMovementDirective.Mode.RANDOM) {
+			movement.tick(e);
+			return;
+		}
+
+		author.setDeltaMovement(Vec3.ZERO);
+		if (mode == SpellMovementDirective.Mode.NONE) {
+			e.setDeltaMovement(Vec3.ZERO);
+			return;
+		}
+
+		Vec3 displacement = directive.displacement();
+		double max = YHModConfig.COMMON.certificationMaxDisplacementPerTick.get();
+		if (displacement.lengthSqr() > max * max) {
+			displacement = displacement.normalize().scale(max);
+		}
+		Vec3 next = e.position().add(displacement);
+		Vec3 bounded = arena.clamp(next, YHModConfig.COMMON.certificationEnemyBoundaryMargin.get());
+		Vec3 delta = bounded.subtract(e.position());
+		if (delta.lengthSqr() > 1.0e-8) {
+			e.move(MoverType.SELF, delta);
+		}
+		e.setDeltaMovement(Vec3.ZERO);
+	}
+
 	// ------------------------------------------------------------ lifecycle
 
 	public void beginPrepare() {
@@ -219,21 +261,10 @@ public class CertificationController {
 			}
 		}
 		lastPlayerPos = author.position();
-		// During the spell release the player may not move at all: there is no
-		// spell-declared player motion yet, so every tick zeroes their velocity
-		// (the certification enemy moves only when the spell declares
-		// caster_moves — the spell's specified motion).
-		author.setDeltaMovement(0, 0, 0);
 		if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.hasActiveYoukaiSession(author)) {
 			// another boss battle entered mid-certification (D15)
 			fail(e, CertificationFailReason.OTHER_BATTLE);
 			return;
-		}
-		// movement + runtime loop — the certification enemy stands still by
-		// default so the player can attack it down; it only moves when the spell
-		// declares caster_moves.
-		if (definition.itemForm.casterMoves()) {
-			movement.tick(e);
 		}
 		if (e.spellRuntime == null || e.spellRuntime.isFinished()) {
 			// spell naturally ended: restart it for the remaining certification time (§5.4)

@@ -166,6 +166,7 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String RUNCMD = spell("{\"type\": \"run_command\", \"command\": \"say hi\"}");
 		private static final String RUNCMD_DISABLED = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"run_command\", \"command\": \"say hi\"}}");
 		private static final String TELEPORT = spell("{\"type\": \"teleport\", \"destination\": {\"mode\": \"caster\"}}");
+		private static final String CASTER_MOVES = spell("{\"type\": \"caster_moves\", \"mode\": \"relative\", \"x\": \"tick * 0.01\", \"y\": 0, \"z\": 0.1}," + fire(1));
 		private static final String UNBOUNDED_COUNT = spell(
 				"{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": {\"type\": \"variable\", \"key\": \"x\"}, \"speed\": 0.5, \"lifetime\": 60}");
 		private static final String RANDOM_COUNT = spell(
@@ -565,6 +566,9 @@ public final class SpellAnalyzerSelfCheck {
 				unknownRejected = true;
 			}
 			check("unknown action type fails decode (no definition, no hash)", unknownRejected);
+			SpellAction movement = firstTickAction(parse(CASTER_MOVES));
+			check("caster_moves codec round-trip", movement instanceof dev.xkmc.youkaishomecoming.content.spell.action.CasterMovesAction action
+					&& action.mode() == dev.xkmc.youkaishomecoming.content.spell.runtime.SpellMovementDirective.Mode.RELATIVE);
 		}
 
 		private void analyzerTraversal() {
@@ -598,6 +602,9 @@ public final class SpellAnalyzerSelfCheck {
 			check("market rejects random count", rejects(() -> SpellAnalyzer.analyze(parse(RANDOM_COUNT), SpellAnalysisProfile.MARKET)));
 			check("cert accepts bounded random count (10)",
 					SpellAnalyzer.analyze(parse(RANDOM_COUNT), SpellAnalysisProfile.CERTIFICATION, CERT).maxSpawnPerTick() == 10);
+			SpellAnalysis movement = SpellAnalyzer.analyze(parse(CASTER_MOVES), SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("cert accepts caster_moves as a regular action",
+					movement.maxSpawnPerTick() == 1 && !movement.requiredCapabilities().contains(SpellCapability.TELEPORT));
 			// saturation: no overflow, no negative values, clean rejection
 			String satMsg = rejectMessage(() -> SpellAnalyzer.analyze(parse(SAT), SpellAnalysisProfile.CERTIFICATION, CERT));
 			check("saturated over-limit rejected cleanly", satMsg != null && satMsg.contains("maxSpawnPerTick"));

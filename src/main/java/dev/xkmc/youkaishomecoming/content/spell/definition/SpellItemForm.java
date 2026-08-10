@@ -12,9 +12,10 @@ public record SpellItemForm(
 		int cooldown,
 		boolean requiresTarget,
 		Optional<ResourceLocation> iconItem,
-		/** Caster movement: while the spell is being cast, the caster may move freely
-		 * (certification: the player is rooted and the certification enemy stands
-		 * still unless the spell declares caster movement). */
+		/**
+		 * Legacy compatibility flag. Movement is now selected by the regular
+		 * {@code caster_moves} action; when absent, movement defaults to random/free.
+		 */
 		boolean casterMoves,
 		/** Spell duration in ticks (= certification timeout). Every player-created
 		 * spell must declare it; certification refuses spells without one. */

@@ -4,7 +4,9 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 public interface SpellRuntimeHost extends LivingCardHolder {
@@ -40,6 +42,45 @@ public interface SpellRuntimeHost extends LivingCardHolder {
 
 	default boolean hasSpell(ResourceLocation spellId) {
 		return spellId.equals(getSpellDefinitionId());
+	}
+
+	default boolean restrictsManualMovement() {
+		SpellRuntime runtime = getSpellRuntime();
+		return runtime != null && runtime.getMovementDirective().restrictsManualMovement();
+	}
+
+	/** Applies the current action-selected displacement after the spell tick. */
+	default void applySpellMovement() {
+		SpellRuntime runtime = getSpellRuntime();
+		if (runtime == null) return;
+		SpellMovementDirective directive = runtime.getMovementDirective();
+		LivingEntity caster = movementCaster();
+		if (directive.mode() == SpellMovementDirective.Mode.RANDOM) {
+			return;
+		}
+		caster.setDeltaMovement(Vec3.ZERO);
+		if (directive.mode() == SpellMovementDirective.Mode.NONE) {
+			return;
+		}
+		Vec3 delta = clampMovement(directive.displacement());
+		if (delta.lengthSqr() > 0) {
+			caster.move(MoverType.SELF, delta);
+		}
+	}
+
+	private LivingEntity movementCaster() {
+		LivingEntity owner = owner();
+		return !isBossHost() && owner != null ? owner : self();
+	}
+
+	private static Vec3 clampMovement(Vec3 movement) {
+		if (!Double.isFinite(movement.x) || !Double.isFinite(movement.y)
+				|| !Double.isFinite(movement.z)) {
+			return Vec3.ZERO;
+		}
+		double max = dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON
+				.certificationMaxDisplacementPerTick.get();
+		return movement.lengthSqr() > max * max ? movement.normalize().scale(max) : movement;
 	}
 
 	default void switchSpellDefinition(SpellDefinition definition, boolean clearScreen) {

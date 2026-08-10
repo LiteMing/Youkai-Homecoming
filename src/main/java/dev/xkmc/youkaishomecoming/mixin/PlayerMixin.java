@@ -27,8 +27,8 @@ public abstract class PlayerMixin extends LivingEntity {
 		}
 		var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
 				.getActiveTrial(sp);
-		if (dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveProxy(sp)
-				|| trial != null && trial.isActive()) {
+		if (dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.restrictsManualMovement(sp)
+				|| trial != null && trial.restrictsAuthorMovement()) {
 			sp.setDeltaMovement(Vec3.ZERO);
 			ci.cancel();
 		}

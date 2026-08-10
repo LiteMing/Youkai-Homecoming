@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellMovementDirective;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.client.Minecraft;
@@ -296,6 +297,8 @@ public class ActionEditorPanel {
 			buildYsmRenderRows(yra);
 		} else if (action instanceof TeleportRandomAction tra) {
 			buildTeleportRandomRows(tra);
+		} else if (action instanceof CasterMovesAction cma) {
+			buildCasterMovesRows(cma);
 		}
 	}
 
@@ -325,6 +328,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Set Entity Flag", () -> selectType("set_entity_flag"));
 		addFullWidthButton("YSM Render", () -> selectType("ysm_render"));
 		addFullWidthButton("Teleport Random", () -> selectType("teleport_random"));
+		addFullWidthButton("Caster Moves", () -> selectType("caster_moves"));
 	}
 
 	private void selectType(String type) {
@@ -395,8 +399,32 @@ public class ActionEditorPanel {
 		case "set_entity_flag" -> new SetEntityFlagAction(4, true);
 		case "ysm_render" -> new YsmRenderAction("", "", "special", 40, false);
 		case "teleport_random" -> new TeleportRandomAction(32, 0.8, 0.4, 16, true, true);
+		case "caster_moves" -> new CasterMovesAction(SpellMovementDirective.Mode.RANDOM);
 		default -> new SpellActions.NoopAction();
 		};
+	}
+
+	private void buildCasterMovesRows(CasterMovesAction action) {
+		addEnumRow("Mode", SpellMovementDirective.Mode.values(), action.mode(), mode ->
+				notifySimple(old -> {
+					var current = (CasterMovesAction) old;
+					return new CasterMovesAction(mode, current.x(), current.y(), current.z());
+				}));
+		if (action.mode() == SpellMovementDirective.Mode.RELATIVE
+				|| action.mode() == SpellMovementDirective.Mode.ABSOLUTE) {
+			addNumberRow("X", action.x(), v -> notifySimple(old -> {
+				var current = (CasterMovesAction) old;
+				return new CasterMovesAction(current.mode(), v, current.y(), current.z());
+			}));
+			addNumberRow("Y", action.y(), v -> notifySimple(old -> {
+				var current = (CasterMovesAction) old;
+				return new CasterMovesAction(current.mode(), current.x(), v, current.z());
+			}));
+			addNumberRow("Z", action.z(), v -> notifySimple(old -> {
+				var current = (CasterMovesAction) old;
+				return new CasterMovesAction(current.mode(), current.x(), current.y(), v);
+			}));
+		}
 	}
 
 	// --- FireDanmaku rows ---
@@ -4295,6 +4323,7 @@ public class ActionEditorPanel {
 			Map.entry("confine_target", "Confine Target"),
 			Map.entry("set_entity_flag", "Set Entity Flag"),
 			Map.entry("ysm_render", "YSM Render"),
+			Map.entry("caster_moves", "Caster Moves"),
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);

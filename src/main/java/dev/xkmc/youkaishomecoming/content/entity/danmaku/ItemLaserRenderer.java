@@ -5,6 +5,7 @@ import com.mojang.math.Axis;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
+import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
@@ -44,7 +45,8 @@ public class ItemLaserRenderer<T extends ItemLaserEntity> extends EntityRenderer
 		if (entityRenderDispatcher.camera.getEntity() == e.getOwner()) {
 			return YHModConfig.CLIENT.selfDanmakuFading.get();
 		}
-		return GrazeHelper.globalForbidTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
+		double global = GrazeHelper.globalForbidTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
+		return Math.min(global, DanmakuRenderStates.localPlayerDamageVisibility(e));
 	}
 
 	@Override

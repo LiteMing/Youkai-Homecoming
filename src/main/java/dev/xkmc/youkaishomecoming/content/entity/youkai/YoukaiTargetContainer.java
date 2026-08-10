@@ -58,6 +58,10 @@ public class YoukaiTargetContainer {
 		list.remove(id);
 	}
 
+	public List<UUID> snapshotIds() {
+		return List.copyOf(list);
+	}
+
 	private boolean isValid(LivingEntity le) {
 		return le.isAlive() && le != youkai && le.canBeSeenAsEnemy() &&
 				le.isAddedToWorld() && le.level() == youkai.level() &&

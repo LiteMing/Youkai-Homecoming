@@ -23,6 +23,7 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.LinkedHashSet;
 import java.util.UUID;
 
 @SerialClass
@@ -37,6 +38,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	@Nullable
 	@SerialClass.SerialField
 	private UUID playerSpellTargetId = null;
+	@SerialClass.SerialField
+	private boolean harmfulPlayerSnapshotPresent = false;
+	@SerialClass.SerialField
+	private final LinkedHashSet<UUID> harmfulPlayerIds = new LinkedHashSet<>();
 
 	public void setBypassWall(boolean bypass) { this.bypassWall = bypass; }
 	public void setBypassEntity(boolean bypass) { this.bypassEntity = bypass; }
@@ -89,6 +94,23 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	@Override
 	public boolean canHitDanmakuTarget(EntityInfo target) {
 		return IYHDanmaku.canPlayerSpellHit(target, playerSpellDamageRestricted, playerSpellTargetId);
+	}
+
+	@Override
+	public void setHarmfulPlayerSnapshot(java.util.Collection<UUID> playerIds) {
+		harmfulPlayerSnapshotPresent = true;
+		harmfulPlayerIds.clear();
+		harmfulPlayerIds.addAll(playerIds);
+	}
+
+	@Override
+	public boolean hasHarmfulPlayerSnapshot() {
+		return harmfulPlayerSnapshotPresent;
+	}
+
+	@Override
+	public boolean isHarmfulToPlayer(UUID playerId) {
+		return !harmfulPlayerSnapshotPresent || harmfulPlayerIds.contains(playerId);
 	}
 
 	@Override

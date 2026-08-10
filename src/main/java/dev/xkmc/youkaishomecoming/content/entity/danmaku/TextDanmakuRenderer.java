@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
+import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import com.mojang.math.Axis;
@@ -36,7 +37,8 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		if (entityRenderDispatcher.camera.getEntity() == e.getOwner()) {
 			return YHModConfig.CLIENT.selfDanmakuFading.get();
 		}
-		return GrazeHelper.globalForbidTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
+		double global = GrazeHelper.globalForbidTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
+		return Math.min(global, DanmakuRenderStates.localPlayerDamageVisibility(e));
 	}
 
 	@Override
@@ -116,7 +118,7 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		float glyphScale = getGlyphScale(e, font);
 		float slotAdvance = getSlotAdvance(text, effLen, glyphScale);
 		pose.scale(-glyphScale, -glyphScale * openFactor, glyphScale);
-		drawTextCentered(font, text, slotAdvance, e.textColor, pose, buffer, light);
+		drawTextCentered(font, text, slotAdvance, fadedTextColor(e), pose, buffer, light);
 		pose.popPose();
 	}
 
@@ -136,7 +138,8 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		pose.mulPose(Axis.ZP.rotationDegrees(-pitch));
 		pose.mulPose(Axis.XP.rotationDegrees(e.roll));
 		pose.scale(glyphScale, -glyphScale * openFactor, glyphScale);
-		drawTextAnchored(font, text, 0, slotAdvance, e.textColor, pose, buffer, light);
+		int color = fadedTextColor(e);
+		drawTextAnchored(font, text, 0, slotAdvance, color, pose, buffer, light);
 		pose.popPose();
 
 		// Back face: mirror the plane while preserving the same world-space extent.
@@ -145,8 +148,14 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 		pose.mulPose(Axis.ZP.rotationDegrees(pitch));
 		pose.mulPose(Axis.XP.rotationDegrees(-e.roll));
 		pose.scale(glyphScale, -glyphScale * openFactor, glyphScale);
-		drawTextAnchored(font, text, -slotAdvance * countCodePoints(text), slotAdvance, e.textColor, pose, buffer, light);
+		drawTextAnchored(font, text, -slotAdvance * countCodePoints(text), slotAdvance, color, pose, buffer, light);
 		pose.popPose();
+	}
+
+	private int fadedTextColor(T entity) {
+		int color = entity.textColor;
+		int alpha = (int) ((color >>> 24) * fading(entity));
+		return alpha << 24 | color & 0x00ffffff;
 	}
 
 	private float getGlyphScale(T e, Font font) {

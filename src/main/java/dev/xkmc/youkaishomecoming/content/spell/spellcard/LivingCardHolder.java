@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
@@ -60,6 +61,7 @@ public interface LivingCardHolder extends CardHolder {
 	@Override
 	default ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DanmakuColor color) {
 		ItemDanmakuEntity danmaku = new ItemDanmakuEntity(YHEntities.ITEM_DANMAKU.get(), shooter(), self().level());
+		configureHarmfulPlayerSnapshot(danmaku);
 		if (shooter() instanceof net.minecraft.world.entity.player.Player) {
 			danmaku.restrictPlayerSpellDamage(targetEntity());
 		}
@@ -81,6 +83,7 @@ public interface LivingCardHolder extends CardHolder {
 	@Override
 	default ItemLaserEntity prepareLaser(int life, Vec3 pos, Vec3 vec, float len, YHDanmaku.Laser type, DyeColor color) {
 		ItemLaserEntity danmaku = new ItemLaserEntity(YHEntities.ITEM_LASER.get(), shooter(), self().level());
+		configureHarmfulPlayerSnapshot(danmaku);
 		if (shooter() instanceof net.minecraft.world.entity.player.Player) {
 			danmaku.restrictPlayerSpellDamage(targetEntity());
 		}
@@ -94,6 +97,7 @@ public interface LivingCardHolder extends CardHolder {
 
 	default TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float size, String text, int textColor) {
 		TextDanmakuEntity danmaku = new TextDanmakuEntity(YHEntities.TEXT_DANMAKU.get(), shooter(), self().level());
+		configureHarmfulPlayerSnapshot(danmaku);
 		if (shooter() instanceof net.minecraft.world.entity.player.Player) {
 			danmaku.restrictPlayerSpellDamage(targetEntity());
 		}
@@ -103,6 +107,23 @@ public interface LivingCardHolder extends CardHolder {
 		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, danmaku.length, true, dir);
 		danmaku.setupLength = YHDanmaku.Laser.PENCIL.setupLength();
 		return danmaku;
+	}
+
+	private void configureHarmfulPlayerSnapshot(IYHDanmaku danmaku) {
+		LivingEntity source = shooter();
+		if (source instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity youkai) {
+			danmaku.setHarmfulPlayerSnapshot(youkai.targets.snapshotIds());
+			return;
+		}
+		LivingEntity target = targetEntity();
+		if (source instanceof net.minecraft.world.entity.player.Player) {
+			danmaku.setHarmfulPlayerSnapshot(target instanceof net.minecraft.world.entity.player.Player player
+					&& !source.isAlliedTo(player)
+					? java.util.List.of(player.getUUID()) : java.util.List.of());
+		} else if (target instanceof net.minecraft.world.entity.player.Player player
+				&& !source.isAlliedTo(player)) {
+			danmaku.setHarmfulPlayerSnapshot(java.util.List.of(player.getUUID()));
+		}
 	}
 
 

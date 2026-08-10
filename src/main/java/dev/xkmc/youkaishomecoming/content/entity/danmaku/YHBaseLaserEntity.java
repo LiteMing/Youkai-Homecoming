@@ -28,6 +28,7 @@ import net.minecraftforge.entity.IEntityAdditionalSpawnData;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.LinkedHashSet;
 import java.util.UUID;
 
 @SerialClass
@@ -42,6 +43,10 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	@Nullable
 	@SerialClass.SerialField
 	private UUID playerSpellTargetId = null;
+	@SerialClass.SerialField
+	private boolean harmfulPlayerSnapshotPresent = false;
+	@SerialClass.SerialField
+	private final LinkedHashSet<UUID> harmfulPlayerIds = new LinkedHashSet<>();
 	@SerialClass.SerialField
 	public float damage = 0, length = 0;
 	@SerialClass.SerialField
@@ -130,6 +135,23 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	@Override
 	public boolean canHitDanmakuTarget(EntityInfo target) {
 		return IYHDanmaku.canPlayerSpellHit(target, playerSpellDamageRestricted, playerSpellTargetId);
+	}
+
+	@Override
+	public void setHarmfulPlayerSnapshot(java.util.Collection<UUID> playerIds) {
+		harmfulPlayerSnapshotPresent = true;
+		harmfulPlayerIds.clear();
+		harmfulPlayerIds.addAll(playerIds);
+	}
+
+	@Override
+	public boolean hasHarmfulPlayerSnapshot() {
+		return harmfulPlayerSnapshotPresent;
+	}
+
+	@Override
+	public boolean isHarmfulToPlayer(UUID playerId) {
+		return !harmfulPlayerSnapshotPresent || harmfulPlayerIds.contains(playerId);
 	}
 
 	@Override

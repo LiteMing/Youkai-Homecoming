@@ -4,6 +4,9 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.xkmc.fastprojectileapi.compat.oculus.OculusRenderCompat;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import net.minecraft.client.Minecraft;
 import net.minecraft.Util;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.RenderType;
@@ -152,6 +155,15 @@ public abstract class DanmakuRenderStates extends RenderType {
 		if (perc == 0) return col;
 		int alpha = (int) ((col >>> 24) * perc);
 		return (alpha << 24) | col & 0xffffff;
+	}
+
+	public static double localPlayerDamageVisibility(SimplifiedProjectile projectile) {
+		var player = Minecraft.getInstance().player;
+		if (player == null || !(projectile instanceof IYHDanmaku danmaku)
+				|| !danmaku.hasHarmfulPlayerSnapshot() || danmaku.isHarmfulToPlayer(player.getUUID())) {
+			return 1;
+		}
+		return YHModConfig.CLIENT.selfDanmakuFading.get();
 	}
 
 }

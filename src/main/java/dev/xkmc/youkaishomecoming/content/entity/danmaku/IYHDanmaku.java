@@ -37,6 +37,17 @@ public interface IYHDanmaku extends GrazingEntity {
 	default void restrictPlayerSpellDamage(@Nullable LivingEntity target) {
 	}
 
+	default void setHarmfulPlayerSnapshot(java.util.Collection<java.util.UUID> playerIds) {
+	}
+
+	default boolean hasHarmfulPlayerSnapshot() {
+		return false;
+	}
+
+	default boolean isHarmfulToPlayer(java.util.UUID playerId) {
+		return true;
+	}
+
 	static boolean canPlayerSpellHit(EntityInfo candidate, boolean restricted, @Nullable java.util.UUID targetId) {
 		if (!restricted) return true;
 		return targetId == null ? candidate.hostileForUntargetedPlayerSpell()

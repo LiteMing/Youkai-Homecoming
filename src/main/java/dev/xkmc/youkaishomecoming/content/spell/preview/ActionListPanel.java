@@ -130,6 +130,12 @@ public class ActionListPanel {
 
 	// Custom node names (collapseKey → display name)
 	private final java.util.Map<String, String> customNames = new java.util.HashMap<>();
+	// Names are attached to action identity while the editor is open. Paths are
+	// only the serialized representation and therefore must not drive the UI
+	// after a move or a parent record has been rebuilt.
+	private final java.util.IdentityHashMap<SpellAction, String> nodeCustomNames = new java.util.IdentityHashMap<>();
+	private final java.util.IdentityHashMap<SpellAction, Boolean> nodeCustomNameScoped = new java.util.IdentityHashMap<>();
+	private final java.util.Map<String, SpellAction> customNameOwners = new java.util.HashMap<>();
 	private boolean showCustomNames = true;
 
 	// Rename state
@@ -176,28 +182,38 @@ public class ActionListPanel {
 
 	/** Save current state before a mutation. */
 	private void pushUndo() {
-		if (phase != null) undoManager.pushUndo(phase);
+		if (phase != null) {
+			syncCustomNamesFromActions();
+			undoManager.pushUndo(phase, customNames);
+		}
 	}
 
 	/** Undo last change, returning true if state was restored. */
 	public boolean undo() {
 		if (phase == null) return false;
-		var restored = undoManager.undo(phase);
+		syncCustomNamesFromActions();
+		var restored = undoManager.undo(phase, customNames);
 		if (restored == null) return false;
-		applyRestoredPhase(restored);
+		applyRestoredPhase(restored.phase(), restored.customNames());
 		return true;
 	}
 
 	/** Redo last undone change, returning true if state was restored. */
 	public boolean redo() {
 		if (phase == null) return false;
-		var restored = undoManager.redo(phase);
+		syncCustomNamesFromActions();
+		var restored = undoManager.redo(phase, customNames);
 		if (restored == null) return false;
-		applyRestoredPhase(restored);
+		applyRestoredPhase(restored.phase(), restored.customNames());
 		return true;
 	}
 
 	private void applyRestoredPhase(PhaseDefinition restored) {
+		applyRestoredPhase(restored, null);
+	}
+
+	private void applyRestoredPhase(PhaseDefinition restored,
+			@Nullable java.util.Map<String, String> restoredCustomNames) {
 		// Replace the contents of the current phase with restored data
 		phase.onEnter.clear(); phase.onEnter.addAll(restored.onEnter);
 		phase.onTick.clear(); phase.onTick.addAll(restored.onTick);
@@ -207,7 +223,12 @@ public class ActionListPanel {
 		selectedPath = null;
 		selectedPaths.clear();
 		selectedAddTarget = null;
+		if (restoredCustomNames != null) {
+			customNames.clear();
+			customNames.putAll(restoredCustomNames);
+		}
 		dirty = true;
+		bindCustomNamesToActions();
 	}
 
 	public void setBounds(int x, int y, int w, int h) {
@@ -219,22 +240,28 @@ public class ActionListPanel {
 	}
 
 	public void setPhase(PhaseDefinition phase) {
+		boolean phaseChanged = this.phase != phase;
+		if (this.phase != null && phaseChanged) syncCustomNamesFromActions();
 		this.phase = phase;
+		if (phaseChanged) undoManager.clear();
 		this.selectedPath = null;
 		this.selectedPaths.clear();
 		this.selectedAddTarget = null;
 		this.scrollOffset = 0;
 		this.dirty = true;
+		bindCustomNamesToActions();
 	}
 
 	/** Load custom names from spell definition (called on editor open). */
 	public void loadCustomNames(java.util.Map<String, String> names) {
 		customNames.clear();
 		customNames.putAll(names);
+		bindCustomNamesToActions();
 	}
 
 	/** Save custom names back to spell definition (called on editor close/save). */
 	public java.util.Map<String, String> getCustomNames() {
+		syncCustomNamesFromActions();
 		return new java.util.HashMap<>(customNames);
 	}
 
@@ -243,6 +270,131 @@ public class ActionListPanel {
 			customNames.remove(key);
 		} else {
 			customNames.put(key, value);
+		}
+		bindCustomNamesToActions();
+	}
+
+	private void bindCustomNamesToActions() {
+		nodeCustomNames.clear();
+		nodeCustomNameScoped.clear();
+		customNameOwners.clear();
+		if (phase == null) return;
+		buildRowsIfDirty();
+		for (Row row : rows) {
+			if (row.kind != RowKind.ACTION || row.action == null || row.path == null) continue;
+			String scopedKey = scopedCollapseKey(row.path);
+			String legacyKey = collapseKey(row.path);
+			boolean scoped = customNames.containsKey(scopedKey);
+			String key = scoped ? scopedKey : legacyKey;
+			String name = customNames.get(key);
+			if (name != null && !name.isBlank()) {
+				nodeCustomNames.put(row.action, name);
+				nodeCustomNameScoped.put(row.action, scoped);
+				customNameOwners.put(key, row.action);
+			}
+		}
+	}
+
+	private void syncCustomNamesFromActions() {
+		if (phase == null) return;
+		buildRowsIfDirty();
+		java.util.Map<SpellAction, String> currentKeys = new java.util.IdentityHashMap<>();
+		for (Row row : rows) {
+			if (row.kind != RowKind.ACTION || row.action == null || row.path == null) continue;
+			String name = nodeCustomNames.get(row.action);
+			if (name == null || name.isBlank()) continue;
+			String key = keyFor(row.path, nodeCustomNameScoped.getOrDefault(
+					row.action, preferScopedCustomNames()));
+			currentKeys.put(row.action, key);
+		}
+		// Remove serialized keys that belonged to moved/deleted nodes. Keep a
+		// key when another node now owns it, so an unrelated node is not renamed.
+		for (var entry : new ArrayList<>(customNameOwners.entrySet())) {
+			SpellAction owner = entry.getValue();
+			String currentKey = currentKeys.get(owner);
+			if (!java.util.Objects.equals(entry.getKey(), currentKey)
+					&& java.util.Objects.equals(customNames.get(entry.getKey()), nodeCustomNames.get(owner))) {
+				customNames.remove(entry.getKey());
+			}
+		}
+		customNameOwners.clear();
+		for (var entry : currentKeys.entrySet()) {
+			String key = entry.getValue();
+			String name = nodeCustomNames.get(entry.getKey());
+			if (name != null && !name.isBlank()) {
+				customNames.put(key, name);
+				customNameOwners.put(key, entry.getKey());
+			}
+		}
+	}
+
+	@Nullable
+	private String customNameFor(@Nullable SpellAction action, @Nullable ActionPath path) {
+		if (action != null) {
+			String name = nodeCustomNames.get(action);
+			if (name != null && !name.isBlank()) return name;
+		}
+		if (path == null) return null;
+		String scoped = customNames.get(scopedCollapseKey(path));
+		return scoped != null && !scoped.isBlank() ? scoped : customNames.get(collapseKey(path));
+	}
+
+	private void setNodeCustomName(@Nullable SpellAction action, ActionPath path, @Nullable String value) {
+		boolean scoped = action == null ? preferScopedCustomNames()
+				: nodeCustomNameScoped.getOrDefault(action, preferScopedCustomNames());
+		String key = keyFor(path, scoped);
+		if (action != null) {
+			for (var entry : new ArrayList<>(customNameOwners.entrySet())) {
+				if (entry.getValue() == action && !entry.getKey().equals(key)) {
+					customNames.remove(entry.getKey());
+					customNameOwners.remove(entry.getKey());
+				}
+			}
+		}
+		if (value == null || value.isBlank()) {
+			if (action != null) {
+				nodeCustomNames.remove(action);
+				nodeCustomNameScoped.remove(action);
+			}
+			customNames.remove(key);
+			customNameOwners.remove(key);
+		} else {
+			if (action != null) {
+				nodeCustomNames.put(action, value);
+				nodeCustomNameScoped.put(action, scoped);
+			}
+			customNames.put(key, value);
+			if (action != null) customNameOwners.put(key, action);
+		}
+	}
+
+	private String scopedCollapseKey(ActionPath path) {
+		return phaseScope() + "/" + collapseKey(path);
+	}
+
+	private String keyFor(ActionPath path, boolean scoped) {
+		return scoped ? scopedCollapseKey(path) : collapseKey(path);
+	}
+
+	private String phaseScope() {
+		if (phase == null || phase.id == null) return "main";
+		String path = phase.id.getPath();
+		int split = path.lastIndexOf('/');
+		return split < 0 ? path : path.substring(split + 1);
+	}
+
+	private boolean preferScopedCustomNames() {
+		return !"main".equals(phaseScope());
+	}
+
+	private void transferNodeCustomName(SpellAction oldAction, SpellAction newAction) {
+		if (oldAction == newAction) return;
+		String name = nodeCustomNames.remove(oldAction);
+		Boolean scoped = nodeCustomNameScoped.remove(oldAction);
+		if (name != null && !name.isBlank()) nodeCustomNames.put(newAction, name);
+		if (scoped != null) nodeCustomNameScoped.put(newAction, scoped);
+		for (var entry : customNameOwners.entrySet()) {
+			if (entry.getValue() == oldAction) entry.setValue(newAction);
 		}
 	}
 
@@ -792,8 +944,11 @@ public class ActionListPanel {
 					// Ensure both endpoints are included
 					selectedPaths.add(selectedPath);
 					selectedPaths.add(row.path);
+				} else if (selectedPaths.size() > 1 && selectedPaths.contains(row.path)) {
+					// Clicking one member of an existing multi-selection prepares a
+					// group drag without collapsing the selection first.
+					selectedPath = row.path;
 				} else {
-					// Normal click: single select, clear multi-selection
 					selectedPaths.clear();
 					selectedPaths.add(row.path);
 					selectedPath = row.path;
@@ -802,7 +957,7 @@ public class ActionListPanel {
 				selectedAddTarget = null;
 				dirty = true; // rebuild to show/hide add-buttons for newly selected node
 				onSelect.accept(row.action, row.path);
-				// Start potential drag for any action (only for single selection)
+				// Start a potential single- or multi-node drag.
 				if (!ctrlDown && !shiftDown) {
 					dragSourcePath = row.path;
 					dragSourceSection = row.path.section;
@@ -889,7 +1044,7 @@ public class ActionListPanel {
 		dragBranchTarget = null;
 		dragBranchHighlightY = -1;
 
-		String sourceSection = dragSourcePath.section;
+		List<ActionPath> sourcePaths = getDragSourcePaths();
 		double bestDist = Double.MAX_VALUE;
 
 		// === Check ACTION rows that have children (auto-expand for drag) ===
@@ -911,26 +1066,26 @@ public class ActionListPanel {
 			buildRowsIfDirty();
 		}
 
+		// A section header is an explicit top-level drop target. This also makes
+		// empty onEnter/onTick/onExit/onDamage lists usable without a placeholder.
+		for (Row row : rows) {
+			if (row.kind != RowKind.SECTION) continue;
+			if (mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
+				dragIndicatorY = row.y + ROW_HEIGHT;
+				dragInsertIndex = 0;
+				dragInsertSection = row.section;
+				dragInsertContainerPrefix = null;
+				return;
+			}
+		}
+
 		// === Check ADD_BUTTON rows (branch insert targets) ===
 		for (Row row : rows) {
 			if (row.kind != RowKind.ADD_BUTTON || row.addTarget == null) continue;
-			// Only allow dropping into branches within the same section
-			if (!sourceSection.equals(row.addTarget.section)) continue;
 			// Skip add-buttons that belong to the dragged action's own subtree.
 			// Dropping into self would delete the action then fail to insert (swallowing bug).
-			if (dragSourcePath != null && row.addTarget.parentPath() != null) {
-				var srcEntries = dragSourcePath.path();
-				var targetEntries = row.addTarget.parentPath().path();
-				if (targetEntries.size() >= srcEntries.size()) {
-					boolean isDescendant = true;
-					for (int k = 0; k < srcEntries.size(); k++) {
-						if (srcEntries.get(k).index() != targetEntries.get(k).index()) {
-							isDescendant = false;
-							break;
-						}
-					}
-					if (isDescendant) continue;
-				}
+			if (row.addTarget.parentPath() != null && isInsideAnySource(row.addTarget.parentPath(), sourcePaths)) {
+				continue;
 			}
 			// Check if mouse is directly over this add-button row
 			if (mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
@@ -953,7 +1108,8 @@ public class ActionListPanel {
 		// A container is either the top-level section list, or a branch list
 		// (if_true/if_false/body/onExpiry/...) of a parent action. Rows are grouped
 		// by their container prefix path (all entries except the leaf).
-		java.util.Map<List<PathEntry>, List<Row>> containers = new java.util.LinkedHashMap<>();
+		record ContainerKey(String section, List<PathEntry> prefix) {}
+		java.util.Map<ContainerKey, List<Row>> containers = new java.util.LinkedHashMap<>();
 		String currentSection = null;
 		for (Row row : rows) {
 			if (row.kind == RowKind.SECTION) {
@@ -961,21 +1117,18 @@ public class ActionListPanel {
 				continue;
 			}
 			if (row.kind != RowKind.ACTION || row.path == null) continue;
-			if (!sourceSection.equals(currentSection)) continue;
 			int n = row.path.path().size();
 			List<PathEntry> prefix = row.path.path().subList(0, n - 1);
-			containers.computeIfAbsent(prefix, k -> new ArrayList<>()).add(row);
+			containers.computeIfAbsent(new ContainerKey(currentSection, List.copyOf(prefix)), k -> new ArrayList<>()).add(row);
 		}
 		for (var entry : containers.entrySet()) {
 			List<Row> group = entry.getValue();
-			List<PathEntry> prefix = entry.getKey();
+			String section = entry.getKey().section();
+			List<PathEntry> prefix = entry.getKey().prefix();
 			if (!prefix.isEmpty()) {
-				// Top-level sources keep the old top-level-only gap behavior;
-				// branch insertion from top level is done via add-button drop targets.
-				if (!dragSourcePath.isNested()) continue;
 				// Skip containers inside the dragged action's own subtree (self-drop)
-				ActionPath containerPath = new ActionPath(sourceSection, prefix);
-				if (isSameActionOrDescendant(containerPath, dragSourcePath)) continue;
+				ActionPath containerPath = new ActionPath(section, prefix);
+				if (isInsideAnySource(containerPath, sourcePaths)) continue;
 			}
 			for (int i = 0; i <= group.size(); i++) {
 				int gapY;
@@ -989,7 +1142,7 @@ public class ActionListPanel {
 					bestDist = dist;
 					dragIndicatorY = gapY;
 					dragInsertIndex = i;
-					dragInsertSection = sourceSection;
+					dragInsertSection = section;
 					dragInsertContainerPrefix = prefix.isEmpty() ? null : new ArrayList<>(prefix);
 					// Clear branch target
 					dragBranchTarget = null;
@@ -997,6 +1150,53 @@ public class ActionListPanel {
 				}
 			}
 		}
+
+		// Empty sections have no action container in the map. Offer the gap just
+		// below their header when it is the nearest target.
+		for (Row row : rows) {
+			if (row.kind != RowKind.SECTION || getSectionList(row.section) == null
+					|| !getSectionList(row.section).isEmpty()) continue;
+			int gapY = row.y + ROW_HEIGHT;
+			double dist = Math.abs(mouseY - gapY);
+			if (dist < bestDist) {
+				bestDist = dist;
+				dragIndicatorY = gapY;
+				dragInsertIndex = 0;
+				dragInsertSection = row.section;
+				dragInsertContainerPrefix = null;
+				dragBranchTarget = null;
+				dragBranchHighlightY = -1;
+			}
+		}
+	}
+
+	private boolean isInsideAnySource(ActionPath path, List<ActionPath> sourcePaths) {
+		for (ActionPath source : sourcePaths) {
+			if (isSameActionOrDescendant(path, source)) return true;
+		}
+		return false;
+	}
+
+	/** Selected roots in visual order; descendants of another selected node are implicit. */
+	private List<ActionPath> getDragSourcePaths() {
+		List<ActionPath> selected = getSelectedPathsInTreeOrder();
+		if (!selected.contains(dragSourcePath)) selected = List.of(dragSourcePath);
+		return selectedRootPaths(selected);
+	}
+
+	private List<ActionPath> selectedRootPaths(List<ActionPath> selected) {
+		List<ActionPath> roots = new ArrayList<>();
+		for (ActionPath path : selected) {
+			boolean covered = false;
+			for (ActionPath root : roots) {
+				if (isSameActionOrDescendant(path, root)) {
+					covered = true;
+					break;
+				}
+			}
+			if (!covered) roots.add(path);
+		}
+		return roots;
 	}
 
 	/**
@@ -1036,139 +1236,131 @@ public class ActionListPanel {
 	 */
 	private void performDrop() {
 		if (phase == null || dragSourcePath == null) return;
+		List<ActionPath> sourcePaths = getDragSourcePaths();
+		if (sourcePaths.isEmpty()) return;
+		List<SpellAction> actions = new ArrayList<>();
+		for (ActionPath path : sourcePaths) {
+			SpellAction action = getActionAt(path);
+			if (action == null) return;
+			actions.add(action);
+		}
 
-		// Get the source action before removing it
-		SpellAction action = getActionAt(dragSourcePath);
-		if (action == null) return;
-
+		PhaseDefinition beforeDrop = copyPhase(phase);
+		if (beforeDrop == null) return;
+		pushUndo();
+		List<ActionPath> insertedPaths;
 		if (dragBranchTarget != null) {
-			// === Branch insert mode ===
-			AddTarget adjustedTarget = adjustAddTargetAfterDelete(dragBranchTarget, dragSourcePath);
-			if (adjustedTarget == null) return;
-
-			PhaseDefinition beforeDrop = copyPhase(phase);
-			pushUndo();
-
-			// Remove from source
-			boolean removed = doDeleteAt(dragSourcePath);
-			if (!removed) {
-				restoreDropSnapshot(beforeDrop);
-				return;
-			}
-			dirty = true;
-
-			// Insert into the branch target
-			if (!insertActionInternal(adjustedTarget, action)) {
-				restoreDropSnapshot(beforeDrop);
-				return;
-			}
-			selectedAddTarget = null;
-			dirty = true;
-			onSelect.accept(action, selectedPath);
-			onMoved.run();
-
+			insertedPaths = moveIntoBranch(sourcePaths, actions, dragBranchTarget, beforeDrop);
 		} else if (dragInsertIndex >= 0 && dragInsertSection != null) {
-			// === Reorder mode (gap within a container) ===
-			if (!dragSourcePath.section.equals(dragInsertSection)) return;
+			insertedPaths = moveIntoGap(sourcePaths, actions, beforeDrop);
+		} else {
+			return;
+		}
+		if (insertedPaths == null || insertedPaths.isEmpty()) return;
 
-			if (dragInsertContainerPrefix == null) {
-				// === Top-level container ===
-				if (dragSourcePath.isNested()) {
-					// Source is nested: remove from branch, insert at top level
-					PhaseDefinition beforeDrop = copyPhase(phase);
-					pushUndo();
-					boolean removed = doDeleteAt(dragSourcePath);
-					if (!removed) {
-						restoreDropSnapshot(beforeDrop);
-						return;
-					}
-					dirty = true;
+		selectedPaths.clear();
+		selectedPaths.addAll(insertedPaths);
+		selectedPath = insertedPaths.get(0);
+		selectedAddTarget = null;
+		dirty = true;
+		syncCustomNamesFromActions();
+		SpellAction selected = getActionAt(selectedPath);
+		if (selected != null) onSelect.accept(selected, selectedPath);
+		onMoved.run();
+	}
 
-					List<SpellAction> list = getSectionList(dragInsertSection);
-					if (list == null) {
-						restoreDropSnapshot(beforeDrop);
-						return;
-					}
-					int actualDst = Math.max(0, Math.min(dragInsertIndex, list.size()));
-					list.add(actualDst, action);
-					selectedPath = ActionPath.topLevel(dragInsertSection, actualDst);
-					onSelect.accept(action, selectedPath);
-					onMoved.run();
-				} else {
-					// Source is top-level: simple swap
-					List<SpellAction> list = getSectionList(dragSourcePath.section);
-					if (list == null) return;
-
-					int srcIdx = dragSourcePath.leafIndex();
-					int dstIdx = dragInsertIndex;
-					if (srcIdx < 0 || srcIdx >= list.size()) return;
-					if (dstIdx == srcIdx || dstIdx == srcIdx + 1) return; // no-op
-
-					pushUndo();
-					list.remove(srcIdx);
-					int actualDst = dstIdx > srcIdx ? dstIdx - 1 : dstIdx;
-					actualDst = Math.max(0, Math.min(actualDst, list.size()));
-					list.add(actualDst, action);
-
-					selectedPath = ActionPath.topLevel(dragSourcePath.section, actualDst);
-					dirty = true;
-					onSelect.accept(action, selectedPath);
-					onMoved.run();
-				}
-			} else {
-				// === Nested container (branch list) ===
-				boolean sameContainer = dragSourcePath.path
-						.subList(0, dragSourcePath.path.size() - 1)
-						.equals(dragInsertContainerPrefix);
-				if (sameContainer) {
-					int srcIdx = dragSourcePath.leafIndex();
-					int dstIdx = dragInsertIndex;
-					if (dstIdx == srcIdx || dstIdx == srcIdx + 1) return; // no-op
-				}
-
-				PhaseDefinition beforeDrop = copyPhase(phase);
-				pushUndo();
-
-				// Remove from source
-				boolean removed = doDeleteAt(dragSourcePath);
-				if (!removed) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				dirty = true;
-
-				// Adjust the target container path for the delete
-				ActionPath adjustedContainer = adjustPathAfterDelete(
-						new ActionPath(dragInsertSection, dragInsertContainerPrefix), dragSourcePath);
-				if (adjustedContainer == null) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				List<PathEntry> adjustedPrefix = adjustedContainer.path();
-				if (adjustedPrefix.isEmpty()) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				String branch = adjustedPrefix.get(adjustedPrefix.size() - 1).branch();
-				if (branch == null) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				ActionPath parentPath = new ActionPath(dragInsertSection, adjustedPrefix);
-				int insertIndex = dragInsertIndex;
-				if (sameContainer && dragSourcePath.leafIndex() < insertIndex) insertIndex--;
-
-				List<SpellAction> list = getSectionList(dragInsertSection);
-				if (list == null || !doInsert(list, parentPath.path(), 0, branch, action, parentPath, insertIndex)) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				selectedAddTarget = null;
-				dirty = true;
-				onSelect.accept(action, selectedPath);
-				onMoved.run();
+	@Nullable
+	private List<ActionPath> moveIntoBranch(List<ActionPath> sourcePaths, List<SpellAction> actions,
+			AddTarget target, PhaseDefinition beforeDrop) {
+		if (target.parentPath() != null && isInsideAnySource(target.parentPath(), sourcePaths)) return null;
+		AddTarget adjustedTarget = target;
+		for (int i = sourcePaths.size() - 1; i >= 0; i--) {
+			adjustedTarget = adjustAddTargetAfterDelete(adjustedTarget, sourcePaths.get(i));
+			if (adjustedTarget == null || !doDeleteAt(sourcePaths.get(i))) {
+				restoreDropSnapshot(beforeDrop);
+				return null;
 			}
 		}
+		List<ActionPath> inserted = new ArrayList<>();
+		for (SpellAction action : actions) {
+			if (!insertActionInternal(adjustedTarget, action) || selectedPath == null) {
+				restoreDropSnapshot(beforeDrop);
+				return null;
+			}
+			inserted.add(selectedPath);
+		}
+		return inserted;
+	}
+
+	@Nullable
+	private List<ActionPath> moveIntoGap(List<ActionPath> sourcePaths, List<SpellAction> actions,
+			PhaseDefinition beforeDrop) {
+		String targetSection = dragInsertSection;
+		List<PathEntry> targetPrefix = dragInsertContainerPrefix == null
+				? new ArrayList<>() : new ArrayList<>(dragInsertContainerPrefix);
+		ActionPath targetContainer = new ActionPath(targetSection, List.copyOf(targetPrefix));
+		if (!targetPrefix.isEmpty() && isInsideAnySource(targetContainer, sourcePaths)) return null;
+		int targetIndex = dragInsertIndex;
+
+		for (int i = sourcePaths.size() - 1; i >= 0; i--) {
+			ActionPath source = sourcePaths.get(i);
+			if (isDirectChildOf(source, targetSection, targetPrefix) && source.leafIndex() < targetIndex) {
+				targetIndex--;
+			}
+			if (!targetPrefix.isEmpty()) {
+				ActionPath adjusted = adjustPathAfterDelete(
+						new ActionPath(targetSection, List.copyOf(targetPrefix)), source);
+				if (adjusted == null) {
+					restoreDropSnapshot(beforeDrop);
+					return null;
+				}
+				targetPrefix = new ArrayList<>(adjusted.path());
+			}
+			if (!doDeleteAt(source)) {
+				restoreDropSnapshot(beforeDrop);
+				return null;
+			}
+		}
+
+		List<SpellAction> targetList = getSectionList(targetSection);
+		if (targetList == null) {
+			restoreDropSnapshot(beforeDrop);
+			return null;
+		}
+		List<ActionPath> inserted = new ArrayList<>();
+		if (targetPrefix.isEmpty()) {
+			int index = Math.max(0, Math.min(targetIndex, targetList.size()));
+			for (int i = 0; i < actions.size(); i++) {
+				targetList.add(index + i, actions.get(i));
+				inserted.add(ActionPath.topLevel(targetSection, index + i));
+			}
+			return inserted;
+		}
+
+		String branch = targetPrefix.get(targetPrefix.size() - 1).branch();
+		if (branch == null) {
+			restoreDropSnapshot(beforeDrop);
+			return null;
+		}
+		ActionPath parentPath = new ActionPath(targetSection, List.copyOf(targetPrefix));
+		int index = Math.max(0, targetIndex);
+		for (int i = 0; i < actions.size(); i++) {
+			if (!doInsert(targetList, parentPath.path(), 0, branch, actions.get(i), parentPath, index + i)
+					|| selectedPath == null) {
+				restoreDropSnapshot(beforeDrop);
+				return null;
+			}
+			inserted.add(selectedPath);
+		}
+		return inserted;
+	}
+
+	private boolean isDirectChildOf(ActionPath path, String section, List<PathEntry> prefix) {
+		if (!path.section().equals(section) || path.path().size() != prefix.size() + 1) return false;
+		for (int i = 0; i < prefix.size(); i++) {
+			if (!samePathEntry(path.path().get(i), prefix.get(i), true)) return false;
+		}
+		return true;
 	}
 
 	/**
@@ -1364,6 +1556,16 @@ public class ActionListPanel {
 	}
 
 	private boolean doReplace(List<SpellAction> list, List<PathEntry> path, int depth, SpellAction newAction) {
+		if (depth >= path.size()) return false;
+		int index = path.get(depth).index();
+		if (index < 0 || index >= list.size()) return false;
+		SpellAction oldAction = list.get(index);
+		boolean replaced = doReplaceImpl(list, path, depth, newAction);
+		if (replaced && index < list.size()) transferNodeCustomName(oldAction, list.get(index));
+		return replaced;
+	}
+
+	private boolean doReplaceImpl(List<SpellAction> list, List<PathEntry> path, int depth, SpellAction newAction) {
 		PathEntry entry = path.get(depth);
 		if (entry.index >= list.size()) return false;
 
@@ -1496,6 +1698,17 @@ public class ActionListPanel {
 	}
 
 	private boolean doInsert(List<SpellAction> list, List<PathEntry> path, int depth,
+							 String targetBranch, SpellAction newAction, ActionPath parentPath, int insertIndex) {
+		if (depth >= path.size()) return false;
+		int index = path.get(depth).index();
+		if (index < 0 || index >= list.size()) return false;
+		SpellAction oldAction = list.get(index);
+		boolean inserted = doInsertImpl(list, path, depth, targetBranch, newAction, parentPath, insertIndex);
+		if (inserted && index < list.size()) transferNodeCustomName(oldAction, list.get(index));
+		return inserted;
+	}
+
+	private boolean doInsertImpl(List<SpellAction> list, List<PathEntry> path, int depth,
 							 String targetBranch, SpellAction newAction, ActionPath parentPath, int insertIndex) {
 		PathEntry entry = path.get(depth);
 		if (entry.index >= list.size()) return false;
@@ -1736,6 +1949,19 @@ public class ActionListPanel {
 	}
 
 	private boolean doDelete(List<SpellAction> list, List<PathEntry> path, int depth) {
+		if (depth >= path.size()) return false;
+		int index = path.get(depth).index();
+		if (index < 0 || index >= list.size()) return false;
+		int oldSize = list.size();
+		SpellAction oldAction = list.get(index);
+		boolean deleted = doDeleteImpl(list, path, depth);
+		if (deleted && list.size() == oldSize && index < list.size()) {
+			transferNodeCustomName(oldAction, list.get(index));
+		}
+		return deleted;
+	}
+
+	private boolean doDeleteImpl(List<SpellAction> list, List<PathEntry> path, int depth) {
 		PathEntry entry = path.get(depth);
 		if (entry.index >= list.size()) return false;
 
@@ -1839,7 +2065,9 @@ public class ActionListPanel {
 
 	// --- Clipboard ---
 
-	private static List<SpellAction> clipboard = null;
+	private record ClipboardItem(SpellAction action, @Nullable String customName) {}
+
+	private static List<ClipboardItem> clipboard = null;
 
 	/** Deep-copy an action via Codec round-trip, falling back to the original. */
 	private static SpellAction deepCopy(SpellAction action) {
@@ -1874,13 +2102,13 @@ public class ActionListPanel {
 	 */
 	public boolean copySelected() {
 		if (phase == null) return false;
-		List<ActionPath> paths = getSelectedPathsInTreeOrder();
+		List<ActionPath> paths = selectedRootPaths(getSelectedPathsInTreeOrder());
 		if (paths.isEmpty()) return false;
-		List<SpellAction> copied = new ArrayList<>();
+		List<ClipboardItem> copied = new ArrayList<>();
 		for (ActionPath path : paths) {
 			SpellAction action = getActionAt(path);
 			if (action != null) {
-				copied.add(deepCopy(action));
+				copied.add(new ClipboardItem(deepCopy(action), customNameFor(action, path)));
 			}
 		}
 		if (copied.isEmpty()) return false;
@@ -1906,14 +2134,10 @@ public class ActionListPanel {
 	public boolean deleteMultipleSelected() {
 		if (phase == null || selectedPaths.size() <= 1) return deleteSelected();
 		pushUndo();
-		// Collect and sort paths: delete deepest/largest-index first to avoid shifting
-		var paths = new ArrayList<>(selectedPaths);
-		paths.sort((a, b) -> {
-			int sc = a.section().compareTo(b.section());
-			if (sc != 0) return sc;
-			// Compare by leaf index descending
-			return Integer.compare(b.leafIndex(), a.leafIndex());
-		});
+		// Descendants of a selected parent are implicit. Reverse visual order keeps
+		// all remaining paths valid while siblings and sections shrink.
+		var paths = selectedRootPaths(getSelectedPathsInTreeOrder());
+		java.util.Collections.reverse(paths);
 		boolean anyDeleted = false;
 		for (ActionPath path : paths) {
 			if (doDeleteAt(path)) {
@@ -1971,9 +2195,9 @@ public class ActionListPanel {
 	public boolean pasteAfterSelected() {
 		if (clipboard == null || clipboard.isEmpty() || phase == null) return false;
 		// Deep copy clipboard for paste
-		List<SpellAction> toPaste = new ArrayList<>();
-		for (SpellAction a : clipboard) {
-			toPaste.add(deepCopy(a));
+		List<ClipboardItem> toPaste = new ArrayList<>();
+		for (ClipboardItem item : clipboard) {
+			toPaste.add(new ClipboardItem(deepCopy(item.action()), item.customName()));
 		}
 		if (toPaste.isEmpty()) return false;
 
@@ -1981,8 +2205,9 @@ public class ActionListPanel {
 		AddTarget hovered = findAddButtonAt(lastMouseX, lastMouseY);
 		if (hovered != null && hovered.isBranch()) {
 			pushUndo();
-			for (SpellAction a : toPaste) {
-				if (!insertActionInternal(hovered, a)) break;
+			for (ClipboardItem item : toPaste) {
+				if (!insertActionInternal(hovered, item.action())) break;
+				rememberClipboardName(selectedPath, item);
 			}
 			selectedAddTarget = null;
 			dirty = true;
@@ -1994,8 +2219,9 @@ public class ActionListPanel {
 		// If an add-button is selected, paste into that branch/section
 		if (selectedAddTarget != null) {
 			pushUndo();
-			for (SpellAction a : toPaste) {
-				if (!insertActionInternal(selectedAddTarget, a)) break;
+			for (ClipboardItem item : toPaste) {
+				if (!insertActionInternal(selectedAddTarget, item.action())) break;
+				rememberClipboardName(selectedPath, item);
 			}
 			selectedAddTarget = null;
 			dirty = true;
@@ -2011,14 +2237,23 @@ public class ActionListPanel {
 				if (!selectedPath.isNested()) {
 					// Insert after selected action in the same top-level list
 					int idx = selectedPath.leafIndex();
-					list.addAll(idx + 1, toPaste);
+					List<SpellAction> actions = toPaste.stream().map(ClipboardItem::action).toList();
+					list.addAll(idx + 1, actions);
+					for (int i = 0; i < toPaste.size(); i++) {
+						rememberClipboardName(ActionPath.topLevel(selectedPath.section, idx + 1 + i), toPaste.get(i));
+					}
 					selectedPath = ActionPath.topLevel(selectedPath.section, idx + toPaste.size());
 				} else {
 					// Insert after selected action within its own branch
 					int idx = selectedPath.leafIndex();
 					List<PathEntry> parentEntries = selectedPath.path.subList(0, selectedPath.path.size() - 1);
 					String branch = selectedPath.path.get(selectedPath.path.size() - 2).branch();
-					insertManyIntoBranch(selectedPath.section, parentEntries, branch, idx + 1, toPaste);
+					List<SpellAction> actions = toPaste.stream().map(ClipboardItem::action).toList();
+					insertManyIntoBranch(selectedPath.section, parentEntries, branch, idx + 1, actions);
+					ActionPath parentPath = new ActionPath(selectedPath.section, parentEntries);
+					for (int i = 0; i < toPaste.size(); i++) {
+						rememberClipboardName(parentPath.child(branch, idx + 1 + i), toPaste.get(i));
+					}
 				}
 				dirty = true;
 				SpellAction last = getSelectedAction();
@@ -2030,7 +2265,11 @@ public class ActionListPanel {
 		var tickList = getSectionList("tick");
 		if (tickList != null) {
 			pushUndo();
-			tickList.addAll(toPaste);
+			int start = tickList.size();
+			tickList.addAll(toPaste.stream().map(ClipboardItem::action).toList());
+			for (int i = 0; i < toPaste.size(); i++) {
+				rememberClipboardName(ActionPath.topLevel("tick", start + i), toPaste.get(i));
+			}
 			selectedPath = ActionPath.topLevel("tick", tickList.size() - 1);
 			dirty = true;
 			SpellAction last = getSelectedAction();
@@ -2038,6 +2277,12 @@ public class ActionListPanel {
 			return true;
 		}
 		return false;
+	}
+
+	private void rememberClipboardName(@Nullable ActionPath path, ClipboardItem item) {
+		if (path != null && item.customName() != null && !item.customName().isBlank()) {
+			setNodeCustomName(item.action(), path, item.customName());
+		}
 	}
 
 	/**
@@ -2252,19 +2497,14 @@ public class ActionListPanel {
 
 	private void startRename(ActionPath path, SpellAction action) {
 		renamingPath = path;
-		String key = collapseKey(path);
-		String existing = customNames.get(key);
+		String existing = customNameFor(action, path);
 		renamingText = existing != null ? existing : "";
 	}
 
 	private void finishRename() {
 		if (renamingPath != null) {
-			String key = collapseKey(renamingPath);
-			if (renamingText.isEmpty()) {
-				customNames.remove(key);
-			} else {
-				customNames.put(key, renamingText);
-			}
+			setNodeCustomName(getActionAt(renamingPath), renamingPath,
+					renamingText.isEmpty() ? null : renamingText);
 			renamingPath = null;
 			renamingText = "";
 			dirty = true;
@@ -2328,6 +2568,14 @@ public class ActionListPanel {
 		if (depth >= path.size()) return false;
 		PathEntry entry = path.get(depth);
 		if (entry.index < 0 || entry.index >= list.size()) return false;
+		SpellAction oldAction = list.get(entry.index);
+		boolean toggled = doToggleDisabledImpl(list, path, depth);
+		if (toggled && entry.index < list.size()) transferNodeCustomName(oldAction, list.get(entry.index));
+		return toggled;
+	}
+
+	private boolean doToggleDisabledImpl(List<SpellAction> list, List<PathEntry> path, int depth) {
+		PathEntry entry = path.get(depth);
 		SpellAction current = list.get(entry.index);
 
 		if (depth == path.size() - 1) {
@@ -2452,8 +2700,7 @@ public class ActionListPanel {
 		if (path == null || path.path.isEmpty()) return "?";
 		// Check custom name first
 		if (showCustomNames) {
-			String key = collapseKey(path);
-			String custom = customNames.get(key);
+			String custom = customNameFor(action, path);
 			if (custom != null && !custom.isEmpty()) {
 				return localizeCustomName(custom);
 			}

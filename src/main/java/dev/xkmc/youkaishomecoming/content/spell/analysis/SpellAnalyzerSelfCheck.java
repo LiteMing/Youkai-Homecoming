@@ -10,6 +10,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
+import dev.xkmc.youkaishomecoming.content.spell.template.SpellTemplates;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
@@ -553,6 +554,15 @@ public final class SpellAnalyzerSelfCheck {
 			check("spell health break target codec", health.onBreak().orElse(null) instanceof SpellActions.ForceSpell);
 			SetSpellHealthAction invalid = (SetSpellHealthAction) firstTickAction(parse(SPELL_HEALTH_INVALID_TARGET));
 			check("spell health rejects unrelated embedded action", invalid.onTimeout().isEmpty());
+			SpellDefinition bossTemplate = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "selftest_boss"), "boss");
+			check("boss template has two phases", bossTemplate.phases.size() == 2);
+			check("boss template declares spell health",
+					bossTemplate.phases.values().stream().flatMap(p -> p.onEnter.stream())
+							.anyMatch(action -> action instanceof SetSpellHealthAction));
+			check("boss template scopes phase node names",
+					bossTemplate.customNames.containsKey("intro/enter/0")
+							&& bossTemplate.customNames.containsKey("final/enter/0"));
 			// 3. JSON object field order does not affect hash
 			check("hash independent of JSON field order",
 					SpellHash.canonicalHash(parse(REORDERED)).equals(SpellHash.canonicalHash(parse(FIRE24))));

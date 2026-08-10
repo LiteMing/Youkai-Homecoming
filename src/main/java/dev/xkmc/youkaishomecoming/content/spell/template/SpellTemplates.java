@@ -330,10 +330,10 @@ public final class SpellTemplates {
 				    }
 				  },
 				  "custom_names": {
-				    "enter/0": "youkaishomecoming.spell_template.boss.node.intro_health",
-				    "tick/0": "youkaishomecoming.spell_template.boss.node.intro_interval",
-				    "enter/0:timeout": "youkaishomecoming.spell_template.boss.node.timeout_phase",
-				    "enter/0:break": "youkaishomecoming.spell_template.boss.node.break_phase",
+				    "intro/enter/0": "youkaishomecoming.spell_template.boss.node.intro_health",
+				    "intro/tick/0": "youkaishomecoming.spell_template.boss.node.intro_interval",
+				    "intro/enter/0:timeout": "youkaishomecoming.spell_template.boss.node.timeout_phase",
+				    "intro/enter/0:break": "youkaishomecoming.spell_template.boss.node.break_phase",
 				    "final/enter/0": "youkaishomecoming.spell_template.boss.node.final_health",
 				    "final/tick/0": "youkaishomecoming.spell_template.boss.node.final_interval"
 				  }

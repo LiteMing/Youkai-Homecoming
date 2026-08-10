@@ -544,10 +544,10 @@ public class SpellPreviewScreen extends Screen {
 		phaseController.setDefinition(newDefinition);
 		phaseController.reloadPhaseList();
 		selectPhaseAfterRawJsonApply(selectedPhase);
+		updateActionListPhase();
 		if (actionListPanel != null) {
 			actionListPanel.loadCustomNames(newDefinition.customNames);
 		}
-		updateActionListPhase();
 		refreshPhaseControls();
 		scene.switchSpellDefinition(newDefinition, true);
 		resetSelectedPhasePreview(wasPlaying || autoReplay);
@@ -787,10 +787,10 @@ public class SpellPreviewScreen extends Screen {
 
 		// Refresh UI
 		clearActionSelection();
+		updateActionListPhase();
 		if (actionListPanel != null) {
 			actionListPanel.loadCustomNames(definition.customNames);
 		}
-		updateActionListPhase();
 		refreshPhaseControls();
 		replaySelectedPhase();
 	}
@@ -1001,10 +1001,10 @@ public class SpellPreviewScreen extends Screen {
 		if (actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
 		}
+		updateActionListPhase();
 		if (actionListPanel != null) {
 			actionListPanel.loadCustomNames(definition.customNames);
 		}
-		updateActionListPhase();
 		refreshPhaseControls();
 		refreshActionEditor();
 	}

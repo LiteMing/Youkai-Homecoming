@@ -6,6 +6,8 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Manages undo/redo history for spell editor operations.
@@ -15,20 +17,22 @@ import java.util.Deque;
 public class UndoManager {
 
 	private static final int MAX_HISTORY = 100;
+	public record Restored(PhaseDefinition phase, Map<String, String> customNames) {}
+	private record Snapshot(JsonElement phase, Map<String, String> customNames) {}
 
-	private final Deque<JsonElement> undoStack = new ArrayDeque<>();
-	private final Deque<JsonElement> redoStack = new ArrayDeque<>();
+	private final Deque<Snapshot> undoStack = new ArrayDeque<>();
+	private final Deque<Snapshot> redoStack = new ArrayDeque<>();
 
 	/**
 	 * Take a snapshot of the current state BEFORE a modification.
 	 * Call this before every action that modifies the phase.
 	 */
-	public void pushUndo(PhaseDefinition phase) {
+	public void pushUndo(PhaseDefinition phase, Map<String, String> customNames) {
 		var result = PhaseDefinition.CODEC.encodeStart(JsonOps.INSTANCE, phase);
 		result.result().ifPresent(json -> {
-			undoStack.push(json);
+			undoStack.push(new Snapshot(json, new HashMap<>(customNames)));
 			if (undoStack.size() > MAX_HISTORY) {
-				((ArrayDeque<JsonElement>) undoStack).removeLast();
+				undoStack.removeLast();
 			}
 			redoStack.clear(); // New edit invalidates redo history
 		});
@@ -36,32 +40,36 @@ public class UndoManager {
 
 	/**
 	 * Undo: restore previous state, push current state to redo stack.
-	 * @return the restored PhaseDefinition, or null if nothing to undo
+	 * @return the restored phase and custom names, or null if nothing to undo
 	 */
-	public PhaseDefinition undo(PhaseDefinition current) {
+	public Restored undo(PhaseDefinition current, Map<String, String> customNames) {
 		if (undoStack.isEmpty()) return null;
 		// Save current to redo
 		PhaseDefinition.CODEC.encodeStart(JsonOps.INSTANCE, current)
-				.result().ifPresent(redoStack::push);
+				.result().ifPresent(json -> redoStack.push(
+						new Snapshot(json, new HashMap<>(customNames))));
 		// Restore from undo
-		JsonElement json = undoStack.pop();
-		return PhaseDefinition.CODEC.parse(JsonOps.INSTANCE, json)
-				.result().orElse(null);
+		return restore(undoStack.pop());
 	}
 
 	/**
 	 * Redo: restore next state, push current state to undo stack.
-	 * @return the restored PhaseDefinition, or null if nothing to redo
+	 * @return the restored phase and custom names, or null if nothing to redo
 	 */
-	public PhaseDefinition redo(PhaseDefinition current) {
+	public Restored redo(PhaseDefinition current, Map<String, String> customNames) {
 		if (redoStack.isEmpty()) return null;
 		// Save current to undo
 		PhaseDefinition.CODEC.encodeStart(JsonOps.INSTANCE, current)
-				.result().ifPresent(undoStack::push);
+				.result().ifPresent(json -> undoStack.push(
+						new Snapshot(json, new HashMap<>(customNames))));
 		// Restore from redo
-		JsonElement json = redoStack.pop();
-		return PhaseDefinition.CODEC.parse(JsonOps.INSTANCE, json)
+		return restore(redoStack.pop());
+	}
+
+	private Restored restore(Snapshot snapshot) {
+		PhaseDefinition phase = PhaseDefinition.CODEC.parse(JsonOps.INSTANCE, snapshot.phase())
 				.result().orElse(null);
+		return phase == null ? null : new Restored(phase, new HashMap<>(snapshot.customNames()));
 	}
 
 	public boolean canUndo() {

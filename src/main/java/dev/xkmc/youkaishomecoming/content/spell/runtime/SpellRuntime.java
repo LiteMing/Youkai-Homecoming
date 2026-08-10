@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.runtime;
 
 import dev.xkmc.youkaishomecoming.content.spell.action.LegacyTickerAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.Transition;
@@ -42,6 +43,10 @@ public class SpellRuntime {
 	private int spellMaxHealth;
 	private int spellDurationTicks;
 	private int spellStartTick;
+	@Nullable
+	private SpellAction spellTimeoutAction;
+	@Nullable
+	private SpellAction spellBreakAction;
 	/** Tracks how many consecutive ticks the target has been off the ground. Reset on ground contact. */
 	private int targetFlyTime;
 	@Nullable
@@ -103,15 +108,59 @@ public class SpellRuntime {
 	}
 
 	public void setSpellHealth(int maxHealth, int durationTicks) {
+		setSpellHealth(maxHealth, durationTicks, null, null);
+	}
+
+	public void setSpellHealth(int maxHealth, int durationTicks,
+			@Nullable SpellAction onTimeout, @Nullable SpellAction onBreak) {
 		spellMaxHealth = Math.max(1, maxHealth);
 		spellDurationTicks = Math.max(0, durationTicks);
 		spellStartTick = totalTick;
+		spellTimeoutAction = validSpellHealthTarget(onTimeout);
+		spellBreakAction = validSpellHealthTarget(onBreak);
 	}
 
 	public void clearSpellHealth() {
 		spellMaxHealth = 0;
 		spellDurationTicks = 0;
 		spellStartTick = totalTick;
+		spellTimeoutAction = null;
+		spellBreakAction = null;
+	}
+
+	public boolean triggerSpellHealthBreak(CardHolder holder) {
+		if (spellMaxHealth <= 0 || spellBreakAction == null) return false;
+		return executeSpellHealthTarget(holder, spellBreakAction);
+	}
+
+	private boolean triggerSpellHealthTimeout(CardHolder holder) {
+		if (spellMaxHealth <= 0 || spellDurationTicks <= 0 || spellTimeoutAction == null) return false;
+		if (getSpellElapsedTicks() < spellDurationTicks) return false;
+		return executeSpellHealthTarget(holder, spellTimeoutAction);
+	}
+
+	private boolean executeSpellHealthTarget(CardHolder holder, SpellAction target) {
+		if (target instanceof SpellActions.ForcePhase phase
+				&& definition.getPhase(phase.phaseId()) == null) {
+			clearSpellHealth();
+			return false;
+		}
+		if (target instanceof SpellActions.ForceSpell spell
+				&& SpellRegistry.get(spell.spellId()) == null) {
+			clearSpellHealth();
+			return false;
+		}
+		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
+		SpellContext ctx = new SpellContext(holder, definition, this, definition.difficulty.resolve(healthRatio));
+		clearSpellHealth();
+		target.execute(ctx);
+		return true;
+	}
+
+	@Nullable
+	private static SpellAction validSpellHealthTarget(@Nullable SpellAction target) {
+		return target instanceof SpellActions.ForcePhase || target instanceof SpellActions.ForceSpell
+				? target : null;
 	}
 
 	public double getVariable(String key) {
@@ -201,6 +250,7 @@ public class SpellRuntime {
 
 		phaseTick++;
 		totalTick++;
+		triggerSpellHealthTimeout(holder);
 		if (hurtCooldownRemaining > 0) hurtCooldownRemaining--;
 	}
 
@@ -481,6 +531,8 @@ public class SpellRuntime {
 		tag.putInt("SpellMaxHealth", spellMaxHealth);
 		tag.putInt("SpellDurationTicks", spellDurationTicks);
 		tag.putInt("SpellStartTick", spellStartTick);
+		writeAction(tag, "SpellTimeoutAction", spellTimeoutAction);
+		writeAction(tag, "SpellBreakAction", spellBreakAction);
 		tag.putBoolean("EnteredCurrentPhase", enteredCurrentPhase);
 		if (!variables.isEmpty()) {
 			var varsTag = new net.minecraft.nbt.CompoundTag();
@@ -506,6 +558,8 @@ public class SpellRuntime {
 			this.spellMaxHealth = Math.max(0, tag.getInt("SpellMaxHealth"));
 			this.spellDurationTicks = Math.max(0, tag.getInt("SpellDurationTicks"));
 			this.spellStartTick = Math.max(0, tag.getInt("SpellStartTick"));
+			this.spellTimeoutAction = readAction(tag, "SpellTimeoutAction");
+			this.spellBreakAction = readAction(tag, "SpellBreakAction");
 			this.enteredCurrentPhase = tag.contains("EnteredCurrentPhase") ?
 					tag.getBoolean("EnteredCurrentPhase") : true;
 			if (tag.contains("Variables")) {
@@ -526,5 +580,18 @@ public class SpellRuntime {
 		if (onPhaseChange != null) {
 			onPhaseChange.accept(this);
 		}
+	}
+
+	private static void writeAction(net.minecraft.nbt.CompoundTag tag, String key, @Nullable SpellAction action) {
+		if (action == null) return;
+		SpellAction.CODEC.encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, action)
+				.result().ifPresent(value -> tag.put(key, value));
+	}
+
+	@Nullable
+	private static SpellAction readAction(net.minecraft.nbt.CompoundTag tag, String key) {
+		if (!tag.contains(key)) return null;
+		return SpellAction.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, tag.get(key))
+				.result().map(SpellRuntime::validSpellHealthTarget).orElse(null);
 	}
 }

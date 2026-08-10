@@ -48,6 +48,7 @@ public class ActionEditorPanel {
 	private static final int DROPDOWN_ITEM_H = 16;
 	private static final int DROPDOWN_MAX_VISIBLE = 10;
 	private static final int STRING_DROPDOWN_W = 14;
+	private enum SpellHealthTargetType { NONE, PHASE, SPELL }
 
 	private static final String[] CONDITION_TYPES = {
 			"tick_interval", "health_below", "health_above", "tick_elapsed",
@@ -1275,15 +1276,82 @@ public class ActionEditorPanel {
 	private void buildSetSpellHealthRows(SetSpellHealthAction action) {
 		addEnumRow("Mode", SetSpellHealthAction.Mode.values(), action.mode(), v ->
 				notifySimple(old -> new SetSpellHealthAction(v,
-						((SetSpellHealthAction) old).health(), ((SetSpellHealthAction) old).duration()), true));
+						((SetSpellHealthAction) old).health(), ((SetSpellHealthAction) old).duration(),
+						((SetSpellHealthAction) old).onTimeout(), ((SetSpellHealthAction) old).onBreak()), true));
 		if (action.mode() == SetSpellHealthAction.Mode.SET) {
 			addNumberRow("Health", action.health(), v -> notifySimple(old ->
 					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(), v,
-							((SetSpellHealthAction) old).duration())));
+							((SetSpellHealthAction) old).duration(), ((SetSpellHealthAction) old).onTimeout(),
+							((SetSpellHealthAction) old).onBreak())));
 			addNumberRow("Duration", action.duration(), v -> notifySimple(old ->
 					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(),
-							((SetSpellHealthAction) old).health(), v)));
+							((SetSpellHealthAction) old).health(), v, ((SetSpellHealthAction) old).onTimeout(),
+							((SetSpellHealthAction) old).onBreak())));
+			buildSpellHealthTargetRows("Timeout", true, action.onTimeout());
+			buildSpellHealthTargetRows("Break", false, action.onBreak());
 		}
+	}
+
+	private void buildSpellHealthTargetRows(String prefix, boolean timeout, Optional<SpellAction> target) {
+		SpellHealthTargetType type = target.map(value -> value instanceof SpellActions.ForceSpell
+				? SpellHealthTargetType.SPELL : SpellHealthTargetType.PHASE).orElse(SpellHealthTargetType.NONE);
+		addEnumRow(prefix + " Target", SpellHealthTargetType.values(), type,
+				value -> updateSpellHealthTarget(timeout, defaultSpellHealthTarget(value), true));
+		if (target.orElse(null) instanceof SpellActions.ForcePhase forcePhase) {
+			List<ResourceLocation> options = phaseOptionsSupplier.get();
+			if (options != null && !options.isEmpty()) {
+				addChoiceRow(prefix + " Phase", options, forcePhase.phaseId(), this::formatPhaseOption,
+						id -> updateSpellHealthTarget(timeout,
+								Optional.of(new SpellActions.ForcePhase(id, forcePhase.clearScreen())), false));
+			} else {
+				addStringRow(prefix + " Phase", forcePhase.phaseId().toString(), value -> {
+					ResourceLocation id = ResourceLocation.tryParse(value);
+					if (id != null) updateSpellHealthTarget(timeout,
+							Optional.of(new SpellActions.ForcePhase(id, forcePhase.clearScreen())), false);
+				});
+			}
+			addBoolRow(prefix + " Clear Screen", forcePhase.clearScreen(), value ->
+					updateSpellHealthTarget(timeout,
+							Optional.of(new SpellActions.ForcePhase(forcePhase.phaseId(), value)), true));
+		} else if (target.orElse(null) instanceof SpellActions.ForceSpell forceSpell) {
+			List<ResourceLocation> options = spellOptionsSupplier.get();
+			if (options != null && !options.isEmpty()) {
+				addChoiceRow(prefix + " Spell", options, forceSpell.spellId(), this::formatSpellOption,
+						id -> updateSpellHealthTarget(timeout,
+								Optional.of(new SpellActions.ForceSpell(id, forceSpell.clearScreen())), false));
+			} else {
+				addStringRow(prefix + " Spell", forceSpell.spellId().toString(), value -> {
+					ResourceLocation id = ResourceLocation.tryParse(value);
+					if (id != null) updateSpellHealthTarget(timeout,
+							Optional.of(new SpellActions.ForceSpell(id, forceSpell.clearScreen())), false);
+				});
+			}
+			addBoolRow(prefix + " Clear Screen", forceSpell.clearScreen(), value ->
+					updateSpellHealthTarget(timeout,
+							Optional.of(new SpellActions.ForceSpell(forceSpell.spellId(), value)), true));
+		}
+	}
+
+	private Optional<SpellAction> defaultSpellHealthTarget(SpellHealthTargetType type) {
+		if (type == SpellHealthTargetType.NONE) return Optional.empty();
+		if (type == SpellHealthTargetType.PHASE) {
+			List<ResourceLocation> options = phaseOptionsSupplier.get();
+			ResourceLocation id = options != null && !options.isEmpty() ? options.get(0)
+					: new ResourceLocation("youkaishomecoming", "main");
+			return Optional.of(new SpellActions.ForcePhase(id, true));
+		}
+		List<ResourceLocation> options = spellOptionsSupplier.get();
+		ResourceLocation id = options != null && !options.isEmpty() ? options.get(0)
+				: new ResourceLocation("youkaishomecoming", "main");
+		return Optional.of(new SpellActions.ForceSpell(id, true));
+	}
+
+	private void updateSpellHealthTarget(boolean timeout, Optional<SpellAction> target, boolean rebuild) {
+		notifySimple(old -> {
+			SetSpellHealthAction action = (SetSpellHealthAction) old;
+			return new SetSpellHealthAction(action.mode(), action.health(), action.duration(),
+					timeout ? target : action.onTimeout(), timeout ? action.onBreak() : target);
+		}, rebuild);
 	}
 
 	// --- ForcePhase rows ---

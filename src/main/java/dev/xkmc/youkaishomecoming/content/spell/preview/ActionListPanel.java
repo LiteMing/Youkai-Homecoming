@@ -2507,7 +2507,9 @@ public class ActionListPanel {
 			return sha.mode() == SetSpellHealthAction.Mode.CLEAR
 					? index + ": spell health clear"
 					: index + ": spell health hp=" + formatNumberProvider(sha.health())
-					+ " duration=" + formatNumberProvider(sha.duration());
+					+ " duration=" + formatNumberProvider(sha.duration())
+					+ describeSpellHealthTarget(" timeout", sha.onTimeout())
+					+ describeSpellHealthTarget(" break", sha.onBreak());
 		}
 		if (action instanceof SpellActions.SetVariable sv) return index + ": set " + sv.key();
 		if (action instanceof SpellActions.AddVariable av) return index + ": add " + av.key();
@@ -2565,6 +2567,16 @@ public class ActionListPanel {
 		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";
 		return index + ": " + action.getClass().getSimpleName();
+	}
+
+	private String describeSpellHealthTarget(String label, Optional<SpellAction> target) {
+		if (target.orElse(null) instanceof SpellActions.ForcePhase phase) {
+			return label + "->phase:" + describePhaseTarget(phase.phaseId());
+		}
+		if (target.orElse(null) instanceof SpellActions.ForceSpell spell) {
+			return label + "->spell:" + formatResourceId(spell.spellId());
+		}
+		return "";
 	}
 
 	private String describePhaseTarget(net.minecraft.resources.ResourceLocation phaseId) {

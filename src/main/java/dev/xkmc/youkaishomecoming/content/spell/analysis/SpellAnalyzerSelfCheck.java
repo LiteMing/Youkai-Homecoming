@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
+import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -166,6 +167,11 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String RUNCMD = spell("{\"type\": \"run_command\", \"command\": \"say hi\"}");
 		private static final String RUNCMD_DISABLED = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"run_command\", \"command\": \"say hi\"}}");
 		private static final String SPELL_HEALTH = spell("{\"type\": \"set_spell_health\", \"health\": 100, \"duration\": 120}");
+		private static final String SPELL_HEALTH_TARGETS = spell("{\"type\": \"set_spell_health\", \"health\": 100, \"duration\": 120,"
+				+ " \"on_timeout\": {\"type\": \"force_phase\", \"phase_id\": \"youkaishomecoming:main\"},"
+				+ " \"on_break\": {\"type\": \"force_spell\", \"spell_id\": \"youkaishomecoming:analyzer_test\"}}");
+		private static final String SPELL_HEALTH_INVALID_TARGET = spell("{\"type\": \"set_spell_health\","
+				+ " \"on_timeout\": {\"type\": \"clear_screen\"}}");
 		private static final String TELEPORT = spell("{\"type\": \"teleport\", \"destination\": {\"mode\": \"caster\"}}");
 		private static final String CASTER_MOVES = spell("{\"type\": \"caster_moves\", \"mode\": \"relative\", \"x\": \"tick * 0.01\", \"y\": 0, \"z\": 0.1}," + fire(1));
 		private static final String UNBOUNDED_COUNT = spell(
@@ -542,6 +548,11 @@ public final class SpellAnalyzerSelfCheck {
 			JsonElement canonical = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, def).result().orElseThrow();
 			check("hash stable across canonical re-encode/re-decode",
 					SpellHash.canonicalHash(def).equals(SpellHash.canonicalHash(parse(canonical.toString()))));
+			SetSpellHealthAction health = (SetSpellHealthAction) firstTickAction(parse(SPELL_HEALTH_TARGETS));
+			check("spell health timeout target codec", health.onTimeout().orElse(null) instanceof SpellActions.ForcePhase);
+			check("spell health break target codec", health.onBreak().orElse(null) instanceof SpellActions.ForceSpell);
+			SetSpellHealthAction invalid = (SetSpellHealthAction) firstTickAction(parse(SPELL_HEALTH_INVALID_TARGET));
+			check("spell health rejects unrelated embedded action", invalid.onTimeout().isEmpty());
 			// 3. JSON object field order does not affect hash
 			check("hash independent of JSON field order",
 					SpellHash.canonicalHash(parse(REORDERED)).equals(SpellHash.canonicalHash(parse(FIRE24))));

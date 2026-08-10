@@ -453,6 +453,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 			setCombatProgress(remaining);
 			return;
 		}
+		if (spellRuntime != null && spellRuntime.triggerSpellHealthBreak(this)) {
+			return;
+		}
 		eraseAllDanmaku(null);
 		boolean defeated = source.getEntity() instanceof Player player &&
 				GrazeHelper.tryDanmakuDefeat(player, this, source);

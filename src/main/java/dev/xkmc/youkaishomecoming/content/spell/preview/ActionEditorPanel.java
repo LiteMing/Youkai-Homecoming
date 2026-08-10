@@ -1516,12 +1516,12 @@ public class ActionEditorPanel {
 		addIntRow("Waves", ba.waves(), v ->
 				notifySimple(old -> {
 					var b = (BurstAction) old;
-					return new BurstAction(v, b.interval(), b.waveVariable(), b.body());
+					return new BurstAction(Math.max(1, v), b.interval(), b.waveVariable(), b.body());
 				}));
 		addIntRow("Interval", ba.interval(), v ->
 				notifySimple(old -> {
 					var b = (BurstAction) old;
-					return new BurstAction(b.waves(), v, b.waveVariable(), b.body());
+					return new BurstAction(b.waves(), Math.max(0, v), b.waveVariable(), b.body());
 				}));
 		addStringRow("Wave Var", ba.waveVariable(), v ->
 				notifySimple(old -> {

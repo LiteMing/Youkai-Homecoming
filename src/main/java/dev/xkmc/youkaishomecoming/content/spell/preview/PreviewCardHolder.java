@@ -412,7 +412,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			handlePreviewProjectileHook(laser, hit, hitAction, behavior, afterExpiry);
 			return;
 		}
-		if (hitAction != null) hitAction.execute(this, hit.position(), laser.getForward());
+		if (hitAction != null) hitAction.executeBlockHit(this, hit.position(), laser.getForward());
 		switch (LaserBlockHitEffect.from(behavior)) {
 			case CLIP_ONLY -> {
 			}
@@ -426,7 +426,12 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 											 dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior behavior,
 											 dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry) {
 		if (hitAction != null) {
-			hitAction.execute(this, hit.position(), projectile.getDeltaMovement());
+			if (hit.type() == PreviewTarget.HitType.BLOCK) {
+				hitAction.executeBlockHit(this, hit.position(), projectile.getDeltaMovement());
+			} else {
+				// Preview targets have no backing Entity; hit-target commands remain server-only no-ops.
+				hitAction.execute(this, hit.position(), projectile.getDeltaMovement());
+			}
 		}
 		switch (behavior) {
 			case CONTINUE -> {

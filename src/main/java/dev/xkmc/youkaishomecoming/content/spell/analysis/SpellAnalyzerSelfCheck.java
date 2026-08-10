@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.analysis;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
+import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
@@ -167,6 +168,8 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String LEGACY_IN_BURST = spell("{\"type\": \"burst\", \"waves\": 3, \"body\": [{\"type\": \"legacy_ticker\"}]}");
 		private static final String LEGACY_DEEP = spell("{\"type\": \"delay\", \"delay_ticks\": 10, \"body\": [{\"type\": \"repeat\", \"count\": 2, \"body\": [{\"type\": \"spawn_shooter\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 20, \"body\": [{\"type\": \"legacy_ticker\"}]}]}]}");
 		private static final String RUNCMD = spell("{\"type\": \"run_command\", \"command\": \"say hi\"}");
+		private static final String RUNCMD_HIT = spell("{\"type\": \"run_command\","
+				+ " \"hit_context\": \"at_entity_pos\", \"command\": \"say hit\"}");
 		private static final String RUNCMD_DISABLED = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"run_command\", \"command\": \"say hi\"}}");
 		private static final String SPELL_HEALTH = spell("{\"type\": \"set_spell_health\", \"health\": 100, \"duration\": 120}");
 		private static final String SPELL_HEALTH_TARGETS = spell("{\"type\": \"set_spell_health\", \"health\": 100, \"duration\": 120,"
@@ -606,6 +609,12 @@ public final class SpellAnalyzerSelfCheck {
 			SpellAction movement = firstTickAction(parse(CASTER_MOVES));
 			check("caster_moves codec round-trip", movement instanceof dev.xkmc.youkaishomecoming.content.spell.action.CasterMovesAction action
 					&& action.mode() == dev.xkmc.youkaishomecoming.content.spell.runtime.SpellMovementDirective.Mode.RELATIVE);
+			RunCommandAction legacyCommand = (RunCommandAction) firstTickAction(parse(RUNCMD));
+			check("run_command legacy JSON defaults hit context",
+					legacyCommand.hitContext() == RunCommandAction.HitContext.DEFAULT);
+			RunCommandAction hitCommand = (RunCommandAction) firstTickAction(parse(RUNCMD_HIT));
+			check("run_command hit context codec round-trip",
+					hitCommand.hitContext() == RunCommandAction.HitContext.AT_ENTITY_POS);
 		}
 
 		private void analyzerTraversal() {

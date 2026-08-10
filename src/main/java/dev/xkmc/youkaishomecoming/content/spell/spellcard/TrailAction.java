@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.spellcard;
 
 import dev.xkmc.l2serial.serialization.SerialClass;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 
 @SerialClass
@@ -12,9 +13,29 @@ public class TrailAction {
 
 	}
 
+	public void executeEntityHit(CardHolder holder, Vec3 pos, Vec3 dir, Entity hitEntity) {
+		execute(holder, pos, dir);
+	}
+
+	public void executeBlockHit(CardHolder holder, Vec3 pos, Vec3 dir) {
+		execute(holder, pos, dir);
+	}
+
 	public void execute(Vec3 pos, Vec3 dir) {
 		if (cached != null) {
 			execute(cached, pos, dir);
+		}
+	}
+
+	public void executeEntityHit(Vec3 pos, Vec3 dir, Entity hitEntity) {
+		if (cached != null) {
+			executeEntityHit(cached, pos, dir, hitEntity);
+		}
+	}
+
+	public void executeBlockHit(Vec3 pos, Vec3 dir) {
+		if (cached != null) {
+			executeBlockHit(cached, pos, dir);
 		}
 	}
 

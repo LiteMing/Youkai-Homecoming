@@ -28,15 +28,34 @@ public class TrailCardHolder implements CardHolder {
 	private final CardHolder delegate;
 	private final Vec3 position;
 	private final Vec3 direction;
+	private final HitType hitType;
+	@Nullable
+	private final Entity hitEntity;
 
 	public TrailCardHolder(CardHolder delegate, Vec3 position, Vec3 direction) {
+		this(delegate, position, direction, HitType.NONE, null);
+	}
+
+	public TrailCardHolder(CardHolder delegate, Vec3 position, Vec3 direction,
+			HitType hitType, @Nullable Entity hitEntity) {
 		this.delegate = delegate;
 		this.position = position;
 		this.direction = direction.lengthSqr() > 1e-8 ? direction.normalize() : new Vec3(0, 0, 1);
+		this.hitType = hitType;
+		this.hitEntity = hitEntity;
 	}
 
 	public CardHolder delegate() {
 		return delegate;
+	}
+
+	public HitType hitType() {
+		return hitType;
+	}
+
+	@Nullable
+	public Entity hitEntity() {
+		return hitEntity;
 	}
 
 	@Override
@@ -110,6 +129,12 @@ public class TrailCardHolder implements CardHolder {
 	@Override
 	public float getDamage(YHDanmaku.IDanmakuType type) {
 		return delegate.getDamage(type);
+	}
+
+	public enum HitType {
+		NONE,
+		ENTITY,
+		BLOCK
 	}
 
 }

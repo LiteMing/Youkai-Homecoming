@@ -84,9 +84,11 @@ public class ActionEditorPanel {
 	private java.util.function.Function<ResourceLocation, String> phaseDisplayFormatter = ResourceLocation::toString;
 	private java.util.function.Supplier<List<ResourceLocation>> spellOptionsSupplier = List::of;
 	private java.util.function.Function<ResourceLocation, String> spellDisplayFormatter = ResourceLocation::toString;
+	private java.util.function.Supplier<ActionListPanel.ActionPath> actionPathSupplier = () -> null;
 
 	private int x, y, w, h;
 	private SpellAction currentAction;
+	private ActionListPanel.ActionPath currentActionPath;
 	private int actionIndex = -1;
 	private final List<EditorRow> rows = new ArrayList<>();
 	private int scrollOffset = 0;
@@ -130,13 +132,16 @@ public class ActionEditorPanel {
 	}
 
 	public void setAction(SpellAction action, int index) {
-		if (action == currentAction && index == actionIndex) return;
+		ActionListPanel.ActionPath path = actionPathSupplier.get();
+		if (action == currentAction && index == actionIndex
+				&& java.util.Objects.equals(path, currentActionPath)) return;
 		// Save current scroll state before switching
 		if (actionIndex >= 0) {
 			scrollStateMap.put(actionIndex, scrollOffset);
 		}
 		clearWidgets();
 		this.currentAction = action;
+		this.currentActionPath = path;
 		this.actionIndex = index;
 		this.scrollOffset = scrollStateMap.getOrDefault(index, 0);
 		this.typeSelectorMode = false;
@@ -152,6 +157,7 @@ public class ActionEditorPanel {
 	public void clearAction() {
 		clearWidgets();
 		currentAction = null;
+		currentActionPath = null;
 		actionIndex = -1;
 		typeSelectorMode = false;
 	}
@@ -168,6 +174,7 @@ public class ActionEditorPanel {
 	public void showTypeSelector(Consumer<SpellAction> onCreated) {
 		clearWidgets();
 		currentAction = null;
+		currentActionPath = null;
 		actionIndex = -1;
 		typeSelectorMode = true;
 		typeSelectorCallback = onCreated;
@@ -185,6 +192,10 @@ public class ActionEditorPanel {
 								java.util.function.Function<ResourceLocation, String> formatter) {
 		this.spellOptionsSupplier = supplier != null ? supplier : List::of;
 		this.spellDisplayFormatter = formatter != null ? formatter : ResourceLocation::toString;
+	}
+
+	public void setActionPathSupplier(java.util.function.Supplier<ActionListPanel.ActionPath> supplier) {
+		this.actionPathSupplier = supplier != null ? supplier : () -> null;
 	}
 
 	public void refreshCurrentView() {
@@ -378,7 +389,7 @@ public class ActionEditorPanel {
 			case "play_sound" -> new SpellActions.PlaySoundAction(
 					new ResourceLocation("minecraft", "entity.experience_orb.pickup"), 1f, 1f);
 			case "run_command" -> new RunCommandAction(RunCommandAction.Mode.AS_CASTER,
-					"yhspell stop @s 32");
+					RunCommandAction.HitContext.DEFAULT, "yhspell stop @s 32");
 			case "show_spell_title" -> new ShowSpellTitleAction("", "", 100, 64.0);
 			case "set_spell_circle" -> new SetSpellCircleAction(SetSpellCircleAction.Mode.SET,
 					new ResourceLocation("youkaishomecoming", "test_spell"), 1.0f);
@@ -1235,9 +1246,39 @@ public class ActionEditorPanel {
 
 	private void buildRunCommandRows(RunCommandAction rc) {
 		addEnumRow("Mode", RunCommandAction.Mode.values(), rc.mode(), v ->
-				notifySimple(old -> new RunCommandAction(v, ((RunCommandAction) old).command()), true));
+				notifySimple(old -> new RunCommandAction(v, ((RunCommandAction) old).hitContext(),
+						((RunCommandAction) old).command()), true));
+		addEnumSubsetRow("Hit Context", availableRunCommandHitContexts(), rc.hitContext(), v ->
+				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(), v,
+						((RunCommandAction) old).command()), true));
 		addStringRow("Command", rc.command(), v ->
-				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(), v)));
+				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(),
+						((RunCommandAction) old).hitContext(), v)));
+	}
+
+	private RunCommandAction.HitContext[] availableRunCommandHitContexts() {
+		String nearestHitBranch = null;
+		if (currentActionPath != null) {
+			for (ActionListPanel.PathEntry entry : currentActionPath.path()) {
+				if ("onHitEntity".equals(entry.branch()) || "onHitBlock".equals(entry.branch())) {
+					nearestHitBranch = entry.branch();
+				}
+			}
+		}
+		if ("onHitEntity".equals(nearestHitBranch)) {
+			return new RunCommandAction.HitContext[]{
+					RunCommandAction.HitContext.DEFAULT,
+					RunCommandAction.HitContext.AS_HIT_ENTITY,
+					RunCommandAction.HitContext.AT_ENTITY_POS
+			};
+		}
+		if ("onHitBlock".equals(nearestHitBranch)) {
+			return new RunCommandAction.HitContext[]{
+					RunCommandAction.HitContext.DEFAULT,
+					RunCommandAction.HitContext.AT_BLOCK_POS
+			};
+		}
+		return new RunCommandAction.HitContext[]{RunCommandAction.HitContext.DEFAULT};
 	}
 
 	private void buildShowSpellTitleRows(ShowSpellTitleAction sta) {
@@ -3093,6 +3134,24 @@ public class ActionEditorPanel {
 		int rowIndex = rows.size();
 		var btn = Button.builder(Component.literal(displayNames[selectedIndex] + " \u25BC"), b -> {
 			openDropdown(displayNames, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
+		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
+		rows.add(new EditorRow(label, btn, false));
+	}
+
+	private <E extends Enum<E>> void addEnumSubsetRow(String label, E[] values, E current, Consumer<E> onChange) {
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		String[] displayNames = new String[values.length];
+		int selectedIndex = -1;
+		for (int i = 0; i < values.length; i++) {
+			displayNames[i] = SpellEditorLocalization.t(formatEnum(values[i]));
+			if (values[i] == current) selectedIndex = i;
+		}
+		int dropdownSelectedIndex = Math.max(0, selectedIndex);
+		String currentName = selectedIndex >= 0
+				? displayNames[selectedIndex] : SpellEditorLocalization.t(formatEnum(current));
+		int rowIndex = rows.size();
+		var btn = Button.builder(Component.literal(currentName + " \u25BC"), b -> {
+			openDropdown(displayNames, dropdownSelectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
 		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, false));
 	}

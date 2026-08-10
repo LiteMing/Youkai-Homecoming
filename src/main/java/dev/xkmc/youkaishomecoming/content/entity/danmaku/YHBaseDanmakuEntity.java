@@ -153,7 +153,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		if (!level().isClientSide) {
 			// Execute onHitBlock callback before potential discard
 			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
-				executeHitAction(ide.onHitBlockAction);
+				executeBlockHitAction(ide.onHitBlockAction, pResult);
 			}
 			if (this instanceof ItemDanmakuEntity ide) {
 				switch (ide.hitBehaviorBlock) {
@@ -190,7 +190,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		hurtTarget(result);
 		// Execute onHitEntity callback before potential discard
 		if (this instanceof ItemDanmakuEntity ide && ide.onHitEntityAction != null) {
-			executeHitAction(ide.onHitEntityAction);
+			executeEntityHitAction(ide.onHitEntityAction, result);
 		}
 		// Data-driven danmaku always collide with entities.
 		// Whether they pierce or stop is controlled by hitBehaviorEntity.
@@ -218,13 +218,26 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		markErased(false);
 	}
 
-	/** Helper: execute a TrailAction at the current danmaku position/direction. */
-	private void executeHitAction(TrailAction action) {
+	private void executeEntityHitAction(TrailAction action, EntityHitResult result) {
 		CardHolder holder = null;
 		Entity e = getOwner();
 		if (e instanceof CardHolder h) holder = h;
-		if (holder != null) action.execute(holder, position(), getDeltaMovement());
-		else action.execute(position(), getDeltaMovement());
+		if (holder != null) {
+			action.executeEntityHit(holder, result.getLocation(), getDeltaMovement(), result.getEntity());
+		} else {
+			action.executeEntityHit(result.getLocation(), getDeltaMovement(), result.getEntity());
+		}
+	}
+
+	private void executeBlockHitAction(TrailAction action, BlockHitResult result) {
+		CardHolder holder = null;
+		Entity e = getOwner();
+		if (e instanceof CardHolder h) holder = h;
+		if (holder != null) {
+			action.executeBlockHit(holder, result.getLocation(), getDeltaMovement());
+		} else {
+			action.executeBlockHit(result.getLocation(), getDeltaMovement());
+		}
 	}
 
 }

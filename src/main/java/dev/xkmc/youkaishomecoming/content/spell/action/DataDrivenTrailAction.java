@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -50,6 +51,21 @@ public class DataDrivenTrailAction extends TrailAction {
 
 	@Override
 	public void execute(CardHolder holder, Vec3 pos, Vec3 dir) {
+		execute(holder, pos, dir, TrailCardHolder.HitType.NONE, null);
+	}
+
+	@Override
+	public void executeEntityHit(CardHolder holder, Vec3 pos, Vec3 dir, Entity hitEntity) {
+		execute(holder, pos, dir, TrailCardHolder.HitType.ENTITY, hitEntity);
+	}
+
+	@Override
+	public void executeBlockHit(CardHolder holder, Vec3 pos, Vec3 dir) {
+		execute(holder, pos, dir, TrailCardHolder.HitType.BLOCK, null);
+	}
+
+	private void execute(CardHolder holder, Vec3 pos, Vec3 dir,
+			TrailCardHolder.HitType hitType, Entity hitEntity) {
 		if (runtime == null || definition == null) return; // Deserialized stub — no-op
 
 		// Temporarily restore snapshotted variables so child actions see creation-time values
@@ -61,7 +77,7 @@ public class DataDrivenTrailAction extends TrailAction {
 			}
 		}
 
-		var trailHolder = new TrailCardHolder(holder, pos, dir);
+		var trailHolder = new TrailCardHolder(holder, pos, dir, hitType, hitEntity);
 		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT);
 		for (var action : actions) {
 			action.execute(ctx);

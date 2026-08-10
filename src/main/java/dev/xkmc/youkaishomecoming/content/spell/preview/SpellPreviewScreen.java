@@ -222,6 +222,7 @@ public class SpellPreviewScreen extends Screen {
 				this::onActionEdited,
 				this::onDeleteAction
 		);
+		actionEditorPanel.setActionPathSupplier(actionListPanel::getSelectedPath);
 		actionEditorPanel.setPhaseOptions(() -> List.copyOf(phaseController.getPhaseList()), phaseController::getPhaseOptionLabel);
 		actionEditorPanel.setSpellOptions(spellController::getSpellOptions, spellController::getSpellOptionLabel);
 		actionEditorPanel.setToggleDisableCallback(() -> {

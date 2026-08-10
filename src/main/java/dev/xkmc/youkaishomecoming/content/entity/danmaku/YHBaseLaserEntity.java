@@ -308,11 +308,12 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		for (var e : hitEntities) {
 			hurtTarget(new EntityHitResult(e));
 			hitEntity = true;
+			if (!level().isClientSide() && onHitEntityAction != null) {
+				executeEntityHitAction(onHitEntityAction, e);
+			}
 		}
 		if (level().isClientSide()) return;
 		if (hitEntity) {
-			// Execute onHitEntity callback before potential discard
-			if (onHitEntityAction != null) executeHitAction(onHitEntityAction);
 			switch (hitBehaviorEntity) {
 				case CONTINUE -> {
 				}
@@ -331,7 +332,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 			Vec3 hitDirection = getForward();
 			BlockPos blockPos = blockHit.getBlockPos();
 			if (!blockPos.equals(activeBlockHit) && onHitBlockAction != null) {
-				executeHitAction(onHitBlockAction, hitPos, hitDirection);
+				executeBlockHitAction(onHitBlockAction, hitPos, hitDirection);
 			}
 			activeBlockHit = blockPos;
 			switch (LaserBlockHitEffect.from(hitBehaviorBlock)) {
@@ -367,16 +368,20 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		expiryActionConsumed = true;
 	}
 
-	/** Execute a TrailAction at the supplied impact position and direction. */
-	private void executeHitAction(dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action) {
-		executeHitAction(action, position(), getDeltaMovement());
+	private void executeEntityHitAction(
+			dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action, Entity hitEntity) {
+		Vec3 hitPos = hitEntity.position();
+		CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
+		if (holder != null) action.executeEntityHit(holder, hitPos, getForward(), hitEntity);
+		else action.executeEntityHit(hitPos, getForward(), hitEntity);
 	}
 
-	private void executeHitAction(dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action,
+	private void executeBlockHitAction(
+			dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action,
 			Vec3 pos, Vec3 direction) {
 		CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-		if (holder != null) action.execute(holder, pos, direction);
-		else action.execute(pos, direction);
+		if (holder != null) action.executeBlockHit(holder, pos, direction);
+		else action.executeBlockHit(pos, direction);
 	}
 
 	@Override

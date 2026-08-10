@@ -104,8 +104,10 @@ public class GeneralEventHandlers {
 					.getCertifiedHash(reward.getItem());
 			if (hash != null && !hash.isEmpty()
 					&& event.getEntity() instanceof net.minecraft.server.level.ServerPlayer sp) {
-				dev.xkmc.youkaishomecoming.content.spell.certification.PendingRewardStorage.claim(
-						sp.server, reward.ownerId(), hash);
+				if (!reward.isOwnerLocked() || sp.getUUID().equals(reward.ownerId())) {
+					dev.xkmc.youkaishomecoming.content.spell.certification.PendingRewardStorage.claim(
+							sp.server, reward.ownerId(), hash);
+				}
 			}
 		}
 	}

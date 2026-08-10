@@ -80,9 +80,8 @@ public final class CertifiedSpellRewardService {
 
 		ItemStack stack = buildCertifiedStack(level.getServer(), certificate, definition);
 
-		// the reward is NEVER handed straight into the inventory: it floats in
-		// place, glowing and weightless, at the certification enemy's death spot,
-		// and only the creator can pick it up (immediately, no long delay)
+		// The reward floats at the certification enemy's death spot. It remains
+		// owner-locked for the configured grace period, then becomes public.
 		ItemEntity item = new CertifiedRewardItem(level, entity.getX(), entity.getY() + 0.5,
 				entity.getZ(), stack, author.getUUID());
 		item.setNoGravity(true);
@@ -102,12 +101,12 @@ public final class CertifiedSpellRewardService {
 	}
 
 	/**
-	 * Owner-locked reward item: only the certification creator may pick it up;
-	 * everyone else cannot touch it at all.
+	 * Reward item: creator-only during the configured lock window, public after it.
 	 */
 	public static final class CertifiedRewardItem extends ItemEntity {
 
 		private final UUID ownerId;
+		private int ownerLockTicks;
 
 		public UUID ownerId() {
 			return ownerId;
@@ -115,13 +114,32 @@ public final class CertifiedSpellRewardService {
 
 		public CertifiedRewardItem(Level level, double x, double y, double z,
 								   ItemStack stack, UUID ownerId) {
+			this(level, x, y, z, stack, ownerId,
+					YHModConfig.COMMON.certificationRewardOwnerLockTicks.get());
+		}
+
+		public CertifiedRewardItem(Level level, double x, double y, double z,
+								   ItemStack stack, UUID ownerId, int ownerLockTicks) {
 			super(level, x, y, z, stack);
 			this.ownerId = ownerId;
+			this.ownerLockTicks = Math.max(0, ownerLockTicks);
+		}
+
+		public boolean isOwnerLocked() {
+			return ownerLockTicks > 0;
+		}
+
+		@Override
+		public void tick() {
+			super.tick();
+			if (!level().isClientSide && ownerLockTicks > 0) {
+				ownerLockTicks--;
+			}
 		}
 
 		@Override
 		public void playerTouch(Player player) {
-			if (!player.getUUID().equals(ownerId)) {
+			if (isOwnerLocked() && !player.getUUID().equals(ownerId)) {
 				return;
 			}
 			super.playerTouch(player);

@@ -26,6 +26,12 @@ public class SpellStateToClient extends SerialPacketBase {
 
 	@SerialClass.SerialField
 	public boolean inDanmakuCombat;
+	@SerialClass.SerialField
+	public int spellMaxHealth;
+	@SerialClass.SerialField
+	public int spellElapsedTicks;
+	@SerialClass.SerialField
+	public int spellDurationTicks;
 
 	public SpellStateToClient() {
 	}
@@ -34,16 +40,21 @@ public class SpellStateToClient extends SerialPacketBase {
 							  @Nullable ResourceLocation spellId,
 							  @Nullable ResourceLocation phaseId,
 							  int phaseTick,
-							  boolean inDanmakuCombat) {
+							  boolean inDanmakuCombat,
+							  int spellMaxHealth, int spellElapsedTicks, int spellDurationTicks) {
 		this.entityId = entityId;
 		this.spellId = spellId;
 		this.phaseId = phaseId;
 		this.phaseTick = phaseTick;
 		this.inDanmakuCombat = inDanmakuCombat;
+		this.spellMaxHealth = spellMaxHealth;
+		this.spellElapsedTicks = spellElapsedTicks;
+		this.spellDurationTicks = spellDurationTicks;
 	}
 
 	@Override
 	public void handle(NetworkEvent.Context context) {
-		ClientEventHandlers.setSpellState(entityId, spellId, phaseId, phaseTick, inDanmakuCombat);
+		ClientEventHandlers.setSpellState(entityId, spellId, phaseId, phaseTick, inDanmakuCombat,
+				spellMaxHealth, spellElapsedTicks, spellDurationTicks);
 	}
 }

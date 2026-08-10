@@ -69,6 +69,7 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 			pose.mulPose(Axis.YP.rotationDegrees(180.0F));
 		}
 		component.render(handle);
+		SpellProgressCircleRenderer.render(pose, buffer, light, entity, pTick, handle.alpha);
 		pose.popPose();
 	}
 

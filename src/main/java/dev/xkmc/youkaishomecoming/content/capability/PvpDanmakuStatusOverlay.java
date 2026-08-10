@@ -34,8 +34,23 @@ public class PvpDanmakuStatusOverlay implements IGuiOverlay {
 				Math.max(0, packet.bomb),
 				Math.max(0, packet.maxLife),
 				Math.max(0, packet.maxBomb),
+				new SpellProgress(Math.max(0, packet.spellHealth), Math.max(0, packet.spellMaxHealth),
+						Math.max(0, packet.spellElapsedTicks), Math.max(0, packet.spellDurationTicks),
+						Util.getMillis()),
 				Util.getMillis()
 		));
+	}
+
+	public record SpellProgress(int health, int maxHealth, int elapsedTicks, int durationTicks, long receivedAt) {
+		public boolean active() {
+			return maxHealth > 0 || durationTicks > 0;
+		}
+	}
+
+	@org.jetbrains.annotations.Nullable
+	public static SpellProgress spellProgress(int entityId) {
+		Status status = STATUS.get(entityId);
+		return status == null || !status.spell().active() ? null : status.spell();
 	}
 
 	@Override
@@ -76,7 +91,8 @@ public class PvpDanmakuStatusOverlay implements IGuiOverlay {
 		return Math.max(0, value / SHARD);
 	}
 
-	private record Status(String name, int life, int bomb, int maxLife, int maxBomb, long time) {
+	private record Status(String name, int life, int bomb, int maxLife, int maxBomb,
+						  SpellProgress spell, long time) {
 	}
 
 }

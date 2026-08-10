@@ -59,6 +59,7 @@ public final class PlayerStgSpellCircle {
 				pose, buffer, builder, player.tickCount + pTick, light);
 		handle.alpha = alpha;
 		component.render(handle);
+		SpellProgressCircleRenderer.render(pose, buffer, light, player, pTick, alpha);
 		renderBombSubCircles(pose, buffer, light, player, pTick, alpha);
 		pose.popPose();
 	}

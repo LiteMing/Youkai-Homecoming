@@ -87,28 +87,40 @@ public class SpellContainer extends ConditionalToken {
 		return data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved() && proxy.restrictsManualMovement());
 	}
 
+	public record ActiveSpellStatus(int health, int maxHealth, int elapsedTicks, int durationTicks) {
+		public static final ActiveSpellStatus NONE = new ActiveSpellStatus(0, 0, 0, 0);
+
+		public boolean active() {
+			return maxHealth > 0 || durationTicks > 0;
+		}
+	}
+
+	/** Server-authoritative snapshot used by the PVP spell-circle projection. */
+	public static ActiveSpellStatus activeSpellStatus(Player player) {
+		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
+		DanmakuProxyEntity proxy = data.proxies.stream()
+				.filter(e -> !e.isRemoved()).findFirst().orElse(null);
+		if (proxy == null) return ActiveSpellStatus.NONE;
+		return new ActiveSpellStatus(Math.max(0, data.spellBarValue), Math.max(0, data.spellBarMax),
+				proxy.spellElapsedTicks(), proxy.spellDurationTicks());
+	}
+
 	@Nullable
 	private net.minecraft.world.phys.Vec3 lockPos;
 
 	// ------------------------------------------------------------ player-use spell bar
 
 	/**
-	 * Certified spell cards show a boss bar with the spell's break HP (a fraction
-	 * of the certification HP, see certificationPlayerUseHpRatio). The bar is
-	 * shown while the player releases the card; each miss shrinks it by 1 and a
-	 * zero bar breaks (interrupts) the spell instead of costing life.
+	 * Certified spell cards keep a server-side break HP value (a fraction of the
+	 * certification HP). The value is projected onto the player's spell circle;
+	 * each miss shrinks it by 1 and a zero bar breaks the spell.
 	 */
 	public static void startSpellBar(ServerPlayer sp, int maxHp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		data.endSpellBar(sp);
-		data.spellBar = new net.minecraft.server.level.ServerBossEvent(
-				net.minecraft.network.chat.Component.literal("Spell Card"),
-				net.minecraft.world.BossEvent.BossBarColor.RED,
-				net.minecraft.world.BossEvent.BossBarOverlay.PROGRESS);
 		data.spellBarValue = Math.max(1, maxHp);
 		data.spellBarMax = data.spellBarValue;
-		data.spellBar.setProgress(1.0f);
-		data.spellBar.addPlayer(sp);
+		data.syncPlayerSpellStatus(sp);
 	}
 
 	public static void removeSpellBar(ServerPlayer sp) {
@@ -121,12 +133,11 @@ public class SpellContainer extends ConditionalToken {
 	 */
 	public static boolean consumeSpellBarHit(ServerPlayer sp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
-		if (data.spellBar == null) {
+		if (data.spellBarMax <= 0) {
 			return false;
 		}
 		data.spellBarValue = Math.max(0, data.spellBarValue - 1);
-		data.spellBar.setProgress(data.spellBarMax <= 0 ? 0
-				: data.spellBarValue / (float) data.spellBarMax);
+		data.syncPlayerSpellStatus(sp);
 		if (data.spellBarValue <= 0) {
 			data.endSpellBar(sp);
 			breakActiveSpell(sp);
@@ -144,21 +155,29 @@ public class SpellContainer extends ConditionalToken {
 			}
 		}
 		data.proxies.clear();
+		data.syncPlayerSpellStatus(sp);
 		DanmakuManager.flushErases();
 	}
 
-	@Nullable
-	private net.minecraft.server.level.ServerBossEvent spellBar;
 	private int spellBarValue;
 	private int spellBarMax;
 
 	private void endSpellBar(Player player) {
-		if (spellBar != null && player instanceof ServerPlayer sp) {
-			spellBar.removePlayer(sp);
-		}
-		spellBar = null;
 		spellBarValue = 0;
 		spellBarMax = 0;
+		if (player instanceof ServerPlayer sp) {
+			syncPlayerSpellStatus(sp);
+		}
+	}
+
+	private void syncPlayerSpellStatus(ServerPlayer sp) {
+		var proxy = proxies.stream().filter(e -> !e.isRemoved()).findFirst().orElse(null);
+		var cap = dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(sp);
+		cap.setPlayerSpellStatus(new dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.SpellProgressStatus(
+				spellBarValue, spellBarMax,
+				proxy == null ? 0 : proxy.spellElapsedTicks(),
+				proxy == null ? 0 : proxy.spellDurationTicks()));
+		cap.sync();
 	}
 
 	public static void castSpell(ServerPlayer sp, Supplier<? extends ItemSpell> sup, @Nullable LivingEntity target) {
@@ -211,7 +230,10 @@ public class SpellContainer extends ConditionalToken {
 		combatItemCache.removeIf(e -> !e.isValid());
 		ambientItemCache.removeIf(e -> !e.isValid());
 		proxies.removeIf(DanmakuProxyEntity::isRemoved);
-		if (proxies.isEmpty() && spellBar != null) {
+		if (player instanceof ServerPlayer sp && spellBarMax > 0 && (player.tickCount & 3) == 0) {
+			syncPlayerSpellStatus(sp);
+		}
+		if (proxies.isEmpty() && spellBarMax > 0) {
 			// spell ended naturally: drop the bar
 			endSpellBar(player);
 			lockPos = null;

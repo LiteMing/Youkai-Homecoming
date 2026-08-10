@@ -114,6 +114,22 @@ public class SpellComponent {
 
 		}
 
+		/** Render only the leading fraction of this circular stroke. */
+		@OnlyIn(Dist.CLIENT)
+		public void renderProgress(RenderHandle handle, float progress) {
+			if (vertex <= 0 || progress <= 0 || width <= 0 || radius <= 0) return;
+			float da = (float) Math.PI * 2 * cycle / vertex;
+			float a = angle;
+			float w = width / (float) Math.cos(da / 2);
+			int count = Math.min(vertex, Math.max(1, (int) Math.ceil(vertex * Math.min(1, progress))));
+			int col = getColor();
+			float dv = (rune > 0 ? 8 : 1) / 128f;
+			float du = (int) (Math.PI * 2 * radius * cycle / width * 8) / 8f / vertex * dv;
+			for (int i = 0; i < count; i++) {
+				rect(handle, a + da * i, da, radius, w, z, col, i * du, rune == 0 ? 0 : (rune - 1) * dv, du, dv);
+			}
+		}
+
 		@OnlyIn(Dist.CLIENT)
 		private int getColor() {
 			if (color == null) return -1;

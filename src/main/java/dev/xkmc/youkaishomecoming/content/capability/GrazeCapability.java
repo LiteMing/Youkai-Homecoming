@@ -79,6 +79,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	@SerialClass.SerialField
 	private boolean spellInvulnerable = false;
 	@SerialClass.SerialField
+	private int playerSpellHealth, playerSpellMaxHealth, playerSpellElapsedTicks, playerSpellDurationTicks;
+	@SerialClass.SerialField
 	private String stgCombatMode = StgCombatMode.NOVICE_AUTO_BOMB.name();
 
 	private boolean dirty = false;
@@ -86,6 +88,14 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private int lastGraze = 0;
 	private int pvpStatusSyncCooldown = 0;
 	private boolean pvpStatusVisible = false;
+
+	public record SpellProgressStatus(int health, int maxHealth, int elapsedTicks, int durationTicks) {
+		public static final SpellProgressStatus NONE = new SpellProgressStatus(0, 0, 0, 0);
+
+		public boolean active() {
+			return maxHealth > 0 || durationTicks > 0;
+		}
+	}
 
 	@Override
 	public void onClone(boolean isWasDeath) {
@@ -97,6 +107,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			playerSpellActive = false;
 			spellMovementRestricted = false;
 			spellInvulnerable = false;
+			playerSpellHealth = 0;
+			playerSpellMaxHealth = 0;
+			playerSpellElapsedTicks = 0;
+			playerSpellDurationTicks = 0;
 			forcedDanmakuCombat = false;
 			combatAdminBypass = false;
 			statusInitialized = false;
@@ -713,6 +727,19 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return hidden;
 	}
 
+	public SpellProgressStatus getPlayerSpellStatus() {
+		return new SpellProgressStatus(playerSpellHealth, playerSpellMaxHealth,
+				playerSpellElapsedTicks, playerSpellDurationTicks);
+	}
+
+	public void setPlayerSpellStatus(SpellProgressStatus status) {
+		playerSpellHealth = Math.max(0, status.health());
+		playerSpellMaxHealth = Math.max(0, status.maxHealth());
+		playerSpellElapsedTicks = Math.max(0, status.elapsedTicks());
+		playerSpellDurationTicks = Math.max(0, status.durationTicks());
+		dirty = true;
+	}
+
 	public void sync() {
 		if (player instanceof ServerPlayer sp)
 			HOLDER.network.toClientSyncAll(sp);
@@ -731,13 +758,15 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			if (!(sl.getEntity(id) instanceof ServerPlayer target)) continue;
 			var cap = HOLDER.get(target);
 			int maxResource = GrazeHelper.getMaxResource(target) * SHARD;
+			var spell = SpellContainer.activeSpellStatus(target);
 			YoukaisHomecoming.HANDLER.toClientPlayer(PvpDanmakuStatusToClient.status(
 					target.getId(),
 					target.getGameProfile().getName(),
 					cap.getLife(),
 					cap.getBomb(),
 					maxResource,
-					maxResource
+					maxResource,
+					spell
 			), sp);
 		}
 	}

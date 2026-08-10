@@ -32,17 +32,7 @@ public final class CertificationHud {
 		int width = mc.getWindow().getGuiScaledWidth();
 		var font = mc.font;
 		if (state.active()) {
-			String status;
-			if (state.state() == CertificationState.PREPARE) {
-				status = "preparing...";
-			} else {
-				int remaining = Math.max(0, state.targetTicks() - state.elapsedTicks());
-				status = String.format(java.util.Locale.ROOT, "%.1fs | Break HP %d/%ds",
-						remaining / 20.0,
-						Math.max(0, state.healthLeft()), state.healthTotal());
-			}
-			gui.drawString(font, Component.literal("[YH] No-Hit " + status),
-					width / 2 - 40, 6, 0xFFFFFFFF);
+			// Active HP/time is projected on the player's spell circle.
 			return;
 		}
 		if (state.state() == CertificationState.SUCCESS) {

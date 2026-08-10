@@ -350,6 +350,15 @@ public class DanmakuProxyEntity extends PathfinderMob
 		return isRemoved() || (spellTickCount >= maxDuration && danmakuHolder.isEmpty());
 	}
 
+	public int spellElapsedTicks() {
+		return Math.max(0, spellTickCount);
+	}
+
+	/** Zero means natural end / no fixed countdown. */
+	public int spellDurationTicks() {
+		return Math.max(0, maxDuration);
+	}
+
 	// ==================== Entity properties: invisible, invulnerable, no AI ====================
 
 	@Override

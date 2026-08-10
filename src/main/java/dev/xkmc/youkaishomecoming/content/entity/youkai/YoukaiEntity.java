@@ -125,6 +125,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public ResourceLocation clientPhaseId;
 	public int clientPhaseTick;
 	public boolean clientInDanmakuCombat;
+	public int clientSpellMaxHealth;
+	public int clientSpellElapsedTicks;
+	public int clientSpellDurationTicks;
+	public int clientSpellStateReceivedTick;
 
 	public YoukaiEntity(EntityType<? extends YoukaiEntity> pEntityType, Level pLevel) {
 		this(pEntityType, pLevel, 10);
@@ -374,6 +378,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 		}
 		super.aiStep();
 		if (!level().isClientSide()) {
+			if ((tickCount & 15) == 0) {
+				syncSpellState();
+			}
 			if (!hasEffect(YHEffects.BEATEN.get())) {
 				dodgePilot.tick(this);
 			}
@@ -768,16 +775,23 @@ public abstract class YoukaiEntity extends PathfinderMob
 		ResourceLocation spellId = null;
 		ResourceLocation phaseId = null;
 		int phaseTick = 0;
+		int spellMaxHealth = 0;
+		int spellElapsedTicks = 0;
+		int spellDurationTicks = 0;
 		boolean inCombat = getTarget() != null;
 		if (spellRuntime != null) {
 			spellId = spellRuntime.getDefinition().id;
 			phaseId = spellRuntime.getCurrentPhaseId();
 			phaseTick = spellRuntime.getPhaseTick();
+			spellMaxHealth = spellRuntime.getSpellMaxHealth();
+			spellElapsedTicks = spellRuntime.getSpellElapsedTicks();
+			spellDurationTicks = spellRuntime.getSpellDurationTicks();
 		} else if (spellCard != null && spellCard.spellId != null) {
 			spellId = spellCard.spellId;
 		}
 		YoukaisHomecoming.HANDLER.toTrackingPlayers(
-				new SpellStateToClient(getId(), spellId, phaseId, phaseTick, inCombat), this);
+				new SpellStateToClient(getId(), spellId, phaseId, phaseTick, inCombat,
+						spellMaxHealth, spellElapsedTicks, spellDurationTicks), this);
 	}
 
 	public void setSpellRuntime(@Nullable SpellRuntime runtime) {

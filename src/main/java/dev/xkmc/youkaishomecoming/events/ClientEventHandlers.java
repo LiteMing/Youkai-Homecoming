@@ -104,7 +104,8 @@ public class ClientEventHandlers {
 									 @org.jetbrains.annotations.Nullable ResourceLocation spellId,
 									 @org.jetbrains.annotations.Nullable ResourceLocation phaseId,
 									 int phaseTick,
-									 boolean inDanmakuCombat) {
+									 boolean inDanmakuCombat,
+									 int spellMaxHealth, int spellElapsedTicks, int spellDurationTicks) {
 		var level = Minecraft.getInstance().level;
 		if (level == null) return;
 		if (level.getEntity(entityId) instanceof YoukaiEntity e) {
@@ -112,6 +113,10 @@ public class ClientEventHandlers {
 			e.clientPhaseId = phaseId;
 			e.clientPhaseTick = phaseTick;
 			e.clientInDanmakuCombat = inDanmakuCombat;
+			e.clientSpellMaxHealth = Math.max(0, spellMaxHealth);
+			e.clientSpellElapsedTicks = Math.max(0, spellElapsedTicks);
+			e.clientSpellDurationTicks = Math.max(0, spellDurationTicks);
+			e.clientSpellStateReceivedTick = e.tickCount;
 		}
 	}
 }

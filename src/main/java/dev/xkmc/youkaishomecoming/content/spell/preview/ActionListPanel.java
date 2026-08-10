@@ -150,8 +150,12 @@ public class ActionListPanel {
 	private ActionPath dragSourcePath = null;
 	private String dragSourceSection = null;
 	private double dragStartX, dragStartY;
+	private int dragSourceIndent = 0;
 	private static final int DRAG_THRESHOLD = 4;
+	private static final int DRAG_INDENT_THRESHOLD = 12;
 	private boolean dragThresholdMet = false;
+	@Nullable
+	private ActionPath pendingSingleSelection = null;
 
 	// Scrollbar drag state
 	private boolean scrollbarDragging = false;
@@ -915,6 +919,7 @@ public class ActionListPanel {
 				boolean shiftDown = net.minecraft.client.gui.screens.Screen.hasShiftDown();
 
 				if (ctrlDown) {
+					pendingSingleSelection = null;
 					// Ctrl+click: toggle individual selection
 					if (selectedPaths.contains(row.path)) {
 						selectedPaths.remove(row.path);
@@ -926,6 +931,7 @@ public class ActionListPanel {
 						if (selectedPath == null) selectedPath = row.path;
 					}
 				} else if (shiftDown && selectedPath != null) {
+					pendingSingleSelection = null;
 					// Shift+click: range select between selectedPath and clicked row
 					selectedPaths.clear();
 					boolean inRange = false;
@@ -945,10 +951,12 @@ public class ActionListPanel {
 					selectedPaths.add(selectedPath);
 					selectedPaths.add(row.path);
 				} else if (selectedPaths.size() > 1 && selectedPaths.contains(row.path)) {
-					// Clicking one member of an existing multi-selection prepares a
-					// group drag without collapsing the selection first.
+					// Preserve the group until release so this gesture can still turn
+					// into a multi-node drag. A plain click collapses it on release.
 					selectedPath = row.path;
+					pendingSingleSelection = row.path;
 				} else {
+					pendingSingleSelection = null;
 					selectedPaths.clear();
 					selectedPaths.add(row.path);
 					selectedPath = row.path;
@@ -963,6 +971,7 @@ public class ActionListPanel {
 					dragSourceSection = row.path.section;
 					dragStartX = mouseX;
 					dragStartY = mouseY;
+					dragSourceIndent = row.indent;
 					dragThresholdMet = false;
 				}
 				return true;
@@ -992,11 +1001,12 @@ public class ActionListPanel {
 			if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return false;
 			dragThresholdMet = true;
 			isDragging = true;
+			pendingSingleSelection = null;
 		}
 
 		// Find the insertion point closest to mouse Y
 		buildRowsIfDirty();
-		updateDragInsertPoint(mouseY);
+		updateDragInsertPoint(mouseX, mouseY);
 		return true;
 	}
 
@@ -1009,6 +1019,8 @@ public class ActionListPanel {
 		boolean wasDragging = isDragging;
 		if (isDragging && dragSourcePath != null) {
 			performDrop();
+		} else if (pendingSingleSelection != null) {
+			collapseSelectionTo(pendingSingleSelection);
 		}
 		cancelDrag();
 		return wasDragging;
@@ -1025,6 +1037,7 @@ public class ActionListPanel {
 		dragBranchTarget = null;
 		dragBranchHighlightY = -1;
 		dragThresholdMet = false;
+		pendingSingleSelection = null;
 		if (!dragExpandedPaths.isEmpty()) {
 			dragExpandedPaths.clear();
 			dirty = true;
@@ -1032,12 +1045,12 @@ public class ActionListPanel {
 	}
 
 	/**
-	 * Update the drag insertion indicator based on mouse Y.
+	 * Update the drag insertion indicator based on mouse position.
 	 * Checks two kinds of drop targets:
 	 * 1. Gaps between top-level action rows in the same section (reorder)
 	 * 2. ADD_BUTTON rows (insert into branch of Conditional/Repeat)
 	 */
-	private void updateDragInsertPoint(double mouseY) {
+	private void updateDragInsertPoint(double mouseX, double mouseY) {
 		dragIndicatorY = -1;
 		dragInsertIndex = -1;
 		dragInsertSection = null;
@@ -1045,19 +1058,21 @@ public class ActionListPanel {
 		dragBranchHighlightY = -1;
 
 		List<ActionPath> sourcePaths = getDragSourcePaths();
+		int intentIndent = getDragIntentIndent(mouseX);
 		double bestDist = Double.MAX_VALUE;
 
-		// === Check ACTION rows that have children (auto-expand for drag) ===
+		// Expand a potential parent only after the cursor explicitly enters its
+		// child lane. Vertical dragging in the sibling lane must never open it.
 		boolean expandedAny = false;
 		for (Row row : rows) {
 			if (row.kind == RowKind.ACTION && row.path != null && row.action != null) {
 				SpellAction inner = row.action instanceof SpellActions.DisabledAction da ? da.inner() : row.action;
-				if (hasChildren(inner) && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
-					// Auto-expand this node during drag so its add-buttons become visible
+				if (hasChildren(inner) && intentIndent > row.indent
+						&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 					String key = collapseKey(row.path);
-					collapsedPaths.remove(key);
-					dragExpandedPaths.add(key);
-					expandedAny = true;
+					if (collapsedPaths.remove(key) | dragExpandedPaths.add(key)) {
+						expandedAny = true;
+					}
 				}
 			}
 		}
@@ -1070,13 +1085,27 @@ public class ActionListPanel {
 		// empty onEnter/onTick/onExit/onDamage lists usable without a placeholder.
 		for (Row row : rows) {
 			if (row.kind != RowKind.SECTION) continue;
-			if (mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
+			if (intentIndent == 0 && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 				dragIndicatorY = row.y + ROW_HEIGHT;
 				dragInsertIndex = 0;
 				dragInsertSection = row.section;
 				dragInsertContainerPrefix = null;
 				return;
 			}
+		}
+
+		// Directly hovering an action in the same indentation lane means sibling
+		// reorder. Its lower half targets the gap after the entire subtree.
+		for (Row row : rows) {
+			if (row.kind != RowKind.ACTION || row.path == null || row.indent != intentIndent) continue;
+			if (mouseY < row.y || mouseY >= row.y + ROW_HEIGHT) continue;
+			List<PathEntry> prefix = row.path.path().subList(0, row.path.path().size() - 1);
+			boolean after = mouseY >= row.y + ROW_HEIGHT / 2.0;
+			dragIndicatorY = after ? findBottomOfRowSubtree(row) : row.y;
+			dragInsertIndex = row.path.leafIndex() + (after ? 1 : 0);
+			dragInsertSection = row.path.section();
+			dragInsertContainerPrefix = prefix.isEmpty() ? null : new ArrayList<>(prefix);
+			return;
 		}
 
 		// === Check ADD_BUTTON rows (branch insert targets) ===
@@ -1088,7 +1117,7 @@ public class ActionListPanel {
 				continue;
 			}
 			// Check if mouse is directly over this add-button row
-			if (mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
+			if (row.indent == intentIndent && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 				double dist = Math.abs(mouseY - (row.y + ROW_HEIGHT / 2.0));
 				if (dist < bestDist) {
 					bestDist = dist;
@@ -1123,6 +1152,7 @@ public class ActionListPanel {
 		}
 		for (var entry : containers.entrySet()) {
 			List<Row> group = entry.getValue();
+			if (group.isEmpty() || group.get(0).indent != intentIndent) continue;
 			String section = entry.getKey().section();
 			List<PathEntry> prefix = entry.getKey().prefix();
 			if (!prefix.isEmpty()) {
@@ -1154,7 +1184,7 @@ public class ActionListPanel {
 		// Empty sections have no action container in the map. Offer the gap just
 		// below their header when it is the nearest target.
 		for (Row row : rows) {
-			if (row.kind != RowKind.SECTION || getSectionList(row.section) == null
+			if (intentIndent != 0 || row.kind != RowKind.SECTION || getSectionList(row.section) == null
 					|| !getSectionList(row.section).isEmpty()) continue;
 			int gapY = row.y + ROW_HEIGHT;
 			double dist = Math.abs(mouseY - gapY);
@@ -1168,6 +1198,24 @@ public class ActionListPanel {
 				dragBranchHighlightY = -1;
 			}
 		}
+	}
+
+	private int getDragIntentIndent(double mouseX) {
+		double delta = mouseX - dragStartX;
+		double distance = Math.abs(delta);
+		if (distance < DRAG_INDENT_THRESHOLD) return dragSourceIndent;
+		int levels = 1 + (int) ((distance - DRAG_INDENT_THRESHOLD) / INDENT_PX);
+		return Math.max(0, dragSourceIndent + (delta < 0 ? -levels : levels));
+	}
+
+	private void collapseSelectionTo(ActionPath path) {
+		SpellAction action = getActionAt(path);
+		selectedPaths.clear();
+		selectedPaths.add(path);
+		selectedPath = path;
+		selectedAddTarget = null;
+		dirty = true;
+		if (action != null) onSelect.accept(action, path);
 	}
 
 	private boolean isInsideAnySource(ActionPath path, List<ActionPath> sourcePaths) {

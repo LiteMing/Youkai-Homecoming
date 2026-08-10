@@ -267,7 +267,7 @@ public class CertificationController {
 		}
 		elapsedTicks++;
 		// timeout countdown: failing to break the spell before the timeout is a loss
-		if (elapsedTicks >= quote.durationTicks()) {
+		if (quote.durationTicks() > 0 && elapsedTicks >= quote.durationTicks()) {
 			fail(e, CertificationFailReason.TIMEOUT);
 		} else if ((elapsedTicks & 63) == 0) {
 			logState("tick");

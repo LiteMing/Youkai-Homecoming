@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicy;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
+import dev.xkmc.youkaishomecoming.content.spell.payment.CastCost;
 
 import java.util.Set;
 
@@ -35,6 +36,7 @@ public class SpellAnalyzerSelfTest {
 
 	public static void main(String[] args) throws Exception {
 		testHeadlessFlagParsing();
+		testCastCostBuckets();
 		testSelfCheckFixtureJsonValid();
 		testConstantBounded();
 		testRandomRangeBounded();
@@ -82,6 +84,14 @@ public class SpellAnalyzerSelfTest {
 	}
 
 	// ----------------------------------------------------------------- tests
+
+	private static void testCastCostBuckets() {
+		check("cast cost 0t baseline", CastCost.unitsForDuration(0) == 100);
+		check("cast cost 1t rounds to one bucket", CastCost.unitsForDuration(1) == 120);
+		check("cast cost 20t stays in one bucket", CastCost.unitsForDuration(20) == 120);
+		check("cast cost 21t rounds to two buckets", CastCost.unitsForDuration(21) == 140);
+		check("cast cost 1200t", CastCost.unitsForDuration(1200) == 1300);
+	}
 
 	/**
 	 * Headless flags must parse strictly: "false"/"0"/empty never enable the switch

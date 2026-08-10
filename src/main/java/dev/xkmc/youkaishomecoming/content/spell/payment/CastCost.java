@@ -4,9 +4,9 @@ package dev.xkmc.youkaishomecoming.content.spell.payment;
  * Cast cost model (Phase 7+ balance): cost is driven by the spell duration
  * only — projectile volume no longer affects bomb/XP costs.
  * <p>
- * Bomb baseline: 1 bomb for the first second, +0.2 bombs per second up to 5
- * seconds, +0.4 bombs per second beyond 5. Abstract units: 100 units = 1 bomb
- * (5 XP levels baseline), so the formula is converted directly to units.
+	 * Bomb baseline: 1 bomb, then +0.2 bombs for every 20-tick bucket
+	 * (partial buckets count as one bucket).
+ * Abstract units: 100 units = 1 bomb (5 XP levels baseline).
  */
 public final class CastCost {
 
@@ -15,8 +15,8 @@ public final class CastCost {
 
 	/** Bombs needed for a spell of the given duration (ticks), minimum 1. */
 	public static double bombsForDuration(int durationTicks) {
-		double seconds = Math.max(0, durationTicks / 20.0);
-		return 1.0 + 0.2 * Math.min(seconds, 5.0) + 0.4 * Math.max(0, seconds - 5.0);
+		long steps = (Math.max(0, durationTicks) + 19L) / 20L;
+		return 1.0 + steps * 0.2;
 	}
 
 	/** Abstract units (100 = 1 bomb / 5 XP levels), minimum 100. */

@@ -105,8 +105,8 @@ public class CertificationScreen extends Screen {
 	}
 
 	private static int clampDuration(int requested) {
-		return Math.max(YHModConfig.COMMON.certificationMinDurationTicks.get(),
-				Math.min(YHModConfig.COMMON.certificationMaxDurationTicks.get(), requested));
+		return Math.max(0, Math.min(1200, Math.min(YHModConfig.COMMON.certificationMaxDurationTicks.get(),
+				Math.max(YHModConfig.COMMON.certificationMinDurationTicks.get(), requested))));
 	}
 
 	private void startCertification() {
@@ -132,9 +132,10 @@ public class CertificationScreen extends Screen {
 			// Info panel: fixed timeout/HP from the spell definition, final cast
 			// duration of the certified item (reward curve) and the cost breakdown.
 			String durationLine = String.format(Locale.ROOT,
-					"Timeout: %ds  |  Spell HP: %d  |  Final cast: %ds  |  Arena: %.0f",
-					quote.durationTicks / 20, quote.spellHp,
-					quote.rewardDurationTicks / 20, quote.arenaHalfSize);
+					"Timeout: %dt  |  Spell HP: %d  |  Final cast: %dt (ratio %.2f)  |  Arena: %.0f",
+				quote.durationTicks, quote.spellHp,
+					quote.rewardDurationTicks, quote.durationTicks <= 0 ? 0.0
+							: quote.rewardDurationTicks / (double) quote.durationTicks, quote.arenaHalfSize);
 			String costLine = String.format(Locale.ROOT,
 					"Cost: start %d (≈%d XP) / cast %d / issue %d  |  maxSpawn/tick: %d",
 					quote.startCostUnits, xpLevels(quote.startCostUnits), quote.castCostUnits,

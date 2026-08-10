@@ -50,6 +50,7 @@
       "spell_cost_xp": "弹幕战外：每次释放消耗 %s 级经验",
       "spell_cost_no_bomb": "BOMB 不足（需要 %s，现有 %s）",
       "spell_cost_no_xp": "经验等级不足（需要 %s，现有 %s）",
+      "spell_duration": "持续时间：%s tick",
       "spell_single_use": "一次性符卡：释放后消耗",
       "spell_unfinished": "未完成符卡：右键可再次编辑，认证后成为完整符卡",
       "spell_op_quota": "实验性节点可用：%s 个（传送/清除敌弹/清屏/受击钩子/弹幕钩子）",

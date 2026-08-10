@@ -34,6 +34,7 @@ public enum YHLangData {
 	SPELL_COST_NO_BOMB("tooltip.spell_cost_no_bomb", "Not enough BOMB (needs %s, have %s)", 2, ChatFormatting.RED),
 	SPELL_COST_NO_XP("tooltip.spell_cost_no_xp", "Not enough XP levels (needs %s, have %s)", 2, ChatFormatting.RED),
 	SPELL_HP("tooltip.spell_hp", "Spell HP: %s", 1, ChatFormatting.RED),
+	SPELL_DURATION("tooltip.spell_duration", "Duration: %s ticks", 1, ChatFormatting.DARK_GRAY),
 	CERT_DISABLED("cert.disabled", "Spell certification is disabled on this server", 0, ChatFormatting.RED),
 	CERT_QUOTE_FAIL("cert.quote_fail", "Certification quote failed: %s", 1, ChatFormatting.RED),
 	CERT_START_FAIL("cert.start_fail", "Certification start failed: %s", 1, ChatFormatting.RED),

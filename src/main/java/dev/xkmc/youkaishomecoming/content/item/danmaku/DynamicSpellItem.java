@@ -282,6 +282,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			if (CertifiedSpellValidator.isCertified(stack)) {
 				// Certified cards always use the immutable reward duration.
 				duration = CertifiedSpellValidator.getCertifiedCastDuration(stack);
+				// A zero-tick reward is the explicit natural-end variant, not an
+				// immediately expiring proxy.
+				if (duration == 0) duration = DURATION_NATURAL;
 			}
 			DanmakuProxyEntity proxy = new DanmakuProxyEntity(
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
@@ -321,7 +324,10 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			list.add(YHLangData.STG_TOGGLE_TIP.get());
 		}
 		SpellDefinition def = getSpellDefinition(stack);
-		SpellItemCost.appendCostTooltip(list, def != null ? def.itemForm.duration() : 0);
+		int castDuration = CertifiedSpellValidator.isCertified(stack)
+				? CertifiedSpellValidator.getCertifiedCastDuration(stack)
+				: def != null ? def.itemForm.duration() : 0;
+		SpellItemCost.appendCostTooltip(list, castDuration);
 		int quota = getOpQuota(stack);
 		if (quota > 0) {
 			// boss-base draft: how many experimental nodes this draft may use
@@ -338,9 +344,10 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			if (!CertifiedSpellValidator.isCertified(stack)) {
 				list.add(YHLangData.SPELL_UNFINISHED.get());
 			}
-			int dur = getStackDuration(stack);
-			if (dur > 0) {
-				list.add(Component.literal("Duration: " + dur + "t").withStyle(ChatFormatting.DARK_GRAY));
+			int dur = CertifiedSpellValidator.isCertified(stack)
+					? CertifiedSpellValidator.getCertifiedCastDuration(stack) : getStackDuration(stack);
+			if (dur >= 0) {
+				list.add(YHLangData.SPELL_DURATION.get(dur).withStyle(ChatFormatting.DARK_GRAY));
 			}
 		} else {
 			String id = stack.hasTag() ? stack.getTag().getString(TAG_SPELL_ID) : "";

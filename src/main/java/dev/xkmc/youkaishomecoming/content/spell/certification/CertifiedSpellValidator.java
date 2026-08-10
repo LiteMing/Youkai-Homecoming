@@ -66,7 +66,8 @@ public final class CertifiedSpellValidator {
 		if (certificate == null) return null;
 		if (certificate.certificateId() == null
 				|| !hash.equals(certificate.definitionHash())
-				|| certificate.certifiedDuration() <= 0
+				|| certificate.certifiedDuration() < 0
+				|| certificate.certifiedDuration() > 1200
 				|| !certificate.certificateId().toString().equals(stack.getTag().getString(TAG_CERTIFICATE_ID))
 				|| getCertifiedDuration(stack) != certificate.certifiedDuration()
 				|| getCertifiedCost(stack) != certificate.costUnits()

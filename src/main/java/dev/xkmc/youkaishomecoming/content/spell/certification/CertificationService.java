@@ -70,8 +70,7 @@ public final class CertificationService {
 		// Start fee is a fixed anti-spam toll (design §14), decoupled from spell power —
 		// spam protection lives in maxConcurrentTrials and quote expiration.
 		long startCost = YHModConfig.COMMON.certificationStartCostUnits.get();
-		// Cast/issue cost is duration-driven only (1 + 0.2/s up to 5s, +0.4/s
-		// beyond); projectile volume no longer affects bomb/XP costs.
+		// Cast/issue cost is duration-driven only: +0.2 BOMB / +1 XP per 20 ticks.
 		int rewardDuration = rewardDurationTicks(durationTicks);
 		long castCost = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(rewardDuration);
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
@@ -104,8 +103,9 @@ public final class CertificationService {
 	}
 
 	public static int clampDuration(int requested) {
-		return Math.max(YHModConfig.COMMON.certificationMinDurationTicks.get(),
-				Math.min(YHModConfig.COMMON.certificationMaxDurationTicks.get(), requested));
+		int min = Math.max(0, Math.min(1200, YHModConfig.COMMON.certificationMinDurationTicks.get()));
+		int max = Math.max(min, Math.min(1200, YHModConfig.COMMON.certificationMaxDurationTicks.get()));
+		return Math.max(min, Math.min(max, requested));
 	}
 
 	public static double clampHalfSize(double requested) {
@@ -268,8 +268,8 @@ public final class CertificationService {
 
 	/**
 	 * Reward cast duration curve: the certified item runs for a fraction of the
-	 * certified timeout — 1/3 at the shortest certification, falling linearly
-	 * to 1/10 at the longest (curve endpoints configurable).
+	 * certified timeout. The default is 1:1; the two endpoint settings remain
+	 * configurable for backwards-compatible server tuning.
 	 */
 	public static int rewardDurationTicks(int certifiedDurationTicks) {
 		int minD = YHModConfig.COMMON.certificationMinDurationTicks.get();
@@ -279,6 +279,6 @@ public final class CertificationService {
 		double shortRatio = YHModConfig.COMMON.certificationRewardDurationShortRatio.get();
 		double longRatio = YHModConfig.COMMON.certificationRewardDurationLongRatio.get();
 		double ratio = shortRatio + (longRatio - shortRatio) * t;
-		return Math.max(20, (int) Math.round(certifiedDurationTicks * ratio));
+		return Math.max(0, Math.min(1200, (int) Math.round(certifiedDurationTicks * ratio)));
 	}
 }

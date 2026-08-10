@@ -29,9 +29,8 @@ public final class SpellItemCost {
 	public static boolean tryPay(ServerPlayer sp, int durationTicks) {
 		SpellCostContext context = YHStgApi.isInDanmakuSession(sp)
 				? SpellCostContext.SPELL_CAST_STG : SpellCostContext.SPELL_CAST_NON_STG;
-		long costUnits = durationTicks > 0
-				// duration-driven cost: 1 + 0.2/s (first 5s) + 0.4/s beyond; projectile
-				// volume no longer affects bomb/XP costs
+		long costUnits = durationTicks >= 0
+				// duration-driven cost: 1 bomb / 5 XP baseline, +0.2 / +1 per 20 ticks
 				? dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(durationTicks)
 				: legacyConfigUnits(context);
 		return tryPayUnits(sp, costUnits);
@@ -46,9 +45,12 @@ public final class SpellItemCost {
 			return true;
 		}
 		if (context == SpellCostContext.SPELL_CAST_STG) {
-			sp.displayClientMessage(YHLangData.SPELL_COST_NO_BOMB.get(costUnits, YHStgApi.getBomb(sp)), false);
+			sp.displayClientMessage(YHLangData.SPELL_COST_NO_BOMB.get(
+					String.format(java.util.Locale.ROOT, "%.1f", costUnits / 100.0),
+					String.format(java.util.Locale.ROOT, "%.1f", YHStgApi.getBomb(sp))), false);
 		} else {
-			sp.displayClientMessage(YHLangData.SPELL_COST_NO_XP.get(costUnits, sp.experienceLevel), false);
+			sp.displayClientMessage(YHLangData.SPELL_COST_NO_XP.get(
+					Math.max(1, (costUnits + 19) / 20), sp.experienceLevel), false);
 		}
 		return false;
 	}
@@ -56,7 +58,8 @@ public final class SpellItemCost {
 	/** Legacy fixed config cost (used by cards without a declared duration). */
 	private static long legacyConfigUnits(SpellCostContext context) {
 		return context == SpellCostContext.SPELL_CAST_STG
-				? YHModConfig.COMMON.spellBombCost.get() : YHModConfig.COMMON.spellXpCost.get();
+				? YHModConfig.COMMON.spellBombCost.get() * 100L
+				: YHModConfig.COMMON.spellXpCost.get() * 20L;
 	}
 
 	public static void appendCostTooltip(List<Component> list, int durationTicks) {

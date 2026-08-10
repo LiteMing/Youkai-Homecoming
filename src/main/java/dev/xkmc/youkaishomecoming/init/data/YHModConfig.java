@@ -313,15 +313,15 @@ public class YHModConfig {
 				certificationEnabled = builder.comment("Master switch for the survival spell certification system")
 						.translation("config.youkaishomecoming.common.certification.enabled")
 						.define("enabled", true);
-				certificationMinDurationTicks = builder.comment("Minimum certification timeout in ticks (60s default; timeout is the natural countdown)")
+				certificationMinDurationTicks = builder.comment("Minimum certification timeout in ticks (0 means no fixed timeout)")
 						.translation("config.youkaishomecoming.common.certification.minDurationTicks")
-						.defineInRange("minDurationTicks", 1200, 100, 6000);
-				certificationMaxDurationTicks = builder.comment("Maximum certification timeout in ticks (120s cap; timeout is the natural countdown)")
+						.defineInRange("minDurationTicks", 0, 0, 1200);
+				certificationMaxDurationTicks = builder.comment("Maximum certification timeout in ticks (1200 tick cap)")
 						.translation("config.youkaishomecoming.common.certification.maxDurationTicks")
-						.defineInRange("maxDurationTicks", 2400, 600, 60000);
+						.defineInRange("maxDurationTicks", 1200, 0, 1200);
 				certificationDurationPresets = builder.comment("Preset certification durations in ticks (editor quick pick)")
 						.translation("config.youkaishomecoming.common.certification.durationPresets")
-						.defineListAllowEmpty("durationPresets", java.util.List.of(600, 1200, 2400), o -> o instanceof Integer);
+						.defineListAllowEmpty("durationPresets", java.util.List.of(0, 600, 1200), o -> o instanceof Integer);
 				certificationMinArenaHalfSize = builder.comment("Minimum certification arena half size in blocks")
 						.translation("config.youkaishomecoming.common.certification.minArenaHalfSize")
 						.defineInRange("minArenaHalfSize", 6, 4, 32);
@@ -388,12 +388,12 @@ public class YHModConfig {
 				certificationRewardNeverDespawn = builder.comment("Certified spell reward items never despawn naturally")
 						.translation("config.youkaishomecoming.common.certification.rewardNeverDespawn")
 						.define("rewardNeverDespawn", true);
-				certificationRewardDurationShortRatio = builder.comment("Reward cast duration as a fraction of the certified duration for the shortest certification (curve endpoint, 1/3)")
+				certificationRewardDurationShortRatio = builder.comment("Reward cast duration ratio for the shortest certification (default 1:1)")
 						.translation("config.youkaishomecoming.common.certification.rewardDurationShortRatio")
-						.defineInRange("rewardDurationShortRatio", 0.3333, 0.05, 1.0);
-				certificationRewardDurationLongRatio = builder.comment("Reward cast duration as a fraction of the certified duration for the longest certification (curve endpoint, 1/10)")
+						.defineInRange("rewardDurationShortRatio", 1.0, 0.0, 1.0);
+				certificationRewardDurationLongRatio = builder.comment("Reward cast duration ratio for the longest certification (default 1:1)")
 						.translation("config.youkaishomecoming.common.certification.rewardDurationLongRatio")
-						.defineInRange("rewardDurationLongRatio", 0.1, 0.02, 1.0);
+						.defineInRange("rewardDurationLongRatio", 1.0, 0.0, 1.0);
 				certificationPlayerUseHpRatio = builder.comment("When a player uses a certified spell card, its break HP bar (boss bar) is this fraction of the certification HP (default 0.5)")
 						.translation("config.youkaishomecoming.common.certification.playerUseHpRatio")
 						.defineInRange("playerUseHpRatio", 0.5, 0.05, 1.0);
@@ -646,7 +646,7 @@ public class YHModConfig {
 			{
 				customSpellMaxDuration = builder.comment("Max duration of custom spell allowed")
 						.translation("config.youkaishomecoming.common.custom_spell.customSpellMaxDuration")
-						.defineInRange("customSpellMaxDuration", 60, 60, 1000);
+						.defineInRange("customSpellMaxDuration", 1200, 0, 1200);
 				ringSpellDanmakuPerItemCost = builder.comment("Ring Spell: Max number of bullet allowed per item cost")
 						.translation("config.youkaishomecoming.common.custom_spell.ringSpellDanmakuPerItemCost")
 						.defineInRange("ringSpellDanmakuPerItemCost", 32, 1, 1024);

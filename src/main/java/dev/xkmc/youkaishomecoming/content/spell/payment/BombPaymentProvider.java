@@ -22,19 +22,16 @@ public class BombPaymentProvider implements SpellPaymentProvider {
 
 	@Override
 	public PaymentQuote quote(ServerPlayer player, long costUnits, SpellCostContext context) {
-		long bomb = costUnits;
-		if (context == SpellCostContext.SPELL_CAST_STG) {
-			bomb = YHModConfig.COMMON.spellBombCost.get();
-		} else {
-			// abstract units -> bomb display units: 100 units = 1 bomb (Phase 7 rate)
-			bomb = Math.max(1, (long) Math.ceil(costUnits / 100.0));
-		}
-		return new PaymentQuote(this, context, costUnits, bomb, "bomb");
+		// STG resources use fifths of a bomb internally, so 20 abstract units
+		// (0.2 bomb) map to one raw resource unit. Keeping this conversion here
+		// preserves fractional costs while the public API continues to expose bombs.
+		long rawBomb = Math.max(1, (long) Math.ceil(costUnits / 20.0));
+		return new PaymentQuote(this, context, costUnits, rawBomb, "bomb");
 	}
 
 	@Override
 	public boolean canAfford(ServerPlayer player, PaymentQuote quote) {
-		return YHStgApi.getBomb(player) >= quote.amount();
+		return YHStgApi.getBombRaw(player) >= quote.amount();
 	}
 
 	@Override
@@ -42,12 +39,12 @@ public class BombPaymentProvider implements SpellPaymentProvider {
 		if (!canAfford(player, quote)) {
 			return PaymentResult.failure("not enough bomb");
 		}
-		YHStgApi.addBomb(player, -quote.amount());
+		YHStgApi.addBombRaw(player, (int) -quote.amount());
 		return PaymentResult.success(new PaymentReceipt(this, quote.context(), quote.amount()));
 	}
 
 	@Override
 	public void refund(ServerPlayer player, PaymentReceipt receipt) {
-		YHStgApi.addBomb(player, receipt.amount());
+		YHStgApi.addBombRaw(player, (int) receipt.amount());
 	}
 }

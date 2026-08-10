@@ -21,13 +21,8 @@ public class ExperiencePaymentProvider implements SpellPaymentProvider {
 
 	@Override
 	public PaymentQuote quote(ServerPlayer player, long costUnits, SpellCostContext context) {
-		long levels = costUnits;
-		if (context == SpellCostContext.SPELL_CAST_NON_STG) {
-			levels = YHModConfig.COMMON.spellXpCost.get();
-		} else {
-			// abstract units -> XP levels: 20 units = 1 level (100 units = 5 levels baseline)
-			levels = Math.max(1, (long) Math.ceil(costUnits / 20.0));
-		}
+		// 20 abstract units = one XP level (100 units = 5 levels baseline).
+		long levels = Math.max(1, (long) Math.ceil(costUnits / 20.0));
 		return new PaymentQuote(this, context, costUnits, levels, "experience");
 	}
 

@@ -129,14 +129,20 @@ public class SpellContainer extends ConditionalToken {
 				proxy.spellElapsedTicks(), proxy.spellDurationTicks());
 	}
 
+	/** True while a set_spell_health plan is protecting the active player spell. */
+	public static boolean hasActiveSpellBar(Player player) {
+		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
+		return data.spellBarMax > 0 && data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved());
+	}
+
 	@Nullable
 	private net.minecraft.world.phys.Vec3 lockPos;
 
 	// ------------------------------------------------------------ player-use spell bar
 
 	/**
-	 * Certified spell cards keep a server-side break HP value (a fraction of the
-	 * certification HP). The value is projected onto the player's spell circle;
+	 * Complete spell cards keep a server-side break HP value from their declared
+	 * health plan. The value is projected onto the player's spell circle;
 	 * each miss shrinks it by 1 and a zero bar breaks the spell and costs one LIFE.
 	 */
 	public static void startSpellBar(ServerPlayer sp, int maxHp, @Nullable String cardKey, Component spellName) {
@@ -146,6 +152,19 @@ public class SpellContainer extends ConditionalToken {
 		data.spellBarMax = data.spellBarValue;
 		data.spellBarCardKey = cardKey;
 		data.spellBarName = spellName.copy();
+		data.syncPlayerSpellStatus(sp);
+	}
+
+	/** Initializes cards whose health is resolved by an on-enter runtime variable. */
+	public static void initializeRuntimeSpellBar(ServerPlayer sp, DanmakuProxyEntity proxy) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		if (data.spellBarMax > 0 || !data.proxies.contains(proxy)) return;
+		var runtime = proxy.getSpellRuntime();
+		if (runtime == null || runtime.getSpellHealthTotal() <= 0) return;
+		data.spellBarValue = runtime.getSpellHealthTotal();
+		data.spellBarMax = data.spellBarValue;
+		data.spellBarCardKey = data.activeSpellCardKey;
+		data.spellBarName = runtime.getDefinition().display.displayName().copy();
 		data.syncPlayerSpellStatus(sp);
 	}
 

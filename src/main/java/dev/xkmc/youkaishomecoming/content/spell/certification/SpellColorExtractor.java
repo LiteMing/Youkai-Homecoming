@@ -8,11 +8,13 @@ import dev.xkmc.youkaishomecoming.content.spell.action.FireTextDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.ColorProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -52,6 +54,14 @@ public final class SpellColorExtractor {
 		int g = clamp(channel(base, 8) + random.nextInt(-JITTER, JITTER + 1));
 		int b = clamp(channel(base, 0) + random.nextInt(-JITTER, JITTER + 1));
 		return rgb(r, g, b);
+	}
+
+	/** Applies the shared definition-derived color used by complete spell items. */
+	public static ItemStack applyToStack(ItemStack stack, SpellDefinition def, RandomSource random) {
+		DanmakuColor color = extractWithJitter(def, random);
+		return color == null
+				? DynamicSpellItem.withRandomColor(stack, random)
+				: DynamicSpellItem.withColor(stack, color);
 	}
 
 	private static final int JITTER = 24;

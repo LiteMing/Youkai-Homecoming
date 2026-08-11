@@ -74,6 +74,33 @@ public record SpellHealthPlan(List<Segment> breakChain, int totalHealth, int tot
 		return java.util.Optional.of(analyze(root, resolver));
 	}
 
+	/** True even for runtime-evaluated declarations that cannot form a certification plan. */
+	public static boolean hasHealthDeclaration(SpellDefinition definition) {
+		return definition != null && containsHealth(definition);
+	}
+
+	/** Runtime fallback for a single health segment whose HP may be entity-scaled. */
+	public static java.util.OptionalInt singleSegmentDuration(SpellDefinition definition) {
+		if (definition == null) return java.util.OptionalInt.empty();
+		PhaseDefinition entry = definition.getPhase(definition.entryPhase);
+		if (entry == null) return java.util.OptionalInt.empty();
+		try {
+			SetSpellHealthAction health = findHealthAction(entry.onEnter, "entry phase");
+			if (health == null || health.mode() != SetSpellHealthAction.Mode.SET
+					|| health.onTimeout().isPresent() || health.onBreak().isPresent()
+					|| !(health.duration() instanceof NumberProviders.Constant duration)) {
+				return java.util.OptionalInt.empty();
+			}
+			double value = duration.value();
+			if (!Double.isFinite(value) || value < 0 || value > 1200) {
+				return java.util.OptionalInt.empty();
+			}
+			return java.util.OptionalInt.of(Math.max(0, Math.min(1200, (int) Math.round(value))));
+		} catch (IllegalArgumentException ignored) {
+			return java.util.OptionalInt.empty();
+		}
+	}
+
 	/** Analyzes a definition that is expected to declare a finite health plan. */
 	public static SpellHealthPlan analyze(SpellDefinition root,
 			Function<ResourceLocation, SpellDefinition> resolver) {

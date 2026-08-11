@@ -63,7 +63,7 @@ public final class SpellItemCost {
 	}
 
 	public static void appendCostTooltip(List<Component> list, int durationTicks) {
-		if (durationTicks > 0) {
+		if (durationTicks >= 0) {
 			long units = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(durationTicks);
 			double bombs = units / 100.0;
 			list.add(YHLangData.SPELL_COST_BOMB.get(String.format(java.util.Locale.ROOT, "%.1f", bombs)));

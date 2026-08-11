@@ -28,6 +28,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicy;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
 
@@ -36,6 +37,7 @@ import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellRewa
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellStorage;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.certification.PendingRewardStorage;
+import dev.xkmc.youkaishomecoming.content.spell.certification.SpellColorExtractor;
 import dev.xkmc.youkaishomecoming.content.spell.certification.SpellCertificate;
 
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -1044,15 +1046,33 @@ public class YHCommands {
 			return 0;
 		}
 		ServerPlayer player = ctx.getSource().getPlayerOrException();
-		ItemStack stack = duration == DynamicSpellItem.DURATION_NATURAL
+		SpellHealthPlan healthPlan = null;
+		try {
+			healthPlan = SpellHealthPlan.analyzeIfPresent(def, SpellRegistry::get).orElse(null);
+		} catch (IllegalArgumentException ignored) {
+			// Legacy and entity-scaled boss definitions remain giveable. Their runtime
+			// set_spell_health values are evaluated when the card is cast.
+		}
+		int resolvedDuration = duration;
+		if (resolvedDuration == DynamicSpellItem.DURATION_NATURAL && healthPlan != null) {
+			resolvedDuration = healthPlan.totalDurationTicks();
+		} else if (resolvedDuration == DynamicSpellItem.DURATION_NATURAL) {
+			resolvedDuration = SpellHealthPlan.singleSegmentDuration(def)
+					.orElse(DynamicSpellItem.DURATION_NATURAL);
+		}
+		ItemStack stack = resolvedDuration == DynamicSpellItem.DURATION_NATURAL
 				? DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId, singleUse)
-				: DynamicSpellItem.createStackWithDuration(YHDanmaku.DYNAMIC_SPELL.get(), spellId, duration, singleUse);
+				: DynamicSpellItem.createStackWithDuration(YHDanmaku.DYNAMIC_SPELL.get(), spellId, resolvedDuration, singleUse);
 		// OP-given cards are complete: right-click casts directly, never the editor.
 		DynamicSpellItem.setComplete(stack, true);
+		SpellColorExtractor.applyToStack(stack, def, player.getRandom());
 		if (!player.getInventory().add(stack)) {
 			player.drop(stack, false);
 		}
-		String detail = formatDuration(duration) + (singleUse ? ", single-use" : "");
+		int displayedDuration = resolvedDuration;
+		String detail = (displayedDuration == 0 ? " with no timeout" : formatDuration(displayedDuration))
+				+ (healthPlan == null ? "" : ", " + healthPlan.totalHealth() + " HP")
+				+ (singleUse ? ", single-use" : "");
 		ctx.getSource().sendSuccess(
 				() -> Component.literal("Gave spell item [" + spellId + "]" + detail + " to " + player.getName().getString()), true);
 		return 1;

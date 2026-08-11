@@ -157,6 +157,8 @@
 	"config.youkaishomecoming.common.danmaku_battle.grazeEffectiveness.tooltip": "擦弹收益的倍率",
 	"config.youkaishomecoming.common.danmaku_battle.missInvulTime": "被击中无敌时间",
 	"config.youkaishomecoming.common.danmaku_battle.missInvulTime.tooltip": "受到攻击时弹幕无敌与禁用时间（刻）",
+	"config.youkaishomecoming.common.danmaku_battle.spellHealthInvulTime": "符卡血量受击间隔",
+	"config.youkaishomecoming.common.danmaku_battle.spellHealthInvulTime.tooltip": "符卡血量条吸收弹幕命中后的无敌时间（刻）",
 	"config.youkaishomecoming.common.danmaku_battle.maxPowerLossOnMiss": "被击中火力损失上限",
 	"config.youkaishomecoming.common.danmaku_battle.maxPowerLossOnMiss.tooltip": "受到攻击时火力损失的上限",
 	"config.youkaishomecoming.common.danmaku_battle.initialResource": "初始资源",

@@ -5,6 +5,7 @@ import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
+import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -305,6 +306,9 @@ public class DanmakuProxyEntity extends PathfinderMob
 
 	@Override
 	public void syncSpellState() {
+		if (ownerPlayer != null && runtime != null) {
+			SpellContainer.initializeRuntimeSpellBar(ownerPlayer, this);
+		}
 	}
 
 	@Override

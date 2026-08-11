@@ -300,14 +300,19 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public HitType performDanmakuHit(@Nullable LivingEntity source) {
 		if (!hasInitializedCombatContext(source)) return HitType.NONE;
-		if (isInvul()) return HitType.INVUL;
+		// Timed miss/bomb i-frames still suppress repeated contacts. Spell-cast
+		// protection, however, must not hide a set_spell_health bar: that bar is
+		// the active spell's protection and needs to absorb the hit itself.
+		if (invul > 0 || spellInvulnerable && !SpellContainer.hasActiveSpellBar(player)) {
+			return HitType.INVUL;
+		}
 		int erased = eraseActiveDanmakuForHit(source);
 		// A certified spell bar absorbs misses until it reaches zero. The breaking
 		// hit interrupts the card and costs one LIFE, without normal POWER loss.
 		if (player instanceof ServerPlayer sp) {
 			HitType spellHit = SpellContainer.consumeSpellBarHit(sp, source);
 			if (spellHit != null) {
-				invul = YHModConfig.COMMON.missInvulTime.get();
+				invul = YHModConfig.COMMON.spellHealthInvulTime.get();
 				dirty = true;
 				return spellHit;
 			}

@@ -653,6 +653,8 @@ public final class SpellAnalyzerSelfCheck {
 				check(name + " has no timeout for legacy compatibility",
 						health != null && health.duration() instanceof NumberProviders.Constant duration
 								&& duration.value() == 0);
+				check(name + " exposes runtime duration to complete spell items",
+						SpellHealthPlan.singleSegmentDuration(definition).orElse(-1) == 0);
 
 				JsonElement encoded = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 						.result().orElseThrow();

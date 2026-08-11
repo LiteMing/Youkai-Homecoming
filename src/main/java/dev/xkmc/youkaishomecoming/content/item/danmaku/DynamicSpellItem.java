@@ -342,6 +342,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 		if (player instanceof ServerPlayer sp) {
 			SpellHealthPlan playerHealthPlan = certifiedPlan;
+			boolean hasHealthDeclaration = SpellHealthPlan.hasHealthDeclaration(def);
 			if (playerHealthPlan == null) {
 				try {
 					playerHealthPlan = SpellHealthPlan.analyzeIfPresent(def, SpellRegistry::get).orElse(null);
@@ -350,24 +351,28 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 					// legacy OP card may still cast without a player spell bar.
 				}
 			}
-			if (consume) {
-				boolean paid = CertifiedSpellValidator.isCertified(stack)
-						? SpellItemCost.tryPayUnits(sp, CertifiedSpellValidator.getCertifiedCost(stack))
-						: SpellItemCost.tryPay(sp, def.itemForm.duration());
-				if (!paid) return false;
-			}
 			int duration = getStackDuration(stack);
-			if (duration == DURATION_NATURAL && def.itemForm.cooldown() > 0) {
+			if (duration == DURATION_NATURAL && playerHealthPlan != null) {
+				// Complete cards created before 0.22.6 did not carry a duration tag.
+				duration = playerHealthPlan.totalDurationTicks();
+			}
+			if (duration == DURATION_NATURAL && !hasHealthDeclaration && def.itemForm.cooldown() > 0) {
 				// item_form.cooldown acts as fixed duration when set, unless overridden by NBT
 				duration = def.itemForm.cooldown();
 			}
 			if (CertifiedSpellValidator.isCertified(stack)) {
 				// Certified cards always use the immutable reward duration.
 				duration = CertifiedSpellValidator.getCertifiedCastDuration(stack);
-				// A zero-tick reward is the explicit natural-end variant, not an
-				// immediately expiring proxy.
-				if (duration == 0) duration = DURATION_NATURAL;
 			}
+			if (consume) {
+				boolean paid = CertifiedSpellValidator.isCertified(stack)
+						? SpellItemCost.tryPayUnits(sp, CertifiedSpellValidator.getCertifiedCost(stack))
+						: SpellItemCost.tryPay(sp, duration);
+				if (!paid) return false;
+			}
+			// A zero-tick health plan is the explicit no-timeout variant, not an
+			// immediately expiring proxy.
+			if (duration == 0 && hasHealthDeclaration) duration = DURATION_NATURAL;
 			DanmakuProxyEntity proxy = new DanmakuProxyEntity(
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
 			proxy.init(sp, def, duration, target, certifiedPlan);
@@ -407,9 +412,21 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			list.add(YHLangData.SPELL_CREATE.get());
 		}
 		SpellDefinition def = getSpellDefinition(stack);
+		SpellHealthPlan healthPlan = null;
+		boolean hasHealthDeclaration = SpellHealthPlan.hasHealthDeclaration(def);
+		if (def != null) {
+			try {
+				healthPlan = SpellHealthPlan.analyzeIfPresent(def, SpellRegistry::get).orElse(null);
+			} catch (IllegalArgumentException ignored) {
+			}
+		}
 		int castDuration = CertifiedSpellValidator.isCertified(stack)
-				? CertifiedSpellValidator.getCertifiedCastDuration(stack)
-				: def != null ? def.itemForm.duration() : 0;
+				? CertifiedSpellValidator.getCertifiedCastDuration(stack) : getStackDuration(stack);
+		if (castDuration == DURATION_NATURAL && healthPlan != null) {
+			castDuration = healthPlan.totalDurationTicks();
+		} else if (castDuration == DURATION_NATURAL && def != null && !hasHealthDeclaration) {
+			castDuration = def.itemForm.duration();
+		}
 		if (!blankDraft) {
 			SpellItemCost.appendCostTooltip(list, castDuration);
 		}
@@ -426,13 +443,20 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			if (!def.display.description().isEmpty()) {
 				list.add(def.display.displayDesc().copy().withStyle(ChatFormatting.GRAY));
 			}
-			if (!CertifiedSpellValidator.isCertified(stack)) {
+			if (!CertifiedSpellValidator.isCertified(stack) && !isComplete(stack)) {
 				list.add(YHLangData.SPELL_UNFINISHED.get());
 			}
-			int dur = CertifiedSpellValidator.isCertified(stack)
-					? CertifiedSpellValidator.getCertifiedCastDuration(stack) : getStackDuration(stack);
-			if (dur >= 0) {
-				list.add(YHLangData.SPELL_DURATION.get(dur).withStyle(ChatFormatting.DARK_GRAY));
+			if (healthPlan != null) {
+				list.add(YHLangData.SPELL_HP.get(healthPlan.totalHealth()));
+			} else if (hasHealthDeclaration) {
+				list.add(YHLangData.SPELL_HEALTH_DYNAMIC.get());
+			}
+			if (castDuration > 0) {
+				list.add(YHLangData.SPELL_DURATION.get(castDuration).withStyle(ChatFormatting.DARK_GRAY));
+			} else if (castDuration == 0 && hasHealthDeclaration) {
+				list.add(YHLangData.SPELL_DURATION_INFINITE.get());
+			} else if (castDuration == DURATION_NATURAL && hasHealthDeclaration) {
+				list.add(YHLangData.SPELL_DURATION_RUNTIME.get());
 			}
 		} else {
 			String id = stack.hasTag() ? stack.getTag().getString(TAG_SPELL_ID) : "";

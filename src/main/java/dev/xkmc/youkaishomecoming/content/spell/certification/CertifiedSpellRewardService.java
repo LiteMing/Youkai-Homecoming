@@ -2,7 +2,6 @@ package dev.xkmc.youkaishomecoming.content.spell.certification;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
-import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentResult;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellCostContext;
@@ -49,13 +48,7 @@ public final class CertifiedSpellRewardService {
 		// spell color = blended average of the danmaku colors inside the definition,
 		// with a small jitter; falls back to fully random when nothing is readable
 		RandomSource random = RandomSource.create();
-		DanmakuColor color = SpellColorExtractor.extractWithJitter(definition, random);
-		if (color == null) {
-			DynamicSpellItem.withRandomColor(stack, random);
-		} else {
-			DynamicSpellItem.withColor(stack, color);
-		}
-		return stack;
+		return SpellColorExtractor.applyToStack(stack, definition, random);
 	}
 
 	public static boolean issue(SpellCertificationEntity entity) {

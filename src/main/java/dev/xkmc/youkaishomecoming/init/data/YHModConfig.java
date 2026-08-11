@@ -209,6 +209,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue danmakuPowerBonus;
 		public final ForgeConfigSpec.DoubleValue grazeEffectiveness;
 		public final ForgeConfigSpec.IntValue missInvulTime;
+		public final ForgeConfigSpec.IntValue spellHealthInvulTime;
 		public final ForgeConfigSpec.DoubleValue maxPowerLossOnMiss;
 		public final ForgeConfigSpec.IntValue initialResource;
 		public final ForgeConfigSpec.IntValue initialPower;
@@ -498,6 +499,9 @@ public class YHModConfig {
 				missInvulTime = builder.comment("Danmaku invulnerability and disabled time when you take a hit")
 						.translation("config.youkaishomecoming.common.danmaku_battle.missInvulTime")
 						.defineInRange("missInvulTime", 60, 10, 100);
+				spellHealthInvulTime = builder.comment("Hit interval while an active spell health bar absorbs danmaku")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellHealthInvulTime")
+						.defineInRange("spellHealthInvulTime", 5, 1, 100);
 				maxPowerLossOnMiss = builder.comment("Maximum loss of power when you take a hit")
 						.translation("config.youkaishomecoming.common.danmaku_battle.maxPowerLossOnMiss")
 						.defineInRange("maxPowerLossOnMiss", 1d, 0, 10);

@@ -15,6 +15,7 @@ import dev.xkmc.youkaishomecoming.content.spell.game.MigratedSpellCards;
 import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.template.SpellTemplates;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -508,6 +510,7 @@ public final class SpellAnalyzerSelfCheck {
 			try {
 				codecAndHash();
 				migratedBossHealth();
+				playerSpellPvpPolicy();
 				analyzerTraversal();
 				oneShotBurst();
 				shooterModel();
@@ -670,6 +673,27 @@ public final class SpellAnalyzerSelfCheck {
 								&& decodedHealth.duration() instanceof NumberProviders.Constant duration
 								&& duration.value() == 0);
 			}
+		}
+
+		private void playerSpellPvpPolicy() {
+			check("untargeted spell ignores players when caster has no team",
+					!IYHDanmaku.isUntargetedTeamOpponent(false, true, false));
+			check("untargeted spell ignores players with no team",
+					!IYHDanmaku.isUntargetedTeamOpponent(true, false, false));
+			check("untargeted spell ignores allied team players",
+					!IYHDanmaku.isUntargetedTeamOpponent(true, true, true));
+			check("untargeted spell hits opposing team players",
+					IYHDanmaku.isUntargetedTeamOpponent(true, true, false));
+
+			UUID selected = UUID.fromString("00000000-0000-0000-0000-000000000001");
+			UUID bystander = UUID.fromString("00000000-0000-0000-0000-000000000002");
+			check("empty harmful snapshot blocks unassigned bystander",
+					!IYHDanmaku.canHitPlayerFromSnapshot(true, false, selected, bystander));
+			check("harmful snapshot allows listed team opponent",
+					IYHDanmaku.canHitPlayerFromSnapshot(true, true, null, bystander));
+			check("legacy projectile fallback only hits selected player",
+					IYHDanmaku.canHitPlayerFromSnapshot(false, false, selected, selected)
+							&& !IYHDanmaku.canHitPlayerFromSnapshot(false, false, selected, bystander));
 		}
 
 		private void analyzerTraversal() {

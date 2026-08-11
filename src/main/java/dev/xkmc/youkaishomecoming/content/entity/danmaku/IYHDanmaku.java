@@ -48,10 +48,26 @@ public interface IYHDanmaku extends GrazingEntity {
 		return true;
 	}
 
-	static boolean canPlayerSpellHit(EntityInfo candidate, boolean restricted, @Nullable java.util.UUID targetId) {
+	static boolean canPlayerSpellHit(IYHDanmaku projectile, EntityInfo candidate,
+			boolean restricted, @Nullable java.util.UUID targetId) {
 		if (!restricted) return true;
-		// The selected target steers the spell; collision always uses the full hostile whitelist.
+		if (candidate.entity() instanceof Player) {
+			// New projectiles use one authoritative snapshot for collision and client
+			// fading. The target fallback keeps old/network-migrated projectiles safe.
+			return canHitPlayerFromSnapshot(projectile.hasHarmfulPlayerSnapshot(),
+					projectile.isHarmfulToPlayer(candidate.rootUuid()), targetId, candidate.rootUuid());
+		}
 		return candidate.hostileForPlayerSpell();
+	}
+
+	static boolean canHitPlayerFromSnapshot(boolean snapshotPresent, boolean listed,
+			@Nullable java.util.UUID targetId, java.util.UUID candidateId) {
+		return snapshotPresent ? listed : targetId != null && targetId.equals(candidateId);
+	}
+
+	static boolean isUntargetedTeamOpponent(boolean casterAssigned, boolean candidateAssigned,
+			boolean allied) {
+		return casterAssigned && candidateAssigned && !allied;
 	}
 
 	@Override

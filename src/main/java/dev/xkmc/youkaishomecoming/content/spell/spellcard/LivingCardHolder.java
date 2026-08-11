@@ -116,10 +116,25 @@ public interface LivingCardHolder extends CardHolder {
 			return;
 		}
 		LivingEntity target = targetEntity();
-		if (source instanceof net.minecraft.world.entity.player.Player) {
-			danmaku.setHarmfulPlayerSnapshot(target instanceof net.minecraft.world.entity.player.Player player
-					&& !source.isAlliedTo(player)
-					? java.util.List.of(player.getUUID()) : java.util.List.of());
+		if (source instanceof net.minecraft.world.entity.player.Player caster) {
+			java.util.Set<java.util.UUID> harmfulPlayers = new java.util.LinkedHashSet<>();
+			// An explicitly selected player remains a valid target even when neither
+			// player has joined a team.
+			if (target instanceof net.minecraft.world.entity.player.Player selected
+					&& selected != caster && !caster.isAlliedTo(selected)) {
+				harmfulPlayers.add(selected.getUUID());
+			}
+			// Untargeted PVP requires both players to have teams. This keeps free-fire
+			// patterns useful in team battles without making unassigned players unsafe.
+			if (caster.getTeam() != null) {
+				for (net.minecraft.world.entity.player.Player candidate : caster.level().players()) {
+					if (candidate != caster && IYHDanmaku.isUntargetedTeamOpponent(
+							true, candidate.getTeam() != null, caster.isAlliedTo(candidate))) {
+						harmfulPlayers.add(candidate.getUUID());
+					}
+				}
+			}
+			danmaku.setHarmfulPlayerSnapshot(harmfulPlayers);
 		} else if (target instanceof net.minecraft.world.entity.player.Player player
 				&& !source.isAlliedTo(player)) {
 			danmaku.setHarmfulPlayerSnapshot(java.util.List.of(player.getUUID()));

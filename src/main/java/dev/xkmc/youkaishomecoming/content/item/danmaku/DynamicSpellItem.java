@@ -197,6 +197,12 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
+		if (player.isShiftKeyDown() && GrazeHelper.isPlayerSpellBeingCast(player)) {
+			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				GrazeHelper.tryForceCloseSpell(sp, stack);
+			}
+			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
 		if (GrazeHelper.forbidSpellCardWithMessage(player))
 			return InteractionResultHolder.fail(stack);
 		if (player.isShiftKeyDown() && GrazeHelper.isManualCombatMode()) {
@@ -250,7 +256,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (GrazeHelper.forbidSpellCardWithMessage(player)) return false;
 		SpellDefinition def = getSpellDefinition(stack);
 		boolean certifiedStack = CertifiedSpellValidator.isCertified(stack);
-		String cardKey = certifiedStack ? CertifiedSpellValidator.getCertificateId(stack) : null;
+		String cardKey = GrazeHelper.spellCardKey(stack);
 		if (def == null && !(certifiedStack && player instanceof ServerPlayer)) return false;
 		ResourceLocation spellId = getSpellId(stack);
 		if (spellId == null) return false;
@@ -311,7 +317,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
 			proxy.init(sp, def, duration, target, certifiedPlan);
 			sp.serverLevel().addFreshEntity(proxy);
-			SpellContainer.trackProxy(sp, proxy);
+			SpellContainer.trackProxy(sp, proxy, cardKey);
 			GrazeHelper.onPlayerSpellCast(sp);
 			// certified cards show the player-use spell bar: a fraction of the
 			// certification HP (boss bar); misses shrink it instead of costing life

@@ -2,8 +2,6 @@ package dev.xkmc.fastprojectileapi.collision;
 
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.NeutralMob;
-import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -22,7 +20,7 @@ public class EntityInfo {
 	private final float hitBoxDelta;
 	private final boolean ownerTrackedByYoukai;
 	private final UUID rootUuid;
-	private final boolean hostileForUntargetedPlayerSpell;
+	private final boolean hostileForPlayerSpell;
 	private final boolean[] hitTestResults;
 
 	public EntityInfo(LivingEntity owner, Entity entity) {
@@ -34,7 +32,8 @@ public class EntityInfo {
 		Entity root = entity;
 		while (root instanceof PartEntity<?> part) root = part.getParent();
 		this.rootUuid = root.getUUID();
-		this.hostileForUntargetedPlayerSpell = root instanceof Enemy && !(root instanceof NeutralMob);
+		this.hostileForPlayerSpell = owner instanceof Player player && root instanceof LivingEntity living
+				&& GrazeHelper.isValidPlayerSpellTarget(player, living);
 		this.hitTestResults = new boolean[HitTestType.values().length];
 		for (HitTestType type : HitTestType.values()) {
 			hitTestResults[type.ordinal()] = type.canHitEntity(owner, entity);
@@ -65,8 +64,8 @@ public class EntityInfo {
 		return rootUuid;
 	}
 
-	public boolean hostileForUntargetedPlayerSpell() {
-		return hostileForUntargetedPlayerSpell;
+	public boolean hostileForPlayerSpell() {
+		return hostileForPlayerSpell;
 	}
 
 	public boolean canHit(HitTestType type) {

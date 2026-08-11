@@ -36,14 +36,15 @@ public final class CertificationHud {
 			return;
 		}
 		if (state.state() == CertificationState.SUCCESS) {
-			gui.drawString(font, Component.literal("[YH] No-Hit Success!"),
+			if (!CertificationClientHandler.shouldShowSuccess()) return;
+			gui.drawString(font, Component.translatable("youkaishomecoming.cert.hud.success"),
 					width / 2 - 46, 6, 0xFF55FF55);
 			return;
 		}
 		if (state.state() == CertificationState.FAILED
 				|| state.state() == CertificationState.SYSTEM_ERROR) {
 			String reason = state.failReason() == null ? "unknown" : state.failReason();
-			gui.drawString(font, Component.literal("[YH] Certification failed: " + reason),
+			gui.drawString(font, Component.translatable("youkaishomecoming.cert.hud.failed", reason),
 					width / 2 - 80, 6, 0xFFFF5555);
 		}
 	}

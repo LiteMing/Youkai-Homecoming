@@ -23,6 +23,10 @@ public final class SpellProgressCircleRenderer {
 	private static final ResourceLocation TEX = new ResourceLocation("youkaishomecoming",
 			"textures/entities/spell_circle.png");
 	private static final int SEGMENTS = 96;
+	private static final float HP_RADIUS = 52;
+	private static final float HP_OUTLINE_Z = 0.040f;
+	private static final float HP_BACKGROUND_Z = 0.045f;
+	private static final float HP_PROGRESS_Z = 0.050f;
 
 	private SpellProgressCircleRenderer() {
 	}
@@ -36,16 +40,16 @@ public final class SpellProgressCircleRenderer {
 				pose, buffer, builder, entity.tickCount + pTick, light);
 		handle.alpha = alpha;
 		pose.pushPose();
-		SpellComponent.Stroke hpOutline = stroke(52, 4.4f, outlineColor(entity));
+		SpellComponent.Stroke hpOutline = stroke(HP_RADIUS, 2.8f, HP_OUTLINE_Z, outlineColor(entity));
 		renderHealthProgress(handle, hpOutline, progress, true);
-		SpellComponent.Stroke hpBackground = stroke(52, 3.0f, "0x55445555");
+		SpellComponent.Stroke hpBackground = stroke(HP_RADIUS, 2.0f, HP_BACKGROUND_Z, "0x55445555");
 		renderHealthProgress(handle, hpBackground, progress, true);
-		SpellComponent.Stroke hp = stroke(52, 2.2f, "0xFFFFFFFF");
+		SpellComponent.Stroke hp = stroke(HP_RADIUS, 1.6f, HP_PROGRESS_Z, "0xFFFFFFFF");
 		renderHealthProgress(handle, hp, progress, false);
 		if (progress.durationTicks() > 0) {
-			SpellComponent.Stroke timeBackground = stroke(46, 1.6f, "0x55445555");
+			SpellComponent.Stroke timeBackground = stroke(46, 1.6f, 0.05f, "0x55445555");
 			timeBackground.render(handle);
-			SpellComponent.Stroke time = stroke(46, 1.6f, "0xFF55D9FF");
+			SpellComponent.Stroke time = stroke(46, 1.6f, 0.05f, "0xFF55D9FF");
 			renderRemainingProgress(handle, time, progress.timeRatio(entity, pTick));
 		}
 		pose.popPose();
@@ -56,14 +60,14 @@ public final class SpellProgressCircleRenderer {
 		return String.format(Locale.ROOT, "0xFF%06X", rgb);
 	}
 
-	private static SpellComponent.Stroke stroke(float radius, float width, String color) {
+	private static SpellComponent.Stroke stroke(float radius, float width, float z, String color) {
 		SpellComponent.Stroke stroke = new SpellComponent.Stroke();
 		stroke.vertex = SEGMENTS;
 		stroke.cycle = -1;
 		stroke.radius = radius;
 		stroke.width = width;
 		stroke.angle = (float) Math.PI / 2;
-		stroke.z = 0.05f;
+		stroke.z = z;
 		stroke.color = color;
 		return stroke;
 	}

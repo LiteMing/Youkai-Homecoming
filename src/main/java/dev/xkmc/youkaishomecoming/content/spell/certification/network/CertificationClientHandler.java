@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.certification.network;
 
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationState;
+import net.minecraft.Util;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -29,8 +30,10 @@ public final class CertificationClientHandler {
 	}
 
 	private static final Map<Integer, ClientState> STATES = new HashMap<>();
+	private static final long SUCCESS_DISPLAY_MILLIS = 5_000;
 	@Nullable
 	private static ClientState myState;
+	private static long successDisplayUntil;
 
 	private CertificationClientHandler() {
 	}
@@ -48,7 +51,13 @@ public final class CertificationClientHandler {
 				healthTotal, healthLeft, failReason);
 		STATES.put(entityId, clientState);
 		if (mine) {
+			boolean wasSuccess = myState != null && myState.state() == CertificationState.SUCCESS;
 			myState = clientState;
+			if (parsed == CertificationState.SUCCESS && !wasSuccess) {
+				successDisplayUntil = Util.getMillis() + SUCCESS_DISPLAY_MILLIS;
+			} else if (parsed != CertificationState.SUCCESS) {
+				successDisplayUntil = 0;
+			}
 		}
 	}
 
@@ -61,6 +70,11 @@ public final class CertificationClientHandler {
 	/** True while the author's own trial is preparing or active (alpha pinned to 1, D4). */
 	public static boolean inMyTrial() {
 		return myState != null && myState.active();
+	}
+
+	public static boolean shouldShowSuccess() {
+		return myState != null && myState.state() == CertificationState.SUCCESS
+				&& Util.getMillis() < successDisplayUntil;
 	}
 
 	@Nullable

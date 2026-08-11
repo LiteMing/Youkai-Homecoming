@@ -116,7 +116,8 @@ public enum YHLangData {
 
 	// Spell Market
 	MARKET_TITLE("spell_market.title", "Spell Card Market", 0, null),
-	STG_DEFEAT("message.stg_defeat", "Spell card duel defeated", 0, ChatFormatting.RED),
+	STG_DEFEAT_BOSS("message.stg_defeat_boss", "%s did not follow the rules of danmaku combat", 1, ChatFormatting.RED),
+	STG_DEFEAT_OTHER("message.stg_defeat_other", "%s was sent to the afterlife by danmaku", 1, ChatFormatting.RED),
 	STG_NO_SLEEP("message.stg_no_sleep", "Cannot sleep during a spell card duel", 0, ChatFormatting.RED),
 	STG_ENTER("message.stg_enter", "Danmaku combat enabled", 0, ChatFormatting.GREEN),
 	STG_EXIT("message.stg_exit", "Danmaku combat disabled", 0, ChatFormatting.YELLOW),
@@ -572,10 +573,10 @@ public enum YHLangData {
 		pvd.add("death.attack.koishi_attack.player", "%2$s stabbed %1$s in the back");
 		pvd.add("death.attack.rumia_attack", "%s is eaten by Rumia");
 		pvd.add("death.attack.rumia_attack.player", "%s is eaten by %s");
-		pvd.add("death.attack.danmaku", "%s lost the danmaku battle");
-		pvd.add("death.attack.danmaku.player", "%s lost the danmaku battle to %s");
-		pvd.add("death.attack.abyssal_danmaku", "%s lost the danmaku battle");
-		pvd.add("death.attack.abyssal_danmaku.player", "%s lost the danmaku battle to %s");
+		pvd.add("death.attack.danmaku", "%s was sent to the afterlife by danmaku");
+		pvd.add("death.attack.danmaku.player", "%s was sent to the afterlife by %s's danmaku");
+		pvd.add("death.attack.abyssal_danmaku", "%s was sent to the afterlife by danmaku");
+		pvd.add("death.attack.abyssal_danmaku.player", "%s was sent to the afterlife by %s's danmaku");
 
 		pvd.add(YoukaisHomecoming.MODID + ".custom_spell.bullet.title", "Bullet Type");
 		pvd.add(YoukaisHomecoming.MODID + ".custom_spell.color.title", "Bullet Color");

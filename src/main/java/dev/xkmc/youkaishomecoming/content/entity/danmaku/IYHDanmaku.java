@@ -50,8 +50,8 @@ public interface IYHDanmaku extends GrazingEntity {
 
 	static boolean canPlayerSpellHit(EntityInfo candidate, boolean restricted, @Nullable java.util.UUID targetId) {
 		if (!restricted) return true;
-		return targetId == null ? candidate.hostileForUntargetedPlayerSpell()
-				: targetId.equals(candidate.rootUuid());
+		// The selected target steers the spell; collision always uses the full hostile whitelist.
+		return candidate.hostileForPlayerSpell();
 	}
 
 	@Override

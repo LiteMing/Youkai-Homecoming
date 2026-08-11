@@ -23,10 +23,10 @@ public class CertificationScreen extends Screen {
 
 	private final SpellDefinition definition;
 	private double halfSize;
-	private String status = "";
+	private Component status = Component.empty();
 
 	public CertificationScreen(SpellDefinition definition) {
-		super(Component.literal("Spell Certification"));
+		super(Component.translatable("youkaishomecoming.cert.screen.title"));
 		this.definition = definition;
 		this.halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
 	}
@@ -36,25 +36,25 @@ public class CertificationScreen extends Screen {
 		int cx = this.width / 2;
 		int y = 34;
 
-		addRenderableWidget(Button.builder(Component.literal(
-						"Health / timeout: read from set_spell_health"), b -> {
+		addRenderableWidget(Button.builder(Component.translatable(
+						"youkaishomecoming.cert.screen.health_source"), b -> {
 						}).bounds(cx - 160, y, 320, 20).build());
 		y += 34;
 
 		// the arena half size is fixed by config (UI selection is ignored)
 		halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
-		addRenderableWidget(Button.builder(Component.literal(
-						String.format(Locale.ROOT, "Arena half-size: %.0f blocks (fixed)", halfSize)),
+		addRenderableWidget(Button.builder(Component.translatable(
+						"youkaishomecoming.cert.screen.arena_fixed", String.format(Locale.ROOT, "%.0f", halfSize)),
 						b -> {
 						}).bounds(cx - 160, y, 320, 20).build());
 		y += 34;
 
-		addRenderableWidget(Button.builder(Component.literal("Request Quote"),
+		addRenderableWidget(Button.builder(Component.translatable("youkaishomecoming.cert.screen.request_quote"),
 						b -> requestQuote()).bounds(cx - 120, y, 110, 20).build());
-		addRenderableWidget(Button.builder(Component.literal("Start Certification"),
+		addRenderableWidget(Button.builder(Component.translatable("youkaishomecoming.cert.screen.start"),
 						b -> startCertification()).bounds(cx + 14, y, 110, 20).build());
 		y += 24;
-		addRenderableWidget(Button.builder(Component.literal("Cancel"),
+		addRenderableWidget(Button.builder(Component.translatable("youkaishomecoming.cert.screen.cancel"),
 						b -> onClose()).bounds(cx - 40, y, 80, 20).build());
 	}
 
@@ -63,13 +63,13 @@ public class CertificationScreen extends Screen {
 		// configured duration bounds and reads the canonical action tree itself.
 		YoukaisHomecoming.HANDLER.toServer(new CertificationQuoteRequestToServer(
 				definition, 0, halfSize));
-		status = "quote requested...";
+		status = Component.translatable("youkaishomecoming.cert.screen.quote_requested");
 	}
 
 	private void startCertification() {
 		var quote = CertificationClientHandler.getPendingQuote();
 		if (quote == null) {
-			status = "no quote yet";
+			status = Component.translatable("youkaishomecoming.cert.screen.no_quote");
 			return;
 		}
 		YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId));
@@ -83,22 +83,21 @@ public class CertificationScreen extends Screen {
 		super.render(gui, mouseX, mouseY, partialTick);
 		int cx = this.width / 2;
 		gui.drawCenteredString(this.font, this.title, cx, 12, 0xFFFFFFFF);
-		gui.drawCenteredString(this.font, Component.literal(status), cx, 120, 0xFFFFFFAA);
+		gui.drawCenteredString(this.font, status, cx, 120, 0xFFFFFFAA);
 		var quote = CertificationClientHandler.getPendingQuote();
 		if (quote != null) {
 			// Info panel: fixed timeout/HP from the spell definition, final cast
 			// duration of the certified item (reward curve) and the cost breakdown.
-			String durationLine = String.format(Locale.ROOT,
-					"Timeout: %dt  |  Spell HP: %d  |  Final cast: %dt (ratio %.2f)  |  Arena: %.0f",
-				quote.durationTicks, quote.spellHp,
-					quote.rewardDurationTicks, quote.durationTicks <= 0 ? 0.0
-							: quote.rewardDurationTicks / (double) quote.durationTicks, quote.arenaHalfSize);
-			String costLine = String.format(Locale.ROOT,
-					"Cost: start %d / cast %.1f BOMB or %d XP lv / issue %d  |  maxSpawn/tick: %d",
-					quote.startCostUnits, quote.castCostUnits / 100.0, xpLevels(quote.castCostUnits),
-					quote.issueCostUnits, quote.maxSpawnPerTick);
-			gui.drawCenteredString(this.font, Component.literal(durationLine), cx, 140, 0xFFA0FFA0);
-			gui.drawCenteredString(this.font, Component.literal(costLine), cx, 152, 0xFFA0FFA0);
+			Component durationLine = Component.translatable("youkaishomecoming.cert.screen.summary",
+					quote.durationTicks, quote.spellHp, quote.rewardDurationTicks,
+					String.format(Locale.ROOT, "%.2f", quote.durationTicks <= 0 ? 0.0
+							: quote.rewardDurationTicks / (double) quote.durationTicks),
+					String.format(Locale.ROOT, "%.0f", quote.arenaHalfSize));
+			Component costLine = Component.translatable("youkaishomecoming.cert.screen.cost",
+					quote.startCostUnits, String.format(Locale.ROOT, "%.1f", quote.castCostUnits / 100.0),
+					xpLevels(quote.castCostUnits), quote.issueCostUnits, quote.maxSpawnPerTick);
+			gui.drawCenteredString(this.font, durationLine, cx, 140, 0xFFA0FFA0);
+			gui.drawCenteredString(this.font, costLine, cx, 152, 0xFFA0FFA0);
 		}
 	}
 

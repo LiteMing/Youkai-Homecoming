@@ -7,8 +7,11 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
+import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
+import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.events.DanmakuGrazeEvent;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
@@ -16,9 +19,13 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHAttributes;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
@@ -50,11 +57,30 @@ public class GrazeHelper {
 	@Nullable
 	public static LivingEntity resolveSpellTarget(Player player) {
 		LivingEntity target = RayTraceUtil.serverGetTarget(player);
-		if (target != null && target.isAlive() && target.level() == player.level()) {
+		if (isValidPlayerSpellTarget(player, target)) {
 			addSession(player, target);
 			return target;
 		}
-		return getTarget(player);
+		target = getTarget(player);
+		return isValidPlayerSpellTarget(player, target) ? target : null;
+	}
+
+	public static boolean isValidPlayerSpellTarget(Player player, @Nullable LivingEntity target) {
+		if (target == null || target == player || !target.isAlive() || target.level() != player.level()
+				|| player.isAlliedTo(target)) {
+			return false;
+		}
+		if (target instanceof ShooterEntity shooter) {
+			var owner = shooter.getOwner();
+			return owner != player && (owner == null || !player.isAlliedTo(owner));
+		}
+		if (target instanceof YoukaiEntity || target instanceof Player) {
+			return true;
+		}
+		if (target instanceof Enemy && !(target instanceof NeutralMob)) {
+			return true;
+		}
+		return target instanceof Mob mob && mob.getTarget() == player;
 	}
 
 	public static Vec3 getAimDirection(Player player) {
@@ -129,7 +155,7 @@ public class GrazeHelper {
 	 */
 	public static void enterPvpSpellDuel(Player attacker, Player opponent) {
 		if (attacker.level().isClientSide()) return;
-		if (attacker == opponent || attacker.level() != opponent.level()) return;
+		if (attacker == opponent || attacker.level() != opponent.level() || attacker.isAlliedTo(opponent)) return;
 		var atkCap = GrazeCapability.HOLDER.get(attacker);
 		var defCap = GrazeCapability.HOLDER.get(opponent);
 
@@ -201,8 +227,28 @@ public class GrazeHelper {
 
 	private static boolean isAvailableSpellStack(Player player, ItemStack stack) {
 		if (!isSpellStack(stack)) return false;
-		String cardKey = CertifiedSpellValidator.getCertificateId(stack);
+		String cardKey = spellCardKey(stack);
 		return !GrazeCapability.HOLDER.get(player).isSpellCardUnavailable(cardKey);
+	}
+
+	public static String spellCardKey(ItemStack stack) {
+		String certificateId = CertifiedSpellValidator.getCertificateId(stack);
+		if (certificateId != null) return "certificate:" + certificateId;
+		if (stack.getItem() instanceof DynamicSpellItem) {
+			var spellId = DynamicSpellItem.getSpellId(stack);
+			if (spellId != null) return "spell:" + spellId;
+		}
+		return "item:" + BuiltInRegistries.ITEM.getKey(stack.getItem());
+	}
+
+	public static boolean tryForceCloseSpell(ServerPlayer player, ItemStack stack) {
+		if (!SpellContainer.hasActiveSpell(player)) return false;
+		return SpellContainer.forceCloseActiveSpell(player, spellCardKey(stack));
+	}
+
+	public static boolean isPlayerSpellBeingCast(Player player) {
+		return GrazeCapability.HOLDER.get(player).isPlayerSpellActive()
+				|| SpellContainer.hasActiveSpell(player);
 	}
 
 	/** Cast a specific card supplied by an integration or script. */

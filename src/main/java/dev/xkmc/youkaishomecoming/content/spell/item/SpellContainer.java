@@ -60,9 +60,25 @@ public class SpellContainer extends ConditionalToken {
 		(combatScoped ? data.combatItemCache : data.ambientItemCache).add(e);
 	}
 
-	public static void trackProxy(ServerPlayer sp, DanmakuProxyEntity proxy) {
+	public static void trackProxy(ServerPlayer sp, DanmakuProxyEntity proxy, @Nullable String cardKey) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		data.proxies.add(proxy);
+		data.activeSpellCardKey = cardKey;
+	}
+
+	public static boolean forceCloseActiveSpell(ServerPlayer sp, @Nullable String fallbackCardKey) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		if (data.spells.isEmpty() && data.proxies.stream().noneMatch(proxy -> !proxy.isRemoved())) {
+			return false;
+		}
+		String cardKey = data.activeSpellCardKey == null ? fallbackCardKey : data.activeSpellCardKey;
+		boolean inCombat = GrazeCapability.HOLDER.get(sp).isInDanmakuCombat();
+		data.clearSpellState(sp);
+		DanmakuManager.flushErases();
+		if (inCombat) {
+			GrazeCapability.HOLDER.get(sp).disableSpellCardForCombat(cardKey);
+		}
+		return true;
 	}
 
 	/** True while the player is releasing a spell card (an active proxy exists). */
@@ -180,6 +196,8 @@ public class SpellContainer extends ConditionalToken {
 	@Nullable
 	private Component spellBarName;
 	@Nullable
+	private String activeSpellCardKey;
+	@Nullable
 	private ServerBossEvent ownSpellBossEvent;
 	@Nullable
 	private ServerBossEvent opponentSpellBossEvent;
@@ -263,10 +281,13 @@ public class SpellContainer extends ConditionalToken {
 		if (opponentSpellBossEvent != null) opponentSpellBossEvent.removeAllPlayers();
 	}
 
-	public static void castSpell(ServerPlayer sp, Supplier<? extends ItemSpell> sup, @Nullable LivingEntity target) {
+	public static void castSpell(ServerPlayer sp, Supplier<? extends ItemSpell> sup,
+			@Nullable LivingEntity target, @Nullable String cardKey) {
 		ItemSpell spell = sup.get();
 		spell.start(sp, target);
-		ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD).spells.add(spell);
+		SpellContainer data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		data.spells.add(spell);
+		data.activeSpellCardKey = cardKey;
 	}
 
 	@SerialClass.SerialField
@@ -288,6 +309,7 @@ public class SpellContainer extends ConditionalToken {
 		}
 		spells.clear();
 		proxies.clear();
+		activeSpellCardKey = null;
 		endSpellBar(sp);
 	}
 
@@ -313,6 +335,9 @@ public class SpellContainer extends ConditionalToken {
 		combatItemCache.removeIf(e -> !e.isValid());
 		ambientItemCache.removeIf(e -> !e.isValid());
 		proxies.removeIf(DanmakuProxyEntity::isRemoved);
+		if (spells.isEmpty() && proxies.isEmpty()) {
+			activeSpellCardKey = null;
+		}
 		if (player instanceof ServerPlayer sp && spellBarMax > 0 && (player.tickCount & 3) == 0) {
 			syncPlayerSpellStatus(sp);
 		}

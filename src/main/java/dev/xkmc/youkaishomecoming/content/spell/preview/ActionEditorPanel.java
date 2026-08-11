@@ -343,7 +343,7 @@ public class ActionEditorPanel {
 		addFullWidthButton("Run Command", () -> selectType("run_command"));
 		addFullWidthButton("Show Spell Title", () -> selectType("show_spell_title"));
 		addFullWidthButton("Custom Magic Circle", () -> selectType("set_spell_circle"));
-		addFullWidthButton("Spell Health (OP)", () -> selectType("set_spell_health"));
+		addFullWidthButton("Spell Health", () -> selectType("set_spell_health"));
 		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
 		addFullWidthButton("Force Spell", () -> selectType("force_spell"));
 		addFullWidthButton("Fire Spell", () -> selectType("fire_spell"));
@@ -4506,7 +4506,7 @@ public class ActionEditorPanel {
 			Map.entry("set_entity_flag", "Set Entity Flag"),
 			Map.entry("ysm_render", "YSM Render"),
 			Map.entry("caster_moves", "Caster Moves"),
-			Map.entry("set_spell_health", "Spell Health (OP)"),
+			Map.entry("set_spell_health", "Spell Health"),
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);

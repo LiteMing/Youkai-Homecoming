@@ -49,6 +49,12 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
 		if (hand != InteractionHand.MAIN_HAND) return InteractionResultHolder.fail(stack);
+		if (player.isShiftKeyDown() && GrazeHelper.isPlayerSpellBeingCast(player)) {
+			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				GrazeHelper.tryForceCloseSpell(sp, stack);
+			}
+			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
 		if (GrazeHelper.forbidSpellCardWithMessage(player))
 			return InteractionResultHolder.fail(stack);
 		ISpellFormData<?> data = getData(stack);
@@ -58,7 +64,7 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 			}
 		} else {
 			boolean consume = !player.getAbilities().instabuild && !(player instanceof FakePlayer);
-			if (!castSpellImpl(data, player, consume, true)) {
+			if (!castSpellImpl(data, stack, player, consume, true)) {
 				return InteractionResultHolder.fail(stack);
 			}
 		}
@@ -66,10 +72,11 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 	}
 
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
-		return castSpellImpl(getData(stack), player, consume, cooldown);
+		return castSpellImpl(getData(stack), stack, player, consume, cooldown);
 	}
 
-	private boolean castSpellImpl(ISpellFormData<?> data, Player player, boolean consume, boolean cooldown) {
+	private boolean castSpellImpl(ISpellFormData<?> data, ItemStack stack, Player player,
+			boolean consume, boolean cooldown) {
 		if (GrazeHelper.forbidSpellCardWithMessage(player))
 			return false;
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
@@ -86,7 +93,7 @@ public class CustomSpellItem extends Item implements IGlowingTarget, ISpellItem 
 			if (consume) {
 				consumeAmmo(data.getAmmoCost(), data.cost(), player, true);
 			}
-			SpellContainer.castSpell(sp, data::createInstance, target);
+			SpellContainer.castSpell(sp, data::createInstance, target, GrazeHelper.spellCardKey(stack));
 			GrazeHelper.onPlayerSpellCast(sp);
 			if (cooldown) {
 				player.getCooldowns().addCooldown(this, data.getDuration());

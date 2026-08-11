@@ -16,6 +16,7 @@ import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage;
@@ -305,6 +306,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private void exportGlobalSpell(ServerPlayer sender) {
 		SpellDefinition definition = parseDefinition();
+		SpellHealthPlan.analyzeIfPresent(definition, SpellRegistry::get);
 		SpellRegistry.register(definition);
 		var file = CustomSpellStorage.saveGlobalSpell(definition);
 		sender.sendSystemMessage(Component.literal("[YH] Exported global spell " + definition.id + " to " + file.getPath()));

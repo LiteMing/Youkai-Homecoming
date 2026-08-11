@@ -34,6 +34,11 @@ public interface SpellRuntimeHost extends LivingCardHolder {
 	default void settleSpellHealthTimeout() {
 	}
 
+	/** Certification trials fail on the first segment timeout, even when a boss timeout target exists. */
+	default boolean spellHealthTimeoutEndsFight() {
+		return false;
+	}
+
 	boolean isBossHost();
 
 	default boolean isPlayerHost() {
@@ -108,11 +113,15 @@ public interface SpellRuntimeHost extends LivingCardHolder {
 	}
 
 	default void switchSpellDefinition(SpellDefinition definition, boolean clearScreen) {
+		switchSpellRuntime(new SpellRuntime(definition), clearScreen);
+	}
+
+	default void switchSpellRuntime(SpellRuntime runtime, boolean clearScreen) {
 		if (clearScreen) {
 			eraseDanmaku(null);
 		}
 		clearTemporarySpellCircle();
-		setSpellRuntime(new SpellRuntime(definition));
+		setSpellRuntime(runtime);
 	}
 
 }

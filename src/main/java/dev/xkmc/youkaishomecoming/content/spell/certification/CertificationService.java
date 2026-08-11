@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisProfile;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzer;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentReceipt;
 import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentResult;
@@ -22,6 +23,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
 
 /**
  * Certification service: quote computation and trial startup (design doc §5.2-5.4,
@@ -51,12 +55,13 @@ public final class CertificationService {
 	private static CertificationQuote quote(ServerPlayer player, SpellDefinition definition,
 										 int requestedDurationTicks, double requestedHalfSize,
 										 boolean operatorTest) {
-		// The spell's own declared duration is the certification timeout; the
-		// enemy HP is derived directly from the seconds: duration seconds x 10 x
-		// the regen ratio (a fixed total, not a growth over time).
-		int durationTicks = clampDuration(requestedDurationTicks);
-		int spellHp = (int) Math.max(1, Math.round(durationTicks / 20.0 * 10.0
-				* YHModConfig.COMMON.certificationHpRegenRatio.get()));
+		// Health and timeout are declaration data. The break chain is the only
+		// successful certification path; timeout targets remain legal boss behavior
+		// but any timeout fails the trial.
+		SpellHealthPlan healthPlan = SpellHealthPlan.analyze(definition,
+				dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry::get);
+		int durationTicks = healthPlan.totalDurationTicks();
+		int spellHp = healthPlan.totalHealth();
 		// the arena half size is fixed by config (UI selection is ignored)
 		double halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
 		// Special-node quota: EXPERIMENTAL capabilities (teleport, erase, clear,
@@ -66,22 +71,20 @@ public final class CertificationService {
 		int specialNodeQuota = draftOpQuota(player, definition);
 		SpellAnalysis analysis;
 		try {
-			analysis = operatorTest
-					? SpellAnalyzer.analyzeOperatorTest(definition, SpellAnalysisLimits.certification())
-					: SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION);
+			analysis = analyzePlan(healthPlan, operatorTest, java.util.Set.of());
 		} catch (dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException e) {
 			if (operatorTest) throw e;
-			int count = SpecialNodeCounter.count(definition);
+			int count = healthPlan.definitions().values().stream()
+					.mapToInt(SpecialNodeCounter::count).sum();
 			if (count > 0 && count <= specialNodeQuota) {
 				// the draft quota covers the special nodes: re-run with those
 				// capabilities allowed (hard performance limits still apply).
-				analysis = SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION,
-						SpellAnalysisLimits.certification(), SpecialNodeCounter.EXPERIMENTAL_CAPS);
+				analysis = analyzePlan(healthPlan, false, SpecialNodeCounter.EXPERIMENTAL_CAPS);
 			} else {
 				throw e;
 			}
 		}
-		String hash = SpellHash.canonicalHash(definition);
+		String hash = SpellHash.canonicalBundleHash(healthPlan.definitions());
 		// Start fee is a fixed anti-spam toll (design §14), decoupled from spell power —
 		// spam protection lives in maxConcurrentTrials and quote expiration.
 		long startCost = YHModConfig.COMMON.certificationStartCostUnits.get();
@@ -91,7 +94,7 @@ public final class CertificationService {
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
 				startCost, issueCost, castCost, rewardDuration,
-				spellHp, specialNodeQuota, analysis, player.level().getGameTime());
+				spellHp, specialNodeQuota, operatorTest, healthPlan, analysis, player.level().getGameTime());
 	}
 
 	/**
@@ -118,28 +121,12 @@ public final class CertificationService {
 	}
 
 	public static int clampDuration(int requested) {
-		int min = Math.max(0, Math.min(1200, YHModConfig.COMMON.certificationMinDurationTicks.get()));
-		int max = Math.max(min, Math.min(1200, YHModConfig.COMMON.certificationMaxDurationTicks.get()));
-		return Math.max(min, Math.min(max, requested));
+		return Math.max(0, Math.min(1200, requested));
 	}
 
 	public static double clampHalfSize(double requested) {
 		return Math.max(YHModConfig.COMMON.certificationMinArenaHalfSize.get(),
 				Math.min(YHModConfig.COMMON.certificationMaxArenaHalfSize.get(), requested));
-	}
-
-	/**
-	 * Design doc §13: proof discount with diminishing returns and a floor.
-	 * durationDiscount and arenaDiscount use sqrt curves; the floor is
-	 * certificationMinProofMultiplier (default 0.45).
-	 */
-	private static double proofMultiplier(int durationTicks, double halfSize) {
-		int minDuration = YHModConfig.COMMON.certificationMinDurationTicks.get();
-		double minHalf = YHModConfig.COMMON.certificationMinArenaHalfSize.get();
-		double durationDiscount = Math.sqrt((double) minDuration / Math.max(minDuration, durationTicks));
-		double arenaDiscount = Math.sqrt(minHalf / Math.max(minHalf, halfSize));
-		double minProof = YHModConfig.COMMON.certificationMinProofMultiplier.get();
-		return Math.max(minProof, Math.min(1.0, durationDiscount * arenaDiscount));
 	}
 
 	// ------------------------------------------------------------ start
@@ -209,7 +196,7 @@ public final class CertificationService {
 		}
 		// Re-check the cached definition and current bounds at the payment boundary;
 		// registry reloads or config changes must invalidate an old quote.
-		if (!quote.definitionHash().equals(SpellHash.canonicalHash(definition))
+		if (!quote.definitionHash().equals(SpellHash.canonicalBundleHash(quote.healthPlan().definitions()))
 				|| quote.durationTicks() != clampDuration(quote.durationTicks())
 				|| quote.arenaHalfSize() != YHModConfig.COMMON.certificationFixedArenaHalfSize.get()
 				|| !quoteCostsMatchCurrentConfig(quote)) {
@@ -260,7 +247,8 @@ public final class CertificationService {
 		long castCost = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(
 				rewardDurationTicks(quote.durationTicks()));
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
-		return quote.castCostUnits() == castCost && quote.issueCostUnits() == issueCost;
+		return quote.rewardDurationTicks() == rewardDurationTicks(quote.durationTicks())
+				&& quote.castCostUnits() == castCost && quote.issueCostUnits() == issueCost;
 	}
 
 	/**
@@ -289,18 +277,56 @@ public final class CertificationService {
 	}
 
 	/**
-	 * Reward cast duration curve: the certified item runs for a fraction of the
-	 * certified timeout. The default is 1:1; the two endpoint settings remain
-	 * configurable for backwards-compatible server tuning.
+	 * Certified reward duration is the exact health-plan timeout preview.
 	 */
 	public static int rewardDurationTicks(int certifiedDurationTicks) {
-		int minD = YHModConfig.COMMON.certificationMinDurationTicks.get();
-		int maxD = YHModConfig.COMMON.certificationMaxDurationTicks.get();
-		double span = Math.max(1, maxD - minD);
-		double t = Math.min(1, Math.max(0, (certifiedDurationTicks - minD) / span));
-		double shortRatio = YHModConfig.COMMON.certificationRewardDurationShortRatio.get();
-		double longRatio = YHModConfig.COMMON.certificationRewardDurationLongRatio.get();
-		double ratio = shortRatio + (longRatio - shortRatio) * t;
-		return Math.max(0, Math.min(1200, (int) Math.round(certifiedDurationTicks * ratio)));
+		return Math.max(0, Math.min(1200, certifiedDurationTicks));
+	}
+
+	private static SpellAnalysis analyzePlan(SpellHealthPlan plan, boolean operatorTest,
+			java.util.Set<dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability> extraAllowed) {
+		List<SpellAnalysis> analyses = new ArrayList<>();
+		for (SpellDefinition definition : plan.definitions().values()) {
+			analyses.add(operatorTest
+					? SpellAnalyzer.analyzeOperatorTest(definition, SpellAnalysisLimits.certification())
+					: SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION,
+						SpellAnalysisLimits.certification(), extraAllowed));
+		}
+		return mergeAnalyses(analyses);
+	}
+
+	private static SpellAnalysis mergeAnalyses(List<SpellAnalysis> analyses) {
+		long spawns = 0;
+		long projectileTicks = 0;
+		int peakAlive = 0;
+		int maxSpawn = 0;
+		long hooks = 0;
+		long expressionOps = 0;
+		double serverWork = 0;
+		double renderWork = 0;
+		double gameplayPower = 0;
+		var capabilities = EnumSet.noneOf(dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability.class);
+		var diagnostics = new ArrayList<dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDiagnostic>();
+		for (SpellAnalysis analysis : analyses) {
+			spawns = saturatedAdd(spawns, analysis.totalSpawnUpperBound());
+			projectileTicks = saturatedAdd(projectileTicks, analysis.projectileTicks());
+			peakAlive = Math.max(peakAlive, analysis.peakAliveUpperBound());
+			maxSpawn = Math.max(maxSpawn, analysis.maxSpawnPerTick());
+			hooks = saturatedAdd(hooks, analysis.hookExecutionUpperBound());
+			expressionOps = saturatedAdd(expressionOps, analysis.expressionOps());
+			serverWork += analysis.serverWork();
+			renderWork += analysis.clientRenderWork();
+			gameplayPower += analysis.gameplayPower();
+			capabilities.addAll(analysis.requiredCapabilities());
+			diagnostics.addAll(analysis.diagnostics());
+		}
+		return new SpellAnalysis(spawns, projectileTicks, peakAlive, maxSpawn, hooks,
+				expressionOps, serverWork, renderWork, gameplayPower,
+				java.util.Set.copyOf(capabilities), List.copyOf(diagnostics));
+	}
+
+	private static long saturatedAdd(long a, long b) {
+		if (b <= 0) return a;
+		return a > Long.MAX_VALUE - b ? Long.MAX_VALUE : a + b;
 	}
 }

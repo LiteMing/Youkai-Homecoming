@@ -495,9 +495,9 @@ public final class SpellAnalyzer {
 			if (profile == SpellAnalysisProfile.MARKET) {
 				throw banned("set_spell_health");
 			}
-			if (!operatorTest) {
-				throw rejected("operator_only", "set_spell_health is operator-only and cannot be certified");
-			}
+			// CertificationService validates the complete health graph before this
+			// analyzer runs. Completion targets stored inside this declaration are
+			// plan data, not free-form force_phase/force_spell capabilities.
 			handled = true;
 		} else if (action instanceof SetSpellCircleAction) {
 			addCap(SpellCapability.SET_SPELL_CIRCLE);

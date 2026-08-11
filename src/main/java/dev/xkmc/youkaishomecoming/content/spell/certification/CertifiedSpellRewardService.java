@@ -76,7 +76,7 @@ public final class CertifiedSpellRewardService {
 				return false;
 			}
 		}
-		CertifiedSpellStorage.save(level.getServer(), certificate, definition);
+		CertifiedSpellStorage.save(level.getServer(), certificate, certification.controller().healthPlan());
 
 		ItemStack stack = buildCertifiedStack(level.getServer(), certificate, definition);
 
@@ -187,6 +187,8 @@ public final class CertifiedSpellRewardService {
 				cost,
 				capabilities,
 				controller.quote().specialNodeQuota(),
+				controller.quote().operatorTest(),
+				SpellCertificate.CURRENT_HEALTH_PLAN_VERSION,
 				SpellCertificate.CURRENT_ANALYSIS_VERSION,
 				SpellCertificate.CURRENT_RULES_VERSION,
 				entity.level().getGameTime()

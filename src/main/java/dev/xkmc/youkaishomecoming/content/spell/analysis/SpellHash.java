@@ -50,6 +50,19 @@ public final class SpellHash {
 		return sha256Hex(canonical.getBytes(StandardCharsets.UTF_8));
 	}
 
+	/** Hashes the complete frozen force_spell dependency closure. */
+	public static String canonicalBundleHash(Map<net.minecraft.resources.ResourceLocation, SpellDefinition> definitions) {
+		if (definitions == null || definitions.isEmpty()) {
+			throw new SpellAnalysisException("Cannot hash an empty spell definition bundle");
+		}
+		StringBuilder canonical = new StringBuilder();
+		definitions.entrySet().stream()
+				.sorted(Map.Entry.comparingByKey(java.util.Comparator.comparing(Object::toString)))
+				.forEach(entry -> canonical.append(entry.getKey()).append('=')
+						.append(canonicalHash(entry.getValue())).append('\n'));
+		return sha256Hex(canonical.toString().getBytes(StandardCharsets.UTF_8));
+	}
+
 	private static JsonElement encode(SpellDefinition definition) {
 		return SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 				.result()

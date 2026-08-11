@@ -62,6 +62,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	@SerialClass.SerialField
 	private Set<UUID> playerOpponents = new LinkedHashSet<>();
 	@SerialClass.SerialField
+	private Set<String> brokenSpellCards = new LinkedHashSet<>();
+	@SerialClass.SerialField
 	private boolean forcedDanmakuCombat = false;
 	/** Debug/admin forced combat may ignore the spell-card inventory requirement. */
 	@SerialClass.SerialField
@@ -121,6 +123,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			combatAdminBypass = false;
 			statusInitialized = false;
 			playerOpponents.clear();
+			brokenSpellCards.clear();
 			// Respawn restores default STG resources (not zero)
 			applyDefaultResources(true);
 			resourcesPrimed = true;
@@ -133,6 +136,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	 * never tops up depleted values on re-entry (that was abusable).
 	 */
 	public void initStatus() {
+		if (!statusInitialized && !isInDanmakuCombat()) {
+			brokenSpellCards.clear();
+		}
 		if (!resourcesPrimed) {
 			applyDefaultResources(true);
 			resourcesPrimed = true;
@@ -299,13 +305,15 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (!hasInitializedCombatContext(source)) return HitType.NONE;
 		if (isInvul()) return HitType.INVUL;
 		int erased = eraseActiveDanmakuForHit(source);
-		// a certified spell card's break-HP bar absorbs misses: shrink it by 1,
-		// break (interrupt) the spell at zero — no power/life loss for this hit
-		if (player instanceof ServerPlayer sp
-				&& dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.consumeSpellBarHit(sp)) {
-			invul = YHModConfig.COMMON.missInvulTime.get();
-			dirty = true;
-			return HitType.LIFE;
+		// A certified spell bar absorbs misses until it reaches zero. The breaking
+		// hit interrupts the card and costs one LIFE, without normal POWER loss.
+		if (player instanceof ServerPlayer sp) {
+			HitType spellHit = SpellContainer.consumeSpellBarHit(sp, source);
+			if (spellHit != null) {
+				invul = YHModConfig.COMMON.missInvulTime.get();
+				dirty = true;
+				return spellHit;
+			}
 		}
 		// Auto-bomb is still a bomb use for certification purposes. Fail the
 		// trial, but leave resources untouched and absorb this contact so the
@@ -443,6 +451,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private void settleCombatIfIdle() {
 		if (isInDanmakuCombat()) return;
 		boolean changed = false;
+		if (!brokenSpellCards.isEmpty()) {
+			brokenSpellCards.clear();
+			changed = true;
+		}
 		if (statusInitialized) {
 			statusInitialized = false;
 			changed = true;
@@ -462,6 +474,31 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public boolean hasPlayerOpponent(UUID id) {
 		return playerOpponents.contains(id);
+	}
+
+	public boolean isSpellCardUnavailable(@Nullable String cardKey) {
+		return isInDanmakuCombat() && cardKey != null && !cardKey.isBlank()
+				&& brokenSpellCards.contains(cardKey);
+	}
+
+	public HitType breakSpellCardForCombat(@Nullable String cardKey, @Nullable LivingEntity source) {
+		if (cardKey != null && !cardKey.isBlank()) {
+			brokenSpellCards.add(cardKey);
+		}
+		dirty = true;
+		if (player instanceof ServerPlayer sp) {
+			sp.displayClientMessage(YHLangData.SPELL_BROKEN_UNAVAILABLE.get(), true);
+		}
+		if (life < SHARD) {
+			if (source != null && MinecraftForge.EVENT_BUS.post(new DanmakuLastHitEvent(player, source))) {
+				return HitType.LIFE;
+			}
+			exitDanmakuCombatOnLastHit(source);
+			return HitType.LAST;
+		}
+		life -= SHARD;
+		restoreInitialBomb();
+		return HitType.LIFE;
 	}
 
 	public void setForcedDanmakuCombat(boolean enabled) {
@@ -938,6 +975,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		forcedDanmakuCombat = false;
 		combatAdminBypass = false;
 		statusInitialized = false;
+		brokenSpellCards.clear();
 		playerSpellActive = false;
 		spellMovementRestricted = false;
 		spellInvulnerable = false;
@@ -1049,6 +1087,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		forcedDanmakuCombat = false;
 		combatAdminBypass = false;
 		statusInitialized = false;
+		brokenSpellCards.clear();
 		playerSpellActive = false;
 		spellMovementRestricted = false;
 		spellInvulnerable = false;

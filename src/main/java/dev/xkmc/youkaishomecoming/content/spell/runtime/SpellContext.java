@@ -104,7 +104,7 @@ public class SpellContext {
 	}
 
 	public boolean switchSpell(ResourceLocation spellId, boolean clearScreen) {
-		var def = SpellRegistry.get(spellId);
+		var def = runtime.resolveDefinition(spellId);
 		if (def == null) {
 			return false;
 		}
@@ -112,11 +112,13 @@ public class SpellContext {
 			return preview.switchSpell(def, clearScreen);
 		}
 		if (holder instanceof PlayerHolder playerHolder && playerHolder.spell() instanceof RuntimeItemSpell runtimeItemSpell) {
-			runtimeItemSpell.switchSpell(def, clearScreen);
+			runtimeItemSpell.switchSpell(def, runtime.continueWith(def), clearScreen);
 			return true;
 		}
 		if (host != null) {
-			host.switchSpellDefinition(def, clearScreen);
+			SpellRuntime next = runtime.continueWith(def);
+			host.switchSpellRuntime(next, clearScreen);
+			next.enterCurrentPhase(host);
 			return true;
 		}
 		return false;

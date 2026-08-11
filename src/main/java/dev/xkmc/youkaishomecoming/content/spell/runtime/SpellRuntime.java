@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.LegacyTickerAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Runtime state machine for a spell card definition.
@@ -32,9 +34,12 @@ import java.util.function.Consumer;
  * Does NOT extend SpellCard — it replaces the old runtime model.
  */
 public class SpellRuntime {
-	private static final int MAX_SPELL_HEALTH_SEGMENTS = 32;
+	private static final int MAX_SPELL_HEALTH_SEGMENTS = 64;
 
 	private final SpellDefinition definition;
+	private final Function<ResourceLocation, SpellDefinition> definitionResolver;
+	@Nullable
+	private final SpellHealthPlan declaredHealthPlan;
 
 	private ResourceLocation currentPhaseId;
 	private int phaseTick;
@@ -72,9 +77,37 @@ public class SpellRuntime {
 	private static final ThreadLocal<Integer> CHILD_RUNTIME_DEPTH = ThreadLocal.withInitial(() -> 0);
 
 	public SpellRuntime(SpellDefinition definition) {
+		this(definition, SpellRegistry::get, inferHealthPlan(definition));
+	}
+
+	public SpellRuntime(SpellDefinition definition,
+			Function<ResourceLocation, SpellDefinition> definitionResolver,
+			@Nullable SpellHealthPlan declaredHealthPlan) {
 		this.definition = definition;
+		this.definitionResolver = definitionResolver;
+		this.declaredHealthPlan = declaredHealthPlan;
 		this.currentPhaseId = definition.entryPhase;
 		initializeStaticSpellHealthPlan(definition.entryPhase);
+	}
+
+	@Nullable
+	public SpellDefinition resolveDefinition(ResourceLocation spellId) {
+		return definitionResolver.apply(spellId);
+	}
+
+	public SpellRuntime continueWith(SpellDefinition nextDefinition) {
+		return new SpellRuntime(nextDefinition, definitionResolver, declaredHealthPlan);
+	}
+
+	@Nullable
+	private static SpellHealthPlan inferHealthPlan(SpellDefinition definition) {
+		try {
+			return SpellHealthPlan.analyzeIfPresent(definition, SpellRegistry::get).orElse(null);
+		} catch (IllegalArgumentException ignored) {
+			// Draft/legacy definitions remain previewable; export and certification
+			// are the authoritative rejection boundaries.
+			return null;
+		}
 	}
 
 	public SpellDefinition getDefinition() {
@@ -166,7 +199,7 @@ public class SpellRuntime {
 		spellMaxHealth = Math.max(1, maxHealth);
 		spellDurationTicks = Math.max(0, durationTicks);
 		spellStartTick = totalTick;
-		int plannedIndex = spellHealthPlanPhases.indexOf(currentPhaseId.toString());
+		int plannedIndex = spellHealthPlanPhases.indexOf(planKey(definition.id, currentPhaseId));
 		if (plannedIndex >= 0) {
 			spellHealthSegmentIndex = plannedIndex;
 			spellHealthSegments.set(plannedIndex, spellMaxHealth);
@@ -178,7 +211,7 @@ public class SpellRuntime {
 			spellHealthSegments.set(spellHealthSegmentIndex, spellMaxHealth);
 			spellDurationSegments.set(spellHealthSegmentIndex, spellDurationTicks);
 		} else {
-			appendSpellHealthSegment(currentPhaseId, spellMaxHealth, spellDurationTicks);
+			appendSpellHealthSegment(definition.id, currentPhaseId, spellMaxHealth, spellDurationTicks);
 		}
 		spellTimeoutAction = validSpellHealthTarget(onTimeout);
 		spellBreakAction = validSpellHealthTarget(onBreak);
@@ -204,11 +237,12 @@ public class SpellRuntime {
 		clearCurrentSpellHealth();
 	}
 
-	private void appendSpellHealthSegment(ResourceLocation phaseId, int maxHealth, int durationTicks) {
+	private void appendSpellHealthSegment(ResourceLocation spellId, ResourceLocation phaseId,
+			int maxHealth, int durationTicks) {
 		if (spellHealthSegments.size() >= MAX_SPELL_HEALTH_SEGMENTS) {
 			return;
 		}
-		spellHealthPlanPhases.add(phaseId.toString());
+		spellHealthPlanPhases.add(planKey(spellId, phaseId));
 		spellHealthSegments.add(Math.max(1, maxHealth));
 		spellDurationSegments.add(Math.max(0, durationTicks));
 		spellHealthSegmentIndex = spellHealthSegments.size() - 1;
@@ -231,6 +265,17 @@ public class SpellRuntime {
 		spellHealthSegmentIndex = -1;
 		spellHealthCompleted = 0;
 		spellDurationCompleted = 0;
+		if (declaredHealthPlan != null) {
+			for (SpellHealthPlan.Segment segment : declaredHealthPlan.breakChain()) {
+				if (spellHealthSegments.size() >= MAX_SPELL_HEALTH_SEGMENTS) break;
+				appendSpellHealthSegment(segment.spellId(), segment.phaseId(),
+						segment.health(), segment.durationTicks());
+			}
+			spellHealthSegmentIndex = -1;
+			spellHealthCompleted = 0;
+			spellDurationCompleted = 0;
+			return;
+		}
 		Set<ResourceLocation> visited = new HashSet<>();
 		ResourceLocation phaseId = startPhase;
 		while (phaseId != null && visited.add(phaseId)
@@ -242,7 +287,7 @@ public class SpellRuntime {
 					|| !(health.duration() instanceof NumberProviders.Constant duration)) {
 				break;
 			}
-			appendSpellHealthSegment(phaseId,
+			appendSpellHealthSegment(definition.id, phaseId,
 					clampPlannedValue(hp.value(), 1, 1_000_000),
 					clampPlannedValue(duration.value(), 0, 1_000_000));
 			phaseId = deterministicNextPhase(health);
@@ -268,14 +313,14 @@ public class SpellRuntime {
 
 	@Nullable
 	private static ResourceLocation deterministicNextPhase(SetSpellHealthAction health) {
-		ResourceLocation next = null;
-		for (var target : List.of(health.onTimeout(), health.onBreak())) {
-			if (target.isEmpty()) continue;
-			if (!(target.get() instanceof SpellActions.ForcePhase phase)) return null;
-			if (next != null && !next.equals(phase.phaseId())) return null;
-			next = phase.phaseId();
+		if (health.onBreak().orElse(null) instanceof SpellActions.ForcePhase phase) {
+			return phase.phaseId();
 		}
-		return next;
+		return null;
+	}
+
+	private static String planKey(ResourceLocation spellId, ResourceLocation phaseId) {
+		return spellId + "|" + phaseId;
 	}
 
 	private static int clampPlannedValue(double value, int min, int max) {
@@ -314,6 +359,13 @@ public class SpellRuntime {
 	private boolean triggerSpellHealthTimeout(CardHolder holder) {
 		if (spellMaxHealth <= 0 || spellDurationTicks <= 0) return false;
 		if (getCurrentSpellElapsedTicks() < spellDurationTicks) return false;
+		if (holder instanceof SpellRuntimeHost host && host.spellHealthTimeoutEndsFight()) {
+			postSpellHealthEvent(holder,
+					dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.Outcome.TIMEOUT, null);
+			clearSpellHealth();
+			host.settleSpellHealthTimeout();
+			return false;
+		}
 		if (spellTimeoutAction == null) {
 			postSpellHealthEvent(holder,
 					dev.xkmc.youkaishomecoming.compat.stg.event.SpellCardEvent.Outcome.TIMEOUT, null);
@@ -337,7 +389,7 @@ public class SpellRuntime {
 			return false;
 		}
 		if (target instanceof SpellActions.ForceSpell spell
-				&& SpellRegistry.get(spell.spellId()) == null) {
+				&& resolveDefinition(spell.spellId()) == null) {
 			postSpellHealthEvent(holder, outcome, source);
 			clearSpellHealth();
 			return false;
@@ -394,6 +446,20 @@ public class SpellRuntime {
 		this.phasePreviewLock = phaseId;
 	}
 
+	/** Executes the current phase's on_enter list once. */
+	public void enterCurrentPhase(CardHolder holder) {
+		if (enteredCurrentPhase) return;
+		PhaseDefinition phase = definition.getPhase(currentPhaseId);
+		if (phase == null) return;
+		enteredCurrentPhase = true;
+		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
+		SpellContext ctx = new SpellContext(holder, definition, this,
+				definition.difficulty.resolve(healthRatio));
+		for (SpellAction action : phase.onEnter) {
+			action.execute(ctx);
+		}
+	}
+
 	public void tick(CardHolder holder) {
 		PhaseDefinition phase = definition.getPhase(currentPhaseId);
 		if (phase == null) return;
@@ -418,10 +484,7 @@ public class SpellRuntime {
 		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 		SpellContext ctx = new SpellContext(holder, definition, this, diff);
 		if (!enteredCurrentPhase) {
-			enteredCurrentPhase = true;
-			for (SpellAction action : phase.onEnter) {
-				action.execute(ctx);
-			}
+			enterCurrentPhase(holder);
 			phase = definition.getPhase(currentPhaseId);
 			if (phase == null) return;
 		}
@@ -809,17 +872,18 @@ public class SpellRuntime {
 				}
 			}
 			if (this.spellHealthSegments.isEmpty() && this.spellMaxHealth > 0) {
-				appendSpellHealthSegment(phaseId, this.spellMaxHealth, this.spellDurationTicks);
+				appendSpellHealthSegment(definition.id, phaseId, this.spellMaxHealth, this.spellDurationTicks);
 			}
 			if (this.spellHealthPlanPhases.size() != this.spellHealthSegments.size()) {
 				this.spellHealthPlanPhases.clear();
 				for (int i = 0; i < this.spellHealthSegments.size(); i++) {
 					this.spellHealthPlanPhases.add(i + 1 == this.spellHealthSegments.size()
-							? phaseId.toString() : "");
+							? planKey(definition.id, phaseId) : "");
 				}
 			}
 			this.spellHealthSegmentIndex = tag.contains("SpellHealthSegmentIndex")
-					? tag.getInt("SpellHealthSegmentIndex") : this.spellHealthPlanPhases.indexOf(phaseId.toString());
+					? tag.getInt("SpellHealthSegmentIndex")
+					: this.spellHealthPlanPhases.indexOf(planKey(definition.id, phaseId));
 			if (this.spellHealthSegmentIndex < 0 && this.spellMaxHealth > 0) {
 				this.spellHealthSegmentIndex = Math.max(0, this.spellHealthSegments.size() - 1);
 			}

@@ -115,9 +115,6 @@ public class YHModConfig {
 
 		// Certification gameplay (Phase 2)
 		public final ForgeConfigSpec.BooleanValue certificationEnabled;
-		public final ForgeConfigSpec.IntValue certificationMinDurationTicks;
-		public final ForgeConfigSpec.IntValue certificationMaxDurationTicks;
-		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends Integer>> certificationDurationPresets;
 		public final ForgeConfigSpec.IntValue certificationMinArenaHalfSize;
 		public final ForgeConfigSpec.IntValue certificationMaxArenaHalfSize;
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends Integer>> certificationArenaPresets;
@@ -140,11 +137,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue certificationPublicRendering;
 		public final ForgeConfigSpec.IntValue certificationRewardOwnerLockTicks;
 		public final ForgeConfigSpec.BooleanValue certificationRewardNeverDespawn;
-		public final ForgeConfigSpec.DoubleValue certificationRewardDurationShortRatio;
-		public final ForgeConfigSpec.DoubleValue certificationRewardDurationLongRatio;
-		public final ForgeConfigSpec.DoubleValue certificationPlayerUseHpRatio;
 		public final ForgeConfigSpec.DoubleValue certificationFixedArenaHalfSize;
-		public final ForgeConfigSpec.DoubleValue certificationHpRegenRatio;
 
 		public final ForgeConfigSpec.IntValue youkaifyingTime;
 		public final ForgeConfigSpec.DoubleValue youkaifyingChance;
@@ -313,15 +306,6 @@ public class YHModConfig {
 				certificationEnabled = builder.comment("Master switch for the survival spell certification system")
 						.translation("config.youkaishomecoming.common.certification.enabled")
 						.define("enabled", true);
-				certificationMinDurationTicks = builder.comment("Minimum certification timeout in ticks (0 means no fixed timeout)")
-						.translation("config.youkaishomecoming.common.certification.minDurationTicks")
-						.defineInRange("minDurationTicks", 0, 0, 1200);
-				certificationMaxDurationTicks = builder.comment("Maximum certification timeout in ticks (1200 tick cap)")
-						.translation("config.youkaishomecoming.common.certification.maxDurationTicks")
-						.defineInRange("maxDurationTicks", 1200, 0, 1200);
-				certificationDurationPresets = builder.comment("Preset certification durations in ticks (editor quick pick)")
-						.translation("config.youkaishomecoming.common.certification.durationPresets")
-						.defineListAllowEmpty("durationPresets", java.util.List.of(0, 600, 1200), o -> o instanceof Integer);
 				certificationMinArenaHalfSize = builder.comment("Minimum certification arena half size in blocks")
 						.translation("config.youkaishomecoming.common.certification.minArenaHalfSize")
 						.defineInRange("minArenaHalfSize", 6, 4, 32);
@@ -388,21 +372,9 @@ public class YHModConfig {
 				certificationRewardNeverDespawn = builder.comment("Certified spell reward items never despawn naturally")
 						.translation("config.youkaishomecoming.common.certification.rewardNeverDespawn")
 						.define("rewardNeverDespawn", true);
-				certificationRewardDurationShortRatio = builder.comment("Reward cast duration ratio for the shortest certification (default 1:1)")
-						.translation("config.youkaishomecoming.common.certification.rewardDurationShortRatio")
-						.defineInRange("rewardDurationShortRatio", 1.0, 0.0, 1.0);
-				certificationRewardDurationLongRatio = builder.comment("Reward cast duration ratio for the longest certification (default 1:1)")
-						.translation("config.youkaishomecoming.common.certification.rewardDurationLongRatio")
-						.defineInRange("rewardDurationLongRatio", 1.0, 0.0, 1.0);
-				certificationPlayerUseHpRatio = builder.comment("When a player uses a certified spell card, its break HP bar (boss bar) is this fraction of the certification HP (default 0.5)")
-						.translation("config.youkaishomecoming.common.certification.playerUseHpRatio")
-						.defineInRange("playerUseHpRatio", 0.5, 0.05, 1.0);
 				certificationFixedArenaHalfSize = builder.comment("Fixed certification arena half size in blocks (always used, UI selection ignored)")
 						.translation("config.youkaishomecoming.common.certification.fixedArenaHalfSize")
 						.defineInRange("fixedArenaHalfSize", 64.0, 8.0, 256.0);
-				certificationHpRegenRatio = builder.comment("Certification enemy HP grows over time: +10 HP per second x this ratio (default 1)")
-						.translation("config.youkaishomecoming.common.certification.hpRegenRatio")
-						.defineInRange("hpRegenRatio", 1.0, 0.0, 10.0);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.youkaifying_effect").push("youkaifying_effect");

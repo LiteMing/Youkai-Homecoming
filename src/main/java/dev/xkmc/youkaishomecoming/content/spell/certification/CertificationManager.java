@@ -40,7 +40,7 @@ public final class CertificationManager {
 		purgeExpired(player.level().getGameTime());
 		CertificationQuote previous = pendingQuotes.get(player.getUUID());
 		if (previous != null) quoteDefinitions.remove(previous.quoteId());
-		quoteDefinitions.put(quote.quoteId(), definition);
+		quoteDefinitions.put(quote.quoteId(), quote.healthPlan().rootDefinition());
 		return pendingQuotes.put(player.getUUID(), quote);
 	}
 
@@ -88,7 +88,7 @@ public final class CertificationManager {
 	}
 
 	private static long quoteTtlTicks() {
-		return YHModConfig.COMMON.certificationMaxDurationTicks.get();
+		return 1200;
 	}
 
 	public int activeCount() {

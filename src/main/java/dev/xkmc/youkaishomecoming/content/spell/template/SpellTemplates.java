@@ -267,7 +267,7 @@ public final class SpellTemplates {
 				        {
 				          "type": "set_spell_health",
 				          "health": 500,
-				          "duration": 600,
+				          "duration": 400,
 				          "on_timeout": {
 				            "type": "force_phase",
 				            "phase_id": "%2$s/final",
@@ -305,7 +305,7 @@ public final class SpellTemplates {
 				        {
 				          "type": "set_spell_health",
 				          "health": 800,
-				          "duration": 900
+				          "duration": 800
 				        }
 				      ],
 				      "on_tick": [

@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.events.DanmakuGrazeEvent;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
@@ -186,15 +187,22 @@ public class GrazeHelper {
 	 */
 	public static ItemStack findSpellCard(Player player) {
 		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
-		if (isSpellStack(offhand)) return offhand;
+		if (isAvailableSpellStack(player, offhand)) return offhand;
 		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
-		if (isSpellStack(mainhand)) return mainhand;
+		if (isAvailableSpellStack(player, mainhand)) return mainhand;
 		var inventory = player.getInventory();
 		for (int i = 0; i < inventory.items.size(); i++) {
 			ItemStack stack = inventory.getItem(i);
-			if (isSpellStack(stack)) return stack;
+			if (isAvailableSpellStack(player, stack)) return stack;
 		}
-		return CuriosManager.findFirstSpellItem(player);
+		ItemStack curios = CuriosManager.findFirstSpellItem(player);
+		return isAvailableSpellStack(player, curios) ? curios : ItemStack.EMPTY;
+	}
+
+	private static boolean isAvailableSpellStack(Player player, ItemStack stack) {
+		if (!isSpellStack(stack)) return false;
+		String cardKey = CertifiedSpellValidator.getCertificateId(stack);
+		return !GrazeCapability.HOLDER.get(player).isSpellCardUnavailable(cardKey);
 	}
 
 	/** Cast a specific card supplied by an integration or script. */

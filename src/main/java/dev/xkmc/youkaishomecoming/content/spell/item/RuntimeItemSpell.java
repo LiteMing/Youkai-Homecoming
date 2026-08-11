@@ -55,10 +55,14 @@ public class RuntimeItemSpell extends ItemSpell {
 	}
 
 	public void switchSpell(SpellDefinition definition, boolean clearScreen) {
+		switchSpell(definition, new SpellRuntime(definition), clearScreen);
+	}
+
+	public void switchSpell(SpellDefinition definition, SpellRuntime nextRuntime, boolean clearScreen) {
 		this.definition = definition;
 		if (clearScreen) {
 			clearDanmaku();
 		}
-		runtime = new SpellRuntime(definition);
+		runtime = nextRuntime;
 	}
 }

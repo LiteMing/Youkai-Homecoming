@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -89,10 +90,16 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 */
 	public void init(ServerPlayer player, SpellDefinition definition, int duration,
 					 @Nullable LivingEntity target) {
+		init(player, definition, duration, target, null);
+	}
+
+	public void init(ServerPlayer player, SpellDefinition definition, int duration,
+					 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan) {
 		this.ownerPlayerId = player.getUUID();
 		this.ownerPlayer = player;
 		this.maxDuration = duration;
-		this.runtime = new SpellRuntime(definition);
+		this.runtime = healthPlan == null ? new SpellRuntime(definition)
+				: new SpellRuntime(definition, healthPlan::resolve, healthPlan);
 		this.runtime.reset();
 		this.spellTickCount = 0;
 

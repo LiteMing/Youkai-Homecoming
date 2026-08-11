@@ -5,11 +5,13 @@ import dev.xkmc.l2library.util.raytrace.RayTraceUtil;
 import dev.xkmc.youkaishomecoming.compat.kubejs.spell.DynamicSpellCastEventJS;
 import dev.xkmc.youkaishomecoming.compat.kubejs.spell.DynamicSpellSingleUseEventJS;
 import dev.xkmc.youkaishomecoming.compat.kubejs.spell.YHSpellKubeJSEvents;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
@@ -247,22 +249,33 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (!isCastReady(stack)) return false;
 		if (GrazeHelper.forbidSpellCardWithMessage(player)) return false;
 		SpellDefinition def = getSpellDefinition(stack);
-		if (def == null) return false;
+		boolean certifiedStack = CertifiedSpellValidator.isCertified(stack);
+		String cardKey = certifiedStack ? CertifiedSpellValidator.getCertificateId(stack) : null;
+		if (def == null && !(certifiedStack && player instanceof ServerPlayer)) return false;
 		ResourceLocation spellId = getSpellId(stack);
 		if (spellId == null) return false;
 
 		boolean singleUse = isSingleUse(stack);
+		SpellHealthPlan certifiedPlan = null;
 
 		// Certified items (design doc §15, §22): resolve the immutable definition from
 		// world certificate storage, verify hash and capability policy; tampered NBT,
 		// overwritten storage or revoked capabilities reject the cast.
-		if (player instanceof ServerPlayer sp0 && CertifiedSpellValidator.isCertified(stack)) {
-			SpellDefinition certified = CertifiedSpellValidator.resolveCertifiedDefinition(sp0, stack);
+		if (player instanceof ServerPlayer sp0 && certifiedStack) {
+			certifiedPlan = CertifiedSpellValidator.resolveCertifiedPlan(sp0, stack);
+			SpellDefinition certified = certifiedPlan == null
+					? CertifiedSpellValidator.resolveCertifiedDefinition(sp0, stack)
+					: certifiedPlan.rootDefinition();
 			if (certified == null) {
 				sp0.displayClientMessage(YHLangData.CERT_CAST_REJECTED.get(), false);
 				return false;
 			}
 			def = certified;
+		}
+		if (player instanceof ServerPlayer sp0
+				&& GrazeCapability.HOLDER.get(sp0).isSpellCardUnavailable(cardKey)) {
+			sp0.displayClientMessage(YHLangData.SPELL_BROKEN_UNAVAILABLE.get(), true);
+			return false;
 		}
 
 		if (player instanceof ServerPlayer sp && ModList.get().isLoaded("kubejs")
@@ -296,17 +309,16 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 			DanmakuProxyEntity proxy = new DanmakuProxyEntity(
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
-			proxy.init(sp, def, duration, target);
+			proxy.init(sp, def, duration, target, certifiedPlan);
 			sp.serverLevel().addFreshEntity(proxy);
 			SpellContainer.trackProxy(sp, proxy);
 			GrazeHelper.onPlayerSpellCast(sp);
 			// certified cards show the player-use spell bar: a fraction of the
 			// certification HP (boss bar); misses shrink it instead of costing life
 			if (CertifiedSpellValidator.isCertified(stack)) {
-				int hp = def.itemForm.hp();
+				int hp = certifiedPlan == null ? def.itemForm.hp() : certifiedPlan.totalHealth();
 				if (hp > 0) {
-					double ratio = YHModConfig.COMMON.certificationPlayerUseHpRatio.get();
-					SpellContainer.startSpellBar(sp, (int) Math.max(1, hp * ratio));
+					SpellContainer.startSpellBar(sp, hp, cardKey, def.display.displayName());
 				}
 			}
 			if (cooldown) {

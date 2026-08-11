@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.certification;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentReceipt;
 import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentResult;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellCostContext;
@@ -31,6 +32,7 @@ public class CertificationController {
 	private final ServerPlayer author;
 	private final UUID authorId;
 	private final SpellDefinition definition;
+	private final SpellHealthPlan healthPlan;
 	private final String definitionHash;
 	private final CertificationQuote quote;
 	private final CertificationArena arena;
@@ -69,6 +71,7 @@ public class CertificationController {
 		this.author = author;
 		this.authorId = author.getUUID();
 		this.definition = definition;
+		this.healthPlan = quote.healthPlan();
 		this.definitionHash = definitionHash;
 		this.quote = quote;
 		this.arena = new CertificationArena(entity.position(), quote.arenaHalfSize());
@@ -96,6 +99,7 @@ public class CertificationController {
 	}
 
 	public SpellDefinition definition() { return definition; }
+	public SpellHealthPlan healthPlan() { return healthPlan; }
 	public CertificationQuote quote() { return quote; }
 	public int targetTicks() {
 		return quote.durationTicks();
@@ -240,7 +244,9 @@ public class CertificationController {
 			activeThreatTicks = 0;
 			lastPlayerPos = author.position();
 			// fresh runtime: spell loops are restarted by the controller (D6/D5)
-			e.setSpellRuntime(new SpellRuntime(definition));
+			e.setSpellRuntime(new SpellRuntime(definition,
+					healthPlan::resolve,
+					healthPlan));
 			logState("active start");
 			author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_ACTIVE.get(quote.durationTicks() / 20), false);
 			syncState();
@@ -316,6 +322,12 @@ public class CertificationController {
 	public void onSpellBroken() {
 		if (state != CertificationState.ACTIVE) return;
 		success(entity);
+	}
+
+	/** Any declared segment timeout fails certification, regardless of its boss transition target. */
+	public void onSpellTimeout() {
+		if (state != CertificationState.ACTIVE) return;
+		fail(entity, CertificationFailReason.TIMEOUT);
 	}
 
 	/** Player cast a different spell card mid-trial: no-bomb/no-hit forbids it. */
@@ -514,9 +526,11 @@ public class CertificationController {
 	}
 
 	private void syncState() {
+		int currentMaxHealth = entity.spellRuntime == null || entity.spellRuntime.getSpellMaxHealth() <= 0
+				? (int) entity.getMaxHealth() : entity.spellRuntime.getSpellMaxHealth();
 		dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStateToClient.send(
 				entity, state, elapsedTicks, quote.durationTicks(),
-				(int) entity.getMaxHealth(), (int) Math.max(0, entity.getHealth()),
+				currentMaxHealth, (int) Math.max(0, entity.getHealth()),
 				failReason == null ? null : failReason.id());
 	}
 }

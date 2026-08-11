@@ -6,6 +6,7 @@ import dev.xkmc.youkaishomecoming.content.capability.PvpDanmakuStatusOverlay;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.SpellProgressColor;
 import dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationClientHandler;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.Minecraft;
@@ -13,6 +14,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Locale;
 
 /** World-space spell HP/time progress rings shared by bosses, certification and PVP. */
 public final class SpellProgressCircleRenderer {
@@ -33,9 +36,11 @@ public final class SpellProgressCircleRenderer {
 				pose, buffer, builder, entity.tickCount + pTick, light);
 		handle.alpha = alpha;
 		pose.pushPose();
+		SpellComponent.Stroke hpOutline = stroke(52, 4.4f, outlineColor(entity));
+		renderHealthProgress(handle, hpOutline, progress, true);
 		SpellComponent.Stroke hpBackground = stroke(52, 3.0f, "0x55445555");
 		renderHealthProgress(handle, hpBackground, progress, true);
-		SpellComponent.Stroke hp = stroke(52, 3.0f, "0xFFFFFFFF");
+		SpellComponent.Stroke hp = stroke(52, 2.2f, "0xFFFFFFFF");
 		renderHealthProgress(handle, hp, progress, false);
 		if (progress.durationTicks() > 0) {
 			SpellComponent.Stroke timeBackground = stroke(46, 1.6f, "0x55445555");
@@ -44,6 +49,11 @@ public final class SpellProgressCircleRenderer {
 			renderRemainingProgress(handle, time, progress.timeRatio(entity, pTick));
 		}
 		pose.popPose();
+	}
+
+	private static String outlineColor(Entity entity) {
+		int rgb = SpellProgressColor.outlineRgb(entity, 0xFF3344);
+		return String.format(Locale.ROOT, "0xFF%06X", rgb);
 	}
 
 	private static SpellComponent.Stroke stroke(float radius, float width, String color) {

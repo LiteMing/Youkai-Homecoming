@@ -130,10 +130,29 @@ public class SpellCertificationEntity extends GeneralYoukaiEntity {
 		if (controller.state() != dev.xkmc.youkaishomecoming.content.spell.certification.CertificationState.ACTIVE) {
 			return;
 		}
-		this.setHealth(Math.max(0, this.getHealth() - amount));
-		if (this.getHealth() <= 0) {
-			controller.onSpellBroken();
+		if (spellRuntime != null) {
+			spellRuntime.hurt(this, source, amount);
 		}
+		float remaining = this.getHealth() - amount;
+		if (remaining > 0) {
+			this.setHealth(remaining);
+			return;
+		}
+		this.setHealth(0);
+		if (spellRuntime != null && spellRuntime.triggerSpellHealthBreak(this, source)) {
+			return;
+		}
+		controller.onSpellBroken();
+	}
+
+	@Override
+	public boolean spellHealthTimeoutEndsFight() {
+		return controller != null && controller.canBeBroken();
+	}
+
+	@Override
+	public void settleSpellHealthTimeout() {
+		if (controller != null) controller.onSpellTimeout();
 	}
 
 	private static boolean isDanmakuDamage(DamageSource source) {

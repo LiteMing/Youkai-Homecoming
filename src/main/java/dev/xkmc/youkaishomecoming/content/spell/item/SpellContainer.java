@@ -4,16 +4,24 @@ import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.l2library.capability.conditionals.*;
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
+import dev.xkmc.youkaishomecoming.content.spell.SpellProgressColor;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.world.BossEvent;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 @SerialClass
@@ -113,13 +121,15 @@ public class SpellContainer extends ConditionalToken {
 	/**
 	 * Certified spell cards keep a server-side break HP value (a fraction of the
 	 * certification HP). The value is projected onto the player's spell circle;
-	 * each miss shrinks it by 1 and a zero bar breaks the spell.
+	 * each miss shrinks it by 1 and a zero bar breaks the spell and costs one LIFE.
 	 */
-	public static void startSpellBar(ServerPlayer sp, int maxHp) {
+	public static void startSpellBar(ServerPlayer sp, int maxHp, @Nullable String cardKey, Component spellName) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		data.endSpellBar(sp);
 		data.spellBarValue = Math.max(1, maxHp);
 		data.spellBarMax = data.spellBarValue;
+		data.spellBarCardKey = cardKey;
+		data.spellBarName = spellName.copy();
 		data.syncPlayerSpellStatus(sp);
 	}
 
@@ -129,20 +139,24 @@ public class SpellContainer extends ConditionalToken {
 
 	/**
 	 * A miss while the spell bar is up: shrink it by 1 and break (interrupt) the
-	 * spell when it reaches zero. Returns true when the bar absorbed the hit.
+	 * spell when it reaches zero. Returns the authoritative STG hit result, or
+	 * null when no spell bar was active.
 	 */
-	public static boolean consumeSpellBarHit(ServerPlayer sp) {
+	@Nullable
+	public static GrazeCapability.HitType consumeSpellBarHit(ServerPlayer sp, @Nullable LivingEntity source) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		if (data.spellBarMax <= 0) {
-			return false;
+			return null;
 		}
 		data.spellBarValue = Math.max(0, data.spellBarValue - 1);
-		data.syncPlayerSpellStatus(sp);
 		if (data.spellBarValue <= 0) {
+			String cardKey = data.spellBarCardKey;
 			data.endSpellBar(sp);
 			breakActiveSpell(sp);
+			return GrazeCapability.HOLDER.get(sp).breakSpellCardForCombat(cardKey, source);
 		}
-		return true;
+		data.syncPlayerSpellStatus(sp);
+		return GrazeCapability.HitType.LIFE;
 	}
 
 	/** Interrupt the currently released spell card (erases its danmaku). */
@@ -161,23 +175,92 @@ public class SpellContainer extends ConditionalToken {
 
 	private int spellBarValue;
 	private int spellBarMax;
+	@Nullable
+	private String spellBarCardKey;
+	@Nullable
+	private Component spellBarName;
+	@Nullable
+	private ServerBossEvent ownSpellBossEvent;
+	@Nullable
+	private ServerBossEvent opponentSpellBossEvent;
 
 	private void endSpellBar(Player player) {
 		spellBarValue = 0;
 		spellBarMax = 0;
+		spellBarCardKey = null;
+		spellBarName = null;
 		if (player instanceof ServerPlayer sp) {
 			syncPlayerSpellStatus(sp);
+		} else {
+			clearSpellBossBars();
 		}
 	}
 
 	private void syncPlayerSpellStatus(ServerPlayer sp) {
 		var proxy = proxies.stream().filter(e -> !e.isRemoved()).findFirst().orElse(null);
-		var cap = dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(sp);
-		cap.setPlayerSpellStatus(new dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.SpellProgressStatus(
+		var cap = GrazeCapability.HOLDER.get(sp);
+		cap.setPlayerSpellStatus(new GrazeCapability.SpellProgressStatus(
 				spellBarValue, spellBarMax,
 				proxy == null ? 0 : proxy.spellElapsedTicks(),
 				proxy == null ? 0 : proxy.spellDurationTicks()));
+		syncSpellBossBars(sp, proxy);
 		cap.sync();
+	}
+
+	private void syncSpellBossBars(ServerPlayer sp, @Nullable DanmakuProxyEntity proxy) {
+		if (spellBarMax <= 0 || proxy == null) {
+			clearSpellBossBars();
+			return;
+		}
+		if (ownSpellBossEvent == null) {
+			ownSpellBossEvent = new ServerBossEvent(Component.empty(), BossEvent.BossBarColor.BLUE,
+					BossEvent.BossBarOverlay.PROGRESS);
+		}
+		if (opponentSpellBossEvent == null) {
+			opponentSpellBossEvent = new ServerBossEvent(Component.empty(), BossEvent.BossBarColor.RED,
+					BossEvent.BossBarOverlay.PROGRESS);
+		}
+
+		float progress = Math.max(0, Math.min(1, spellBarValue / (float) spellBarMax));
+		Component name = spellBossBarName(sp, proxy);
+		ownSpellBossEvent.setProgress(progress);
+		opponentSpellBossEvent.setProgress(progress);
+		ownSpellBossEvent.setName(name);
+		opponentSpellBossEvent.setName(name);
+		ownSpellBossEvent.setColor(SpellProgressColor.bossBarColor(sp, BossEvent.BossBarColor.BLUE));
+		opponentSpellBossEvent.setColor(SpellProgressColor.bossBarColor(sp, BossEvent.BossBarColor.RED));
+		ownSpellBossEvent.addPlayer(sp);
+
+		Set<ServerPlayer> opponents = new HashSet<>();
+		for (LivingEntity entity : GrazeCapability.HOLDER.get(sp).snapshotOpponents().entities()) {
+			if (entity instanceof ServerPlayer opponent && opponent != sp) {
+				opponents.add(opponent);
+			}
+		}
+		for (ServerPlayer viewer : List.copyOf(opponentSpellBossEvent.getPlayers())) {
+			if (!opponents.contains(viewer)) opponentSpellBossEvent.removePlayer(viewer);
+		}
+		for (ServerPlayer opponent : opponents) {
+			opponentSpellBossEvent.addPlayer(opponent);
+		}
+	}
+
+	private Component spellBossBarName(ServerPlayer sp, DanmakuProxyEntity proxy) {
+		Component name = Component.empty().append(sp.getDisplayName());
+		if (spellBarName != null) {
+			name = Component.empty().append(name).append(Component.literal(" - ")).append(spellBarName);
+		}
+		int duration = proxy.spellDurationTicks();
+		if (duration <= 0) return name;
+		int remainingTicks = Math.max(0, duration - proxy.spellElapsedTicks());
+		int remainingSeconds = (remainingTicks + 19) / 20;
+		return Component.empty().append(name).append(Component.literal(
+				"  " + remainingSeconds + "s").withStyle(ChatFormatting.AQUA));
+	}
+
+	private void clearSpellBossBars() {
+		if (ownSpellBossEvent != null) ownSpellBossEvent.removeAllPlayers();
+		if (opponentSpellBossEvent != null) opponentSpellBossEvent.removeAllPlayers();
 	}
 
 	public static void castSpell(ServerPlayer sp, Supplier<? extends ItemSpell> sup, @Nullable LivingEntity target) {

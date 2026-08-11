@@ -41,7 +41,6 @@ public class CertificationQuoteToClient extends SerialPacketBase {
 	public int spellHp = 0;
 	@SerialClass.SerialField
 	public int specialNodeQuota = 0;
-	@SerialClass.SerialField
 	public String capabilities = "";
 
 	public CertificationQuoteToClient() {

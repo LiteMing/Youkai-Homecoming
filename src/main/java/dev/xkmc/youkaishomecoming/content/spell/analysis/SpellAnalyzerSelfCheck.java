@@ -524,6 +524,7 @@ public final class SpellAnalyzerSelfCheck {
 				marketFacade();
 				unknownAction();
 				hashOrderIndependence();
+				healthPlanValidation();
 				if (player != null) {
 					certificationQuoteSanity(player);
 				}
@@ -556,8 +557,8 @@ public final class SpellAnalyzerSelfCheck {
 			SetSpellHealthAction health = (SetSpellHealthAction) firstTickAction(parse(SPELL_HEALTH_TARGETS));
 			check("spell health timeout target codec", health.onTimeout().orElse(null) instanceof SpellActions.ForcePhase);
 			check("spell health break target codec", health.onBreak().orElse(null) instanceof SpellActions.ForceSpell);
-			SetSpellHealthAction invalid = (SetSpellHealthAction) firstTickAction(parse(SPELL_HEALTH_INVALID_TARGET));
-			check("spell health rejects unrelated embedded action", invalid.onTimeout().isEmpty());
+			check("spell health rejects unrelated embedded action",
+					rejectMessage(() -> parse(SPELL_HEALTH_INVALID_TARGET)) != null);
 			SpellDefinition bossTemplate = SpellTemplates.create(
 					new ResourceLocation("youkaishomecoming", "selftest_boss"), "boss");
 			check("boss template has two phases", bossTemplate.phases.size() == 2);
@@ -571,8 +572,8 @@ public final class SpellAnalyzerSelfCheck {
 			check("boss health plan exposes all phase arcs before transition",
 					java.util.Arrays.equals(bossRuntime.getSpellHealthSegments(), new int[]{500, 800}));
 			check("boss phases share one combined timeout ring",
-					bossRuntime.getSpellDurationTicks() == 1500);
-			bossRuntime.setSpellHealth(500, 600);
+					bossRuntime.getSpellDurationTicks() == 1200);
+			bossRuntime.setSpellHealth(500, 400);
 			check("entering first boss phase keeps planned arc proportions",
 					java.util.Arrays.equals(bossRuntime.getSpellHealthSegments(), new int[]{500, 800})
 							&& bossRuntime.getSpellHealthTotal() == 1300);
@@ -580,7 +581,7 @@ public final class SpellAnalyzerSelfCheck {
 			restoredBossRuntime.loadFromTag(bossRuntime.saveToTag());
 			check("shared boss rings survive runtime persistence",
 					java.util.Arrays.equals(restoredBossRuntime.getSpellHealthSegments(), new int[]{500, 800})
-							&& restoredBossRuntime.getSpellDurationTicks() == 1500);
+							&& restoredBossRuntime.getSpellDurationTicks() == 1200);
 			// 3. JSON object field order does not affect hash
 			check("hash independent of JSON field order",
 					SpellHash.canonicalHash(parse(REORDERED)).equals(SpellHash.canonicalHash(parse(FIRE24))));
@@ -881,9 +882,9 @@ public final class SpellAnalyzerSelfCheck {
 			// historical market banned text verbatim
 			String banned = rejectMessage(() -> SpellAnalyzer.analyze(parse(RUNCMD), SpellAnalysisProfile.MARKET));
 			check("market banned text verbatim", banned != null && banned.equals("Automatic market imports may not use action: run_command"));
-			String certHealth = rejectMessage(() -> SpellAnalyzer.analyze(
-					parse(SPELL_HEALTH), SpellAnalysisProfile.CERTIFICATION, CERT));
-			check("cert rejects operator spell health", certHealth != null && certHealth.contains("operator-only"));
+			SpellAnalysis certHealth = SpellAnalyzer.analyze(
+					parse(SPELL_HEALTH), SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("cert analyzer permits health declaration after plan validation", certHealth != null);
 			SpellAnalysis opHealth = SpellAnalyzer.analyzeOperatorTest(parse(SPELL_HEALTH), CERT);
 			check("operator test permits spell health", opHealth != null);
 			String forcePhaseSpell = spell("{\"type\": \"force_phase\", "
@@ -1033,19 +1034,88 @@ public final class SpellAnalyzerSelfCheck {
 			}
 		}
 
+		private void healthPlanValidation() {
+			SpellDefinition differentTargets = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "health_different_targets"), "boss");
+			PhaseDefinition intro = differentTargets.getPhase(differentTargets.entryPhase);
+			SetSpellHealthAction introHealth = (SetSpellHealthAction) intro.onEnter.get(0);
+			intro.onEnter.set(0, new SetSpellHealthAction(introHealth.mode(), introHealth.health(),
+					introHealth.duration(), introHealth.onTimeout(), java.util.Optional.empty()));
+			SpellHealthPlan differentPlan = SpellHealthPlan.analyze(differentTargets, id -> null);
+			check("health plan allows timeout and break targets to differ",
+					differentPlan.breakChain().size() == 1
+							&& differentPlan.totalHealth() == 500
+							&& differentPlan.totalDurationTicks() == 400);
+
+			SpellDefinition timeoutCycle = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "health_timeout_cycle"), "boss");
+			PhaseDefinition timeoutIntro = timeoutCycle.getPhase(timeoutCycle.entryPhase);
+			SetSpellHealthAction timeoutHealth = (SetSpellHealthAction) timeoutIntro.onEnter.get(0);
+			timeoutIntro.onEnter.set(0, new SetSpellHealthAction(timeoutHealth.mode(), timeoutHealth.health(),
+					timeoutHealth.duration(), java.util.Optional.of(new SpellActions.ForcePhase(
+						timeoutCycle.entryPhase, true)), timeoutHealth.onBreak()));
+			String timeoutCycleMessage = rejectMessage(() -> SpellHealthPlan.analyze(timeoutCycle, id -> null));
+			check("health plan rejects timeout cycles",
+					timeoutCycleMessage != null && timeoutCycleMessage.contains("cycle"));
+
+			SpellDefinition breakCycle = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "health_break_cycle"), "boss");
+			PhaseDefinition breakIntro = breakCycle.getPhase(breakCycle.entryPhase);
+			SetSpellHealthAction breakHealth = (SetSpellHealthAction) breakIntro.onEnter.get(0);
+			breakIntro.onEnter.set(0, new SetSpellHealthAction(breakHealth.mode(), breakHealth.health(),
+					breakHealth.duration(), breakHealth.onTimeout(), java.util.Optional.of(
+						new SpellActions.ForcePhase(breakCycle.entryPhase, true))));
+			String breakCycleMessage = rejectMessage(() -> SpellHealthPlan.analyze(breakCycle, id -> null));
+			check("health plan rejects break cycles",
+					breakCycleMessage != null && breakCycleMessage.contains("cycle"));
+
+			SpellDefinition crossA = crossHealthSpell("youkaishomecoming:health_cross_a",
+					"youkaishomecoming:health_cross_b");
+			SpellDefinition crossB = crossHealthSpell("youkaishomecoming:health_cross_b",
+					"youkaishomecoming:health_cross_a");
+			Map<ResourceLocation, SpellDefinition> crossDefinitions = Map.of(crossA.id, crossA, crossB.id, crossB);
+			String crossCycleMessage = rejectMessage(() -> SpellHealthPlan.analyze(crossA, crossDefinitions::get));
+			check("health plan rejects cross-spell cycles",
+					crossCycleMessage != null && crossCycleMessage.contains("cycle"));
+
+			SpellDefinition dynamic = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "health_dynamic"), "boss");
+			PhaseDefinition dynamicIntro = dynamic.getPhase(dynamic.entryPhase);
+			SetSpellHealthAction dynamicHealth = (SetSpellHealthAction) dynamicIntro.onEnter.get(0);
+			dynamicIntro.onEnter.set(0, new SetSpellHealthAction(dynamicHealth.mode(),
+					new dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Variable("hp"),
+					dynamicHealth.duration(), dynamicHealth.onTimeout(), dynamicHealth.onBreak()));
+			String dynamicMessage = rejectMessage(() -> SpellHealthPlan.analyze(dynamic, id -> null));
+			check("health plan rejects dynamic health",
+					dynamicMessage != null && dynamicMessage.contains("must be constants"));
+		}
+
+		private SpellDefinition crossHealthSpell(String id, String targetSpell) {
+			ResourceLocation spellId = new ResourceLocation(id);
+			String phaseId = spellId + "/main";
+			return parse("{\"id\":\"" + spellId + "\",\"display\":{\"name\":\"Cross\"},"
+					+ "\"entry_phase\":\"" + phaseId + "\",\"phases\":{\"" + phaseId + "\":{"
+					+ "\"id\":\"" + phaseId + "\",\"on_enter\":[{\"type\":\"set_spell_health\","
+					+ "\"health\":10,\"duration\":100,\"on_break\":{\"type\":\"force_spell\","
+					+ "\"spell_id\":\"" + targetSpell + "\"}}]}}}");
+		}
+
 		/** Phase 7 sanity: the quote pipeline produces a positive, clamped cost for a
 		 * certification-eligible definition. Requires a player (command context). */
 		private void certificationQuoteSanity(net.minecraft.server.level.ServerPlayer player) {
-			SpellDefinition def = parse(FIRE24);
+			SpellDefinition def = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "quote_health_plan"), "boss");
 			dev.xkmc.youkaishomecoming.content.spell.certification.CertificationQuote q =
 					dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService.quote(player, def, 99999, 999);
-			check("quote clamps duration to max",
-					q.durationTicks() <= dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationMaxDurationTicks.get());
+			check("quote reads total break-chain duration", q.durationTicks() == 1200);
+			check("quote reads total break-chain health", q.spellHp() == 1300);
+			check("quote keeps reward duration at 1:1", q.rewardDurationTicks() == 1200);
 			check("quote clamps arena to max",
 					q.arenaHalfSize() <= dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationMaxArenaHalfSize.get());
 			check("quote cost positive and floored by minProof",
 					q.startCostUnits() >= 1 && q.startCostUnits() >= dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationMinProofMultiplier.get());
-			check("quote hash stable", q.definitionHash().equals(SpellHash.canonicalHash(def)));
+			check("quote bundle hash stable", q.definitionHash().equals(
+					SpellHash.canonicalBundleHash(q.healthPlan().definitions())));
 		}
 
 		@FunctionalInterface

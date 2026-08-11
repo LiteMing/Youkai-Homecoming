@@ -71,7 +71,7 @@ public class PvpDanmakuStatusOverlay implements IGuiOverlay {
 			int lifeWidth = PowerInfoOverlay.ICON_SIZE + ICON_TEXT_GAP + font.width(life);
 			int rowWidth = bombWidth + RESOURCE_GAP + lifeWidth;
 			int entryWidth = Math.max(MIN_ENTRY_WIDTH, Math.max(rowWidth, font.width(name)));
-			int x = (width - entryWidth) / 2;
+			int x = 12;
 			if (!name.isEmpty()) {
 				int nameX = x + (entryWidth - font.width(name)) / 2;
 				g.drawString(font, name, nameX, y, 0xFFFFFFFF, true);

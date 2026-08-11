@@ -121,6 +121,7 @@ public enum YHLangData {
 	STG_ENTER("message.stg_enter", "Danmaku combat enabled", 0, ChatFormatting.GREEN),
 	STG_EXIT("message.stg_exit", "Danmaku combat disabled", 0, ChatFormatting.YELLOW),
 	STG_NEED_SPELL("message.stg_need_spell", "Need a spell card in inventory or curios to enter danmaku combat", 0, ChatFormatting.RED),
+	SPELL_BROKEN_UNAVAILABLE("message.spell_broken_unavailable", "This spell card was broken and cannot be used again in this danmaku battle", 0, ChatFormatting.RED),
 	STG_TOGGLE_TIP("tooltip.stg_toggle", "Shift + Right Click: toggle danmaku combat", 0, ChatFormatting.DARK_AQUA),
 	SPELL_SINGLE_USE("tooltip.spell_single_use", "Single-use: consumed after casting", 0, ChatFormatting.GOLD),
 	SPELL_UNFINISHED("tooltip.spell_unfinished", "Unfinished spell card: right-click to edit again; certification turns it into a complete spell card", 0, ChatFormatting.DARK_GRAY),

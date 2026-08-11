@@ -21,8 +21,12 @@ public record SpellCertificate(
 		String arenaShape,
 		long costUnits,
 		Set<SpellCapability> capabilities,
-		/** Draft op-node quota that allowed run_command nodes in this certification. */
+		/** Draft special-node quota used by normal survival certification. */
 		int specialNodeQuota,
+		/** True only for rewards issued by the OP-only /yhdev certification path. */
+		boolean operatorTest,
+		/** 1 = definitionHash covers the frozen set_spell_health dependency closure. */
+		int healthPlanVersion,
 		int analysisVersion,
 		int certificationRulesVersion,
 		long issuedAtGameTime
@@ -30,4 +34,5 @@ public record SpellCertificate(
 
 	public static final int CURRENT_ANALYSIS_VERSION = 1;
 	public static final int CURRENT_RULES_VERSION = 1;
+	public static final int CURRENT_HEALTH_PLAN_VERSION = 1;
 }

@@ -1,5 +1,9 @@
 package dev.xkmc.youkaishomecoming.content.spell.certification;
 
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import org.jetbrains.annotations.Nullable;
+
 /**
  * No-Hit failure classification (design doc §5.6, D14). SYSTEM_ERROR and server
  * protection aborts always refund in full; normal No-Hit failures and manual
@@ -34,5 +38,18 @@ public enum CertificationFailReason {
 
 	public boolean fullRefund() {
 		return fullRefund;
+	}
+
+	public MutableComponent displayName() {
+		return Component.translatable("youkaishomecoming.cert.fail_reason." + id);
+	}
+
+	public static MutableComponent displayName(@Nullable String id) {
+		if (id != null) {
+			for (CertificationFailReason reason : values()) {
+				if (reason.id.equals(id)) return reason.displayName();
+			}
+		}
+		return Component.translatable("youkaishomecoming.cert.fail_reason.unknown");
 	}
 }

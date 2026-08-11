@@ -34,11 +34,13 @@ public class CertificationStartRequestToServer extends SerialPacketBase {
 		context.enqueueWork(() -> {
 			CertificationQuote quote = CertificationManager.INSTANCE.getQuote(player);
 			if (quote == null || !quote.quoteId().equals(quoteId)) {
-				player.displayClientMessage(YHLangData.CERT_START_FAIL.get("quote expired"), false);
+				player.displayClientMessage(YHLangData.CERT_START_FAIL.get(
+						YHLangData.CERT_START_QUOTE_EXPIRED.get()), false);
 				return;
 			}
 			if (!CertificationService.start(player, quote)) {
-				player.displayClientMessage(YHLangData.CERT_START_FAIL.get("cannot start certification"), false);
+				player.displayClientMessage(YHLangData.CERT_START_FAIL.get(
+						YHLangData.CERT_START_REJECTED.get()), false);
 			}
 		});
 		context.setPacketHandled(true);

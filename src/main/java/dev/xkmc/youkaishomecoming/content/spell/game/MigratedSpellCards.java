@@ -1405,8 +1405,8 @@ public class MigratedSpellCards {
 		);
 
 		// === Phase definitions with transitions ===
-		var phase0 = new PhaseDefinition(phase0id, List.of(), p0Tick, List.of(new SpellActions.ClearScreen()), List.of(),
-				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), phase1id, TransitionMode.IMMEDIATE)));
+		var phase0 = withCasterSpellHealth(new PhaseDefinition(phase0id, List.of(), p0Tick, List.of(new SpellActions.ClearScreen()), List.of(),
+				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), phase1id, TransitionMode.IMMEDIATE))));
 		var phase1 = new PhaseDefinition(phase1id, List.of(), p1Tick, List.of(new SpellActions.ClearScreen()), List.of(),
 				List.of(new Transition(new SpellConditions.HealthBelow(0.33f), phase2id, TransitionMode.IMMEDIATE)));
 		var phase2 = new PhaseDefinition(phase2id, List.of(), p2Tick, List.of(), List.of(), List.of());
@@ -1513,9 +1513,9 @@ public class MigratedSpellCards {
 				new SpellConditions.TickInterval(80, 0), List.of(summonFar), List.of());
 
 		// === Phase definitions ===
-		var phase0 = new PhaseDefinition(p0id, List.of(), List.of(p0Action),
+		var phase0 = withCasterSpellHealth(new PhaseDefinition(p0id, List.of(), List.of(p0Action),
 				List.of(new SpellActions.ClearScreen()), List.of(),
-				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), p1id, TransitionMode.IMMEDIATE)));
+				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), p1id, TransitionMode.IMMEDIATE))));
 		var phase1 = new PhaseDefinition(p1id, List.of(), List.of(p1Action),
 				List.of(new SpellActions.ClearScreen()), List.of(),
 				List.of(new Transition(new SpellConditions.HealthBelow(0.33f), p2id, TransitionMode.IMMEDIATE)));
@@ -2567,11 +2567,21 @@ public class MigratedSpellCards {
 				Optional.of(new ResourceLocation(modelId))
 		);
 
+		PhaseDefinition entry = withCasterSpellHealth(phase);
 		return new SpellDefinition(
 				id, display, SpellItemForm.NONE,
-				mainPhase, Map.of(mainPhase, phase),
+				mainPhase, Map.of(mainPhase, entry),
 				DifficultyProfile.DEFAULT
 		);
+	}
+
+	private static PhaseDefinition withCasterSpellHealth(PhaseDefinition phase) {
+		List<SpellAction> onEnter = new ArrayList<>(phase.onEnter.size() + 1);
+		onEnter.add(new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
+				new NumberProviders.CasterMaxHealth(), NumberProvider.constant(0)));
+		onEnter.addAll(phase.onEnter);
+		return new PhaseDefinition(phase.id, onEnter, phase.onTick, phase.onExit,
+				phase.onDamage, phase.transitions);
 	}
 
 	private static ResourceLocation rl(String path) {

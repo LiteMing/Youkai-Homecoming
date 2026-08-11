@@ -52,8 +52,7 @@
   "exposure.youkaishomecoming.danmaku_count": "弹幕: %d",
   "exposure.youkaishomecoming.score": "得分: %d",
   "youkaishomecoming.spell_market.title": "符卡市场",
-  "youkaishomecoming.message.stg_defeat_boss": "%s没有遵循弹幕战斗的规则",
-  "youkaishomecoming.message.stg_defeat_other": "%s被弹幕送往了来世",
+  "youkaishomecoming.message.stg_defeat": "%s在弹幕战中满身疮痍",
   "youkaishomecoming.message.stg_no_sleep": "弹幕战中无法上床睡觉",
   "youkaishomecoming.message.stg_enter": "弹幕战模式已开启",
   "youkaishomecoming.message.stg_exit": "弹幕战模式已关闭",
@@ -70,6 +69,8 @@
   "youkaishomecoming.cert.screen.cost": "费用：开始 %s / 使用 %s BOMB 或 %s 级经验 / 发放 %s | 单刻最大生成：%s",
   "youkaishomecoming.cert.hud.success": "[YH] No-Hit 认证成功！",
   "youkaishomecoming.cert.hud.failed": "[YH] 认证失败：%s",
+  "youkaishomecoming.cert.bossbar": "%s | 血量 %s/%s | 超时 %s 秒",
+  "youkaishomecoming.cert.bossbar_infinite": "%s | 血量 %s/%s | 无超时",
   "youkaishomecoming.spell_market.search": "搜索...",
   "youkaishomecoming.spell_market.refresh": "刷新",
   "youkaishomecoming.spell_market.upload": "上传",
@@ -291,5 +292,13 @@
   "youkaishomecoming.spell_market.source.decimal": "小数点作",
   "youkaishomecoming.spell_market.source.other": "其他",
   "youkaishomecoming.spell_market.source.seihou": "西方Project",
-  "youkaishomecoming.spell_editor.to_market": "市场"
+  "youkaishomecoming.spell_editor.to_market": "市场",
+  "youkaishomecoming.spell_editor.error.legacy_ticker": "该旧版符卡包含无法序列化的 Java 逻辑，不能作为 JSON 保存、应用或导出",
+  "youkaishomecoming.spell_editor.error.encode_failed": "符卡无法编码，未保存任何修改；请查看游戏日志",
+  "youkaishomecoming.spell_editor.create.button": "创建符卡",
+  "youkaishomecoming.spell_editor.create.help": "写入新符卡 ID，按 Enter 或“创建符卡”确认；未写命名空间时将创建为 %s:path",
+  "youkaishomecoming.spell_editor.create.error.not_draft": "当前不在新符卡创建模式",
+  "youkaishomecoming.spell_editor.create.error.missing_id": "请先填写新符卡 ID",
+  "youkaishomecoming.spell_editor.create.error.invalid_id": "符卡 ID 无效：只能使用小写字母、数字、_、-、. 和 /",
+  "youkaishomecoming.spell_editor.create.error.exists": "符卡 %s 已存在"
 }

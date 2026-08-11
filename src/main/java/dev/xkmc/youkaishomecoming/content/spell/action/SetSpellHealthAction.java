@@ -37,9 +37,9 @@ public record SetSpellHealthAction(Mode mode, NumberProvider health,
 
 	public static final Codec<SetSpellHealthAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 			Mode.CODEC.optionalFieldOf("mode", Mode.SET).forGetter(SetSpellHealthAction::mode),
-			NumberProvider.CODEC.optionalFieldOf("health", NumberProvider.constant(100))
+			NumberProvider.CODEC.optionalFieldOf("health", NumberProvider.constant(50))
 					.forGetter(SetSpellHealthAction::health),
-			NumberProvider.CODEC.optionalFieldOf("duration", NumberProvider.constant(1200))
+			NumberProvider.CODEC.optionalFieldOf("duration", NumberProvider.constant(100))
 					.forGetter(SetSpellHealthAction::duration),
 			SpellAction.CODEC.optionalFieldOf("on_timeout").forGetter(SetSpellHealthAction::onTimeout),
 			SpellAction.CODEC.optionalFieldOf("on_break").forGetter(SetSpellHealthAction::onBreak)
@@ -56,7 +56,7 @@ public record SetSpellHealthAction(Mode mode, NumberProvider health,
 
 	@Override
 	public void execute(SpellContext ctx) {
-		if (ctx.host() == null || !ctx.host().isBossHost()) {
+		if (ctx.host() == null) {
 			return;
 		}
 		if (mode == Mode.CLEAR) {

@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.certification;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -45,7 +46,15 @@ public class CertificationEnemyMovement {
 		if (velocity.lengthSqr() > maxSpeed * maxSpeed) {
 			velocity = velocity.normalize().scale(maxSpeed);
 		}
-		entity.setPos(entity.position().add(velocity));
+		Vec3 before = entity.position();
+		entity.move(MoverType.SELF, velocity);
+		if (entity.position().distanceToSqr(before) + 1.0e-6 < velocity.lengthSqr() * 0.25) {
+			// A wall blocked the waypoint. Re-pick from the free-point filter instead
+			// of repeatedly pushing the entity into the same block.
+			waypoint = null;
+			waypointTimer = 0;
+			velocity = Vec3.ZERO;
+		}
 	}
 
 	private void pickWaypoint(SpellCertificationEntity entity) {
@@ -53,15 +62,23 @@ public class CertificationEnemyMovement {
 		double minTravel = YHModConfig.COMMON.certificationEnemyMinimumTravelDistance.get();
 		int minTicks = YHModConfig.COMMON.certificationEnemyWaypointMinTicks.get();
 		int maxTicks = YHModConfig.COMMON.certificationEnemyWaypointMaxTicks.get();
+		Vec3 freeFallback = null;
 		for (int attempt = 0; attempt < 8; attempt++) {
 			Vec3 candidate = arena.randomPoint(random, margin);
+			if (!isFree(entity, candidate)) continue;
+			if (freeFallback == null) freeFallback = candidate;
 			if (entity.position().distanceToSqr(candidate) >= minTravel * minTravel) {
 				waypoint = candidate;
 				waypointTimer = random.nextInt(minTicks, maxTicks + 1);
 				return;
 			}
 		}
-		waypoint = arena.randomPoint(random, margin);
+		waypoint = freeFallback == null ? entity.position() : freeFallback;
 		waypointTimer = random.nextInt(minTicks, maxTicks + 1);
+	}
+
+	private boolean isFree(SpellCertificationEntity entity, Vec3 candidate) {
+		Vec3 offset = candidate.subtract(entity.position());
+		return entity.level().noCollision(entity, entity.getBoundingBox().move(offset));
 	}
 }

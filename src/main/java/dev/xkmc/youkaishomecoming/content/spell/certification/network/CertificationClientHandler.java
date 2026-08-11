@@ -30,10 +30,11 @@ public final class CertificationClientHandler {
 	}
 
 	private static final Map<Integer, ClientState> STATES = new HashMap<>();
-	private static final long SUCCESS_DISPLAY_MILLIS = 5_000;
+	private static final long TERMINAL_DISPLAY_MILLIS = 5_000;
 	@Nullable
 	private static ClientState myState;
 	private static long successDisplayUntil;
+	private static long failureDisplayUntil;
 
 	private CertificationClientHandler() {
 	}
@@ -52,11 +53,17 @@ public final class CertificationClientHandler {
 		STATES.put(entityId, clientState);
 		if (mine) {
 			boolean wasSuccess = myState != null && myState.state() == CertificationState.SUCCESS;
+			boolean wasFailure = isFailure(myState == null ? null : myState.state());
 			myState = clientState;
 			if (parsed == CertificationState.SUCCESS && !wasSuccess) {
-				successDisplayUntil = Util.getMillis() + SUCCESS_DISPLAY_MILLIS;
+				successDisplayUntil = Util.getMillis() + TERMINAL_DISPLAY_MILLIS;
+				failureDisplayUntil = 0;
+			} else if (isFailure(parsed) && !wasFailure) {
+				failureDisplayUntil = Util.getMillis() + TERMINAL_DISPLAY_MILLIS;
+				successDisplayUntil = 0;
 			} else if (parsed != CertificationState.SUCCESS) {
 				successDisplayUntil = 0;
+				if (!isFailure(parsed)) failureDisplayUntil = 0;
 			}
 		}
 	}
@@ -75,6 +82,15 @@ public final class CertificationClientHandler {
 	public static boolean shouldShowSuccess() {
 		return myState != null && myState.state() == CertificationState.SUCCESS
 				&& Util.getMillis() < successDisplayUntil;
+	}
+
+	public static boolean shouldShowFailure() {
+		return myState != null && isFailure(myState.state())
+				&& Util.getMillis() < failureDisplayUntil;
+	}
+
+	private static boolean isFailure(@Nullable CertificationState state) {
+		return state == CertificationState.FAILED || state == CertificationState.SYSTEM_ERROR;
 	}
 
 	@Nullable

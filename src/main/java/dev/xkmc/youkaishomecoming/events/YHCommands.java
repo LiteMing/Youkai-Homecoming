@@ -659,25 +659,18 @@ public class YHCommands {
 						.executes(ctx -> runAnalyzerSelfTest(ctx.getSource())))
 				.then(literal("certification")
 						.then(literal("boss")
-								// OP/console: summon a boss spell certification using ANY
-								// registered spell (built-in cards included). Non-OP players
-								// are limited to self-made spell cards via the in-game UI path.
+								// OP/console: summon certification for any registered spell.
 								.then(argument("targets", EntityArgument.players())
 										.then(argument("spell", ResourceLocationArgument.id())
 												.suggests(SPELL_SUGGESTIONS)
-										.then(argument("ticks", IntegerArgumentType.integer(100, 60000))
-												.executes(ctx -> runCertificationTest(ctx, false))
-												.then(argument("halfSize", DoubleArgumentType.doubleArg(4, 256))
-														.executes(ctx -> runCertificationTest(ctx, false)))))))
+												.executes(ctx -> runCertificationTest(ctx, false)))))
 						.then(literal("test")
 								.then(argument("targets", EntityArgument.players())
 										.then(argument("spell", ResourceLocationArgument.id())
 												.suggests(SPELL_SUGGESTIONS)
-										.then(argument("ticks", IntegerArgumentType.integer(100, 60000))
-												.then(argument("halfSize", DoubleArgumentType.doubleArg(4, 256))
-														.executes(ctx -> runCertificationTest(ctx, true))
-														.then(argument("breakHealth", FloatArgumentType.floatArg(1, 1_000_000))
-																.executes(ctx -> runCertificationTest(ctx, true))))))))
+												.executes(ctx -> runCertificationTest(ctx, true))
+												.then(argument("breakHealth", FloatArgumentType.floatArg(1, 1_000_000))
+														.executes(ctx -> runCertificationTest(ctx, true))))))
 						.then(literal("abort")
 								.then(argument("targets", EntityArgument.players())
 										.executes(ctx -> abortCertification(ctx))))
@@ -731,13 +724,6 @@ public class YHCommands {
 			boolean noHitDefault) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
 		var player = EntityArgument.getPlayer(ctx, "targets");
 		var spellId = ResourceLocationArgument.getId(ctx, "spell");
-		int ticks = IntegerArgumentType.getInteger(ctx, "ticks");
-		double halfSize = 8.0;
-		try {
-			halfSize = DoubleArgumentType.getDouble(ctx, "halfSize");
-		} catch (IllegalArgumentException ignored) {
-			// optional on the boss path; defaults to the config-clamped 8
-		}
 		Float breakHealth = null;
 		try {
 			breakHealth = FloatArgumentType.getFloat(ctx, "breakHealth");
@@ -750,7 +736,7 @@ public class YHCommands {
 			return 0;
 		}
 		try {
-			var quote = CertificationService.quoteOperatorTest(player, definition, ticks, halfSize);
+			var quote = CertificationService.quoteOperatorTest(player, definition);
 			CertificationManager.INSTANCE.setQuote(player, quote, definition);
 			// OP test command: skip the start fee so certification can be exercised
 			// without resources; the in-game UI path pays through SpellPaymentRouter.

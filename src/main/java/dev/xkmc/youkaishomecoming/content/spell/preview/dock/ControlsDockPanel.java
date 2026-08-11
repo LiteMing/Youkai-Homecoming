@@ -16,6 +16,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,7 +50,8 @@ public class ControlsDockPanel implements DockPanel {
 	private final Runnable deleteSpellCallback;
 	private final Supplier<Boolean> canDeleteSpellSupplier;
 	private final Supplier<Boolean> spellDraftModeSupplier;
-	private final Consumer<String> renameSpellCallback;
+	private final Supplier<String> defaultSpellNamespaceSupplier;
+	private final Function<String, @Nullable Component> createSpellCallback;
 	private final Consumer<Integer> cyclePhaseCallback;
 	private final Supplier<String> currentPhaseNameSupplier;
 	private final Consumer<String> renamePhaseCallback;
@@ -64,6 +66,9 @@ public class ControlsDockPanel implements DockPanel {
 	private Button spellDropdownButton;
 	private Button spellNewButton;
 	private Button spellDeleteButton;
+	private EditBox newSpellIdBox;
+	@Nullable private Component newSpellCreationError;
+	private int newSpellCreationMessageY;
 	private DropdownOverlay spellDropdown;
 	private int spellDropdownHoverIndex = -1;
 	private int spellDropdownScrollOffset = 0;
@@ -103,7 +108,8 @@ public class ControlsDockPanel implements DockPanel {
 							 Runnable deleteSpellCallback,
 							 Supplier<Boolean> canDeleteSpellSupplier,
 							 Supplier<Boolean> spellDraftModeSupplier,
-							 Consumer<String> renameSpellCallback,
+							 Supplier<String> defaultSpellNamespaceSupplier,
+							 Function<String, @Nullable Component> createSpellCallback,
 							 Consumer<Integer> cyclePhaseCallback,
 							 Supplier<String> currentPhaseNameSupplier,
 							 Consumer<String> renamePhaseCallback,
@@ -123,7 +129,8 @@ public class ControlsDockPanel implements DockPanel {
 		this.deleteSpellCallback = deleteSpellCallback;
 		this.canDeleteSpellSupplier = canDeleteSpellSupplier;
 		this.spellDraftModeSupplier = spellDraftModeSupplier;
-		this.renameSpellCallback = renameSpellCallback;
+		this.defaultSpellNamespaceSupplier = defaultSpellNamespaceSupplier;
+		this.createSpellCallback = createSpellCallback;
 		this.cyclePhaseCallback = cyclePhaseCallback;
 		this.currentPhaseNameSupplier = currentPhaseNameSupplier;
 		this.renamePhaseCallback = renamePhaseCallback;
@@ -159,6 +166,7 @@ public class ControlsDockPanel implements DockPanel {
 		bx = x + 4;
 		if (draftMode) {
 			addSpellControls(bx, row1Y, true);
+			addNewSpellControls(x + 4, row2Y);
 			applyWidgetVisibility();
 			return;
 		}
@@ -414,6 +422,9 @@ public class ControlsDockPanel implements DockPanel {
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(btn);
 		}
+		if (draftMode) {
+			return;
+		}
 		int newX = nextX + dropdownW + BUTTON_SPACING;
 		Button newBtn = Button.builder(Component.literal("+"), b -> newSpellCallback.run())
 				.bounds(newX, by, 20, BUTTON_HEIGHT).build();
@@ -432,14 +443,42 @@ public class ControlsDockPanel implements DockPanel {
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(deleteBtn);
 		}
-		if (draftMode) {
-			int inputX = deleteX + 20 + 8;
-			int inputW = Math.max(120, Math.min(220, w / 3));
-			addTextEditBox(inputX, by, inputW,
-					"", "New Spell ID", 96,
-					s -> !s.contains("\n") && !s.contains("\r") && s.indexOf(' ') < 0,
-					renameSpellCallback);
+	}
+
+	private void addNewSpellControls(int bx, int by) {
+		String label = SpellEditorLocalization.t("New Spell ID");
+		Component buttonText = Component.translatable("youkaishomecoming.spell_editor.create.button");
+		int buttonW = Math.max(68, Minecraft.getInstance().font.width(buttonText) + 12);
+		int right = x + w - 4;
+		int innerW = Math.max(20, right - bx);
+		int labelW = Math.max(72, Minecraft.getInstance().font.width(label) + 8);
+		int inputX = bx;
+		int minimumInputW = 80;
+		boolean stacked = innerW < minimumInputW + BUTTON_SPACING + buttonW;
+		if (!stacked && innerW >= labelW + BUTTON_SPACING + minimumInputW + BUTTON_SPACING + buttonW) {
+			labels.add(new ControlLabel(bx + 2, by + 4, label));
+			inputX += labelW + BUTTON_SPACING;
 		}
+		int inputW = stacked ? innerW : Math.min(260,
+				right - inputX - buttonW - BUTTON_SPACING);
+		int buttonX = stacked ? bx : inputX + inputW + BUTTON_SPACING;
+		int buttonY = stacked ? by + BUTTON_HEIGHT + BUTTON_SPACING : by;
+		int fittedButtonW = stacked ? Math.min(buttonW, innerW) : buttonW;
+		addTextEditBox(inputX, by, inputW, "",
+				defaultSpellNamespaceSupplier.get() + ":spell_name", 96,
+				s -> !s.contains("\n") && !s.contains("\r") && s.indexOf(' ') < 0,
+				this::submitNewSpell);
+		newSpellIdBox = editBoxes.get(editBoxes.size() - 1);
+		newSpellIdBox.setResponder(value -> newSpellCreationError = null);
+		Button create = Button.builder(buttonText, button -> submitNewSpell(newSpellIdBox.getValue()))
+				.bounds(buttonX, buttonY, fittedButtonW, BUTTON_HEIGHT).build();
+		buttons.add(create);
+		if (addWidgetCallback != null) addWidgetCallback.accept(create);
+		newSpellCreationMessageY = buttonY + BUTTON_HEIGHT + BUTTON_SPACING + 4;
+	}
+
+	private void submitNewSpell(String rawId) {
+		newSpellCreationError = createSpellCallback.apply(rawId);
 	}
 
 	private int addEditBox(int bx, int by, int bw, String hint, java.util.function.Consumer<String> onSubmit) {
@@ -513,6 +552,9 @@ public class ControlsDockPanel implements DockPanel {
 		spellDropdownButton = null;
 		spellNewButton = null;
 		spellDeleteButton = null;
+		newSpellIdBox = null;
+		newSpellCreationError = null;
+		newSpellCreationMessageY = 0;
 	}
 
 	// ---- DockPanel 基础实现 ----
@@ -559,11 +601,13 @@ public class ControlsDockPanel implements DockPanel {
 		for (ControlLabel label : labels) {
 			graphics.drawString(font, label.text(), label.x(), label.y(), 0xFF8CC6FF, false);
 		}
-		int row1Y = y + 4;
 		if (isDraftMode()) {
-			graphics.drawString(font,
-					SpellEditorLocalization.t("Select an existing spell or enter a new spell id and press Enter."),
-					x + 4, row1Y + BUTTON_HEIGHT + BUTTON_SPACING + 4, 0xFFCCCCCC, false);
+			Component message = newSpellCreationError != null ? newSpellCreationError
+					: Component.translatable("youkaishomecoming.spell_editor.create.help",
+					defaultSpellNamespaceSupplier.get());
+			int color = newSpellCreationError == null ? 0xFFAAAAAA : 0xFFFF7777;
+			graphics.drawString(font, fitToWidth(message.getString(), w - 8), x + 4,
+					newSpellCreationMessageY, color, false);
 		}
 	}
 

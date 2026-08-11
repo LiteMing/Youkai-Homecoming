@@ -8,7 +8,6 @@ import dev.xkmc.youkaishomecoming.content.spell.action.DelayAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
-import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
@@ -183,9 +182,8 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	private void execute(ServerPlayer sender) {
 		try {
 			if (action != Action.IMPORT_MARKET && !sender.hasPermissions(2)) {
-				// Non-OP players may save a NEW self-made spell (crafted blank card,
-				// editor save path) or delete a spell they created themselves.
-				// Anything else stays operator-only.
+				// Non-OP players may collaboratively save custom spells or delete a
+				// spell they originally created. Anything else stays operator-only.
 				if (action == Action.SAVE) {
 					saveSelfMadeSpell(sender);
 					return;
@@ -216,12 +214,11 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	}
 
 	/**
-	 * Non-operator save path: the spell must be a custom (self-made) definition —
+	 * Non-operator save path: the spell must be a custom definition —
 	 * never a built-in or market-managed id — and must not contain run_command.
-	 * A brand-new id is claimed by this player (owner sidecar file); existing
-	 * spells may only be overwritten by their creator. No card is issued here —
-	 * the card the player holds is bound in place (server authority), so OP and
-	 * non-OP saves behave identically.
+	 * Existing custom definitions are collaborative and may be handed to another
+	 * player for continued editing. A brand-new id still records its creator only
+	 * to protect deletion; the metadata does not restrict later saves.
 	 */
 	private void saveSelfMadeSpell(ServerPlayer sender) {
 		SpellDefinition definition = parseDefinition();
@@ -237,19 +234,12 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 			throw new IllegalArgumentException("Spell contains an operator-only action");
 		}
 		enforceOpQuota(sender, definition, 0);
-		if (origin != null) {
-			UUID owner = CustomSpellStorage.loadOwner(sender.server, id);
-			if (owner == null || !owner.equals(sender.getUUID())) {
-				throw new IllegalArgumentException("Only the creator can edit this spell card: " + id);
-			}
-		}
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
-		// Bind the held blank card on ANY save (owner check above passed, so this
-		// is the player's own spell; bound cards are never rebound).
+		// Bind the held blank card on any save; bound cards are never rebound.
 		bindBlankCardInHand(sender, id);
 		if (origin == null) {
-			// brand-new self-made spell: claim ownership
+			// Brand-new spell: record a deletion owner without restricting edits.
 			CustomSpellStorage.saveOwner(sender.server, id, sender.getUUID());
 			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id + " and bound your spell card"));
 		} else {
@@ -259,8 +249,9 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	/**
 	 * Bind a spell id onto the blank DynamicSpellItem the player is holding
-	 * (main hand, then offhand, then first blank card in the inventory). Cards
-	 * already bound to an id are never rebound.
+	 * (main hand, then offhand, then first blank card in the inventory). Valid
+	 * bindings are never replaced; missing legacy {@code minecraft:path}
+	 * bindings may be upgraded to the submitted player-namespaced id.
 	 */
 	private static void bindBlankCardInHand(ServerPlayer sender, ResourceLocation id) {
 		for (ItemStack stack : new ItemStack[]{sender.getMainHandItem(), sender.getOffhandItem()}) {
@@ -276,11 +267,8 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	}
 
 	private static boolean tryBindBlankCard(ItemStack stack, ResourceLocation id) {
-		if (stack.getItem() instanceof DynamicSpellItem && DynamicSpellItem.getSpellId(stack) == null) {
-			DynamicSpellItem.bindSpellId(stack, id);
-			return true;
-		}
-		return false;
+		return stack.getItem() instanceof DynamicSpellItem
+				&& DynamicSpellItem.bindCreatedSpellId(stack, id);
 	}
 
 	/**
@@ -440,7 +428,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private boolean containsPrivilegedAction(List<SpellAction> actions) {
 		for (SpellAction action : actions) {
-			if (action instanceof RunCommandAction || action instanceof SetSpellHealthAction) {
+			if (action instanceof RunCommandAction) {
 				return true;
 			}
 			if (action instanceof SpellActions.ConditionalAction cond &&

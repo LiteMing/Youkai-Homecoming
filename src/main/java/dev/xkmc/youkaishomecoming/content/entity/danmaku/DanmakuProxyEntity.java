@@ -364,11 +364,17 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	public int spellElapsedTicks() {
+		if (runtime != null && runtime.getSpellHealthTotal() > 0) {
+			return runtime.getSpellElapsedTicks();
+		}
 		return Math.max(0, spellTickCount);
 	}
 
 	/** Zero means natural end / no fixed countdown. */
 	public int spellDurationTicks() {
+		if (runtime != null && runtime.getSpellHealthTotal() > 0) {
+			return Math.max(0, runtime.getSpellDurationTicks());
+		}
 		return Math.max(0, maxDuration);
 	}
 

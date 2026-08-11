@@ -1,5 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
@@ -12,6 +14,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -135,22 +138,26 @@ public class SpellEditorController {
 		scene.switchSpellDefinition(createDraftDefinition(), true);
 	}
 
-	public void nameCurrentDraftSpell(String name) {
+	@Nullable
+	public Component nameCurrentDraftSpell(String name) {
 		if (!isDraftMode()) {
-			return;
+			return Component.translatable("youkaishomecoming.spell_editor.create.error.not_draft");
+		}
+		if (name == null || name.trim().isEmpty()) {
+			return Component.translatable("youkaishomecoming.spell_editor.create.error.missing_id");
 		}
 		ResourceLocation spellId = parseDraftSpellId(name);
 		if (spellId == null) {
-			displayEditorMessage("[YH] Invalid spell id");
-			return;
+			return Component.translatable("youkaishomecoming.spell_editor.create.error.invalid_id");
 		}
 		if (SpellRegistry.contains(spellId)) {
-			displayEditorMessage("[YH] Spell already exists: " + formatResourceId(spellId));
-			return;
+			return Component.translatable("youkaishomecoming.spell_editor.create.error.exists", spellId);
 		}
 		SpellDefinition created = createEmptySpellDefinition(spellId);
+		if (!SpellEditorNetworkClient.save(created)) {
+			return Component.translatable("youkaishomecoming.spell_editor.error.encode_failed");
+		}
 		SpellRegistry.register(created);
-		SpellEditorNetworkClient.save(created);
 		// Bind the blank card the player is holding the moment the id is created —
 		// the card and the spell id become one from here on (server re-binds on
 		// save as authority, so OP saves get the card too).
@@ -159,12 +166,14 @@ public class SpellEditorController {
 		scene.pause();
 		scene.switchSpellDefinition(created, true);
 		displayEditorMessage("[YH] Created spell " + formatResourceId(spellId));
+		return null;
 	}
 
 	/**
 	 * Apply the newly created spell id to the blank DynamicSpellItem the player is
 	 * holding (main hand, then offhand, then first blank card in the inventory).
-	 * Only cards without a bound id are touched.
+	 * Blank cards are bound normally; missing legacy {@code minecraft:path}
+	 * bindings may be upgraded to the new player namespace.
 	 */
 	private void bindHeldBlankCard(ResourceLocation spellId) {
 		var player = Minecraft.getInstance().player;
@@ -184,12 +193,9 @@ public class SpellEditorController {
 	}
 
 	private static boolean tryBind(ItemStack stack, ResourceLocation spellId) {
-		if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
-				&& dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack) == null) {
-			dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.bindSpellId(stack, spellId);
-			return true;
-		}
-		return false;
+		return stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+				&& dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+				.bindCreatedSpellId(stack, spellId);
 	}
 
 	public void deleteSelectedSpell() {
@@ -255,7 +261,8 @@ public class SpellEditorController {
 			return;
 		}
 		if (definition.hasLegacyTicker()) {
-			displayEditorMessage("[YH] Cannot export legacy_ticker spell (Java factory is not serializable)");
+			displayEditorMessage(Component.translatable(
+					"youkaishomecoming.spell_editor.error.legacy_ticker"));
 			return;
 		}
 		try {
@@ -300,7 +307,8 @@ public class SpellEditorController {
 		ResourceLocation phaseId = new ResourceLocation(spellId.getNamespace(), spellId.getPath() + "/main");
 		PhaseDefinition phase = new PhaseDefinition(
 				phaseId,
-				List.of(),
+				List.of(new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
+						NumberProvider.constant(50), NumberProvider.constant(100))),
 				List.of(),
 				List.of(),
 				List.of(),
@@ -325,17 +333,29 @@ public class SpellEditorController {
 		if (trimmed.isEmpty()) {
 			return null;
 		}
-		ResourceLocation id = ResourceLocation.tryParse(trimmed.contains(":") ? trimmed : "minecraft:" + trimmed);
+		ResourceLocation id = ResourceLocation.tryParse(trimmed.contains(":")
+				? trimmed : getDefaultSpellNamespace() + ":" + trimmed);
 		if (id == null || DRAFT_SPELL_ID.equals(id)) {
 			return null;
 		}
 		return id;
 	}
 
+	public String getDefaultSpellNamespace() {
+		var player = Minecraft.getInstance().player;
+		if (player == null) return "player";
+		return dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+				.playerSpellNamespace(player);
+	}
+
 	private void displayEditorMessage(String message) {
+		displayEditorMessage(Component.literal(message));
+	}
+
+	private void displayEditorMessage(Component message) {
 		var mc = Minecraft.getInstance();
 		if (mc.player != null) {
-			mc.player.displayClientMessage(Component.literal(message), true);
+			mc.player.displayClientMessage(message, true);
 		}
 	}
 }

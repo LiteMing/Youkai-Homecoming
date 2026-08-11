@@ -49,6 +49,7 @@ public class SpellAnalyzerSelfTest {
 		testVariableUnbounded();
 		testPhaseTickUnbounded();
 		testDistanceAndPositionsUnbounded();
+		testCasterMaxHealthKeyword();
 		testGaussianUnbounded();
 		testPowRootUnbounded();
 		testSinBoundedByAmplitude();
@@ -87,10 +88,11 @@ public class SpellAnalyzerSelfTest {
 
 	private static void testCastCostBuckets() {
 		check("cast cost 0t baseline", CastCost.unitsForDuration(0) == 100);
-		check("cast cost 1t rounds to one bucket", CastCost.unitsForDuration(1) == 120);
-		check("cast cost 20t stays in one bucket", CastCost.unitsForDuration(20) == 120);
-		check("cast cost 21t rounds to two buckets", CastCost.unitsForDuration(21) == 140);
-		check("cast cost 1200t", CastCost.unitsForDuration(1200) == 1300);
+		check("cast cost 100t baseline", CastCost.unitsForDuration(100) == 100);
+		check("cast cost 101t rounds to one bucket", CastCost.unitsForDuration(101) == 120);
+		check("cast cost 120t stays in one bucket", CastCost.unitsForDuration(120) == 120);
+		check("cast cost 121t rounds to two buckets", CastCost.unitsForDuration(121) == 140);
+		check("cast cost 1200t", CastCost.unitsForDuration(1200) == 1200);
 	}
 
 	/**
@@ -188,9 +190,18 @@ public class SpellAnalyzerSelfTest {
 	private static void testDistanceAndPositionsUnbounded() {
 		checkUnbounded("distance", NumberBounds.resolve(new NumberProviders.Distance()));
 		checkUnbounded("caster x", NumberBounds.resolve(new NumberProviders.CasterX()));
+		checkUnbounded("caster max health", NumberBounds.resolve(new NumberProviders.CasterMaxHealth()));
 		checkUnbounded("target x", NumberBounds.resolve(new NumberProviders.TargetX()));
 		checkUnbounded("target speed", NumberBounds.resolve(new NumberProviders.TargetSpeed()));
 		checkUnbounded("target fly time", NumberBounds.resolve(new NumberProviders.TargetFlyTime()));
+	}
+
+	private static void testCasterMaxHealthKeyword() {
+		NumberProvider parsed = dev.xkmc.youkaishomecoming.content.spell.definition.NumberExprParser
+				.parse("caster_max_health");
+		check("caster max health keyword parses", parsed instanceof NumberProviders.CasterMaxHealth);
+		check("caster max health keyword round-trips", "caster_max_health".equals(
+				dev.xkmc.youkaishomecoming.content.spell.definition.NumberExprParser.unparse(parsed)));
 	}
 
 	private static void testGaussianUnbounded() {

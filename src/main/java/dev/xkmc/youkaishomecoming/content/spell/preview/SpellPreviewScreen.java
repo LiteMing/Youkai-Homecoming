@@ -265,7 +265,8 @@ public class SpellPreviewScreen extends Screen {
 				spellController::getCurrentSpellButtonLabel, spellController::getSpellOptionLabel,
 				spellController::switchSelectedSpell, spellController::enterDraftSpellEditor,
 				spellController::deleteSelectedSpell, spellController::canDeleteSelectedSpell,
-				spellController::isDraftMode, spellController::nameCurrentDraftSpell, this::cyclePhase,
+				spellController::isDraftMode, spellController::getDefaultSpellNamespace,
+				spellController::nameCurrentDraftSpell, this::cyclePhase,
 				phaseController::getSelectedPhaseDisplayName, this::renameSelectedPhase, this::addPhase,
 				this::deleteSelectedPhase, phaseController::canDeleteSelectedPhase);
 		controlsDockPanel.setWidgetCallbacks(w -> this.addRenderableWidget(w), this::removeWidget);
@@ -756,8 +757,9 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		syncCustomNamesToDefinition();
-		SpellRegistry.register(definition);
-		SpellEditorNetworkClient.saveAndReapply(definition);
+		if (SpellEditorNetworkClient.saveAndReapply(definition)) {
+			SpellRegistry.register(definition);
+		}
 	}
 
 	/**
@@ -928,10 +930,6 @@ public class SpellPreviewScreen extends Screen {
 
 	private void enterDraftSpellEditor() {
 		spellController.enterDraftSpellEditor();
-	}
-
-	private void nameCurrentDraftSpell(String name) {
-		spellController.nameCurrentDraftSpell(name);
 	}
 
 	private void deleteSelectedSpell() {

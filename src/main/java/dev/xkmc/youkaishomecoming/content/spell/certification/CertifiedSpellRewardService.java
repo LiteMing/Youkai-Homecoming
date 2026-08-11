@@ -72,7 +72,8 @@ public final class CertifiedSpellRewardService {
 		if (issueCost > 0) {
 			PaymentResult payment = SpellPaymentRouter.pay(author, issueCost, SpellCostContext.CERTIFICATION_ISSUE);
 			if (!payment.success()) {
-				author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_FAIL.get("issue payment"), false);
+				author.displayClientMessage(
+						dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_ISSUE_PAYMENT_FAIL.get(), false);
 				return false;
 			}
 		}

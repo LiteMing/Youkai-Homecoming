@@ -22,13 +22,11 @@ import java.util.Locale;
 public class CertificationScreen extends Screen {
 
 	private final SpellDefinition definition;
-	private double halfSize;
 	private Component status = Component.empty();
 
 	public CertificationScreen(SpellDefinition definition) {
 		super(Component.translatable("youkaishomecoming.cert.screen.title"));
 		this.definition = definition;
-		this.halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
 	}
 
 	@Override
@@ -42,7 +40,7 @@ public class CertificationScreen extends Screen {
 		y += 34;
 
 		// the arena half size is fixed by config (UI selection is ignored)
-		halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
+		double halfSize = YHModConfig.COMMON.certificationFixedArenaHalfSize.get();
 		addRenderableWidget(Button.builder(Component.translatable(
 						"youkaishomecoming.cert.screen.arena_fixed", String.format(Locale.ROOT, "%.0f", halfSize)),
 						b -> {
@@ -61,8 +59,7 @@ public class CertificationScreen extends Screen {
 	private void requestQuote() {
 		// Only the server-owned spell id crosses the wire. The server applies the
 		// configured duration bounds and reads the canonical action tree itself.
-		YoukaisHomecoming.HANDLER.toServer(new CertificationQuoteRequestToServer(
-				definition, 0, halfSize));
+		YoukaisHomecoming.HANDLER.toServer(new CertificationQuoteRequestToServer(definition));
 		status = Component.translatable("youkaishomecoming.cert.screen.quote_requested");
 	}
 

@@ -2,10 +2,9 @@ package dev.xkmc.youkaishomecoming.content.spell.certification.network;
 
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
-import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
@@ -18,28 +17,13 @@ import net.minecraftforge.network.NetworkEvent;
 public class CertificationQuoteRequestToServer extends SerialPacketBase {
 
 	@SerialClass.SerialField
-	public String definitionJson = "";
-	@SerialClass.SerialField
 	public String spellId = "";
-	@SerialClass.SerialField
-	public int durationTicks = 1200;
-	@SerialClass.SerialField
-	public double arenaHalfSize = 8;
 
 	public CertificationQuoteRequestToServer() {
 	}
 
-	public CertificationQuoteRequestToServer(String definitionJson, int durationTicks, double arenaHalfSize) {
-		this.definitionJson = definitionJson;
-		this.durationTicks = durationTicks;
-		this.arenaHalfSize = arenaHalfSize;
-	}
-
-	public CertificationQuoteRequestToServer(dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition definition,
-											int durationTicks, double arenaHalfSize) {
+	public CertificationQuoteRequestToServer(dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition definition) {
 		this.spellId = definition.id.toString();
-		this.durationTicks = durationTicks;
-		this.arenaHalfSize = arenaHalfSize;
 	}
 
 	@Override
@@ -49,18 +33,22 @@ public class CertificationQuoteRequestToServer extends SerialPacketBase {
 		context.enqueueWork(() -> {
 			try {
 				if (spellId.isEmpty()) {
-					player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get("missing spell id"), false);
+					player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
+							YHLangData.CERT_QUOTE_MISSING_SPELL_ID.get()), false);
 					return;
 				}
 				var id = net.minecraft.resources.ResourceLocation.tryParse(spellId);
 				var definition = id == null ? null : SpellRegistry.get(id);
 				if (definition == null) {
-					player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get("unknown definition"), false);
+					player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
+							YHLangData.CERT_QUOTE_UNKNOWN_DEFINITION.get()), false);
 					return;
 				}
-				CertificationQuoteRequestHandler.accept(player, definition, durationTicks, arenaHalfSize);
+				CertificationQuoteRequestHandler.accept(player, definition);
 			} catch (Exception e) {
-				player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(e.getMessage()), false);
+				YoukaisHomecoming.LOGGER.error("Unexpected certification quote failure for {}", spellId, e);
+				player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
+						YHLangData.CERT_QUOTE_INTERNAL_ERROR.get()), false);
 			}
 		});
 		context.setPacketHandled(true);

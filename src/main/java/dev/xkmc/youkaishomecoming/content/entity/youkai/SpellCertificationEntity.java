@@ -21,7 +21,7 @@ import java.util.UUID;
  * disables all ordinary youkai/boss semantics:
  * <ul>
  *   <li>cannot be hurt or killed (actuallyHurt/die are no-ops);</li>
- *   <li>no AI goals, no loot, no boss bar, no persistence (shouldBeSaved false);</li>
+ *   <li>no AI goals, no loot, an author-only boss bar, no persistence (shouldBeSaved false);</li>
  *   <li>danmaku only hits the creator (shouldHurt by author id, D13);</li>
  *   <li>No-Hit contacts funnel through {@link CertificationContactGateway} (D8).</li>
  * </ul>

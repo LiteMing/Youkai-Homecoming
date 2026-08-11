@@ -41,20 +41,17 @@ public final class CertificationService {
 
 	// ------------------------------------------------------------ quote
 
-	public static CertificationQuote quote(ServerPlayer player, SpellDefinition definition,
-										   int requestedDurationTicks, double requestedHalfSize) {
-		return quote(player, definition, requestedDurationTicks, requestedHalfSize, false);
+	public static CertificationQuote quote(ServerPlayer player, SpellDefinition definition) {
+		return quote(player, definition, false);
 	}
 
 	/** OP-only /yhdev quote: keeps certification limits but permits operator actions. */
-	public static CertificationQuote quoteOperatorTest(ServerPlayer player, SpellDefinition definition,
-											   int requestedDurationTicks, double requestedHalfSize) {
-		return quote(player, definition, requestedDurationTicks, requestedHalfSize, true);
+	public static CertificationQuote quoteOperatorTest(ServerPlayer player, SpellDefinition definition) {
+		return quote(player, definition, true);
 	}
 
 	private static CertificationQuote quote(ServerPlayer player, SpellDefinition definition,
-										 int requestedDurationTicks, double requestedHalfSize,
-										 boolean operatorTest) {
+									 boolean operatorTest) {
 		// Health and timeout are declaration data. The break chain is the only
 		// successful certification path; timeout targets remain legal boss behavior
 		// but any timeout fails the trial.
@@ -67,7 +64,7 @@ public final class CertificationService {
 		// Special-node quota: EXPERIMENTAL capabilities (teleport, erase, clear,
 		// on_damage) are denied by default; a boss-drop draft card may carry a
 		// quota (the count of such nodes in the boss's own definition).
-		// run_command and creator nodes stay operator-only.
+		// run_command and unrestricted control nodes stay operator-only.
 		int specialNodeQuota = draftOpQuota(player, definition);
 		SpellAnalysis analysis;
 		try {
@@ -88,7 +85,8 @@ public final class CertificationService {
 		// Start fee is a fixed anti-spam toll (design §14), decoupled from spell power —
 		// spam protection lives in maxConcurrentTrials and quote expiration.
 		long startCost = YHModConfig.COMMON.certificationStartCostUnits.get();
-		// Cast/issue cost is duration-driven only: +0.2 BOMB / +1 XP per 20 ticks.
+		// Cast/issue cost is duration-driven: 100-tick minimum, then
+		// +0.2 BOMB / +1 XP per additional 20 ticks.
 		int rewardDuration = rewardDurationTicks(durationTicks);
 		long castCost = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(rewardDuration);
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
@@ -103,7 +101,8 @@ public final class CertificationService {
 	 */
 	private static int draftOpQuota(ServerPlayer player, SpellDefinition definition) {
 		int blankQuota = 0;
-		for (ItemStack stack : player.getInventory().items) {
+		for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+			ItemStack stack = player.getInventory().getItem(slot);
 			if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
 					&& !dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.isComplete(stack)) {
 				ResourceLocation bound = dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack);
@@ -120,13 +119,23 @@ public final class CertificationService {
 		return blankQuota;
 	}
 
-	public static int clampDuration(int requested) {
-		return Math.max(0, Math.min(1200, requested));
+	public static boolean hasUnfinishedDraft(ServerPlayer player, @Nullable ResourceLocation definitionId) {
+		if (definitionId == null) return false;
+		for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+			ItemStack stack = player.getInventory().getItem(slot);
+			if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+					&& definitionId.equals(
+					dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack))
+					&& !dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.isComplete(stack)
+					&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
-	public static double clampHalfSize(double requested) {
-		return Math.max(YHModConfig.COMMON.certificationMinArenaHalfSize.get(),
-				Math.min(YHModConfig.COMMON.certificationMaxArenaHalfSize.get(), requested));
+	public static int clampDuration(int requested) {
+		return Math.max(0, Math.min(1200, requested));
 	}
 
 	// ------------------------------------------------------------ start
@@ -152,13 +161,17 @@ public final class CertificationService {
 			LOGGER.info("[YH] start rejected: player already has an active trial");
 			return false;
 		}
+		if (!hasUnfinishedDraft(player, quote.healthPlan().rootDefinition().id)) {
+			LOGGER.info("[YH] start rejected: matching unfinished draft is no longer present");
+			return false;
+		}
 		PaymentResult payment = SpellPaymentRouter.pay(player, quote.startCostUnits(),
 				SpellCostContext.CERTIFICATION_START);
 		if (!payment.success()) {
 			LOGGER.info("[YH] start rejected: payment failed: {}", payment);
 			return false;
 		}
-		boolean started = spawnTrial(player, quote, payment.receipt(), quote.spellHp(), false);
+		boolean started = spawnTrial(player, quote, payment.receipt(), quote.spellHp(), false, true);
 		LOGGER.info("[YH] start result: started={} cost={} hash={}",
 				started, quote.startCostUnits(), quote.definitionHash().substring(0, Math.min(8, quote.definitionHash().length())));
 		return started;
@@ -181,12 +194,12 @@ public final class CertificationService {
 		if (inRealBattle(player)) return false;
 		if (CertificationManager.INSTANCE.hasActiveTrial(player)) return false;
 		int hp = breakHealth == null ? quote.spellHp() : Math.max(1, Math.round(breakHealth));
-		return spawnTrial(player, quote, null, hp, breakHealth == null);
+		return spawnTrial(player, quote, null, hp, breakHealth == null, false);
 	}
 
 	private static boolean spawnTrial(ServerPlayer player, CertificationQuote quote,
 									  @Nullable PaymentReceipt startReceipt, int breakHealth,
-									  boolean timeoutCompletes) {
+									  boolean timeoutCompletes, boolean requireDraft) {
 		SpellDefinition definition = CertificationManager.INSTANCE.getQuoteDefinition(quote.quoteId());
 		if (definition == null) {
 			if (startReceipt != null) {
@@ -200,6 +213,13 @@ public final class CertificationService {
 				|| quote.durationTicks() != clampDuration(quote.durationTicks())
 				|| quote.arenaHalfSize() != YHModConfig.COMMON.certificationFixedArenaHalfSize.get()
 				|| !quoteCostsMatchCurrentConfig(quote)) {
+			if (startReceipt != null) {
+				SpellPaymentRouter.refund(player, startReceipt);
+			}
+			return false;
+		}
+		ItemStack consumed = requireDraft ? consumeDraft(player, definition.id) : null;
+		if (requireDraft && consumed == null) {
 			if (startReceipt != null) {
 				SpellPaymentRouter.refund(player, startReceipt);
 			}
@@ -227,18 +247,24 @@ public final class CertificationService {
 			if (startReceipt != null) {
 				SpellPaymentRouter.refund(player, startReceipt);
 			}
+			returnConsumedDraft(player, consumed);
+			return false;
+		}
+		if (!player.level().addFreshEntity(entity)) {
+			CertificationManager.INSTANCE.remove(player.getUUID());
+			if (startReceipt != null) SpellPaymentRouter.refund(player, startReceipt);
+			returnConsumedDraft(player, consumed);
+			entity.discard();
 			return false;
 		}
 		if (startReceipt != null) {
 			controller.setStartReceipt(startReceipt);
 		}
-		// starting a certification consumes the player's draft card (survival);
-		// a failed trial returns it along the same path as the reward
-		ItemStack consumed = consumeDraft(player, definition.id);
+		// Starting a survival certification consumes the player's draft card; a
+		// failed trial returns it along the same path as the reward.
 		if (consumed != null) {
 			controller.setConsumedDraft(consumed);
 		}
-		player.level().addFreshEntity(entity);
 		controller.beginPrepare();
 		return true;
 	}
@@ -258,7 +284,8 @@ public final class CertificationService {
 	 */
 	@Nullable
 	private static ItemStack consumeDraft(ServerPlayer player, ResourceLocation definitionId) {
-		for (ItemStack stack : player.getInventory().items) {
+		for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+			ItemStack stack = player.getInventory().getItem(slot);
 			if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
 					&& definitionId != null && definitionId.equals(
 					dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack))
@@ -270,6 +297,12 @@ public final class CertificationService {
 			}
 		}
 		return null;
+	}
+
+	private static void returnConsumedDraft(ServerPlayer player, @Nullable ItemStack stack) {
+		if (stack != null && !stack.isEmpty()) {
+			player.getInventory().placeItemBackInInventory(stack);
+		}
 	}
 
 	public static ResourceLocation startProvider() {

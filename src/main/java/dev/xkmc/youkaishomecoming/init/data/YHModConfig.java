@@ -115,11 +115,7 @@ public class YHModConfig {
 
 		// Certification gameplay (Phase 2)
 		public final ForgeConfigSpec.BooleanValue certificationEnabled;
-		public final ForgeConfigSpec.IntValue certificationMinArenaHalfSize;
-		public final ForgeConfigSpec.IntValue certificationMaxArenaHalfSize;
-		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends Integer>> certificationArenaPresets;
 		public final ForgeConfigSpec.IntValue certificationCountdownTicks;
-		public final ForgeConfigSpec.ConfigValue<String> certificationMovementPolicy;
 		public final ForgeConfigSpec.DoubleValue certificationMaxDisplacementPerTick;
 		public final ForgeConfigSpec.BooleanValue certificationEnemyRandomMovementEnabled;
 		public final ForgeConfigSpec.IntValue certificationEnemyWaypointMinTicks;
@@ -131,7 +127,6 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue certificationMaxConcurrentTrials;
 		public final ForgeConfigSpec.LongValue certificationStartCostUnits;
 		public final ForgeConfigSpec.DoubleValue certificationRefundOnFailure;
-		public final ForgeConfigSpec.DoubleValue certificationMinProofMultiplier;
 		public final ForgeConfigSpec.ConfigValue<String> certificationStartPaymentProvider;
 		public final ForgeConfigSpec.BooleanValue certificationIssueFeeEnabled;
 		public final ForgeConfigSpec.BooleanValue certificationPublicRendering;
@@ -306,21 +301,9 @@ public class YHModConfig {
 				certificationEnabled = builder.comment("Master switch for the survival spell certification system")
 						.translation("config.youkaishomecoming.common.certification.enabled")
 						.define("enabled", true);
-				certificationMinArenaHalfSize = builder.comment("Minimum certification arena half size in blocks")
-						.translation("config.youkaishomecoming.common.certification.minArenaHalfSize")
-						.defineInRange("minArenaHalfSize", 6, 4, 32);
-				certificationMaxArenaHalfSize = builder.comment("Maximum certification arena half size in blocks")
-						.translation("config.youkaishomecoming.common.certification.maxArenaHalfSize")
-						.defineInRange("maxArenaHalfSize", 64, 8, 256);
-				certificationArenaPresets = builder.comment("Preset arena half sizes in blocks (editor quick pick)")
-						.translation("config.youkaishomecoming.common.certification.arenaPresets")
-						.defineListAllowEmpty("arenaPresets", java.util.List.of(6, 8, 12, 16), o -> o instanceof Integer);
 				certificationCountdownTicks = builder.comment("PREPARE countdown ticks before ACTIVE begins")
 						.translation("config.youkaishomecoming.common.certification.countdownTicks")
 						.defineInRange("countdownTicks", 100, 20, 600);
-				certificationMovementPolicy = builder.comment("Movement policy: CANONICAL (fixed speeds/judge box) or MODPACK (legal equipment and other-mod movement)")
-						.translation("config.youkaishomecoming.common.certification.movementPolicy")
-						.define("movementPolicy", "CANONICAL");
 				certificationMaxDisplacementPerTick = builder.comment("Max allowed player displacement per tick in blocks (illegal move / teleport protection)")
 						.translation("config.youkaishomecoming.common.certification.maxDisplacementPerTick")
 						.defineInRange("maxDisplacementPerTick", 8.0, 1.0, 64.0);
@@ -354,9 +337,6 @@ public class YHModConfig {
 				certificationRefundOnFailure = builder.comment("Refund ratio of the start fee for normal No-Hit failure and manual abort (SYSTEM_ERROR always refunds in full)")
 						.translation("config.youkaishomecoming.common.certification.refundOnFailure")
 						.defineInRange("refundOnFailure", 0.5, 0.0, 1.0);
-				certificationMinProofMultiplier = builder.comment("Floor for the proof discount multiplier (design doc §13)")
-						.translation("config.youkaishomecoming.common.certification.minProofMultiplier")
-						.defineInRange("minProofMultiplier", 0.45, 0.1, 1.0);
 				certificationStartPaymentProvider = builder.comment("Payment provider id for the certification start fee")
 						.translation("config.youkaishomecoming.common.certification.startPaymentProvider")
 						.define("startPaymentProvider", "youkaishomecoming:experience");

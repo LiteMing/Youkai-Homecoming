@@ -53,6 +53,7 @@ public class NumberProviders {
 		register("caster_x", CasterX.CODEC, CasterX.class);
 		register("caster_y", CasterY.CODEC, CasterY.class);
 		register("caster_z", CasterZ.CODEC, CasterZ.class);
+		register("caster_max_health", CasterMaxHealth.CODEC, CasterMaxHealth.class);
 		register("target_x", TargetX.CODEC, TargetX.class);
 		register("target_y", TargetY.CODEC, TargetY.class);
 		register("target_z", TargetZ.CODEC, TargetZ.class);
@@ -606,6 +607,16 @@ public class NumberProviders {
 	public record CasterZ() implements NumberProvider {
 		public static final Codec<CasterZ> CODEC = Codec.unit(CasterZ::new);
 		@Override public double get(SpellContext ctx) { return ctx.holder().center().z; }
+	}
+
+	/**
+	 * Returns the maximum health of the entity that owns the spell runtime.
+	 * JSON: {"type": "caster_max_health"}
+	 * Expression keyword: caster_max_health
+	 */
+	public record CasterMaxHealth() implements NumberProvider {
+		public static final Codec<CasterMaxHealth> CODEC = Codec.unit(CasterMaxHealth::new);
+		@Override public double get(SpellContext ctx) { return ctx.self().getMaxHealth(); }
 	}
 
 	/** Target's X position (or caster X if no target). JSON: {"type": "target_x"} */

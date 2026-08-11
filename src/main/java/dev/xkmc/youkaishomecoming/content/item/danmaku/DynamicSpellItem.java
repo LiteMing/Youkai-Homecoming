@@ -37,6 +37,7 @@ import net.minecraftforge.fml.ModList;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * A generic spell item that reads its SpellDefinition from NBT.
@@ -86,10 +87,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 	@Nullable
 	public static SpellDefinition getSpellDefinition(ItemStack stack) {
-		if (!stack.hasTag()) return null;
-		String id = stack.getTag().getString(TAG_SPELL_ID);
-		if (id.isEmpty()) return null;
-		return SpellRegistry.get(new ResourceLocation(id));
+		ResourceLocation id = getSpellId(stack);
+		return id == null ? null : SpellRegistry.get(id);
 	}
 
 	@Nullable
@@ -97,7 +96,13 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (!stack.hasTag()) return null;
 		String id = stack.getTag().getString(TAG_SPELL_ID);
 		if (id.isEmpty()) return null;
-		return new ResourceLocation(id);
+		return ResourceLocation.tryParse(id);
+	}
+
+	public static String playerSpellNamespace(Player player) {
+		String name = player.getGameProfile().getName().toLowerCase(Locale.ROOT)
+				.replaceAll("[^a-z0-9_.-]", "_");
+		return name.isBlank() ? player.getStringUUID().toLowerCase(Locale.ROOT) : name;
 	}
 
 	public static boolean isSingleUse(ItemStack stack) {
@@ -162,9 +167,50 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	 * never rebound — one spell card binds exactly one spell id.
 	 */
 	public static void bindSpellId(ItemStack stack, ResourceLocation spellId) {
-		if (stack.hasTag() && stack.getTag().contains(TAG_SPELL_ID)) {
-			return;
+		if (getSpellId(stack) == null) setSpellId(stack, spellId);
+	}
+
+	/**
+	 * Binds a newly created definition and upgrades the legacy unqualified-id
+	 * format. A bare path was parsed as {@code minecraft:path}; it may be replaced
+	 * only when that old id has no definition and the requested player id has the
+	 * same path.
+	 */
+	public static boolean bindCreatedSpellId(ItemStack stack, ResourceLocation spellId) {
+		ResourceLocation existing = getSpellId(stack);
+		if (existing == null) {
+			setSpellId(stack, spellId);
+			return true;
 		}
+		if (isMissingLegacyBinding(existing, spellId)) {
+			setSpellId(stack, spellId);
+			return true;
+		}
+		return false;
+	}
+
+	@Nullable
+	private static SpellDefinition resolveEditableDefinition(ItemStack stack, Player player) {
+		ResourceLocation existing = getSpellId(stack);
+		if (existing == null) return null;
+		SpellDefinition exact = SpellRegistry.get(existing);
+		if (exact != null) return exact;
+		ResourceLocation playerId = new ResourceLocation(playerSpellNamespace(player), existing.getPath());
+		if (!isMissingLegacyBinding(existing, playerId)) return null;
+		SpellDefinition repaired = SpellRegistry.get(playerId);
+		if (repaired == null || SpellRegistry.getOrigin(playerId) != SpellRegistry.Origin.CUSTOM) return null;
+		setSpellId(stack, playerId);
+		return repaired;
+	}
+
+	private static boolean isMissingLegacyBinding(ResourceLocation existing, ResourceLocation replacement) {
+		return "minecraft".equals(existing.getNamespace())
+				&& !"minecraft".equals(replacement.getNamespace())
+				&& existing.getPath().equals(replacement.getPath())
+				&& SpellRegistry.get(existing) == null;
+	}
+
+	private static void setSpellId(ItemStack stack, ResourceLocation spellId) {
 		stack.getOrCreateTag().putString(TAG_SPELL_ID, spellId.toString());
 	}
 
@@ -233,7 +279,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		}
 		if (!CertifiedSpellValidator.isCertified(stack) && !isComplete(stack)) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
-				SpellDefinition def = getSpellDefinition(stack);
+				SpellDefinition def = resolveEditableDefinition(stack, sp);
 				if (def == null) {
 					sp.displayClientMessage(Component.literal("Unknown spell: " + getSpellId(stack)), false);
 					return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
@@ -295,6 +341,15 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 
 		if (player instanceof ServerPlayer sp) {
+			SpellHealthPlan playerHealthPlan = certifiedPlan;
+			if (playerHealthPlan == null) {
+				try {
+					playerHealthPlan = SpellHealthPlan.analyzeIfPresent(def, SpellRegistry::get).orElse(null);
+				} catch (IllegalArgumentException ignored) {
+					// Invalid plans are rejected at certification/export boundaries; a
+					// legacy OP card may still cast without a player spell bar.
+				}
+			}
 			if (consume) {
 				boolean paid = CertifiedSpellValidator.isCertified(stack)
 						? SpellItemCost.tryPayUnits(sp, CertifiedSpellValidator.getCertifiedCost(stack))
@@ -321,11 +376,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			GrazeHelper.onPlayerSpellCast(sp);
 			// certified cards show the player-use spell bar: a fraction of the
 			// certification HP (boss bar); misses shrink it instead of costing life
-			if (CertifiedSpellValidator.isCertified(stack)) {
-				int hp = certifiedPlan == null ? def.itemForm.hp() : certifiedPlan.totalHealth();
-				if (hp > 0) {
-					SpellContainer.startSpellBar(sp, hp, cardKey, def.display.displayName());
-				}
+			if (playerHealthPlan != null && playerHealthPlan.totalHealth() > 0) {
+				SpellContainer.startSpellBar(sp, playerHealthPlan.totalHealth(), cardKey,
+						def.display.displayName());
 			}
 			if (cooldown) {
 				int cd = def.itemForm.cooldown() > 0 ? def.itemForm.cooldown() : YHModConfig.COMMON.playerSpellCooldown.get();
@@ -349,11 +402,17 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (GrazeHelper.isManualCombatMode()) {
 			list.add(YHLangData.STG_TOGGLE_TIP.get());
 		}
+		boolean blankDraft = getSpellId(stack) == null;
+		if (blankDraft) {
+			list.add(YHLangData.SPELL_CREATE.get());
+		}
 		SpellDefinition def = getSpellDefinition(stack);
 		int castDuration = CertifiedSpellValidator.isCertified(stack)
 				? CertifiedSpellValidator.getCertifiedCastDuration(stack)
 				: def != null ? def.itemForm.duration() : 0;
-		SpellItemCost.appendCostTooltip(list, castDuration);
+		if (!blankDraft) {
+			SpellItemCost.appendCostTooltip(list, castDuration);
+		}
 		int quota = getOpQuota(stack);
 		if (quota > 0) {
 			// boss-base draft: how many experimental nodes this draft may use

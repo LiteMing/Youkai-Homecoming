@@ -5,6 +5,8 @@ import com.google.gson.GsonBuilder;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.fml.loading.FMLPaths;
 
@@ -12,27 +14,32 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.Supplier;
 
 public class SpellEditorNetworkClient {
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final String EXPORT_DIR = "youkaishomecoming_spells";
 
-	public static void save(SpellDefinition definition) {
-		sendChunked(SpellEditorSyncToServer.save(definition, false));
+	public static boolean save(SpellDefinition definition) {
+		return trySend(definition, () -> SpellEditorSyncToServer.save(definition, false));
 	}
 
-	public static void saveAndReapply(SpellDefinition definition) {
-		sendChunked(SpellEditorSyncToServer.save(definition, true));
+	public static boolean saveAndReapply(SpellDefinition definition) {
+		return trySend(definition, () -> SpellEditorSyncToServer.save(definition, true));
 	}
 
-	public static void importMarket(SpellDefinition definition) {
-		sendChunked(SpellEditorSyncToServer.importMarket(definition));
+	public static boolean importMarket(SpellDefinition definition) {
+		return trySend(definition, () -> SpellEditorSyncToServer.importMarket(definition));
 	}
 
 	public static Path exportGlobal(SpellDefinition definition) throws IOException {
-		sendChunked(SpellEditorSyncToServer.exportGlobal(definition));
-		return saveLocalExportCopy(definition);
+		try {
+			sendChunked(SpellEditorSyncToServer.exportGlobal(definition));
+			return saveLocalExportCopy(definition);
+		} catch (RuntimeException e) {
+			throw new IOException("Spell definition cannot be encoded as JSON", e);
+		}
 	}
 
 	public static void delete(ResourceLocation spellId) {
@@ -61,6 +68,25 @@ public class SpellEditorNetworkClient {
 		}
 		YoukaisHomecoming.LOGGER.info("[SpellEditor] sent {} in {} chunks ({} chars)",
 				packet.spellId, total, json.length());
+	}
+
+	private static boolean trySend(SpellDefinition definition,
+								   Supplier<SpellEditorSyncToServer> packetFactory) {
+		try {
+			sendChunked(packetFactory.get());
+			return true;
+		} catch (RuntimeException e) {
+			YoukaisHomecoming.LOGGER.error("Failed to encode spell editor update for {}",
+					definition.id, e);
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.player != null) {
+				String key = definition.hasLegacyTicker()
+						? "youkaishomecoming.spell_editor.error.legacy_ticker"
+						: "youkaishomecoming.spell_editor.error.encode_failed";
+				mc.player.displayClientMessage(Component.translatable(key), false);
+			}
+			return false;
+		}
 	}
 
 	private static Path saveLocalExportCopy(SpellDefinition definition) throws IOException {

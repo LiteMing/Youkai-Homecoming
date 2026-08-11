@@ -621,13 +621,17 @@ public class SpellRuntime {
 			variables.clear();
 		}
 
+		PhaseDefinition newPhase = definition.getPhase(targetPhase);
 		currentPhaseId = targetPhase;
 		phaseTick = 0;
 		enteredCurrentPhase = false;
 		scheduledActions.clear();
-		completeCurrentSpellHealth();
+		// Ordinary attack-pattern phases may share one spell-health segment. A
+		// phase starts a new segment only when it declares set_spell_health itself.
+		if (newPhase != null && findStaticHealthAction(newPhase.onEnter) != null) {
+			completeCurrentSpellHealth();
+		}
 
-		PhaseDefinition newPhase = definition.getPhase(currentPhaseId);
 		if (newPhase != null) {
 			for (SpellAction action : newPhase.onEnter) {
 				action.execute(ctx);

@@ -34,12 +34,45 @@
       "cooking": "煮饭"
     },
     "cert": {
-    "prepare": "认证倒计时 %s 秒——待在场地内",
-    "active": "认证开始！坚持 %s 秒（无伤）",
-    "success": "认证成功！",
-    "fail": "认证失败：%s",
-    "self_made_only": "只能使用自己制作的符卡进行认证"
-  },
+      "disabled": "此服务器已关闭符卡认证",
+      "quote_fail": "认证报价失败：%s",
+      "quote_reason": {
+        "missing_spell_id": "缺少符卡 ID",
+        "unknown_definition": "符卡定义已不存在",
+        "missing_draft": "需要持有绑定此定义的未完成符卡",
+        "invalid_health_plan": "set_spell_health 的血量、超时或完成切换链不合法",
+        "analysis_rejected": "符卡超过认证限制，或使用了认证不允许的能力",
+        "internal_error": "发生内部错误，请查看服务端日志"
+      },
+      "start_fail": "认证启动失败：%s",
+      "start_reason": {
+        "quote_expired": "报价已过期，请重新请求报价",
+        "rejected": "当前无法启动认证，请检查战斗状态、费用以及是否已有认证进行中"
+      },
+      "cast_rejected": "这张认证符卡已失效（定义已修改或能力授权已撤销）",
+      "prepare": "认证倒计时 %s 秒——待在场地内",
+      "active": "请在 %s 秒内使用弹幕击破符卡",
+      "active_infinite": "请使用弹幕击破符卡（无超时）",
+      "success": "认证成功！",
+      "fail": "认证失败：%s",
+      "issue_payment_fail": "认证已成功，但无法支付符卡发放费用；原符卡已返还",
+      "fail_reason": {
+        "hit": "被弹幕命中",
+        "out_of_arena": "离开认证场地",
+        "exited": "玩家离线、死亡或离开当前维度",
+        "death": "玩家死亡",
+        "other_battle": "进入了其他弹幕战",
+        "disconnect": "玩家断开连接",
+        "illegal_move": "单刻移动距离超过认证限制",
+        "timeout": "符卡超时",
+        "other_spell": "释放了其他符卡",
+        "bomb": "使用了 BOMB",
+        "aborted": "认证被中止",
+        "system_error": "认证系统发生错误",
+        "runtime_limit": "符卡运行时超过安全限制",
+        "unknown": "未知原因"
+      }
+    },
   "tooltip": {
       "chance": " %2$s%%概率获得%1$s",
       "place": "可被放置于地上",
@@ -51,6 +84,7 @@
       "spell_cost_no_bomb": "BOMB 不足（需要 %s，现有 %s）",
       "spell_cost_no_xp": "经验等级不足（需要 %s，现有 %s）",
       "spell_duration": "持续时间：%s tick",
+      "spell_create": "右键打开符卡创建页面",
       "spell_single_use": "一次性符卡：释放后消耗",
       "spell_unfinished": "未完成符卡：右键可再次编辑，认证后成为完整符卡",
       "spell_op_quota": "实验性节点可用：%s 个（传送/清除敌弹/清屏/受击钩子/弹幕钩子）",
@@ -146,6 +180,8 @@
     "rumia_attack.player": "%s被%s吃掉了",
     "danmaku": "%s被弹幕送往了来世",
     "danmaku.player": "%s被%s的弹幕送往了来世",
+    "danmaku.boss": "%s没有遵循弹幕战斗的规则",
+    "danmaku.other": "%s被弹幕送往了来世",
     "abyssal_danmaku": "%s被弹幕送往了来世",
     "abyssal_danmaku.player": "%s被%s的弹幕送往了来世"
   },

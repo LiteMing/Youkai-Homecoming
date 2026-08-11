@@ -9,10 +9,14 @@ import dev.xkmc.youkaishomecoming.content.spell.payment.SpellCostContext;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellPaymentRouter;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellMovementDirective;
+import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.BossEvent;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,6 +43,8 @@ public class CertificationController {
 	private final long movementSeed;
 	private final CertificationEnemyMovement movement;
 	private final boolean timeoutCompletes;
+	private final net.minecraft.server.level.ServerBossEvent bossEvent = new net.minecraft.server.level.ServerBossEvent(
+			Component.empty(), BossEvent.BossBarColor.RED, BossEvent.BossBarOverlay.PROGRESS);
 
 	private CertificationState state = CertificationState.DEPOSIT_PAID;
 	private int countdown;
@@ -171,6 +177,8 @@ public class CertificationController {
 	public void beginPrepare() {
 		state = CertificationState.PREPARE;
 		countdown = YHModConfig.COMMON.certificationCountdownTicks.get();
+		bossEvent.addPlayer(author);
+		bossEvent.setVisible(true);
 		// the author becomes the enemy's target so spell aim (AimMode.Target) works,
 		// and enters STG combat state so the battle circle / resources display (D3/D4)
 		entity.targets.add(author);
@@ -248,7 +256,9 @@ public class CertificationController {
 					healthPlan::resolve,
 					healthPlan));
 			logState("active start");
-			author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_ACTIVE.get(quote.durationTicks() / 20), false);
+			author.displayClientMessage(quote.durationTicks() > 0
+					? YHLangData.CERT_ACTIVE.get((quote.durationTicks() + 19) / 20)
+					: YHLangData.CERT_ACTIVE_INFINITE.get(), false);
 			syncState();
 		}
 	}
@@ -361,6 +371,7 @@ public class CertificationController {
 		}
 		failReason = CertificationFailReason.SYSTEM_ERROR;
 		state = CertificationState.SYSTEM_ERROR;
+		hideBossBar();
 		// Removal can happen before the normal terminal tick. Run the same
 		// resource/entity cleanup here so /kill and unload cannot leak projectiles,
 		// the display item, or the consumed draft card.
@@ -427,6 +438,7 @@ public class CertificationController {
 			defeatPlayer();
 		} else {
 			restoreCombatState();
+			broadcastDanmakuDefeat();
 		}
 		logState("fail " + reason.id());
 		state = reason == CertificationFailReason.SYSTEM_ERROR
@@ -440,7 +452,7 @@ public class CertificationController {
 		removeDisplayItem();
 		returnDraft(e);
 		postCertificationEvent();
-		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_FAIL.get(reason.id()), false);
+		author.displayClientMessage(dev.xkmc.youkaishomecoming.init.data.YHLangData.CERT_FAIL.get(reason.displayName()), false);
 		syncState();
 	}
 
@@ -505,6 +517,7 @@ public class CertificationController {
 
 	private void cleanup(SpellCertificationEntity e, boolean success) {
 		if (e.isRemoved()) return;
+		hideBossBar();
 		restoreCombatState();
 		logState("cleanup");
 		removeDisplayItem();
@@ -528,9 +541,35 @@ public class CertificationController {
 	private void syncState() {
 		int currentMaxHealth = entity.spellRuntime == null || entity.spellRuntime.getSpellMaxHealth() <= 0
 				? (int) entity.getMaxHealth() : entity.spellRuntime.getSpellMaxHealth();
+		syncBossBar(currentMaxHealth, (int) Math.max(0, entity.getHealth()));
 		dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStateToClient.send(
 				entity, state, elapsedTicks, quote.durationTicks(),
 				currentMaxHealth, (int) Math.max(0, entity.getHealth()),
 				failReason == null ? null : failReason.id());
+	}
+
+	private void syncBossBar(int maxHealth, int health) {
+		if (state != CertificationState.PREPARE && state != CertificationState.ACTIVE) {
+			hideBossBar();
+			return;
+		}
+		int remainingTicks = Math.max(0, quote.durationTicks() - elapsedTicks);
+		bossEvent.setProgress(maxHealth <= 0 ? 0 : Math.max(0, Math.min(1, health / (float) maxHealth)));
+		bossEvent.setName(quote.durationTicks() > 0
+				? YHLangData.CERT_BOSSBAR.get(definition.display.displayName(), health, maxHealth,
+				(remainingTicks + 19) / 20)
+				: YHLangData.CERT_BOSSBAR_INFINITE.get(definition.display.displayName(), health, maxHealth));
+		bossEvent.setVisible(true);
+	}
+
+	private void hideBossBar() {
+		bossEvent.setVisible(false);
+		bossEvent.removeAllPlayers();
+	}
+
+	private void broadcastDanmakuDefeat() {
+		if (!author.level().getGameRules().getBoolean(GameRules.RULE_SHOWDEATHMESSAGES)
+				|| !author.level().players().contains(author)) return;
+		author.server.getPlayerList().broadcastSystemMessage(YHLangData.STG_DEFEAT.get(author.getDisplayName()), false);
 	}
 }

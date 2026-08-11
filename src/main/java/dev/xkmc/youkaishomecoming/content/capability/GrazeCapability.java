@@ -9,7 +9,6 @@ import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
 import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent;
-import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
@@ -251,10 +250,6 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			syncPvpOpponentStatus(sl);
 		}
 		dirty = false;
-		if (player.level().isClientSide) {
-			GrazeHelper.globalForbidTime = playerSpellActive
-					? Math.max(1, Math.max(invul, weak)) : Math.max(invul, weak);
-		}
 	}
 
 	public boolean graze() {
@@ -997,9 +992,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (player instanceof ServerPlayer sp) {
 			SpellContainer.clear(sp);
 			if (sp.level().getGameRules().getBoolean(GameRules.RULE_SHOWDEATHMESSAGES)) {
-				var message = fatalSource instanceof BossYoukaiEntity
-						? YHLangData.STG_DEFEAT_BOSS.get(sp.getDisplayName())
-						: YHLangData.STG_DEFEAT_OTHER.get(sp.getDisplayName());
+				var message = YHLangData.STG_DEFEAT.get(sp.getDisplayName());
 				sp.server.getPlayerList().broadcastSystemMessage(message, false);
 			}
 			sp.playNotifySound(SoundEvents.PLAYER_DEATH, SoundSource.PLAYERS, 1.0f, 0.8f);

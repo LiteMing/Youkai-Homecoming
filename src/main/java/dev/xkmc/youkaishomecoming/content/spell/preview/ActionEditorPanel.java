@@ -402,7 +402,7 @@ public class ActionEditorPanel {
 			case "set_spell_circle" -> new SetSpellCircleAction(SetSpellCircleAction.Mode.SET,
 					new ResourceLocation("youkaishomecoming", "test_spell"), 1.0f);
 			case "set_spell_health" -> new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
-					NumberProvider.constant(100), NumberProvider.constant(1200));
+					NumberProvider.constant(50), NumberProvider.constant(100));
 			case "force_phase" -> new SpellActions.ForcePhase(
 					new ResourceLocation("youkaishomecoming", "main"), true);
 			case "force_spell" -> new SpellActions.ForceSpell(
@@ -3241,7 +3241,7 @@ public class ActionEditorPanel {
 			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose",
 			"tick", "phase_tick", "total_tick", "distance",
 			"target_height", "target_fly_time", "target_speed", "game_difficulty",
-			"caster_x", "caster_y", "caster_z", "target_x", "target_y", "target_z"
+			"caster_x", "caster_y", "caster_z", "caster_max_health", "target_x", "target_y", "target_z"
 	};
 
 	/** Returns the insert template for a function (with parens and commas). */
@@ -3335,7 +3335,7 @@ public class ActionEditorPanel {
 	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
 			"tick", "phase_tick", "total_tick", "distance", "target_height", "target_fly_time",
 			"target_speed", "game_difficulty",
-			"caster_x", "caster_y", "caster_z", "target_x", "target_y", "target_z"
+			"caster_x", "caster_y", "caster_z", "caster_max_health", "target_x", "target_y", "target_z"
 	);
 
 	/**

@@ -1,79 +1,53 @@
 package dev.xkmc.youkaishomecoming.content.spell.certification.network;
 
-import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationQuote;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
-import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.ItemStack;
 
 /**
  * Server-side quote handling: analyze (certification profile), hash, cost and
- * cache the quote + definition keyed by quoteId (design doc §5.2, §18).
- * This is the in-game player path: only spell cards the player created
- * themselves (a DynamicSpellItem held in the inventory) may be certified here.
- * Built-in/registered spells are exclusively available through the OP
- * "certification boss" command (or the OP test command).
+ * cache the quote + definition keyed by quoteId. The player must hold an
+ * unfinished card bound to the definition, but authorship is irrelevant; the
+ * analyzer and health-plan validator decide whether it is certifiable.
  */
 public final class CertificationQuoteRequestHandler {
 
 	private CertificationQuoteRequestHandler() {
 	}
 
-	public static void accept(ServerPlayer player, SpellDefinition definition,
-							  int requestedDurationTicks, double requestedHalfSize) {
+	public static void accept(ServerPlayer player, SpellDefinition definition) {
 		if (!dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationEnabled.get()) {
 			player.displayClientMessage(YHLangData.CERT_DISABLED.get(), false);
 			return;
 		}
-		if (!holdsOwnSpell(player, definition)) {
-			player.displayClientMessage(YHLangData.CERT_SELF_MADE_ONLY.get(), false);
+		if (!CertificationService.hasUnfinishedDraft(player, definition.id)) {
+			player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
+					YHLangData.CERT_QUOTE_MISSING_DRAFT.get()), false);
 			return;
 		}
 		CertificationQuote quote;
 		try {
-			quote = CertificationService.quote(player, definition, requestedDurationTicks, requestedHalfSize);
+			quote = CertificationService.quote(player, definition);
+		} catch (SpellAnalysisException e) {
+			YoukaisHomecoming.LOGGER.info("Certification quote rejected by spell analysis for {}: {}",
+					definition.id, e.getMessage());
+			player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
+					YHLangData.CERT_QUOTE_ANALYSIS_REJECTED.get()), false);
+			return;
 		} catch (IllegalArgumentException e) {
-			player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(e.getMessage()), false);
+			YoukaisHomecoming.LOGGER.info("Certification quote rejected by spell-health plan for {}: {}",
+					definition.id, e.getMessage());
+			player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
+					YHLangData.CERT_QUOTE_INVALID_HEALTH_PLAN.get()), false);
 			return;
 		}
 		CertificationManager.INSTANCE.setQuote(player, quote, definition);
 		YoukaisHomecoming.HANDLER.toClientPlayer(
 				new CertificationQuoteToClient(quote), player);
-	}
-
-	/**
-	 * The player must actually hold the spell card in their inventory: the item
-	 * must be a DynamicSpellItem whose spell_id matches the requested definition,
-	 * and it must be an UNFINISHED card (not yet certified — a complete certified
-	 * card cannot be certified again). Built-in spells (which have a code default)
-	 * never pass this check — they are reserved for the OP/console boss
-	 * certification command.
-	 */
-	private static boolean holdsOwnSpell(ServerPlayer player, SpellDefinition definition) {
-		ResourceLocation id = definition.id;
-		if (id == null || SpellRegistry.hasDefault(id)) {
-			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.LOGGER.info(
-					"[YH] cert reject: id={} default={}", id, id != null && SpellRegistry.hasDefault(id));
-			return false;
-		}
-		for (ItemStack stack : player.getInventory().items) {
-			if (stack.getItem() instanceof DynamicSpellItem) {
-				dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.LOGGER.info(
-						"[YH] cert scan: bound={} certified={}",
-						DynamicSpellItem.getSpellId(stack),
-						dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack));
-				if (id.equals(DynamicSpellItem.getSpellId(stack))
-						&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
-					return true;
-				}
-			}
-		}
-		return false;
 	}
 }

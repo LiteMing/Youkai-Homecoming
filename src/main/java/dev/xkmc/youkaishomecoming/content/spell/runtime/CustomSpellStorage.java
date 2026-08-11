@@ -75,8 +75,7 @@ public class CustomSpellStorage {
 	/**
 	 * Ownership metadata lives in a sidecar file next to the spell JSON
 	 * ({@code <spell>.json.owner}) so the definition format itself stays intact.
-	 * Created by the editor save path; non-OP players may only edit/delete spells
-	 * they created themselves.
+	 * It protects deletion only; custom spell editing is collaborative.
 	 */
 	private static File getOwnerFile(File spellFile) {
 		return new File(spellFile.getPath() + ".owner");

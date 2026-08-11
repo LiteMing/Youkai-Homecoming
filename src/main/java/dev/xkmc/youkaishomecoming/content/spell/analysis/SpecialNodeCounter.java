@@ -34,7 +34,7 @@ public final class SpecialNodeCounter {
 	 * The capability set unlockable through a boss-draft's special-node quota:
 	 * on_damage, teleport, erase enemy danmaku and clear screen (legitimate
 	 * certification tactics). Confine/entity flags/force/fire spell and
-	 * run_command are OP_ONLY — boss/creator-facing freedom, never unlocked for
+	 * run_command are OP_ONLY — boss-authoring freedom, never unlocked for
 	 * players. Danmaku hooks (HOOK_ON_*) stay ALLOW but still count toward the
 	 * quota (quantity control).
 	 */

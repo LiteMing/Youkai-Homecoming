@@ -37,8 +37,6 @@ public class GrazeHelper {
 
 	public static final int SPELL_TARGET_RANGE = 64;
 
-	public static int globalForbidTime = 0;
-
 	public static void graze(Player entity, GrazingEntity e) {
 		var graze = GrazeCapability.HOLDER.get(entity);
 		if (graze.isInvul()) return;
@@ -194,8 +192,8 @@ public class GrazeHelper {
 	}
 
 	/**
-	 * Casts the spell card selected with vanilla projectile ordering: offhand,
-	 * main hand, then inventory slots. No card means no bomb activation.
+	 * Casts the spell card selected with normal item interaction ordering: main
+	 * hand, offhand, then inventory slots. No card means no bomb activation.
 	 */
 	public static boolean tryCastBombSpell(ServerPlayer player) {
 		if (forbidDanmaku(player)) return false;
@@ -208,14 +206,14 @@ public class GrazeHelper {
 	}
 
 	/**
-	 * Select a spell card using vanilla projectile order, with Curios as an
+	 * Select a spell card using normal item interaction order, with Curios as an
 	 * explicit fallback for script-driven and accessory-held cards.
 	 */
 	public static ItemStack findSpellCard(Player player) {
-		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
-		if (isAvailableSpellStack(player, offhand)) return offhand;
 		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
 		if (isAvailableSpellStack(player, mainhand)) return mainhand;
+		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
+		if (isAvailableSpellStack(player, offhand)) return offhand;
 		var inventory = player.getInventory();
 		for (int i = 0; i < inventory.items.size(); i++) {
 			ItemStack stack = inventory.getItem(i);

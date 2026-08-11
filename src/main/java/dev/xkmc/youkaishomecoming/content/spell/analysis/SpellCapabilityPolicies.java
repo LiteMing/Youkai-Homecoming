@@ -40,7 +40,7 @@ public final class SpellCapabilityPolicies {
 		// discount (D6) and point-blank spawning is a legitimate danmaku challenge.
 		put(SpellCapability.ORIGIN_TARGET, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.ORIGIN_ABSOLUTE, SpellCapabilityPolicy.ALLOW);
-		// Boss/creator-facing freedom nodes: confine, entity flags and force/fire
+		// Boss-authoring freedom nodes: confine, entity flags and force/fire
 		// spell are OP_ONLY — players must not bypass limits with them, they exist
 		// for boss spell creators only.
 		put(SpellCapability.CONFINED_TARGET, SpellCapabilityPolicy.OP_ONLY);

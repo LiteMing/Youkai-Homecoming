@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.client.hud;
 
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationState;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationFailReason;
 import dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationClientHandler;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
@@ -43,8 +44,9 @@ public final class CertificationHud {
 		}
 		if (state.state() == CertificationState.FAILED
 				|| state.state() == CertificationState.SYSTEM_ERROR) {
-			String reason = state.failReason() == null ? "unknown" : state.failReason();
-			gui.drawString(font, Component.translatable("youkaishomecoming.cert.hud.failed", reason),
+			if (!CertificationClientHandler.shouldShowFailure()) return;
+			gui.drawString(font, Component.translatable("youkaishomecoming.cert.hud.failed",
+					CertificationFailReason.displayName(state.failReason())),
 					width / 2 - 80, 6, 0xFFFF5555);
 		}
 	}

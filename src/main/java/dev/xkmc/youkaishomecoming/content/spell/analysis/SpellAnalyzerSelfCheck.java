@@ -10,6 +10,8 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
+import dev.xkmc.youkaishomecoming.content.spell.game.MigratedSpellCards;
 import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.template.SpellTemplates;
@@ -172,6 +174,7 @@ public final class SpellAnalyzerSelfCheck {
 				+ " \"hit_context\": \"at_entity_pos\", \"command\": \"say hit\"}");
 		private static final String RUNCMD_DISABLED = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"run_command\", \"command\": \"say hi\"}}");
 		private static final String SPELL_HEALTH = spell("{\"type\": \"set_spell_health\", \"health\": 100, \"duration\": 120}");
+		private static final String SPELL_HEALTH_DEFAULTS = spell("{\"type\": \"set_spell_health\"}");
 		private static final String SPELL_HEALTH_TARGETS = spell("{\"type\": \"set_spell_health\", \"health\": 100, \"duration\": 120,"
 				+ " \"on_timeout\": {\"type\": \"force_phase\", \"phase_id\": \"youkaishomecoming:main\"},"
 				+ " \"on_break\": {\"type\": \"force_spell\", \"spell_id\": \"youkaishomecoming:analyzer_test\"}}");
@@ -504,6 +507,7 @@ public final class SpellAnalyzerSelfCheck {
 		Result run(@Nullable net.minecraft.server.level.ServerPlayer player) {
 			try {
 				codecAndHash();
+				migratedBossHealth();
 				analyzerTraversal();
 				oneShotBurst();
 				shooterModel();
@@ -557,6 +561,11 @@ public final class SpellAnalyzerSelfCheck {
 			SetSpellHealthAction health = (SetSpellHealthAction) firstTickAction(parse(SPELL_HEALTH_TARGETS));
 			check("spell health timeout target codec", health.onTimeout().orElse(null) instanceof SpellActions.ForcePhase);
 			check("spell health break target codec", health.onBreak().orElse(null) instanceof SpellActions.ForceSpell);
+			SetSpellHealthAction defaults = (SetSpellHealthAction) firstTickAction(parse(SPELL_HEALTH_DEFAULTS));
+			check("spell health default is 50 HP / 100 ticks",
+					defaults.health() instanceof NumberProviders.Constant hp && hp.value() == 50
+							&& defaults.duration() instanceof NumberProviders.Constant duration
+							&& duration.value() == 100);
 			check("spell health rejects unrelated embedded action",
 					rejectMessage(() -> parse(SPELL_HEALTH_INVALID_TARGET)) != null);
 			SpellDefinition bossTemplate = SpellTemplates.create(
@@ -616,6 +625,49 @@ public final class SpellAnalyzerSelfCheck {
 			RunCommandAction hitCommand = (RunCommandAction) firstTickAction(parse(RUNCMD_HIT));
 			check("run_command hit context codec round-trip",
 					hitCommand.hitContext() == RunCommandAction.HitContext.AT_ENTITY_POS);
+		}
+
+		private void migratedBossHealth() {
+			List<SpellDefinition> definitions = List.of(
+					MigratedSpellCards.sunnyMilk(), MigratedSpellCards.lunaChild(),
+					MigratedSpellCards.starSapphire(), MigratedSpellCards.cirno(),
+					MigratedSpellCards.mystia(), MigratedSpellCards.youmu(),
+					MigratedSpellCards.larva(), MigratedSpellCards.sanae(),
+					MigratedSpellCards.clown(), MigratedSpellCards.sakuya(),
+					MigratedSpellCards.kisin(), MigratedSpellCards.remilia(),
+					MigratedSpellCards.doremi(), MigratedSpellCards.koishi(),
+					MigratedSpellCards.reimu(), MigratedSpellCards.yukari());
+			for (SpellDefinition definition : definitions) {
+				String name = definition.id.toString();
+				List<SetSpellHealthAction> healthActions = definition.phases.values().stream()
+						.flatMap(phase -> phase.onEnter.stream())
+						.filter(SetSpellHealthAction.class::isInstance)
+						.map(SetSpellHealthAction.class::cast)
+						.toList();
+				SetSpellHealthAction health = healthActions.size() == 1 ? healthActions.get(0) : null;
+				PhaseDefinition entry = definition.getPhase(definition.entryPhase);
+				check(name + " has exactly one entry health declaration",
+						health != null && entry != null && entry.onEnter.contains(health));
+				check(name + " uses caster_max_health",
+						health != null && health.health() instanceof NumberProviders.CasterMaxHealth);
+				check(name + " has no timeout for legacy compatibility",
+						health != null && health.duration() instanceof NumberProviders.Constant duration
+								&& duration.value() == 0);
+
+				JsonElement encoded = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
+						.result().orElseThrow();
+				SpellDefinition decoded = parse(encoded.toString());
+				PhaseDefinition decodedEntry = decoded.getPhase(decoded.entryPhase);
+				SetSpellHealthAction decodedHealth = decodedEntry == null ? null : decodedEntry.onEnter.stream()
+						.filter(SetSpellHealthAction.class::isInstance)
+						.map(SetSpellHealthAction.class::cast)
+						.findFirst().orElse(null);
+				check(name + " health declaration survives codec round-trip",
+						decodedHealth != null
+								&& decodedHealth.health() instanceof NumberProviders.CasterMaxHealth
+								&& decodedHealth.duration() instanceof NumberProviders.Constant duration
+								&& duration.value() == 0);
+			}
 		}
 
 		private void analyzerTraversal() {
@@ -1106,14 +1158,14 @@ public final class SpellAnalyzerSelfCheck {
 			SpellDefinition def = SpellTemplates.create(
 					new ResourceLocation("youkaishomecoming", "quote_health_plan"), "boss");
 			dev.xkmc.youkaishomecoming.content.spell.certification.CertificationQuote q =
-					dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService.quote(player, def, 99999, 999);
+					dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService.quote(player, def);
 			check("quote reads total break-chain duration", q.durationTicks() == 1200);
 			check("quote reads total break-chain health", q.spellHp() == 1300);
 			check("quote keeps reward duration at 1:1", q.rewardDurationTicks() == 1200);
-			check("quote clamps arena to max",
-					q.arenaHalfSize() <= dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationMaxArenaHalfSize.get());
-			check("quote cost positive and floored by minProof",
-					q.startCostUnits() >= 1 && q.startCostUnits() >= dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationMinProofMultiplier.get());
+			check("quote uses configured fixed arena",
+					q.arenaHalfSize() == dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationFixedArenaHalfSize.get());
+			check("quote uses configured start fee",
+					q.startCostUnits() == dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.certificationStartCostUnits.get());
 			check("quote bundle hash stable", q.definitionHash().equals(
 					SpellHash.canonicalBundleHash(q.healthPlan().definitions())));
 		}

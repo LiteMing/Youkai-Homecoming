@@ -98,6 +98,10 @@ public class ActionEditorPanel {
 
 	// Depth tracking for nested mover editors
 	private int currentDepth = 0;
+	// While editing fixed_dir, nested mover callbacks must resolve the inner config
+	// instead of the outer action mover. This remains active until the selected
+	// action changes; the resolver only unwraps an actual fixed_dir mover.
+	private boolean editingFixedDirInner = false;
 	// Collapsed sections: key = section label at specific row index
 	private final java.util.Set<String> collapsedSections = new java.util.HashSet<>();
 
@@ -140,6 +144,7 @@ public class ActionEditorPanel {
 			scrollStateMap.put(actionIndex, scrollOffset);
 		}
 		clearWidgets();
+		editingFixedDirInner = false;
 		this.currentAction = action;
 		this.currentActionPath = path;
 		this.actionIndex = index;
@@ -156,6 +161,7 @@ public class ActionEditorPanel {
 
 	public void clearAction() {
 		clearWidgets();
+		editingFixedDirInner = false;
 		currentAction = null;
 		currentActionPath = null;
 		actionIndex = -1;
@@ -173,6 +179,7 @@ public class ActionEditorPanel {
 
 	public void showTypeSelector(Consumer<SpellAction> onCreated) {
 		clearWidgets();
+		editingFixedDirInner = false;
 		currentAction = null;
 		currentActionPath = null;
 		actionIndex = -1;
@@ -209,6 +216,7 @@ public class ActionEditorPanel {
 			var action = currentAction;
 			int index = actionIndex;
 			clearWidgets();
+			editingFixedDirInner = false;
 			this.currentAction = action;
 			this.actionIndex = index;
 			buildActionRows(action);
@@ -1858,10 +1866,17 @@ public class ActionEditorPanel {
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
 	 */
 	private Optional<MoverConfig> getCurrentMover() {
-		if (currentAction instanceof FireDanmakuAction fda) return fda.mover();
-		if (currentAction instanceof FireLaserAction fla) return fla.mover();
-		if (currentAction instanceof SpawnShooterAction ssa) return ssa.mover();
-		return Optional.empty();
+		Optional<MoverConfig> mover;
+		if (currentAction instanceof FireDanmakuAction fda) mover = fda.mover();
+		else if (currentAction instanceof FireLaserAction fla) mover = fla.mover();
+		else if (currentAction instanceof FireTextDanmakuAction ftda) mover = ftda.mover();
+		else if (currentAction instanceof SpawnShooterAction ssa) mover = ssa.mover();
+		else mover = Optional.empty();
+		if (editingFixedDirInner && mover.isPresent()
+				&& mover.get() instanceof MoverConfigs.FixedDirMoverConfig fixed) {
+			return Optional.of(fixed.inner());
+		}
+		return mover;
 	}
 
 	/**
@@ -1904,10 +1919,23 @@ public class ActionEditorPanel {
 	private void buildMoverRows(Optional<MoverConfig> moverOpt,
 								Consumer<Optional<MoverConfig>> onTypeChanged,
 								Consumer<Optional<MoverConfig>> onParamChanged) {
+		buildMoverRows(moverOpt, onTypeChanged, onParamChanged, true);
+	}
+
+	/**
+	 * Render mover controls. The type row can be omitted when the method is used
+	 * to render the controls for a fixed_dir inner mover.
+	 */
+	private void buildMoverRows(Optional<MoverConfig> moverOpt,
+								Consumer<Optional<MoverConfig>> onTypeChanged,
+								Consumer<Optional<MoverConfig>> onParamChanged,
+								boolean includeTypeSelector) {
 		String currentType = getMoverType(moverOpt);
-		addStringCycleRow("Mover", MOVER_TYPES, currentType, newType -> {
-			onTypeChanged.accept(createDefaultMover(newType));
-		});
+		if (includeTypeSelector) {
+			addStringCycleRow("Mover", MOVER_TYPES, currentType, newType -> {
+				onTypeChanged.accept(createDefaultMover(newType));
+			});
+		}
 
 		if (moverOpt.isPresent()) {
 			MoverConfig cfg = moverOpt.get();
@@ -2376,7 +2404,8 @@ public class ActionEditorPanel {
 		} else if (cfg instanceof MoverConfigs.AttachedFreeRotMoverConfig) {
 			addStringRow("Mode", "Locks pos+facing to owner", v -> {});
 		} else if (cfg instanceof MoverConfigs.FixedDirMoverConfig fdm) {
-			// fixed_dir wraps an inner mover; expose inner type selector. Inner params are not edited inline here.
+			// fixed_dir wraps an inner mover. Render both its type and the full inner
+			// parameter editor so the wrapper is usable without hand-editing JSON.
 			String innerType = getMoverType(Optional.of(fdm.inner()));
 			String[] innerTypes = SUB_MOVER_TYPES;
 			addStringCycleRow("Inner", innerTypes, innerType, newType -> {
@@ -2385,6 +2414,13 @@ public class ActionEditorPanel {
 					onTypeChanged.accept(Optional.of(new MoverConfigs.FixedDirMoverConfig(newInner.get())));
 				}
 			});
+			editingFixedDirInner = true;
+			currentDepth++;
+			buildMoverRows(Optional.of(fdm.inner()),
+					inner -> onTypeChanged.accept(inner.map(value -> new MoverConfigs.FixedDirMoverConfig(value))),
+					inner -> onParamChanged.accept(inner.map(value -> new MoverConfigs.FixedDirMoverConfig(value))),
+					false);
+			currentDepth--;
 		}
 		}
 	}

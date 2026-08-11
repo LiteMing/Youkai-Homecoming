@@ -629,7 +629,8 @@ public class MoverConfigs {
 
 	/**
 	 * Fixed direction wrapper: runs an inner mover but locks the projectile's visual
-	 * rotation to the pattern's baseDirection (the group's shared aim direction).
+	 * rotation to its own launch direction. The launch direction is the final per-
+	 * projectile velocity after pattern angle/elevation offsets are applied.
 	 * The inner mover controls displacement; this wrapper only overrides rotation.
 	 * JSON: {"type": "fixed_dir", "inner": { ... mover ... }}
 	 */
@@ -645,13 +646,15 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
-			Vec3 fixedDir = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1);
+			Vec3 fixedDir = velocity.lengthSqr() > 1e-8 ? velocity.normalize()
+					: (baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1));
 			return new FixedDirMover(inner.create(origin, velocity, baseDirection), fixedDir);
 		}
 
 		@Override
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
-			Vec3 fixedDir = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1);
+			Vec3 fixedDir = velocity.lengthSqr() > 1e-8 ? velocity.normalize()
+					: (baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1));
 			return new FixedDirMover(inner.create(ctx, origin, velocity, baseDirection, targetPos, casterPos), fixedDir);
 		}
 	}

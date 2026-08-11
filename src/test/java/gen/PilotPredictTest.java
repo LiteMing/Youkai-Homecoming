@@ -2,6 +2,7 @@ package gen;
 
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
+import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserBlockHitEffect;
 import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfig;
@@ -36,6 +37,7 @@ public class PilotPredictTest {
 		testZeroMoverPrediction();
 		testRotateMoverPrediction();
 		testTranslateMoverAimPrediction();
+		testFixedDirLaunchDirection();
 		testHomingMoverSteering();
 		testHomingMoverCodec();
 		testPreviewTargetSurface();
@@ -290,6 +292,19 @@ public class PilotPredictTest {
 		approx("short growing beam remains shorter than wall",
 				LaserBlockHitEffect.clipLength(8, 12.5), 8, 1e-6);
 		approx("no wall restores full laser", LaserBlockHitEffect.clipLength(40, -1), 40, 1e-6);
+		System.out.println();
+	}
+
+	private static void testFixedDirLaunchDirection() {
+		System.out.println("[FixedDirMover launch direction]");
+		var config = new MoverConfigs.FixedDirMoverConfig(
+				new MoverConfigs.AccelerationConfig(Vec3.ZERO));
+		Vec3 launch = new Vec3(1, 0, 0);
+		Vec3 base = new Vec3(0, 0, 1);
+		DanmakuMover mover = config.create(Vec3.ZERO, launch, base);
+		var movement = mover.move(new MoverInfo(1, Vec3.ZERO, launch, null, null));
+		approx("fixed direction follows final launch vector", movement.rot(), ProjectileMovement.of(launch).rot(), 1e-8);
+		approx("inner mover displacement is preserved", movement.vec(), launch, 1e-8);
 		System.out.println();
 	}
 

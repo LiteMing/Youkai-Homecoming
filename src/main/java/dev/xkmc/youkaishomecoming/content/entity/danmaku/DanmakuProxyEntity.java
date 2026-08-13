@@ -307,7 +307,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	@Override
 	public void syncSpellState() {
 		if (ownerPlayer != null && runtime != null) {
-			SpellContainer.initializeRuntimeSpellBar(ownerPlayer, this);
+			SpellContainer.syncRuntimeSpellBar(ownerPlayer, this);
 		}
 	}
 

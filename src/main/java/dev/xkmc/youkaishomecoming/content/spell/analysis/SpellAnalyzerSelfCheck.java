@@ -589,17 +589,20 @@ public final class SpellAnalyzerSelfCheck {
 			SpellRuntime bossRuntime = new SpellRuntime(bossTemplate);
 			check("boss health plan exposes all phase arcs before transition",
 					java.util.Arrays.equals(bossRuntime.getSpellHealthSegments(), new int[]{500, 800}));
-			check("boss phases share one combined timeout ring",
-					bossRuntime.getSpellDurationTicks() == 1200);
+			check("boss plan retains the quote duration without rendering future timeouts",
+					bossRuntime.getSpellPlanDurationTicks() == 1200
+							&& bossRuntime.getSpellDurationTicks() == 0);
 			bossRuntime.setSpellHealth(500, 400);
 			check("entering first boss phase keeps planned arc proportions",
 					java.util.Arrays.equals(bossRuntime.getSpellHealthSegments(), new int[]{500, 800})
-							&& bossRuntime.getSpellHealthTotal() == 1300);
+							&& bossRuntime.getSpellHealthTotal() == 1300
+							&& bossRuntime.getSpellDurationTicks() == 400);
 			SpellRuntime restoredBossRuntime = new SpellRuntime(bossTemplate);
 			restoredBossRuntime.loadFromTag(bossRuntime.saveToTag());
 			check("shared boss rings survive runtime persistence",
 					java.util.Arrays.equals(restoredBossRuntime.getSpellHealthSegments(), new int[]{500, 800})
-							&& restoredBossRuntime.getSpellDurationTicks() == 1200);
+							&& restoredBossRuntime.getSpellPlanDurationTicks() == 1200
+							&& restoredBossRuntime.getSpellDurationTicks() == 400);
 			// 3. JSON object field order does not affect hash
 			check("hash independent of JSON field order",
 					SpellHash.canonicalHash(parse(REORDERED)).equals(SpellHash.canonicalHash(parse(FIRE24))));
@@ -1168,6 +1171,21 @@ public final class SpellAnalyzerSelfCheck {
 			check("health plan rejects cross-spell cycles",
 					crossCycleMessage != null && crossCycleMessage.contains("cycle"));
 
+			SpellDefinition relayA = crossHealthSpell("youkaishomecoming:health_relay_a",
+					"youkaishomecoming:health_relay_b");
+			SpellDefinition relayB = terminalHealthSpell("youkaishomecoming:health_relay_b");
+			Map<ResourceLocation, SpellDefinition> relayDefinitions = Map.of(
+					relayA.id, relayA, relayB.id, relayB);
+			SpellHealthPlan relayPlan = SpellHealthPlan.analyze(relayA, relayDefinitions::get);
+			SpellRuntime relayRuntime = new SpellRuntime(relayA, relayPlan::resolve, relayPlan);
+			relayRuntime.setSpellHealth(10, 100);
+			SpellRuntime relayedRuntime = relayRuntime.continueWith(relayB);
+			relayedRuntime.setSpellHealth(20, 200);
+			check("force_spell preserves ordered health progress",
+					java.util.Arrays.equals(relayedRuntime.getSpellHealthSegments(), new int[]{10, 20})
+							&& relayedRuntime.getSpellHealthCompleted() == 10
+							&& relayedRuntime.getSpellDurationTicks() == 200);
+
 			SpellDefinition dynamic = SpellTemplates.create(
 					new ResourceLocation("youkaishomecoming", "health_dynamic"), "boss");
 			PhaseDefinition dynamicIntro = dynamic.getPhase(dynamic.entryPhase);
@@ -1188,6 +1206,15 @@ public final class SpellAnalyzerSelfCheck {
 					+ "\"id\":\"" + phaseId + "\",\"on_enter\":[{\"type\":\"set_spell_health\","
 					+ "\"health\":10,\"duration\":100,\"on_break\":{\"type\":\"force_spell\","
 					+ "\"spell_id\":\"" + targetSpell + "\"}}]}}}");
+		}
+
+		private SpellDefinition terminalHealthSpell(String id) {
+			ResourceLocation spellId = new ResourceLocation(id);
+			String phaseId = spellId + "/main";
+			return parse("{\"id\":\"" + spellId + "\",\"display\":{\"name\":\"Relay\"},"
+					+ "\"entry_phase\":\"" + phaseId + "\",\"phases\":{\"" + phaseId + "\":{"
+					+ "\"id\":\"" + phaseId + "\",\"on_enter\":[{\"type\":\"set_spell_health\","
+					+ "\"health\":20,\"duration\":200}]}}}");
 		}
 
 		/** Phase 7 sanity: the quote pipeline produces a positive, clamped cost for a

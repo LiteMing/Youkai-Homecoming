@@ -538,23 +538,40 @@ public class CertificationController {
 	}
 
 	private void syncState() {
-		int currentMaxHealth = entity.spellRuntime == null || entity.spellRuntime.getSpellMaxHealth() <= 0
-				? (int) entity.getMaxHealth() : entity.spellRuntime.getSpellMaxHealth();
-		syncBossBar(currentMaxHealth, (int) Math.max(0, entity.getHealth()));
+		var runtime = entity.spellRuntime;
+		int currentMaxHealth = runtime == null || runtime.getSpellMaxHealth() <= 0
+				? (int) entity.getMaxHealth() : runtime.getSpellMaxHealth();
+		int currentHealth = (int) Math.max(0, entity.getHealth());
+		int healthTotal = runtime == null || runtime.getSpellHealthTotal() <= 0
+				? currentMaxHealth : runtime.getSpellHealthTotal();
+		int completedHealth = runtime == null ? 0 : runtime.getSpellHealthCompleted();
+		int[] healthSegments = runtime == null ? new int[]{currentMaxHealth} : runtime.getSpellHealthSegments();
+		int currentElapsed = runtime == null ? elapsedTicks : runtime.getSpellElapsedTicks();
+		int currentDuration = runtime == null ? quote.durationTicks() : runtime.getSpellDurationTicks();
+		int remainingHealth = totalRemainingHealth(healthTotal, completedHealth, currentMaxHealth, currentHealth);
+		syncBossBar(healthTotal, remainingHealth, currentHealth, currentMaxHealth,
+				currentElapsed, currentDuration);
 		dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStateToClient.send(
-				entity, state, elapsedTicks, quote.durationTicks(),
-				currentMaxHealth, (int) Math.max(0, entity.getHealth()),
+				entity, state, currentElapsed, currentDuration,
+				healthTotal, currentHealth, currentMaxHealth, completedHealth, healthSegments,
 				failReason == null ? null : failReason.id());
 	}
 
-	private void syncBossBar(int maxHealth, int health) {
+	private static int totalRemainingHealth(int total, int completed, int segmentMax, int health) {
+		long remaining = (long) total - completed - segmentMax + Math.min(health, segmentMax);
+		return (int) Math.max(0, Math.min(total, remaining));
+	}
+
+	private void syncBossBar(int totalHealth, int remainingHealth, int health, int maxHealth,
+			int elapsed, int duration) {
 		if (state != CertificationState.PREPARE && state != CertificationState.ACTIVE) {
 			hideBossBar();
 			return;
 		}
-		int remainingTicks = Math.max(0, quote.durationTicks() - elapsedTicks);
-		bossEvent.setProgress(maxHealth <= 0 ? 0 : Math.max(0, Math.min(1, health / (float) maxHealth)));
-		bossEvent.setName(quote.durationTicks() > 0
+		int remainingTicks = Math.max(0, duration - elapsed);
+		bossEvent.setProgress(totalHealth <= 0 ? 0
+				: Math.max(0, Math.min(1, remainingHealth / (float) totalHealth)));
+		bossEvent.setName(duration > 0
 				? YHLangData.CERT_BOSSBAR.get(definition.display.displayName(), health, maxHealth,
 				(remainingTicks + 19) / 20)
 				: YHLangData.CERT_BOSSBAR_INFINITE.get(definition.display.displayName(), health, maxHealth));

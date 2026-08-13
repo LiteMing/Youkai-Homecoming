@@ -7,6 +7,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.SpellProgressColor;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellProgressSnapshot;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -111,8 +112,18 @@ public class SpellContainer extends ConditionalToken {
 		return data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved() && proxy.restrictsManualMovement());
 	}
 
-	public record ActiveSpellStatus(int health, int maxHealth, int elapsedTicks, int durationTicks) {
-		public static final ActiveSpellStatus NONE = new ActiveSpellStatus(0, 0, 0, 0);
+	public record ActiveSpellStatus(int health, int maxHealth, int elapsedTicks, int durationTicks,
+			int completedHealth, int[] healthSegments) {
+		public static final ActiveSpellStatus NONE = new ActiveSpellStatus(0, 0, 0, 0, 0, new int[0]);
+
+		public ActiveSpellStatus {
+			healthSegments = healthSegments == null ? new int[0] : healthSegments.clone();
+		}
+
+		@Override
+		public int[] healthSegments() {
+			return healthSegments.clone();
+		}
 
 		public boolean active() {
 			return maxHealth > 0 || durationTicks > 0;
@@ -125,8 +136,16 @@ public class SpellContainer extends ConditionalToken {
 		DanmakuProxyEntity proxy = data.proxies.stream()
 				.filter(e -> !e.isRemoved()).findFirst().orElse(null);
 		if (proxy == null) return ActiveSpellStatus.NONE;
-		return new ActiveSpellStatus(Math.max(0, data.spellBarValue), Math.max(0, data.spellBarMax),
-				proxy.spellElapsedTicks(), proxy.spellDurationTicks());
+		SpellProgressSnapshot progress = SpellProgressSnapshot.fromTotalRemaining(
+				proxy.getSpellRuntime(), data.spellBarValue);
+		if (!progress.active()) {
+			return new ActiveSpellStatus(Math.max(0, data.spellBarValue), Math.max(0, data.spellBarMax),
+					proxy.spellElapsedTicks(), proxy.spellDurationTicks(), 0,
+					data.spellBarMax > 0 ? new int[]{data.spellBarMax} : new int[0]);
+		}
+		return new ActiveSpellStatus(progress.health(), progress.segmentMaxHealth(),
+				progress.elapsedTicks(), progress.durationTicks(), progress.completedHealth(),
+				progress.healthSegments());
 	}
 
 	/** True while a set_spell_health plan is protecting the active player spell. */
@@ -155,16 +174,25 @@ public class SpellContainer extends ConditionalToken {
 		data.syncPlayerSpellStatus(sp);
 	}
 
-	/** Initializes cards whose health is resolved by an on-enter runtime variable. */
-	public static void initializeRuntimeSpellBar(ServerPlayer sp, DanmakuProxyEntity proxy) {
+	/** Initializes dynamic health and reconciles the total shield after a runtime phase switch. */
+	public static void syncRuntimeSpellBar(ServerPlayer sp, DanmakuProxyEntity proxy) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
-		if (data.spellBarMax > 0 || !data.proxies.contains(proxy)) return;
+		if (!data.proxies.contains(proxy)) return;
 		var runtime = proxy.getSpellRuntime();
-		if (runtime == null || runtime.getSpellHealthTotal() <= 0) return;
-		data.spellBarValue = runtime.getSpellHealthTotal();
-		data.spellBarMax = data.spellBarValue;
-		data.spellBarCardKey = data.activeSpellCardKey;
-		data.spellBarName = runtime.getDefinition().display.displayName().copy();
+		if (runtime == null || runtime.getSpellHealthTotal() <= 0) {
+			if (data.spellBarMax > 0) data.endSpellBar(sp);
+			return;
+		}
+		if (data.spellBarMax <= 0) {
+			data.spellBarValue = runtime.getSpellHealthTotal();
+			data.spellBarMax = data.spellBarValue;
+			data.spellBarCardKey = data.activeSpellCardKey;
+			data.spellBarName = runtime.getDefinition().display.displayName().copy();
+		} else {
+			SpellProgressSnapshot phaseStart = SpellProgressSnapshot.fromRuntime(
+					runtime, runtime.getSpellMaxHealth());
+			data.spellBarValue = Math.min(data.spellBarValue, phaseStart.totalRemainingHealth());
+		}
 		data.syncPlayerSpellStatus(sp);
 	}
 
@@ -183,7 +211,15 @@ public class SpellContainer extends ConditionalToken {
 		if (data.spellBarMax <= 0) {
 			return null;
 		}
+		DanmakuProxyEntity proxy = data.proxies.stream()
+				.filter(e -> !e.isRemoved()).findFirst().orElse(null);
+		SpellProgressSnapshot before = proxy == null ? SpellProgressSnapshot.NONE
+				: SpellProgressSnapshot.fromTotalRemaining(proxy.getSpellRuntime(), data.spellBarValue);
 		data.spellBarValue = Math.max(0, data.spellBarValue - 1);
+		if (before.active() && before.health() <= 1 && proxy != null
+				&& proxy.getSpellRuntime() != null) {
+			proxy.getSpellRuntime().triggerSpellHealthBreak(proxy);
+		}
 		if (data.spellBarValue <= 0) {
 			String cardKey = data.spellBarCardKey;
 			data.endSpellBar(sp);
@@ -236,10 +272,10 @@ public class SpellContainer extends ConditionalToken {
 	private void syncPlayerSpellStatus(ServerPlayer sp) {
 		var proxy = proxies.stream().filter(e -> !e.isRemoved()).findFirst().orElse(null);
 		var cap = GrazeCapability.HOLDER.get(sp);
+		ActiveSpellStatus status = activeSpellStatus(sp);
 		cap.setPlayerSpellStatus(new GrazeCapability.SpellProgressStatus(
-				spellBarValue, spellBarMax,
-				proxy == null ? 0 : proxy.spellElapsedTicks(),
-				proxy == null ? 0 : proxy.spellDurationTicks()));
+				status.health(), status.maxHealth(), status.elapsedTicks(), status.durationTicks(),
+				status.completedHealth(), status.healthSegments()));
 		syncSpellBossBars(sp, proxy);
 		cap.sync();
 	}

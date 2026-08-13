@@ -36,15 +36,31 @@ public class PvpDanmakuStatusOverlay implements IGuiOverlay {
 				Math.max(0, packet.maxBomb),
 				new SpellProgress(Math.max(0, packet.spellHealth), Math.max(0, packet.spellMaxHealth),
 						Math.max(0, packet.spellElapsedTicks), Math.max(0, packet.spellDurationTicks),
-						Util.getMillis()),
+						Math.max(0, packet.spellCompletedHealth), packet.spellHealthSegments,
+						clientTick()),
 				Util.getMillis()
 		));
 	}
 
-	public record SpellProgress(int health, int maxHealth, int elapsedTicks, int durationTicks, long receivedAt) {
-		public boolean active() {
-			return maxHealth > 0 || durationTicks > 0;
+	public record SpellProgress(int health, int maxHealth, int elapsedTicks, int durationTicks,
+			int completedHealth, int[] healthSegments, int receivedTick) {
+		public SpellProgress {
+			healthSegments = healthSegments == null ? new int[0] : healthSegments.clone();
 		}
+
+		@Override
+		public int[] healthSegments() {
+			return healthSegments.clone();
+		}
+
+		public boolean active() {
+			return healthSegments.length > 0 || maxHealth > 0 || durationTicks > 0;
+		}
+	}
+
+	private static int clientTick() {
+		var player = Minecraft.getInstance().player;
+		return player == null ? 0 : player.tickCount;
 	}
 
 	@org.jetbrains.annotations.Nullable

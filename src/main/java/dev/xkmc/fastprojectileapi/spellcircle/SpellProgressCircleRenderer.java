@@ -27,6 +27,8 @@ public final class SpellProgressCircleRenderer {
 	private static final float HP_OUTLINE_Z = 0.040f;
 	private static final float HP_BACKGROUND_Z = 0.045f;
 	private static final float HP_PROGRESS_Z = 0.050f;
+	private static final float HP_MARKER_Z = 0.055f;
+	private static final float HP_MARKER_SIZE = 2.0f;
 
 	private SpellProgressCircleRenderer() {
 	}
@@ -46,11 +48,12 @@ public final class SpellProgressCircleRenderer {
 		renderHealthProgress(handle, hpBackground, progress, true);
 		SpellComponent.Stroke hp = stroke(HP_RADIUS, 1.6f, HP_PROGRESS_Z, "0xFFFFFFFF");
 		renderHealthProgress(handle, hp, progress, false);
+		renderHealthMarkers(handle, progress);
 		if (progress.durationTicks() > 0) {
 			SpellComponent.Stroke timeBackground = stroke(46, 1.6f, 0.05f, "0x55445555");
 			timeBackground.render(handle);
 			SpellComponent.Stroke time = stroke(46, 1.6f, 0.05f, "0xFF55D9FF");
-			renderRemainingProgress(handle, time, progress.timeRatio(entity, pTick));
+			renderRemainingProgress(handle, time, progress.timeRatio(pTick));
 		}
 		pose.popPose();
 	}
@@ -80,36 +83,59 @@ public final class SpellProgressCircleRenderer {
 			renderRemainingProgress(handle, stroke, background ? 1 : progress.healthRatio());
 			return;
 		}
-		int count = Math.min(32, Math.max(1, segmentCount));
+		int count = Math.max(1, segmentCount);
 		long totalHealth = 0;
 		if (healthSegments.length >= count) {
 			for (int i = 0; i < count; i++) totalHealth += Math.max(0, healthSegments[i]);
 		}
 		if (totalHealth <= 0) totalHealth = count;
 		long cursor = 0;
-		long completed = Math.max(0, Math.min(totalHealth, progress.completedHealth()));
+		double depleted = Math.max(0, Math.min(totalHealth,
+				(long) progress.completedHealth()
+						+ Math.max(0, progress.segmentMaxHealth() - progress.health())));
 		for (int i = 0; i < count; i++) {
 			long size = healthSegments.length >= count ? Math.max(0, healthSegments[i]) : 1;
-			long segmentHealthStart = cursor;
 			float rawStart = cursor / (float) totalHealth;
 			cursor += size;
 			float rawEnd = cursor / (float) totalHealth;
-			float gap = Math.min(Math.min(0.018f, 0.24f / count), (rawEnd - rawStart) * 0.2f);
-			float segmentStart = rawStart + gap;
-			float segmentEnd = rawEnd - gap;
-			float segmentProgress;
 			if (background) {
-				segmentProgress = 1;
-			} else if (completed >= cursor) {
-				segmentProgress = 0;
-			} else if (completed <= segmentHealthStart) {
-				segmentProgress = completed == segmentHealthStart
-						? progress.currentHealthRatio() : 1;
-			} else {
-				segmentProgress = progress.currentHealthRatio();
+				stroke.renderProgressRange(handle, rawStart, rawEnd);
+				continue;
 			}
-			float start = segmentEnd - (segmentEnd - segmentStart) * segmentProgress;
-			stroke.renderProgressRange(handle, start, segmentEnd);
+			double depletedInSegment = Math.max(0, Math.min(size,
+					depleted - (cursor - size)));
+			float remainingStart = rawStart + (float) (depletedInSegment / totalHealth);
+			stroke.renderProgressRange(handle, remainingStart, rawEnd);
+		}
+	}
+
+	/** Small square phase boundaries overlay the continuous HP ring without erasing progress. */
+	private static void renderHealthMarkers(SpellComponent.RenderHandle handle, Progress progress) {
+		int[] segments = progress.healthSegments();
+		if (segments.length <= 1) return;
+		long total = 0;
+		for (int segment : segments) total += Math.max(0, segment);
+		if (total <= 0) return;
+		SpellComponent.Stroke marker = stroke(HP_RADIUS, HP_MARKER_SIZE, HP_MARKER_Z, "0xFFFFD83D");
+		float halfMarker = HP_MARKER_SIZE / ((float) Math.PI * 2 * HP_RADIUS) / 2;
+		long cursor = Math.max(0, segments[0]);
+		for (int i = 1; i < segments.length; i++) {
+			float boundary = cursor / (float) total;
+			renderWrappedRange(handle, marker, boundary - halfMarker, boundary + halfMarker);
+			cursor += Math.max(0, segments[i]);
+		}
+	}
+
+	private static void renderWrappedRange(SpellComponent.RenderHandle handle,
+			SpellComponent.Stroke stroke, float start, float end) {
+		if (start < 0) {
+			stroke.renderProgressRange(handle, start + 1, 1);
+			stroke.renderProgressRange(handle, 0, end);
+		} else if (end > 1) {
+			stroke.renderProgressRange(handle, start, 1);
+			stroke.renderProgressRange(handle, 0, end - 1);
+		} else {
+			stroke.renderProgressRange(handle, start, end);
 		}
 	}
 
@@ -124,25 +150,30 @@ public final class SpellProgressCircleRenderer {
 		if (entity instanceof SpellCertificationEntity) {
 			var state = CertificationClientHandler.getState(entity.getId());
 			if (state == null || !state.active()) return null;
-			return new Progress(state.healthLeft(), state.healthTotal(),
-					state.elapsedTicks(), state.targetTicks(), 0, 0, 1);
+			return new Progress(state.healthLeft(), state.healthTotal(), state.segmentMaxHealth(),
+					state.elapsedTicks(), state.targetTicks(), state.receivedTick(),
+					state.completedHealth(), state.healthSegments().length, state.healthSegments());
 		}
 		if (entity instanceof Player) {
 			if (entity == Minecraft.getInstance().player) {
 				var trial = CertificationClientHandler.getMyState();
 				if (trial != null && trial.active()) {
-					return new Progress(trial.healthLeft(), trial.healthTotal(), trial.elapsedTicks(),
-							trial.targetTicks(), 0, 0, 1);
+					return new Progress(trial.healthLeft(), trial.healthTotal(), trial.segmentMaxHealth(),
+							trial.elapsedTicks(), trial.targetTicks(), trial.receivedTick(),
+							trial.completedHealth(), trial.healthSegments().length, trial.healthSegments());
 				}
 				var own = GrazeCapability.HOLDER.get((Player) entity).getPlayerSpellStatus();
 				if (own.active()) {
-					return new Progress(own.health(), own.maxHealth(), own.elapsedTicks(), own.durationTicks(), 0, 0, 1);
+					return new Progress(own.health(), totalHealth(own.healthSegments()), own.maxHealth(),
+							own.elapsedTicks(), own.durationTicks(), 0, own.completedHealth(),
+							own.healthSegments().length, own.healthSegments());
 				}
 			}
 			var state = PvpDanmakuStatusOverlay.spellProgress(entity.getId());
 			if (state == null) return null;
-			return new Progress(state.health(), state.maxHealth(), state.elapsedTicks(),
-					state.durationTicks(), 0, 0, 1);
+			return new Progress(state.health(), totalHealth(state.healthSegments()), state.maxHealth(),
+					state.elapsedTicks(), state.durationTicks(), state.receivedTick(),
+					state.completedHealth(), state.healthSegments().length, state.healthSegments());
 		}
 		if (entity instanceof YoukaiEntity youkai && youkai.clientSpellMaxHealth > 0
 				&& youkai.clientInDanmakuCombat) {
@@ -153,6 +184,12 @@ public final class SpellProgressCircleRenderer {
 				youkai.clientSpellHealthSegmentCount, youkai.clientSpellHealthSegments);
 		}
 		return null;
+	}
+
+	private static int totalHealth(int[] segments) {
+		long total = 0;
+		for (int segment : segments) total += Math.max(0, segment);
+		return (int) Math.min(Integer.MAX_VALUE, total);
 	}
 
 	private record Progress(float health, float maxHealth, float segmentMaxHealth,
@@ -174,13 +211,14 @@ public final class SpellProgressCircleRenderer {
 			return Math.max(0, Math.min(1, health / segmentMaxHealth));
 		}
 
-		float timeRatio(Entity entity, float pTick) {
+		float timeRatio(float pTick) {
 			if (durationTicks <= 0) return 0;
-			int elapsed = elapsedTicks;
+			float elapsed = elapsedTicks;
 			if (receivedTick > 0) {
-				elapsed += Math.max(0, entity.tickCount - receivedTick);
+				var player = Minecraft.getInstance().player;
+				if (player != null) elapsed += Math.max(0, player.tickCount - receivedTick) + pTick;
 			}
-			return Math.max(0, Math.min(1, 1 - elapsed / (float) durationTicks));
+			return Math.max(0, Math.min(1, 1 - elapsed / durationTicks));
 		}
 	}
 }

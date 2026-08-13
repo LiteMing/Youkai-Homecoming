@@ -30,6 +30,12 @@ public class CertificationStateToClient extends SerialPacketBase {
 	@SerialClass.SerialField
 	public int healthLeft = 0;
 	@SerialClass.SerialField
+	public int segmentMaxHealth = 0;
+	@SerialClass.SerialField
+	public int completedHealth = 0;
+	@SerialClass.SerialField
+	public int[] healthSegments = new int[0];
+	@SerialClass.SerialField
 	@Nullable
 	public String failReason = null;
 	/** True when this packet was sent to the trial author (D4: own trial state). */
@@ -41,6 +47,7 @@ public class CertificationStateToClient extends SerialPacketBase {
 
 	private CertificationStateToClient(int entityId, CertificationState state, int elapsedTicks,
 									   int targetTicks, int healthTotal, int healthLeft,
+									   int segmentMaxHealth, int completedHealth, int[] healthSegments,
 									   @Nullable String failReason, boolean mine) {
 		this.entityId = entityId;
 		this.state = state.name();
@@ -48,24 +55,30 @@ public class CertificationStateToClient extends SerialPacketBase {
 		this.targetTicks = targetTicks;
 		this.healthTotal = healthTotal;
 		this.healthLeft = healthLeft;
+		this.segmentMaxHealth = segmentMaxHealth;
+		this.completedHealth = completedHealth;
+		this.healthSegments = healthSegments == null ? new int[0] : healthSegments.clone();
 		this.failReason = failReason;
 		this.mine = mine;
 	}
 
 	public static void send(SpellCertificationEntity entity, CertificationState state,
 							int elapsedTicks, int targetTicks, int healthTotal,
-							int healthLeft, @Nullable String failReason) {
+							int healthLeft, int segmentMaxHealth, int completedHealth,
+							int[] healthSegments, @Nullable String failReason) {
 		ServerPlayer author = entity.controller() == null ? null : entity.controller().author();
 		if (author != null) {
 			YoukaisHomecoming.HANDLER.toClientPlayer(
 					new CertificationStateToClient(entity.getId(), state, elapsedTicks, targetTicks,
-							healthTotal, healthLeft, failReason, true),
+							healthTotal, healthLeft, segmentMaxHealth, completedHealth,
+							healthSegments, failReason, true),
 					author);
 		}
 		if (YHModConfig.COMMON.certificationPublicRendering.get()) {
 			YoukaisHomecoming.HANDLER.toTrackingPlayers(
 					new CertificationStateToClient(entity.getId(), state, elapsedTicks, targetTicks,
-							healthTotal, healthLeft, failReason, false),
+							healthTotal, healthLeft, segmentMaxHealth, completedHealth,
+							healthSegments, failReason, false),
 					entity);
 		}
 	}
@@ -73,6 +86,7 @@ public class CertificationStateToClient extends SerialPacketBase {
 	@Override
 	public void handle(NetworkEvent.Context context) {
 		CertificationClientHandler.acceptState(entityId, state, elapsedTicks, targetTicks,
-				healthTotal, healthLeft, failReason, mine);
+				healthTotal, healthLeft, segmentMaxHealth, completedHealth,
+				healthSegments, failReason, mine);
 	}
 }

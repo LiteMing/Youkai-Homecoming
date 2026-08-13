@@ -133,7 +133,8 @@ public class ClientEventHandlers {
 			e.clientSpellHealthCompleted = Math.max(0, spellHealthCompleted);
 			e.clientSpellHealthSegmentCount = Math.max(0, spellHealthSegmentCount);
 			e.clientSpellHealthSegments = spellHealthSegments == null ? new int[0] : spellHealthSegments.clone();
-			e.clientSpellStateReceivedTick = e.tickCount;
+			var player = Minecraft.getInstance().player;
+			e.clientSpellStateReceivedTick = player == null ? 0 : player.tickCount;
 		}
 	}
 }

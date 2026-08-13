@@ -2,6 +2,7 @@ package gen;
 
 import com.google.gson.JsonParser;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.NumberBounds;
+import dev.xkmc.youkaishomecoming.content.capability.PlayerDanmakuPolicy;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicy;
@@ -60,6 +61,7 @@ public class SpellAnalyzerSelfTest {
 		testConditionalUnion();
 		testPolicyTable();
 		testPolicyIds();
+		testPlayerDanmakuPolicy();
 		if (failed > 0) {
 			throw new RuntimeException(failed + " analyzer self-tests failed!");
 		}
@@ -311,5 +313,50 @@ public class SpellAnalyzerSelfTest {
 		check("stable ids unique", Set.of(SpellCapability.values()).stream().map(SpellCapability::id).distinct().count() == SpellCapability.values().length);
 		check("byId roundtrip", SpellCapability.byId("teleport") == SpellCapability.TELEPORT);
 		check("default for unknown is DENY", SpellCapabilityPolicies.defaultPolicy(null) == SpellCapabilityPolicy.DENY);
+	}
+
+	private static void testPlayerDanmakuPolicy() {
+		var friendly = PlayerDanmakuPolicy.classifyTarget(false, false, false, false, false, false);
+		var neutralMob = PlayerDanmakuPolicy.classifyTarget(false, false, false, false, false, true);
+		var enemyNeutralMob = PlayerDanmakuPolicy.classifyTarget(false, false, false, false, true, true);
+		var youkai = PlayerDanmakuPolicy.classifyTarget(false, false, false, true, false, false);
+		var smallFairy = PlayerDanmakuPolicy.classifyTarget(false, false, true, true, false, false);
+		var unteamedPlayer = PlayerDanmakuPolicy.classifyTarget(true, false, false, false, false, false);
+		var teamedPlayer = PlayerDanmakuPolicy.classifyTarget(true, true, false, false, false, false);
+
+		check("passive mobs are friendly spell targets", friendly == PlayerDanmakuPolicy.TargetDisposition.FRIENDLY);
+		check("neutral mobs stay neutral", neutralMob == PlayerDanmakuPolicy.TargetDisposition.NEUTRAL);
+		check("Enemy wins over NeutralMob", enemyNeutralMob == PlayerDanmakuPolicy.TargetDisposition.HOSTILE);
+		check("ordinary YH characters are neutral", youkai == PlayerDanmakuPolicy.TargetDisposition.NEUTRAL);
+		check("marked small fairies are hostile", smallFairy == PlayerDanmakuPolicy.TargetDisposition.HOSTILE);
+		check("unteamed players are neutral", unteamedPlayer == PlayerDanmakuPolicy.TargetDisposition.NEUTRAL);
+		check("teamed players are hostile", teamedPlayer == PlayerDanmakuPolicy.TargetDisposition.HOSTILE);
+		check("untargeted spells hit hostile categories",
+				PlayerDanmakuPolicy.isUntargetedTarget(teamedPlayer, false));
+		check("engagement promotes neutral targets",
+				PlayerDanmakuPolicy.isUntargetedTarget(youkai, true));
+		check("untargeted spells spare unengaged neutral targets",
+				!PlayerDanmakuPolicy.isUntargetedTarget(youkai, false));
+		check("active players may receive danmaku", PlayerDanmakuPolicy.canReceiveDanmaku(false));
+		check("beaten players reject danmaku", !PlayerDanmakuPolicy.canReceiveDanmaku(true));
+		var certificationId = java.util.UUID.fromString("00000000-0000-0000-0000-000000000001");
+		var bossId = java.util.UUID.fromString("00000000-0000-0000-0000-000000000002");
+		check("certification's own session is not another battle",
+				!PlayerDanmakuPolicy.hasForeignSession(java.util.List.of(certificationId), certificationId));
+		check("a different Youkai session is another battle",
+				PlayerDanmakuPolicy.hasForeignSession(java.util.List.of(certificationId, bossId), certificationId));
+		var firstSegment = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellProgressSnapshot(
+				499, 500, 20, 400, 0, new int[]{500, 800});
+		var secondSegment = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellProgressSnapshot(
+				800, 800, 0, 800, 500, new int[]{500, 800});
+		check("multi-stage progress preserves declared order",
+				java.util.Arrays.equals(firstSegment.healthSegments(), new int[]{500, 800}));
+		check("first-stage damage uses the fixed combined denominator",
+				firstSegment.totalHealth() == 1300 && firstSegment.totalRemainingHealth() == 1299);
+		check("entering the next stage preserves its full future arc",
+				secondSegment.totalHealth() == 1300 && secondSegment.totalRemainingHealth() == 800
+						&& secondSegment.elapsedTicks() == 0 && secondSegment.durationTicks() == 800);
+		check("phase switch discards unused health from the completed stage",
+				Math.min(1250, secondSegment.totalRemainingHealth()) == 800);
 	}
 }

@@ -51,7 +51,7 @@ public class SpellRuntime {
 	private final List<ChildRuntime> childRuntimes = new ArrayList<>();
 	private SpellMovementDirective movementDirective = SpellMovementDirective.random();
 	private int spellMaxHealth;
-	/** Timeout of the current health phase; the public getter exposes the whole spell plan. */
+	/** Timeout of the current health phase. */
 	private int spellDurationTicks;
 	private int spellStartTick;
 	/** Stable phase order and weights for the current spell-health ring. */
@@ -60,7 +60,6 @@ public class SpellRuntime {
 	private final List<Integer> spellDurationSegments = new ArrayList<>();
 	private int spellHealthSegmentIndex = -1;
 	private int spellHealthCompleted;
-	private int spellDurationCompleted;
 	@Nullable
 	private SpellAction spellTimeoutAction;
 	@Nullable
@@ -96,7 +95,13 @@ public class SpellRuntime {
 	}
 
 	public SpellRuntime continueWith(SpellDefinition nextDefinition) {
-		return new SpellRuntime(nextDefinition, definitionResolver, declaredHealthPlan);
+		SpellRuntime next = new SpellRuntime(nextDefinition, definitionResolver, declaredHealthPlan);
+		if (declaredHealthPlan != null) {
+			next.totalTick = totalTick;
+			next.hitCount = hitCount;
+			next.spellHealthCompleted = Math.min(next.getSpellHealthTotal(), spellHealthCompleted);
+		}
+		return next;
 	}
 
 	@Nullable
@@ -147,8 +152,13 @@ public class SpellRuntime {
 	}
 
 	public int getSpellDurationTicks() {
+		return Math.max(0, spellDurationTicks);
+	}
+
+	/** Sum used by certification quotes; the rendered timeout always uses the current segment. */
+	public int getSpellPlanDurationTicks() {
 		int total = sumSegments(spellDurationSegments, spellDurationSegments.size());
-		return total > 0 ? total : spellDurationTicks;
+		return total > 0 ? total : getSpellDurationTicks();
 	}
 
 	public int getSpellHealthTotal() {
@@ -173,11 +183,9 @@ public class SpellRuntime {
 		if (spellMaxHealth <= 0) return 0;
 		int currentElapsed = getCurrentSpellElapsedTicks();
 		if (spellDurationTicks > 0) {
-			currentElapsed = Math.min(currentElapsed, spellDurationTicks);
-		} else {
-			currentElapsed = 0;
+			return Math.min(currentElapsed, spellDurationTicks);
 		}
-		return Math.min(getSpellDurationTicks(), saturatedAdd(spellDurationCompleted, currentElapsed));
+		return 0;
 	}
 
 	/** Real runtime age used by lifecycle events; unlike the ring it does not skip unused phase time. */
@@ -205,7 +213,6 @@ public class SpellRuntime {
 			spellHealthSegments.set(plannedIndex, spellMaxHealth);
 			spellDurationSegments.set(plannedIndex, spellDurationTicks);
 			spellHealthCompleted = sumSegments(spellHealthSegments, plannedIndex);
-			spellDurationCompleted = sumSegments(spellDurationSegments, plannedIndex);
 		} else if (hadCurrentSegment && spellHealthSegmentIndex >= 0
 				&& spellHealthSegmentIndex < spellHealthSegments.size()) {
 			spellHealthSegments.set(spellHealthSegmentIndex, spellMaxHealth);
@@ -223,7 +230,6 @@ public class SpellRuntime {
 		spellDurationSegments.clear();
 		spellHealthSegmentIndex = -1;
 		spellHealthCompleted = 0;
-		spellDurationCompleted = 0;
 		clearCurrentSpellHealth();
 	}
 
@@ -231,7 +237,6 @@ public class SpellRuntime {
 	private void completeCurrentSpellHealth() {
 		if (spellMaxHealth > 0 && spellHealthSegmentIndex >= 0) {
 			spellHealthCompleted = sumSegments(spellHealthSegments, spellHealthSegmentIndex + 1);
-			spellDurationCompleted = sumSegments(spellDurationSegments, spellHealthSegmentIndex + 1);
 		}
 		spellHealthSegmentIndex = -1;
 		clearCurrentSpellHealth();
@@ -247,7 +252,6 @@ public class SpellRuntime {
 		spellDurationSegments.add(Math.max(0, durationTicks));
 		spellHealthSegmentIndex = spellHealthSegments.size() - 1;
 		spellHealthCompleted = sumSegments(spellHealthSegments, spellHealthSegmentIndex);
-		spellDurationCompleted = sumSegments(spellDurationSegments, spellHealthSegmentIndex);
 	}
 
 	private void clearCurrentSpellHealth() {
@@ -264,7 +268,6 @@ public class SpellRuntime {
 		spellDurationSegments.clear();
 		spellHealthSegmentIndex = -1;
 		spellHealthCompleted = 0;
-		spellDurationCompleted = 0;
 		if (declaredHealthPlan != null) {
 			for (SpellHealthPlan.Segment segment : declaredHealthPlan.breakChain()) {
 				if (spellHealthSegments.size() >= MAX_SPELL_HEALTH_SEGMENTS) break;
@@ -273,7 +276,6 @@ public class SpellRuntime {
 			}
 			spellHealthSegmentIndex = -1;
 			spellHealthCompleted = 0;
-			spellDurationCompleted = 0;
 			return;
 		}
 		Set<ResourceLocation> visited = new HashSet<>();
@@ -294,7 +296,6 @@ public class SpellRuntime {
 		}
 		spellHealthSegmentIndex = -1;
 		spellHealthCompleted = 0;
-		spellDurationCompleted = 0;
 	}
 
 	@Nullable
@@ -397,7 +398,7 @@ public class SpellRuntime {
 		postSpellHealthEvent(holder, outcome, source);
 		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 		SpellContext ctx = new SpellContext(holder, definition, this, definition.difficulty.resolve(healthRatio));
-		if (target instanceof SpellActions.ForcePhase) {
+		if (target instanceof SpellActions.ForcePhase || target instanceof SpellActions.ForceSpell) {
 			completeCurrentSpellHealth();
 		} else {
 			clearSpellHealth();
@@ -815,7 +816,6 @@ public class SpellRuntime {
 			tag.put("SpellHealthPlanPhases", phases);
 			tag.putInt("SpellHealthSegmentIndex", spellHealthSegmentIndex);
 			tag.putInt("SpellHealthCompleted", spellHealthCompleted);
-			tag.putInt("SpellDurationCompleted", spellDurationCompleted);
 		}
 		writeAction(tag, "SpellTimeoutAction", spellTimeoutAction);
 		writeAction(tag, "SpellBreakAction", spellBreakAction);
@@ -895,11 +895,6 @@ public class SpellRuntime {
 					this.spellHealthSegments.size() - 1);
 			this.spellHealthCompleted = Math.max(0,
 					Math.min(getSpellHealthTotal(), tag.getInt("SpellHealthCompleted")));
-			int restoredDurationCompleted = tag.contains("SpellDurationCompleted")
-					? tag.getInt("SpellDurationCompleted")
-					: sumSegments(this.spellDurationSegments, Math.max(0, this.spellHealthSegmentIndex));
-			this.spellDurationCompleted = Math.max(0,
-					Math.min(getSpellDurationTicks(), restoredDurationCompleted));
 			this.spellTimeoutAction = readAction(tag, "SpellTimeoutAction");
 			this.spellBreakAction = readAction(tag, "SpellBreakAction");
 			this.enteredCurrentPhase = tag.contains("EnteredCurrentPhase") ?

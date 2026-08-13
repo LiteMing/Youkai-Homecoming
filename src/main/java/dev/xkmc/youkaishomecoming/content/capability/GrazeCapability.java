@@ -90,6 +90,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	@SerialClass.SerialField
 	private int playerSpellHealth, playerSpellMaxHealth, playerSpellElapsedTicks, playerSpellDurationTicks;
 	@SerialClass.SerialField
+	private int playerSpellCompletedHealth;
+	@SerialClass.SerialField
+	private int[] playerSpellHealthSegments = new int[0];
+	@SerialClass.SerialField
 	private String stgCombatMode = StgCombatMode.NOVICE_AUTO_BOMB.name();
 
 	private boolean dirty = false;
@@ -98,8 +102,18 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private int pvpStatusSyncCooldown = 0;
 	private boolean pvpStatusVisible = false;
 
-	public record SpellProgressStatus(int health, int maxHealth, int elapsedTicks, int durationTicks) {
-		public static final SpellProgressStatus NONE = new SpellProgressStatus(0, 0, 0, 0);
+	public record SpellProgressStatus(int health, int maxHealth, int elapsedTicks, int durationTicks,
+			int completedHealth, int[] healthSegments) {
+		public static final SpellProgressStatus NONE = new SpellProgressStatus(0, 0, 0, 0, 0, new int[0]);
+
+		public SpellProgressStatus {
+			healthSegments = healthSegments == null ? new int[0] : healthSegments.clone();
+		}
+
+		@Override
+		public int[] healthSegments() {
+			return healthSegments.clone();
+		}
 
 		public boolean active() {
 			return maxHealth > 0 || durationTicks > 0;
@@ -121,6 +135,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			playerSpellMaxHealth = 0;
 			playerSpellElapsedTicks = 0;
 			playerSpellDurationTicks = 0;
+			playerSpellCompletedHealth = 0;
+			playerSpellHealthSegments = new int[0];
 			forcedDanmakuCombat = false;
 			combatAdminBypass = false;
 			statusInitialized = false;
@@ -799,7 +815,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public SpellProgressStatus getPlayerSpellStatus() {
 		return new SpellProgressStatus(playerSpellHealth, playerSpellMaxHealth,
-				playerSpellElapsedTicks, playerSpellDurationTicks);
+				playerSpellElapsedTicks, playerSpellDurationTicks,
+				playerSpellCompletedHealth, playerSpellHealthSegments);
 	}
 
 	public void setPlayerSpellStatus(SpellProgressStatus status) {
@@ -807,6 +824,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		playerSpellMaxHealth = Math.max(0, status.maxHealth());
 		playerSpellElapsedTicks = Math.max(0, status.elapsedTicks());
 		playerSpellDurationTicks = Math.max(0, status.durationTicks());
+		playerSpellCompletedHealth = Math.max(0, status.completedHealth());
+		playerSpellHealthSegments = status.healthSegments();
 		dirty = true;
 	}
 

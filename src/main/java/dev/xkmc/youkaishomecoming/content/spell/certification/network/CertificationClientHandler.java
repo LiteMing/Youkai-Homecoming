@@ -17,8 +17,17 @@ import java.util.Map;
 public final class CertificationClientHandler {
 
 	public record ClientState(CertificationState state, int elapsedTicks, int targetTicks,
-							  int healthTotal, int healthLeft,
+							  int healthTotal, int healthLeft, int segmentMaxHealth,
+							  int completedHealth, int[] healthSegments, int receivedTick,
 							  @Nullable String failReason) {
+		public ClientState {
+			healthSegments = healthSegments == null ? new int[0] : healthSegments.clone();
+		}
+
+		@Override
+		public int[] healthSegments() {
+			return healthSegments.clone();
+		}
 
 		public boolean active() {
 			return state == CertificationState.PREPARE || state == CertificationState.ACTIVE;
@@ -40,7 +49,8 @@ public final class CertificationClientHandler {
 	}
 
 	public static void acceptState(int entityId, String state, int elapsedTicks, int targetTicks,
-								   int healthTotal, int healthLeft,
+								   int healthTotal, int healthLeft, int segmentMaxHealth,
+								   int completedHealth, int[] healthSegments,
 								   @Nullable String failReason, boolean mine) {
 		CertificationState parsed;
 		try {
@@ -49,7 +59,8 @@ public final class CertificationClientHandler {
 			parsed = CertificationState.DRAFT;
 		}
 		ClientState clientState = new ClientState(parsed, elapsedTicks, targetTicks,
-				healthTotal, healthLeft, failReason);
+				healthTotal, healthLeft, segmentMaxHealth, completedHealth, healthSegments,
+				clientTick(), failReason);
 		STATES.put(entityId, clientState);
 		if (mine) {
 			boolean wasSuccess = myState != null && myState.state() == CertificationState.SUCCESS;
@@ -66,6 +77,11 @@ public final class CertificationClientHandler {
 				if (!isFailure(parsed)) failureDisplayUntil = 0;
 			}
 		}
+	}
+
+	private static int clientTick() {
+		var player = net.minecraft.client.Minecraft.getInstance().player;
+		return player == null ? 0 : player.tickCount;
 	}
 
 	/** The author's own certification state (D4: alpha fade disabled while active). */

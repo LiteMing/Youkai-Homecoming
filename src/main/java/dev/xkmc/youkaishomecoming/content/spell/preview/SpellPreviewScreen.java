@@ -45,6 +45,8 @@ public class SpellPreviewScreen extends Screen {
 	private static final int TOP_BAR_MARGIN = 4;
 	private static final int TOP_BAR_GROUP_GAP = 10;
 	private static final int TOP_BAR_NAME_MIN_WIDTH = 48;
+	private static final double EDITOR_REFERENCE_WIDTH = 960.0D;
+	private static final double EDITOR_REFERENCE_HEIGHT = 540.0D;
 
 	// Controllers (extracted logic)
 	private final SpellEditorController spellController;
@@ -109,6 +111,32 @@ public class SpellPreviewScreen extends Screen {
 
 	public static SpellPreviewScreen createDraftEditor() {
 		return new SpellPreviewScreen(SpellEditorController.createDraftDefinition(), true);
+	}
+
+	@Override
+	public void added() {
+		super.added();
+		applyEditorGuiScale(Minecraft.getInstance());
+	}
+
+	@Override
+	public void resize(Minecraft minecraft, int width, int height) {
+		applyEditorGuiScale(minecraft);
+		super.resize(minecraft, minecraft.getWindow().getGuiScaledWidth(),
+				minecraft.getWindow().getGuiScaledHeight());
+	}
+
+	private static void applyEditorGuiScale(Minecraft minecraft) {
+		double widthScale = minecraft.getWindow().getWidth() / EDITOR_REFERENCE_WIDTH;
+		double heightScale = minecraft.getWindow().getHeight() / EDITOR_REFERENCE_HEIGHT;
+		double scale = Math.max(1.0D, Math.min(widthScale, heightScale));
+		minecraft.getWindow().setGuiScale(scale);
+	}
+
+	private static void restoreConfiguredGuiScale(Minecraft minecraft) {
+		int scale = minecraft.getWindow().calculateScale(
+				minecraft.options.guiScale().get(), minecraft.isEnforceUnicode());
+		minecraft.getWindow().setGuiScale(scale);
 	}
 
 	@Override
@@ -1407,6 +1435,7 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	public void removed() {
 		super.removed();
+		restoreConfiguredGuiScale(Minecraft.getInstance());
 		// Restore cursor if hidden during perspective capture
 		if (viewport.isPerspectiveCaptured()) {
 			viewport.setPerspectiveCaptured(false);

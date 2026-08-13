@@ -16,7 +16,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -281,7 +280,8 @@ public class CertificationController {
 			}
 		}
 		lastPlayerPos = author.position();
-		if (dev.xkmc.youkaishomecoming.compat.stg.YHStgApi.hasActiveYoukaiSession(author)) {
+		if (dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(author)
+				.hasYoukaiSessionOtherThan(e.getUUID())) {
 			// another boss battle entered mid-certification (D15)
 			fail(e, CertificationFailReason.OTHER_BATTLE);
 			return;
@@ -438,7 +438,6 @@ public class CertificationController {
 			defeatPlayer();
 		} else {
 			restoreCombatState();
-			broadcastDanmakuDefeat();
 		}
 		logState("fail " + reason.id());
 		state = reason == CertificationFailReason.SYSTEM_ERROR
@@ -567,9 +566,4 @@ public class CertificationController {
 		bossEvent.removeAllPlayers();
 	}
 
-	private void broadcastDanmakuDefeat() {
-		if (!author.level().getGameRules().getBoolean(GameRules.RULE_SHOWDEATHMESSAGES)
-				|| !author.level().players().contains(author)) return;
-		author.server.getPlayerList().broadcastSystemMessage(YHLangData.STG_DEFEAT.get(author.getDisplayName()), false);
-	}
 }

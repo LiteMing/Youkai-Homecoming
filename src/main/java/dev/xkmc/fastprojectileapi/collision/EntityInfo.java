@@ -20,7 +20,8 @@ public class EntityInfo {
 	private final float hitBoxDelta;
 	private final boolean ownerTrackedByYoukai;
 	private final UUID rootUuid;
-	private final boolean hostileForPlayerSpell;
+	private final boolean untargetedPlayerSpellTarget;
+	private final boolean canReceiveDanmaku;
 	private final boolean[] hitTestResults;
 
 	public EntityInfo(LivingEntity owner, Entity entity) {
@@ -32,8 +33,9 @@ public class EntityInfo {
 		Entity root = entity;
 		while (root instanceof PartEntity<?> part) root = part.getParent();
 		this.rootUuid = root.getUUID();
-		this.hostileForPlayerSpell = owner instanceof Player player && root instanceof LivingEntity living
-				&& GrazeHelper.isValidPlayerSpellTarget(player, living);
+		this.untargetedPlayerSpellTarget = owner instanceof Player player && root instanceof LivingEntity living
+				&& GrazeHelper.isUntargetedPlayerSpellTarget(player, living);
+		this.canReceiveDanmaku = !(root instanceof Player player) || GrazeHelper.canReceiveDanmaku(player);
 		this.hitTestResults = new boolean[HitTestType.values().length];
 		for (HitTestType type : HitTestType.values()) {
 			hitTestResults[type.ordinal()] = type.canHitEntity(owner, entity);
@@ -64,8 +66,12 @@ public class EntityInfo {
 		return rootUuid;
 	}
 
-	public boolean hostileForPlayerSpell() {
-		return hostileForPlayerSpell;
+	public boolean untargetedPlayerSpellTarget() {
+		return untargetedPlayerSpellTarget;
+	}
+
+	public boolean canReceiveDanmaku() {
+		return canReceiveDanmaku;
 	}
 
 	public boolean canHit(HitTestType type) {

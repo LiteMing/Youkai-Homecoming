@@ -16,14 +16,20 @@ import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.template.SpellTemplates;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.content.capability.PlayerDanmakuPolicy;
+import dev.xkmc.youkaishomecoming.content.entity.fairy.SmallFairyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.rumia.RumiaEntity;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.ZombifiedPiglin;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -676,24 +682,30 @@ public final class SpellAnalyzerSelfCheck {
 		}
 
 		private void playerSpellPvpPolicy() {
-			check("untargeted spell ignores players when caster has no team",
-					!IYHDanmaku.isUntargetedTeamOpponent(false, true, false));
-			check("untargeted spell ignores players with no team",
-					!IYHDanmaku.isUntargetedTeamOpponent(true, false, false));
-			check("untargeted spell ignores allied team players",
-					!IYHDanmaku.isUntargetedTeamOpponent(true, true, true));
-			check("untargeted spell hits opposing team players",
-					IYHDanmaku.isUntargetedTeamOpponent(true, true, false));
-
-			UUID selected = UUID.fromString("00000000-0000-0000-0000-000000000001");
-			UUID bystander = UUID.fromString("00000000-0000-0000-0000-000000000002");
-			check("empty harmful snapshot blocks unassigned bystander",
-					!IYHDanmaku.canHitPlayerFromSnapshot(true, false, selected, bystander));
-			check("harmful snapshot allows listed team opponent",
-					IYHDanmaku.canHitPlayerFromSnapshot(true, true, null, bystander));
-			check("legacy projectile fallback only hits selected player",
-					IYHDanmaku.canHitPlayerFromSnapshot(false, false, selected, selected)
-							&& !IYHDanmaku.canHitPlayerFromSnapshot(false, false, selected, bystander));
+			check("unteamed players are neutral spell targets",
+					GrazeHelper.classifyPlayerSpellTarget(Player.class, false)
+							== PlayerDanmakuPolicy.TargetDisposition.NEUTRAL);
+			check("teamed players are hostile spell targets",
+					GrazeHelper.classifyPlayerSpellTarget(Player.class, true)
+							== PlayerDanmakuPolicy.TargetDisposition.HOSTILE);
+			check("marked small fairies are hostile spell targets",
+					GrazeHelper.classifyPlayerSpellTarget(SmallFairyEntity.class, false)
+							== PlayerDanmakuPolicy.TargetDisposition.HOSTILE);
+			check("other YH characters are neutral spell targets",
+					GrazeHelper.classifyPlayerSpellTarget(RumiaEntity.class, false)
+							== PlayerDanmakuPolicy.TargetDisposition.NEUTRAL);
+			check("Endermen are hostile spell targets",
+					GrazeHelper.classifyPlayerSpellTarget(EnderMan.class, false)
+							== PlayerDanmakuPolicy.TargetDisposition.HOSTILE);
+			check("zombified piglins are hostile spell targets",
+					GrazeHelper.classifyPlayerSpellTarget(ZombifiedPiglin.class, false)
+							== PlayerDanmakuPolicy.TargetDisposition.HOSTILE);
+			check("empty harmful snapshot blocks an unteamed bystander",
+					!IYHDanmaku.canHitPlayerFromSnapshot(true, false));
+			check("harmful snapshot allows a teamed opponent",
+					IYHDanmaku.canHitPlayerFromSnapshot(true, true));
+			check("missing snapshot fails closed for players",
+					!IYHDanmaku.canHitPlayerFromSnapshot(false, true));
 		}
 
 		private void analyzerTraversal() {

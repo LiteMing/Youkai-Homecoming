@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.spellcard;
 
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
@@ -124,14 +125,11 @@ public interface LivingCardHolder extends CardHolder {
 					&& selected != caster && !caster.isAlliedTo(selected)) {
 				harmfulPlayers.add(selected.getUUID());
 			}
-			// Untargeted PVP requires both players to have teams. This keeps free-fire
-			// patterns useful in team battles without making unassigned players unsafe.
-			if (caster.getTeam() != null) {
-				for (net.minecraft.world.entity.player.Player candidate : caster.level().players()) {
-					if (candidate != caster && IYHDanmaku.isUntargetedTeamOpponent(
-							true, candidate.getTeam() != null, caster.isAlliedTo(candidate))) {
-						harmfulPlayers.add(candidate.getUUID());
-					}
+			// A player assigned to any team is a default combat target. Vanilla
+			// alliance checks above still protect members of the caster's own team.
+			for (net.minecraft.world.entity.player.Player candidate : caster.level().players()) {
+				if (candidate != caster && GrazeHelper.isUntargetedPlayerSpellTarget(caster, candidate)) {
+					harmfulPlayers.add(candidate.getUUID());
 				}
 			}
 			danmaku.setHarmfulPlayerSnapshot(harmfulPlayers);

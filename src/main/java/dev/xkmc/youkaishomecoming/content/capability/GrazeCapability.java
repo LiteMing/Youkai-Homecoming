@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.events.DanmakuLastHitEvent;
@@ -442,6 +443,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return !sessions.isEmpty();
 	}
 
+	public boolean hasYoukaiSessionOtherThan(UUID excludedId) {
+		return PlayerDanmakuPolicy.hasForeignSession(sessions.keySet(), excludedId);
+	}
+
 	public boolean isInDanmakuCombat() {
 		return forcedDanmakuCombat || !sessions.isEmpty() || !playerOpponents.isEmpty();
 	}
@@ -548,6 +553,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public void initSession(YoukaiEntity youkai) {
+		if (!GrazeHelper.canReceiveDanmaku(player)) return;
+		if (youkai instanceof SpellCertificationEntity) return;
 		if (!statusInitialized) initStatus();
 		if (sessions.containsKey(youkai.getUUID())) return;
 		if (!hasActiveSession(youkai)) {
@@ -573,6 +580,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public void addPlayerOpponent(Player target) {
 		if (target == player || target.level() != player.level()) return;
+		if (!GrazeHelper.canReceiveDanmaku(player) || !GrazeHelper.canReceiveDanmaku(target)) return;
 		if (!statusInitialized) initStatus();
 		if (playerOpponents.add(target.getUUID())) {
 			pvpStatusSyncCooldown = 0;
@@ -605,6 +613,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public boolean shouldHurt(LivingEntity le) {
 		if (le instanceof YoukaiEntity youkai) {
+			if (youkai instanceof SpellCertificationEntity) return true;
 			if (weak > 0) return false;
 			if (sessions.containsKey(youkai.getUUID())) return true;
 			if (GrazeHelper.isManualCombatMode()) {
@@ -643,6 +652,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	 * Establishes the explicit STG context for a legitimate first hostile hit.
 	 */
 	public boolean prepareDanmakuHitContext(@Nullable LivingEntity source) {
+		if (!GrazeHelper.canReceiveDanmaku(player)) return false;
 		if (forcedDanmakuCombat) {
 			if (!statusInitialized) initStatus();
 			return true;
@@ -996,14 +1006,13 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		weak = WEAK;
 		if (player instanceof ServerPlayer sp) {
 			SpellContainer.clear(sp);
-			if (sp.level().getGameRules().getBoolean(GameRules.RULE_SHOWDEATHMESSAGES)) {
-				var message = YHLangData.STG_DEFEAT.get(sp.getDisplayName());
-				sp.server.getPlayerList().broadcastSystemMessage(message, false);
-			}
 			sp.playNotifySound(SoundEvents.PLAYER_DEATH, SoundSource.PLAYERS, 1.0f, 0.8f);
 			int duration = YHModConfig.COMMON.beatenDurationTicks.get();
-			if (duration > 0 && !sp.hasEffect(YHEffects.BEATEN.get())) {
-				sp.addEffect(new MobEffectInstance(YHEffects.BEATEN.get(), duration, 0));
+			boolean enteredBeaten = duration > 0 && !sp.hasEffect(YHEffects.BEATEN.get())
+					&& sp.addEffect(new MobEffectInstance(YHEffects.BEATEN.get(), duration, 0));
+			if (enteredBeaten && sp.level().getGameRules().getBoolean(GameRules.RULE_SHOWDEATHMESSAGES)) {
+				var message = YHLangData.STG_DEFEAT.get(sp.getDisplayName());
+				sp.server.getPlayerList().broadcastSystemMessage(message, false);
 			}
 			MinecraftForge.EVENT_BUS.post(new StgCombatEvent.Defeat(sp, fatalSource, snap.ids(), snap.entities()));
 			sync();

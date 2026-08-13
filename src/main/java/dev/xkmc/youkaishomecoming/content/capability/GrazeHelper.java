@@ -6,6 +6,7 @@ import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
+import dev.xkmc.youkaishomecoming.content.entity.UntargetedPlayerSpellHostile;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
@@ -75,10 +76,50 @@ public class GrazeHelper {
 		if (target instanceof YoukaiEntity || target instanceof Player) {
 			return true;
 		}
-		if (target instanceof Enemy && !(target instanceof NeutralMob)) {
+		if (target instanceof Enemy) {
 			return true;
 		}
 		return target instanceof Mob mob && mob.getTarget() == player;
+	}
+
+	/**
+	 * Static combat category used by untargeted player spells. Order matters:
+	 * Marked small fairies are combat targets, other YH characters stay neutral, and the
+	 * vanilla Enemy marker wins over NeutralMob (Endermen and zombified piglins).
+	 */
+	public static PlayerDanmakuPolicy.TargetDisposition classifyPlayerSpellTarget(Class<?> targetClass,
+			boolean playerHasTeam) {
+		return PlayerDanmakuPolicy.classifyTarget(
+				Player.class.isAssignableFrom(targetClass), playerHasTeam,
+				UntargetedPlayerSpellHostile.class.isAssignableFrom(targetClass),
+				YoukaiEntity.class.isAssignableFrom(targetClass),
+				Enemy.class.isAssignableFrom(targetClass),
+				NeutralMob.class.isAssignableFrom(targetClass));
+	}
+
+	public static boolean canReceiveDanmaku(Player player) {
+		return PlayerDanmakuPolicy.canReceiveDanmaku(player.hasEffect(YHEffects.BEATEN.get()));
+	}
+
+	/** True when an untargeted spell may hit this candidate right now. */
+	public static boolean isUntargetedPlayerSpellTarget(Player player, @Nullable LivingEntity target) {
+		if (target == null || target == player || !target.isAlive() || target.level() != player.level()
+				|| player.isAlliedTo(target)) {
+			return false;
+		}
+		if (target instanceof ShooterEntity shooter) {
+			var owner = shooter.getOwner();
+			return owner != player && (owner == null || !player.isAlliedTo(owner));
+		}
+		PlayerDanmakuPolicy.TargetDisposition disposition = classifyPlayerSpellTarget(
+				target.getClass(), target instanceof Player candidate && candidate.getTeam() != null);
+		boolean engaged = target instanceof YoukaiEntity youkai
+				&& (GrazeCapability.HOLDER.get(player).isInSession(youkai.getUUID())
+				|| youkai.targets.contains(player));
+		if (!engaged && target instanceof Mob mob) {
+			engaged = mob.getTarget() == player;
+		}
+		return PlayerDanmakuPolicy.isUntargetedTarget(disposition, engaged);
 	}
 
 	public static Vec3 getAimDirection(Player player) {
@@ -135,6 +176,7 @@ public class GrazeHelper {
 
 	public static void addSession(Player player, LivingEntity target) {
 		if (player.level().isClientSide()) return;
+		if (!canReceiveDanmaku(player)) return;
 		var cap = GrazeCapability.HOLDER.get(player);
 		if (target instanceof YoukaiEntity e) {
 			if (isManualCombatMode() && !cap.isInDanmakuCombat()) return;
@@ -154,6 +196,7 @@ public class GrazeHelper {
 	public static void enterPvpSpellDuel(Player attacker, Player opponent) {
 		if (attacker.level().isClientSide()) return;
 		if (attacker == opponent || attacker.level() != opponent.level() || attacker.isAlliedTo(opponent)) return;
+		if (!canReceiveDanmaku(attacker) || !canReceiveDanmaku(opponent)) return;
 		var atkCap = GrazeCapability.HOLDER.get(attacker);
 		var defCap = GrazeCapability.HOLDER.get(opponent);
 

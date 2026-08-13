@@ -56,7 +56,7 @@ public class YHEntities {
 	public static final EntityEntry<CirnoEntity> CIRNO;
 
 	public static final EntityEntry<BossYoukaiEntity> GENERAL_YOUKAI;
-	public static final EntityEntry<FairyEntity> FAIRY;
+	public static final EntityEntry<SmallFairyEntity> FAIRY;
 	public static final EntityEntry<SpellCertificationEntity> SPELL_CERTIFICATION;
 	public static final EntityEntry<YukariEntity> YUKARI;
 	public static final EntityEntry<SanaeEntity> SANAE;
@@ -170,7 +170,7 @@ public class YHEntities {
 					.loot(EntityLootGen::noLoot).register();
 
 			FAIRY = YoukaisHomecoming.REGISTRATE
-					.entity("fairy", FairyEntity::new, MobCategory.MONSTER)
+					.entity("fairy", SmallFairyEntity::new, MobCategory.MONSTER)
 					.properties(e -> e.sized(0.4F, 1.8f).clientTrackingRange(10))
 					.attributes(FairyEntity::createAttributes)
 					.renderer(() -> GeneralYoukaiRenderer::new)

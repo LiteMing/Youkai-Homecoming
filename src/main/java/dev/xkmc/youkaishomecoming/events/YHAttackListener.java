@@ -5,6 +5,7 @@ import dev.xkmc.l2damagetracker.contents.attack.AttackListener;
 import dev.xkmc.l2damagetracker.contents.attack.DamageModifier;
 import dev.xkmc.l2library.base.effects.EffectBuilder;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.effect.UdumbaraEffect;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
@@ -41,6 +42,11 @@ public class YHAttackListener implements AttackListener {
 		var event = cache.getLivingHurtEvent();
 		assert event != null;
 		var source = event.getSource();
+		if (source.is(YHDamageTypes.DANMAKU_TYPE) && cache.getAttackTarget() instanceof Player target
+				&& !GrazeHelper.canReceiveDanmaku(target)) {
+			event.setCanceled(true);
+			return;
+		}
 		// Certification legacy/fallback path (D8): any danmaku damage event still
 		// surfacing from the certification enemy against the creator is a No-Hit
 		// contact and must fail the trial before any Graze handling.

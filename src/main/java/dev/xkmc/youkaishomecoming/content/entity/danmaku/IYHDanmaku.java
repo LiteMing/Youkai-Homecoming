@@ -50,24 +50,20 @@ public interface IYHDanmaku extends GrazingEntity {
 
 	static boolean canPlayerSpellHit(IYHDanmaku projectile, EntityInfo candidate,
 			boolean restricted, @Nullable java.util.UUID targetId) {
+		if (!candidate.canReceiveDanmaku()) return false;
 		if (!restricted) return true;
+		if (targetId != null && targetId.equals(candidate.rootUuid())) return true;
 		if (candidate.entity() instanceof Player) {
 			// New projectiles use one authoritative snapshot for collision and client
-			// fading. The target fallback keeps old/network-migrated projectiles safe.
+			// fading. Explicit targets were accepted above.
 			return canHitPlayerFromSnapshot(projectile.hasHarmfulPlayerSnapshot(),
-					projectile.isHarmfulToPlayer(candidate.rootUuid()), targetId, candidate.rootUuid());
+					projectile.isHarmfulToPlayer(candidate.rootUuid()));
 		}
-		return candidate.hostileForPlayerSpell();
+		return candidate.untargetedPlayerSpellTarget();
 	}
 
-	static boolean canHitPlayerFromSnapshot(boolean snapshotPresent, boolean listed,
-			@Nullable java.util.UUID targetId, java.util.UUID candidateId) {
-		return snapshotPresent ? listed : targetId != null && targetId.equals(candidateId);
-	}
-
-	static boolean isUntargetedTeamOpponent(boolean casterAssigned, boolean candidateAssigned,
-			boolean allied) {
-		return casterAssigned && candidateAssigned && !allied;
+	static boolean canHitPlayerFromSnapshot(boolean snapshotPresent, boolean listed) {
+		return snapshotPresent && listed;
 	}
 
 	@Override
@@ -125,6 +121,7 @@ public interface IYHDanmaku extends GrazingEntity {
 		if (self().level().isClientSide) return;
 		var e = result.getEntity();
 		if (e instanceof DanmakuHostProxy) return;
+		if (e instanceof Player player && !GrazeHelper.canReceiveDanmaku(player)) return;
 		// Certification No-Hit contact must precede hurt-time invul checks, auto-bomb
 		// and damage events (design doc §8, D8): a hit is a hit even under i-frames.
 		if (e instanceof ServerPlayer sp && self().getOwner() instanceof SpellCertificationEntity cert) {

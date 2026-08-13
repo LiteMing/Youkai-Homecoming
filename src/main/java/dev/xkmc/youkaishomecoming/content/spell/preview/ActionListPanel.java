@@ -88,7 +88,7 @@ public class ActionListPanel {
 		}
 	}
 
-	private enum RowKind {SECTION, ACTION, ADD_BUTTON}
+	private enum RowKind {SECTION, ACTION, BRANCH}
 
 	private record Row(RowKind kind, int y, int indent, boolean ancestorDisabled,
 					   String section, String sectionTitle,
@@ -102,8 +102,9 @@ public class ActionListPanel {
 			return new Row(RowKind.ACTION, y, indent, ancestorDisabled, null, null, path, action, null, null);
 		}
 
-		static Row addButton(AddTarget target, String label, int indent, int y) {
-			return new Row(RowKind.ADD_BUTTON, y, indent, false, null, null, null, null, target, label);
+		static Row branch(AddTarget target, String label, int indent, int y) {
+			return new Row(RowKind.BRANCH, y, indent, false, null, null,
+					target.parentPath(), null, target, label);
 		}
 	}
 
@@ -122,6 +123,10 @@ public class ActionListPanel {
 
 	// Collapse state: set of action paths that are collapsed
 	private final java.util.Set<String> collapsedPaths = new java.util.HashSet<>();
+	// Optional action branches have their own folder state. This is deliberately
+	// separate from the parent action collapse state so a callback can be folded
+	// without hiding the action's ordinary fields and sibling callbacks.
+	private final java.util.Set<String> collapsedBranchPaths = new java.util.HashSet<>();
 	// When true, all add-buttons are shown (toggle with Ctrl+B); when false only selected node's add-buttons show
 	private boolean showAllAddButtons = false;
 
@@ -530,6 +535,30 @@ public class ActionListPanel {
 		return sb.toString();
 	}
 
+	private String branchCollapseKey(AddTarget target) {
+		return collapseKey(target.parentPath()) + "/@" + target.branch();
+	}
+
+	private boolean isBranchCollapsed(AddTarget target) {
+		return collapsedBranchPaths.contains(branchCollapseKey(target));
+	}
+
+	private int buildBranch(List<SpellAction> actions, String branch, String label,
+			ActionPath parentPath, int indent, int startY, String section,
+			boolean parentDisabled, boolean alwaysShow, boolean showAdd) {
+		if (!alwaysShow && actions.isEmpty() && !showAdd) return startY;
+		int cy = startY;
+		AddTarget target = AddTarget.branch(section, parentPath, branch);
+		rows.add(Row.branch(target, label + " (" + actions.size() + ")", indent, cy));
+		cy += ROW_HEIGHT;
+		if (isBranchCollapsed(target)) return cy;
+		for (int j = 0; j < actions.size(); j++) {
+			ActionPath childPath = parentPath.child(branch, j);
+			cy = buildActionTree(actions.get(j), childPath, indent + 1, cy, section, parentDisabled);
+		}
+		return cy;
+	}
+
 	/**
 	 * Recursively build tree rows for an action. If the action is a ConditionalAction,
 	 * its if_true/if_false branches are rendered as indented sub-trees.
@@ -541,6 +570,11 @@ public class ActionListPanel {
 		if (isDragging && dragExpandedPaths.contains(collapseKey(parentPath))) return true;
 		// Only show add-buttons for the currently selected node
 		return selectedPath != null && collapseKey(selectedPath).equals(collapseKey(parentPath));
+	}
+
+	private boolean canAcceptBranchChildren(SpellAction action) {
+		SpellAction inner = action instanceof SpellActions.DisabledAction da ? da.inner() : action;
+		return hasChildren(inner) || inner instanceof FireDanmakuAction || inner instanceof FireLaserAction;
 	}
 
 	private int buildActionTree(SpellAction action, ActionPath actionPath, int indent, int startY, String section) {
@@ -566,162 +600,57 @@ public class ActionListPanel {
 		boolean showAdd = shouldShowAddButtons(actionPath);
 
 		if (inner instanceof SpellActions.ConditionalAction cond) {
-			for (int j = 0; j < cond.ifTrue().size(); j++) {
-				ActionPath childPath = actionPath.child("true", j);
-				cy = buildActionTree(cond.ifTrue().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "true"), "+ if_true", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			for (int j = 0; j < cond.ifFalse().size(); j++) {
-				ActionPath childPath = actionPath.child("false", j);
-				cy = buildActionTree(cond.ifFalse().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "false"), "+ if_false", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(cond.ifTrue(), "true", "if_true", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
+			cy = buildBranch(cond.ifFalse(), "false", "if_false", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof SpellActions.RepeatAction repeat) {
-			for (int j = 0; j < repeat.body().size(); j++) {
-				ActionPath childPath = actionPath.child("body", j);
-				cy = buildActionTree(repeat.body().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(repeat.body(), "body", "body", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof DelayAction delay) {
-			for (int j = 0; j < delay.body().size(); j++) {
-				ActionPath childPath = actionPath.child("body", j);
-				cy = buildActionTree(delay.body().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(delay.body(), "body", "body", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof BurstAction burst) {
-			for (int j = 0; j < burst.body().size(); j++) {
-				ActionPath childPath = actionPath.child("body", j);
-				cy = buildActionTree(burst.body().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(burst.body(), "body", "body", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof FireDanmakuAction fda) {
-			List<SpellAction> expiryActions = fda.onExpiry().orElse(List.of());
-			for (int j = 0; j < expiryActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onExpiry", j);
-				cy = buildActionTree(expiryActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onExpiry"), "+ onExpiry", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> trailActions = fda.onTrail().orElse(List.of());
-			for (int j = 0; j < trailActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onTrail", j);
-				cy = buildActionTree(trailActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onTrail"), "+ onTrail", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> hitEntityActions = fda.onHitEntity().orElse(List.of());
-			for (int j = 0; j < hitEntityActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onHitEntity", j);
-				cy = buildActionTree(hitEntityActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitEntity"), "+ onHitEntity", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> hitBlockActions = fda.onHitBlock().orElse(List.of());
-			for (int j = 0; j < hitBlockActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onHitBlock", j);
-				cy = buildActionTree(hitBlockActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitBlock"), "+ onHitBlock", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(fda.onExpiry().orElse(List.of()), "onExpiry", "onExpiry", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			cy = buildBranch(fda.onTrail().orElse(List.of()), "onTrail", "onTrail", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			cy = buildBranch(fda.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			cy = buildBranch(fda.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
 		}
 
 		if (inner instanceof FireLaserAction fla) {
-			List<SpellAction> expiryActions = fla.onExpiry().orElse(List.of());
-			for (int j = 0; j < expiryActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onExpiry", j);
-				cy = buildActionTree(expiryActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onExpiry"), "+ onExpiry", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> trailActions = fla.onTrail().orElse(List.of());
-			for (int j = 0; j < trailActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onTrail", j);
-				cy = buildActionTree(trailActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onTrail"), "+ onTrail", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> hitEntityActions = fla.onHitEntity().orElse(List.of());
-			for (int j = 0; j < hitEntityActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onHitEntity", j);
-				cy = buildActionTree(hitEntityActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitEntity"), "+ onHitEntity", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> hitBlockActions = fla.onHitBlock().orElse(List.of());
-			for (int j = 0; j < hitBlockActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onHitBlock", j);
-				cy = buildActionTree(hitBlockActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitBlock"), "+ onHitBlock", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(fla.onExpiry().orElse(List.of()), "onExpiry", "onExpiry", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			cy = buildBranch(fla.onTrail().orElse(List.of()), "onTrail", "onTrail", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			cy = buildBranch(fla.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			cy = buildBranch(fla.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
 		}
 
 		if (inner instanceof SpawnShooterAction ssa) {
-			for (int j = 0; j < ssa.body().size(); j++) {
-				ActionPath childPath = actionPath.child("body", j);
-				cy = buildActionTree(ssa.body().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(ssa.body(), "body", "body", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof SpellActions.SequenceAction seq) {
-			for (int j = 0; j < seq.actions().size(); j++) {
-				ActionPath childPath = actionPath.child("actions", j);
-				cy = buildActionTree(seq.actions().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "actions"), "+ actions", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(seq.actions(), "actions", "actions", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 		return cy;
 	}
@@ -801,23 +730,35 @@ public class ActionListPanel {
 					}
 					g.drawString(font, label, ix, row.y + 2, textColor, false);
 				}
-			} else if (row.kind == RowKind.ADD_BUTTON) {
+			} else if (row.kind == RowKind.BRANCH) {
 				int ix = x + PADDING + row.indent * INDENT_PX;
 				boolean hovered = mouseX >= x && mouseX < x + w
 						&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT;
 				boolean selected = row.addTarget != null && row.addTarget.equals(selectedAddTarget);
-				if (selected) {
-					g.fill(x + 1, row.y, x + w, row.y + ROW_HEIGHT, 0xFF2a4a2e);
-					g.fill(x + 1, row.y, x + 3, row.y + ROW_HEIGHT, 0xFF66FF66);
+				if (hovered || selected) {
+					g.fill(x + 1, row.y, x + w, row.y + ROW_HEIGHT,
+							selected ? 0xFF34402e : 0xFF292d3d);
 				}
-				g.drawString(font, SpellEditorLocalization.t(row.addLabel), ix, row.y + 2, selected ? 0xFFFFFF88 : (hovered ? 0xFFFFFF44 : 0xFF448844), false);
+				boolean collapsed = row.addTarget != null && isBranchCollapsed(row.addTarget);
+				String indicator = collapsed ? "\u25B6" : "\u25BC";
+				g.drawString(font, indicator, ix, row.y + 2,
+						hovered ? 0xFFFFFF66 : 0xFFB8A85C, false);
+				ix += font.width(indicator) + 2;
+				g.drawString(font, SpellEditorLocalization.t(row.addLabel), ix, row.y + 2,
+						selected ? 0xFFFFFF88 : 0xFFD8CA88, false);
+				String plus = "[+]";
+				int plusX = x + w - font.width(plus) - PADDING;
+				boolean plusHovered = mouseX >= plusX && mouseX < x + w
+						&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT;
+				g.drawString(font, plus, plusX, row.y + 2,
+						plusHovered ? 0xFFFFFF44 : 0xFF66AA66, false);
 			}
 		}
 
 		// Drag indicator: yellow line for reorder, green highlight for branch insert
 		if (isDragging) {
 			if (dragBranchTarget != null && dragBranchHighlightY >= y && dragBranchHighlightY <= y + h) {
-				// Green highlight on the branch add-button row
+				// Green highlight on the branch folder row
 				g.fill(x + 1, dragBranchHighlightY, x + w, dragBranchHighlightY + ROW_HEIGHT, 0x6644AA44);
 				g.fill(x + 1, dragBranchHighlightY, x + 3, dragBranchHighlightY + ROW_HEIGHT, 0xFF44FF44);
 			} else if (dragIndicatorY >= y && dragIndicatorY <= y + h) {
@@ -981,11 +922,24 @@ public class ActionListPanel {
 					dragThresholdMet = false;
 				}
 				return true;
-			} else if (row.kind == RowKind.ADD_BUTTON) {
-				selectedAddTarget = row.addTarget;
-				selectedPath = row.addTarget.parentPath();
+			} else if (row.kind == RowKind.BRANCH) {
+				if (row.addTarget == null) return true;
+				String plus = "[+]";
+				int plusX = x + w - font.width(plus) - PADDING;
+				if (mouseX >= plusX) {
+					selectedAddTarget = row.addTarget;
+					selectedPath = row.addTarget.parentPath();
+					onRequestAdd.accept(row.addTarget);
+					return true;
+				}
+				selectedAddTarget = null;
+				String key = branchCollapseKey(row.addTarget);
+				if (collapsedBranchPaths.contains(key)) {
+					collapsedBranchPaths.remove(key);
+				} else {
+					collapsedBranchPaths.add(key);
+				}
 				dirty = true;
-				onRequestAdd.accept(row.addTarget);
 				return true;
 			}
 		}
@@ -1058,7 +1012,7 @@ public class ActionListPanel {
 	 * Update the drag insertion indicator based on mouse position.
 	 * Checks two kinds of drop targets:
 	 * 1. Gaps between top-level action rows in the same section (reorder)
-	 * 2. ADD_BUTTON rows (insert into branch of Conditional/Repeat)
+	 * 2. Branch folder rows (insert into a nested action list)
 	 */
 	private void updateDragInsertPoint(double mouseX, double mouseY) {
 		dragIndicatorY = -1;
@@ -1078,7 +1032,7 @@ public class ActionListPanel {
 		for (Row row : rows) {
 			if (row.kind == RowKind.ACTION && row.path != null && row.action != null) {
 				SpellAction inner = row.action instanceof SpellActions.DisabledAction da ? da.inner() : row.action;
-				if (hasChildren(inner) && intentIndent > row.indent
+				if (canAcceptBranchChildren(inner) && intentIndent > row.indent
 						&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 					String key = collapseKey(row.path);
 					if (collapsedPaths.remove(key) | dragExpandedPaths.add(key)) {
@@ -1121,15 +1075,15 @@ public class ActionListPanel {
 			return;
 		}
 
-		// === Check ADD_BUTTON rows (branch insert targets) ===
+		// === Check branch folder rows (branch insert targets) ===
 		for (Row row : rows) {
-			if (row.kind != RowKind.ADD_BUTTON || row.addTarget == null) continue;
-			// Skip add-buttons that belong to the dragged action's own subtree.
+			if (row.kind != RowKind.BRANCH || row.addTarget == null) continue;
+			// Skip folders that belong to the dragged action's own subtree.
 			// Dropping into self would delete the action then fail to insert (swallowing bug).
 			if (row.addTarget.parentPath() != null && isInsideAnySource(row.addTarget.parentPath(), sourcePaths)) {
 				continue;
 			}
-			// Check if mouse is directly over this add-button row
+			// Check if mouse is directly over this branch folder row.
 			if (row.indent == intentIndent && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 				double dist = Math.abs(mouseY - (row.y + ROW_HEIGHT / 2.0));
 				if (dist < bestDist) {
@@ -1143,7 +1097,7 @@ public class ActionListPanel {
 					dragBranchTarget = row.addTarget;
 					dragBranchHighlightY = row.y;
 				}
-				return; // If mouse is directly on an add-button, prefer it
+				return; // If mouse is directly on a folder, prefer it.
 			}
 		}
 
@@ -1287,7 +1241,7 @@ public class ActionListPanel {
 			if (row.kind == RowKind.ACTION) {
 				if (!isSameActionOrDescendant(row.path, actionRow.path)) break;
 				bottomY = row.y + ROW_HEIGHT;
-			} else if (row.kind == RowKind.ADD_BUTTON) {
+			} else if (row.kind == RowKind.BRANCH) {
 				if (row.addTarget != null && row.addTarget.parentPath() != null
 						&& isSameActionOrDescendant(row.addTarget.parentPath(), actionRow.path)) {
 					bottomY = row.y + ROW_HEIGHT;
@@ -1757,7 +1711,9 @@ public class ActionListPanel {
 			selectedPath = ActionPath.topLevel(target.section, list.size() - 1);
 			return true;
 		} else {
-			return doInsert(list, target.parentPath.path, 0, target.branch, action, target.parentPath);
+			boolean inserted = doInsert(list, target.parentPath.path, 0, target.branch, action, target.parentPath);
+			if (inserted) collapsedBranchPaths.remove(branchCollapseKey(target));
+			return inserted;
 		}
 	}
 
@@ -2233,13 +2189,13 @@ public class ActionListPanel {
 		return deleteMultipleSelected();
 	}
 
-	/** Find the add-button row under the mouse (hover-based paste target). */
+	/** Find the branch folder under the mouse (hover-based paste target). */
 	@Nullable
 	private AddTarget findAddButtonAt(double mouseX, double mouseY) {
 		if (phase == null) return null;
 		buildRowsIfDirty();
 		for (Row row : rows) {
-			if (row.kind != RowKind.ADD_BUTTON || row.addTarget == null) continue;
+			if (row.kind != RowKind.BRANCH || row.addTarget == null) continue;
 			if (mouseX >= x && mouseX < x + w && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 				return row.addTarget;
 			}
@@ -2477,6 +2433,7 @@ public class ActionListPanel {
 	/** Collapse all nodes that have children. */
 	public void collapseAll() {
 		collapsedPaths.clear();
+		collapsedBranchPaths.clear();
 		// Walk all actions and add collapse keys for those with children
 		if (phase == null) return;
 		collapseAllIn(phase.onEnter, "enter");
@@ -2499,24 +2456,33 @@ public class ActionListPanel {
 		}
 		// Recurse into children so they'll be collapsed when expanded later
 		if (inner instanceof SpellActions.ConditionalAction cond) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "true")));
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "false")));
 			for (int j = 0; j < cond.ifTrue().size(); j++)
 				collapseAllRecursive(cond.ifTrue().get(j), path.child("true", j));
 			for (int j = 0; j < cond.ifFalse().size(); j++)
 				collapseAllRecursive(cond.ifFalse().get(j), path.child("false", j));
 		}
 		if (inner instanceof SpellActions.RepeatAction r) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));
 			for (int j = 0; j < r.body().size(); j++)
 				collapseAllRecursive(r.body().get(j), path.child("body", j));
 		}
 		if (inner instanceof DelayAction d) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));
 			for (int j = 0; j < d.body().size(); j++)
 				collapseAllRecursive(d.body().get(j), path.child("body", j));
 		}
 		if (inner instanceof BurstAction b) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));
 			for (int j = 0; j < b.body().size(); j++)
 				collapseAllRecursive(b.body().get(j), path.child("body", j));
 		}
 		if (inner instanceof FireDanmakuAction fda) {
+			if (fda.onExpiry().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onExpiry")));
+			if (fda.onTrail().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onTrail")));
+			if (fda.onHitEntity().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onHitEntity")));
+			if (fda.onHitBlock().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onHitBlock")));
 			for (int j = 0; j < fda.onExpiry().orElse(List.of()).size(); j++)
 				collapseAllRecursive(fda.onExpiry().get().get(j), path.child("onExpiry", j));
 			for (int j = 0; j < fda.onTrail().orElse(List.of()).size(); j++)
@@ -2527,6 +2493,10 @@ public class ActionListPanel {
 				collapseAllRecursive(fda.onHitBlock().get().get(j), path.child("onHitBlock", j));
 		}
 		if (inner instanceof FireLaserAction fla) {
+			if (fla.onExpiry().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onExpiry")));
+			if (fla.onTrail().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onTrail")));
+			if (fla.onHitEntity().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onHitEntity")));
+			if (fla.onHitBlock().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onHitBlock")));
 			for (int j = 0; j < fla.onExpiry().orElse(List.of()).size(); j++)
 				collapseAllRecursive(fla.onExpiry().get().get(j), path.child("onExpiry", j));
 			for (int j = 0; j < fla.onTrail().orElse(List.of()).size(); j++)
@@ -2537,10 +2507,12 @@ public class ActionListPanel {
 				collapseAllRecursive(fla.onHitBlock().get().get(j), path.child("onHitBlock", j));
 		}
 		if (inner instanceof SpawnShooterAction ssa) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));
 			for (int j = 0; j < ssa.body().size(); j++)
 				collapseAllRecursive(ssa.body().get(j), path.child("body", j));
 		}
 		if (inner instanceof SpellActions.SequenceAction seq) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "actions")));
 			for (int j = 0; j < seq.actions().size(); j++)
 				collapseAllRecursive(seq.actions().get(j), path.child("actions", j));
 		}
@@ -2549,6 +2521,7 @@ public class ActionListPanel {
 	/** Expand all nodes. */
 	public void expandAll() {
 		collapsedPaths.clear();
+		collapsedBranchPaths.clear();
 		dirty = true;
 	}
 

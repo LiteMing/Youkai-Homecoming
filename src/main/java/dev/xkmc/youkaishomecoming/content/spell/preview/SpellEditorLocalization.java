@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 public final class SpellEditorLocalization {
 
 	private static final Pattern COUNT_SECTION = Pattern.compile("^(onEnter|onTick|onExit|onDamage) \\((\\d+)\\)$");
+	private static final Pattern COUNT_BRANCH = Pattern.compile("^(if_true|if_false|body|actions|onExpiry|onTrail|onHitEntity|onHitBlock) \\((\\d+)\\)$");
 	private static final Pattern ACTION_ROW = Pattern.compile("^([TFBEH]?)(\\d+: )(.*)$");
 	private static final Pattern NUMBER_PREFIX = Pattern.compile("^(\\d+:)(.+)$");
 
@@ -67,6 +68,10 @@ public final class SpellEditorLocalization {
 		Matcher count = COUNT_SECTION.matcher(text);
 		if (count.matches()) {
 			return italic + prefix + exact(count.group(1)) + " (" + count.group(2) + ")";
+		}
+		Matcher branch = COUNT_BRANCH.matcher(text);
+		if (branch.matches()) {
+			return italic + prefix + exact(branch.group(1)) + " (" + branch.group(2) + ")";
 		}
 		Matcher action = ACTION_ROW.matcher(text);
 		if (action.matches()) {

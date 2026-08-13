@@ -464,7 +464,7 @@ public final class SpellEditorLocalization {
 			Map.entry("Preview size changed", "预览大小已变更"),
 			Map.entry("ON", "开"),
 			Map.entry("OFF", "关"),
-			Map.entry("Y", "是"),
+			Map.entry("Y", "Y"),
 			Map.entry("N", "否"),
 			Map.entry("N/A", "不可用"),
 			Map.entry("true", "真"),

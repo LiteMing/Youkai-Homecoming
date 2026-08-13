@@ -982,7 +982,7 @@ public class ActionEditorPanel {
 
 	private void buildFireTextDanmakuRows(FireTextDanmakuAction a) {
 		addStringRow("Text", a.text(), v ->
-				notifyTextDanmaku(old -> old.withText(v)));
+				notifyTextDanmaku(old -> old.withText(v), false));
 
 		addColorRow("Text Color", a.textColor(), v ->
 				notifyTextDanmaku(old -> old.withTextColor(v), false));

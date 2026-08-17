@@ -160,6 +160,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 		boolean timedOut = maxDuration >= 0 && spellTickCount >= maxDuration;
 		if (naturalEnd || timedOut) {
 			cleanup();
+		} else if ((spellTickCount & 3) == 0 && ownerPlayer != null) {
+			// The proxy owns the authoritative elapsed tick; refresh the Bossbar
+			// after advancing the runtime rather than waiting for capability order.
+			SpellContainer.refreshSpellBossBar(ownerPlayer, this);
 		}
 	}
 
@@ -353,6 +357,9 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 */
 	@Override
 	public void remove(RemovalReason reason) {
+		if (!level().isClientSide() && ownerPlayer != null) {
+			SpellContainer.onProxyRemoved(ownerPlayer, this);
+		}
 		clearTemporarySpellCircle();
 		if (!danmakuHolder.isEmpty()) {
 			eraseAllDanmaku(null);

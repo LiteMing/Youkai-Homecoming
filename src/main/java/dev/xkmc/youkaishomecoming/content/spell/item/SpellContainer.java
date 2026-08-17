@@ -196,6 +196,27 @@ public class SpellContainer extends ConditionalToken {
 		data.syncPlayerSpellStatus(sp);
 	}
 
+	/** Refreshes the player and opponent Bossbars from the proxy's current tick. */
+	public static void refreshSpellBossBar(ServerPlayer sp, DanmakuProxyEntity proxy) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		if (data.spellBarMax > 0 && data.proxies.contains(proxy) && !proxy.isRemoved()) {
+			data.syncPlayerSpellStatus(sp);
+		}
+	}
+
+	/** Removes a proxy-owned Bossbar even when the capability token is discarded first. */
+	public static void onProxyRemoved(ServerPlayer sp, DanmakuProxyEntity proxy) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		if (!data.proxies.remove(proxy)) return;
+		if (data.proxies.stream().noneMatch(e -> !e.isRemoved())) {
+			data.activeSpellCardKey = null;
+			data.endSpellBar(sp);
+			data.lockPos = null;
+		} else if (data.spellBarMax > 0) {
+			data.syncPlayerSpellStatus(sp);
+		}
+	}
+
 	public static void removeSpellBar(ServerPlayer sp) {
 		ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD).endSpellBar(sp);
 	}
@@ -233,7 +254,7 @@ public class SpellContainer extends ConditionalToken {
 	/** Interrupt the currently released spell card (erases its danmaku). */
 	public static void breakActiveSpell(ServerPlayer sp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
-		for (var proxy : data.proxies) {
+		for (var proxy : List.copyOf(data.proxies)) {
 			if (!proxy.isRemoved()) {
 				proxy.eraseAllDanmaku(null);
 				proxy.cleanup();
@@ -302,6 +323,8 @@ public class SpellContainer extends ConditionalToken {
 		opponentSpellBossEvent.setName(name);
 		ownSpellBossEvent.setColor(SpellProgressColor.bossBarColor(sp, BossEvent.BossBarColor.BLUE));
 		opponentSpellBossEvent.setColor(SpellProgressColor.bossBarColor(sp, BossEvent.BossBarColor.RED));
+		ownSpellBossEvent.setVisible(true);
+		opponentSpellBossEvent.setVisible(true);
 		ownSpellBossEvent.addPlayer(sp);
 
 		Set<ServerPlayer> opponents = new HashSet<>();
@@ -332,6 +355,8 @@ public class SpellContainer extends ConditionalToken {
 	}
 
 	private void clearSpellBossBars() {
+		if (ownSpellBossEvent != null) ownSpellBossEvent.setVisible(false);
+		if (opponentSpellBossEvent != null) opponentSpellBossEvent.setVisible(false);
 		if (ownSpellBossEvent != null) ownSpellBossEvent.removeAllPlayers();
 		if (opponentSpellBossEvent != null) opponentSpellBossEvent.removeAllPlayers();
 	}
@@ -359,7 +384,7 @@ public class SpellContainer extends ConditionalToken {
 			erase(spell.cache);
 		}
 		erase(cache);
-		for (var proxy : proxies) {
+		for (var proxy : List.copyOf(proxies)) {
 			if (!proxy.isRemoved()) proxy.cleanup();
 		}
 		spells.clear();
@@ -392,9 +417,6 @@ public class SpellContainer extends ConditionalToken {
 		proxies.removeIf(DanmakuProxyEntity::isRemoved);
 		if (spells.isEmpty() && proxies.isEmpty()) {
 			activeSpellCardKey = null;
-		}
-		if (player instanceof ServerPlayer sp && spellBarMax > 0 && (player.tickCount & 3) == 0) {
-			syncPlayerSpellStatus(sp);
 		}
 		if (proxies.isEmpty() && spellBarMax > 0) {
 			// spell ended naturally: drop the bar

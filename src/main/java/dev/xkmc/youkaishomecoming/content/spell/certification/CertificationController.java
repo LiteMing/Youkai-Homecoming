@@ -384,7 +384,7 @@ public class CertificationController {
 		// entity is killed or unloaded mid-trial.
 		restoreCombatState();
 		refund();
-		CertificationManager.INSTANCE.remove(authorId);
+		CertificationManager.INSTANCE.remove(authorId, this);
 	}
 
 	private void success(SpellCertificationEntity e) {
@@ -526,7 +526,7 @@ public class CertificationController {
 		}
 		e.eraseAllDanmaku(null);
 		if (e.getDanmakuHolder() != null) e.getDanmakuHolder().clearSentQueue();
-		CertificationManager.INSTANCE.remove(authorId);
+		CertificationManager.INSTANCE.remove(authorId, this);
 		e.discard();
 	}
 

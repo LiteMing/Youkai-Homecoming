@@ -108,6 +108,7 @@ public class YHCommands {
 
 	@SubscribeEvent
 	public static void onServerStarted(ServerStartedEvent event) {
+		CertificationManager.INSTANCE.reset();
 		CustomSpellStorage.loadAllIntoRegistry(event.getServer());
 		CustomSpellCircleStorage.loadAllIntoConfig(event.getServer());
 		SpellMarketServerManager.start(event.getServer());

@@ -34,7 +34,8 @@ public class CertificationStateToClient extends SerialPacketBase {
 	@SerialClass.SerialField
 	public int completedHealth = 0;
 	@SerialClass.SerialField
-	public int[] healthSegments = new int[0];
+	// l2serial 1.2.4 only allocates an incoming array when the field is null.
+	public int[] healthSegments;
 	@SerialClass.SerialField
 	@Nullable
 	public String failReason = null;

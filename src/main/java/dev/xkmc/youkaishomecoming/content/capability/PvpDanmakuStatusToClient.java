@@ -33,7 +33,8 @@ public class PvpDanmakuStatusToClient extends SerialPacketBase {
 	@SerialClass.SerialField
 	public int spellCompletedHealth;
 	@SerialClass.SerialField
-	public int[] spellHealthSegments = new int[0];
+	// l2serial 1.2.4 only allocates an incoming array when the field is null.
+	public int[] spellHealthSegments;
 
 	@Deprecated
 	public PvpDanmakuStatusToClient() {

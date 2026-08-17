@@ -49,16 +49,21 @@ public final class CertificationManager {
 	}
 
 	public boolean hasActiveTrial(ServerPlayer player) {
-		return activeTrials.containsKey(player.getUUID());
+		return getActiveTrial(player) != null;
 	}
 
 	public CertificationController getActiveTrial(ServerPlayer player) {
-		return activeTrials.get(player.getUUID());
+		CertificationController controller = activeTrials.get(player.getUUID());
+		if (controller != null && controller.author() != player) {
+			activeTrials.remove(player.getUUID(), controller);
+			return null;
+		}
+		return controller;
 	}
 
 	/** Registers the trial; returns false when the player or server cap is reached. */
 	public boolean register(ServerPlayer player, CertificationController controller) {
-		if (activeTrials.containsKey(player.getUUID())) return false;
+		if (hasActiveTrial(player)) return false;
 		if (activeTrials.size() >= YHModConfig.COMMON.certificationMaxConcurrentTrials.get()) return false;
 		activeTrials.put(player.getUUID(), controller);
 		return true;
@@ -67,6 +72,20 @@ public final class CertificationManager {
 	public void remove(UUID playerId) {
 		clearQuote(playerId);
 		activeTrials.remove(playerId);
+	}
+
+	/** Removes a completed controller without clearing a newer trial for the same player. */
+	public void remove(UUID playerId, CertificationController controller) {
+		if (activeTrials.remove(playerId, controller)) {
+			clearQuote(playerId);
+		}
+	}
+
+	/** Clears process-local state when a new logical server starts. */
+	public void reset() {
+		activeTrials.clear();
+		pendingQuotes.clear();
+		quoteDefinitions.clear();
 	}
 
 	/** Drops a pending quote without touching an active controller. */

@@ -136,10 +136,11 @@ public class SpellContainer extends ConditionalToken {
 		DanmakuProxyEntity proxy = data.proxies.stream()
 				.filter(e -> !e.isRemoved()).findFirst().orElse(null);
 		if (proxy == null) return ActiveSpellStatus.NONE;
+		int displayedHealth = data.displayedSpellBarValue();
 		SpellProgressSnapshot progress = SpellProgressSnapshot.fromTotalRemaining(
-				proxy.getSpellRuntime(), data.spellBarValue);
+				proxy.getSpellRuntime(), displayedHealth);
 		if (!progress.active()) {
-			return new ActiveSpellStatus(Math.max(0, data.spellBarValue), Math.max(0, data.spellBarMax),
+			return new ActiveSpellStatus(displayedHealth, Math.max(0, data.spellBarMax),
 					proxy.spellElapsedTicks(), proxy.spellDurationTicks(), 0,
 					data.spellBarMax > 0 ? new int[]{data.spellBarMax} : new int[0]);
 		}
@@ -161,14 +162,15 @@ public class SpellContainer extends ConditionalToken {
 
 	/**
 	 * Complete spell cards keep a server-side break HP value from their declared
-	 * health plan. The value is projected onto the player's spell circle;
-	 * each miss shrinks it by 1 and a zero bar breaks the spell and costs one LIFE.
+	 * health plan. The precise value stays server-side and is projected onto the
+	 * player's spell circle; incoming danmaku damage shrinks it, and reaching zero
+	 * breaks the spell and costs one LIFE.
 	 */
 	public static void startSpellBar(ServerPlayer sp, int maxHp, @Nullable String cardKey, Component spellName) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		data.endSpellBar(sp);
-		data.spellBarValue = Math.max(1, maxHp);
-		data.spellBarMax = data.spellBarValue;
+		data.spellBarMax = Math.max(1, maxHp);
+		data.spellBarValue = data.spellBarMax;
 		data.spellBarCardKey = cardKey;
 		data.spellBarName = spellName.copy();
 		data.syncPlayerSpellStatus(sp);
@@ -184,8 +186,8 @@ public class SpellContainer extends ConditionalToken {
 			return;
 		}
 		if (data.spellBarMax <= 0) {
-			data.spellBarValue = runtime.getSpellHealthTotal();
-			data.spellBarMax = data.spellBarValue;
+			data.spellBarMax = runtime.getSpellHealthTotal();
+			data.spellBarValue = data.spellBarMax;
 			data.spellBarCardKey = data.activeSpellCardKey;
 			data.spellBarName = runtime.getDefinition().display.displayName().copy();
 		} else {
@@ -222,12 +224,14 @@ public class SpellContainer extends ConditionalToken {
 	}
 
 	/**
-	 * A miss while the spell bar is up: shrink it by 1 and break (interrupt) the
-	 * spell when it reaches zero. Returns the authoritative STG hit result, or
-	 * null when no spell bar was active.
+	 * A miss while the spell bar is up: apply its actual danmaku damage and break
+	 * (interrupt) the spell when the current health chain reaches zero. Damage is
+	 * capped at the current segment so it cannot spill into a newly entered phase.
+	 * Returns the authoritative STG hit result, or null when no spell bar was active.
 	 */
 	@Nullable
-	public static GrazeCapability.HitType consumeSpellBarHit(ServerPlayer sp, @Nullable LivingEntity source) {
+	public static GrazeCapability.HitType consumeSpellBarHit(ServerPlayer sp, @Nullable LivingEntity source,
+			float damage) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		if (data.spellBarMax <= 0) {
 			return null;
@@ -235,9 +239,17 @@ public class SpellContainer extends ConditionalToken {
 		DanmakuProxyEntity proxy = data.proxies.stream()
 				.filter(e -> !e.isRemoved()).findFirst().orElse(null);
 		SpellProgressSnapshot before = proxy == null ? SpellProgressSnapshot.NONE
-				: SpellProgressSnapshot.fromTotalRemaining(proxy.getSpellRuntime(), data.spellBarValue);
-		data.spellBarValue = Math.max(0, data.spellBarValue - 1);
-		if (before.active() && before.health() <= 1 && proxy != null
+				: SpellProgressSnapshot.fromTotalRemaining(
+						proxy.getSpellRuntime(), data.displayedSpellBarValue());
+		float appliedDamage = Float.isFinite(damage) ? Math.max(0, damage) : 0;
+		float segmentHealth = data.spellBarValue;
+		if (before.active()) {
+			int futureHealth = before.totalRemainingHealth() - before.health();
+			segmentHealth = Math.max(0, Math.min(before.health(), data.spellBarValue - futureHealth));
+			appliedDamage = Math.min(appliedDamage, segmentHealth);
+		}
+		data.spellBarValue = Math.max(0, data.spellBarValue - appliedDamage);
+		if (before.active() && segmentHealth > 0 && appliedDamage >= segmentHealth && proxy != null
 				&& proxy.getSpellRuntime() != null) {
 			proxy.getSpellRuntime().triggerSpellHealthBreak(proxy);
 		}
@@ -265,7 +277,7 @@ public class SpellContainer extends ConditionalToken {
 		DanmakuManager.flushErases();
 	}
 
-	private int spellBarValue;
+	private float spellBarValue;
 	private int spellBarMax;
 	@Nullable
 	private String spellBarCardKey;
@@ -288,6 +300,11 @@ public class SpellContainer extends ConditionalToken {
 		} else {
 			clearSpellBossBars();
 		}
+	}
+
+	private int displayedSpellBarValue() {
+		if (!Float.isFinite(spellBarValue) || spellBarValue <= 0) return 0;
+		return (int) Math.min(Integer.MAX_VALUE, Math.ceil(spellBarValue));
 	}
 
 	private void syncPlayerSpellStatus(ServerPlayer sp) {

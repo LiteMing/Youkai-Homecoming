@@ -848,9 +848,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public void danmakuHitTarget(IYHDanmaku self, DamageSource source, LivingEntity target) {
 		if (combatProgress.progress <= 0) return;
 		if (!shouldHurt(target)) return;
+		float damage = self.damage(target);
 		if (target instanceof Player player) {
 			var graze = GrazeCapability.HOLDER.get(player);
-			var type = graze.performErase(this);
+			var type = graze.performErase(this, damage);
 			if (type.erase()) {
 				eraseAllDanmaku(player);
 			}
@@ -859,7 +860,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 			}
 		}
 		float hp = target.getHealth();
-		boolean immune = !target.hurt(source, self.damage(target));
+		boolean immune = !target.hurt(source, damage);
 		float ahp = target.getHealth();
 		if (ahp >= hp && ahp > 0) immune = true;
 		onDanmakuHit(target, self);

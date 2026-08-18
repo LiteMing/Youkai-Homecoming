@@ -310,12 +310,12 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		}
 	}
 
-	public HitType performErase(YoukaiEntity e) {
+	public HitType performErase(YoukaiEntity e, float damage) {
 		if (!prepareDanmakuHitContext(e)) return HitType.ERASE;
-		return performDanmakuHit(e);
+		return performDanmakuHit(e, damage);
 	}
 
-	public HitType performDanmakuHit(@Nullable LivingEntity source) {
+	public HitType performDanmakuHit(@Nullable LivingEntity source, float damage) {
 		if (!hasInitializedCombatContext(source)) return HitType.NONE;
 		// Timed miss/bomb i-frames still suppress repeated contacts. Spell-cast
 		// protection, however, must not hide a set_spell_health bar: that bar is
@@ -324,10 +324,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			return HitType.INVUL;
 		}
 		int erased = eraseActiveDanmakuForHit(source);
-		// A certified spell bar absorbs misses until it reaches zero. The breaking
+		// An active player spell bar absorbs misses until it reaches zero. The breaking
 		// hit interrupts the card and costs one LIFE, without normal POWER loss.
 		if (player instanceof ServerPlayer sp) {
-			HitType spellHit = SpellContainer.consumeSpellBarHit(sp, source);
+			HitType spellHit = SpellContainer.consumeSpellBarHit(sp, source, damage);
 			if (spellHit != null) {
 				invul = YHModConfig.COMMON.spellHealthInvulTime.get();
 				dirty = true;
@@ -521,6 +521,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		dirty = true;
 		if (player instanceof ServerPlayer sp) {
 			sp.displayClientMessage(YHLangData.SPELL_BROKEN_UNAVAILABLE.get(), true);
+			// Match an ordinary LIFE loss: play the miss sound and defeat burst.
+			// The last LIFE continues into the authoritative beaten flow below.
+			YoukaisHomecoming.HANDLER.toClientPlayer(new GrazeHelper.GrazeToClient().set(1), sp);
 		}
 		if (life < SHARD) {
 			if (source != null && MinecraftForge.EVENT_BUS.post(new DanmakuLastHitEvent(player, source))) {

@@ -18,6 +18,7 @@ public final class SpellEditorLocalization {
 	private static final Pattern COUNT_BRANCH = Pattern.compile("^(if_true|if_false|body|actions|onExpiry|onTrail|onHitEntity|onHitBlock) \\((\\d+)\\)$");
 	private static final Pattern ACTION_ROW = Pattern.compile("^([TFBEH]?)(\\d+: )(.*)$");
 	private static final Pattern NUMBER_PREFIX = Pattern.compile("^(\\d+:)(.+)$");
+	private static final String[] POLICY_MARKERS = {"[EXP] ", "[OP] ", "[Q] ", "[X] "};
 
 	private static Boolean chineseOverride;
 
@@ -57,6 +58,13 @@ public final class SpellEditorLocalization {
 		if (text.startsWith("\u25B6 ") || text.startsWith("\u25BC ")) {
 			prefix = text.substring(0, 2);
 			text = text.substring(2);
+		}
+		for (String marker : POLICY_MARKERS) {
+			if (text.startsWith(marker)) {
+				prefix += marker;
+				text = text.substring(marker.length());
+				break;
+			}
 		}
 		if (text.startsWith("* ")) {
 			return italic + prefix + "* " + t(text.substring(2));
@@ -106,6 +114,9 @@ public final class SpellEditorLocalization {
 		}
 		if (text.startsWith("HP:")) {
 			return italic + prefix + "HP:" + text.substring("HP:".length());
+		}
+		if (text.startsWith("Power:")) {
+			return italic + prefix + "P点:" + text.substring("Power:".length());
 		}
 		if (text.startsWith("Caster Marker: ")) {
 			return italic + prefix + "施法者标记: " + t(text.substring("Caster Marker: ".length()));

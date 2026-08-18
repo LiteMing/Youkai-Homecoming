@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.analysis;
 
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 
@@ -18,7 +19,7 @@ import java.util.List;
  *   denominators that may cross zero);</li>
  *   <li>clamp is bounded iff its min/max are bounded (value may be unbounded);</li>
  *   <li>indexed selects from its value list regardless of index;</li>
- *   <li>game_difficulty is bounded to [0, 3];</li>
+ *   <li>game_difficulty is bounded to [0, 3], caster_power to the configured player cap;</li>
  *   <li>variable / phase_tick / total_tick / distance / positions / target stats and
  *   gaussian are unbounded.</li>
  * </ul>
@@ -53,6 +54,7 @@ public record NumberBounds(double min, double max) {
 		if (provider instanceof NumberProviders.RandomChoice choice) return boundsOfList(choice.values());
 		if (provider instanceof NumberProviders.Indexed idx) return boundsOfList(idx.values());
 		if (provider instanceof NumberProviders.GameDifficulty) return of(0, 3);
+		if (provider instanceof NumberProviders.CasterPower) return of(0, GrazeHelper.getMaximumPowerLevel());
 		if (provider instanceof NumberProviders.SinDeg s) return of(-Math.abs(s.amplitude()), Math.abs(s.amplitude()));
 		if (provider instanceof NumberProviders.CosDeg c) return of(-Math.abs(c.amplitude()), Math.abs(c.amplitude()));
 		if (provider instanceof NumberProviders.SinRad s) return of(-Math.abs(s.amplitude()), Math.abs(s.amplitude()));

@@ -54,6 +54,7 @@ public class NumberProviders {
 		register("caster_y", CasterY.CODEC, CasterY.class);
 		register("caster_z", CasterZ.CODEC, CasterZ.class);
 		register("caster_max_health", CasterMaxHealth.CODEC, CasterMaxHealth.class);
+		register("caster_power", CasterPower.CODEC, CasterPower.class);
 		register("target_x", TargetX.CODEC, TargetX.class);
 		register("target_y", TargetY.CODEC, TargetY.class);
 		register("target_z", TargetZ.CODEC, TargetZ.class);
@@ -617,6 +618,16 @@ public class NumberProviders {
 	public record CasterMaxHealth() implements NumberProvider {
 		public static final Codec<CasterMaxHealth> CODEC = Codec.unit(CasterMaxHealth::new);
 		@Override public double get(SpellContext ctx) { return ctx.self().getMaxHealth(); }
+	}
+
+	/**
+	 * Returns the root player's current STG power level (for example 3.25).
+	 * Non-player casters return 0. JSON: {"type": "caster_power"}
+	 * Expression keyword: caster_power
+	 */
+	public record CasterPower() implements NumberProvider {
+		public static final Codec<CasterPower> CODEC = Codec.unit(CasterPower::new);
+		@Override public double get(SpellContext ctx) { return ctx.holder().casterPower(); }
 	}
 
 	/** Target's X position (or caster X if no target). JSON: {"type": "target_x"} */

@@ -21,6 +21,7 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHAttributes;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
@@ -375,6 +376,16 @@ public class GrazeHelper {
 	public static int getMaxPower(Player player) {
 		return YHModConfig.COMMON.danmakuMaxPower.get() +
 				(int) player.getAttributeValue(YHAttributes.MAX_POWER.get());
+	}
+
+	/** Power visible to spell expressions, clamped to this player's effective cap. */
+	public static double getEffectivePowerLevel(Player player) {
+		return Mth.clamp(GrazeCapability.HOLDER.get(player).getPowerLevel(), 0, Math.max(0, getMaxPower(player)));
+	}
+
+	/** Conservative upper bound used when statically analyzing caster_power expressions. */
+	public static double getMaximumPowerLevel() {
+		return Math.max(0, YHModConfig.COMMON.danmakuMaxPower.get() + YHAttributes.MAX_POWER_BONUS_LIMIT);
 	}
 
 	public static double getGrazeEffectiveness(Player player) {

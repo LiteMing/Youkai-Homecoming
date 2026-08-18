@@ -7,6 +7,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.PacketCodec;
 import dev.xkmc.l2serial.serialization.codec.TagCodec;
 import dev.xkmc.l2serial.util.Wrappers;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
@@ -169,6 +170,18 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 	@Override
 	public LivingEntity shooter() {
 		return getOwner() instanceof LivingEntity le ? le : this;
+	}
+
+	@Override
+	public double casterPower() {
+		Entity owner = getOwner();
+		if (owner instanceof CardHolder holder) {
+			return holder.casterPower();
+		}
+		if (owner instanceof net.minecraft.world.entity.player.Player player) {
+			return GrazeHelper.getEffectivePowerLevel(player);
+		}
+		return 0;
 	}
 
 	public void inheritDamageFrom(CardHolder holder) {

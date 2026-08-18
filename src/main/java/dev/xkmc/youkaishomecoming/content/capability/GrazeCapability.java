@@ -812,6 +812,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return power;
 	}
 
+	/** Player-facing power level. Internally power is stored in hundredths. */
+	public double getPowerLevel() {
+		return Math.max(0, power) / (double) MAX_GRAZE;
+	}
+
 	public int getPoints() {
 		return hidden;
 	}

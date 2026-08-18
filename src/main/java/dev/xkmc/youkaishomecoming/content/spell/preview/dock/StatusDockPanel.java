@@ -141,6 +141,7 @@ public class StatusDockPanel implements DockPanel {
 			appendWrapped(lines, font, width,
 					"距离: " + formatDecimal(scene.getTargetDistance()) +
 							"  施法者HP: " + Math.round(scene.getHealthRatio() * 100) + "%" +
+							"  P点: " + formatDecimal(scene.getCasterPower()) +
 							"  目标HP: " + Math.round(scene.getTargetHealthRatio() * 100) + "%",
 					0xFFD6D3F0);
 			appendWrapped(lines, font, width,
@@ -170,6 +171,7 @@ public class StatusDockPanel implements DockPanel {
 			appendWrapped(lines, font, width,
 					"dist: " + formatDecimal(scene.getTargetDistance()) +
 							"  casterHP: " + Math.round(scene.getHealthRatio() * 100) + "%" +
+							"  power: " + formatDecimal(scene.getCasterPower()) +
 							"  targetHP: " + Math.round(scene.getTargetHealthRatio() * 100) + "%",
 					0xFFD6D3F0);
 			appendWrapped(lines, font, width,

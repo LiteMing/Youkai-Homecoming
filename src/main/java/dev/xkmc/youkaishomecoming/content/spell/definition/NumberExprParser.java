@@ -137,6 +137,7 @@ public class NumberExprParser {
 		if (p instanceof NumberProviders.CasterY) return "caster_y";
 		if (p instanceof NumberProviders.CasterZ) return "caster_z";
 		if (p instanceof NumberProviders.CasterMaxHealth) return "caster_max_health";
+		if (p instanceof NumberProviders.CasterPower) return "caster_power";
 		if (p instanceof NumberProviders.TargetX) return "target_x";
 		if (p instanceof NumberProviders.TargetY) return "target_y";
 		if (p instanceof NumberProviders.TargetZ) return "target_z";
@@ -428,6 +429,7 @@ public class NumberExprParser {
 			case "caster_y" -> new NumberProviders.CasterY();
 			case "caster_z" -> new NumberProviders.CasterZ();
 			case "caster_max_health" -> new NumberProviders.CasterMaxHealth();
+			case "caster_power" -> new NumberProviders.CasterPower();
 			case "target_x" -> new NumberProviders.TargetX();
 			case "target_y" -> new NumberProviders.TargetY();
 			case "target_z" -> new NumberProviders.TargetZ();

@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleHolder;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
@@ -69,6 +70,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private float targetHealthRatio = 1.0f;
 	private boolean targetFlying = false;
 	private boolean targetFallFlying = false;
+	/** Preview-only player power override; never written back to the real player. */
+	private double casterPower = 0;
 	private Vec3 blockTargetPos = Vec3.ZERO;
 	private Vec3 targetBoxSize = PreviewTarget.DEFAULT_BOX_SIZE;
 	/** Real target velocity for aim-lead spells (updated by setTargetPos diff or pilot). */
@@ -787,6 +790,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	public void setTargetFallFlying(boolean fallFlying) { this.targetFallFlying = fallFlying; }
 	public boolean isTargetFallFlying() { return targetFallFlying; }
 
+	public void setCasterPower(double power) { casterPower = Mth.clamp(power, 0, GrazeHelper.getMaximumPowerLevel()); }
+	@Override public double casterPower() { return casterPower; }
+
 	public void setBlockTargetPos(Vec3 pos) {
 		blockTargetPos = pos == null ? Vec3.ZERO : pos;
 		blockHitProjectiles.clear();
@@ -885,6 +891,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		@Override
 		public LivingEntity self() {
 			return this;
+		}
+
+		@Override
+		public double casterPower() {
+			return holder.casterPower();
 		}
 
 		@Override

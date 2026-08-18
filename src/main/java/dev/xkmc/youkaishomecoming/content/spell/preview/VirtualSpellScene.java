@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.DodgePilot;
@@ -75,6 +76,9 @@ public class VirtualSpellScene {
 		this.runtime = new SpellRuntime(definition);
 		bindRuntime(this.runtime);
 		this.holder = new PreviewCardHolder(level);
+		if (Minecraft.getInstance().player != null) {
+			this.holder.setCasterPower(GrazeHelper.getEffectivePowerLevel(Minecraft.getInstance().player));
+		}
 		this.holder.setOnSpellSwitch(this::switchSpellDefinition);
 		this.holder.setOnPhaseSwitch(this::switchPreviewPhase);
 		// Wire hit callback: when a danmaku hits the target AABB, notify runtime
@@ -440,6 +444,8 @@ public class VirtualSpellScene {
 
 	public void setTargetFallFlying(boolean v) { holder.setTargetFallFlying(v); }
 	public boolean isTargetFallFlying() { return holder.isTargetFallFlying(); }
+	public void setCasterPower(double v) { holder.setCasterPower(v); }
+	public double getCasterPower() { return holder.casterPower(); }
 
 	public void setTargetBoxSize(Vec3 size) { holder.setTargetBoxSize(size); }
 	public Vec3 getTargetBoxSize() { return holder.getTargetBoxSize(); }

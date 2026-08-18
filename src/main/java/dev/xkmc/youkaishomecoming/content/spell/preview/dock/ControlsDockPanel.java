@@ -203,6 +203,11 @@ public class ControlsDockPanel implements DockPanel {
 				scene.setHealthRatio(v);
 			} catch (NumberFormatException ignored) {}
 		});
+		bx = addEditBox(bx, row3Y, 56, "Power:" + formatDimension(scene.getCasterPower()), val -> {
+			try {
+				scene.setCasterPower(Double.parseDouble(val.trim()));
+			} catch (NumberFormatException ignored) {}
+		});
 		bx = addMenuButton(bx, row3Y, 48, "Range", this::openRangeMenu);
 		bx = addMenuButton(bx, row3Y, 58, "Markers", this::openMarkerMenu);
 		bx = addMenuButton(bx, row3Y, 44, "Focus", this::openFocusMenu);

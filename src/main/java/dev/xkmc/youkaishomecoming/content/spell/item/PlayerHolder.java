@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.item;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
@@ -23,6 +24,11 @@ public record PlayerHolder(
 	@Override
 	public LivingEntity shooter() {
 		return player;
+	}
+
+	@Override
+	public double casterPower() {
+		return GrazeHelper.getEffectivePowerLevel(player);
 	}
 
 	@Override

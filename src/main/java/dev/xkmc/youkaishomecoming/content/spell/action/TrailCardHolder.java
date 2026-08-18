@@ -105,6 +105,11 @@ public class TrailCardHolder implements CardHolder {
 	}
 
 	@Override
+	public double casterPower() {
+		return delegate.casterPower();
+	}
+
+	@Override
 	public DamageSource getDanmakuDamageSource(IYHDanmaku danmaku) {
 		return delegate.getDanmakuDamageSource(danmaku);
 	}

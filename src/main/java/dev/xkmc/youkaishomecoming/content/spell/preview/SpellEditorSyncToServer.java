@@ -15,6 +15,7 @@ import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
@@ -233,7 +234,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (containsPrivilegedAction(definition)) {
 			throw new IllegalArgumentException("Spell contains an operator-only action");
 		}
-		enforceOpQuota(sender, definition, 0);
+		enforceDraftCapabilities(sender, definition, true);
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
 		// Bind the held blank card on any save; bound cards are never rebound.
@@ -302,9 +303,8 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private void saveSpell(ServerPlayer sender, boolean reapply) {
 		SpellDefinition definition = parseDefinition();
-		// OP node quota: a draft card bound to this id caps how many run_command
-		// nodes the definition may carry (quantity control for boss-drop drafts).
-		enforceOpQuota(sender, definition, -1);
+		// Operators may author privileged boss logic. A held draft budget is still
+		// shown by the editor, but does not restrict this server-authoring path.
 		SpellRegistry.register(definition);
 		CustomSpellStorage.saveSpell(sender.server, definition);
 		// Bind the held blank card on ANY save: cards already bound are skipped,
@@ -317,42 +317,36 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		}
 	}
 
-	/**
-	 * Enforce the draft special-node quota: if the player holds a spell card
-	 * with a special-node quota (a blank boss-base card, or a card already bound
-	 * to this spell id), the definition's special node count (teleport, confine,
-	 * erase, clear, flags, force/fire spell, on_damage / fire / laser hooks —
-	 * NOT run_command, which stays operator-only) must not exceed the quota.
-	 * Without such a card, {@code defaultQuota} applies (-1 = no restriction,
-	 * operators only).
-	 */
-	private static void enforceOpQuota(ServerPlayer sender, SpellDefinition definition, int defaultQuota) {
-		int quota = -2;
-		int blankQuota = 0;
+	/** Survival drafts may save freely over ordinary/performance budgets so the
+	 * editor remains usable for iterative tuning. Capability grants are hard
+	 * boundaries and are checked here as well as at certification. */
+	private static void enforceDraftCapabilities(ServerPlayer sender, SpellDefinition definition,
+			boolean requireDraft) {
+		SpellDraftBudget budget = null;
+		SpellDraftBudget blankBudget = null;
 		for (ItemStack stack : sender.getInventory().items) {
-			if (stack.getItem() instanceof DynamicSpellItem && !DynamicSpellItem.isComplete(stack)) {
+			if (stack.getItem() instanceof DynamicSpellItem && !DynamicSpellItem.isComplete(stack)
+					&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
 				ResourceLocation bound = DynamicSpellItem.getSpellId(stack);
-				int cardQuota = DynamicSpellItem.getOpQuota(stack);
 				if (bound != null && definition.id.equals(bound)) {
-					if (cardQuota > 0) {
-						quota = cardQuota;
-						break;
-					}
-				} else if (bound == null && cardQuota > 0 && blankQuota == 0) {
-					blankQuota = cardQuota;
+					budget = DynamicSpellItem.getDraftBudget(stack);
+					break;
+				} else if (bound == null && blankBudget == null) {
+					blankBudget = DynamicSpellItem.getDraftBudget(stack);
 				}
 			}
 		}
-		if (quota == -2) {
-			quota = blankQuota > 0 ? blankQuota : defaultQuota;
+		if (budget == null) budget = blankBudget;
+		if (budget == null) {
+			if (requireDraft) throw new IllegalArgumentException("No unfinished spell-card base is available");
+			return;
 		}
-		if (quota < 0) {
-			return; // operator path without a quota card: unrestricted
+		SpecialNodeCounter.Summary nodes = SpecialNodeCounter.summarize(definition);
+		if (nodes.operatorOnlyNodes() > 0 || nodes.deniedNodes() > 0) {
+			throw new IllegalArgumentException("Spell contains operator-only or denied nodes");
 		}
-		int count = SpecialNodeCounter.count(definition);
-		if (count > quota) {
-			throw new IllegalArgumentException(
-					"special nodes (" + count + ") exceed the draft quota (" + quota + ")");
+		if (!budget.permitsExperimental(nodes)) {
+			throw new IllegalArgumentException("Experimental capability grants exceed the draft budget");
 		}
 	}
 

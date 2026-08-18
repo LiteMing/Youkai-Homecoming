@@ -188,6 +188,9 @@ public class YoukaisHomecoming {
 	public static void registerRecipeSerializers(RegisterEvent event) {
 		if (event.getRegistryKey().equals(ForgeRegistries.Keys.RECIPE_SERIALIZERS)) {
 			CraftingHelper.register(SlipBottleIngredient.INSTANCE.id(), SlipBottleIngredient.INSTANCE);
+			event.register(ForgeRegistries.Keys.RECIPE_SERIALIZERS,
+					dev.xkmc.youkaishomecoming.content.spell.item.SpellDraftRecipe.SERIALIZER_ID,
+					() -> dev.xkmc.youkaishomecoming.content.spell.item.SpellDraftRecipe.Serializer.INSTANCE);
 		}
 	}
 

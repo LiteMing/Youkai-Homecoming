@@ -157,6 +157,23 @@ public final class SpellAnalyzer {
 				java.util.Set.of(), true).run();
 	}
 
+	/**
+	 * Certification projection for editor feedback. Structural and bounded-value
+	 * checks remain active, while the four configurable performance ceilings and
+	 * shooter count are relaxed so the UI can display an over-budget value instead
+	 * of losing the projection at the point where it matters most.
+	 */
+	public static SpellAnalysis analyzePreview(SpellDefinition definition, SpellAnalysisLimits configuredLimits) {
+		SpellAnalysisLimits previewLimits = new SpellAnalysisLimits(
+				configuredLimits.maxPhases(), configuredLimits.maxActions(), configuredLimits.maxDepth(),
+				configuredLimits.maxRepeat(), Long.MAX_VALUE, Integer.MAX_VALUE,
+				configuredLimits.maxLifetime(), configuredLimits.maxExpressionLength(),
+				Integer.MAX_VALUE, Integer.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE,
+				configuredLimits.maxHitsPerProjectile(), configuredLimits.certificationWindowTicks());
+		return new SpellAnalyzer(definition, SpellAnalysisProfile.CERTIFICATION, previewLimits,
+				java.util.Set.of(), true).run();
+	}
+
 	// ------------------------------------------------------------------ pipeline
 
 	private SpellAnalysis run() {
@@ -919,7 +936,9 @@ public final class SpellAnalyzer {
 			if (!operatorTest) {
 				for (SpellCapability cap : capabilities) {
 					SpellCapabilityPolicy policy = SpellCapabilityPolicies.currentPolicy(cap);
-					if (!policy.allowsCertification() && !extraAllowed.contains(cap)) {
+					boolean grantedExperimental = policy == SpellCapabilityPolicy.EXPERIMENTAL
+							&& extraAllowed.contains(cap);
+					if (!policy.allowsCertification() && !grantedExperimental) {
 						throw new SpellAnalysisException("Certification rejected: capability " + cap.id()
 								+ " policy " + policy);
 					}

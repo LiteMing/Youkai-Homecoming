@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManag
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
@@ -168,6 +169,19 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	 */
 	public static void bindSpellId(ItemStack stack, ResourceLocation spellId) {
 		if (getSpellId(stack) == null) setSpellId(stack, spellId);
+	}
+
+	/** Budget frozen on this draft base. Missing data uses config defaults; the
+	 * old aggregate quota remains readable for pre-0.22.9 cards. */
+	public static SpellDraftBudget getDraftBudget(ItemStack stack) {
+		return SpellDraftBudget.read(stack.getTag(), getOpQuota(stack));
+	}
+
+	public static void setDraftBudget(ItemStack stack, SpellDraftBudget budget) {
+		budget.write(stack.getOrCreateTag());
+		// New budgets use capability-specific grants. Retain no ambiguous aggregate
+		// quota on freshly produced cards.
+		setOpQuota(stack, budget.legacyExperimentalQuota());
 	}
 
 	/**
@@ -430,10 +444,21 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (!blankDraft) {
 			SpellItemCost.appendCostTooltip(list, castDuration);
 		}
-		int quota = getOpQuota(stack);
-		if (quota > 0) {
-			// boss-base draft: how many experimental nodes this draft may use
-			list.add(YHLangData.SPELL_OP_QUOTA.get(quota));
+		SpellDraftBudget budget = getDraftBudget(stack);
+		if (!isComplete(stack) && !CertifiedSpellValidator.isCertified(stack)) {
+			list.add(Component.translatable("youkaishomecoming.tooltip.spell_budget.nodes",
+					budget.freeNodeCount()).withStyle(ChatFormatting.GRAY));
+			list.add(Component.translatable("youkaishomecoming.tooltip.spell_budget.performance",
+					budget.maxSpawnPerTick(), budget.maxPeakAlive(),
+					budget.maxProjectileTicks(), budget.maxHookExecutions()).withStyle(ChatFormatting.DARK_GRAY));
+			int grants = budget.teleportGrants() + budget.eraseEnemyDanmakuGrants()
+					+ budget.clearScreenGrants() + budget.bossOnDamageGrants();
+			if (grants > 0 || budget.legacyExperimentalQuota() > 0) {
+				list.add(Component.translatable("youkaishomecoming.tooltip.spell_budget.experimental",
+						budget.teleportGrants(), budget.eraseEnemyDanmakuGrants(),
+						budget.clearScreenGrants(), budget.bossOnDamageGrants(),
+						budget.legacyExperimentalQuota()).withStyle(ChatFormatting.LIGHT_PURPLE));
+			}
 		}
 		if (isSingleUse(stack)) {
 			list.add(YHLangData.SPELL_SINGLE_USE.get());

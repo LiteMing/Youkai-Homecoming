@@ -1,5 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.analysis;
 
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
@@ -53,5 +55,41 @@ public record SpellAnalysis(
 			if (diag.isError()) return true;
 		}
 		return false;
+	}
+
+	/** Sequential spell dependency aggregation shared by certification and the editor. */
+	public static SpellAnalysis combine(Iterable<SpellAnalysis> analyses) {
+		long spawns = 0;
+		long projectileTicks = 0;
+		int peakAlive = 0;
+		int maxSpawn = 0;
+		long hooks = 0;
+		long expressionOps = 0;
+		double serverWork = 0;
+		double renderWork = 0;
+		double gameplayPower = 0;
+		EnumSet<SpellCapability> capabilities = EnumSet.noneOf(SpellCapability.class);
+		List<SpellDiagnostic> diagnostics = new ArrayList<>();
+		for (SpellAnalysis analysis : analyses) {
+			spawns = saturatedAdd(spawns, analysis.totalSpawnUpperBound());
+			projectileTicks = saturatedAdd(projectileTicks, analysis.projectileTicks());
+			peakAlive = Math.max(peakAlive, analysis.peakAliveUpperBound());
+			maxSpawn = Math.max(maxSpawn, analysis.maxSpawnPerTick());
+			hooks = saturatedAdd(hooks, analysis.hookExecutionUpperBound());
+			expressionOps = saturatedAdd(expressionOps, analysis.expressionOps());
+			serverWork += analysis.serverWork();
+			renderWork += analysis.clientRenderWork();
+			gameplayPower += analysis.gameplayPower();
+			capabilities.addAll(analysis.requiredCapabilities());
+			diagnostics.addAll(analysis.diagnostics());
+		}
+		return new SpellAnalysis(spawns, projectileTicks, peakAlive, maxSpawn, hooks,
+				expressionOps, serverWork, renderWork, gameplayPower,
+				Set.copyOf(capabilities), List.copyOf(diagnostics));
+	}
+
+	private static long saturatedAdd(long a, long b) {
+		if (b <= 0) return a;
+		return a > Long.MAX_VALUE - b ? Long.MAX_VALUE : a + b;
 	}
 }

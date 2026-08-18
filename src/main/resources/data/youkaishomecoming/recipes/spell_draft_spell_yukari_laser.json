@@ -1,5 +1,6 @@
 {
-  "type": "minecraft:crafting_shapeless",
+  "type": "youkaishomecoming:spell_draft",
+  "boss_spell": "youkaishomecoming:yukari_yakumo",
   "category": "equipment",
   "ingredients": [
     {
@@ -13,7 +14,6 @@
     }
   ],
   "result": {
-    "item": "youkaishomecoming:dynamic_spell",
-    "nbt": "{yh_op_quota:2}"
+    "item": "youkaishomecoming:dynamic_spell"
   }
 }

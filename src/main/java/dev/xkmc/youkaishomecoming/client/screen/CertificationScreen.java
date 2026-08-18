@@ -93,8 +93,21 @@ public class CertificationScreen extends Screen {
 			Component costLine = Component.translatable("youkaishomecoming.cert.screen.cost",
 					quote.startCostUnits, String.format(Locale.ROOT, "%.1f", quote.castCostUnits / 100.0),
 					xpLevels(quote.castCostUnits), quote.issueCostUnits, quote.maxSpawnPerTick);
+			Component nodeLine = Component.translatable("youkaishomecoming.cert.screen.nodes",
+					quote.ordinaryNodes, quote.freeNodeCount,
+					Math.max(0, quote.ordinaryNodes - quote.freeNodeCount), quote.nodeCostUnits,
+					quote.experimentalNodes, quote.operatorOnlyNodes);
+			Component performanceLine = Component.translatable("youkaishomecoming.cert.screen.performance",
+					quote.maxSpawnPerTick, quote.maxSpawnBudget,
+					quote.peakAliveUpperBound, quote.maxPeakBudget);
+			Component workLine = Component.translatable("youkaishomecoming.cert.screen.performance_work",
+					quote.projectileTicks, quote.maxProjectileTicksBudget,
+					quote.hookExecutionUpperBound, quote.maxHookExecutionsBudget);
 			gui.drawCenteredString(this.font, durationLine, cx, 140, 0xFFA0FFA0);
 			gui.drawCenteredString(this.font, costLine, cx, 152, 0xFFA0FFA0);
+			gui.drawCenteredString(this.font, nodeLine, cx, 164, 0xFFFFD36B);
+			gui.drawCenteredString(this.font, performanceLine, cx, 176, 0xFF9DECF9);
+			gui.drawCenteredString(this.font, workLine, cx, 188, 0xFF9DECF9);
 		}
 	}
 

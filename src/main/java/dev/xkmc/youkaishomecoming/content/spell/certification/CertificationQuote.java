@@ -2,6 +2,8 @@ package dev.xkmc.youkaishomecoming.content.spell.certification;
 
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysis;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
 
 /**
  * Firm server quote for one certification attempt (design doc §5.2, §18).
@@ -24,6 +26,10 @@ public record CertificationQuote(
 		int spellHp,
 		/** Draft special-node quota that allowed experimental nodes in this certification (0 = none). */
 		int specialNodeQuota,
+		/** Frozen unfinished-card limits used for this quote and final certificate. */
+		SpellDraftBudget draftBudget,
+		/** Full health-plan node closure used for cost and editor feedback. */
+		SpecialNodeCounter.Summary nodeSummary,
 		/** True only for certificates produced by the OP-only /yhdev test path. */
 		boolean operatorTest,
 		/** Frozen phase/spell dependency closure used by trial and reward runtime. */

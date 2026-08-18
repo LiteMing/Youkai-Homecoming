@@ -42,9 +42,11 @@ public final class CertifiedSpellRewardService {
 		ItemStack stack = DynamicSpellItem.createStackWithDuration(
 				YHDanmaku.DYNAMIC_SPELL.get(), definition.id, castDuration, false);
 		CertifiedSpellValidator.tagCertified(stack, certificate);
-		// the certified card keeps the special-node quota granted at draft time
-		// (recorded on the certificate; shown for reference)
-		DynamicSpellItem.setOpQuota(stack, certificate.specialNodeQuota());
+		if (certificate.draftBudget() != null) {
+			DynamicSpellItem.setDraftBudget(stack, certificate.draftBudget());
+		} else {
+			DynamicSpellItem.setOpQuota(stack, certificate.specialNodeQuota());
+		}
 		// spell color = blended average of the danmaku colors inside the definition,
 		// with a small jitter; falls back to fully random when nothing is readable
 		RandomSource random = RandomSource.create();
@@ -181,6 +183,7 @@ public final class CertifiedSpellRewardService {
 				cost,
 				capabilities,
 				controller.quote().specialNodeQuota(),
+				controller.quote().draftBudget(),
 				controller.quote().operatorTest(),
 				SpellCertificate.CURRENT_HEALTH_PLAN_VERSION,
 				SpellCertificate.CURRENT_ANALYSIS_VERSION,

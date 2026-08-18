@@ -95,6 +95,7 @@ public final class CertifiedSpellValidator {
 		}
 		SpellHealthPlan plan = certificate.healthPlanVersion() >= SpellCertificate.CURRENT_HEALTH_PLAN_VERSION
 				? CertifiedSpellStorage.loadHealthPlan(player.server, hash) : null;
+		if (plan == null) return null;
 		SpellDefinition def = plan == null ? CertifiedSpellStorage.loadDefinition(player.server, hash) : plan.rootDefinition();
 		if (def == null) return null;
 		String actual = plan == null ? SpellHash.canonicalHash(def)
@@ -115,7 +116,10 @@ public final class CertifiedSpellValidator {
 				boolean requiresOperator = capabilities.stream()
 						.anyMatch(cap -> SpellCapabilityPolicies.defaultPolicy(cap) == SpellCapabilityPolicy.OP_ONLY);
 				if (requiresOperator && !player.hasPermissions(2)) return null;
+			} else if (certificate.draftBudget() != null) {
+				CertificationService.validateCertifiedPlan(plan, certificate.draftBudget());
 			} else {
+				if (certificate.certificationRulesVersion() >= SpellCertificate.CURRENT_RULES_VERSION) return null;
 				try {
 					for (SpellDefinition candidate : plan == null ? java.util.List.of(def) : plan.definitions().values()) {
 						SpellAnalyzer.analyze(candidate, SpellAnalysisProfile.CERTIFICATION);
@@ -162,7 +166,11 @@ public final class CertifiedSpellValidator {
 				boolean requiresOperator = analysis.requiredCapabilities().stream()
 						.anyMatch(cap -> SpellCapabilityPolicies.defaultPolicy(cap) == SpellCapabilityPolicy.OP_ONLY);
 				if (requiresOperator && !player.hasPermissions(2)) return null;
+			} else if (certificate.draftBudget() != null) {
+				SpellHealthPlan synthetic = SpellHealthPlan.analyze(definition, id -> null);
+				CertificationService.validateCertifiedPlan(synthetic, certificate.draftBudget());
 			} else {
+				if (certificate.certificationRulesVersion() >= SpellCertificate.CURRENT_RULES_VERSION) return null;
 				try {
 					SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION);
 				} catch (IllegalArgumentException e) {

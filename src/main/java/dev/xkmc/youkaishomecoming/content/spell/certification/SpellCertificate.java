@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.certification;
 
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
 
 import java.util.Set;
 import java.util.UUID;
@@ -23,6 +24,8 @@ public record SpellCertificate(
 		Set<SpellCapability> capabilities,
 		/** Draft special-node quota used by normal survival certification. */
 		int specialNodeQuota,
+		/** Frozen draft limits. Null only on legacy certificate JSON. */
+		SpellDraftBudget draftBudget,
 		/** True only for rewards issued by the OP-only /yhdev certification path. */
 		boolean operatorTest,
 		/** 1 = definitionHash covers the frozen set_spell_health dependency closure. */
@@ -33,6 +36,6 @@ public record SpellCertificate(
 ) {
 
 	public static final int CURRENT_ANALYSIS_VERSION = 1;
-	public static final int CURRENT_RULES_VERSION = 1;
+	public static final int CURRENT_RULES_VERSION = 2;
 	public static final int CURRENT_HEALTH_PLAN_VERSION = 1;
 }

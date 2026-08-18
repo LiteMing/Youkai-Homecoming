@@ -325,33 +325,38 @@ public class ActionEditorPanel {
 	}
 
 	private void buildTypeSelectorRows() {
-		addFullWidthButton("Fire Danmaku", () -> selectType("fire_danmaku"));
-		addFullWidthButton("Fire Laser", () -> selectType("fire_laser"));
-		addFullWidthButton("Fire Text Danmaku", () -> selectType("fire_text_danmaku"));
-		addFullWidthButton("Conditional", () -> selectType("conditional"));
-		addFullWidthButton("Repeat", () -> selectType("repeat"));
-		addFullWidthButton("Delay", () -> selectType("delay"));
-		addFullWidthButton("Teleport", () -> selectType("teleport"));
-		addFullWidthButton("Spawn Shooter", () -> selectType("spawn_shooter"));
-		addFullWidthButton("Burst", () -> selectType("burst"));
-		addFullWidthButton("Set Variable", () -> selectType("set_variable"));
-		addFullWidthButton("Add Variable", () -> selectType("add_variable"));
-		addFullWidthButton("Sequence", () -> selectType("sequence"));
-		addFullWidthButton("Clear Screen", () -> selectType("clear_screen"));
-		addFullWidthButton("Erase Enemy Danmaku", () -> selectType("erase_enemy_danmaku"));
-		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
-		addFullWidthButton("Run Command", () -> selectType("run_command"));
-		addFullWidthButton("Show Spell Title", () -> selectType("show_spell_title"));
-		addFullWidthButton("Custom Magic Circle", () -> selectType("set_spell_circle"));
-		addFullWidthButton("Spell Health", () -> selectType("set_spell_health"));
-		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
-		addFullWidthButton("Force Spell", () -> selectType("force_spell"));
-		addFullWidthButton("Fire Spell", () -> selectType("fire_spell"));
-		addFullWidthButton("Confine Target", () -> selectType("confine_target"));
-		addFullWidthButton("Set Entity Flag", () -> selectType("set_entity_flag"));
-		addFullWidthButton("YSM Render", () -> selectType("ysm_render"));
-		addFullWidthButton("Teleport Random", () -> selectType("teleport_random"));
-		addFullWidthButton("Caster Moves", () -> selectType("caster_moves"));
+		addTypeButton("fire_danmaku", "Fire Danmaku");
+		addTypeButton("fire_laser", "Fire Laser");
+		addTypeButton("fire_text_danmaku", "Fire Text Danmaku");
+		addTypeButton("conditional", "Conditional");
+		addTypeButton("repeat", "Repeat");
+		addTypeButton("delay", "Delay");
+		addTypeButton("teleport", "Teleport");
+		addTypeButton("spawn_shooter", "Spawn Shooter");
+		addTypeButton("burst", "Burst");
+		addTypeButton("set_variable", "Set Variable");
+		addTypeButton("add_variable", "Add Variable");
+		addTypeButton("sequence", "Sequence");
+		addTypeButton("clear_screen", "Clear Screen");
+		addTypeButton("erase_enemy_danmaku", "Erase Enemy Danmaku");
+		addTypeButton("play_sound", "Play Sound");
+		addTypeButton("run_command", "Run Command");
+		addTypeButton("show_spell_title", "Show Spell Title");
+		addTypeButton("set_spell_circle", "Custom Magic Circle");
+		addTypeButton("set_spell_health", "Spell Health");
+		addTypeButton("force_phase", "Force Phase");
+		addTypeButton("force_spell", "Force Spell");
+		addTypeButton("fire_spell", "Fire Spell");
+		addTypeButton("confine_target", "Confine Target");
+		addTypeButton("set_entity_flag", "Set Entity Flag");
+		addTypeButton("ysm_render", "YSM Render");
+		addTypeButton("teleport_random", "Teleport Random");
+		addTypeButton("caster_moves", "Caster Moves");
+	}
+
+	private void addTypeButton(String type, String label) {
+		String marker = SpellEditorNodeLabels.actionMarker(createDefaultAction(type));
+		addFullWidthButton(marker + label, () -> selectType(type));
 	}
 
 	private void selectType(String type) {
@@ -3241,7 +3246,7 @@ public class ActionEditorPanel {
 			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose",
 			"tick", "phase_tick", "total_tick", "distance",
 			"target_height", "target_fly_time", "target_speed", "game_difficulty",
-			"caster_x", "caster_y", "caster_z", "caster_max_health", "target_x", "target_y", "target_z"
+			"caster_x", "caster_y", "caster_z", "caster_max_health", "caster_power", "target_x", "target_y", "target_z"
 	};
 
 	/** Returns the insert template for a function (with parens and commas). */
@@ -3335,7 +3340,7 @@ public class ActionEditorPanel {
 	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
 			"tick", "phase_tick", "total_tick", "distance", "target_height", "target_fly_time",
 			"target_speed", "game_difficulty",
-			"caster_x", "caster_y", "caster_z", "caster_max_health", "target_x", "target_y", "target_z"
+			"caster_x", "caster_y", "caster_z", "caster_max_health", "caster_power", "target_x", "target_y", "target_z"
 	);
 
 	/**

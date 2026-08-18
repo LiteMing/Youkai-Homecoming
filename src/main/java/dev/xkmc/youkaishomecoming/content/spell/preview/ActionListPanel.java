@@ -8,6 +8,8 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.ColorProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -88,7 +90,7 @@ public class ActionListPanel {
 		}
 	}
 
-	private enum RowKind {SECTION, ACTION, BRANCH}
+	private enum RowKind {SUMMARY, SECTION, ACTION, BRANCH}
 
 	private record Row(RowKind kind, int y, int indent, boolean ancestorDisabled,
 					   String section, String sectionTitle,
@@ -96,6 +98,10 @@ public class ActionListPanel {
 					   AddTarget addTarget, String addLabel) {
 		static Row section(String section, String title, int y) {
 			return new Row(RowKind.SECTION, y, 0, false, section, title, null, null, null, null);
+		}
+
+		static Row summary(String title, int y) {
+			return new Row(RowKind.SUMMARY, y, 0, false, null, title, null, null, null, null);
 		}
 
 		static Row action(ActionPath path, SpellAction action, int indent, int y, boolean ancestorDisabled) {
@@ -110,6 +116,7 @@ public class ActionListPanel {
 
 	private int x, y, w, h;
 	private PhaseDefinition phase;
+	private final java.util.function.Supplier<SpellDefinition> definitionSupplier;
 	private ActionPath selectedPath;
 	private final List<Row> rows = new ArrayList<>();
 	private int scrollOffset = 0;
@@ -185,10 +192,12 @@ public class ActionListPanel {
 	private final Runnable onMoved;
 	private final UndoManager undoManager = new UndoManager();
 
-	public ActionListPanel(BiConsumer<SpellAction, ActionPath> onSelect, Consumer<AddTarget> onRequestAdd, Runnable onMoved) {
+	public ActionListPanel(BiConsumer<SpellAction, ActionPath> onSelect, Consumer<AddTarget> onRequestAdd,
+			Runnable onMoved, java.util.function.Supplier<SpellDefinition> definitionSupplier) {
 		this.onSelect = onSelect;
 		this.onRequestAdd = onRequestAdd;
 		this.onMoved = onMoved;
+		this.definitionSupplier = definitionSupplier;
 	}
 
 	/** Save current state before a mutation. */
@@ -491,6 +500,16 @@ public class ActionListPanel {
 		rows.clear();
 		if (phase == null) return;
 		int cy = y + PADDING - scrollOffset;
+		SpellDefinition definition = definitionSupplier == null ? null : definitionSupplier.get();
+		SpecialNodeCounter.Summary summary = definition == null
+				? SpecialNodeCounter.summarize(phase) : SpecialNodeCounter.summarize(definition);
+		String total = SpellEditorLocalization.isChinese()
+				? "节点 普通 " + summary.ordinaryNodes() + "  高级 " + summary.advancedHookNodes()
+				+ "  实验 " + summary.experimentalNodes() + "  OP " + summary.operatorOnlyNodes()
+				: "Nodes ordinary " + summary.ordinaryNodes() + "  advanced " + summary.advancedHookNodes()
+				+ "  EXP " + summary.experimentalNodes() + "  OP " + summary.operatorOnlyNodes();
+		rows.add(Row.summary(total, cy));
+		cy += ROW_HEIGHT;
 		cy = buildSection("onEnter", phase.onEnter, cy, "enter");
 		cy = buildSection("onTick", phase.onTick, cy, "tick");
 		cy = buildSection("onExit", phase.onExit, cy, "exit");
@@ -675,8 +694,12 @@ public class ActionListPanel {
 		for (Row row : rows) {
 			if (row.y + ROW_HEIGHT < y || row.y > y + h) continue;
 
-			if (row.kind == RowKind.SECTION) {
-				g.drawString(font, SpellEditorLocalization.t(row.sectionTitle), x + PADDING, row.y + 2, 0xFF88AACC, false);
+			if (row.kind == RowKind.SUMMARY) {
+				g.drawString(font, row.sectionTitle, x + PADDING, row.y + 2, 0xFFE2E8F0, false);
+			} else if (row.kind == RowKind.SECTION) {
+				String sectionLabel = SpellEditorNodeLabels.sectionMarker(row.section)
+						+ SpellEditorLocalization.t(row.sectionTitle);
+				g.drawString(font, sectionLabel, x + PADDING, row.y + 2, 0xFF88AACC, false);
 				String plus = "[+]";
 				int plusX = x + w - font.width(plus) - PADDING;
 				boolean plusHovered = mouseX >= plusX && mouseX < x + w
@@ -717,7 +740,8 @@ public class ActionListPanel {
 				if (renamingPath != null && row.path != null && row.path.equals(renamingPath)) {
 					g.drawString(font, "> " + renamingText + "_", ix, row.y + 2, 0xFFFFFF44, false);
 				} else {
-					String label = SpellEditorLocalization.t(getDisplayLabel(displayAction, row.path));
+					String label = SpellEditorNodeLabels.actionMarker(displayAction)
+							+ SpellEditorLocalization.t(getDisplayLabel(displayAction, row.path));
 					int textColor;
 					if (isDisabled) {
 						textColor = 0xFF666666; // Gray for disabled
@@ -744,7 +768,9 @@ public class ActionListPanel {
 				g.drawString(font, indicator, ix, row.y + 2,
 						hovered ? 0xFFFFFF66 : 0xFFB8A85C, false);
 				ix += font.width(indicator) + 2;
-				g.drawString(font, SpellEditorLocalization.t(row.addLabel), ix, row.y + 2,
+				String branchLabel = SpellEditorNodeLabels.branchMarker(row.addTarget.branch())
+						+ SpellEditorLocalization.t(row.addLabel);
+				g.drawString(font, branchLabel, ix, row.y + 2,
 						selected ? 0xFFFFFF88 : 0xFFD8CA88, false);
 				String plus = "[+]";
 				int plusX = x + w - font.width(plus) - PADDING;

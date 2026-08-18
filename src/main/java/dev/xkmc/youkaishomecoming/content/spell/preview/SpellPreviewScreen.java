@@ -77,6 +77,8 @@ public class SpellPreviewScreen extends Screen {
 	/** Persists across editor open/close within the same game session. */
 	private static boolean autoReplay = true;
 	private com.google.gson.JsonObject pendingDockLayout;
+	private boolean preferHelpOnNextInit;
+	private boolean preferViewportOnNextInit;
 
 	public SpellPreviewScreen(SpellDefinition definition) {
 		this(definition, SpellEditorController.isDraftDefinition(definition));
@@ -85,6 +87,7 @@ public class SpellPreviewScreen extends Screen {
 	private SpellPreviewScreen(SpellDefinition definition, boolean draftMode) {
 		super(Component.literal(draftMode ? SpellEditorLocalization.t("Spell Editor") : SpellEditorLocalization.t("Spell Preview") + ": " + definition.id));
 		this.definition = definition;
+		this.preferHelpOnNextInit = draftMode;
 		this.scene = new VirtualSpellScene(definition);
 		this.scene.setOnStateChanged(this::syncSceneState);
 		this.viewport = new OrthographicViewport();
@@ -240,7 +243,8 @@ public class SpellPreviewScreen extends Screen {
 					updateRotationGizmoForAction(action);
 				},
 				this::onRequestAddAction,
-				this::onActionListReordered
+				this::onActionListReordered,
+				() -> definition
 		);
 		actionListPanel.loadCustomNames(definition.customNames);
 
@@ -342,6 +346,13 @@ public class SpellPreviewScreen extends Screen {
 		// Set active group to the one containing the viewport
 		DockGroup vpGroup = dockLayout.findGroupContaining(viewportPanel);
 		if (vpGroup != null) dockLayout.setActiveGroup(vpGroup);
+		if (preferHelpOnNextInit) {
+			activateDockPanel(helpDockPanel);
+			preferHelpOnNextInit = false;
+		} else if (preferViewportOnNextInit) {
+			activateDockPanel(viewportPanel);
+			preferViewportOnNextInit = false;
+		}
 		syncEditorDockWidgetVisibility();
 
 		controlsDockPanel.buildButtons();
@@ -396,18 +407,27 @@ public class SpellPreviewScreen extends Screen {
 		DockPanel status = panelMap.get("status");
 		DockPanel variables = panelMap.get("variables");
 		DockPanel perf = panelMap.get("perf");
+		DockPanel help = panelMap.get("help");
 
-		DockGroup viewportGroup = new DockGroup(viewport);
+		DockGroup viewportGroup = new DockGroup(viewport, help);
 		DockGroup actionListGroup = new DockGroup(actions);
 		DockGroup editorGroup = new DockGroup(properties);
 		DockGroup controlsGroup = new DockGroup(controls, perf);
 		DockGroup statusGroup = new DockGroup(status, variables, rawJson, magicCircle);
-		// Help 面板默认不显示
 
 		DockSplit rightSplit = new DockSplit(false, 0.4f, actionListGroup, editorGroup);
 		DockSplit mainSplit = new DockSplit(true, 0.6f, viewportGroup, rightSplit);
 		DockSplit bottomSplit = new DockSplit(true, 0.72f, controlsGroup, statusGroup);
 		return new DockSplit(false, 0.8f, mainSplit, bottomSplit);
+	}
+
+	private void activateDockPanel(DockPanel panel) {
+		if (dockLayout == null || panel == null) return;
+		DockGroup group = dockLayout.findGroupContaining(panel);
+		if (group == null) return;
+		int index = group.getPanels().indexOf(panel);
+		if (index >= 0) group.setActiveIndex(index);
+		dockLayout.setActiveGroup(group);
 	}
 
 	private void relocateMissingStatusPanel() {
@@ -1019,6 +1039,8 @@ public class SpellPreviewScreen extends Screen {
 		phaseController.setDefinition(definition);
 		phaseController.reloadPhaseList();
 		if (oldDraftMode != spellController.isDraftMode()) {
+			preferHelpOnNextInit = !oldDraftMode && spellController.isDraftMode();
+			preferViewportOnNextInit = oldDraftMode && !spellController.isDraftMode();
 			rebuildScreen();
 			return;
 		}

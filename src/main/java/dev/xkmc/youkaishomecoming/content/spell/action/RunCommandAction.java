@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.action;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import dev.xkmc.youkaishomecoming.content.spell.util.SpellTextResolver;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.Entity;
@@ -40,11 +41,15 @@ public record RunCommandAction(Mode mode, HitContext hitContext, String command)
 			case NON_CHEAT -> caster.createCommandSourceStack()
 					.withSuppressedOutput();
 		};
+String cmd = SpellTextResolver.resolve(command, ctx);
+		if (cmd == null || cmd.isBlank()) {
+			return;
+		}
 		source = applyHitContext(source, ctx);
 		if (source == null) {
 			return;
 		}
-		server.getCommands().performPrefixedCommand(source, stripLeadingSlash(command));
+		server.getCommands().performPrefixedCommand(source, stripLeadingSlash(cmd));
 	}
 
 	@Nullable

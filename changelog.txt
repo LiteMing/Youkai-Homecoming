@@ -1,5 +1,5 @@
 2.7.0+HCDRS 0.23.1
-- 修复数据驱动弹幕回调(on_hit_entity / on_hit_block / on_expiry)对运行时变量的写入:改为显式记录回调实际调用的 set_variable/dd_variable 目标,不再用值比较推断写入,因此即使用 set_variable 把变量改回与快照相同的值(如吃豆人棋子门的置零)也能正确保留到主循环,避免变量卡死或叠加生成。
+- 修复数据驱动弹幕回调(on_hit_entity / on_hit_block / on_expiry)对运行时变量的写入:改为显式记录回调实际调用的 set_variable/add_variable 目标,不再用值比较推断写入,因此即使用 set_variable 把变量改回与快照相同的值(如吃豆人棋子门的置零)也能正确保留到主循环,避免变量卡死或叠加生成。
 
 2.7.0+HCDRS 0.23.0
 - 数据驱动符卡新增 `caster_power` 数值变量，读取玩家当前 P 点并按有效上限约束；预览编辑器可独立调节和显示 P 点，静态分析按最大可能值保守计算性能。

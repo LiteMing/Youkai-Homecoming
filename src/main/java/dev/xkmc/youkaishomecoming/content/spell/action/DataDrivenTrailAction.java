@@ -85,10 +85,15 @@ public class DataDrivenTrailAction extends TrailAction {
 
 		// Restore original variables
 		if (savedVars != null) {
-			// Clear any vars that were only in snapshot, restore originals
+			// Revert the temporary snapshot fill, but only for variables the child
+			// actions did NOT write. If a callback mutated a variable (e.g. score + 1
+			// on hit) it stays in the shared runtime so the main spell loop sees it.
 			for (var entry : variableSnapshot.entrySet()) {
 				if (savedVars.containsKey(entry.getKey())) {
-					runtime.setVariable(entry.getKey(), savedVars.get(entry.getKey()));
+					double current = runtime.getVariable(entry.getKey());
+					if (Double.compare(current, entry.getValue()) == 0) {
+						runtime.setVariable(entry.getKey(), savedVars.get(entry.getKey()));
+					}
 				}
 			}
 		}

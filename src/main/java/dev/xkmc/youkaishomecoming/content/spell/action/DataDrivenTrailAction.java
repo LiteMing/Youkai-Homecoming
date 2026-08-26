@@ -12,6 +12,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A TrailAction that executes data-driven SpellActions when a danmaku expires.
@@ -72,6 +73,8 @@ public class DataDrivenTrailAction extends TrailAction {
 		Map<String, Double> savedVars = null;
 		if (variableSnapshot != null) {
 			savedVars = Map.copyOf(runtime.getVariables());
+			// Snapshot-fill itself does not count as a callback write.
+			runtime.endTrackWrites();
 			for (var entry : variableSnapshot.entrySet()) {
 				runtime.setVariable(entry.getKey(), entry.getValue());
 			}
@@ -79,21 +82,22 @@ public class DataDrivenTrailAction extends TrailAction {
 
 		var trailHolder = new TrailCardHolder(holder, pos, dir, hitType, hitEntity);
 		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT);
+		// Capture which variables the callback actually writes (setVariable calls).
+		Set<String> written = variableSnapshot != null ? runtime.beginTrackWrites() : null;
 		for (var action : actions) {
 			action.execute(ctx);
 		}
+		runtime.endTrackWrites();
 
 		// Restore original variables
 		if (savedVars != null) {
-			// Revert the temporary snapshot fill, but only for variables the child
-			// actions did NOT write. If a callback mutated a variable (e.g. score + 1
-			// on hit) it stays in the shared runtime so the main spell loop sees it.
+			// Revert the temporary snapshot fill for everything the callback did NOT
+			// explicitly write. Keys the callback wrote (via setVariable) stay, so a
+			// hit-driven counter reaches the main loop even if its new value equals
+			// the snapshot value.
 			for (var entry : variableSnapshot.entrySet()) {
-				if (savedVars.containsKey(entry.getKey())) {
-					double current = runtime.getVariable(entry.getKey());
-					if (Double.compare(current, entry.getValue()) == 0) {
-						runtime.setVariable(entry.getKey(), savedVars.get(entry.getKey()));
-					}
+				if (savedVars.containsKey(entry.getKey()) && (written == null || !written.contains(entry.getKey()))) {
+					runtime.setVariable(entry.getKey(), savedVars.get(entry.getKey()));
 				}
 			}
 		}

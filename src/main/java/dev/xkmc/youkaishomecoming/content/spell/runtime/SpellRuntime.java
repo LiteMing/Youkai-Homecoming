@@ -47,6 +47,8 @@ public class SpellRuntime {
 	private int hitCount;
 	private boolean enteredCurrentPhase;
 	private final Map<String, Double> variables = new HashMap<>();
+	@Nullable
+	private Set<String> trackWritesTo = null;
 	private final List<ScheduledAction> scheduledActions = new ArrayList<>();
 	private final List<ChildRuntime> childRuntimes = new ArrayList<>();
 	private SpellMovementDirective movementDirective = SpellMovementDirective.random();
@@ -425,10 +427,35 @@ public class SpellRuntime {
 
 	public void setVariable(String key, double value) {
 		variables.put(key, value);
+		if (trackWritesTo != null) {
+			trackWritesTo.add(key);
+		}
 	}
 
 	public Map<String, Double> getVariables() {
 		return Collections.unmodifiableMap(variables);
+	}
+
+	/**
+	 * Begin recording setVariable calls to the returned set. While enabled, every
+	 * explicit setVariable records its key here. Used by callbacks (e.g. on_hit)
+	 * to distinguish "the callback really wrote this variable" from a temporary
+	 * snapshot restore, regardless of whether the written value equals the snapshot.
+	 *
+	 * @return the set to collect written keys into, or null if tracking is not enabled
+	 */
+	@Nullable
+	public Set<String> beginTrackWrites() {
+		if (trackWritesTo != null) {
+			trackWritesTo.clear();
+		}
+		trackWritesTo = new HashSet<>();
+		return trackWritesTo;
+	}
+
+	/** Stop tracking writes initiated by {@link #beginTrackWrites()}. */
+	public void endTrackWrites() {
+		trackWritesTo = null;
 	}
 
 	public SpellMovementDirective getMovementDirective() {

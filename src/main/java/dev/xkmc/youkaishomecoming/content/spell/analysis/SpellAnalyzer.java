@@ -775,7 +775,10 @@ public final class SpellAnalyzer {
 				|| action instanceof SpellActions.ForcePhase
 				|| action instanceof SpellActions.ForceSpell
 				|| action instanceof SpellActions.FireSpell
-				|| action instanceof SetSpellHealthAction;
+				|| action instanceof SetSpellHealthAction
+				// Salvaged placeholders must never be published — sharing a spell
+				// with an undecodable fragment just spreads the breakage.
+				|| action instanceof SpellActions.BrokenAction;
 	}
 
 	private static String bannedTypeName(SpellAction action) {
@@ -784,6 +787,7 @@ public final class SpellAnalyzer {
 		if (action instanceof SpellActions.ForceSpell) return "force_spell";
 		if (action instanceof SpellActions.FireSpell) return "fire_spell";
 		if (action instanceof SetSpellHealthAction) return "set_spell_health";
+		if (action instanceof SpellActions.BrokenAction) return "broken";
 		return "unknown";
 	}
 

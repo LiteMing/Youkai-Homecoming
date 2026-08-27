@@ -30,7 +30,7 @@ import java.util.Optional;
 public final class SpecialNodeCounter {
 
 	public record Summary(int actionNodes, int ordinaryNodes, int advancedHookNodes,
-			int experimentalNodes, int operatorOnlyNodes, int deniedNodes,
+			int experimentalNodes, int operatorOnlyNodes, int deniedNodes, int brokenNodes,
 			Map<SpellCapability, Integer> experimentalByCapability) {
 
 		public Summary {
@@ -51,7 +51,8 @@ public final class SpecialNodeCounter {
 					advancedHookNodes + other.advancedHookNodes,
 					experimentalNodes + other.experimentalNodes,
 					operatorOnlyNodes + other.operatorOnlyNodes,
-					deniedNodes + other.deniedNodes, counts);
+					deniedNodes + other.deniedNodes,
+					brokenNodes + other.brokenNodes, counts);
 		}
 	}
 
@@ -137,6 +138,9 @@ public final class SpecialNodeCounter {
 		else if (policy == SpellCapabilityPolicy.OP_ONLY) summary.operatorOnlyNodes++;
 		else if (policy == SpellCapabilityPolicy.DENY) summary.deniedNodes++;
 		else summary.ordinaryNodes++;
+		// Broken nodes are a subset of denied ones; counted separately so the editor
+		// can tell "you salvaged an unreadable fragment" from "you used a banned node".
+		if (capability == SpellCapability.BROKEN_NODE) summary.brokenNodes++;
 
 		if (inner instanceof SpellActions.ConditionalAction cond) {
 			accumulate(summary, cond.ifTrue());
@@ -187,6 +191,7 @@ public final class SpecialNodeCounter {
 	}
 
 	private static SpellCapability directCapability(SpellAction action) {
+		if (action instanceof SpellActions.BrokenAction) return SpellCapability.BROKEN_NODE;
 		if (action instanceof FireDanmakuAction || action instanceof FireLaserAction
 				|| action instanceof FireTextDanmakuAction) return SpellCapability.BASE_FIRE;
 		if (action instanceof TeleportAction || action instanceof TeleportRandomAction) return SpellCapability.TELEPORT;
@@ -212,6 +217,7 @@ public final class SpecialNodeCounter {
 		private int experimentalNodes;
 		private int operatorOnlyNodes;
 		private int deniedNodes;
+		private int brokenNodes;
 		private final EnumMap<SpellCapability, Integer> experimentalByCapability =
 				new EnumMap<>(SpellCapability.class);
 
@@ -222,7 +228,8 @@ public final class SpecialNodeCounter {
 
 		private Summary freeze() {
 			return new Summary(actionNodes, ordinaryNodes, advancedHookNodes,
-					experimentalNodes, operatorOnlyNodes, deniedNodes, experimentalByCapability);
+					experimentalNodes, operatorOnlyNodes, deniedNodes, brokenNodes,
+					experimentalByCapability);
 		}
 	}
 }

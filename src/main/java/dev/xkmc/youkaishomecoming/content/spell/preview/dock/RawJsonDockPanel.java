@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.preview.ActionListPanel;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
+import dev.xkmc.youkaishomecoming.content.spell.preview.SpellJsonSalvage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -352,7 +353,7 @@ public class RawJsonDockPanel implements DockPanel {
 			Optional<SpellDefinition> parsed = SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
 					.resultOrPartial(msg -> parseError[0] = msg);
 			if (parsed.isEmpty()) {
-				markDraft(text, errorStatus("Invalid spell JSON", parseError[0]));
+				applySalvageOrDraft(text, json, errorStatus("Invalid spell JSON", parseError[0]));
 				return;
 			}
 			String[] encodeError = new String[1];
@@ -384,6 +385,37 @@ public class RawJsonDockPanel implements DockPanel {
 		} catch (RuntimeException e) {
 			markDraft(text, errorStatus("Invalid spell JSON", e.getMessage()));
 		}
+	}
+
+	/**
+	 * 严格解析失败后的抢救回退。
+	 *
+	 * <p>逐个动作重解析，把解析不了的片段降级成惰性占位节点，让节点树照常建立，
+	 * 用户可以直接定位、替换或删除坏节点，而不是只看到一行错误信息。
+	 * 抢救不了（骨架本身坏了）时仍走原本的硬错误路径。
+	 *
+	 * <p>草稿文件照常写入，原文永远不会因为抢救而丢失。
+	 */
+	private void applySalvageOrDraft(String text, JsonElement json, String strictError) {
+		SpellJsonSalvage.Result salvaged;
+		try {
+			salvaged = SpellJsonSalvage.salvage(json);
+		} catch (RuntimeException e) {
+			salvaged = null;
+		}
+		if (salvaged == null || salvaged.brokenCount() == 0) {
+			markDraft(text, strictError);
+			return;
+		}
+		// 抢救过的定义必须留下草稿：它含有占位节点，不能被当成一份干净的存档。
+		dirtyInvalidDraft = true;
+		dirtyDraftMessage = strictError;
+		dirtyDraftPath = saveDraftFile(text);
+		highlightedPath = null;
+		applyDefinition.accept(salvaged.definition());
+		String detail = salvaged.messages().isEmpty() ? "" : "  " + salvaged.messages().get(0);
+		setStatus(SpellEditorLocalization.t("Salvaged broken nodes") + ": "
+				+ salvaged.brokenCount() + detail, 0xFFFFCC66);
 	}
 
 	private void onMagicCircleJsonChanged(String text) {

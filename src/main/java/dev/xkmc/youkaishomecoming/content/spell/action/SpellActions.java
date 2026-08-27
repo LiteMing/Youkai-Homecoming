@@ -48,6 +48,7 @@ public class SpellActions {
 		register("spawn_shooter", SpawnShooterAction.CODEC, SpawnShooterAction.class);
 		register("burst", BurstAction.CODEC, BurstAction.class);
 		register("disabled", DisabledAction.CODEC, DisabledAction.class);
+		register("broken", BrokenAction.CODEC, BrokenAction.class);
 		register("confine_target", ConfineTargetAction.CODEC, ConfineTargetAction.class);
 		register("set_entity_flag", SetEntityFlagAction.CODEC, SetEntityFlagAction.class);
 		register("teleport_random", TeleportRandomAction.CODEC, TeleportRandomAction.class);
@@ -272,6 +273,34 @@ public class SpellActions {
 		@Override
 		public void execute(SpellContext ctx) {
 			// Intentionally empty — disabled action does nothing
+		}
+	}
+
+	/**
+	 * Placeholder for a JSON fragment the editor could not decode.
+	 *
+	 * <p>When the Raw JSON panel fails a strict parse, {@code SpellJsonSalvage}
+	 * rebuilds the tree action by action and wraps each undecodable element in one
+	 * of these, so the node panel still comes up and the user can inspect, replace
+	 * or delete the offending node instead of staring at a single error string.
+	 *
+	 * <p>The original fragment is kept as a raw string rather than a parsed element,
+	 * so re-encoding a salvaged definition can never fail a second time.
+	 *
+	 * <p>It never executes, and {@code SpecialNodeCounter} classifies it as DENY —
+	 * that is what keeps a salvaged definition out of certification and out of a
+	 * survival draft save.
+	 */
+	public record BrokenAction(String originalType, String rawJson, String error) implements SpellAction {
+		public static final Codec<BrokenAction> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.STRING.optionalFieldOf("original_type", "").forGetter(BrokenAction::originalType),
+				Codec.STRING.optionalFieldOf("raw", "").forGetter(BrokenAction::rawJson),
+				Codec.STRING.optionalFieldOf("error", "").forGetter(BrokenAction::error)
+		).apply(i, BrokenAction::new));
+
+		@Override
+		public void execute(SpellContext ctx) {
+			// Intentionally empty — a fragment we could not decode must never run.
 		}
 	}
 }

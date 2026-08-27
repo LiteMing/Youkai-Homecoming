@@ -865,7 +865,7 @@ public class SpellPreviewScreen extends Screen {
 	 * Sends the full edited definition to the server before reapplying it.
 	 */
 	private void applyToEntities() {
-		if (isDraftMode()) {
+		if (isDraftMode() || refuseIfBroken()) {
 			return;
 		}
 		syncCustomNamesToDefinition();
@@ -875,10 +875,30 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	/**
+	 * 抢救出来的坏节点只是占位符，不能被当成真实内容送出编辑器。
+	 * 认证与生存草稿保存已由 DENY 策略在服务端拦下，这里补上 Apply / Export 两个出口。
+	 *
+	 * @return true 表示存在坏节点、调用方应放弃本次操作
+	 */
+	private boolean refuseIfBroken() {
+		if (!SpellJsonSalvage.containsBrokenNodes(definition)) {
+			return false;
+		}
+		if (minecraft != null && minecraft.player != null) {
+			minecraft.player.displayClientMessage(
+					Component.literal("[YH] " + SpellEditorLocalization.t("Fix broken nodes first")), true);
+		}
+		return true;
+	}
+
+	/**
 	 * Export the current spell definition to the server global spell directory.
 	 * Exported spells are loaded for every save on the same game/server instance.
 	 */
 	private void exportToDatapack() {
+		if (refuseIfBroken()) {
+			return;
+		}
 		syncCustomNamesToDefinition();
 		spellController.exportToDatapack();
 	}

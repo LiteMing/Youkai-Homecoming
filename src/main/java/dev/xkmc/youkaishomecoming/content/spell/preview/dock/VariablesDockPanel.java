@@ -199,6 +199,13 @@ public class VariablesDockPanel implements DockPanel {
 					(zh ? "不可认证: OP " : "Not certifiable: OP ") + nodes.operatorOnlyNodes()
 							+ (zh ? "  禁用 " : "  denied ") + nodes.deniedNodes(), 0xFFFF7777);
 		}
+		// 抢救出来的坏节点也是 denied 的一种，单列一行以便和「故意禁用的节点」区分。
+		if (nodes.brokenNodes() > 0) {
+			appendWrapped(lines, font, width,
+					(zh ? "损坏节点: " : "Broken nodes: ") + nodes.brokenNodes()
+							+ (zh ? "  (需修复后才能认证/导出)" : "  (fix before certify/export)"),
+					0xFFFF7777);
+		}
 	}
 
 	private void appendMetric(List<Line> lines, Font font, int width, String label, long current, long limit) {

@@ -273,6 +273,8 @@ public class ActionEditorPanel {
 		}
 		if (action instanceof FireDanmakuAction fda) {
 			buildFireDanmakuRows(fda);
+		} else if (action instanceof SpellActions.BrokenAction ba) {
+			buildBrokenRows(ba);
 		} else if (action instanceof FireLaserAction fla) {
 			buildFireLaserRows(fla);
 		} else if (action instanceof FireTextDanmakuAction ftda) {
@@ -515,6 +517,35 @@ public class ActionEditorPanel {
 	}
 
 	// --- FireDanmaku rows ---
+
+	/**
+	 * 抢救出来的坏节点。原文只读展示，不提供逐字段编辑 —— 我们本来就没能理解它。
+	 * 用户可以看清是哪一段坏了，然后就地换成一个正常类型或直接删除。
+	 */
+	private void buildBrokenRows(SpellActions.BrokenAction action) {
+		addFullWidthButton("⚠ BROKEN NODE (not executed, blocks certify/export)", () -> {});
+		addTextDisplayRow("Type", action.originalType());
+		addTextDisplayRow("Error", action.error());
+		addTextDisplayRow("Raw", action.rawJson());
+		addFullWidthButton("[Replace with another type]", () -> {
+			// 直接选中坏节点时没有插入回调，改为用新动作原地替换当前节点。
+			Consumer<SpellAction> callback = typeSelectorCallback != null ? typeSelectorCallback
+					: replacement -> {
+						typeSelectorMode = false;
+						currentAction = replacement;
+						onActionChanged.accept(replacement);
+						setAction(replacement, actionIndex);
+					};
+			showTypeSelector(callback);
+		});
+	}
+
+	/** 只读文本行：值本身就是内容，超宽时按面板宽度截断。 */
+	private void addTextDisplayRow(String label, String value) {
+		String shown = value == null ? "" : value.replace('\n', ' ');
+		var placeholder = createInvisiblePlaceholder(1, ROW_HEIGHT - 2);
+		rows.add(new EditorRow(SpellEditorLocalization.t(label) + ": " + shown, placeholder, true));
+	}
 
 	private void buildFireDanmakuRows(FireDanmakuAction a) {
 		// Compute mover override state

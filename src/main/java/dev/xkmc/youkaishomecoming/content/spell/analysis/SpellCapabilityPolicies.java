@@ -53,6 +53,8 @@ public final class SpellCapabilityPolicies {
 		put(SpellCapability.SET_SPELL_CIRCLE, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.SHOW_SPELL_TITLE, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.YSM_RENDER, SpellCapabilityPolicy.ALLOW);
+		// Undecodable salvaged fragments. Denied unconditionally — see setPolicy.
+		put(SpellCapability.BROKEN_NODE, SpellCapabilityPolicy.DENY);
 	}
 
 	private static void put(SpellCapability cap, SpellCapabilityPolicy policy) {
@@ -76,6 +78,11 @@ public final class SpellCapabilityPolicies {
 	}
 
 	public static void setPolicy(SpellCapability cap, SpellCapabilityPolicy policy) {
+		// A node we could not decode has no defined behaviour, so no script or
+		// command may promote it out of DENY.
+		if (cap == SpellCapability.BROKEN_NODE) {
+			return;
+		}
 		if (policy == null || policy == defaultPolicy(cap)) {
 			OVERRIDES.remove(cap);
 		} else {

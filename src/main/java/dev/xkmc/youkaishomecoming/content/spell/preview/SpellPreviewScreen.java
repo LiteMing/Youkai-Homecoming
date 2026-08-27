@@ -64,7 +64,11 @@ public class SpellPreviewScreen extends Screen {
 	private HelpDockPanel helpDockPanel;
 	private RawJsonDockPanel rawJsonDockPanel;
 	private MagicCircleDockPanel magicCircleDockPanel;
-	private RawJsonDockPanel.ContentMode rawJsonContext = RawJsonDockPanel.ContentMode.SPELL;
+	/**
+	 * 当前编辑模式。符卡与魔法阵共用本 Screen，但面板集合、顶栏与停靠布局各自独立。
+	 * {@link #rebuildScreen} 是在同一实例上重跑 {@link #init}，所以实例字段跨重建存活。
+	 */
+	private EditorMode editorMode = EditorMode.SPELL;
 
 	// Editor panels (direct references for hotkey access)
 	private ActionListPanel actionListPanel;
@@ -146,6 +150,7 @@ public class SpellPreviewScreen extends Screen {
 	protected void init() {
 		super.init();
 		boolean fullEdit = !isDraftMode();
+		boolean circleMode = editorMode == EditorMode.MAGIC_CIRCLE;
 		int bx = TOP_BAR_MARGIN;
 		int by = 2;
 		String marketLabel = SpellMarketLocalization.toMarket().getString();
@@ -156,81 +161,33 @@ public class SpellPreviewScreen extends Screen {
 			if (minecraft != null) {
 				minecraft.setScreen(new SpellMarketScreen(this, definition));
 			}
-		}, true);
+		}, !circleMode);
 		int rightLimit = Math.max(TOP_BAR_MARGIN, topBarMarketX - TOP_BAR_GROUP_GAP);
+		// Mode switch — always first and always enabled: it is the only way back.
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(editorMode.buttonLabel()), 82,
+				btn -> switchMode(editorMode.next()), true, rightLimit);
+		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
 		for (ViewAngle angle : ViewAngle.values()) {
 			bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(angle.getLabel()), 50, btn -> {
 				viewport.setPerspectiveMode(false);
 				viewport.setViewAngle(angle);
-			}, fullEdit, rightLimit);
+			}, fullEdit || circleMode, rightLimit);
 		}
-		// Perspective / Orthographic toggle
-		String perspLabel = SpellEditorLocalization.t(viewport.isPerspectiveMode() ? "Ortho" : "Persp");
-		bx = addTopBarButtonIfFits(bx, by, perspLabel, 40, btn -> {
-			boolean newPersp = !viewport.isPerspectiveMode();
-			viewport.setPerspectiveMode(newPersp);
-			if (newPersp) {
-				// Set camera to dummy target position
-				viewport.setCameraToTarget(scene.getTargetPos());
-			}
-			rebuildScreen();
-		}, fullEdit, rightLimit);
-		// Bind target toggle (only in perspective mode)
-		if (viewport.isPerspectiveMode()) {
-			String bindLabel = SpellEditorLocalization.t(viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt");
-			bx = addTopBarButtonIfFits(bx, by, bindLabel, 48, btn -> {
-				viewport.setTargetBoundToCamera(!viewport.isTargetBoundToCamera());
-				rebuildScreen();
-			}, fullEdit, rightLimit);
-		}
-		// Toggle editor button
+		bx = circleMode
+				? addCircleTopBarButtons(bx, by, rightLimit)
+				: addSpellTopBarButtons(bx, by, rightLimit, fullEdit);
+		// Shared tail: language, help and layout reset exist in both modes.
 		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(editorVisible ? "Editor <<" : "Editor >>"), 60, btn -> {
-			editorVisible = !editorVisible;
-			rebuildScreen();
-		}, fullEdit, rightLimit);
-		// Apply button: re-apply edited spell to all entities using it
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit, rightLimit);
-		// Export button: save spell definition as JSON datapack file
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 46, btn -> exportToDatapack(), fullEdit, rightLimit);
-		// Certify button: open the server certification dialog (design §5.2)
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Certify"), 44, btn -> openCertification(), fullEdit, rightLimit);
-		// Reset button: restore to original (built-in) or open-snapshot (custom)
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit, rightLimit);
-		// Auto Replay toggle
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF"), 52, btn -> {
-			autoReplay = !autoReplay;
-			rebuildScreen();
-		}, fullEdit, rightLimit);
-		// Help button — toggles HelpDockPanel as a docked tab
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Help"), 32, btn -> {
-			toggleHelpPanel();
-		}, fullEdit, rightLimit);
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.modeButtonLabel(), 34, btn -> {
 			SpellEditorLocalization.toggle();
 			rebuildScreen();
-		}, fullEdit, rightLimit);
-		// Collapse All / Expand All
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("\u25B6All"), 34, btn -> {
-			if (actionListPanel != null) actionListPanel.collapseAll();
-		}, fullEdit, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("\u25BCAll"), 34, btn -> {
-			if (actionListPanel != null) actionListPanel.expandAll();
-		}, fullEdit, rightLimit);
-		// Toggle show all add-buttons
-		String addLabel = SpellEditorLocalization.t(
-				actionListPanel != null && actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel");
-		bx = addTopBarButtonIfFits(bx, by, addLabel, 42, btn -> {
-			if (actionListPanel != null) {
-				actionListPanel.toggleShowAllAddButtons();
-				rebuildScreen();
-			}
-		}, fullEdit, rightLimit);
-		// Reset Layout button
+		}, true, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Help"), 32,
+				btn -> toggleHelpPanel(), true, rightLimit);
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("RstLayout"), 56, btn -> {
-			DockSerializer.deleteLayout();
+			DockSerializer.deleteLayout(editorMode.key());
 			rebuildScreen(false);
-		}, fullEdit, rightLimit);
+		}, true, rightLimit);
 		topBarLeftEnd = Math.max(TOP_BAR_MARGIN, bx - BUTTON_SPACING);
 
 		// --- Create editor panels ---
@@ -283,7 +240,7 @@ public class SpellPreviewScreen extends Screen {
 		magicCircleDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
 		viewportPanel.setMagicCircleEditor(magicCircleDockPanel);
 		rawJsonDockPanel.setMagicCircleContext(
-				() -> rawJsonContext == RawJsonDockPanel.ContentMode.MAGIC_CIRCLE,
+				() -> editorMode == EditorMode.MAGIC_CIRCLE,
 				() -> magicCircleDockPanel == null ? "" : magicCircleDockPanel.encodeRawJson(),
 				text -> {
 					if (magicCircleDockPanel != null) {
@@ -305,29 +262,40 @@ public class SpellPreviewScreen extends Screen {
 		perfDockPanel = new PerfDockPanel(scene);
 
 		// --- Build dock layout tree (load from config or use default) ---
+		// 面板集合按模式装配：符卡模式不含魔法阵面板，魔法阵模式不含动作/属性/控制/性能面板。
+		boolean circleLayout = editorMode == EditorMode.MAGIC_CIRCLE;
 		java.util.Map<String, DockPanel> panelMap = new java.util.LinkedHashMap<>();
 		panelMap.put(viewportPanel.dockId(), viewportPanel);
-		panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
-		panelMap.put(editorDockPanel.dockId(), editorDockPanel);
+		if (circleLayout) {
+			panelMap.put(magicCircleDockPanel.dockId(), magicCircleDockPanel);
+		} else {
+			panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
+			panelMap.put(editorDockPanel.dockId(), editorDockPanel);
+		}
 		panelMap.put(rawJsonDockPanel.dockId(), rawJsonDockPanel);
-		panelMap.put(magicCircleDockPanel.dockId(), magicCircleDockPanel);
-		panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
-		panelMap.put(statusDockPanel.dockId(), statusDockPanel);
-		panelMap.put(variablesDockPanel.dockId(), variablesDockPanel);
-		panelMap.put(perfDockPanel.dockId(), perfDockPanel);
+		if (!circleLayout) {
+			panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
+			panelMap.put(statusDockPanel.dockId(), statusDockPanel);
+			panelMap.put(variablesDockPanel.dockId(), variablesDockPanel);
+			panelMap.put(perfDockPanel.dockId(), perfDockPanel);
+		}
 		panelMap.put(helpDockPanel.dockId(), helpDockPanel);
 
+		java.util.function.Function<java.util.Map<String, DockPanel>, DockNode> defaultLayout =
+				circleLayout ? SpellPreviewScreen::buildDefaultCircleLayout : SpellPreviewScreen::buildDefaultSpellLayout;
+		String modeKey = editorMode.key();
 		com.google.gson.JsonObject layoutSnapshot = pendingDockLayout;
 		pendingDockLayout = null;
 		if (layoutSnapshot != null) {
-			dockLayout = new DockLayout(DockSerializer.loadLayout(layoutSnapshot, panelMap, SpellPreviewScreen::buildDefaultLayout));
+			dockLayout = new DockLayout(DockSerializer.loadLayout(layoutSnapshot, panelMap, defaultLayout));
+		} else if (circleLayout) {
+			dockLayout = new DockLayout(DockSerializer.loadLayout(modeKey, panelMap, defaultLayout));
 		} else {
-			boolean hadSavedLayout = DockSerializer.hasSavedLayout();
-			boolean savedLayoutHasStatusPanel = DockSerializer.savedLayoutContainsPanel(statusDockPanel.dockId());
-			boolean savedLayoutHasVariablesPanel = DockSerializer.savedLayoutContainsPanel(variablesDockPanel.dockId());
-			boolean savedLayoutHasRawJsonPanel = DockSerializer.savedLayoutContainsPanel(rawJsonDockPanel.dockId());
-			boolean savedLayoutHasMagicCirclePanel = DockSerializer.savedLayoutContainsPanel(magicCircleDockPanel.dockId());
-			DockNode root = DockSerializer.loadLayout(panelMap, SpellPreviewScreen::buildDefaultLayout);
+			boolean hadSavedLayout = DockSerializer.hasSavedLayout(modeKey);
+			boolean savedLayoutHasStatusPanel = DockSerializer.savedLayoutContainsPanel(modeKey, statusDockPanel.dockId());
+			boolean savedLayoutHasVariablesPanel = DockSerializer.savedLayoutContainsPanel(modeKey, variablesDockPanel.dockId());
+			boolean savedLayoutHasRawJsonPanel = DockSerializer.savedLayoutContainsPanel(modeKey, rawJsonDockPanel.dockId());
+			DockNode root = DockSerializer.loadLayout(modeKey, panelMap, defaultLayout);
 			dockLayout = new DockLayout(root);
 			if (hadSavedLayout && !savedLayoutHasStatusPanel) {
 				relocateMissingStatusPanel();
@@ -337,9 +305,6 @@ public class SpellPreviewScreen extends Screen {
 			}
 			if (hadSavedLayout && (!savedLayoutHasRawJsonPanel || rawJsonSharesEditorGroup())) {
 				relocateMissingRawJsonPanel();
-			}
-			if (hadSavedLayout && !savedLayoutHasMagicCirclePanel) {
-				relocateMissingMagicCirclePanel();
 			}
 		}
 		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
@@ -355,7 +320,10 @@ public class SpellPreviewScreen extends Screen {
 		}
 		syncEditorDockWidgetVisibility();
 
-		controlsDockPanel.buildButtons();
+		// 魔法阵模式下控制面板不在布局里，跳过按钮构建，避免创建一批永远不可见的 widget。
+		if (editorMode != EditorMode.MAGIC_CIRCLE) {
+			controlsDockPanel.buildButtons();
+		}
 		updateActionListPhase();
 	}
 
@@ -394,15 +362,111 @@ public class SpellPreviewScreen extends Screen {
 		return Math.max(minWidth, font.width(label) + 12);
 	}
 
+	/** 符卡模式专属顶栏按钮。魔法阵模式下这些操作没有意义，一律不创建。 */
+	private int addSpellTopBarButtons(int bx, int by, int rightLimit, boolean fullEdit) {
+		// Perspective / Orthographic toggle
+		String perspLabel = SpellEditorLocalization.t(viewport.isPerspectiveMode() ? "Ortho" : "Persp");
+		bx = addTopBarButtonIfFits(bx, by, perspLabel, 40, btn -> {
+			boolean newPersp = !viewport.isPerspectiveMode();
+			viewport.setPerspectiveMode(newPersp);
+			if (newPersp) {
+				// Set camera to dummy target position
+				viewport.setCameraToTarget(scene.getTargetPos());
+			}
+			rebuildScreen();
+		}, fullEdit, rightLimit);
+		// Bind target toggle (only in perspective mode)
+		if (viewport.isPerspectiveMode()) {
+			String bindLabel = SpellEditorLocalization.t(viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt");
+			bx = addTopBarButtonIfFits(bx, by, bindLabel, 48, btn -> {
+				viewport.setTargetBoundToCamera(!viewport.isTargetBoundToCamera());
+				rebuildScreen();
+			}, fullEdit, rightLimit);
+		}
+		// Toggle editor button
+		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(editorVisible ? "Editor <<" : "Editor >>"), 60, btn -> {
+			editorVisible = !editorVisible;
+			rebuildScreen();
+		}, fullEdit, rightLimit);
+		// Apply button: re-apply edited spell to all entities using it
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit, rightLimit);
+		// Export button: save spell definition as JSON datapack file
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 46, btn -> exportToDatapack(), fullEdit, rightLimit);
+		// Certify button: open the server certification dialog (design §5.2)
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Certify"), 44, btn -> openCertification(), fullEdit, rightLimit);
+		// Reset button: restore to original (built-in) or open-snapshot (custom)
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit, rightLimit);
+		// Auto Replay toggle
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF"), 52, btn -> {
+			autoReplay = !autoReplay;
+			rebuildScreen();
+		}, fullEdit, rightLimit);
+		// Collapse All / Expand All
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("▶All"), 34, btn -> {
+			if (actionListPanel != null) actionListPanel.collapseAll();
+		}, fullEdit, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("▼All"), 34, btn -> {
+			if (actionListPanel != null) actionListPanel.expandAll();
+		}, fullEdit, rightLimit);
+		// Toggle show all add-buttons
+		String addLabel = SpellEditorLocalization.t(
+				actionListPanel != null && actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel");
+		return addTopBarButtonIfFits(bx, by, addLabel, 42, btn -> {
+			if (actionListPanel != null) {
+				actionListPanel.toggleShowAllAddButtons();
+				rebuildScreen();
+			}
+		}, fullEdit, rightLimit);
+	}
+
 	/**
-	 * 构建默认布局树。用于首次打开或布局文件损坏时的回退。
+	 * 魔法阵模式专属顶栏按钮。原先这些操作挤在面板滚动列顶部，
+	 * 搬到顶栏后面板正文只剩元素字段。
 	 */
-	static DockNode buildDefaultLayout(java.util.Map<String, DockPanel> panelMap) {
+	private int addCircleTopBarButtons(int bx, int by, int rightLimit) {
+		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("New"), 44, btn -> {
+			if (magicCircleDockPanel != null) magicCircleDockPanel.newCircleFromTopBar();
+		}, true, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Save"), 52, btn -> {
+			if (magicCircleDockPanel != null) magicCircleDockPanel.saveCircleFromTopBar();
+		}, true, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 58, btn -> {
+			if (magicCircleDockPanel != null) magicCircleDockPanel.exportCircleFromTopBar();
+		}, true, rightLimit);
+		return addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Delete"), 54, btn -> {
+			if (magicCircleDockPanel != null) magicCircleDockPanel.deleteCircleFromTopBar();
+		}, true, rightLimit);
+	}
+
+	/**
+	 * 切换编辑模式。先把当前模式的布局落盘，再重建 —— 重建时不保留内存快照，
+	 * 这样目标模式会加载它自己的已存布局而不是继承上一个模式的。
+	 */
+	private void switchMode(EditorMode target) {
+		if (target == null || target == editorMode) {
+			return;
+		}
+		if (dockLayout != null) {
+			DockSerializer.saveLayout(editorMode.key(), dockLayout.getRoot());
+		}
+		editorMode = target;
+		// 切模式时符卡的选中态没有意义了，清掉以免属性面板显示上一模式的残留。
+		if (target == EditorMode.MAGIC_CIRCLE && actionEditorPanel != null) {
+			actionEditorPanel.clearAction();
+		}
+		rebuildScreen(false);
+	}
+
+	/**
+	 * 符卡模式默认布局树。用于首次打开或布局文件损坏时的回退。
+	 */
+	static DockNode buildDefaultSpellLayout(java.util.Map<String, DockPanel> panelMap) {
 		DockPanel viewport = panelMap.get("viewport");
 		DockPanel actions = panelMap.get("actions");
 		DockPanel properties = panelMap.get("properties");
 		DockPanel rawJson = panelMap.get("raw_json");
-		DockPanel magicCircle = panelMap.get("magic_circle");
 		DockPanel controls = panelMap.get("controls");
 		DockPanel status = panelMap.get("status");
 		DockPanel variables = panelMap.get("variables");
@@ -413,12 +477,29 @@ public class SpellPreviewScreen extends Screen {
 		DockGroup actionListGroup = new DockGroup(actions);
 		DockGroup editorGroup = new DockGroup(properties);
 		DockGroup controlsGroup = new DockGroup(controls, perf);
-		DockGroup statusGroup = new DockGroup(status, variables, rawJson, magicCircle);
+		DockGroup statusGroup = new DockGroup(status, variables, rawJson);
 
 		DockSplit rightSplit = new DockSplit(false, 0.4f, actionListGroup, editorGroup);
 		DockSplit mainSplit = new DockSplit(true, 0.6f, viewportGroup, rightSplit);
 		DockSplit bottomSplit = new DockSplit(true, 0.72f, controlsGroup, statusGroup);
 		return new DockSplit(false, 0.8f, mainSplit, bottomSplit);
+	}
+
+	/**
+	 * 魔法阵模式默认布局树。左侧预览、右侧元素属性、底部 raw json。
+	 */
+	static DockNode buildDefaultCircleLayout(java.util.Map<String, DockPanel> panelMap) {
+		DockPanel viewport = panelMap.get("viewport");
+		DockPanel magicCircle = panelMap.get("magic_circle");
+		DockPanel rawJson = panelMap.get("raw_json");
+		DockPanel help = panelMap.get("help");
+
+		DockGroup viewportGroup = new DockGroup(viewport, help);
+		DockGroup circleGroup = new DockGroup(magicCircle);
+		DockGroup rawJsonGroup = new DockGroup(rawJson);
+
+		DockSplit mainSplit = new DockSplit(true, 0.62f, viewportGroup, circleGroup);
+		return new DockSplit(false, 0.74f, mainSplit, rawJsonGroup);
 	}
 
 	private void activateDockPanel(DockPanel panel) {
@@ -500,24 +581,6 @@ public class SpellPreviewScreen extends Screen {
 			currentGroup.removePanel(rawJsonDockPanel);
 		}
 		statusGroup.addPanel(rawJsonDockPanel);
-	}
-
-	private void relocateMissingMagicCirclePanel() {
-		if (dockLayout == null || magicCircleDockPanel == null || statusDockPanel == null) {
-			return;
-		}
-		DockGroup statusGroup = dockLayout.findGroupContaining(statusDockPanel);
-		if (statusGroup == null) {
-			return;
-		}
-		DockGroup currentGroup = dockLayout.findGroupContaining(magicCircleDockPanel);
-		if (currentGroup == statusGroup) {
-			return;
-		}
-		if (currentGroup != null) {
-			currentGroup.removePanel(magicCircleDockPanel);
-		}
-		statusGroup.addPanel(magicCircleDockPanel);
 	}
 
 	private boolean rawJsonSharesEditorGroup() {
@@ -631,6 +694,7 @@ public class SpellPreviewScreen extends Screen {
 		if (dockLayout == null) {
 			return;
 		}
+		boolean circleMode = editorMode == EditorMode.MAGIC_CIRCLE;
 		if (editorDockPanel != null && actionEditorPanel != null) {
 			DockGroup editorGroup = dockLayout.findGroupContaining(editorDockPanel);
 			actionEditorPanel.setAllWidgetsVisible(editorGroup != null && editorGroup.getActivePanel() == editorDockPanel);
@@ -638,16 +702,16 @@ public class SpellPreviewScreen extends Screen {
 		if (rawJsonDockPanel != null) {
 			DockGroup rawJsonGroup = dockLayout.findGroupContaining(rawJsonDockPanel);
 			boolean rawJsonActive = rawJsonGroup != null && rawJsonGroup.getActivePanel() == rawJsonDockPanel;
-			DockGroup magicCircleGroup = magicCircleDockPanel == null ? null : dockLayout.findGroupContaining(magicCircleDockPanel);
-			boolean magicCircleActive = magicCircleGroup != null && magicCircleGroup.getActivePanel() == magicCircleDockPanel;
-			rawJsonContext = magicCircleActive ? RawJsonDockPanel.ContentMode.MAGIC_CIRCLE : RawJsonDockPanel.ContentMode.SPELL;
 			rawJsonDockPanel.setEditorActive(rawJsonActive);
 		}
 		if (magicCircleDockPanel != null) {
+			// 魔法阵模式下面板一定在布局里；预览与编辑状态直接跟随模式，
+			// 不再从「哪个 tab 处于激活」反推上下文。
 			DockGroup magicCircleGroup = dockLayout.findGroupContaining(magicCircleDockPanel);
-			boolean magicCircleActive = magicCircleGroup != null && magicCircleGroup.getActivePanel() == magicCircleDockPanel;
-			magicCircleDockPanel.setEditorActive(magicCircleActive);
-			magicCircleDockPanel.setPreviewActive(magicCircleActive);
+			boolean panelActive = circleMode && magicCircleGroup != null
+					&& magicCircleGroup.getActivePanel() == magicCircleDockPanel;
+			magicCircleDockPanel.setEditorActive(panelActive);
+			magicCircleDockPanel.setPreviewActive(circleMode);
 		}
 	}
 
@@ -1470,7 +1534,7 @@ public class SpellPreviewScreen extends Screen {
 		saveCurrentDefinition();
 		// Save dock layout
 		if (dockLayout != null) {
-			DockSerializer.saveLayout(dockLayout.getRoot());
+			DockSerializer.saveLayout(editorMode.key(), dockLayout.getRoot());
 		}
 	}
 

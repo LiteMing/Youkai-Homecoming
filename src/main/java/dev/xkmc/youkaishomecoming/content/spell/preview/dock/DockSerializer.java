@@ -40,6 +40,8 @@ public class DockSerializer {
 	private static final Logger LOGGER = LoggerFactory.getLogger("YoukaiHomecoming/DockLayout");
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final String CONFIG_FILE = "config/youkaishomecoming_editor_layout.json";
+	/** 旧版单布局文件迁移后归属的模式键。 */
+	private static final String LEGACY_MODE_KEY = "spell";
 
 	// ---- 序列化 ----
 
@@ -132,36 +134,71 @@ public class DockSerializer {
 	// ---- 文件 I/O ----
 
 	/**
-	 * 保存布局到配置文件。
+	 * 保存某个编辑器模式的布局。其余模式已存的布局原样保留。
+	 *
+	 * @param modeKey 模式键名，见 {@code EditorMode.key()}
 	 */
-	public static void saveLayout(DockNode root) {
+	public static void saveLayout(String modeKey, DockNode root) {
 		try {
 			File file = getConfigFile();
 			file.getParentFile().mkdirs();
-			JsonObject json = serialize(root);
+			JsonObject modes = readModes();
+			modes.add(modeKey, serialize(root));
+			JsonObject json = new JsonObject();
+			json.add("modes", modes);
 			try (Writer writer = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8)) {
 				GSON.toJson(json, writer);
 			}
 		} catch (Exception e) {
-			LOGGER.error("Failed to save editor layout", e);
+			LOGGER.error("Failed to save editor layout for mode {}", modeKey, e);
 		}
 	}
 
-	public static boolean hasSavedLayout() {
-		return getConfigFile().exists();
+	public static boolean hasSavedLayout(String modeKey) {
+		return readModeTree(modeKey) != null;
 	}
 
-	public static boolean savedLayoutContainsPanel(String panelId) {
+	public static boolean savedLayoutContainsPanel(String modeKey, String panelId) {
+		return containsPanelId(readModeTree(modeKey), panelId);
+	}
+
+	/**
+	 * 读取配置文件里的模式表。
+	 *
+	 * <p>迁移：旧版本存的是单棵扁平布局树（根节点带 {@code "type"}），
+	 * 整棵树归入符卡模式，魔法阵模式则回退到默认布局。
+	 */
+	private static JsonObject readModes() {
 		File file = getConfigFile();
 		if (!file.exists()) {
-			return false;
+			return new JsonObject();
 		}
 		try (Reader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
-			JsonElement json = JsonParser.parseReader(reader);
-			return containsPanelId(json, panelId);
+			JsonElement root = JsonParser.parseReader(reader);
+			if (root == null || !root.isJsonObject()) {
+				return new JsonObject();
+			}
+			JsonObject obj = root.getAsJsonObject();
+			if (obj.has("modes") && obj.get("modes").isJsonObject()) {
+				return obj.getAsJsonObject("modes");
+			}
+			if (obj.has("type")) {
+				// 旧格式：单棵树 → 符卡模式
+				JsonObject migrated = new JsonObject();
+				migrated.add(LEGACY_MODE_KEY, obj);
+				return migrated;
+			}
+			return new JsonObject();
 		} catch (Exception e) {
-			return false;
+			LOGGER.error("Failed to read editor layout file", e);
+			return new JsonObject();
 		}
+	}
+
+	@Nullable
+	private static JsonObject readModeTree(String modeKey) {
+		JsonElement tree = readModes().get(modeKey);
+		return tree != null && tree.isJsonObject() ? tree.getAsJsonObject() : null;
 	}
 
 	public static DockNode loadLayout(@Nullable JsonObject json, Map<String, DockPanel> panelMap,
@@ -185,29 +222,30 @@ public class DockSerializer {
 	}
 
 	/**
-	 * 从配置文件加载布局。
+	 * 从配置文件加载指定模式的布局。
 	 *
+	 * @param modeKey        模式键名
 	 * @param panelMap       面板 ID → DockPanel 实例映射
 	 * @param defaultLayout  加载失败时的默认布局供给
 	 * @return 加载的根节点
 	 */
-	public static DockNode loadLayout(Map<String, DockPanel> panelMap, Function<Map<String, DockPanel>, DockNode> defaultLayout) {
-		File file = getConfigFile();
-		if (!file.exists()) {
+	public static DockNode loadLayout(String modeKey, Map<String, DockPanel> panelMap,
+			Function<Map<String, DockPanel>, DockNode> defaultLayout) {
+		JsonObject tree = readModeTree(modeKey);
+		if (tree == null) {
 			return defaultLayout.apply(panelMap);
 		}
-		try (Reader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
-			JsonObject json = GSON.fromJson(reader, JsonObject.class);
+		try {
 			Set<String> usedIds = new HashSet<>();
-			DockNode node = deserialize(json, panelMap, usedIds);
+			DockNode node = deserialize(tree, panelMap, usedIds);
 			if (node == null) {
-				LOGGER.warn("Invalid layout file, falling back to default");
+				LOGGER.warn("Invalid layout for mode {}, falling back to default", modeKey);
 				return defaultLayout.apply(panelMap);
 			}
 			addMissingPanels(node, panelMap, usedIds);
 			return node;
 		} catch (Exception e) {
-			LOGGER.error("Failed to load editor layout, falling back to default", e);
+			LOGGER.error("Failed to load editor layout for mode {}, falling back to default", modeKey, e);
 			return defaultLayout.apply(panelMap);
 		}
 	}
@@ -253,12 +291,29 @@ public class DockSerializer {
 	}
 
 	/**
-	 * 删除配置文件（重置布局时调用）。
+	 * 删除指定模式的布局（重置布局时调用）。其余模式的布局保留。
 	 */
-	public static void deleteLayout() {
+	public static void deleteLayout(String modeKey) {
 		File file = getConfigFile();
-		if (file.exists()) {
-			file.delete();
+		if (!file.exists()) {
+			return;
+		}
+		JsonObject modes = readModes();
+		if (modes.remove(modeKey) == null) {
+			return;
+		}
+		try {
+			if (modes.size() == 0) {
+				file.delete();
+				return;
+			}
+			JsonObject json = new JsonObject();
+			json.add("modes", modes);
+			try (Writer writer = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8)) {
+				GSON.toJson(json, writer);
+			}
+		} catch (Exception e) {
+			LOGGER.error("Failed to reset editor layout for mode {}", modeKey, e);
 		}
 	}
 

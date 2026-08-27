@@ -47,6 +47,10 @@ public class MagicCircleDockPanel implements DockPanel {
 	private static final int DROPDOWN_ITEM_H = 18;
 	private static final int DROPDOWN_MAX_VISIBLE = 10;
 
+	/** 会话级：跨面板重建保留的选中魔法阵 ID。见 {@link #loadInitialSelection()}。 */
+	@Nullable
+	private static ResourceLocation lastSelectedId;
+
 	private final OrthographicViewport viewport;
 	private final List<AbstractWidget> widgets = new ArrayList<>();
 	private final Map<AbstractWidget, Integer> widgetBaseY = new IdentityHashMap<>();
@@ -685,6 +689,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	}
 
 	private void publishLocal(boolean syncRaw) {
+		lastSelectedId = selectedId;
 		component.invalidateCache();
 		YoukaisHomecoming.SPELL.getMerged().map.put(selectedId.toString(), component);
 		if (!linkedComponents.isEmpty()) {
@@ -808,6 +813,26 @@ public class MagicCircleDockPanel implements DockPanel {
 		loadSelectedComponent();
 		rebuildWidgets();
 		setStatus("Magic Circle loaded", 0xFF88AACC);
+	}
+
+	// --- Top bar entry points (magic circle mode) ---
+	// These live on the top bar rather than inside the scrolling column so the
+	// panel body only ever contains element fields.
+
+	public void newCircleFromTopBar() {
+		newCircle();
+	}
+
+	public void saveCircleFromTopBar() {
+		save(false);
+	}
+
+	public void exportCircleFromTopBar() {
+		save(true);
+	}
+
+	public void deleteCircleFromTopBar() {
+		deleteCircle();
 	}
 
 	private void newCircle() {
@@ -1290,12 +1315,17 @@ public class MagicCircleDockPanel implements DockPanel {
 		return stroke == null || stroke.color == null ? "0xFFFFFFFF" : stroke.color;
 	}
 
+	/**
+	 * 面板会在每次 Screen 重建（切模式、切语言等）时重新实例化。
+	 * 把上次选中的魔法阵 ID 记在会话级静态字段里，否则每次重建都会跳回第一个魔法阵。
+	 */
 	private void loadInitialSelection() {
 		List<ResourceLocation> ids = circleIds();
-		if (!ids.isEmpty()) {
-			selectedId = ids.get(0);
-			loadSelectedComponent();
+		if (ids.isEmpty()) {
+			return;
 		}
+		selectedId = lastSelectedId != null && ids.contains(lastSelectedId) ? lastSelectedId : ids.get(0);
+		loadSelectedComponent();
 	}
 
 	private void loadSelectedComponent() {

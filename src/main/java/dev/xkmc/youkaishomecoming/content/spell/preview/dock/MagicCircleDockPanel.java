@@ -866,11 +866,23 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (parsed.id() != null) {
 			selectedId = parsed.id();
 		}
+		// 行结构（分区计数、直排/弧排字段集）依赖元素数量，数量变了必须重建行；
+		// 本方法在 raw json 面板里是逐键调用的，所以数量不变时只刷新取值。
+		int strokesBefore = component.strokes.size();
+		int itemsBefore = getItemCount();
+		int textsBefore = getTextCount();
+		int layersBefore = component.layers.size();
 		component = cloneComponent(parsed.component());
 		component.invalidateCache();
 		clampSelection();
 		publishLocal(false);
-		if (active) {
+		boolean structureChanged = strokesBefore != component.strokes.size()
+				|| itemsBefore != getItemCount()
+				|| textsBefore != getTextCount()
+				|| layersBefore != component.layers.size();
+		if (structureChanged) {
+			rebuildWidgets();
+		} else if (active) {
 			refreshWidgetValues();
 		}
 		setStatus("Magic Circle JSON applied", 0xFF88FF88);
@@ -980,6 +992,7 @@ public class MagicCircleDockPanel implements DockPanel {
 		linkedComponents.clear();
 		selectedStroke = 0;
 		selectedItem = 0;
+		selectedText = 0;
 		selectedLayer = 0;
 		scrollOffset = 0;
 		publishLocal(true);
@@ -1015,6 +1028,7 @@ public class MagicCircleDockPanel implements DockPanel {
 			selectedStroke = 0;
 			selectedItem = 0;
 			selectedLayer = 0;
+			selectedText = 0;
 			scrollOffset = 0;
 			publishLocal(true);
 			rebuildWidgets();

@@ -7,6 +7,7 @@ import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.youkaishomecoming.content.client.DanmakuClientState;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import dev.xkmc.youkaishomecoming.util.GlyphRuns;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -169,19 +170,11 @@ public class TextDanmakuRenderer<T extends TextDanmakuEntity> extends EntityRend
 	}
 
 	private int countCodePoints(String text) {
-		return text.codePointCount(0, text.length());
+		return GlyphRuns.count(text);
 	}
 
 	private String[] splitCodePoints(String text) {
-		int n = countCodePoints(text);
-		String[] ans = new String[n];
-		int idx = 0;
-		for (int pos = 0; pos < text.length();) {
-			int cp = text.codePointAt(pos);
-			ans[idx++] = new String(Character.toChars(cp));
-			pos += Character.charCount(cp);
-		}
-		return ans;
+		return GlyphRuns.split(text);
 	}
 
 	private void drawTextCentered(Font font, String text, float slotAdvance, int color, PoseStack pose, MultiBufferSource buffer, int light) {

@@ -102,8 +102,10 @@ public class ActionEditorPanel {
 	// instead of the outer action mover. This remains active until the selected
 	// action changes; the resolver only unwraps an actual fixed_dir mover.
 	private boolean editingFixedDirInner = false;
-	// Collapsed sections: key = section label at specific row index
-	private final java.util.Set<String> collapsedSections = new java.util.HashSet<>();
+	// Collapsed sections: key = section label at specific row index.
+	// Session-scoped (static) so folding survives the screen rebuilds triggered by
+	// mode/language/layout changes — the panel itself is re-instantiated each time.
+	private static final java.util.Set<String> collapsedSections = new java.util.HashSet<>();
 
 	// Type selector mode
 	private boolean typeSelectorMode = false;
@@ -324,34 +326,89 @@ public class ActionEditorPanel {
 		}
 	}
 
+	/**
+	 * 动作类型选择器的分组。27 个类型平铺成一长列很难扫读，收拢成可折叠文件夹后
+	 * 常用的发射与流程默认展开，其余按需展开。
+	 *
+	 * <p>分组顺序即显示顺序；组名同时是 {@link #collapsedSections} 的键，
+	 * 因此不能与属性面板里的分区标题重名（Pattern / Mover / Origin / Advanced / Group Rotation）。
+	 */
+	private record TypeEntry(String type, String label) {
+	}
+
+	private record TypeGroup(String label, List<TypeEntry> entries) {
+	}
+
+	private static TypeGroup group(String label, String... typeAndLabel) {
+		List<TypeEntry> entries = new ArrayList<>();
+		for (int i = 0; i + 1 < typeAndLabel.length; i += 2) {
+			entries.add(new TypeEntry(typeAndLabel[i], typeAndLabel[i + 1]));
+		}
+		return new TypeGroup(label, List.copyOf(entries));
+	}
+
+	private static final List<TypeGroup> TYPE_GROUPS = List.of(
+			group("Fire",
+					"fire_danmaku", "Fire Danmaku",
+					"fire_laser", "Fire Laser",
+					"fire_text_danmaku", "Fire Text Danmaku"),
+			group("Flow",
+					"conditional", "Conditional",
+					"repeat", "Repeat",
+					"delay", "Delay",
+					"sequence", "Sequence",
+					"burst", "Burst"),
+			group("Variables",
+					"set_variable", "Set Variable",
+					"add_variable", "Add Variable"),
+			group("Field",
+					"clear_screen", "Clear Screen",
+					"erase_enemy_danmaku", "Erase Enemy Danmaku"),
+			group("Presentation",
+					"play_sound", "Play Sound",
+					"show_spell_title", "Show Spell Title",
+					"set_spell_circle", "Custom Magic Circle",
+					"ysm_render", "YSM Render"),
+			group("Spell Flow",
+					"force_phase", "Force Phase",
+					"force_spell", "Force Spell",
+					"fire_spell", "Fire Spell",
+					"set_spell_health", "Spell Health"),
+			group("Movement",
+					"teleport", "Teleport",
+					"teleport_random", "Teleport Random",
+					"caster_moves", "Caster Moves",
+					"confine_target", "Confine Target",
+					"spawn_shooter", "Spawn Shooter"),
+			group("Privileged",
+					"run_command", "Run Command",
+					"set_entity_flag", "Set Entity Flag"));
+
+	/** 只有前两组默认展开。 */
+	private static boolean typeGroupDefaultsApplied = false;
+
+	private static void applyTypeGroupDefaults() {
+		if (typeGroupDefaultsApplied) {
+			return;
+		}
+		typeGroupDefaultsApplied = true;
+		for (int i = 2; i < TYPE_GROUPS.size(); i++) {
+			collapsedSections.add(TYPE_GROUPS.get(i).label());
+		}
+	}
+
 	private void buildTypeSelectorRows() {
-		addTypeButton("fire_danmaku", "Fire Danmaku");
-		addTypeButton("fire_laser", "Fire Laser");
-		addTypeButton("fire_text_danmaku", "Fire Text Danmaku");
-		addTypeButton("conditional", "Conditional");
-		addTypeButton("repeat", "Repeat");
-		addTypeButton("delay", "Delay");
-		addTypeButton("teleport", "Teleport");
-		addTypeButton("spawn_shooter", "Spawn Shooter");
-		addTypeButton("burst", "Burst");
-		addTypeButton("set_variable", "Set Variable");
-		addTypeButton("add_variable", "Add Variable");
-		addTypeButton("sequence", "Sequence");
-		addTypeButton("clear_screen", "Clear Screen");
-		addTypeButton("erase_enemy_danmaku", "Erase Enemy Danmaku");
-		addTypeButton("play_sound", "Play Sound");
-		addTypeButton("run_command", "Run Command");
-		addTypeButton("show_spell_title", "Show Spell Title");
-		addTypeButton("set_spell_circle", "Custom Magic Circle");
-		addTypeButton("set_spell_health", "Spell Health");
-		addTypeButton("force_phase", "Force Phase");
-		addTypeButton("force_spell", "Force Spell");
-		addTypeButton("fire_spell", "Fire Spell");
-		addTypeButton("confine_target", "Confine Target");
-		addTypeButton("set_entity_flag", "Set Entity Flag");
-		addTypeButton("ysm_render", "YSM Render");
-		addTypeButton("teleport_random", "Teleport Random");
-		addTypeButton("caster_moves", "Caster Moves");
+		applyTypeGroupDefaults();
+		currentDepth = 0;
+		for (TypeGroup group : TYPE_GROUPS) {
+			addSectionHeader(group.label());
+			if (isSectionCollapsed(group.label())) {
+				continue;
+			}
+			for (TypeEntry entry : group.entries()) {
+				addTypeButton(entry.type(), entry.label());
+			}
+		}
 	}
 
 	private void addTypeButton(String type, String label) {

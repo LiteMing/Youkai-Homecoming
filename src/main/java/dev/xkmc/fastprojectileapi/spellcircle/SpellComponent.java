@@ -1,5 +1,6 @@
 package dev.xkmc.fastprojectileapi.spellcircle;
 
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
@@ -448,30 +449,56 @@ public class SpellComponent {
 			handle.matrix.pushPose();
 			handle.matrix.translate(get(x_offset, handle, 0), get(y_offset, handle, 0), get(z_offset, handle, 0));
 			handle.matrix.mulPose(Axis.ZP.rotationDegrees(get(rotation, handle, 0)));
+			MultiBufferSource.BufferSource target = textBuffer();
 			if (radius > 0) {
-				renderArc(handle, font, glyphs, s, col);
+				renderArc(handle, font, glyphs, s, col, target);
 			} else {
-				renderStraight(handle, font, glyphs, s, col);
+				renderStraight(handle, font, glyphs, s, col, target);
 			}
+			// Flush here: the glyphs must not still be pending when the caller's
+			// stroke buffer is used again.
+			target.endBatch();
 			handle.matrix.popPose();
 		}
 
+		/**
+		 * Text is drawn through a private buffer source rather than {@code handle.buffer}.
+		 *
+		 * <p>{@link MultiBufferSource.BufferSource#getBuffer} ends the current batch when the
+		 * render type changes, which would close the spell-circle {@code BufferBuilder} that
+		 * {@link RenderHandle#builder} still points at. Everything drawn after the text —
+		 * nested layers, child component strokes, the progress ring — would then be writing
+		 * to a builder that is no longer building, taking the whole circle down with it.
+		 */
 		@OnlyIn(Dist.CLIENT)
-		private void renderStraight(RenderHandle handle, Font font, String[] glyphs, float s, int col) {
+		private static MultiBufferSource.BufferSource textBuffer;
+
+		@OnlyIn(Dist.CLIENT)
+		private static MultiBufferSource.BufferSource textBuffer() {
+			if (textBuffer == null) {
+				textBuffer = MultiBufferSource.immediate(new BufferBuilder(1024));
+			}
+			return textBuffer;
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private void renderStraight(RenderHandle handle, Font font, String[] glyphs, float s, int col,
+									MultiBufferSource target) {
 			float total = totalAdvance(font, glyphs, s);
 			float x = -total / 2;
 			for (String glyph : glyphs) {
 				float advance = advance(font, glyph, s);
 				handle.matrix.pushPose();
 				handle.matrix.translate(x + advance / 2, 0, 0);
-				drawGlyph(handle, font, glyph, s, col);
+				drawGlyph(handle, font, glyph, s, col, target);
 				handle.matrix.popPose();
 				x += advance;
 			}
 		}
 
 		@OnlyIn(Dist.CLIENT)
-		private void renderArc(RenderHandle handle, Font font, String[] glyphs, float s, int col) {
+		private void renderArc(RenderHandle handle, Font font, String[] glyphs, float s, int col,
+							   MultiBufferSource target) {
 			float total = totalAdvance(font, glyphs, s);
 			if (total <= 0) {
 				return;
@@ -490,7 +517,7 @@ public class SpellComponent {
 				handle.matrix.mulPose(Axis.ZP.rotation(start + direction * span * centre));
 				handle.matrix.translate(radius, 0, 0);
 				handle.matrix.mulPose(Axis.ZP.rotationDegrees(quarter));
-				drawGlyph(handle, font, glyph, s, col);
+				drawGlyph(handle, font, glyph, s, col, target);
 				handle.matrix.popPose();
 				travelled += advance;
 			}
@@ -502,11 +529,12 @@ public class SpellComponent {
 		 * upward Y; X keeps its sign, so the glyph is flipped, not mirrored.
 		 */
 		@OnlyIn(Dist.CLIENT)
-		private static void drawGlyph(RenderHandle handle, Font font, String glyph, float s, int col) {
+		private static void drawGlyph(RenderHandle handle, Font font, String glyph, float s, int col,
+									  MultiBufferSource target) {
 			handle.matrix.pushPose();
 			handle.matrix.scale(s, -s, s);
 			font.drawInBatch(glyph, -font.width(glyph) / 2f, -font.lineHeight / 2f, col, false,
-					handle.matrix.last().pose(), handle.buffer, Font.DisplayMode.NORMAL, 0, handle.light);
+					handle.matrix.last().pose(), target, Font.DisplayMode.NORMAL, 0, handle.light);
 			handle.matrix.popPose();
 		}
 

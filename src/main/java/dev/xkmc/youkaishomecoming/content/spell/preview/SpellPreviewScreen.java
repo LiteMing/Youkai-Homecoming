@@ -421,22 +421,19 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	/**
-	 * 魔法阵模式专属顶栏按钮。原先这些操作挤在面板滚动列顶部，
-	 * 搬到顶栏后面板正文只剩元素字段。
+	 * 魔法阵模式专属顶栏按钮。与符卡的 Apply / Export / Reset 对齐；
+	 * 新建与删除跟随符卡惯例放在面板里的选择器旁边，不在顶栏。
 	 */
 	private int addCircleTopBarButtons(int bx, int by, int rightLimit) {
 		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("New"), 44, btn -> {
-			if (magicCircleDockPanel != null) magicCircleDockPanel.newCircleFromTopBar();
-		}, true, rightLimit);
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Save"), 52, btn -> {
 			if (magicCircleDockPanel != null) magicCircleDockPanel.saveCircleFromTopBar();
 		}, true, rightLimit);
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 58, btn -> {
 			if (magicCircleDockPanel != null) magicCircleDockPanel.exportCircleFromTopBar();
 		}, true, rightLimit);
-		return addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Delete"), 54, btn -> {
-			if (magicCircleDockPanel != null) magicCircleDockPanel.deleteCircleFromTopBar();
+		return addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 48, btn -> {
+			if (magicCircleDockPanel != null) magicCircleDockPanel.resetCircleFromTopBar();
 		}, true, rightLimit);
 	}
 

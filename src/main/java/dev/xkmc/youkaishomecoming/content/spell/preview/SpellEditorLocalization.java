@@ -247,6 +247,8 @@ public final class SpellEditorLocalization {
 			Map.entry("New", "新建"),
 			Map.entry("Save", "保存"),
 			Map.entry("Delete", "删除"),
+			Map.entry("Magic Circle reset", "魔法阵已重置"),
+			Map.entry("No snapshot to reset to", "没有可还原的快照"),
 			Map.entry("Mode: Spell", "模式: 符卡"),
 			Map.entry("Mode: Circle", "模式: 魔法阵"),
 			Map.entry("Reset", "重置"),

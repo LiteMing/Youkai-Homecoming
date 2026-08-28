@@ -93,7 +93,16 @@ public class MagicCircleDockPanel implements DockPanel {
 	private int statusColor = 0xFF88AACC;
 
 	private Button circleDropdownButton;
+	private Button circleDeleteButton;
 	private DropdownOverlay circleDropdown;
+	private ConfirmOverlay deleteConfirm;
+	private int deleteConfirmHoverIndex = -1;
+	/** 本次编辑会话首次载入各魔法阵时的快照，供 Reset 还原。 */
+	private final Map<ResourceLocation, JsonElement> openSnapshots = new LinkedHashMap<>();
+	/** ID 输入框里尚未提交的文本；null 表示没有待提交改名。 */
+	@Nullable
+	private String pendingId;
+	private boolean idBoxWasFocused;
 	private int circleDropdownHoverIndex = -1;
 	private int circleDropdownScrollOffset;
 	private EditBox idBox;
@@ -128,6 +137,204 @@ public class MagicCircleDockPanel implements DockPanel {
 	private EditBox layerAlphaBox;
 
 	private record DropdownOverlay(List<ResourceLocation> values, String[] options, int selectedIndex) {
+	}
+
+	private record ConfirmOverlay(String[] options) {
+	}
+
+	// --- Top bar entry points (magic circle mode) ---
+	// Save/Export/Reset live on the top bar, mirroring the spell card's Apply/Export/Reset.
+	// New and delete sit next to the circle picker instead, mirroring "Spell: [▼] [+] [-]".
+
+	public void saveCircleFromTopBar() {
+		save(false);
+	}
+
+	public void exportCircleFromTopBar() {
+		save(true);
+	}
+
+	public void resetCircleFromTopBar() {
+		resetToDefault();
+	}
+
+	/**
+	 * Restore the selected circle to the state it had when this editor session first
+	 * loaded it — the same contract as the spell card's Reset, which falls back to its
+	 * open-snapshot when there is no built-in default. Magic circles have no separate
+	 * default registry, so the snapshot is the only source.
+	 */
+	private void resetToDefault() {
+		JsonElement snapshot = openSnapshots.get(selectedId);
+		if (snapshot == null) {
+			setStatus("No snapshot to reset to", 0xFFFFCC88);
+			return;
+		}
+		SpellComponent restored;
+		try {
+			restored = GSON.fromJson(snapshot, SpellComponent.class);
+		} catch (RuntimeException e) {
+			setStatus("No snapshot to reset to", 0xFFFFCC88);
+			return;
+		}
+		if (restored == null) {
+			setStatus("No snapshot to reset to", 0xFFFFCC88);
+			return;
+		}
+		restored.invalidateCache();
+		component = restored;
+		selectedStroke = 0;
+		selectedItem = 0;
+		selectedText = 0;
+		selectedLayer = 0;
+		scrollOffset = 0;
+		clampSelection();
+		publishLocal(true);
+		rebuildWidgets();
+		setStatus("Magic Circle reset", 0xFF88FF88);
+	}
+
+	/** Remember a circle's contents the first time this session sees it, for Reset. */
+	private void captureSnapshot(ResourceLocation id, SpellComponent value) {
+		if (id == null || value == null || openSnapshots.containsKey(id)) {
+			return;
+		}
+		value.invalidateCache();
+		openSnapshots.put(id, GSON.toJsonTree(value));
+	}
+
+	/**
+	 * 提交 ID 输入框里的改名。
+	 *
+	 * <p>把当前编辑内容移到新 ID 下，并把旧 ID 还原成本次会话载入时的快照 —— 改名不应该
+	 * 顺手改掉原来那个魔法阵。旧 ID 若本来就是新建出来的（没有快照），则直接从本地注册表移除，
+	 * 不留下空壳。
+	 */
+	private void commitIdRename() {
+		String text = pendingId;
+		pendingId = null;
+		if (text == null) {
+			return;
+		}
+		ResourceLocation id = ResourceLocation.tryParse(text.trim());
+		if (id == null) {
+			setStatus("Invalid circle id", 0xFFFF8888);
+			if (idBox != null) {
+				suppress = true;
+				idBox.setValue(selectedId.toString());
+				suppress = false;
+			}
+			return;
+		}
+		if (id.equals(selectedId)) {
+			return;
+		}
+		ResourceLocation old = selectedId;
+		JsonElement snapshot = openSnapshots.get(old);
+		if (snapshot != null) {
+			try {
+				SpellComponent original = GSON.fromJson(snapshot, SpellComponent.class);
+				if (original != null) {
+					original.invalidateCache();
+					YoukaisHomecoming.SPELL.getMerged().map.put(old.toString(), original);
+				}
+			} catch (RuntimeException ignored) {
+				// 快照坏了就退回到直接移除，至少不会留下被改坏的原件。
+				YoukaisHomecoming.SPELL.getMerged().map.remove(old.toString());
+			}
+		} else {
+			YoukaisHomecoming.SPELL.getMerged().map.remove(old.toString());
+		}
+		linkedComponents.remove(old);
+		selectedId = id;
+		publishLocal(true);
+		rebuildWidgets();
+		setStatus("Magic Circle renamed", 0xFF88FF88);
+	}
+
+	private void openDeleteConfirm() {
+		closeCircleDropdown();
+		deleteConfirm = new ConfirmOverlay(new String[]{
+				"Cancel",
+				"Delete " + fitToWidth(selectedId.toString(), 150)
+		});
+		deleteConfirmHoverIndex = -1;
+	}
+
+	private void closeDeleteConfirm() {
+		deleteConfirm = null;
+		deleteConfirmHoverIndex = -1;
+	}
+
+	private int[] computeDeleteConfirmBounds() {
+		if (deleteConfirm == null || circleDeleteButton == null) {
+			return new int[]{0, 0, 0, 0};
+		}
+		String[] options = deleteConfirm.options();
+		Font font = Minecraft.getInstance().font;
+		int dw = 120;
+		for (String option : options) {
+			dw = Math.max(dw, font.width(SpellEditorLocalization.t(option)) + 18);
+		}
+		dw = Math.min(dw, Math.max(120, w - PADDING * 2));
+		int dh = options.length * DROPDOWN_ITEM_H;
+		int dx = Math.max(x, circleDeleteButton.getX() + circleDeleteButton.getWidth() - dw);
+		int dy = circleDeleteButton.getY() + circleDeleteButton.getHeight();
+		return new int[]{dx, dy, dw, dh};
+	}
+
+	private void renderDeleteConfirm(GuiGraphics graphics, int mouseX, int mouseY) {
+		if (deleteConfirm == null) {
+			return;
+		}
+		Font font = Minecraft.getInstance().font;
+		String[] options = deleteConfirm.options();
+		int[] bounds = computeDeleteConfirmBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 200);
+		graphics.fill(dx + 3, dy + 3, dx + dw + 3, dy + dh + 3, 0x88000000);
+		graphics.fill(dx, dy, dx + dw, dy + dh, 0xFF301818);
+		graphics.fill(dx, dy, dx + dw, dy + 1, 0xFFAA6666);
+		graphics.fill(dx, dy + dh - 1, dx + dw, dy + dh, 0xFFAA6666);
+		graphics.fill(dx, dy, dx + 1, dy + dh, 0xFFAA6666);
+		graphics.fill(dx + dw - 1, dy, dx + dw, dy + dh, 0xFFAA6666);
+
+		deleteConfirmHoverIndex = -1;
+		if (mouseX >= dx && mouseX < dx + dw && mouseY >= dy && mouseY < dy + dh) {
+			int rawIdx = (mouseY - dy) / DROPDOWN_ITEM_H;
+			if (rawIdx >= 0 && rawIdx < options.length) {
+				deleteConfirmHoverIndex = rawIdx;
+			}
+		}
+		for (int i = 0; i < options.length; i++) {
+			int itemY = dy + i * DROPDOWN_ITEM_H;
+			boolean hovered = i == deleteConfirmHoverIndex;
+			if (hovered) {
+				graphics.fill(dx + 1, itemY, dx + dw - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
+			}
+			int color = i == 0 ? 0xFFDDDDDD : (hovered ? 0xFFFF8888 : 0xFFFF6666);
+			graphics.drawString(font, SpellEditorLocalization.t(options[i]), dx + 6, itemY + 4, color, false);
+		}
+		graphics.pose().popPose();
+	}
+
+	private boolean handleDeleteConfirmClick(double mouseX, double mouseY) {
+		if (deleteConfirm == null) {
+			return false;
+		}
+		int[] bounds = computeDeleteConfirmBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+		if (mouseX >= dx && mouseX < dx + dw && mouseY >= dy && mouseY < dy + dh) {
+			int idx = (int) ((mouseY - dy) / DROPDOWN_ITEM_H);
+			closeDeleteConfirm();
+			if (idx == 1) {
+				deleteCircle();
+			}
+			return true;
+		}
+		return false;
 	}
 
 	public MagicCircleDockPanel(OrthographicViewport viewport) {
@@ -187,6 +394,12 @@ public class MagicCircleDockPanel implements DockPanel {
 		graphics.fill(x, y, x + w, y + h, 0xCC000000);
 		clampScrollOffset();
 		updateWidgetScroll();
+		// 点走焦点等同于确认改名，和符卡的 ID 输入框行为一致。
+		boolean idFocused = idBox != null && idBox.isFocused();
+		if (idBoxWasFocused && !idFocused) {
+			commitIdRename();
+		}
+		idBoxWasFocused = idFocused;
 		Font font = Minecraft.getInstance().font;
 		renderFixedHeader(graphics, font);
 		int labelX = x + PADDING;
@@ -218,8 +431,22 @@ public class MagicCircleDockPanel implements DockPanel {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		if (circleDropdown != null && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
-			closeCircleDropdown();
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+			if (deleteConfirm != null) {
+				closeDeleteConfirm();
+				return true;
+			}
+			if (circleDropdown != null) {
+				closeCircleDropdown();
+				return true;
+			}
+		}
+		boolean enter = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER
+				|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
+		if (enter && idBox != null && idBox.isFocused()) {
+			idBox.setFocused(false);
+			idBoxWasFocused = false;
+			commitIdRename();
 			return true;
 		}
 		return false;
@@ -227,6 +454,12 @@ public class MagicCircleDockPanel implements DockPanel {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (deleteConfirm != null) {
+			if (!handleDeleteConfirmClick(mouseX, mouseY)) {
+				closeDeleteConfirm();
+			}
+			return true;
+		}
 		if (circleDropdown != null) {
 			if (handleCircleDropdownClick(mouseX, mouseY)) {
 				return true;
@@ -308,6 +541,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	@Override
 	public void renderOverlay(GuiGraphics graphics, int mouseX, int mouseY) {
 		renderCircleDropdown(graphics, mouseX, mouseY);
+		renderDeleteConfirm(graphics, mouseX, mouseY);
 	}
 
 	@Override
@@ -382,18 +616,25 @@ public class MagicCircleDockPanel implements DockPanel {
 		Font font = Minecraft.getInstance().font;
 
 		// --- 固定表头：始终可见，不随正文滚动 ---
+		// 与符卡的 "Spell: [▼] [+] [-]" 保持一致：新建/删除紧挨着选择器，而不是散在顶栏。
 		int headerY = y + PADDING;
+		int actionW = 20;
+		int actionGap = 2;
+		int pickerW = Math.max(40, fieldWidth() - (actionW + actionGap) * 2);
 		circleDropdownButton = addFixedWidget(Button.builder(
-						Component.literal(dropdownLabel(fieldWidth())), b -> openCircleDropdown())
-				.bounds(fieldX(), headerY, fieldWidth(), BUTTON_HEIGHT).build());
+						Component.literal(dropdownLabel(pickerW)), b -> openCircleDropdown())
+				.bounds(fieldX(), headerY, pickerW, BUTTON_HEIGHT).build());
+		int newX = fieldX() + pickerW + actionGap;
+		addFixedWidget(Button.builder(Component.literal("+"), b -> newCircle())
+				.bounds(newX, headerY, actionW, BUTTON_HEIGHT).build());
+		int deleteX = newX + actionW + actionGap;
+		circleDeleteButton = addFixedWidget(Button.builder(Component.literal("-"), b -> openDeleteConfirm())
+				.bounds(deleteX, headerY, actionW, BUTTON_HEIGHT).build());
 		headerY += ROW;
-		idBox = addFixedWidget(makeEditBox(font, fieldX(), headerY, fieldWidth(), selectedId.toString(), text -> {
-			ResourceLocation id = ResourceLocation.tryParse(text);
-			if (id != null) {
-				selectedId = id;
-				publishLocal(true);
-			}
-		}));
+		// 逐键提交会把每个中间串都注册成一个魔法阵（输入 "1123" 会留下 1 / 11 / 112 / 1123）。
+		// 与符卡的新建 ID 框一致：只记录待提交值，回车或失焦时才真正改名。
+		idBox = addFixedWidget(makeEditBox(font, fieldX(), headerY, fieldWidth(), selectedId.toString(),
+				text -> pendingId = text));
 		headerY += ROW;
 		previewSizeBox = addFixedWidget(makeEditBox(font, fieldX(), headerY, fieldWidth(),
 				fmt(previewSize), this::setPreviewSize));
@@ -967,26 +1208,6 @@ public class MagicCircleDockPanel implements DockPanel {
 		loadSelectedComponent();
 		rebuildWidgets();
 		setStatus("Magic Circle loaded", 0xFF88AACC);
-	}
-
-	// --- Top bar entry points (magic circle mode) ---
-	// These live on the top bar rather than inside the scrolling column so the
-	// panel body only ever contains element fields.
-
-	public void newCircleFromTopBar() {
-		newCircle();
-	}
-
-	public void saveCircleFromTopBar() {
-		save(false);
-	}
-
-	public void exportCircleFromTopBar() {
-		save(true);
-	}
-
-	public void deleteCircleFromTopBar() {
-		deleteCircle();
 	}
 
 	private void newCircle() {
@@ -1640,6 +1861,8 @@ public class MagicCircleDockPanel implements DockPanel {
 				collectReferencedComponents(linkedComponents);
 			}
 		}
+		// Snapshot before the editor starts mutating it — this is what Reset restores.
+		captureSnapshot(selectedId, existing);
 		component = existing == null ? createDefaultComponent() : cloneComponent(existing);
 		clampSelection();
 		publishLocal(true);

@@ -58,8 +58,11 @@ public class MagicCircleDockPanel implements DockPanel {
 	@Nullable
 	private static ResourceLocation lastSelectedId;
 
-	/** 会话级：跨面板重建保留的分区折叠状态。 */
-	private static final Set<String> collapsedSections = new HashSet<>(Set.of(SECTION_ITEMS, SECTION_TEXTS, SECTION_LAYERS));
+	/**
+	 * 会话级：跨面板重建保留的分区折叠状态。
+	 * 默认展开笔画与文字（文字是新功能，折叠会让人找不到入口），物品与层默认折叠。
+	 */
+	private static final Set<String> collapsedSections = new HashSet<>(Set.of(SECTION_ITEMS, SECTION_LAYERS));
 
 	private final OrthographicViewport viewport;
 	private final List<AbstractWidget> widgets = new ArrayList<>();
@@ -1270,12 +1273,18 @@ public class MagicCircleDockPanel implements DockPanel {
 		return val;
 	}
 
+	/**
+	 * 新建文字层的默认值。直接给成环绕排布 —— 这是魔法阵最典型的用法，
+	 * 点一下 +Text 就能立刻看到效果，而不是一行几乎看不见的小字。
+	 * 半径对齐默认组件的外圈笔画（48）。
+	 */
 	private static SpellComponent.TextLayer defaultText() {
 		SpellComponent.TextLayer text = new SpellComponent.TextLayer();
 		text.text = "妖々夢";
 		text.color = "0xFFFFFFFF";
-		text.scale = value(1);
+		text.scale = value(2);
 		text.alpha = value(1);
+		text.radius = 40;
 		return text;
 	}
 

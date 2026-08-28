@@ -3695,6 +3695,36 @@ public class ActionEditorPanel {
 	}
 
 	/** Color for section header text based on depth. */
+	/**
+	 * 命中分区表头则折叠/展开该分区。属性面板与类型选择器共用同一实现。
+	 *
+	 * @return true 表示本次点击已被消费
+	 */
+	private boolean toggleSectionHeaderAt(double mouseX, double mouseY) {
+		if (!isMouseOver(mouseX, mouseY)) {
+			return false;
+		}
+		for (int i = 0; i < rows.size(); i++) {
+			EditorRow row = rows.get(i);
+			if (!row.sectionHeader()) continue;
+			int rowY = y + getRowY(i) - scrollOffset;
+			int rowH = getRowHeight(i);
+			if (mouseY >= rowY && mouseY < rowY + rowH
+					&& mouseX >= x + PADDING && mouseX < x + w - PADDING) {
+				// Strip the collapse indicator prefix (▶ or ▼ + space) to get the section key
+				String fullLabel = row.label();
+				String sectionLabel = fullLabel.length() > 2 ? fullLabel.substring(2) : fullLabel;
+				if (!collapsedSections.remove(sectionLabel)) {
+					collapsedSections.add(sectionLabel);
+				}
+				// Rebuild panel to reflect new collapsed/expanded state
+				refreshCurrentView();
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static int getSectionHeaderColor(int depth) {
 		return switch (depth) {
 			case 0 -> 0xFFFFCC44; // gold (top level)
@@ -3929,7 +3959,19 @@ public class ActionEditorPanel {
 			for (int i = 0; i < rows.size(); i++) {
 				int rowY = y + getRowY(i) - scrollOffset;
 				int rowH = getRowHeight(i);
-				rows.get(i).widget().visible = rowY >= y && rowY + rowH <= y + h;
+				var row = rows.get(i);
+				boolean visible = rowY >= y && rowY + rowH <= y + h;
+				// Section headers are drawn directly; their placeholder widget must stay
+				// hidden or it renders as a blank disabled button where the folder title
+				// should be.
+				row.widget().visible = visible && !row.sectionHeader();
+				if (visible && row.sectionHeader()) {
+					int sectionColor = getSectionHeaderColor(row.depth());
+					int separatorColor = (sectionColor & 0x00FFFFFF) | 0x80000000;
+					guiGraphics.fill(x + PADDING, rowY, x + w - PADDING, rowY + 1, separatorColor);
+					guiGraphics.drawString(font, SpellEditorLocalization.t(row.label()),
+							x + PADDING, rowY + 3, sectionColor, false);
+				}
 			}
 			renderScrollbar(guiGraphics);
 			if (renderDropdown && dropdown != null) {
@@ -4273,6 +4315,12 @@ public class ActionEditorPanel {
 			}
 		}
 
+		// 类型选择器没有 currentAction，但它同样有可折叠的分组表头，
+		// 必须在下面的 currentAction 守卫之前处理，否则文件夹永远展不开。
+		if (button == 0 && typeSelectorMode && toggleSectionHeaderAt(mouseX, mouseY)) {
+			return true;
+		}
+
 		if (button != 0 || currentAction == null) return false;
 
 		// Scrollbar click detection
@@ -4288,28 +4336,8 @@ public class ActionEditorPanel {
 		}
 
 		// Section header click detection
-		if (isMouseOver(mouseX, mouseY)) {
-			for (int i = 0; i < rows.size(); i++) {
-				EditorRow row = rows.get(i);
-				if (!row.sectionHeader()) continue;
-				int rowY = y + getRowY(i) - scrollOffset;
-				int rowH = getRowHeight(i);
-				if (mouseY >= rowY && mouseY < rowY + rowH
-						&& mouseX >= x + PADDING && mouseX < x + w - PADDING) {
-					// Extract section label without the collapse indicator prefix (▶ or ▼ + space)
-					String fullLabel = row.label();
-					String sectionLabel = fullLabel.length() > 2 ? fullLabel.substring(2) : fullLabel;
-					// Toggle collapsed state
-					if (collapsedSections.contains(sectionLabel)) {
-						collapsedSections.remove(sectionLabel);
-					} else {
-						collapsedSections.add(sectionLabel);
-					}
-					// Rebuild panel to reflect new collapsed/expanded state
-					refreshCurrentView();
-					return true;
-				}
-			}
+		if (toggleSectionHeaderAt(mouseX, mouseY)) {
+			return true;
 		}
 
 		Font font = Minecraft.getInstance().font;

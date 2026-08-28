@@ -37,9 +37,8 @@ public final class SpellProgressCircleRenderer {
 							 Entity entity, float pTick, float alpha) {
 		Progress progress = resolve(entity);
 		if (progress == null || alpha <= 0.01f) return;
-		VertexConsumer builder = buffer.getBuffer(SpellRenderState.getSpell(TEX));
 		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(
-				pose, buffer, builder, entity.tickCount + pTick, light);
+				pose, buffer, SpellRenderState.getSpell(TEX), entity.tickCount + pTick, light);
 		handle.alpha = alpha;
 		pose.pushPose();
 		SpellComponent.Stroke hpOutline = stroke(HP_RADIUS, 2.8f, HP_OUTLINE_Z, outlineColor(entity));

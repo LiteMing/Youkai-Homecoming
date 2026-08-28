@@ -56,7 +56,7 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 			return;
 		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(pose,
 				buffer,
-				buffer.getBuffer(SpellRenderState.getSpell(SPELL)),
+				SpellRenderState.getSpell(SPELL),
 				entity.tickCount + pTick, light);
 		pose.pushPose();
 		pose.translate(0, entity.getBbHeight() / 2, 0);

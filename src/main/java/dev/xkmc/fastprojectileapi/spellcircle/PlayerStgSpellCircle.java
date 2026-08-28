@@ -54,9 +54,8 @@ public final class PlayerStgSpellCircle {
 			pose.mulPose(front);
 			pose.mulPose(new Quaternionf().rotationY((float) Math.PI));
 		}
-		VertexConsumer builder = buffer.getBuffer(SpellRenderState.getSpell(SPELL_TEX));
 		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(
-				pose, buffer, builder, player.tickCount + pTick, light);
+				pose, buffer, SpellRenderState.getSpell(SPELL_TEX), player.tickCount + pTick, light);
 		handle.alpha = alpha;
 		component.render(handle);
 		SpellProgressCircleRenderer.render(pose, buffer, light, player, pTick, alpha);
@@ -88,9 +87,8 @@ public final class PlayerStgSpellCircle {
 		int max = YHModConfig.COMMON.spellCircleMaxResourceSubCircles.get();
 		int slots = Math.min(whole + (remainder > 0 ? 1 : 0), max);
 		if (slots <= 0) return;
-		VertexConsumer builder = buffer.getBuffer(SpellRenderState.getSpell(SPELL_TEX));
 		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(
-				pose, buffer, builder, player.tickCount + pTick, light);
+				pose, buffer, SpellRenderState.getSpell(SPELL_TEX), player.tickCount + pTick, light);
 		for (int i = 0; i < slots; i++) {
 			float slotAlpha = i < whole ? 1.0f : remainder / (float) SHARD;
 			if (slotAlpha <= 0.01f) continue;

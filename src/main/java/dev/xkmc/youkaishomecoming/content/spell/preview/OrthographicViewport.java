@@ -625,12 +625,17 @@ public class OrthographicViewport {
 		if (magicCirclePreviewComponent != null && magicCirclePreviewSize > 0) {
 			float tick = (System.currentTimeMillis() % 1_000_000L) / 50.0f + partialTick;
 			SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(poseStack, buffer,
-					buffer.getBuffer(SpellRenderState.getSpell(SPELL_CIRCLE_TEXTURE)),
+					SpellRenderState.getSpell(SPELL_CIRCLE_TEXTURE),
 					tick, LightTexture.FULL_BRIGHT);
 			poseStack.pushPose();
 			poseStack.scale(magicCirclePreviewSize / 16f, magicCirclePreviewSize / 16f, magicCirclePreviewSize / 16f);
-			poseStack.mulPose(previewOrientation);
-			poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+			// Face the circle at the viewer by undoing the view rotation exactly.
+			// computeOrientation() is not that inverse: applyRotation is Rx(x)·Ry(y) but
+			// the quaternion is Ry(-y)·Rx(+x), so the Y terms cancel while the X terms
+			// add — leaving Rx(2x)·Ry(180). That double-pitched the circle and left its
+			// back face toward the camera, which culled the text outright.
+			poseStack.mulPose(Axis.YP.rotationDegrees(-yRot));
+			poseStack.mulPose(Axis.XP.rotationDegrees(-xRot));
 			magicCirclePreviewComponent.render(handle);
 			poseStack.popPose();
 		}

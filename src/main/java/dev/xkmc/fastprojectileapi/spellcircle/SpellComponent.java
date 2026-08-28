@@ -52,11 +52,20 @@ public class SpellComponent {
 		for (Stroke stroke : strokes) {
 			stroke.render(handle);
 		}
-		for (ItemLayer item : items) {
-			item.render(handle);
+		// Item sprites and text glyphs draw with their own render types, which ends the
+		// batch holding the circle's vertex consumer. Re-acquire before any further
+		// stroke drawing (nested layers, child components, the progress ring).
+		if (!items.isEmpty()) {
+			for (ItemLayer item : items) {
+				item.render(handle);
+			}
+			handle.reacquireBuilder();
 		}
-		for (TextLayer text : texts) {
-			text.render(handle);
+		if (!texts.isEmpty()) {
+			for (TextLayer text : texts) {
+				text.render(handle);
+			}
+			handle.reacquireBuilder();
 		}
 		for (Layer layer : layers) {
 			layer.render(handle);
@@ -449,56 +458,30 @@ public class SpellComponent {
 			handle.matrix.pushPose();
 			handle.matrix.translate(get(x_offset, handle, 0), get(y_offset, handle, 0), get(z_offset, handle, 0));
 			handle.matrix.mulPose(Axis.ZP.rotationDegrees(get(rotation, handle, 0)));
-			MultiBufferSource.BufferSource target = textBuffer();
 			if (radius > 0) {
-				renderArc(handle, font, glyphs, s, col, target);
+				renderArc(handle, font, glyphs, s, col);
 			} else {
-				renderStraight(handle, font, glyphs, s, col, target);
+				renderStraight(handle, font, glyphs, s, col);
 			}
-			// Flush here: the glyphs must not still be pending when the caller's
-			// stroke buffer is used again.
-			target.endBatch();
 			handle.matrix.popPose();
 		}
 
-		/**
-		 * Text is drawn through a private buffer source rather than {@code handle.buffer}.
-		 *
-		 * <p>{@link MultiBufferSource.BufferSource#getBuffer} ends the current batch when the
-		 * render type changes, which would close the spell-circle {@code BufferBuilder} that
-		 * {@link RenderHandle#builder} still points at. Everything drawn after the text —
-		 * nested layers, child component strokes, the progress ring — would then be writing
-		 * to a builder that is no longer building, taking the whole circle down with it.
-		 */
 		@OnlyIn(Dist.CLIENT)
-		private static MultiBufferSource.BufferSource textBuffer;
-
-		@OnlyIn(Dist.CLIENT)
-		private static MultiBufferSource.BufferSource textBuffer() {
-			if (textBuffer == null) {
-				textBuffer = MultiBufferSource.immediate(new BufferBuilder(1024));
-			}
-			return textBuffer;
-		}
-
-		@OnlyIn(Dist.CLIENT)
-		private void renderStraight(RenderHandle handle, Font font, String[] glyphs, float s, int col,
-									MultiBufferSource target) {
+		private void renderStraight(RenderHandle handle, Font font, String[] glyphs, float s, int col) {
 			float total = totalAdvance(font, glyphs, s);
 			float x = -total / 2;
 			for (String glyph : glyphs) {
 				float advance = advance(font, glyph, s);
 				handle.matrix.pushPose();
 				handle.matrix.translate(x + advance / 2, 0, 0);
-				drawGlyph(handle, font, glyph, s, col, target);
+				drawGlyph(handle, font, glyph, s, col);
 				handle.matrix.popPose();
 				x += advance;
 			}
 		}
 
 		@OnlyIn(Dist.CLIENT)
-		private void renderArc(RenderHandle handle, Font font, String[] glyphs, float s, int col,
-							   MultiBufferSource target) {
+		private void renderArc(RenderHandle handle, Font font, String[] glyphs, float s, int col) {
 			float total = totalAdvance(font, glyphs, s);
 			if (total <= 0) {
 				return;
@@ -517,24 +500,32 @@ public class SpellComponent {
 				handle.matrix.mulPose(Axis.ZP.rotation(start + direction * span * centre));
 				handle.matrix.translate(radius, 0, 0);
 				handle.matrix.mulPose(Axis.ZP.rotationDegrees(quarter));
-				drawGlyph(handle, font, glyph, s, col, target);
+				drawGlyph(handle, font, glyph, s, col);
 				handle.matrix.popPose();
 				travelled += advance;
 			}
 		}
 
 		/**
-		 * Draw one glyph centred on the current origin.
-		 * The negative Y scale converts the font's downward Y into the circle's
-		 * upward Y; X keeps its sign, so the glyph is flipped, not mirrored.
+		 * Draw one glyph centred on the current origin, front and back.
+		 *
+		 * <p>The negative Y scale converts the font's downward Y into the circle's upward
+		 * Y; X keeps its sign, so the glyph is flipped, not mirrored.
+		 *
+		 * <p>Unlike the circle's own render type, {@code RenderType.text} has back-face
+		 * culling enabled, so a single quad vanishes as soon as the circle is seen from
+		 * behind. Draw the mirrored back face too — the same thing the text danmaku
+		 * renderer does for its sign faces.
 		 */
 		@OnlyIn(Dist.CLIENT)
-		private static void drawGlyph(RenderHandle handle, Font font, String glyph, float s, int col,
-									  MultiBufferSource target) {
+		private static void drawGlyph(RenderHandle handle, Font font, String glyph, float s, int col) {
 			handle.matrix.pushPose();
 			handle.matrix.scale(s, -s, s);
 			font.drawInBatch(glyph, -font.width(glyph) / 2f, -font.lineHeight / 2f, col, false,
-					handle.matrix.last().pose(), target, Font.DisplayMode.NORMAL, 0, handle.light);
+					handle.matrix.last().pose(), handle.buffer, Font.DisplayMode.NORMAL, 0, handle.light);
+			handle.matrix.mulPose(Axis.YP.rotationDegrees(180));
+			font.drawInBatch(glyph, -font.width(glyph) / 2f, -font.lineHeight / 2f, col, false,
+					handle.matrix.last().pose(), handle.buffer, Font.DisplayMode.NORMAL, 0, handle.light);
 			handle.matrix.popPose();
 		}
 
@@ -564,18 +555,37 @@ public class SpellComponent {
 
 		public final PoseStack matrix;
 		public final MultiBufferSource buffer;
-		public final VertexConsumer builder;
+		private final RenderType type;
+		/**
+		 * The circle's own vertex consumer. Not final: it must be re-acquired after
+		 * anything draws with a different render type — see {@link #reacquireBuilder()}.
+		 */
+		public VertexConsumer builder;
 		public final float tick;
 		public final int light;
 
 		public float alpha = 1;
 
-		public RenderHandle(PoseStack matrix, MultiBufferSource buffer, VertexConsumer builder, float tick, int light) {
+		public RenderHandle(PoseStack matrix, MultiBufferSource buffer, RenderType type, float tick, int light) {
 			this.matrix = matrix;
 			this.buffer = buffer;
-			this.builder = builder;
+			this.type = type;
+			this.builder = buffer.getBuffer(type);
 			this.tick = tick;
 			this.light = light;
+		}
+
+		/**
+		 * Re-acquire the circle's vertex consumer.
+		 *
+		 * <p>{@link MultiBufferSource.BufferSource#getBuffer} ends the current batch when
+		 * the render type changes. So as soon as an item sprite or a text glyph draws,
+		 * the consumer held here has been flushed and is no longer building; writing to
+		 * it again corrupts or kills the rest of the circle — nested layers, child
+		 * component strokes, the progress ring. Call this after any such element.
+		 */
+		public void reacquireBuilder() {
+			this.builder = buffer.getBuffer(type);
 		}
 	}
 

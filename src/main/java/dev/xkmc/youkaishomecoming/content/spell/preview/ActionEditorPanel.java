@@ -20,6 +20,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.DyeColor;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -557,16 +558,16 @@ public class ActionEditorPanel {
 		addColorAnimationRows(a);
 
 		addNumberRow("Count", a.count(), v ->
-				notifyDanmaku(old -> old.withCount(v), false));
+				notifyDanmaku(old -> old.withCount(v), false), EvaluationTiming.EMIT_ONCE);
 
 		addNumberRow("Speed", a.speed(), v ->
-				notifyDanmaku(old -> old.withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides));
+				notifyDanmaku(old -> old.withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides), EvaluationTiming.EMIT_ONCE);
 
 		addNumberRow("Lifetime", a.lifetime(), v ->
-				notifyDanmaku(old -> old.withLifetime(v), false));
+				notifyDanmaku(old -> old.withLifetime(v), false), EvaluationTiming.EMIT_ONCE);
 
 		addNumberRow("Size", a.size(), v ->
-				notifyDanmaku(old -> old.withSize(v), false));
+				notifyDanmaku(old -> old.withSize(v), false), EvaluationTiming.PROJECTILE_TICK);
 
 		// === Pattern group ===
 		addSectionHeader("Pattern");
@@ -2407,19 +2408,19 @@ public class ActionEditorPanel {
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(v, f.y(), f.z(), f.speed())));
 				}
-			});
+			}, EvaluationTiming.MIXED);
 			addStringRow("Y (right)", fm.y(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), v, f.z(), f.speed())));
 				}
-			});
+			}, EvaluationTiming.MIXED);
 			addStringRow("Z (up)", fm.z(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), v, f.speed())));
 				}
-			});
+			}, EvaluationTiming.MIXED);
 		} else if (cfg instanceof MoverConfigs.OrbitalMoverConfig orb) {
 			// Orbital mover: angular_speed, radius formula, drift formula
 			addNumberRow("Ang Spd (°/t)", orb.angularSpeed(), v -> {
@@ -3508,10 +3509,18 @@ public class ActionEditorPanel {
 	private int stringCompletionScrollOffset = 0;
 
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange) {
-		addNumberRow(label, provider, onChange, false);
+		addNumberRow(label, provider, onChange, false, EvaluationTiming.EMIT_ONCE);
+	}
+
+	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, EvaluationTiming timing) {
+		addNumberRow(label, provider, onChange, false, timing);
 	}
 
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, boolean overridden) {
+		addNumberRow(label, provider, onChange, overridden, EvaluationTiming.EMIT_ONCE);
+	}
+
+	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, boolean overridden, EvaluationTiming timing) {
 		double value = provider instanceof NumberProviders.Constant c ? c.value() : 0;
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = newEditorEditBox(label, widgetW);
@@ -3557,7 +3566,7 @@ public class ActionEditorPanel {
 			displayLabel = label + "*";
 		}
 		exprEditBoxes.add(editBox);
-		rows.add(new EditorRow(displayLabel, editBox, false, -1, currentDepth, false, overridden));
+		rows.add(new EditorRow(displayLabel, editBox, false, -1, currentDepth, false, overridden, timing));
 	}
 
 	private void addBoolRow(String label, boolean value, Consumer<Boolean> onChange) {
@@ -3622,12 +3631,16 @@ public class ActionEditorPanel {
 	}
 
 	private void addStringRow(String label, String value, Consumer<String> onChange) {
+		addStringRow(label, value, onChange, null);
+	}
+
+	private void addStringRow(String label, String value, Consumer<String> onChange, @Nullable EvaluationTiming timing) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength(256);
-		editBox.setValue(value);
-		editBox.setResponder(onChange::accept);
-		rows.add(new EditorRow(label, editBox, false));
+		editBox.setValue(value == null ? "" : value);
+		editBox.setResponder(onChange);
+		rows.add(new EditorRow(label, editBox, false, -1, currentDepth, false, false, timing));
 	}
 
 	private void addSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
@@ -4015,6 +4028,7 @@ public class ActionEditorPanel {
 
 		// Row labels
 		String overrideTooltipText = null;
+		String timingTooltipText = null;
 		for (int i = 0; i < rows.size(); i++) {
 			int rowY = y + getRowY(i) - scrollOffset;
 			int rowH = getRowHeight(i);
@@ -4032,11 +4046,11 @@ public class ActionEditorPanel {
 					guiGraphics.drawString(font, SpellEditorLocalization.t(row.label()), x + PADDING, rowY + 3, sectionColor, false);
 				} else if (!row.fullWidth() && !row.label().isEmpty()) {
 					String rowLabel = SpellEditorLocalization.t(row.label());
+					int labelX = x + PADDING;
+					int labelY = rowY + 4;
 					if (row.overridden()) {
 						// Overridden row: reduced opacity (50% alpha) and strikethrough
 						int labelColor = 0x80BBBBBB; // ~50% opacity
-						int labelX = x + PADDING;
-						int labelY = rowY + 4;
 						guiGraphics.drawString(font, rowLabel, labelX, labelY, labelColor, false);
 						// Draw 1px strikethrough line through the middle of the text
 						int textWidth = font.width(rowLabel);
@@ -4048,7 +4062,20 @@ public class ActionEditorPanel {
 							overrideTooltipText = MoverOverrideResolver.getTooltip(getCurrentMover());
 						}
 					} else {
-						guiGraphics.drawString(font, rowLabel, x + PADDING, rowY + 4, 0xFFBBBBBB, false);
+						guiGraphics.drawString(font, rowLabel, labelX, labelY, 0xFFBBBBBB, false);
+					}
+
+					// 绘制求值时机徽标 [发射时] / [飞行时] / [混合]
+					if (row.timing() != null) {
+						EvaluationTiming timing = row.timing();
+						String tag = "[" + SpellEditorLocalization.t(timing.tag()) + "]";
+						int tagW = font.width(tag);
+						int tagX = x + LABEL_WIDTH - tagW - 2;
+						guiGraphics.drawString(font, tag, tagX, labelY, timing.color(), false);
+
+						if (mouseX >= tagX && mouseX < tagX + tagW && mouseY >= rowY && mouseY < rowY + rowH) {
+							timingTooltipText = SpellEditorLocalization.t(timing.tooltip());
+						}
 					}
 				}
 			}
@@ -4057,8 +4084,10 @@ public class ActionEditorPanel {
 		// Scrollbar for content area
 		renderScrollbar(guiGraphics);
 
-		// Render override tooltip on top of other content (but below dropdown)
-		if (overrideTooltipText != null && !overrideTooltipText.isEmpty()) {
+		// Render timing or override tooltip on top of other content
+		if (timingTooltipText != null && !timingTooltipText.isEmpty()) {
+			guiGraphics.renderTooltip(font, Component.literal(timingTooltipText), mouseX, mouseY);
+		} else if (overrideTooltipText != null && !overrideTooltipText.isEmpty()) {
 			guiGraphics.renderTooltip(font, Component.literal(SpellEditorLocalization.t(overrideTooltipText)), mouseX, mouseY);
 		}
 
@@ -4683,15 +4712,38 @@ public class ActionEditorPanel {
 		return btn;
 	}
 
-	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader, boolean overridden) {
+	public enum EvaluationTiming {
+		EMIT_ONCE("发射时", 0xFF88AAFF, "在生成/发射时计算一次并固定在弹幕上。公式中的 tick 代表当前阶段时间 (phase_tick)。"),
+		PROJECTILE_TICK("飞行时", 0xFF66FF88, "在弹幕飞行期间每 tick 重新动态求值。"),
+		MIXED("混合", 0xFFFFD700, "部分参数（如 tick/t）随弹幕飞行时间动态变化，而 $变量 等在生成时求值固定。");
+
+		private final String tag;
+		private final int color;
+		private final String tooltip;
+
+		EvaluationTiming(String tag, int color, String tooltip) {
+			this.tag = tag;
+			this.color = color;
+			this.tooltip = tooltip;
+		}
+
+		public String tag() { return tag; }
+		public int color() { return color; }
+		public String tooltip() { return tooltip; }
+	}
+
+	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader, boolean overridden, @Nullable EvaluationTiming timing) {
 		EditorRow(String label, AbstractWidget widget) {
-			this(label, widget, false, -1, 0, false, false);
+			this(label, widget, false, -1, 0, false, false, null);
 		}
 		EditorRow(String label, AbstractWidget widget, boolean fullWidth) {
-			this(label, widget, fullWidth, -1, 0, false, false);
+			this(label, widget, fullWidth, -1, 0, false, false, null);
 		}
 		EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW) {
-			this(label, widget, fullWidth, customWidgetW, 0, false, false);
+			this(label, widget, fullWidth, customWidgetW, 0, false, false, null);
+		}
+		EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader, boolean overridden) {
+			this(label, widget, fullWidth, customWidgetW, depth, sectionHeader, overridden, null);
 		}
 	}
 

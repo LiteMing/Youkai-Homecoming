@@ -1,6 +1,13 @@
 {
   "key.categories.youkaishomecoming": "妖怪归家",
   "key.youkaishomecoming.open_spell_editor": "打开符卡编辑器",
+  "youkaishomecoming.spell.snapshot_confirm.title": "符卡卡面快照确认",
+  "youkaishomecoming.spell.snapshot_confirm.heading": "确认符卡材质卡面",
+  "youkaishomecoming.spell.snapshot_confirm.desc1": "左侧为当前拍摄合成的 84x128 最终卡牌材质。",
+  "youkaishomecoming.spell.snapshot_confirm.desc2": "确认后该卡面将永久绑定到当前符卡。",
+  "youkaishomecoming.spell.snapshot_confirm.desc3": "后续即使认证挑战失败，也不会被重复覆盖。",
+  "youkaishomecoming.spell.snapshot_confirm.confirm": "确认卡面并继续",
+  "youkaishomecoming.spell.snapshot_confirm.retake": "返回重新取景",
   "youkaishomecoming.spell_editor.help.line.90": "",
   "youkaishomecoming.spell_editor.help.line.91": "§e§l--- QA ---",
   "youkaishomecoming.spell_editor.help.line.92": "",

@@ -62,6 +62,15 @@ public class OrthographicViewport {
 
 	private static final float MIN_ZOOM = 5f;
 	private static final float MAX_ZOOM = 100f;
+	private boolean cardFrameGuideActive = false;
+
+	public void setCardFrameGuideActive(boolean active) {
+		this.cardFrameGuideActive = active;
+	}
+
+	public boolean isCardFrameGuideActive() {
+		return cardFrameGuideActive;
+	}
 	private float gridExtent = 50f;
 	private float clipDepth = 200f; // Z translate for depth range
 
@@ -571,18 +580,34 @@ public class OrthographicViewport {
 		zoom = Mth.clamp(zoom * factor, MIN_ZOOM, MAX_ZOOM);
 	}
 
-	private float currentXRot() {
+	public int getWidth() {
+		return width;
+	}
+
+	public int getHeight() {
+		return height;
+	}
+
+	public float currentXRot() {
 		if (presetAngle != null) {
 			return presetFlipped ? -presetAngle.getXRot() : presetAngle.getXRot();
 		}
 		return freeXRot;
 	}
 
-	private float currentYRot() {
+	public float currentYRot() {
 		if (presetAngle != null) {
 			return presetFlipped ? presetAngle.getYRot() + 180 : presetAngle.getYRot();
 		}
 		return freeYRot;
+	}
+
+	public float getViewX() {
+		return viewX;
+	}
+
+	public float getViewY() {
+		return viewY;
 	}
 
 	public void render(GuiGraphics guiGraphics, VirtualSpellScene scene, float partialTick) {
@@ -739,6 +764,12 @@ public class OrthographicViewport {
 		ProjectileRenderHelper.cameraOrientationOverride = null;
 
 		poseStack.popPose();
+
+		// 12. 仅在认证或导出构图阶段开启 84:128 卡面取景构图辅助遮幅与线框
+		if (cardFrameGuideActive) {
+			renderCardFrameGuide(guiGraphics);
+		}
+
 		guiGraphics.disableScissor();
 	}
 
@@ -985,6 +1016,55 @@ public class OrthographicViewport {
 		}
 
 		poseStack.popPose();
+	}
+
+	private void renderCardFrameGuide(GuiGraphics guiGraphics) {
+		// 计算 84:128 居中取景框
+		int frameW, frameH;
+		if (width * 128 > height * 84) {
+			// 视口偏宽，高度撑满，两侧遮幅
+			frameH = height;
+			frameW = Math.round((height * 84f) / 128f);
+		} else {
+			// 视口偏高，宽度撑满，上下遮幅
+			frameW = width;
+			frameH = Math.round((width * 128f) / 84f);
+		}
+
+		int fx = x + (width - frameW) / 2;
+		int fy = y + (height - frameH) / 2;
+
+		// 框外微弱半透明遮幅 (Dark letterbox/pillarbox)
+		int shadeColor = 0x55000000;
+		if (fx > x) {
+			guiGraphics.fill(x, y, fx, y + height, shadeColor);
+			guiGraphics.fill(fx + frameW, y, x + width, y + height, shadeColor);
+		}
+		if (fy > y) {
+			guiGraphics.fill(x, y, x + width, fy, shadeColor);
+			guiGraphics.fill(x, fy + frameH, x + width, y + height, shadeColor);
+		}
+
+		// 金色取景边框与四角标记 (Card Frame Guide)
+		int gold = 0xCCFFD54F;
+		guiGraphics.fill(fx, fy, fx + frameW, fy + 1, gold);
+		guiGraphics.fill(fx, fy + frameH - 1, fx + frameW, fy + frameH, gold);
+		guiGraphics.fill(fx, fy, fx + 1, fy + frameH, gold);
+		guiGraphics.fill(fx + frameW - 1, fy, fx + frameW, fy + frameH, gold);
+
+		// 四角 L 形加粗标记
+		int cornerLen = Math.min(12, Math.min(frameW, frameH) / 6);
+		guiGraphics.fill(fx, fy + 1, fx + cornerLen, fy + 2, gold);
+		guiGraphics.fill(fx + 1, fy + 1, fx + 2, fy + cornerLen, gold);
+
+		guiGraphics.fill(fx + frameW - cornerLen, fy + 1, fx + frameW, fy + 2, gold);
+		guiGraphics.fill(fx + frameW - 2, fy + 1, fx + frameW - 1, fy + cornerLen, gold);
+
+		guiGraphics.fill(fx, fy + frameH - 2, fx + cornerLen, fy + frameH - 1, gold);
+		guiGraphics.fill(fx + 1, fy + frameH - cornerLen, fx + 2, fy + frameH - 1, gold);
+
+		guiGraphics.fill(fx + frameW - cornerLen, fy + frameH - 2, fx + frameW, fy + frameH - 1, gold);
+		guiGraphics.fill(fx + frameW - 2, fy + frameH - cornerLen, fx + frameW - 1, fy + frameH - 1, gold);
 	}
 
 	private void renderGrid(PoseStack poseStack) {

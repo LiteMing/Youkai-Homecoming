@@ -264,6 +264,9 @@ public class SpellPreviewScreen extends Screen {
 		// --- Build dock layout tree (load from config or use default) ---
 		// 面板集合按模式装配：符卡模式不含魔法阵面板，魔法阵模式不含动作/属性/控制/性能面板。
 		boolean circleLayout = editorMode == EditorMode.MAGIC_CIRCLE;
+		if (!circleLayout && viewport != null) {
+			viewport.clearMagicCirclePreview();
+		}
 		java.util.Map<String, DockPanel> panelMap = new java.util.LinkedHashMap<>();
 		panelMap.put(viewportPanel.dockId(), viewportPanel);
 		if (circleLayout) {
@@ -389,6 +392,8 @@ public class SpellPreviewScreen extends Screen {
 			editorVisible = !editorVisible;
 			rebuildScreen();
 		}, fullEdit, rightLimit);
+		// Snap button: test capturing the 84x128 spell card snapshot
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("📸Snap"), 48, btn -> takeSnapshotTest(), fullEdit, rightLimit);
 		// Apply button: re-apply edited spell to all entities using it
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit, rightLimit);
 		// Export button: save spell definition as JSON datapack file
@@ -449,6 +454,10 @@ public class SpellPreviewScreen extends Screen {
 			DockSerializer.saveLayout(editorMode.key(), dockLayout.getRoot());
 		}
 		editorMode = target;
+		// 切换回符卡模式时，确保清除魔法阵预览状态，恢复符卡视口场景
+		if (target == EditorMode.SPELL && viewport != null) {
+			viewport.clearMagicCirclePreview();
+		}
 		// 切模式时符卡的选中态没有意义了，清掉以免属性面板显示上一模式的残留。
 		if (target == EditorMode.MAGIC_CIRCLE && actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
@@ -602,6 +611,10 @@ public class SpellPreviewScreen extends Screen {
 					|| replaceDockNode(split.getSecond(), oldNode, newNode);
 		}
 		return false;
+	}
+
+	public OrthographicViewport getViewport() {
+		return viewport;
 	}
 
 	private void rebuildScreen() {
@@ -888,6 +901,30 @@ public class SpellPreviewScreen extends Screen {
 		return true;
 	}
 
+	private void takeSnapshotTest() {
+		byte[] pngBytes = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
+		if (pngBytes != null && pngBytes.length > 0) {
+			try {
+				java.nio.file.Path outDir = net.minecraft.client.Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
+				java.nio.file.Files.createDirectories(outDir);
+				String name = (definition != null ? definition.id.getPath() : "spell") + "_" + System.currentTimeMillis() + ".png";
+				java.nio.file.Path file = outDir.resolve(name);
+				java.nio.file.Files.write(file, pngBytes);
+				if (minecraft != null && minecraft.player != null) {
+					minecraft.player.displayClientMessage(
+							net.minecraft.network.chat.Component.literal("[YH] Saved snapshot (" + pngBytes.length + " bytes) to: " + file.getFileName()), false);
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		} else {
+			if (minecraft != null && minecraft.player != null) {
+				minecraft.player.displayClientMessage(
+						net.minecraft.network.chat.Component.literal("[YH] Failed to capture snapshot"), false);
+			}
+		}
+	}
+
 	/**
 	 * Export the current spell definition to the server global spell directory.
 	 * Exported spells are loaded for every save on the same game/server instance.
@@ -896,15 +933,54 @@ public class SpellPreviewScreen extends Screen {
 		if (refuseIfBroken()) {
 			return;
 		}
-		syncCustomNamesToDefinition();
-		spellController.exportToDatapack();
+		byte[] snap = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
+		if (snap != null && snap.length > 0) {
+			Minecraft.getInstance().setScreen(
+					new dev.xkmc.youkaishomecoming.client.screen.SpellCardSnapshotConfirmScreen(this, snap, () -> {
+						saveConfirmedSnapshot(snap);
+						syncCustomNamesToDefinition();
+						spellController.exportToDatapack();
+					}));
+		} else {
+			syncCustomNamesToDefinition();
+			spellController.exportToDatapack();
+		}
 	}
 
 	/** Opens the server certification dialog for the current definition. */
 	private void openCertification() {
-		syncCustomNamesToDefinition();
-		net.minecraft.client.Minecraft.getInstance().setScreen(
-				new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition));
+		if (refuseIfBroken()) {
+			return;
+		}
+		viewport.setCardFrameGuideActive(true);
+		byte[] snap = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
+		if (snap != null && snap.length > 0) {
+			Minecraft.getInstance().setScreen(
+					new dev.xkmc.youkaishomecoming.client.screen.SpellCardSnapshotConfirmScreen(this, snap, () -> {
+						viewport.setCardFrameGuideActive(false);
+						saveConfirmedSnapshot(snap);
+						syncCustomNamesToDefinition();
+						Minecraft.getInstance().setScreen(
+								new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, snap));
+					}));
+		} else {
+			viewport.setCardFrameGuideActive(false);
+			syncCustomNamesToDefinition();
+			Minecraft.getInstance().setScreen(
+					new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition));
+		}
+	}
+
+	private void saveConfirmedSnapshot(byte[] snapBytes) {
+		if (snapBytes == null || snapBytes.length == 0 || definition == null) return;
+		try {
+			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
+			java.nio.file.Files.createDirectories(outDir);
+			java.nio.file.Path file = outDir.resolve(definition.id.getPath() + ".png");
+			java.nio.file.Files.write(file, snapBytes);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
 	/**

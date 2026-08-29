@@ -36,6 +36,29 @@ public final class CertifiedSpellStorage {
 		return server.getWorldPath(LevelResource.ROOT).resolve(DIR_NAME);
 	}
 
+	public static void saveSnapshot(MinecraftServer server, String hash, byte[] pngBytes) {
+		if (pngBytes == null || pngBytes.length == 0 || hash == null || hash.isBlank()) return;
+		Path dir = getDir(server);
+		try {
+			Files.createDirectories(dir);
+			Files.write(dir.resolve(hash + ".png"), pngBytes);
+		} catch (IOException e) {
+			YoukaisHomecoming.LOGGER.error("Failed to save certified spell snapshot: {}", hash, e);
+		}
+	}
+
+	@Nullable
+	public static byte[] loadSnapshot(MinecraftServer server, String hash) {
+		if (hash == null || hash.isBlank()) return null;
+		Path file = getDir(server).resolve(hash + ".png");
+		if (!Files.isRegularFile(file)) return null;
+		try {
+			return Files.readAllBytes(file);
+		} catch (IOException e) {
+			return null;
+		}
+	}
+
 	public static void save(MinecraftServer server, SpellCertificate certificate, SpellHealthPlan plan) {
 		Path dir = getDir(server);
 		try {

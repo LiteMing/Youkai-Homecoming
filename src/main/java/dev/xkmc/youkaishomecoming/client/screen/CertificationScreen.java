@@ -22,11 +22,17 @@ import java.util.Locale;
 public class CertificationScreen extends Screen {
 
 	private final SpellDefinition definition;
+	private final byte[] snapshotPng;
 	private Component status = Component.empty();
 
 	public CertificationScreen(SpellDefinition definition) {
+		this(definition, new byte[0]);
+	}
+
+	public CertificationScreen(SpellDefinition definition, byte[] snapshotPng) {
 		super(Component.translatable("youkaishomecoming.cert.screen.title"));
 		this.definition = definition;
+		this.snapshotPng = snapshotPng == null ? new byte[0] : snapshotPng;
 	}
 
 	@Override
@@ -69,7 +75,7 @@ public class CertificationScreen extends Screen {
 			status = Component.translatable("youkaishomecoming.cert.screen.no_quote");
 			return;
 		}
-		YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId));
+		YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId, snapshotPng));
 		CertificationClientHandler.clearPendingQuote();
 		onClose();
 	}

@@ -5,6 +5,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationQuote;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellStorage;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
@@ -20,11 +21,19 @@ public class CertificationStartRequestToServer extends SerialPacketBase {
 	@SerialClass.SerialField
 	public String quoteId = "";
 
+	@SerialClass.SerialField
+	public byte[] snapshotPng = new byte[0];
+
 	public CertificationStartRequestToServer() {
 	}
 
 	public CertificationStartRequestToServer(String quoteId) {
+		this(quoteId, new byte[0]);
+	}
+
+	public CertificationStartRequestToServer(String quoteId, byte[] snapshotPng) {
 		this.quoteId = quoteId;
+		this.snapshotPng = snapshotPng == null ? new byte[0] : snapshotPng;
 	}
 
 	@Override
@@ -41,6 +50,8 @@ public class CertificationStartRequestToServer extends SerialPacketBase {
 			if (!CertificationService.start(player, quote)) {
 				player.displayClientMessage(YHLangData.CERT_START_FAIL.get(
 						YHLangData.CERT_START_REJECTED.get()), false);
+			} else if (snapshotPng != null && snapshotPng.length > 0) {
+				CertifiedSpellStorage.saveSnapshot(player.server, quote.definitionHash(), snapshotPng);
 			}
 		});
 		context.setPacketHandled(true);

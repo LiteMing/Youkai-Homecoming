@@ -62,6 +62,16 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	/** Sentinel: run until the spell naturally finishes (no fixed duration). */
 	public static final int DURATION_NATURAL = -1;
 
+	@Override
+	public void initializeClient(java.util.function.Consumer<net.minecraftforge.client.extensions.common.IClientItemExtensions> consumer) {
+		consumer.accept(new net.minecraftforge.client.extensions.common.IClientItemExtensions() {
+			@Override
+			public net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer getCustomRenderer() {
+				return dev.xkmc.youkaishomecoming.client.render.SpellCardItemRenderer.INSTANCE;
+			}
+		});
+	}
+
 	public DynamicSpellItem(Properties properties) {
 		super(properties);
 	}

@@ -63,6 +63,18 @@ public final class SpellJsonSalvage {
 	 */
 	@Nullable
 	public static Result salvage(JsonElement json) {
+		return salvage(json, null);
+	}
+
+	/**
+	 * 尝试抢救一份严格解析失败的符卡 JSON。
+	 *
+	 * @param rawText 可选的原始 JSON 文本，若提供则会自动为错误信息附加上行号。
+	 * @return 抢救结果；骨架不可用或抢救后仍无法解析时返回 {@code null}，
+	 *         调用方应继续走硬错误路径。
+	 */
+	@Nullable
+	public static Result salvage(JsonElement json, @Nullable String rawText) {
 		if (json == null || !json.isJsonObject()) {
 			return null;
 		}
@@ -83,7 +95,7 @@ public final class SpellJsonSalvage {
 				JsonElement list = phase.get(section);
 				if (list != null && list.isJsonArray()) {
 					phase.add(section, salvageList(list.getAsJsonArray(),
-							phaseKey + "." + section, messages));
+							phaseKey + "." + section, messages, rawText));
 				}
 			}
 		}
@@ -97,10 +109,10 @@ public final class SpellJsonSalvage {
 		return new Result(definition, messages.size(), messages);
 	}
 
-	private static JsonArray salvageList(JsonArray list, String path, List<String> messages) {
+	private static JsonArray salvageList(JsonArray list, String path, List<String> messages, @Nullable String rawText) {
 		JsonArray out = new JsonArray();
 		for (int i = 0; i < list.size(); i++) {
-			out.add(salvageAction(list.get(i), path + "[" + i + "]", messages));
+			out.add(salvageAction(list.get(i), path + "[" + i + "]", messages, rawText));
 		}
 		return out;
 	}
@@ -109,15 +121,15 @@ public final class SpellJsonSalvage {
 	 * 先递归修好子列表再解析本节点，这样一个坏叶子不会连坐整棵子树 ——
 	 * 父节点在孩子被替换成占位符后往往就能正常解析了。
 	 */
-	private static JsonElement salvageAction(JsonElement element, String path, List<String> messages) {
+	private static JsonElement salvageAction(JsonElement element, String path, List<String> messages, @Nullable String rawText) {
 		if (element == null || !element.isJsonObject()) {
-			return broken(element, path, "not a JSON object", messages);
+			return broken(element, path, "not a JSON object", messages, rawText);
 		}
 		JsonObject action = element.getAsJsonObject();
 		for (String childList : CHILD_LISTS) {
 			JsonElement child = action.get(childList);
 			if (child != null && child.isJsonArray()) {
-				action.add(childList, salvageList(child.getAsJsonArray(), path + "." + childList, messages));
+				action.add(childList, salvageList(child.getAsJsonArray(), path + "." + childList, messages, rawText));
 			}
 		}
 		String[] error = new String[1];
@@ -127,18 +139,21 @@ public final class SpellJsonSalvage {
 		if (parsed) {
 			return action;
 		}
-		return broken(action, path, error[0], messages);
+		return broken(action, path, error[0], messages, rawText);
 	}
 
 	private static JsonElement broken(@Nullable JsonElement original, String path,
-									  @Nullable String error, List<String> messages) {
+									  @Nullable String error, List<String> messages,
+									  @Nullable String rawText) {
 		String type = original != null && original.isJsonObject()
 				&& original.getAsJsonObject().has("type")
 				&& original.getAsJsonObject().get("type").isJsonPrimitive()
 				? original.getAsJsonObject().get("type").getAsString()
 				: "unknown";
 		String reason = error == null || error.isBlank() ? "unreadable" : error;
-		messages.add(path + " (" + type + "): " + reason);
+		int line = findLineNumber(rawText, path, type);
+		String linePrefix = line > 0 ? "L" + line + " " : "";
+		messages.add(linePrefix + path + " (" + type + "): " + reason);
 
 		JsonObject node = new JsonObject();
 		node.addProperty("type", "broken");
@@ -147,6 +162,25 @@ public final class SpellJsonSalvage {
 		node.addProperty("raw", original == null ? "" : GSON.toJson(original));
 		node.addProperty("error", reason);
 		return node;
+	}
+
+	/**
+	 * 在原始 JSON 文本中根据属性名/路径线索粗略定位行号。
+	 */
+	private static int findLineNumber(@Nullable String rawText, String path, String type) {
+		if (rawText == null || rawText.isBlank()) return -1;
+		String[] lines = rawText.split("\\R");
+		// 优先找含特定 type 的行
+		if (!"unknown".equals(type)) {
+			String pattern = "\"type\"\\s*:\\s*\"" + type + "\"";
+			java.util.regex.Pattern r = java.util.regex.Pattern.compile(pattern);
+			for (int i = 0; i < lines.length; i++) {
+				if (r.matcher(lines[i]).find()) {
+					return i + 1;
+				}
+			}
+		}
+		return -1;
 	}
 
 	/**

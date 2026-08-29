@@ -366,7 +366,7 @@ public class RawJsonDockPanel implements DockPanel {
 			DroppedField droppedField = findDroppedField(json, encoded.get(), "$");
 			if (droppedField != null) {
 				String key = droppedField.parseError ? "Invalid spell JSON" : "Raw JSON has unsupported field";
-				markDraft(text, errorStatus(key, droppedField.message()));
+				applySalvageOrDraft(text, json, errorStatus(key, droppedField.message()));
 				return;
 			}
 			dirtyInvalidDraft = false;
@@ -399,7 +399,7 @@ public class RawJsonDockPanel implements DockPanel {
 	private void applySalvageOrDraft(String text, JsonElement json, String strictError) {
 		SpellJsonSalvage.Result salvaged;
 		try {
-			salvaged = SpellJsonSalvage.salvage(json);
+			salvaged = SpellJsonSalvage.salvage(json, text);
 		} catch (RuntimeException e) {
 			salvaged = null;
 		}

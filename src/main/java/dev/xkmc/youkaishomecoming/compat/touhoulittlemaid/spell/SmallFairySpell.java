@@ -8,6 +8,10 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 
+/**
+ * @deprecated Migrated to data-driven definition. See {@link dev.xkmc.youkaishomecoming.content.spell.game.MigratedSpellCards#smallFairy(int, DyeColor)}.
+ */
+@Deprecated
 @SerialClass
 public class SmallFairySpell extends ActualSpellCard {
 

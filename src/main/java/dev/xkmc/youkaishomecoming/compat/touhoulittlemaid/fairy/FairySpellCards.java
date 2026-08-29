@@ -3,7 +3,9 @@ package dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.fairy;
 import com.github.tartaricacid.touhoulittlemaid.entity.monster.FairyType;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.spell.MediumFairySpell;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.spell.SmallFairySpell;
+import dev.xkmc.youkaishomecoming.content.spell.game.MigratedSpellCards;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.world.item.DyeColor;
 
 public class FairySpellCards {
@@ -38,14 +40,27 @@ public class FairySpellCards {
 	}
 
 	public static void registerSpells() {
-		for (int i = 0; i < 16; i++) {
-			var col = PRIMARY[i];
-			TouhouSpellCards.registerSpell("fairy:" + i, () -> new SmallFairySpell().init(col));
-		}
-		for (int i = 16; i < 18; i++) {
-			var a = PRIMARY[i];
-			var b = SECONDARY[i];
-			TouhouSpellCards.registerSpell("fairy:" + i, () -> new MediumFairySpell().init(a, b));
+		boolean useLegacy = YHModConfig.COMMON.useLegacySpellCards.get();
+		if (useLegacy) {
+			for (int i = 0; i < 16; i++) {
+				var col = PRIMARY[i];
+				TouhouSpellCards.registerSpell("fairy:" + i, () -> new SmallFairySpell().init(col));
+			}
+			for (int i = 16; i < 18; i++) {
+				var a = PRIMARY[i];
+				var b = SECONDARY[i];
+				TouhouSpellCards.registerSpell("fairy:" + i, () -> new MediumFairySpell().init(a, b));
+			}
+		} else {
+			for (int i = 0; i < 16; i++) {
+				var col = PRIMARY[i];
+				TouhouSpellCards.registerMigrated(MigratedSpellCards.smallFairy(i, col));
+			}
+			for (int i = 16; i < 18; i++) {
+				var a = PRIMARY[i];
+				var b = SECONDARY[i];
+				TouhouSpellCards.registerMigrated(MigratedSpellCards.mediumFairy(i, a, b));
+			}
 		}
 	}
 }

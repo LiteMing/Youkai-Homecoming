@@ -22,6 +22,168 @@ import java.util.*;
 public class MigratedSpellCards {
 
 	// ============================
+	// FairySpell — 妖精符卡 (Small Fairy & Medium Fairy)
+	// ============================
+
+	/**
+	 * Small Fairy (小妖精) 符卡:
+	 * 每 20 tick (在 5 步循环的前 3 步内，即 tick%100 < 60) 发射扇形弹幕。
+	 * n=2: 5个角度 (-30°, -15°, 0°, 15°, 30°)，每角度 3 发不同速度 (0.3, 0.5, 0.7) 的 BALL 弹幕。
+	 */
+	public static SpellDefinition smallFairy(int index, DyeColor color) {
+		var id = new ResourceLocation("fairy", String.valueOf(index));
+		var mainPhase = new ResourceLocation("fairy", index + "/main");
+
+		// angle: (fi - 2) * 15°
+		var angle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("fi"), NumberProvider.constant(15)),
+				NumberProvider.constant(-30));
+		// speed: 0.3 + fj * 0.2
+		var speed = new NumberProviders.Add(
+				NumberProvider.constant(0.3),
+				new NumberProviders.Mul(new NumberProviders.Variable("fj"), NumberProvider.constant(0.2)));
+		// life: 40 / speed * (1 + rand(0, 0.5))
+		var life = new NumberProviders.Mul(
+				new NumberProviders.Div(NumberProvider.constant(40), speed),
+				new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.RandomRange(0, 0.5)));
+
+		var danmaku = new FireDanmakuAction(
+				YHDanmaku.Bullet.BALL, ColorProvider.constant(color),
+				NumberProvider.constant(1), speed,
+				life, angle,
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		);
+
+		var cluster = new SpellActions.RepeatAction(NumberProvider.constant(5), "fi", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(3), "fj", List.of(danmaku))
+		));
+
+		// tick%20 == 0 AND tick%100 < 60
+		List<SpellAction> tickActions = List.of(
+				new SpellActions.ConditionalAction(
+						new SpellConditions.AndCondition(List.of(
+								new SpellConditions.TickInterval(20, 0),
+								new SpellConditions.CompareNumbers(
+										new NumberProviders.PhaseTickMod(100),
+										"<",
+										NumberProvider.constant(60)
+								)
+						)),
+						List.of(cluster),
+						List.of()
+				)
+		);
+
+		var phase = new PhaseDefinition(mainPhase, List.of(), tickActions, List.of(), List.of(), List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:fairy");
+	}
+
+	/**
+	 * Medium Fairy (大妖精/中妖精) 符卡:
+	 * 循环节奏: 每 20 tick 切换子模式 (round = step / 2 % 7)。
+	 * round 0 / 3 (step%2==0): 旋回旋转弹幕 (Round ticker: duration=20, w=±9°/tick, BALL primary color)
+	 * round 1 / 4: 扇形抖动弹幕 (5角度 × 3层速度, CIRCLE secondary color, 带随机小抖动)
+	 */
+	public static SpellDefinition mediumFairy(int index, DyeColor primary, DyeColor secondary) {
+		var id = new ResourceLocation("fairy", String.valueOf(index));
+		var mainPhase = new ResourceLocation("fairy", index + "/main");
+
+		// === Round 0: 顺时针旋转弹幕 (w = +9°/tick, dur=20, speed=0.5, life≈80) ===
+		// angle: (wave - 10) * 9°
+		var round0Angle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("rw0"), NumberProvider.constant(9)),
+				NumberProvider.constant(-90));
+		var round0Bullet = new FireDanmakuAction(
+				YHDanmaku.Bullet.BALL, ColorProvider.constant(primary),
+				NumberProvider.constant(1), NumberProvider.constant(0.5),
+				new NumberProviders.Mul(NumberProvider.constant(80), new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.RandomRange(0, 0.5))),
+				round0Angle,
+				NumberProvider.constant(0), new NumberProviders.RandomRange(-3, 3),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		);
+		var round0Burst = new BurstAction(20, 1, "rw0", List.of(round0Bullet));
+
+		// === Round 3: 逆时针旋转弹幕 (w = -9°/tick, dur=20, speed=0.5, life≈80) ===
+		var round3Angle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("rw3"), NumberProvider.constant(-9)),
+				NumberProvider.constant(90));
+		var round3Bullet = new FireDanmakuAction(
+				YHDanmaku.Bullet.BALL, ColorProvider.constant(primary),
+				NumberProvider.constant(1), NumberProvider.constant(0.5),
+				new NumberProviders.Mul(NumberProvider.constant(80), new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.RandomRange(0, 0.5))),
+				round3Angle,
+				NumberProvider.constant(0), new NumberProviders.RandomRange(-3, 3),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		);
+		var round3Burst = new BurstAction(20, 1, "rw3", List.of(round3Bullet));
+
+		// === Round 1 / 4: 扇形弹幕 (5 角度 × 3 速度, CIRCLE secondary) ===
+		var fanAngle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("mfi"), NumberProvider.constant(15)),
+				NumberProvider.constant(-30));
+		var fanSpeed = new NumberProviders.Add(
+				NumberProvider.constant(0.3),
+				new NumberProviders.Mul(new NumberProviders.Variable("mfj"), NumberProvider.constant(0.3)));
+		var fanLife = new NumberProviders.Mul(
+				new NumberProviders.Div(NumberProvider.constant(40), fanSpeed),
+				new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.RandomRange(0, 0.5)));
+		var fanDanmaku = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(secondary),
+				NumberProvider.constant(1), fanSpeed,
+				fanLife, fanAngle,
+				NumberProvider.constant(0), new NumberProviders.RandomRange(-3, 3),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		);
+		var fanCluster = new SpellActions.RepeatAction(NumberProvider.constant(5), "mfi", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(3), "mfj", List.of(fanDanmaku))
+		));
+
+		// 周期: 每 140 tick (7 round * 20 tick)
+		// round 0: tick 0 (TickInterval(140, 0)) -> round0Burst
+		// round 1: tick 20 (TickInterval(140, 20)) -> fanCluster
+		// round 3: tick 60 (TickInterval(140, 60)) -> round3Burst
+		// round 4: tick 80 (TickInterval(140, 80)) -> fanCluster
+		List<SpellAction> tickActions = List.of(
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(140, 0),
+						List.of(round0Burst),
+						List.of()
+				),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(140, 20),
+						List.of(fanCluster),
+						List.of()
+				),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(140, 60),
+						List.of(round3Burst),
+						List.of()
+				),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(140, 80),
+						List.of(fanCluster),
+						List.of()
+				)
+		);
+
+		var phase = new PhaseDefinition(mainPhase, List.of(), tickActions, List.of(), List.of(), List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:fairy");
+	}
+
+	// ============================
 	// SunnySpell — 三色环形弹幕
 	// ============================
 	// Legacy: 每 10 tick 发射 40 发 BALL，颜色按 tick/10%3 循环 (YELLOW/ORANGE/RED)

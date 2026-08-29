@@ -10,6 +10,10 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
+/**
+ * @deprecated Migrated to data-driven definition. See {@link dev.xkmc.youkaishomecoming.content.spell.game.MigratedSpellCards#mediumFairy(int, DyeColor, DyeColor)}.
+ */
+@Deprecated
 @SerialClass
 public class MediumFairySpell extends ActualSpellCard {
 

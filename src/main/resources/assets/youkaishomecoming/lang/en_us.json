@@ -1269,6 +1269,8 @@
   "youkaishomecoming.spell.snapshot_confirm.desc3": "Future trial failures will NOT overwrite this texture.",
   "youkaishomecoming.spell.snapshot_confirm.confirm": "Confirm & Proceed",
   "youkaishomecoming.spell.snapshot_confirm.retake": "Back to Viewport",
+  "Hold a blank or matching spell card to certify": "Hold a blank or matching spell card to certify",
+  "📸 确认拍摄": "📸 Confirm Capture",
   "youkaishomecoming.fermenting_progress": "Fermenting: %s",
   "youkaishomecoming.flask.content": "Content: %s",
   "youkaishomecoming.flask.info_drink": "Stores 4 bottles of drink. Consume 0.2 bottles per slip",

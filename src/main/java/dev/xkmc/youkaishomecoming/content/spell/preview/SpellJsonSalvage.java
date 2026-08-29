@@ -165,22 +165,39 @@ public final class SpellJsonSalvage {
 	}
 
 	/**
-	 * 在原始 JSON 文本中根据属性名/路径线索粗略定位行号。
+	 * 在原始 JSON 文本中根据 action 路径层级结构与索引精准定位行号。
 	 */
 	private static int findLineNumber(@Nullable String rawText, String path, String type) {
 		if (rawText == null || rawText.isBlank()) return -1;
 		String[] lines = rawText.split("\\R");
-		// 优先找含特定 type 的行
-		if (!"unknown".equals(type)) {
-			String pattern = "\"type\"\\s*:\\s*\"" + type + "\"";
-			java.util.regex.Pattern r = java.util.regex.Pattern.compile(pattern);
-			for (int i = 0; i < lines.length; i++) {
-				if (r.matcher(lines[i]).find()) {
-					return i + 1;
-				}
+		if ("unknown".equals(type)) return -1;
+
+		// 解析 path 中各层 sections 与 action index (例如 "main.on_tick[2].body[0]")
+		String quotedType = java.util.regex.Pattern.quote(type);
+		java.util.regex.Pattern typePattern = java.util.regex.Pattern.compile("\"type\"\\s*:\\s*\"" + quotedType + "\"");
+
+		int targetIndex = -1;
+		int lastBracket = path.lastIndexOf('[');
+		int lastClose = path.lastIndexOf(']');
+		if (lastBracket >= 0 && lastClose > lastBracket) {
+			try {
+				targetIndex = Integer.parseInt(path.substring(lastBracket + 1, lastClose));
+			} catch (Exception ignored) {
 			}
 		}
-		return -1;
+
+		int matchCount = 0;
+		int firstMatchLine = -1;
+		for (int i = 0; i < lines.length; i++) {
+			if (typePattern.matcher(lines[i]).find()) {
+				if (firstMatchLine < 0) firstMatchLine = i + 1;
+				if (matchCount == targetIndex) {
+					return i + 1;
+				}
+				matchCount++;
+			}
+		}
+		return firstMatchLine;
 	}
 
 	/**

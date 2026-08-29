@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.GroupRotation;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
@@ -111,6 +112,7 @@ public class SpellPreviewScreen extends Screen {
 		);
 		this.viewportPanel.setOnRotationSpeedChanged(this::onRotationSpeedDragged);
 		this.viewportPanel.setEditBoxFocusedSupplier(this::isAnyEditBoxFocused);
+		this.viewportPanel.setTriggerSnapshotConfirmCallback(this::onCaptureSnapshotConfirmedFromViewport);
 		this.statusDockPanel = new StatusDockPanel(scene, viewport);
 		this.variablesDockPanel = new VariablesDockPanel(scene);
 		this.helpDockPanel = new HelpDockPanel();
@@ -392,14 +394,12 @@ public class SpellPreviewScreen extends Screen {
 			editorVisible = !editorVisible;
 			rebuildScreen();
 		}, fullEdit, rightLimit);
-		// Snap button: test capturing the 84x128 spell card snapshot
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("📸Snap"), 48, btn -> takeSnapshotTest(), fullEdit, rightLimit);
 		// Apply button: re-apply edited spell to all entities using it
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit, rightLimit);
 		// Export button: save spell definition as JSON datapack file
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 46, btn -> exportToDatapack(), fullEdit, rightLimit);
-		// Certify button: open the server certification dialog (design §5.2)
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Certify"), 44, btn -> openCertification(), fullEdit, rightLimit);
+		boolean canCertify = isCertifiable();
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Certify"), 44, btn -> openCertification(), fullEdit && canCertify, rightLimit);
 		// Reset button: restore to original (built-in) or open-snapshot (custom)
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit, rightLimit);
 		// Auto Replay toggle
@@ -613,8 +613,25 @@ public class SpellPreviewScreen extends Screen {
 		return false;
 	}
 
-	public OrthographicViewport getViewport() {
-		return viewport;
+	public boolean hasValidCertificationDraft() {
+		var player = Minecraft.getInstance().player;
+		if (player == null || definition == null) return false;
+		if (player.isCreative() || player.hasPermissions(2)) return true; // OP 模式无需草稿
+
+		for (var stack : player.getInventory().items) {
+			if (stack.getItem() instanceof DynamicSpellItem && !DynamicSpellItem.isComplete(stack)
+					&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
+				var bound = DynamicSpellItem.getSpellId(stack);
+				if (bound == null || bound.equals(definition.id)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private boolean isCertifiable() {
+		return hasValidCertificationDraft();
 	}
 
 	private void rebuildScreen() {
@@ -647,7 +664,20 @@ public class SpellPreviewScreen extends Screen {
 	private void onActionEdited(SpellAction newAction) {
 		if (actionListPanel != null) {
 			actionListPanel.replaceSelectedAction(newAction);
+			invalidateCurrentSnapshot();
 			if (autoReplay) replaySelectedPhase();
+		}
+	}
+
+	private void invalidateCurrentSnapshot() {
+		if (definition == null) return;
+		try {
+			// 修改符卡内容时，清理原先快照，使其失效需重新拍照
+			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
+			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
+			java.nio.file.Files.deleteIfExists(outDir.resolve(definition.id.getPath() + ".png"));
+			java.nio.file.Files.deleteIfExists(outDir.resolve(defHash + ".png"));
+		} catch (Exception ignored) {
 		}
 	}
 
@@ -661,6 +691,7 @@ public class SpellPreviewScreen extends Screen {
 		ActionListPanel.ActionPath selectedPath = actionListPanel == null ? null : actionListPanel.getSelectedPath();
 		boolean wasPlaying = scene.isPlaying();
 
+		invalidateCurrentSnapshot();
 		this.definition = newDefinition;
 		spellController.setDefinition(newDefinition);
 		spellController.setDraftMode(SpellEditorController.isDraftDefinition(newDefinition));
@@ -947,11 +978,58 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
+	public OrthographicViewport getViewport() {
+		return viewport;
+	}
+
+	public void onCaptureSnapshotConfirmedFromViewport() {
+		byte[] snap = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
+		if (snap != null && snap.length > 0) {
+			Minecraft.getInstance().setScreen(
+					new dev.xkmc.youkaishomecoming.client.screen.SpellCardSnapshotConfirmScreen(this, snap, () -> {
+						viewport.setCardFrameGuideActive(false);
+						saveConfirmedSnapshot(snap);
+						syncCustomNamesToDefinition();
+						Minecraft.getInstance().setScreen(
+								new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, snap));
+					}));
+		}
+	}
+
+	public VirtualSpellScene getScene() {
+		return scene;
+	}
+
+	public SpellDefinition getDefinition() {
+		return definition;
+	}
+
 	/** Opens the server certification dialog for the current definition. */
 	private void openCertification() {
 		if (refuseIfBroken()) {
 			return;
 		}
+		if (!hasValidCertificationDraft()) {
+			if (minecraft != null && minecraft.player != null) {
+				minecraft.player.displayClientMessage(
+						Component.literal("[YH] " + SpellEditorLocalization.t("Hold a blank or matching spell card to certify")), true);
+			}
+			return;
+		}
+		// 如果本地已经有确认保存的快照，直接沿用，不重复进入拍照环节
+		java.nio.file.Path file = Minecraft.getInstance().gameDirectory.toPath()
+				.resolve("spell_snapshots").resolve(definition.id.getPath() + ".png");
+		if (java.nio.file.Files.isRegularFile(file)) {
+			try {
+				byte[] snap = java.nio.file.Files.readAllBytes(file);
+				syncCustomNamesToDefinition();
+				Minecraft.getInstance().setScreen(
+						new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, snap));
+				return;
+			} catch (Exception ignored) {
+			}
+		}
+
 		viewport.setCardFrameGuideActive(true);
 		byte[] snap = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
 		if (snap != null && snap.length > 0) {
@@ -976,8 +1054,15 @@ public class SpellPreviewScreen extends Screen {
 		try {
 			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
 			java.nio.file.Files.createDirectories(outDir);
-			java.nio.file.Path file = outDir.resolve(definition.id.getPath() + ".png");
-			java.nio.file.Files.write(file, snapBytes);
+			// 同时按 path 与 definition hash 保存，确保未认证与已认证均能立刻命中缓存
+			java.nio.file.Path fileByPath = outDir.resolve(definition.id.getPath() + ".png");
+			java.nio.file.Files.write(fileByPath, snapBytes);
+			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
+			java.nio.file.Path fileByHash = outDir.resolve(defHash + ".png");
+			java.nio.file.Files.write(fileByHash, snapBytes);
+			// 立即注册到客户端材质缓存，即使在认证前，手持/背包物品也能立刻渲染出该卡面
+			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(definition.id.getPath(), snapBytes);
+			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(defHash, snapBytes);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

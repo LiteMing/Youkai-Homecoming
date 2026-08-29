@@ -712,6 +712,8 @@
   "youkaishomecoming.spell.snapshot_confirm.desc3": "后续即使认证挑战失败，也不会被重复覆盖。",
   "youkaishomecoming.spell.snapshot_confirm.confirm": "确认卡面并继续",
   "youkaishomecoming.spell.snapshot_confirm.retake": "返回重新取景",
+  "Hold a blank or matching spell card to certify": "请手持空白或匹配的待认证符卡基底以开启认证",
+  "📸 确认拍摄": "📸 确认拍摄",
   "youkaishomecoming.spell_editor.help.line.90": "",
   "youkaishomecoming.spell_editor.help.line.91": "§e§l--- QA ---",
   "youkaishomecoming.spell_editor.help.line.92": "",

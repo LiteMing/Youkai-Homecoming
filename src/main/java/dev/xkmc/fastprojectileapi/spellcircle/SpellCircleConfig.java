@@ -15,6 +15,8 @@ import java.util.Set;
 @SerialClass
 public class SpellCircleConfig extends BaseConfig {
 
+	private static Set<ResourceLocation> cachedBuiltinIds = null;
+
 	/**
 	 * Returns the IDs supplied by resource-pack config entries.  The merged map is
 	 * also used for server/world overrides, so looking at it cannot tell a built-in
@@ -24,6 +26,9 @@ public class SpellCircleConfig extends BaseConfig {
 	 * built-in snapshot.
 	 */
 	public static Set<ResourceLocation> builtinIds() {
+		if (cachedBuiltinIds != null) {
+			return cachedBuiltinIds;
+		}
 		Set<ResourceLocation> ids = new HashSet<>();
 		for (SpellCircleConfig config : YoukaisHomecoming.SPELL.getAll()) {
 			if (config == null || config.map == null) {
@@ -36,7 +41,12 @@ public class SpellCircleConfig extends BaseConfig {
 				}
 			}
 		}
-		return ids;
+		cachedBuiltinIds = Set.copyOf(ids);
+		return cachedBuiltinIds;
+	}
+
+	public static void invalidateBuiltinCache() {
+		cachedBuiltinIds = null;
 	}
 
 	public static boolean isBuiltin(@Nullable ResourceLocation id) {

@@ -40,6 +40,7 @@ public class ViewportDockPanel implements DockPanel {
 	private java.util.function.DoubleConsumer onGroupAngleChanged;  // angle delta in degrees
 	private Runnable onGroupDragBegin;       // 回调：拖拽刚开始（用于 push undo 一次）
 	private Runnable onGroupDeselect;        // 回调：取消选择
+	private Runnable onTriggerSnapshotConfirm; // 回调：点击取景框拍照确认
 	private java.util.function.IntConsumer onClickSelectAction; // 回调：点击弹幕选中 action (传入 action index)
 	private java.util.function.BooleanSupplier isEditBoxFocusedSupplier; // 回调：检查是否有 EditBox 聚焦
 
@@ -106,6 +107,39 @@ public class ViewportDockPanel implements DockPanel {
 		// what a drag will move (view / caster / target / danmaku).
 		renderLegend(graphics);
 		renderInteractionFeedback(graphics, mouseX, mouseY);
+		renderSnapButtonIfGuideActive(graphics, mouseX, mouseY);
+	}
+
+	private void renderSnapButtonIfGuideActive(GuiGraphics graphics, int mouseX, int mouseY) {
+		if (!viewport.isCardFrameGuideActive()) return;
+		var font = Minecraft.getInstance().font;
+
+		int frameW = viewport.getWidth() * 128 > viewport.getHeight() * 84
+				? Math.round((viewport.getHeight() * 84f) / 128f)
+				: viewport.getWidth();
+		int fx = x + (w - frameW) / 2;
+		int fy = y + 10;
+
+		// 在取景框右上角悬浮醒目的拍照按钮 [📸 拍摄卡面]
+		int btnW = 88;
+		int btnH = 20;
+		int btnX = fx + frameW - btnW - 4;
+		int btnY = fy + 4;
+
+		boolean hovered = mouseX >= btnX && mouseX < btnX + btnW && mouseY >= btnY && mouseY < btnY + btnH;
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 300);
+		graphics.fill(btnX, btnY, btnX + btnW, btnY + btnH, hovered ? 0xDDFFD700 : 0xBB222233);
+		graphics.fill(btnX, btnY, btnX + btnW, btnY + 1, 0xFFFFD700);
+		graphics.fill(btnX, btnY + btnH - 1, btnX + btnW, btnY + btnH, 0xFFFFD700);
+		graphics.fill(btnX, btnY, btnX + 1, btnY + btnH, 0xFFFFD700);
+		graphics.fill(btnX + btnW - 1, btnY, btnX + btnW, btnY + btnH, 0xFFFFD700);
+
+		String text = SpellEditorLocalization.t("📸 确认拍摄");
+		int tx = btnX + (btnW - font.width(text)) / 2;
+		int ty = btnY + (btnH - font.lineHeight) / 2;
+		graphics.drawString(font, text, tx, ty, hovered ? 0xFF000000 : 0xFFFFD700, false);
+		graphics.pose().popPose();
 	}
 
 	// ---- Interaction feedback (legend + hover/drag indicators) ----
@@ -357,6 +391,24 @@ public class ViewportDockPanel implements DockPanel {
 		} else {
 			// 正交模式
 			if (button == 0) {
+				// 检查是否点击了取景框旁的确认拍照按钮
+				if (viewport.isCardFrameGuideActive()) {
+					int frameW = viewport.getWidth() * 128 > viewport.getHeight() * 84
+							? Math.round((viewport.getHeight() * 84f) / 128f)
+							: viewport.getWidth();
+					int fx = x + (w - frameW) / 2;
+					int fy = y + 10;
+					int btnW = 88;
+					int btnH = 20;
+					int btnX = fx + frameW - btnW - 4;
+					int btnY = fy + 4;
+					if (mouseX >= btnX && mouseX < btnX + btnW && mouseY >= btnY && mouseY < btnY + btnH) {
+						if (onTriggerSnapshotConfirm != null) {
+							onTriggerSnapshotConfirm.run();
+						}
+						return true;
+					}
+				}
 				// Rotate mode: LMB drag rotates the selected group around the active axis.
 				if (rotateMode) {
 					if (hasHighlightedGroup()) {
@@ -610,6 +662,10 @@ public class ViewportDockPanel implements DockPanel {
 	}
 
 	// ---- 公共访问 ----
+
+	public void setTriggerSnapshotConfirmCallback(Runnable callback) {
+		this.onTriggerSnapshotConfirm = callback;
+	}
 
 	public OrthographicViewport getViewport() {
 		return viewport;

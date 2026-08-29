@@ -112,6 +112,9 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 	}
 
 	private void deleteCircle(ServerPlayer sender, ResourceLocation id) {
+		if (SpellCircleConfig.isBuiltin(id)) {
+			throw new IllegalArgumentException("Cannot delete built-in spell circle: " + id);
+		}
 		YoukaisHomecoming.SPELL.getMerged().map.remove(id.toString());
 		CustomSpellCircleStorage.deleteCircle(sender.server, id);
 		sender.sendSystemMessage(Component.literal("[YH] Deleted spell circle " + id));

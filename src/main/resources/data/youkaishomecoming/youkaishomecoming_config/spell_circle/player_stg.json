@@ -35,6 +35,54 @@
 	  ],
 	  "items": [],
 	  "layers": []
+	},
+	"youkaishomecoming:player_stg_bomb": {
+	  "strokes": [
+		{
+		  "vertex": 24,
+		  "cycle": 1,
+		  "rune": 0,
+		  "color": "0x99FFFFFF",
+		  "width": 1.5,
+		  "radius": 5,
+		  "z": 0.02,
+		  "angle": 0
+		}
+	  ],
+	  "items": [],
+	  "layers": []
+	},
+	"youkaishomecoming:player_stg_power": {
+	  "strokes": [
+		{
+		  "vertex": 8,
+		  "cycle": 1,
+		  "rune": 0,
+		  "color": "0xFFFFD54F",
+		  "width": 1.5,
+		  "radius": 5,
+		  "z": 0.025,
+		  "angle": 22.5
+		}
+	  ],
+	  "items": [],
+	  "layers": []
+	},
+	"youkaishomecoming:player_stg_points": {
+	  "strokes": [
+		{
+		  "vertex": 16,
+		  "cycle": 1,
+		  "rune": 0,
+		  "color": "0xFFB39DDB",
+		  "width": 1.25,
+		  "radius": 4,
+		  "z": 0.03,
+		  "angle": 0
+		}
+	  ],
+	  "items": [],
+	  "layers": []
 	}
   }
 }

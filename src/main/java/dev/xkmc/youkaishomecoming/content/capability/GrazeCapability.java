@@ -55,8 +55,13 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private static final int WEAK = 60, GRAZE_CACHE = 10;
 	private static final double ACTIVE_DANMAKU_HOST_SEARCH_RANGE = 128.0;
 
+	/** Power and point progress are rendered on tracked players' STG circles. */
+	@SerialClass.SerialField(toTracking = true)
+	private int power;
+	@SerialClass.SerialField(toTracking = true)
+	private int hidden;
 	@SerialClass.SerialField
-	private int power, hidden, step, invul, weak;
+	private int step, invul, weak;
 	@SerialClass.SerialField(toTracking = true)
 	private int bomb, life;
 	@SerialClass.SerialField

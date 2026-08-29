@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
+import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleConfig;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellComponent;
 import dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
@@ -113,7 +114,12 @@ public class MagicCircleDockPanel implements DockPanel {
 	private EditBox strokeVertexBox;
 	private EditBox strokeCycleBox;
 	private EditBox strokeRuneBox;
+	private EditBox strokeZBox;
+	private EditBox strokeAngleBox;
 	private EditBox itemIdBox;
+	private EditBox itemXBox;
+	private EditBox itemYBox;
+	private EditBox itemZBox;
 	private EditBox itemScaleBox;
 	private EditBox itemRotationBox;
 	private EditBox itemAlphaBox;
@@ -161,8 +167,9 @@ public class MagicCircleDockPanel implements DockPanel {
 	/**
 	 * Restore the selected circle to the state it had when this editor session first
 	 * loaded it — the same contract as the spell card's Reset, which falls back to its
-	 * open-snapshot when there is no built-in default. Magic circles have no separate
-	 * default registry, so the snapshot is the only source.
+	 * open-snapshot when there is no built-in default. Built-in circles use their
+	 * packaged resource definition as the snapshot even when a server override is
+	 * currently visible in the merged map.
 	 */
 	private void resetToDefault() {
 		JsonElement snapshot = openSnapshots.get(selectedId);
@@ -196,7 +203,13 @@ public class MagicCircleDockPanel implements DockPanel {
 
 	/** Remember a circle's contents the first time this session sees it, for Reset. */
 	private void captureSnapshot(ResourceLocation id, SpellComponent value) {
-		if (id == null || value == null || openSnapshots.containsKey(id)) {
+		if (id == null || value == null) {
+			return;
+		}
+		// A built-in may first be seen through a merged/network override before
+		// the resource-pack source is available.  Prefer the source whenever it
+		// can be resolved so Reset never captures an edited override as "default".
+		if (openSnapshots.containsKey(id) && !SpellCircleConfig.isBuiltin(id)) {
 			return;
 		}
 		value.invalidateCache();
@@ -229,6 +242,15 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (id.equals(selectedId)) {
 			return;
 		}
+		if (YoukaisHomecoming.SPELL.getMerged().map.containsKey(id.toString())) {
+			setStatus("Magic Circle id already exists", 0xFFFF8888);
+			if (idBox != null) {
+				suppress = true;
+				idBox.setValue(selectedId.toString());
+				suppress = false;
+			}
+			return;
+		}
 		ResourceLocation old = selectedId;
 		JsonElement snapshot = openSnapshots.get(old);
 		if (snapshot != null) {
@@ -253,6 +275,10 @@ public class MagicCircleDockPanel implements DockPanel {
 	}
 
 	private void openDeleteConfirm() {
+		if (!canDeleteSelectedCircle()) {
+			setStatus("Built-in magic circles cannot be deleted", 0xFFFFCC88);
+			return;
+		}
 		closeCircleDropdown();
 		deleteConfirm = new ConfirmOverlay(new String[]{
 				"Cancel",
@@ -630,6 +656,7 @@ public class MagicCircleDockPanel implements DockPanel {
 		int deleteX = newX + actionW + actionGap;
 		circleDeleteButton = addFixedWidget(Button.builder(Component.literal("-"), b -> openDeleteConfirm())
 				.bounds(deleteX, headerY, actionW, BUTTON_HEIGHT).build());
+		circleDeleteButton.active = canDeleteSelectedCircle();
 		headerY += ROW;
 		// 逐键提交会把每个中间串都注册成一个魔法阵（输入 "1123" 会留下 1 / 11 / 112 / 1123）。
 		// 与符卡的新建 ID 框一致：只记录待提交值，回车或失焦时才真正改名。
@@ -675,6 +702,10 @@ public class MagicCircleDockPanel implements DockPanel {
 				text -> setStrokeInt(text, "cycle"));
 		strokeRuneBox = fieldRow(font, "Rune", String.valueOf(stroke == null ? 0 : stroke.rune),
 				text -> setStrokeInt(text, "rune"));
+		strokeZBox = fieldRow(font, "Z", fmt(stroke == null ? 0 : stroke.z),
+				text -> setStrokeFloat(text, "z"));
+		strokeAngleBox = fieldRow(font, "Angle", fmt(stroke == null ? 0 : stroke.angle),
+				text -> setStrokeFloat(text, "angle"));
 	}
 
 	private void buildItemSection(Font font) {
@@ -690,6 +721,12 @@ public class MagicCircleDockPanel implements DockPanel {
 		}
 		SpellComponent.ItemLayer item = currentItem();
 		itemIdBox = fieldRow(font, "Item ID", item == null ? "minecraft:air" : item.item, this::setItemId);
+		itemXBox = fieldRow(font, "X", fmt(valueOf(item == null ? null : item.x_offset, 0)),
+				text -> setItemValue(text, "x", 0));
+		itemYBox = fieldRow(font, "Y", fmt(valueOf(item == null ? null : item.y_offset, 0)),
+				text -> setItemValue(text, "y", 0));
+		itemZBox = fieldRow(font, "Z", fmt(valueOf(item == null ? null : item.z_offset, 0)),
+				text -> setItemValue(text, "z", 0));
 		itemScaleBox = fieldRow(font, "Scale", fmt(valueOf(item == null ? null : item.scale, 16)),
 				text -> setItemValue(text, "scale", 16));
 		itemRotationBox = fieldRow(font, "Rot", fmt(valueOf(item == null ? null : item.rotation, 0)),
@@ -883,8 +920,13 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (strokeVertexBox != null) strokeVertexBox.setValue(String.valueOf(stroke == null ? 64 : stroke.vertex));
 		if (strokeCycleBox != null) strokeCycleBox.setValue(String.valueOf(stroke == null ? 1 : stroke.cycle));
 		if (strokeRuneBox != null) strokeRuneBox.setValue(String.valueOf(stroke == null ? 0 : stroke.rune));
+		if (strokeZBox != null) strokeZBox.setValue(fmt(stroke == null ? 0 : stroke.z));
+		if (strokeAngleBox != null) strokeAngleBox.setValue(fmt(stroke == null ? 0 : stroke.angle));
 		SpellComponent.ItemLayer item = currentItem();
 		if (itemIdBox != null) itemIdBox.setValue(item == null ? "minecraft:air" : item.item);
+		if (itemXBox != null) itemXBox.setValue(fmt(valueOf(item == null ? null : item.x_offset, 0)));
+		if (itemYBox != null) itemYBox.setValue(fmt(valueOf(item == null ? null : item.y_offset, 0)));
+		if (itemZBox != null) itemZBox.setValue(fmt(valueOf(item == null ? null : item.z_offset, 0)));
 		if (itemScaleBox != null) itemScaleBox.setValue(fmt(valueOf(item == null ? null : item.scale, 16)));
 		if (itemRotationBox != null) itemRotationBox.setValue(fmt(valueOf(item == null ? null : item.rotation, 0)));
 		if (itemAlphaBox != null) itemAlphaBox.setValue(fmt(valueOf(item == null ? null : item.alpha, 1)));
@@ -909,9 +951,6 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (layerZBox != null) layerZBox.setValue(fmt(valueOf(layer == null ? null : layer.z_offset, 0)));
 		if (layerAlphaBox != null) layerAlphaBox.setValue(fmt(valueOf(layer == null ? null : layer.alpha, 1)));
 		suppress = false;
-	}
-
-	private void syncRawFromComponent() {
 	}
 
 	private void openCircleDropdown() {
@@ -1239,6 +1278,10 @@ public class MagicCircleDockPanel implements DockPanel {
 	}
 
 	private void deleteCircle() {
+		if (!canDeleteSelectedCircle()) {
+			setStatus("Built-in magic circles cannot be deleted", 0xFFFFCC88);
+			return;
+		}
 		ResourceLocation removed = selectedId;
 		List<ResourceLocation> before = circleIds();
 		int removedIndex = before.indexOf(removed);
@@ -1260,6 +1303,10 @@ public class MagicCircleDockPanel implements DockPanel {
 			selectCircle(next);
 		}
 		setStatus("Magic Circle delete sent", 0xFF88FF88);
+	}
+
+	public boolean canDeleteSelectedCircle() {
+		return !SpellCircleConfig.isBuiltin(selectedId);
 	}
 
 	@Nullable
@@ -1599,6 +1646,10 @@ public class MagicCircleDockPanel implements DockPanel {
 			stroke.radius = value;
 		} else if ("width".equals(field)) {
 			stroke.width = value;
+		} else if ("z".equals(field)) {
+			stroke.z = value;
+		} else if ("angle".equals(field)) {
+			stroke.angle = value;
 		}
 		onComponentEdited("Stroke changed");
 	}
@@ -1643,6 +1694,12 @@ public class MagicCircleDockPanel implements DockPanel {
 			SpellComponent.Value val = editableValue(item.alpha, fallback);
 			val.value = value;
 			item.alpha = val;
+		} else if ("x".equals(field)) {
+			item.x_offset = withValue(item.x_offset, fallback, value);
+		} else if ("y".equals(field)) {
+			item.y_offset = withValue(item.y_offset, fallback, value);
+		} else if ("z".equals(field)) {
+			item.z_offset = withValue(item.z_offset, fallback, value);
 		}
 		onComponentEdited("Item changed");
 	}
@@ -1861,8 +1918,11 @@ public class MagicCircleDockPanel implements DockPanel {
 				collectReferencedComponents(linkedComponents);
 			}
 		}
-		// Snapshot before the editor starts mutating it — this is what Reset restores.
-		captureSnapshot(selectedId, existing);
+		// Built-ins reset to their resource-pack source even when a saved editor
+		// override currently occupies the merged map. Custom circles keep their
+		// open-session snapshot, matching the spell editor's fallback contract.
+		SpellComponent builtin = SpellCircleConfig.builtinComponent(selectedId);
+		captureSnapshot(selectedId, builtin == null ? existing : builtin);
 		component = existing == null ? createDefaultComponent() : cloneComponent(existing);
 		clampSelection();
 		publishLocal(true);

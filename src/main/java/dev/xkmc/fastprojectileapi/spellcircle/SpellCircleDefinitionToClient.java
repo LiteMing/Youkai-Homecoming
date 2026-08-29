@@ -47,6 +47,9 @@ public class SpellCircleDefinitionToClient extends SerialPacketBase {
 					return;
 				}
 				if (deleted) {
+					if (SpellCircleConfig.isBuiltin(id)) {
+						return;
+					}
 					YoukaisHomecoming.SPELL.getMerged().map.remove(id.toString());
 					invalidateAllCachedChildren();
 					return;

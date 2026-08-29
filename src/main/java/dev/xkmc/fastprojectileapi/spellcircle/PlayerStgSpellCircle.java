@@ -1,10 +1,7 @@
 package dev.xkmc.fastprojectileapi.spellcircle;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
-import dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationClientHandler;
-import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
@@ -17,9 +14,13 @@ import org.joml.Quaternionf;
  * Player STG battle spell circle (design doc §17.2-17.3, D4).
  * <ul>
  *   <li>main ring from the {@code youkaishomecoming:player_stg} circle definition;</li>
- *   <li>bomb sub-circles rendered dynamically around the ring: one full sub-circle
- *   per whole bomb (RESOURCE_UNIT = 5 raw units), a partial sub-circle for the
- *   fractional remainder, capped at spellCircleMaxResourceSubCircles;</li>
+ *   <li>bomb sub-circles rendered dynamically around the ring from the editable
+ *   {@code player_stg_bomb} component: one full sub-circle per whole bomb
+ *   (RESOURCE_UNIT = 5 raw units), a partial sub-circle for the fractional
+ *   remainder, capped at spellCircleMaxResourceSubCircles;</li>
+ *   <li>power and point progress use the same resource-slot projection with
+ *   editable {@code player_stg_power} and {@code player_stg_points} components
+ *   (100 raw units per displayed level/progress unit);</li>
  *   <li>global alpha fades continuously below spellCirclePlayerFadeStartLife
  *   (smoothstep), pinned to 1.0 while the player's own certification trial is
  *   active (D4);</li>
@@ -31,8 +32,17 @@ import org.joml.Quaternionf;
 public final class PlayerStgSpellCircle {
 
 	private static final ResourceLocation PLAYER_STG = new ResourceLocation("youkaishomecoming", "player_stg");
+	private static final ResourceLocation PLAYER_STG_BOMB = new ResourceLocation("youkaishomecoming", "player_stg_bomb");
+	private static final ResourceLocation PLAYER_STG_POWER = new ResourceLocation("youkaishomecoming", "player_stg_power");
+	private static final ResourceLocation PLAYER_STG_POINTS = new ResourceLocation("youkaishomecoming", "player_stg_points");
 	private static final ResourceLocation SPELL_TEX = new ResourceLocation("youkaishomecoming", "textures/entities/spell_circle.png");
-	private static final int SHARD = 5;
+	private static final int RESOURCE_UNIT = 5;
+	private static final int POWER_UNIT = 100;
+	private static final int POINTS_UNIT = 100;
+	private static final float BOMB_RADIUS = 44;
+	// Keep resource rings outside the HP/time progress rings (HP is centered at 52).
+	private static final float POWER_RADIUS = 60;
+	private static final float POINTS_RADIUS = 68;
 
 	private PlayerStgSpellCircle() {
 	}
@@ -45,7 +55,7 @@ public final class PlayerStgSpellCircle {
 		if (component == null) return;
 
 		float alpha = computeAlpha(cap);
-		if (alpha <= 0.01f) return;
+		if (!SpellCircleLifeAlpha.shouldRender(alpha)) return;
 
 		pose.pushPose();
 		pose.translate(0, player.getBbHeight() * 0.5f, 0);
@@ -59,50 +69,17 @@ public final class PlayerStgSpellCircle {
 		handle.alpha = alpha;
 		component.render(handle);
 		SpellProgressCircleRenderer.render(pose, buffer, light, player, pTick, alpha);
-		renderBombSubCircles(pose, buffer, light, player, pTick, alpha);
+		SpellCircleResourceRenderer.render(pose, buffer, light, player, pTick, alpha,
+				cap.getBomb(), RESOURCE_UNIT, PLAYER_STG_BOMB, BOMB_RADIUS, 0);
+		SpellCircleResourceRenderer.render(pose, buffer, light, player, pTick, alpha,
+				cap.getPower(), POWER_UNIT, PLAYER_STG_POWER, POWER_RADIUS, 180);
+		SpellCircleResourceRenderer.render(pose, buffer, light, player, pTick, alpha,
+				cap.getPoints(), POINTS_UNIT, PLAYER_STG_POINTS, POINTS_RADIUS, 0);
 		pose.popPose();
 	}
 
 	private static float computeAlpha(GrazeCapability cap) {
-		// D4: certification alpha fade disabled entirely
-		if (CertificationClientHandler.inMyTrial()) {
-			return 1.0f;
-		}
-		double life = cap.getLife() / (double) SHARD;
-		double fadeStart = YHModConfig.COMMON.spellCirclePlayerFadeStartLife.get();
-		if (life >= fadeStart) return 1.0f;
-		double t = Math.max(0, life) / fadeStart;
-		t = Math.min(1, Math.max(0, t));
-		double smooth = t * t * (3 - 2 * t);
-		double minAlpha = YHModConfig.COMMON.spellCirclePlayerMinAlpha.get();
-		return (float) (minAlpha + (1 - minAlpha) * smooth);
+		return SpellCircleLifeAlpha.compute(cap);
 	}
 
-	private static void renderBombSubCircles(PoseStack pose, MultiBufferSource buffer, int light,
-											 Player player, float pTick, float globalAlpha) {
-		GrazeCapability cap = GrazeCapability.HOLDER.get(player);
-		int raw = cap.getBomb();
-		int whole = raw / SHARD;
-		int remainder = raw % SHARD;
-		int max = YHModConfig.COMMON.spellCircleMaxResourceSubCircles.get();
-		int slots = Math.min(whole + (remainder > 0 ? 1 : 0), max);
-		if (slots <= 0) return;
-		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(
-				pose, buffer, SpellRenderState.getSpell(SPELL_TEX), player.tickCount + pTick, light);
-		for (int i = 0; i < slots; i++) {
-			float slotAlpha = i < whole ? 1.0f : remainder / (float) SHARD;
-			if (slotAlpha <= 0.01f) continue;
-			float angle = i * 360f / slots;
-			pose.pushPose();
-			pose.mulPose(new Quaternionf().rotationY((float) Math.toRadians(angle)));
-			pose.translate(44, 0, 0);
-			pose.mulPose(new Quaternionf().rotationY((float) Math.toRadians(-angle)));
-			handle.alpha = globalAlpha * slotAlpha;
-			SpellComponent.Stroke sub = new SpellComponent.Stroke();
-			sub.vertex = 24; sub.cycle = 1; sub.rune = 0; sub.color = "0x99FFFFFF";
-			sub.width = 1.5f; sub.radius = 5f; sub.z = 0.02f; sub.angle = 0;
-			sub.render(handle);
-			pose.popPose();
-		}
-	}
 }

@@ -222,7 +222,9 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue beatenDurationTicks;
 		public final ForgeConfigSpec.BooleanValue manualDanmakuCombat;
 		public final ForgeConfigSpec.DoubleValue spellCirclePlayerFadeStartLife;
+		public final ForgeConfigSpec.DoubleValue spellCirclePlayerFadeEndLife;
 		public final ForgeConfigSpec.DoubleValue spellCirclePlayerMinAlpha;
+		public final ForgeConfigSpec.DoubleValue spellCirclePlayerRenderAlphaCutoff;
 		public final ForgeConfigSpec.IntValue spellCircleMaxResourceSubCircles;
 
 		// Exposure compat
@@ -547,10 +549,16 @@ public class YHModConfig {
 				spellCirclePlayerFadeStartLife = builder.comment("Player STG spell circle starts fading below this life (2.8 default; disabled during certification)")
 						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerFadeStartLife")
 						.defineInRange("spellCirclePlayerFadeStartLife", 2.8, 0.5, 20.0);
+				spellCirclePlayerFadeEndLife = builder.comment("Player STG spell circle fade reaches its minimum alpha at this life")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerFadeEndLife")
+						.defineInRange("spellCirclePlayerFadeEndLife", 0.0, 0.0, 20.0);
 				spellCirclePlayerMinAlpha = builder.comment("Player STG spell circle global alpha floor when life is at 0")
 						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerMinAlpha")
 						.defineInRange("spellCirclePlayerMinAlpha", 0.15, 0.0, 1.0);
-				spellCircleMaxResourceSubCircles = builder.comment("Max bomb sub-circle slots rendered on the player STG spell circle")
+				spellCirclePlayerRenderAlphaCutoff = builder.comment("Do not render the player STG spell circle below this global alpha")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerRenderAlphaCutoff")
+						.defineInRange("spellCirclePlayerRenderAlphaCutoff", 0.01, 0.0, 1.0);
+				spellCircleMaxResourceSubCircles = builder.comment("Max resource sub-circle slots rendered on the player STG spell circle")
 						.translation("config.youkaishomecoming.common.danmaku_battle.spellCircleMaxResourceSubCircles")
 						.defineInRange("spellCircleMaxResourceSubCircles", 8, 1, 32);
 			}

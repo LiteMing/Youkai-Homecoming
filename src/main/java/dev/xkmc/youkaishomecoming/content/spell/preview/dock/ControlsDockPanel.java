@@ -19,8 +19,11 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -81,9 +84,19 @@ public class ControlsDockPanel implements DockPanel {
 	private Consumer<GuiEventListener> removeWidgetCallback;
 	private boolean active;
 
+	private static final Set<String> COLLAPSED_SPELL_FOLDERS = new HashSet<>();
+
+	private record DropdownItem(
+			@Nullable ResourceLocation value,
+			String label,
+			boolean isFolder,
+			String folderKey,
+			int depth,
+			boolean isSelected
+	) {}
+
 	private record DropdownOverlay(
-			List<ResourceLocation> values,
-			String[] options,
+			List<DropdownItem> items,
 			int selectedIndex
 	) {}
 
@@ -690,13 +703,13 @@ public class ControlsDockPanel implements DockPanel {
 		if (spellDropdown == null) {
 			return false;
 		}
-		String[] options = spellDropdown.options();
-		if (options == null || options.length == 0) {
+		List<DropdownItem> items = spellDropdown.items();
+		if (items == null || items.isEmpty()) {
 			return true;
 		}
 		int[] bounds = computeSpellDropdownBounds();
 		int visibleItems = Math.max(1, bounds[4]);
-		int maxScroll = Math.max(0, options.length - visibleItems);
+		int maxScroll = Math.max(0, items.size() - visibleItems);
 		spellDropdownScrollOffset = Math.max(0, Math.min(maxScroll,
 				spellDropdownScrollOffset - (int) (delta * 3)));
 		return true;
@@ -748,26 +761,64 @@ public class ControlsDockPanel implements DockPanel {
 		}
 		closeSpellDeleteConfirm();
 		closeActionMenu();
-		String[] options = new String[values.size()];
+
 		ResourceLocation current = currentSpellIdSupplier.get();
+		List<DropdownItem> items = buildFolderTree(values, current);
+
 		int selectedIndex = -1;
-		for (int i = 0; i < values.size(); i++) {
-			ResourceLocation value = values.get(i);
-			options[i] = formatSpellOption(value);
-			if (selectedIndex < 0 && java.util.Objects.equals(value, current)) {
+		for (int i = 0; i < items.size(); i++) {
+			if (items.get(i).isSelected()) {
 				selectedIndex = i;
+				break;
 			}
 		}
-		spellDropdown = new DropdownOverlay(List.copyOf(values), options, selectedIndex);
+
+		spellDropdown = new DropdownOverlay(items, selectedIndex);
 		spellDropdownHoverIndex = -1;
-		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
-		int maxScroll = Math.max(0, options.length - visibleItems);
+		int visibleItems = Math.min(items.size(), DROPDOWN_MAX_VISIBLE);
+		int maxScroll = Math.max(0, items.size() - visibleItems);
 		if (selectedIndex >= visibleItems) {
 			spellDropdownScrollOffset = selectedIndex - visibleItems + 1;
 		} else {
 			spellDropdownScrollOffset = 0;
 		}
 		spellDropdownScrollOffset = Math.max(0, Math.min(maxScroll, spellDropdownScrollOffset));
+	}
+
+	private List<DropdownItem> buildFolderTree(List<ResourceLocation> values, @Nullable ResourceLocation current) {
+		// 按 namespace/prefix 分组
+		Map<String, List<ResourceLocation>> grouped = new java.util.TreeMap<>();
+		for (ResourceLocation rl : values) {
+			String prefix;
+			String path = rl.getPath();
+			if (path.contains("/")) {
+				prefix = rl.getNamespace() + ":" + path.substring(0, path.lastIndexOf('/'));
+			} else {
+				prefix = rl.getNamespace();
+			}
+			grouped.computeIfAbsent(prefix, k -> new ArrayList<>()).add(rl);
+		}
+
+		List<DropdownItem> items = new ArrayList<>();
+		for (Map.Entry<String, List<ResourceLocation>> entry : grouped.entrySet()) {
+			String folder = entry.getKey();
+			List<ResourceLocation> list = entry.getValue();
+			boolean isCollapsed = COLLAPSED_SPELL_FOLDERS.contains(folder);
+			String icon = isCollapsed ? "\u25B6 " : "\u25BC ";
+			items.add(new DropdownItem(null, icon + folder + " (" + list.size() + ")", true, folder, 0, false));
+
+			if (!isCollapsed) {
+				for (ResourceLocation rl : list) {
+					boolean selected = java.util.Objects.equals(rl, current);
+					String leafName = rl.getPath();
+					if (leafName.contains("/")) {
+						leafName = leafName.substring(leafName.lastIndexOf('/') + 1);
+					}
+					items.add(new DropdownItem(rl, "  " + formatSpellOption(rl), false, folder, 1, selected));
+				}
+			}
+		}
+		return items;
 	}
 
 	private void closeSpellDropdown() {
@@ -824,11 +875,11 @@ public class ControlsDockPanel implements DockPanel {
 		if (spellDropdown == null || spellDropdownButton == null) {
 			return new int[]{0, 0, 0, 0, 0};
 		}
-		String[] options = spellDropdown.options();
-		if (options == null || options.length == 0) {
+		List<DropdownItem> items = spellDropdown.items();
+		if (items == null || items.isEmpty()) {
 			return new int[]{0, 0, 0, 0, 0};
 		}
-		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int visibleItems = Math.min(items.size(), DROPDOWN_MAX_VISIBLE);
 		int totalH = visibleItems * DROPDOWN_ITEM_H;
 		int dropdownX = spellDropdownButton.getX();
 		int dropdownY = spellDropdownButton.getY() + spellDropdownButton.getHeight();
@@ -930,12 +981,12 @@ public class ControlsDockPanel implements DockPanel {
 		int[] bounds = computeSpellDropdownBounds();
 		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
 		int visibleItems = bounds[4];
-		String[] options = spellDropdown.options();
-		if (options == null || options.length == 0) {
+		List<DropdownItem> items = spellDropdown.items();
+		if (items == null || items.isEmpty()) {
 			return;
 		}
 
-		boolean needsScroll = options.length > visibleItems;
+		boolean needsScroll = items.size() > visibleItems;
 		int scrollbarW = needsScroll ? 6 : 0;
 
 		graphics.pose().pushPose();
@@ -951,38 +1002,41 @@ public class ControlsDockPanel implements DockPanel {
 		int contentW = dw - scrollbarW;
 		if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
 			int rawIdx = (mouseY - dy) / DROPDOWN_ITEM_H + spellDropdownScrollOffset;
-			if (rawIdx >= 0 && rawIdx < options.length) {
+			if (rawIdx >= 0 && rawIdx < items.size()) {
 				spellDropdownHoverIndex = rawIdx;
 			}
 		}
 
-		int visCount = Math.min(options.length, dh / DROPDOWN_ITEM_H);
+		int visCount = Math.min(items.size(), dh / DROPDOWN_ITEM_H);
 		for (int i = 0; i < visCount; i++) {
 			int optIdx = i + spellDropdownScrollOffset;
-			if (optIdx >= options.length) {
+			if (optIdx >= items.size()) {
 				break;
 			}
+			DropdownItem item = items.get(optIdx);
 			int itemY = dy + i * DROPDOWN_ITEM_H;
 			boolean isHovered = optIdx == spellDropdownHoverIndex;
-			boolean isSelected = optIdx == spellDropdown.selectedIndex();
+			boolean isSelected = item.isSelected();
 			if (isHovered) {
 				graphics.fill(dx + 1, itemY, dx + contentW - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
 			}
-			int textX = dx + 4;
+			int textX = dx + 4 + item.depth() * 8;
 			if (isSelected) {
 				graphics.drawString(font, "\u25B6", dx + 3, itemY + 4, 0xFFFFCC44, false);
-				textX = dx + 14;
+				textX = dx + 14 + item.depth() * 8;
 			}
-			int textColor = isHovered ? 0xFFFFDD66 : (isSelected ? 0xFFFFCC88 : 0xFFDDDDDD);
-			graphics.drawString(font, options[optIdx], textX, itemY + 4, textColor, false);
+			int textColor = item.isFolder()
+					? (isHovered ? 0xFFFFFFFF : 0xFFB0C4DE)
+					: (isHovered ? 0xFFFFDD66 : (isSelected ? 0xFFFFCC88 : 0xFFDDDDDD));
+			graphics.drawString(font, item.label(), textX, itemY + 4, textColor, false);
 		}
 
 		if (needsScroll) {
 			int sbX = dx + dw - scrollbarW;
 			graphics.fill(sbX, dy, sbX + scrollbarW, dy + dh, 0x33FFFFFF);
 			int trackH = dh - 2;
-			int thumbH = Math.max(10, trackH * visibleItems / options.length);
-			int maxScroll = Math.max(1, options.length - visibleItems);
+			int thumbH = Math.max(10, trackH * visibleItems / items.size());
+			int maxScroll = Math.max(1, items.size() - visibleItems);
 			int thumbTravel = trackH - thumbH;
 			if (thumbTravel > 0) {
 				int thumbY = dy + 1 + thumbTravel * spellDropdownScrollOffset / maxScroll;
@@ -1082,16 +1136,28 @@ public class ControlsDockPanel implements DockPanel {
 		int[] bounds = computeSpellDropdownBounds();
 		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
 		int visibleItems = bounds[4];
-		boolean needsScroll = spellDropdown.options().length > visibleItems;
+		List<DropdownItem> items = spellDropdown.items();
+		boolean needsScroll = items.size() > visibleItems;
 		int scrollbarW = needsScroll ? 6 : 0;
 		int contentW = dw - scrollbarW;
 		if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
 			int visIdx = (int) ((mouseY - dy) / DROPDOWN_ITEM_H);
 			int optIdx = visIdx + spellDropdownScrollOffset;
-			if (optIdx >= 0 && optIdx < spellDropdown.values().size()) {
-				ResourceLocation selected = spellDropdown.values().get(optIdx);
-				closeSpellDropdown();
-				switchSpellCallback.accept(selected);
+			if (optIdx >= 0 && optIdx < items.size()) {
+				DropdownItem clicked = items.get(optIdx);
+				if (clicked.isFolder()) {
+					String key = clicked.folderKey();
+					if (COLLAPSED_SPELL_FOLDERS.contains(key)) {
+						COLLAPSED_SPELL_FOLDERS.remove(key);
+					} else {
+						COLLAPSED_SPELL_FOLDERS.add(key);
+					}
+					openSpellDropdown(); // 重新按折叠状态刷新菜单树
+				} else if (clicked.value() != null) {
+					ResourceLocation selected = clicked.value();
+					closeSpellDropdown();
+					switchSpellCallback.accept(selected);
+				}
 				return true;
 			}
 		}

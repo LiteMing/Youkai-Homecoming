@@ -55,6 +55,12 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	 */
 	public HitBehavior hitBehaviorBlock = HitBehavior.DISCARD;
 	/**
+	 * Bounce configuration parameters (multi-bounce limit, decay, mode, retarget, ground offset, etc.)
+	 */
+	public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig bounceConfig = null;
+	public int currentBounces = 0;
+	public boolean isGroundGliding = false;
+	/**
 	 * Per-danmaku damage type override. When non-null, this takes priority over
 	 * the CardHolder/SpellCard damage source resolution chain.
 	 * Set by data-driven {@code fire_danmaku} actions with a {@code damage_type} field.
@@ -144,12 +150,63 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		updateVisualScaleDimensions(true);
 	}
 
+	public void configureBounce(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig config) {
+		this.bounceConfig = config;
+		this.hitBehaviorBlock = HitBehavior.BOUNCE;
+	}
+
 	@Override
 	public void tick() {
 		if (visualScaleFunction != null) {
 			updateVisualScaleDimensions(false);
 		}
+		if (!level().isClientSide && isGroundGliding && bounceConfig != null) {
+			tickGroundGlide();
+		}
 		super.tick();
+	}
+
+	private void tickGroundGlide() {
+		if (bounceConfig == null) return;
+		double groundOffset = bounceConfig.groundOffset();
+		double stepHeight = bounceConfig.stepHeight();
+		var pos = position();
+		var blockPos = blockPosition();
+		
+		// Sample floor heights around current position
+		double highestGroundY = Double.NEGATIVE_INFINITY;
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dz = -1; dz <= 1; dz++) {
+				var checkPos = blockPos.offset(dx, 0, dz);
+				for (int dy = (int) Math.ceil(stepHeight); dy >= -2; dy--) {
+					var targetPos = checkPos.offset(0, dy, 0);
+					var state = level().getBlockState(targetPos);
+					if (!state.isAir()) {
+						var shape = state.getCollisionShape(level(), targetPos);
+						if (!shape.isEmpty()) {
+							double shapeMaxY = targetPos.getY() + shape.max(net.minecraft.core.Direction.Axis.Y);
+							if (shapeMaxY <= pos.y + stepHeight + 0.2) {
+								if (shapeMaxY > highestGroundY) {
+									highestGroundY = shapeMaxY;
+								}
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if (highestGroundY > Double.NEGATIVE_INFINITY) {
+			double targetY = highestGroundY + groundOffset;
+			if (Math.abs(pos.y - targetY) > 0.01) {
+				setPos(pos.x, targetY, pos.z);
+			}
+			var vel = getDeltaMovement();
+			if (vel.y != 0) {
+				setDeltaMovement(vel.x, 0, vel.z);
+			}
+		}
 	}
 
 	@Override

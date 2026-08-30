@@ -162,13 +162,51 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						return;
 					}
 					case BOUNCE -> {
-						// 镜面物理反弹
+						var bounceCfg = ide.bounceConfig;
+						int maxBounces = bounceCfg != null ? bounceCfg.maxBounces() : 1;
+						double decay = bounceCfg != null ? bounceCfg.decay() : 1.0;
+						boolean retarget = bounceCfg != null && bounceCfg.retarget();
+						var mode = bounceCfg != null ? bounceCfg.mode() : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.SPECULAR;
+
+						ide.currentBounces++;
+						if (ide.currentBounces > maxBounces) {
+							markErased(false);
+							return;
+						}
+
 						var normal = pResult.getDirection().step();
 						Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
 						Vec3 v = getDeltaMovement();
+						double speed = v.length() * decay;
+
+						if (mode == dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.GROUND_GLIDE && (n.y > 0.5 || pResult.getDirection() == net.minecraft.core.Direction.UP)) {
+							// 转为贴地飞行
+							ide.isGroundGliding = true;
+							ide.setPos(position().add(0, bounceCfg.groundOffset(), 0));
+							Vec3 flatDir = new Vec3(v.x, 0, v.z).normalize();
+							if (retarget) {
+								LivingEntity target = getOwnerTarget();
+								if (target != null) {
+									Vec3 toTarget = target.position().subtract(position());
+									flatDir = new Vec3(toTarget.x, 0, toTarget.z).normalize();
+								}
+							}
+							setDeltaMovement(flatDir.scale(Math.max(1e-4, speed)));
+							return;
+						}
+
 						double dot = v.dot(n);
 						if (dot < 0) {
-							Vec3 bounced = v.subtract(n.scale(2 * dot));
+							Vec3 bounced = v.subtract(n.scale(2 * dot)).normalize().scale(speed);
+							if (retarget) {
+								LivingEntity target = getOwnerTarget();
+								if (target != null) {
+									Vec3 toTarget = target.position().add(0, target.getEyeHeight() * 0.5, 0).subtract(position());
+									if (toTarget.lengthSqr() > 1e-4) {
+										bounced = toTarget.normalize().scale(speed);
+									}
+								}
+							}
 							setDeltaMovement(bounced);
 							setPos(position().add(n.scale(0.05)));
 						}
@@ -240,6 +278,17 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		} else {
 			action.executeEntityHit(result.getLocation(), getDeltaMovement(), result.getEntity());
 		}
+	}
+
+	private LivingEntity getOwnerTarget() {
+		Entity e = getOwner();
+		if (e instanceof net.minecraft.world.entity.Mob mob) {
+			return mob.getTarget();
+		}
+		if (e instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity ye) {
+			return ye.getTarget();
+		}
+		return null;
 	}
 
 	private void executeBlockHitAction(TrailAction action, BlockHitResult result) {

@@ -689,6 +689,32 @@ public class ActionEditorPanel {
 			addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
 					notifyDanmaku(old -> old.withHitBehaviorBlock(v)));
 
+			if (a.hitBehaviorBlock() == HitBehavior.BOUNCE) {
+				currentDepth++;
+				var bcfg = a.bounceConfig().orElse(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
+				addIntRow("Max Bounces", bcfg.maxBounces(), v ->
+						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
+								v, bcfg.decay(), bcfg.mode(), bcfg.retarget(), bcfg.groundOffset(), bcfg.stepHeight()))), false));
+				addDoubleRow("Speed Decay", bcfg.decay(), v ->
+						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
+								bcfg.maxBounces(), v, bcfg.mode(), bcfg.retarget(), bcfg.groundOffset(), bcfg.stepHeight()))), false));
+				addEnumRow("Bounce Mode", dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.values(), bcfg.mode(), v ->
+						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
+								bcfg.maxBounces(), bcfg.decay(), v, bcfg.retarget(), bcfg.groundOffset(), bcfg.stepHeight()))), true));
+				addBoolRow("Retarget", bcfg.retarget(), v ->
+						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
+								bcfg.maxBounces(), bcfg.decay(), bcfg.mode(), v, bcfg.groundOffset(), bcfg.stepHeight()))), true));
+				if (bcfg.mode() == dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.GROUND_GLIDE) {
+					addDoubleRow("Ground Offset", bcfg.groundOffset(), v ->
+							notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
+									bcfg.maxBounces(), bcfg.decay(), bcfg.mode(), bcfg.retarget(), v, bcfg.stepHeight()))), false));
+					addDoubleRow("Step Height", bcfg.stepHeight(), v ->
+							notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
+									bcfg.maxBounces(), bcfg.decay(), bcfg.mode(), bcfg.retarget(), bcfg.groundOffset(), v))), false));
+				}
+				currentDepth--;
+			}
+
 			// Damage type override
 			if (a.damageType().isPresent()) {
 				addEnumRow("Dmg Type", dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.values(),
@@ -1842,7 +1868,7 @@ public class ActionEditorPanel {
 		addFloatRow("Damage", ssa.damage(), v ->
 				notifySimple(old -> ((SpawnShooterAction) old).withDamage(v)));
 		addBoolRow("Targetable", ssa.targetable(), v ->
-				notifySimple(old -> ((SpawnShooterAction) old).withTargetable(v)));
+				notifySimple(old -> ((SpawnShooterAction) old).withTargetable(v), true));
 		addSuggestStringRow("Circle", ssa.circle().toString(), ActionEditorPanel::spellCircleOptions, v -> {
 			ResourceLocation id = ResourceLocation.tryParse(v);
 			if (id != null) {

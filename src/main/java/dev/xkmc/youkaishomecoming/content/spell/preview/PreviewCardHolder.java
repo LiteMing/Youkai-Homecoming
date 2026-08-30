@@ -441,8 +441,30 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			}
 			case BOUNCE -> {
 				// 预览视口内命中方块目标的反弹模拟
-				Vec3 v = projectile.getDeltaMovement();
-				projectile.setDeltaMovement(new Vec3(-v.x, v.y, -v.z));
+				if (projectile instanceof ItemDanmakuEntity ide) {
+					var cfg = ide.bounceConfig;
+					int maxBounces = cfg != null ? cfg.maxBounces() : 1;
+					double decay = cfg != null ? cfg.decay() : 1.0;
+					boolean retarget = cfg != null && cfg.retarget();
+					ide.currentBounces++;
+					if (ide.currentBounces > maxBounces) {
+						projectile.markErased(false);
+						return;
+					}
+					Vec3 v = projectile.getDeltaMovement();
+					double speed = v.length() * decay;
+					Vec3 bounced = new Vec3(-v.x, v.y, -v.z).normalize().scale(speed);
+					if (retarget && target() != null) {
+						Vec3 toTarget = target().subtract(projectile.position());
+						if (toTarget.lengthSqr() > 1e-4) {
+							bounced = toTarget.normalize().scale(speed);
+						}
+					}
+					projectile.setDeltaMovement(bounced);
+				} else {
+					Vec3 v = projectile.getDeltaMovement();
+					projectile.setDeltaMovement(new Vec3(-v.x, v.y, -v.z));
+				}
 			}
 			case DISCARD -> projectile.markErased(false);
 			case EXPIRE -> {

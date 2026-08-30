@@ -54,6 +54,11 @@ public class SpellActions {
 		register("teleport_random", TeleportRandomAction.CODEC, TeleportRandomAction.class);
 		register("ysm_render", YsmRenderAction.CODEC, YsmRenderAction.class);
 		register("caster_moves", CasterMovesAction.CODEC, CasterMovesAction.class);
+		register("bounce", BounceAction.CODEC, BounceAction.class);
+		register("bounce_source", BounceAction.CODEC, BounceAction.class);
+		register("expire_source", ExpireSourceAction.CODEC, ExpireSourceAction.class);
+		register("discard_source", DiscardSourceAction.CODEC, DiscardSourceAction.class);
+		register("continue_source", ContinueSourceAction.CODEC, ContinueSourceAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {

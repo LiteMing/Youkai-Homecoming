@@ -652,7 +652,10 @@ public final class SpellAnalyzer {
 			}
 			if (onHitBlock.isPresent()) {
 				long blockMultiplier;
-				if (hitBehaviorBlock == HitBehavior.CONTINUE) {
+				int bounceMultiplier = findMaxBounceMultiplier(onHitBlock.get());
+				if (bounceMultiplier > 1) {
+					blockMultiplier = bounceMultiplier;
+				} else if (hitBehaviorBlock == HitBehavior.CONTINUE) {
 					blockMultiplier = maxHits;
 				} else if (hitBehaviorBlock == HitBehavior.BOUNCE) {
 					int maxBounces = bounceConfig.map(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig::maxBounces).orElse(1);
@@ -664,6 +667,20 @@ public final class SpellAnalyzer {
 				walkHook("on_hit_block", onHitBlock.get(), execs, perTick, mult);
 			}
 		}
+	}
+
+	private int findMaxBounceMultiplier(List<SpellAction> actions) {
+		int max = 1;
+		for (var action : actions) {
+			if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction ba) {
+				max = Math.max(max, Math.max(1, ba.maxBounces() + 1));
+			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpellActions.ConditionalAction ca) {
+				max = Math.max(max, Math.max(findMaxBounceMultiplier(ca.ifTrue()), findMaxBounceMultiplier(ca.ifFalse())));
+			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpellActions.SequenceAction sa) {
+				max = Math.max(max, findMaxBounceMultiplier(sa.actions()));
+			}
+		}
+		return max;
 	}
 
 	private void walkHook(String label, List<SpellAction> list, long executions, boolean perTick, long mult) {

@@ -52,21 +52,32 @@ public class DataDrivenTrailAction extends TrailAction {
 
 	@Override
 	public void execute(CardHolder holder, Vec3 pos, Vec3 dir) {
-		execute(holder, pos, dir, TrailCardHolder.HitType.NONE, null);
+		execute(holder, pos, dir, TrailCardHolder.HitType.NONE, null, null);
 	}
 
 	@Override
 	public void executeEntityHit(CardHolder holder, Vec3 pos, Vec3 dir, Entity hitEntity) {
-		execute(holder, pos, dir, TrailCardHolder.HitType.ENTITY, hitEntity);
+		execute(holder, pos, dir, TrailCardHolder.HitType.ENTITY, hitEntity, null);
+	}
+
+	@Override
+	public void executeEntityHit(CardHolder holder, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		execute(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), TrailCardHolder.HitType.ENTITY, hitContext.hitEntity(), hitContext);
 	}
 
 	@Override
 	public void executeBlockHit(CardHolder holder, Vec3 pos, Vec3 dir) {
-		execute(holder, pos, dir, TrailCardHolder.HitType.BLOCK, null);
+		execute(holder, pos, dir, TrailCardHolder.HitType.BLOCK, null, null);
+	}
+
+	@Override
+	public void executeBlockHit(CardHolder holder, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		execute(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), TrailCardHolder.HitType.BLOCK, null, hitContext);
 	}
 
 	private void execute(CardHolder holder, Vec3 pos, Vec3 dir,
-			TrailCardHolder.HitType hitType, Entity hitEntity) {
+			TrailCardHolder.HitType hitType, Entity hitEntity,
+			@org.jetbrains.annotations.Nullable dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
 		if (runtime == null || definition == null) return; // Deserialized stub — no-op
 
 		// Temporarily restore snapshotted variables so child actions see creation-time values
@@ -81,12 +92,16 @@ public class DataDrivenTrailAction extends TrailAction {
 		}
 
 		var trailHolder = new TrailCardHolder(holder, pos, dir, hitType, hitEntity);
-		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT);
+		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT, hitContext);
 		// Capture which variables the callback actually writes (setVariable calls).
 		Set<String> written = variableSnapshot != null ? runtime.beginTrackWrites() : null;
 		try {
 			for (var action : actions) {
 				action.execute(ctx);
+				// Stop subsequent actions if a terminal disposition (bounce/discard/expire/continue) was selected
+				if (hitContext != null && hitContext.isTerminal()) {
+					break;
+				}
 			}
 		} finally {
 			runtime.endTrackWrites();

@@ -17,8 +17,16 @@ public class TrailAction {
 		execute(holder, pos, dir);
 	}
 
+	public void executeEntityHit(CardHolder holder, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		executeEntityHit(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), hitContext.hitEntity());
+	}
+
 	public void executeBlockHit(CardHolder holder, Vec3 pos, Vec3 dir) {
 		execute(holder, pos, dir);
+	}
+
+	public void executeBlockHit(CardHolder holder, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		executeBlockHit(holder, hitContext.hitPosition(), hitContext.incomingVelocity());
 	}
 
 	public void execute(Vec3 pos, Vec3 dir) {

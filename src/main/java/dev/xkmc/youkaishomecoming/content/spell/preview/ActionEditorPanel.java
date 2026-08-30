@@ -327,6 +327,8 @@ public class ActionEditorPanel {
 			buildTeleportRandomRows(tra);
 		} else if (action instanceof CasterMovesAction cma) {
 			buildCasterMovesRows(cma);
+		} else if (action instanceof BounceAction ba) {
+			buildBounceActionRows(ba);
 		}
 	}
 
@@ -384,6 +386,11 @@ public class ActionEditorPanel {
 					"teleport_random", "Teleport Random",
 					"caster_moves", "Caster Moves",
 					"confine_target", "Confine Target"),
+			group("Hit Control",
+					"bounce_source", "Bounce Source",
+					"continue_source", "Continue Source",
+					"expire_source", "Expire Source",
+					"discard_source", "Discard Source"),
 			group("Privileged",
 					"run_command", "Run Command",
 					"set_entity_flag", "Set Entity Flag"));
@@ -491,6 +498,10 @@ public class ActionEditorPanel {
 		case "ysm_render" -> new YsmRenderAction("", "", "special", 40, false);
 		case "teleport_random" -> new TeleportRandomAction(32, 0.8, 0.4, 16, true, true);
 		case "caster_moves" -> new CasterMovesAction(SpellMovementDirective.Mode.RANDOM);
+		case "bounce", "bounce_source" -> new BounceAction();
+		case "continue_source" -> new ContinueSourceAction();
+		case "expire_source" -> new ExpireSourceAction();
+		case "discard_source" -> new DiscardSourceAction();
 		default -> new SpellActions.NoopAction();
 		};
 	}
@@ -516,6 +527,17 @@ public class ActionEditorPanel {
 				return new CasterMovesAction(current.mode(), current.x(), current.y(), v);
 			}));
 		}
+	}
+
+	private void buildBounceActionRows(BounceAction action) {
+		addIntRow("Max Bounces", action.maxBounces(), v ->
+				notifySimple(old -> ((BounceAction) old).withMaxBounces(v)));
+		addDoubleRow("Speed Decay", action.decay(), v ->
+				notifySimple(old -> ((BounceAction) old).withDecay(v)));
+		addBoolRow("Retarget", action.retarget(), v ->
+				notifySimple(old -> ((BounceAction) old).withRetarget(v), true));
+		addIntRow("Delay Ticks", action.delay(), v ->
+				notifySimple(old -> ((BounceAction) old).withDelay(v)));
 	}
 
 	// --- FireDanmaku rows ---
@@ -681,33 +703,6 @@ public class ActionEditorPanel {
 			if (a.onTrail().isPresent()) {
 				addIntRow("Trail Intv", a.trailInterval(), v ->
 						notifyDanmaku(old -> old.withTrailInterval(v), false));
-			}
-
-			// Hit behavior: separate entity/block controls
-			addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
-					notifyDanmaku(old -> old.withHitBehaviorEntity(v)));
-			addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
-					notifyDanmaku(old -> {
-						var updated = old.withHitBehaviorBlock(v);
-						if (v != HitBehavior.BOUNCE) {
-							updated = updated.withBounceConfig(Optional.empty());
-						}
-						return updated;
-					}));
-
-			if (a.hitBehaviorBlock() == HitBehavior.BOUNCE) {
-				currentDepth++;
-				var bcfg = a.bounceConfig().orElse(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
-				addIntRow("Max Bounces", bcfg.maxBounces(), v ->
-						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
-								v, bcfg.decay(), bcfg.retarget()))), false));
-				addDoubleRow("Speed Decay", bcfg.decay(), v ->
-						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
-								bcfg.maxBounces(), v, bcfg.retarget()))), false));
-				addBoolRow("Retarget", bcfg.retarget(), v ->
-						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
-								bcfg.maxBounces(), bcfg.decay(), v))), true));
-				currentDepth--;
 			}
 
 			// Damage type override
@@ -1084,12 +1079,6 @@ public class ActionEditorPanel {
 				addIntRow("Trail Intv", a.trailInterval(), v ->
 						notifyLaser(old -> old.withTrailInterval(v), false));
 			}
-
-			// Hit behavior: separate entity/block controls
-			addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
-					notifyLaser(old -> old.withHitBehaviorEntity(v)));
-			addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
-					notifyLaser(old -> old.withHitBehaviorBlock(v)));
 			currentDepth--;
 		}
 	}

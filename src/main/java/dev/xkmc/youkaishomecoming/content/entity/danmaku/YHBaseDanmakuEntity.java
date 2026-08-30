@@ -151,27 +151,31 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	protected void onHitBlock(BlockHitResult pResult) {
 		super.onHitBlock(pResult);
 		if (!level().isClientSide) {
-			// Execute onHitBlock callback before potential discard
+			var normal = pResult.getDirection().step();
+			Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
+			var hitCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext(
+					this, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK,
+					pResult.getLocation(), n, getDeltaMovement(), null);
+
+			// Execute onHitBlock callback
 			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
-				executeBlockHitAction(ide.onHitBlockAction, pResult);
+				executeBlockHitAction(ide.onHitBlockAction, hitCtx);
 			}
+
+			// If an action resolved disposition (e.g. BounceAction, ExpireSourceAction, DiscardSourceAction, ContinueSourceAction)
+			if (hitCtx.isTerminal()) {
+				applyHitDisposition(hitCtx.disposition(), hitCtx.bounceConfig(), n);
+				return;
+			}
+
+			// Fallback to legacy hitBehaviorBlock for backward compatibility
 			if (this instanceof ItemDanmakuEntity ide) {
 				switch (ide.hitBehaviorBlock) {
 					case CONTINUE -> {
-						// Don't remove — let it keep flying until lifetime expires.
 						return;
 					}
 					case BOUNCE -> {
-						var normal = pResult.getDirection().step();
-						Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
-						var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
-								position(), getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, resolveBounceTarget());
-						if (result.erased()) {
-							markErased(false);
-							return;
-						}
-						ide.applyBounceState(result.newPos(), result.newVel(), result.updatedBounces());
-						syncBounceToClient(result.newPos(), result.newVel(), result.updatedBounces());
+						applyHitDisposition(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.BOUNCE, ide.bounceConfig, n);
 						return;
 					}
 					case EXPIRE -> {
@@ -188,6 +192,36 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		}
 	}
 
+	private void applyHitDisposition(
+			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition disposition,
+			@Nullable dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig bounceConfig,
+			Vec3 normal
+	) {
+		switch (disposition) {
+			case CONTINUE -> {}
+			case EXPIRE -> expireNow();
+			case DISCARD -> markErased(false);
+			case BOUNCE -> {
+				if (this instanceof ItemDanmakuEntity ide) {
+					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
+							position(), getDeltaMovement(), normal, bounceConfig != null ? bounceConfig : ide.bounceConfig, ide.currentBounces, resolveBounceTarget());
+					if (result.erased()) {
+						markErased(false);
+						return;
+					}
+					ide.applyBounceState(result.newPos(), result.newVel(), result.updatedBounces());
+					if (result.mover() != null) {
+						ide.mover = result.mover();
+					}
+					syncBounceToClient(result.newPos(), result.newVel(), result.updatedBounces());
+				} else {
+					markErased(false);
+				}
+			}
+			case UNRESOLVED -> markErased(false);
+		}
+	}
+
 	@Override
 	public float damage(Entity target) {
 		return damage;
@@ -201,10 +235,21 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			return;
 		super.onHitEntity(result);
 		hurtTarget(result);
+
+		var hitCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext(
+				this, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.ENTITY,
+				result.getLocation(), getDeltaMovement().normalize().scale(-1), getDeltaMovement(), result.getEntity());
+
 		// Execute onHitEntity callback before potential discard
 		if (this instanceof ItemDanmakuEntity ide && ide.onHitEntityAction != null) {
-			executeEntityHitAction(ide.onHitEntityAction, result);
+			executeEntityHitAction(ide.onHitEntityAction, hitCtx);
 		}
+
+		if (hitCtx.isTerminal()) {
+			applyHitDisposition(hitCtx.disposition(), hitCtx.bounceConfig(), getDeltaMovement().normalize().scale(-1));
+			return;
+		}
+
 		// Data-driven danmaku always collide with entities.
 		// Whether they pierce or stop is controlled by hitBehaviorEntity.
 		if (this instanceof ItemDanmakuEntity ide) {
@@ -238,14 +283,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		}
 	}
 
-	private void executeEntityHitAction(TrailAction action, EntityHitResult result) {
+	private void executeEntityHitAction(TrailAction action, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {
 		CardHolder holder = null;
 		Entity e = getOwner();
 		if (e instanceof CardHolder h) holder = h;
 		if (holder != null) {
-			action.executeEntityHit(holder, result.getLocation(), getDeltaMovement(), result.getEntity());
+			action.executeEntityHit(holder, hitCtx);
 		} else {
-			action.executeEntityHit(result.getLocation(), getDeltaMovement(), result.getEntity());
+			action.executeEntityHit(hitCtx.hitPosition(), hitCtx.incomingVelocity(), hitCtx.hitEntity());
 		}
 	}
 
@@ -263,14 +308,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		return null;
 	}
 
-	private void executeBlockHitAction(TrailAction action, BlockHitResult result) {
+	private void executeBlockHitAction(TrailAction action, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {
 		CardHolder holder = null;
 		Entity e = getOwner();
 		if (e instanceof CardHolder h) holder = h;
 		if (holder != null) {
-			action.executeBlockHit(holder, result.getLocation(), getDeltaMovement());
+			action.executeBlockHit(holder, hitCtx);
 		} else {
-			action.executeBlockHit(result.getLocation(), getDeltaMovement());
+			action.executeBlockHit(hitCtx.hitPosition(), hitCtx.incomingVelocity());
 		}
 	}
 

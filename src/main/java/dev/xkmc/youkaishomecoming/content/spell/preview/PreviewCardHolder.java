@@ -458,38 +458,34 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 											 dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction hitAction,
 											 dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior behavior,
 											 dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry) {
+		var hitCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext(
+				projectile,
+				hit.type() == PreviewTarget.HitType.BLOCK ? dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK : dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.ENTITY,
+				hit.position(),
+				hit.normal(),
+				projectile.getDeltaMovement(),
+				null
+		);
+
 		if (hitAction != null) {
 			if (hit.type() == PreviewTarget.HitType.BLOCK) {
-				hitAction.executeBlockHit(this, hit.position(), projectile.getDeltaMovement());
+				hitAction.executeBlockHit(this, hitCtx);
 			} else {
-				// Preview targets have no backing Entity; hit-target commands remain server-only no-ops.
-				hitAction.execute(this, hit.position(), projectile.getDeltaMovement());
+				hitAction.executeEntityHit(this, hitCtx);
 			}
 		}
+
+		if (hitCtx.isTerminal()) {
+			applyPreviewHitDisposition(projectile, hitCtx.disposition(), hitCtx.bounceConfig(), hit.normal(), afterExpiry);
+			return;
+		}
+
 		switch (behavior) {
 			case CONTINUE -> {
 			}
 			case BOUNCE -> {
-				// 预览视口内命中方块目标的反弹模拟
-				Vec3 n = hit.normal();
-				if (projectile instanceof ItemDanmakuEntity ide) {
-					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
-							hit.position(), projectile.getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, target());
-					if (result.erased()) {
-						projectile.markErased(false);
-						return;
-					}
-					ide.applyBounceState(result.newPos(), result.newVel(), result.updatedBounces());
-				} else {
-					Vec3 v = projectile.getDeltaMovement();
-					if (n.lengthSqr() > 1e-4) {
-						double dot = v.dot(n);
-						projectile.snapMotionAndRotation(v.subtract(n.scale(2 * dot)));
-						projectile.setPos(hit.position().add(n.scale(0.08)));
-					} else {
-						projectile.snapMotionAndRotation(new Vec3(-v.x, v.y, -v.z));
-					}
-				}
+				dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig cfg = projectile instanceof ItemDanmakuEntity ide ? ide.bounceConfig : null;
+				applyPreviewHitDisposition(projectile, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.BOUNCE, cfg, hit.normal(), afterExpiry);
 			}
 			case DISCARD -> projectile.markErased(false);
 			case EXPIRE -> {
@@ -498,6 +494,49 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				}
 				projectile.markErased(false);
 			}
+		}
+	}
+
+	private void applyPreviewHitDisposition(
+			SimplifiedProjectile projectile,
+			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition disposition,
+			@Nullable dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig bounceConfig,
+			Vec3 normal,
+			@Nullable dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry
+	) {
+		switch (disposition) {
+			case CONTINUE -> {}
+			case EXPIRE -> {
+				if (afterExpiry != null) {
+					afterExpiry.execute(this, projectile.position(), projectile.getDeltaMovement());
+				}
+				projectile.markErased(false);
+			}
+			case DISCARD -> projectile.markErased(false);
+			case BOUNCE -> {
+				if (projectile instanceof ItemDanmakuEntity ide) {
+					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
+							ide.position(), ide.getDeltaMovement(), normal, bounceConfig != null ? bounceConfig : ide.bounceConfig, ide.currentBounces, target());
+					if (result.erased()) {
+						projectile.markErased(false);
+						return;
+					}
+					ide.applyBounceState(result.newPos(), result.newVel(), result.updatedBounces());
+					if (result.mover() != null) {
+						ide.mover = result.mover();
+					}
+				} else {
+					Vec3 v = projectile.getDeltaMovement();
+					if (normal.lengthSqr() > 1e-4) {
+						double dot = v.dot(normal);
+						projectile.snapMotionAndRotation(v.subtract(normal.scale(2 * dot)));
+						projectile.setPos(projectile.position().add(normal.scale(0.08)));
+					} else {
+						projectile.snapMotionAndRotation(new Vec3(-v.x, v.y, -v.z));
+					}
+				}
+			}
+			case UNRESOLVED -> projectile.markErased(false);
 		}
 	}
 

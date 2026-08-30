@@ -19,14 +19,27 @@ public class SpellContext {
 	private final SpellDefinition definition;
 	private final SpellRuntime runtime;
 	private final DifficultyModifiers difficulty;
+	@Nullable
+	private final SpellHitContext hitContext;
 
 	public SpellContext(CardHolder holder, SpellDefinition definition,
 						SpellRuntime runtime, DifficultyModifiers difficulty) {
+		this(holder, definition, runtime, difficulty, null);
+	}
+
+	public SpellContext(CardHolder holder, SpellDefinition definition,
+						SpellRuntime runtime, DifficultyModifiers difficulty,
+						@Nullable SpellHitContext hitContext) {
 		this.holder = holder;
 		this.host = holder instanceof SpellRuntimeHost spellHost ? spellHost : null;
 		this.definition = definition;
 		this.runtime = runtime;
 		this.difficulty = difficulty;
+		this.hitContext = hitContext;
+	}
+
+	public java.util.Optional<SpellHitContext> hitContext() {
+		return java.util.Optional.ofNullable(hitContext);
 	}
 
 	public CardHolder holder() {

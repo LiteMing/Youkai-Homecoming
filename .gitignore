@@ -8,8 +8,9 @@ secrets.properties
 temp
 /bin/main/data/
 /tash
-# Registrate datagen output
+# Registrate datagen output (keep manually updated models like dynamic_spell)
 /src/generated/
+!/src/generated/resources/assets/youkaishomecoming/models/item/dynamic_spell.json
 
 # Code Mind local runtime
 .codemind/runtime/

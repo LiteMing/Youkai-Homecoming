@@ -674,7 +674,7 @@ public class SpellPreviewScreen extends Screen {
 		try {
 			// 修改符卡内容时，清理原先快照，使其失效需重新拍照
 			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
-			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.sanitizeKey(definition.id.toString());
+			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.toStorageKey(definition.id.toString());
 			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
 			java.nio.file.Files.deleteIfExists(outDir.resolve(safeId + ".png"));
 			java.nio.file.Files.deleteIfExists(outDir.resolve(defHash + ".png"));
@@ -1028,7 +1028,7 @@ public class SpellPreviewScreen extends Screen {
 		try {
 			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
 			java.nio.file.Files.createDirectories(outDir);
-			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.sanitizeKey(definition.id.toString());
+			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.toStorageKey(definition.id.toString());
 			java.nio.file.Path fileById = outDir.resolve(safeId + ".png");
 			java.nio.file.Files.write(fileById, snapBytes);
 			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);

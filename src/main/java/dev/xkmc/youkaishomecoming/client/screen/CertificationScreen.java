@@ -78,7 +78,7 @@ public class CertificationScreen extends Screen {
 		}
 
 		// 检查本地是否已有既有快照，若有则直接提交开始认证
-		String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.sanitizeKey(definition.id.toString());
+		String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.toStorageKey(definition.id.toString());
 		java.nio.file.Path file = Minecraft.getInstance().gameDirectory.toPath()
 				.resolve("spell_snapshots").resolve(safeId + ".png");
 		if (java.nio.file.Files.isRegularFile(file)) {
@@ -120,7 +120,7 @@ public class CertificationScreen extends Screen {
 		try {
 			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
 			java.nio.file.Files.createDirectories(outDir);
-			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.sanitizeKey(definition.id.toString());
+			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.toStorageKey(definition.id.toString());
 			java.nio.file.Path fileById = outDir.resolve(safeId + ".png");
 			java.nio.file.Files.write(fileById, snapBytes);
 			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);

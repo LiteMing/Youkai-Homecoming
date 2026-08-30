@@ -37,13 +37,13 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 							 int packedLight, int packedOverlay) {
 		String hash = CertifiedSpellValidator.getCertifiedHash(stack);
 		ResourceLocation textureLoc = hash != null && !hash.isBlank()
-				? SpellCardTextureCache.getOrRequest(hash)
+				? SpellCardTextureCache.getOrRequestCertified(hash)
 				: null;
 
 		if (textureLoc == null) {
 			var id = DynamicSpellItem.getSpellId(stack);
 			if (id != null) {
-				textureLoc = SpellCardTextureCache.getOrRequest(id.toString());
+				textureLoc = SpellCardTextureCache.getLocalBySpellId(id);
 			}
 		}
 

@@ -674,9 +674,12 @@ public class SpellPreviewScreen extends Screen {
 		try {
 			// 修改符卡内容时，清理原先快照，使其失效需重新拍照
 			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
+			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.sanitizeKey(definition.id.toString());
 			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
-			java.nio.file.Files.deleteIfExists(outDir.resolve(definition.id.getPath() + ".png"));
+			java.nio.file.Files.deleteIfExists(outDir.resolve(safeId + ".png"));
 			java.nio.file.Files.deleteIfExists(outDir.resolve(defHash + ".png"));
+			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.invalidate(definition.id.toString());
+			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.invalidate(defHash);
 		} catch (Exception ignored) {
 		}
 	}
@@ -1025,14 +1028,14 @@ public class SpellPreviewScreen extends Screen {
 		try {
 			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
 			java.nio.file.Files.createDirectories(outDir);
-			// 同时按 path 与 definition hash 保存，确保未认证与已认证均能立刻命中缓存
-			java.nio.file.Path fileByPath = outDir.resolve(definition.id.getPath() + ".png");
-			java.nio.file.Files.write(fileByPath, snapBytes);
+			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.sanitizeKey(definition.id.toString());
+			java.nio.file.Path fileById = outDir.resolve(safeId + ".png");
+			java.nio.file.Files.write(fileById, snapBytes);
 			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
 			java.nio.file.Path fileByHash = outDir.resolve(defHash + ".png");
 			java.nio.file.Files.write(fileByHash, snapBytes);
 			// 立即注册到客户端材质缓存，即使在认证前，手持/背包物品也能立刻渲染出该卡面
-			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(definition.id.getPath(), snapBytes);
+			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(definition.id.toString(), snapBytes);
 			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(defHash, snapBytes);
 		} catch (Exception e) {
 			e.printStackTrace();

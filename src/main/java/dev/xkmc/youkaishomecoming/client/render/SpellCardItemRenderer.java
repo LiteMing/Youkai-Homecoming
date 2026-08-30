@@ -43,17 +43,12 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		if (textureLoc == null) {
 			var id = DynamicSpellItem.getSpellId(stack);
 			if (id != null) {
-				textureLoc = SpellCardTextureCache.getOrRequest(id.getPath());
+				textureLoc = SpellCardTextureCache.getOrRequest(id.toString());
 			}
 		}
 
-		if (textureLoc == null) {
-			// 未找到快照时，使用原版烘焙模型正常渲染
-			var model = Minecraft.getInstance().getItemRenderer().getItemModelShaper().getItemModel(stack);
-			Minecraft.getInstance().getItemRenderer().render(
-					stack, transformType, false, poseStack, buffer, packedLight, packedOverlay, model);
-			return;
-		}
+		// 如果无快照，直接以默认符卡底纹 CARD_BACK 作为正面和背面，不调用 ItemRenderer.render 避免递归爆栈
+		ResourceLocation frontTexture = textureLoc != null ? textureLoc : CARD_BACK;
 
 		// 渲染 84x128 比例的双面卡牌
 		poseStack.pushPose();
@@ -82,25 +77,31 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		float thickness = 0.005f;
 
 		// 使用 RenderType.entityCutoutNoCull 确保正反面双面可见且不受光照面剔除影响
-		VertexConsumer frontBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(textureLoc));
+		VertexConsumer frontBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(frontTexture));
 		Matrix4f mat = poseStack.last().pose();
 
-		// 正面（弹幕快照）
-		quad(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, packedLight);
+		// 正面（弹幕快照或默认底纹）
+		int color = (textureLoc == null) ? DynamicSpellItem.getColor(stack).argb() : 0xFFFFFFFF;
+		int a = (color >>> 24) & 0xFF;
+		int r = (color >>> 16) & 0xFF;
+		int g = (color >>> 8) & 0xFF;
+		int b = color & 0xFF;
+		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
 
 		// 背面（通用符卡底纹）
 		VertexConsumer backBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(CARD_BACK));
-		quad(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, packedLight);
+		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, packedLight, 255, 255, 255, 255);
 
 		poseStack.popPose();
 	}
 
-	private static void quad(VertexConsumer builder, Matrix4f mat,
-							 float minX, float maxX, float minY, float maxY, float z,
-							 float minU, float maxU, float minV, float maxV, int light) {
-		builder.vertex(mat, minX, minY, z).color(255, 255, 255, 255).uv(minU, maxV).overlayCoords(0, 10).uv2(light).normal(0, 0, 1).endVertex();
-		builder.vertex(mat, maxX, minY, z).color(255, 255, 255, 255).uv(maxU, maxV).overlayCoords(0, 10).uv2(light).normal(0, 0, 1).endVertex();
-		builder.vertex(mat, maxX, maxY, z).color(255, 255, 255, 255).uv(maxU, minV).overlayCoords(0, 10).uv2(light).normal(0, 0, 1).endVertex();
-		builder.vertex(mat, minX, maxY, z).color(255, 255, 255, 255).uv(minU, minV).overlayCoords(0, 10).uv2(light).normal(0, 0, 1).endVertex();
+	private static void quadColor(VertexConsumer builder, Matrix4f mat,
+								 float minX, float maxX, float minY, float maxY, float z,
+								 float minU, float maxU, float minV, float maxV, int light,
+								 int r, int g, int b, int a) {
+		builder.vertex(mat, minX, minY, z).color(r, g, b, a).uv(minU, maxV).overlayCoords(0, 10).uv2(light).normal(0, 0, 1).endVertex();
+		builder.vertex(mat, maxX, minY, z).color(r, g, b, a).uv(maxU, maxV).overlayCoords(0, 10).uv2(light).normal(0, 0, 1).endVertex();
+		builder.vertex(mat, maxX, maxY, z).color(r, g, b, a).uv(maxU, minV).overlayCoords(0, 10).uv2(light).normal(0, 0, 1).endVertex();
+		builder.vertex(mat, minX, maxY, z).color(r, g, b, a).uv(minU, minV).overlayCoords(0, 10).uv2(light).normal(0, 0, 1).endVertex();
 	}
 }

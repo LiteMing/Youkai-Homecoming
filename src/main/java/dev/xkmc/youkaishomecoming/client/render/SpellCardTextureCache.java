@@ -25,52 +25,83 @@ import java.util.concurrent.ConcurrentHashMap;
 @OnlyIn(Dist.CLIENT)
 public final class SpellCardTextureCache {
 
+	private static final Map<String, DynamicTexture> DYNAMIC_TEXTURES = new ConcurrentHashMap<>();
 	private static final Map<String, ResourceLocation> TEXTURES = new ConcurrentHashMap<>();
 	private static final Set<String> PENDING_REQUESTS = ConcurrentHashMap.newKeySet();
 
 	private SpellCardTextureCache() {
 	}
 
+	public static String sanitizeKey(String rawKey) {
+		if (rawKey == null) return "";
+		return rawKey.replaceAll("[^a-zA-Z0-9._-]", "_");
+	}
+
 	@Nullable
-	public static ResourceLocation getOrRequest(String hash) {
-		if (hash == null || hash.isBlank()) return null;
-		ResourceLocation loc = TEXTURES.get(hash);
+	public static ResourceLocation getOrRequest(String key) {
+		if (key == null || key.isBlank()) return null;
+		String safeKey = sanitizeKey(key);
+		ResourceLocation loc = TEXTURES.get(safeKey);
 		if (loc != null) return loc;
 
-		// 检查本地本地游戏目录缓存
-		Path localFile = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots").resolve(hash + ".png");
+		// 检查本地游戏目录缓存
+		Path localFile = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots").resolve(safeKey + ".png");
 		if (Files.isRegularFile(localFile)) {
 			try {
 				byte[] bytes = Files.readAllBytes(localFile);
-				return registerTexture(hash, bytes);
+				return registerTexture(safeKey, bytes);
 			} catch (Exception ignored) {
 			}
 		}
 
 		// 向服务端请求
-		if (PENDING_REQUESTS.add(hash)) {
-			YoukaisHomecoming.HANDLER.toServer(new CertifiedSpellSnapshotRequestToServer(hash));
+		if (PENDING_REQUESTS.add(safeKey)) {
+			YoukaisHomecoming.HANDLER.toServer(new CertifiedSpellSnapshotRequestToServer(safeKey));
 		}
 		return null;
 	}
 
-	public static void onSnapshotReceived(String hash, byte[] pngBytes) {
-		PENDING_REQUESTS.remove(hash);
-		registerTexture(hash, pngBytes);
+	public static void onSnapshotReceived(String key, byte[] pngBytes) {
+		String safeKey = sanitizeKey(key);
+		PENDING_REQUESTS.remove(safeKey);
+		registerTexture(safeKey, pngBytes);
 	}
 
 	@Nullable
-	public static ResourceLocation registerTexture(String hash, byte[] pngBytes) {
-		if (pngBytes == null || pngBytes.length == 0) return null;
+	public static ResourceLocation registerTexture(String key, byte[] pngBytes) {
+		if (pngBytes == null || pngBytes.length == 0 || key == null || key.isBlank()) return null;
+		String safeKey = sanitizeKey(key);
 		try {
 			NativeImage img = NativeImage.read(new ByteArrayInputStream(pngBytes));
-			DynamicTexture dyn = new DynamicTexture(img);
-			ResourceLocation loc = Minecraft.getInstance().getTextureManager().register("spell_card_" + hash, dyn);
-			TEXTURES.put(hash, loc);
-			return loc;
+			DynamicTexture oldDyn = DYNAMIC_TEXTURES.get(safeKey);
+			if (oldDyn != null) {
+				// 复用/更新已有动态纹理，避免显存泄漏
+				oldDyn.setPixels(img);
+				oldDyn.upload();
+				return TEXTURES.get(safeKey);
+			} else {
+				DynamicTexture dyn = new DynamicTexture(img);
+				ResourceLocation loc = Minecraft.getInstance().getTextureManager().register("spell_card_" + safeKey, dyn);
+				DYNAMIC_TEXTURES.put(safeKey, dyn);
+				TEXTURES.put(safeKey, loc);
+				return loc;
+			}
 		} catch (Exception e) {
-			YoukaisHomecoming.LOGGER.error("Failed to load spell card dynamic texture: {}", hash, e);
+			YoukaisHomecoming.LOGGER.error("Failed to load spell card dynamic texture: {}", safeKey, e);
 			return null;
+		}
+	}
+
+	public static void invalidate(String key) {
+		if (key == null || key.isBlank()) return;
+		String safeKey = sanitizeKey(key);
+		DynamicTexture dyn = DYNAMIC_TEXTURES.remove(safeKey);
+		if (dyn != null) {
+			dyn.close();
+		}
+		ResourceLocation loc = TEXTURES.remove(safeKey);
+		if (loc != null) {
+			Minecraft.getInstance().getTextureManager().release(loc);
 		}
 	}
 }

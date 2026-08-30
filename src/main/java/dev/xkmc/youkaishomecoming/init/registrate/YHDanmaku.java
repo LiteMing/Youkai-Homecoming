@@ -245,7 +245,7 @@ public class YHDanmaku {
 
 			DYNAMIC_SPELL = YoukaisHomecoming.REGISTRATE
 					.item("dynamic_spell", p -> new DynamicSpellItem(p.stacksTo(1)))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/custom_spell")))
+					.model((ctx, pvd) -> pvd.withExistingParent(ctx.getName(), "minecraft:builtin/entity"))
 					.color(() -> () -> (stack, i) -> i == 0 ? DynamicSpellItem.getColor(stack).argb() : 0xffffffff)
 					.register();
 

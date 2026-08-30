@@ -1281,14 +1281,14 @@ public class ActionEditorPanel {
 			addNumberRow(prefix + "Left", cn.left(), v ->
 					onChanged.accept(new SpellConditions.CompareNumbers(v, cn.op(), cn.right()), false));
 			addStringCycleRow(prefix + "Op", new String[]{"<", ">", "==", "!=", "<=", ">="}, cn.op(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), v, cn.right()), false));
+					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), v, cn.right()), true));
 			addNumberRow(prefix + "Right", cn.right(), v ->
 					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), cn.op(), v), false));
 		} else if (cond instanceof SpellConditions.VariableCheck vc) {
 			addStringRow(prefix + "Key", vc.key(), v ->
 					onChanged.accept(new SpellConditions.VariableCheck(v, vc.op(), vc.value()), false));
 			addStringCycleRow(prefix + "Op", new String[]{"==", "!=", "<", ">", "<=", ">="}, vc.op(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value()), false));
+					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value()), true));
 			addDoubleRow(prefix + "Value", vc.value(), v ->
 					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), vc.op(), v), false));
 		} else if (cond instanceof SpellConditions.DifficultyEquals de) {
@@ -3534,6 +3534,8 @@ public class ActionEditorPanel {
 				onChange.accept(parsed);
 			}
 		});
+		// 离开焦点时主动触发解析同步，防止切换运算符时丢失编辑框最新值
+		editBox.setFocused(false);
 		// Syntax-aware formatter: variables=aqua, functions=yellow, rainbow brackets
 		editBox.setFormatter((text, displayPos) -> {
 			String fullValue = editBox.getValue();
@@ -3645,7 +3647,9 @@ public class ActionEditorPanel {
 			// 公式输入框附加语法高亮与变量补全
 			editBox.setFormatter((text, displayPos) -> {
 				String fullValue = editBox.getValue();
-				boolean valid = !fullValue.trim().isEmpty() && FormulaExpr.parse(fullValue.trim()) != null;
+				boolean valid = !fullValue.trim().isEmpty()
+						&& (FormulaExpr.parse(sanitizeFormulaForValidation(fullValue.trim())) != null
+						|| FormulaExpr.parseRich(sanitizeFormulaForValidation(fullValue.trim())) != null);
 				int[] colors = computeExprColors(fullValue, valid);
 				var defaultStyle = net.minecraft.network.chat.Style.EMPTY;
 				var parts = new java.util.ArrayList<FormattedCharSequence>();
@@ -3697,6 +3701,15 @@ public class ActionEditorPanel {
 	private EditBox newEditorEditBox(String label, int widgetW) {
 		return EditorTextBoxes.configure(new EditBox(Minecraft.getInstance().font, 0, 0,
 				widgetW, ROW_HEIGHT - 4, Component.literal(label)));
+	}
+
+	private static String sanitizeFormulaForValidation(String text) {
+		if (text == null) return "";
+		// $var, phase_tick, total_tick 等在创建 mover 前会被 bindFormula 替换为数值常数
+		String sanitized = text.replaceAll("\\$[a-zA-Z0-9_]+", "1.0");
+		sanitized = sanitized.replaceAll("\\bphase_tick\\b", "1.0");
+		sanitized = sanitized.replaceAll("\\btotal_tick\\b", "1.0");
+		return sanitized;
 	}
 
 	private Integer parseColor(String text) {
@@ -3802,7 +3815,20 @@ public class ActionEditorPanel {
 			int triggerRowIndex
 	) {}
 
+	private void flushActiveEditBoxes() {
+		for (EditBox editBox : exprEditBoxes) {
+			if (editBox.isFocused()) {
+				String text = editBox.getValue().trim();
+				if (!text.isEmpty()) {
+					// 强制失焦以提交最新输入
+					editBox.setFocused(false);
+				}
+			}
+		}
+	}
+
 	private void openDropdown(String[] options, int selected, Consumer<Integer> onSelect, int triggerRowIndex) {
+		flushActiveEditBoxes();
 		dropdown = new DropdownOverlay(options, selected, onSelect, triggerRowIndex);
 		dropdownHoverIndex = -1;
 		// Auto-scroll to make selected item visible
@@ -4182,14 +4208,19 @@ public class ActionEditorPanel {
 		// Red underline for invalid expressions, blue underline for $variables
 		for (var eb : exprEditBoxes) {
 			String text = eb.getValue().trim();
-			if (!text.isEmpty() && NumberExprParser.parse(text) == null && FormulaExpr.parse(text) == null) {
-				int ex = eb.getX();
-				int ey = eb.getY() + eb.getHeight();
-				int ew = eb.getWidth();
-				guiGraphics.pose().pushPose();
-				guiGraphics.pose().translate(0, 0, 200);
-				guiGraphics.fill(ex, ey, ex + ew, ey + 2, 0xFFFF4444);
-				guiGraphics.pose().popPose();
+			if (!text.isEmpty()) {
+				boolean valid = NumberExprParser.parse(text) != null
+						|| FormulaExpr.parse(sanitizeFormulaForValidation(text)) != null
+						|| FormulaExpr.parseRich(sanitizeFormulaForValidation(text)) != null;
+				if (!valid) {
+					int ex = eb.getX();
+					int ey = eb.getY() + eb.getHeight();
+					int ew = eb.getWidth();
+					guiGraphics.pose().pushPose();
+					guiGraphics.pose().translate(0, 0, 200);
+					guiGraphics.fill(ex, ey, ex + ew, ey + 2, 0xFFFF4444);
+					guiGraphics.pose().popPose();
+				}
 			}
 			// Variable highlighting is now handled by EditBox.setFormatter() — no overlay needed
 		}

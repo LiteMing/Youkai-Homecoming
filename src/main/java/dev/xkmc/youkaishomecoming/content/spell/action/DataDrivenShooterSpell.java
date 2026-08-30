@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -30,14 +31,15 @@ public class DataDrivenShooterSpell extends SpellCard {
 	private final List<SpellAction> tickActions;
 	private final SpellRuntime runtime;
 	private final SpellDefinition definition;
-	private final Map<String, Double> inheritedVariables;
+	@Nullable
+	private final SpellRuntime parentRuntime;
 
 	@SerialClass.SerialField
 	private int tick;
 
-	public DataDrivenShooterSpell(List<SpellAction> tickActions, Map<String, Double> inheritedVariables) {
+	public DataDrivenShooterSpell(List<SpellAction> tickActions, @Nullable SpellRuntime parentRuntime) {
 		this.tickActions = tickActions;
-		this.inheritedVariables = inheritedVariables;
+		this.parentRuntime = parentRuntime;
 		var phase = new PhaseDefinition(SHOOTER_PHASE,
 				List.of(), tickActions, List.of(), List.of(), List.of());
 		var display = new SpellDisplay("", "", java.util.Optional.empty(), java.util.Optional.empty());
@@ -45,15 +47,10 @@ public class DataDrivenShooterSpell extends SpellCard {
 				SHOOTER_PHASE, Map.of(SHOOTER_PHASE, phase),
 				dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile.DEFAULT);
 		this.runtime = new SpellRuntime(definition);
-		if (inheritedVariables != null && !inheritedVariables.isEmpty()) {
-			for (var entry : inheritedVariables.entrySet()) {
-				this.runtime.setVariable(entry.getKey(), entry.getValue());
-			}
-		}
 	}
 
 	public DataDrivenShooterSpell(List<SpellAction> tickActions) {
-		this(tickActions, Map.of());
+		this(tickActions, null);
 	}
 
 	/** No-arg constructor for serialization. Will have null tickActions until deserialized. */
@@ -63,6 +60,12 @@ public class DataDrivenShooterSpell extends SpellCard {
 
 	@Override
 	public void tick(CardHolder holder) {
+		if (parentRuntime != null) {
+			// 实时同步/共享父级符卡的最新变量（如跳动的 $x）
+			for (var entry : parentRuntime.getVariables().entrySet()) {
+				this.runtime.setVariable(entry.getKey(), entry.getValue());
+			}
+		}
 		// Delegate to runtime which handles phaseTick/totalTick increment
 		// and executes the onTick actions from the single-phase definition
 		runtime.tick(holder);

@@ -8,7 +8,7 @@ import java.util.Optional;
 /** Temporary collision target used only by the spell preview scene. */
 public final class PreviewTarget {
 
-	public static final Vec3 DEFAULT_BOX_SIZE = new Vec3(1, 1, 1);
+	public static final Vec3 DEFAULT_BOX_SIZE = new Vec3(64, 64, 64);
 	private static final double MIN_SIZE = 0.05;
 	private static final double MAX_SIZE = 128;
 	private static final double EPSILON = 1.0e-9;
@@ -36,23 +36,62 @@ public final class PreviewTarget {
 		);
 	}
 
+	public record SurfaceHit(Vec3 pos, Vec3 normal) {}
+
+	/**
+	 * Returns the first point and outward surface normal where a swept center line crosses one of the six box faces.
+	 * Both entering from outside and exiting from inside count as block-target hits.
+	 */
+	public static Optional<SurfaceHit> firstSurfaceIntersectionWithNormal(AABB box, Vec3 from, Vec3 to) {
+		Vec3 delta = to.subtract(from);
+		double bestT = Double.POSITIVE_INFINITY;
+		Vec3 bestNormal = Vec3.ZERO;
+
+		double tMinX = testFace(box.minX, from.x, delta.x, from.y, delta.y, from.z, delta.z, box.minY, box.maxY, box.minZ, box.maxZ, bestT);
+		if (tMinX < bestT) { bestT = tMinX; bestNormal = new Vec3(-1, 0, 0); }
+
+		double tMaxX = testFace(box.maxX, from.x, delta.x, from.y, delta.y, from.z, delta.z, box.minY, box.maxY, box.minZ, box.maxZ, bestT);
+		if (tMaxX < bestT) { bestT = tMaxX; bestNormal = new Vec3(1, 0, 0); }
+
+		double tMinY = testFace(box.minY, from.y, delta.y, from.x, delta.x, from.z, delta.z, box.minX, box.maxX, box.minZ, box.maxZ, bestT);
+		if (tMinY < bestT) { bestT = tMinY; bestNormal = new Vec3(0, -1, 0); }
+
+		double tMaxY = testFace(box.maxY, from.y, delta.y, from.x, delta.x, from.z, delta.z, box.minX, box.maxX, box.minZ, box.maxZ, bestT);
+		if (tMaxY < bestT) { bestT = tMaxY; bestNormal = new Vec3(0, 1, 0); }
+
+		double tMinZ = testFace(box.minZ, from.z, delta.z, from.x, delta.x, from.y, delta.y, box.minX, box.maxX, box.minY, box.maxY, bestT);
+		if (tMinZ < bestT) { bestT = tMinZ; bestNormal = new Vec3(0, 0, -1); }
+
+		double tMaxZ = testFace(box.maxZ, from.z, delta.z, from.x, delta.x, from.y, delta.y, box.minX, box.maxX, box.minY, box.maxY, bestT);
+		if (tMaxZ < bestT) { bestT = tMaxZ; bestNormal = new Vec3(0, 0, 1); }
+
+		if (Double.isFinite(bestT)) {
+			// If moving in the same direction as the outward normal (hitting face from inside), the collision normal faces inward
+			if (delta.dot(bestNormal) > 0) {
+				bestNormal = bestNormal.scale(-1);
+			}
+			return Optional.of(new SurfaceHit(from.add(delta.scale(bestT)), bestNormal));
+		}
+		return Optional.empty();
+	}
+
+	private static double testFace(double plane, double fromAxis, double deltaAxis,
+								   double fromU, double deltaU, double fromV, double deltaV,
+								   double minU, double maxU, double minV, double maxV, double bestT) {
+		if (Math.abs(deltaAxis) <= EPSILON) return bestT;
+		double t = (plane - fromAxis) / deltaAxis;
+		if (!isCandidate(t, bestT)) return bestT;
+		double u = fromU + deltaU * t;
+		double v = fromV + deltaV * t;
+		return within(u, minU, maxU) && within(v, minV, maxV) ? t : bestT;
+	}
+
 	/**
 	 * Returns the first point where a swept center line crosses one of the six box faces.
 	 * Both entering from outside and exiting from inside count as block-target hits.
 	 */
 	public static Optional<Vec3> firstSurfaceIntersection(AABB box, Vec3 from, Vec3 to) {
-		if (isOnSurface(box, from)) return Optional.of(from);
-		Vec3 delta = to.subtract(from);
-		double bestT = Double.POSITIVE_INFINITY;
-
-		bestT = testXFace(box.minX, box, from, delta, bestT);
-		bestT = testXFace(box.maxX, box, from, delta, bestT);
-		bestT = testYFace(box.minY, box, from, delta, bestT);
-		bestT = testYFace(box.maxY, box, from, delta, bestT);
-		bestT = testZFace(box.minZ, box, from, delta, bestT);
-		bestT = testZFace(box.maxZ, box, from, delta, bestT);
-
-		return Double.isFinite(bestT) ? Optional.of(from.add(delta.scale(bestT))) : Optional.empty();
+		return firstSurfaceIntersectionWithNormal(box, from, to).map(SurfaceHit::pos);
 	}
 
 	/** Returns the first point where the segment enters or starts inside the box volume. */

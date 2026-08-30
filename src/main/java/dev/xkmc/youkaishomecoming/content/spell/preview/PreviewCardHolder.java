@@ -72,7 +72,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private boolean targetFallFlying = false;
 	/** Preview-only player power override; never written back to the real player. */
 	private double casterPower = 0;
-	private Vec3 blockTargetPos = Vec3.ZERO;
+	private Vec3 blockTargetPos = new Vec3(0, -32, 0);
 	private Vec3 targetBoxSize = PreviewTarget.DEFAULT_BOX_SIZE;
 	/** Real target velocity for aim-lead spells (updated by setTargetPos diff or pilot). */
 	private Vec3 targetVelocity = Vec3.ZERO;
@@ -360,6 +360,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		Vec3 from;
 		Vec3 to;
 		java.util.Optional<Vec3> hit;
+		Vec3 hitNormal = Vec3.ZERO;
 		if (projectile instanceof YHBaseLaserEntity laser) {
 			if (type == PreviewTarget.HitType.ENTITY && !laser.checkEntityHit()) {
 				return java.util.Optional.empty();
@@ -371,9 +372,13 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			float length = type == PreviewTarget.HitType.BLOCK
 					? (float) laser.getLength() : laser.effectiveLength(0);
 			to = from.add(laser.getForward().scale(length));
-			hit = type == PreviewTarget.HitType.BLOCK
-					? PreviewTarget.firstSurfaceIntersection(targetBox, from, to)
-					: PreviewTarget.firstVolumeIntersection(targetBox, from, to);
+			if (type == PreviewTarget.HitType.BLOCK) {
+				var surf = PreviewTarget.firstSurfaceIntersectionWithNormal(targetBox, from, to);
+				hit = surf.map(PreviewTarget.SurfaceHit::pos);
+				hitNormal = surf.map(PreviewTarget.SurfaceHit::normal).orElse(Vec3.ZERO);
+			} else {
+				hit = PreviewTarget.firstVolumeIntersection(targetBox, from, to);
+			}
 		} else {
 			if (type == PreviewTarget.HitType.ENTITY) {
 				targetBox = targetBox.inflate(projectile.getBbWidth() * 0.5);
@@ -382,12 +387,15 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			from = new Vec3(projectile.xOld, projectile.yOld, projectile.zOld);
 			to = projectile.position();
 			if (type == PreviewTarget.HitType.BLOCK) {
-				hit = PreviewTarget.firstSurfaceIntersection(targetBox, from, to);
+				var surf = PreviewTarget.firstSurfaceIntersectionWithNormal(targetBox, from, to);
+				hit = surf.map(PreviewTarget.SurfaceHit::pos);
+				hitNormal = surf.map(PreviewTarget.SurfaceHit::normal).orElse(Vec3.ZERO);
 			} else {
 				hit = PreviewTarget.firstVolumeIntersection(targetBox, from, to);
 			}
 		}
-		return hit.map(pos -> new PreviewHit(type, pos, from.distanceToSqr(pos)));
+		final Vec3 finalNormal = hitNormal;
+		return hit.map(pos -> new PreviewHit(type, pos, from.distanceToSqr(pos), finalNormal));
 	}
 
 	private void handlePreviewTargetHit(SimplifiedProjectile projectile, PreviewHit hit) {
@@ -441,6 +449,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			}
 			case BOUNCE -> {
 				// 预览视口内命中方块目标的反弹模拟
+				Vec3 n = hit.normal();
 				if (projectile instanceof ItemDanmakuEntity ide) {
 					var cfg = ide.bounceConfig;
 					int maxBounces = cfg != null ? cfg.maxBounces() : 1;
@@ -453,7 +462,13 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 					}
 					Vec3 v = projectile.getDeltaMovement();
 					double speed = v.length() * decay;
-					Vec3 bounced = new Vec3(-v.x, v.y, -v.z).normalize().scale(speed);
+					Vec3 bounced;
+					if (n.lengthSqr() > 1e-4) {
+						double dot = v.dot(n);
+						bounced = v.subtract(n.scale(2 * dot)).normalize().scale(speed);
+					} else {
+						bounced = new Vec3(-v.x, v.y, -v.z).normalize().scale(speed);
+					}
 					if (retarget && target() != null) {
 						Vec3 toTarget = target().subtract(projectile.position());
 						if (toTarget.lengthSqr() > 1e-4) {
@@ -461,9 +476,18 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 						}
 					}
 					projectile.setDeltaMovement(bounced);
+					if (n.lengthSqr() > 1e-4) {
+						projectile.setPos(hit.position().add(n.scale(0.05)));
+					}
 				} else {
 					Vec3 v = projectile.getDeltaMovement();
-					projectile.setDeltaMovement(new Vec3(-v.x, v.y, -v.z));
+					if (n.lengthSqr() > 1e-4) {
+						double dot = v.dot(n);
+						projectile.setDeltaMovement(v.subtract(n.scale(2 * dot)));
+						projectile.setPos(hit.position().add(n.scale(0.05)));
+					} else {
+						projectile.setDeltaMovement(new Vec3(-v.x, v.y, -v.z));
+					}
 				}
 			}
 			case DISCARD -> projectile.markErased(false);
@@ -476,7 +500,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		}
 	}
 
-	private record PreviewHit(PreviewTarget.HitType type, Vec3 position, double distanceSqr) {
+	private record PreviewHit(PreviewTarget.HitType type, Vec3 position, double distanceSqr, Vec3 normal) {
 	}
 
 	private boolean tickShooter(ShooterEntity shooter) {

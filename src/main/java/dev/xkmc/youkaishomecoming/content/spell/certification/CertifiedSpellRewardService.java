@@ -44,8 +44,12 @@ public final class CertifiedSpellRewardService {
 		CertifiedSpellValidator.tagCertified(stack, certificate);
 		if (certificate.draftBudget() != null) {
 			DynamicSpellItem.setDraftBudget(stack, certificate.draftBudget());
+			dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank =
+					dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.fromBudget(certificate.draftBudget());
+			DynamicSpellItem.setRank(stack, rank);
 		} else {
 			DynamicSpellItem.setOpQuota(stack, certificate.specialNodeQuota());
+			DynamicSpellItem.setRank(stack, dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.GREATER_VIRTUE);
 		}
 		// spell color = blended average of the danmaku colors inside the definition,
 		// with a small jitter; falls back to fully random when nothing is readable

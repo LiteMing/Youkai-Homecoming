@@ -460,7 +460,7 @@ public class VirtualSpellScene {
 		holder.setBlockTargetPos(holder.getBlockTargetPos().add(delta));
 	}
 
-	public void resetBlockTargetPos() { holder.setBlockTargetPos(Vec3.ZERO); }
+	public void resetBlockTargetPos() { holder.setBlockTargetPos(new Vec3(0, -32, 0)); }
 
 	public AABB getEntityTargetCollisionBox() { return holder.getEntityTargetCollisionBox(); }
 	public AABB getBlockTargetCollisionBox() { return holder.getBlockTargetCollisionBox(); }

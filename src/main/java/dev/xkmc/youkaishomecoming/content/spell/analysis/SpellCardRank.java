@@ -126,6 +126,23 @@ public enum SpellCardRank implements StringRepresentable {
 		);
 	}
 
+	public static SpellCardRank fromBudget(SpellDraftBudget budget) {
+		if (budget == null) return LESSER_WISDOM;
+		// Reverse search from highest tier to lowest
+		var vals = values();
+		for (int i = vals.length - 1; i >= 0; i--) {
+			var r = vals[i];
+			if (budget.freeNodeCount() >= r.freeNodeCount
+					&& budget.maxSpawnPerTick() >= r.maxSpawnPerTick
+					&& budget.maxPeakAlive() >= r.maxPeakAlive
+					&& budget.maxProjectileTicks() >= r.maxProjectileTicks
+					&& budget.maxHookExecutions() >= r.maxHookExecutions) {
+				return r;
+			}
+		}
+		return LESSER_WISDOM;
+	}
+
 	public static SpellCardRank fromTier(int tier) {
 		int index = Math.max(0, Math.min(values().length - 1, tier - 1));
 		return values()[index];

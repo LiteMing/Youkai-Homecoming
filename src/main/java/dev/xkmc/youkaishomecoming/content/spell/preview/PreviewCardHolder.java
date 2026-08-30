@@ -61,7 +61,19 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private BiConsumer<SpellDefinition, Boolean> onSpellSwitch = null;
 	/** Callback invoked when the preview runtime should switch to another phase. */
 	private BiConsumer<ResourceLocation, Boolean> onPhaseSwitch = null;
-	/** Per-target hit history prevents a persistent projectile from firing the same callback every tick. */
+	private dev.xkmc.youkaishomecoming.content.spell.physics.PreviewBoxGroundProvider cachedGroundProvider = null;
+
+	private dev.xkmc.youkaishomecoming.content.spell.physics.PreviewBoxGroundProvider getPreviewGroundProvider() {
+		if (cachedGroundProvider == null) {
+			cachedGroundProvider = new dev.xkmc.youkaishomecoming.content.spell.physics.PreviewBoxGroundProvider(getBlockTargetCollisionBox());
+		}
+		return cachedGroundProvider;
+	}
+
+	private void forgetProjectile(SimplifiedProjectile p) {
+		entityHitProjectiles.remove(p);
+		blockContactStates.remove(p);
+	}
 	private final java.util.Set<SimplifiedProjectile> entityHitProjectiles = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
 	private record BlockContactState(int lastHitTick, Vec3 lastNormal) {}
 	private final java.util.Map<SimplifiedProjectile, BlockContactState> blockContactStates = new java.util.IdentityHashMap<>();
@@ -293,10 +305,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				// Replicate ClientDanmakuCache.tick() behavior exactly
 				sp.setOldPosAndRot();
 				++sp.tickCount;
-				sp.tick();
+				// Ground glide probe before movement step, consistent with server tick pipeline
 				if (e instanceof ItemDanmakuEntity ide && ide.isGroundGliding && ide.bounceConfig != null) {
-					ide.tickGroundGlideWith(new dev.xkmc.youkaishomecoming.content.spell.physics.PreviewBoxGroundProvider(getBlockTargetCollisionBox()));
+					ide.tickGroundGlideWith(getPreviewGroundProvider());
 				}
+				sp.tick();
 				if (!sp.isValid()) {
 					// Manually trigger trail actions (terminate() only runs on ServerLevel)
 					if (e instanceof ItemDanmakuEntity danmaku && danmaku.afterExpiry != null) {
@@ -309,6 +322,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 					if (e instanceof ItemLaserEntity laser && laser.afterExpiry != null) {
 						laser.runExpiryActionOnce(this, laser.position(), laser.getDeltaMovement());
 					}
+					forgetProjectile(sp);
 					iterator.remove();
 				}
 			} else if (e instanceof ShooterEntity shooter) {
@@ -318,6 +332,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			} else {
 				e.tick();
 				if (!e.isAlive() || e.isRemoved()) {
+					if (e instanceof SimplifiedProjectile sp) forgetProjectile(sp);
 					iterator.remove();
 				}
 			}
@@ -366,7 +381,13 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				handlePreviewTargetHit(projectile, hit);
 			}
 		}
-		localEntities.removeIf(entity -> entity instanceof SimplifiedProjectile projectile && !projectile.isValid());
+		localEntities.removeIf(entity -> {
+			if (entity instanceof SimplifiedProjectile projectile && !projectile.isValid()) {
+				forgetProjectile(projectile);
+				return true;
+			}
+			return false;
+		});
 	}
 
 	private java.util.Optional<PreviewHit> findTargetHit(SimplifiedProjectile projectile, AABB targetBox,
@@ -466,24 +487,20 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				Vec3 n = hit.normal();
 				if (projectile instanceof ItemDanmakuEntity ide) {
 					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
-							hit.position(), projectile.getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, target());
-					ide.currentBounces = result.updatedBounces();
-					ide.isGroundGliding = result.isGroundGliding();
-					ide.mover = null; // Detach mover on bounce
+							hit.position(), projectile.getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, ide.isGroundGliding, target());
 					if (result.erased()) {
 						projectile.markErased(false);
 						return;
 					}
-					ide.setPos(result.newPos());
-					projectile.setDeltaMovement(result.newVel());
+					ide.applyBounceState(result.newPos(), result.newVel(), result.isGroundGliding(), result.updatedBounces());
 				} else {
 					Vec3 v = projectile.getDeltaMovement();
 					if (n.lengthSqr() > 1e-4) {
 						double dot = v.dot(n);
-						projectile.setDeltaMovement(v.subtract(n.scale(2 * dot)));
-						projectile.setPos(hit.position().add(n.scale(0.05)));
+						projectile.snapMotionAndRotation(v.subtract(n.scale(2 * dot)));
+						projectile.setPos(hit.position().add(n.scale(0.08)));
 					} else {
-						projectile.setDeltaMovement(new Vec3(-v.x, v.y, -v.z));
+						projectile.snapMotionAndRotation(new Vec3(-v.x, v.y, -v.z));
 					}
 				}
 			}
@@ -843,12 +860,14 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	public void setBlockTargetPos(Vec3 pos) {
 		blockTargetPos = pos == null ? Vec3.ZERO : pos;
+		cachedGroundProvider = null;
 		blockContactStates.clear();
 	}
 	public Vec3 getBlockTargetPos() { return blockTargetPos; }
 
 	public void setTargetBoxSize(Vec3 size) {
 		targetBoxSize = PreviewTarget.sanitizeSize(size);
+		cachedGroundProvider = null;
 		blockContactStates.clear();
 	}
 	public Vec3 getTargetBoxSize() { return targetBoxSize; }

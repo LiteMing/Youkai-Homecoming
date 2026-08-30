@@ -26,9 +26,17 @@ public class ServerWorldGroundProvider implements GroundSurfaceProvider {
 			if (!state.isAir()) {
 				var shape = state.getCollisionShape(level, checkPos);
 				if (!shape.isEmpty()) {
-					double shapeMaxY = checkPos.getY() + shape.max(net.minecraft.core.Direction.Axis.Y);
-					if (shapeMaxY <= currentPos.y + stepHeight + 0.1) {
-						return OptionalDouble.of(shapeMaxY);
+					double localX = probeX - checkPos.getX();
+					double localZ = probeZ - checkPos.getZ();
+					double highestBoxY = Double.NEGATIVE_INFINITY;
+					for (var aabb : shape.toAabbs()) {
+						if (localX >= aabb.minX - 0.05 && localX <= aabb.maxX + 0.05 &&
+								localZ >= aabb.minZ - 0.05 && localZ <= aabb.maxZ + 0.05) {
+							highestBoxY = Math.max(highestBoxY, checkPos.getY() + aabb.maxY);
+						}
+					}
+					if (highestBoxY > Double.NEGATIVE_INFINITY && highestBoxY <= currentPos.y + stepHeight + 0.1) {
+						return OptionalDouble.of(highestBoxY);
 					}
 				}
 			}

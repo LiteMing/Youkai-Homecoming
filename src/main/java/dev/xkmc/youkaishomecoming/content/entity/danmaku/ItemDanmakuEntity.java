@@ -157,6 +157,14 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		this.hitBehaviorBlock = HitBehavior.BOUNCE;
 	}
 
+	public void applyBounceState(Vec3 newPos, Vec3 newVel, boolean groundGliding, int bounceCount) {
+		this.mover = null;
+		this.isGroundGliding = groundGliding;
+		this.currentBounces = bounceCount;
+		setPos(newPos);
+		snapMotionAndRotation(newVel);
+	}
+
 	public void tickGroundGlideWith(GroundSurfaceProvider provider) {
 		if (bounceConfig == null || provider == null) return;
 		var cfg = bounceConfig.sanitize();
@@ -171,9 +179,23 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 			double targetY = floorOpt.getAsDouble() + groundOffset;
 			if (Math.abs(pos.y - targetY) > 0.01) {
 				setPos(pos.x, targetY, pos.z);
+				if (!level().isClientSide && getOwner() instanceof LivingEntity le) {
+					// Sync ground height correction to client
+					dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toTrackingPlayers(
+							new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(
+									getId(), new Vec3(pos.x, targetY, pos.z), new Vec3(vel.x, 0, vel.z), true, currentBounces), le);
+				}
 			}
 			if (vel.y != 0) {
 				setDeltaMovement(vel.x, 0, vel.z);
+			}
+		} else {
+			// No floor found ahead: exit ground glide
+			isGroundGliding = false;
+			if (!level().isClientSide && getOwner() instanceof LivingEntity le) {
+				dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toTrackingPlayers(
+						new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(
+								getId(), position(), getDeltaMovement(), false, currentBounces), le);
 			}
 		}
 	}

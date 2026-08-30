@@ -22,6 +22,7 @@ public final class DanmakuBounceResolver {
 			Vec3 hitNormal,
 			@Nullable DanmakuBounceConfig config,
 			int currentBounces,
+			boolean wasGroundGliding,
 			@Nullable Vec3 targetPos
 	) {
 		DanmakuBounceConfig cfg = config != null ? config.sanitize() : DanmakuBounceConfig.defaults();
@@ -31,14 +32,28 @@ public final class DanmakuBounceResolver {
 		}
 
 		double speed = currentVel.length() * cfg.decay();
-		if (speed < 1e-6) {
-			speed = 1e-4;
-		}
+		boolean keepGroundGlide = wasGroundGliding || (cfg.mode() == DanmakuBounceConfig.BounceMode.GROUND_GLIDE && hitNormal.y > 0.5);
 
-		// Ground glide check: only when mode is ground_glide and floor/upward normal is hit (n.y > 0.5)
-		if (cfg.mode() == DanmakuBounceConfig.BounceMode.GROUND_GLIDE && hitNormal.y > 0.5) {
-			Vec3 newPos = currentPos.add(0, cfg.groundOffset(), 0);
-			Vec3 flatDir = new Vec3(currentVel.x, 0, currentVel.z);
+		// Ground glide: either initial floor contact or already gliding and bouncing off walls
+		if (keepGroundGlide) {
+			Vec3 n = hitNormal.lengthSqr() > 1e-8 ? hitNormal.normalize() : new Vec3(0, 1, 0);
+			Vec3 newPos = wasGroundGliding ? currentPos.add(n.scale(0.08)) : currentPos.add(0, cfg.groundOffset(), 0);
+			Vec3 flatDir;
+			if (!wasGroundGliding && hitNormal.y > 0.5) {
+				// Initial floor contact: project horizontal velocity
+				flatDir = new Vec3(currentVel.x, 0, currentVel.z);
+			} else {
+				// Side wall reflection while already gliding: reflect horizontally
+				Vec3 flatN = new Vec3(n.x, 0, n.z);
+				if (flatN.lengthSqr() > 1e-8) {
+					flatN = flatN.normalize();
+					double dot = currentVel.x * flatN.x + currentVel.z * flatN.z;
+					flatDir = new Vec3(currentVel.x - 2 * dot * flatN.x, 0, currentVel.z - 2 * dot * flatN.z);
+				} else {
+					flatDir = new Vec3(-currentVel.x, 0, -currentVel.z);
+				}
+			}
+
 			if (cfg.retarget() && targetPos != null) {
 				Vec3 toTarget = targetPos.subtract(currentPos);
 				flatDir = new Vec3(toTarget.x, 0, toTarget.z);
@@ -57,9 +72,14 @@ public final class DanmakuBounceResolver {
 		double dot = currentVel.dot(n);
 		Vec3 bounced;
 		if (dot < 0) {
-			bounced = currentVel.subtract(n.scale(2 * dot)).normalize().scale(speed);
+			bounced = currentVel.subtract(n.scale(2 * dot));
 		} else {
-			bounced = currentVel.normalize().scale(speed);
+			bounced = currentVel;
+		}
+		if (bounced.lengthSqr() > 1e-8) {
+			bounced = bounced.normalize().scale(speed);
+		} else {
+			bounced = n.scale(speed);
 		}
 
 		if (cfg.retarget() && targetPos != null) {

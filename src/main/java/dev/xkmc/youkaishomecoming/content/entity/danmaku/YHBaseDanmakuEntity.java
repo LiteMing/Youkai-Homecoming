@@ -165,16 +165,12 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						var normal = pResult.getDirection().step();
 						Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
 						var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
-								position(), getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, resolveBounceTarget());
-						ide.currentBounces = result.updatedBounces();
-						ide.isGroundGliding = result.isGroundGliding();
-						ide.mover = null; // Detach mover on bounce
+								position(), getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, ide.isGroundGliding, resolveBounceTarget());
 						if (result.erased()) {
 							markErased(false);
 							return;
 						}
-						ide.setPos(result.newPos());
-						setDeltaMovement(result.newVel());
+						ide.applyBounceState(result.newPos(), result.newVel(), result.isGroundGliding(), result.updatedBounces());
 						syncBounceToClient(result.newPos(), result.newVel(), result.isGroundGliding(), result.updatedBounces());
 						return;
 					}

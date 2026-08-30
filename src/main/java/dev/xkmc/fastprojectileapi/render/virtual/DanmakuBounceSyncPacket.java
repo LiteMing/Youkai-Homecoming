@@ -43,11 +43,11 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 		var cache = ClientDanmakuCache.get(level);
 		var e = cache.get(entityId);
 		if (e != null) {
-			e.setPosRaw(posX, posY, posZ);
-			e.snapMotionAndRotation(new Vec3(velX, velY, velZ));
 			if (e instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity ide) {
-				ide.isGroundGliding = groundGliding;
-				ide.currentBounces = bounceCount;
+				ide.applyBounceState(new Vec3(posX, posY, posZ), new Vec3(velX, velY, velZ), groundGliding, bounceCount);
+			} else {
+				e.setPosRaw(posX, posY, posZ);
+				e.snapMotionAndRotation(new Vec3(velX, velY, velZ));
 			}
 		}
 	}

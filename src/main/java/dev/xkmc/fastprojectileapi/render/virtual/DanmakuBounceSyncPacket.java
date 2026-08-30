@@ -17,14 +17,12 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 	@SerialClass.SerialField
 	private double velX, velY, velZ;
 	@SerialClass.SerialField
-	private boolean groundGliding;
-	@SerialClass.SerialField
 	private int bounceCount;
 
 	public DanmakuBounceSyncPacket() {
 	}
 
-	public DanmakuBounceSyncPacket(int entityId, Vec3 pos, Vec3 vel, boolean groundGliding, int bounceCount) {
+	public DanmakuBounceSyncPacket(int entityId, Vec3 pos, Vec3 vel, int bounceCount) {
 		this.entityId = entityId;
 		this.posX = pos.x;
 		this.posY = pos.y;
@@ -32,7 +30,6 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 		this.velX = vel.x;
 		this.velY = vel.y;
 		this.velZ = vel.z;
-		this.groundGliding = groundGliding;
 		this.bounceCount = bounceCount;
 	}
 
@@ -44,7 +41,7 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 		var e = cache.get(entityId);
 		if (e != null) {
 			if (e instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity ide) {
-				ide.applyBounceState(new Vec3(posX, posY, posZ), new Vec3(velX, velY, velZ), groundGliding, bounceCount);
+				ide.applyBounceState(new Vec3(posX, posY, posZ), new Vec3(velX, velY, velZ), bounceCount);
 			} else {
 				e.setPosRaw(posX, posY, posZ);
 				e.snapMotionAndRotation(new Vec3(velX, velY, velZ));

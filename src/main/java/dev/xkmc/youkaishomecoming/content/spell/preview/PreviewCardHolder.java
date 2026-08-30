@@ -61,15 +61,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private BiConsumer<SpellDefinition, Boolean> onSpellSwitch = null;
 	/** Callback invoked when the preview runtime should switch to another phase. */
 	private BiConsumer<ResourceLocation, Boolean> onPhaseSwitch = null;
-	private dev.xkmc.youkaishomecoming.content.spell.physics.PreviewBoxGroundProvider cachedGroundProvider = null;
-
-	private dev.xkmc.youkaishomecoming.content.spell.physics.PreviewBoxGroundProvider getPreviewGroundProvider() {
-		if (cachedGroundProvider == null) {
-			cachedGroundProvider = new dev.xkmc.youkaishomecoming.content.spell.physics.PreviewBoxGroundProvider(getBlockTargetCollisionBox());
-		}
-		return cachedGroundProvider;
-	}
-
 	private void forgetProjectile(SimplifiedProjectile p) {
 		entityHitProjectiles.remove(p);
 		blockContactStates.remove(p);
@@ -85,8 +76,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private boolean targetFallFlying = false;
 	/** Preview-only player power override; never written back to the real player. */
 	private double casterPower = 0;
-	private Vec3 blockTargetPos = new Vec3(0, -32, 0);
-	private Vec3 targetBoxSize = PreviewTarget.DEFAULT_BOX_SIZE;
+	private Vec3 blockTargetPos = PreviewTarget.getRememberedBoxPos();
+	private Vec3 targetBoxSize = PreviewTarget.getRememberedBoxSize();
 	/** Real target velocity for aim-lead spells (updated by setTargetPos diff or pilot). */
 	private Vec3 targetVelocity = Vec3.ZERO;
 
@@ -305,10 +296,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				// Replicate ClientDanmakuCache.tick() behavior exactly
 				sp.setOldPosAndRot();
 				++sp.tickCount;
-				// Ground glide probe before movement step, consistent with server tick pipeline
-				if (e instanceof ItemDanmakuEntity ide && ide.isGroundGliding && ide.bounceConfig != null) {
-					ide.tickGroundGlideWith(getPreviewGroundProvider());
-				}
 				sp.tick();
 				if (!sp.isValid()) {
 					// Manually trigger trail actions (terminate() only runs on ServerLevel)
@@ -487,12 +474,12 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				Vec3 n = hit.normal();
 				if (projectile instanceof ItemDanmakuEntity ide) {
 					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
-							hit.position(), projectile.getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, ide.isGroundGliding, target());
+							hit.position(), projectile.getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, target());
 					if (result.erased()) {
 						projectile.markErased(false);
 						return;
 					}
-					ide.applyBounceState(result.newPos(), result.newVel(), result.isGroundGliding(), result.updatedBounces());
+					ide.applyBounceState(result.newPos(), result.newVel(), result.updatedBounces());
 				} else {
 					Vec3 v = projectile.getDeltaMovement();
 					if (n.lengthSqr() > 1e-4) {
@@ -860,14 +847,14 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	public void setBlockTargetPos(Vec3 pos) {
 		blockTargetPos = pos == null ? Vec3.ZERO : pos;
-		cachedGroundProvider = null;
+		PreviewTarget.rememberBoxPos(blockTargetPos);
 		blockContactStates.clear();
 	}
 	public Vec3 getBlockTargetPos() { return blockTargetPos; }
 
 	public void setTargetBoxSize(Vec3 size) {
 		targetBoxSize = PreviewTarget.sanitizeSize(size);
-		cachedGroundProvider = null;
+		PreviewTarget.rememberBoxSize(targetBoxSize);
 		blockContactStates.clear();
 	}
 	public Vec3 getTargetBoxSize() { return targetBoxSize; }

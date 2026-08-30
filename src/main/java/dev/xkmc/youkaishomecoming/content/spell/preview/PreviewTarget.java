@@ -8,7 +8,15 @@ import java.util.Optional;
 /** Temporary collision target used only by the spell preview scene. */
 public final class PreviewTarget {
 
+	public static final Vec3 DEFAULT_BOX_POS = new Vec3(0, -32, 0);
 	public static final Vec3 DEFAULT_BOX_SIZE = new Vec3(64, 64, 64);
+	private static Vec3 rememberedBoxPos = DEFAULT_BOX_POS;
+	private static Vec3 rememberedBoxSize = DEFAULT_BOX_SIZE;
+
+	public static Vec3 getRememberedBoxPos() { return rememberedBoxPos; }
+	public static void rememberBoxPos(Vec3 pos) { rememberedBoxPos = pos == null ? DEFAULT_BOX_POS : pos; }
+	public static Vec3 getRememberedBoxSize() { return rememberedBoxSize; }
+	public static void rememberBoxSize(Vec3 size) { rememberedBoxSize = sanitizeSize(size); }
 	private static final double MIN_SIZE = 0.05;
 	private static final double MAX_SIZE = 128;
 	private static final double EPSILON = 1.0e-9;

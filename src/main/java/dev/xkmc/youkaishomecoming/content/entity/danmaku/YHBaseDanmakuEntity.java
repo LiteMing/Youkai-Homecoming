@@ -165,13 +165,13 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						var normal = pResult.getDirection().step();
 						Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
 						var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
-								position(), getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, ide.isGroundGliding, resolveBounceTarget());
+								position(), getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, resolveBounceTarget());
 						if (result.erased()) {
 							markErased(false);
 							return;
 						}
-						ide.applyBounceState(result.newPos(), result.newVel(), result.isGroundGliding(), result.updatedBounces());
-						syncBounceToClient(result.newPos(), result.newVel(), result.isGroundGliding(), result.updatedBounces());
+						ide.applyBounceState(result.newPos(), result.newVel(), result.updatedBounces());
+						syncBounceToClient(result.newPos(), result.newVel(), result.updatedBounces());
 						return;
 					}
 					case EXPIRE -> {
@@ -231,10 +231,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		markErased(false);
 	}
 
-	private void syncBounceToClient(Vec3 pos, Vec3 vel, boolean groundGliding, int bounceCount) {
+	private void syncBounceToClient(Vec3 pos, Vec3 vel, int bounceCount) {
 		if (getOwner() instanceof LivingEntity le && !level().isClientSide) {
 			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toTrackingPlayers(
-					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), pos, vel, groundGliding, bounceCount), le);
+					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), pos, vel, bounceCount), le);
 		}
 	}
 

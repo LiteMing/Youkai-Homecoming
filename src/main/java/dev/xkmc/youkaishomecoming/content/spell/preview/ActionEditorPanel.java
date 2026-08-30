@@ -700,24 +700,13 @@ public class ActionEditorPanel {
 				var bcfg = a.bounceConfig().orElse(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
 				addIntRow("Max Bounces", bcfg.maxBounces(), v ->
 						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
-								v, bcfg.decay(), bcfg.mode(), bcfg.retarget(), bcfg.groundOffset(), bcfg.stepHeight()))), false));
+								v, bcfg.decay(), bcfg.retarget()))), false));
 				addDoubleRow("Speed Decay", bcfg.decay(), v ->
 						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
-								bcfg.maxBounces(), v, bcfg.mode(), bcfg.retarget(), bcfg.groundOffset(), bcfg.stepHeight()))), false));
-				addEnumRow("Bounce Mode", dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.values(), bcfg.mode(), v ->
-						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
-								bcfg.maxBounces(), bcfg.decay(), v, bcfg.retarget(), bcfg.groundOffset(), bcfg.stepHeight()))), true));
+								bcfg.maxBounces(), v, bcfg.retarget()))), false));
 				addBoolRow("Retarget", bcfg.retarget(), v ->
 						notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
-								bcfg.maxBounces(), bcfg.decay(), bcfg.mode(), v, bcfg.groundOffset(), bcfg.stepHeight()))), true));
-				if (bcfg.mode() == dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.GROUND_GLIDE) {
-					addDoubleRow("Ground Offset", bcfg.groundOffset(), v ->
-							notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
-									bcfg.maxBounces(), bcfg.decay(), bcfg.mode(), bcfg.retarget(), v, bcfg.stepHeight()))), false));
-					addDoubleRow("Step Height", bcfg.stepHeight(), v ->
-							notifyDanmaku(old -> old.withBounceConfig(Optional.of(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
-									bcfg.maxBounces(), bcfg.decay(), bcfg.mode(), bcfg.retarget(), bcfg.groundOffset(), v))), false));
-				}
+								bcfg.maxBounces(), bcfg.decay(), v))), true));
 				currentDepth--;
 			}
 

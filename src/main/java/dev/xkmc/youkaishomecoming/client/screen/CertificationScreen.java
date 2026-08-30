@@ -6,6 +6,7 @@ import dev.xkmc.youkaishomecoming.content.spell.certification.network.Certificat
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -22,17 +23,17 @@ import java.util.Locale;
 public class CertificationScreen extends Screen {
 
 	private final SpellDefinition definition;
-	private final byte[] snapshotPng;
+	private final Screen parentScreen;
 	private Component status = Component.empty();
 
 	public CertificationScreen(SpellDefinition definition) {
-		this(definition, new byte[0]);
+		this(definition, null);
 	}
 
-	public CertificationScreen(SpellDefinition definition, byte[] snapshotPng) {
+	public CertificationScreen(SpellDefinition definition, @org.jetbrains.annotations.Nullable Screen parentScreen) {
 		super(Component.translatable("youkaishomecoming.cert.screen.title"));
 		this.definition = definition;
-		this.snapshotPng = snapshotPng == null ? new byte[0] : snapshotPng;
+		this.parentScreen = parentScreen;
 	}
 
 	@Override
@@ -75,9 +76,59 @@ public class CertificationScreen extends Screen {
 			status = Component.translatable("youkaishomecoming.cert.screen.no_quote");
 			return;
 		}
-		YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId, snapshotPng));
+
+		// 检查本地是否已有既有快照，若有则直接提交开始认证
+		java.nio.file.Path file = Minecraft.getInstance().gameDirectory.toPath()
+				.resolve("spell_snapshots").resolve(definition.id.getPath() + ".png");
+		if (java.nio.file.Files.isRegularFile(file)) {
+			try {
+				byte[] snap = java.nio.file.Files.readAllBytes(file);
+				YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId, snap));
+				CertificationClientHandler.clearPendingQuote();
+				onClose();
+				return;
+			} catch (Exception ignored) {
+			}
+		}
+
+		// 本地尚无快照，进入视口取景拍照流程
+		if (parentScreen instanceof dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen previewScreen) {
+			previewScreen.getViewport().setCardFrameGuideActive(true);
+			byte[] snap = dev.xkmc.youkaishomecoming.content.spell.preview.SpellSnapshotRenderer.captureSnapshot(
+					previewScreen.getScene(), previewScreen.getViewport(), 0);
+			if (snap != null && snap.length > 0) {
+				Minecraft.getInstance().setScreen(
+						new SpellCardSnapshotConfirmScreen(previewScreen, snap, () -> {
+							previewScreen.getViewport().setCardFrameGuideActive(false);
+							saveConfirmedSnapshot(snap);
+							YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId, snap));
+							CertificationClientHandler.clearPendingQuote();
+						}));
+				return;
+			}
+		}
+
+		// 兜底直接开始
+		YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId, new byte[0]));
 		CertificationClientHandler.clearPendingQuote();
 		onClose();
+	}
+
+	private void saveConfirmedSnapshot(byte[] snapBytes) {
+		if (snapBytes == null || snapBytes.length == 0 || definition == null) return;
+		try {
+			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
+			java.nio.file.Files.createDirectories(outDir);
+			java.nio.file.Path fileByPath = outDir.resolve(definition.id.getPath() + ".png");
+			java.nio.file.Files.write(fileByPath, snapBytes);
+			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
+			java.nio.file.Path fileByHash = outDir.resolve(defHash + ".png");
+			java.nio.file.Files.write(fileByHash, snapBytes);
+			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(definition.id.getPath(), snapBytes);
+			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(defHash, snapBytes);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
 	@Override

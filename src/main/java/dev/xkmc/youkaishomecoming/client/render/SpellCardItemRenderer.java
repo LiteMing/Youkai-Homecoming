@@ -58,11 +58,21 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		// 渲染 84x128 比例的双面卡牌
 		poseStack.pushPose();
 
-		// 根据不同的手持/GUI 视角做轻微变换与居中
 		if (transformType == ItemDisplayContext.GUI) {
 			poseStack.translate(0.5, 0.5, 0.0);
+			poseStack.scale(1.0f, 1.0f, 1.0f);
 		} else if (transformType == ItemDisplayContext.FIRST_PERSON_RIGHT_HAND || transformType == ItemDisplayContext.FIRST_PERSON_LEFT_HAND) {
 			poseStack.translate(0.5, 0.5, 0.5);
+			poseStack.scale(0.8f, 0.8f, 0.8f);
+		} else if (transformType == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND || transformType == ItemDisplayContext.THIRD_PERSON_LEFT_HAND) {
+			poseStack.translate(0.5, 0.5, 0.5);
+			poseStack.scale(0.6f, 0.6f, 0.6f);
+		} else if (transformType == ItemDisplayContext.GROUND) {
+			poseStack.translate(0.5, 0.3, 0.5);
+			poseStack.scale(0.5f, 0.5f, 0.5f);
+		} else if (transformType == ItemDisplayContext.FIXED) {
+			poseStack.translate(0.5, 0.5, 0.5);
+			poseStack.scale(0.7f, 0.7f, 0.7f);
 		} else {
 			poseStack.translate(0.5, 0.5, 0.5);
 		}
@@ -71,14 +81,15 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		float h = 0.5f;
 		float thickness = 0.005f;
 
-		VertexConsumer frontBuilder = buffer.getBuffer(RenderType.entityCutout(textureLoc));
+		// 使用 RenderType.entityCutoutNoCull 确保正反面双面可见且不受光照面剔除影响
+		VertexConsumer frontBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(textureLoc));
 		Matrix4f mat = poseStack.last().pose();
 
 		// 正面（弹幕快照）
 		quad(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, packedLight);
 
 		// 背面（通用符卡底纹）
-		VertexConsumer backBuilder = buffer.getBuffer(RenderType.entityCutout(CARD_BACK));
+		VertexConsumer backBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(CARD_BACK));
 		quad(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, packedLight);
 
 		poseStack.popPose();

@@ -991,7 +991,7 @@ public class SpellPreviewScreen extends Screen {
 						saveConfirmedSnapshot(snap);
 						syncCustomNamesToDefinition();
 						Minecraft.getInstance().setScreen(
-								new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, snap));
+								new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, this));
 					}));
 		}
 	}
@@ -1016,37 +1016,8 @@ public class SpellPreviewScreen extends Screen {
 			}
 			return;
 		}
-		// 如果本地已经有确认保存的快照，直接沿用，不重复进入拍照环节
-		java.nio.file.Path file = Minecraft.getInstance().gameDirectory.toPath()
-				.resolve("spell_snapshots").resolve(definition.id.getPath() + ".png");
-		if (java.nio.file.Files.isRegularFile(file)) {
-			try {
-				byte[] snap = java.nio.file.Files.readAllBytes(file);
-				syncCustomNamesToDefinition();
-				Minecraft.getInstance().setScreen(
-						new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, snap));
-				return;
-			} catch (Exception ignored) {
-			}
-		}
-
-		viewport.setCardFrameGuideActive(true);
-		byte[] snap = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
-		if (snap != null && snap.length > 0) {
-			Minecraft.getInstance().setScreen(
-					new dev.xkmc.youkaishomecoming.client.screen.SpellCardSnapshotConfirmScreen(this, snap, () -> {
-						viewport.setCardFrameGuideActive(false);
-						saveConfirmedSnapshot(snap);
-						syncCustomNamesToDefinition();
-						Minecraft.getInstance().setScreen(
-								new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, snap));
-					}));
-		} else {
-			viewport.setCardFrameGuideActive(false);
-			syncCustomNamesToDefinition();
-			Minecraft.getInstance().setScreen(
-					new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition));
-		}
+		syncCustomNamesToDefinition();
+		Minecraft.getInstance().setScreen(new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, this));
 	}
 
 	private void saveConfirmedSnapshot(byte[] snapBytes) {

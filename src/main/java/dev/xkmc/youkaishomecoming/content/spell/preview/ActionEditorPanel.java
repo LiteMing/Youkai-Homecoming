@@ -1354,9 +1354,30 @@ public class ActionEditorPanel {
 		addEnumSubsetRow("Hit Context", availableRunCommandHitContexts(), rc.hitContext(), v ->
 				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(), v,
 						((RunCommandAction) old).command()), true));
-		addStringRow("Command", rc.command(), v ->
+		addSuggestStringRow("Command", rc.command(), this::getVanillaCommandSuggestions, v ->
 				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(),
 						((RunCommandAction) old).hitContext(), v)));
+	}
+
+	private List<String> getVanillaCommandSuggestions() {
+		var mc = Minecraft.getInstance();
+		if (mc.getConnection() == null) return List.of();
+		var commands = mc.getConnection().getCommands();
+		if (commands == null) return List.of();
+		List<String> list = new ArrayList<>();
+		for (var node : commands.getRoot().getChildren()) {
+			list.add(node.getName());
+		}
+		// 常用弹幕与特效指令置顶推荐
+		list.remove("particle");
+		list.remove("playsound");
+		list.remove("title");
+		list.remove("yhspell");
+		list.add(0, "particle");
+		list.add(1, "playsound");
+		list.add(2, "title");
+		list.add(3, "yhspell");
+		return list;
 	}
 
 	private RunCommandAction.HitContext[] availableRunCommandHitContexts() {

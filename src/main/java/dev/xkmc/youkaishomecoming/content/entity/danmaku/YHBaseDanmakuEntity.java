@@ -165,9 +165,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						var normal = pResult.getDirection().step();
 						Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
 						var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
-								position(), getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, getOwnerTarget() != null ? getOwnerTarget().position() : null);
+								position(), getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, resolveBounceTarget());
 						ide.currentBounces = result.updatedBounces();
 						ide.isGroundGliding = result.isGroundGliding();
+						ide.mover = null; // Detach mover on bounce
 						if (result.erased()) {
 							markErased(false);
 							return;
@@ -252,13 +253,16 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		}
 	}
 
-	private LivingEntity getOwnerTarget() {
+	private Vec3 resolveBounceTarget() {
 		Entity e = getOwner();
-		if (e instanceof net.minecraft.world.entity.Mob mob) {
-			return mob.getTarget();
+		if (e instanceof CardHolder h && h.target() != null) {
+			return h.target();
 		}
-		if (e instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity ye) {
-			return ye.getTarget();
+		if (e instanceof net.minecraft.world.entity.Mob mob && mob.getTarget() != null) {
+			return mob.getTarget().position().add(0, mob.getTarget().getEyeHeight() * 0.5, 0);
+		}
+		if (e instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity ye && ye.getTarget() != null) {
+			return ye.getTarget().position().add(0, ye.getTarget().getEyeHeight() * 0.5, 0);
 		}
 		return null;
 	}

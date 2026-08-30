@@ -294,6 +294,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				sp.setOldPosAndRot();
 				++sp.tickCount;
 				sp.tick();
+				if (e instanceof ItemDanmakuEntity ide && ide.isGroundGliding && ide.bounceConfig != null) {
+					ide.tickGroundGlideWith(new dev.xkmc.youkaishomecoming.content.spell.physics.PreviewBoxGroundProvider(getBlockTargetCollisionBox()));
+				}
 				if (!sp.isValid()) {
 					// Manually trigger trail actions (terminate() only runs on ServerLevel)
 					if (e instanceof ItemDanmakuEntity danmaku && danmaku.afterExpiry != null) {
@@ -466,6 +469,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 							hit.position(), projectile.getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, target());
 					ide.currentBounces = result.updatedBounces();
 					ide.isGroundGliding = result.isGroundGliding();
+					ide.mover = null; // Detach mover on bounce
 					if (result.erased()) {
 						projectile.markErased(false);
 						return;

@@ -2,6 +2,8 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.content.spell.physics.GroundSurfaceProvider;
+import dev.xkmc.youkaishomecoming.content.spell.physics.ServerWorldGroundProvider;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColorAnimation;
@@ -155,48 +157,18 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		this.hitBehaviorBlock = HitBehavior.BOUNCE;
 	}
 
-	@Override
-	public void tick() {
-		if (visualScaleFunction != null) {
-			updateVisualScaleDimensions(false);
-		}
-		if (!level().isClientSide && isGroundGliding && bounceConfig != null) {
-			tickGroundGlideServer();
-		}
-		super.tick();
-	}
-
-	private void tickGroundGlideServer() {
-		if (bounceConfig == null) return;
+	public void tickGroundGlideWith(GroundSurfaceProvider provider) {
+		if (bounceConfig == null || provider == null) return;
 		var cfg = bounceConfig.sanitize();
 		double groundOffset = cfg.groundOffset();
 		double stepHeight = cfg.stepHeight();
 		var pos = position();
 		var vel = getDeltaMovement();
-		
-		// Probe ground height at the predicted next horizontal step position
-		double probeX = pos.x + vel.x;
-		double probeZ = pos.z + vel.z;
-		net.minecraft.core.BlockPos targetBlockPos = net.minecraft.core.BlockPos.containing(probeX, pos.y, probeZ);
-		
-		double foundGroundY = Double.NEGATIVE_INFINITY;
-		for (int dy = (int) Math.ceil(stepHeight); dy >= -2; dy--) {
-			var checkPos = targetBlockPos.offset(0, dy, 0);
-			var state = level().getBlockState(checkPos);
-			if (!state.isAir()) {
-				var shape = state.getCollisionShape(level(), checkPos);
-				if (!shape.isEmpty()) {
-					double shapeMaxY = checkPos.getY() + shape.max(net.minecraft.core.Direction.Axis.Y);
-					if (shapeMaxY <= pos.y + stepHeight + 0.1) {
-						foundGroundY = shapeMaxY;
-						break;
-					}
-				}
-			}
-		}
+		Vec3 nextPos = pos.add(vel);
 
-		if (foundGroundY > Double.NEGATIVE_INFINITY) {
-			double targetY = foundGroundY + groundOffset;
+		var floorOpt = provider.findFloorHeight(pos, nextPos, stepHeight);
+		if (floorOpt.isPresent()) {
+			double targetY = floorOpt.getAsDouble() + groundOffset;
 			if (Math.abs(pos.y - targetY) > 0.01) {
 				setPos(pos.x, targetY, pos.z);
 			}
@@ -204,6 +176,17 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 				setDeltaMovement(vel.x, 0, vel.z);
 			}
 		}
+	}
+
+	@Override
+	public void tick() {
+		if (visualScaleFunction != null) {
+			updateVisualScaleDimensions(false);
+		}
+		if (!level().isClientSide && isGroundGliding && bounceConfig != null) {
+			tickGroundGlideWith(new ServerWorldGroundProvider(level()));
+		}
+		super.tick();
 	}
 
 	@Override

@@ -256,7 +256,11 @@ public record FireDanmakuAction(
 		}
 		danmaku.hitBehaviorEntity = hitBehaviorEntity;
 		danmaku.hitBehaviorBlock = hitBehaviorBlock;
-		bounceConfig.ifPresent(danmaku::configureBounce);
+		if (hitBehaviorBlock == HitBehavior.BOUNCE) {
+			bounceConfig.ifPresent(danmaku::configureBounce);
+		} else {
+			danmaku.bounceConfig = null;
+		}
 		// Default from prepareDanmaku is bypassWall=true, bypassEntity=true (boss danmaku defaults).
 		// Keep the legacy pass-through behavior unless this action explicitly uses block hit handling:
 		// either a block-hit callback is configured, or block hits should stop/expire the danmaku.

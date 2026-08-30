@@ -687,7 +687,13 @@ public class ActionEditorPanel {
 			addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
 					notifyDanmaku(old -> old.withHitBehaviorEntity(v)));
 			addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
-					notifyDanmaku(old -> old.withHitBehaviorBlock(v)));
+					notifyDanmaku(old -> {
+						var updated = old.withHitBehaviorBlock(v);
+						if (v != HitBehavior.BOUNCE) {
+							updated = updated.withBounceConfig(Optional.empty());
+						}
+						return updated;
+					}));
 
 			if (a.hitBehaviorBlock() == HitBehavior.BOUNCE) {
 				currentDepth++;

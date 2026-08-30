@@ -41,6 +41,14 @@ public record DanmakuBounceConfig(
 			Codec.DOUBLE.optionalFieldOf("step_height", 1.25).forGetter(DanmakuBounceConfig::stepHeight)
 	).apply(i, DanmakuBounceConfig::new));
 
+	public DanmakuBounceConfig sanitize() {
+		int maxB = Math.max(0, Math.min(64, maxBounces));
+		double dec = Double.isFinite(decay) ? Math.max(0.0, Math.min(2.0, decay)) : 1.0;
+		double gOff = Double.isFinite(groundOffset) ? Math.max(0.0, Math.min(4.0, groundOffset)) : 0.3;
+		double sH = Double.isFinite(stepHeight) ? Math.max(0.0, Math.min(4.0, stepHeight)) : 1.25;
+		return new DanmakuBounceConfig(maxB, dec, mode != null ? mode : BounceMode.SPECULAR, retarget, gOff, sH);
+	}
+
 	public static DanmakuBounceConfig defaults() {
 		return new DanmakuBounceConfig(1, 1.0, BounceMode.SPECULAR, false, 0.3, 1.25);
 	}

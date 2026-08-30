@@ -598,6 +598,7 @@ public final class SpellAnalyzer {
 		walkHooks(a.onExpiry(), a.onTrail(), a.trailInterval(),
 				a.onHitEntity(), a.onHitBlock(),
 				a.hitBehaviorEntity(), a.hitBehaviorBlock(),
+				a.bounceConfig(),
 				contrib, lifetimeUpper, perTick, mult);
 	}
 
@@ -610,6 +611,7 @@ public final class SpellAnalyzer {
 		walkHooks(a.onExpiry(), a.onTrail(), a.trailInterval(),
 				a.onHitEntity(), a.onHitBlock(),
 				a.hitBehaviorEntity(), a.hitBehaviorBlock(),
+				Optional.empty(),
 				contrib, lifetimeUpper, perTick, mult);
 	}
 
@@ -625,6 +627,7 @@ public final class SpellAnalyzer {
 						   int trailInterval, Optional<List<SpellAction>> onHitEntity,
 						   Optional<List<SpellAction>> onHitBlock,
 						   HitBehavior hitBehaviorEntity, HitBehavior hitBehaviorBlock,
+						   Optional<dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig> bounceConfig,
 						   long contrib, long lifetimeUpper, boolean perTick, long mult) {
 		if (onExpiry.isPresent()) {
 			addCap(SpellCapability.HOOK_ON_EXPIRY);
@@ -641,13 +644,23 @@ public final class SpellAnalyzer {
 			// Entity and block behaviors are independent: a spell with only an
 			// on_hit_entity hook must not inherit the block default (CONTINUE)
 			// — hit count is derived per hook list from its own behavior.
+			// For BOUNCE, on_hit_block fires up to (max_bounces + 1) times.
 			long maxHits = limits.maxHitsPerProjectile();
 			if (onHitEntity.isPresent()) {
 				long execs = satMul(contrib, hitBehaviorEntity == HitBehavior.CONTINUE ? maxHits : 1);
 				walkHook("on_hit_entity", onHitEntity.get(), execs, perTick, mult);
 			}
 			if (onHitBlock.isPresent()) {
-				long execs = satMul(contrib, hitBehaviorBlock == HitBehavior.CONTINUE ? maxHits : 1);
+				long blockMultiplier;
+				if (hitBehaviorBlock == HitBehavior.CONTINUE) {
+					blockMultiplier = maxHits;
+				} else if (hitBehaviorBlock == HitBehavior.BOUNCE) {
+					int maxBounces = bounceConfig.map(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig::maxBounces).orElse(1);
+					blockMultiplier = Math.max(1, maxBounces + 1);
+				} else {
+					blockMultiplier = 1;
+				}
+				long execs = satMul(contrib, blockMultiplier);
 				walkHook("on_hit_block", onHitBlock.get(), execs, perTick, mult);
 			}
 		}

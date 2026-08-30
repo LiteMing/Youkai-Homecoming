@@ -162,60 +162,19 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						return;
 					}
 					case BOUNCE -> {
-						var bounceCfg = ide.bounceConfig;
-						int maxBounces = bounceCfg != null ? bounceCfg.maxBounces() : 1;
-						double decay = bounceCfg != null ? bounceCfg.decay() : 1.0;
-						boolean retarget = bounceCfg != null && bounceCfg.retarget();
-						var mode = bounceCfg != null ? bounceCfg.mode() : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.SPECULAR;
-
-						ide.currentBounces++;
-						if (ide.currentBounces > maxBounces) {
+						var normal = pResult.getDirection().step();
+						Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
+						var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
+								position(), getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, getOwnerTarget() != null ? getOwnerTarget().position() : null);
+						ide.currentBounces = result.updatedBounces();
+						ide.isGroundGliding = result.isGroundGliding();
+						if (result.erased()) {
 							markErased(false);
 							return;
 						}
-
-						var normal = pResult.getDirection().step();
-						Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
-						Vec3 v = getDeltaMovement();
-						double speed = v.length() * decay;
-
-						if (mode == dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.GROUND_GLIDE && (n.y > 0.5 || pResult.getDirection() == net.minecraft.core.Direction.UP)) {
-							// 转为贴地飞行
-							ide.isGroundGliding = true;
-							Vec3 newPos = position().add(0, bounceCfg.groundOffset(), 0);
-							ide.setPos(newPos);
-							Vec3 flatDir = new Vec3(v.x, 0, v.z).normalize();
-							if (retarget) {
-								LivingEntity target = getOwnerTarget();
-								if (target != null) {
-									Vec3 toTarget = target.position().subtract(position());
-									flatDir = new Vec3(toTarget.x, 0, toTarget.z).normalize();
-								}
-							}
-							Vec3 newVel = flatDir.scale(Math.max(1e-4, speed));
-							setDeltaMovement(newVel);
-							syncBounceToClient(newPos, newVel);
-							return;
-						}
-
-						double dot = v.dot(n);
-						if (dot < 0) {
-							Vec3 bounced = v.subtract(n.scale(2 * dot)).normalize().scale(speed);
-							if (retarget) {
-								LivingEntity target = getOwnerTarget();
-								if (target != null) {
-									Vec3 toTarget = target.position().add(0, target.getEyeHeight() * 0.5, 0).subtract(position());
-									if (toTarget.lengthSqr() > 1e-4) {
-										bounced = toTarget.normalize().scale(speed);
-									}
-								}
-							}
-							setDeltaMovement(bounced);
-							// Push further out along the normal to ensure clear separation from the collision boundary
-							Vec3 newPos = position().add(n.scale(0.1));
-							setPos(newPos);
-							syncBounceToClient(newPos, bounced);
-						}
+						ide.setPos(result.newPos());
+						setDeltaMovement(result.newVel());
+						syncBounceToClient(result.newPos(), result.newVel(), result.isGroundGliding(), result.updatedBounces());
 						return;
 					}
 					case EXPIRE -> {
@@ -275,10 +234,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		markErased(false);
 	}
 
-	private void syncBounceToClient(Vec3 pos, Vec3 vel) {
+	private void syncBounceToClient(Vec3 pos, Vec3 vel, boolean groundGliding, int bounceCount) {
 		if (getOwner() instanceof LivingEntity le && !level().isClientSide) {
 			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toTrackingPlayers(
-					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), pos, vel), le);
+					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), pos, vel, groundGliding, bounceCount), le);
 		}
 	}
 

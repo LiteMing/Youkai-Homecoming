@@ -78,6 +78,17 @@ public abstract class SimplifiedProjectile extends SimplifiedEntity implements T
 
 	}
 
+	public void snapMotionAndRotation(Vec3 velocity) {
+		setDeltaMovement(velocity);
+		Vec3 rot = ProjectileMovement.of(velocity).rot();
+		float targetXRot = (float) (rot.x * Mth.RAD_TO_DEG);
+		float targetYRot = (float) (rot.y * Mth.RAD_TO_DEG);
+		xRotO = targetXRot;
+		yRotO = targetYRot;
+		setXRot(targetXRot);
+		setYRot(targetYRot);
+	}
+
 	public Vec3 rot() {
 		return new Vec3(getXRot() * Mth.DEG_TO_RAD, getYRot() * Mth.DEG_TO_RAD, 0);
 	}

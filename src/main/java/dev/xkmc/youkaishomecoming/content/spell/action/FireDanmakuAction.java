@@ -153,7 +153,15 @@ public record FireDanmakuAction(
 					Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.CONTINUE,
 					Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1))));
 
-	// Extra fields beyond 16-field limit (merged at same JSON level via codec composition)
+	public FireDanmakuAction {
+		// Normalize bounceConfig with hitBehaviorBlock:
+		// If hitBehaviorBlock is BOUNCE, ensure bounceConfig is sanitized; otherwise, clear bounceConfig.
+		if (hitBehaviorBlock == HitBehavior.BOUNCE) {
+			bounceConfig = Optional.of(bounceConfig.map(DanmakuBounceConfig::sanitize).orElseGet(DanmakuBounceConfig::defaults));
+		} else {
+			bounceConfig = Optional.empty();
+		}
+	}
 	public static final Codec<FireDanmakuAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 			BASE_MAP.forGetter(fda -> fda),
 			NumberProvider.CODEC.optionalFieldOf("tilt_angle").forGetter(FireDanmakuAction::tiltAngle),

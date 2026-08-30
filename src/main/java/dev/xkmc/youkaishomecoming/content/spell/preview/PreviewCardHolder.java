@@ -62,8 +62,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	/** Callback invoked when the preview runtime should switch to another phase. */
 	private BiConsumer<ResourceLocation, Boolean> onPhaseSwitch = null;
 	/** Per-target hit history prevents a persistent projectile from firing the same callback every tick. */
-	private final java.util.Set<Integer> entityHitProjectiles = new java.util.HashSet<>();
-	private final java.util.Set<Integer> blockHitProjectiles = new java.util.HashSet<>();
+	private final java.util.Set<SimplifiedProjectile> entityHitProjectiles = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+	private record BlockContactState(int lastHitTick, Vec3 lastNormal) {}
+	private final java.util.Map<SimplifiedProjectile, BlockContactState> blockContactStates = new java.util.IdentityHashMap<>();
 
 	// Simulated target properties for preview
 	private boolean targetOnGround = true;
@@ -333,22 +334,32 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			Entity entity = localEntities.get(i);
 			if (!(entity instanceof SimplifiedProjectile projectile) || projectile.tickCount <= 0) continue;
 			List<PreviewHit> hits = new ArrayList<>(2);
-			int id = entity.getId();
 			java.util.Optional<PreviewHit> blockHit = findTargetHit(
 					projectile, getBlockTargetCollisionBox(), PreviewTarget.HitType.BLOCK);
 			if (projectile instanceof YHBaseLaserEntity laser) {
 				laser.earlyTerminate = blockHit.map(hit -> Math.sqrt(hit.distanceSqr())).orElse(-1.0);
 			}
-			if (!entityHitProjectiles.contains(id)) {
+			if (!entityHitProjectiles.contains(projectile)) {
 				findTargetHit(projectile, getEntityTargetCollisionBox(), PreviewTarget.HitType.ENTITY)
 						.ifPresent(hits::add);
 			}
-			if (!blockHitProjectiles.contains(id)) blockHit.ifPresent(hits::add);
+			if (blockHit.isPresent()) {
+				PreviewHit bh = blockHit.get();
+				BlockContactState contact = blockContactStates.get(projectile);
+				// Debounce block hit on the same contact surface within the same tick / recent contact
+				boolean isSameContact = contact != null && contact.lastHitTick == projectile.tickCount && contact.lastNormal.dot(bh.normal()) > 0.9;
+				if (!isSameContact) {
+					hits.add(bh);
+				}
+			}
 			hits.sort(java.util.Comparator.comparingDouble(PreviewHit::distanceSqr));
 			for (PreviewHit hit : hits) {
 				if (!projectile.isValid()) break;
-				if (hit.type() == PreviewTarget.HitType.ENTITY) entityHitProjectiles.add(id);
-				else blockHitProjectiles.add(id);
+				if (hit.type() == PreviewTarget.HitType.ENTITY) {
+					entityHitProjectiles.add(projectile);
+				} else {
+					blockContactStates.put(projectile, new BlockContactState(projectile.tickCount, hit.normal()));
+				}
 				handlePreviewTargetHit(projectile, hit);
 			}
 		}
@@ -451,49 +462,16 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				// 预览视口内命中方块目标的反弹模拟
 				Vec3 n = hit.normal();
 				if (projectile instanceof ItemDanmakuEntity ide) {
-					var cfg = ide.bounceConfig;
-					int maxBounces = cfg != null ? cfg.maxBounces() : 1;
-					double decay = cfg != null ? cfg.decay() : 1.0;
-					boolean retarget = cfg != null && cfg.retarget();
-					ide.currentBounces++;
-					if (ide.currentBounces > maxBounces) {
+					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
+							hit.position(), projectile.getDeltaMovement(), n, ide.bounceConfig, ide.currentBounces, target());
+					ide.currentBounces = result.updatedBounces();
+					ide.isGroundGliding = result.isGroundGliding();
+					if (result.erased()) {
 						projectile.markErased(false);
 						return;
 					}
-					Vec3 v = projectile.getDeltaMovement();
-					double speed = v.length() * decay;
-					var mode = cfg != null ? cfg.mode() : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.SPECULAR;
-					if (mode == dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.GROUND_GLIDE && (n.y > 0.5 || hit.normal().y > 0.5)) {
-						ide.isGroundGliding = true;
-						Vec3 newPos = hit.position().add(0, cfg != null ? cfg.groundOffset() : 0.3, 0);
-						ide.setPos(newPos);
-						Vec3 flatDir = new Vec3(v.x, 0, v.z).normalize();
-						if (retarget && target() != null) {
-							Vec3 toTarget = target().subtract(projectile.position());
-							flatDir = new Vec3(toTarget.x, 0, toTarget.z).normalize();
-						}
-						Vec3 newVel = flatDir.scale(Math.max(1e-4, speed));
-						projectile.setDeltaMovement(newVel);
-						return;
-					}
-
-					Vec3 bounced;
-					if (n.lengthSqr() > 1e-4) {
-						double dot = v.dot(n);
-						bounced = v.subtract(n.scale(2 * dot)).normalize().scale(speed);
-					} else {
-						bounced = new Vec3(-v.x, v.y, -v.z).normalize().scale(speed);
-					}
-					if (retarget && target() != null) {
-						Vec3 toTarget = target().subtract(projectile.position());
-						if (toTarget.lengthSqr() > 1e-4) {
-							bounced = toTarget.normalize().scale(speed);
-						}
-					}
-					projectile.setDeltaMovement(bounced);
-					if (n.lengthSqr() > 1e-4) {
-						projectile.setPos(hit.position().add(n.scale(0.05)));
-					}
+					ide.setPos(result.newPos());
+					projectile.setDeltaMovement(result.newVel());
 				} else {
 					Vec3 v = projectile.getDeltaMovement();
 					if (n.lengthSqr() > 1e-4) {
@@ -558,7 +536,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		localEntities.clear();
 		pendingEntities.clear();
 		entityHitProjectiles.clear();
-		blockHitProjectiles.clear();
+		blockContactStates.clear();
 		safetyTripped = false;
 		targetVelocity = Vec3.ZERO;
 		clearPreviewSpellCircle();
@@ -861,13 +839,13 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	public void setBlockTargetPos(Vec3 pos) {
 		blockTargetPos = pos == null ? Vec3.ZERO : pos;
-		blockHitProjectiles.clear();
+		blockContactStates.clear();
 	}
 	public Vec3 getBlockTargetPos() { return blockTargetPos; }
 
 	public void setTargetBoxSize(Vec3 size) {
 		targetBoxSize = PreviewTarget.sanitizeSize(size);
-		blockHitProjectiles.clear();
+		blockContactStates.clear();
 	}
 	public Vec3 getTargetBoxSize() { return targetBoxSize; }
 

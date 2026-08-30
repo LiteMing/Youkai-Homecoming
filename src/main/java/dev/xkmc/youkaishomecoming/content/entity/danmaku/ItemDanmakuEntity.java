@@ -160,49 +160,46 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		if (visualScaleFunction != null) {
 			updateVisualScaleDimensions(false);
 		}
-		if (isGroundGliding && bounceConfig != null) {
-			tickGroundGlide();
+		if (!level().isClientSide && isGroundGliding && bounceConfig != null) {
+			tickGroundGlideServer();
 		}
 		super.tick();
 	}
 
-	private void tickGroundGlide() {
+	private void tickGroundGlideServer() {
 		if (bounceConfig == null) return;
-		double groundOffset = bounceConfig.groundOffset();
-		double stepHeight = bounceConfig.stepHeight();
+		var cfg = bounceConfig.sanitize();
+		double groundOffset = cfg.groundOffset();
+		double stepHeight = cfg.stepHeight();
 		var pos = position();
-		var blockPos = blockPosition();
+		var vel = getDeltaMovement();
 		
-		// Sample floor heights around current position
-		double highestGroundY = Double.NEGATIVE_INFINITY;
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dz = -1; dz <= 1; dz++) {
-				var checkPos = blockPos.offset(dx, 0, dz);
-				for (int dy = (int) Math.ceil(stepHeight); dy >= -2; dy--) {
-					var targetPos = checkPos.offset(0, dy, 0);
-					var state = level().getBlockState(targetPos);
-					if (!state.isAir()) {
-						var shape = state.getCollisionShape(level(), targetPos);
-						if (!shape.isEmpty()) {
-							double shapeMaxY = targetPos.getY() + shape.max(net.minecraft.core.Direction.Axis.Y);
-							if (shapeMaxY <= pos.y + stepHeight + 0.2) {
-								if (shapeMaxY > highestGroundY) {
-									highestGroundY = shapeMaxY;
-								}
-								break;
-							}
-						}
+		// Probe ground height at the predicted next horizontal step position
+		double probeX = pos.x + vel.x;
+		double probeZ = pos.z + vel.z;
+		net.minecraft.core.BlockPos targetBlockPos = net.minecraft.core.BlockPos.containing(probeX, pos.y, probeZ);
+		
+		double foundGroundY = Double.NEGATIVE_INFINITY;
+		for (int dy = (int) Math.ceil(stepHeight); dy >= -2; dy--) {
+			var checkPos = targetBlockPos.offset(0, dy, 0);
+			var state = level().getBlockState(checkPos);
+			if (!state.isAir()) {
+				var shape = state.getCollisionShape(level(), checkPos);
+				if (!shape.isEmpty()) {
+					double shapeMaxY = checkPos.getY() + shape.max(net.minecraft.core.Direction.Axis.Y);
+					if (shapeMaxY <= pos.y + stepHeight + 0.1) {
+						foundGroundY = shapeMaxY;
+						break;
 					}
 				}
 			}
 		}
 
-		if (highestGroundY > Double.NEGATIVE_INFINITY) {
-			double targetY = highestGroundY + groundOffset;
+		if (foundGroundY > Double.NEGATIVE_INFINITY) {
+			double targetY = foundGroundY + groundOffset;
 			if (Math.abs(pos.y - targetY) > 0.01) {
 				setPos(pos.x, targetY, pos.z);
 			}
-			var vel = getDeltaMovement();
 			if (vel.y != 0) {
 				setDeltaMovement(vel.x, 0, vel.z);
 			}

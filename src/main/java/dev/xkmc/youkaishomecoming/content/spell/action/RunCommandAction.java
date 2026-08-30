@@ -32,10 +32,14 @@ public record RunCommandAction(Mode mode, HitContext hitContext, String command)
 		if (server == null || command == null || command.isBlank()) {
 			return;
 		}
+		LivingEntity targetEntity = ctx.holder().targetEntity();
 		CommandSourceStack source = switch (mode) {
 			case AS_CASTER -> caster.createCommandSourceStack()
 					.withPermission(2)
 					.withSuppressedOutput();
+			case AS_TARGET -> targetEntity != null
+					? targetEntity.createCommandSourceStack().withPermission(2).withSuppressedOutput()
+					: caster.createCommandSourceStack().withPermission(2).withSuppressedOutput();
 			case CONSOLE -> server.createCommandSourceStack()
 					.withSuppressedOutput();
 			case NON_CHEAT -> caster.createCommandSourceStack()
@@ -79,6 +83,7 @@ String cmd = SpellTextResolver.resolve(command, ctx);
 
 	public enum Mode implements StringRepresentable {
 		AS_CASTER("as_caster"),
+		AS_TARGET("as_target"),
 		CONSOLE("console"),
 		NON_CHEAT("non_cheat");
 

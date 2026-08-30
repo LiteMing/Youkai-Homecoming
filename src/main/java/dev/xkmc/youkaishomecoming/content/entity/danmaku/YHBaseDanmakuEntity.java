@@ -182,7 +182,8 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						if (mode == dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.GROUND_GLIDE && (n.y > 0.5 || pResult.getDirection() == net.minecraft.core.Direction.UP)) {
 							// 转为贴地飞行
 							ide.isGroundGliding = true;
-							ide.setPos(position().add(0, bounceCfg.groundOffset(), 0));
+							Vec3 newPos = position().add(0, bounceCfg.groundOffset(), 0);
+							ide.setPos(newPos);
 							Vec3 flatDir = new Vec3(v.x, 0, v.z).normalize();
 							if (retarget) {
 								LivingEntity target = getOwnerTarget();
@@ -191,7 +192,9 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 									flatDir = new Vec3(toTarget.x, 0, toTarget.z).normalize();
 								}
 							}
-							setDeltaMovement(flatDir.scale(Math.max(1e-4, speed)));
+							Vec3 newVel = flatDir.scale(Math.max(1e-4, speed));
+							setDeltaMovement(newVel);
+							syncBounceToClient(newPos, newVel);
 							return;
 						}
 
@@ -208,7 +211,9 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 								}
 							}
 							setDeltaMovement(bounced);
-							setPos(position().add(n.scale(0.05)));
+							Vec3 newPos = position().add(n.scale(0.05));
+							setPos(newPos);
+							syncBounceToClient(newPos, bounced);
 						}
 						return;
 					}
@@ -267,6 +272,13 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	private void expireNow() {
 		terminate();
 		markErased(false);
+	}
+
+	private void syncBounceToClient(Vec3 pos, Vec3 vel) {
+		if (getOwner() instanceof LivingEntity le && !level().isClientSide) {
+			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toTrackingPlayers(
+					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), pos, vel), le);
+		}
 	}
 
 	private void executeEntityHitAction(TrailAction action, EntityHitResult result) {

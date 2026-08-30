@@ -51,6 +51,11 @@ public abstract class BaseProjectile extends AsyncProjectile {
 		if (hit != null) {
 			data.blockHit = hit;
 			data.moveDst = hit.getLocation();
+			if (data.plannedMovement != null) {
+				// Trim the applied step to the collision point
+				Vec3 step = hit.getLocation().subtract(src);
+				data.plannedMovement = new ProjectileMovement(step, data.plannedMovement.rot());
+			}
 		}
 	}
 

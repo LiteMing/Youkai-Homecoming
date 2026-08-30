@@ -101,6 +101,10 @@ public class ClientDanmakuCache {
 		return new ArrayList<>(all);
 	}
 
+	public SimplifiedProjectile get(int id) {
+		return map.get(id);
+	}
+
 	public int size() {
 		return all.size();
 	}

@@ -39,6 +39,7 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 		if (e != null) {
 			e.setPosRaw(posX, posY, posZ);
 			e.setDeltaMovement(velX, velY, velZ);
+			e.lerpMotion(velX, velY, velZ);
 		}
 	}
 }

@@ -211,7 +211,8 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 								}
 							}
 							setDeltaMovement(bounced);
-							Vec3 newPos = position().add(n.scale(0.05));
+							// Push further out along the normal to ensure clear separation from the collision boundary
+							Vec3 newPos = position().add(n.scale(0.1));
 							setPos(newPos);
 							syncBounceToClient(newPos, bounced);
 						}

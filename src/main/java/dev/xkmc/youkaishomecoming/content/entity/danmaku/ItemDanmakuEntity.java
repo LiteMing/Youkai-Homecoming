@@ -231,7 +231,11 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 
 	@Override
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
-		if (mover != null) {
+		if (isGroundGliding) {
+			// Ground gliding overrides vertical movement to 0
+			vec = new Vec3(vec.x, 0, vec.z);
+		}
+		if (mover != null && !isGroundGliding) {
 			return mover.move(new MoverInfo(tickCount, pos, vec, this, tickData().ownerInfo));
 		}
 		return super.updateVelocity(vec, pos);

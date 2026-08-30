@@ -18,7 +18,9 @@ public class DanmakuItemDeco implements IItemDecorator {
 		}
 		Player player = Minecraft.getInstance().player;
 		if (player == null || GrazeHelper.findSpellCard(player) != stack) return false;
-		int color = 0xff20d060;
+
+		boolean castable = DanmakuClientState.isSpellCardCastable(player, stack);
+		int color = castable ? 0xff20d060 : 0xffff3333; // 可用为原版绿色，B/经验不足或被击破为红色边框
 		g.fill(x, y, x + 16, y + 1, color);
 		g.fill(x, y + 15, x + 16, y + 16, color);
 		g.fill(x, y + 1, x + 1, y + 15, color);

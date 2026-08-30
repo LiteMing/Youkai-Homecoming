@@ -44,7 +44,7 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	@Override
 	protected void trimMove(TickData data) {
 		data.blockHit = null;
-		if (!checkBlockHit()) return;
+		if (!checkBlockHit() || !(level() instanceof ServerLevel)) return;
 		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
 		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;
 		var hit = ProjectileHitHelper.getBlockHitResultOnMoveVector(this, src, dst);

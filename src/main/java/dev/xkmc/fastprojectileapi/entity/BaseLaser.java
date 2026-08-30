@@ -3,6 +3,7 @@ package dev.xkmc.fastprojectileapi.entity;
 import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
 import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
@@ -38,7 +39,7 @@ public abstract class BaseLaser extends AsyncProjectile {
 	@Override
 	protected void trimMove(TickData data) {
 		data.blockHit = null;
-		if (!checkBlockHit()) return;
+		if (!checkBlockHit() || !(level() instanceof ServerLevel)) return;
 		Vec3 pos = data.moveDst == null ? position() : data.moveDst;
 		Vec3 rot = data.plannedMovement == null ? rot() : data.plannedMovement.rot();
 		Vec3 src = pos.add(0, getBbHeight() / 2f, 0);

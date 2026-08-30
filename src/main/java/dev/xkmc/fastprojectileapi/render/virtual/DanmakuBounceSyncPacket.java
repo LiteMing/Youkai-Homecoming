@@ -40,6 +40,11 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 			e.setPosRaw(posX, posY, posZ);
 			e.setDeltaMovement(velX, velY, velZ);
 			e.lerpMotion(velX, velY, velZ);
+			if (e instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity ide) {
+				if (velY == 0 && ide.bounceConfig != null && ide.bounceConfig.mode() == dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.GROUND_GLIDE) {
+					ide.isGroundGliding = true;
+				}
+			}
 		}
 	}
 }

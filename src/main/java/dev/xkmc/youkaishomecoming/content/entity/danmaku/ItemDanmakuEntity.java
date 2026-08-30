@@ -160,7 +160,7 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		if (visualScaleFunction != null) {
 			updateVisualScaleDimensions(false);
 		}
-		if (!level().isClientSide && isGroundGliding && bounceConfig != null) {
+		if (isGroundGliding && bounceConfig != null) {
 			tickGroundGlide();
 		}
 		super.tick();
@@ -276,6 +276,13 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		super.writeSpawnData(data);
 		CompoundTag tag = new CompoundTag();
 		writeScaleFunction(tag);
+		if (bounceConfig != null) {
+			dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.CODEC
+					.encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, bounceConfig)
+					.resultOrPartial(err -> {})
+					.ifPresent(bTag -> tag.put("BounceConfig", bTag));
+		}
+		tag.putBoolean("GroundGliding", isGroundGliding);
 		data.writeNbt(tag);
 	}
 
@@ -285,6 +292,15 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		CompoundTag tag = data.readNbt();
 		if (tag != null) {
 			readScaleFunction(tag);
+			if (tag.contains("BounceConfig")) {
+				dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.CODEC
+						.parse(net.minecraft.nbt.NbtOps.INSTANCE, tag.get("BounceConfig"))
+						.resultOrPartial(err -> {})
+						.ifPresent(cfg -> this.bounceConfig = cfg);
+			}
+			if (tag.contains("GroundGliding")) {
+				this.isGroundGliding = tag.getBoolean("GroundGliding");
+			}
 		}
 		updateVisualScaleDimensions(true);
 	}

@@ -462,6 +462,21 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 					}
 					Vec3 v = projectile.getDeltaMovement();
 					double speed = v.length() * decay;
+					var mode = cfg != null ? cfg.mode() : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.SPECULAR;
+					if (mode == dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.BounceMode.GROUND_GLIDE && (n.y > 0.5 || hit.normal().y > 0.5)) {
+						ide.isGroundGliding = true;
+						Vec3 newPos = hit.position().add(0, cfg != null ? cfg.groundOffset() : 0.3, 0);
+						ide.setPos(newPos);
+						Vec3 flatDir = new Vec3(v.x, 0, v.z).normalize();
+						if (retarget && target() != null) {
+							Vec3 toTarget = target().subtract(projectile.position());
+							flatDir = new Vec3(toTarget.x, 0, toTarget.z).normalize();
+						}
+						Vec3 newVel = flatDir.scale(Math.max(1e-4, speed));
+						projectile.setDeltaMovement(newVel);
+						return;
+					}
+
 					Vec3 bounced;
 					if (n.lengthSqr() > 1e-4) {
 						double dot = v.dot(n);

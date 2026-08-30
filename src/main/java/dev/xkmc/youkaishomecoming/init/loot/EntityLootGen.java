@@ -118,9 +118,16 @@ public class EntityLootGen {
 		);
 	}
 
+	private static LootItemFunction.Builder singleUseSpell() {
+		net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+		tag.putBoolean("single_use", true);
+		return net.minecraft.world.level.storage.loot.functions.SetNbtFunction.setTag(tag);
+	}
+
 	public static void reimu(RegistrateEntityLootTables pvd, EntityType<ReimuEntity> type) {
 		pvd.add(type, LootTable.lootTable()
 				.withPool(LootPool.lootPool().add(LootTableTemplate.getItem(YHDanmaku.REIMU_SPELL.get(), 1, 1))
+						.apply(singleUseSpell())
 						.when(LootTableTemplate.byPlayer()).when(danmakuKill()))
 		);
 	}
@@ -128,6 +135,7 @@ public class EntityLootGen {
 	public static void sanae(RegistrateEntityLootTables pvd, EntityType<SanaeEntity> type) {
 		pvd.add(type, LootTable.lootTable()
 				.withPool(LootPool.lootPool().add(LootTableTemplate.getItem(YHDanmaku.SANAE_SPELL.get(), 1, 1))
+						.apply(singleUseSpell())
 						.when(LootTableTemplate.byPlayer()).when(danmakuKill()))
 		);
 	}
@@ -135,6 +143,7 @@ public class EntityLootGen {
 	public static void marisa(RegistrateEntityLootTables pvd, EntityType<MarisaEntity> type) {
 		pvd.add(type, LootTable.lootTable()
 				.withPool(LootPool.lootPool().add(LootTableTemplate.getItem(YHDanmaku.MARISA_SPELL.get(), 1, 1))
+						.apply(singleUseSpell())
 						.when(LootTableTemplate.byPlayer()).when(danmakuKill()))
 		);
 	}
@@ -142,14 +151,15 @@ public class EntityLootGen {
 	public static void mystia(RegistrateEntityLootTables pvd, EntityType<MystiaEntity> type) {
 		pvd.add(type, LootTable.lootTable()
 				.withPool(LootPool.lootPool().add(LootTableTemplate.getItem(YHDanmaku.MYSTIA_SPELL.get(), 1, 1))
+						.apply(singleUseSpell())
 						.when(LootTableTemplate.byPlayer()).when(danmakuKill()))
 		);
 	}
 
-
 	public static void koishi(RegistrateEntityLootTables pvd, EntityType<KoishiEntity> type) {
 		pvd.add(type, LootTable.lootTable()
 				.withPool(LootPool.lootPool().add(LootTableTemplate.getItem(YHDanmaku.KOISHI_SPELL.get(), 1, 1))
+						.apply(singleUseSpell())
 						.when(LootTableTemplate.byPlayer()).when(danmakuKill()))
 		);
 	}
@@ -157,14 +167,15 @@ public class EntityLootGen {
 	public static void remilia(RegistrateEntityLootTables pvd, EntityType<RemiliaEntity> type) {
 		pvd.add(type, LootTable.lootTable()
 				.withPool(LootPool.lootPool().add(LootTableTemplate.getItem(YHDanmaku.REMILIA_SPELL.get(), 1, 1))
+						.apply(singleUseSpell())
 						.when(LootTableTemplate.byPlayer()).when(danmakuKill()))
 		);
 	}
 
-
 	public static void clownpiece(RegistrateEntityLootTables pvd, EntityType<ClownEntity> type) {
 		pvd.add(type, LootTable.lootTable()
 				.withPool(LootPool.lootPool().add(LootTableTemplate.getItem(YHDanmaku.CLOWNPIECE_SPELL.get(), 1, 1))
+						.apply(singleUseSpell())
 						.when(LootTableTemplate.byPlayer()).when(danmakuKill()))
 		);
 	}
@@ -173,8 +184,8 @@ public class EntityLootGen {
 		pvd.add(type, LootTable.lootTable()
 				.withPool(LootPool.lootPool()
 						.when(LootTableTemplate.byPlayer()).when(danmakuKill())
-						.add(LootTableTemplate.getItem(YHDanmaku.YUKARI_SPELL_LASER.get(), 1, 1))
-						.add(LootTableTemplate.getItem(YHDanmaku.YUKARI_SPELL_BUTTERFLY.get(), 1, 1)))
+						.add(LootTableTemplate.getItem(YHDanmaku.YUKARI_SPELL_LASER.get(), 1, 1).apply(singleUseSpell()))
+						.add(LootTableTemplate.getItem(YHDanmaku.YUKARI_SPELL_BUTTERFLY.get(), 1, 1).apply(singleUseSpell())))
 		);
 	}
 

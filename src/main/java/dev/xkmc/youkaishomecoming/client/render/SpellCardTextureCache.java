@@ -34,7 +34,8 @@ public final class SpellCardTextureCache {
 
 	public static String sanitizeKey(String rawKey) {
 		if (rawKey == null) return "";
-		return rawKey.replaceAll("[^a-zA-Z0-9._-]", "_");
+		// 使用 SHA-256 哈希确保绝对无碰撞与合法跨平台文件名
+		return org.apache.commons.codec.digest.DigestUtils.sha256Hex(rawKey);
 	}
 
 	@Nullable
@@ -95,10 +96,7 @@ public final class SpellCardTextureCache {
 	public static void invalidate(String key) {
 		if (key == null || key.isBlank()) return;
 		String safeKey = sanitizeKey(key);
-		DynamicTexture dyn = DYNAMIC_TEXTURES.remove(safeKey);
-		if (dyn != null) {
-			dyn.close();
-		}
+		DYNAMIC_TEXTURES.remove(safeKey);
 		ResourceLocation loc = TEXTURES.remove(safeKey);
 		if (loc != null) {
 			Minecraft.getInstance().getTextureManager().release(loc);

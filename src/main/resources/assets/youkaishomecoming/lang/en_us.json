@@ -358,6 +358,8 @@
   "config.youkaishomecoming.client.powerInfoYAnchor.tooltip": "Power info Y anchor (-1=top, 0=center, 1=bottom)",
   "config.youkaishomecoming.client.powerInfoYOffset": "Power Info Y Offset",
   "config.youkaishomecoming.client.powerInfoYOffset.tooltip": "Power info pixel offset on the Y axis",
+  "config.youkaishomecoming.client.spellCardTotemAnimation": "Spell Card Activation Animation",
+  "config.youkaishomecoming.client.spellCardTotemAnimation.tooltip": "Whether to display a totem-of-undying style item activation animation when casting or triggering a spell card",
   "config.youkaishomecoming.client.selfDanmakuFading": "Self Danmaku Fading",
   "config.youkaishomecoming.client.selfDanmakuFading.tooltip": "Fading strength of your own danmaku",
   "config.youkaishomecoming.common.auto_dodge": "Auto Dodge",

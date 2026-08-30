@@ -246,7 +246,12 @@ public class GrazeHelper {
 		if (player.getCooldowns().isOnCooldown(stack.getItem())) return false;
 		// The spell payment router owns Bomb deduction. This keeps duration-based
 		// and script-replaced payment providers authoritative and avoids double cost.
-		return spell.castSpell(stack, player, !player.getAbilities().instabuild, true);
+		boolean success = spell.castSpell(stack, player, !player.getAbilities().instabuild, true);
+		if (success) {
+			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toClientPlayer(
+					new dev.xkmc.youkaishomecoming.content.spell.client.SpellCardActivationToClient(stack), player);
+		}
+		return success;
 	}
 
 	/**
@@ -298,7 +303,12 @@ public class GrazeHelper {
 		if (forbidSpellCardWithMessage(player)) return false;
 		if (!(stack.getItem() instanceof ISpellItem spell)) return false;
 		if (player.getCooldowns().isOnCooldown(stack.getItem())) return false;
-		return spell.castSpell(stack, player, !player.getAbilities().instabuild, true);
+		boolean success = spell.castSpell(stack, player, !player.getAbilities().instabuild, true);
+		if (success) {
+			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toClientPlayer(
+					new dev.xkmc.youkaishomecoming.content.spell.client.SpellCardActivationToClient(stack), player);
+		}
+		return success;
 	}
 
 	/** Cast the first available card using the same selection order as Bomb. */

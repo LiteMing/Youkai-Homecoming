@@ -25,6 +25,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue powerInfoXOffset;
 		public final ForgeConfigSpec.IntValue powerInfoYAnchor;
 		public final ForgeConfigSpec.IntValue powerInfoYOffset;
+		public final ForgeConfigSpec.BooleanValue spellCardTotemAnimation;
 
 		// Exposure compat: photo overlay display
 		public final ForgeConfigSpec.DoubleValue photoOverlayAlpha;
@@ -78,6 +79,9 @@ public class YHModConfig {
 			powerInfoYOffset = builder.comment("Vertical offset of the power info overlay.")
 					.translation("config.youkaishomecoming.client.powerInfoYOffset")
 					.defineInRange("powerInfoYOffset", 0, -1000, 1000);
+			spellCardTotemAnimation = builder.comment("Play totem of undying activation animation when casting a spell card.")
+					.translation("config.youkaishomecoming.client.spellCardTotemAnimation")
+					.define("spellCardTotemAnimation", true);
 
 			builder.translation("config.youkaishomecoming.client.exposure_compat").push("exposure_compat");
 			{

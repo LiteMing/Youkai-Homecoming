@@ -318,6 +318,8 @@
   "config.youkaishomecoming.client.powerInfoYAnchor.tooltip": "灵力信息在 Y 轴上的锚点（-1\u003d上，0\u003d中，1\u003d下）",
   "config.youkaishomecoming.client.powerInfoYOffset": "灵力信息 Y 偏移",
   "config.youkaishomecoming.client.powerInfoYOffset.tooltip": "灵力信息在 Y 轴上的像素偏移",
+  "config.youkaishomecoming.client.spellCardTotemAnimation": "符卡释放图腾动画",
+  "config.youkaishomecoming.client.spellCardTotemAnimation.tooltip": "释放或触发符卡时是否播放类似不死图腾的卡面激活全屏动画",
   "config.youkaishomecoming.client.exposure_compat": "Exposure 兼容",
   "config.youkaishomecoming.client.exposure_compat.tooltip": "Exposure 照片模组的兼容设置：照片缩略图覆盖显示",
   "config.youkaishomecoming.client.exposure_compat.photoOverlayAlpha": "照片覆盖不透明度",

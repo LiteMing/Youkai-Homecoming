@@ -558,13 +558,13 @@ public class ActionEditorPanel {
 		addColorAnimationRows(a);
 
 		addNumberRow("Count", a.count(), v ->
-				notifyDanmaku(old -> old.withCount(v), false), EvaluationTiming.EMIT_ONCE);
+				notifyDanmaku(old -> old.withCount(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Speed", a.speed(), v ->
-				notifyDanmaku(old -> old.withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides), EvaluationTiming.EMIT_ONCE);
+				notifyDanmaku(old -> old.withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Lifetime", a.lifetime(), v ->
-				notifyDanmaku(old -> old.withLifetime(v), false), EvaluationTiming.EMIT_ONCE);
+				notifyDanmaku(old -> old.withLifetime(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Size", a.size(), v ->
 				notifyDanmaku(old -> old.withSize(v), false), EvaluationTiming.PROJECTILE_TICK);
@@ -574,13 +574,13 @@ public class ActionEditorPanel {
 		if (!isSectionCollapsed("Pattern")) {
 			currentDepth++;
 			addNumberRow("Angle", a.angleOffset(), v ->
-					notifyDanmaku(old -> old.withAngleOffset(v), false));
+					notifyDanmaku(old -> old.withAngleOffset(v), false), EvaluationTiming.SNAPSHOT);
 
 			addNumberRow("Spread", a.spread(), v ->
-					notifyDanmaku(old -> old.withSpread(v), false));
+					notifyDanmaku(old -> old.withSpread(v), false), EvaluationTiming.SNAPSHOT);
 
 			addNumberRow("Elevation", a.elevation(), v ->
-					notifyDanmaku(old -> old.withElevation(v), false));
+					notifyDanmaku(old -> old.withElevation(v), false), EvaluationTiming.SNAPSHOT);
 
 			addEnumRow("Pattern", PatternType.values(), a.pattern(), v ->
 					notifyDanmaku(old -> old.withPattern(v)));
@@ -592,7 +592,7 @@ public class ActionEditorPanel {
 				};
 				NumberProvider outerProv = a.outerCount().orElse(NumberProvider.constant(1));
 				addNumberRow(label, outerProv, v ->
-						notifyDanmaku(old -> old.withOuterCount(Optional.of(v)), false));
+						notifyDanmaku(old -> old.withOuterCount(Optional.of(v)), false), EvaluationTiming.SNAPSHOT);
 			}
 
 			// AimMode dropdown
@@ -606,10 +606,10 @@ public class ActionEditorPanel {
 			if (a.pattern() == PatternType.NESTED_RING) {
 				NumberProvider tiltProv = a.tiltAngle().orElse(NumberProvider.constant(0));
 				addNumberRow("Axis Tilt", tiltProv, v ->
-						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
+						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false), EvaluationTiming.SNAPSHOT);
 			} else if (a.tiltAngle().isPresent()) {
 				addNumberRow("Tilt Angle", a.tiltAngle().get(), v ->
-						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
+						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false), EvaluationTiming.SNAPSHOT);
 				addFullWidthButton("[Remove Tilt]", () ->
 						notifyDanmaku(old -> old.withTiltAngle(Optional.empty())));
 			} else {
@@ -979,19 +979,19 @@ public class ActionEditorPanel {
 				notifyLaser(old -> old.withColor(v)));
 
 		addNumberRow("Lifetime", a.lifetime(), v ->
-				notifyLaser(old -> old.withLifetime(v), false));
+				notifyLaser(old -> old.withLifetime(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Length", a.length(), v ->
-				notifyLaser(old -> old.withLength(v), false));
+				notifyLaser(old -> old.withLength(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Thickness", a.thickness(), v ->
-				notifyLaser(old -> old.withThickness(v), false));
+				notifyLaser(old -> old.withThickness(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Angle", a.angleOffset(), v ->
-				notifyLaser(old -> old.withAngleOffset(v), false));
+				notifyLaser(old -> old.withAngleOffset(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Elevation", a.elevation(), v ->
-				notifyLaser(old -> old.withElevation(v), false));
+				notifyLaser(old -> old.withElevation(v), false), EvaluationTiming.SNAPSHOT);
 
 		// AimMode dropdown
 		String currentAim = getAimModeType(a.aimMode());
@@ -1085,20 +1085,20 @@ public class ActionEditorPanel {
 				notifyTextDanmaku(old -> old.withPerChar(v)));
 
 		addNumberRow("Lifetime", a.lifetime(), v ->
-				notifyTextDanmaku(old -> old.withLifetime(v), false));
+				notifyTextDanmaku(old -> old.withLifetime(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Size", a.size(), v ->
-				notifyTextDanmaku(old -> old.withSize(v), false));
+				notifyTextDanmaku(old -> old.withSize(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Angle", a.angleOffset(), v ->
-				notifyTextDanmaku(old -> old.withAngleOffset(v), false));
+				notifyTextDanmaku(old -> old.withAngleOffset(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Elevation", a.elevation(), v ->
-				notifyTextDanmaku(old -> old.withElevation(v), false));
+				notifyTextDanmaku(old -> old.withElevation(v), false), EvaluationTiming.SNAPSHOT);
 
 		if (!a.perChar()) {
 			addNumberRow("Roll", a.roll(), v ->
-					notifyTextDanmaku(old -> old.withRoll(v), false));
+					notifyTextDanmaku(old -> old.withRoll(v), false), EvaluationTiming.SNAPSHOT);
 		}
 
 		// AimMode dropdown
@@ -1991,19 +1991,19 @@ public class ActionEditorPanel {
 		addNumberRow("Off X", cfg.offsetX(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), v, cur.offsetY(), cur.offsetZ(), cur.rotation()));
-		}, MoverOverrideResolver.isLabelOverridden("Off X", overrides));
+		}, MoverOverrideResolver.isLabelOverridden("Off X", overrides), EvaluationTiming.SNAPSHOT);
 		addNumberRow("Off Y", cfg.offsetY(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), cur.offsetX(), v, cur.offsetZ(), cur.rotation()));
-		}, MoverOverrideResolver.isLabelOverridden("Off Y", overrides));
+		}, MoverOverrideResolver.isLabelOverridden("Off Y", overrides), EvaluationTiming.SNAPSHOT);
 		addNumberRow("Off Z", cfg.offsetZ(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), cur.offsetX(), cur.offsetY(), v, cur.rotation()));
-		}, MoverOverrideResolver.isLabelOverridden("Off Z", overrides));
+		}, MoverOverrideResolver.isLabelOverridden("Off Z", overrides), EvaluationTiming.SNAPSHOT);
 		addNumberRow("Rot", cfg.rotation(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), cur.offsetX(), cur.offsetY(), cur.offsetZ(), v));
-		});
+		}, false, EvaluationTiming.SNAPSHOT);
 	}
 
 	/**
@@ -2039,25 +2039,25 @@ public class ActionEditorPanel {
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(v, a.y(), a.z())));
 					}
-				});
+				}, EvaluationTiming.SNAPSHOT);
 				addNumberRow("Accel Y", acc.y(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), v, a.z())));
 					}
-				});
+				}, EvaluationTiming.SNAPSHOT);
 				addNumberRow("Accel Z", acc.z(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), v)));
 					}
-				});
+				}, EvaluationTiming.SNAPSHOT);
 			} else if (cfg instanceof MoverConfigs.DecelerationConfig dc) {
 				addNumberRow("Factor", dc.factor(), v ->
-						onParamChanged.accept(Optional.of(new MoverConfigs.DecelerationConfig(v))));
+						onParamChanged.accept(Optional.of(new MoverConfigs.DecelerationConfig(v))), EvaluationTiming.SNAPSHOT);
 			} else if (cfg instanceof MoverConfigs.RotateConfig rot) {
 				addNumberRow("Deg/tick", rot.degreesPerTick(), v ->
-						onParamChanged.accept(Optional.of(new MoverConfigs.RotateConfig(v))));
+						onParamChanged.accept(Optional.of(new MoverConfigs.RotateConfig(v))), EvaluationTiming.SNAPSHOT);
 			} else if (cfg instanceof MoverConfigs.PolarMoverConfig polar) {
 				addNumberRow("Radius", polar.radius(), v -> {
 					var cur = getCurrentMover();
@@ -2065,42 +2065,42 @@ public class ActionEditorPanel {
 						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 								v, p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel())));
 					}
-				});
+				}, EvaluationTiming.SNAPSHOT);
 				addNumberRow("Rad Spd", polar.radialSpeed(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 								p.radius(), v, p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel())));
 					}
-				});
+				}, EvaluationTiming.SNAPSHOT);
 				addNumberRow("Ang Spd", polar.angularSpeed(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 								p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), v, p.angularAccel())));
 					}
-				});
+				}, EvaluationTiming.SNAPSHOT);
 			addNumberRow("Init Ang", polar.initialAngle(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel())));
 				}
-			});
+			}, EvaluationTiming.SNAPSHOT);
 			addNumberRow("Rad Acc", polar.radialAccel(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), v, p.initialAngle(), p.angularSpeed(), p.angularAccel())));
 				}
-			});
+			}, EvaluationTiming.SNAPSHOT);
 			addNumberRow("Ang Acc", polar.angularAccel(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), v)));
 				}
-			});
+			}, EvaluationTiming.SNAPSHOT);
 		} else if (cfg instanceof MoverConfigs.CompositeMoverConfig comp) {
 			// Display segment count and per-segment editors
 			addStringRow("Segments", String.valueOf(comp.segments().size()), v -> {});
@@ -2402,7 +2402,7 @@ public class ActionEditorPanel {
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), f.z(), v)));
 				}
-			});
+			}, EvaluationTiming.SNAPSHOT);
 			addStringRow("X (fwd)", fm.x(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
@@ -3509,18 +3509,18 @@ public class ActionEditorPanel {
 	private int stringCompletionScrollOffset = 0;
 
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange) {
-		addNumberRow(label, provider, onChange, false, EvaluationTiming.EMIT_ONCE);
+		addNumberRow(label, provider, onChange, false, null);
 	}
 
-	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, EvaluationTiming timing) {
+	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, @Nullable EvaluationTiming timing) {
 		addNumberRow(label, provider, onChange, false, timing);
 	}
 
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, boolean overridden) {
-		addNumberRow(label, provider, onChange, overridden, EvaluationTiming.EMIT_ONCE);
+		addNumberRow(label, provider, onChange, overridden, null);
 	}
 
-	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, boolean overridden, EvaluationTiming timing) {
+	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, boolean overridden, @Nullable EvaluationTiming timing) {
 		double value = provider instanceof NumberProviders.Constant c ? c.value() : 0;
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = newEditorEditBox(label, widgetW);
@@ -4048,12 +4048,19 @@ public class ActionEditorPanel {
 					String rowLabel = SpellEditorLocalization.t(row.label());
 					int labelX = x + PADDING;
 					int labelY = rowY + 4;
+					// 绘制求值时机徽标 (S / D / M)
+					int badgeReserved = row.timing() != null ? 8 : 0;
+					int maxLabelW = LABEL_WIDTH - badgeReserved - 2;
+					String fittedLabel = font.width(rowLabel) > maxLabelW
+							? font.plainSubstrByWidth(rowLabel, Math.max(0, maxLabelW - font.width(".."))) + ".."
+							: rowLabel;
+
 					if (row.overridden()) {
 						// Overridden row: reduced opacity (50% alpha) and strikethrough
 						int labelColor = 0x80BBBBBB; // ~50% opacity
-						guiGraphics.drawString(font, rowLabel, labelX, labelY, labelColor, false);
+						guiGraphics.drawString(font, fittedLabel, labelX, labelY, labelColor, false);
 						// Draw 1px strikethrough line through the middle of the text
-						int textWidth = font.width(rowLabel);
+						int textWidth = font.width(fittedLabel);
 						int strikeY = labelY + font.lineHeight / 2;
 						guiGraphics.fill(labelX, strikeY, labelX + textWidth, strikeY + 1, labelColor);
 						// Check if mouse is hovering over the label area for tooltip
@@ -4062,19 +4069,18 @@ public class ActionEditorPanel {
 							overrideTooltipText = MoverOverrideResolver.getTooltip(getCurrentMover());
 						}
 					} else {
-						guiGraphics.drawString(font, rowLabel, labelX, labelY, 0xFFBBBBBB, false);
+						guiGraphics.drawString(font, fittedLabel, labelX, labelY, 0xFFBBBBBB, false);
 					}
 
-					// 绘制求值时机徽标 [发射时] / [飞行时] / [混合]
 					if (row.timing() != null) {
 						EvaluationTiming timing = row.timing();
-						String tag = "[" + SpellEditorLocalization.t(timing.tag()) + "]";
+						String tag = timing.tag();
 						int tagW = font.width(tag);
 						int tagX = x + LABEL_WIDTH - tagW - 2;
 						guiGraphics.drawString(font, tag, tagX, labelY, timing.color(), false);
 
-						if (mouseX >= tagX && mouseX < tagX + tagW && mouseY >= rowY && mouseY < rowY + rowH) {
-							timingTooltipText = SpellEditorLocalization.t(timing.tooltip());
+						if (mouseX >= tagX - 2 && mouseX <= tagX + tagW + 2 && mouseY >= rowY && mouseY < rowY + rowH) {
+							timingTooltipText = SpellEditorLocalization.t(timing.tooltipKey());
 						}
 					}
 				}
@@ -4713,23 +4719,23 @@ public class ActionEditorPanel {
 	}
 
 	public enum EvaluationTiming {
-		EMIT_ONCE("发射时", 0xFF88AAFF, "在生成/发射时计算一次并固定在弹幕上。公式中的 tick 代表当前阶段时间 (phase_tick)。"),
-		PROJECTILE_TICK("飞行时", 0xFF66FF88, "在弹幕飞行期间每 tick 重新动态求值。"),
-		MIXED("混合", 0xFFFFD700, "部分参数（如 tick/t）随弹幕飞行时间动态变化，而 $变量 等在生成时求值固定。");
+		SNAPSHOT("S", 0xFF88AAFF, "youkaishomecoming.spell_editor.timing.snapshot"),
+		PROJECTILE_TICK("D", 0xFF66FF88, "youkaishomecoming.spell_editor.timing.dynamic"),
+		MIXED("M", 0xFFFFD700, "youkaishomecoming.spell_editor.timing.mixed");
 
 		private final String tag;
 		private final int color;
-		private final String tooltip;
+		private final String tooltipKey;
 
-		EvaluationTiming(String tag, int color, String tooltip) {
+		EvaluationTiming(String tag, int color, String tooltipKey) {
 			this.tag = tag;
 			this.color = color;
-			this.tooltip = tooltip;
+			this.tooltipKey = tooltipKey;
 		}
 
 		public String tag() { return tag; }
 		public int color() { return color; }
-		public String tooltip() { return tooltip; }
+		public String tooltipKey() { return tooltipKey; }
 	}
 
 	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader, boolean overridden, @Nullable EvaluationTiming timing) {

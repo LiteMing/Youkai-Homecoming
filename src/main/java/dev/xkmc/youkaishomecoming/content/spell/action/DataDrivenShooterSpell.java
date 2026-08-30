@@ -30,12 +30,14 @@ public class DataDrivenShooterSpell extends SpellCard {
 	private final List<SpellAction> tickActions;
 	private final SpellRuntime runtime;
 	private final SpellDefinition definition;
+	private final Map<String, Double> inheritedVariables;
 
 	@SerialClass.SerialField
 	private int tick;
 
-	public DataDrivenShooterSpell(List<SpellAction> tickActions) {
+	public DataDrivenShooterSpell(List<SpellAction> tickActions, Map<String, Double> inheritedVariables) {
 		this.tickActions = tickActions;
+		this.inheritedVariables = inheritedVariables;
 		var phase = new PhaseDefinition(SHOOTER_PHASE,
 				List.of(), tickActions, List.of(), List.of(), List.of());
 		var display = new SpellDisplay("", "", java.util.Optional.empty(), java.util.Optional.empty());
@@ -43,6 +45,13 @@ public class DataDrivenShooterSpell extends SpellCard {
 				SHOOTER_PHASE, Map.of(SHOOTER_PHASE, phase),
 				dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile.DEFAULT);
 		this.runtime = new SpellRuntime(definition);
+		if (inheritedVariables != null && !inheritedVariables.isEmpty()) {
+			this.runtime.getVariables().putAll(inheritedVariables);
+		}
+	}
+
+	public DataDrivenShooterSpell(List<SpellAction> tickActions) {
+		this(tickActions, Map.of());
 	}
 
 	/** No-arg constructor for serialization. Will have null tickActions until deserialized. */

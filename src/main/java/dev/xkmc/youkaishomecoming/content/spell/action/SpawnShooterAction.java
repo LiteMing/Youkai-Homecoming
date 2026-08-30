@@ -14,6 +14,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -305,7 +306,7 @@ public record SpawnShooterAction(
 
 	private void spawnOne(SpellContext ctx, Vec3 spawnPos, Vec3 vel, Vec3 baseDir) {
 		var holder = ctx.holder();
-		var shooterSpell = new DataDrivenShooterSpell(body);
+		var shooterSpell = new DataDrivenShooterSpell(body, ctx.runtime() != null ? ctx.runtime().getVariables() : Map.of());
 		var data = new ShooterData(health, damage, Math.max(1, lifetime), circle);
 		var entity = holder.prepareShooter(data, shooterSpell);
 		entity.inheritDamageFrom(holder);

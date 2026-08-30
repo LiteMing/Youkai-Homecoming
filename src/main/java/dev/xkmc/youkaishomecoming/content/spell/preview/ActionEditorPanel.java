@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
+import dev.xkmc.youkaishomecoming.content.spell.mover.FormulaExpr;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellMovementDirective;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -1280,14 +1281,14 @@ public class ActionEditorPanel {
 			addNumberRow(prefix + "Left", cn.left(), v ->
 					onChanged.accept(new SpellConditions.CompareNumbers(v, cn.op(), cn.right()), false));
 			addStringCycleRow(prefix + "Op", new String[]{"<", ">", "==", "!=", "<=", ">="}, cn.op(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), v, cn.right()), true));
+					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), v, cn.right()), false));
 			addNumberRow(prefix + "Right", cn.right(), v ->
 					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), cn.op(), v), false));
 		} else if (cond instanceof SpellConditions.VariableCheck vc) {
 			addStringRow(prefix + "Key", vc.key(), v ->
 					onChanged.accept(new SpellConditions.VariableCheck(v, vc.op(), vc.value()), false));
 			addStringCycleRow(prefix + "Op", new String[]{"==", "!=", "<", ">", "<=", ">="}, vc.op(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value()), true));
+					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value()), false));
 			addDoubleRow(prefix + "Value", vc.value(), v ->
 					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), vc.op(), v), false));
 		} else if (cond instanceof SpellConditions.DifficultyEquals de) {
@@ -3427,7 +3428,7 @@ public class ActionEditorPanel {
 			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose"
 	);
 	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
-			"tick", "phase_tick", "total_tick", "distance", "target_height", "target_fly_time",
+			"tick", "t", "bullet_tick", "bulletTick", "phase_tick", "total_tick", "distance", "target_height", "target_fly_time",
 			"target_speed", "game_difficulty",
 			"caster_x", "caster_y", "caster_z", "caster_max_health", "caster_power", "target_x", "target_y", "target_z"
 	);
@@ -3640,6 +3641,35 @@ public class ActionEditorPanel {
 		editBox.setMaxLength(256);
 		editBox.setValue(value == null ? "" : value);
 		editBox.setResponder(onChange);
+		if (timing != null) {
+			// 公式输入框附加语法高亮与变量补全
+			editBox.setFormatter((text, displayPos) -> {
+				String fullValue = editBox.getValue();
+				boolean valid = !fullValue.trim().isEmpty() && FormulaExpr.parse(fullValue.trim()) != null;
+				int[] colors = computeExprColors(fullValue, valid);
+				var defaultStyle = net.minecraft.network.chat.Style.EMPTY;
+				var parts = new java.util.ArrayList<FormattedCharSequence>();
+				int end = Math.min(displayPos + text.length(), fullValue.length());
+				int runStart = displayPos;
+				for (int ci = displayPos; ci <= end; ci++) {
+					if (ci == end || (ci > runStart && colors[ci] != colors[ci - 1])) {
+						int localStart = runStart - displayPos;
+						int localEnd = ci - displayPos;
+						if (localEnd > localStart && localEnd <= text.length()) {
+							int c = colors[runStart];
+							var style = c != 0 ? defaultStyle.withColor(net.minecraft.network.chat.TextColor.fromRgb(c)) : defaultStyle;
+							parts.add(FormattedCharSequence.forward(text.substring(localStart, localEnd), style));
+						}
+						runStart = ci;
+					}
+				}
+				if (parts.isEmpty()) {
+					parts.add(FormattedCharSequence.forward(text, defaultStyle));
+				}
+				return FormattedCharSequence.composite(parts);
+			});
+			exprEditBoxes.add(editBox);
+		}
 		rows.add(new EditorRow(label, editBox, false, -1, currentDepth, false, false, timing));
 	}
 
@@ -4152,7 +4182,7 @@ public class ActionEditorPanel {
 		// Red underline for invalid expressions, blue underline for $variables
 		for (var eb : exprEditBoxes) {
 			String text = eb.getValue().trim();
-			if (!text.isEmpty() && NumberExprParser.parse(text) == null) {
+			if (!text.isEmpty() && NumberExprParser.parse(text) == null && FormulaExpr.parse(text) == null) {
 				int ex = eb.getX();
 				int ey = eb.getY() + eb.getHeight();
 				int ew = eb.getWidth();

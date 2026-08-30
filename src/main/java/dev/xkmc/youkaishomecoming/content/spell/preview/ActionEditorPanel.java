@@ -4092,7 +4092,7 @@ public class ActionEditorPanel {
 
 		// Render timing or override tooltip on top of other content
 		if (timingTooltipText != null && !timingTooltipText.isEmpty()) {
-			guiGraphics.renderTooltip(font, Component.literal(timingTooltipText), mouseX, mouseY);
+			guiGraphics.renderTooltip(font, Component.translatable(timingTooltipText), mouseX, mouseY);
 		} else if (overrideTooltipText != null && !overrideTooltipText.isEmpty()) {
 			guiGraphics.renderTooltip(font, Component.literal(SpellEditorLocalization.t(overrideTooltipText)), mouseX, mouseY);
 		}

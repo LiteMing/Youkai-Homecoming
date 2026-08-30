@@ -44,10 +44,12 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 		ItemStack stack = super.assemble(container, access);
 		int baseTier = 1;
 		int addedBossSpells = 0;
+		ItemStack existingCard = ItemStack.EMPTY;
 		for (int i = 0; i < container.getContainerSize(); i++) {
 			ItemStack item = container.getItem(i);
 			if (item.getItem() instanceof DynamicSpellItem) {
 				baseTier = Math.max(baseTier, DynamicSpellItem.getRank(item).tierNumber());
+				existingCard = item;
 			} else if (item.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem) {
 				addedBossSpells++;
 			}
@@ -58,6 +60,18 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 		int targetTier = baseTier + (addedBossSpells > 0 ? addedBossSpells : 0);
 		dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank =
 				dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.fromTier(targetTier);
+		
+		// 若是基于已有成品符卡升级或水洗，解除成品与认证状态，退回草稿可修改状态
+		if (!existingCard.isEmpty() && existingCard.hasTag()) {
+			stack.setTag(existingCard.getTag().copy());
+			DynamicSpellItem.setComplete(stack, false);
+			if (stack.getTag() != null) {
+				stack.getTag().remove(dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.TAG_CERTIFIED_HASH);
+				stack.getTag().remove(dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.TAG_CERTIFICATE_ID);
+				stack.getTag().remove(dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.TAG_CERTIFIED_DURATION);
+				stack.getTag().remove(dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.TAG_CERTIFIED_COST);
+			}
+		}
 		DynamicSpellItem.setRank(stack, rank);
 		DynamicSpellItem.setDraftBudget(stack, rank.createBudget());
 		return stack;

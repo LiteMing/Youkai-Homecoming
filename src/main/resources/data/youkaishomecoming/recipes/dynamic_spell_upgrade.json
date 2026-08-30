@@ -1,16 +1,12 @@
 {
   "type": "youkaishomecoming:spell_draft",
-  "boss_spell": "youkaishomecoming:hakurei_reimu",
   "category": "equipment",
   "ingredients": [
     {
-      "item": "youkaishomecoming:spell_reimu"
+      "item": "youkaishomecoming:dynamic_spell"
     },
     {
-      "item": "minecraft:paper"
-    },
-    {
-      "item": "minecraft:ink_sac"
+      "tag": "youkaishomecoming:preset_spell"
     }
   ],
   "result": {

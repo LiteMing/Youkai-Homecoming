@@ -8,7 +8,7 @@ public enum LaserBlockHitEffect {
 
 	public static LaserBlockHitEffect from(HitBehavior behavior) {
 		return switch (behavior) {
-			case CONTINUE -> CLIP_ONLY;
+			case CONTINUE, BOUNCE -> CLIP_ONLY;
 			case DISCARD -> CLIP_AND_SUPPRESS_EXPIRY;
 			case EXPIRE -> CLIP_AND_RUN_EXPIRY;
 		};

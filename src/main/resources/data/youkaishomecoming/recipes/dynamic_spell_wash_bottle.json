@@ -1,16 +1,12 @@
 {
   "type": "youkaishomecoming:spell_draft",
-  "boss_spell": "youkaishomecoming:kochiya_sanae",
   "category": "equipment",
   "ingredients": [
     {
-      "item": "youkaishomecoming:spell_sanae"
+      "item": "youkaishomecoming:dynamic_spell"
     },
     {
-      "item": "minecraft:paper"
-    },
-    {
-      "item": "minecraft:ink_sac"
+      "item": "minecraft:potion"
     }
   ],
   "result": {

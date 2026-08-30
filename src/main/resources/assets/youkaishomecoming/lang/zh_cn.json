@@ -720,6 +720,7 @@
   "AS_TARGET": "目标 (@s\u003dtarget)",
   "CONSOLE": "控制台",
   "NON_CHEAT": "无权限",
+  "Targetable": "可被击中 (阻挡弹幕)",
   "youkaishomecoming.spell_editor.timing.snapshot": "生成弹幕时计算一次并保存到该弹幕。公式中的 tick 表示当前阶段时间 (phase_tick)；之后只影响新生成的弹幕。",
   "youkaishomecoming.spell_editor.timing.dynamic": "弹幕飞行期间每 tick 重新求值。这里的 tick 表示该弹幕的飞行时间 (projectile_tick)。",
   "youkaishomecoming.spell_editor.timing.mixed": "tick/t 随弹幕飞行时间变化；$变量、phase_tick 和 total_tick 在弹幕生成时取值并固定。",

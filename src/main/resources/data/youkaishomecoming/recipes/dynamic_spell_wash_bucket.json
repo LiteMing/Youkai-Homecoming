@@ -1,16 +1,12 @@
 {
   "type": "youkaishomecoming:spell_draft",
-  "boss_spell": "youkaishomecoming:mystia_lorelei",
   "category": "equipment",
   "ingredients": [
     {
-      "item": "youkaishomecoming:spell_mystia"
+      "item": "youkaishomecoming:dynamic_spell"
     },
     {
-      "item": "minecraft:paper"
-    },
-    {
-      "item": "minecraft:ink_sac"
+      "item": "minecraft:water_bucket"
     }
   ],
   "result": {

@@ -1277,6 +1277,7 @@
   "AS_TARGET": "Target (@s=target)",
   "CONSOLE": "Console",
   "NON_CHEAT": "Non-Cheat",
+  "Targetable": "Targetable (Blocks Danmaku)",
   "youkaishomecoming.spell_editor.timing.snapshot": "Evaluated once when spawned and fixed on the bullet. 'tick' means phase_tick; only affects subsequent bullets.",
   "youkaishomecoming.spell_editor.timing.dynamic": "Evaluated every tick during projectile flight. 'tick' means projectile_tick.",
   "youkaishomecoming.spell_editor.timing.mixed": "tick/t varies dynamically over flight; $variables, phase_tick and total_tick are fixed at spawn.",

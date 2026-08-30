@@ -91,6 +91,16 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 	}
 
 	@Override
+	public boolean isPickable() {
+		return data.targetable() && super.isPickable();
+	}
+
+	@Override
+	public boolean isAttackable() {
+		return data.targetable() && super.isAttackable();
+	}
+
+	@Override
 	public TraceableEntity asTraceable() {
 		return this;
 	}

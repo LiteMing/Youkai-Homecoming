@@ -1841,6 +1841,8 @@ public class ActionEditorPanel {
 				notifySimple(old -> ((SpawnShooterAction) old).withHealth(v)));
 		addFloatRow("Damage", ssa.damage(), v ->
 				notifySimple(old -> ((SpawnShooterAction) old).withDamage(v)));
+		addBoolRow("Targetable", ssa.targetable(), v ->
+				notifySimple(old -> ((SpawnShooterAction) old).withTargetable(v)));
 		addSuggestStringRow("Circle", ssa.circle().toString(), ActionEditorPanel::spellCircleOptions, v -> {
 			ResourceLocation id = ResourceLocation.tryParse(v);
 			if (id != null) {

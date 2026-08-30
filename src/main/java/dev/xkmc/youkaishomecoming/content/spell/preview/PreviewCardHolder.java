@@ -439,6 +439,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		switch (behavior) {
 			case CONTINUE -> {
 			}
+			case BOUNCE -> {
+				// 预览视口内命中方块目标的反弹模拟
+				Vec3 v = projectile.getDeltaMovement();
+				projectile.setDeltaMovement(new Vec3(-v.x, v.y, -v.z));
+			}
 			case DISCARD -> projectile.markErased(false);
 			case EXPIRE -> {
 				if (afterExpiry != null) {

@@ -161,6 +161,19 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						// Don't remove — let it keep flying until lifetime expires.
 						return;
 					}
+					case BOUNCE -> {
+						// 镜面物理反弹
+						var normal = pResult.getDirection().step();
+						Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
+						Vec3 v = getDeltaMovement();
+						double dot = v.dot(n);
+						if (dot < 0) {
+							Vec3 bounced = v.subtract(n.scale(2 * dot));
+							setDeltaMovement(bounced);
+							setPos(position().add(n.scale(0.05)));
+						}
+						return;
+					}
 					case EXPIRE -> {
 						expireNow();
 						return;

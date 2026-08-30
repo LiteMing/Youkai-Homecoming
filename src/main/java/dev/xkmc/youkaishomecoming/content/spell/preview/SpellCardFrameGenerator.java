@@ -22,6 +22,48 @@ public final class SpellCardFrameGenerator {
 	public static final int CARD_HEIGHT = 128;
 
 	private static final ResourceLocation FRAME_TEXTURE = new ResourceLocation("youkaishomecoming", "textures/gui/spell_card_frame.png");
+	private static ResourceLocation defaultCardTextureLocation = null;
+
+	/**
+	 * 获取或生成未拍照空符卡的默认 84x128 材质。
+	 * 包含完整的东方风边框，以及中央深色符卡暗纹。
+	 */
+	public static ResourceLocation getOrCreateDefaultCardTexture() {
+		if (defaultCardTextureLocation != null) {
+			return defaultCardTextureLocation;
+		}
+		NativeImage card = generateDefaultBlankCard();
+		var dyn = new net.minecraft.client.renderer.texture.DynamicTexture(card);
+		defaultCardTextureLocation = Minecraft.getInstance().getTextureManager().register("spell_card_default_blank", dyn);
+		return defaultCardTextureLocation;
+	}
+
+	private static NativeImage generateDefaultBlankCard() {
+		NativeImage frame = getOrCreateFrame();
+		NativeImage card = new NativeImage(CARD_WIDTH, CARD_HEIGHT, false);
+
+		int blankFill = 0xFF181014; // 深墨紫暗底 (ABGR)
+		for (int y = 0; y < CARD_HEIGHT; y++) {
+			for (int x = 0; x < CARD_WIDTH; x++) {
+				int frameColor = frame.getPixelRGBA(x, y);
+				int frameA = (frameColor >>> 24) & 0xFF;
+				if (frameA == 255) {
+					card.setPixelRGBA(x, y, frameColor);
+				} else if (frameA == 0) {
+					card.setPixelRGBA(x, y, blankFill);
+				} else {
+					float alpha = frameA / 255.0f;
+					float invA = 1.0f - alpha;
+					int r = (int) (((frameColor) & 0xFF) * alpha + ((blankFill) & 0xFF) * invA);
+					int g = (int) (((frameColor >>> 8) & 0xFF) * alpha + ((blankFill >>> 8) & 0xFF) * invA);
+					int b = (int) (((frameColor >>> 16) & 0xFF) * alpha + ((blankFill >>> 16) & 0xFF) * invA);
+					card.setPixelRGBA(x, y, (0xFF << 24) | (b << 16) | (g << 8) | r);
+				}
+			}
+		}
+		frame.close();
+		return card;
+	}
 
 	private SpellCardFrameGenerator() {
 	}

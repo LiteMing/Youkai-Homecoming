@@ -47,21 +47,46 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 			}
 		}
 
-		// 如果无快照，直接以默认符卡底纹 CARD_BACK 作为正面和背面，不调用 ItemRenderer.render 避免递归爆栈
-		ResourceLocation frontTexture = textureLoc != null ? textureLoc : CARD_BACK;
+		// 如果无快照，正面和背面统一使用程序化生成的 84x128 东方风卡牌边框底纹，并带上单色染色
+		ResourceLocation defaultCardTex = dev.xkmc.youkaishomecoming.content.spell.preview.SpellCardFrameGenerator.getOrCreateDefaultCardTexture();
+		ResourceLocation frontTexture = textureLoc != null ? textureLoc : defaultCardTex;
+		ResourceLocation backTexture = textureLoc != null ? textureLoc : defaultCardTex;
 
-		// 渲染 84x128 比例的双面卡牌
+		// 渲染 84x128 统一比例的双面卡牌
 		poseStack.pushPose();
 
+		float w = 84f / 128f * 0.5f;
+		float h = 0.5f;
+		float thickness = 0.005f;
+
+		// 视角与手持位置变换：统一采用规范的 84x128 卡牌斜持与展示变换
 		if (transformType == ItemDisplayContext.GUI) {
 			poseStack.translate(0.5, 0.5, 0.0);
-			poseStack.scale(1.0f, 1.0f, 1.0f);
-		} else if (transformType == ItemDisplayContext.FIRST_PERSON_RIGHT_HAND || transformType == ItemDisplayContext.FIRST_PERSON_LEFT_HAND) {
-			poseStack.translate(0.5, 0.5, 0.5);
-			poseStack.scale(0.8f, 0.8f, 0.8f);
-		} else if (transformType == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND || transformType == ItemDisplayContext.THIRD_PERSON_LEFT_HAND) {
-			poseStack.translate(0.5, 0.5, 0.5);
-			poseStack.scale(0.6f, 0.6f, 0.6f);
+			poseStack.scale(0.95f, 0.95f, 0.95f);
+		} else if (transformType == ItemDisplayContext.FIRST_PERSON_RIGHT_HAND) {
+			poseStack.translate(0.58, 0.7, 0.35);
+			poseStack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(270));
+			poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(-70));
+			poseStack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(-50));
+			poseStack.scale(0.7f, 0.7f, 0.7f);
+		} else if (transformType == ItemDisplayContext.FIRST_PERSON_LEFT_HAND) {
+			poseStack.translate(0.42, 0.62, 0.35);
+			poseStack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(270));
+			poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(80));
+			poseStack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(40));
+			poseStack.scale(0.7f, 0.7f, 0.7f);
+		} else if (transformType == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND) {
+			poseStack.translate(0.5, 0.55, 0.5);
+			poseStack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(20));
+			poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(-85));
+			poseStack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(-45));
+			poseStack.scale(0.55f, 0.55f, 0.55f);
+		} else if (transformType == ItemDisplayContext.THIRD_PERSON_LEFT_HAND) {
+			poseStack.translate(0.5, 0.55, 0.5);
+			poseStack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(20));
+			poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(85));
+			poseStack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(45));
+			poseStack.scale(0.55f, 0.55f, 0.55f);
 		} else if (transformType == ItemDisplayContext.GROUND) {
 			poseStack.translate(0.5, 0.3, 0.5);
 			poseStack.scale(0.5f, 0.5f, 0.5f);
@@ -70,17 +95,14 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 			poseStack.scale(0.7f, 0.7f, 0.7f);
 		} else {
 			poseStack.translate(0.5, 0.5, 0.5);
+			poseStack.scale(0.6f, 0.6f, 0.6f);
 		}
-
-		float w = 84f / 128f * 0.5f;
-		float h = 0.5f;
-		float thickness = 0.005f;
 
 		// 使用 RenderType.entityCutoutNoCull 确保正反面双面可见且不受光照面剔除影响
 		VertexConsumer frontBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(frontTexture));
 		Matrix4f mat = poseStack.last().pose();
 
-		// 正面（弹幕快照或默认底纹）
+		// 正面（弹幕快照或默认 84x128 底纹）
 		int color = (textureLoc == null) ? DynamicSpellItem.getColor(stack).argb() : 0xFFFFFFFF;
 		int a = (color >>> 24) & 0xFF;
 		int r = (color >>> 16) & 0xFF;
@@ -88,9 +110,9 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		int b = color & 0xFF;
 		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
 
-		// 背面（通用符卡底纹）
-		VertexConsumer backBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(CARD_BACK));
-		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, packedLight, 255, 255, 255, 255);
+		// 背面（与正面保持一致材质，镜像贴附）
+		VertexConsumer backBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(backTexture));
+		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
 
 		poseStack.popPose();
 	}

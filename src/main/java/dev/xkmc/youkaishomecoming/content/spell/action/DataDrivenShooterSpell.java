@@ -46,7 +46,9 @@ public class DataDrivenShooterSpell extends SpellCard {
 				dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile.DEFAULT);
 		this.runtime = new SpellRuntime(definition);
 		if (inheritedVariables != null && !inheritedVariables.isEmpty()) {
-			this.runtime.getVariables().putAll(inheritedVariables);
+			for (var entry : inheritedVariables.entrySet()) {
+				this.runtime.setVariable(entry.getKey(), entry.getValue());
+			}
 		}
 	}
 

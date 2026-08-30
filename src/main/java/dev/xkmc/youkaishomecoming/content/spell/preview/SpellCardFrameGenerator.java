@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
@@ -8,12 +9,14 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.io.InputStream;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Optional;
 
 /**
  * 84x128 符卡边框生成与遮罩管理器。
  * 优先读取资源包中的 `youkaishomecoming:textures/gui/spell_card_frame.png`。
- * 若不存在，则自动以程序化方式绘制一套具有东方风韵的深色金边与结界暗纹边框。
+ * 若不存在，则自动以程序化方式根据冠位十二阶 (SpellCardRank) 绘制专属东方风边框。
  */
 @OnlyIn(Dist.CLIENT)
 public final class SpellCardFrameGenerator {
@@ -22,27 +25,32 @@ public final class SpellCardFrameGenerator {
 	public static final int CARD_HEIGHT = 128;
 
 	private static final ResourceLocation FRAME_TEXTURE = new ResourceLocation("youkaishomecoming", "textures/gui/spell_card_frame.png");
-	private static ResourceLocation defaultCardTextureLocation = null;
+	private static final Map<SpellCardRank, ResourceLocation> RANK_DEFAULT_TEXTURES = new EnumMap<>(SpellCardRank.class);
 
 	/**
-	 * 获取或生成未拍照空符卡的默认 84x128 材质。
-	 * 包含完整的东方风边框，以及中央深色符卡暗纹。
+	 * 获取或生成指定冠位阶梯未拍照空符卡的默认 84x128 材质。
 	 */
-	public static ResourceLocation getOrCreateDefaultCardTexture() {
-		if (defaultCardTextureLocation != null) {
-			return defaultCardTextureLocation;
+	public static ResourceLocation getOrCreateDefaultCardTexture(SpellCardRank rank) {
+		ResourceLocation loc = RANK_DEFAULT_TEXTURES.get(rank);
+		if (loc != null) {
+			return loc;
 		}
-		NativeImage card = generateDefaultBlankCard();
+		NativeImage card = generateDefaultBlankCard(rank);
 		var dyn = new net.minecraft.client.renderer.texture.DynamicTexture(card);
-		defaultCardTextureLocation = Minecraft.getInstance().getTextureManager().register("spell_card_default_blank", dyn);
-		return defaultCardTextureLocation;
+		loc = Minecraft.getInstance().getTextureManager().register("spell_card_default_" + rank.getSerializedName(), dyn);
+		RANK_DEFAULT_TEXTURES.put(rank, loc);
+		return loc;
 	}
 
-	private static NativeImage generateDefaultBlankCard() {
-		NativeImage frame = getOrCreateFrame();
+	public static ResourceLocation getOrCreateDefaultCardTexture() {
+		return getOrCreateDefaultCardTexture(SpellCardRank.LESSER_WISDOM);
+	}
+
+	private static NativeImage generateDefaultBlankCard(SpellCardRank rank) {
+		NativeImage frame = getOrCreateFrame(rank);
 		NativeImage card = new NativeImage(CARD_WIDTH, CARD_HEIGHT, false);
 
-		int blankFill = 0xFF181014; // 深墨紫暗底 (ABGR)
+		int blankFill = rank.footerFill();
 		for (int y = 0; y < CARD_HEIGHT; y++) {
 			for (int x = 0; x < CARD_WIDTH; x++) {
 				int frameColor = frame.getPixelRGBA(x, y);
@@ -68,11 +76,14 @@ public final class SpellCardFrameGenerator {
 	private SpellCardFrameGenerator() {
 	}
 
+	public static NativeImage getOrCreateFrame() {
+		return getOrCreateFrame(SpellCardRank.LESSER_WISDOM);
+	}
+
 	/**
 	 * 获取或生成 84x128 的卡牌边框遮罩。
-	 * 边框中 alpha=0 的区域为透明视窗（透出弹幕快照），alpha>0 为边框本身。
 	 */
-	public static NativeImage getOrCreateFrame() {
+	public static NativeImage getOrCreateFrame(SpellCardRank rank) {
 		// 1. 尝试从资源包读取手绘素材
 		try {
 			Optional<Resource> res = Minecraft.getInstance().getResourceManager().getResource(FRAME_TEXTURE);
@@ -82,7 +93,6 @@ public final class SpellCardFrameGenerator {
 					if (custom.getWidth() == CARD_WIDTH && custom.getHeight() == CARD_HEIGHT) {
 						return custom;
 					}
-					// 尺寸不符时缩放适配
 					NativeImage scaled = new NativeImage(CARD_WIDTH, CARD_HEIGHT, false);
 					for (int y = 0; y < CARD_HEIGHT; y++) {
 						for (int x = 0; x < CARD_WIDTH; x++) {
@@ -98,24 +108,21 @@ public final class SpellCardFrameGenerator {
 		} catch (Exception ignored) {
 		}
 
-		// 2. 程序化生成矢量东方风边框
-		return generateProceduralFrame();
+		// 2. 程序化按 Rank 色彩生成矢量东方风边框
+		return generateProceduralFrame(rank);
 	}
 
 	/**
 	 * 程序化绘制 84x128 边框：
-	 * - 顶部留出 14px 牌头（红黑渐变暗金底）
-	 * - 底部留出 16px 牌底
-	 * - 左右各留 4px 装饰金边
-	 * - 中央 (4, 14) 至 (80, 112) 为约 70% 弹幕视窗，带半透明边缘羽化
+	 * 采用对应冠位阶梯的专属外壳、勾边金线和牌头牌底色彩。
 	 */
-	private static NativeImage generateProceduralFrame() {
+	private static NativeImage generateProceduralFrame(SpellCardRank rank) {
 		NativeImage img = new NativeImage(CARD_WIDTH, CARD_HEIGHT, false);
 
-		int outerBorder = 0xFF221118; // 深红黑外壳 (ABGR in NativeImage format)
-		int goldLine = 0xFF4EB8D4;    // 金色边线 (ABGR)
-		int innerDark = 0xEE160C14;   // 牌头牌底暗底
-		int headerRed = 0xEE2A1E8C;   // 牌头朱红色暗纹
+		int outerBorder = rank.outerBorder();
+		int goldLine = rank.goldLine();
+		int innerDark = rank.footerFill();
+		int headerFill = rank.headerFill();
 
 		for (int y = 0; y < CARD_HEIGHT; y++) {
 			for (int x = 0; x < CARD_WIDTH; x++) {
@@ -127,13 +134,13 @@ public final class SpellCardFrameGenerator {
 					continue;
 				}
 
-				// 外围 1px 细黑边
+				// 外围 1px 细边
 				if (x == 0 || x == CARD_WIDTH - 1 || y == 0 || y == CARD_HEIGHT - 1) {
 					img.setPixelRGBA(x, y, outerBorder);
 					continue;
 				}
 
-				// 第 2 像素金色勾边
+				// 第 2 像素勾边线
 				if (x == 1 || x == CARD_WIDTH - 2 || y == 1 || y == CARD_HEIGHT - 2) {
 					img.setPixelRGBA(x, y, goldLine);
 					continue;
@@ -144,7 +151,7 @@ public final class SpellCardFrameGenerator {
 					if (y == 13) {
 						img.setPixelRGBA(x, y, goldLine);
 					} else {
-						img.setPixelRGBA(x, y, y < 8 ? headerRed : innerDark);
+						img.setPixelRGBA(x, y, y < 8 ? headerFill : innerDark);
 					}
 					continue;
 				}

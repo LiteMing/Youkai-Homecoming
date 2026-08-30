@@ -50,6 +50,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	private static final String TAG_DURATION = "duration";
 	private static final String TAG_SINGLE_USE = "single_use";
 	private static final String TAG_COLOR = "SpellColor";
+	private static final String TAG_RANK = "yh_spell_rank";
 	/** Mark on OP-given cards: a complete spell card that casts directly (no editor). */
 	private static final String TAG_COMPLETE = "complete";
 	/**
@@ -114,6 +115,21 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		String name = player.getGameProfile().getName().toLowerCase(Locale.ROOT)
 				.replaceAll("[^a-z0-9_.-]", "_");
 		return name.isBlank() ? player.getStringUUID().toLowerCase(Locale.ROOT) : name;
+	}
+
+	public static dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank getRank(ItemStack stack) {
+		if (stack.hasTag() && stack.getTag().contains(TAG_RANK)) {
+			return dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.byName(stack.getTag().getString(TAG_RANK));
+		}
+		return dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.LESSER_WISDOM;
+	}
+
+	public static void setRank(ItemStack stack, dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank) {
+		if (rank != null) {
+			stack.getOrCreateTag().putString(TAG_RANK, rank.getSerializedName());
+		} else if (stack.hasTag()) {
+			stack.getTag().remove(TAG_RANK);
+		}
 	}
 
 	public static boolean isSingleUse(ItemStack stack) {
@@ -455,7 +471,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			SpellItemCost.appendCostTooltip(list, castDuration);
 		}
 		SpellDraftBudget budget = getDraftBudget(stack);
+		dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank = getRank(stack);
 		if (!isComplete(stack) && !CertifiedSpellValidator.isCertified(stack)) {
+			list.add(Component.literal("§6" + rank.displayName() + " (Tier " + rank.tierNumber() + ")"));
 			list.add(Component.translatable("youkaishomecoming.tooltip.spell_budget.nodes",
 					budget.freeNodeCount()).withStyle(ChatFormatting.GRAY));
 			list.add(Component.translatable("youkaishomecoming.tooltip.spell_budget.performance",

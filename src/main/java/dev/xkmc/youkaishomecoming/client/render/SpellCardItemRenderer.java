@@ -47,8 +47,9 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 			}
 		}
 
-		// 如果无快照，正面和背面统一使用程序化生成的 84x128 东方风卡牌边框底纹，并带上单色染色
-		ResourceLocation defaultCardTex = dev.xkmc.youkaishomecoming.content.spell.preview.SpellCardFrameGenerator.getOrCreateDefaultCardTexture();
+		// 如果无快照，正面和背面统一使用程序化生成的该 Rank 专属 84x128 东方风卡牌边框底纹，并带上单色染色
+		dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank = DynamicSpellItem.getRank(stack);
+		ResourceLocation defaultCardTex = dev.xkmc.youkaishomecoming.content.spell.preview.SpellCardFrameGenerator.getOrCreateDefaultCardTexture(rank);
 		ResourceLocation frontTexture = textureLoc != null ? textureLoc : defaultCardTex;
 		ResourceLocation backTexture = textureLoc != null ? textureLoc : defaultCardTex;
 

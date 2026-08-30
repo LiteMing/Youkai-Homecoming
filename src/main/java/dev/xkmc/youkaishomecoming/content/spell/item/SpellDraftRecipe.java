@@ -42,14 +42,35 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 	@Override
 	public ItemStack assemble(CraftingContainer container, RegistryAccess access) {
 		ItemStack stack = super.assemble(container, access);
-		DynamicSpellItem.setDraftBudget(stack, resolveBudget());
+		int baseTier = 1;
+		int addedBossSpells = 0;
+		for (int i = 0; i < container.getContainerSize(); i++) {
+			ItemStack item = container.getItem(i);
+			if (item.getItem() instanceof DynamicSpellItem) {
+				baseTier = Math.max(baseTier, DynamicSpellItem.getRank(item).tierNumber());
+			} else if (item.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem) {
+				addedBossSpells++;
+			}
+		}
+		if (bossSpell != null) {
+			addedBossSpells = Math.max(1, addedBossSpells);
+		}
+		int targetTier = baseTier + (addedBossSpells > 0 ? addedBossSpells : 0);
+		dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank =
+				dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.fromTier(targetTier);
+		DynamicSpellItem.setRank(stack, rank);
+		DynamicSpellItem.setDraftBudget(stack, rank.createBudget());
 		return stack;
 	}
 
 	@Override
 	public ItemStack getResultItem(RegistryAccess access) {
 		ItemStack stack = super.getResultItem(access).copy();
-		DynamicSpellItem.setDraftBudget(stack, resolveBudget());
+		int tier = bossSpell != null ? 2 : 1;
+		dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank =
+				dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.fromTier(tier);
+		DynamicSpellItem.setRank(stack, rank);
+		DynamicSpellItem.setDraftBudget(stack, rank.createBudget());
 		return stack;
 	}
 

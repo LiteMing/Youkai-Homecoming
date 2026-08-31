@@ -491,11 +491,14 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		}
 
 		switch (behavior) {
-			case CONTINUE -> {
-				if (hit.type() == PreviewTarget.HitType.BLOCK && projectile instanceof ItemDanmakuEntity ide) {
-					ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
-				}
+		case CONTINUE -> {
+			if (projectile instanceof ItemDanmakuEntity ide) {
+				Vec3 resumePos = hit.type() == PreviewTarget.HitType.BLOCK
+						? hitCtx.movementEnd()
+						: ide.position();
+				ide.applyContinueState(resumePos, hitCtx.incomingVelocity());
 			}
+		}
 			case DISCARD -> projectile.markErased(false);
 			case EXPIRE -> {
 				if (afterExpiry != null) {
@@ -512,12 +515,14 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	) {
 		SimplifiedProjectile projectile = hitCtx.source();
 		switch (hitCtx.disposition()) {
-			case CONTINUE -> {
-				if (projectile instanceof ItemDanmakuEntity ide
-						&& hitCtx.hitType() == dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK) {
-					ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
-				}
+		case CONTINUE -> {
+			if (projectile instanceof ItemDanmakuEntity ide) {
+				Vec3 resumePos = hitCtx.hitType() == dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK
+						? hitCtx.movementEnd()
+						: ide.position();
+				ide.applyContinueState(resumePos, hitCtx.incomingVelocity());
 			}
+		}
 			case EXPIRE -> {
 				if (afterExpiry != null) {
 					afterExpiry.execute(this, hitCtx.hitPosition(), hitCtx.incomingVelocity());

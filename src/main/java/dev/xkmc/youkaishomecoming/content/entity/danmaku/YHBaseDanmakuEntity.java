@@ -193,9 +193,11 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	}
 
 	private void continueThroughHit(ItemDanmakuEntity ide, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {
-		if (hitCtx.hitType() != dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK) return;
-		ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
-		syncContinueToClient(hitCtx.movementEnd(), hitCtx.incomingVelocity());
+		Vec3 resumePos = hitCtx.hitType() == dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK
+				? hitCtx.movementEnd()
+				: ide.position();
+		ide.applyContinueState(resumePos, hitCtx.incomingVelocity());
+		syncContinueToClient(resumePos, hitCtx.incomingVelocity());
 	}
 
 	private void resumeAfterHoldContinue(ItemDanmakuEntity ide, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {

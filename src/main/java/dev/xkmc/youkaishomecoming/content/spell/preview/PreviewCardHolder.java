@@ -492,7 +492,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 		switch (behavior) {
 			case CONTINUE -> {
-				if (projectile instanceof ItemDanmakuEntity ide) {
+				if (hit.type() == PreviewTarget.HitType.BLOCK && projectile instanceof ItemDanmakuEntity ide) {
 					ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
 				}
 			}
@@ -513,7 +513,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		SimplifiedProjectile projectile = hitCtx.source();
 		switch (hitCtx.disposition()) {
 			case CONTINUE -> {
-				if (projectile instanceof ItemDanmakuEntity ide) {
+				if (projectile instanceof ItemDanmakuEntity ide
+						&& hitCtx.hitType() == dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK) {
 					ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
 				}
 			}

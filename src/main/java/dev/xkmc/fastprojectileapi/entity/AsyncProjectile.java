@@ -198,6 +198,19 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 			return fallback;
 		}
 
+		/**
+		 * The untrimmed planned movement vector for this tick. {@code plannedMovementVec}
+		 * is set by {@code planMove} and never overwritten by {@code trimMove} (which only
+		 * modifies {@code plannedMovement}), so hit actions that need the pre-collision
+		 * velocity can recover it even after {@code applyMove} has overwritten
+		 * {@code getDeltaMovement()} with the trimmed step.
+		 */
+		public Vec3 incomingMovementOr(Vec3 fallback) {
+			if (plannedMovementVec != null) return plannedMovementVec;
+			if (inputVelocity != null) return inputVelocity;
+			return fallback;
+		}
+
 	}
 
 }

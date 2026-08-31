@@ -155,9 +155,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
 			Vec3 src = tickData().moveSrc != null ? tickData().moveSrc : position();
 			Vec3 movementEnd = tickData().movementEndOr(position().add(getDeltaMovement()));
+			Vec3 incomingMovement = tickData().incomingMovementOr(getDeltaMovement());
 			var hitCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext(
 					this, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK,
-					src, pResult.getLocation(), movementEnd, n, getDeltaMovement(), null);
+					src, pResult.getLocation(), movementEnd, n, incomingMovement, null);
 
 			// Execute onHitBlock callback
 			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
@@ -192,6 +193,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	}
 
 	private void continueThroughHit(ItemDanmakuEntity ide, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {
+		if (hitCtx.hitType() != dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK) return;
 		ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
 		syncContinueToClient(hitCtx.movementEnd(), hitCtx.incomingVelocity());
 	}

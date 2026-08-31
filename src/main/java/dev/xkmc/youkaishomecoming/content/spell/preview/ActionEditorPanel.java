@@ -1315,45 +1315,58 @@ public class ActionEditorPanel {
 	}
 
 	private void buildConditionParamRows(String prefix, SpellCondition cond, BiConsumer<SpellCondition, Boolean> onChanged) {
+		ConditionEditorDraft draft = new ConditionEditorDraft(cond, onChanged);
 		if (cond instanceof SpellConditions.TickInterval ti) {
 			addIntRow(prefix + "Interval", ti.interval(), v ->
-					onChanged.accept(new SpellConditions.TickInterval(v, ti.offset()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.TickInterval) current;
+						return new SpellConditions.TickInterval(v, latest.offset());
+					}, false));
 			addIntRow(prefix + "Offset", ti.offset(), v ->
-					onChanged.accept(new SpellConditions.TickInterval(ti.interval(), v), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.TickInterval) current;
+						return new SpellConditions.TickInterval(latest.interval(), v);
+					}, false));
 		} else if (cond instanceof SpellConditions.HealthBelow hb) {
 			addFloatRow(prefix + "Threshold", hb.threshold(), v ->
-					onChanged.accept(new SpellConditions.HealthBelow(v), false));
+					draft.replace(new SpellConditions.HealthBelow(v), false));
 		} else if (cond instanceof SpellConditions.HealthAbove ha) {
 			addFloatRow(prefix + "Threshold", ha.threshold(), v ->
-					onChanged.accept(new SpellConditions.HealthAbove(v), false));
+					draft.replace(new SpellConditions.HealthAbove(v), false));
 		} else if (cond instanceof SpellConditions.TickElapsed te) {
 			addIntRow(prefix + "Ticks", te.ticks(), v ->
-					onChanged.accept(new SpellConditions.TickElapsed(v), false));
+					draft.replace(new SpellConditions.TickElapsed(v), false));
 		} else if (cond instanceof SpellConditions.DistanceAbove da) {
 			addDoubleRow(prefix + "Distance", da.distance(), v ->
-					onChanged.accept(new SpellConditions.DistanceAbove(v), false));
+					draft.replace(new SpellConditions.DistanceAbove(v), false));
 		} else if (cond instanceof SpellConditions.DistanceBelow db) {
 			addDoubleRow(prefix + "Distance", db.distance(), v ->
-					onChanged.accept(new SpellConditions.DistanceBelow(v), false));
+					draft.replace(new SpellConditions.DistanceBelow(v), false));
 		} else if (cond instanceof SpellConditions.HitCountCondition hc) {
 			addIntRow(prefix + "Count", hc.count(), v ->
-					onChanged.accept(new SpellConditions.HitCountCondition(v), false));
+					draft.replace(new SpellConditions.HitCountCondition(v), false));
 		} else if (cond instanceof SpellConditions.TargetOnGround) {
 			// No parameters - just a label
 		} else if (cond instanceof SpellConditions.TargetSpeed ts) {
 			addDoubleRow(prefix + "Threshold", ts.threshold(), v ->
-					onChanged.accept(new SpellConditions.TargetSpeed(v, ts.op()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.TargetSpeed) current;
+						return new SpellConditions.TargetSpeed(v, latest.op());
+					}, false));
 			addStringCycleRow(prefix + "Op", new String[]{">", ">=", "<", "<="}, ts.op(), v ->
-					onChanged.accept(new SpellConditions.TargetSpeed(ts.threshold(), v), true));
+					draft.update(current -> {
+						var latest = (SpellConditions.TargetSpeed) current;
+						return new SpellConditions.TargetSpeed(latest.threshold(), v);
+					}, true));
 		} else if (cond instanceof SpellConditions.RandomChance rc) {
 			addFloatRow(prefix + "Probability", rc.probability(), v ->
-					onChanged.accept(new SpellConditions.RandomChance(v), false));
+					draft.replace(new SpellConditions.RandomChance(v), false));
 		} else if (cond instanceof SpellConditions.TargetHealthBelow thb) {
 			addFloatRow(prefix + "Threshold", thb.threshold(), v ->
-					onChanged.accept(new SpellConditions.TargetHealthBelow(v), false));
+					draft.replace(new SpellConditions.TargetHealthBelow(v), false));
 		} else if (cond instanceof SpellConditions.TargetHealthAbove tha) {
 			addFloatRow(prefix + "Threshold", tha.threshold(), v ->
-					onChanged.accept(new SpellConditions.TargetHealthAbove(v), false));
+					draft.replace(new SpellConditions.TargetHealthAbove(v), false));
 		} else if (cond instanceof SpellConditions.TargetIsFlying) {
 			// No parameters
 		} else if (cond instanceof SpellConditions.TargetIsFallFlying) {
@@ -1361,46 +1374,70 @@ public class ActionEditorPanel {
 		} else if (cond instanceof SpellConditions.AlwaysCondition ac) {
 			addStringCycleRow(prefix + "Value", new String[]{"true", "false"},
 					ac.value() ? "true" : "false", v ->
-					onChanged.accept(new SpellConditions.AlwaysCondition(v.equals("true")), true));
+					draft.replace(new SpellConditions.AlwaysCondition(v.equals("true")), true));
 		} else if (cond instanceof SpellConditions.DynamicTickInterval dti) {
 			addNumberRow(prefix + "Period", dti.period(), v ->
-					onChanged.accept(new SpellConditions.DynamicTickInterval(v, dti.offset()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.DynamicTickInterval) current;
+						return new SpellConditions.DynamicTickInterval(v, latest.offset());
+					}, false));
 			addNumberRow(prefix + "Offset", dti.offset(), v ->
-					onChanged.accept(new SpellConditions.DynamicTickInterval(dti.period(), v), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.DynamicTickInterval) current;
+						return new SpellConditions.DynamicTickInterval(latest.period(), v);
+					}, false));
 		} else if (cond instanceof SpellConditions.EntityTrait et) {
 			addStringRow(prefix + "Trait", et.trait(), v ->
-					onChanged.accept(new SpellConditions.EntityTrait(v), false));
+					draft.replace(new SpellConditions.EntityTrait(v), false));
 		} else if (cond instanceof SpellConditions.EntityFlagCondition ef) {
 			addIntRow(prefix + "Flag", ef.flag(), v ->
-					onChanged.accept(new SpellConditions.EntityFlagCondition(v), false));
+					draft.replace(new SpellConditions.EntityFlagCondition(v), false));
 		} else if (cond instanceof SpellConditions.CompareNumbers cn) {
 			addNumberRow(prefix + "Left", cn.left(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(v, cn.op(), cn.right()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.CompareNumbers) current;
+						return new SpellConditions.CompareNumbers(v, latest.op(), latest.right());
+					}, false));
 			addStringCycleRow(prefix + "Op", new String[]{"<", ">", "==", "!=", "<=", ">="}, cn.op(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), v, cn.right()), true));
+					draft.update(current -> {
+						var latest = (SpellConditions.CompareNumbers) current;
+						return new SpellConditions.CompareNumbers(latest.left(), v, latest.right());
+					}, true));
 			addNumberRow(prefix + "Right", cn.right(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), cn.op(), v), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.CompareNumbers) current;
+						return new SpellConditions.CompareNumbers(latest.left(), latest.op(), v);
+					}, false));
 		} else if (cond instanceof SpellConditions.VariableCheck vc) {
 			addStringRow(prefix + "Key", vc.key(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(v, vc.op(), vc.value()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.VariableCheck) current;
+						return new SpellConditions.VariableCheck(v, latest.op(), latest.value());
+					}, false));
 			addStringCycleRow(prefix + "Op", new String[]{"==", "!=", "<", ">", "<=", ">="}, vc.op(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value()), true));
+					draft.update(current -> {
+						var latest = (SpellConditions.VariableCheck) current;
+						return new SpellConditions.VariableCheck(latest.key(), v, latest.value());
+					}, true));
 			addDoubleRow(prefix + "Value", vc.value(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), vc.op(), v), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.VariableCheck) current;
+						return new SpellConditions.VariableCheck(latest.key(), latest.op(), v);
+					}, false));
 		} else if (cond instanceof SpellConditions.DifficultyEquals de) {
 			addStringCycleRow(prefix + "Difficulty", new String[]{"PEACEFUL", "EASY", "NORMAL", "HARD"},
 					difficultyName(de.difficultyId()), v ->
-					onChanged.accept(new SpellConditions.DifficultyEquals(difficultyId(v)), true));
+					draft.replace(new SpellConditions.DifficultyEquals(difficultyId(v)), true));
 		} else if (cond instanceof SpellConditions.DifficultyAbove da) {
 			addStringCycleRow(prefix + "Min Diff", new String[]{"PEACEFUL", "EASY", "NORMAL", "HARD"},
 					difficultyName(da.minDifficultyId()), v ->
-					onChanged.accept(new SpellConditions.DifficultyAbove(difficultyId(v)), true));
+					draft.replace(new SpellConditions.DifficultyAbove(difficultyId(v)), true));
 		} else if (cond instanceof SpellConditions.NotCondition nc) {
 			// Show inner condition type and params
 			addStringCycleRow(prefix + "Inner", SIMPLE_CONDITION_TYPES, getConditionType(nc.condition()), newType ->
-					onChanged.accept(new SpellConditions.NotCondition(createDefaultCondition(newType)), true));
+					draft.replace(new SpellConditions.NotCondition(createDefaultCondition(newType)), true));
 			buildConditionParamRows(prefix + "!", nc.condition(), (inner, rebuild) ->
-					onChanged.accept(new SpellConditions.NotCondition(inner), rebuild));
+					draft.replace(new SpellConditions.NotCondition(inner), rebuild));
 		}
 	}
 

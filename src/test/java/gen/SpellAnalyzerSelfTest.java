@@ -65,6 +65,7 @@ public class SpellAnalyzerSelfTest {
 		testPolicyTable();
 		testPolicyIds();
 		testPlayerDanmakuPolicy();
+		passed += dev.xkmc.youkaishomecoming.content.spell.preview.ConditionEditorDraftTest.runAllTests();
 		BounceSurfaceResponseTest.runAllTests();
 		if (failed > 0) {
 			throw new RuntimeException(failed + " analyzer self-tests failed!");

@@ -534,6 +534,7 @@ public class ActionListPanel {
 		if (inner instanceof SpellActions.RepeatAction) return true;
 		if (inner instanceof SpellActions.SequenceAction) return true;
 		if (inner instanceof DelayAction) return true;
+		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction) return true;
 		if (inner instanceof BurstAction) return true;
 		if (inner instanceof FireDanmakuAction fda)
 			return fda.onExpiry().isPresent() || fda.onTrail().isPresent()
@@ -636,7 +637,7 @@ public class ActionListPanel {
 		}
 
 		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold) {
-			cy = buildBranch(hold.onRelease(), "on_release", "onRelease", actionPath,
+			cy = buildBranch(hold.onRelease(), "onRelease", "onRelease", actionPath,
 					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
@@ -2550,6 +2551,11 @@ public class ActionListPanel {
 			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));
 			for (int j = 0; j < d.body().size(); j++)
 				collapseAllRecursive(d.body().get(j), path.child("body", j));
+		}
+		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onRelease")));
+			for (int j = 0; j < hold.onRelease().size(); j++)
+				collapseAllRecursive(hold.onRelease().get(j), path.child("onRelease", j));
 		}
 		if (inner instanceof BurstAction b) {
 			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));

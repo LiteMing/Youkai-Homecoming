@@ -536,8 +536,40 @@ public class ActionEditorPanel {
 	private void buildBounceActionRows(BounceAction action) {
 		addIntRow("Max Bounces", action.maxBounces(), v ->
 				notifySimple(old -> ((BounceAction) old).withMaxBounces(v)));
-		addDoubleRow("Speed Decay", action.decay(), v ->
-				notifySimple(old -> ((BounceAction) old).withDecay(v)));
+
+		// Presets: Specular (-1, 1), Bouncy (-0.8, 0.95), Surface Slide (0, 1)
+		String preset = "custom";
+		if (Math.abs(action.normalFactor() - (-1.0)) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "specular";
+		else if (Math.abs(action.normalFactor() - (-0.8)) < 1e-6 && Math.abs(action.tangentFactor() - 0.95) < 1e-6) preset = "bouncy";
+		else if (Math.abs(action.normalFactor()) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "slide";
+
+		addStringOptionRow("Preset",
+				new String[]{"specular", "bouncy", "slide", "custom"},
+				new String[]{"Specular Reflect", "Bouncy Dampened", "Surface Slide", "Custom"},
+				preset,
+				p -> {
+					if ("specular".equals(p)) {
+						notifySimple(old -> ((BounceAction) old).withNormalFactor(-1.0).withTangentFactor(1.0), true);
+					} else if ("bouncy".equals(p)) {
+						notifySimple(old -> ((BounceAction) old).withNormalFactor(-0.8).withTangentFactor(0.95), true);
+					} else if ("slide".equals(p)) {
+						notifySimple(old -> ((BounceAction) old).withNormalFactor(0.0).withTangentFactor(1.0), true);
+					}
+				});
+
+		addDoubleRow("Normal Factor", action.normalFactor(), v ->
+				notifySimple(old -> ((BounceAction) old).withNormalFactor(v)));
+		addDoubleRow("Tangent Factor", action.tangentFactor(), v ->
+				notifySimple(old -> ((BounceAction) old).withTangentFactor(v)));
+
+		addBooleanRow("Reset Speed", action.outputSpeed().isPresent(), enable -> {
+			notifySimple(old -> ((BounceAction) old).withOutputSpeed(enable ? Optional.of(0.8) : Optional.empty()), true);
+		});
+		if (action.outputSpeed().isPresent()) {
+			addDoubleRow("  New Speed", action.outputSpeed().get(), v ->
+					notifySimple(old -> ((BounceAction) old).withOutputSpeed(Optional.of(v))));
+		}
+
 		addBoolRow("Retarget", action.retarget(), v ->
 				notifySimple(old -> ((BounceAction) old).withRetarget(v), true));
 	}

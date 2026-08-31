@@ -153,16 +153,6 @@ public record FireDanmakuAction(
 					Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.CONTINUE,
 					Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1))));
 
-	public FireDanmakuAction {
-		// Migration: if old JSON had onHitBlock actions with legacy bounce config, append BounceAction
-		if (bounceConfig.isPresent() && bounceConfig.get() != null) {
-			var cfg = bounceConfig.get().sanitize();
-			java.util.List<SpellAction> hitList = new java.util.ArrayList<>(onHitBlock.orElse(java.util.List.of()));
-			hitList.add(new BounceAction(cfg.maxBounces(), cfg.decay(), cfg.retarget()));
-			onHitBlock = Optional.of(hitList);
-		}
-		bounceConfig = Optional.empty();
-	}
 	public static final Codec<FireDanmakuAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 			BASE_MAP.forGetter(fda -> fda),
 			NumberProvider.CODEC.optionalFieldOf("tilt_angle").forGetter(FireDanmakuAction::tiltAngle),
@@ -173,13 +163,12 @@ public record FireDanmakuAction(
 			DanmakuDamageType.CODEC.optionalFieldOf("damage_type").forGetter(FireDanmakuAction::damageType),
 			GroupRotation.CODEC.optionalFieldOf("group_rotation").forGetter(FireDanmakuAction::groupRotation),
 			DanmakuColorAnimation.CODEC.optionalFieldOf("color_animation").forGetter(FireDanmakuAction::colorAnimation),
-			NumberProvider.CODEC.optionalFieldOf("size", NumberProvider.constant(1)).forGetter(FireDanmakuAction::size),
-			DanmakuBounceConfig.CODEC.optionalFieldOf("bounce").forGetter(FireDanmakuAction::bounceConfig)
-	).apply(i, (base, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim, size, bounce) -> new FireDanmakuAction(
+			NumberProvider.CODEC.optionalFieldOf("size", NumberProvider.constant(1)).forGetter(FireDanmakuAction::size)
+	).apply(i, (base, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim, size) -> new FireDanmakuAction(
 			base.bulletType, base.color, base.count, base.speed, base.lifetime,
 			base.angleOffset, base.spread, base.elevation, base.pattern, base.origin,
 			base.aimMode, base.mover, base.outerCount, base.onExpiry, base.onTrail,
-			base.trailInterval, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim, size, bounce
+			base.trailInterval, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim, size, Optional.empty()
 	)));
 
 	// withXxx helper methods for editor use (preserve all fields)

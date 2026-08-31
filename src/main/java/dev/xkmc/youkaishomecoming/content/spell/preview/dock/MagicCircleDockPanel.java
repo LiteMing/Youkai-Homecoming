@@ -54,6 +54,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	private static final String SECTION_ITEMS = "items";
 	private static final String SECTION_TEXTS = "texts";
 	private static final String SECTION_LAYERS = "layers";
+	private static final String SECTION_RESOURCE = "resource_layout";
 
 	/** 会话级：跨面板重建保留的选中魔法阵 ID。见 {@link #loadInitialSelection()}。 */
 	@Nullable
@@ -63,7 +64,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	 * 会话级：跨面板重建保留的分区折叠状态。
 	 * 默认展开笔画与文字（文字是新功能，折叠会让人找不到入口），物品与层默认折叠。
 	 */
-	private static final Set<String> collapsedSections = new HashSet<>(Set.of(SECTION_ITEMS, SECTION_LAYERS));
+	private static final Set<String> collapsedSections = new HashSet<>(Set.of(SECTION_ITEMS, SECTION_LAYERS, SECTION_RESOURCE));
 
 	private final OrthographicViewport viewport;
 	private final List<AbstractWidget> widgets = new ArrayList<>();
@@ -141,6 +142,15 @@ public class MagicCircleDockPanel implements DockPanel {
 	private EditBox layerScaleBox;
 	private EditBox layerZBox;
 	private EditBox layerAlphaBox;
+	private EditBox resourceRadiusBox;
+	private EditBox resourceRadiusSpeedBox;
+	private EditBox resourceRadiusAmplitudeBox;
+	private EditBox resourceRadiusPeriodBox;
+	private EditBox resourceAngleBox;
+	private EditBox resourceAngleSpeedBox;
+	private EditBox resourceAngleAmplitudeBox;
+	private EditBox resourceAnglePeriodBox;
+	private EditBox resourceArcBox;
 
 	private record DropdownOverlay(List<ResourceLocation> values, String[] options, int selectedIndex) {
 	}
@@ -664,6 +674,7 @@ public class MagicCircleDockPanel implements DockPanel {
 
 		// --- 可滚动正文：每个分区只展开选中元素的字段 ---
 		rowY = contentTop();
+		buildResourceSection(font);
 		buildStrokeSection(font);
 		buildItemSection(font);
 		buildTextSection(font);
@@ -673,6 +684,37 @@ public class MagicCircleDockPanel implements DockPanel {
 		clampScrollOffset();
 		updateWidgetScroll();
 		refreshWidgetValues();
+	}
+
+	private void buildResourceSection(Font font) {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (!sectionRow(SECTION_RESOURCE, "Resource Layout", layout == null ? 0 : 1, 0)) {
+			return;
+		}
+		if (layout == null) {
+			buttonRow(new ButtonSpec("Enable Resource Layout", 140, this::enableResourceLayout));
+			return;
+		}
+		buttonRow(new ButtonSpec("Disable", 58, this::disableResourceLayout),
+				new ButtonSpec("Plane: " + normalizedPlane(layout), 76, this::toggleResourcePlane),
+				new ButtonSpec(layout.counter_rotate ? "Face: Fixed" : "Face: Orbit", 82, this::toggleResourceFacing));
+		resourceRadiusBox = fieldRow(font, "Orbit Radius", fmt(valueOf(layout.radius, 44)),
+				value -> setResourceValue(value, "radius", "value", 44));
+		resourceRadiusSpeedBox = fieldRow(font, "Radius Speed", fmt(deltaOf(layout.radius, 0)),
+				value -> setResourceValue(value, "radius", "delta", 44));
+		resourceRadiusAmplitudeBox = fieldRow(font, "Radius Swing", fmt(amplitudeOf(layout.radius, 0)),
+				value -> setResourceValue(value, "radius", "amplitude", 44));
+		resourceRadiusPeriodBox = fieldRow(font, "Radius Period", fmt(periodOf(layout.radius, 0)),
+				value -> setResourceValue(value, "radius", "period", 44));
+		resourceAngleBox = fieldRow(font, "Start Angle", fmt(valueOf(layout.angle, 0)),
+				value -> setResourceValue(value, "angle", "value", 0));
+		resourceAngleSpeedBox = fieldRow(font, "Angular Speed", fmt(deltaOf(layout.angle, 0)),
+				value -> setResourceValue(value, "angle", "delta", 0));
+		resourceAngleAmplitudeBox = fieldRow(font, "Angle Swing", fmt(amplitudeOf(layout.angle, 0)),
+				value -> setResourceValue(value, "angle", "amplitude", 0));
+		resourceAnglePeriodBox = fieldRow(font, "Angle Period", fmt(periodOf(layout.angle, 0)),
+				value -> setResourceValue(value, "angle", "period", 0));
+		resourceArcBox = fieldRow(font, "Slot Arc", fmt(layout.arc), this::setResourceArc);
 	}
 
 	private void buildStrokeSection(Font font) {
@@ -946,6 +988,16 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (layerScaleBox != null) layerScaleBox.setValue(fmt(valueOf(layer == null ? null : layer.scale, 1)));
 		if (layerZBox != null) layerZBox.setValue(fmt(valueOf(layer == null ? null : layer.z_offset, 0)));
 		if (layerAlphaBox != null) layerAlphaBox.setValue(fmt(valueOf(layer == null ? null : layer.alpha, 1)));
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (resourceRadiusBox != null) resourceRadiusBox.setValue(fmt(valueOf(layout == null ? null : layout.radius, 44)));
+		if (resourceRadiusSpeedBox != null) resourceRadiusSpeedBox.setValue(fmt(deltaOf(layout == null ? null : layout.radius, 0)));
+		if (resourceRadiusAmplitudeBox != null) resourceRadiusAmplitudeBox.setValue(fmt(amplitudeOf(layout == null ? null : layout.radius, 0)));
+		if (resourceRadiusPeriodBox != null) resourceRadiusPeriodBox.setValue(fmt(periodOf(layout == null ? null : layout.radius, 0)));
+		if (resourceAngleBox != null) resourceAngleBox.setValue(fmt(valueOf(layout == null ? null : layout.angle, 0)));
+		if (resourceAngleSpeedBox != null) resourceAngleSpeedBox.setValue(fmt(deltaOf(layout == null ? null : layout.angle, 0)));
+		if (resourceAngleAmplitudeBox != null) resourceAngleAmplitudeBox.setValue(fmt(amplitudeOf(layout == null ? null : layout.angle, 0)));
+		if (resourceAnglePeriodBox != null) resourceAnglePeriodBox.setValue(fmt(periodOf(layout == null ? null : layout.angle, 0)));
+		if (resourceArcBox != null) resourceArcBox.setValue(fmt(layout == null ? 360 : layout.arc));
 		suppress = false;
 	}
 
@@ -1532,6 +1584,80 @@ public class MagicCircleDockPanel implements DockPanel {
 		return val;
 	}
 
+	private void enableResourceLayout() {
+		SpellComponent.ResourceLayout layout = new SpellComponent.ResourceLayout();
+		layout.radius = value(defaultResourceRadius());
+		layout.angle = value(defaultResourceAngle());
+		layout.plane = selectedId.getPath().endsWith("_bomb") ? "xz" : "xy";
+		component.resource_layout = layout;
+		rebuildWidgets();
+		onComponentEdited("Resource layout enabled");
+	}
+
+	private void disableResourceLayout() {
+		component.resource_layout = null;
+		rebuildWidgets();
+		onComponentEdited("Resource layout disabled");
+	}
+
+	private void toggleResourcePlane() {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (layout == null) return;
+		layout.plane = "xz".equals(normalizedPlane(layout)) ? "xy" : "xz";
+		rebuildWidgets();
+		onComponentEdited("Resource plane changed");
+	}
+
+	private void toggleResourceFacing() {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (layout == null) return;
+		layout.counter_rotate = !layout.counter_rotate;
+		rebuildWidgets();
+		onComponentEdited("Resource facing changed");
+	}
+
+	private void setResourceValue(String text, String target, String field, float fallback) {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (layout == null) return;
+		float parsed = parseFloat(text, Float.NaN);
+		if (!Float.isFinite(parsed)) return;
+		SpellComponent.Value value = editableValue("radius".equals(target) ? layout.radius : layout.angle, fallback);
+		switch (field) {
+			case "value" -> value.value = parsed;
+			case "delta" -> value.delta = parsed;
+			case "amplitude" -> value.amplitude = parsed;
+			case "period" -> value.period = Math.max(0, parsed);
+			default -> { return; }
+		}
+		if ("radius".equals(target)) layout.radius = value;
+		else layout.angle = value;
+		onComponentEdited("Resource layout changed");
+	}
+
+	private void setResourceArc(String text) {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (layout == null) return;
+		float parsed = parseFloat(text, Float.NaN);
+		if (!Float.isFinite(parsed)) return;
+		layout.arc = parsed;
+		onComponentEdited("Resource layout changed");
+	}
+
+	private float defaultResourceRadius() {
+		String path = selectedId.getPath();
+		if (path.endsWith("_power")) return 60;
+		if (path.endsWith("_points")) return 68;
+		return 44;
+	}
+
+	private float defaultResourceAngle() {
+		return selectedId.getPath().endsWith("_power") ? 180 : 0;
+	}
+
+	private static String normalizedPlane(SpellComponent.ResourceLayout layout) {
+		return "xz".equalsIgnoreCase(layout.plane) ? "xz" : "xy";
+	}
+
 	/**
 	 * 新建文字层的默认值。直接给成环绕排布 —— 这是魔法阵最典型的用法，
 	 * 点一下 +Text 就能立刻看到效果，而不是一行几乎看不见的小字。
@@ -2027,6 +2153,14 @@ public class MagicCircleDockPanel implements DockPanel {
 
 	private static SpellComponent.Value editableValue(@Nullable SpellComponent.Value value, float fallback) {
 		return value == null ? value(fallback) : value;
+	}
+
+	private static float amplitudeOf(@Nullable SpellComponent.Value value, float fallback) {
+		return value == null ? fallback : value.amplitude;
+	}
+
+	private static float periodOf(@Nullable SpellComponent.Value value, float fallback) {
+		return value == null ? fallback : value.period;
 	}
 
 	private static float valueOf(@Nullable SpellComponent.Value value, float fallback) {

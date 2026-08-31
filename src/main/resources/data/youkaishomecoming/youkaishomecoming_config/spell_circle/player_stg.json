@@ -37,6 +37,13 @@
 	  "layers": []
 	},
 	"youkaishomecoming:player_stg_bomb": {
+	  "resource_layout": {
+		"plane": "xz",
+		"radius": { "value": 44.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"angle": { "value": 0.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"arc": 360.0,
+		"counter_rotate": true
+	  },
 	  "strokes": [
 		{
 		  "vertex": 24,
@@ -53,6 +60,13 @@
 	  "layers": []
 	},
 	"youkaishomecoming:player_stg_power": {
+	  "resource_layout": {
+		"plane": "xy",
+		"radius": { "value": 60.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"angle": { "value": 180.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"arc": 360.0,
+		"counter_rotate": true
+	  },
 	  "strokes": [
 		{
 		  "vertex": 8,
@@ -69,6 +83,13 @@
 	  "layers": []
 	},
 	"youkaishomecoming:player_stg_points": {
+	  "resource_layout": {
+		"plane": "xy",
+		"radius": { "value": 68.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"angle": { "value": 0.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"arc": 360.0,
+		"counter_rotate": true
+	  },
 	  "strokes": [
 		{
 		  "vertex": 16,

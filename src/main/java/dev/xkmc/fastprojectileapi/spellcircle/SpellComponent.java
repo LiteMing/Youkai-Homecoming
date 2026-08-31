@@ -46,6 +46,11 @@ public class SpellComponent {
 	@SerialClass.SerialField
 	public ArrayList<Layer> layers = new ArrayList<>();
 
+	/** Optional live-resource slot layout used by the player STG circle renderer. */
+	@Nullable
+	@SerialClass.SerialField
+	public ResourceLayout resource_layout;
+
 	@OnlyIn(Dist.CLIENT)
 	public void render(RenderHandle handle) {
 		handle.matrix.pushPose();
@@ -141,6 +146,37 @@ public class SpellComponent {
 			return ans;
 		}
 
+	}
+
+	@SerialClass
+	public static class ResourceLayout {
+
+		/** Slot plane: {@code xy} for the circle plane, {@code xz} for the legacy Bomb orbit. */
+		@SerialClass.SerialField
+		public String plane = "xy";
+
+		/** Animated orbit radius and group angle, in pixels and degrees respectively. */
+		@Nullable
+		@SerialClass.SerialField
+		public Value radius, angle;
+
+		/** Angular span occupied by the slots. 360 distributes them over a closed ring. */
+		@SerialClass.SerialField
+		public float arc = 360;
+
+		/** Keep child circles facing the parent instead of rotating with their orbit. */
+		@SerialClass.SerialField
+		public boolean counter_rotate = true;
+
+		@OnlyIn(Dist.CLIENT)
+		public float radius(float tick, float fallback) {
+			return radius == null ? fallback : radius.get(tick);
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		public float angle(float tick, float fallback) {
+			return angle == null ? fallback : angle.get(tick);
+		}
 	}
 
 	@SerialClass

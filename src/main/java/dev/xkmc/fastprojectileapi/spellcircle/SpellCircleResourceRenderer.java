@@ -42,6 +42,14 @@ public final class SpellCircleResourceRenderer {
 		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(
 				pose, buffer, SpellRenderState.getSpell(SPELL_TEXTURE),
 				entity.tickCount + pTick, light);
+		float tick = entity.tickCount + pTick;
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		float orbitRadius = layout == null ? radius : layout.radius(tick, radius);
+		float groupAngle = layout == null ? angleOffset : layout.angle(tick, angleOffset);
+		float arc = layout == null || !Float.isFinite(layout.arc) ? 360 : layout.arc;
+		boolean closedRing = Math.abs(arc) >= 359.999f;
+		boolean xz = layout != null && "xz".equalsIgnoreCase(layout.plane);
+		boolean counterRotate = layout == null || layout.counter_rotate;
 		for (int i = 0; i < slots; i++) {
 			float slotAlpha = i < whole ? 1.0f : remainder / (float) resourceUnit;
 			if (!SpellCircleLifeAlpha.shouldRender(globalAlpha * slotAlpha)) {
@@ -50,17 +58,20 @@ public final class SpellCircleResourceRenderer {
 			// Spread the active slots around the complete ring. The configured cap only
 			// limits how many icons are shown; using it as the angular denominator would
 			// cluster the common one- or two-resource case into a small arc.
-			float angle = angleOffset + i * 360f / slots;
+			float spacing = closedRing ? arc / slots : slots <= 1 ? 0 : arc / (slots - 1);
+			float angle = groupAngle + i * spacing;
 			pose.pushPose();
-			// SpellComponent strokes live in the local XY plane. Rotate around its
-			// normal (Z), otherwise the old Y-axis transform places slots in depth
-			// and they collapse/overlap once the circle is billboarded.
-			pose.mulPose(new Quaternionf().rotationZ((float) Math.toRadians(angle)));
-			pose.translate(radius, 0, 0);
-			pose.mulPose(new Quaternionf().rotationZ((float) Math.toRadians(-angle)));
+			rotate(pose, xz, angle);
+			pose.translate(orbitRadius, 0, 0);
+			if (counterRotate) rotate(pose, xz, -angle);
 			handle.alpha = globalAlpha * slotAlpha;
 			component.render(handle);
 			pose.popPose();
 		}
+	}
+
+	private static void rotate(PoseStack pose, boolean xz, float degrees) {
+		float radians = (float) Math.toRadians(degrees);
+		pose.mulPose(xz ? new Quaternionf().rotationY(radians) : new Quaternionf().rotationZ(radians));
 	}
 }

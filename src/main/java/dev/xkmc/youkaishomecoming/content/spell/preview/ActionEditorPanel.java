@@ -751,9 +751,10 @@ public class ActionEditorPanel {
 		if (!isSectionCollapsed("Origin")) {
 			currentDepth++;
 			addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
-				var newOrigin = new OriginConfig(v, a.origin().offsetX(), a.origin().offsetY(),
-						a.origin().offsetZ(), a.origin().rotation());
-				notifyDanmaku(old -> old.withOrigin(newOrigin));
+				notifyDanmaku(old -> {
+					var current = old.origin();
+					return old.withOrigin(ActionEditorValueUpdates.withOriginMode(current, v));
+				});
 			});
 			buildOriginOffsetRows(a.origin(), newOrigin -> notifyDanmaku(old -> old.withOrigin(newOrigin), false), overrides);
 			currentDepth--;
@@ -811,36 +812,56 @@ public class ActionEditorPanel {
 						"hue_cycle".equals(next) ? Optional.of(DanmakuColorAnimation.hueCycle()) : Optional.empty()), true));
 		if (a.colorAnimation().orElse(null) instanceof DanmakuColorAnimation.HueCycle hue) {
 			addNumberRow("Hue Period", hue.period(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							v, hue.hueOffset(), hue.indexStep(), hue.saturation(), hue.brightness(), hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHuePeriod(current, v)));
+					}, false));
 			addNumberRow("Hue Offset", hue.hueOffset(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), v, hue.indexStep(), hue.saturation(), hue.brightness(), hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueOffset(current, v)));
+					}, false));
 			addNumberRow("Index Step", hue.indexStep(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), hue.hueOffset(), v, hue.saturation(), hue.brightness(), hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueIndexStep(current, v)));
+					}, false));
 			addNumberRow("Saturation", hue.saturation(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), hue.hueOffset(), hue.indexStep(), v, hue.brightness(), hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueSaturation(current, v)));
+					}, false));
 			addNumberRow("Brightness", hue.brightness(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), hue.hueOffset(), hue.indexStep(), hue.saturation(), v, hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueBrightness(current, v)));
+					}, false));
 			addNumberRow("Alpha", hue.alpha(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), hue.hueOffset(), hue.indexStep(), hue.saturation(), hue.brightness(), v))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueAlpha(current, v)));
+					}, false));
 		}
+	}
+
+	private static DanmakuColorAnimation.HueCycle currentHueCycle(
+			FireDanmakuAction action, DanmakuColorAnimation.HueCycle fallback) {
+		return action.colorAnimation().orElse(null) instanceof DanmakuColorAnimation.HueCycle current
+				? current : fallback;
 	}
 
 	private void addBulletProviderRows(FireDanmakuAction a) {
 		BulletProvider provider = a.bulletType();
 		String mode = provider instanceof BulletProvider.Indexed ? "indexed" :
 				provider instanceof BulletProvider.RandomChoice ? "random_choice" : "constant";
-		YHDanmaku.Bullet fallback = firstBullet(provider);
 		addStringOptionRow("Bullet Mode",
 				new String[]{"constant", "indexed", "random_choice"},
 				new String[]{"Constant", "Indexed", "Random"},
 				mode,
-				next -> notifyDanmaku(old -> old.withBulletProvider(createBulletProvider(next, provider, fallback)), true));
+				next -> notifyDanmaku(old -> {
+					BulletProvider current = old.bulletType();
+					return old.withBulletProvider(createBulletProvider(next, current, firstBullet(current)));
+				}, true));
 		if (provider instanceof BulletProvider.Constant bc) {
 			addBulletRow(bc.bullet(), v -> notifyDanmaku(old -> old.withBulletType(v)));
 		} else if (provider instanceof BulletProvider.Indexed indexed) {
@@ -876,12 +897,14 @@ public class ActionEditorPanel {
 				provider instanceof ColorProvider.ByVariable ? "by_variable" :
 						provider instanceof ColorProvider.Cycle ? "cycle" :
 								provider instanceof ColorProvider.RandomChoice ? "random_choice" : "constant";
-		DanmakuColor fallback = firstColor(provider);
 		addStringOptionRow("Color Mode",
 				new String[]{"constant", "indexed", "by_variable", "cycle", "random_choice"},
 				new String[]{"Constant", "Indexed", "Variable", "Cycle", "Random"},
 				mode,
-				next -> notifyDanmaku(old -> old.withColor(createColorProvider(next, provider, fallback)), true));
+				next -> notifyDanmaku(old -> {
+					ColorProvider current = old.color();
+					return old.withColor(createColorProvider(next, current, firstColor(current)));
+				}, true));
 		if (provider instanceof ColorProvider.Constant cc) {
 			addSuggestStringRow("Color", cc.color().format(), ActionEditorPanel::colorListOptions, v ->
 					DanmakuColor.parse(v).ifPresent(color ->
@@ -1099,9 +1122,10 @@ public class ActionEditorPanel {
 
 		// OriginConfig mode
 		addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
-			var newOrigin = new OriginConfig(v, a.origin().offsetX(), a.origin().offsetY(),
-					a.origin().offsetZ(), a.origin().rotation());
-			notifyLaser(old -> old.withOrigin(newOrigin));
+			notifyLaser(old -> {
+				var current = old.origin();
+				return old.withOrigin(ActionEditorValueUpdates.withOriginMode(current, v));
+			});
 		});
 
 		// setupTime params
@@ -1207,9 +1231,10 @@ public class ActionEditorPanel {
 
 		// OriginConfig mode
 		addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
-			var newOrigin = new OriginConfig(v, a.origin().offsetX(), a.origin().offsetY(),
-					a.origin().offsetZ(), a.origin().rotation());
-			notifyTextDanmaku(old -> old.withOrigin(newOrigin));
+			notifyTextDanmaku(old -> {
+				var current = old.origin();
+				return old.withOrigin(ActionEditorValueUpdates.withOriginMode(current, v));
+			});
 		});
 
 		// setupTime params
@@ -1599,35 +1624,49 @@ public class ActionEditorPanel {
 			List<ResourceLocation> options = phaseOptionsSupplier.get();
 			if (options != null && !options.isEmpty()) {
 				addChoiceRow(prefix + " Phase", options, forcePhase.phaseId(), this::formatPhaseOption,
-						id -> updateSpellHealthTarget(timeout,
-								Optional.of(new SpellActions.ForcePhase(id, forcePhase.clearScreen())), false));
+						id -> updateSpellHealthForcePhaseTarget(timeout,
+								current -> ActionEditorValueUpdates.withPhaseId(current, id), false));
 			} else {
 				addStringRow(prefix + " Phase", forcePhase.phaseId().toString(), value -> {
 					ResourceLocation id = ResourceLocation.tryParse(value);
-					if (id != null) updateSpellHealthTarget(timeout,
-							Optional.of(new SpellActions.ForcePhase(id, forcePhase.clearScreen())), false);
+					if (id != null) updateSpellHealthForcePhaseTarget(timeout,
+							current -> ActionEditorValueUpdates.withPhaseId(current, id), false);
 				});
 			}
 			addBoolRow(prefix + " Clear Screen", forcePhase.clearScreen(), value ->
-					updateSpellHealthTarget(timeout,
-							Optional.of(new SpellActions.ForcePhase(forcePhase.phaseId(), value)), true));
+					updateSpellHealthForcePhaseTarget(timeout,
+							current -> ActionEditorValueUpdates.withPhaseClearScreen(current, value), true));
 		} else if (target.orElse(null) instanceof SpellActions.ForceSpell forceSpell) {
 			List<ResourceLocation> options = spellOptionsSupplier.get();
 			if (options != null && !options.isEmpty()) {
 				addChoiceRow(prefix + " Spell", options, forceSpell.spellId(), this::formatSpellOption,
-						id -> updateSpellHealthTarget(timeout,
-								Optional.of(new SpellActions.ForceSpell(id, forceSpell.clearScreen())), false));
+						id -> updateSpellHealthForceSpellTarget(timeout,
+								current -> ActionEditorValueUpdates.withSpellId(current, id), false));
 			} else {
 				addStringRow(prefix + " Spell", forceSpell.spellId().toString(), value -> {
 					ResourceLocation id = ResourceLocation.tryParse(value);
-					if (id != null) updateSpellHealthTarget(timeout,
-							Optional.of(new SpellActions.ForceSpell(id, forceSpell.clearScreen())), false);
+					if (id != null) updateSpellHealthForceSpellTarget(timeout,
+							current -> ActionEditorValueUpdates.withSpellId(current, id), false);
 				});
 			}
 			addBoolRow(prefix + " Clear Screen", forceSpell.clearScreen(), value ->
-					updateSpellHealthTarget(timeout,
-							Optional.of(new SpellActions.ForceSpell(forceSpell.spellId(), value)), true));
+					updateSpellHealthForceSpellTarget(timeout,
+							current -> ActionEditorValueUpdates.withSpellClearScreen(current, value), true));
 		}
+	}
+
+	private void updateSpellHealthForcePhaseTarget(boolean timeout,
+			Function<SpellActions.ForcePhase, SpellActions.ForcePhase> modifier, boolean rebuild) {
+		modifySpellHealthTarget(timeout, target ->
+				target.orElse(null) instanceof SpellActions.ForcePhase current
+						? Optional.of(modifier.apply(current)) : target, rebuild);
+	}
+
+	private void updateSpellHealthForceSpellTarget(boolean timeout,
+			Function<SpellActions.ForceSpell, SpellActions.ForceSpell> modifier, boolean rebuild) {
+		modifySpellHealthTarget(timeout, target ->
+				target.orElse(null) instanceof SpellActions.ForceSpell current
+						? Optional.of(modifier.apply(current)) : target, rebuild);
 	}
 
 	private Optional<SpellAction> defaultSpellHealthTarget(SpellHealthTargetType type) {
@@ -1645,8 +1684,15 @@ public class ActionEditorPanel {
 	}
 
 	private void updateSpellHealthTarget(boolean timeout, Optional<SpellAction> target, boolean rebuild) {
+		modifySpellHealthTarget(timeout, current -> target, rebuild);
+	}
+
+	private void modifySpellHealthTarget(boolean timeout,
+			Function<Optional<SpellAction>, Optional<SpellAction>> modifier, boolean rebuild) {
 		notifySimple(old -> {
 			SetSpellHealthAction action = (SetSpellHealthAction) old;
+			Optional<SpellAction> current = timeout ? action.onTimeout() : action.onBreak();
+			Optional<SpellAction> target = modifier.apply(current);
 			return new SetSpellHealthAction(action.mode(), action.health(), action.duration(),
 					timeout ? target : action.onTimeout(), timeout ? action.onBreak() : target);
 		}, rebuild);
@@ -1658,21 +1704,25 @@ public class ActionEditorPanel {
 		List<ResourceLocation> phaseOptions = phaseOptionsSupplier.get();
 		if (phaseOptions != null && !phaseOptions.isEmpty()) {
 			addChoiceRow("Phase ID", phaseOptions, fp.phaseId(), this::formatPhaseOption, id ->
-					notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen())));
+					notifySimple(old -> ActionEditorValueUpdates.withPhaseId(
+							(SpellActions.ForcePhase) old, id)));
 		} else {
 			addStringRow("Phase ID", fp.phaseId().toString(), v -> {
 				ResourceLocation id = ResourceLocation.tryParse(v);
-				if (id != null) notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen()));
+				if (id != null) notifySimple(old -> ActionEditorValueUpdates.withPhaseId(
+						(SpellActions.ForcePhase) old, id));
 			});
 		}
 		if (phaseOptions == null || !phaseOptions.contains(fp.phaseId())) {
 			addStringRow("Raw ID", fp.phaseId().toString(), v -> {
 				ResourceLocation id = ResourceLocation.tryParse(v);
-				if (id != null) notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen()));
+				if (id != null) notifySimple(old -> ActionEditorValueUpdates.withPhaseId(
+						(SpellActions.ForcePhase) old, id));
 			});
 		}
 		addBoolRow("Clear Screen", fp.clearScreen(), v ->
-				notifySimple(old -> new SpellActions.ForcePhase(fp.phaseId(), v), true));
+				notifySimple(old -> ActionEditorValueUpdates.withPhaseClearScreen(
+						(SpellActions.ForcePhase) old, v), true));
 	}
 
 	private String formatPhaseOption(ResourceLocation phaseId) {
@@ -1712,21 +1762,25 @@ public class ActionEditorPanel {
 		List<ResourceLocation> spellOptions = spellOptionsSupplier.get();
 		if (spellOptions != null && !spellOptions.isEmpty()) {
 			addChoiceRow("Spell ID", spellOptions, fs.spellId(), this::formatSpellOption, id ->
-					notifySimple(old -> new SpellActions.ForceSpell(id, fs.clearScreen())));
+					notifySimple(old -> ActionEditorValueUpdates.withSpellId(
+							(SpellActions.ForceSpell) old, id)));
 		} else {
 			addStringRow("Spell ID", fs.spellId().toString(), v -> {
 				ResourceLocation id = ResourceLocation.tryParse(v);
-				if (id != null) notifySimple(old -> new SpellActions.ForceSpell(id, fs.clearScreen()));
+				if (id != null) notifySimple(old -> ActionEditorValueUpdates.withSpellId(
+						(SpellActions.ForceSpell) old, id));
 			});
 		}
 		if (spellOptions == null || !spellOptions.contains(fs.spellId())) {
 			addStringRow("Raw ID", fs.spellId().toString(), v -> {
 				ResourceLocation id = ResourceLocation.tryParse(v);
-				if (id != null) notifySimple(old -> new SpellActions.ForceSpell(id, fs.clearScreen()));
+				if (id != null) notifySimple(old -> ActionEditorValueUpdates.withSpellId(
+						(SpellActions.ForceSpell) old, id));
 			});
 		}
 		addBoolRow("Clear Screen", fs.clearScreen(), v ->
-				notifySimple(old -> new SpellActions.ForceSpell(fs.spellId(), v), true));
+				notifySimple(old -> ActionEditorValueUpdates.withSpellClearScreen(
+						(SpellActions.ForceSpell) old, v), true));
 	}
 
 	private void buildFireSpellRows(SpellActions.FireSpell fs) {
@@ -1798,9 +1852,12 @@ public class ActionEditorPanel {
 
 	private void buildTeleportRows(TeleportAction ta) {
 		addEnumRow("Origin", OriginConfig.OriginMode.values(), ta.destination().mode(), v -> {
-			var newDest = new OriginConfig(v, ta.destination().offsetX(), ta.destination().offsetY(),
-					ta.destination().offsetZ(), ta.destination().rotation());
-			notifySimple(old -> new TeleportAction(newDest, ((TeleportAction) old).playSound()));
+			notifySimple(old -> {
+				var teleport = (TeleportAction) old;
+				var current = teleport.destination();
+				var newDest = ActionEditorValueUpdates.withOriginMode(current, v);
+				return new TeleportAction(newDest, teleport.playSound());
+			});
 		});
 		buildOriginOffsetRows(ta.destination(), newDest ->
 				notifySimple(old -> new TeleportAction(newDest, ((TeleportAction) old).playSound())));
@@ -2136,7 +2193,9 @@ public class ActionEditorPanel {
 	private OriginConfig getCurrentOrigin() {
 		if (currentAction instanceof FireDanmakuAction fda) return fda.origin();
 		if (currentAction instanceof FireLaserAction fla) return fla.origin();
+		if (currentAction instanceof FireTextDanmakuAction ftda) return ftda.origin();
 		if (currentAction instanceof SpawnShooterAction ssa) return ssa.origin();
+		if (currentAction instanceof TeleportAction teleport) return teleport.destination();
 		return OriginConfig.caster();
 	}
 

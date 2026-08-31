@@ -147,24 +147,24 @@ public class MoverConfigs {
 			double az = getNumber(z, ctx);
 			Vec3 rawAcc = new Vec3(ax, ay, az);
 
-			Vec3 effectiveAcc;
-			if ("local".equalsIgnoreCase(space.orElse("world")) && velocity.lengthSqr() > 1e-8) {
-				// Local space: x=forward, y=up, z=right based on initial velocity direction
-				Vec3 fwd = velocity.normalize();
-				Vec3 up = Math.abs(fwd.y) > 0.99 ? new Vec3(0, 0, 1) : new Vec3(0, 1, 0);
-				Vec3 right = fwd.cross(up).normalize();
-				Vec3 realUp = right.cross(fwd).normalize();
-				effectiveAcc = fwd.scale(rawAcc.x).add(realUp.scale(rawAcc.y)).add(right.scale(rawAcc.z));
-			} else {
-				effectiveAcc = rawAcc;
-			}
-
 			Double tvx = terminalVx.map(p -> getNumber(p, ctx)).orElse(null);
 			Double tvy = terminalVy.map(p -> getNumber(p, ctx)).orElse(null);
 			Double tvz = terminalVz.map(p -> getNumber(p, ctx)).orElse(null);
 
-			return new dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover(
-					origin, velocity, effectiveAcc, tvx, tvy, tvz);
+			if ("local".equalsIgnoreCase(space.orElse("world")) && velocity.lengthSqr() > 1e-8) {
+				// Local space aligned with FormulaMover convention:
+				// X = Forward (along velocity), Y = Right, Z = Up
+				Vec3 fwd = velocity.normalize();
+				Vec3 worldUp = Math.abs(fwd.y) > 0.99 ? new Vec3(0, 0, 1) : new Vec3(0, 1, 0);
+				Vec3 right = fwd.cross(worldUp).normalize();
+				Vec3 up = right.cross(fwd).normalize();
+
+				return dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover.local(
+						origin, velocity, fwd, right, up, rawAcc, tvx, tvy, tvz);
+			} else {
+				return dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover.world(
+						origin, velocity, rawAcc, tvx, tvy, tvz);
+			}
 		}
 	}
 

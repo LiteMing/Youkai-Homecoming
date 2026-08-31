@@ -76,6 +76,7 @@ public class VirtualSpellScene {
 		this.runtime = new SpellRuntime(definition);
 		bindRuntime(this.runtime);
 		this.holder = new PreviewCardHolder(level);
+		this.holder.setRuntimeSupplier(() -> this.runtime);
 		if (Minecraft.getInstance().player != null) {
 			this.holder.setCasterPower(GrazeHelper.getEffectivePowerLevel(Minecraft.getInstance().player));
 		}

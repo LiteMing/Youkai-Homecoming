@@ -200,6 +200,43 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			case CONTINUE -> {}
 			case EXPIRE -> expireNow();
 			case DISCARD -> markErased(false);
+			case HOLD -> {
+				if (this instanceof ItemDanmakuEntity ide && hitCtx.deferredBody() != null) {
+					// Pin projectile on contact surface and install HitHoldMover
+					Vec3 holdPos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
+					ide.setPos(holdPos);
+					ide.snapMotionAndRotation(Vec3.ZERO);
+					ide.mover = new dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover(hitCtx.incomingVelocity());
+					notifyTrajectoryChanged();
+					syncBounceToClient(holdPos, Vec3.ZERO, ide.currentBounces);
+
+					// Schedule resumption after holdTicks
+					int releaseTick = (int) level().getGameTime() + hitCtx.holdTicks();
+					CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
+					dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime runtime = null;
+					if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost host) {
+						runtime = host.getSpellRuntime();
+					}
+					if (runtime != null) {
+						runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), java.util.List.of(
+								new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
+									@Override
+									public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
+										if (ide.isAlive() && !ide.isRemoved()) {
+											ide.mover = null;
+											var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
+													ctx.holder(), ctx.definition(), ctx.runtime(), ctx.difficulty(), hitCtx);
+											resumedCtx.executeList(hitCtx.deferredBody());
+											if (hitCtx.isTerminal() && hitCtx.disposition() != dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.HOLD) {
+												applyHitDisposition(hitCtx);
+											}
+										}
+									}
+								}
+						));
+					}
+				}
+			}
 			case BOUNCE -> {
 				if (this instanceof ItemDanmakuEntity ide) {
 					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(

@@ -19,7 +19,8 @@ public class SpellHitContext {
 		CONTINUE,
 		DISCARD,
 		EXPIRE,
-		BOUNCE
+		BOUNCE,
+		HOLD
 	}
 
 	private final SimplifiedProjectile source;
@@ -33,6 +34,9 @@ public class SpellHitContext {
 	private HitDisposition disposition = HitDisposition.UNRESOLVED;
 	@Nullable
 	private DanmakuBounceConfig bounceConfig = null;
+	private int holdTicks = 0;
+	@Nullable
+	private java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> deferredBody = null;
 
 	public SpellHitContext(
 			SimplifiedProjectile source,
@@ -61,6 +65,9 @@ public class SpellHitContext {
 	public HitDisposition disposition() { return disposition; }
 	@Nullable
 	public DanmakuBounceConfig bounceConfig() { return bounceConfig; }
+	public int holdTicks() { return holdTicks; }
+	@Nullable
+	public java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> deferredBody() { return deferredBody; }
 
 	public boolean isTerminal() {
 		return disposition != HitDisposition.UNRESOLVED;
@@ -76,6 +83,14 @@ public class SpellHitContext {
 		if (this.disposition == HitDisposition.UNRESOLVED) {
 			this.disposition = HitDisposition.BOUNCE;
 			this.bounceConfig = config.sanitize();
+		}
+	}
+
+	public void resolveHold(int holdTicks, java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> body) {
+		if (this.disposition == HitDisposition.UNRESOLVED) {
+			this.disposition = HitDisposition.HOLD;
+			this.holdTicks = Math.max(1, holdTicks);
+			this.deferredBody = body;
 		}
 	}
 }

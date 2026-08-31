@@ -61,6 +61,12 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private BiConsumer<SpellDefinition, Boolean> onSpellSwitch = null;
 	/** Callback invoked when the preview runtime should switch to another phase. */
 	private BiConsumer<ResourceLocation, Boolean> onPhaseSwitch = null;
+	@Nullable
+	private java.util.function.Supplier<dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime> runtimeSupplier = null;
+
+	public void setRuntimeSupplier(java.util.function.Supplier<dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime> supplier) {
+		this.runtimeSupplier = supplier;
+	}
 	private void forgetProjectile(SimplifiedProjectile p) {
 		entityHitProjectiles.remove(p);
 		blockContactStates.remove(p);
@@ -512,6 +518,33 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				projectile.markErased(false);
 			}
 			case DISCARD -> projectile.markErased(false);
+			case HOLD -> {
+				if (projectile instanceof ItemDanmakuEntity ide && hitCtx.deferredBody() != null) {
+					Vec3 holdPos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
+					ide.setPos(holdPos);
+					ide.snapMotionAndRotation(Vec3.ZERO);
+					ide.mover = new dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover(hitCtx.incomingVelocity());
+					if (runtimeSupplier != null && runtimeSupplier.get() != null) {
+						var runtime = runtimeSupplier.get();
+						runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), List.of(
+								new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
+									@Override
+									public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
+										if (ide.isAlive() && !ide.isRemoved()) {
+											ide.mover = null;
+											var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
+													ctx.holder(), ctx.definition(), ctx.runtime(), ctx.difficulty(), hitCtx);
+											resumedCtx.executeList(hitCtx.deferredBody());
+											if (hitCtx.isTerminal() && hitCtx.disposition() != dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.HOLD) {
+												applyPreviewHitDisposition(hitCtx, afterExpiry);
+											}
+										}
+									}
+								}
+						));
+					}
+				}
+			}
 			case BOUNCE -> {
 				if (projectile instanceof ItemDanmakuEntity ide) {
 					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(

@@ -526,6 +526,15 @@ public final class SpellAnalyzer {
 			// rejected by the certification precheck (D9); market keeps the historical
 			// behavior of accepting it (runtime factory is lost → no-op)
 			handled = true;
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.ExpireSourceAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.DiscardSourceAction) {
+			if (hookDepth == 0 && profile == SpellAnalysisProfile.CERTIFICATION) {
+				throw rejected("invalid_hit_control",
+						"Hit control action (" + action.getClass().getSimpleName() + ") cannot be placed outside hit callbacks");
+			}
+			handled = true;
 		} else if (isSafeNoCostAction(action)) {
 			// SetVariable / AddVariable / ForcePhase / Noop / PlaySoundAction:
 			// explicitly whitelisted, no capability, no cost.
@@ -550,7 +559,11 @@ public final class SpellAnalyzer {
 				|| action instanceof SpellActions.ForcePhase
 				|| action instanceof SpellActions.NoopAction
 				|| action instanceof SpellActions.PlaySoundAction
-				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.CasterMovesAction;
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.CasterMovesAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.ExpireSourceAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.DiscardSourceAction;
 	}
 
 	/**
@@ -647,21 +660,24 @@ public final class SpellAnalyzer {
 			// For BOUNCE, on_hit_block fires up to (max_bounces + 1) times.
 			long maxHits = limits.maxHitsPerProjectile();
 			if (onHitEntity.isPresent()) {
-				long execs = satMul(contrib, hitBehaviorEntity == HitBehavior.CONTINUE ? maxHits : 1);
+				HitControlSummary entitySummary = summarizeHitControl(onHitEntity.get());
+				long entityMultiplier = 1;
+				if (entitySummary.mayContinue || hitBehaviorEntity == HitBehavior.CONTINUE) {
+					entityMultiplier = maxHits;
+				}
+				long execs = satMul(contrib, entityMultiplier);
 				walkHook("on_hit_entity", onHitEntity.get(), execs, perTick, mult);
 			}
 			if (onHitBlock.isPresent()) {
-				long blockMultiplier;
-				int bounceMultiplier = findMaxBounceMultiplier(onHitBlock.get());
-				if (bounceMultiplier > 1) {
-					blockMultiplier = bounceMultiplier;
-				} else if (hitBehaviorBlock == HitBehavior.CONTINUE) {
+				HitControlSummary blockSummary = summarizeHitControl(onHitBlock.get());
+				long blockMultiplier = 1;
+				if (blockSummary.mayContinue || hitBehaviorBlock == HitBehavior.CONTINUE) {
 					blockMultiplier = maxHits;
+				} else if (blockSummary.maxBounces > 0) {
+					blockMultiplier = Math.min(maxHits, blockSummary.maxBounces + 1L);
 				} else if (hitBehaviorBlock == HitBehavior.BOUNCE) {
-					int maxBounces = bounceConfig.map(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig::maxBounces).orElse(1);
-					blockMultiplier = Math.max(1, maxBounces + 1);
-				} else {
-					blockMultiplier = 1;
+					int maxBounces = bounceConfig.map(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig::sanitize).map(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig::maxBounces).orElse(1);
+					blockMultiplier = Math.min(maxHits, maxBounces + 1L);
 				}
 				long execs = satMul(contrib, blockMultiplier);
 				walkHook("on_hit_block", onHitBlock.get(), execs, perTick, mult);
@@ -669,20 +685,40 @@ public final class SpellAnalyzer {
 		}
 	}
 
-	private int findMaxBounceMultiplier(List<SpellAction> actions) {
-		int max = 1;
+	private record HitControlSummary(boolean mayContinue, int maxBounces) {}
+
+	private HitControlSummary summarizeHitControl(List<SpellAction> actions) {
+		boolean mayContinue = false;
+		int maxBounces = 0;
 		for (var action : actions) {
-			if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction ba) {
-				max = Math.max(max, Math.max(1, ba.maxBounces() + 1));
+			if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction) {
+				mayContinue = true;
+			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction ba) {
+				maxBounces = Math.max(maxBounces, ba.sanitize().maxBounces());
 			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.DelayAction da) {
-				max = Math.max(max, findMaxBounceMultiplier(da.body()));
+				var sub = summarizeHitControl(da.body());
+				mayContinue |= sub.mayContinue;
+				maxBounces = Math.max(maxBounces, sub.maxBounces);
+			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpellActions.RepeatAction ra) {
+				var sub = summarizeHitControl(ra.body());
+				mayContinue |= sub.mayContinue;
+				maxBounces = Math.max(maxBounces, sub.maxBounces);
+			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BurstAction ba) {
+				var sub = summarizeHitControl(ba.body());
+				mayContinue |= sub.mayContinue;
+				maxBounces = Math.max(maxBounces, sub.maxBounces);
 			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpellActions.ConditionalAction ca) {
-				max = Math.max(max, Math.max(findMaxBounceMultiplier(ca.ifTrue()), findMaxBounceMultiplier(ca.ifFalse())));
+				var tSub = summarizeHitControl(ca.ifTrue());
+				var fSub = summarizeHitControl(ca.ifFalse());
+				mayContinue |= (tSub.mayContinue || fSub.mayContinue);
+				maxBounces = Math.max(maxBounces, Math.max(tSub.maxBounces, fSub.maxBounces));
 			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpellActions.SequenceAction sa) {
-				max = Math.max(max, findMaxBounceMultiplier(sa.actions()));
+				var sub = summarizeHitControl(sa.actions());
+				mayContinue |= sub.mayContinue;
+				maxBounces = Math.max(maxBounces, sub.maxBounces);
 			}
 		}
-		return max;
+		return new HitControlSummary(mayContinue, maxBounces);
 	}
 
 	private void walkHook(String label, List<SpellAction> list, long executions, boolean perTick, long mult) {

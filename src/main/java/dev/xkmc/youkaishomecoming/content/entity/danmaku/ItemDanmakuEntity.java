@@ -155,7 +155,6 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	}
 
 	public void applyBounceState(Vec3 newPos, Vec3 newVel, int bounceCount) {
-		this.mover = null;
 		this.currentBounces = bounceCount;
 		setPos(newPos);
 		snapMotionAndRotation(newVel);

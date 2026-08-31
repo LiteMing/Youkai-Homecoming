@@ -41,9 +41,25 @@ public class TrailAction {
 		}
 	}
 
+	public void executeEntityHit(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		if (cached != null) {
+			executeEntityHit(cached, hitContext);
+		} else {
+			executeEntityHit(hitContext.hitPosition(), hitContext.incomingVelocity(), hitContext.hitEntity());
+		}
+	}
+
 	public void executeBlockHit(Vec3 pos, Vec3 dir) {
 		if (cached != null) {
 			executeBlockHit(cached, pos, dir);
+		}
+	}
+
+	public void executeBlockHit(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		if (cached != null) {
+			executeBlockHit(cached, hitContext);
+		} else {
+			executeBlockHit(hitContext.hitPosition(), hitContext.incomingVelocity());
 		}
 	}
 

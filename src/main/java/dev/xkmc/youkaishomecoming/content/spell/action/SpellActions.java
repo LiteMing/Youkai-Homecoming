@@ -214,9 +214,7 @@ public class SpellActions {
 		@Override
 		public void execute(SpellContext ctx) {
 			var actions = condition.test(ctx) ? ifTrue : ifFalse;
-			for (var action : actions) {
-				action.execute(ctx);
-			}
+			ctx.executeList(actions);
 		}
 	}
 
@@ -227,9 +225,7 @@ public class SpellActions {
 
 		@Override
 		public void execute(SpellContext ctx) {
-			for (var action : actions) {
-				action.execute(ctx);
-			}
+			ctx.executeList(actions);
 		}
 	}
 
@@ -259,8 +255,9 @@ public class SpellActions {
 			int n = (int) count.get(ctx);
 			for (int idx = 0; idx < n; idx++) {
 				ctx.setVariable(indexVariable, idx);
-				for (var action : body) {
-					action.execute(ctx);
+				ctx.executeList(body);
+				if (ctx.isTerminated()) {
+					break;
 				}
 			}
 		}

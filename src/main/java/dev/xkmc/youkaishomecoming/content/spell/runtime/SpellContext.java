@@ -42,6 +42,19 @@ public class SpellContext {
 		return java.util.Optional.ofNullable(hitContext);
 	}
 
+	public boolean isTerminated() {
+		return hitContext != null && hitContext.isTerminal();
+	}
+
+	public void executeList(java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> actions) {
+		for (var action : actions) {
+			action.execute(this);
+			if (isTerminated()) {
+				break;
+			}
+		}
+	}
+
 	public CardHolder holder() {
 		return holder;
 	}

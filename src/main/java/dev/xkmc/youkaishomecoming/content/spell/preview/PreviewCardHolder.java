@@ -476,7 +476,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		}
 
 		if (hitCtx.isTerminal()) {
-			applyPreviewHitDisposition(projectile, hitCtx.disposition(), hitCtx.bounceConfig(), hit.normal(), afterExpiry);
+			applyPreviewHitDisposition(hitCtx, afterExpiry);
 			return;
 		}
 
@@ -485,7 +485,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			}
 			case BOUNCE -> {
 				dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig cfg = projectile instanceof ItemDanmakuEntity ide ? ide.bounceConfig : null;
-				applyPreviewHitDisposition(projectile, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.BOUNCE, cfg, hit.normal(), afterExpiry);
+				hitCtx.resolveBounce(cfg != null ? cfg : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
+				applyPreviewHitDisposition(hitCtx, afterExpiry);
 			}
 			case DISCARD -> projectile.markErased(false);
 			case EXPIRE -> {
@@ -498,17 +499,15 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	}
 
 	private void applyPreviewHitDisposition(
-			SimplifiedProjectile projectile,
-			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition disposition,
-			@Nullable dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig bounceConfig,
-			Vec3 normal,
+			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx,
 			@Nullable dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry
 	) {
-		switch (disposition) {
+		SimplifiedProjectile projectile = hitCtx.source();
+		switch (hitCtx.disposition()) {
 			case CONTINUE -> {}
 			case EXPIRE -> {
 				if (afterExpiry != null) {
-					afterExpiry.execute(this, projectile.position(), projectile.getDeltaMovement());
+					afterExpiry.execute(this, hitCtx.hitPosition(), hitCtx.incomingVelocity());
 				}
 				projectile.markErased(false);
 			}
@@ -516,21 +515,21 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			case BOUNCE -> {
 				if (projectile instanceof ItemDanmakuEntity ide) {
 					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
-							ide.position(), ide.getDeltaMovement(), normal, bounceConfig != null ? bounceConfig : ide.bounceConfig, ide.currentBounces, target());
+							hitCtx.hitPosition(), hitCtx.incomingVelocity(), hitCtx.hitNormal(),
+							hitCtx.bounceConfig() != null ? hitCtx.bounceConfig() : ide.bounceConfig,
+							ide.currentBounces, target());
 					if (result.erased()) {
 						projectile.markErased(false);
 						return;
 					}
 					ide.applyBounceState(result.newPos(), result.newVel(), result.updatedBounces());
-					if (result.mover() != null) {
-						ide.mover = result.mover();
-					}
 				} else {
-					Vec3 v = projectile.getDeltaMovement();
+					Vec3 v = hitCtx.incomingVelocity();
+					Vec3 normal = hitCtx.hitNormal();
 					if (normal.lengthSqr() > 1e-4) {
 						double dot = v.dot(normal);
 						projectile.snapMotionAndRotation(v.subtract(normal.scale(2 * dot)));
-						projectile.setPos(projectile.position().add(normal.scale(0.08)));
+						projectile.setPos(hitCtx.hitPosition().add(normal.scale(0.08)));
 					} else {
 						projectile.snapMotionAndRotation(new Vec3(-v.x, v.y, -v.z));
 					}

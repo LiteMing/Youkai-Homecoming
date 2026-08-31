@@ -536,8 +536,6 @@ public class ActionEditorPanel {
 				notifySimple(old -> ((BounceAction) old).withDecay(v)));
 		addBoolRow("Retarget", action.retarget(), v ->
 				notifySimple(old -> ((BounceAction) old).withRetarget(v), true));
-		addIntRow("Delay Ticks", action.delay(), v ->
-				notifySimple(old -> ((BounceAction) old).withDelay(v)));
 	}
 
 	// --- FireDanmaku rows ---
@@ -1079,6 +1077,12 @@ public class ActionEditorPanel {
 				addIntRow("Trail Intv", a.trailInterval(), v ->
 						notifyLaser(old -> old.withTrailInterval(v), false));
 			}
+
+			// Hit behavior: separate entity/block controls for Laser
+			addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
+					notifyLaser(old -> old.withHitBehaviorEntity(v)));
+			addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
+					notifyLaser(old -> old.withHitBehaviorBlock(v)));
 			currentDepth--;
 		}
 	}

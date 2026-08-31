@@ -164,7 +164,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 
 			// If an action resolved disposition (e.g. BounceAction, ExpireSourceAction, DiscardSourceAction, ContinueSourceAction)
 			if (hitCtx.isTerminal()) {
-				applyHitDisposition(hitCtx.disposition(), hitCtx.bounceConfig(), n);
+				applyHitDisposition(hitCtx);
 				return;
 			}
 
@@ -175,7 +175,8 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						return;
 					}
 					case BOUNCE -> {
-						applyHitDisposition(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.BOUNCE, ide.bounceConfig, n);
+						hitCtx.resolveBounce(ide.bounceConfig != null ? ide.bounceConfig : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
+						applyHitDisposition(hitCtx);
 						return;
 					}
 					case EXPIRE -> {
@@ -193,26 +194,23 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	}
 
 	private void applyHitDisposition(
-			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition disposition,
-			@Nullable dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig bounceConfig,
-			Vec3 normal
+			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx
 	) {
-		switch (disposition) {
+		switch (hitCtx.disposition()) {
 			case CONTINUE -> {}
 			case EXPIRE -> expireNow();
 			case DISCARD -> markErased(false);
 			case BOUNCE -> {
 				if (this instanceof ItemDanmakuEntity ide) {
 					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
-							position(), getDeltaMovement(), normal, bounceConfig != null ? bounceConfig : ide.bounceConfig, ide.currentBounces, resolveBounceTarget());
+							hitCtx.hitPosition(), hitCtx.incomingVelocity(), hitCtx.hitNormal(),
+							hitCtx.bounceConfig() != null ? hitCtx.bounceConfig() : ide.bounceConfig,
+							ide.currentBounces, resolveBounceTarget());
 					if (result.erased()) {
 						markErased(false);
 						return;
 					}
 					ide.applyBounceState(result.newPos(), result.newVel(), result.updatedBounces());
-					if (result.mover() != null) {
-						ide.mover = result.mover();
-					}
 					syncBounceToClient(result.newPos(), result.newVel(), result.updatedBounces());
 				} else {
 					markErased(false);
@@ -246,7 +244,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		}
 
 		if (hitCtx.isTerminal()) {
-			applyHitDisposition(hitCtx.disposition(), hitCtx.bounceConfig(), getDeltaMovement().normalize().scale(-1));
+			applyHitDisposition(hitCtx);
 			return;
 		}
 
@@ -290,7 +288,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		if (holder != null) {
 			action.executeEntityHit(holder, hitCtx);
 		} else {
-			action.executeEntityHit(hitCtx.hitPosition(), hitCtx.incomingVelocity(), hitCtx.hitEntity());
+			action.executeEntityHit(hitCtx);
 		}
 	}
 
@@ -315,7 +313,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		if (holder != null) {
 			action.executeBlockHit(holder, hitCtx);
 		} else {
-			action.executeBlockHit(hitCtx.hitPosition(), hitCtx.incomingVelocity());
+			action.executeBlockHit(hitCtx);
 		}
 	}
 

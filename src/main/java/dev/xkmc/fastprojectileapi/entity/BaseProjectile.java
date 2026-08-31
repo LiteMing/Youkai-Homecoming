@@ -81,6 +81,9 @@ public abstract class BaseProjectile extends AsyncProjectile {
 	protected void resolveCollision(TickData data) {
 		if (data.blockHit != null) {
 			onHitBlock(data.blockHit);
+			if (!isValid() || isRemoved() || data.removed) {
+				return;
+			}
 		}
 		if (!data.hitEntities.isEmpty()) {
 			for (Entity entity : data.hitEntities) {

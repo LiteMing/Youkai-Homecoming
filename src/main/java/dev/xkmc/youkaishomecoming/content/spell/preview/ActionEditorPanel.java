@@ -703,6 +703,12 @@ public class ActionEditorPanel {
 						notifyDanmaku(old -> old.withTrailInterval(v), false));
 			}
 
+			// Hit behavior: separate entity/block controls
+			addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
+					notifyDanmaku(old -> old.withHitBehaviorEntity(v)));
+			addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
+					notifyDanmaku(old -> old.withHitBehaviorBlock(v)));
+
 			// Damage type override
 			if (a.damageType().isPresent()) {
 				addEnumRow("Dmg Type", dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType.values(),

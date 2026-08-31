@@ -481,17 +481,7 @@ public final class SpellAnalyzer {
 			}
 			// equal delays run in the same scheduled tick; without a full scheduler we
 			// cannot prove exclusivity, so delay groups are SUMMED (round 5, A1)
-			String prevHook = currentHookLabel;
-			// Crossing a positive delay boundary clears the hit context label
-			NumberBounds b = NumberBounds.resolve(a.delayTicks());
-			if (!b.bounded() || b.max() > 0) {
-				currentHookLabel = "";
-			}
-			try {
-				delayedBurstSum = satAdd(delayedBurstSum, walkList("body", a.body(), perTick, mult, GroupKind.DELAY));
-			} finally {
-				currentHookLabel = prevHook;
-			}
+			delayedBurstSum = satAdd(delayedBurstSum, walkList("body", a.body(), perTick, mult, GroupKind.DELAY));
 		} else if (action instanceof SpellActions.ConditionalAction a) {
 			walkList("if_true", a.ifTrue(), perTick, mult, GroupKind.NONE);
 			walkList("if_false", a.ifFalse(), perTick, mult, GroupKind.NONE);

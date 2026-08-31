@@ -93,4 +93,18 @@ public class SpellHitContext {
 			this.deferredBody = body;
 		}
 	}
+
+	/**
+	 * Called by the runtime scheduler when holdTicks expire.
+	 * Resets disposition from HOLD to UNRESOLVED so that actions in deferredBody
+	 * (like BounceAction, ContinueSourceAction, ExpireSourceAction) can resolve the final outcome.
+	 */
+	public boolean beginResume() {
+		if (this.disposition != HitDisposition.HOLD) {
+			return false;
+		}
+		this.disposition = HitDisposition.UNRESOLVED;
+		this.holdTicks = 0;
+		return true;
+	}
 }

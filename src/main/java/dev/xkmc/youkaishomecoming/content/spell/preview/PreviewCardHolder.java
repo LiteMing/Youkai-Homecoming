@@ -510,7 +510,13 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	) {
 		SimplifiedProjectile projectile = hitCtx.source();
 		switch (hitCtx.disposition()) {
-			case CONTINUE -> {}
+			case CONTINUE -> {
+				if (projectile instanceof ItemDanmakuEntity ide) {
+					Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
+					ide.setPos(resumePos);
+					ide.snapMotionAndRotation(hitCtx.incomingVelocity());
+				}
+			}
 			case EXPIRE -> {
 				if (afterExpiry != null) {
 					afterExpiry.execute(this, hitCtx.hitPosition(), hitCtx.incomingVelocity());
@@ -526,22 +532,46 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 					ide.mover = new dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover(hitCtx.incomingVelocity());
 					if (runtimeSupplier != null && runtimeSupplier.get() != null) {
 						var runtime = runtimeSupplier.get();
+						var body = hitCtx.deferredBody();
 						runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), List.of(
 								new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
 									@Override
 									public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
 										if (ide.isAlive() && !ide.isRemoved()) {
 											ide.mover = null;
-											var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
-													ctx.holder(), ctx.definition(), ctx.runtime(), ctx.difficulty(), hitCtx);
-											resumedCtx.executeList(hitCtx.deferredBody());
-											if (hitCtx.isTerminal() && hitCtx.disposition() != dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.HOLD) {
+											if (hitCtx.beginResume()) {
+												var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
+														ctx.holder(), ctx.definition(), ctx.runtime(), ctx.difficulty(), hitCtx);
+												resumedCtx.executeList(body);
+											}
+											if (hitCtx.isTerminal()) {
 												applyPreviewHitDisposition(hitCtx, afterExpiry);
+											} else {
+												dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior fallback = hitCtx.hitType() == dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK
+														? ide.hitBehaviorBlock : ide.hitBehaviorEntity;
+												switch (fallback) {
+													case CONTINUE -> {
+														Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
+														ide.setPos(resumePos);
+														ide.snapMotionAndRotation(hitCtx.incomingVelocity());
+													}
+													case BOUNCE -> {
+														hitCtx.resolveBounce(ide.bounceConfig != null ? ide.bounceConfig : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
+														applyPreviewHitDisposition(hitCtx, afterExpiry);
+													}
+													case EXPIRE -> {
+														if (afterExpiry != null) afterExpiry.execute(PreviewCardHolder.this, hitCtx.hitPosition(), hitCtx.incomingVelocity());
+														projectile.markErased(false);
+													}
+													case DISCARD -> projectile.markErased(false);
+												}
 											}
 										}
 									}
 								}
 						));
+					} else {
+						projectile.markErased(false);
 					}
 				}
 			}

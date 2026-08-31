@@ -197,11 +197,19 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx
 	) {
 		switch (hitCtx.disposition()) {
-			case CONTINUE -> {}
-			case EXPIRE -> expireNow();
-			case DISCARD -> markErased(false);
 			case HOLD -> {
 				if (this instanceof ItemDanmakuEntity ide && hitCtx.deferredBody() != null) {
+					CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
+					dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime runtime = null;
+					if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost host) {
+						runtime = host.getSpellRuntime();
+					}
+					// If no active runtime host exists to schedule resume, fail-safe to avoid permanent stall
+					if (runtime == null) {
+						markErased(false);
+						return;
+					}
+
 					// Pin projectile on contact surface and install HitHoldMover
 					Vec3 holdPos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
 					ide.setPos(holdPos);
@@ -211,30 +219,53 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 					syncBounceToClient(holdPos, Vec3.ZERO, ide.currentBounces);
 
 					// Schedule resumption after holdTicks
-					int releaseTick = (int) level().getGameTime() + hitCtx.holdTicks();
-					CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-					dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime runtime = null;
-					if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost host) {
-						runtime = host.getSpellRuntime();
-					}
-					if (runtime != null) {
-						runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), java.util.List.of(
-								new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
-									@Override
-									public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
-										if (ide.isAlive() && !ide.isRemoved()) {
-											ide.mover = null;
+					var body = hitCtx.deferredBody();
+					runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), java.util.List.of(
+							new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
+								@Override
+								public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
+									if (ide.isAlive() && !ide.isRemoved()) {
+										ide.mover = null;
+										if (hitCtx.beginResume()) {
 											var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
 													ctx.holder(), ctx.definition(), ctx.runtime(), ctx.difficulty(), hitCtx);
-											resumedCtx.executeList(hitCtx.deferredBody());
-											if (hitCtx.isTerminal() && hitCtx.disposition() != dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.HOLD) {
-												applyHitDisposition(hitCtx);
+											resumedCtx.executeList(body);
+										}
+										if (hitCtx.isTerminal()) {
+											applyHitDisposition(hitCtx);
+										} else {
+											// Fallback to default hit behavior after hold
+											HitBehavior fallback = hitCtx.hitType() == dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK
+													? ide.hitBehaviorBlock : ide.hitBehaviorEntity;
+											switch (fallback) {
+												case CONTINUE -> {
+													Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
+													ide.setPos(resumePos);
+													ide.snapMotionAndRotation(hitCtx.incomingVelocity());
+													notifyTrajectoryChanged();
+													syncBounceToClient(resumePos, hitCtx.incomingVelocity(), ide.currentBounces);
+												}
+												case BOUNCE -> {
+													hitCtx.resolveBounce(ide.bounceConfig != null ? ide.bounceConfig : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
+													applyHitDisposition(hitCtx);
+												}
+												case EXPIRE -> expireNow();
+												case DISCARD -> markErased(false);
 											}
 										}
 									}
 								}
-						));
-					}
+							}
+					));
+				}
+			}
+			case CONTINUE -> {
+				if (this instanceof ItemDanmakuEntity ide) {
+					Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
+					ide.setPos(resumePos);
+					ide.snapMotionAndRotation(hitCtx.incomingVelocity());
+					notifyTrajectoryChanged();
+					syncBounceToClient(resumePos, hitCtx.incomingVelocity(), ide.currentBounces);
 				}
 			}
 			case BOUNCE -> {

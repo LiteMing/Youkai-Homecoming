@@ -645,10 +645,19 @@ public class ActionListPanel {
 					indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			cy = buildBranch(fda.onTrail().orElse(List.of()), "onTrail", "onTrail", actionPath,
 					indent + 1, cy, section, effectiveDisabled, false, showAdd);
-			cy = buildBranch(fda.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
-					indent + 1, cy, section, effectiveDisabled, false, showAdd);
-			cy = buildBranch(fda.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
-					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			boolean entityDiscard = fda.hitBehaviorEntity() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.DISCARD;
+			boolean blockDiscard = fda.hitBehaviorBlock() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.DISCARD;
+			boolean entityHasNodes = fda.onHitEntity().isPresent() && !fda.onHitEntity().get().isEmpty();
+			boolean blockHasNodes = fda.onHitBlock().isPresent() && !fda.onHitBlock().get().isEmpty();
+
+			if (!entityDiscard || entityHasNodes) {
+				cy = buildBranch(fda.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
+						indent + 1, cy, section, effectiveDisabled || (entityDiscard && entityHasNodes), false, showAdd);
+			}
+			if (!blockDiscard || blockHasNodes) {
+				cy = buildBranch(fda.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
+						indent + 1, cy, section, effectiveDisabled || (blockDiscard && blockHasNodes), false, showAdd);
+			}
 		}
 
 		if (inner instanceof FireLaserAction fla) {
@@ -656,10 +665,19 @@ public class ActionListPanel {
 					indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			cy = buildBranch(fla.onTrail().orElse(List.of()), "onTrail", "onTrail", actionPath,
 					indent + 1, cy, section, effectiveDisabled, false, showAdd);
-			cy = buildBranch(fla.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
-					indent + 1, cy, section, effectiveDisabled, false, showAdd);
-			cy = buildBranch(fla.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
-					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			boolean entityDiscard = fla.hitBehaviorEntity() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.DISCARD;
+			boolean blockDiscard = fla.hitBehaviorBlock() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.DISCARD;
+			boolean entityHasNodes = fla.onHitEntity().isPresent() && !fla.onHitEntity().get().isEmpty();
+			boolean blockHasNodes = fla.onHitBlock().isPresent() && !fla.onHitBlock().get().isEmpty();
+
+			if (!entityDiscard || entityHasNodes) {
+				cy = buildBranch(fla.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
+						indent + 1, cy, section, effectiveDisabled || (entityDiscard && entityHasNodes), false, showAdd);
+			}
+			if (!blockDiscard || blockHasNodes) {
+				cy = buildBranch(fla.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
+						indent + 1, cy, section, effectiveDisabled || (blockDiscard && blockHasNodes), false, showAdd);
+			}
 		}
 
 		if (inner instanceof SpawnShooterAction ssa) {

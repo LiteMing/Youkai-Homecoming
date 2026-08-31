@@ -19,6 +19,7 @@ public record SpellDraftBudget(
 		int eraseEnemyDanmakuGrants,
 		int clearScreenGrants,
 		int bossOnDamageGrants,
+		int confinedTargetGrants,
 		/** Compatibility for pre-budget {@code yh_op_quota} cards/certificates. */
 		int legacyExperimentalQuota
 ) {
@@ -48,6 +49,7 @@ public record SpellDraftBudget(
 		eraseEnemyDanmakuGrants = Math.max(0, eraseEnemyDanmakuGrants);
 		clearScreenGrants = Math.max(0, clearScreenGrants);
 		bossOnDamageGrants = Math.max(0, bossOnDamageGrants);
+		confinedTargetGrants = Math.max(0, confinedTargetGrants);
 		legacyExperimentalQuota = Math.max(0, legacyExperimentalQuota);
 	}
 
@@ -61,7 +63,7 @@ public record SpellDraftBudget(
 					(int) Math.min(Integer.MAX_VALUE, SpellBudgetScaling.scale(DEFAULT_MAX_PEAK_ALIVE, multiplier)),
 					SpellBudgetScaling.scale(DEFAULT_MAX_PROJECTILE_TICKS, multiplier),
 					SpellBudgetScaling.scale(DEFAULT_MAX_HOOK_EXECUTIONS, multiplier),
-					0, 0, 0, 0, 0);
+					0, 0, 0, 0, 0, 0);
 		} catch (Exception ignored) {
 			return defaultFallback();
 		}
@@ -71,14 +73,14 @@ public record SpellDraftBudget(
 		return new SpellDraftBudget(DEFAULT_FREE_NODE_COUNT,
 				DEFAULT_MAX_SPAWN_PER_TICK, DEFAULT_MAX_PEAK_ALIVE,
 				DEFAULT_MAX_PROJECTILE_TICKS, DEFAULT_MAX_HOOK_EXECUTIONS,
-				0, 0, 0, 0, 0);
+				0, 0, 0, 0, 0, 0);
 	}
 
 	public static SpellDraftBudget legacy(int quota) {
 		SpellDraftBudget base = defaults();
 		return new SpellDraftBudget(base.freeNodeCount, base.maxSpawnPerTick,
 				base.maxPeakAlive, base.maxProjectileTicks, base.maxHookExecutions,
-				0, 0, 0, 0, quota);
+				0, 0, 0, 0, 0, quota);
 	}
 
 	public static SpellDraftBudget read(CompoundTag itemTag, int legacyQuota) {
@@ -99,6 +101,7 @@ public record SpellDraftBudget(
 				readInt(exp, SpellCapability.ERASE_ENEMY_DANMAKU.id(), 0),
 				readInt(exp, SpellCapability.CLEAR_SCREEN.id(), 0),
 				readInt(exp, SpellCapability.BOSS_ON_DAMAGE.id(), 0),
+				readInt(exp, SpellCapability.CONFINED_TARGET.id(), 0),
 				legacyQuota);
 	}
 
@@ -114,6 +117,7 @@ public record SpellDraftBudget(
 		exp.putInt(SpellCapability.ERASE_ENEMY_DANMAKU.id(), eraseEnemyDanmakuGrants);
 		exp.putInt(SpellCapability.CLEAR_SCREEN.id(), clearScreenGrants);
 		exp.putInt(SpellCapability.BOSS_ON_DAMAGE.id(), bossOnDamageGrants);
+		exp.putInt(SpellCapability.CONFINED_TARGET.id(), confinedTargetGrants);
 		tag.put(TAG_EXPERIMENTAL, exp);
 		itemTag.put(TAG_ROOT, tag);
 	}
@@ -129,6 +133,7 @@ public record SpellDraftBudget(
 				Math.max(eraseEnemyDanmakuGrants, nodes.experimentalCount(SpellCapability.ERASE_ENEMY_DANMAKU)),
 				Math.max(clearScreenGrants, nodes.experimentalCount(SpellCapability.CLEAR_SCREEN)),
 				Math.max(bossOnDamageGrants, nodes.experimentalCount(SpellCapability.BOSS_ON_DAMAGE)),
+				Math.max(confinedTargetGrants, nodes.experimentalCount(SpellCapability.CONFINED_TARGET)),
 				0);
 	}
 
@@ -138,6 +143,7 @@ public record SpellDraftBudget(
 			case ERASE_ENEMY_DANMAKU -> eraseEnemyDanmakuGrants;
 			case CLEAR_SCREEN -> clearScreenGrants;
 			case BOSS_ON_DAMAGE -> bossOnDamageGrants;
+			case CONFINED_TARGET -> confinedTargetGrants;
 			default -> 0;
 		};
 	}
@@ -146,7 +152,7 @@ public record SpellDraftBudget(
 		if (legacyExperimentalQuota > 0) {
 			return nodes.experimentalNodes() <= legacyExperimentalQuota;
 		}
-		for (SpellCapability capability : SpecialNodeCounter.EXPERIMENTAL_CAPS) {
+		for (SpellCapability capability : SpellCapabilityPolicies.experimentalCapabilities()) {
 			if (nodes.experimentalCount(capability) > experimentalGrant(capability)) return false;
 		}
 		return true;

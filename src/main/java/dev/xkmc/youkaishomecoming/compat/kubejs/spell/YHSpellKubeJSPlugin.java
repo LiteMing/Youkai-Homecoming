@@ -23,6 +23,7 @@ public class YHSpellKubeJSPlugin extends KubeJSPlugin {
 		event.add("SpellRegistry", SpellRegistry.class);
 		event.add("YHSpellRuntime", SpellRuntimeAccess.class);
 		event.add("YHSpellMarket", YHSpellMarket.class);
+		event.add("YHSpellConfig", YHSpellConfig.class);
 		event.add("YHStg", YHStg.class);
 		event.add("SpellConditions", SpellConditions.class);
 		event.add("SpellActions", SpellActions.class);

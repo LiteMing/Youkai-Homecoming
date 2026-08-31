@@ -784,7 +784,7 @@
   "youkaishomecoming.cert.screen.budget_scale": "服务器预算 %s：单刻生成 %s | 峰值 %s | 弹幕 tick %s | 钩子 %s",
   "youkaishomecoming.tooltip.spell_budget.nodes": "符卡基底：%s 个免费普通节点",
   "youkaishomecoming.tooltip.spell_budget.performance": "性能预算：单刻生成 %s / 峰值存活 %s / 弹幕刻 %s / 钩子执行 %s",
-  "youkaishomecoming.tooltip.spell_budget.experimental": "实验能力：传送 %s / 消弹 %s / 清屏 %s / 受伤钩子 %s / 旧版通用 %s",
+  "youkaishomecoming.tooltip.spell_budget.experimental": "实验能力：传送 %s / 消弹 %s / 清屏 %s / 受伤钩子 %s / 限制目标 %s / 旧版通用 %s",
   "youkaishomecoming.cert.hud.success": "[YH] No-Hit 认证成功！",
   "youkaishomecoming.cert.hud.failed": "[YH] 认证失败：%s",
   "youkaishomecoming.cert.bossbar": "%s | 血量 %s/%s | 超时 %s 秒",

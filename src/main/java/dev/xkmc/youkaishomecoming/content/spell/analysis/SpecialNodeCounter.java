@@ -43,7 +43,7 @@ public final class SpecialNodeCounter {
 
 		public Summary plus(Summary other) {
 			EnumMap<SpellCapability, Integer> counts = new EnumMap<>(SpellCapability.class);
-			for (SpellCapability cap : EXPERIMENTAL_CAPS) {
+			for (SpellCapability cap : SpellCapability.values()) {
 				counts.put(cap, experimentalCount(cap) + other.experimentalCount(cap));
 			}
 			return new Summary(actionNodes + other.actionNodes,
@@ -55,21 +55,6 @@ public final class SpecialNodeCounter {
 					brokenNodes + other.brokenNodes, counts);
 		}
 	}
-
-	/**
-	 * The capability set unlockable through a boss-draft's special-node quota:
-	 * on_damage, teleport, erase enemy danmaku and clear screen (legitimate
-	 * certification tactics). Confine/entity flags/force/fire spell and
-	 * run_command are OP_ONLY — boss-authoring freedom, never unlocked for
-	 * players. Danmaku hooks (HOOK_ON_*) stay ALLOW but still count toward the
-	 * quota (quantity control).
-	 */
-	public static final java.util.Set<SpellCapability> EXPERIMENTAL_CAPS = java.util.Set.of(
-			SpellCapability.BOSS_ON_DAMAGE,
-			SpellCapability.TELEPORT,
-			SpellCapability.ERASE_ENEMY_DANMAKU,
-			SpellCapability.CLEAR_SCREEN
-	);
 
 	private SpecialNodeCounter() {
 	}
@@ -104,13 +89,14 @@ public final class SpecialNodeCounter {
 	public static SpellCapabilityPolicy policy(SpellAction action) {
 		SpellCapability capability = directCapability(unwrap(action));
 		return capability == null ? SpellCapabilityPolicy.ALLOW
-				: SpellCapabilityPolicies.defaultPolicy(capability);
+				: SpellCapabilityPolicies.currentPolicy(capability);
 	}
 
 	/** Compatibility alias: direct experimental nodes consume the legacy quota. */
 	public static boolean consumesQuota(SpellAction action) {
 		SpellCapability capability = directCapability(unwrap(action));
-		return capability != null && EXPERIMENTAL_CAPS.contains(capability);
+		return capability != null
+				&& SpellCapabilityPolicies.currentPolicy(capability) == SpellCapabilityPolicy.EXPERIMENTAL;
 	}
 
 	private static void accumulate(MutableSummary summary, PhaseDefinition phase) {

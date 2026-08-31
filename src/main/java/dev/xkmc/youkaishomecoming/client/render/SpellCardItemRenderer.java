@@ -25,8 +25,6 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 
 	public static final SpellCardItemRenderer INSTANCE = new SpellCardItemRenderer();
 
-	private static final ResourceLocation CARD_BACK = new ResourceLocation("youkaishomecoming", "textures/item/spell/custom_spell.png");
-
 	public SpellCardItemRenderer() {
 		super(Minecraft.getInstance().getBlockEntityRenderDispatcher(), Minecraft.getInstance().getEntityModels());
 	}
@@ -50,8 +48,11 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		// 如果无快照，正面和背面统一使用程序化生成的该 Rank 专属 84x128 东方风卡牌边框底纹，并带上单色染色
 		dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank = DynamicSpellItem.getRank(stack);
 		ResourceLocation defaultCardTex = dev.xkmc.youkaishomecoming.content.spell.preview.SpellCardFrameGenerator.getOrCreateDefaultCardTexture(rank);
-		ResourceLocation frontTexture = textureLoc != null ? textureLoc : defaultCardTex;
-		ResourceLocation backTexture = textureLoc != null ? textureLoc : defaultCardTex;
+		ResourceLocation cardTexture = textureLoc != null ? textureLoc : defaultCardTex;
+		ResourceLocation frameTexture = textureLoc != null
+				? dev.xkmc.youkaishomecoming.content.spell.preview.SpellCardFrameGenerator
+						.getOrCreateFrameTexture(rank)
+				: null;
 
 		// 渲染 84x128 统一比例的双面卡牌
 		poseStack.pushPose();
@@ -100,7 +101,7 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		}
 
 		// 使用 RenderType.entityCutoutNoCull 确保正反面双面可见且不受光照面剔除影响
-		VertexConsumer frontBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(frontTexture));
+		VertexConsumer frontBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(cardTexture));
 		Matrix4f mat = poseStack.last().pose();
 
 		// 正面（弹幕快照或默认 84x128 底纹）
@@ -112,8 +113,17 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
 
 		// 背面（与正面保持一致材质，镜像贴附）
-		VertexConsumer backBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(backTexture));
+		VertexConsumer backBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(cardTexture));
 		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
+
+		if (frameTexture != null) {
+			VertexConsumer frameBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(frameTexture));
+			float frameOffset = 0.0005f;
+			quadColor(frameBuilder, mat, -w, w, -h, h, thickness + frameOffset,
+					0, 1, 0, 1, packedLight, 255, 255, 255, 255);
+			quadColor(frameBuilder, mat, w, -w, -h, h, -thickness - frameOffset,
+					0, 1, 0, 1, packedLight, 255, 255, 255, 255);
+		}
 
 		poseStack.popPose();
 	}

@@ -44,19 +44,7 @@ public final class SpellCardTextureCache {
 	@Nullable
 	public static ResourceLocation getLocalBySpellId(ResourceLocation spellId) {
 		if (spellId == null) return null;
-		String storageKey = toStorageKey(spellId.toString());
-		ResourceLocation loc = TEXTURES.get(storageKey);
-		if (loc != null) return loc;
-
-		Path localFile = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots").resolve(storageKey + ".png");
-		if (Files.isRegularFile(localFile)) {
-			try {
-				byte[] bytes = Files.readAllBytes(localFile);
-				return registerTextureByStorageKey(storageKey, bytes);
-			} catch (Exception ignored) {
-			}
-		}
-		return null;
+		return loadLocalSnapshot(spellId.toString(), false);
 	}
 
 	/**
@@ -65,19 +53,8 @@ public final class SpellCardTextureCache {
 	@Nullable
 	public static ResourceLocation getOrRequestCertified(String definitionHash) {
 		if (definitionHash == null || definitionHash.isBlank()) return null;
-		String storageKey = toStorageKey(definitionHash);
-		ResourceLocation loc = TEXTURES.get(storageKey);
+		ResourceLocation loc = loadLocalSnapshot(definitionHash, true);
 		if (loc != null) return loc;
-
-		// 检查本地游戏目录缓存
-		Path localFile = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots").resolve(storageKey + ".png");
-		if (Files.isRegularFile(localFile)) {
-			try {
-				byte[] bytes = Files.readAllBytes(localFile);
-				return registerTextureByStorageKey(storageKey, bytes);
-			} catch (Exception ignored) {
-			}
-		}
 
 		// 向服务端发送原始 definitionHash 请求
 		if (PENDING_REQUESTS.add(definitionHash)) {
@@ -86,11 +63,56 @@ public final class SpellCardTextureCache {
 		return null;
 	}
 
+	@Nullable
+	private static ResourceLocation loadLocalSnapshot(String rawKey, boolean migrateLegacyHashFile) {
+		String storageKey = toStorageKey(rawKey);
+		ResourceLocation loc = TEXTURES.get(storageKey);
+		if (loc != null) return loc;
+		Path snapshotDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
+		Path localFile = snapshotDir.resolve(storageKey + ".png");
+		if (!Files.isRegularFile(localFile) && migrateLegacyHashFile
+				&& rawKey.matches("[0-9a-fA-F]{64}")) {
+			// Older builds wrote the canonical hash without applying toStorageKey.
+			// Migrate that file on first read so persistence survives the hotfix.
+			Path legacyFile = snapshotDir.resolve(rawKey + ".png");
+			if (Files.isRegularFile(legacyFile)) {
+				localFile = legacyFile;
+				try {
+					Files.createDirectories(snapshotDir);
+					Files.copy(legacyFile, snapshotDir.resolve(storageKey + ".png"),
+							java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+				} catch (Exception ignored) {
+				}
+			}
+		}
+		if (!Files.isRegularFile(localFile)) return null;
+		try {
+			return registerTextureByStorageKey(storageKey, Files.readAllBytes(localFile));
+		} catch (Exception ignored) {
+			return null;
+		}
+	}
+
 	public static void onSnapshotReceived(String definitionHash, byte[] pngBytes) {
 		if (definitionHash == null || definitionHash.isBlank()) return;
 		PENDING_REQUESTS.remove(definitionHash);
-		String storageKey = toStorageKey(definitionHash);
-		registerTextureByStorageKey(storageKey, pngBytes);
+		saveLocalSnapshot(definitionHash, pngBytes);
+	}
+
+	/** Writes a snapshot under the same derived key used by all cache lookups. */
+	@Nullable
+	public static ResourceLocation saveLocalSnapshot(String rawKey, byte[] pngBytes) {
+		if (rawKey == null || rawKey.isBlank() || pngBytes == null || pngBytes.length == 0) return null;
+		String storageKey = toStorageKey(rawKey);
+		Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
+		try {
+			Files.createDirectories(outDir);
+			Files.write(outDir.resolve(storageKey + ".png"), pngBytes);
+		} catch (Exception e) {
+			YoukaisHomecoming.LOGGER.error("Failed to persist spell card snapshot: {}", storageKey, e);
+			return null;
+		}
+		return registerTextureByStorageKey(storageKey, pngBytes);
 	}
 
 	@Nullable

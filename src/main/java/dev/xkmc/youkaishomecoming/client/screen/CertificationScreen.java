@@ -85,6 +85,8 @@ public class CertificationScreen extends Screen {
 		if (java.nio.file.Files.isRegularFile(file)) {
 			try {
 				byte[] snap = java.nio.file.Files.readAllBytes(file);
+				dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.saveLocalSnapshot(
+						quote.definitionHash, snap);
 				YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId, snap));
 				CertificationClientHandler.clearPendingQuote();
 				onClose();
@@ -102,7 +104,7 @@ public class CertificationScreen extends Screen {
 				Minecraft.getInstance().setScreen(
 						new SpellCardSnapshotConfirmScreen(previewScreen, snap, () -> {
 							previewScreen.getViewport().setCardFrameGuideActive(false);
-							saveConfirmedSnapshot(snap);
+							saveConfirmedSnapshot(snap, quote.definitionHash);
 							YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId, snap));
 							CertificationClientHandler.clearPendingQuote();
 						}));
@@ -116,22 +118,12 @@ public class CertificationScreen extends Screen {
 		onClose();
 	}
 
-	private void saveConfirmedSnapshot(byte[] snapBytes) {
+	private void saveConfirmedSnapshot(byte[] snapBytes, String definitionHash) {
 		if (snapBytes == null || snapBytes.length == 0 || definition == null) return;
-		try {
-			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
-			java.nio.file.Files.createDirectories(outDir);
-			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.toStorageKey(definition.id.toString());
-			java.nio.file.Path fileById = outDir.resolve(safeId + ".png");
-			java.nio.file.Files.write(fileById, snapBytes);
-			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
-			java.nio.file.Path fileByHash = outDir.resolve(defHash + ".png");
-			java.nio.file.Files.write(fileByHash, snapBytes);
-			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(definition.id.toString(), snapBytes);
-			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(defHash, snapBytes);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.saveLocalSnapshot(
+				definition.id.toString(), snapBytes);
+		dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.saveLocalSnapshot(
+				definitionHash, snapBytes);
 	}
 
 	@Override

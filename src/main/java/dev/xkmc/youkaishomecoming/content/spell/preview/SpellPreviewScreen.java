@@ -998,21 +998,10 @@ public class SpellPreviewScreen extends Screen {
 
 	private void saveConfirmedSnapshot(byte[] snapBytes) {
 		if (snapBytes == null || snapBytes.length == 0 || definition == null) return;
-		try {
-			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
-			java.nio.file.Files.createDirectories(outDir);
-			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.toStorageKey(definition.id.toString());
-			java.nio.file.Path fileById = outDir.resolve(safeId + ".png");
-			java.nio.file.Files.write(fileById, snapBytes);
-			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
-			java.nio.file.Path fileByHash = outDir.resolve(defHash + ".png");
-			java.nio.file.Files.write(fileByHash, snapBytes);
-			// 立即注册到客户端材质缓存，即使在认证前，手持/背包物品也能立刻渲染出该卡面
-			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(definition.id.toString(), snapBytes);
-			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.registerTexture(defHash, snapBytes);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.saveLocalSnapshot(
+				definition.id.toString(), snapBytes);
+		String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
+		dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.saveLocalSnapshot(defHash, snapBytes);
 	}
 
 	/**

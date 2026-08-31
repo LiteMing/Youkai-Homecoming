@@ -1663,7 +1663,7 @@
   "youkaishomecoming.tooltip.spell_op_quota": "Experimental nodes available: %s (teleport / erase enemy danmaku / clear screen / on-damage / danmaku hooks)",
   "youkaishomecoming.tooltip.spell_budget.nodes": "Spell base: %s free ordinary nodes",
   "youkaishomecoming.tooltip.spell_budget.performance": "Performance budgets: spawn/tick %s / peak alive %s / projectile ticks %s / hook executions %s",
-  "youkaishomecoming.tooltip.spell_budget.experimental": "Experimental grants: teleport %s / erase %s / clear %s / on-damage %s / legacy shared %s",
+  "youkaishomecoming.tooltip.spell_budget.experimental": "Experimental grants: teleport %s / erase %s / clear %s / on-damage %s / confine %s / legacy shared %s",
   "youkaishomecoming.tooltip.stg_toggle": "Shift + Right Click: toggle danmaku combat",
   "youkaishomecoming.tooltip.spell_unfinished_no_combat": "Unfinished spell card: cannot declare danmaku combat mode",
   "youkaishomecoming.tooltip.spell_target": "Requires targeting an entity to activate",

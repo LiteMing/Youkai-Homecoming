@@ -155,9 +155,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	}
 
 	/**
-	 * Special-node quota of a (blank) spell card: how many EXPERIMENTAL nodes
-	 * (teleport, confine, erase, clear, flags, force/fire spell, on_damage /
-	 * fire / laser hooks) the card may carry. Written onto the blank card by the
+	 * Special-node quota of a (blank) spell card: how many policy-classified
+	 * EXPERIMENTAL nodes the card may carry. Written onto the blank card by the
 	 * boss-base crafting recipes; survives naming/saving. run_command is never
 	 * part of a quota.
 	 */
@@ -483,11 +482,13 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 					budget.maxSpawnPerTick(), budget.maxPeakAlive(),
 					budget.maxProjectileTicks(), budget.maxHookExecutions()).withStyle(ChatFormatting.DARK_GRAY));
 			int grants = budget.teleportGrants() + budget.eraseEnemyDanmakuGrants()
-					+ budget.clearScreenGrants() + budget.bossOnDamageGrants();
+					+ budget.clearScreenGrants() + budget.bossOnDamageGrants()
+					+ budget.confinedTargetGrants();
 			if (grants > 0 || budget.legacyExperimentalQuota() > 0) {
 				list.add(Component.translatable("youkaishomecoming.tooltip.spell_budget.experimental",
 						budget.teleportGrants(), budget.eraseEnemyDanmakuGrants(),
 						budget.clearScreenGrants(), budget.bossOnDamageGrants(),
+						budget.confinedTargetGrants(),
 						budget.legacyExperimentalQuota()).withStyle(ChatFormatting.LIGHT_PURPLE));
 			}
 		}

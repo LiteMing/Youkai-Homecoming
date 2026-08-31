@@ -26,6 +26,22 @@ public final class SpellCardFrameGenerator {
 
 	private static final ResourceLocation FRAME_TEXTURE = new ResourceLocation("youkaishomecoming", "textures/gui/spell_card_frame.png");
 	private static final Map<SpellCardRank, ResourceLocation> RANK_DEFAULT_TEXTURES = new EnumMap<>(SpellCardRank.class);
+	private static final Map<SpellCardRank, ResourceLocation> RANK_FRAME_TEXTURES = new EnumMap<>(SpellCardRank.class);
+
+	/**
+	 * Returns the transparent frame overlay for a rank. Snapshot images are card
+	 * artwork; the item renderer applies the rank frame independently.
+	 */
+	public static ResourceLocation getOrCreateFrameTexture(SpellCardRank rank) {
+		ResourceLocation loc = RANK_FRAME_TEXTURES.get(rank);
+		if (loc != null) return loc;
+		NativeImage frame = getOrCreateFrame(rank);
+		var dyn = new net.minecraft.client.renderer.texture.DynamicTexture(frame);
+		loc = Minecraft.getInstance().getTextureManager().register(
+				"spell_card_frame_" + rank.getSerializedName(), dyn);
+		RANK_FRAME_TEXTURES.put(rank, loc);
+		return loc;
+	}
 
 	/**
 	 * 获取或生成指定冠位阶梯未拍照空符卡的默认 84x128 材质。

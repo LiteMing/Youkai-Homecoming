@@ -119,7 +119,7 @@ public final class CertifiedSpellValidator {
 							projectionLimits).requiredCapabilities());
 				}
 				boolean requiresOperator = capabilities.stream()
-						.anyMatch(cap -> SpellCapabilityPolicies.defaultPolicy(cap) == SpellCapabilityPolicy.OP_ONLY);
+						.anyMatch(cap -> SpellCapabilityPolicies.currentPolicy(cap) == SpellCapabilityPolicy.OP_ONLY);
 				if (requiresOperator && !player.hasPermissions(2)) return null;
 			} else if (certificate.draftBudget() != null) {
 				CertificationService.validateCertifiedPlan(plan, certificate.draftBudget());
@@ -135,7 +135,7 @@ public final class CertifiedSpellValidator {
 					if (count <= 0 || count > certificate.specialNodeQuota()) return null;
 					for (SpellDefinition candidate : plan == null ? java.util.List.of(def) : plan.definitions().values()) {
 						SpellAnalyzer.analyze(candidate, SpellAnalysisProfile.CERTIFICATION,
-								projectionLimits, SpecialNodeCounter.EXPERIMENTAL_CAPS);
+								projectionLimits, SpellCapabilityPolicies.experimentalCapabilities());
 					}
 				}
 			}
@@ -170,7 +170,7 @@ public final class CertifiedSpellValidator {
 			if (operatorTest) {
 				var analysis = SpellAnalyzer.analyzeOperatorTest(definition, SpellAnalysisLimits.certification());
 				boolean requiresOperator = analysis.requiredCapabilities().stream()
-						.anyMatch(cap -> SpellCapabilityPolicies.defaultPolicy(cap) == SpellCapabilityPolicy.OP_ONLY);
+						.anyMatch(cap -> SpellCapabilityPolicies.currentPolicy(cap) == SpellCapabilityPolicy.OP_ONLY);
 				if (requiresOperator && !player.hasPermissions(2)) return null;
 			} else if (certificate.draftBudget() != null) {
 				SpellHealthPlan synthetic = SpellHealthPlan.analyze(definition, id -> null);
@@ -183,7 +183,7 @@ public final class CertifiedSpellValidator {
 					int count = SpecialNodeCounter.count(definition);
 					if (count <= 0 || count > certificate.specialNodeQuota()) return null;
 					SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION,
-							projectionLimits, SpecialNodeCounter.EXPERIMENTAL_CAPS);
+									projectionLimits, SpellCapabilityPolicies.experimentalCapabilities());
 				}
 			}
 		} catch (IllegalArgumentException e) {
@@ -199,6 +199,6 @@ public final class CertifiedSpellValidator {
 	private static boolean hasOperatorOnlyCapability(SpellCertificate certificate) {
 		if (certificate.capabilities() == null) return false;
 		return certificate.capabilities().stream()
-				.anyMatch(cap -> SpellCapabilityPolicies.defaultPolicy(cap) == SpellCapabilityPolicy.OP_ONLY);
+				.anyMatch(cap -> SpellCapabilityPolicies.currentPolicy(cap) == SpellCapabilityPolicy.OP_ONLY);
 	}
 }

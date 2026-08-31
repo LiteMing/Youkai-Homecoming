@@ -258,7 +258,9 @@ dependencies {
     implementation fg.deobf("curse.maven:cloth-config-348521:5729105")
     implementation fg.deobf("curse.maven:betterf3-401648:4863626")
     implementation fg.deobf("curse.maven:lightspeedre-launch-optimizations-1388941:7274648")
-    //implementation fg.deobf("curse.maven:forgery-434087:6522707")
+    // Development-only utility mods; kept out of the published jar.
+    runtimeOnly fg.deobf("curse.maven:forgery-434087:${forgery_file}")
+    runtimeOnly fg.deobf("maven.modrinth:justenoughcharacters:${jec_version}")
     compileOnly fg.deobf("curse.maven:thirst-was-taken-679270:5568703")
 
     // Exposure mod - optional compat for danmaku photography

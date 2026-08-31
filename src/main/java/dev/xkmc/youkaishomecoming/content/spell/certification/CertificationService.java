@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisProfile;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzer;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
@@ -115,7 +116,8 @@ public final class CertificationService {
 				nodes.experimentalCount(SpellCapability.TELEPORT),
 				nodes.experimentalCount(SpellCapability.ERASE_ENEMY_DANMAKU),
 				nodes.experimentalCount(SpellCapability.CLEAR_SCREEN),
-				nodes.experimentalCount(SpellCapability.BOSS_ON_DAMAGE), 0);
+				nodes.experimentalCount(SpellCapability.BOSS_ON_DAMAGE),
+				nodes.experimentalCount(SpellCapability.CONFINED_TARGET), 0);
 	}
 
 	public static boolean hasUnfinishedDraft(ServerPlayer player, @Nullable ResourceLocation definitionId) {
@@ -372,7 +374,7 @@ public final class CertificationService {
 			throw new SpellAnalysisException("Certification rejected: experimental capability grants exceeded");
 		}
 		java.util.Set<SpellCapability> granted = nodes.experimentalNodes() > 0
-				? SpecialNodeCounter.EXPERIMENTAL_CAPS : java.util.Set.of();
+				? SpellCapabilityPolicies.experimentalCapabilities() : java.util.Set.of();
 		SpellAnalysis analysis = analyzePlan(plan, false, granted);
 		budget.validatePerformance(analysis, SpellAnalysisLimits.certification());
 		return analysis;

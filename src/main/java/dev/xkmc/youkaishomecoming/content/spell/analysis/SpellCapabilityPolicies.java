@@ -1,7 +1,9 @@
 package dev.xkmc.youkaishomecoming.content.spell.analysis;
 
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Default capability policies (design doc §11 table).
@@ -27,23 +29,20 @@ public final class SpellCapabilityPolicies {
 		put(SpellCapability.HOOK_ON_EXPIRY, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.HOOK_ON_TRAIL, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.HOOK_ON_HIT, SpellCapabilityPolicy.ALLOW);
-		// Player-facing experimental nodes: unlockable within a boss-draft's
-		// special-node quota. on_damage, teleport, and the screen/erase nodes are
-		// legitimate certification tactics (the player attacks the certification
-		// enemy with danmaku and may clear their own mechanics).
+		// Player-facing experimental nodes: unlockable within a draft budget.
 		put(SpellCapability.BOSS_ON_DAMAGE, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.TELEPORT, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.ERASE_ENEMY_DANMAKU, SpellCapabilityPolicy.EXPERIMENTAL);
-		put(SpellCapability.CLEAR_SCREEN, SpellCapabilityPolicy.EXPERIMENTAL);
+		put(SpellCapability.ERASE_ENEMY_DANMAKU, SpellCapabilityPolicy.OP_ONLY);
+		put(SpellCapability.CLEAR_SCREEN, SpellCapabilityPolicy.ALLOW);
 		// TARGET/ABSOLUTE origins are common in built-in spells; certification keeps
 		// them allowed — wrong-place spawning is neutralized by the active-threat
 		// discount (D6) and point-blank spawning is a legitimate danmaku challenge.
 		put(SpellCapability.ORIGIN_TARGET, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.ORIGIN_ABSOLUTE, SpellCapabilityPolicy.ALLOW);
-		// Boss-authoring freedom nodes: confine, entity flags and force/fire
-		// spell are OP_ONLY — players must not bypass limits with them, they exist
-		// for boss spell creators only.
-		put(SpellCapability.CONFINED_TARGET, SpellCapabilityPolicy.OP_ONLY);
+		// Confined target selection is symmetric in certification combat and may be
+		// granted by a draft budget. Entity flags and force/fire spell remain
+		// operator-only boss-authoring capabilities.
+		put(SpellCapability.CONFINED_TARGET, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.SET_ENTITY_FLAG, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.FORCE_PHASE, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.FORCE_SPELL, SpellCapabilityPolicy.OP_ONLY);
@@ -75,6 +74,33 @@ public final class SpellCapabilityPolicies {
 	public static SpellCapabilityPolicy currentPolicy(SpellCapability cap) {
 		if (cap == null) return SpellCapabilityPolicy.DENY;
 		return OVERRIDES.getOrDefault(cap, defaultPolicy(cap));
+	}
+
+	/** Returns the capabilities currently classified as draft-unlockable. */
+	public static Set<SpellCapability> experimentalCapabilities() {
+		EnumSet<SpellCapability> result = EnumSet.noneOf(SpellCapability.class);
+		for (SpellCapability capability : SpellCapability.values()) {
+			if (currentPolicy(capability) == SpellCapabilityPolicy.EXPERIMENTAL) {
+				result.add(capability);
+			}
+		}
+		return Set.copyOf(result);
+	}
+
+	/** Parses the stable script/command policy id. */
+	public static SpellCapabilityPolicy parsePolicy(String policyName) {
+		if (policyName == null) throw new IllegalArgumentException("policy is missing");
+		return switch (policyName.toLowerCase(java.util.Locale.ROOT)) {
+			case "allow" -> SpellCapabilityPolicy.ALLOW;
+			case "experimental", "exp" -> SpellCapabilityPolicy.EXPERIMENTAL;
+			case "deny" -> SpellCapabilityPolicy.DENY;
+			case "op_only", "op-only", "op" -> SpellCapabilityPolicy.OP_ONLY;
+			default -> throw new IllegalArgumentException("unknown policy: " + policyName);
+		};
+	}
+
+	public static void setPolicy(String capabilityId, String policyName) {
+		setPolicy(SpellCapability.byId(SpellCapability.normalize(capabilityId)), parsePolicy(policyName));
 	}
 
 	public static void setPolicy(SpellCapability cap, SpellCapabilityPolicy policy) {

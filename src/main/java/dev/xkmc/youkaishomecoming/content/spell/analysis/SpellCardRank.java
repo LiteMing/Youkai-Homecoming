@@ -119,10 +119,15 @@ public enum SpellCardRank implements StringRepresentable {
 	}
 
 	public SpellDraftBudget createBudget() {
+		SpellRankConfig.Settings settings = SpellRankConfig.current(this);
 		return new SpellDraftBudget(
-				freeNodeCount, maxSpawnPerTick, maxPeakAlive,
-				maxProjectileTicks, maxHookExecutions,
-				experimentalGrants, experimentalGrants, experimentalGrants, experimentalGrants, 0
+				settings.freeNodeCount(), settings.maxSpawnPerTick(), settings.maxPeakAlive(),
+				settings.maxProjectileTicks(), settings.maxHookExecutions(),
+				settings.experimentalGrant(SpellCapability.TELEPORT),
+				settings.experimentalGrant(SpellCapability.ERASE_ENEMY_DANMAKU),
+				settings.experimentalGrant(SpellCapability.CLEAR_SCREEN),
+				settings.experimentalGrant(SpellCapability.BOSS_ON_DAMAGE),
+				settings.experimentalGrant(SpellCapability.CONFINED_TARGET), 0
 		);
 	}
 
@@ -132,11 +137,12 @@ public enum SpellCardRank implements StringRepresentable {
 		var vals = values();
 		for (int i = vals.length - 1; i >= 0; i--) {
 			var r = vals[i];
-			if (budget.freeNodeCount() >= r.freeNodeCount
-					&& budget.maxSpawnPerTick() >= r.maxSpawnPerTick
-					&& budget.maxPeakAlive() >= r.maxPeakAlive
-					&& budget.maxProjectileTicks() >= r.maxProjectileTicks
-					&& budget.maxHookExecutions() >= r.maxHookExecutions) {
+			var settings = SpellRankConfig.current(r);
+			if (budget.freeNodeCount() >= settings.freeNodeCount()
+					&& budget.maxSpawnPerTick() >= settings.maxSpawnPerTick()
+					&& budget.maxPeakAlive() >= settings.maxPeakAlive()
+					&& budget.maxProjectileTicks() >= settings.maxProjectileTicks()
+					&& budget.maxHookExecutions() >= settings.maxHookExecutions()) {
 				return r;
 			}
 		}
@@ -156,4 +162,13 @@ public enum SpellCardRank implements StringRepresentable {
 		}
 		return LESSER_WISDOM;
 	}
+
+	// Defaults remain embedded for frame colors and backwards-compatible fallback;
+	// numeric draft permissions are resolved through SpellRankConfig at runtime.
+	int defaultFreeNodeCount() { return freeNodeCount; }
+	int defaultMaxSpawnPerTick() { return maxSpawnPerTick; }
+	int defaultMaxPeakAlive() { return maxPeakAlive; }
+	long defaultMaxProjectileTicks() { return maxProjectileTicks; }
+	long defaultMaxHookExecutions() { return maxHookExecutions; }
+	int defaultExperimentalGrants() { return experimentalGrants; }
 }

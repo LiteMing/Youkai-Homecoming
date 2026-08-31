@@ -533,10 +533,14 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			case HOLD -> {
 				if (projectile instanceof ItemDanmakuEntity ide && hitCtx.deferredBody() != null) {
 					Vec3 holdPos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
+					ide.extendLifetimeForHold(hitCtx.holdTicks());
 					ide.enterHoldState(holdPos, hitCtx.incomingVelocity());
-					if (runtimeSupplier != null && runtimeSupplier.get() != null) {
-						var runtime = runtimeSupplier.get();
-						runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), List.of(
+					var resume = hitCtx.holdResumeContext();
+					var runtime = resume != null && resume.isUsable()
+							? resume.runtime()
+							: runtimeSupplier == null ? null : runtimeSupplier.get();
+					if (runtime != null) {
+						runtime.schedulePersistentDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), List.of(
 								new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
 									@Override
 									public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
@@ -544,7 +548,10 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 											var releaseBody = hitCtx.beginResumeAndTakeBody();
 											if (releaseBody != null) {
 												var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
-														ctx.holder(), ctx.definition(), ctx.runtime(), ctx.difficulty(), hitCtx);
+														resume != null && resume.isUsable() ? resume.holder() : ctx.holder(),
+														resume != null && resume.isUsable() ? resume.definition() : ctx.definition(),
+														resume != null && resume.isUsable() ? resume.runtime() : ctx.runtime(),
+														ctx.difficulty(), hitCtx);
 												resumedCtx.executeList(releaseBody);
 											}
 											if (hitCtx.isTerminal()) {
@@ -561,15 +568,18 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 														if (afterExpiry != null) afterExpiry.execute(PreviewCardHolder.this, hitCtx.hitPosition(), hitCtx.incomingVelocity());
 														projectile.markErased(false);
 													}
-													case DISCARD -> {
-														ide.clearHoldState();
-														projectile.markErased(false);
+														case DISCARD -> {
+															ide.clearHoldState();
+															projectile.markErased(false);
+														}
 													}
-												}
+										if (hitCtx.disposition() != dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.HOLD) {
+											hitCtx.clearHoldResumeContext();
+										}
+											}
 											}
 										}
 									}
-								}
 						));
 					} else {
 						ide.clearHoldState();

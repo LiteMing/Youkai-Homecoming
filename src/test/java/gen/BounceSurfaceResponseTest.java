@@ -5,12 +5,19 @@ import dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.BounceAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.DataDrivenTrailAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.DiscardSourceAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
+import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfigs;
+import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm;
+import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile;
 import dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
@@ -23,6 +30,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 
 /**
  * Integrated lifecycle and contract tests for:
@@ -68,7 +76,75 @@ public class BounceSurfaceResponseTest {
 		testHoldContinueCleanup();
 		testHitDispositionOverrideAuthorityViaExecuteList();
 		testBlockHitContinueChain();
+		testHoldCallbackContextContracts();
+		testDataDrivenCallbackContract();
+		testAccelerationConfigNormalization();
 		testLegacyCleanupContract();
+	}
+
+	private static SpellDefinition minimalDefinition() {
+		var phase = new net.minecraft.resources.ResourceLocation("youkaishomecoming", "test");
+		return new SpellDefinition(
+				new net.minecraft.resources.ResourceLocation("youkaishomecoming", "test_spell"),
+				new SpellDisplay("test", "", Optional.empty(), Optional.empty()), SpellItemForm.NONE,
+				phase, Map.of(phase, new PhaseDefinition(phase, List.of(), List.of(), List.of(), List.of(), List.of())),
+				DifficultyProfile.DEFAULT);
+	}
+
+	private static void testHoldCallbackContextContracts() {
+		SpellDefinition definition = minimalDefinition();
+		SpellRuntime runtime = new SpellRuntime(definition);
+		SpellHitContext hit = new SpellHitContext(null, SpellHitContext.HitType.BLOCK,
+				Vec3.ZERO, new Vec3(0, 1, 0), new Vec3(1, 0, 0), null);
+		// A plain Player owner is intentionally not represented here: the callback
+		// context, rather than owner type, supplies the runtime used for release.
+		hit.resolveHold(2, List.of(new ContinueSourceAction()), null, runtime, definition);
+		check("PLAYER_OWNED_HOLD_DOES_NOT_REQUIRE_OWNER_TO_BE_SPELL_RUNTIME_HOST",
+				hit.holdResumeContext() != null && hit.holdResumeContext().runtime() == runtime);
+		check("HOLD_USES_CALLBACK_SPELL_CONTEXT_RUNTIME",
+			hit.holdResumeContext() != null && hit.holdResumeContext().definition() == definition);
+		var body = hit.beginResumeAndTakeBody();
+		new SpellContext(null, definition, runtime, null, hit).executeList(body);
+		check("PLAYER_OWNED_HOLD_RELEASES",
+			hit.disposition() == SpellHitContext.HitDisposition.CONTINUE && hit.deferredBody() == null);
+		runtime.schedulePersistentDelayed(runtime.getTotalTick() + 2,
+				List.of(new SpellActions.SetVariable("released", new NumberProviders.Constant(1.0))));
+		runtime.tickDelayed(null);
+		runtime.tickDelayed(null);
+		runtime.tickDelayed(null);
+		check("HOLD_RELEASES_AFTER_SOURCE_CAST_LOOP_ENDS",
+				!runtime.hasPendingHoldActions() && runtime.getVariable("released") == 1.0);
+	}
+
+	private static void testDataDrivenCallbackContract() {
+		SpellDefinition definition = minimalDefinition();
+		SpellRuntime runtime = new SpellRuntime(definition);
+		SpellHitContext hit = new SpellHitContext(null, SpellHitContext.HitType.BLOCK,
+				Vec3.ZERO, new Vec3(0, 1, 0), new Vec3(1, -1, 0), null);
+		var callback = new DataDrivenTrailAction(List.of(
+				new BounceAction(3, -1, 1, 0, 0, 0, Optional.empty(), false),
+				new ContinueSourceAction()), runtime, definition);
+		// Ordinary Player owners take the no-holder overload; this callback remains
+		// functional because hit context carries the authoritative runtime.
+		callback.executeBlockHit(hit);
+		check("DATA_DRIVEN_HIT_ACTION_USES_EXECUTE_LIST_LAST_WRITER_WINS",
+				hit.disposition() == SpellHitContext.HitDisposition.CONTINUE);
+		check("DESERIALIZED_CALLBACK_BEHAVIOR_IS_EXPLICIT",
+				new DataDrivenTrailAction().isDeserializedStub()
+						&& !new DataDrivenTrailAction(List.of(), runtime, definition).isDeserializedStub());
+		check("LIVE_BOUNCE_DOES_NOT_ENTER_ERASE_PATH_ON_FIRST_VALID_HIT",
+				DanmakuBounceResolver.resolve(Vec3.ZERO, new Vec3(1, -1, 0), new Vec3(0, 1, 0),
+						new DanmakuBounceConfig(3, -1, 1, 0, 0, 0, Optional.empty(), false), 0, null).erased() == false);
+	}
+
+	private static void testAccelerationConfigNormalization() {
+		var config = new MoverConfigs.AccelerationConfig(null, null, null, null, null, null, null);
+		check("ACCELERATION_CONFIG_ABNORMAL_REBUILD_USES_STABLE_DEFAULTS",
+				config.x() instanceof NumberProviders.Constant x && x.value() == 0
+						&& config.y() instanceof NumberProviders.Constant y && y.value() == 0
+						&& config.z() instanceof NumberProviders.Constant z && z.value() == 0
+						&& config.terminalVx().isEmpty() && config.terminalVy().isEmpty()
+						&& config.terminalVz().isEmpty() && config.space().isEmpty());
 	}
 
 	private static void testSurfaceResponse() {

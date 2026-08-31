@@ -136,6 +136,17 @@ public final class BoundedAccelerationMover extends TargetPosMover implements Co
 		return new Vec3(x, y, z);
 	}
 
+	private boolean hasValidLocalBasis() {
+		if (!isLocalSpace) return false;
+		if (forward.lengthSqr() < 1e-8 || right.lengthSqr() < 1e-8 || up.lengthSqr() < 1e-8) return false;
+		if (Math.abs(forward.lengthSqr() - 1) > 1e-3
+				|| Math.abs(right.lengthSqr() - 1) > 1e-3
+				|| Math.abs(up.lengthSqr() - 1) > 1e-3) return false;
+		return Math.abs(forward.dot(right)) < 1e-3
+				&& Math.abs(forward.dot(up)) < 1e-3
+				&& Math.abs(right.dot(up)) < 1e-3;
+	}
+
 	@Override
 	public DanmakuMover rebaseAfterCollision(Vec3 newPosition, Vec3 newVelocity, int collisionTick) {
 		Double tvx = hasTermX ? termVx : null;
@@ -143,11 +154,12 @@ public final class BoundedAccelerationMover extends TargetPosMover implements Co
 		Double tvz = hasTermZ ? termVz : null;
 
 		BoundedAccelerationMover rebased;
-		if (isLocalSpace) {
+		if (hasValidLocalBasis()) {
 			// Local space rebase: keeps original basis, projects newVelocity onto existing basis
 			rebased = local(newPosition, newVelocity, forward, right, up, localAcc, tvx, tvy, tvz);
 		} else {
-			// World space rebase: new origin and velocity, keeping world acceleration and terminals
+			// Malformed/legacy local state has no usable basis. Treat the stored
+			// acceleration as world-space rather than rebuilding a zero-velocity mover.
 			rebased = world(newPosition, newVelocity, localAcc, tvx, tvy, tvz);
 		}
 		rebased.startTick = Math.max(0, collisionTick);
@@ -166,7 +178,7 @@ public final class BoundedAccelerationMover extends TargetPosMover implements Co
 		double dy = calcAxisDisplacement(localVel0.y, localAcc.y, hasTermY, termVy, tick);
 		double dz = calcAxisDisplacement(localVel0.z, localAcc.z, hasTermZ, termVz, tick);
 
-		if (isLocalSpace) {
+		if (hasValidLocalBasis()) {
 			// X = forward, Y = right, Z = up
 			return origin.add(forward.scale(dx)).add(right.scale(dy)).add(up.scale(dz));
 		} else {
@@ -176,7 +188,7 @@ public final class BoundedAccelerationMover extends TargetPosMover implements Co
 
 	public Vec3 vel(double tick) {
 		if (tick <= 0) {
-			if (isLocalSpace) {
+			if (hasValidLocalBasis()) {
 				return forward.scale(localVel0.x).add(right.scale(localVel0.y)).add(up.scale(localVel0.z));
 			}
 			return localVel0;
@@ -186,7 +198,7 @@ public final class BoundedAccelerationMover extends TargetPosMover implements Co
 		double vy = calcAxisVel(localVel0.y, localAcc.y, hasTermY, termVy, tick);
 		double vz = calcAxisVel(localVel0.z, localAcc.z, hasTermZ, termVz, tick);
 
-		if (isLocalSpace) {
+		if (hasValidLocalBasis()) {
 			return forward.scale(vx).add(right.scale(vy)).add(up.scale(vz));
 		} else {
 			return new Vec3(vx, vy, vz);

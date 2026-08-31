@@ -38,7 +38,13 @@ public record HoldSourceAction(NumberProvider duration, List<SpellAction> onRele
 		}
 
 		if (ctx.hitContext().isPresent()) {
-			ctx.hitContext().get().resolveHold(ticks, onRelease);
+			ctx.hitContext().get().resolveHold(
+					ticks,
+					onRelease,
+					ctx.holder(),
+					ctx.runtime(),
+					ctx.definition()
+			);
 		} else {
 			// Diagnostic warning when placed outside hit callbacks
 			org.slf4j.LoggerFactory.getLogger(HoldSourceAction.class).warn(

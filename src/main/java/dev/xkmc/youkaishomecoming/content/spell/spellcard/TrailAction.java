@@ -67,4 +67,8 @@ public class TrailAction {
 		cached = holder;
 	}
 
+	protected CardHolder cachedHolder() {
+		return cached;
+	}
+
 }

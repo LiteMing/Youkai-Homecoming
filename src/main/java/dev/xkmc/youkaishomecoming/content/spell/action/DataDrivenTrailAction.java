@@ -13,6 +13,8 @@ import net.minecraft.world.phys.Vec3;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A TrailAction that executes data-driven SpellActions when a danmaku expires.
@@ -25,12 +27,14 @@ import java.util.Set;
  */
 @SerialClass
 public class DataDrivenTrailAction extends TrailAction {
+	private static final Logger LOGGER = LoggerFactory.getLogger(DataDrivenTrailAction.class);
 
 	private List<SpellAction> actions;
 	private SpellRuntime runtime;
 	private SpellDefinition definition;
 	/** Snapshot of runtime variables at the time the parent danmaku was created. */
 	private Map<String, Double> variableSnapshot;
+	private transient boolean stubDiagnosticLogged;
 
 	/** No-arg constructor for L2Serial deserialization. Deserialized instances are non-functional (server-only logic). */
 	public DataDrivenTrailAction() {
@@ -38,6 +42,7 @@ public class DataDrivenTrailAction extends TrailAction {
 		this.runtime = null;
 		this.definition = null;
 		this.variableSnapshot = null;
+		this.stubDiagnosticLogged = false;
 	}
 
 	public DataDrivenTrailAction(List<SpellAction> actions, SpellRuntime runtime, SpellDefinition definition) {
@@ -48,6 +53,16 @@ public class DataDrivenTrailAction extends TrailAction {
 		// Use Map.copyOf for compact immutable storage — avoids HashMap bucket allocation.
 		// Typical variable count is 1-5, where copyOf uses optimized small-map implementations.
 		this.variableSnapshot = Map.copyOf(runtime.getVariables());
+		this.stubDiagnosticLogged = false;
+	}
+
+	/** False for a no-arg deserialized stub, which cannot execute server callbacks. */
+	public boolean hasRuntimeContext() {
+		return runtime != null && definition != null;
+	}
+
+	public boolean isDeserializedStub() {
+		return !hasRuntimeContext();
 	}
 
 	@Override
@@ -66,6 +81,11 @@ public class DataDrivenTrailAction extends TrailAction {
 	}
 
 	@Override
+	public void executeEntityHit(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		executeEntityHit(cachedHolder(), hitContext);
+	}
+
+	@Override
 	public void executeBlockHit(CardHolder holder, Vec3 pos, Vec3 dir) {
 		execute(holder, pos, dir, TrailCardHolder.HitType.BLOCK, null, null);
 	}
@@ -75,10 +95,22 @@ public class DataDrivenTrailAction extends TrailAction {
 		execute(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), TrailCardHolder.HitType.BLOCK, null, hitContext);
 	}
 
+	@Override
+	public void executeBlockHit(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		executeBlockHit(cachedHolder(), hitContext);
+	}
+
 	private void execute(CardHolder holder, Vec3 pos, Vec3 dir,
 			TrailCardHolder.HitType hitType, Entity hitEntity,
 			@org.jetbrains.annotations.Nullable dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
-		if (runtime == null || definition == null) return; // Deserialized stub — no-op
+		if (!hasRuntimeContext()) {
+			if (!stubDiagnosticLogged) {
+				stubDiagnosticLogged = true;
+				LOGGER.warn("[DanmakuHit] deserialized callback is non-functional; actions={} runtimePresent={} definitionPresent={}",
+						actions == null ? -1 : actions.size(), runtime != null, definition != null);
+			}
+			return;
+		}
 
 		// Temporarily restore snapshotted variables so child actions see creation-time values
 		Map<String, Double> savedVars = null;
@@ -96,13 +128,7 @@ public class DataDrivenTrailAction extends TrailAction {
 		// Capture which variables the callback actually writes (setVariable calls).
 		Set<String> written = variableSnapshot != null ? runtime.beginTrackWrites() : null;
 		try {
-			for (var action : actions) {
-				action.execute(ctx);
-				// Stop subsequent actions if a terminal disposition (bounce/discard/expire/continue) was selected
-				if (hitContext != null && hitContext.isTerminal()) {
-					break;
-				}
-			}
+			ctx.executeList(actions);
 		} finally {
 			runtime.endTrackWrites();
 			// Restore original variables

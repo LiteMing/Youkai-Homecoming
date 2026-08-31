@@ -50,6 +50,8 @@ public class SpellRuntime {
 	@Nullable
 	private Set<String> trackWritesTo = null;
 	private final List<ScheduledAction> scheduledActions = new ArrayList<>();
+	/** Hold releases survive phase transitions and the end of the cast loop. */
+	private final List<ScheduledAction> persistentScheduledActions = new ArrayList<>();
 	private final List<ChildRuntime> childRuntimes = new ArrayList<>();
 	private SpellMovementDirective movementDirective = SpellMovementDirective.random();
 	private int spellMaxHealth;
@@ -591,6 +593,7 @@ public class SpellRuntime {
 		hurtCooldownRemaining = 0;
 		variables.clear();
 		scheduledActions.clear();
+		persistentScheduledActions.clear();
 		childRuntimes.clear();
 		movementDirective = SpellMovementDirective.random();
 		clearSpellHealth();
@@ -683,6 +686,7 @@ public class SpellRuntime {
 		hurtCooldownRemaining = 0;
 		variables.clear();
 		scheduledActions.clear();
+		persistentScheduledActions.clear();
 		childRuntimes.clear();
 		clearSpellHealth();
 		initializeStaticSpellHealthPlan(targetPhase);
@@ -701,6 +705,11 @@ public class SpellRuntime {
 	 */
 	public void scheduleDelayed(int executeAtTick, List<SpellAction> actions) {
 		scheduledActions.add(new ScheduledAction(executeAtTick, actions));
+	}
+
+	/** Schedule a hold release that must survive phase transitions and cast-loop end. */
+	public void schedulePersistentDelayed(int executeAtTick, List<SpellAction> actions) {
+		persistentScheduledActions.add(new ScheduledAction(executeAtTick, actions));
 	}
 
 	public void startChildRuntime(CardHolder holder, SpellDefinition definition, @Nullable ResourceLocation phaseId, int duration) {
@@ -774,9 +783,14 @@ public class SpellRuntime {
 	 * since executed actions may schedule new delayed actions.
 	 */
 	private void executeScheduledActions(SpellContext ctx) {
+		executeScheduledActions(scheduledActions, ctx);
+		executeScheduledActions(persistentScheduledActions, ctx);
+	}
+
+	private void executeScheduledActions(List<ScheduledAction> queue, SpellContext ctx) {
 		// Snapshot: collect ready actions and remove them before executing
 		var ready = new java.util.ArrayList<ScheduledAction>();
-		var iter = scheduledActions.iterator();
+		var iter = queue.iterator();
 		while (iter.hasNext()) {
 			var scheduled = iter.next();
 			if (totalTick >= scheduled.executeAtTick()) {
@@ -944,6 +958,32 @@ public class SpellRuntime {
 		if (onPhaseChange != null) {
 			onPhaseChange.accept(this);
 		}
+	}
+
+	/**
+	 * Drives only delayed callbacks after the source spell's normal cast loop has
+	 * ended.  Hold callbacks must remain live without spawning another wave or
+	 * advancing phase transitions.
+	 */
+	public void tickDelayed(@Nullable CardHolder holder) {
+		if (persistentScheduledActions.isEmpty()) return;
+		float healthRatio = holder == null || holder.self() == null
+				? 1.0f : holder.self().getHealth() / holder.self().getMaxHealth();
+		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
+		SpellContext ctx = new SpellContext(holder, definition, this, diff);
+		executeScheduledActions(persistentScheduledActions, ctx);
+		// Delayed execution uses the runtime clock for schedule comparisons, but
+		// does not advance phaseTick or execute the phase's regular actions.
+		totalTick++;
+		if (hurtCooldownRemaining > 0) hurtCooldownRemaining--;
+	}
+
+	public boolean hasPendingDelayedActions() {
+		return !scheduledActions.isEmpty() || !persistentScheduledActions.isEmpty();
+	}
+
+	public boolean hasPendingHoldActions() {
+		return !persistentScheduledActions.isEmpty();
 	}
 
 	private static void writeAction(net.minecraft.nbt.CompoundTag tag, String key, @Nullable SpellAction action) {

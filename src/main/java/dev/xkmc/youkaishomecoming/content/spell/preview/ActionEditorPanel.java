@@ -35,6 +35,7 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Editor panel for editing SpellAction properties within the preview screen.
@@ -2141,12 +2142,26 @@ public class ActionEditorPanel {
 			Consumer<Optional<MoverConfigs.AccelerationConfig>> updater,
 			Runnable onStructureChanged
 	) {
+		buildAccelerationRows(prefix, acc, () -> {
+			MoverConfig current = getCurrentMover().orElse(null);
+			return current instanceof MoverConfigs.AccelerationConfig live ? live : acc;
+		}, updater, onStructureChanged);
+	}
+
+	private void buildAccelerationRows(
+			String prefix,
+			MoverConfigs.AccelerationConfig acc,
+			Supplier<MoverConfigs.AccelerationConfig> currentSupplier,
+			Consumer<Optional<MoverConfigs.AccelerationConfig>> updater,
+			Runnable onStructureChanged
+	) {
 		String space = acc.space().orElse("world");
 		boolean isLocal = "local".equalsIgnoreCase(space);
 
 		addStringOptionRow(prefix + "Space", new String[]{"world", "local"}, new String[]{"World", "Local"}, space, s -> {
+			var current = currentSupplier.get();
 			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-					acc.x(), acc.y(), acc.z(), acc.terminalVx(), acc.terminalVy(), acc.terminalVz(), Optional.of(s))));
+					current.x(), current.y(), current.z(), current.terminalVx(), current.terminalVy(), current.terminalVz(), Optional.of(s))));
 			if (onStructureChanged != null) onStructureChanged.run();
 		});
 
@@ -2156,60 +2171,69 @@ public class ActionEditorPanel {
 
 		// Axis X
 		addNumberRow(prefix + "Acc " + xLabel, acc.x(), v -> {
+			var current = currentSupplier.get();
 			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-					v, acc.y(), acc.z(), acc.terminalVx(), acc.terminalVy(), acc.terminalVz(), acc.space())));
+					v, current.y(), current.z(), current.terminalVx(), current.terminalVy(), current.terminalVz(), current.space())));
 		}, EvaluationTiming.SNAPSHOT);
 		addBooleanRow(prefix + "Limit " + xLabel, acc.terminalVx().isPresent(), enable -> {
-			double defaultVal = acc.x() instanceof NumberProviders.Constant c && c.value() < 0 ? -0.8 : 0.8;
+			var current = currentSupplier.get();
+			double defaultVal = current.x() instanceof NumberProviders.Constant c && c.value() < 0 ? -0.8 : 0.8;
 			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-					acc.x(), acc.y(), acc.z(), enable ? Optional.of(NumberProvider.constant(defaultVal)) : Optional.empty(),
-					acc.terminalVy(), acc.terminalVz(), acc.space())));
+					current.x(), current.y(), current.z(), enable ? Optional.of(NumberProvider.constant(defaultVal)) : Optional.empty(),
+					current.terminalVy(), current.terminalVz(), current.space())));
 			if (onStructureChanged != null) onStructureChanged.run();
 		});
 		if (acc.terminalVx().isPresent()) {
 			addNumberRow(prefix + "  Term " + xLabel, acc.terminalVx().get(), v -> {
+				var current = currentSupplier.get();
 				updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-						acc.x(), acc.y(), acc.z(), Optional.of(v), acc.terminalVy(), acc.terminalVz(), acc.space())));
+						current.x(), current.y(), current.z(), Optional.of(v), current.terminalVy(), current.terminalVz(), current.space())));
 			}, EvaluationTiming.SNAPSHOT);
 		}
 
 		// Axis Y
 		addNumberRow(prefix + "Acc " + yLabel, acc.y(), v -> {
+			var current = currentSupplier.get();
 			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-					acc.x(), v, acc.z(), acc.terminalVx(), acc.terminalVy(), acc.terminalVz(), acc.space())));
+					current.x(), v, current.z(), current.terminalVx(), current.terminalVy(), current.terminalVz(), current.space())));
 		}, EvaluationTiming.SNAPSHOT);
 		addBooleanRow(prefix + "Limit " + yLabel, acc.terminalVy().isPresent(), enable -> {
-			double defaultVal = acc.y() instanceof NumberProviders.Constant c && c.value() < 0 ? -0.8 : 0.8;
+			var current = currentSupplier.get();
+			double defaultVal = current.y() instanceof NumberProviders.Constant c && c.value() < 0 ? -0.8 : 0.8;
 			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-					acc.x(), acc.y(), acc.z(), acc.terminalVx(),
+					current.x(), current.y(), current.z(), current.terminalVx(),
 					enable ? Optional.of(NumberProvider.constant(defaultVal)) : Optional.empty(),
-					acc.terminalVz(), acc.space())));
+					current.terminalVz(), current.space())));
 			if (onStructureChanged != null) onStructureChanged.run();
 		});
 		if (acc.terminalVy().isPresent()) {
 			addNumberRow(prefix + "  Term " + yLabel, acc.terminalVy().get(), v -> {
+				var current = currentSupplier.get();
 				updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-						acc.x(), acc.y(), acc.z(), acc.terminalVx(), Optional.of(v), acc.terminalVz(), acc.space())));
+						current.x(), current.y(), current.z(), current.terminalVx(), Optional.of(v), current.terminalVz(), current.space())));
 			}, EvaluationTiming.SNAPSHOT);
 		}
 
 		// Axis Z
 		addNumberRow(prefix + "Acc " + zLabel, acc.z(), v -> {
+			var current = currentSupplier.get();
 			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-					acc.x(), acc.y(), v, acc.terminalVx(), acc.terminalVy(), acc.terminalVz(), acc.space())));
+					current.x(), current.y(), v, current.terminalVx(), current.terminalVy(), current.terminalVz(), current.space())));
 		}, EvaluationTiming.SNAPSHOT);
 		addBooleanRow(prefix + "Limit " + zLabel, acc.terminalVz().isPresent(), enable -> {
-			double defaultVal = acc.z() instanceof NumberProviders.Constant c && c.value() < 0 ? -0.8 : 0.8;
+			var current = currentSupplier.get();
+			double defaultVal = current.z() instanceof NumberProviders.Constant c && c.value() < 0 ? -0.8 : 0.8;
 			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-					acc.x(), acc.y(), acc.z(), acc.terminalVx(), acc.terminalVy(),
+					current.x(), current.y(), current.z(), current.terminalVx(), current.terminalVy(),
 					enable ? Optional.of(NumberProvider.constant(defaultVal)) : Optional.empty(),
-					acc.space())));
+					current.space())));
 			if (onStructureChanged != null) onStructureChanged.run();
 		});
 		if (acc.terminalVz().isPresent()) {
 			addNumberRow(prefix + "  Term " + zLabel, acc.terminalVz().get(), v -> {
+				var current = currentSupplier.get();
 				updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
-						acc.x(), acc.y(), acc.z(), acc.terminalVx(), acc.terminalVy(), Optional.of(v), acc.space())));
+						current.x(), current.y(), current.z(), current.terminalVx(), current.terminalVy(), Optional.of(v), current.space())));
 			}, EvaluationTiming.SNAPSHOT);
 		}
 	}
@@ -2770,6 +2794,10 @@ public class ActionEditorPanel {
 											Consumer<Optional<MoverConfig>> onParamChanged) {
 		if (subCfg instanceof MoverConfigs.AccelerationConfig acc) {
 			buildAccelerationRows("  ", acc,
+					() -> {
+						MoverConfig current = getCompositeSegmentMover(segIdx);
+						return current instanceof MoverConfigs.AccelerationConfig live ? live : acc;
+					},
 					updated -> updateCompositeSegment(segIdx, updated.get(), onParamChanged),
 					() -> onTypeChanged.accept(getCurrentMover()));
 		} else if (subCfg instanceof MoverConfigs.DecelerationConfig dc) {
@@ -2921,6 +2949,10 @@ public class ActionEditorPanel {
 										 Consumer<Optional<MoverConfig>> onParamChanged) {
 		if (layerCfg instanceof MoverConfigs.AccelerationConfig acc) {
 			buildAccelerationRows("  ", acc,
+					() -> {
+						MoverConfig current = getLayeredLayerMover(layerIdx);
+						return current instanceof MoverConfigs.AccelerationConfig live ? live : acc;
+					},
 					updated -> updateLayeredLayer(layerIdx, updated.get(), onParamChanged),
 					() -> onTypeChanged.accept(getCurrentMover()));
 		} else if (layerCfg instanceof MoverConfigs.DecelerationConfig dc) {

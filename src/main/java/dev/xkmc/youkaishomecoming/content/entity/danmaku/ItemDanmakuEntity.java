@@ -201,6 +201,10 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		return this;
 	}
 
+	public boolean isHolding() {
+		return mover instanceof dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover;
+	}
+
 	@Override
 	protected void prepareMoveState() {
 		if (mover != null) mover.prepare(this);

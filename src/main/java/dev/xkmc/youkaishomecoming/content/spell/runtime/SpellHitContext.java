@@ -2,6 +2,8 @@ package dev.xkmc.youkaishomecoming.content.spell.runtime;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -39,6 +41,19 @@ public class SpellHitContext {
 	private int holdTicks = 0;
 	@Nullable
 	private java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> deferredBody = null;
+	@Nullable
+	private HoldResumeContext holdResumeContext = null;
+
+	/** Transient server-side references required to resume a held projectile. */
+	public record HoldResumeContext(
+			@Nullable CardHolder holder,
+			@Nullable SpellRuntime runtime,
+			@Nullable SpellDefinition definition
+	) {
+		public boolean isUsable() {
+			return holder != null && runtime != null && definition != null;
+		}
+	}
 
 	public SpellHitContext(
 			SimplifiedProjectile source,
@@ -87,6 +102,8 @@ public class SpellHitContext {
 	public int holdTicks() { return holdTicks; }
 	@Nullable
 	public java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> deferredBody() { return deferredBody; }
+	@Nullable
+	public HoldResumeContext holdResumeContext() { return holdResumeContext; }
 
 	public boolean isTerminal() {
 		return disposition != HitDisposition.UNRESOLVED;
@@ -100,6 +117,7 @@ public class SpellHitContext {
 		if (disposition != HitDisposition.HOLD) {
 			this.holdTicks = 0;
 			this.deferredBody = null;
+			this.holdResumeContext = null;
 		}
 	}
 
@@ -108,13 +126,30 @@ public class SpellHitContext {
 		this.bounceConfig = config.sanitize();
 		this.holdTicks = 0;
 		this.deferredBody = null;
+		this.holdResumeContext = null;
 	}
 
 	public void resolveHold(int holdTicks, java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> body) {
+		resolveHold(holdTicks, body, null, null, null);
+	}
+
+	public void resolveHold(
+			int holdTicks,
+			java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> body,
+			@Nullable CardHolder holder,
+			@Nullable SpellRuntime runtime,
+			@Nullable SpellDefinition definition
+	) {
 		this.disposition = HitDisposition.HOLD;
 		this.holdTicks = Math.max(1, holdTicks);
 		this.deferredBody = body;
 		this.bounceConfig = null;
+		this.holdResumeContext = new HoldResumeContext(holder, runtime, definition);
+	}
+
+	/** Clears the transient callback references after a hold has been resumed. */
+	public void clearHoldResumeContext() {
+		this.holdResumeContext = null;
 	}
 
 	/**

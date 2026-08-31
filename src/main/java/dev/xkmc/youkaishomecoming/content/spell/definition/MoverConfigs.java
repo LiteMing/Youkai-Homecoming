@@ -116,6 +116,17 @@ public class MoverConfigs {
 			Optional<NumberProvider> terminalVz,
 			Optional<String> space
 	) implements MoverConfig {
+		/** Normalize malformed/legacy editor payloads before they reach a mover. */
+		public AccelerationConfig {
+			x = x == null ? NumberProvider.constant(0) : x;
+			y = y == null ? NumberProvider.constant(0) : y;
+			z = z == null ? NumberProvider.constant(0) : z;
+			terminalVx = terminalVx == null ? Optional.empty() : terminalVx;
+			terminalVy = terminalVy == null ? Optional.empty() : terminalVy;
+			terminalVz = terminalVz == null ? Optional.empty() : terminalVz;
+			space = space == null ? Optional.empty() : space.filter(s -> !s.isBlank());
+		}
+
 		public static final Codec<AccelerationConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				NumberProvider.CODEC.optionalFieldOf("x", NumberProvider.constant(0)).forGetter(AccelerationConfig::x),
 				NumberProvider.CODEC.optionalFieldOf("y", NumberProvider.constant(0)).forGetter(AccelerationConfig::y),

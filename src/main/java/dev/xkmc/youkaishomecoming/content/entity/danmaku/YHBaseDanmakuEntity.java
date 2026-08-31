@@ -17,6 +17,8 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.DataDrivenTrailAction;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -25,9 +27,12 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.LinkedHashSet;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @SerialClass
 public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
+	private static final Logger LOGGER = LoggerFactory.getLogger(YHBaseDanmakuEntity.class);
 
 	@SerialClass.SerialField
 	private int life = 0;
@@ -42,6 +47,12 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	private boolean harmfulPlayerSnapshotPresent = false;
 	@SerialClass.SerialField
 	private final LinkedHashSet<UUID> harmfulPlayerIds = new LinkedHashSet<>();
+	private transient String nextEraseReason;
+	private transient boolean eraseDiagnosticLogged;
+	@Nullable
+	private transient TrailAction lastHitAction;
+	@Nullable
+	private transient SpellHitContext lastHitContext;
 
 	public void setBypassWall(boolean bypass) { this.bypassWall = bypass; }
 	public void setBypassEntity(boolean bypass) { this.bypassEntity = bypass; }
@@ -64,6 +75,49 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		this.setOwner(pShooter);
 	}
 
+	/** Records the first server-side deletion reason for this projectile. */
+	@Override
+	public void markErased(boolean kill) {
+		if (!level().isClientSide && !eraseDiagnosticLogged) {
+			eraseDiagnosticLogged = true;
+			var owner = getOwner();
+			var ide = this instanceof ItemDanmakuEntity item ? item : null;
+			TrailAction callbackAction = lastHitAction != null ? lastHitAction : ide == null ? null : ide.onHitBlockAction;
+			boolean callbackRuntime = !(callbackAction instanceof DataDrivenTrailAction data) || data.hasRuntimeContext();
+			HitBehavior behavior = ide == null ? null
+					: lastHitContext != null && lastHitContext.hitType() == SpellHitContext.HitType.ENTITY
+					? ide.hitBehaviorEntity : ide.hitBehaviorBlock;
+			LOGGER.warn("[DanmakuHit] id={} erase reason={} owner={} action={} callbackRuntime={} disposition={} behavior={} bounces={} bounceConfig={}",
+					getId(), nextEraseReason == null ? "MARK_ERASED_UNCLASSIFIED" : nextEraseReason,
+					owner == null ? "null" : owner.getClass().getName(), callbackAction != null,
+					callbackRuntime, lastHitContext == null ? null : lastHitContext.disposition(), behavior,
+					ide == null ? -1 : ide.currentBounces,
+					lastHitContext == null ? null : lastHitContext.bounceConfig());
+		}
+		nextEraseReason = null;
+		super.markErased(kill);
+	}
+
+	private void eraseWithDiagnostic(String reason) {
+		nextEraseReason = reason;
+		markErased(false);
+	}
+
+	private void logHitStage(String stage, SpellHitContext hitCtx, @Nullable TrailAction action) {
+		lastHitAction = action;
+		lastHitContext = hitCtx;
+		var owner = getOwner();
+		boolean callbackRuntime = !(action instanceof DataDrivenTrailAction data) || data.hasRuntimeContext();
+		HitBehavior behavior = this instanceof ItemDanmakuEntity ide
+				? hitCtx.hitType() == SpellHitContext.HitType.ENTITY ? ide.hitBehaviorEntity : ide.hitBehaviorBlock
+				: null;
+		LOGGER.warn("[DanmakuHit] id={} {} action={} callbackRuntime={} owner={} disposition={} behavior={} bounces={}",
+				getId(), stage, action != null, callbackRuntime,
+				owner == null ? "null" : owner.getClass().getName(), hitCtx.disposition(),
+				behavior,
+				this instanceof ItemDanmakuEntity ide ? ide.currentBounces : -1);
+	}
+
 	public void setup(float damage, int life, boolean bypassWall, boolean bypassEntity, Vec3 initVec) {
 		this.damage = damage;
 		this.life = life;
@@ -83,6 +137,12 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	@Override
 	public SimplifiedProjectile self() {
 		return this;
+	}
+
+	/** Keeps a held projectile alive until its delayed release callback can run. */
+	public void extendLifetimeForHold(int holdTicks) {
+		long required = (long) tickCount + Math.max(1, holdTicks) + 1L;
+		life = (int) Math.min(Integer.MAX_VALUE, Math.max((long) life, required));
 	}
 
 	@Override
@@ -120,7 +180,11 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 
 	@Override
 	public int lifetime() {
-		return life;
+		// A held projectile is pinned until its callback releases it. Do not let
+		// the ordinary lifetime check remove it before that release reaches the
+		// client (the hold mover is synchronized separately).
+		return this instanceof ItemDanmakuEntity ide && ide.isHolding()
+				? Integer.MAX_VALUE : life;
 	}
 
 	public void addAdditionalSaveData(CompoundTag nbt) {
@@ -159,14 +223,20 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			var hitCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext(
 					this, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK,
 					src, pResult.getLocation(), movementEnd, n, incomingMovement, null);
+			TrailAction blockAction = this instanceof ItemDanmakuEntity ide ? ide.onHitBlockAction : null;
+			logHitStage("BLOCK_HIT_ENTER", hitCtx, blockAction);
 
 			// Execute onHitBlock callback
-			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
-				executeBlockHitAction(ide.onHitBlockAction, hitCtx);
+			if (blockAction != null) {
+				logHitStage("ON_HIT_ACTION_PRESENT", hitCtx, blockAction);
+				executeBlockHitAction(blockAction, hitCtx);
+			} else {
+				logHitStage("ON_HIT_ACTION_ABSENT", hitCtx, null);
 			}
 
 			// If an action resolved disposition (e.g. BounceAction, ExpireSourceAction, DiscardSourceAction, ContinueSourceAction)
 			if (hitCtx.isTerminal()) {
+				LOGGER.warn("[DanmakuHit] id={} FINAL_DISPOSITION disposition={}", getId(), hitCtx.disposition());
 				applyHitDisposition(hitCtx);
 				return;
 			}
@@ -179,16 +249,16 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						return;
 					}
 					case EXPIRE -> {
-						expireNow();
+						expireNow("BLOCK_DEFAULT_EXPIRE");
 						return;
 					}
 					case DISCARD -> {
-						markErased(false);
+						eraseWithDiagnostic("BLOCK_DEFAULT_DISCARD");
 						return;
 					}
 				}
 			}
-			markErased(false);
+			eraseWithDiagnostic("BLOCK_NO_ITEM_DANMAKU");
 		}
 	}
 
@@ -209,17 +279,18 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		switch (hitCtx.disposition()) {
 			case HOLD -> {
 				if (this instanceof ItemDanmakuEntity ide && hitCtx.deferredBody() != null) {
-					CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-					dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime runtime = null;
-					if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost host) {
-						runtime = host.getSpellRuntime();
-					}
-					// If no active runtime host exists to schedule resume, fail-safe to avoid permanent stall
-					if (runtime == null) {
+					var resume = hitCtx.holdResumeContext();
+					LOGGER.warn("[DanmakuHit] id={} HOLD_RESUME_CONTEXT present={} usable={} duration={}",
+							getId(), resume != null, resume != null && resume.isUsable(), hitCtx.holdTicks());
+					// The callback context is authoritative. The projectile owner is commonly
+					// a plain Player and is not a SpellRuntimeHost.
+					if (resume == null || !resume.isUsable()) {
 						ide.clearHoldState();
-						markErased(false);
+						eraseWithDiagnostic("HOLD_RUNTIME_CONTEXT_MISSING");
 						return;
 					}
+					var runtime = resume.runtime();
+					ide.extendLifetimeForHold(hitCtx.holdTicks());
 
 					// Pin projectile on contact surface and install HitHoldMover, preserving suspended mover
 					Vec3 holdPos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
@@ -227,7 +298,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 					syncHoldToClient(holdPos, hitCtx.incomingVelocity());
 
 					// Schedule resumption after holdTicks
-					runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), java.util.List.of(
+					runtime.schedulePersistentDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), java.util.List.of(
 							new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
 								@Override
 								public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
@@ -235,10 +306,11 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 										var body = hitCtx.beginResumeAndTakeBody();
 										if (body != null) {
 											var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
-													ctx.holder(), ctx.definition(), ctx.runtime(), ctx.difficulty(), hitCtx);
-											resumedCtx.executeList(body);
+													resume.holder(), resume.definition(), resume.runtime(), ctx.difficulty(), hitCtx);
+												resumedCtx.executeList(body);
 										}
 										if (hitCtx.isTerminal()) {
+											LOGGER.warn("[DanmakuHit] id={} FINAL_DISPOSITION disposition={}", getId(), hitCtx.disposition());
 											applyHitDisposition(hitCtx);
 										} else {
 											// Fallback to default hit behavior after hold
@@ -248,13 +320,16 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 												case CONTINUE -> resumeAfterHoldContinue(ide, hitCtx);
 												case EXPIRE -> {
 													ide.clearHoldState();
-													expireNow();
+													expireNow("HOLD_RELEASE_DEFAULT_EXPIRE");
 												}
 												case DISCARD -> {
 													ide.clearHoldState();
-													markErased(false);
+													eraseWithDiagnostic("HOLD_RELEASE_DEFAULT_DISCARD");
 												}
 											}
+										}
+										if (hitCtx.disposition() != dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitDisposition.HOLD) {
+											hitCtx.clearHoldResumeContext();
 										}
 									}
 								}
@@ -269,10 +344,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			}
 			case BOUNCE -> {
 				if (this instanceof ItemDanmakuEntity ide) {
+					LOGGER.warn("[DanmakuHit] id={} BOUNCE_CONFIG config={} current={}",
+							getId(), hitCtx.bounceConfig(), ide.currentBounces);
 					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
 							hitCtx.hitPosition(), hitCtx.incomingVelocity(), hitCtx.hitNormal(),
 							hitCtx.bounceConfig(), ide.currentBounces, resolveBounceTarget());
 					if (result.erased()) {
+						LOGGER.warn("[DanmakuHit] id={} BOUNCE_RESULT erased=true config={} current={}",
+								getId(), hitCtx.bounceConfig(), ide.currentBounces);
 						// Exceeded max bounces: fall back to default hitBehaviorBlock and continue through hit if CONTINUE
 						ide.clearHoldState();
 						switch (ide.hitBehaviorBlock) {
@@ -281,26 +360,28 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 								return;
 							}
 							case EXPIRE -> {
-								expireNow();
+								expireNow("BOUNCE_EXHAUSTED_DEFAULT_EXPIRE");
 								return;
 							}
 							case DISCARD -> {
-								markErased(false);
+								eraseWithDiagnostic("BOUNCE_EXHAUSTED_DEFAULT_DISCARD");
 								return;
 							}
 						}
-						markErased(false);
+						eraseWithDiagnostic("BOUNCE_EXHAUSTED_NO_FALLBACK");
 						return;
 					}
+					LOGGER.warn("[DanmakuHit] id={} BOUNCE_RESULT erased=false newVel={} bounces={}",
+							getId(), result.newVel(), result.updatedBounces());
 					ide.applyBounceState(result.newPos(), result.newVel(), result.updatedBounces());
 					syncBounceToClient(result.newPos(), result.newVel(), result.updatedBounces());
 				} else {
-					markErased(false);
+					eraseWithDiagnostic("BOUNCE_NON_ITEM_PROJECTILE");
 				}
 			}
 			case UNRESOLVED -> {
 				if (this instanceof ItemDanmakuEntity ide) ide.clearHoldState();
-				markErased(false);
+				eraseWithDiagnostic("HIT_DISPOSITION_UNRESOLVED");
 			}
 		}
 	}
@@ -322,13 +403,19 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		var hitCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext(
 				this, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.ENTITY,
 				result.getLocation(), getDeltaMovement().normalize().scale(-1), getDeltaMovement(), result.getEntity());
+		TrailAction entityAction = this instanceof ItemDanmakuEntity ide ? ide.onHitEntityAction : null;
+		logHitStage("ENTITY_HIT_ENTER", hitCtx, entityAction);
 
 		// Execute onHitEntity callback before potential discard
-		if (this instanceof ItemDanmakuEntity ide && ide.onHitEntityAction != null) {
-			executeEntityHitAction(ide.onHitEntityAction, hitCtx);
+		if (entityAction != null) {
+			logHitStage("ON_HIT_ACTION_PRESENT", hitCtx, entityAction);
+			executeEntityHitAction(entityAction, hitCtx);
+		} else {
+			logHitStage("ON_HIT_ACTION_ABSENT", hitCtx, null);
 		}
 
 		if (hitCtx.isTerminal()) {
+			LOGGER.warn("[DanmakuHit] id={} FINAL_DISPOSITION disposition={}", getId(), hitCtx.disposition());
 			applyHitDisposition(hitCtx);
 			return;
 		}
@@ -341,22 +428,22 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 					return;
 				}
 				case EXPIRE -> {
-					expireNow();
+					expireNow("ENTITY_DEFAULT_EXPIRE");
 					return;
 				}
 				case DISCARD -> {
-					markErased(false);
+					eraseWithDiagnostic("ENTITY_DEFAULT_DISCARD");
 					return;
 				}
 			}
 		} else if (!bypassEntity) {
-			markErased(false);
+			eraseWithDiagnostic("ENTITY_NON_ITEM_DEFAULT_DISCARD");
 		}
 	}
 
-	private void expireNow() {
+	private void expireNow(String reason) {
 		terminate();
-		markErased(false);
+		eraseWithDiagnostic(reason);
 	}
 
 	private void syncBounceToClient(Vec3 pos, Vec3 vel, int bounceCount) {

@@ -96,15 +96,17 @@ public class SpellHitContext {
 
 	/**
 	 * Called by the runtime scheduler when holdTicks expire.
-	 * Resets disposition from HOLD to UNRESOLVED so that actions in deferredBody
-	 * (like BounceAction, ContinueSourceAction, ExpireSourceAction) can resolve the final outcome.
+	 * Resets disposition from HOLD to UNRESOLVED, takes the deferredBody, and clears internal reference.
 	 */
-	public boolean beginResume() {
+	@Nullable
+	public java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> beginResumeAndTakeBody() {
 		if (this.disposition != HitDisposition.HOLD) {
-			return false;
+			return null;
 		}
 		this.disposition = HitDisposition.UNRESOLVED;
 		this.holdTicks = 0;
-		return true;
+		var body = this.deferredBody;
+		this.deferredBody = null;
+		return body;
 	}
 }

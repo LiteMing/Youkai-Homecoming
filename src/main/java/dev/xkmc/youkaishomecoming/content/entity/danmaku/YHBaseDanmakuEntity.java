@@ -193,6 +193,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		}
 	}
 
+	private void resumeAfterHoldContinue(ItemDanmakuEntity ide, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {
+		ide.mover = null;
+		Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.incomingVelocity().normalize().scale(0.08));
+		ide.setPos(resumePos);
+		ide.snapMotionAndRotation(hitCtx.incomingVelocity());
+		notifyTrajectoryChanged();
+		syncBounceToClient(resumePos, hitCtx.incomingVelocity(), ide.currentBounces);
+	}
 	private void applyHitDisposition(
 			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx
 	) {
@@ -219,14 +227,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 					syncBounceToClient(holdPos, Vec3.ZERO, ide.currentBounces);
 
 					// Schedule resumption after holdTicks
-					var body = hitCtx.deferredBody();
 					runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), java.util.List.of(
 							new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
 								@Override
 								public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
 									if (ide.isAlive() && !ide.isRemoved()) {
 										ide.mover = null;
-										if (hitCtx.beginResume()) {
+										var body = hitCtx.beginResumeAndTakeBody();
+										if (body != null) {
 											var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
 													ctx.holder(), ctx.definition(), ctx.runtime(), ctx.difficulty(), hitCtx);
 											resumedCtx.executeList(body);
@@ -238,13 +246,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 											HitBehavior fallback = hitCtx.hitType() == dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK
 													? ide.hitBehaviorBlock : ide.hitBehaviorEntity;
 											switch (fallback) {
-												case CONTINUE -> {
-													Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
-													ide.setPos(resumePos);
-													ide.snapMotionAndRotation(hitCtx.incomingVelocity());
-													notifyTrajectoryChanged();
-													syncBounceToClient(resumePos, hitCtx.incomingVelocity(), ide.currentBounces);
-												}
+												case CONTINUE -> resumeAfterHoldContinue(ide, hitCtx);
 												case BOUNCE -> {
 													hitCtx.resolveBounce(ide.bounceConfig != null ? ide.bounceConfig : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
 													applyHitDisposition(hitCtx);
@@ -260,13 +262,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 				}
 			}
 			case CONTINUE -> {
-				if (this instanceof ItemDanmakuEntity ide) {
-					Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
-					ide.setPos(resumePos);
-					ide.snapMotionAndRotation(hitCtx.incomingVelocity());
-					notifyTrajectoryChanged();
-					syncBounceToClient(resumePos, hitCtx.incomingVelocity(), ide.currentBounces);
-				}
+				// Immediate continue: keep flying with existing mover and momentum (no-op)
 			}
 			case BOUNCE -> {
 				if (this instanceof ItemDanmakuEntity ide) {

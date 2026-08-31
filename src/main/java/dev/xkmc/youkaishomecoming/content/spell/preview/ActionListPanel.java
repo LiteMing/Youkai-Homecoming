@@ -635,6 +635,11 @@ public class ActionListPanel {
 					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
+		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold) {
+			cy = buildBranch(hold.onRelease(), "on_release", "onRelease", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
+		}
+
 		if (inner instanceof BurstAction burst) {
 			cy = buildBranch(burst.body(), "body", "body", actionPath,
 					indent + 1, cy, section, effectiveDisabled, true, showAdd);
@@ -652,11 +657,11 @@ public class ActionListPanel {
 
 			if (!entityDiscard || entityHasNodes) {
 				cy = buildBranch(fda.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
-						indent + 1, cy, section, effectiveDisabled || (entityDiscard && entityHasNodes), false, showAdd);
+						indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			}
 			if (!blockDiscard || blockHasNodes) {
 				cy = buildBranch(fda.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
-						indent + 1, cy, section, effectiveDisabled || (blockDiscard && blockHasNodes), false, showAdd);
+						indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			}
 		}
 
@@ -672,11 +677,11 @@ public class ActionListPanel {
 
 			if (!entityDiscard || entityHasNodes) {
 				cy = buildBranch(fla.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
-						indent + 1, cy, section, effectiveDisabled || (entityDiscard && entityHasNodes), false, showAdd);
+						indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			}
 			if (!blockDiscard || blockHasNodes) {
 				cy = buildBranch(fla.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
-						indent + 1, cy, section, effectiveDisabled || (blockDiscard && blockHasNodes), false, showAdd);
+						indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			}
 		}
 
@@ -1665,6 +1670,12 @@ public class ActionListPanel {
 			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
 			return true;
 		}
+		if (parent instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(hold.onRelease());
+			if (!doReplace(body, path, depth + 1, newAction)) return false;
+			list.set(entry.index, new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body));
+			return true;
+		}
 		if (parent instanceof BurstAction burst && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(burst.body());
 			if (!doReplace(body, path, depth + 1, newAction)) return false;
@@ -1816,6 +1827,14 @@ public class ActionListPanel {
 				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
+			if (current instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(targetBranch)) {
+				List<SpellAction> body = new ArrayList<>(hold.onRelease());
+				int pos = insertIndex < 0 ? body.size() : Math.min(insertIndex, body.size());
+				body.add(pos, newAction);
+				list.set(entry.index, new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body));
+				selectedPath = parentPath.child(targetBranch, pos);
+				return true;
+			}
 			if (current instanceof BurstAction burst && "body".equals(targetBranch)) {
 				List<SpellAction> body = new ArrayList<>(burst.body());
 				int pos = insertIndex < 0 ? body.size() : Math.min(insertIndex, body.size());
@@ -1929,6 +1948,12 @@ public class ActionListPanel {
 			List<SpellAction> body = new ArrayList<>(delay.body());
 			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
 			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
+			return true;
+		}
+		if (current instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(hold.onRelease());
+			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
+			list.set(entry.index, new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body));
 			return true;
 		}
 		if (current instanceof BurstAction burst && "body".equals(entry.branch)) {
@@ -2061,6 +2086,12 @@ public class ActionListPanel {
 			List<SpellAction> body = new ArrayList<>(delay.body());
 			if (!doDelete(body, path, depth + 1)) return false;
 			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
+			return true;
+		}
+		if (parent instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(hold.onRelease());
+			if (!doDelete(body, path, depth + 1)) return false;
+			list.set(entry.index, new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body));
 			return true;
 		}
 		if (parent instanceof BurstAction burst && "body".equals(entry.branch)) {
@@ -2409,6 +2440,9 @@ public class ActionListPanel {
 		if (action instanceof DelayAction delay && "body".equals(entry.branch)) {
 			return getActionRecursive(delay.body(), path, depth + 1);
 		}
+		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			return getActionRecursive(hold.onRelease(), path, depth + 1);
+		}
 		if (action instanceof BurstAction burst && "body".equals(entry.branch)) {
 			return getActionRecursive(burst.body(), path, depth + 1);
 		}
@@ -2697,6 +2731,13 @@ public class ActionListPanel {
 			List<SpellAction> body = new ArrayList<>(delay.body());
 			if (!doToggleDisabled(body, path, depth + 1)) return false;
 			var rebuilt = new DelayAction(delay.delayTicks(), body);
+			list.set(entry.index, current instanceof SpellActions.DisabledAction ? new SpellActions.DisabledAction(rebuilt) : rebuilt);
+			return true;
+		}
+		if (parent instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(hold.onRelease());
+			if (!doToggleDisabled(body, path, depth + 1)) return false;
+			var rebuilt = new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body);
 			list.set(entry.index, current instanceof SpellActions.DisabledAction ? new SpellActions.DisabledAction(rebuilt) : rebuilt);
 			return true;
 		}

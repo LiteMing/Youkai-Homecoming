@@ -34,11 +34,8 @@ public record DelayAction(NumberProvider delayTicks, List<SpellAction> body) imp
 		if (delay <= 0) {
 			// Immediate execution if delay is zero or negative with terminal propagation
 			ctx.executeList(body);
-		} else if (ctx.hitContext().isPresent()) {
-			// Inside hit callback: freeze projectile at hit contact position and defer body execution
-			ctx.hitContext().get().resolveHold(delay, body);
 		} else {
-			// Schedule for future execution
+			// Schedule for future execution (pure temporal delay)
 			ctx.runtime().scheduleDelayed(ctx.totalTick() + delay, body);
 		}
 	}

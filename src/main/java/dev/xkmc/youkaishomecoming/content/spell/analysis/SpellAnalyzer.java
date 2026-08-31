@@ -481,7 +481,30 @@ public final class SpellAnalyzer {
 			}
 			// equal delays run in the same scheduled tick; without a full scheduler we
 			// cannot prove exclusivity, so delay groups are SUMMED (round 5, A1)
-			delayedBurstSum = satAdd(delayedBurstSum, walkList("body", a.body(), perTick, mult, GroupKind.DELAY));
+			String prevHook = currentHookLabel;
+			// Crossing a positive delay boundary clears the hit context label
+			NumberBounds b = NumberBounds.resolve(a.delayTicks());
+			if (!b.bounded() || b.max() > 0) {
+				currentHookLabel = "";
+			}
+			try {
+				delayedBurstSum = satAdd(delayedBurstSum, walkList("body", a.body(), perTick, mult, GroupKind.DELAY));
+			} finally {
+				currentHookLabel = prevHook;
+			}
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction a) {
+			NumberBounds bounds = NumberBounds.resolve(a.duration());
+			if (profile == SpellAnalysisProfile.CERTIFICATION) {
+				if (!"on_hit_block".equals(currentHookLabel) && !"on_hit_entity".equals(currentHookLabel)) {
+					throw rejected("invalid_hit_control",
+							"HoldSourceAction may only be placed inside on_hit callbacks");
+				}
+				if (!bounds.bounded()) {
+					throw rejected("unbounded_hit_hold",
+							"Hold duration inside an on-hit callback must have a finite upper bound");
+				}
+			}
+			delayedBurstSum = satAdd(delayedBurstSum, walkList("on_release", a.onRelease(), perTick, mult, GroupKind.DELAY));
 		} else if (action instanceof SpellActions.ConditionalAction a) {
 			walkList("if_true", a.ifTrue(), perTick, mult, GroupKind.NONE);
 			walkList("if_false", a.ifFalse(), perTick, mult, GroupKind.NONE);
@@ -590,6 +613,7 @@ public final class SpellAnalyzer {
 		if (action instanceof SpellActions.SequenceAction a) return a.actions();
 		if (action instanceof SpellActions.RepeatAction a) return a.body();
 		if (action instanceof DelayAction a) return a.body();
+		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction a) return a.onRelease();
 		if (action instanceof BurstAction a) return a.body();
 		if (action instanceof SpawnShooterAction a) return a.body();
 		if (action instanceof FireDanmakuAction f) return hookLists(f.onExpiry(), f.onTrail(), f.onHitEntity(), f.onHitBlock());
@@ -707,6 +731,10 @@ public final class SpellAnalyzer {
 				maxBounces = Math.max(maxBounces, ba.sanitize().maxBounces());
 			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.DelayAction da) {
 				var sub = summarizeHitControl(da.body());
+				mayContinue |= sub.mayContinue;
+				maxBounces = Math.max(maxBounces, sub.maxBounces);
+			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hsa) {
+				var sub = summarizeHitControl(hsa.onRelease());
 				mayContinue |= sub.mayContinue;
 				maxBounces = Math.max(maxBounces, sub.maxBounces);
 			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpellActions.RepeatAction ra) {

@@ -539,10 +539,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 									public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
 										if (ide.isAlive() && !ide.isRemoved()) {
 											ide.mover = null;
-											if (hitCtx.beginResume()) {
+											var releaseBody = hitCtx.beginResumeAndTakeBody();
+											if (releaseBody != null) {
 												var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
 														ctx.holder(), ctx.definition(), ctx.runtime(), ctx.difficulty(), hitCtx);
-												resumedCtx.executeList(body);
+												resumedCtx.executeList(releaseBody);
 											}
 											if (hitCtx.isTerminal()) {
 												applyPreviewHitDisposition(hitCtx, afterExpiry);

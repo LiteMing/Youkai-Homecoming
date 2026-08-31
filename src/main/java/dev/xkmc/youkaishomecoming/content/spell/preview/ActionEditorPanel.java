@@ -329,6 +329,8 @@ public class ActionEditorPanel {
 			buildCasterMovesRows(cma);
 		} else if (action instanceof BounceAction ba) {
 			buildBounceActionRows(ba);
+		} else if (action instanceof HoldSourceAction hsa) {
+			buildHoldSourceRows(hsa);
 		}
 	}
 
@@ -390,7 +392,8 @@ public class ActionEditorPanel {
 					"bounce_source", "Bounce Source",
 					"continue_source", "Continue Source",
 					"expire_source", "Expire Source",
-					"discard_source", "Discard Source"),
+					"discard_source", "Discard Source",
+					"hold_source", "Hold Source"),
 			group("Privileged",
 					"run_command", "Run Command",
 					"set_entity_flag", "Set Entity Flag"));
@@ -502,6 +505,7 @@ public class ActionEditorPanel {
 		case "continue_source" -> new ContinueSourceAction();
 		case "expire_source" -> new ExpireSourceAction();
 		case "discard_source" -> new DiscardSourceAction();
+		case "hold_source" -> new HoldSourceAction(20, new ArrayList<>());
 		default -> new SpellActions.NoopAction();
 		};
 	}
@@ -536,6 +540,11 @@ public class ActionEditorPanel {
 				notifySimple(old -> ((BounceAction) old).withDecay(v)));
 		addBoolRow("Retarget", action.retarget(), v ->
 				notifySimple(old -> ((BounceAction) old).withRetarget(v), true));
+	}
+
+	private void buildHoldSourceRows(HoldSourceAction action) {
+		addNumberRow("Duration", action.duration(), v ->
+				notifySimple(old -> ((HoldSourceAction) old).withDuration(v)));
 	}
 
 	// --- FireDanmaku rows ---

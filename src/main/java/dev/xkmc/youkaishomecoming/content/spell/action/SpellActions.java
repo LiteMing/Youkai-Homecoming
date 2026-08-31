@@ -59,6 +59,7 @@ public class SpellActions {
 		register("expire_source", ExpireSourceAction.CODEC, ExpireSourceAction.class);
 		register("discard_source", DiscardSourceAction.CODEC, DiscardSourceAction.class);
 		register("continue_source", ContinueSourceAction.CODEC, ContinueSourceAction.class);
+		register("hold_source", HoldSourceAction.CODEC, HoldSourceAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {

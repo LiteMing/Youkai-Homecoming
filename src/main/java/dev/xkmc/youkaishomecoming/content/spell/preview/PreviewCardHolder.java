@@ -543,10 +543,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 														? ide.hitBehaviorBlock : ide.hitBehaviorEntity;
 												switch (fallback) {
 													case CONTINUE -> {
-														ide.clearHoldState();
-														Vec3 resumePos = hitCtx.movementEnd();
-														ide.setPos(resumePos);
-														ide.snapMotionAndRotation(hitCtx.incomingVelocity());
+														ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
 													}
 													case EXPIRE -> {
 														ide.clearHoldState();
@@ -579,7 +576,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 						ide.clearHoldState();
 						switch (ide.hitBehaviorBlock) {
 							case CONTINUE -> {
-								return; // Continue default penetration in preview
+								ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
+								return;
 							}
 							case EXPIRE -> {
 								if (afterExpiry != null) afterExpiry.execute(PreviewCardHolder.this, hitCtx.hitPosition(), hitCtx.incomingVelocity());

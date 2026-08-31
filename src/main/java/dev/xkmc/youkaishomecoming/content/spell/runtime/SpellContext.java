@@ -43,15 +43,12 @@ public class SpellContext {
 	}
 
 	public boolean isTerminated() {
-		return hitContext != null && hitContext.isTerminal();
+		return false;
 	}
 
 	public void executeList(java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> actions) {
 		for (var action : actions) {
 			action.execute(this);
-			if (isTerminated()) {
-				break;
-			}
 		}
 	}
 

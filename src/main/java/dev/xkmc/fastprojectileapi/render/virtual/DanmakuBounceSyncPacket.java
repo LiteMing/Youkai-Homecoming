@@ -11,7 +11,8 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 
 	public enum ResetKind {
 		BOUNCE,
-		HOLD
+		HOLD,
+		CONTINUE
 	}
 
 	@SerialClass.SerialField
@@ -56,6 +57,8 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 			if (e instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity ide) {
 				if (resetKind == ResetKind.HOLD) {
 					ide.enterHoldState(pos, vel);
+				} else if (resetKind == ResetKind.CONTINUE) {
+					ide.applyContinueState(pos, vel);
 				} else {
 					ide.applyBounceState(pos, vel, bounceCount);
 				}

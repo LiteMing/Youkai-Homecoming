@@ -167,6 +167,13 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		}
 	}
 
+	public void applyContinueState(Vec3 newPos, Vec3 newVel) {
+		clearHoldState();
+		setPos(newPos);
+		snapMotionAndRotation(newVel);
+		notifyTrajectoryChanged();
+	}
+
 	public void applyBounceState(Vec3 newPos, Vec3 newVel, int bounceCount) {
 		DanmakuMover oldMover = this.suspendedMover != null ? this.suspendedMover : this.mover;
 		this.suspendedMover = null;

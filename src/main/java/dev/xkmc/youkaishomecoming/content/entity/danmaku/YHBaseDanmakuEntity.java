@@ -190,13 +190,13 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		}
 	}
 
+	private void continueThroughHit(ItemDanmakuEntity ide, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {
+		ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
+		syncContinueToClient(hitCtx.movementEnd(), hitCtx.incomingVelocity());
+	}
+
 	private void resumeAfterHoldContinue(ItemDanmakuEntity ide, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {
-		ide.clearHoldState();
-		Vec3 resumePos = hitCtx.movementEnd();
-		ide.setPos(resumePos);
-		ide.snapMotionAndRotation(hitCtx.incomingVelocity());
-		notifyTrajectoryChanged();
-		syncBounceToClient(resumePos, hitCtx.incomingVelocity(), ide.currentBounces);
+		continueThroughHit(ide, hitCtx);
 	}
 	private void applyHitDisposition(
 			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx
@@ -266,11 +266,12 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 							hitCtx.hitPosition(), hitCtx.incomingVelocity(), hitCtx.hitNormal(),
 							hitCtx.bounceConfig(), ide.currentBounces, resolveBounceTarget());
 					if (result.erased()) {
-						// Exceeded max bounces: fall back to default hitBehaviorBlock instead of unconditionally erasing
+						// Exceeded max bounces: fall back to default hitBehaviorBlock and continue through hit if CONTINUE
 						ide.clearHoldState();
 						switch (ide.hitBehaviorBlock) {
 							case CONTINUE -> {
-								return; // Continue default penetration without bounce
+								continueThroughHit(ide, hitCtx);
+								return;
 							}
 							case EXPIRE -> {
 								expireNow();
@@ -362,6 +363,13 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		if (getOwner() instanceof LivingEntity le && !level().isClientSide) {
 			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toTrackingPlayers(
 					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), holdPos, incomingVel, 0, dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket.ResetKind.HOLD), le);
+		}
+	}
+
+	private void syncContinueToClient(Vec3 resumePos, Vec3 vel) {
+		if (getOwner() instanceof LivingEntity le && !level().isClientSide) {
+			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toTrackingPlayers(
+					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), resumePos, vel, 0, dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket.ResetKind.CONTINUE), le);
 		}
 	}
 

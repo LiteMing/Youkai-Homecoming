@@ -5,7 +5,11 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.BounceAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.DiscardSourceAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
@@ -13,6 +17,7 @@ import dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver;
 import dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -24,8 +29,8 @@ import java.util.Optional;
  * 2. Normal safety & anti-wall-penetration
  * 3. BoundedAcceleration rebase continuity across non-zero entity ticks
  * 4. Hold state machine, Hold -> Continue / Hold -> Bounce transitions
- * 5. Server/Client/Preview synchronization consistency
- * 6. Sequential hit control override authority (last writer wins)
+ * 5. Server/Client/Preview synchronization consistency (ResetKind: BOUNCE, HOLD, CONTINUE)
+ * 6. Sequential hit control override authority (last writer wins via real SpellContext.executeList)
  */
 public class BounceSurfaceResponseTest {
 
@@ -60,7 +65,7 @@ public class BounceSurfaceResponseTest {
 		testAccelerationContinuityWithNonZeroTicks();
 		testHoldLifecycleAndSync();
 		testHoldContinueCleanup();
-		testHitDispositionOverrideAuthority();
+		testHitDispositionOverrideAuthorityViaExecuteList();
 		testLegacyCleanupContract();
 	}
 
@@ -256,32 +261,68 @@ public class BounceSurfaceResponseTest {
 		check("BOUNCE_AFTER_HOLD_CONTINUE_DOES_NOT_REVIVE_OLD_MOVER", sourceForFutureBounce == null);
 	}
 
-	private static void testHitDispositionOverrideAuthority() {
-		// Verify that sequential hit control actions in on_hit_block follow "last writer wins" authority
+	private static void testHitDispositionOverrideAuthorityViaExecuteList() {
 		SpellHitContext hitCtx = new SpellHitContext(
 				null, SpellHitContext.HitType.BLOCK,
 				new Vec3(0, 0, 0), new Vec3(0, 1, 0), new Vec3(1, -1, 0), null
 		);
+		java.util.Map<String, Double> vars = new java.util.HashMap<>();
+		SpellContext ctx = new SpellContext(null, null, null, null, hitCtx) {
+			@Override
+			public void setVariable(String key, double value) {
+				vars.put(key, value);
+			}
+			@Override
+			public double getVariable(String key) {
+				return vars.getOrDefault(key, 0.0);
+			}
+		};
 
-		SpellContext ctx = new SpellContext(null, null, null, null, hitCtx);
+		// 1. BOUNCE_THEN_CONTINUE_LAST_WRITER_WINS_VIA_EXECUTE_LIST
+		// List: [set_variable "var" 1.0, bounce_source, continue_source]
+		List<SpellAction> list1 = List.of(
+				new SpellActions.SetVariable("var", new NumberProviders.Constant(1.0)),
+				new BounceAction(3, -1.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false),
+				new ContinueSourceAction()
+		);
+		ctx.executeList(list1);
+		check("BOUNCE_THEN_CONTINUE_LAST_WRITER_WINS_VIA_EXECUTE_LIST",
+				ctx.getVariable("var") == 1.0
+						&& hitCtx.disposition() == SpellHitContext.HitDisposition.CONTINUE
+						&& hitCtx.bounceConfig() == null);
 
-		// Action sequence: BounceAction followed by ContinueSourceAction
-		BounceAction bounce = new BounceAction(3, -1.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false);
-		ContinueSourceAction cont = new ContinueSourceAction();
+		// 2. CONTINUE_THEN_DISCARD_LAST_WRITER_WINS_VIA_EXECUTE_LIST
+		List<SpellAction> list2 = List.of(
+				new ContinueSourceAction(),
+				new DiscardSourceAction()
+		);
+		ctx.executeList(list2);
+		check("CONTINUE_THEN_DISCARD_LAST_WRITER_WINS_VIA_EXECUTE_LIST",
+				hitCtx.disposition() == SpellHitContext.HitDisposition.DISCARD
+						&& hitCtx.bounceConfig() == null);
 
-		bounce.execute(ctx);
-		check("BOUNCE_SETS_DISPOSITION_FIRST", hitCtx.disposition() == SpellHitContext.HitDisposition.BOUNCE && hitCtx.bounceConfig() != null);
+		// 3. DISCARD_THEN_BOUNCE_LAST_WRITER_WINS_VIA_EXECUTE_LIST
+		List<SpellAction> list3 = List.of(
+				new DiscardSourceAction(),
+				new BounceAction(2, -0.8, 0.95, 0.0, 0.0, 0.0, Optional.empty(), false)
+		);
+		ctx.executeList(list3);
+		check("DISCARD_THEN_BOUNCE_LAST_WRITER_WINS_VIA_EXECUTE_LIST",
+				hitCtx.disposition() == SpellHitContext.HitDisposition.BOUNCE
+						&& hitCtx.bounceConfig() != null
+						&& hitCtx.bounceConfig().normalFactor() == -0.8);
 
-		cont.execute(ctx);
-		check("CONTINUE_OVERRIDES_BOUNCE_LATTER_IS_AUTHORITY", hitCtx.disposition() == SpellHitContext.HitDisposition.CONTINUE && hitCtx.bounceConfig() == null);
-
-		// Reverse sequence: ContinueSourceAction followed by BounceAction
-		DiscardSourceAction discard = new DiscardSourceAction();
-		discard.execute(ctx);
-		check("DISCARD_OVERRIDES_CONTINUE", hitCtx.disposition() == SpellHitContext.HitDisposition.DISCARD);
-
-		bounce.execute(ctx);
-		check("BOUNCE_OVERRIDES_DISCARD", hitCtx.disposition() == SpellHitContext.HitDisposition.BOUNCE && hitCtx.bounceConfig() != null);
+		// 4. HOLD_THEN_BOUNCE_CLEARS_HOLD_PAYLOAD_VIA_EXECUTE_LIST
+		List<SpellAction> list4 = List.of(
+				new HoldSourceAction(new NumberProviders.Constant(10.0), List.of(new ContinueSourceAction())),
+				new BounceAction(1, -1.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false)
+		);
+		ctx.executeList(list4);
+		check("HOLD_THEN_BOUNCE_CLEARS_HOLD_PAYLOAD_VIA_EXECUTE_LIST",
+				hitCtx.disposition() == SpellHitContext.HitDisposition.BOUNCE
+						&& hitCtx.bounceConfig() != null
+						&& hitCtx.deferredBody() == null
+						&& hitCtx.holdTicks() == 0);
 	}
 
 	private static void testLegacyCleanupContract() {

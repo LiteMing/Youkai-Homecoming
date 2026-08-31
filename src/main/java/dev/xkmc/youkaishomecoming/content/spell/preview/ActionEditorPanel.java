@@ -2072,24 +2072,79 @@ public class ActionEditorPanel {
 		if (moverOpt.isPresent()) {
 			MoverConfig cfg = moverOpt.get();
 			if (cfg instanceof MoverConfigs.AccelerationConfig acc) {
+				String space = acc.space().orElse("world");
+				addStringOptionRow("Space", new String[]{"world", "local"}, new String[]{"World", "Local"}, space, s -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), a.z(), a.terminalVx(), a.terminalVy(), a.terminalVz(), Optional.of(s))));
+					}
+				});
+
 				addNumberRow("Accel X", acc.x(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(v, a.y(), a.z())));
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(v, a.y(), a.z(), a.terminalVx(), a.terminalVy(), a.terminalVz(), a.space())));
 					}
 				}, EvaluationTiming.SNAPSHOT);
+				addBooleanRow("Limit Vx", acc.terminalVx().isPresent(), enable -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), a.z(), enable ? Optional.of(NumberProvider.constant(0.8)) : Optional.empty(), a.terminalVy(), a.terminalVz(), a.space())));
+						onTypeChanged.accept(getCurrentMover());
+					}
+				});
+				if (acc.terminalVx().isPresent()) {
+					addNumberRow("  Term Vx", acc.terminalVx().get(), v -> {
+						var cur = getCurrentMover();
+						if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
+							onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), a.z(), Optional.of(v), a.terminalVy(), a.terminalVz(), a.space())));
+						}
+					}, EvaluationTiming.SNAPSHOT);
+				}
+
 				addNumberRow("Accel Y", acc.y(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), v, a.z())));
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), v, a.z(), a.terminalVx(), a.terminalVy(), a.terminalVz(), a.space())));
 					}
 				}, EvaluationTiming.SNAPSHOT);
+				addBooleanRow("Limit Vy", acc.terminalVy().isPresent(), enable -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), a.z(), a.terminalVx(), enable ? Optional.of(NumberProvider.constant(-0.6)) : Optional.empty(), a.terminalVz(), a.space())));
+						onTypeChanged.accept(getCurrentMover());
+					}
+				});
+				if (acc.terminalVy().isPresent()) {
+					addNumberRow("  Term Vy", acc.terminalVy().get(), v -> {
+						var cur = getCurrentMover();
+						if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
+							onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), a.z(), a.terminalVx(), Optional.of(v), a.terminalVz(), a.space())));
+						}
+					}, EvaluationTiming.SNAPSHOT);
+				}
+
 				addNumberRow("Accel Z", acc.z(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), v)));
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), v, a.terminalVx(), a.terminalVy(), a.terminalVz(), a.space())));
 					}
 				}, EvaluationTiming.SNAPSHOT);
+				addBooleanRow("Limit Vz", acc.terminalVz().isPresent(), enable -> {
+					var cur = getCurrentMover();
+					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
+						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), a.z(), a.terminalVx(), a.terminalVy(), enable ? Optional.of(NumberProvider.constant(0.8)) : Optional.empty(), a.space())));
+						onTypeChanged.accept(getCurrentMover());
+					}
+				});
+				if (acc.terminalVz().isPresent()) {
+					addNumberRow("  Term Vz", acc.terminalVz().get(), v -> {
+						var cur = getCurrentMover();
+						if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
+							onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), a.z(), a.terminalVx(), a.terminalVy(), Optional.of(v), a.space())));
+						}
+					}, EvaluationTiming.SNAPSHOT);
+				}
 			} else if (cfg instanceof MoverConfigs.DecelerationConfig dc) {
 				addNumberRow("Factor", dc.factor(), v ->
 						onParamChanged.accept(Optional.of(new MoverConfigs.DecelerationConfig(v))), EvaluationTiming.SNAPSHOT);
@@ -2627,19 +2682,19 @@ public class ActionEditorPanel {
 			addNumberRow("  Acc X", acc.x(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(v, a.y(), a.z()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(v, a.y(), a.z(), a.terminalVx(), a.terminalVy(), a.terminalVz(), a.space()), onParamChanged);
 				}
 			});
 			addNumberRow("  Acc Y", acc.y(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(a.x(), v, a.z()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(a.x(), v, a.z(), a.terminalVx(), a.terminalVy(), a.terminalVz(), a.space()), onParamChanged);
 				}
 			});
 			addNumberRow("  Acc Z", acc.z(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(a.x(), a.y(), v), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(a.x(), a.y(), v, a.terminalVx(), a.terminalVy(), a.terminalVz(), a.space()), onParamChanged);
 				}
 			});
 		} else if (subCfg instanceof MoverConfigs.DecelerationConfig dc) {
@@ -2793,19 +2848,19 @@ public class ActionEditorPanel {
 			addNumberRow("  Acc X", acc.x(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(v, a.y(), a.z()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(v, a.y(), a.z(), a.terminalVx(), a.terminalVy(), a.terminalVz(), a.space()), onParamChanged);
 				}
 			});
 			addNumberRow("  Acc Y", acc.y(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(a.x(), v, a.z()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(a.x(), v, a.z(), a.terminalVx(), a.terminalVy(), a.terminalVz(), a.space()), onParamChanged);
 				}
 			});
 			addNumberRow("  Acc Z", acc.z(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(a.x(), a.y(), v), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(a.x(), a.y(), v, a.terminalVx(), a.terminalVy(), a.terminalVz(), a.space()), onParamChanged);
 				}
 			});
 		} else if (layerCfg instanceof MoverConfigs.DecelerationConfig dc) {

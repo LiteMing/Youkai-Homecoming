@@ -11,6 +11,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -102,16 +103,32 @@ public class MoverConfigs {
 	);
 
 	/**
-	 * Adds acceleration to the projectile (creates RectMover).
-	 * Each component is a NumberProvider evaluated when the projectile is spawned.
-	 * JSON: {"type": "acceleration", "x": "$i * 0.02", "y": 0, "z": "sin_rad(tick) * 0.01"}
+	 * Adds acceleration to the projectile (creates BoundedAccelerationMover).
+	 * Supports independent XYZ acceleration and optional per-axis terminal velocities.
+	 * JSON: {"type": "acceleration", "x": 0.02, "y": -0.03, "z": 0, "terminal_vx": 0.8, "terminal_vy": -0.6}
 	 */
-	public record AccelerationConfig(NumberProvider x, NumberProvider y, NumberProvider z) implements MoverConfig {
+	public record AccelerationConfig(
+			NumberProvider x,
+			NumberProvider y,
+			NumberProvider z,
+			Optional<NumberProvider> terminalVx,
+			Optional<NumberProvider> terminalVy,
+			Optional<NumberProvider> terminalVz,
+			Optional<String> space
+	) implements MoverConfig {
 		public static final Codec<AccelerationConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				NumberProvider.CODEC.optionalFieldOf("x", NumberProvider.constant(0)).forGetter(AccelerationConfig::x),
 				NumberProvider.CODEC.optionalFieldOf("y", NumberProvider.constant(0)).forGetter(AccelerationConfig::y),
-				NumberProvider.CODEC.optionalFieldOf("z", NumberProvider.constant(0)).forGetter(AccelerationConfig::z)
+				NumberProvider.CODEC.optionalFieldOf("z", NumberProvider.constant(0)).forGetter(AccelerationConfig::z),
+				NumberProvider.CODEC.optionalFieldOf("terminal_vx").forGetter(AccelerationConfig::terminalVx),
+				NumberProvider.CODEC.optionalFieldOf("terminal_vy").forGetter(AccelerationConfig::terminalVy),
+				NumberProvider.CODEC.optionalFieldOf("terminal_vz").forGetter(AccelerationConfig::terminalVz),
+				Codec.STRING.optionalFieldOf("space").forGetter(AccelerationConfig::space)
 		).apply(i, AccelerationConfig::new));
+
+		public AccelerationConfig(NumberProvider x, NumberProvider y, NumberProvider z) {
+			this(x, y, z, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+		}
 
 		public AccelerationConfig(Vec3 acceleration) {
 			this(NumberProvider.constant(acceleration.x), NumberProvider.constant(acceleration.y),
@@ -120,12 +137,34 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			return new RectMover(origin, velocity, new Vec3(getNumber(x, null), getNumber(y, null), getNumber(z, null)));
+			return create(null, origin, velocity, velocity, null, null);
 		}
 
 		@Override
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
-			return new RectMover(origin, velocity, new Vec3(getNumber(x, ctx), getNumber(y, ctx), getNumber(z, ctx)));
+			double ax = getNumber(x, ctx);
+			double ay = getNumber(y, ctx);
+			double az = getNumber(z, ctx);
+			Vec3 rawAcc = new Vec3(ax, ay, az);
+
+			Vec3 effectiveAcc;
+			if ("local".equalsIgnoreCase(space.orElse("world")) && velocity.lengthSqr() > 1e-8) {
+				// Local space: x=forward, y=up, z=right based on initial velocity direction
+				Vec3 fwd = velocity.normalize();
+				Vec3 up = Math.abs(fwd.y) > 0.99 ? new Vec3(0, 0, 1) : new Vec3(0, 1, 0);
+				Vec3 right = fwd.cross(up).normalize();
+				Vec3 realUp = right.cross(fwd).normalize();
+				effectiveAcc = fwd.scale(rawAcc.x).add(realUp.scale(rawAcc.y)).add(right.scale(rawAcc.z));
+			} else {
+				effectiveAcc = rawAcc;
+			}
+
+			Double tvx = terminalVx.map(p -> getNumber(p, ctx)).orElse(null);
+			Double tvy = terminalVy.map(p -> getNumber(p, ctx)).orElse(null);
+			Double tvz = terminalVz.map(p -> getNumber(p, ctx)).orElse(null);
+
+			return new dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover(
+					origin, velocity, effectiveAcc, tvx, tvy, tvz);
 		}
 	}
 

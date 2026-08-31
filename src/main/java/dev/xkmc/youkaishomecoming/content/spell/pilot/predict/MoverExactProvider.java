@@ -39,6 +39,7 @@ public class MoverExactProvider implements ThreatProvider {
 	 */
 	private static final Set<Class<?>> WHITELISTED_TARGET_POS = Set.of(
 			RectMover.class,
+			dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover.class,
 			PolarMover.class,
 			BezierMover.class,
 			MultiBezierMover.class,

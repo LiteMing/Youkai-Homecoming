@@ -13,6 +13,8 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItemCost;
 import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentReceipt;
 import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentResult;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellCostContext;
@@ -56,6 +58,9 @@ public final class CertificationService {
 
 	private static CertificationQuote quote(ServerPlayer player, SpellDefinition definition,
 									 boolean operatorTest) {
+		if (definition.itemForm.cardType() == SpellCardType.NON_SPELL) {
+			throw new SpellAnalysisException("Non-spells do not enter certification");
+		}
 		// Health and timeout are declaration data. The break chain is the only
 		// successful certification path; timeout targets remain legal boss behavior
 		// but any timeout fails the trial.
@@ -86,6 +91,8 @@ public final class CertificationService {
 		int rewardDuration = rewardDurationTicks(durationTicks);
 		long durationCost = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(rewardDuration);
 		long castCost = saturatedAdd(durationCost, budget.nodeCostUnits(nodes));
+		castCost = SpellItemCost.scaleTypeCost(castCost, definition.itemForm.cardType(),
+				SpellCostContext.SPELL_CAST_NON_STG);
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
 				startCost, issueCost, castCost, rewardDuration,
@@ -121,7 +128,11 @@ public final class CertificationService {
 	}
 
 	public static boolean hasUnfinishedDraft(ServerPlayer player, @Nullable ResourceLocation definitionId) {
-		if (definitionId == null) return false;
+		return !findUnfinishedDraft(player, definitionId).isEmpty();
+	}
+
+	public static ItemStack findUnfinishedDraft(ServerPlayer player, @Nullable ResourceLocation definitionId) {
+		if (definitionId == null) return ItemStack.EMPTY;
 		for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
 			ItemStack stack = player.getInventory().getItem(slot);
 			if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
@@ -129,10 +140,10 @@ public final class CertificationService {
 					dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack))
 					&& !dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.isComplete(stack)
 					&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
-				return true;
+				return stack;
 			}
 		}
-		return false;
+		return ItemStack.EMPTY;
 	}
 
 	public static int clampDuration(int requested) {
@@ -172,7 +183,8 @@ public final class CertificationService {
 			LOGGER.info("[YH] start rejected: payment failed: {}", payment);
 			return false;
 		}
-		boolean started = spawnTrial(player, quote, payment.receipt(), quote.spellHp(), false, true);
+		boolean started = spawnTrial(player, quote, payment.receipt(), quote.spellHp(),
+				quote.healthPlan().rootDefinition().itemForm.cardType() == SpellCardType.TIMEOUT_SPELL, true);
 		LOGGER.info("[YH] start result: started={} cost={} hash={}",
 				started, quote.startCostUnits(), quote.definitionHash().substring(0, Math.min(8, quote.definitionHash().length())));
 		return started;
@@ -274,6 +286,8 @@ public final class CertificationService {
 		long durationCost = dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(
 				rewardDurationTicks(quote.durationTicks()));
 		long castCost = saturatedAdd(durationCost, quote.draftBudget().nodeCostUnits(quote.nodeSummary()));
+		castCost = SpellItemCost.scaleTypeCost(castCost,
+				quote.healthPlan().rootDefinition().itemForm.cardType(), SpellCostContext.SPELL_CAST_NON_STG);
 		long issueCost = YHModConfig.COMMON.certificationIssueFeeEnabled.get() ? castCost : 0;
 		return quote.rewardDurationTicks() == rewardDurationTicks(quote.durationTicks())
 				&& quote.castCostUnits() == castCost && quote.issueCostUnits() == issueCost;

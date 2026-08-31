@@ -1,0 +1,26 @@
+{
+  "parent": "youkaishomecoming:main/spellcard_maker",
+  "criteria": {
+    "has_tier6": {
+      "conditions": {
+        "items": [{
+          "items": ["youkaishomecoming:dynamic_spell"],
+          "nbt": "{yh_spell_rank:\"greater_faith\"}"
+        }]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "display": {
+    "announce_to_chat": true,
+    "description": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_tier6.description" },
+    "frame": "goal",
+    "hidden": false,
+    "icon": { "item": "youkaishomecoming:timeout_spell_aura" },
+    "show_toast": true,
+    "title": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_tier6.title" }
+  },
+  "requirements": [["has_tier6"]],
+  "rewards": { "loot": ["youkaishomecoming:timeout_spell_aura_reward"] },
+  "sends_telemetry_event": true
+}

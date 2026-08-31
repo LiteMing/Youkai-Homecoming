@@ -66,7 +66,19 @@ public class SpellDefinitionBuilderJS {
 	}
 
 	public SpellDefinitionBuilderJS itemForm(int cooldown, boolean requireTarget) {
-		this.itemForm = new SpellItemForm(true, cooldown, requireTarget, Optional.empty(), false, 0, 0);
+		return itemForm(cooldown, requireTarget, "normal");
+	}
+
+	/** Defines the item form and its pre-certification card type. */
+	public SpellDefinitionBuilderJS itemForm(int cooldown, boolean requireTarget, String cardType) {
+		this.itemForm = new SpellItemForm(true, cooldown, requireTarget, Optional.empty(), false, 0, 0,
+				SpellCardType.byName(cardType));
+		return this;
+	}
+
+	/** Changes only the card type while preserving the existing item form fields. */
+	public SpellDefinitionBuilderJS cardType(String cardType) {
+		this.itemForm = this.itemForm.withCardType(SpellCardType.byName(cardType));
 		return this;
 	}
 

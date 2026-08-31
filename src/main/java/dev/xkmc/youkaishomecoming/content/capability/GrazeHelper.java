@@ -137,7 +137,11 @@ public class GrazeHelper {
 	}
 
 	public static boolean hasSpellCard(Player player) {
-		return !findSpellCard(player).isEmpty();
+		if (isSpellStack(player.getMainHandItem()) || isSpellStack(player.getOffhandItem())) return true;
+		for (ItemStack stack : player.getInventory().items) {
+			if (isSpellStack(stack)) return true;
+		}
+		return CuriosManager.hasAnySpellItem(player);
 	}
 
 	public static boolean isSpellStack(ItemStack stack) {
@@ -233,7 +237,7 @@ public class GrazeHelper {
 		// while releasing a spell card, other danmaku (and other spell cards)
 		// cannot be used
 		return cap.isPlayerSpellActive() ||
-				dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveSpell(player);
+				dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveSpellCard(player);
 	}
 
 	/**
@@ -275,6 +279,7 @@ public class GrazeHelper {
 
 	private static boolean isAvailableSpellStack(Player player, ItemStack stack) {
 		if (!isSpellStack(stack)) return false;
+		if (stack.getItem() instanceof DynamicSpellItem && DynamicSpellItem.isNonSpell(stack)) return false;
 		String cardKey = spellCardKey(stack);
 		if (GrazeCapability.HOLDER.get(player).isSpellCardUnavailable(cardKey)) return false;
 		// Automatic/passive casts must skip cards that cannot pay their current
@@ -296,17 +301,25 @@ public class GrazeHelper {
 
 	public static boolean tryForceCloseSpell(ServerPlayer player, ItemStack stack) {
 		if (!SpellContainer.hasActiveSpell(player)) return false;
+		var cap = GrazeCapability.HOLDER.get(player);
+		if (cap.isNonSpellActive(spellCardKey(stack))) {
+			SpellContainer.clearActiveNonSpell(player);
+			cap.clearActiveNonSpellCard();
+			return true;
+		}
 		return SpellContainer.forceCloseActiveSpell(player, spellCardKey(stack));
 	}
 
 	public static boolean isPlayerSpellBeingCast(Player player) {
 		return GrazeCapability.HOLDER.get(player).isPlayerSpellActive()
-				|| SpellContainer.hasActiveSpell(player);
+				|| SpellContainer.hasActiveSpellCard(player);
 	}
 
 	/** Cast a specific card supplied by an integration or script. */
 	public static boolean castSpell(ServerPlayer player, ItemStack stack) {
-		if (forbidSpellCardWithMessage(player)) return false;
+		boolean nonSpell = stack.getItem() instanceof DynamicSpellItem
+				&& DynamicSpellItem.isNonSpell(stack);
+		if (!nonSpell && forbidSpellCardWithMessage(player)) return false;
 		if (!(stack.getItem() instanceof ISpellItem spell)) return false;
 		if (player.getCooldowns().isOnCooldown(stack.getItem())) return false;
 		boolean success = spell.castSpell(stack, player, !player.getAbilities().instabuild, true);

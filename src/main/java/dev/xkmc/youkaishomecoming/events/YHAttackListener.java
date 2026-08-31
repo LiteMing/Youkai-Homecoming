@@ -63,7 +63,10 @@ public class YHAttackListener implements AttackListener {
 			var targetGraze = GrazeCapability.HOLDER.get(target);
 			if (targetGraze.prepareDanmakuHitContext(attacker) &&
 					targetGraze.shouldAbsorbDanmakuFrom(attacker)) {
-				var type = targetGraze.performDanmakuHit(attacker, event.getAmount());
+				boolean playerSpellProjectile = source.getDirectEntity()
+						instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku danmaku
+						&& danmaku.isPlayerSpellProjectile();
+				var type = targetGraze.performDanmakuHit(attacker, event.getAmount(), playerSpellProjectile);
 				if (type.skipDamage()) {
 					event.setCanceled(true);
 					return;

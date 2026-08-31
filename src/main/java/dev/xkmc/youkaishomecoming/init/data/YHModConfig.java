@@ -116,6 +116,13 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue spellDraftFreeNodeCount;
 		public final ForgeConfigSpec.DoubleValue spellDraftBudgetMultiplier;
 		public final ForgeConfigSpec.LongValue spellDraftExcessNodeCostUnits;
+		public final ForgeConfigSpec.IntValue nonSpellMaxSpawnPerTier;
+		public final ForgeConfigSpec.IntValue nonSpellMaxLifetimeTicks;
+		public final ForgeConfigSpec.DoubleValue nonSpellMaxInitialSpeed;
+		public final ForgeConfigSpec.DoubleValue nonSpellMaxOriginOffset;
+		public final ForgeConfigSpec.IntValue lastSpellCooldownTicks;
+		public final ForgeConfigSpec.DoubleValue timeoutSpellBombCostMultiplier;
+		public final ForgeConfigSpec.DoubleValue timeoutSpellXpCostMultiplier;
 
 		// Certification gameplay (Phase 2)
 		public final ForgeConfigSpec.BooleanValue certificationEnabled;
@@ -228,6 +235,7 @@ public class YHModConfig {
 		// Exposure compat
 		public final ForgeConfigSpec.IntValue exposureCameraCooldown;
 		public final ForgeConfigSpec.BooleanValue exposureDeactivateAfterShot;
+		public final ForgeConfigSpec.IntValue spellReplicaRequiredDanmaku;
 
 		// Shared autonomous dodge — COMMON / youkaishomecoming-common.toml
 		public final ForgeConfigSpec.BooleanValue autoDodgeEnabled;
@@ -307,6 +315,27 @@ public class YHModConfig {
 				spellDraftExcessNodeCostUnits = builder.comment("Additional cast-cost units per ordinary node above the card's free allowance")
 						.translation("config.youkaishomecoming.common.certification.draftExcessNodeCostUnits")
 						.defineInRange("draftExcessNodeCostUnits", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_EXCESS_NODE_COST_UNITS, 0L, 1_000_000L);
+				nonSpellMaxSpawnPerTier = builder.comment("Maximum danmaku spawned by a non-spell in one tick per card tier")
+						.translation("config.youkaishomecoming.common.certification.nonSpellMaxSpawnPerTier")
+						.defineInRange("nonSpellMaxSpawnPerTier", 1, 1, 64);
+				nonSpellMaxLifetimeTicks = builder.comment("Maximum projectile lifetime allowed in non-spells, in ticks")
+						.translation("config.youkaishomecoming.common.certification.nonSpellMaxLifetimeTicks")
+						.defineInRange("nonSpellMaxLifetimeTicks", 200, 1, 1200);
+				nonSpellMaxInitialSpeed = builder.comment("Maximum statically bounded initial danmaku speed in non-spells")
+						.translation("config.youkaishomecoming.common.certification.nonSpellMaxInitialSpeed")
+						.defineInRange("nonSpellMaxInitialSpeed", 2.0, 0.0, 32.0);
+				nonSpellMaxOriginOffset = builder.comment("Maximum absolute projectile or shooter origin offset in non-spells")
+						.translation("config.youkaishomecoming.common.certification.nonSpellMaxOriginOffset")
+						.defineInRange("nonSpellMaxOriginOffset", 8.0, 0.0, 128.0);
+				lastSpellCooldownTicks = builder.comment("Player-shared Last Spell cooldown in ticks")
+						.translation("config.youkaishomecoming.common.certification.lastSpellCooldownTicks")
+						.defineInRange("lastSpellCooldownTicks", 3600, 0, 72000);
+				timeoutSpellBombCostMultiplier = builder.comment("Timeout Spell Bomb-cost multiplier")
+						.translation("config.youkaishomecoming.common.certification.timeoutSpellBombCostMultiplier")
+						.defineInRange("timeoutSpellBombCostMultiplier", 0.25, 0.01, 100.0);
+				timeoutSpellXpCostMultiplier = builder.comment("Timeout Spell XP-cost multiplier")
+						.translation("config.youkaishomecoming.common.certification.timeoutSpellXpCostMultiplier")
+						.defineInRange("timeoutSpellXpCostMultiplier", 1.0, 0.01, 100.0);
 				certificationEnabled = builder.comment("Master switch for the survival spell certification system")
 						.translation("config.youkaishomecoming.common.certification.enabled")
 						.define("enabled", true);
@@ -663,6 +692,9 @@ public class YHModConfig {
 				exposureDeactivateAfterShot = builder.comment("Whether to exit viewfinder after photographing danmaku")
 						.translation("config.youkaishomecoming.common.exposure_compat.exposureDeactivateAfterShot")
 						.define("exposureDeactivateAfterShot", true);
+				spellReplicaRequiredDanmaku = builder.comment("Captured danmaku needed to complete one replica film")
+						.translation("config.youkaishomecoming.common.exposure_compat.spellReplicaRequiredDanmaku")
+						.defineInRange("spellReplicaRequiredDanmaku", 500, 1, 100000);
 			}
 			builder.pop();
 

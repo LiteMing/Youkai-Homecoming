@@ -4,6 +4,8 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItemCost;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -20,6 +22,11 @@ public final class DanmakuClientState {
 		return cap.isPlayerSpellActive() || cap.isInvul() || cap.isWeak();
 	}
 
+	public static boolean isNonSpellActive(Player player, ItemStack stack) {
+		if (player == null || stack.isEmpty() || !DynamicSpellItem.isNonSpell(stack)) return false;
+		return GrazeCapability.HOLDER.get(player).isNonSpellActive(GrazeHelper.spellCardKey(stack));
+	}
+
 	public static boolean isSpellCardCastable(Player player, ItemStack stack) {
 		if (player == null || stack.isEmpty()) return false;
 		var cap = GrazeCapability.HOLDER.get(player);
@@ -27,11 +34,17 @@ public final class DanmakuClientState {
 		if (cap.isSpellCardUnavailable(cardKey)) {
 			return false;
 		}
+		SpellCardType type = stack.getItem() instanceof DynamicSpellItem
+				? DynamicSpellItem.getCardType(stack) : SpellCardType.NORMAL;
+		if (type == SpellCardType.NON_SPELL) return false;
+		if (type == SpellCardType.LAST_SPELL) {
+			return cap.canActivateLastSpell() && !cap.isPlayerSpellActive();
+		}
 
 		// 检查资源是否足够支付 (弹幕战内看 BOMB，战外看经验等级)
 		boolean inCombat = cap.isInDanmakuCombat();
 		if (player.getAbilities().instabuild) return true;
-		long costUnits = SpellItemCost.getStackCostUnits(stack, inCombat);
+		long costUnits = SpellItemCost.getPayableStackCostUnits(stack, inCombat);
 		if (inCombat) {
 			// Bombs are stored in fifths (raw units): 20 abstract units = 1 raw.
 			long requiredRawBomb = Math.max(1, (long) Math.ceil(costUnits / 20.0));
@@ -64,6 +77,7 @@ public final class DanmakuClientState {
 	}
 
 	private static boolean isCastableSpellStack(Player player, ItemStack stack) {
-		return GrazeHelper.isSpellStack(stack) && isSpellCardCastable(player, stack);
+		return GrazeHelper.isSpellStack(stack) && !DynamicSpellItem.isNonSpell(stack)
+				&& isSpellCardCastable(player, stack);
 	}
 }

@@ -2,6 +2,8 @@ package dev.xkmc.youkaishomecoming.content.spell.item;
 
 import com.google.gson.JsonObject;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellAuraItem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzer;
@@ -46,6 +48,8 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 		int baseTier = 1;
 		int addedBossSpells = 0;
 		ItemStack existingCard = ItemStack.EMPTY;
+		SpellCardType auraType = null;
+		boolean exAura = false;
 		for (int i = 0; i < container.getContainerSize(); i++) {
 			ItemStack item = container.getItem(i);
 			if (item.getItem() instanceof DynamicSpellItem) {
@@ -53,20 +57,28 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 				existingCard = item;
 			} else if (item.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem) {
 				addedBossSpells++;
+			} else if (item.getItem() instanceof SpellAuraItem aura) {
+				if (!aura.isEx()) auraType = aura.type();
+				exAura |= aura.isEx();
 			}
 		}
 		if (bossSpell != null) {
 			addedBossSpells = Math.max(1, addedBossSpells);
 		}
 		int targetTier = baseTier + (addedBossSpells > 0 ? addedBossSpells : 0);
+		boolean auraConversion = !existingCard.isEmpty() && (auraType != null || exAura)
+				&& addedBossSpells == 0 && bossSpell == null;
 		dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank =
 				dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.fromTier(targetTier);
 		
-		// 若是基于已有成品符卡升级或水洗，解除成品与认证状态，退回草稿可修改状态
+		// Aura conversion is only legal before certification. Preserve the bound
+		// draft and its budget instead of laundering a completed certificate.
 		if (!existingCard.isEmpty() && existingCard.hasTag()) {
 			stack.setTag(existingCard.getTag().copy());
-			DynamicSpellItem.setComplete(stack, false);
-			if (stack.getTag() != null) {
+			if (!auraConversion) {
+				// Preserve the historical wash/upgrade behavior. Only aura conversion
+				// refuses completed or certified cards.
+				DynamicSpellItem.setComplete(stack, false);
 				stack.getTag().remove(dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.TAG_CERTIFIED_HASH);
 				stack.getTag().remove(dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.TAG_CERTIFICATE_ID);
 				stack.getTag().remove(dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.TAG_CERTIFIED_DURATION);
@@ -74,8 +86,35 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 			}
 		}
 		DynamicSpellItem.setRank(stack, rank);
-		DynamicSpellItem.setDraftBudget(stack, rank.createBudget());
+		if (!auraConversion) DynamicSpellItem.setDraftBudget(stack, rank.createBudget());
+		if (auraType != null) DynamicSpellItem.setCardType(stack, auraType);
+		if (exAura) DynamicSpellItem.setExSpell(stack, true);
+		if (DynamicSpellItem.getCardType(stack) == SpellCardType.NON_SPELL
+				&& DynamicSpellItem.isExSpell(stack)) return ItemStack.EMPTY;
 		return stack;
+	}
+
+	@Override
+	public boolean matches(CraftingContainer container, net.minecraft.world.level.Level level) {
+		if (!super.matches(container, level)) return false;
+		ItemStack card = ItemStack.EMPTY;
+		boolean ex = false;
+		SpellCardType type = null;
+		for (int i = 0; i < container.getContainerSize(); i++) {
+			ItemStack stack = container.getItem(i);
+			if (stack.getItem() instanceof DynamicSpellItem) card = stack;
+			if (stack.getItem() instanceof SpellAuraItem aura) {
+				ex |= aura.isEx();
+				if (!aura.isEx()) type = aura.type();
+			}
+		}
+		if (card.isEmpty()) return true;
+		boolean auraConversion = type != null || ex;
+		if (auraConversion && (DynamicSpellItem.isComplete(card)
+				|| dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator
+				.isCertified(card))) return false;
+		SpellCardType resultType = type == null ? DynamicSpellItem.getCardType(card) : type;
+		return !(resultType == SpellCardType.NON_SPELL && (ex || DynamicSpellItem.isExSpell(card)));
 	}
 
 	@Override

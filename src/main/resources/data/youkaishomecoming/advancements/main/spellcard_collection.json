@@ -1,0 +1,26 @@
+{
+  "parent": "youkaishomecoming:main/spellcard_maker",
+  "criteria": {
+    "reimu": { "conditions": { "items": [{ "items": ["youkaishomecoming:spell_reimu"] }] }, "trigger": "minecraft:inventory_changed" },
+    "marisa": { "conditions": { "items": [{ "items": ["youkaishomecoming:spell_marisa"] }] }, "trigger": "minecraft:inventory_changed" },
+    "sanae": { "conditions": { "items": [{ "items": ["youkaishomecoming:spell_sanae"] }] }, "trigger": "minecraft:inventory_changed" },
+    "koishi": { "conditions": { "items": [{ "items": ["youkaishomecoming:spell_koishi"] }] }, "trigger": "minecraft:inventory_changed" },
+    "mystia": { "conditions": { "items": [{ "items": ["youkaishomecoming:spell_mystia"] }] }, "trigger": "minecraft:inventory_changed" },
+    "remilia": { "conditions": { "items": [{ "items": ["youkaishomecoming:spell_remilia"] }] }, "trigger": "minecraft:inventory_changed" },
+    "yukari_laser": { "conditions": { "items": [{ "items": ["youkaishomecoming:spell_yukari_laser"] }] }, "trigger": "minecraft:inventory_changed" },
+    "yukari_butterfly": { "conditions": { "items": [{ "items": ["youkaishomecoming:spell_yukari_butterfly"] }] }, "trigger": "minecraft:inventory_changed" },
+    "clownpiece": { "conditions": { "items": [{ "items": ["youkaishomecoming:spell_clownpiece"] }] }, "trigger": "minecraft:inventory_changed" }
+  },
+  "display": {
+    "announce_to_chat": true,
+    "description": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_collection.description" },
+    "frame": "challenge",
+    "hidden": true,
+    "icon": { "item": "youkaishomecoming:ex_spell_aura" },
+    "show_toast": true,
+    "title": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_collection.title" }
+  },
+  "requirements": [["reimu"], ["marisa"], ["sanae"], ["koishi"], ["mystia"], ["remilia"], ["yukari_laser"], ["yukari_butterfly"], ["clownpiece"]],
+  "rewards": { "loot": ["youkaishomecoming:ex_spell_aura_reward"] },
+  "sends_telemetry_event": true
+}

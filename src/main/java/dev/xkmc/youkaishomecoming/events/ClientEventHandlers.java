@@ -20,6 +20,7 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.ModList;
 
 @Mod.EventBusSubscriber(value = Dist.CLIENT, modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ClientEventHandlers {
@@ -34,7 +35,9 @@ public class ClientEventHandlers {
 		tilt = Mth.lerp(0.03f, tilt, lv);
 		if (event.phase == TickEvent.Phase.END) {
 			syncBeatenPose();
-			dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();
+			if (ModList.get().isLoaded("exposure")) {
+				dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();
+			}
 		}
 	}
 

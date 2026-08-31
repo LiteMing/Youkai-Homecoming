@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
@@ -336,7 +337,7 @@ public class EntitySpellProxyEntity extends PathfinderMob
 	}
 
 	public void countDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit, dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result) {
-		danmakuHolder.countDanmakuInFrustum(frustum, limit, result);
+		danmakuHolder.countDanmakuInFrustum(trackingHost(), frustum, limit, result, getSpellDefinitionId());
 	}
 
 	public void eraseDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, @Nullable Player player, int limit) {
@@ -362,6 +363,12 @@ public class EntitySpellProxyEntity extends PathfinderMob
 	@Override
 	public LivingEntity shooter() {
 		return trackingHost();
+	}
+
+	@Override
+	public double casterPower() {
+		Entity host = attachedHost();
+		return host instanceof Player player ? GrazeHelper.getEffectivePowerLevel(player) : 0;
 	}
 
 	@Nullable

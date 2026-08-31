@@ -133,6 +133,11 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	@Override
+	public boolean isPlayerSpellProjectile() {
+		return playerSpellDamageRestricted;
+	}
+
+	@Override
 	public boolean canHitDanmakuTarget(EntityInfo target) {
 		return IYHDanmaku.canPlayerSpellHit(this, target, playerSpellDamageRestricted, playerSpellTargetId);
 	}

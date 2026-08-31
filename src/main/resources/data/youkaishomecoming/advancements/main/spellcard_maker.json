@@ -1,0 +1,21 @@
+{
+  "parent": "youkaishomecoming:main/welcome_to_youkais_homecoming",
+  "criteria": {
+    "has_draft": {
+      "conditions": { "items": [{ "items": ["youkaishomecoming:dynamic_spell"] }] },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "display": {
+    "announce_to_chat": true,
+    "description": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_maker.description" },
+    "frame": "task",
+    "hidden": false,
+    "icon": { "item": "youkaishomecoming:dynamic_spell" },
+    "show_toast": true,
+    "title": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_maker.title" }
+  },
+  "requirements": [["has_draft"]],
+  "rewards": { "loot": ["youkaishomecoming:non_spell_aura_reward"] },
+  "sends_telemetry_event": true
+}

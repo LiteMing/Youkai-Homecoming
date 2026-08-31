@@ -19,6 +19,7 @@ import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.FrameType;
 import net.minecraft.advancements.critereon.*;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.storage.loot.LootPool;
@@ -34,6 +35,10 @@ public class YHAdvGen {
 	public static final ResourceLocation FLESH_WARN = YoukaisHomecoming.loc("flesh_warn");
 	public static final ResourceLocation HURT_WARN = YoukaisHomecoming.loc("hurt_warn");
 	public static final ResourceLocation KOISHI_FIRST = YoukaisHomecoming.loc("koishi_first");
+	public static final ResourceLocation SPELLCARD_MAKER = YoukaisHomecoming.loc("main/spellcard_maker");
+	public static final ResourceLocation SPELLCARD_TIER6 = YoukaisHomecoming.loc("main/spellcard_tier6");
+	public static final ResourceLocation SPELLCARD_TIER12 = YoukaisHomecoming.loc("main/spellcard_tier12");
+	public static final ResourceLocation SPELLCARD_COLLECTION = YoukaisHomecoming.loc("main/spellcard_collection");
 
 	public static void genAdv(RegistrateAdvancementProvider pvd) {
 		pvd.accept(Advancement.Builder.advancement().addCriterion("flesh_warn",
@@ -276,6 +281,49 @@ public class YHAdvGen {
 						"Spellcard Power", "When you eat flesh in front of villagers, Reimu will try to exterminate you. Defat Reimu and obtain her spellcard")
 				.type(FrameType.CHALLENGE);
 
+		// Spell-card progression materials are ordinary advancements so servers can
+		// replace the criteria/rewards from KubeJS without changing item logic.
+		root.create("spellcard_maker", YHDanmaku.DYNAMIC_SPELL.asStack(),
+				CriterionBuilder.item(YHDanmaku.DYNAMIC_SPELL.get()),
+				"符卡制作者", "制作一张符卡草稿")
+				.add(new RewardBuilder(YoukaisHomecoming.REGISTRATE, 0,
+						YoukaisHomecoming.loc("non_spell_aura_reward"),
+						() -> LootTable.lootTable().withPool(LootPool.lootPool().add(
+								LootTableTemplate.getItem(YHDanmaku.NON_SPELL_AURA.get(), 1, 1)))));
+		root.create("spellcard_tier6", YHDanmaku.DYNAMIC_SPELL.asStack(),
+				CriterionBuilder.one(InventoryChangeTrigger.TriggerInstance.hasItems(
+						rankedDraftPredicate(dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.GREATER_FAITH))),
+				"时符资格", "获得 Tier 6 符卡基底")
+				.add(new RewardBuilder(YoukaisHomecoming.REGISTRATE, 0,
+						YoukaisHomecoming.loc("timeout_spell_aura_reward"),
+						() -> LootTable.lootTable().withPool(LootPool.lootPool().add(
+								LootTableTemplate.getItem(YHDanmaku.TIMEOUT_SPELL_AURA.get(), 1, 1)))));
+		root.create("spellcard_tier12", YHDanmaku.DYNAMIC_SPELL.asStack(),
+				CriterionBuilder.one(InventoryChangeTrigger.TriggerInstance.hasItems(
+						rankedDraftPredicate(dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.GREATER_VIRTUE))),
+				"终符资格", "获得 Tier 12 符卡基底")
+				.add(new RewardBuilder(YoukaisHomecoming.REGISTRATE, 0,
+						YoukaisHomecoming.loc("last_spell_aura_reward"),
+						() -> LootTable.lootTable().withPool(LootPool.lootPool().add(
+								LootTableTemplate.getItem(YHDanmaku.LAST_SPELL_AURA.get(), 1, 1)))));
+		root.create("spellcard_collection", YHDanmaku.DYNAMIC_SPELL.asStack(),
+				CriterionBuilder.and()
+						.add(InventoryChangeTrigger.TriggerInstance.hasItems(YHDanmaku.REIMU_SPELL.get()))
+						.add(InventoryChangeTrigger.TriggerInstance.hasItems(YHDanmaku.MARISA_SPELL.get()))
+						.add(InventoryChangeTrigger.TriggerInstance.hasItems(YHDanmaku.SANAE_SPELL.get()))
+						.add(InventoryChangeTrigger.TriggerInstance.hasItems(YHDanmaku.KOISHI_SPELL.get()))
+						.add(InventoryChangeTrigger.TriggerInstance.hasItems(YHDanmaku.MYSTIA_SPELL.get()))
+						.add(InventoryChangeTrigger.TriggerInstance.hasItems(YHDanmaku.REMILIA_SPELL.get()))
+						.add(InventoryChangeTrigger.TriggerInstance.hasItems(YHDanmaku.YUKARI_SPELL_LASER.get()))
+						.add(InventoryChangeTrigger.TriggerInstance.hasItems(YHDanmaku.YUKARI_SPELL_BUTTERFLY.get()))
+						.add(InventoryChangeTrigger.TriggerInstance.hasItems(YHDanmaku.CLOWNPIECE_SPELL.get())),
+				"符卡收藏家", "收集所有默认注册的符卡")
+				.add(new RewardBuilder(YoukaisHomecoming.REGISTRATE, 0,
+						YoukaisHomecoming.loc("ex_spell_aura_reward"),
+						() -> LootTable.lootTable().withPool(LootPool.lootPool().add(
+								LootTableTemplate.getItem(YHDanmaku.EX_SPELL_AURA.get(), 1, 1)))))
+				.type(FrameType.CHALLENGE, true, true, true);
+
 		danmaku.create("feed_reimu", YHItems.REIMU_HAIRBAND.get(),
 						Util.make(CriterionBuilder.and(), c -> Streams.concat(
 										Arrays.stream(YHDish.values()).filter(e -> !e.isFlesh()).map(e -> e.block.get()),
@@ -293,6 +341,13 @@ public class YHAdvGen {
 								LootTableTemplate.getItem(YHItems.REIMU_HAIRBAND.get(), 1, 1)))));
 
 		root.finish();
+	}
+
+	private static ItemPredicate rankedDraftPredicate(
+			dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank) {
+		CompoundTag tag = new CompoundTag();
+		tag.putString("yh_spell_rank", rank.getSerializedName());
+		return ItemPredicate.Builder.item().of(YHDanmaku.DYNAMIC_SPELL.get()).hasNbt(tag).build();
 	}
 
 }

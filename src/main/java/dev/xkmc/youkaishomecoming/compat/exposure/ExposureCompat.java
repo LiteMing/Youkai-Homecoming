@@ -5,10 +5,14 @@ import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
-import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
-import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellReplicaFilmItem;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
+import dev.xkmc.youkaishomecoming.content.spell.replica.SpellReplicaService;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import io.github.mortuusars.exposure.forge.api.event.FrameAddedEvent;
@@ -18,6 +22,7 @@ import io.github.mortuusars.exposure.util.Fov;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -27,8 +32,12 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Exposure mod compatibility: erase danmaku within the camera's field of view when a photo is taken.
@@ -44,17 +53,11 @@ import java.util.List;
  */
 public class ExposureCompat {
 
-	/** Maximum range to search for danmaku owners and world danmaku. */
-	private static final double SEARCH_RANGE = 128.0;
-
-	/** Maximum number of danmaku to erase per photo to avoid performance spikes. */
-	private static final int MAX_ERASE_PER_SHOT = 500;
-
 	/**
 	 * Cached erase result from ModifyFrameDataEvent, consumed by FrameAddedEvent.
 	 * Safe because both events fire on the same server thread in sequence.
 	 */
-	private static EraseResult pendingResult = null;
+	private static final Map<UUID, EraseResult> PENDING_RESULTS = new HashMap<>();
 
 	/**
 	 * Phase 1: Compute what danmaku are in the frustum and write stats to frame NBT.
@@ -67,50 +70,20 @@ public class ExposureCompat {
 
 		// Enrich youkai entities in frame with model ID
 		enrichYoukaiEntities(event.frame, event.entitiesInFrame);
+		PENDING_RESULTS.remove(player.getUUID());
+		if (YHStgApi.getBomb(player) < 1.0) {
+			new EraseResult().writeToFrame(event.frame);
+			return;
+		}
 
-		// Reconstruct camera frustum
-		Vec3 eyePos = player.getEyePosition();
-		Vec3 lookDir = player.getLookAngle();
 		float fovDegrees = getCameraFov(event.cameraStack);
-		DanmakuFrustum frustum = new DanmakuFrustum(eyePos, lookDir, fovDegrees);
-
-		AABB searchBox = AABB.ofSize(eyePos, SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2);
-		EraseResult result = new EraseResult();
-
-		// Count danmaku in frustum (don't erase yet — photo needs to capture them first)
-		for (YoukaiEntity youkai : level.getEntitiesOfClass(YoukaiEntity.class, searchBox)) {
-			youkai.countDanmakuInFrustum(frustum, result.remaining(MAX_ERASE_PER_SHOT), result);
-			if (result.getTotal() >= MAX_ERASE_PER_SHOT) break;
-		}
-		if (result.getTotal() < MAX_ERASE_PER_SHOT) {
-			for (DanmakuProxyEntity proxy : level.getEntitiesOfClass(DanmakuProxyEntity.class, searchBox)) {
-				proxy.countDanmakuInFrustum(frustum, result.remaining(MAX_ERASE_PER_SHOT), result);
-				if (result.getTotal() >= MAX_ERASE_PER_SHOT) break;
-			}
-		}
-		if (result.getTotal() < MAX_ERASE_PER_SHOT) {
-			for (EntitySpellProxyEntity proxy : level.getEntitiesOfClass(EntitySpellProxyEntity.class, searchBox)) {
-				proxy.countDanmakuInFrustum(frustum, result.remaining(MAX_ERASE_PER_SHOT), result);
-				if (result.getTotal() >= MAX_ERASE_PER_SHOT) break;
-			}
-		}
-		if (result.getTotal() < MAX_ERASE_PER_SHOT) {
-			for (Entity entity : level.getEntities(player, searchBox, e -> e instanceof IYHDanmaku)) {
-				if (result.getTotal() >= MAX_ERASE_PER_SHOT) break;
-				if (entity instanceof SimplifiedProjectile) {
-					if (frustum.contains(entity.position())) {
-						String[] typeAndColor = getDanmakuTypeAndColor(entity);
-						result.record(typeAndColor[0], typeAndColor[1]);
-					}
-				}
-			}
-		}
+		EraseResult result = DanmakuCaptureService.collect(player, fovDegrees);
 
 		// Write stats to frame NBT (will be serialized into film)
 		result.writeToFrame(event.frame);
 
 		// Cache result for the FrameAddedEvent to actually erase
-		pendingResult = result;
+		if (!result.isEmpty()) PENDING_RESULTS.put(player.getUUID(), result);
 	}
 
 	/**
@@ -122,43 +95,22 @@ public class ExposureCompat {
 		ServerPlayer player = event.player;
 		if (!(player.level() instanceof ServerLevel level)) return;
 
-		EraseResult result = pendingResult;
-		pendingResult = null;
+		EraseResult result = PENDING_RESULTS.remove(player.getUUID());
 
-		if (result == null || result.isEmpty()) return;
-
-		// Now actually erase the danmaku
-		Vec3 eyePos = player.getEyePosition();
-		Vec3 lookDir = player.getLookAngle();
-		float fovDegrees = getCameraFov(event.cameraStack);
-		DanmakuFrustum frustum = new DanmakuFrustum(eyePos, lookDir, fovDegrees);
-		AABB searchBox = AABB.ofSize(eyePos, SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2);
-
-		for (YoukaiEntity youkai : level.getEntitiesOfClass(YoukaiEntity.class, searchBox)) {
-			youkai.eraseDanmakuInFrustum(frustum, player, MAX_ERASE_PER_SHOT);
-		}
-		for (DanmakuProxyEntity proxy : level.getEntitiesOfClass(DanmakuProxyEntity.class, searchBox)) {
-			proxy.eraseDanmakuInFrustum(frustum, player, MAX_ERASE_PER_SHOT);
-		}
-		for (EntitySpellProxyEntity proxy : level.getEntitiesOfClass(EntitySpellProxyEntity.class, searchBox)) {
-			proxy.eraseDanmakuInFrustum(frustum, player, MAX_ERASE_PER_SHOT);
-		}
-		for (Entity entity : level.getEntities(player, searchBox, e -> e instanceof IYHDanmaku)) {
-			if (entity instanceof SimplifiedProjectile proj) {
-				if (frustum.contains(entity.position())) {
-					proj.markErased(true);
-				}
-			}
-		}
-
-		DanmakuManager.flushErases();
+		DanmakuCaptureService.CaptureOutcome outcome = DanmakuCaptureService.commit(player, result);
+		if (!outcome.success()) return;
 
 		// Apply camera cooldown and deactivate
 		applyCameraEffects(player, event.cameraStack);
 
 		// Send score notification to client
 		YoukaisHomecoming.HANDLER.toClientPlayer(
-				new DanmakuPhotoToClient(result.getTotal(), result.calculateScore()), player);
+				new DanmakuPhotoToClient(outcome.erased(), outcome.score()), player);
+	}
+
+	@SubscribeEvent
+	public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+		PENDING_RESULTS.remove(event.getEntity().getUUID());
 	}
 
 	/**
@@ -202,20 +154,6 @@ public class ExposureCompat {
 				));
 			}
 		}
-	}
-
-	/**
-	 * Extract type name and color name from a danmaku entity.
-	 */
-	public static String[] getDanmakuTypeAndColor(Entity entity) {
-		if (entity instanceof ItemDanmakuEntity ide) {
-			if (ide.getItem().getItem() instanceof DanmakuItem item) {
-				return new String[]{item.type.name(), item.color.getName()};
-			}
-		}
-		var key = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
-		String typeName = key != null ? key.getPath() : "unknown";
-		return new String[]{typeName, ""};
 	}
 
 	/**

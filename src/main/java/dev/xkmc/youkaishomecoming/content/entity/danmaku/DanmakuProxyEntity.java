@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
@@ -67,6 +68,18 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private SpellRuntime runtime;
 	private int spellTickCount = 0;
 	private int maxDuration;
+	private SpellCardType cardType = SpellCardType.NORMAL;
+	private boolean certifiedCard;
+	private boolean ending;
+	@Nullable
+	private String cardKey;
+
+	public enum EndReason {
+		TIMEOUT,
+		SPELL_BREAK,
+		PLAYER_CANCEL,
+		EXTERNAL_ABORT
+	}
 
 	// ==================== Constructor ====================
 
@@ -102,6 +115,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 	public void init(ServerPlayer player, SpellDefinition definition, int duration,
 						 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan,
 						 @Nullable Integer durationOverride) {
+		init(player, definition, duration, target, healthPlan, durationOverride, false);
+	}
+
+	public void init(ServerPlayer player, SpellDefinition definition, int duration,
+						 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan,
+						 @Nullable Integer durationOverride, boolean certifiedCard) {
 		this.ownerPlayerId = player.getUUID();
 		this.ownerPlayer = player;
 		this.maxDuration = duration;
@@ -110,6 +129,9 @@ public class DanmakuProxyEntity extends PathfinderMob
 		this.runtime.reset();
 		this.runtime.setDurationOverride(durationOverride);
 		this.spellTickCount = 0;
+		this.cardType = definition.itemForm.cardType();
+		this.certifiedCard = certifiedCard;
+		this.ending = false;
 
 		if (target != null) {
 			this.targetId = target.getUUID();
@@ -140,7 +162,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		if (ownerPlayer == null || ownerPlayer.isRemoved() || !ownerPlayer.isAlive()) {
 			resolveOwner();
 			if (ownerPlayer == null) {
-				cleanup();
+				cleanup(EndReason.EXTERNAL_ABORT);
 				return;
 			}
 		}
@@ -166,7 +188,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		boolean naturalEnd = maxDuration < 0 && runtime != null && runtime.isFinished();
 		boolean timedOut = maxDuration >= 0 && spellTickCount >= maxDuration;
 		if (naturalEnd || timedOut) {
-			cleanup();
+			cleanup(EndReason.TIMEOUT);
 		} else if ((spellTickCount & 3) == 0 && ownerPlayer != null) {
 			// The proxy owns the authoritative elapsed tick; refresh the Bossbar
 			// after advancing the runtime rather than waiting for capability order.
@@ -255,7 +277,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	public void countDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit, dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result) {
-		danmakuHolder.countDanmakuInFrustum(frustum, limit, result);
+		danmakuHolder.countDanmakuInFrustum(this, frustum, limit, result, getSpellDefinitionId());
 	}
 
 	public void eraseDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, @Nullable Player player, int limit) {
@@ -290,6 +312,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 	@Override
 	public LivingEntity shooter() {
 		return ownerPlayer != null ? ownerPlayer : this;
+	}
+
+	@Override
+	public double casterPower() {
+		resolveOwner();
+		return ownerPlayer == null ? 0 : GrazeHelper.getEffectivePowerLevel(ownerPlayer);
 	}
 
 	@Nullable
@@ -353,8 +381,19 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 * Clean up all virtual danmaku and remove this proxy entity from the world.
 	 */
 	public void cleanup() {
+		cleanup(EndReason.EXTERNAL_ABORT);
+	}
+
+	public void cleanup(EndReason reason) {
+		if (ending || isRemoved()) return;
+		ending = true;
+		ServerPlayer owner = ownerPlayer;
 		eraseAllDanmaku(null);
 		this.discard();
+		if (owner != null) {
+			SpellContainer.onProxyEnded(owner, this,
+					reason == null ? EndReason.EXTERNAL_ABORT : reason);
+		}
 	}
 
 	/**
@@ -394,6 +433,27 @@ public class DanmakuProxyEntity extends PathfinderMob
 			return Math.max(0, runtime.getSpellDurationTicks());
 		}
 		return Math.max(0, maxDuration);
+	}
+
+	public SpellCardType cardType() {
+		return cardType;
+	}
+
+	public boolean isCertifiedCard() {
+		return certifiedCard;
+	}
+
+	public boolean isExSpell() {
+		return runtime != null && runtime.getDefinition().itemForm.exSpell();
+	}
+
+	public void bindCardKey(@Nullable String cardKey) {
+		this.cardKey = cardKey;
+	}
+
+	@Nullable
+	public String cardKey() {
+		return cardKey;
 	}
 
 	// ==================== Entity properties: invisible, invulnerable, no AI ====================

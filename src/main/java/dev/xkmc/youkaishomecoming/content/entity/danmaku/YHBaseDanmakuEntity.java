@@ -152,6 +152,11 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	}
 
 	@Override
+	public boolean isPlayerSpellProjectile() {
+		return playerSpellDamageRestricted;
+	}
+
+	@Override
 	public boolean canHitDanmakuTarget(EntityInfo target) {
 		return IYHDanmaku.canPlayerSpellHit(this, target, playerSpellDamageRestricted, playerSpellTargetId);
 	}

@@ -42,6 +42,11 @@ public final class CertifiedSpellRewardService {
 		ItemStack stack = DynamicSpellItem.createStackWithDuration(
 				YHDanmaku.DYNAMIC_SPELL.get(), definition.id, castDuration, false);
 		CertifiedSpellValidator.tagCertified(stack, certificate);
+		// The immutable definition remains authoritative at cast time, while the
+		// projection tags keep inventory selection, borders and tooltips correct
+		// without consulting mutable live registry data.
+		DynamicSpellItem.setCardType(stack, definition.itemForm.cardType());
+		DynamicSpellItem.setExSpell(stack, definition.itemForm.exSpell());
 		if (certificate.draftBudget() != null) {
 			DynamicSpellItem.setDraftBudget(stack, certificate.draftBudget());
 			dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank =

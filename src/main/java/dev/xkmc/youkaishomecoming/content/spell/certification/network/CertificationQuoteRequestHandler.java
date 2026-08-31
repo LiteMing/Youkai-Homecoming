@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Server-side quote handling: analyze (certification profile), hash, cost and
@@ -25,13 +26,21 @@ public final class CertificationQuoteRequestHandler {
 			player.displayClientMessage(YHLangData.CERT_DISABLED.get(), false);
 			return;
 		}
-		if (!CertificationService.hasUnfinishedDraft(player, definition.id)) {
+		ItemStack draft = CertificationService.findUnfinishedDraft(player, definition.id);
+		if (draft.isEmpty()) {
 			player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
 					YHLangData.CERT_QUOTE_MISSING_DRAFT.get()), false);
 			return;
 		}
 		CertificationQuote quote;
 		try {
+			definition = dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+					.applyDraftTraits(draft, definition);
+			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry.register(definition);
+			if (!dev.xkmc.youkaishomecoming.content.spell.runtime.CustomSpellStorage
+					.saveSpell(player.server, definition)) {
+				throw new IllegalStateException("Failed to persist draft card traits");
+			}
 			quote = CertificationService.quote(player, definition);
 		} catch (SpellAnalysisException e) {
 			YoukaisHomecoming.LOGGER.info("Certification quote rejected by spell analysis for {}: {}",
@@ -44,6 +53,11 @@ public final class CertificationQuoteRequestHandler {
 					definition.id, e.getMessage());
 			player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
 					YHLangData.CERT_QUOTE_INVALID_HEALTH_PLAN.get()), false);
+			return;
+		} catch (RuntimeException e) {
+			YoukaisHomecoming.LOGGER.error("Certification quote failed for {}", definition.id, e);
+			player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
+					YHLangData.CERT_QUOTE_INTERNAL_ERROR.get()), false);
 			return;
 		}
 		CertificationManager.INSTANCE.setQuote(player, quote, definition);

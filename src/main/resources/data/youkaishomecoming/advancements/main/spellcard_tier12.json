@@ -1,0 +1,26 @@
+{
+  "parent": "youkaishomecoming:main/spellcard_tier6",
+  "criteria": {
+    "has_tier12": {
+      "conditions": {
+        "items": [{
+          "items": ["youkaishomecoming:dynamic_spell"],
+          "nbt": "{yh_spell_rank:\"greater_virtue\"}"
+        }]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "display": {
+    "announce_to_chat": true,
+    "description": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_tier12.description" },
+    "frame": "challenge",
+    "hidden": false,
+    "icon": { "item": "youkaishomecoming:last_spell_aura" },
+    "show_toast": true,
+    "title": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_tier12.title" }
+  },
+  "requirements": [["has_tier12"]],
+  "rewards": { "loot": ["youkaishomecoming:last_spell_aura_reward"] },
+  "sends_telemetry_event": true
+}

@@ -331,13 +331,15 @@ public class CertificationController {
 	 */
 	public void onSpellBroken() {
 		if (state != CertificationState.ACTIVE) return;
+		if (timeoutCompletes) return;
 		success(entity);
 	}
 
 	/** Any declared segment timeout fails certification, regardless of its boss transition target. */
 	public void onSpellTimeout() {
 		if (state != CertificationState.ACTIVE) return;
-		fail(entity, CertificationFailReason.TIMEOUT);
+		if (timeoutCompletes) success(entity);
+		else fail(entity, CertificationFailReason.TIMEOUT);
 	}
 
 	/** Player cast a different spell card mid-trial: no-bomb/no-hit forbids it. */

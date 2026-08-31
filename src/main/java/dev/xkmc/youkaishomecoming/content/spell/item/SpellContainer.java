@@ -7,6 +7,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.SpellProgressColor;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellProgressSnapshot;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.ChatFormatting;
@@ -34,7 +35,7 @@ public class SpellContainer extends ConditionalToken {
 
 	public static void clear(ServerPlayer sp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
-		data.clearSpellState(sp);
+		data.clearSpellState(sp, DanmakuProxyEntity.EndReason.EXTERNAL_ABORT);
 		erase(data.combatItemCache);
 		erase(data.ambientItemCache);
 		DanmakuManager.flushErases();
@@ -43,7 +44,7 @@ public class SpellContainer extends ConditionalToken {
 	/** Clear spell output and item projectiles fired during the current STG combat only. */
 	public static void clearCombat(ServerPlayer sp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
-		data.clearSpellState(sp);
+		data.clearSpellState(sp, DanmakuProxyEntity.EndReason.EXTERNAL_ABORT);
 		erase(data.combatItemCache);
 		DanmakuManager.flushErases();
 	}
@@ -63,20 +64,37 @@ public class SpellContainer extends ConditionalToken {
 
 	public static void trackProxy(ServerPlayer sp, DanmakuProxyEntity proxy, @Nullable String cardKey) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		proxy.bindCardKey(cardKey);
 		data.proxies.add(proxy);
-		data.activeSpellCardKey = cardKey;
+		if (proxy.cardType() != SpellCardType.NON_SPELL) data.activeSpellCardKey = cardKey;
+	}
+
+	/** Stops only the enabled non-spell, preserving an independently active spell card. */
+	public static void clearActiveNonSpell(ServerPlayer sp) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		for (var proxy : List.copyOf(data.proxies)) {
+			if (!proxy.isRemoved() && proxy.cardType() == SpellCardType.NON_SPELL) {
+				proxy.cleanup(DanmakuProxyEntity.EndReason.PLAYER_CANCEL);
+			}
+		}
+		data.proxies.removeIf(DanmakuProxyEntity::isRemoved);
+		GrazeCapability.HOLDER.get(sp).clearActiveNonSpellCard();
+		DanmakuManager.flushErases();
 	}
 
 	public static boolean forceCloseActiveSpell(ServerPlayer sp, @Nullable String fallbackCardKey) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
-		if (data.spells.isEmpty() && data.proxies.stream().noneMatch(proxy -> !proxy.isRemoved())) {
+		if (data.spells.isEmpty() && data.proxies.stream().noneMatch(SpellContainer::isActiveSpellCardProxy)) {
 			return false;
 		}
 		String cardKey = data.activeSpellCardKey == null ? fallbackCardKey : data.activeSpellCardKey;
 		boolean inCombat = GrazeCapability.HOLDER.get(sp).isInDanmakuCombat();
-		data.clearSpellState(sp);
+		boolean cancelSettledByType = data.proxies.stream().anyMatch(proxy -> isActiveSpellCardProxy(proxy)
+				&& (proxy.cardType() == SpellCardType.LAST_SPELL
+				|| proxy.cardType() == SpellCardType.TIMEOUT_SPELL && proxy.isCertifiedCard()));
+		data.clearActiveSpellCardState(sp, DanmakuProxyEntity.EndReason.PLAYER_CANCEL);
 		DanmakuManager.flushErases();
-		if (inCombat) {
+		if (inCombat && !cancelSettledByType) {
 			GrazeCapability.HOLDER.get(sp).disableSpellCardForCombat(cardKey);
 		}
 		return true;
@@ -93,6 +111,13 @@ public class SpellContainer extends ConditionalToken {
 		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
 		return !data.spells.isEmpty() ||
 				data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved());
+	}
+
+	/** True only for a real spell card; an enabled non-spell remains an ordinary attack. */
+	public static boolean hasActiveSpellCard(Player player) {
+		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
+		return !data.spells.isEmpty() || data.proxies.stream().anyMatch(proxy ->
+				!proxy.isRemoved() && proxy.cardType() != SpellCardType.NON_SPELL);
 	}
 
 	/** Clear all player-owned spell output when a beaten state starts. */
@@ -134,7 +159,7 @@ public class SpellContainer extends ConditionalToken {
 	public static ActiveSpellStatus activeSpellStatus(Player player) {
 		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
 		DanmakuProxyEntity proxy = data.proxies.stream()
-				.filter(e -> !e.isRemoved()).findFirst().orElse(null);
+				.filter(SpellContainer::isActiveSpellCardProxy).findFirst().orElse(null);
 		if (proxy == null) return ActiveSpellStatus.NONE;
 		int displayedHealth = data.displayedSpellBarValue();
 		SpellProgressSnapshot progress = SpellProgressSnapshot.fromTotalRemaining(
@@ -152,7 +177,7 @@ public class SpellContainer extends ConditionalToken {
 	/** True while a set_spell_health plan is protecting the active player spell. */
 	public static boolean hasActiveSpellBar(Player player) {
 		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
-		return data.spellBarMax > 0 && data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved());
+		return data.spellBarMax > 0 && data.proxies.stream().anyMatch(SpellContainer::isActiveSpellCardProxy);
 	}
 
 	@Nullable
@@ -210,12 +235,34 @@ public class SpellContainer extends ConditionalToken {
 	public static void onProxyRemoved(ServerPlayer sp, DanmakuProxyEntity proxy) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		if (!data.proxies.remove(proxy)) return;
-		if (data.proxies.stream().noneMatch(e -> !e.isRemoved())) {
+		if (data.proxies.stream().noneMatch(SpellContainer::isActiveSpellCardProxy)) {
 			data.activeSpellCardKey = null;
 			data.endSpellBar(sp);
 			data.lockPos = null;
 		} else if (data.spellBarMax > 0) {
 			data.syncPlayerSpellStatus(sp);
+		}
+		if (data.proxies.stream().noneMatch(other -> !other.isRemoved()
+				&& other.cardType() == SpellCardType.NON_SPELL)) {
+			GrazeCapability.HOLDER.get(sp).clearActiveNonSpellCard();
+		}
+	}
+
+	/** Settles type-specific consequences after the proxy has already been removed. */
+	public static void onProxyEnded(ServerPlayer sp, DanmakuProxyEntity proxy,
+			DanmakuProxyEntity.EndReason reason) {
+		if (!GrazeCapability.HOLDER.get(sp).isInDanmakuCombat()) return;
+		SpellCardType type = proxy.cardType();
+		if (type == SpellCardType.LAST_SPELL) {
+			if (reason == DanmakuProxyEntity.EndReason.TIMEOUT) {
+				GrazeCapability.HOLDER.get(sp).defeat(null);
+			}
+			return;
+		}
+		if (type == SpellCardType.TIMEOUT_SPELL && proxy.isCertifiedCard()
+				&& (reason == DanmakuProxyEntity.EndReason.TIMEOUT
+				|| reason == DanmakuProxyEntity.EndReason.PLAYER_CANCEL)) {
+			GrazeCapability.HOLDER.get(sp).breakSpellCardForCombat(proxy.cardKey(), null);
 		}
 	}
 
@@ -232,12 +279,24 @@ public class SpellContainer extends ConditionalToken {
 	@Nullable
 	public static GrazeCapability.HitType consumeSpellBarHit(ServerPlayer sp, @Nullable LivingEntity source,
 			float damage) {
+		return consumeSpellBarHit(sp, source, damage, false);
+	}
+
+	@Nullable
+	public static GrazeCapability.HitType consumeSpellBarHit(ServerPlayer sp, @Nullable LivingEntity source,
+			float damage, boolean playerSpellProjectile) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		if (data.spellBarMax <= 0) {
 			return null;
 		}
 		DanmakuProxyEntity proxy = data.proxies.stream()
-				.filter(e -> !e.isRemoved()).findFirst().orElse(null);
+				.filter(SpellContainer::isActiveSpellCardProxy).findFirst().orElse(null);
+		if (proxy != null && proxy.isExSpell() && playerSpellProjectile
+				&& source instanceof ServerPlayer) {
+			// EX protects only this spell-health bar. Returning null lets the same
+			// contact continue into the target player's ordinary LIFE handling.
+			return null;
+		}
 		SpellProgressSnapshot before = proxy == null ? SpellProgressSnapshot.NONE
 				: SpellProgressSnapshot.fromTotalRemaining(
 						proxy.getSpellRuntime(), data.displayedSpellBarValue());
@@ -256,7 +315,12 @@ public class SpellContainer extends ConditionalToken {
 		if (data.spellBarValue <= 0) {
 			String cardKey = data.spellBarCardKey;
 			data.endSpellBar(sp);
+			SpellCardType type = proxy == null ? SpellCardType.NORMAL : proxy.cardType();
 			breakActiveSpell(sp);
+			if (type == SpellCardType.LAST_SPELL) {
+				GrazeCapability.HOLDER.get(sp).defeat(source);
+				return GrazeCapability.HitType.LAST;
+			}
 			return GrazeCapability.HOLDER.get(sp).breakSpellCardForCombat(cardKey, source);
 		}
 		data.syncPlayerSpellStatus(sp);
@@ -267,12 +331,12 @@ public class SpellContainer extends ConditionalToken {
 	public static void breakActiveSpell(ServerPlayer sp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		for (var proxy : List.copyOf(data.proxies)) {
-			if (!proxy.isRemoved()) {
+			if (isActiveSpellCardProxy(proxy)) {
 				proxy.eraseAllDanmaku(null);
-				proxy.cleanup();
+				proxy.cleanup(DanmakuProxyEntity.EndReason.SPELL_BREAK);
 			}
 		}
-		data.proxies.clear();
+		data.proxies.removeIf(DanmakuProxyEntity::isRemoved);
 		data.syncPlayerSpellStatus(sp);
 		DanmakuManager.flushErases();
 	}
@@ -308,7 +372,7 @@ public class SpellContainer extends ConditionalToken {
 	}
 
 	private void syncPlayerSpellStatus(ServerPlayer sp) {
-		var proxy = proxies.stream().filter(e -> !e.isRemoved()).findFirst().orElse(null);
+		var proxy = proxies.stream().filter(SpellContainer::isActiveSpellCardProxy).findFirst().orElse(null);
 		var cap = GrazeCapability.HOLDER.get(sp);
 		ActiveSpellStatus status = activeSpellStatus(sp);
 		cap.setPlayerSpellStatus(new GrazeCapability.SpellProgressStatus(
@@ -396,18 +460,34 @@ public class SpellContainer extends ConditionalToken {
 
 	private final List<DanmakuProxyEntity> proxies = new ArrayList<>();
 
-	private void clearSpellState(ServerPlayer sp) {
+	private void clearSpellState(ServerPlayer sp, DanmakuProxyEntity.EndReason reason) {
 		for (var spell : spells) {
 			erase(spell.cache);
 		}
 		erase(cache);
 		for (var proxy : List.copyOf(proxies)) {
-			if (!proxy.isRemoved()) proxy.cleanup();
+			if (!proxy.isRemoved()) proxy.cleanup(reason);
 		}
 		spells.clear();
 		proxies.clear();
 		activeSpellCardKey = null;
 		endSpellBar(sp);
+	}
+
+	private void clearActiveSpellCardState(ServerPlayer sp, DanmakuProxyEntity.EndReason reason) {
+		for (var spell : spells) erase(spell.cache);
+		erase(cache);
+		for (var proxy : List.copyOf(proxies)) {
+			if (isActiveSpellCardProxy(proxy)) proxy.cleanup(reason);
+		}
+		spells.clear();
+		proxies.removeIf(DanmakuProxyEntity::isRemoved);
+		activeSpellCardKey = null;
+		endSpellBar(sp);
+	}
+
+	private static boolean isActiveSpellCardProxy(DanmakuProxyEntity proxy) {
+		return proxy != null && !proxy.isRemoved() && proxy.cardType() != SpellCardType.NON_SPELL;
 	}
 
 	private static void erase(List<SimplifiedProjectile> projectiles) {
@@ -432,10 +512,14 @@ public class SpellContainer extends ConditionalToken {
 		combatItemCache.removeIf(e -> !e.isValid());
 		ambientItemCache.removeIf(e -> !e.isValid());
 		proxies.removeIf(DanmakuProxyEntity::isRemoved);
-		if (spells.isEmpty() && proxies.isEmpty()) {
+		if (spells.isEmpty() && proxies.stream().noneMatch(SpellContainer::isActiveSpellCardProxy)) {
 			activeSpellCardKey = null;
 		}
-		if (proxies.isEmpty() && spellBarMax > 0) {
+		if (proxies.stream().noneMatch(proxy -> !proxy.isRemoved()
+				&& proxy.cardType() == SpellCardType.NON_SPELL) && player instanceof ServerPlayer sp) {
+			GrazeCapability.HOLDER.get(sp).clearActiveNonSpellCard();
+		}
+		if (proxies.stream().noneMatch(SpellContainer::isActiveSpellCardProxy) && spellBarMax > 0) {
 			// spell ended naturally: drop the bar
 			endSpellBar(player);
 			lockPos = null;

@@ -106,8 +106,8 @@ public class CustomSpellStorage {
 	/**
 	 * Save a spell definition as a JSON file. Overwrites if exists.
 	 */
-	public static void saveSpell(MinecraftServer server, SpellDefinition definition) {
-		saveSpell(getSpellFile(server, definition.id), definition);
+	public static boolean saveSpell(MinecraftServer server, SpellDefinition definition) {
+		return saveSpell(getSpellFile(server, definition.id), definition);
 	}
 
 	/**
@@ -119,7 +119,7 @@ public class CustomSpellStorage {
 		return file;
 	}
 
-	private static void saveSpell(File file, SpellDefinition definition) {
+	private static boolean saveSpell(File file, SpellDefinition definition) {
 		try {
 			var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 					.getOrThrow(false, s -> {});
@@ -127,8 +127,10 @@ public class CustomSpellStorage {
 				GSON.toJson(json, writer);
 			}
 			LOGGER.info("Saved custom spell {} to {}", definition.id, file.getPath());
+			return true;
 		} catch (Exception e) {
 			LOGGER.error("Failed to save spell {} to {}", definition.id, file.getPath(), e);
+			return false;
 		}
 	}
 

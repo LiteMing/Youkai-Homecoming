@@ -211,6 +211,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	 */
 	private void saveSelfMadeSpell(ServerPlayer sender) {
 		SpellDefinition definition = parseDefinition();
+		definition = applyHeldDraftTraits(sender, definition);
 		ResourceLocation id = definition.id;
 		if (id == null) {
 			throw new IllegalArgumentException("Spell id is missing");
@@ -283,6 +284,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 
 	private void saveSpell(ServerPlayer sender, boolean reapply) {
 		SpellDefinition definition = parseDefinition();
+		definition = applyHeldDraftTraits(sender, definition);
 		// Operators may author privileged boss logic. A held draft budget is still
 		// shown by the editor, but does not restrict this server-authoring path.
 		SpellRegistry.register(definition);
@@ -328,6 +330,21 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (!budget.permitsExperimental(nodes)) {
 			throw new IllegalArgumentException("Experimental capability grants exceed the draft budget");
 		}
+	}
+
+	private static SpellDefinition applyHeldDraftTraits(ServerPlayer sender, SpellDefinition definition) {
+		ItemStack blank = ItemStack.EMPTY;
+		for (int slot = 0; slot < sender.getInventory().getContainerSize(); slot++) {
+			ItemStack stack = sender.getInventory().getItem(slot);
+			if (!(stack.getItem() instanceof DynamicSpellItem) || DynamicSpellItem.isComplete(stack)
+					|| dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) continue;
+			ResourceLocation bound = DynamicSpellItem.getSpellId(stack);
+			if (bound != null && bound.equals(definition.id)) {
+				return DynamicSpellItem.applyDraftTraits(stack, definition);
+			}
+			if (bound == null && blank.isEmpty()) blank = stack;
+		}
+		return blank.isEmpty() ? definition : DynamicSpellItem.applyDraftTraits(blank, definition);
 	}
 
 	private void importMarketSpell(ServerPlayer sender) {

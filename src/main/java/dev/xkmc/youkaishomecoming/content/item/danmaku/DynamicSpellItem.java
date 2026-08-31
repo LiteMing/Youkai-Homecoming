@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
@@ -51,6 +52,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	private static final String TAG_SINGLE_USE = "single_use";
 	private static final String TAG_COLOR = "SpellColor";
 	private static final String TAG_RANK = "yh_spell_rank";
+	private static final String TAG_CARD_TYPE = "yh_spell_card_type";
+	private static final String TAG_EX_SPELL = "yh_ex_spell";
 	/** Mark on OP-given cards: a complete spell card that casts directly (no editor). */
 	private static final String TAG_COMPLETE = "complete";
 	/**
@@ -143,7 +146,55 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 	@Override
 	public boolean isCastReady(ItemStack stack) {
-		return CertifiedSpellValidator.isCertified(stack) || isComplete(stack);
+		SpellDefinition definition = getSpellDefinition(stack);
+		return definition != null && isNonSpell(stack)
+				|| CertifiedSpellValidator.isCertified(stack) || isComplete(stack);
+	}
+
+	public static SpellCardType getCardType(ItemStack stack) {
+		if (stack.hasTag() && stack.getTag().contains(TAG_CARD_TYPE)) {
+			return SpellCardType.byName(stack.getTag().getString(TAG_CARD_TYPE));
+		}
+		SpellDefinition definition = getSpellDefinition(stack);
+		return definition == null || definition.itemForm.cardType() == null
+				? SpellCardType.NORMAL : definition.itemForm.cardType();
+	}
+
+	public static boolean isNonSpell(ItemStack stack) {
+		return getCardType(stack).isNonSpell();
+	}
+
+	public static boolean isExSpell(ItemStack stack) {
+		if (stack.hasTag() && stack.getTag().contains(TAG_EX_SPELL)) return stack.getTag().getBoolean(TAG_EX_SPELL);
+		SpellDefinition definition = getSpellDefinition(stack);
+		return definition != null && definition.itemForm.exSpell();
+	}
+
+	public static void setExSpell(ItemStack stack, boolean enabled) {
+		if (enabled) stack.getOrCreateTag().putBoolean(TAG_EX_SPELL, true);
+		else if (stack.hasTag()) stack.getTag().remove(TAG_EX_SPELL);
+	}
+
+	/** Sets a pre-certification type projection supplied by an aura conversion. */
+	public static void setCardType(ItemStack stack, SpellCardType type) {
+		if (type == null || type == SpellCardType.NORMAL) {
+			if (stack.hasTag()) stack.getTag().remove(TAG_CARD_TYPE);
+		} else {
+			stack.getOrCreateTag().putString(TAG_CARD_TYPE, type.getSerializedName());
+		}
+	}
+
+	/** Applies one-use aura traits from an unfinished card to its authoritative definition. */
+	public static SpellDefinition applyDraftTraits(ItemStack stack, SpellDefinition definition) {
+		if (stack == null || definition == null || CertifiedSpellValidator.isCertified(stack)) return definition;
+		SpellCardType type = getCardType(stack);
+		boolean ex = isExSpell(stack);
+		if (type == SpellCardType.NON_SPELL && ex) {
+			throw new IllegalArgumentException("Non-spells cannot carry the EX spell-health trait");
+		}
+		return new SpellDefinition(definition.id, definition.display,
+				definition.itemForm.withCardType(type).withExSpell(ex), definition.entryPhase,
+				definition.phases, definition.difficulty, definition.customNames);
 	}
 
 	public static void setComplete(ItemStack stack, boolean complete) {
@@ -282,26 +333,17 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
-		if (player.isShiftKeyDown() && GrazeHelper.isPlayerSpellBeingCast(player)) {
+		boolean activeThisNonSpell = isNonSpell(stack) && GrazeCapability.HOLDER.get(player)
+				.isNonSpellActive(GrazeHelper.spellCardKey(stack));
+		if (player.isShiftKeyDown() && (activeThisNonSpell || GrazeHelper.isPlayerSpellBeingCast(player))) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
 				GrazeHelper.tryForceCloseSpell(sp, stack);
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (GrazeHelper.forbidSpellCardWithMessage(player))
+		if (!isNonSpell(stack) && GrazeHelper.forbidSpellCardWithMessage(player))
 			return InteractionResultHolder.fail(stack);
 		if (player.isShiftKeyDown() && GrazeHelper.isManualCombatMode()) {
-			// unfinished (or blank) cards cannot declare danmaku combat mode, but
-			// shift+right-click still exits an active forced combat
-			boolean forced = dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER
-					.get(player).isForcedDanmakuCombat();
-			boolean complete = CertifiedSpellValidator.isCertified(stack) || isComplete(stack);
-			if (!forced && !complete) {
-				if (!level.isClientSide && player instanceof ServerPlayer sp) {
-					sp.displayClientMessage(YHLangData.SPELL_UNFINISHED_NO_COMBAT.get(), true);
-				}
-				return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
-			}
 			if (!level.isClientSide) {
 				GrazeHelper.tryToggleManualCombat(player);
 			}
@@ -316,7 +358,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (!CertifiedSpellValidator.isCertified(stack) && !isComplete(stack)) {
+		if (!isNonSpell(stack) && !CertifiedSpellValidator.isCertified(stack) && !isComplete(stack)) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
 				SpellDefinition def = resolveEditableDefinition(stack, sp);
 				if (def == null) {
@@ -338,20 +380,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		// Bomb and integration APIs call this method directly, bypassing use().
 		// Keep draft validation at the authoritative cast boundary.
 		if (!isCastReady(stack)) return false;
-		if (GrazeHelper.forbidSpellCardWithMessage(player)) return false;
 		SpellDefinition def = getSpellDefinition(stack);
 		boolean certifiedStack = CertifiedSpellValidator.isCertified(stack);
-		String cardKey = GrazeHelper.spellCardKey(stack);
-		if (def == null && !(certifiedStack && player instanceof ServerPlayer)) return false;
-		ResourceLocation spellId = getSpellId(stack);
-		if (spellId == null) return false;
-
-		boolean singleUse = isSingleUse(stack);
 		SpellHealthPlan certifiedPlan = null;
-
-		// Certified items (design doc §15, §22): resolve the immutable definition from
-		// world certificate storage, verify hash and capability policy; tampered NBT,
-		// overwritten storage or revoked capabilities reject the cast.
 		if (player instanceof ServerPlayer sp0 && certifiedStack) {
 			certifiedPlan = CertifiedSpellValidator.resolveCertifiedPlan(sp0, stack);
 			SpellDefinition certified = certifiedPlan == null
@@ -362,7 +393,58 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 				return false;
 			}
 			def = certified;
+		} else if (def != null && !certifiedStack) {
+			def = applyDraftTraits(stack, def);
 		}
+		SpellCardType cardType = def == null ? getCardType(stack) : def.itemForm.cardType();
+		boolean nonSpell = cardType != null && cardType.isNonSpell();
+		boolean lastSpell = cardType == SpellCardType.LAST_SPELL;
+		if (player instanceof ServerPlayer sp0 && lastSpell) {
+			var cap = GrazeCapability.HOLDER.get(sp0);
+			if (!cap.canActivateLastSpell() || SpellContainer.hasActiveSpellCard(sp0)) {
+				sp0.displayClientMessage(Component.translatable(cap.isInDanmakuCombat()
+						? "youkaishomecoming.last_spell.unavailable"
+						: "youkaishomecoming.last_spell.combat_only"), true);
+				return false;
+			}
+		}
+		if (player instanceof ServerPlayer sp0 && nonSpell) {
+			var cap = GrazeCapability.HOLDER.get(sp0);
+			String key = GrazeHelper.spellCardKey(stack);
+			// A non-spell is a toggle. Releasing another non-spell first keeps the
+			// single-active-runtime invariant without marking either card broken.
+			if (cap.isNonSpellActive(key)) {
+				SpellContainer.clearActiveNonSpell(sp0);
+				cap.clearActiveNonSpellCard();
+				return true;
+			}
+			if (cap.getActiveNonSpellCardKey() != null) {
+				SpellContainer.clearActiveNonSpell(sp0);
+				cap.clearActiveNonSpellCard();
+			}
+		} else if (GrazeHelper.forbidSpellCardWithMessage(player)) {
+			return false;
+		}
+		if (nonSpell && def != null && dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan.hasHealthDeclaration(def)) {
+			if (player instanceof ServerPlayer sp) sp.displayClientMessage(YHLangData.NON_SPELL_INVALID.get(), false);
+			return false;
+		}
+		if (nonSpell && def != null) {
+			try {
+				dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellValidator.validate(def, getRank(stack));
+			} catch (RuntimeException rejected) {
+				if (player instanceof ServerPlayer sp) {
+					sp.displayClientMessage(YHLangData.NON_SPELL_INVALID.get(), false);
+				}
+				return false;
+			}
+		}
+		String cardKey = GrazeHelper.spellCardKey(stack);
+		if (def == null && !(certifiedStack && player instanceof ServerPlayer)) return false;
+		ResourceLocation spellId = getSpellId(stack);
+		if (spellId == null) return false;
+
+		boolean singleUse = isSingleUse(stack);
 		if (player instanceof ServerPlayer sp0
 				&& GrazeCapability.HOLDER.get(sp0).isSpellCardUnavailable(cardKey)) {
 			sp0.displayClientMessage(YHLangData.SPELL_BROKEN_UNAVAILABLE.get(), true);
@@ -404,10 +486,11 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 				// Certified cards always use the immutable reward duration.
 				duration = CertifiedSpellValidator.getCertifiedCastDuration(stack);
 			}
-			if (consume) {
+			if (consume && !nonSpell && !lastSpell) {
 				boolean paid = CertifiedSpellValidator.isCertified(stack)
-						? SpellItemCost.tryPayUnits(sp, CertifiedSpellValidator.getCertifiedCost(stack))
-						: SpellItemCost.tryPay(sp, duration);
+						? SpellItemCost.tryPayCertifiedUnits(sp,
+								CertifiedSpellValidator.getCertifiedCost(stack), cardType)
+						: SpellItemCost.tryPay(sp, duration, cardType);
 				if (!paid) return false;
 			}
 			// A zero-tick health plan is the explicit no-timeout variant, not an
@@ -417,10 +500,17 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
 			Integer durationOverride = !certifiedStack && hasDurationOverride && duration >= 0
 					? duration : null;
-			proxy.init(sp, def, duration, target, certifiedPlan, durationOverride);
+			proxy.init(sp, def, duration, target, certifiedPlan, durationOverride, certifiedStack);
 			sp.serverLevel().addFreshEntity(proxy);
 			SpellContainer.trackProxy(sp, proxy, cardKey);
-			GrazeHelper.onPlayerSpellCast(sp);
+			if (lastSpell) {
+				GrazeCapability.HOLDER.get(sp).activateLastSpell();
+			}
+			if (nonSpell) {
+				GrazeCapability.HOLDER.get(sp).setActiveNonSpellCard(cardKey);
+			} else {
+				GrazeHelper.onPlayerSpellCast(sp);
+			}
 			// certified cards show the player-use spell bar: a fraction of the
 			// certification HP (boss bar); misses shrink it instead of costing life
 			if (playerHealthPlan != null && playerHealthPlan.totalHealth() > 0) {
@@ -470,7 +560,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			castDuration = def.itemForm.duration();
 		}
 		if (!blankDraft) {
-			SpellItemCost.appendCostTooltip(list, castDuration);
+			SpellItemCost.appendCostTooltip(list, stack, castDuration);
 		}
 		SpellDraftBudget budget = getDraftBudget(stack);
 		dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank rank = getRank(stack);

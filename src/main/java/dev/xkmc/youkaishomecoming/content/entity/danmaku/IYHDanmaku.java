@@ -37,6 +37,11 @@ public interface IYHDanmaku extends GrazingEntity {
 	default void restrictPlayerSpellDamage(@Nullable LivingEntity target) {
 	}
 
+	/** True only for projectiles emitted through a player spell-card holder. */
+	default boolean isPlayerSpellProjectile() {
+		return false;
+	}
+
 	default void setHarmfulPlayerSnapshot(java.util.Collection<java.util.UUID> playerIds) {
 	}
 

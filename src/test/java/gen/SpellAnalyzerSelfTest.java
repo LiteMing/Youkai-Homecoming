@@ -39,6 +39,7 @@ public class SpellAnalyzerSelfTest {
 	public static void main(String[] args) throws Exception {
 		testHeadlessFlagParsing();
 		testCastCostBuckets();
+		testReplicaProgressMath();
 		testBudgetScaling();
 		testSelfCheckFixtureJsonValid();
 		testConstantBounded();
@@ -98,6 +99,18 @@ public class SpellAnalyzerSelfTest {
 		check("cast cost 120t stays in one bucket", CastCost.unitsForDuration(120) == 120);
 		check("cast cost 121t rounds to two buckets", CastCost.unitsForDuration(121) == 140);
 		check("cast cost 1200t", CastCost.unitsForDuration(1200) == 1200);
+	}
+
+	private static void testReplicaProgressMath() {
+		check("replica single capture does not round up",
+				dev.xkmc.youkaishomecoming.content.spell.replica.SpellReplicaService
+						.progressPercent(1, 500) == 0);
+		check("replica exact one percent",
+				dev.xkmc.youkaishomecoming.content.spell.replica.SpellReplicaService
+						.progressPercent(5, 500) == 1);
+		check("replica progress caps at 100",
+				dev.xkmc.youkaishomecoming.content.spell.replica.SpellReplicaService
+						.progressPercent(900, 500) == 100);
 	}
 
 	private static void testBudgetScaling() {

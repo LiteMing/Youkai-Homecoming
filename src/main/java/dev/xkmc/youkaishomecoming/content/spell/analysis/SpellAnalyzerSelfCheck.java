@@ -174,6 +174,14 @@ public final class SpellAnalyzerSelfCheck {
 				+ "  \"trail_interval\": 5, \"on_trail\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
 		private static final String ON_HIT = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 24, \"speed\": 0.5, \"lifetime\": 60,\n"
 				+ "  \"hit_behavior_entity\": \"continue\", \"on_hit_entity\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
+		private static final String NON_SPELL_SAFE = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60, \"hit_behavior_block\": \"discard\"}");
+		private static final String NON_SPELL_CONTINUE = NON_SPELL_SAFE.replace("\"hit_behavior_block\": \"discard\"", "\"hit_behavior_block\": \"continue\"");
+		private static final String NON_SPELL_HOOK = NON_SPELL_SAFE.replace("\"hit_behavior_block\": \"discard\"}", "\"hit_behavior_block\": \"discard\", \"on_hit_entity\": [{\"type\": \"set_variable\", \"key\": \"x\", \"value\": 1}]}");
+		private static final String NON_SPELL_FAST = NON_SPELL_SAFE.replace("\"speed\": 0.5", "\"speed\": 200");
+		private static final String NON_SPELL_HOMING = NON_SPELL_SAFE.replace("\"lifetime\": 60", "\"lifetime\": 60, \"mover\": {\"type\": \"homing\", \"speed\": 0.45, \"delay\": 8}");
+		private static final String NON_SPELL_UNBOUNDED_ACCELERATION = NON_SPELL_SAFE.replace("\"speed\": 0.5", "\"speed\": 0").replace("\"lifetime\": 60", "\"lifetime\": 60, \"mover\": {\"type\": \"acceleration\", \"y\": -0.05}");
+		private static final String NON_SPELL_BOUNDED_ACCELERATION = NON_SPELL_UNBOUNDED_ACCELERATION.replace("\"y\": -0.05", "\"y\": -0.05, \"terminal_vy\": -1.0");
+		private static final String NON_SPELL_LASER = spell("{\"type\": \"fire_laser\", \"laser\": \"laser\", \"color\": \"red\", \"lifetime\": 20, \"length\": 8}");
 		private static final String PERIODIC = spell("{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 200}, \"if_true\": [" + fire(1) + "]}");
 		private static final String EVENT_DRIVEN = spell(
 				"{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 200}, \"if_true\": ["
@@ -527,6 +535,7 @@ public final class SpellAnalyzerSelfCheck {
 		Result run(@Nullable net.minecraft.server.level.ServerPlayer player) {
 			try {
 				codecAndHash();
+				specialCardAndReplicaContracts();
 				migratedBossHealth();
 				playerSpellPvpPolicy();
 				analyzerTraversal();
@@ -784,6 +793,43 @@ public final class SpellAnalyzerSelfCheck {
 					.anyMatch(d -> d.severity() == SpellDiagnostic.Severity.INFO && d.code().equals("phase_cycle"));
 			check("phase cycle accepted with INFO diagnostic", hasCycleInfo);
 			check("cycle totals bounded by window (12 x 1000 = 12000)", cycle.totalSpawnUpperBound() == 12000);
+		}
+
+		private void specialCardAndReplicaContracts() {
+			var tier1 = SpellCardRank.LESSER_WISDOM;
+			check("non-spell accepts bounded discard projectile", !rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_SAFE), tier1)));
+			check("non-spell rejects continuing block collision", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_CONTINUE), tier1)));
+			check("non-spell rejects projectile hooks", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_HOOK), tier1)));
+			check("non-spell rejects excessive initial speed", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_FAST), tier1)));
+			check("non-spell accepts bounded homing speed", !rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_HOMING), tier1)));
+			check("non-spell rejects acceleration without terminal speed", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_UNBOUNDED_ACCELERATION), tier1)));
+			check("non-spell accepts acceleration with bounded terminal speed", !rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_BOUNDED_ACCELERATION), tier1)));
+			check("non-spell rejects laser nodes", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_LASER), tier1)));
+
+			SpellDefinition source = parse(FIRE24);
+			source.itemForm = source.itemForm
+					.withCardType(dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType.LAST_SPELL)
+					.withExSpell(true);
+			ResourceLocation copyId = new ResourceLocation("replica_test", "copied");
+			SpellDefinition copy = dev.xkmc.youkaishomecoming.content.spell.replica.SpellReplicaService
+					.copyDefinition(source, copyId);
+			check("replica rewrites root id", copy.id.equals(copyId));
+			check("replica rewrites entry and phase ids",
+					copy.entryPhase.getNamespace().equals(copyId.getNamespace())
+							&& copy.phases.containsKey(copy.entryPhase));
+			check("replica output is a normal draft definition",
+					copy.itemForm.cardType() == dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType.NORMAL
+							&& !copy.itemForm.exSpell());
+			check("replica deep copy keeps source identity unchanged",
+					source.id.equals(new ResourceLocation("youkaishomecoming", "analyzer_test")));
 		}
 
 		private void projectionModel() {

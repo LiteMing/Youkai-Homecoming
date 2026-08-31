@@ -28,7 +28,11 @@ public class ProjectileHitHelper {
 	@Nullable
 	public static BlockHitResult getBlockHitResultOnMoveVector(BaseProjectile e, Vec3 src, Vec3 dst) {
 		Level level = e.level();
-		var hit = level.clip(new ClipContext(src, dst, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
+		// Slightly offset the ray origin along move vector to prevent detecting the boundary we are sitting on
+		Vec3 delta = dst.subtract(src);
+		if (delta.lengthSqr() < 1e-12) return null;
+		Vec3 adjustedSrc = src.add(delta.normalize().scale(0.01));
+		var hit = level.clip(new ClipContext(adjustedSrc, dst, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e));
 		return hit.getType() == HitResult.Type.MISS ? null : hit;
 	}
 

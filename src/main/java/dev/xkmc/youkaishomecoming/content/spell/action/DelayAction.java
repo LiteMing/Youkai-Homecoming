@@ -36,6 +36,19 @@ public record DelayAction(NumberProvider delayTicks, List<SpellAction> body) imp
 			for (var action : body) {
 				action.execute(ctx);
 			}
+		} else if (ctx.hitContext().isPresent()) {
+			// Inside hit callback (e.g. on_hit_block / on_hit_entity):
+			// If body contains a BounceAction, wrap it with delay to pause with ZeroMover
+			var hit = ctx.hitContext().get();
+			for (var action : body) {
+				if (action instanceof BounceAction ba) {
+					hit.resolveBounce(new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig(
+							ba.maxBounces(), ba.decay(), ba.retarget(), delay));
+					break;
+				} else {
+					action.execute(ctx);
+				}
+			}
 		} else {
 			// Schedule for future execution
 			ctx.runtime().scheduleDelayed(ctx.totalTick() + delay, body);

@@ -79,6 +79,9 @@ public abstract class BaseProjectile extends AsyncProjectile {
 
 	@Override
 	protected void resolveCollision(TickData data) {
+		if (data.blockHit != null) {
+			onHitBlock(data.blockHit);
+		}
 		if (!data.hitEntities.isEmpty()) {
 			for (Entity entity : data.hitEntities) {
 				onHitEntity(new EntityHitResult(entity));
@@ -86,13 +89,12 @@ public abstract class BaseProjectile extends AsyncProjectile {
 					break;
 				}
 			}
-		} else if (data.blockHit != null) {
-			onHitBlock(data.blockHit);
 		}
 	}
 
 	@Override
 	protected void applyMoveTick(TickData data) {
+		// applyMove is performed before resolveCollision in ParallelTicker, but for single-thread fallback:
 		if (data.plannedMovement != null) {
 			applyMove(data.plannedMovement);
 		}

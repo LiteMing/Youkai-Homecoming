@@ -674,6 +674,8 @@ public final class SpellAnalyzer {
 		for (var action : actions) {
 			if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction ba) {
 				max = Math.max(max, Math.max(1, ba.maxBounces() + 1));
+			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.DelayAction da) {
+				max = Math.max(max, findMaxBounceMultiplier(da.body()));
 			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpellActions.ConditionalAction ca) {
 				max = Math.max(max, Math.max(findMaxBounceMultiplier(ca.ifTrue()), findMaxBounceMultiplier(ca.ifFalse())));
 			} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpellActions.SequenceAction sa) {

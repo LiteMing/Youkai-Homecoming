@@ -60,14 +60,11 @@ public final class DanmakuBounceResolver {
 
 		Vec3 newPos = currentPos.add(n.scale(0.08));
 
-		// If delay > 0, apply a ZeroMover during the delay period before releasing momentum
+		// If delay > 0, apply a DelayedBounceMover during the delay period before releasing momentum
 		DanmakuMover delayMover = null;
 		Vec3 initialVel = bounced;
 		if (cfg.delay() > 0) {
-			CompositeMover cm = new CompositeMover();
-			Vec3 dir = bounced.lengthSqr() > 1e-8 ? bounced : new Vec3(0, 0, 1);
-			cm.add(cfg.delay(), new ZeroMover(dir, dir, cfg.delay()));
-			delayMover = cm;
+			delayMover = new DelayedBounceMover(cfg.delay(), bounced);
 			initialVel = Vec3.ZERO;
 		}
 

@@ -10,6 +10,7 @@ import dev.xkmc.youkaishomecoming.content.entity.UntargetedPlayerSpellHostile;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItemCost;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
@@ -275,7 +276,12 @@ public class GrazeHelper {
 	private static boolean isAvailableSpellStack(Player player, ItemStack stack) {
 		if (!isSpellStack(stack)) return false;
 		String cardKey = spellCardKey(stack);
-		return !GrazeCapability.HOLDER.get(player).isSpellCardUnavailable(cardKey);
+		if (GrazeCapability.HOLDER.get(player).isSpellCardUnavailable(cardKey)) return false;
+		// Automatic/passive casts must skip cards that cannot pay their current
+		// resource cost, otherwise an earlier red card blocks a later usable card.
+		// Client-side rendering performs the same preflight from the synced state;
+		// the server remains authoritative for the actual payment and KJS overrides.
+		return !(player instanceof ServerPlayer sp) || SpellItemCost.canAfford(sp, stack);
 	}
 
 	public static String spellCardKey(ItemStack stack) {

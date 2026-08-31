@@ -2,6 +2,8 @@ package dev.xkmc.youkaishomecoming.content.client;
 
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItemCost;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -28,28 +30,40 @@ public final class DanmakuClientState {
 
 		// 检查资源是否足够支付 (弹幕战内看 BOMB，战外看经验等级)
 		boolean inCombat = cap.isInDanmakuCombat();
-		long costUnits = getStackCostUnits(stack, inCombat);
+		if (player.getAbilities().instabuild) return true;
+		long costUnits = SpellItemCost.getStackCostUnits(stack, inCombat);
 		if (inCombat) {
-			// 1 BOMB = 100 units
-			return cap.getBomb() * 100 >= costUnits;
+			// Bombs are stored in fifths (raw units): 20 abstract units = 1 raw.
+			long requiredRawBomb = Math.max(1, (long) Math.ceil(costUnits / 20.0));
+			return cap.getBomb() >= requiredRawBomb;
 		} else {
 			// 1 XP Level = 20 units
 			int xpLevels = (int) Math.ceil(costUnits / 20.0);
-			return player.experienceLevel >= xpLevels || player.getAbilities().instabuild;
+			return player.experienceLevel >= xpLevels;
 		}
 	}
 
-	private static long getStackCostUnits(ItemStack stack, boolean inCombat) {
-		if (dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
-			return dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.getCertifiedCost(stack);
+	/**
+	 * Finds the next card that can actually be released. This deliberately
+	 * mirrors the server's main-hand, off-hand, inventory, then Curios order so a
+	 * red card never prevents a later usable card from being selected.
+	 */
+	public static ItemStack findNextCastableSpellCard(Player player) {
+		if (player == null) return ItemStack.EMPTY;
+		ItemStack mainhand = player.getMainHandItem();
+		if (isCastableSpellStack(player, mainhand)) return mainhand;
+		ItemStack offhand = player.getOffhandItem();
+		if (isCastableSpellStack(player, offhand)) return offhand;
+		var inventory = player.getInventory();
+		for (int i = 0; i < inventory.items.size(); i++) {
+			ItemStack stack = inventory.getItem(i);
+			if (isCastableSpellStack(player, stack)) return stack;
 		}
-		if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem) {
-			var def = dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellDefinition(stack);
-			if (def != null) {
-				int duration = def.itemForm.duration();
-				return dev.xkmc.youkaishomecoming.content.spell.payment.CastCost.unitsForDuration(duration);
-			}
-		}
-		return inCombat ? 100L : 100L;
+		ItemStack curios = CuriosManager.findFirstSpellItem(player);
+		return isCastableSpellStack(player, curios) ? curios : ItemStack.EMPTY;
+	}
+
+	private static boolean isCastableSpellStack(Player player, ItemStack stack) {
+		return GrazeHelper.isSpellStack(stack) && isSpellCardCastable(player, stack);
 	}
 }

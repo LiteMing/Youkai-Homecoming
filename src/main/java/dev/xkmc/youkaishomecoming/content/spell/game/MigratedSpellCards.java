@@ -33,6 +33,29 @@ public class MigratedSpellCards {
 	public static SpellDefinition smallFairy(int index, DyeColor color) {
 		var id = new ResourceLocation("fairy", String.valueOf(index));
 		var mainPhase = new ResourceLocation("fairy", index + "/main");
+		return smallFairy(id, mainPhase, ColorProvider.constant(color), List.of());
+	}
+
+	/**
+	 * Shared small-fairy pattern used when a fairy-specific definition is absent.
+	 * The color is selected once on phase entry and then reused for every bullet.
+	 */
+	public static SpellDefinition genericFairy() {
+		var palette = Arrays.stream(DyeColor.values()).map(DanmakuColor::of).toList();
+		var indices = new ArrayList<Double>(palette.size());
+		for (int i = 0; i < palette.size(); i++) {
+			indices.add((double) i);
+		}
+		return smallFairy(
+				new ResourceLocation("fairy", "generic"),
+				new ResourceLocation("fairy", "generic/main"),
+				new ColorProvider.ByVariable("fairy_color", palette),
+				List.of(new SpellActions.SetVariable(
+						"fairy_color", new NumberProviders.RandomChoice(indices))));
+	}
+
+	private static SpellDefinition smallFairy(ResourceLocation id, ResourceLocation mainPhase,
+			ColorProvider color, List<SpellAction> onEnter) {
 
 		// angle: (fi - 2) * 15°
 		var angle = new NumberProviders.Add(
@@ -48,7 +71,7 @@ public class MigratedSpellCards {
 				new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.RandomRange(0, 0.5)));
 
 		var danmaku = new FireDanmakuAction(
-				YHDanmaku.Bullet.BALL, ColorProvider.constant(color),
+				YHDanmaku.Bullet.BALL, color,
 				NumberProvider.constant(1), speed,
 				life, angle,
 				NumberProvider.constant(0), NumberProvider.constant(0),
@@ -56,7 +79,7 @@ public class MigratedSpellCards {
 				new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				Optional.empty(), 1
-		);
+		).withHitBehaviorBlock(HitBehavior.DISCARD);
 
 		var cluster = new SpellActions.RepeatAction(NumberProvider.constant(5), "fi", List.of(
 				new SpellActions.RepeatAction(NumberProvider.constant(3), "fj", List.of(danmaku))
@@ -78,7 +101,7 @@ public class MigratedSpellCards {
 				)
 		);
 
-		var phase = new PhaseDefinition(mainPhase, List.of(), tickActions, List.of(), List.of(), List.of());
+		var phase = new PhaseDefinition(mainPhase, onEnter, tickActions, List.of(), List.of(), List.of());
 		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:fairy");
 	}
 
@@ -107,7 +130,7 @@ public class MigratedSpellCards {
 				new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				Optional.empty(), 1
-		);
+		).withHitBehaviorBlock(HitBehavior.DISCARD);
 		var round0Burst = new BurstAction(20, 1, "rw0", List.of(round0Bullet));
 
 		// === Round 3: 逆时针旋转弹幕 (w = -9°/tick, dur=20, speed=0.5, life≈80) ===
@@ -124,7 +147,7 @@ public class MigratedSpellCards {
 				new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				Optional.empty(), 1
-		);
+		).withHitBehaviorBlock(HitBehavior.DISCARD);
 		var round3Burst = new BurstAction(20, 1, "rw3", List.of(round3Bullet));
 
 		// === Round 1 / 4: 扇形弹幕 (5 角度 × 3 速度, CIRCLE secondary) ===
@@ -146,7 +169,7 @@ public class MigratedSpellCards {
 				new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				Optional.empty(), 1
-		);
+		).withHitBehaviorBlock(HitBehavior.DISCARD);
 		var fanCluster = new SpellActions.RepeatAction(NumberProvider.constant(5), "mfi", List.of(
 				new SpellActions.RepeatAction(NumberProvider.constant(3), "mfj", List.of(fanDanmaku))
 		));

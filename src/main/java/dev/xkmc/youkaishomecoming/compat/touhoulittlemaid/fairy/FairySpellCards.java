@@ -42,20 +42,17 @@ public class FairySpellCards {
 	public static void registerSpells() {
 		boolean useLegacy = YHModConfig.COMMON.useLegacySpellCards.get();
 		if (useLegacy) {
-			for (int i = 0; i < 16; i++) {
-				var col = PRIMARY[i];
-				TouhouSpellCards.registerSpell("fairy:" + i, () -> new SmallFairySpell().init(col));
-			}
+			TouhouSpellCards.registerSpell(TouhouSpellCards.FAIRY_GENERIC_ID,
+					() -> new SmallFairySpell().initRandomized());
+			// fairy:0..15 were color-only variants; missing IDs resolve to the generic card.
 			for (int i = 16; i < 18; i++) {
 				var a = PRIMARY[i];
 				var b = SECONDARY[i];
 				TouhouSpellCards.registerSpell("fairy:" + i, () -> new MediumFairySpell().init(a, b));
 			}
 		} else {
-			for (int i = 0; i < 16; i++) {
-				var col = PRIMARY[i];
-				TouhouSpellCards.registerMigrated(MigratedSpellCards.smallFairy(i, col));
-			}
+			TouhouSpellCards.registerMigrated(MigratedSpellCards.genericFairy());
+			// Keep the medium-fairy variants because their pattern uses two colors.
 			for (int i = 16; i < 18; i++) {
 				var a = PRIMARY[i];
 				var b = SECONDARY[i];

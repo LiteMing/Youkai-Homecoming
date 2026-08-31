@@ -23,6 +23,9 @@ import java.util.function.Supplier;
 
 public class TouhouSpellCards {
 
+	/** Stable fallback for fairy entities whose requested fairy spell ID is absent. */
+	public static final String FAIRY_GENERIC_ID = "fairy:generic";
+
 	private static final Map<String, Supplier<SpellCard>> MAP = new ConcurrentHashMap<>();
 
 	public static void registerSpell(String id, Supplier<SpellCard> card) {
@@ -89,17 +92,30 @@ public class TouhouSpellCards {
 		e.spellCard = new SpellCardWrapper();
 		e.spellCard.modelId = id;
 
-		var sup = MAP.get(id);
+		String resolvedId = id;
+		var sup = MAP.get(resolvedId);
+		dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition definition = null;
+		if (sup == null) {
+			var exact = ResourceLocation.tryParse(resolvedId);
+			if (exact != null) definition = SpellRegistry.get(exact);
+		}
+		if (sup == null && definition == null && isFairyFallbackCandidate(e, id)) {
+			resolvedId = FAIRY_GENERIC_ID;
+			sup = MAP.get(resolvedId);
+			if (sup == null) {
+				definition = SpellRegistry.get(new ResourceLocation(resolvedId));
+			}
+		}
 		if (sup != null) {
 			// Legacy path: use SpellCard subclass
 			e.spellCard.card = sup.get();
+			e.spellCard.spellId = new ResourceLocation(resolvedId);
 		} else {
 			// Migrated path: lookup from SpellRegistry and create SpellRuntime
-			var rl = new ResourceLocation(id);
-			var def = SpellRegistry.get(rl);
-			if (def != null) {
-				var runtime = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime(def);
+			if (definition != null) {
+				var runtime = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime(definition);
 				e.setSpellRuntime(runtime);
+				e.spellCard.spellId = new ResourceLocation(resolvedId);
 			}
 		}
 
@@ -110,6 +126,12 @@ public class TouhouSpellCards {
 			var desc = Component.translatable(rl.toLanguageKey("model") + ".desc");
 			e.setCustomName(name.append(" - ").append(desc));
 		}
+	}
+
+	private static boolean isFairyFallbackCandidate(GeneralYoukaiEntity entity, String id) {
+		if (!(entity instanceof FairyEntity)) return false;
+		var rl = ResourceLocation.tryParse(id);
+		return rl != null && rl.getNamespace().equals("fairy") && !FAIRY_GENERIC_ID.equals(id);
 	}
 
 	public static void setReimu(MaidenEntity e) {

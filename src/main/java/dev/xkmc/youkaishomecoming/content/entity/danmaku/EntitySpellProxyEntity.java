@@ -190,16 +190,22 @@ public class EntitySpellProxyEntity extends PathfinderMob
 
 		// Drive the spell runtime
 		if (runtime != null) {
-			runtime.tick(this);
+			// Stop ordinary phase actions at the fixed duration while retaining the
+			// proxy for persistent hold-release callbacks.
+			if (SpellProxyLifecycle.castLoopActive(maxDuration, spellTickCount, runtime.isFinished())) {
+				runtime.tick(this);
+			} else {
+				runtime.tickDelayed(this);
+			}
 			applySpellMovement();
 			tickDanmaku();
 		}
 
 		// Check for completion
 		spellTickCount++;
-		boolean naturalEnd = maxDuration < 0 && runtime != null && runtime.isFinished();
-		boolean timedOut = maxDuration >= 0 && spellTickCount >= maxDuration;
-		if (naturalEnd || timedOut) {
+		boolean runtimeFinished = runtime != null && runtime.isFinished();
+		boolean pendingHold = runtime != null && runtime.hasPendingHoldActions();
+		if (SpellProxyLifecycle.shouldCleanup(maxDuration, spellTickCount, runtimeFinished, pendingHold)) {
 			cleanup();
 		}
 	}
@@ -439,7 +445,11 @@ public class EntitySpellProxyEntity extends PathfinderMob
 	}
 
 	public boolean isFinished() {
-		return isRemoved() || (spellTickCount >= maxDuration && danmakuHolder.isEmpty());
+		if (isRemoved()) return true;
+		boolean runtimeFinished = runtime != null && runtime.isFinished();
+		boolean pendingHold = runtime != null && runtime.hasPendingHoldActions();
+		return SpellProxyLifecycle.isFinished(maxDuration, spellTickCount,
+				runtimeFinished, pendingHold, danmakuHolder.isEmpty());
 	}
 
 	// ==================== Entity properties ====================

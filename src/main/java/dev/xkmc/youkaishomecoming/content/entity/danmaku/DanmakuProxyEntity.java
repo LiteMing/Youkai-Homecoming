@@ -178,16 +178,23 @@ public class DanmakuProxyEntity extends PathfinderMob
 
 		// Drive the spell runtime
 		if (runtime != null) {
-			runtime.tick(this);
+			// A fixed player-card duration ends the normal on_tick cast loop, but
+			// held projectiles may still own persistent release callbacks. Keep the
+			// proxy alive and advance only that callback queue until it drains.
+			if (SpellProxyLifecycle.castLoopActive(maxDuration, spellTickCount, runtime.isFinished())) {
+				runtime.tick(this);
+			} else {
+				runtime.tickDelayed(this);
+			}
 			applySpellMovement();
 			tickDanmaku();
 		}
 
 		// Check for completion
 		spellTickCount++;
-		boolean naturalEnd = maxDuration < 0 && runtime != null && runtime.isFinished();
-		boolean timedOut = maxDuration >= 0 && spellTickCount >= maxDuration;
-		if (naturalEnd || timedOut) {
+		boolean runtimeFinished = runtime != null && runtime.isFinished();
+		boolean pendingHold = runtime != null && runtime.hasPendingHoldActions();
+		if (SpellProxyLifecycle.shouldCleanup(maxDuration, spellTickCount, runtimeFinished, pendingHold)) {
 			cleanup(EndReason.TIMEOUT);
 		} else if ((spellTickCount & 3) == 0 && ownerPlayer != null) {
 			// The proxy owns the authoritative elapsed tick; refresh the Bossbar
@@ -417,7 +424,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 * @return true if this proxy has finished its spell and all danmaku have expired
 	 */
 	public boolean isFinished() {
-		return isRemoved() || (spellTickCount >= maxDuration && danmakuHolder.isEmpty());
+		if (isRemoved()) return true;
+		boolean runtimeFinished = runtime != null && runtime.isFinished();
+		boolean pendingHold = runtime != null && runtime.hasPendingHoldActions();
+		return SpellProxyLifecycle.isFinished(maxDuration, spellTickCount,
+				runtimeFinished, pendingHold, danmakuHolder.isEmpty());
 	}
 
 	public int spellElapsedTicks() {

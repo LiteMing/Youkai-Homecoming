@@ -255,7 +255,7 @@ public class YHDanmaku {
 
 			SPELL_REPLICA_FILM = YoukaisHomecoming.REGISTRATE
 					.item("spell_replica_film", SpellReplicaFilmItem::new)
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/replica_film")))
+					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/" + ctx.getName())))
 					.lang("Spell Replica Film")
 					.register();
 			NON_SPELL_AURA = aura("non_spell_aura", SpellCardType.NON_SPELL, "Non-spell Aura");
@@ -423,7 +423,7 @@ public class YHDanmaku {
 
 	private static ItemEntry<SpellAuraItem> aura(String id, SpellCardType type, boolean ex, String name) {
 		return YoukaisHomecoming.REGISTRATE.item(id, p -> new SpellAuraItem(p, type, ex))
-				.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/aura")))
+				.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/" + ctx.getName())))
 				.lang(name).register();
 	}
 

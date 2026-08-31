@@ -114,6 +114,18 @@ public class BounceSurfaceResponseTest {
 		runtime.tickDelayed(null);
 		check("HOLD_RELEASES_AFTER_SOURCE_CAST_LOOP_ENDS",
 				!runtime.hasPendingHoldActions() && runtime.getVariable("released") == 1.0);
+		check("FIXED_DURATION_PROXY_RETAINS_PENDING_HOLD",
+				!dev.xkmc.youkaishomecoming.content.entity.danmaku.SpellProxyLifecycle
+						.shouldCleanup(20, 20, false, true));
+		check("FIXED_DURATION_PROXY_CLEANS_UP_AFTER_HOLD_RELEASE",
+				dev.xkmc.youkaishomecoming.content.entity.danmaku.SpellProxyLifecycle
+						.shouldCleanup(20, 20, false, false));
+		check("NATURAL_END_PROXY_RETAINS_PENDING_HOLD",
+				!dev.xkmc.youkaishomecoming.content.entity.danmaku.SpellProxyLifecycle
+						.shouldCleanup(-1, 20, true, true));
+		check("NATURAL_END_PROXY_DRIVES_DELAYED_QUEUE_ONLY",
+				!dev.xkmc.youkaishomecoming.content.entity.danmaku.SpellProxyLifecycle
+						.castLoopActive(-1, 20, true));
 	}
 
 	private static void testDataDrivenCallbackContract() {

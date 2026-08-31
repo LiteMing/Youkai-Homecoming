@@ -4,8 +4,6 @@ import com.tterrag.registrate.builders.ItemBuilder;
 import com.tterrag.registrate.util.entry.BlockEntry;
 import com.tterrag.registrate.util.entry.ItemEntry;
 import com.tterrag.registrate.util.nullness.NonNullFunction;
-import dev.xkmc.youkaishomecoming.compat.food.FruitsDelightCompatDrink;
-import dev.xkmc.youkaishomecoming.compat.food.FruitsDelightCompatFood;
 import dev.xkmc.youkaishomecoming.content.block.deco.BasketBlock;
 import dev.xkmc.youkaishomecoming.content.block.food.EmptySaucerBlock;
 import dev.xkmc.youkaishomecoming.content.block.food.FleshFeastBlock;
@@ -42,7 +40,6 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraftforge.common.Tags;
-import net.minecraftforge.fml.ModList;
 import org.apache.commons.lang3.StringUtils;
 import vectorwing.farmersdelight.common.block.FeastBlock;
 
@@ -170,11 +167,6 @@ public class YHItems {
 
 		YHCoffee.register();
 		YHDrink.register();
-
-		if (ModList.get().isLoaded("fruitsdelight")) {
-			FruitsDelightCompatFood.register();
-			FruitsDelightCompatDrink.register();
-		}
 
 		// feasts
 		{

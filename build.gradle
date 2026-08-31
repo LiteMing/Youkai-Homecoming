@@ -160,6 +160,14 @@ repositories {
     maven {
         url = "https://maven.theillusivec4.top/"
     }
+    maven {
+        // More Overlays Updated is published through Modrinth Maven.
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content {
+            includeGroup 'maven.modrinth'
+        }
+    }
 }
 
 dependencies {
@@ -208,18 +216,14 @@ dependencies {
 
     //runtimeOnly fg.deobf("dev.xkmc:better_creative_tabs:0.0.2")
 
-    implementation fg.deobf("dev.xkmc.cuisinedelight:cuisinedelight:1.1.16-slim")
-    // Soft-dep only: compile compat (FruitsDelightCompat*) without loading FD in runClient.
-    // Put a real FD jar in the game pack when you need that content at runtime.
-    compileOnly fg.deobf("dev.xkmc.fruitsdelight:fruitsdelight:1.0.20-slim")
-
     implementation fg.deobf("curse.maven:farmers-delight-398521:8000996")
     //compileOnly fg.deobf("mezz.jei:jei-${jei_minecraft_version}-api:${jei_version}")
     implementation fg.deobf("mezz.jei:jei-${jei_minecraft_version}:${jei_version}")
     implementation fg.deobf("top.theillusivec4.curios:curios-forge:${curios_version}")
     //implementation fg.deobf("curse.maven:just-enough-effect-descriptions-jeed-532286:4599236")
 
-    implementation fg.deobf("curse.maven:touhou-little-maid-355044:6440955")
+    // Latest 1.20.1 Forge release (touhoulittlemaid 1.5.3).
+    implementation fg.deobf("curse.maven:touhou-little-maid-355044:8061847")
 
     implementation fg.deobf("curse.maven:jade-324717:4654448")
     implementation fg.deobf("curse.maven:create-328085:6255513")
@@ -228,6 +232,7 @@ dependencies {
     runtimeOnly fg.deobf("curse.maven:spark-361579:4738952")
     runtimeOnly fg.deobf("curse.maven:ftb-library-forge-404465:6164053")
     runtimeOnly fg.deobf("curse.maven:architectury-api-419699:5137938")
+    runtimeOnly fg.deobf("maven.modrinth:more-overlays-updated:${more_overlays_version}")
     def openYsmCompatJar = findProperty("openysm_compat_jar")
     if (openYsmCompatJar) {
         def openYsmCompatFile = file(openYsmCompatJar)
@@ -263,12 +268,9 @@ dependencies {
 
     implementation fg.deobf("curse.maven:placebo-283644:5098182")
     implementation fg.deobf("curse.maven:apothic-attributes-898963:5209162")
-    implementation fg.deobf("curse.maven:gateways-to-eternity-417802:5188310")
     implementation fg.deobf("curse.maven:configured-457570:5180900")
     implementation fg.deobf("curse.maven:composite-material-982540:6310307")
     implementation fg.deobf("curse.maven:framework-549225:6531428")
-    //implementation fg.deobf("curse.maven:slashblade-resharped-1022428:6548163")
-
 }
 
 // Example for how to get properties into the manifest for reading at runtime.
@@ -334,7 +336,6 @@ tasks.register('publishCurseForge', TaskPublishCurseForge) {
     mainFile.addOptional(
             "delightful",
             "diet",
-            "fruits-delight",
             "serene-seasons",
             "thirst-was-taken",
             "touhou-little-maid")
@@ -354,7 +355,6 @@ modrinth {
     changelog = new File('./changelog.txt').text.split("\n\n")[0]
     dependencies {
         required.project "farmers-delight"
-        optional.project "fruits-delight"
         optional.project "diet"
         optional.project "delightful"
         optional.project "touhou-little-maid"

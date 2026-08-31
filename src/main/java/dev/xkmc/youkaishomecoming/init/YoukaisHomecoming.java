@@ -5,7 +5,6 @@ import com.mojang.logging.LogUtils;
 import com.tterrag.registrate.providers.ProviderType;
 import com.tterrag.registrate.util.entry.RegistryEntry;
 import dev.ghen.thirst.Thirst;
-import dev.shadowsoffire.gateways.Gateways;
 import dev.xkmc.fastprojectileapi.collision.FastMapInit;
 import dev.xkmc.fastprojectileapi.render.virtual.BatchEraseDanmakuToClient;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuToClientPacket;
@@ -178,7 +177,7 @@ public class YoukaisHomecoming {
 			TLMRegistries.init();
 			MinecraftForge.EVENT_BUS.register(TLMCompat.class);
 		}
-		if (ModList.get().isLoaded(Gateways.MODID)) {
+		if (ModList.get().isLoaded("gateways")) {
 			MinecraftForge.EVENT_BUS.register(GatewayEventHandlers.class);
 		}
 		if (ModList.get().isLoaded("exposure")) {

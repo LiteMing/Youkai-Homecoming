@@ -1571,6 +1571,7 @@
   "youkaishomecoming.spell_market.title": "Spell Card Market",
   "youkaishomecoming.message.stg_enter": "Danmaku combat enabled",
   "youkaishomecoming.message.stg_exit": "Danmaku combat disabled",
+  "youkaishomecoming.message.stg_need_spell": "You need a usable spell card to enter danmaku combat",
   "youkaishomecoming.message.stg_defeat": "%s was left battered in a danmaku battle",
   "youkaishomecoming.message.spell_broken_unavailable": "This spell card was broken and cannot be used again in this danmaku battle",
   "youkaishomecoming.spell_market.to_editor": "Editor",

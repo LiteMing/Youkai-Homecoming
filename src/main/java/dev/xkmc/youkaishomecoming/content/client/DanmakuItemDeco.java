@@ -13,17 +13,17 @@ public class DanmakuItemDeco implements IItemDecorator {
 
 	@Override
 	public boolean render(GuiGraphics g, Font font, ItemStack stack, int x, int y) {
-		if (DanmakuClientState.isLocalPlayerSuppressed()) {
-			g.fill(x, y, x + 16, y + 16, 0x7fff0000);
-			return true;
-		}
 		Player player = Minecraft.getInstance().player;
-		if (player == null || !GrazeHelper.isSpellStack(stack)) return false;
-		if (DynamicSpellItem.isNonSpell(stack)) {
+		if (player != null && GrazeHelper.isSpellStack(stack) && DynamicSpellItem.isNonSpell(stack)) {
 			int color = DanmakuClientState.isNonSpellActive(player, stack) ? 0xff267dff : 0xffffc928;
 			drawBorder(g, x, y, color);
 			return true;
 		}
+		if (DanmakuClientState.isLocalPlayerSuppressed()) {
+			g.fill(x, y, x + 16, y + 16, 0x7fff0000);
+			return true;
+		}
+		if (player == null || !GrazeHelper.isSpellStack(stack)) return false;
 
 		// Green marks exactly the next card that can be released. Every other
 		// cast-ready card that is broken or cannot pay is red, so it is visibly

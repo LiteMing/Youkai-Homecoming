@@ -72,8 +72,8 @@ public final class DanmakuClientState {
 			ItemStack stack = inventory.getItem(i);
 			if (isCastableSpellStack(player, stack)) return stack;
 		}
-		ItemStack curios = CuriosManager.findFirstSpellItem(player);
-		return isCastableSpellStack(player, curios) ? curios : ItemStack.EMPTY;
+		return CuriosManager.findFirstSpellItem(player,
+				stack -> isCastableSpellStack(player, stack));
 	}
 
 	private static boolean isCastableSpellStack(Player player, ItemStack stack) {

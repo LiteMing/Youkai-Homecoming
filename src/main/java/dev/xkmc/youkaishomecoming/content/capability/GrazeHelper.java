@@ -273,8 +273,8 @@ public class GrazeHelper {
 			ItemStack stack = inventory.getItem(i);
 			if (isAvailableSpellStack(player, stack)) return stack;
 		}
-		ItemStack curios = CuriosManager.findFirstSpellItem(player);
-		return isAvailableSpellStack(player, curios) ? curios : ItemStack.EMPTY;
+		return CuriosManager.findFirstSpellItem(player,
+				stack -> isAvailableSpellStack(player, stack));
 	}
 
 	private static boolean isAvailableSpellStack(Player player, ItemStack stack) {

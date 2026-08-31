@@ -90,7 +90,10 @@ public class EraseResult {
 	}
 
 	public boolean hasLiveCandidates() {
-		return candidates.stream().anyMatch(candidate -> !candidate.projectile().isRemoved());
+		return candidates.stream().anyMatch(candidate -> {
+			SimplifiedProjectile projectile = candidate.projectile();
+			return !projectile.isRemoved() && projectile.isValid();
+		});
 	}
 
 	public int countForSource(ResourceLocation source) {
@@ -104,9 +107,10 @@ public class EraseResult {
 		try {
 			for (Candidate candidate : candidates) {
 				SimplifiedProjectile projectile = candidate.projectile();
-				if (projectile.isRemoved()) continue;
+				if (projectile.isRemoved() || !projectile.isValid()) continue;
 				DanmakuManager.setTrackingOverride(candidate.trackingHost());
 				projectile.erase(player);
+				if (!projectile.isRemoved() && projectile.isValid()) continue;
 				erased++;
 				if (candidate.source() != null) {
 					committedSourceCount.merge(candidate.source(), 1, Integer::sum);

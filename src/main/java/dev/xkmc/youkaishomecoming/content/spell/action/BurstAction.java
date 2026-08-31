@@ -46,9 +46,6 @@ public record BurstAction(int waves, int interval, String waveVariable, List<Spe
 			for (int w = 0; w < waves; w++) {
 				if (hasVar) ctx.setVariable(waveVariable, w);
 				ctx.executeList(body);
-				if (ctx.isTerminated()) {
-					break;
-				}
 			}
 			return;
 		}
@@ -57,9 +54,6 @@ public record BurstAction(int waves, int interval, String waveVariable, List<Spe
 				// First wave: execute immediately
 				if (hasVar) ctx.setVariable(waveVariable, w);
 				ctx.executeList(body);
-				if (ctx.isTerminated()) {
-					break;
-				}
 			} else {
 				// Subsequent waves: wrap body with variable-set prefix
 				final int waveIdx = w;

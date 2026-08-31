@@ -38,7 +38,9 @@ public abstract class BaseProjectile extends AsyncProjectile {
 		data.moveSrc = position();
 		data.inputVelocity = getDeltaMovement();
 		data.plannedMovement = computeMove(data.inputVelocity, data.moveSrc);
-		data.moveDst = data.moveSrc.add(data.plannedMovement.vec());
+		data.plannedMovementVec = data.plannedMovement.vec();
+		data.untrimmedMoveDst = data.moveSrc.add(data.plannedMovementVec);
+		data.moveDst = data.untrimmedMoveDst;
 	}
 
 	@Override

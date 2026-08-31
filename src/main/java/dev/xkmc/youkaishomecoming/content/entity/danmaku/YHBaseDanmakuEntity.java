@@ -154,10 +154,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			var normal = pResult.getDirection().step();
 			Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
 			Vec3 src = tickData().moveSrc != null ? tickData().moveSrc : position();
-			Vec3 dst = tickData().moveDst != null ? tickData().moveDst : position().add(getDeltaMovement());
+			Vec3 movementEnd = tickData().movementEndOr(position().add(getDeltaMovement()));
 			var hitCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext(
 					this, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK,
-					src, pResult.getLocation(), dst, n, getDeltaMovement(), null);
+					src, pResult.getLocation(), movementEnd, n, getDeltaMovement(), null);
 
 			// Execute onHitBlock callback
 			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
@@ -174,6 +174,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 			if (this instanceof ItemDanmakuEntity ide) {
 				switch (ide.hitBehaviorBlock) {
 					case CONTINUE -> {
+						continueThroughHit(ide, hitCtx);
 						return;
 					}
 					case EXPIRE -> {
@@ -258,7 +259,9 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 				}
 			}
 			case CONTINUE -> {
-				// Immediate continue: keep flying with existing mover and momentum (no-op)
+				if (this instanceof ItemDanmakuEntity ide) {
+					continueThroughHit(ide, hitCtx);
+				}
 			}
 			case BOUNCE -> {
 				if (this instanceof ItemDanmakuEntity ide) {

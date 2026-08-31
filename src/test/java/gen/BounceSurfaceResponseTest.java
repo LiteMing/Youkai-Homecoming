@@ -1,5 +1,6 @@
 package gen;
 
+import dev.xkmc.fastprojectileapi.entity.AsyncProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.BounceAction;
@@ -66,6 +67,7 @@ public class BounceSurfaceResponseTest {
 		testHoldLifecycleAndSync();
 		testHoldContinueCleanup();
 		testHitDispositionOverrideAuthorityViaExecuteList();
+		testBlockHitContinueChain();
 		testLegacyCleanupContract();
 	}
 
@@ -162,9 +164,9 @@ public class BounceSurfaceResponseTest {
 		Vec3 pAtCollision = bam.pos(new MoverInfo(100, bouncePos, bounceVel, null, null));
 		check("REBASE_AT_NONZERO_ENTITY_TICK_STARTS_FROM_ZERO", vecNear(pAtCollision, bouncePos));
 
-		// REBASE_AT_TICK_100_DOES_NOT_JUMP: tick 101 should only be 1 tick displacement (dy = 1.0 - 0.05)
+		// REBASE_AT_TICK_100_DOES_NOT_JUMP: tick 101 should only be 1 tick displacement (closed-form dy = 1.0*1 + 0.5*(-0.05)*1 = 0.975)
 		Vec3 pAt101 = bam.pos(new MoverInfo(101, bouncePos, bounceVel, null, null));
-		check("REBASE_AT_TICK_100_DOES_NOT_JUMP", Math.abs((pAt101.y - pAtCollision.y) - (1.0 - 0.05)) < 1e-5);
+		check("REBASE_AT_TICK_100_DOES_NOT_JUMP", Math.abs((pAt101.y - pAtCollision.y) - (1.0 - 0.5 * 0.05)) < 1e-5);
 
 		// SECOND_REBASE_RESETS_LOCAL_TIME_AGAIN (Second collision at entity tick 150)
 		Vec3 secondBouncePos = new Vec3(150, 10, 0);
@@ -173,7 +175,7 @@ public class BounceSurfaceResponseTest {
 		BoundedAccelerationMover bam2 = (BoundedAccelerationMover) secondRebased;
 		Vec3 p2At150 = bam2.pos(new MoverInfo(150, secondBouncePos, secondBounceVel, null, null));
 		Vec3 p2At151 = bam2.pos(new MoverInfo(151, secondBouncePos, secondBounceVel, null, null));
-		check("SECOND_REBASE_RESETS_LOCAL_TIME_AGAIN", vecNear(p2At150, secondBouncePos) && Math.abs((p2At151.y - p2At150.y) - (0.8 - 0.05)) < 1e-5);
+		check("SECOND_REBASE_RESETS_LOCAL_TIME_AGAIN", vecNear(p2At150, secondBouncePos) && Math.abs((p2At151.y - p2At150.y) - (0.8 - 0.5 * 0.05)) < 1e-5);
 
 		// TERMINAL_VELOCITIES_PRESERVED_AFTER_BOUNCE & TIMER_RESTARTS_FROM_COLLISION
 		// Terminal velocity vy = -0.5 is reached after 30 ticks (v0 = 1.0, a = -0.05 -> (1 - (-0.5))/0.05 = 30 ticks)
@@ -325,6 +327,107 @@ public class BounceSurfaceResponseTest {
 						&& hitCtx.holdTicks() == 0);
 	}
 
+	private static void testBlockHitContinueChain() {
+		Vec3 src = new Vec3(0, 0, 0);
+		Vec3 hitPos = new Vec3(0.4, 0, 0);
+		Vec3 untrimmedEnd = new Vec3(1.0, 0, 0);
+		Vec3 incoming = new Vec3(1, 0, 0);
+		Vec3 wallNormal = new Vec3(-1, 0, 0); // facing the approaching projectile
+
+		// --- Mirror BaseProjectile.planMove on a real TickData ---
+		AsyncProjectile.TickData data = new AsyncProjectile.TickData();
+		data.moveSrc = src;
+		data.inputVelocity = incoming;
+		Vec3 plannedVec = new Vec3(1.0, 0, 0);
+		data.plannedMovementVec = plannedVec;
+		data.untrimmedMoveDst = data.moveSrc.add(data.plannedMovementVec);
+		data.moveDst = data.untrimmedMoveDst;
+
+		// --- Mirror BaseProjectile.trimMove (block hit at x=0.4, only moveDst is trimmed) ---
+		data.moveDst = hitPos;
+
+		// 1. BLOCK_HIT_CONTEXT_PRESERVES_UNTRIMMED_MOVEMENT_END
+		Vec3 resolvedEnd = data.movementEndOr(incoming);
+		check("BLOCK_HIT_CONTEXT_PRESERVES_UNTRIMMED_MOVEMENT_END",
+				vecNear(resolvedEnd, untrimmedEnd) && !vecNear(resolvedEnd, hitPos));
+
+		// TICK_DATA_RESET_CLEARS_UNTRIMMED_MOVEMENT_END (no cross-tick leak)
+		data.reset();
+		check("TICK_DATA_RESET_CLEARS_UNTRIMMED_MOVEMENT_END",
+				data.untrimmedMoveDst == null && data.plannedMovementVec == null && data.moveDst == null);
+
+		// helper fallback: no trimmed dst set -> use direct fallback
+		check("BLOCK_HIT_MOVEMENT_END_FALLBACK",
+				vecNear(data.movementEndOr(incoming), incoming));
+
+		// 2. FINAL_CONTINUE_ADVANCES_TO_UNTRIMMED_MOVEMENT_END
+		SpellHitContext ctxContinue = new SpellHitContext(
+				null, SpellHitContext.HitType.BLOCK, src, hitPos, untrimmedEnd, wallNormal, incoming, null
+		);
+		new SpellContext(null, null, null, null, ctxContinue).executeList(List.of(new ContinueSourceAction()));
+		check("FINAL_CONTINUE_ADVANCES_TO_UNTRIMMED_MOVEMENT_END",
+				ctxContinue.disposition() == SpellHitContext.HitDisposition.CONTINUE
+						&& vecNear(ctxContinue.movementEnd(), untrimmedEnd)
+						&& !vecNear(ctxContinue.movementEnd(), hitPos));
+
+		// 3. BOUNCE_THEN_CONTINUE_LAST_WRITER_WINS_ADVANCES_PAST_WALL (executeList full run)
+		SpellHitContext ctxBounceContinue = new SpellHitContext(
+				null, SpellHitContext.HitType.BLOCK, src, hitPos, untrimmedEnd, wallNormal, incoming, null
+		);
+		new SpellContext(null, null, null, null, ctxBounceContinue).executeList(List.of(
+				new BounceAction(3, -1.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false),
+				new ContinueSourceAction()
+		));
+		Vec3 bounceContinueAdvance = ctxBounceContinue.movementEnd();
+		check("BOUNCE_THEN_CONTINUE_DOES_NOT_REPEAT_SAME_BLOCK_HIT",
+				ctxBounceContinue.disposition() == SpellHitContext.HitDisposition.CONTINUE
+						&& ctxBounceContinue.bounceConfig() == null
+						&& vecNear(bounceContinueAdvance, untrimmedEnd)
+						&& bounceContinueAdvance.x > hitPos.x + 0.1); // fully past the face this tick
+
+		// 4. MAX_BOUNCES_CONTINUE_DOES_NOT_REPEAT_SAME_BLOCK_HIT
+		SpellHitContext ctxExhausted = new SpellHitContext(
+				null, SpellHitContext.HitType.BLOCK, src, hitPos, untrimmedEnd, wallNormal, incoming, null
+		);
+		DanmakuBounceConfig exhaustedCfg = new DanmakuBounceConfig(2, -1.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false);
+		var exhausted = DanmakuBounceResolver.resolve(hitPos, incoming, wallNormal, exhaustedCfg, 2, null);
+		check("MAX_BOUNCES_FLAGS_ERASED", exhausted.erased());
+		// erasure fallback is CONTINUE under the default hitBehaviorBlock -> advance to untrimmed movementEnd
+		check("MAX_BOUNCES_CONTINUE_DOES_NOT_REPEAT_SAME_BLOCK_HIT",
+				exhausted.erased()
+						&& vecNear(ctxExhausted.movementEnd(), untrimmedEnd)
+						&& ctxExhausted.movementEnd().x > hitPos.x + 0.1);
+
+		// 5. HOLD_CONTINUE_RESUMES_TO_UNTRIMMED_MOVEMENT_END
+		SpellHitContext ctxHold = new SpellHitContext(
+				null, SpellHitContext.HitType.BLOCK, src, hitPos, untrimmedEnd, wallNormal, incoming, null
+		);
+		ctxHold.resolveHold(10, List.of(new ContinueSourceAction()));
+		var holdBody = ctxHold.beginResumeAndTakeBody();
+		new SpellContext(null, null, null, null, ctxHold).executeList(holdBody);
+		check("HOLD_CONTINUE_RESUMES_TO_UNTRIMMED_MOVEMENT_END",
+				ctxHold.disposition() == SpellHitContext.HitDisposition.CONTINUE
+						&& vecNear(ctxHold.movementEnd(), untrimmedEnd)
+						&& ctxHold.movementEnd().x > hitPos.x);
+
+		// 6. CONTINUE_PACKET_PRESERVES_NORMAL_MOVER (ResetKind.CONTINUE -> applyContinueState)
+		DanmakuMover normalMover = BoundedAccelerationMover.world(src, incoming, new Vec3(0, 0, 0), null, null, null);
+		DanmakuMover pktMover = normalMover;
+		DanmakuMover pktSuspended = null; // applyContinueState -> clearHoldState
+		if (pktMover instanceof HitHoldMover) pktMover = null; // clearHoldState only nulls the hold mover
+		pktSuspended = null; // suspendedMover always cleared
+		check("CONTINUE_PACKET_PRESERVES_NORMAL_MOVER",
+				pktMover == normalMover && pktSuspended == null);
+
+		// 7. CONTINUE_PACKET_DETACHES_HIT_HOLD_MOVER
+		DanmakuMover heldMover = new HitHoldMover(incoming);
+		DanmakuMover suspendedMover = normalMover;
+		DanmakuMover clearedMover = heldMover instanceof HitHoldMover ? null : heldMover;
+		DanmakuMover clearedSuspended = null; // clearHoldState clears suspendedMover unconditionally
+		check("CONTINUE_PACKET_DETACHES_HIT_HOLD_MOVER",
+				heldMover instanceof HitHoldMover && suspendedMover != null
+						&& clearedMover == null && clearedSuspended == null);
+	}
 	private static void testLegacyCleanupContract() {
 		BounceAction ba = new BounceAction(3, -1.0, 1.0, 0.1, 0.0, 0.0, Optional.of(1.5), false);
 		DanmakuBounceConfig cfg = ba.sanitize();

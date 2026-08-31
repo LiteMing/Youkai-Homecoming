@@ -257,9 +257,6 @@ public class SpellActions {
 			for (int idx = 0; idx < n; idx++) {
 				ctx.setVariable(indexVariable, idx);
 				ctx.executeList(body);
-				if (ctx.isTerminated()) {
-					break;
-				}
 			}
 		}
 	}

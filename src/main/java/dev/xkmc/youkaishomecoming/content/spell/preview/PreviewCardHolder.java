@@ -492,6 +492,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 		switch (behavior) {
 			case CONTINUE -> {
+				if (projectile instanceof ItemDanmakuEntity ide) {
+					ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
+				}
 			}
 			case DISCARD -> projectile.markErased(false);
 			case EXPIRE -> {
@@ -510,7 +513,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		SimplifiedProjectile projectile = hitCtx.source();
 		switch (hitCtx.disposition()) {
 			case CONTINUE -> {
-				// Immediate continue: keep flying with existing mover and momentum (no-op)
+				if (projectile instanceof ItemDanmakuEntity ide) {
+					ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
+				}
 			}
 			case EXPIRE -> {
 				if (afterExpiry != null) {

@@ -95,13 +95,20 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	public void init(ServerPlayer player, SpellDefinition definition, int duration,
-					 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan) {
+						 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan) {
+		init(player, definition, duration, target, healthPlan, null);
+	}
+
+	public void init(ServerPlayer player, SpellDefinition definition, int duration,
+						 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan,
+						 @Nullable Integer durationOverride) {
 		this.ownerPlayerId = player.getUUID();
 		this.ownerPlayer = player;
 		this.maxDuration = duration;
 		this.runtime = healthPlan == null ? new SpellRuntime(definition)
 				: new SpellRuntime(definition, healthPlan::resolve, healthPlan);
 		this.runtime.reset();
+		this.runtime.setDurationOverride(durationOverride);
 		this.spellTickCount = 0;
 
 		if (target != null) {

@@ -62,9 +62,11 @@ public interface LivingCardHolder extends CardHolder {
 	@Override
 	default ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DanmakuColor color) {
 		ItemDanmakuEntity danmaku = new ItemDanmakuEntity(YHEntities.ITEM_DANMAKU.get(), shooter(), self().level());
+		LivingEntity target = targetEntity();
+		danmaku.setRetargetTarget(target);
 		configureHarmfulPlayerSnapshot(danmaku);
 		if (shooter() instanceof net.minecraft.world.entity.player.Player) {
-			danmaku.restrictPlayerSpellDamage(targetEntity());
+			danmaku.restrictPlayerSpellDamage(target);
 		}
 		danmaku.setPos(center());
 		// For DYE_TEXTURES mode: use the specific colored item (has correct texture baked in)

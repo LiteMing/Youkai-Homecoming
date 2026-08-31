@@ -65,7 +65,10 @@ public record OriginConfig(
 				var t = ctx.holder().target();
 				yield t != null ? t : ctx.holder().center();
 			}
-			case ABSOLUTE -> Vec3.ZERO;
+			// Absolute offsets are anchored to the live spell caster. The editor's
+			// preview world is centered at (0, 0, 0), while real players can be
+			// anywhere; anchoring here keeps both paths in the same spell-local frame.
+			case ABSOLUTE -> ctx.holder().center();
 			case CASTER_FACING -> ctx.holder().center();
 		};
 

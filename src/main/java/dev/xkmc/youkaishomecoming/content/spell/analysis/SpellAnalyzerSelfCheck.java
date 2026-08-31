@@ -597,6 +597,23 @@ public final class SpellAnalyzerSelfCheck {
 					java.util.Arrays.equals(bossRuntime.getSpellHealthSegments(), new int[]{500, 800})
 							&& bossRuntime.getSpellHealthTotal() == 1300
 							&& bossRuntime.getSpellDurationTicks() == 400);
+			SpellRuntime commandDurationRuntime = new SpellRuntime(bossTemplate);
+			commandDurationRuntime.setDurationOverride(2400);
+			commandDurationRuntime.setSpellHealth(500, 400);
+			check("command duration overrides set_spell_health timeout",
+					commandDurationRuntime.getSpellDurationTicks() == 2400
+							&& commandDurationRuntime.getSpellPlanDurationTicks() == 2400);
+			SpellRuntime shorterCommandDurationRuntime = new SpellRuntime(bossTemplate);
+			shorterCommandDurationRuntime.setDurationOverride(60);
+			shorterCommandDurationRuntime.setSpellHealth(500, 400);
+			check("shorter command duration also overrides set_spell_health projection",
+					shorterCommandDurationRuntime.getSpellDurationTicks() == 60
+							&& shorterCommandDurationRuntime.getSpellPlanDurationTicks() == 60);
+			SpellRuntime restoredOverrideRuntime = new SpellRuntime(bossTemplate);
+			restoredOverrideRuntime.loadFromTag(commandDurationRuntime.saveToTag());
+			check("command duration override survives runtime projection persistence",
+					restoredOverrideRuntime.getSpellDurationTicks() == 2400
+							&& restoredOverrideRuntime.getSpellPlanDurationTicks() == 2400);
 			SpellRuntime restoredBossRuntime = new SpellRuntime(bossTemplate);
 			restoredBossRuntime.loadFromTag(bossRuntime.saveToTag());
 			check("shared boss rings survive runtime persistence",

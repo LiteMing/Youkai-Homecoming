@@ -201,7 +201,7 @@ public final class SpellJsonSalvage {
 	}
 
 	/**
-	 * 定义中是否含有抢救占位节点。Apply / Export 等出口据此拒绝执行。
+	 * 定义中是否含有抢救占位节点。保存与认证出口据此拒绝执行。
 	 * 复用 {@link SpecialNodeCounter} 已有的整树遍历，不另写一份。
 	 */
 	public static boolean containsBrokenNodes(@Nullable SpellDefinition definition) {

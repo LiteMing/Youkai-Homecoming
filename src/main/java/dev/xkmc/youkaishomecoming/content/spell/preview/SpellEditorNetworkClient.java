@@ -1,25 +1,14 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.fml.loading.FMLPaths;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.function.Supplier;
 
 public class SpellEditorNetworkClient {
-
-	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-	private static final String EXPORT_DIR = "youkaishomecoming_spells";
 
 	public static boolean save(SpellDefinition definition) {
 		return trySend(definition, () -> SpellEditorSyncToServer.save(definition, false));
@@ -31,15 +20,6 @@ public class SpellEditorNetworkClient {
 
 	public static boolean importMarket(SpellDefinition definition) {
 		return trySend(definition, () -> SpellEditorSyncToServer.importMarket(definition));
-	}
-
-	public static Path exportGlobal(SpellDefinition definition) throws IOException {
-		try {
-			sendChunked(SpellEditorSyncToServer.exportGlobal(definition));
-			return saveLocalExportCopy(definition);
-		} catch (RuntimeException e) {
-			throw new IOException("Spell definition cannot be encoded as JSON", e);
-		}
 	}
 
 	public static void delete(ResourceLocation spellId) {
@@ -87,29 +67,6 @@ public class SpellEditorNetworkClient {
 			}
 			return false;
 		}
-	}
-
-	private static Path saveLocalExportCopy(SpellDefinition definition) throws IOException {
-		Path file = localExportPath(definition.id);
-		Files.createDirectories(file.getParent());
-		var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
-				.getOrThrow(false, s -> {});
-		Files.writeString(file, GSON.toJson(json), StandardCharsets.UTF_8);
-		return file;
-	}
-
-	private static Path localExportPath(ResourceLocation id) {
-		return FMLPaths.GAMEDIR.get()
-				.resolve(EXPORT_DIR)
-				.resolve(sanitizePathPart(id.getNamespace()))
-				.resolve(sanitizePathPart(id.getPath()) + ".json");
-	}
-
-	private static String sanitizePathPart(String raw) {
-		if (raw == null || raw.isBlank()) {
-			return "untitled";
-		}
-		return raw.replaceAll("[^a-zA-Z0-9._-]+", "_");
 	}
 
 }

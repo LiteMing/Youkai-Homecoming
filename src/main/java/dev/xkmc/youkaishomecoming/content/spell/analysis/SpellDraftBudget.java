@@ -54,12 +54,13 @@ public record SpellDraftBudget(
 	public static SpellDraftBudget defaults() {
 		try {
 			var common = YHModConfig.COMMON;
+			double multiplier = common.spellDraftBudgetMultiplier.get();
 			return new SpellDraftBudget(
 					common.spellDraftFreeNodeCount.get(),
-					common.spellDraftMaxSpawnPerTick.get(),
-					common.spellDraftMaxPeakAlive.get(),
-					common.spellDraftMaxProjectileTicks.get(),
-					common.spellDraftMaxHookExecutions.get(),
+					(int) Math.min(Integer.MAX_VALUE, SpellBudgetScaling.scale(DEFAULT_MAX_SPAWN_PER_TICK, multiplier)),
+					(int) Math.min(Integer.MAX_VALUE, SpellBudgetScaling.scale(DEFAULT_MAX_PEAK_ALIVE, multiplier)),
+					SpellBudgetScaling.scale(DEFAULT_MAX_PROJECTILE_TICKS, multiplier),
+					SpellBudgetScaling.scale(DEFAULT_MAX_HOOK_EXECUTIONS, multiplier),
 					0, 0, 0, 0, 0);
 		} catch (Exception ignored) {
 			return defaultFallback();

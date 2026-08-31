@@ -149,15 +149,11 @@ public class MagicCircleDockPanel implements DockPanel {
 	}
 
 	// --- Top bar entry points (magic circle mode) ---
-	// Save/Export/Reset live on the top bar, mirroring the spell card's Apply/Export/Reset.
+	// Save/Reset live on the top bar, mirroring the spell card editor.
 	// New and delete sit next to the circle picker instead, mirroring "Spell: [▼] [+] [-]".
 
 	public void saveCircleFromTopBar() {
-		save(false);
-	}
-
-	public void exportCircleFromTopBar() {
-		save(true);
+		save();
 	}
 
 	public void resetCircleFromTopBar() {
@@ -1263,18 +1259,13 @@ public class MagicCircleDockPanel implements DockPanel {
 		setStatus("Magic Circle created", 0xFF88FF88);
 	}
 
-	private void save(boolean global) {
+	private void save() {
 		ResourceLocation id = selectedId;
 		selectedId = id;
 		publishLocal(true);
 		Map<ResourceLocation, SpellComponent> components = componentsForSave();
-		if (global) {
-			SpellCircleEditorNetworkClient.exportGlobal(id, components);
-			setStatus("Magic Circle export sent", 0xFF88FF88);
-		} else {
-			SpellCircleEditorNetworkClient.save(id, components);
-			setStatus("Magic Circle save sent", 0xFF88FF88);
-		}
+		SpellCircleEditorNetworkClient.save(id, components);
+		setStatus("Magic Circle save sent", 0xFF88FF88);
 	}
 
 	private void deleteCircle() {

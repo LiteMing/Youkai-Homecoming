@@ -42,7 +42,6 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		SAVE,
 		SAVE_AND_REAPPLY,
 		IMPORT_MARKET,
-		EXPORT_GLOBAL,
 		DELETE
 	}
 
@@ -103,15 +102,6 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 				.getOrThrow(false, s -> {});
 		return new SpellEditorSyncToServer(Action.IMPORT_MARKET, definition.id.toString(), GSON.toJson(json));
-	}
-
-	public static SpellEditorSyncToServer exportGlobal(SpellDefinition definition) {
-		if (definition.hasLegacyTicker()) {
-			throw new IllegalArgumentException("Cannot export legacy_ticker spell via JSON: " + definition.id);
-		}
-		var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
-				.getOrThrow(false, s -> {});
-		return new SpellEditorSyncToServer(Action.EXPORT_GLOBAL, definition.id.toString(), GSON.toJson(json));
 	}
 
 	public static SpellEditorSyncToServer delete(ResourceLocation spellId) {
@@ -202,8 +192,6 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 			}
 			if (action == Action.DELETE) {
 				deleteSpell(sender);
-			} else if (action == Action.EXPORT_GLOBAL) {
-				exportGlobalSpell(sender);
 			} else {
 				saveSpell(sender, action == Action.SAVE_AND_REAPPLY);
 			}
@@ -291,14 +279,6 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		SpellRegistry.remove(id);
 		CustomSpellStorage.deleteSpell(sender.server, id);
 		sender.sendSystemMessage(Component.literal("[YH] Deleted spell " + id));
-	}
-
-	private void exportGlobalSpell(ServerPlayer sender) {
-		SpellDefinition definition = parseDefinition();
-		SpellHealthPlan.analyzeIfPresent(definition, SpellRegistry::get);
-		SpellRegistry.register(definition);
-		var file = CustomSpellStorage.saveGlobalSpell(definition);
-		sender.sendSystemMessage(Component.literal("[YH] Exported global spell " + definition.id + " to " + file.getPath()));
 	}
 
 	private void saveSpell(ServerPlayer sender, boolean reapply) {

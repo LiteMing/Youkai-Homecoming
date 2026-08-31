@@ -183,7 +183,7 @@ public class VariablesDockPanel implements DockPanel {
 				analysis.maxSpawnPerTick(), budget.maxSpawnPerTick());
 		appendMetric(lines, font, width, zh ? "峰值存活" : "Peak alive",
 				analysis.peakAliveUpperBound(), budget.maxPeakAlive());
-		appendMetric(lines, font, width, zh ? "弹幕tick" : "Projectile ticks",
+		appendMetric(lines, font, width, zh ? "弹幕tick（总量）" : "Projectile ticks (total)",
 				analysis.projectileTicks(), budget.maxProjectileTicks());
 		appendMetric(lines, font, width, zh ? "Hook执行" : "Hook executions",
 				analysis.hookExecutionUpperBound(), budget.maxHookExecutions());
@@ -209,8 +209,15 @@ public class VariablesDockPanel implements DockPanel {
 	}
 
 	private void appendMetric(List<Line> lines, Font font, int width, String label, long current, long limit) {
-		appendWrapped(lines, font, width, label + ": " + current + " / " + limit,
+		appendWrapped(lines, font, width, label + ": " + formatBudget(current) + " / " + formatBudget(limit),
 				current > limit ? 0xFFFF7777 : 0xFF9DECF9);
+	}
+
+	private static String formatBudget(long value) {
+		if (value >= 1_000_000_000L) return String.format(Locale.ROOT, "%.2fB", value / 1_000_000_000.0);
+		if (value >= 1_000_000L) return String.format(Locale.ROOT, "%.2fM", value / 1_000_000.0);
+		if (value >= 1_000L) return String.format(Locale.ROOT, "%.2fK", value / 1_000.0);
+		return Long.toString(value);
 	}
 
 	private static String capabilityPair(SpecialNodeCounter.Summary nodes, SpellDraftBudget budget,

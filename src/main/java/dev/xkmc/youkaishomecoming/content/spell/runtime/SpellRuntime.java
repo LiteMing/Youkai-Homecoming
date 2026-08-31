@@ -57,6 +57,13 @@ public class SpellRuntime {
 	private int spellMaxHealth;
 	/** Timeout of the current health phase. */
 	private int spellDurationTicks;
+	/**
+	 * Optional fixed duration supplied by an item/command.  When present it is
+	 * authoritative over durations declared by set_spell_health, while the
+	 * health plan itself remains unchanged.
+	 */
+	@Nullable
+	private Integer durationOverrideTicks;
 	private int spellStartTick;
 	/** Stable phase order and weights for the current spell-health ring. */
 	private final List<String> spellHealthPlanPhases = new ArrayList<>();
@@ -100,6 +107,7 @@ public class SpellRuntime {
 
 	public SpellRuntime continueWith(SpellDefinition nextDefinition) {
 		SpellRuntime next = new SpellRuntime(nextDefinition, definitionResolver, declaredHealthPlan);
+		next.durationOverrideTicks = durationOverrideTicks;
 		if (declaredHealthPlan != null) {
 			next.totalTick = totalTick;
 			next.hitCount = hitCount;
@@ -156,11 +164,26 @@ public class SpellRuntime {
 	}
 
 	public int getSpellDurationTicks() {
-		return Math.max(0, spellDurationTicks);
+		return durationOverrideTicks == null
+				? Math.max(0, spellDurationTicks)
+				: Math.max(0, durationOverrideTicks);
+	}
+
+	/** Sets the fixed duration used by player-issued spell cards, or clears it. */
+	public void setDurationOverride(@Nullable Integer durationTicks) {
+		durationOverrideTicks = durationTicks == null ? null : Math.max(0, durationTicks);
+	}
+
+	@Nullable
+	public Integer getDurationOverride() {
+		return durationOverrideTicks;
 	}
 
 	/** Sum used by certification quotes; the rendered timeout always uses the current segment. */
 	public int getSpellPlanDurationTicks() {
+		if (durationOverrideTicks != null) {
+			return Math.max(0, durationOverrideTicks);
+		}
 		int total = sumSegments(spellDurationSegments, spellDurationSegments.size());
 		return total > 0 ? total : getSpellDurationTicks();
 	}
@@ -185,6 +208,9 @@ public class SpellRuntime {
 
 	public int getSpellElapsedTicks() {
 		if (spellMaxHealth <= 0) return 0;
+		if (durationOverrideTicks != null) {
+			return Math.min(Math.max(0, totalTick), durationOverrideTicks);
+		}
 		int currentElapsed = getCurrentSpellElapsedTicks();
 		if (spellDurationTicks > 0) {
 			return Math.min(currentElapsed, spellDurationTicks);
@@ -845,6 +871,9 @@ public class SpellRuntime {
 		tag.putInt("HitCount", hitCount);
 		tag.putInt("SpellMaxHealth", spellMaxHealth);
 		tag.putInt("SpellDurationTicks", spellDurationTicks);
+		if (durationOverrideTicks != null) {
+			tag.putInt("DurationOverrideTicks", durationOverrideTicks);
+		}
 		tag.putInt("SpellStartTick", spellStartTick);
 		if (!spellHealthSegments.isEmpty()) {
 			tag.putIntArray("SpellHealthSegments", getSpellHealthSegments());
@@ -884,6 +913,11 @@ public class SpellRuntime {
 			this.hitCount = tag.getInt("HitCount");
 			this.spellMaxHealth = Math.max(0, tag.getInt("SpellMaxHealth"));
 			this.spellDurationTicks = Math.max(0, tag.getInt("SpellDurationTicks"));
+			this.durationOverrideTicks = tag.contains("DurationOverrideTicks")
+					? Math.max(0, tag.getInt("DurationOverrideTicks")) : null;
+			if (durationOverrideTicks != null) {
+				this.spellDurationTicks = durationOverrideTicks;
+			}
 			this.spellStartTick = Math.max(0, tag.getInt("SpellStartTick"));
 			int[] savedHealth = tag.getIntArray("SpellHealthSegments");
 			if (savedHealth.length > 0) {

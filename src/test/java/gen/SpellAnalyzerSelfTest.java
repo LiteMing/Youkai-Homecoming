@@ -6,6 +6,7 @@ import dev.xkmc.youkaishomecoming.content.capability.PlayerDanmakuPolicy;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicy;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellBudgetScaling;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.payment.CastCost;
@@ -38,6 +39,7 @@ public class SpellAnalyzerSelfTest {
 	public static void main(String[] args) throws Exception {
 		testHeadlessFlagParsing();
 		testCastCostBuckets();
+		testBudgetScaling();
 		testSelfCheckFixtureJsonValid();
 		testConstantBounded();
 		testRandomRangeBounded();
@@ -96,6 +98,14 @@ public class SpellAnalyzerSelfTest {
 		check("cast cost 120t stays in one bucket", CastCost.unitsForDuration(120) == 120);
 		check("cast cost 121t rounds to two buckets", CastCost.unitsForDuration(121) == 140);
 		check("cast cost 1200t", CastCost.unitsForDuration(1200) == 1200);
+	}
+
+	private static void testBudgetScaling() {
+		check("budget multiplier 1x preserves base", SpellBudgetScaling.scale(10_000L, 1.0) == 10_000L);
+		check("budget multiplier halves base", SpellBudgetScaling.scale(10_001L, 0.5) == 5_001L);
+		check("budget multiplier clamps non-positive", SpellBudgetScaling.scale(10_000L, 0.0) == 1L);
+		check("budget multiplier saturates overflow", SpellBudgetScaling.scale(Long.MAX_VALUE, 2.0) == Long.MAX_VALUE);
+		check("budget multiplier handles infinity", SpellBudgetScaling.scale(10_000L, Double.POSITIVE_INFINITY) == Long.MAX_VALUE);
 	}
 
 	/**

@@ -21,7 +21,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ItemSupplier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 @SerialClass
 public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSupplier, MoverOwner {
@@ -58,6 +60,13 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	 * Bounce configuration parameters (multi-bounce limit, decay, mode, retarget, ground offset, etc.)
 	 */
 	public int currentBounces = 0;
+	/** Target locked when the spell action created this projectile. */
+	@SerialClass.SerialField
+	@Nullable
+	private java.util.UUID retargetTargetId;
+	@SerialClass.SerialField
+	@Nullable
+	private Vec3 retargetTargetPosition;
 	@org.jetbrains.annotations.Nullable
 	public DanmakuMover suspendedMover = null;
 	/**
@@ -199,6 +208,36 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	@Override
 	public TraceableEntity asTraceable() {
 		return this;
+	}
+
+	/**
+	 * Locks the action's target independently of the projectile owner. Real player
+	 * spells use a plain Player as owner, so owner-side CardHolder lookup is not a
+	 * reliable source for BounceAction retargeting.
+	 */
+	public void setRetargetTarget(@Nullable LivingEntity target) {
+		if (target == null) {
+			retargetTargetId = null;
+			retargetTargetPosition = null;
+			return;
+		}
+		retargetTargetId = target.getUUID();
+		retargetTargetPosition = targetPosition(target);
+	}
+
+	@Nullable
+	public Vec3 resolveRetargetTarget() {
+		if (retargetTargetId != null && level() instanceof ServerLevel server) {
+			Entity entity = server.getEntity(retargetTargetId);
+			if (entity instanceof LivingEntity living && living.isAlive()) {
+				retargetTargetPosition = targetPosition(living);
+			}
+		}
+		return retargetTargetPosition;
+	}
+
+	private static Vec3 targetPosition(LivingEntity target) {
+		return target.position().add(0, target.getBbHeight() / 2, 0);
 	}
 
 	public boolean isHolding() {

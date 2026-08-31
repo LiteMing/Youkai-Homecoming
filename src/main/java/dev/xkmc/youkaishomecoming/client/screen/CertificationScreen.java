@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.content.spell.certification.network.Certificat
 import dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationQuoteRequestToServer;
 import dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStartRequestToServer;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.Minecraft;
@@ -157,17 +158,31 @@ public class CertificationScreen extends Screen {
 					Math.max(0, quote.ordinaryNodes - quote.freeNodeCount), quote.nodeCostUnits,
 					quote.experimentalNodes, quote.operatorOnlyNodes);
 			Component performanceLine = Component.translatable("youkaishomecoming.cert.screen.performance",
-					quote.maxSpawnPerTick, quote.maxSpawnBudget,
-					quote.peakAliveUpperBound, quote.maxPeakBudget);
+					formatBudget(quote.maxSpawnPerTick), formatBudget(quote.maxSpawnBudget),
+					formatBudget(quote.peakAliveUpperBound), formatBudget(quote.maxPeakBudget));
 			Component workLine = Component.translatable("youkaishomecoming.cert.screen.performance_work",
-					quote.projectileTicks, quote.maxProjectileTicksBudget,
-					quote.hookExecutionUpperBound, quote.maxHookExecutionsBudget);
+					formatBudget(quote.projectileTicks), formatBudget(quote.maxProjectileTicksBudget),
+					formatBudget(quote.hookExecutionUpperBound), formatBudget(quote.maxHookExecutionsBudget));
+			SpellAnalysisLimits globalLimits = SpellAnalysisLimits.certification();
+			double multiplier = YHModConfig.COMMON.certificationBudgetMultiplier.get();
+			Component budgetLine = Component.translatable("youkaishomecoming.cert.screen.budget_scale",
+					String.format(Locale.ROOT, "%.2fx", multiplier),
+					formatBudget(globalLimits.maxSpawnPerTick()), formatBudget(globalLimits.maxPeakAlive()),
+					formatBudget(globalLimits.maxProjectileTicks()), formatBudget(globalLimits.maxHookExecutions()));
 			gui.drawCenteredString(this.font, durationLine, cx, 140, 0xFFA0FFA0);
 			gui.drawCenteredString(this.font, costLine, cx, 152, 0xFFA0FFA0);
 			gui.drawCenteredString(this.font, nodeLine, cx, 164, 0xFFFFD36B);
 			gui.drawCenteredString(this.font, performanceLine, cx, 176, 0xFF9DECF9);
 			gui.drawCenteredString(this.font, workLine, cx, 188, 0xFF9DECF9);
+			gui.drawCenteredString(this.font, budgetLine, cx, 200, 0xFFB7C9FF);
 		}
+	}
+
+	private static String formatBudget(long value) {
+		if (value >= 1_000_000_000L) return String.format(Locale.ROOT, "%.2fB", value / 1_000_000_000.0);
+		if (value >= 1_000_000L) return String.format(Locale.ROOT, "%.2fM", value / 1_000_000.0);
+		if (value >= 1_000L) return String.format(Locale.ROOT, "%.2fK", value / 1_000.0);
+		return Long.toString(value);
 	}
 
 	/** Rough XP-level conversion at the default experience rate (20 units per level). */

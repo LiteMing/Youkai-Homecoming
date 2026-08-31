@@ -479,6 +479,12 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	}
 
 	private Vec3 resolveBounceTarget() {
+		if (this instanceof ItemDanmakuEntity ide) {
+			Vec3 lockedTarget = ide.resolveRetargetTarget();
+			if (lockedTarget != null) {
+				return lockedTarget;
+			}
+		}
 		Entity e = getOwner();
 		if (e instanceof CardHolder h && h.target() != null) {
 			return h.target();

@@ -394,12 +394,10 @@ public class SpellPreviewScreen extends Screen {
 			editorVisible = !editorVisible;
 			rebuildScreen();
 		}, fullEdit, rightLimit);
-		// Apply button: re-apply edited spell to all entities using it
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit, rightLimit);
-		// Export button: save spell definition as JSON datapack file
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 46, btn -> exportToDatapack(), fullEdit, rightLimit);
+		// Save button: persist the edited spell and refresh entities using it
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Save & Refresh"), 76, btn -> applyToEntities(), fullEdit, rightLimit);
 		boolean canCertify = isCertifiable();
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Certify"), 44, btn -> openCertification(), fullEdit && canCertify, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Certify & Export"), 84, btn -> openCertification(), fullEdit && canCertify, rightLimit);
 		// Reset button: restore to original (built-in) or open-snapshot (custom)
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit, rightLimit);
 		// Auto Replay toggle
@@ -426,16 +424,13 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	/**
-	 * 魔法阵模式专属顶栏按钮。与符卡的 Apply / Export / Reset 对齐；
+	 * 魔法阵模式专属顶栏按钮。与符卡的保存 / 重置操作对齐；
 	 * 新建与删除跟随符卡惯例放在面板里的选择器旁边，不在顶栏。
 	 */
 	private int addCircleTopBarButtons(int bx, int by, int rightLimit) {
 		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Save"), 52, btn -> {
 			if (magicCircleDockPanel != null) magicCircleDockPanel.saveCircleFromTopBar();
-		}, true, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 58, btn -> {
-			if (magicCircleDockPanel != null) magicCircleDockPanel.exportCircleFromTopBar();
 		}, true, rightLimit);
 		return addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 48, btn -> {
 			if (magicCircleDockPanel != null) magicCircleDockPanel.resetCircleFromTopBar();
@@ -920,7 +915,7 @@ public class SpellPreviewScreen extends Screen {
 
 	/**
 	 * 抢救出来的坏节点只是占位符，不能被当成真实内容送出编辑器。
-	 * 认证与生存草稿保存已由 DENY 策略在服务端拦下，这里补上 Apply / Export 两个出口。
+	 * 认证与生存草稿保存已由 DENY 策略在服务端拦下，这里补上保存出口。
 	 *
 	 * @return true 表示存在坏节点、调用方应放弃本次操作
 	 */
@@ -956,28 +951,6 @@ public class SpellPreviewScreen extends Screen {
 				minecraft.player.displayClientMessage(
 						net.minecraft.network.chat.Component.literal("[YH] Failed to capture snapshot"), false);
 			}
-		}
-	}
-
-	/**
-	 * Export the current spell definition to the server global spell directory.
-	 * Exported spells are loaded for every save on the same game/server instance.
-	 */
-	private void exportToDatapack() {
-		if (refuseIfBroken()) {
-			return;
-		}
-		byte[] snap = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
-		if (snap != null && snap.length > 0) {
-			Minecraft.getInstance().setScreen(
-					new dev.xkmc.youkaishomecoming.client.screen.SpellCardSnapshotConfirmScreen(this, snap, () -> {
-						saveConfirmedSnapshot(snap);
-						syncCustomNamesToDefinition();
-						spellController.exportToDatapack();
-					}));
-		} else {
-			syncCustomNamesToDefinition();
-			spellController.exportToDatapack();
 		}
 	}
 

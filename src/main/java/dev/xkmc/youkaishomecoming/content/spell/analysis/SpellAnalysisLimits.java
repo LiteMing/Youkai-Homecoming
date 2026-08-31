@@ -70,11 +70,12 @@ public record SpellAnalysisLimits(
 	public static SpellAnalysisLimits certification() {
 		try {
 			var common = YHModConfig.COMMON;
+			double multiplier = common.certificationBudgetMultiplier.get();
 			return new SpellAnalysisLimits(64, 4096, 32, 256, 8192, 256, 12000, 512,
-					common.certificationMaxSpawnPerTick.get(),
-					common.certificationMaxPeakAlive.get(),
-					common.certificationMaxProjectileTicks.get(),
-					common.certificationMaxHookExecutions.get(),
+					(int) Math.min(Integer.MAX_VALUE, SpellBudgetScaling.scale(DEFAULT_MAX_SPAWN_PER_TICK, multiplier)),
+					(int) Math.min(Integer.MAX_VALUE, SpellBudgetScaling.scale(DEFAULT_MAX_PEAK_ALIVE, multiplier)),
+					SpellBudgetScaling.scale(DEFAULT_MAX_PROJECTILE_TICKS, multiplier),
+					SpellBudgetScaling.scale(DEFAULT_MAX_HOOK_EXECUTIONS, multiplier),
 					DEFAULT_MAX_HITS_PER_PROJECTILE,
 					DEFAULT_CERTIFICATION_WINDOW_TICKS);
 		} catch (Exception e) {

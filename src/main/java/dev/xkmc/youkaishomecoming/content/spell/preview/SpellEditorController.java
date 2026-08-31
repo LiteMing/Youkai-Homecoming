@@ -213,7 +213,7 @@ public class SpellEditorController {
 		displayEditorMessage("[YH] Deleted spell " + formatResourceId(spellId));
 	}
 
-	// --- Save / Reset / Export ---
+// --- Save / Reset ---
 
 	public void saveCurrentDefinition() {
 		if (isDraftMode()) {
@@ -254,26 +254,6 @@ public class SpellEditorController {
 		definition.customNames.putAll(restored.customNames);
 
 		displayEditorMessage("[YH] Spell reset to default");
-	}
-
-	public void exportToDatapack() {
-		if (isDraftMode()) {
-			return;
-		}
-		if (definition.hasLegacyTicker()) {
-			displayEditorMessage(Component.translatable(
-					"youkaishomecoming.spell_editor.error.legacy_ticker"));
-			return;
-		}
-		try {
-			var localCopy = SpellEditorNetworkClient.exportGlobal(definition);
-			displayEditorMessage("[YH] Exporting global spell " + formatResourceId(definition.id) +
-					" (local copy: " + localCopy + ")");
-		} catch (Exception e) {
-			String msg = e.getMessage();
-			displayEditorMessage("[YH] Export requested, but failed to save local copy: " +
-					(msg == null ? e.getClass().getSimpleName() : msg));
-		}
 	}
 
 	// --- Snapshot management ---

@@ -112,15 +112,9 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue spellMarketMaxSpellsPerTag;
 
 		// Certification analysis hard limits (SpellAnalyzer CERTIFICATION profile, Phase 0)
-		public final ForgeConfigSpec.IntValue certificationMaxSpawnPerTick;
-		public final ForgeConfigSpec.IntValue certificationMaxPeakAlive;
-		public final ForgeConfigSpec.LongValue certificationMaxProjectileTicks;
-		public final ForgeConfigSpec.LongValue certificationMaxHookExecutions;
+		public final ForgeConfigSpec.DoubleValue certificationBudgetMultiplier;
 		public final ForgeConfigSpec.IntValue spellDraftFreeNodeCount;
-		public final ForgeConfigSpec.IntValue spellDraftMaxSpawnPerTick;
-		public final ForgeConfigSpec.IntValue spellDraftMaxPeakAlive;
-		public final ForgeConfigSpec.LongValue spellDraftMaxProjectileTicks;
-		public final ForgeConfigSpec.LongValue spellDraftMaxHookExecutions;
+		public final ForgeConfigSpec.DoubleValue spellDraftBudgetMultiplier;
 		public final ForgeConfigSpec.LongValue spellDraftExcessNodeCostUnits;
 
 		// Certification gameplay (Phase 2)
@@ -299,33 +293,17 @@ public class YHModConfig {
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.certification").push("certification");
 			{
-				certificationMaxSpawnPerTick = builder.comment("Max projectiles any single server tick may spawn during certification")
-						.translation("config.youkaishomecoming.common.certification.maxSpawnPerTick")
-						.defineInRange("maxSpawnPerTick", SpellAnalysisLimits.DEFAULT_MAX_SPAWN_PER_TICK, 1, 100000);
-				certificationMaxPeakAlive = builder.comment("Conservative concurrent-alive projectile upper bound during certification")
-						.translation("config.youkaishomecoming.common.certification.maxPeakAlive")
-						.defineInRange("maxPeakAlive", SpellAnalysisLimits.DEFAULT_MAX_PEAK_ALIVE, 1, 1000000);
-				certificationMaxProjectileTicks = builder.comment("Conservative total projectile-tick upper bound during certification")
-						.translation("config.youkaishomecoming.common.certification.maxProjectileTicks")
-						.defineInRange("maxProjectileTicks", SpellAnalysisLimits.DEFAULT_MAX_PROJECTILE_TICKS, 1L, 100_000_000_000L);
-				certificationMaxHookExecutions = builder.comment("Conservative total hook execution upper bound during certification")
-						.translation("config.youkaishomecoming.common.certification.maxHookExecutions")
-						.defineInRange("maxHookExecutions", SpellAnalysisLimits.DEFAULT_MAX_HOOK_EXECUTIONS, 1L, 100_000_000_000L);
+				certificationBudgetMultiplier = builder.comment(
+						"Multiplier for all certification performance budgets (1.0 = spawn 100000/tick, peak 1000000, projectile-ticks 10000000000, hooks 10000000)")
+						.translation("config.youkaishomecoming.common.certification.budgetMultiplier")
+						.defineInRange("budgetMultiplier", 1.0, 0.05, 100.0);
 				spellDraftFreeNodeCount = builder.comment("Ordinary action and hook nodes included without additional cast cost")
 						.translation("config.youkaishomecoming.common.certification.draftFreeNodeCount")
 						.defineInRange("draftFreeNodeCount", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_FREE_NODE_COUNT, 0, 4096);
-				spellDraftMaxSpawnPerTick = builder.comment("Default blank-card max projectiles spawned in one tick")
-						.translation("config.youkaishomecoming.common.certification.draftMaxSpawnPerTick")
-						.defineInRange("draftMaxSpawnPerTick", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_MAX_SPAWN_PER_TICK, 1, 100000);
-				spellDraftMaxPeakAlive = builder.comment("Default blank-card concurrent projectile budget")
-						.translation("config.youkaishomecoming.common.certification.draftMaxPeakAlive")
-						.defineInRange("draftMaxPeakAlive", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_MAX_PEAK_ALIVE, 1, 1000000);
-				spellDraftMaxProjectileTicks = builder.comment("Default blank-card projectile-tick budget")
-						.translation("config.youkaishomecoming.common.certification.draftMaxProjectileTicks")
-						.defineInRange("draftMaxProjectileTicks", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_MAX_PROJECTILE_TICKS, 1L, 100_000_000_000L);
-				spellDraftMaxHookExecutions = builder.comment("Default blank-card hook execution budget")
-						.translation("config.youkaishomecoming.common.certification.draftMaxHookExecutions")
-						.defineInRange("draftMaxHookExecutions", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_MAX_HOOK_EXECUTIONS, 1L, 100_000_000_000L);
+				spellDraftBudgetMultiplier = builder.comment(
+						"Multiplier for all new blank-card performance budgets (1.0 = spawn 128/tick, peak 10000, projectile-ticks 100000000, hooks 1000000)")
+						.translation("config.youkaishomecoming.common.certification.draftBudgetMultiplier")
+						.defineInRange("draftBudgetMultiplier", 1.0, 0.05, 100.0);
 				spellDraftExcessNodeCostUnits = builder.comment("Additional cast-cost units per ordinary node above the card's free allowance")
 						.translation("config.youkaishomecoming.common.certification.draftExcessNodeCostUnits")
 						.defineInRange("draftExcessNodeCostUnits", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_EXCESS_NODE_COST_UNITS, 0L, 1_000_000L);

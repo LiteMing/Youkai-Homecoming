@@ -32,6 +32,9 @@ public class RuntimeItemSpell extends ItemSpell {
 		super.start(player, target);
 		runtime = new SpellRuntime(definition);
 		runtime.reset();
+		if (maxDuration >= 0) {
+			runtime.setDurationOverride(maxDuration);
+		}
 		tickCount = 0;
 		delayedRuntimes.clear();
 	}

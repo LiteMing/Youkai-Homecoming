@@ -381,6 +381,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 
 		if (player instanceof ServerPlayer sp) {
+			boolean hasDurationOverride = stack.hasTag() && stack.getTag().contains(TAG_DURATION);
 			SpellHealthPlan playerHealthPlan = certifiedPlan;
 			boolean hasHealthDeclaration = SpellHealthPlan.hasHealthDeclaration(def);
 			if (playerHealthPlan == null) {
@@ -415,7 +416,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			if (duration == 0 && hasHealthDeclaration) duration = DURATION_NATURAL;
 			DanmakuProxyEntity proxy = new DanmakuProxyEntity(
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
-			proxy.init(sp, def, duration, target, certifiedPlan);
+			Integer durationOverride = !certifiedStack && hasDurationOverride && duration >= 0
+					? duration : null;
+			proxy.init(sp, def, duration, target, certifiedPlan, durationOverride);
 			sp.serverLevel().addFreshEntity(proxy);
 			SpellContainer.trackProxy(sp, proxy, cardKey);
 			GrazeHelper.onPlayerSpellCast(sp);

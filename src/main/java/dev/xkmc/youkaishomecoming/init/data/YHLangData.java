@@ -760,8 +760,8 @@ public enum YHLangData {
 		pvd.add(p + "line." + i++, "\u00A7fBindTgt/Unbind    \u00A77Bind/unbind target to camera (perspective)");
 		pvd.add(p + "line." + i++, "\u00A7f\u25B6All / \u25BCAll       \u00A77Collapse All / Expand All in tree");
 		pvd.add(p + "line." + i++, "\u00A7f[+]:Sel/All       \u00A77[+] buttons: selected only / show all");
-		pvd.add(p + "line." + i++, "\u00A7fApply             \u00A77Apply & save spell to all entities using it");
-		pvd.add(p + "line." + i++, "\u00A7fExport            \u00A77Export globally for all saves");
+		pvd.add(p + "line." + i++, "\u00A7fSave & Refresh     \u00A77Save and refresh all entities using the spell");
+		pvd.add(p + "line." + i++, "\u00A7fCertify & Export   \u00A77Certify and issue the spell; copy JSON manually from Raw JSON");
 		pvd.add(p + "line." + i++, "\u00A7fReset             \u00A77Reset to built-in default");
 		pvd.add(p + "line." + i++, "\u00A7fAuto:ON/OFF       \u00A77Auto replay preview after edit");
 		pvd.add(p + "line." + i++, "\u00A7fFocusTgt/Cstr     \u00A77Center viewport on target / caster");

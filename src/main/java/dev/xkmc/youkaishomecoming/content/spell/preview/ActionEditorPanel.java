@@ -539,9 +539,12 @@ public class ActionEditorPanel {
 
 		// Presets: Specular (-1, 1), Bouncy (-0.8, 0.95), Surface Slide (0, 1)
 		String preset = "custom";
-		if (Math.abs(action.normalFactor() - (-1.0)) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "specular";
-		else if (Math.abs(action.normalFactor() - (-0.8)) < 1e-6 && Math.abs(action.tangentFactor() - 0.95) < 1e-6) preset = "bouncy";
-		else if (Math.abs(action.normalFactor()) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "slide";
+		boolean isZeroOffset = Math.abs(action.tangentOffsetX()) < 1e-6 && Math.abs(action.tangentOffsetY()) < 1e-6 && Math.abs(action.tangentOffsetZ()) < 1e-6;
+		if (isZeroOffset) {
+			if (Math.abs(action.normalFactor() - (-1.0)) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "specular";
+			else if (Math.abs(action.normalFactor() - (-0.8)) < 1e-6 && Math.abs(action.tangentFactor() - 0.95) < 1e-6) preset = "bouncy";
+			else if (Math.abs(action.normalFactor()) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "slide";
+		}
 
 		addStringOptionRow("Preset",
 				new String[]{"specular", "bouncy", "slide", "custom"},
@@ -549,11 +552,14 @@ public class ActionEditorPanel {
 				preset,
 				p -> {
 					if ("specular".equals(p)) {
-						notifySimple(old -> ((BounceAction) old).withNormalFactor(-1.0).withTangentFactor(1.0), true);
+						notifySimple(old -> ((BounceAction) old).withNormalFactor(-1.0).withTangentFactor(1.0)
+								.withTangentOffsetX(0.0).withTangentOffsetY(0.0).withTangentOffsetZ(0.0), true);
 					} else if ("bouncy".equals(p)) {
-						notifySimple(old -> ((BounceAction) old).withNormalFactor(-0.8).withTangentFactor(0.95), true);
+						notifySimple(old -> ((BounceAction) old).withNormalFactor(-0.8).withTangentFactor(0.95)
+								.withTangentOffsetX(0.0).withTangentOffsetY(0.0).withTangentOffsetZ(0.0), true);
 					} else if ("slide".equals(p)) {
-						notifySimple(old -> ((BounceAction) old).withNormalFactor(0.0).withTangentFactor(1.0), true);
+						notifySimple(old -> ((BounceAction) old).withNormalFactor(0.0).withTangentFactor(1.0)
+								.withTangentOffsetX(0.0).withTangentOffsetY(0.0).withTangentOffsetZ(0.0), true);
 					}
 				});
 
@@ -561,6 +567,15 @@ public class ActionEditorPanel {
 				notifySimple(old -> ((BounceAction) old).withNormalFactor(v)));
 		addDoubleRow("Tangent Factor", action.tangentFactor(), v ->
 				notifySimple(old -> ((BounceAction) old).withTangentFactor(v)));
+
+		if ("custom".equals(preset)) {
+			addDoubleRow("Tangent Offset X (World)", action.tangentOffsetX(), v ->
+					notifySimple(old -> ((BounceAction) old).withTangentOffsetX(v)));
+			addDoubleRow("Tangent Offset Y (World)", action.tangentOffsetY(), v ->
+					notifySimple(old -> ((BounceAction) old).withTangentOffsetY(v)));
+			addDoubleRow("Tangent Offset Z (World)", action.tangentOffsetZ(), v ->
+					notifySimple(old -> ((BounceAction) old).withTangentOffsetZ(v)));
+		}
 
 		addBooleanRow("Reset Speed", action.outputSpeed().isPresent(), enable -> {
 			notifySimple(old -> ((BounceAction) old).withOutputSpeed(enable ? Optional.of(0.8) : Optional.empty()), true);

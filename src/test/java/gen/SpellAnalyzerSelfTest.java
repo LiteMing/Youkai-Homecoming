@@ -62,6 +62,7 @@ public class SpellAnalyzerSelfTest {
 		testPolicyTable();
 		testPolicyIds();
 		testPlayerDanmakuPolicy();
+		BounceSurfaceResponseTest.runAllTests();
 		if (failed > 0) {
 			throw new RuntimeException(failed + " analyzer self-tests failed!");
 		}

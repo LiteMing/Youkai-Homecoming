@@ -215,7 +215,8 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 						return;
 					}
 
-					// Pin projectile on contact surface and install HitHoldMover
+					// Pin projectile on contact surface and install HitHoldMover, preserving suspended mover
+					ide.suspendedMover = ide.mover;
 					Vec3 holdPos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
 					ide.setPos(holdPos);
 					ide.snapMotionAndRotation(Vec3.ZERO);
@@ -229,7 +230,6 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 								@Override
 								public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
 									if (ide.isAlive() && !ide.isRemoved()) {
-										ide.mover = null;
 										var body = hitCtx.beginResumeAndTakeBody();
 										if (body != null) {
 											var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
@@ -261,8 +261,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 				if (this instanceof ItemDanmakuEntity ide) {
 					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
 							hitCtx.hitPosition(), hitCtx.incomingVelocity(), hitCtx.hitNormal(),
-							hitCtx.bounceConfig() != null ? hitCtx.bounceConfig() : ide.bounceConfig,
-							ide.currentBounces, resolveBounceTarget());
+							hitCtx.bounceConfig(), ide.currentBounces, resolveBounceTarget());
 					if (result.erased()) {
 						markErased(false);
 						return;

@@ -554,11 +554,15 @@ public final class SpellAnalyzer {
 			// rejected by the certification precheck (D9); market keeps the historical
 			// behavior of accepting it (runtime factory is lost → no-op)
 			handled = true;
-		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction) {
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction ba) {
 			if (profile == SpellAnalysisProfile.CERTIFICATION) {
 				if (!"on_hit_block".equals(currentHookLabel)) {
 					throw rejected("invalid_hit_control",
 							"Bounce action may only be placed inside on_hit_block callbacks");
+				}
+				if (ba.normalFactor() > 0.0) {
+					throw rejected("positive_normal_factor",
+							"BounceAction normalFactor cannot be positive (got " + ba.normalFactor() + "); normalFactor must be in range [-5.0, 0.0]");
 				}
 			}
 			handled = true;
@@ -649,7 +653,6 @@ public final class SpellAnalyzer {
 		walkHooks(a.onExpiry(), a.onTrail(), a.trailInterval(),
 				a.onHitEntity(), a.onHitBlock(),
 				a.hitBehaviorEntity(), a.hitBehaviorBlock(),
-				a.bounceConfig(),
 				contrib, lifetimeUpper, perTick, mult);
 	}
 
@@ -662,7 +665,6 @@ public final class SpellAnalyzer {
 		walkHooks(a.onExpiry(), a.onTrail(), a.trailInterval(),
 				a.onHitEntity(), a.onHitBlock(),
 				a.hitBehaviorEntity(), a.hitBehaviorBlock(),
-				Optional.empty(),
 				contrib, lifetimeUpper, perTick, mult);
 	}
 
@@ -678,7 +680,6 @@ public final class SpellAnalyzer {
 						   int trailInterval, Optional<List<SpellAction>> onHitEntity,
 						   Optional<List<SpellAction>> onHitBlock,
 						   HitBehavior hitBehaviorEntity, HitBehavior hitBehaviorBlock,
-						   Optional<dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig> bounceConfig,
 						   long contrib, long lifetimeUpper, boolean perTick, long mult) {
 		if (onExpiry.isPresent()) {
 			addCap(SpellCapability.HOOK_ON_EXPIRY);

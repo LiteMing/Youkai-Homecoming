@@ -57,8 +57,9 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	/**
 	 * Bounce configuration parameters (multi-bounce limit, decay, mode, retarget, ground offset, etc.)
 	 */
-	public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig bounceConfig = null;
 	public int currentBounces = 0;
+	@org.jetbrains.annotations.Nullable
+	public DanmakuMover suspendedMover = null;
 	/**
 	 * Per-danmaku damage type override. When non-null, this takes priority over
 	 * the CardHolder/SpellCard damage source resolution chain.
@@ -149,12 +150,14 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		updateVisualScaleDimensions(true);
 	}
 
-	public void configureBounce(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig config) {
-		this.bounceConfig = config;
-	}
-
 	public void applyBounceState(Vec3 newPos, Vec3 newVel, int bounceCount) {
-		this.mover = null;
+		DanmakuMover oldMover = this.suspendedMover != null ? this.suspendedMover : this.mover;
+		this.suspendedMover = null;
+		if (oldMover instanceof dev.xkmc.youkaishomecoming.content.spell.mover.CollisionRebasableMover rebasable) {
+			this.mover = rebasable.rebaseAfterCollision(newPos, newVel);
+		} else {
+			this.mover = null;
+		}
 		this.currentBounces = bounceCount;
 		notifyTrajectoryChanged();
 		setPos(newPos);
@@ -232,12 +235,6 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		super.writeSpawnData(data);
 		CompoundTag tag = new CompoundTag();
 		writeScaleFunction(tag);
-		if (bounceConfig != null) {
-			dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.CODEC
-					.encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, bounceConfig)
-					.resultOrPartial(err -> {})
-					.ifPresent(bTag -> tag.put("BounceConfig", bTag));
-		}
 		data.writeNbt(tag);
 	}
 
@@ -247,12 +244,6 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		CompoundTag tag = data.readNbt();
 		if (tag != null) {
 			readScaleFunction(tag);
-			if (tag.contains("BounceConfig")) {
-				dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.CODEC
-						.parse(net.minecraft.nbt.NbtOps.INSTANCE, tag.get("BounceConfig"))
-						.resultOrPartial(err -> {})
-						.ifPresent(cfg -> this.bounceConfig = cfg);
-			}
 		}
 		updateVisualScaleDimensions(true);
 	}

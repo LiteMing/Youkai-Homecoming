@@ -521,6 +521,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			case DISCARD -> projectile.markErased(false);
 			case HOLD -> {
 				if (projectile instanceof ItemDanmakuEntity ide && hitCtx.deferredBody() != null) {
+					ide.suspendedMover = ide.mover;
 					Vec3 holdPos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
 					ide.setPos(holdPos);
 					ide.snapMotionAndRotation(Vec3.ZERO);
@@ -532,7 +533,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 									@Override
 									public void execute(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
 										if (ide.isAlive() && !ide.isRemoved()) {
-											ide.mover = null;
 											var releaseBody = hitCtx.beginResumeAndTakeBody();
 											if (releaseBody != null) {
 												var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
@@ -570,7 +570,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				if (projectile instanceof ItemDanmakuEntity ide) {
 					var result = dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver.resolve(
 							hitCtx.hitPosition(), hitCtx.incomingVelocity(), hitCtx.hitNormal(),
-							hitCtx.bounceConfig() != null ? hitCtx.bounceConfig() : ide.bounceConfig,
+							hitCtx.bounceConfig(),
 							ide.currentBounces, target());
 					if (result.erased()) {
 						projectile.markErased(false);

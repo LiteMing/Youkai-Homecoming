@@ -26,7 +26,7 @@ import org.jetbrains.annotations.Nullable;
  * </ul>
  */
 @SerialClass
-public final class BoundedAccelerationMover extends TargetPosMover {
+public final class BoundedAccelerationMover extends TargetPosMover implements CollisionRebasableMover {
 
 	@SerialClass.SerialField
 	private Vec3 origin = Vec3.ZERO;
@@ -131,6 +131,21 @@ public final class BoundedAccelerationMover extends TargetPosMover {
 		double y = Double.isFinite(v.y) ? v.y : 0;
 		double z = Double.isFinite(v.z) ? v.z : 0;
 		return new Vec3(x, y, z);
+	}
+
+	@Override
+	public DanmakuMover rebaseAfterCollision(Vec3 newPosition, Vec3 newVelocity) {
+		Double tvx = hasTermX ? termVx : null;
+		Double tvy = hasTermY ? termVy : null;
+		Double tvz = hasTermZ ? termVz : null;
+
+		if (isLocalSpace) {
+			// Local space rebase: keeps original basis, projects newVelocity onto existing basis
+			return local(newPosition, newVelocity, forward, right, up, localAcc, tvx, tvy, tvz);
+		} else {
+			// World space rebase: new origin and velocity, keeping world acceleration and terminals
+			return world(newPosition, newVelocity, localAcc, tvx, tvy, tvz);
+		}
 	}
 
 	@Override

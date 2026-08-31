@@ -43,8 +43,7 @@ public record FireDanmakuAction(
 		Optional<DanmakuDamageType> damageType,
 		Optional<GroupRotation> groupRotation,
 		Optional<DanmakuColorAnimation> colorAnimation,
-		NumberProvider size,
-		Optional<DanmakuBounceConfig> bounceConfig
+		NumberProvider size
 ) implements SpellAction {
 
 	/** Backwards-compatible constructor without tiltAngle/onHit/damageType/bounce fields (16 args). */
@@ -59,7 +58,7 @@ public record FireDanmakuAction(
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
 				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.CONTINUE,
-				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1), Optional.empty());
+				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1));
 	}
 
 	/** Backwards-compatible constructor with tiltAngle but without onHit/damageType fields (17 args). */
@@ -74,7 +73,7 @@ public record FireDanmakuAction(
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
 				tiltAngle, Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.CONTINUE,
-				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1), Optional.empty());
+				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1));
 	}
 
 	public FireDanmakuAction(
@@ -91,7 +90,7 @@ public record FireDanmakuAction(
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
 				tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock,
-				damageType, groupRotation, Optional.empty(), NumberProvider.constant(1), Optional.empty());
+				damageType, groupRotation, Optional.empty(), NumberProvider.constant(1));
 	}
 
 	public FireDanmakuAction(
@@ -109,25 +108,7 @@ public record FireDanmakuAction(
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
 				tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock,
-				damageType, groupRotation, Optional.empty(), size, Optional.empty());
-	}
-
-	public FireDanmakuAction(
-			BulletProvider bulletType, ColorProvider color,
-			NumberProvider count, NumberProvider speed, NumberProvider lifetime,
-			NumberProvider angleOffset, NumberProvider spread, NumberProvider elevation,
-			PatternType pattern, OriginConfig origin, AimMode aimMode,
-			Optional<MoverConfig> mover, Optional<NumberProvider> outerCount,
-			Optional<List<SpellAction>> onExpiry, Optional<List<SpellAction>> onTrail,
-			int trailInterval, Optional<NumberProvider> tiltAngle,
-			Optional<List<SpellAction>> onHitEntity, Optional<List<SpellAction>> onHitBlock,
-			HitBehavior hitBehaviorEntity, HitBehavior hitBehaviorBlock,
-			Optional<DanmakuDamageType> damageType, Optional<GroupRotation> groupRotation,
-			Optional<DanmakuColorAnimation> colorAnimation, NumberProvider size) {
-		this(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation,
-				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
-				tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock,
-				damageType, groupRotation, colorAnimation, size, Optional.empty());
+				damageType, groupRotation, Optional.empty(), size);
 	}
 
 	// 16-field group (DFU RecordCodecBuilder limit)
@@ -168,39 +149,37 @@ public record FireDanmakuAction(
 			base.bulletType, base.color, base.count, base.speed, base.lifetime,
 			base.angleOffset, base.spread, base.elevation, base.pattern, base.origin,
 			base.aimMode, base.mover, base.outerCount, base.onExpiry, base.onTrail,
-			base.trailInterval, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim, size, Optional.empty()
+			base.trailInterval, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim, size
 	)));
 
 	// withXxx helper methods for editor use (preserve all fields)
-	private FireDanmakuAction all(BulletProvider bt, ColorProvider c, NumberProvider cnt, NumberProvider spd, NumberProvider lt, NumberProvider ao, NumberProvider sp, NumberProvider el, PatternType pt, OriginConfig o, AimMode am, Optional<MoverConfig> m, Optional<NumberProvider> oc, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<NumberProvider> ta, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hbe, HitBehavior hbb, Optional<DanmakuDamageType> ddt, Optional<GroupRotation> gr, Optional<DanmakuColorAnimation> ca, NumberProvider sz, Optional<DanmakuBounceConfig> bc) { return new FireDanmakuAction(bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti, ta, ohe, ohb, hbe, hbb, ddt, gr, ca, sz, bc); }
+	private FireDanmakuAction all(BulletProvider bt, ColorProvider c, NumberProvider cnt, NumberProvider spd, NumberProvider lt, NumberProvider ao, NumberProvider sp, NumberProvider el, PatternType pt, OriginConfig o, AimMode am, Optional<MoverConfig> m, Optional<NumberProvider> oc, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<NumberProvider> ta, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hbe, HitBehavior hbb, Optional<DanmakuDamageType> ddt, Optional<GroupRotation> gr, Optional<DanmakuColorAnimation> ca, NumberProvider sz) { return new FireDanmakuAction(bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti, ta, ohe, ohb, hbe, hbb, ddt, gr, ca, sz); }
 	public FireDanmakuAction withBulletType(YHDanmaku.Bullet v) { return withBulletProvider(BulletProvider.constant(v)); }
-	public FireDanmakuAction withBulletProvider(BulletProvider v) { return all(v, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withColor(ColorProvider v) { return all(bulletType, v, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withCount(NumberProvider v) { return all(bulletType, color, v, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withSpeed(NumberProvider v) { return all(bulletType, color, count, v, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withLifetime(NumberProvider v) { return all(bulletType, color, count, speed, v, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withAngleOffset(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, v, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withSpread(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, v, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withElevation(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, v, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withPattern(PatternType v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, v, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withOrigin(OriginConfig v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, v, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withAimMode(AimMode v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, v, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withMover(Optional<MoverConfig> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, v, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withOuterCount(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, v, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withOnExpiry(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, v, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withOnTrail(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, v, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withTrailInterval(int v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, v, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withTiltAngle(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, v, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withOnHitEntity(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, v, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withOnHitBlock(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, v, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withHitBehaviorEntity(HitBehavior v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, v, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withHitBehaviorBlock(HitBehavior v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, v, damageType, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withDamageType(Optional<DanmakuDamageType> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, v, groupRotation, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withGroupRotation(Optional<GroupRotation> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, v, colorAnimation, size, bounceConfig); }
-	public FireDanmakuAction withColorAnimation(Optional<DanmakuColorAnimation> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, v, size, bounceConfig); }
-	public FireDanmakuAction withSize(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, v, bounceConfig); }
-	@Deprecated
-	public FireDanmakuAction withBounceConfig(Optional<DanmakuBounceConfig> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, v); }
+	public FireDanmakuAction withBulletProvider(BulletProvider v) { return all(v, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withColor(ColorProvider v) { return all(bulletType, v, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withCount(NumberProvider v) { return all(bulletType, color, v, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withSpeed(NumberProvider v) { return all(bulletType, color, count, v, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withLifetime(NumberProvider v) { return all(bulletType, color, count, speed, v, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withAngleOffset(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, v, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withSpread(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, v, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withElevation(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, v, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withPattern(PatternType v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, v, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withOrigin(OriginConfig v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, v, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withAimMode(AimMode v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, v, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withMover(Optional<MoverConfig> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, v, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withOuterCount(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, v, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withOnExpiry(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, v, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withOnTrail(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, v, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withTrailInterval(int v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, v, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withTiltAngle(Optional<NumberProvider> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, v, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withOnHitEntity(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, v, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withOnHitBlock(Optional<List<SpellAction>> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, v, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withHitBehaviorEntity(HitBehavior v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, v, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withHitBehaviorBlock(HitBehavior v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, v, damageType, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withDamageType(Optional<DanmakuDamageType> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, v, groupRotation, colorAnimation, size); }
+	public FireDanmakuAction withGroupRotation(Optional<GroupRotation> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, v, colorAnimation, size); }
+	public FireDanmakuAction withColorAnimation(Optional<DanmakuColorAnimation> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, v, size); }
+	public FireDanmakuAction withSize(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, v); }
 
 	@Override
 	public void execute(SpellContext ctx) {
@@ -255,7 +234,6 @@ public record FireDanmakuAction(
 		}
 		danmaku.hitBehaviorEntity = hitBehaviorEntity;
 		danmaku.hitBehaviorBlock = hitBehaviorBlock;
-		danmaku.bounceConfig = null;
 		// Default from prepareDanmaku is bypassWall=true, bypassEntity=true (boss danmaku defaults).
 		// Keep the legacy pass-through behavior unless this action explicitly uses block hit handling:
 		// either a block-hit callback is configured, or block hits should stop/expire the danmaku.

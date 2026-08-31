@@ -77,18 +77,25 @@ public abstract class BaseProjectile extends AsyncProjectile {
 		cache.preheat(box.inflate(1 + radius + graze));
 	}
 
+	protected long movementRevision = 0;
+
+	public void notifyTrajectoryChanged() {
+		this.movementRevision++;
+	}
+
 	@Override
 	protected void resolveCollision(TickData data) {
+		long revBefore = this.movementRevision;
 		if (data.blockHit != null) {
 			onHitBlock(data.blockHit);
-			if (!isValid() || isRemoved() || data.removed) {
+			if (!isValid() || isRemoved() || data.removed || this.movementRevision != revBefore) {
 				return;
 			}
 		}
 		if (!data.hitEntities.isEmpty()) {
 			for (Entity entity : data.hitEntities) {
 				onHitEntity(new EntityHitResult(entity));
-				if (!isValid() || isRemoved() || data.removed) {
+				if (!isValid() || isRemoved() || data.removed || this.movementRevision != revBefore) {
 					break;
 				}
 			}

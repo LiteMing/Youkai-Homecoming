@@ -104,6 +104,7 @@ public final class SpellAnalyzer {
 	private boolean inOneShotGroup;
 	private long burstAccum;
 	private int hookDepth;
+	private String currentHookLabel = "";
 
 	/** Capabilities allowed beyond their default policy (draft op-node quota path). */
 	private final java.util.Set<SpellCapability> extraAllowed;
@@ -526,13 +527,22 @@ public final class SpellAnalyzer {
 			// rejected by the certification precheck (D9); market keeps the historical
 			// behavior of accepting it (runtime factory is lost → no-op)
 			handled = true;
-		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction
-				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.BounceAction) {
+			if (profile == SpellAnalysisProfile.CERTIFICATION) {
+				if (!"on_hit_block".equals(currentHookLabel)) {
+					throw rejected("invalid_hit_control",
+							"Bounce action may only be placed inside on_hit_block callbacks");
+				}
+			}
+			handled = true;
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction
 				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.ExpireSourceAction
 				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.DiscardSourceAction) {
-			if (hookDepth == 0 && profile == SpellAnalysisProfile.CERTIFICATION) {
-				throw rejected("invalid_hit_control",
-						"Hit control action (" + action.getClass().getSimpleName() + ") cannot be placed outside hit callbacks");
+			if (profile == SpellAnalysisProfile.CERTIFICATION) {
+				if (!"on_hit_block".equals(currentHookLabel) && !"on_hit_entity".equals(currentHookLabel)) {
+					throw rejected("invalid_hit_control",
+							"Hit control action (" + action.getClass().getSimpleName() + ") cannot be placed outside on_hit callbacks");
+				}
 			}
 			handled = true;
 		} else if (isSafeNoCostAction(action)) {
@@ -732,11 +742,14 @@ public final class SpellAnalyzer {
 		// square the parent factor (acceptance review issue 4).
 		long childMult = profile == SpellAnalysisProfile.MARKET ? mult : executions;
 		hookDepth++;
+		String prevHookLabel = currentHookLabel;
+		currentHookLabel = label;
 		long beforePerTick = certPerTickSpawns;
 		long beforeOneShot = certOneShotSpawns;
 		try {
 			walkList(label, list, perTick, childMult, GroupKind.NONE);
 		} finally {
+			currentHookLabel = prevHookLabel;
 			hookDepth--;
 		}
 		// a single hook callback batch may fire in one tick: e.g. on_enter spawns 1000

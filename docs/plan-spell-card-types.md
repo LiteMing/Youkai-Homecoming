@@ -109,13 +109,26 @@ normal | last_spell | timeout_spell | non_spell
 - 禁止符卡展示相关节点，至少包括 `show_spell_title`、`set_spell_circle` 及同类认证/展示
   能力。最终白名单以非符示范 JSON 和 KJS 策略确定。
 - 不消耗 B 或经验。
+- 非符虽然使用符卡基底承载，但类型语义上不是“符卡/Bomb”。在认证战斗中启用、关闭或持续
+  运行非符，不得触发 No-Bomb/No-Hit（NBNH）失败；非符发射的玩家侧弹幕仍作为普通攻击
+  正常参与伤害和碰撞。
 - 弹幕战中可以开启/关闭，同一玩家同时只能有一个非符运行时；启用另一个非符时先清理旧的，
   再次启用当前非符则关闭它。是否允许在非弹幕战切换由后续示范和测试确定，不能凭客户端按钮
   绕过服务端条件。
 - 非符不参与复刻：复刻底片不能以 `non_spell` 作为来源生成副本，非符也不需要提供被复刻的
   入口。
 
-### 4.2 性能与能力
+### 4.2 认证 NBNH 边界
+
+认证系统必须按服务端权威的符卡类型区分攻击来源，不能仅因物品是 `DynamicSpellItem` 或使用了
+符卡基底就把非符判定为 Bomb。非符启用路径不得调用认证战的符卡/Bomb 使用失败入口；非符
+弹幕也不得被登记为认证敌机对认证者的 No-Hit 接触。
+
+这项豁免只排除“非符自身导致的 NBNH 失败”，不赋予认证者无敌：认证敌机的有效弹幕在非符
+运行期间命中认证者时，仍然必须照常触发 No-Hit 失败。普通伤害、碰撞、弹幕战 LIFE 和
+`beaten` 规则也不因非符而关闭。
+
+### 4.3 性能与能力
 
 非符使用独立的 analyzer profile：可用节点范围更窄、节点数量和认证上限更低，并且 Tier 对
 预算的缩放比普通符卡更严格。所有预算和能力许可由 KJS 配置，未知节点继续 fail-closed。
@@ -162,6 +175,9 @@ TIMEOUT_SPELL_B_COST_RESPECTS_MULTIPLIER_AND_MINIMUM
 NON_SPELL_SKIPS_CERTIFICATION_AND_RESOURCE_COST
 NON_SPELL_REJECTS_SPELL_HEALTH_AND_PRESENTATION_NODES
 NON_SPELL_IS_SINGLE_ACTIVE_RUNTIME_PER_PLAYER
+NON_SPELL_CAST_IS_NOT_CERTIFICATION_BOMB_USE
+NON_SPELL_PROJECTILES_DO_NOT_CREATE_CERTIFICATION_NO_HIT_CONTACT
+CERTIFICATION_ENEMY_HIT_STILL_FAILS_WHILE_NON_SPELL_IS_ACTIVE
 NON_SPELL_IS_NOT_REPLICABLE
 REPLICA_PRESERVES_MAXIMUM_NODE_FIDELITY
 REPLICA_REMAINS_TIER1_UNCERTIFIED_DRAFT

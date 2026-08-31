@@ -162,6 +162,10 @@ public class VariablesDockPanel implements DockPanel {
 			nodes = SpecialNodeCounter.summarize(definitions);
 			var analyses = new ArrayList<SpellAnalysis>();
 			SpellAnalysisLimits limits = SpellAnalysisLimits.certification();
+			long projectionWindow = plan.isPresent() && plan.get().totalDurationTicks() > 0
+					? Math.min(limits.certificationWindowTicks(), plan.get().totalDurationTicks())
+					: limits.certificationWindowTicks();
+			limits = limits.withCertificationWindow(projectionWindow);
 			for (var definition : definitions) analyses.add(SpellAnalyzer.analyzePreview(definition, limits));
 			analysis = SpellAnalysis.combine(analyses);
 		} catch (IllegalArgumentException e) {

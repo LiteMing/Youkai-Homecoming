@@ -6,6 +6,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzer;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.core.NonNullList;
@@ -99,7 +100,13 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 			return base;
 		}
 		try {
-			var analysis = SpellAnalyzer.analyzePreview(definition, SpellAnalysisLimits.certification());
+			var limits = SpellAnalysisLimits.certification();
+			var plan = SpellHealthPlan.analyzeIfPresent(definition, SpellRegistry::get);
+			if (plan.isPresent() && plan.get().totalDurationTicks() > 0) {
+				limits = limits.withCertificationWindow(Math.min(limits.certificationWindowTicks(),
+						plan.get().totalDurationTicks()));
+			}
+			var analysis = SpellAnalyzer.analyzePreview(definition, limits);
 			return base.expandedForBoss(analysis, SpecialNodeCounter.summarize(definition));
 		} catch (IllegalArgumentException e) {
 			if (WARNED_MISSING.add(bossSpell)) {

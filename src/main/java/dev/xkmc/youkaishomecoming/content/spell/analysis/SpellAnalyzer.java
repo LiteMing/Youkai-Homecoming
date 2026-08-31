@@ -21,6 +21,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.TeleportAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.TeleportRandomAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.YsmRenderAction;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
+import dev.xkmc.youkaishomecoming.content.spell.condition.SpellConditions;
 import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
@@ -98,13 +99,24 @@ public final class SpellAnalyzer {
 	private final Map<ResourceLocation, Long> enterBurstByPhase = new HashMap<>();
 	private final Map<ResourceLocation, Long> exitBurstByPhase = new HashMap<>();
 	private long hookExecutionsOnce;
-	private long hookExecutionsPerTick;
+	/** Recurring hook executions already projected across the active window. */
+	private long hookExecutionsRecurringTotal;
+	/** Direct recurring spawn totals projected over the active certification window. */
+	private long certRecurringSpawnTotal;
+	private long certRecurringProjectileTicks;
+	private long certRecurringPeakAlive;
+	private long certOneShotProjectileTicks;
 	private long lifetimeUpperMax;
 	private long expressionOps;
 	private boolean inOneShotGroup;
 	private long burstAccum;
 	private int hookDepth;
 	private String currentHookLabel = "";
+	/** Number of event-driven callback executions that write each variable. */
+	private final Map<String, Long> eventVariableExecutions = new HashMap<>();
+	private final Map<String, Set<Double>> eventVariableValues = new HashMap<>();
+	private final Map<String, Set<Double>> ordinaryVariableValues = new HashMap<>();
+	private final Set<String> ordinaryVariableUnknown = new HashSet<>();
 
 	/** Capabilities allowed beyond their default policy (draft op-node quota path). */
 	private final java.util.Set<SpellCapability> extraAllowed;
@@ -402,7 +414,13 @@ public final class SpellAnalyzer {
 	 * count the largest delay — acceptance review round 5, bucket boundary).
 	 */
 	private long walkList(String label, List<SpellAction> list, boolean perTick, long mult, GroupKind kind) {
-		boolean startsGroup = !perTick && kind != GroupKind.NONE;
+		long window = profile == SpellAnalysisProfile.CERTIFICATION ? limits.certificationWindowTicks() : 1;
+		return walkList(label, list, perTick ? TickProjection.every(window) : TickProjection.ONE_SHOT,
+				mult, kind);
+	}
+
+	private long walkList(String label, List<SpellAction> list, TickProjection projection, long mult, GroupKind kind) {
+		boolean startsGroup = !projection.recurring() && kind != GroupKind.NONE;
 		long savedBurst = 0;
 		boolean savedInGroup = inOneShotGroup;
 		long committed = 0;
@@ -415,7 +433,7 @@ public final class SpellAnalyzer {
 		int index = 0;
 		for (SpellAction action : list) {
 			push(Integer.toString(index));
-			walkAction(action, perTick, mult, false);
+			walkAction(action, projection, mult, false);
 			pop();
 			index++;
 		}
@@ -431,17 +449,118 @@ public final class SpellAnalyzer {
 		return committed;
 	}
 
+	/** Number of phase ticks matching {@code phaseTick % interval == offset}. */
+	private static long periodicTicks(long window, int interval, int offset) {
+		if (window <= 0 || interval <= 0 || offset < 0 || offset >= interval) return 0;
+		if (offset >= window) return 0;
+		return 1 + (window - 1 - offset) / interval;
+	}
+
+	private record TickProjection(boolean recurring, long executions, int period) {
+		private static final TickProjection ONE_SHOT = new TickProjection(false, 0, 0);
+
+		private static TickProjection every(long executions) {
+			return new TickProjection(true, Math.max(0, executions), 1);
+		}
+
+		private TickProjection with(long executions, int period) {
+			return new TickProjection(recurring, Math.max(0, executions), Math.max(1, period));
+		}
+	}
+
+	private TickProjection conditionalProjection(SpellCondition condition, List<SpellAction> trueActions,
+			TickProjection parent, boolean trueBranch) {
+		if (!parent.recurring() || profile != SpellAnalysisProfile.CERTIFICATION) return parent;
+		if (condition instanceof SpellConditions.TickInterval interval) {
+			long matches = periodicTicks(limits.certificationWindowTicks(), interval.interval(), interval.offset());
+			// A nested condition may already describe a subset of the window.  Its exact
+			// intersection with another interval is not statically known, so clamp to the
+			// parent count and keep the false branch fail-closed.
+			matches = Math.min(matches, parent.executions());
+			return trueBranch
+					? parent.with(matches, Math.max(1, interval.interval()))
+					: parent.with(parent.executions() - matches, 1);
+		}
+		if (hookDepth == 0) {
+			VariablePredicate predicate = variablePredicate(condition);
+			if (predicate != null) {
+				Long eventExecutions = eventVariableExecutions.get(predicate.key());
+				if (eventExecutions != null && eventExecutions > 0
+						&& predicate.opMatchesKnownValue(eventVariableValues.get(predicate.key()))
+						&& !ordinaryVariableUnknown.contains(predicate.key())
+						&& !predicate.opMatchesKnownValue(ordinaryVariableValues.get(predicate.key()))
+						&& !predicate.matches(0)
+						&& trueBranchConsumesLatch(trueActions, predicate)) {
+					return trueBranch ? parent.with(eventExecutions, 1) : parent.with(parent.executions(), 1);
+				}
+			}
+		}
+		return parent;
+	}
+
+	private record VariablePredicate(String key, String op, double value) {
+		private boolean matches(double candidate) {
+			return switch (op) {
+				case "=", "==" -> Math.abs(candidate - value) < 1e-9;
+				case "!=" -> Math.abs(candidate - value) >= 1e-9;
+				case "<" -> candidate < value;
+				case "<=" -> candidate <= value;
+				case ">" -> candidate > value;
+				case ">=" -> candidate >= value;
+				default -> false;
+			};
+		}
+
+		private boolean opMatchesKnownValue(Set<Double> knownValues) {
+			if (knownValues == null || knownValues.isEmpty()) return false;
+			return knownValues.stream().anyMatch(this::matches);
+		}
+	}
+
+	private static VariablePredicate variablePredicate(SpellCondition condition) {
+		if (condition instanceof SpellConditions.VariableCheck check) {
+			return new VariablePredicate(check.key(), check.op(), check.value());
+		}
+		if (condition instanceof SpellConditions.CompareNumbers compare
+				&& compare.left() instanceof NumberProviders.Variable variable
+				&& compare.right() instanceof NumberProviders.Constant constant) {
+			return new VariablePredicate(variable.key(), compare.op(), constant.value());
+		}
+		return null;
+	}
+
+	private static boolean trueBranchConsumesLatch(List<SpellAction> actions, VariablePredicate predicate) {
+		for (int i = actions.size() - 1; i >= 0; i--) {
+			SpellAction action = actions.get(i);
+			if (!mayWriteVariable(action, predicate.key())) continue;
+			return action instanceof SpellActions.SetVariable set
+					&& set.value() instanceof NumberProviders.Constant constant
+					&& !predicate.matches(constant.value());
+		}
+		return false;
+	}
+
+	private static boolean mayWriteVariable(SpellAction action, String key) {
+		if (action instanceof SpellActions.DisabledAction) return false;
+		if (action instanceof SpellActions.SetVariable set) return set.key().equals(key);
+		if (action instanceof SpellActions.AddVariable add) return add.key().equals(key);
+		for (SpellAction child : containerChildrenIncludingHooks(action)) {
+			if (mayWriteVariable(child, key)) return true;
+		}
+		return false;
+	}
+
 	private enum GroupKind {
 		NONE, ROOT, DELAY
 	}
 
-	private void walkAction(SpellAction action, boolean perTick, long mult, boolean insideDisabled) {
+	private void walkAction(SpellAction action, TickProjection projection, long mult, boolean insideDisabled) {
 		if (action instanceof SpellActions.DisabledAction disabled) {
 			// Disabled nodes never execute: no budgets, no capabilities (cert).
 			// Market keeps its historical behavior of rejecting banned actions
 			// anywhere in the JSON, including inside disabled subtrees.
 			if (profile == SpellAnalysisProfile.MARKET) {
-				walkAction(disabled.inner(), perTick, mult, true);
+				walkAction(disabled.inner(), projection, mult, true);
 			}
 			return;
 		}
@@ -450,7 +569,7 @@ public final class SpellAnalyzer {
 				throw banned(bannedTypeName(action));
 			}
 			for (SpellAction child : containerChildrenIncludingHooks(action)) {
-				walkAction(child, perTick, mult, true);
+				walkAction(child, projection, mult, true);
 			}
 			return;
 		}
@@ -460,19 +579,19 @@ public final class SpellAnalyzer {
 		}
 		boolean handled = true;
 		if (action instanceof FireDanmakuAction a) {
-			handleFire(a, perTick, mult);
+			handleFire(a, projection, mult);
 		} else if (action instanceof FireLaserAction a) {
-			handleLaser(a, perTick, mult);
+			handleLaser(a, projection, mult);
 		} else if (action instanceof FireTextDanmakuAction a) {
-			handleText(a, perTick, mult);
+			handleText(a, projection, mult);
 		} else if (action instanceof SpawnShooterAction a) {
-			handleShooter(a, perTick, mult);
+			handleShooter(a, projection, mult);
 		} else if (action instanceof SpellActions.RepeatAction a) {
 			long count = boundCount(a.count(), "repeat count");
-			walkList("body", a.body(), perTick, satMul(mult, count), GroupKind.NONE);
+			walkList("body", a.body(), projection, satMul(mult, count), GroupKind.NONE);
 		} else if (action instanceof BurstAction a) {
 			// conservative: all waves counted within the same tick accounting
-			walkList("body", a.body(), perTick, satMul(mult, a.waves()), GroupKind.NONE);
+			walkList("body", a.body(), projection, satMul(mult, a.waves()), GroupKind.NONE);
 		} else if (action instanceof DelayAction a) {
 			if (profile == SpellAnalysisProfile.CERTIFICATION
 					&& !NumberBounds.resolve(a.delayTicks()).bounded()) {
@@ -488,7 +607,7 @@ public final class SpellAnalyzer {
 				currentHookLabel = "";
 			}
 			try {
-				delayedBurstSum = satAdd(delayedBurstSum, walkList("body", a.body(), perTick, mult, GroupKind.DELAY));
+				delayedBurstSum = satAdd(delayedBurstSum, walkList("body", a.body(), projection, mult, GroupKind.DELAY));
 			} finally {
 				currentHookLabel = prevHook;
 			}
@@ -508,12 +627,14 @@ public final class SpellAnalyzer {
 							"Hold duration inside an on-hit callback exceeds maximum limit of 200 ticks: " + (int) bounds.max());
 				}
 			}
-			delayedBurstSum = satAdd(delayedBurstSum, walkList("on_release", a.onRelease(), perTick, mult, GroupKind.DELAY));
+			delayedBurstSum = satAdd(delayedBurstSum, walkList("on_release", a.onRelease(), projection, mult, GroupKind.DELAY));
 		} else if (action instanceof SpellActions.ConditionalAction a) {
-			walkList("if_true", a.ifTrue(), perTick, mult, GroupKind.NONE);
-			walkList("if_false", a.ifFalse(), perTick, mult, GroupKind.NONE);
+			TickProjection trueProjection = conditionalProjection(a.condition(), a.ifTrue(), projection, true);
+			TickProjection falseProjection = conditionalProjection(a.condition(), a.ifTrue(), projection, false);
+			walkList("if_true", a.ifTrue(), trueProjection, mult, GroupKind.NONE);
+			walkList("if_false", a.ifFalse(), falseProjection, mult, GroupKind.NONE);
 		} else if (action instanceof SpellActions.SequenceAction a) {
-			walkList("actions", a.actions(), perTick, mult, GroupKind.NONE);
+			walkList("actions", a.actions(), projection, mult, GroupKind.NONE);
 		} else if (action instanceof TeleportAction || action instanceof TeleportRandomAction) {
 			addCap(SpellCapability.TELEPORT);
 		} else if (action instanceof ConfineTargetAction) {
@@ -575,6 +696,12 @@ public final class SpellAnalyzer {
 							"Hit control action (" + action.getClass().getSimpleName() + ") cannot be placed outside on_hit callbacks");
 				}
 			}
+			handled = true;
+		} else if (action instanceof SpellActions.SetVariable set) {
+			recordOrdinaryVariableWrite(set);
+			handled = true;
+		} else if (action instanceof SpellActions.AddVariable add) {
+			if (hookDepth == 0) ordinaryVariableUnknown.add(add.key());
 			handled = true;
 		} else if (isSafeNoCostAction(action)) {
 			// SetVariable / AddVariable / ForcePhase / Noop / PlaySoundAction:
@@ -641,7 +768,7 @@ public final class SpellAnalyzer {
 
 	// ------------------------------------------------------------ fire actions
 
-	private void handleFire(FireDanmakuAction a, boolean perTick, long mult) {
+	private void handleFire(FireDanmakuAction a, TickProjection projection, long mult) {
 		addCap(SpellCapability.BASE_FIRE);
 		checkOrigin(a.origin());
 		long count = boundCount(a.count(), "fire_danmaku count");
@@ -649,46 +776,55 @@ public final class SpellAnalyzer {
 				? boundOptionalCount(a.outerCount(), "outer_count") : 1;
 		long contrib = satMul(satMul(mult, outer), count);
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
-		bucketSpawns(contrib, perTick, lifetimeUpper);
+		bucketSpawns(contrib, projection, lifetimeUpper);
 		walkHooks(a.onExpiry(), a.onTrail(), a.trailInterval(),
 				a.onHitEntity(), a.onHitBlock(),
 				a.hitBehaviorEntity(), a.hitBehaviorBlock(),
-				contrib, lifetimeUpper, perTick, mult);
+				contrib, lifetimeUpper, projection, mult);
 	}
 
-	private void handleLaser(FireLaserAction a, boolean perTick, long mult) {
+	private void recordOrdinaryVariableWrite(SpellActions.SetVariable set) {
+		if (hookDepth != 0) return;
+		if (set.value() instanceof NumberProviders.Constant constant) {
+			ordinaryVariableValues.computeIfAbsent(set.key(), key -> new HashSet<>()).add(constant.value());
+		} else {
+			ordinaryVariableUnknown.add(set.key());
+		}
+	}
+
+	private void handleLaser(FireLaserAction a, TickProjection projection, long mult) {
 		addCap(SpellCapability.BASE_FIRE);
 		checkOrigin(a.origin());
 		long contrib = mult;
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
-		bucketSpawns(contrib, perTick, lifetimeUpper);
+		bucketSpawns(contrib, projection, lifetimeUpper);
 		walkHooks(a.onExpiry(), a.onTrail(), a.trailInterval(),
 				a.onHitEntity(), a.onHitBlock(),
 				a.hitBehaviorEntity(), a.hitBehaviorBlock(),
-				contrib, lifetimeUpper, perTick, mult);
+				contrib, lifetimeUpper, projection, mult);
 	}
 
-	private void handleText(FireTextDanmakuAction a, boolean perTick, long mult) {
+	private void handleText(FireTextDanmakuAction a, TickProjection projection, long mult) {
 		addCap(SpellCapability.BASE_FIRE);
 		checkOrigin(a.origin());
 		long contrib = mult;
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
-		bucketSpawns(contrib, perTick, lifetimeUpper);
+		bucketSpawns(contrib, projection, lifetimeUpper);
 	}
 
 	private void walkHooks(Optional<List<SpellAction>> onExpiry, Optional<List<SpellAction>> onTrail,
 						   int trailInterval, Optional<List<SpellAction>> onHitEntity,
 						   Optional<List<SpellAction>> onHitBlock,
 						   HitBehavior hitBehaviorEntity, HitBehavior hitBehaviorBlock,
-						   long contrib, long lifetimeUpper, boolean perTick, long mult) {
+						   long contrib, long lifetimeUpper, TickProjection projection, long mult) {
 		if (onExpiry.isPresent()) {
 			addCap(SpellCapability.HOOK_ON_EXPIRY);
-			walkHook("on_expiry", onExpiry.get(), contrib, perTick, mult);
+			walkHook("on_expiry", onExpiry.get(), contrib, projection, mult);
 		}
 		if (onTrail.isPresent()) {
 			addCap(SpellCapability.HOOK_ON_TRAIL);
 			long perProjectile = ceilDiv(lifetimeUpper, Math.max(1, trailInterval));
-			walkHook("on_trail", onTrail.get(), satMul(contrib, perProjectile), perTick, mult);
+			walkHook("on_trail", onTrail.get(), satMul(contrib, perProjectile), projection, mult);
 		}
 		if (onHitEntity.isPresent() || onHitBlock.isPresent()) {
 			addCap(SpellCapability.HOOK_ON_HIT);
@@ -705,18 +841,25 @@ public final class SpellAnalyzer {
 					entityMultiplier = maxHits;
 				}
 				long execs = satMul(contrib, entityMultiplier);
-				walkHook("on_hit_entity", onHitEntity.get(), execs, perTick, mult);
+				walkHook("on_hit_entity", onHitEntity.get(), execs, projection, mult);
 			}
 			if (onHitBlock.isPresent()) {
 				HitControlSummary blockSummary = summarizeHitControl(onHitBlock.get());
 				long blockMultiplier = 1;
+				// A callback may contain both a default CONTINUE fallback and an explicit
+				// Bounce/ Hold->Bounce path.  The old precedence picked CONTINUE first and
+				// under-counted the bounce chain (e.g. default CONTINUE + max_bounces=30).
+				// Take the larger reachable bound; the runtime's Last Writer Wins rule can
+				// only reduce this when the final callback action is known statically.
 				if (blockSummary.mayContinue || hitBehaviorBlock == HitBehavior.CONTINUE) {
 					blockMultiplier = maxHits;
-				} else if (blockSummary.maxBounces > 0) {
-					blockMultiplier = Math.min(maxHits, blockSummary.maxBounces + 1L);
+				}
+				if (blockSummary.maxBounces > 0) {
+					blockMultiplier = Math.max(blockMultiplier,
+							Math.min(maxHits, blockSummary.maxBounces + 1L));
 				}
 				long execs = satMul(contrib, blockMultiplier);
-				walkHook("on_hit_block", onHitBlock.get(), execs, perTick, mult);
+				walkHook("on_hit_block", onHitBlock.get(), execs, projection, mult);
 			}
 		}
 	}
@@ -761,10 +904,14 @@ public final class SpellAnalyzer {
 		return new HitControlSummary(mayContinue, maxBounces);
 	}
 
-	private void walkHook(String label, List<SpellAction> list, long executions, boolean perTick, long mult) {
+	private void walkHook(String label, List<SpellAction> list, long executions,
+						  TickProjection projection, long mult) {
+		long totalExecutions = projection.recurring()
+				? satMul(executions, projection.executions()) : executions;
 		if (profile == SpellAnalysisProfile.CERTIFICATION) {
-			if (perTick) hookExecutionsPerTick = satAdd(hookExecutionsPerTick, executions);
+			if (projection.recurring()) hookExecutionsRecurringTotal = satAdd(hookExecutionsRecurringTotal, totalExecutions);
 			else hookExecutionsOnce = satAdd(hookExecutionsOnce, executions);
+			collectEventVariableWrites(list, totalExecutions);
 		}
 		// market keeps the historical flat multiplier (no hook fanout); cert amplifies.
 		// executions already carries the full path multiplier (mult × outer × count × hits),
@@ -777,7 +924,7 @@ public final class SpellAnalyzer {
 		long beforePerTick = certPerTickSpawns;
 		long beforeOneShot = certOneShotSpawns;
 		try {
-			walkList(label, list, perTick, childMult, GroupKind.NONE);
+			walkList(label, list, projection, childMult, GroupKind.NONE);
 		} finally {
 			currentHookLabel = prevHookLabel;
 			hookDepth--;
@@ -791,15 +938,26 @@ public final class SpellAnalyzer {
 		// times can still expire on the same future tick (creation tick + lifetime),
 		// which cannot be proven exclusive (round 5, A3).
 		long hookBurst = satAdd(certPerTickSpawns - beforePerTick, certOneShotSpawns - beforeOneShot);
-		if (!perTick) certPotentialOneShotDeferredBurst = satAdd(certPotentialOneShotDeferredBurst, hookBurst);
+		if (!projection.recurring()) certPotentialOneShotDeferredBurst = satAdd(certPotentialOneShotDeferredBurst, hookBurst);
 	}
 
-	private void handleShooter(SpawnShooterAction a, boolean perTick, long mult) {
+	private void collectEventVariableWrites(List<SpellAction> list, long executions) {
+		if (profile != SpellAnalysisProfile.CERTIFICATION || executions <= 0) return;
+		for (SpellAction action : list) {
+			if (action instanceof SpellActions.SetVariable set
+					&& set.value() instanceof NumberProviders.Constant constant) {
+				eventVariableExecutions.merge(set.key(), executions, SpellAnalyzer::satAdd);
+				eventVariableValues.computeIfAbsent(set.key(), key -> new HashSet<>()).add(constant.value());
+			}
+		}
+	}
+
+	private void handleShooter(SpawnShooterAction a, TickProjection projection, long mult) {
 		long count = boundCount(a.count(), "shooter count");
 		long shooterCount = satMul(mult, count);
 		if (profile == SpellAnalysisProfile.MARKET) {
 			marketShooters = satAdd(marketShooters, shooterCount);
-			walkList("body", a.body(), true, shooterCount, GroupKind.NONE);
+			walkList("body", a.body(), TickProjection.every(1), shooterCount, GroupKind.NONE);
 			return;
 		}
 		certShooters = satAdd(certShooters, shooterCount);
@@ -810,11 +968,19 @@ public final class SpellAnalyzer {
 		long savedPerTick = certPerTickSpawns;
 		long savedOneShot = certOneShotSpawns;
 		long savedBurst = certMaxDirectOneShotBurst;
-		walkList("body", a.body(), true, 1, GroupKind.NONE);
+		long savedRecurringTotal = certRecurringSpawnTotal;
+		long savedRecurringTicks = certRecurringProjectileTicks;
+		long savedRecurringPeak = certRecurringPeakAlive;
+		long savedOneShotTicks = certOneShotProjectileTicks;
+		walkList("body", a.body(), TickProjection.every(1), 1, GroupKind.NONE);
 		long bodyPerShooterTick = certPerTickSpawns - savedPerTick;
 		certPerTickSpawns = savedPerTick;
 		certOneShotSpawns = savedOneShot;
 		certMaxDirectOneShotBurst = savedBurst;
+		certRecurringSpawnTotal = savedRecurringTotal;
+		certRecurringProjectileTicks = savedRecurringTicks;
+		certRecurringPeakAlive = savedRecurringPeak;
+		certOneShotProjectileTicks = savedOneShotTicks;
 		// concurrency and totals depend on whether shooters are spawned once
 		// (on_enter/on_exit) or recurring (on_tick). The recurring model multiplies by
 		// the alive cohort count × window; it may slightly overestimate window edges
@@ -822,10 +988,13 @@ public final class SpellAnalyzer {
 		long shooterPeak;
 		long bodyPerGlobalTick;
 		long bodyTotal;
-		if (perTick) {
-			shooterPeak = satMul(shooterCount, Math.min(lifetime, window));
+		if (projection.recurring()) {
+			long activeCohorts = Math.min(projection.executions(),
+					ceilDiv(lifetime, Math.max(1, projection.period())));
+			shooterPeak = satMul(shooterCount, activeCohorts);
 			bodyPerGlobalTick = satMul(bodyPerShooterTick, shooterPeak);
-			bodyTotal = satMul(bodyPerGlobalTick, window);
+			bodyTotal = satMul(satMul(satMul(shooterCount, projection.executions()),
+					bodyPerShooterTick), lifetime);
 			// recurring shooter entities spawn every tick and join the ordinary tick burst
 			certRecurringShooterEntitySpawns = satAdd(certRecurringShooterEntitySpawns, shooterCount);
 		} else {
@@ -850,15 +1019,27 @@ public final class SpellAnalyzer {
 
 	// ------------------------------------------------------------ helpers
 
-	private void bucketSpawns(long contrib, boolean perTick, long lifetimeUpper) {
+	private void bucketSpawns(long contrib, TickProjection projection, long lifetimeUpper) {
 		if (profile == SpellAnalysisProfile.MARKET) {
 			marketProjectiles = satAdd(marketProjectiles, contrib);
 			return;
 		}
-		if (perTick) {
+		if (projection.recurring()) {
+			if (projection.executions() <= 0 || contrib <= 0) return;
 			certPerTickSpawns = satAdd(certPerTickSpawns, contrib);
+			long total = satMul(contrib, projection.executions());
+			certRecurringSpawnTotal = satAdd(certRecurringSpawnTotal, total);
+			long window = limits.certificationWindowTicks();
+			long life = Math.max(0, lifetimeUpper);
+			certRecurringProjectileTicks = satAdd(certRecurringProjectileTicks,
+					satMul(total, Math.min(life, window)));
+			long activeTicks = Math.min(projection.executions(),
+					ceilDiv(life, Math.max(1, projection.period())));
+			certRecurringPeakAlive = satAdd(certRecurringPeakAlive, satMul(contrib, activeTicks));
 		} else {
 			certOneShotSpawns = satAdd(certOneShotSpawns, contrib);
+			certOneShotProjectileTicks = satAdd(certOneShotProjectileTicks,
+					satMul(contrib, Math.min(Math.max(0, lifetimeUpper), limits.certificationWindowTicks())));
 			// one-shot spawns of the same tick group (a full on_enter/on_exit list runs
 			// in a single tick) count toward maxSpawnPerTick; hook-derived spawns are
 			// spread over projectile lifetimes and must not join the same-tick group
@@ -1023,15 +1204,19 @@ public final class SpellAnalyzer {
 			maxSpawnPerTick = satAdd(ordinaryTickBurst, maxDirectOneShotEvent);
 			maxSpawnPerTick = satAdd(maxSpawnPerTick, delayedBurstSum);
 			maxSpawnPerTick = satAdd(maxSpawnPerTick, certPotentialOneShotDeferredBurst);
-			// totals: direct one-shot + direct per-tick × window + shooter body totals.
+			// totals: direct one-shot + recurring actions projected over their actual
+			// execution cadence + shooter body totals.
 			// Shooter body totals must NOT appear in the peak formula — window totals are
 			// not concurrently alive (acceptance review issue 3).
 			totalSpawnUpperBound = satAdd(satAdd(certOneShotSpawns, certShooterTotalSpawns),
-					satMul(certPerTickSpawns, window));
+					certRecurringSpawnTotal);
 			peakAliveUpperBound = satAdd(satAdd(certOneShotSpawns,
-					satMul(certPerTickSpawns, Math.min(life, window))), certShooterPeakAlive);
-			projectileTicks = satMul(totalSpawnUpperBound, life);
-			hookExecutionUpperBound = satAdd(hookExecutionsOnce, satMul(hookExecutionsPerTick, window));
+					certRecurringPeakAlive), certShooterPeakAlive);
+			// Direct projectiles carry their own lifetime bucket. Shooter body bullets
+			// retain the historical conservative max-lifetime estimate.
+			projectileTicks = satAdd(satAdd(certOneShotProjectileTicks, certRecurringProjectileTicks),
+					satMul(certShooterTotalSpawns, life));
+			hookExecutionUpperBound = satAdd(hookExecutionsOnce, hookExecutionsRecurringTotal);
 			if (maxSpawnPerTick > limits.maxSpawnPerTick()) {
 				throw new SpellAnalysisException("Certification rejected: maxSpawnPerTick " + maxSpawnPerTick
 						+ " exceeds limit " + limits.maxSpawnPerTick());

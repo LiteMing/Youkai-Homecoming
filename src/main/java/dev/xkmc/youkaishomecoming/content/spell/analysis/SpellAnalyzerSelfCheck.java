@@ -174,6 +174,18 @@ public final class SpellAnalyzerSelfCheck {
 				+ "  \"trail_interval\": 5, \"on_trail\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
 		private static final String ON_HIT = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 24, \"speed\": 0.5, \"lifetime\": 60,\n"
 				+ "  \"hit_behavior_entity\": \"continue\", \"on_hit_entity\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
+		private static final String PERIODIC = spell("{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 200}, \"if_true\": [" + fire(1) + "]}");
+		private static final String EVENT_DRIVEN = spell(
+				"{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 200}, \"if_true\": ["
+						+ fire(1).replace("\"lifetime\": 60}", "\"lifetime\": 2000, \"on_hit_block\": [{\"type\": \"set_variable\", \"key\": \"var\", \"value\": 1}]}")
+						+ "]}, {\"type\": \"conditional\", \"condition\": {\"type\": \"compare\", \"left\": {\"type\": \"variable\", \"key\": \"var\"}, \"op\": \"==\", \"right\": 1}, \"if_true\": [{\"type\": \"repeat\", \"count\": 80, \"body\": ["
+						+ fire(1).replace("\"lifetime\": 60}", "\"lifetime\": 100}")
+						+ "]}, {\"type\": \"set_variable\", \"key\": \"var\", \"value\": 0}], \"if_false\": []}");
+		private static final String EVENT_WITHOUT_RESET = EVENT_DRIVEN.replace(
+				", {\"type\": \"set_variable\", \"key\": \"var\", \"value\": 0}", "");
+		private static final String BOUNCE_HIT = spell(
+				"{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60,"
+						+ " \"on_hit_block\": [{\"type\": \"hold_source\", \"duration\": 20, \"on_release\": [{\"type\": \"bounce_source\", \"max_bounces\": 30}]}]}");
 		private static final String LEGACY = spell("{\"type\": \"legacy_ticker\"}");
 		private static final String LEGACY_IN_BURST = spell("{\"type\": \"burst\", \"waves\": 3, \"body\": [{\"type\": \"legacy_ticker\"}]}");
 		private static final String LEGACY_DEEP = spell("{\"type\": \"delay\", \"delay_ticks\": 10, \"body\": [{\"type\": \"repeat\", \"count\": 2, \"body\": [{\"type\": \"spawn_shooter\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 20, \"body\": [{\"type\": \"legacy_ticker\"}]}]}]}");
@@ -518,6 +530,7 @@ public final class SpellAnalyzerSelfCheck {
 				migratedBossHealth();
 				playerSpellPvpPolicy();
 				analyzerTraversal();
+				projectionModel();
 				oneShotBurst();
 				shooterModel();
 				sameTickSum();
@@ -771,6 +784,39 @@ public final class SpellAnalyzerSelfCheck {
 					.anyMatch(d -> d.severity() == SpellDiagnostic.Severity.INFO && d.code().equals("phase_cycle"));
 			check("phase cycle accepted with INFO diagnostic", hasCycleInfo);
 			check("cycle totals bounded by window (12 x 1000 = 12000)", cycle.totalSpawnUpperBound() == 12000);
+		}
+
+		private void projectionModel() {
+			SpellAnalysis periodic = analysis(PERIODIC, SpellAnalysisProfile.CERTIFICATION, CERT);
+			check("tick_interval uses five matching ticks in a 1000-tick window",
+					periodic != null && periodic.totalSpawnUpperBound() == 5,
+					lastError != null ? lastError : "actual total=" + (periodic == null ? "null" : periodic.totalSpawnUpperBound()));
+			check("periodic peak uses the action lifetime and cadence",
+					periodic != null && periodic.peakAliveUpperBound() == 1,
+					lastError != null ? lastError : "actual peak=" + (periodic == null ? "null" : periodic.peakAliveUpperBound()));
+			check("periodic projectile ticks use five spawns x sixty ticks",
+					periodic != null && periodic.projectileTicks() == 300,
+					lastError != null ? lastError : "actual ticks=" + (periodic == null ? "null" : periodic.projectileTicks()));
+
+			SpellAnalysis eventDriven = analysis(EVENT_DRIVEN, SpellAnalysisProfile.CERTIFICATION,
+					CERT.withCertificationWindow(500));
+			check("event-driven variable hook is projected over callback executions",
+					eventDriven != null && eventDriven.hookExecutionUpperBound() == 12,
+					lastError != null ? lastError : "actual hooks=" + (eventDriven == null ? "null" : eventDriven.hookExecutionUpperBound()));
+			check("event-driven repeat is not charged once per phase tick",
+					eventDriven != null && eventDriven.totalSpawnUpperBound() == 963,
+					lastError != null ? lastError : "actual total=" + (eventDriven == null ? "null" : eventDriven.totalSpawnUpperBound()));
+			SpellAnalysis withoutReset = analysis(EVENT_WITHOUT_RESET, SpellAnalysisProfile.CERTIFICATION,
+					CERT.withCertificationWindow(500));
+			check("event variable without a consuming reset remains conservative",
+					withoutReset != null && withoutReset.totalSpawnUpperBound() == 40_003,
+					lastError != null ? lastError : "actual total=" + (withoutReset == null ? "null" : withoutReset.totalSpawnUpperBound()));
+
+			SpellAnalysis bounce = analysis(BOUNCE_HIT, SpellAnalysisProfile.CERTIFICATION,
+					CERT.withCertificationWindow(1));
+			check("default CONTINUE does not hide a max_bounces callback bound",
+					bounce != null && bounce.hookExecutionUpperBound() == 31,
+					lastError != null ? lastError : "actual hooks=" + (bounce == null ? "null" : bounce.hookExecutionUpperBound()));
 		}
 
 		/** One-shot spawn bursts (on_enter/on_exit) must count toward maxSpawnPerTick (issue 2),

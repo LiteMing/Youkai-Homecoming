@@ -13,10 +13,11 @@ import java.util.Set;
  *   <li>MARKET: legacy budget numbers (historical SpellMarketValidator behavior):
  *   {@code totalSpawnUpperBound} is the un-amplified-by-duration projection sum
  *   (repeat/burst/shooter counts only, no certification window, no hook fanout).</li>
- *   <li>CERTIFICATION: conservative bounds projected over
- *   {@link SpellAnalysisLimits#certificationWindowTicks()}:
- *   per-tick spawns are multiplied by the window, hook executions are counted
- *   conservatively (every eligible projectile triggers every hook).
+	 *   <li>CERTIFICATION: conservative bounds projected over
+	 *   {@link SpellAnalysisLimits#certificationWindowTicks()}:
+	 *   recurring spawns are projected over their effective cadence inside the
+	 *   window, and hook executions are counted conservatively (every eligible
+	 *   projectile triggers every hook).
  *   {@code peakAliveUpperBound} is the conservative "all spawned projectiles alive"
  *   bound; {@code maxSpawnPerTick} is the largest single-tick spawn count.</li>
  * </ul>

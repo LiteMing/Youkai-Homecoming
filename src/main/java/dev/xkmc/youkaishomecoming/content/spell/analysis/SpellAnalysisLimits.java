@@ -25,7 +25,8 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
  * @param maxProjectileTicks     certification: conservative total projectile-ticks
  * @param maxHookExecutions      certification: conservative total hook executions
  * @param maxHitsPerProjectile   certification: per-projectile max hits for CONTINUE hooks
- * @param certificationWindowTicks certification projection window (≥ max duration)
+	 * @param certificationWindowTicks certification projection window; callers may
+	 *                                narrow it to a finite health-plan duration
  */
 public record SpellAnalysisLimits(
 		int maxPhases,
@@ -43,6 +44,18 @@ public record SpellAnalysisLimits(
 		int maxHitsPerProjectile,
 		long certificationWindowTicks
 ) {
+
+	/**
+	 * Returns the same limits with a narrower finite projection window.  Health-plan
+	 * certification uses this to project work over the segment's real duration
+	 * instead of the server-wide fallback window.
+	 */
+	public SpellAnalysisLimits withCertificationWindow(long windowTicks) {
+		return new SpellAnalysisLimits(maxPhases, maxActions, maxDepth, maxRepeat,
+				maxTotalProjectiles, maxShooters, maxLifetime, maxExpressionLength,
+				maxSpawnPerTick, maxPeakAlive, maxProjectileTicks, maxHookExecutions,
+				maxHitsPerProjectile, Math.max(0, windowTicks));
+	}
 
 	// --- certification spec defaults (single source for YHModConfig defineInRange) ---
 

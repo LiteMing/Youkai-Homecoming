@@ -342,12 +342,20 @@ public final class CertificationService {
 
 	private static SpellAnalysis analyzePlan(SpellHealthPlan plan, boolean operatorTest,
 			java.util.Set<dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability> extraAllowed) {
+		SpellAnalysisLimits configured = SpellAnalysisLimits.certification();
+		// A health-plan quote is a finite trial. Project recurring work over the
+		// break-chain duration, while keeping the configured window for explicit
+		// no-timeout plans and legacy definitions without a health declaration.
+		long projectionWindow = plan.totalDurationTicks() > 0
+				? Math.min(configured.certificationWindowTicks(), plan.totalDurationTicks())
+				: configured.certificationWindowTicks();
+		SpellAnalysisLimits limits = configured.withCertificationWindow(projectionWindow);
 		List<SpellAnalysis> analyses = new ArrayList<>();
 		for (SpellDefinition definition : plan.definitions().values()) {
 			analyses.add(operatorTest
-					? SpellAnalyzer.analyzeOperatorTest(definition, SpellAnalysisLimits.certification())
+					? SpellAnalyzer.analyzeOperatorTest(definition, limits)
 					: SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION,
-						SpellAnalysisLimits.certification(), extraAllowed));
+						limits, extraAllowed));
 		}
 		return SpellAnalysis.combine(analyses);
 	}

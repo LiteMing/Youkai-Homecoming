@@ -103,6 +103,11 @@ public final class CertifiedSpellValidator {
 		if (!actual.equals(hash)) return null;
 		if (plan != null && (plan.totalDurationTicks() != certificate.certifiedDuration()
 				|| plan.totalHealth() <= 0)) return null;
+		SpellAnalysisLimits configuredLimits = SpellAnalysisLimits.certification();
+		SpellAnalysisLimits projectionLimits = plan != null && plan.totalDurationTicks() > 0
+				? configuredLimits.withCertificationWindow(Math.min(configuredLimits.certificationWindowTicks(),
+						plan.totalDurationTicks()))
+				: configuredLimits;
 		try {
 			boolean operatorTest = certificate.operatorTest() || hasLegacyOperatorCapability(certificate);
 			if (operatorTest) {
@@ -111,7 +116,7 @@ public final class CertifiedSpellValidator {
 				var capabilities = java.util.EnumSet.noneOf(dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability.class);
 				for (SpellDefinition candidate : plan == null ? java.util.List.of(def) : plan.definitions().values()) {
 					capabilities.addAll(SpellAnalyzer.analyzeOperatorTest(candidate,
-							SpellAnalysisLimits.certification()).requiredCapabilities());
+							projectionLimits).requiredCapabilities());
 				}
 				boolean requiresOperator = capabilities.stream()
 						.anyMatch(cap -> SpellCapabilityPolicies.defaultPolicy(cap) == SpellCapabilityPolicy.OP_ONLY);
@@ -122,7 +127,7 @@ public final class CertifiedSpellValidator {
 				if (certificate.certificationRulesVersion() >= SpellCertificate.CURRENT_RULES_VERSION) return null;
 				try {
 					for (SpellDefinition candidate : plan == null ? java.util.List.of(def) : plan.definitions().values()) {
-						SpellAnalyzer.analyze(candidate, SpellAnalysisProfile.CERTIFICATION);
+						SpellAnalyzer.analyze(candidate, SpellAnalysisProfile.CERTIFICATION, projectionLimits);
 					}
 				} catch (IllegalArgumentException e) {
 					int count = (plan == null ? java.util.List.of(def) : plan.definitions().values()).stream()
@@ -130,7 +135,7 @@ public final class CertifiedSpellValidator {
 					if (count <= 0 || count > certificate.specialNodeQuota()) return null;
 					for (SpellDefinition candidate : plan == null ? java.util.List.of(def) : plan.definitions().values()) {
 						SpellAnalyzer.analyze(candidate, SpellAnalysisProfile.CERTIFICATION,
-								SpellAnalysisLimits.certification(), SpecialNodeCounter.EXPERIMENTAL_CAPS);
+								projectionLimits, SpecialNodeCounter.EXPERIMENTAL_CAPS);
 					}
 				}
 			}
@@ -159,6 +164,7 @@ public final class CertifiedSpellValidator {
 				|| certificate.costUnits() < 0) return null;
 		SpellDefinition definition = CertifiedSpellStorage.loadDefinition(player.server, hash);
 		if (definition == null || !hash.equals(SpellHash.canonicalHash(definition))) return null;
+		SpellAnalysisLimits projectionLimits = SpellAnalysisLimits.certification();
 		try {
 			boolean operatorTest = certificate.operatorTest() || hasLegacyOperatorCapability(certificate);
 			if (operatorTest) {
@@ -172,12 +178,12 @@ public final class CertifiedSpellValidator {
 			} else {
 				if (certificate.certificationRulesVersion() >= SpellCertificate.CURRENT_RULES_VERSION) return null;
 				try {
-					SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION);
+					SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION, projectionLimits);
 				} catch (IllegalArgumentException e) {
 					int count = SpecialNodeCounter.count(definition);
 					if (count <= 0 || count > certificate.specialNodeQuota()) return null;
 					SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION,
-							SpellAnalysisLimits.certification(), SpecialNodeCounter.EXPERIMENTAL_CAPS);
+							projectionLimits, SpecialNodeCounter.EXPERIMENTAL_CAPS);
 				}
 			}
 		} catch (IllegalArgumentException e) {

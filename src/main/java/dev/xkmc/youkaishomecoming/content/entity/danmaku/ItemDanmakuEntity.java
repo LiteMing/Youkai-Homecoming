@@ -150,11 +150,28 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		updateVisualScaleDimensions(true);
 	}
 
+	public void enterHoldState(Vec3 holdPos, Vec3 incomingVel) {
+		if (this.mover != null && !(this.mover instanceof dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover)) {
+			this.suspendedMover = this.mover;
+		}
+		this.mover = new dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover(incomingVel);
+		setPos(holdPos);
+		snapMotionAndRotation(Vec3.ZERO);
+		notifyTrajectoryChanged();
+	}
+
+	public void clearHoldState() {
+		this.suspendedMover = null;
+		if (this.mover instanceof dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover) {
+			this.mover = null;
+		}
+	}
+
 	public void applyBounceState(Vec3 newPos, Vec3 newVel, int bounceCount) {
 		DanmakuMover oldMover = this.suspendedMover != null ? this.suspendedMover : this.mover;
 		this.suspendedMover = null;
 		if (oldMover instanceof dev.xkmc.youkaishomecoming.content.spell.mover.CollisionRebasableMover rebasable) {
-			this.mover = rebasable.rebaseAfterCollision(newPos, newVel);
+			this.mover = rebasable.rebaseAfterCollision(newPos, newVel, this.tickCount);
 		} else {
 			this.mover = null;
 		}

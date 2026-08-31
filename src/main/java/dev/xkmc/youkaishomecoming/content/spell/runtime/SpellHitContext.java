@@ -93,24 +93,28 @@ public class SpellHitContext {
 	}
 
 	public void resolve(HitDisposition disposition) {
-		if (this.disposition == HitDisposition.UNRESOLVED) {
-			this.disposition = disposition;
+		this.disposition = disposition;
+		if (disposition != HitDisposition.BOUNCE) {
+			this.bounceConfig = null;
+		}
+		if (disposition != HitDisposition.HOLD) {
+			this.holdTicks = 0;
+			this.deferredBody = null;
 		}
 	}
 
 	public void resolveBounce(DanmakuBounceConfig config) {
-		if (this.disposition == HitDisposition.UNRESOLVED) {
-			this.disposition = HitDisposition.BOUNCE;
-			this.bounceConfig = config.sanitize();
-		}
+		this.disposition = HitDisposition.BOUNCE;
+		this.bounceConfig = config.sanitize();
+		this.holdTicks = 0;
+		this.deferredBody = null;
 	}
 
 	public void resolveHold(int holdTicks, java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> body) {
-		if (this.disposition == HitDisposition.UNRESOLVED) {
-			this.disposition = HitDisposition.HOLD;
-			this.holdTicks = Math.max(1, holdTicks);
-			this.deferredBody = body;
-		}
+		this.disposition = HitDisposition.HOLD;
+		this.holdTicks = Math.max(1, holdTicks);
+		this.deferredBody = body;
+		this.bounceConfig = null;
 	}
 
 	/**

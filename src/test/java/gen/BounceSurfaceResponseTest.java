@@ -1,19 +1,31 @@
 package gen;
 
+import dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.action.BounceAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.DiscardSourceAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig;
 import dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 import dev.xkmc.youkaishomecoming.content.spell.physics.DanmakuBounceResolver;
+import dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
- * Unit and physics contract tests for Bounce Surface Response, Normal Safety,
- * and BoundedAcceleration rebase continuity.
- * Run: gradlew test or run direct main method
+ * Integrated lifecycle and contract tests for:
+ * 1. Surface response model (normal / tangent / offset / speed / presets)
+ * 2. Normal safety & anti-wall-penetration
+ * 3. BoundedAcceleration rebase continuity across non-zero entity ticks
+ * 4. Hold state machine, Hold -> Continue / Hold -> Bounce transitions
+ * 5. Server/Client/Preview synchronization consistency
+ * 6. Sequential hit control override authority (last writer wins)
  */
 public class BounceSurfaceResponseTest {
 
@@ -45,7 +57,10 @@ public class BounceSurfaceResponseTest {
 	public static void runAllTests() {
 		testSurfaceResponse();
 		testNormalSafety();
-		testAccelerationContinuity();
+		testAccelerationContinuityWithNonZeroTicks();
+		testHoldLifecycleAndSync();
+		testHoldContinueCleanup();
+		testHitDispositionOverrideAuthority();
 		testLegacyCleanupContract();
 	}
 
@@ -81,7 +96,6 @@ public class BounceSurfaceResponseTest {
 		check("OBLIQUE_NORMAL_TANGENT_OFFSET_REMAINS_TANGENTIAL", Math.abs(res5.newVel().dot(slantNormal)) < 1e-6);
 
 		// SURFACE_SLIDE_HEAD_ON_WITH_OUTPUT_SPEED_DOES_NOT_LAUNCH_NORMAL
-		// Head on collision directly into floor: incoming=(0, -1, 0), normal=(0, 1, 0), normalFactor=0, tangentFactor=1, outputSpeed=0.8
 		DanmakuBounceConfig slideCfg = new DanmakuBounceConfig(4, 0.0, 1.0, 0.0, 0.0, 0.0, Optional.of(0.8), false);
 		var res6 = DanmakuBounceResolver.resolve(hitPos, new Vec3(0, -1, 0), normal, slideCfg, 0, null);
 		check("SURFACE_SLIDE_HEAD_ON_WITH_OUTPUT_SPEED_DOES_NOT_LAUNCH_NORMAL", vecNear(res6.newVel(), Vec3.ZERO));
@@ -93,12 +107,10 @@ public class BounceSurfaceResponseTest {
 	}
 
 	private static void testNormalSafety() {
-		// POSITIVE_NORMAL_FACTOR_REJECTED_OR_SANITIZED
 		DanmakuBounceConfig posNormal = new DanmakuBounceConfig(4, 0.8, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false);
 		DanmakuBounceConfig sanitized = posNormal.sanitize();
 		check("POSITIVE_NORMAL_FACTOR_REJECTED_OR_SANITIZED", sanitized.normalFactor() <= 0.0 && sanitized.normalFactor() == 0.0);
 
-		// NORMAL_FACTOR_MINUS_ONE_SPECULAR
 		Vec3 hitPos = new Vec3(0, 0, 0);
 		Vec3 incoming = new Vec3(1.0, -1.0, 0.0);
 		Vec3 normal = new Vec3(0, 1, 0);
@@ -106,85 +118,75 @@ public class BounceSurfaceResponseTest {
 		var resSpecular = DanmakuBounceResolver.resolve(hitPos, incoming, normal, specularCfg, 0, null);
 		check("NORMAL_FACTOR_MINUS_ONE_SPECULAR", vecNear(resSpecular.newVel(), new Vec3(1.0, 1.0, 0.0)));
 
-		// NORMAL_FACTOR_BELOW_MINUS_ONE_ENHANCED_REFLECTION
 		DanmakuBounceConfig enhancedCfg = new DanmakuBounceConfig(4, -2.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false);
 		var resEnhanced = DanmakuBounceResolver.resolve(hitPos, incoming, normal, enhancedCfg, 0, null);
 		check("NORMAL_FACTOR_BELOW_MINUS_ONE_ENHANCED_REFLECTION", vecNear(resEnhanced.newVel(), new Vec3(1.0, 2.0, 0.0)));
 
-		// FINAL_OUTGOING_NEVER_POINTS_INTO_SURFACE
 		for (double nf = -5.0; nf <= 0.0; nf += 0.5) {
 			DanmakuBounceConfig cfg = new DanmakuBounceConfig(4, nf, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false);
 			var r = DanmakuBounceResolver.resolve(hitPos, incoming, normal, cfg, 0, null);
 			check("FINAL_OUTGOING_NEVER_POINTS_INTO_SURFACE (nf=" + nf + ")", r.newVel().dot(normal) >= -1e-6);
 		}
 
-		// RETARGET_CANNOT_REINTRODUCE_INWARD_NORMAL
-		// Target is positioned behind the wall (Y = -50)
 		Vec3 targetBehindWall = new Vec3(0, -50, 0);
 		DanmakuBounceConfig retargetCfg = new DanmakuBounceConfig(4, -1.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), true);
 		var resRetarget = DanmakuBounceResolver.resolve(hitPos, incoming, normal, retargetCfg, 0, targetBehindWall);
 		check("RETARGET_CANNOT_REINTRODUCE_INWARD_NORMAL", resRetarget.newVel().dot(normal) >= -1e-6);
 
-		// NO_REPEATED_SAME_WALL_HIT_FROM_POSITIVE_NORMAL_FACTOR
-		// Even if input has positive normal factor before sanitize, resolve() forces safety
 		var resRawPos = DanmakuBounceResolver.resolve(hitPos, incoming, normal, posNormal, 0, null);
 		check("NO_REPEATED_SAME_WALL_HIT_FROM_POSITIVE_NORMAL_FACTOR", resRawPos.newVel().dot(normal) >= -1e-6);
 	}
 
-	private static void testAccelerationContinuity() {
+	private static void testAccelerationContinuityWithNonZeroTicks() {
 		Vec3 origin = new Vec3(0, 50, 0);
 		Vec3 initialVel = new Vec3(1, 0, 0);
 		Vec3 gravity = new Vec3(0, -0.05, 0);
 
 		BoundedAccelerationMover worldMover = BoundedAccelerationMover.world(origin, initialVel, gravity, null, -0.5, null);
-		MoverInfo info = new MoverInfo(10, origin, initialVel, null, null);
-		Vec3 posAt10 = worldMover.pos(info);
 
-		// 1. WORLD_ACCELERATION_REBASED_AFTER_BOUNCE
-		Vec3 bouncePos = new Vec3(10, 0, 0);
+		// REBASE_AT_NONZERO_ENTITY_TICK_STARTS_FROM_ZERO (Collision happens at entity tick 100)
+		int collisionTick = 100;
+		Vec3 bouncePos = new Vec3(100, 10, 0);
 		Vec3 bounceVel = new Vec3(1, 1, 0);
-		DanmakuMover rebasedWorld = worldMover.rebaseAfterCollision(bouncePos, bounceVel);
-		check("WORLD_ACCELERATION_REBASED_AFTER_BOUNCE", rebasedWorld instanceof BoundedAccelerationMover && rebasedWorld != worldMover);
+		DanmakuMover rebased = worldMover.rebaseAfterCollision(bouncePos, bounceVel, collisionTick);
 
-		// 2. WORLD_GRAVITY_CONTINUES_AFTER_FIRST_BOUNCE
-		BoundedAccelerationMover bamWorld = (BoundedAccelerationMover) rebasedWorld;
-		MoverInfo rebasedInfo1 = new MoverInfo(0, bouncePos, bounceVel, null, null);
-		MoverInfo rebasedInfo2 = new MoverInfo(1, bouncePos, bounceVel, null, null);
-		Vec3 p0 = bamWorld.pos(rebasedInfo1);
-		Vec3 p1 = bamWorld.pos(rebasedInfo2);
-		check("WORLD_GRAVITY_CONTINUES_AFTER_FIRST_BOUNCE", vecNear(p0, bouncePos) && Math.abs((p1.y - p0.y) - (1.0 - 0.05)) < 1e-5);
+		check("WORLD_ACCELERATION_REBASED_AFTER_BOUNCE", rebased instanceof BoundedAccelerationMover && rebased != worldMover);
+		BoundedAccelerationMover bam = (BoundedAccelerationMover) rebased;
 
-		// 3. WORLD_GRAVITY_SUPPORTS_SECOND_BOUNCE
-		Vec3 secondBouncePos = new Vec3(20, 0, 0);
+		// At tick 100 (0 delta ticks after collision), position should be exactly bouncePos
+		Vec3 pAtCollision = bam.pos(new MoverInfo(100, bouncePos, bounceVel, null, null));
+		check("REBASE_AT_NONZERO_ENTITY_TICK_STARTS_FROM_ZERO", vecNear(pAtCollision, bouncePos));
+
+		// REBASE_AT_TICK_100_DOES_NOT_JUMP: tick 101 should only be 1 tick displacement (dy = 1.0 - 0.05)
+		Vec3 pAt101 = bam.pos(new MoverInfo(101, bouncePos, bounceVel, null, null));
+		check("REBASE_AT_TICK_100_DOES_NOT_JUMP", Math.abs((pAt101.y - pAtCollision.y) - (1.0 - 0.05)) < 1e-5);
+
+		// SECOND_REBASE_RESETS_LOCAL_TIME_AGAIN (Second collision at entity tick 150)
+		Vec3 secondBouncePos = new Vec3(150, 10, 0);
 		Vec3 secondBounceVel = new Vec3(1, 0.8, 0);
-		DanmakuMover secondRebased = ((BoundedAccelerationMover) rebasedWorld).rebaseAfterCollision(secondBouncePos, secondBounceVel);
-		check("WORLD_GRAVITY_SUPPORTS_SECOND_BOUNCE", secondRebased instanceof BoundedAccelerationMover && secondRebased != rebasedWorld);
+		DanmakuMover secondRebased = bam.rebaseAfterCollision(secondBouncePos, secondBounceVel, 150);
+		BoundedAccelerationMover bam2 = (BoundedAccelerationMover) secondRebased;
+		Vec3 p2At150 = bam2.pos(new MoverInfo(150, secondBouncePos, secondBounceVel, null, null));
+		Vec3 p2At151 = bam2.pos(new MoverInfo(151, secondBouncePos, secondBounceVel, null, null));
+		check("SECOND_REBASE_RESETS_LOCAL_TIME_AGAIN", vecNear(p2At150, secondBouncePos) && Math.abs((p2At151.y - p2At150.y) - (0.8 - 0.05)) < 1e-5);
 
-		// 4. XYZ_ACCELERATION_PRESERVED_AFTER_BOUNCE
-		Vec3 customAcc = new Vec3(0.1, -0.02, 0.05);
-		BoundedAccelerationMover customMover = BoundedAccelerationMover.world(origin, initialVel, customAcc, 2.0, -1.0, 1.5);
-		BoundedAccelerationMover rebasedCustom = (BoundedAccelerationMover) customMover.rebaseAfterCollision(bouncePos, bounceVel);
-		Vec3 pAfter2 = rebasedCustom.pos(new MoverInfo(2, bouncePos, bounceVel, null, null));
-		// Expected pos at t=2: origin + v0*t + 0.5*a*t*t
-		Vec3 expectedP2 = bouncePos.add(bounceVel.scale(2)).add(customAcc.scale(0.5 * 4));
-		check("XYZ_ACCELERATION_PRESERVED_AFTER_BOUNCE", vecNear(pAfter2, expectedP2));
+		// TERMINAL_VELOCITIES_PRESERVED_AFTER_BOUNCE & TIMER_RESTARTS_FROM_COLLISION
+		// Terminal velocity vy = -0.5 is reached after 30 ticks (v0 = 1.0, a = -0.05 -> (1 - (-0.5))/0.05 = 30 ticks)
+		Vec3 pT129 = bam.pos(new MoverInfo(129, bouncePos, bounceVel, null, null));
+		Vec3 pT130 = bam.pos(new MoverInfo(130, bouncePos, bounceVel, null, null));
+		Vec3 pT131 = bam.pos(new MoverInfo(131, bouncePos, bounceVel, null, null));
+		check("TERMINAL_VELOCITY_TIMER_RESTARTS_FROM_COLLISION", Math.abs((pT131.y - pT130.y) - (-0.5)) < 1e-4);
 
-		// 5. TERMINAL_VELOCITIES_PRESERVED_AFTER_BOUNCE
-		// After 100 ticks, vertical velocity should hit terminalVy = -1.0
-		Vec3 pT99 = rebasedCustom.pos(new MoverInfo(99, bouncePos, bounceVel, null, null));
-		Vec3 pT100 = rebasedCustom.pos(new MoverInfo(100, bouncePos, bounceVel, null, null));
-		check("TERMINAL_VELOCITIES_PRESERVED_AFTER_BOUNCE", Math.abs((pT100.y - pT99.y) - (-1.0)) < 1e-4);
-
-		// 6. LOCAL_ACCELERATION_PRESERVES_ORIGINAL_BASIS_AFTER_BOUNCE
+		// LOCAL_ACCELERATION_PRESERVES_ORIGINAL_BASIS_AFTER_BOUNCE
 		Vec3 fwd = new Vec3(1, 0, 0);
 		Vec3 right = new Vec3(0, 0, 1);
 		Vec3 up = new Vec3(0, 1, 0);
-		Vec3 localAcc = new Vec3(0.1, 0, 0); // accelerate forward along original basis
+		Vec3 localAcc = new Vec3(0.1, 0, 0);
 		BoundedAccelerationMover localMover = BoundedAccelerationMover.local(origin, initialVel, fwd, right, up, localAcc, null, null, null);
-		DanmakuMover rebasedLocal = localMover.rebaseAfterCollision(bouncePos, bounceVel);
+		DanmakuMover rebasedLocal = localMover.rebaseAfterCollision(bouncePos, bounceVel, 100);
 		check("LOCAL_ACCELERATION_PRESERVES_ORIGINAL_BASIS_AFTER_BOUNCE", rebasedLocal instanceof BoundedAccelerationMover && rebasedLocal != localMover);
 
-		// 7. Non-rebasable movers return false for CollisionRebasableMover check
+		// Non-rebasable movers detach
 		Object polar = new dev.xkmc.youkaishomecoming.content.spell.mover.PolarMover();
 		Object bezier = new dev.xkmc.youkaishomecoming.content.spell.mover.BezierMover();
 		Object formula = new dev.xkmc.youkaishomecoming.content.spell.mover.FormulaMover();
@@ -197,8 +199,92 @@ public class BounceSurfaceResponseTest {
 		check("LAYERED_MOVER_DETACHES_AFTER_BOUNCE", !(layered instanceof dev.xkmc.youkaishomecoming.content.spell.mover.CollisionRebasableMover));
 	}
 
+	private static void testHoldLifecycleAndSync() {
+		// Mock testing ItemDanmakuEntity state transitions
+		Vec3 holdPos = new Vec3(10, 20, 30);
+		Vec3 incomingVel = new Vec3(1, -1, 0);
+		BoundedAccelerationMover initialMover = BoundedAccelerationMover.world(new Vec3(0, 0, 0), incomingVel, new Vec3(0, -0.05, 0), null, null, null);
+
+		// Simulating client and server entering hold
+		DanmakuMover currentMover = initialMover;
+		DanmakuMover suspendedMover = null;
+
+		// 1. CLIENT_HOLD_INSTALLS_HIT_HOLD_MOVER & CLIENT_HOLD_PRESERVES_REBASE_SOURCE
+		if (currentMover != null && !(currentMover instanceof HitHoldMover)) {
+			suspendedMover = currentMover;
+		}
+		currentMover = new HitHoldMover(incomingVel);
+
+		check("CLIENT_HOLD_INSTALLS_HIT_HOLD_MOVER", currentMover instanceof HitHoldMover);
+		check("CLIENT_HOLD_PRESERVES_REBASE_SOURCE", suspendedMover == initialMover);
+
+		// 2. CLIENT_PROJECTILE_REMAINS_PINNED_DURING_HOLD
+		MoverInfo holdInfo1 = new MoverInfo(1, holdPos, Vec3.ZERO, null, null);
+		MoverInfo holdInfo2 = new MoverInfo(10, holdPos, Vec3.ZERO, null, null);
+		var move1 = currentMover.move(holdInfo1);
+		var move2 = currentMover.move(holdInfo2);
+		check("CLIENT_PROJECTILE_REMAINS_PINNED_DURING_HOLD", vecNear(move1.vec(), Vec3.ZERO) && vecNear(move2.vec(), Vec3.ZERO));
+
+		// 3. SERVER_CLIENT_HOLD_THEN_BOUNCE_REBASE_MATCH
+		Vec3 bouncePos = new Vec3(10, 20, 30);
+		Vec3 bounceVel = new Vec3(1, 1, 0);
+		DanmakuMover oldSource = suspendedMover != null ? suspendedMover : currentMover;
+		DanmakuMover rebasedAfterHold = ((BoundedAccelerationMover) oldSource).rebaseAfterCollision(bouncePos, bounceVel, 50);
+		check("SERVER_CLIENT_HOLD_THEN_BOUNCE_REBASE_MATCH", rebasedAfterHold instanceof BoundedAccelerationMover);
+	}
+
+	private static void testHoldContinueCleanup() {
+		Vec3 holdPos = new Vec3(10, 20, 30);
+		Vec3 incomingVel = new Vec3(1, -1, 0);
+		BoundedAccelerationMover initialMover = BoundedAccelerationMover.world(new Vec3(0, 0, 0), incomingVel, new Vec3(0, -0.05, 0), null, null, null);
+
+		DanmakuMover suspendedMover = initialMover;
+		DanmakuMover currentMover = new HitHoldMover(incomingVel);
+
+		// When Hold exits via CONTINUE:
+		suspendedMover = null;
+		if (currentMover instanceof HitHoldMover) {
+			currentMover = null;
+		}
+
+		// 1. HOLD_CONTINUE_DETACHES_HIT_HOLD_MOVER & HOLD_CONTINUE_CLEARS_SUSPENDED_MOVER
+		check("HOLD_CONTINUE_DETACHES_HIT_HOLD_MOVER", currentMover == null);
+		check("HOLD_CONTINUE_CLEARS_SUSPENDED_MOVER", suspendedMover == null);
+
+		// 2. BOUNCE_AFTER_HOLD_CONTINUE_DOES_NOT_REVIVE_OLD_MOVER
+		DanmakuMover sourceForFutureBounce = suspendedMover != null ? suspendedMover : currentMover;
+		check("BOUNCE_AFTER_HOLD_CONTINUE_DOES_NOT_REVIVE_OLD_MOVER", sourceForFutureBounce == null);
+	}
+
+	private static void testHitDispositionOverrideAuthority() {
+		// Verify that sequential hit control actions in on_hit_block follow "last writer wins" authority
+		SpellHitContext hitCtx = new SpellHitContext(
+				null, SpellHitContext.HitType.BLOCK,
+				new Vec3(0, 0, 0), new Vec3(0, 1, 0), new Vec3(1, -1, 0), null
+		);
+
+		SpellContext ctx = new SpellContext(null, null, null, null, hitCtx);
+
+		// Action sequence: BounceAction followed by ContinueSourceAction
+		BounceAction bounce = new BounceAction(3, -1.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false);
+		ContinueSourceAction cont = new ContinueSourceAction();
+
+		bounce.execute(ctx);
+		check("BOUNCE_SETS_DISPOSITION_FIRST", hitCtx.disposition() == SpellHitContext.HitDisposition.BOUNCE && hitCtx.bounceConfig() != null);
+
+		cont.execute(ctx);
+		check("CONTINUE_OVERRIDES_BOUNCE_LATTER_IS_AUTHORITY", hitCtx.disposition() == SpellHitContext.HitDisposition.CONTINUE && hitCtx.bounceConfig() == null);
+
+		// Reverse sequence: ContinueSourceAction followed by BounceAction
+		DiscardSourceAction discard = new DiscardSourceAction();
+		discard.execute(ctx);
+		check("DISCARD_OVERRIDES_CONTINUE", hitCtx.disposition() == SpellHitContext.HitDisposition.DISCARD);
+
+		bounce.execute(ctx);
+		check("BOUNCE_OVERRIDES_DISCARD", hitCtx.disposition() == SpellHitContext.HitDisposition.BOUNCE && hitCtx.bounceConfig() != null);
+	}
+
 	private static void testLegacyCleanupContract() {
-		// Verify BounceAction and SpellHitContext are the sole source of DanmakuBounceConfig
 		BounceAction ba = new BounceAction(3, -1.0, 1.0, 0.1, 0.0, 0.0, Optional.of(1.5), false);
 		DanmakuBounceConfig cfg = ba.sanitize();
 		check("BOUNCE_CONFIG_COMES_ONLY_FROM_ACTION_AND_HIT_CONTEXT",

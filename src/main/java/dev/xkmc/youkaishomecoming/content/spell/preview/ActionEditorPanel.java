@@ -533,17 +533,23 @@ public class ActionEditorPanel {
 		}
 	}
 
+	private String customBouncePresetMode = null;
+
 	private void buildBounceActionRows(BounceAction action) {
 		addIntRow("Max Bounces", action.maxBounces(), v ->
 				notifySimple(old -> ((BounceAction) old).withMaxBounces(v)));
 
 		// Presets: Specular (-1, 1), Bouncy (-0.8, 0.95), Surface Slide (0, 1)
 		String preset = "custom";
-		boolean isZeroOffset = Math.abs(action.tangentOffsetX()) < 1e-6 && Math.abs(action.tangentOffsetY()) < 1e-6 && Math.abs(action.tangentOffsetZ()) < 1e-6;
-		if (isZeroOffset) {
-			if (Math.abs(action.normalFactor() - (-1.0)) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "specular";
-			else if (Math.abs(action.normalFactor() - (-0.8)) < 1e-6 && Math.abs(action.tangentFactor() - 0.95) < 1e-6) preset = "bouncy";
-			else if (Math.abs(action.normalFactor()) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "slide";
+		if (customBouncePresetMode != null) {
+			preset = customBouncePresetMode;
+		} else {
+			boolean isZeroOffset = Math.abs(action.tangentOffsetX()) < 1e-6 && Math.abs(action.tangentOffsetY()) < 1e-6 && Math.abs(action.tangentOffsetZ()) < 1e-6;
+			if (isZeroOffset) {
+				if (Math.abs(action.normalFactor() - (-1.0)) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "specular";
+				else if (Math.abs(action.normalFactor() - (-0.8)) < 1e-6 && Math.abs(action.tangentFactor() - 0.95) < 1e-6) preset = "bouncy";
+				else if (Math.abs(action.normalFactor()) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "slide";
+			}
 		}
 
 		addStringOptionRow("Preset",
@@ -551,6 +557,7 @@ public class ActionEditorPanel {
 				new String[]{"Specular Reflect", "Bouncy Dampened", "Surface Slide", "Custom"},
 				preset,
 				p -> {
+					customBouncePresetMode = p;
 					if ("specular".equals(p)) {
 						notifySimple(old -> ((BounceAction) old).withNormalFactor(-1.0).withTangentFactor(1.0)
 								.withTangentOffsetX(0.0).withTangentOffsetY(0.0).withTangentOffsetZ(0.0), true);
@@ -560,21 +567,33 @@ public class ActionEditorPanel {
 					} else if ("slide".equals(p)) {
 						notifySimple(old -> ((BounceAction) old).withNormalFactor(0.0).withTangentFactor(1.0)
 								.withTangentOffsetX(0.0).withTangentOffsetY(0.0).withTangentOffsetZ(0.0), true);
+					} else if ("custom".equals(p)) {
+						notifySimple(old -> old, true);
 					}
 				});
 
-		addDoubleRow("Normal Factor", action.normalFactor(), v ->
-				notifySimple(old -> ((BounceAction) old).withNormalFactor(v)));
-		addDoubleRow("Tangent Factor", action.tangentFactor(), v ->
-				notifySimple(old -> ((BounceAction) old).withTangentFactor(v)));
+		addDoubleRow("Normal Factor", action.normalFactor(), v -> {
+			customBouncePresetMode = null;
+			notifySimple(old -> ((BounceAction) old).withNormalFactor(v));
+		});
+		addDoubleRow("Tangent Factor", action.tangentFactor(), v -> {
+			customBouncePresetMode = null;
+			notifySimple(old -> ((BounceAction) old).withTangentFactor(v));
+		});
 
 		if ("custom".equals(preset)) {
-			addDoubleRow("Tangent Offset X (World)", action.tangentOffsetX(), v ->
-					notifySimple(old -> ((BounceAction) old).withTangentOffsetX(v)));
-			addDoubleRow("Tangent Offset Y (World)", action.tangentOffsetY(), v ->
-					notifySimple(old -> ((BounceAction) old).withTangentOffsetY(v)));
-			addDoubleRow("Tangent Offset Z (World)", action.tangentOffsetZ(), v ->
-					notifySimple(old -> ((BounceAction) old).withTangentOffsetZ(v)));
+			addDoubleRow("Tangent Offset X (World)", action.tangentOffsetX(), v -> {
+				customBouncePresetMode = null;
+				notifySimple(old -> ((BounceAction) old).withTangentOffsetX(v));
+			});
+			addDoubleRow("Tangent Offset Y (World)", action.tangentOffsetY(), v -> {
+				customBouncePresetMode = null;
+				notifySimple(old -> ((BounceAction) old).withTangentOffsetY(v));
+			});
+			addDoubleRow("Tangent Offset Z (World)", action.tangentOffsetZ(), v -> {
+				customBouncePresetMode = null;
+				notifySimple(old -> ((BounceAction) old).withTangentOffsetZ(v));
+			});
 		}
 
 		addBooleanRow("Reset Speed", action.outputSpeed().isPresent(), enable -> {

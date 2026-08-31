@@ -49,7 +49,7 @@ public record DanmakuBounceConfig(
 		double tox = Double.isFinite(tangentOffsetX) ? Math.max(-50.0, Math.min(50.0, tangentOffsetX)) : 0.0;
 		double toy = Double.isFinite(tangentOffsetY) ? Math.max(-50.0, Math.min(50.0, tangentOffsetY)) : 0.0;
 		double toz = Double.isFinite(tangentOffsetZ) ? Math.max(-50.0, Math.min(50.0, tangentOffsetZ)) : 0.0;
-		Optional<Double> os = outputSpeed.filter(Double::isFinite).map(s -> Math.max(0.0, Math.min(50.0, s)));
+		Optional<Double> os = outputSpeed.filter(Double::isFinite).map(s -> Math.max(0.0, Math.min(20.0, s)));
 		return new DanmakuBounceConfig(maxB, nf, tf, tox, toy, toz, os, retarget);
 	}
 

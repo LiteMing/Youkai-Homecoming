@@ -1,6 +1,5 @@
 package dev.xkmc.fastprojectileapi.render.virtual;
 
-import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import net.minecraft.client.Minecraft;
@@ -10,6 +9,11 @@ import net.minecraftforge.network.NetworkEvent;
 @SerialClass
 public class DanmakuBounceSyncPacket extends SerialPacketBase {
 
+	public enum ResetKind {
+		BOUNCE,
+		HOLD
+	}
+
 	@SerialClass.SerialField
 	private int entityId;
 	@SerialClass.SerialField
@@ -18,11 +22,17 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 	private double velX, velY, velZ;
 	@SerialClass.SerialField
 	private int bounceCount;
+	@SerialClass.SerialField
+	private ResetKind resetKind = ResetKind.BOUNCE;
 
 	public DanmakuBounceSyncPacket() {
 	}
 
 	public DanmakuBounceSyncPacket(int entityId, Vec3 pos, Vec3 vel, int bounceCount) {
+		this(entityId, pos, vel, bounceCount, ResetKind.BOUNCE);
+	}
+
+	public DanmakuBounceSyncPacket(int entityId, Vec3 pos, Vec3 vel, int bounceCount, ResetKind resetKind) {
 		this.entityId = entityId;
 		this.posX = pos.x;
 		this.posY = pos.y;
@@ -31,6 +41,7 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 		this.velY = vel.y;
 		this.velZ = vel.z;
 		this.bounceCount = bounceCount;
+		this.resetKind = resetKind != null ? resetKind : ResetKind.BOUNCE;
 	}
 
 	@Override
@@ -40,11 +51,17 @@ public class DanmakuBounceSyncPacket extends SerialPacketBase {
 		var cache = ClientDanmakuCache.get(level);
 		var e = cache.get(entityId);
 		if (e != null) {
+			Vec3 pos = new Vec3(posX, posY, posZ);
+			Vec3 vel = new Vec3(velX, velY, velZ);
 			if (e instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity ide) {
-				ide.applyBounceState(new Vec3(posX, posY, posZ), new Vec3(velX, velY, velZ), bounceCount);
+				if (resetKind == ResetKind.HOLD) {
+					ide.enterHoldState(pos, vel);
+				} else {
+					ide.applyBounceState(pos, vel, bounceCount);
+				}
 			} else {
 				e.setPosRaw(posX, posY, posZ);
-				e.snapMotionAndRotation(new Vec3(velX, velY, velZ));
+				e.snapMotionAndRotation(vel);
 			}
 		}
 	}

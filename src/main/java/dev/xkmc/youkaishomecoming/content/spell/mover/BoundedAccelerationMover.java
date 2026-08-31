@@ -59,6 +59,9 @@ public final class BoundedAccelerationMover extends TargetPosMover implements Co
 	@SerialClass.SerialField
 	private double termVz = 0;
 
+	@SerialClass.SerialField
+	private int startTick = 0;
+
 	public BoundedAccelerationMover() {}
 
 	/** World space constructor */
@@ -134,23 +137,26 @@ public final class BoundedAccelerationMover extends TargetPosMover implements Co
 	}
 
 	@Override
-	public DanmakuMover rebaseAfterCollision(Vec3 newPosition, Vec3 newVelocity) {
+	public DanmakuMover rebaseAfterCollision(Vec3 newPosition, Vec3 newVelocity, int collisionTick) {
 		Double tvx = hasTermX ? termVx : null;
 		Double tvy = hasTermY ? termVy : null;
 		Double tvz = hasTermZ ? termVz : null;
 
+		BoundedAccelerationMover rebased;
 		if (isLocalSpace) {
 			// Local space rebase: keeps original basis, projects newVelocity onto existing basis
-			return local(newPosition, newVelocity, forward, right, up, localAcc, tvx, tvy, tvz);
+			rebased = local(newPosition, newVelocity, forward, right, up, localAcc, tvx, tvy, tvz);
 		} else {
 			// World space rebase: new origin and velocity, keeping world acceleration and terminals
-			return world(newPosition, newVelocity, localAcc, tvx, tvy, tvz);
+			rebased = world(newPosition, newVelocity, localAcc, tvx, tvy, tvz);
 		}
+		rebased.startTick = Math.max(0, collisionTick);
+		return rebased;
 	}
 
 	@Override
 	public Vec3 pos(MoverInfo info) {
-		return pos(info.tick());
+		return pos(info.tick() - startTick);
 	}
 
 	public Vec3 pos(double tick) {

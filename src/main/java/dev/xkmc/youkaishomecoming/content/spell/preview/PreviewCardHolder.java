@@ -521,11 +521,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			case DISCARD -> projectile.markErased(false);
 			case HOLD -> {
 				if (projectile instanceof ItemDanmakuEntity ide && hitCtx.deferredBody() != null) {
-					ide.suspendedMover = ide.mover;
 					Vec3 holdPos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
-					ide.setPos(holdPos);
-					ide.snapMotionAndRotation(Vec3.ZERO);
-					ide.mover = new dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover(hitCtx.incomingVelocity());
+					ide.enterHoldState(holdPos, hitCtx.incomingVelocity());
 					if (runtimeSupplier != null && runtimeSupplier.get() != null) {
 						var runtime = runtimeSupplier.get();
 						runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), List.of(
@@ -546,15 +543,20 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 														? ide.hitBehaviorBlock : ide.hitBehaviorEntity;
 												switch (fallback) {
 													case CONTINUE -> {
+														ide.clearHoldState();
 														Vec3 resumePos = hitCtx.movementEnd();
 														ide.setPos(resumePos);
 														ide.snapMotionAndRotation(hitCtx.incomingVelocity());
 													}
 													case EXPIRE -> {
+														ide.clearHoldState();
 														if (afterExpiry != null) afterExpiry.execute(PreviewCardHolder.this, hitCtx.hitPosition(), hitCtx.incomingVelocity());
 														projectile.markErased(false);
 													}
-													case DISCARD -> projectile.markErased(false);
+													case DISCARD -> {
+														ide.clearHoldState();
+														projectile.markErased(false);
+													}
 												}
 											}
 										}
@@ -562,6 +564,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 								}
 						));
 					} else {
+						ide.clearHoldState();
 						projectile.markErased(false);
 					}
 				}
@@ -573,6 +576,21 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 							hitCtx.bounceConfig(),
 							ide.currentBounces, target());
 					if (result.erased()) {
+						ide.clearHoldState();
+						switch (ide.hitBehaviorBlock) {
+							case CONTINUE -> {
+								return; // Continue default penetration in preview
+							}
+							case EXPIRE -> {
+								if (afterExpiry != null) afterExpiry.execute(PreviewCardHolder.this, hitCtx.hitPosition(), hitCtx.incomingVelocity());
+								projectile.markErased(false);
+								return;
+							}
+							case DISCARD -> {
+								projectile.markErased(false);
+								return;
+							}
+						}
 						projectile.markErased(false);
 						return;
 					}

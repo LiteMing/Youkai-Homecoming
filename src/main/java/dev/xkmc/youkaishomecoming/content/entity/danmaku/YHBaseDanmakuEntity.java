@@ -191,7 +191,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	}
 
 	private void resumeAfterHoldContinue(ItemDanmakuEntity ide, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {
-		ide.mover = null;
+		ide.clearHoldState();
 		Vec3 resumePos = hitCtx.movementEnd();
 		ide.setPos(resumePos);
 		ide.snapMotionAndRotation(hitCtx.incomingVelocity());
@@ -211,18 +211,15 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 					}
 					// If no active runtime host exists to schedule resume, fail-safe to avoid permanent stall
 					if (runtime == null) {
+						ide.clearHoldState();
 						markErased(false);
 						return;
 					}
 
 					// Pin projectile on contact surface and install HitHoldMover, preserving suspended mover
-					ide.suspendedMover = ide.mover;
 					Vec3 holdPos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
-					ide.setPos(holdPos);
-					ide.snapMotionAndRotation(Vec3.ZERO);
-					ide.mover = new dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover(hitCtx.incomingVelocity());
-					notifyTrajectoryChanged();
-					syncBounceToClient(holdPos, Vec3.ZERO, ide.currentBounces);
+					ide.enterHoldState(holdPos, hitCtx.incomingVelocity());
+					syncHoldToClient(holdPos, hitCtx.incomingVelocity());
 
 					// Schedule resumption after holdTicks
 					runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), java.util.List.of(
@@ -244,8 +241,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 													? ide.hitBehaviorBlock : ide.hitBehaviorEntity;
 											switch (fallback) {
 												case CONTINUE -> resumeAfterHoldContinue(ide, hitCtx);
-												case EXPIRE -> expireNow();
-												case DISCARD -> markErased(false);
+												case EXPIRE -> {
+													ide.clearHoldState();
+													expireNow();
+												}
+												case DISCARD -> {
+													ide.clearHoldState();
+													markErased(false);
+												}
 											}
 										}
 									}
@@ -263,6 +266,21 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 							hitCtx.hitPosition(), hitCtx.incomingVelocity(), hitCtx.hitNormal(),
 							hitCtx.bounceConfig(), ide.currentBounces, resolveBounceTarget());
 					if (result.erased()) {
+						// Exceeded max bounces: fall back to default hitBehaviorBlock instead of unconditionally erasing
+						ide.clearHoldState();
+						switch (ide.hitBehaviorBlock) {
+							case CONTINUE -> {
+								return; // Continue default penetration without bounce
+							}
+							case EXPIRE -> {
+								expireNow();
+								return;
+							}
+							case DISCARD -> {
+								markErased(false);
+								return;
+							}
+						}
 						markErased(false);
 						return;
 					}
@@ -272,7 +290,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 					markErased(false);
 				}
 			}
-			case UNRESOLVED -> markErased(false);
+			case UNRESOLVED -> {
+				if (this instanceof ItemDanmakuEntity ide) ide.clearHoldState();
+				markErased(false);
+			}
 		}
 	}
 
@@ -333,7 +354,14 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	private void syncBounceToClient(Vec3 pos, Vec3 vel, int bounceCount) {
 		if (getOwner() instanceof LivingEntity le && !level().isClientSide) {
 			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toTrackingPlayers(
-					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), pos, vel, bounceCount), le);
+					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), pos, vel, bounceCount, dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket.ResetKind.BOUNCE), le);
+		}
+	}
+
+	private void syncHoldToClient(Vec3 holdPos, Vec3 incomingVel) {
+		if (getOwner() instanceof LivingEntity le && !level().isClientSide) {
+			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toTrackingPlayers(
+					new dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket(getId(), holdPos, incomingVel, 0, dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket.ResetKind.HOLD), le);
 		}
 	}
 

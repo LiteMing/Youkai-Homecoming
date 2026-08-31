@@ -25,7 +25,9 @@ public class SpellHitContext {
 
 	private final SimplifiedProjectile source;
 	private final HitType hitType;
+	private final Vec3 movementStart;
 	private final Vec3 hitPosition;
+	private final Vec3 movementEnd;
 	private final Vec3 hitNormal;
 	private final Vec3 incomingVelocity;
 	@Nullable
@@ -46,9 +48,24 @@ public class SpellHitContext {
 			Vec3 incomingVelocity,
 			@Nullable Entity hitEntity
 	) {
+		this(source, hitType, hitPosition, hitPosition, hitPosition.add(incomingVelocity), hitNormal, incomingVelocity, hitEntity);
+	}
+
+	public SpellHitContext(
+			SimplifiedProjectile source,
+			HitType hitType,
+			Vec3 movementStart,
+			Vec3 hitPosition,
+			Vec3 movementEnd,
+			Vec3 hitNormal,
+			Vec3 incomingVelocity,
+			@Nullable Entity hitEntity
+	) {
 		this.source = source;
 		this.hitType = hitType;
+		this.movementStart = movementStart;
 		this.hitPosition = hitPosition;
+		this.movementEnd = movementEnd;
 		this.hitNormal = hitNormal;
 		this.incomingVelocity = incomingVelocity;
 		this.hitEntity = hitEntity;
@@ -56,7 +73,9 @@ public class SpellHitContext {
 
 	public SimplifiedProjectile source() { return source; }
 	public HitType hitType() { return hitType; }
+	public Vec3 movementStart() { return movementStart; }
 	public Vec3 hitPosition() { return hitPosition; }
+	public Vec3 movementEnd() { return movementEnd; }
 	public Vec3 hitNormal() { return hitNormal; }
 	public Vec3 incomingVelocity() { return incomingVelocity; }
 	@Nullable

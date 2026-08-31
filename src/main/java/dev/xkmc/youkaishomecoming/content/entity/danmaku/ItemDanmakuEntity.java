@@ -151,7 +151,6 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 
 	public void configureBounce(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig config) {
 		this.bounceConfig = config;
-		this.hitBehaviorBlock = HitBehavior.BOUNCE;
 	}
 
 	public void applyBounceState(Vec3 newPos, Vec3 newVel, int bounceCount) {

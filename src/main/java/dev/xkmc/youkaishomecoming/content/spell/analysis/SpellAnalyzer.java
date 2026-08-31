@@ -503,6 +503,10 @@ public final class SpellAnalyzer {
 					throw rejected("unbounded_hit_hold",
 							"Hold duration inside an on-hit callback must have a finite upper bound");
 				}
+				if (bounds.max() > 200) {
+					throw rejected("hit_hold_too_long",
+							"Hold duration inside an on-hit callback exceeds maximum limit of 200 ticks: " + (int) bounds.max());
+				}
 			}
 			delayedBurstSum = satAdd(delayedBurstSum, walkList("on_release", a.onRelease(), perTick, mult, GroupKind.DELAY));
 		} else if (action instanceof SpellActions.ConditionalAction a) {
@@ -709,9 +713,6 @@ public final class SpellAnalyzer {
 					blockMultiplier = maxHits;
 				} else if (blockSummary.maxBounces > 0) {
 					blockMultiplier = Math.min(maxHits, blockSummary.maxBounces + 1L);
-				} else if (hitBehaviorBlock == HitBehavior.BOUNCE) {
-					int maxBounces = bounceConfig.map(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig::sanitize).map(dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig::maxBounces).orElse(1);
-					blockMultiplier = Math.min(maxHits, maxBounces + 1L);
 				}
 				long execs = satMul(contrib, blockMultiplier);
 				walkHook("on_hit_block", onHitBlock.get(), execs, perTick, mult);

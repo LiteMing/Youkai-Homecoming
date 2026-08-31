@@ -13,9 +13,7 @@ public enum HitBehavior implements StringRepresentable {
 	/** Trigger expiry immediately on hit, including afterExpiry behavior. */
 	EXPIRE("expire"),
 	/** Keep flying after hit — danmaku lives until lifetime expires and then triggers afterExpiry. */
-	CONTINUE("continue"),
-	/** Bounce off surfaces/entities specularly. */
-	BOUNCE("bounce");
+	CONTINUE("continue");
 
 	public static final Codec<HitBehavior> CODEC = StringRepresentable.fromEnum(HitBehavior::values);
 

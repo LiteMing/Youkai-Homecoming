@@ -154,13 +154,14 @@ public record FireDanmakuAction(
 					Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1))));
 
 	public FireDanmakuAction {
-		// Normalize bounceConfig with hitBehaviorBlock:
-		// If hitBehaviorBlock is BOUNCE, ensure bounceConfig is sanitized; otherwise, clear bounceConfig.
-		if (hitBehaviorBlock == HitBehavior.BOUNCE) {
-			bounceConfig = Optional.of(bounceConfig.map(DanmakuBounceConfig::sanitize).orElseGet(DanmakuBounceConfig::defaults));
-		} else {
-			bounceConfig = Optional.empty();
+		// Migration: if old JSON had onHitBlock actions with legacy bounce config, append BounceAction
+		if (bounceConfig.isPresent() && bounceConfig.get() != null) {
+			var cfg = bounceConfig.get().sanitize();
+			java.util.List<SpellAction> hitList = new java.util.ArrayList<>(onHitBlock.orElse(java.util.List.of()));
+			hitList.add(new BounceAction(cfg.maxBounces(), cfg.decay(), cfg.retarget()));
+			onHitBlock = Optional.of(hitList);
 		}
+		bounceConfig = Optional.empty();
 	}
 	public static final Codec<FireDanmakuAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 			BASE_MAP.forGetter(fda -> fda),
@@ -209,6 +210,7 @@ public record FireDanmakuAction(
 	public FireDanmakuAction withGroupRotation(Optional<GroupRotation> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, v, colorAnimation, size, bounceConfig); }
 	public FireDanmakuAction withColorAnimation(Optional<DanmakuColorAnimation> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, v, size, bounceConfig); }
 	public FireDanmakuAction withSize(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, v, bounceConfig); }
+	@Deprecated
 	public FireDanmakuAction withBounceConfig(Optional<DanmakuBounceConfig> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, v); }
 
 	@Override
@@ -264,11 +266,7 @@ public record FireDanmakuAction(
 		}
 		danmaku.hitBehaviorEntity = hitBehaviorEntity;
 		danmaku.hitBehaviorBlock = hitBehaviorBlock;
-		if (hitBehaviorBlock == HitBehavior.BOUNCE) {
-			bounceConfig.ifPresent(danmaku::configureBounce);
-		} else {
-			danmaku.bounceConfig = null;
-		}
+		danmaku.bounceConfig = null;
 		// Default from prepareDanmaku is bypassWall=true, bypassEntity=true (boss danmaku defaults).
 		// Keep the legacy pass-through behavior unless this action explicitly uses block hit handling:
 		// either a block-hit callback is configured, or block hits should stop/expire the danmaku.

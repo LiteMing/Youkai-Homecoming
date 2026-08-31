@@ -464,10 +464,14 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 											 dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction hitAction,
 											 dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior behavior,
 											 dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry) {
+		Vec3 from = new Vec3(projectile.xOld, projectile.yOld, projectile.zOld);
+		Vec3 to = projectile.position();
 		var hitCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext(
 				projectile,
 				hit.type() == PreviewTarget.HitType.BLOCK ? dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK : dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.ENTITY,
+				from,
 				hit.position(),
+				to,
 				hit.normal(),
 				projectile.getDeltaMovement(),
 				null
@@ -489,11 +493,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		switch (behavior) {
 			case CONTINUE -> {
 			}
-			case BOUNCE -> {
-				dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig cfg = projectile instanceof ItemDanmakuEntity ide ? ide.bounceConfig : null;
-				hitCtx.resolveBounce(cfg != null ? cfg : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
-				applyPreviewHitDisposition(hitCtx, afterExpiry);
-			}
 			case DISCARD -> projectile.markErased(false);
 			case EXPIRE -> {
 				if (afterExpiry != null) {
@@ -511,11 +510,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		SimplifiedProjectile projectile = hitCtx.source();
 		switch (hitCtx.disposition()) {
 			case CONTINUE -> {
-				if (projectile instanceof ItemDanmakuEntity ide) {
-					Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
-					ide.setPos(resumePos);
-					ide.snapMotionAndRotation(hitCtx.incomingVelocity());
-				}
+				// Immediate continue: keep flying with existing mover and momentum (no-op)
 			}
 			case EXPIRE -> {
 				if (afterExpiry != null) {
@@ -532,7 +527,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 					ide.mover = new dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover(hitCtx.incomingVelocity());
 					if (runtimeSupplier != null && runtimeSupplier.get() != null) {
 						var runtime = runtimeSupplier.get();
-						var body = hitCtx.deferredBody();
 						runtime.scheduleDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), List.of(
 								new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
 									@Override
@@ -552,13 +546,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 														? ide.hitBehaviorBlock : ide.hitBehaviorEntity;
 												switch (fallback) {
 													case CONTINUE -> {
-														Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.hitNormal().normalize().scale(0.08));
+														Vec3 resumePos = hitCtx.movementEnd();
 														ide.setPos(resumePos);
 														ide.snapMotionAndRotation(hitCtx.incomingVelocity());
-													}
-													case BOUNCE -> {
-														hitCtx.resolveBounce(ide.bounceConfig != null ? ide.bounceConfig : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
-														applyPreviewHitDisposition(hitCtx, afterExpiry);
 													}
 													case EXPIRE -> {
 														if (afterExpiry != null) afterExpiry.execute(PreviewCardHolder.this, hitCtx.hitPosition(), hitCtx.incomingVelocity());

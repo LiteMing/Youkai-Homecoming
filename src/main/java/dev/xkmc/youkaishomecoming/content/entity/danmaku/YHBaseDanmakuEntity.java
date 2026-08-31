@@ -153,9 +153,11 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 		if (!level().isClientSide) {
 			var normal = pResult.getDirection().step();
 			Vec3 n = new Vec3(normal.x(), normal.y(), normal.z());
+			Vec3 src = tickData().moveSrc != null ? tickData().moveSrc : position();
+			Vec3 dst = tickData().moveDst != null ? tickData().moveDst : position().add(getDeltaMovement());
 			var hitCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext(
 					this, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext.HitType.BLOCK,
-					pResult.getLocation(), n, getDeltaMovement(), null);
+					src, pResult.getLocation(), dst, n, getDeltaMovement(), null);
 
 			// Execute onHitBlock callback
 			if (this instanceof ItemDanmakuEntity ide && ide.onHitBlockAction != null) {
@@ -168,15 +170,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 				return;
 			}
 
-			// Fallback to legacy hitBehaviorBlock for backward compatibility
+			// Fallback to default hitBehaviorBlock
 			if (this instanceof ItemDanmakuEntity ide) {
 				switch (ide.hitBehaviorBlock) {
 					case CONTINUE -> {
-						return;
-					}
-					case BOUNCE -> {
-						hitCtx.resolveBounce(ide.bounceConfig != null ? ide.bounceConfig : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
-						applyHitDisposition(hitCtx);
 						return;
 					}
 					case EXPIRE -> {
@@ -195,7 +192,7 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 
 	private void resumeAfterHoldContinue(ItemDanmakuEntity ide, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitCtx) {
 		ide.mover = null;
-		Vec3 resumePos = hitCtx.hitPosition().add(hitCtx.incomingVelocity().normalize().scale(0.08));
+		Vec3 resumePos = hitCtx.movementEnd();
 		ide.setPos(resumePos);
 		ide.snapMotionAndRotation(hitCtx.incomingVelocity());
 		notifyTrajectoryChanged();
@@ -247,10 +244,6 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 													? ide.hitBehaviorBlock : ide.hitBehaviorEntity;
 											switch (fallback) {
 												case CONTINUE -> resumeAfterHoldContinue(ide, hitCtx);
-												case BOUNCE -> {
-													hitCtx.resolveBounce(ide.bounceConfig != null ? ide.bounceConfig : dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuBounceConfig.defaults());
-													applyHitDisposition(hitCtx);
-												}
 												case EXPIRE -> expireNow();
 												case DISCARD -> markErased(false);
 											}

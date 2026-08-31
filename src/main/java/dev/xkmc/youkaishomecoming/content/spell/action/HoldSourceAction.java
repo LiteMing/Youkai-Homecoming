@@ -37,8 +37,12 @@ public record HoldSourceAction(NumberProvider duration, List<SpellAction> onRele
 			return;
 		}
 
-		ctx.hitContext().ifPresent(hit -> {
-			hit.resolveHold(ticks, onRelease);
-		});
+		if (ctx.hitContext().isPresent()) {
+			ctx.hitContext().get().resolveHold(ticks, onRelease);
+		} else {
+			// Diagnostic warning when placed outside hit callbacks
+			org.slf4j.LoggerFactory.getLogger(HoldSourceAction.class).warn(
+					"[Spell] hold_source action executed without hit context (must be inside on_hit_block or on_hit_entity)");
+		}
 	}
 }

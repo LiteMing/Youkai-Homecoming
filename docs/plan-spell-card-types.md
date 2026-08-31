@@ -133,7 +133,50 @@ normal | last_spell | timeout_spell | non_spell
 非符使用独立的 analyzer profile：可用节点范围更窄、节点数量和认证上限更低，并且 Tier 对
 预算的缩放比普通符卡更严格。所有预算和能力许可由 KJS 配置，未知节点继续 fail-closed。
 
-## 5. 复刻与类型的关系
+## 5. EX 灵气与 EX 特性
+
+### 5.1 获取与合成
+
+EX 灵气不是第四种互斥符卡类型，而是可以附加在类型之上的独立特性。默认通过隐藏成就发放：
+
+```text
+收集全部默认注册的预设符卡（排除 DynamicSpellItem 和 CustomSpellItem）
+→ 完成隐藏成就
+→ 奖励 1 个 EX 灵气
+```
+
+“默认注册”以服务端 `SpellRegistry` 的 builtin/default 集合为准，不把运行时 KJS、市场、玩家
+复刻或 `DynamicSpellItem`/`CustomSpellItem` 加入收集要求。默认 advancement 和奖励 loot table
+提供稳定 ID；KJS 可以修改条件、数量或增加其他来源。
+
+EX 灵气作为一次性材料参与类型转换：
+
+```text
+Tier N 未认证符卡基底 + EX 灵气
+→ Tier N、未认证、带 ex_spell 特性的符卡基底
+```
+
+转换不改变 Tier、预算或节点内容，也不能绕过认证。已认证成品不能通过 NBT 或配方直接追加
+EX 特性；必须先回到未认证草稿并重新认证。EX 灵气默认允许交易，成就只负责提供默认获取
+来源，服务器可通过 KJS 增加或限制来源。
+
+### 5.2 实战语义
+
+带 `ex_spell` 特性的符卡只免疫**玩家符卡弹幕对该符卡自身符卡血量的伤害**。它不保护玩家
+本体 LIFE，不提供全局无敌，也不免疫近战、环境、原版攻击或其他非符卡伤害。免疫判断必须
+使用服务端权威的伤害来源分类，不能从 projectile owner 或客户端标记推断。
+
+EX 特性与 `last_spell`、`timeout_spell`、`normal` 的组合是否全部开放由 KJS 能力策略决定；
+`non_spell + ex_spell` 默认禁止，因为非符没有符卡血量语义。EX 特性不改变认证 NBNH 规则，
+也不要求把 NBNH 判定从认证战搬到所有普通对战中。
+
+### 5.3 成就稳定性
+
+隐藏成就的完成进度由原版 advancement 持久化。未来新增默认预设符卡时，新世界会自动获得
+扩展后的收集条件；已经完成成就的玩家不因注册表扩展而撤销进度。交易获得的 EX 灵气可以正常
+使用，不要求使用者本人重新完成收集成就。
+
+## 6. 复刻与类型的关系
 
 复刻的目标是最大化节点和行为还原度，而不是生成一个“简化版”弹幕。达到 100% 时，服务端
 应尽可能复制来源符卡的 phases、actions、hooks、变量和生命计划，使用深复制/Codec 路径，
@@ -150,13 +193,14 @@ normal | last_spell | timeout_spell | non_spell
 4. 复制失败（来源快照不可用、节点不可解码等）不得静默生成空卡。底片应保留为完成状态并给
    出服务端可诊断的失败原因，或在绑定阶段拒绝不可恢复的来源。
 
-## 6. 服务端状态与测试契约
+## 7. 服务端状态与测试契约
 
 类型相关状态必须由服务端持有：
 
 - 终符：本场已使用标记、独立冷却、结束原因、资源归零结果；
 - 时符：认证是否采用 timeout 完成、最终 B/XP 费用、按击破结束的结算；
 - 非符：当前唯一运行时和开关状态；
+- EX：是否持有 `ex_spell` 特性、来源/消耗记录、仅对符卡血量生效的伤害分类；
 - 复刻：来源绑定、进度、来源类型排除和完成转换结果。
 
 建议至少覆盖以下回归用例：
@@ -179,6 +223,12 @@ NON_SPELL_CAST_IS_NOT_CERTIFICATION_BOMB_USE
 NON_SPELL_PROJECTILES_DO_NOT_CREATE_CERTIFICATION_NO_HIT_CONTACT
 CERTIFICATION_ENEMY_HIT_STILL_FAILS_WHILE_NON_SPELL_IS_ACTIVE
 NON_SPELL_IS_NOT_REPLICABLE
+EX_AURA_ADVANCEMENT_COUNTS_BUILTIN_PRESETS_ONLY
+EX_AURA_EXCLUDES_DYNAMIC_AND_CUSTOM_SPELLS
+EX_AURA_CONVERSION_PRESERVES_TIER_AND_REQUIRES_CERTIFICATION
+EX_SPELL_IGNORES_PLAYER_SPELL_DAMAGE_TO_SPELL_HEALTH
+EX_SPELL_DOES_NOT_PROTECT_PLAYER_LIFE
+EX_SPELL_DOES_NOT_IGNORE_NON_SPELL_CARD_DAMAGE_RULES
 REPLICA_PRESERVES_MAXIMUM_NODE_FIDELITY
 REPLICA_REMAINS_TIER1_UNCERTIFIED_DRAFT
 REPLICA_SPECIAL_TYPE_REQUIRES_EXPLICIT_GRANT
@@ -188,11 +238,12 @@ REPLICA_SPECIAL_TYPE_REQUIRES_EXPLICIT_GRANT
 复刻完成后的草稿转换都必须在服务端日志和客户端 HUD 中分别核对。客户端只能显示服务端投影，
 不能本地决定类型、费用、冷却或 `beaten` 状态。
 
-## 7. 后续实现顺序
+## 8. 后续实现顺序
 
 1. 增加 `SpellCardType` 与 Codec/定义 hash 接线，完成旧 JSON 兼容。
 2. 将类型规则接入认证报价、证书和正式施放；先落地终符资源/冷却和时符 timeout 结算。
 3. 增加非符 analyzer profile、节点白名单和单运行时约束；待用户提供示范 JSON 后确定具体列表。
-4. 将类型权限接入 Editor/KJS，普通玩家只读，OP/脚本可设置。
-5. 按本文件更新复刻完成转换，保留最大节点还原度并明确排除非符。
-6. 补齐服务端单测、存档/重连测试和实机验收，再决定版本号与拆分提交。
+4. 增加 EX 灵气物品、默认收集成就/奖励和 EX 伤害分类；接入类型转换配方。
+5. 将类型权限接入 Editor/KJS，普通玩家只读，OP/脚本可设置。
+6. 按本文件更新复刻完成转换，保留最大节点还原度并明确排除非符。
+7. 补齐服务端单测、存档/重连测试和实机验收，再决定版本号与拆分提交。

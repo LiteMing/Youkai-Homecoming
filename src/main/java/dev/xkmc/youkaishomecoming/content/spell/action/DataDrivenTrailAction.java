@@ -111,7 +111,11 @@ public class DataDrivenTrailAction extends TrailAction {
 			}
 		}
 
-		var trailHolder = new TrailCardHolder(holder, pos, dir, hitType, hitEntity);
+		// A callback can be invoked through the hit-context-only overload when the
+		// projectile owner is an ordinary entity (or unavailable in a test). Keep
+		// the authoritative hit context usable without manufacturing a holder that
+		// would fail on self()/target access.
+		CardHolder trailHolder = holder == null ? null : new TrailCardHolder(holder, pos, dir, hitType, hitEntity);
 		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT, hitContext);
 		// Capture which variables the callback actually writes (setVariable calls).
 		Set<String> written = variableSnapshot != null ? runtime.beginTrackWrites() : null;

@@ -26,6 +26,8 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue powerInfoYAnchor;
 		public final ForgeConfigSpec.IntValue powerInfoYOffset;
 		public final ForgeConfigSpec.BooleanValue spellCardTotemAnimation;
+		public final ForgeConfigSpec.BooleanValue feedbackCameraShakeEnabled;
+		public final ForgeConfigSpec.DoubleValue feedbackCameraShakeScale;
 
 		// Exposure compat: photo overlay display
 		public final ForgeConfigSpec.DoubleValue photoOverlayAlpha;
@@ -82,6 +84,12 @@ public class YHModConfig {
 			spellCardTotemAnimation = builder.comment("Play totem of undying activation animation when casting a spell card.")
 					.translation("config.youkaishomecoming.client.spellCardTotemAnimation")
 					.define("spellCardTotemAnimation", true);
+			feedbackCameraShakeEnabled = builder.comment("Enable client-side spell camera shake feedback.")
+					.translation("config.youkaishomecoming.client.feedbackCameraShakeEnabled")
+					.define("feedbackCameraShakeEnabled", true);
+			feedbackCameraShakeScale = builder.comment("Client multiplier for camera shake feedback (0 disables it).")
+					.translation("config.youkaishomecoming.client.feedbackCameraShakeScale")
+					.defineInRange("feedbackCameraShakeScale", 1.0, 0.0, 1.0);
 
 			builder.translation("config.youkaishomecoming.client.exposure_compat").push("exposure_compat");
 			{
@@ -110,6 +118,11 @@ public class YHModConfig {
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellMarketAutoSyncTags;
 		public final ForgeConfigSpec.IntValue spellMarketPollMinutes;
 		public final ForgeConfigSpec.IntValue spellMarketMaxSpellsPerTag;
+		public final ForgeConfigSpec.DoubleValue feedbackMaxCameraIntensity;
+		public final ForgeConfigSpec.IntValue feedbackMaxCameraDurationTicks;
+		public final ForgeConfigSpec.DoubleValue feedbackMaxRadius;
+		public final ForgeConfigSpec.IntValue feedbackMaxCuesPerContext;
+		public final ForgeConfigSpec.IntValue feedbackMaxCuesPerObserverTick;
 
 		// Certification analysis hard limits (SpellAnalyzer CERTIFICATION profile, Phase 0)
 		public final ForgeConfigSpec.DoubleValue certificationBudgetMultiplier;
@@ -293,6 +306,25 @@ public class YHModConfig {
 				spellMarketMaxSpellsPerTag = builder.comment("Maximum number of managed spells imported for one tag")
 						.translation("config.youkaishomecoming.common.spell_market.max_spells_per_tag")
 						.defineInRange("max_spells_per_tag", 64, 1, 256);
+			}
+			builder.pop();
+			builder.translation("config.youkaishomecoming.common.feedback").push("feedback");
+			{
+				feedbackMaxCameraIntensity = builder.comment("Server cap for one camera shake cue intensity")
+						.translation("config.youkaishomecoming.common.feedback.maxCameraIntensity")
+						.defineInRange("maxCameraIntensity", 0.5, 0.0, 1.0);
+				feedbackMaxCameraDurationTicks = builder.comment("Server cap for one camera shake cue duration")
+						.translation("config.youkaishomecoming.common.feedback.maxCameraDurationTicks")
+						.defineInRange("maxCameraDurationTicks", 40, 1, 100);
+				feedbackMaxRadius = builder.comment("Server cap for feedback cue radius in blocks")
+						.translation("config.youkaishomecoming.common.feedback.maxRadius")
+						.defineInRange("maxRadius", 32.0, 1.0, 128.0);
+				feedbackMaxCuesPerContext = builder.comment("Maximum feedback cues emitted by one action context")
+						.translation("config.youkaishomecoming.common.feedback.maxCuesPerContext")
+						.defineInRange("maxCuesPerContext", 32, 1, 256);
+				feedbackMaxCuesPerObserverTick = builder.comment("Maximum merged feedback cues sent to one observer per server tick")
+						.translation("config.youkaishomecoming.common.feedback.maxCuesPerObserverTick")
+						.defineInRange("maxCuesPerObserverTick", 64, 1, 256);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.certification").push("certification");

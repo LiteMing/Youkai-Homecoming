@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.CombatProgress;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
+import dev.xkmc.youkaishomecoming.content.spell.client.CameraShakeManager;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.Minecraft;
@@ -34,6 +35,7 @@ public class ClientEventHandlers {
 		float lv = drunkLevel();
 		tilt = Mth.lerp(0.03f, tilt, lv);
 		if (event.phase == TickEvent.Phase.END) {
+			CameraShakeManager.tick();
 			syncBeatenPose();
 			if (ModList.get().isLoaded("exposure")) {
 				dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();

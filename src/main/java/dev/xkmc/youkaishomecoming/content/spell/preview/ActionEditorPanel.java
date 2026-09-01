@@ -306,6 +306,8 @@ public class ActionEditorPanel {
 			buildEraseEnemyDanmakuRows(ee);
 		} else if (action instanceof SpellActions.PlaySoundAction ps) {
 			buildPlaySoundRows(ps);
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction csa) {
+			buildCameraShakeRows(csa);
 		} else if (action instanceof RunCommandAction rc) {
 			buildRunCommandRows(rc);
 		} else if (action instanceof ShowSpellTitleAction sta) {
@@ -390,6 +392,7 @@ public class ActionEditorPanel {
 					"erase_enemy_danmaku", "Erase Enemy Danmaku"),
 			group("Presentation",
 					"play_sound", "Play Sound",
+					"camera_shake", "Camera Shake",
 					"show_spell_title", "Show Spell Title",
 					"set_spell_circle", "Custom Magic Circle",
 					"ysm_render", "YSM Render"),
@@ -485,8 +488,9 @@ public class ActionEditorPanel {
 			case "add_variable" -> new SpellActions.AddVariable("var", 1);
 			case "clear_screen" -> new SpellActions.ClearScreen();
 			case "erase_enemy_danmaku" -> new EraseEnemyDanmakuAction(NumberProvider.constant(4), false);
-			case "play_sound" -> new SpellActions.PlaySoundAction(
+		case "play_sound" -> new SpellActions.PlaySoundAction(
 					new ResourceLocation("minecraft", "entity.experience_orb.pickup"), 1f, 1f);
+		case "camera_shake" -> new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction();
 			case "run_command" -> new RunCommandAction(RunCommandAction.Mode.AS_CASTER,
 					RunCommandAction.HitContext.DEFAULT, "yhspell stop @s 32");
 			case "show_spell_title" -> new ShowSpellTitleAction("", "", 100, 64.0);
@@ -1509,14 +1513,73 @@ public class ActionEditorPanel {
 		addStringRow("Sound", ps.soundId().toString(), v -> {
 			ResourceLocation id = ResourceLocation.tryParse(v);
 			if (id != null) notifySimple(old -> new SpellActions.PlaySoundAction(id,
-					((SpellActions.PlaySoundAction) old).volume(), ((SpellActions.PlaySoundAction) old).pitch()));
+					((SpellActions.PlaySoundAction) old).volume(), ((SpellActions.PlaySoundAction) old).pitch(),
+					((SpellActions.PlaySoundAction) old).source(), ((SpellActions.PlaySoundAction) old).origin(),
+					((SpellActions.PlaySoundAction) old).radius(), ((SpellActions.PlaySoundAction) old).attenuation()));
 		});
 		addFloatRow("Volume", ps.volume(), v ->
 				notifySimple(old -> new SpellActions.PlaySoundAction(
-						((SpellActions.PlaySoundAction) old).soundId(), v, ((SpellActions.PlaySoundAction) old).pitch())));
+						((SpellActions.PlaySoundAction) old).soundId(), v, ((SpellActions.PlaySoundAction) old).pitch(),
+						((SpellActions.PlaySoundAction) old).source(), ((SpellActions.PlaySoundAction) old).origin(),
+						((SpellActions.PlaySoundAction) old).radius(), ((SpellActions.PlaySoundAction) old).attenuation())));
 		addFloatRow("Pitch", ps.pitch(), v ->
 				notifySimple(old -> new SpellActions.PlaySoundAction(
-						((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(), v)));
+						((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(), v,
+						((SpellActions.PlaySoundAction) old).source(), ((SpellActions.PlaySoundAction) old).origin(),
+						((SpellActions.PlaySoundAction) old).radius(), ((SpellActions.PlaySoundAction) old).attenuation())));
+		addEnumRow("Source", net.minecraft.sounds.SoundSource.values(), ps.source(), v ->
+				notifySimple(old -> new SpellActions.PlaySoundAction(((SpellActions.PlaySoundAction) old).soundId(),
+						((SpellActions.PlaySoundAction) old).volume(), ((SpellActions.PlaySoundAction) old).pitch(), v,
+						((SpellActions.PlaySoundAction) old).origin(), ((SpellActions.PlaySoundAction) old).radius(),
+						((SpellActions.PlaySoundAction) old).attenuation())));
+		addEnumRow("Origin", dev.xkmc.youkaishomecoming.content.spell.feedback.CueOrigin.values(), ps.origin(), v ->
+				notifySimple(old -> new SpellActions.PlaySoundAction(((SpellActions.PlaySoundAction) old).soundId(),
+						((SpellActions.PlaySoundAction) old).volume(), ((SpellActions.PlaySoundAction) old).pitch(),
+						((SpellActions.PlaySoundAction) old).source(), v, ((SpellActions.PlaySoundAction) old).radius(),
+						((SpellActions.PlaySoundAction) old).attenuation())));
+		addDoubleRow("Radius", ps.radius(), v -> notifySimple(old -> new SpellActions.PlaySoundAction(
+				((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(),
+				((SpellActions.PlaySoundAction) old).pitch(), ((SpellActions.PlaySoundAction) old).source(),
+				((SpellActions.PlaySoundAction) old).origin(), v, ((SpellActions.PlaySoundAction) old).attenuation())));
+		addBoolRow("Attenuation", ps.attenuation(), v -> notifySimple(old -> new SpellActions.PlaySoundAction(
+				((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(),
+				((SpellActions.PlaySoundAction) old).pitch(), ((SpellActions.PlaySoundAction) old).source(),
+				((SpellActions.PlaySoundAction) old).origin(), ((SpellActions.PlaySoundAction) old).radius(), v)));
+	}
+
+	private void buildCameraShakeRows(dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction action) {
+		addEnumRow("Origin", dev.xkmc.youkaishomecoming.content.spell.feedback.CueOrigin.values(), action.origin(), v ->
+				notifySimple(old -> new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(v,
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).intensity(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).duration(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).frequency(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).radius(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).falloff(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).channel()), true));
+		addNumberRow("Intensity", action.intensity(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), v, o.duration(), o.frequency(), o.radius(), o.falloff(), o.channel());
+		}));
+		addNumberRow("Duration", action.duration(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), v, o.frequency(), o.radius(), o.falloff(), o.channel());
+		}));
+		addNumberRow("Frequency", action.frequency(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), o.duration(), v, o.radius(), o.falloff(), o.channel());
+		}));
+		addNumberRow("Radius", action.radius(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), o.duration(), o.frequency(), v, o.falloff(), o.channel());
+		}));
+		addEnumRow("Falloff", dev.xkmc.youkaishomecoming.content.spell.feedback.CueFalloff.values(), action.falloff(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), o.duration(), o.frequency(), o.radius(), v, o.channel());
+		}, true));
+		addStringRow("Channel", action.channel(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), o.duration(), o.frequency(), o.radius(), o.falloff(), v);
+		}));
 	}
 
 	private void buildRunCommandRows(RunCommandAction rc) {

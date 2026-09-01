@@ -206,6 +206,7 @@ public final class SpellEditorLocalization {
 		if (text.equals("clear_screen")) return "清屏";
 		if (text.startsWith("erase enemy r=")) return "擦除敌弹 r=" + text.substring("erase enemy r=".length());
 		if (text.equals("play_sound")) return "播放声音";
+		if (text.equals("camera_shake")) return "镜头抖动";
 		if (text.startsWith("show title ")) return text.replace("show title", "显示符卡标题");
 		if (text.startsWith("spell circle ")) return text.replace("spell circle", "魔法阵")
 				.replace(" size=", " 大小=");
@@ -507,6 +508,7 @@ public final class SpellEditorLocalization {
 			Map.entry("Read: Inward", "朝向: 向内"),
 			Map.entry("Read: Outward", "朝向: 向外"),
 			Map.entry("No strokes", "无笔画"),
+			Map.entry("Camera Shake", "镜头抖动"),
 			Map.entry("No items", "无物品"),
 			Map.entry("No texts", "无文字"),
 			Map.entry("No layers", "无层"),

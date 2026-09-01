@@ -123,7 +123,8 @@ public class YoukaisHomecoming {
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellRewardToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellSnapshotRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellSnapshotToClient.class, NetworkDirection.PLAY_TO_CLIENT),
-			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.client.SpellCardActivationToClient.class, NetworkDirection.PLAY_TO_CLIENT));
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.client.SpellCardActivationToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.feedback.SpellFeedbackPacket.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",
 			SpellCircleConfig.class);

@@ -48,7 +48,9 @@ public record SpellAnalysis(
 		double clientRenderWork,
 		double gameplayPower,
 		Set<SpellCapability> requiredCapabilities,
-		List<SpellDiagnostic> diagnostics
+		List<SpellDiagnostic> diagnostics,
+		long totalClientCues,
+		int maxClientCuesPerTick
 ) {
 
 	public boolean hasErrors() {
@@ -71,6 +73,8 @@ public record SpellAnalysis(
 		double gameplayPower = 0;
 		EnumSet<SpellCapability> capabilities = EnumSet.noneOf(SpellCapability.class);
 		List<SpellDiagnostic> diagnostics = new ArrayList<>();
+		long clientCues = 0;
+		int maxClientCues = 0;
 		for (SpellAnalysis analysis : analyses) {
 			spawns = saturatedAdd(spawns, analysis.totalSpawnUpperBound());
 			projectileTicks = saturatedAdd(projectileTicks, analysis.projectileTicks());
@@ -83,10 +87,12 @@ public record SpellAnalysis(
 			gameplayPower += analysis.gameplayPower();
 			capabilities.addAll(analysis.requiredCapabilities());
 			diagnostics.addAll(analysis.diagnostics());
+			clientCues = saturatedAdd(clientCues, analysis.totalClientCues());
+			maxClientCues = Math.max(maxClientCues, analysis.maxClientCuesPerTick());
 		}
 		return new SpellAnalysis(spawns, projectileTicks, peakAlive, maxSpawn, hooks,
 				expressionOps, serverWork, renderWork, gameplayPower,
-				Set.copyOf(capabilities), List.copyOf(diagnostics));
+				Set.copyOf(capabilities), List.copyOf(diagnostics), clientCues, maxClientCues);
 	}
 
 	private static long saturatedAdd(long a, long b) {

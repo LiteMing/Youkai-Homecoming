@@ -4,6 +4,10 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
 import dev.xkmc.youkaishomecoming.content.spell.item.PlayerHolder;
 import dev.xkmc.youkaishomecoming.content.spell.item.RuntimeItemSpell;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.NoopFeedbackSink;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.PreviewFeedbackSink;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.ServerFeedbackSink;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.SpellFeedbackSink;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
@@ -21,6 +25,7 @@ public class SpellContext {
 	private final DifficultyModifiers difficulty;
 	@Nullable
 	private final SpellHitContext hitContext;
+	private final SpellFeedbackSink feedback;
 
 	public SpellContext(CardHolder holder, SpellDefinition definition,
 						SpellRuntime runtime, DifficultyModifiers difficulty) {
@@ -36,6 +41,25 @@ public class SpellContext {
 		this.runtime = runtime;
 		this.difficulty = difficulty;
 		this.hitContext = hitContext;
+		this.feedback = holder == null
+				? NoopFeedbackSink.INSTANCE
+				: holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview
+				? preview.feedbackSink()
+				: holder.self().level() instanceof net.minecraft.server.level.ServerLevel
+				? new ServerFeedbackSink(holder, hitContext)
+				: NoopFeedbackSink.INSTANCE;
+	}
+
+	public SpellContext(CardHolder holder, SpellDefinition definition,
+			SpellRuntime runtime, DifficultyModifiers difficulty,
+			@Nullable SpellHitContext hitContext, SpellFeedbackSink feedback) {
+		this.holder = holder;
+		this.host = holder instanceof SpellRuntimeHost spellHost ? spellHost : null;
+		this.definition = definition;
+		this.runtime = runtime;
+		this.difficulty = difficulty;
+		this.hitContext = hitContext;
+		this.feedback = feedback == null ? NoopFeedbackSink.INSTANCE : feedback;
 	}
 
 	public java.util.Optional<SpellHitContext> hitContext() {
@@ -67,6 +91,10 @@ public class SpellContext {
 
 	public DifficultyModifiers difficulty() {
 		return difficulty;
+	}
+
+	public SpellFeedbackSink feedback() {
+		return feedback;
 	}
 
 	public LivingEntity self() {

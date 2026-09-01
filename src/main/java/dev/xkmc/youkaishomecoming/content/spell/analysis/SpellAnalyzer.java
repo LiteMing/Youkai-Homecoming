@@ -108,6 +108,8 @@ public final class SpellAnalyzer {
 	private long certOneShotProjectileTicks;
 	private long lifetimeUpperMax;
 	private long expressionOps;
+	private long totalClientCues;
+	private int maxClientCuesPerTick;
 	private boolean inOneShotGroup;
 	private long burstAccum;
 	private int hookDepth;
@@ -577,6 +579,7 @@ public final class SpellAnalyzer {
 		if (actions > limits.maxActions()) {
 			throw new SpellAnalysisException("Spell contains too many actions: " + actions);
 		}
+		recordClientCue(action, projection, mult);
 		boolean handled = true;
 		if (action instanceof FireDanmakuAction a) {
 			handleFire(a, projection, mult);
@@ -669,6 +672,9 @@ public final class SpellAnalyzer {
 			addCap(SpellCapability.SET_SPELL_CIRCLE);
 		} else if (action instanceof ShowSpellTitleAction) {
 			addCap(SpellCapability.SHOW_SPELL_TITLE);
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) {
+			// Camera shake is a presentation cue; server-side sink still enforces runtime limits.
+			handled = true;
 		} else if (action instanceof YsmRenderAction) {
 			addCap(SpellCapability.YSM_RENDER);
 		} else if (action instanceof LegacyTickerAction) {
@@ -781,6 +787,17 @@ public final class SpellAnalyzer {
 				a.onHitEntity(), a.onHitBlock(),
 				a.hitBehaviorEntity(), a.hitBehaviorBlock(),
 				contrib, lifetimeUpper, projection, mult);
+	}
+
+	private void recordClientCue(SpellAction action, TickProjection projection, long mult) {
+		if (!(action instanceof SpellActions.PlaySoundAction)
+				&& !(action instanceof dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction)) return;
+		long perExecution = Math.max(0, mult);
+		long total = projection.recurring()
+				? satMul(perExecution, projection.executions()) : perExecution;
+		totalClientCues = satAdd(totalClientCues, total);
+		maxClientCuesPerTick = (int) Math.min(Integer.MAX_VALUE,
+				Math.max(maxClientCuesPerTick, perExecution));
 	}
 
 	private void recordOrdinaryVariableWrite(SpellActions.SetVariable set) {
@@ -1252,7 +1269,7 @@ public final class SpellAnalyzer {
 				hookExecutionUpperBound, expressionOps,
 				(double) projectileTicks, (double) peakAliveUpperBound,
 				(double) totalSpawnUpperBound + hookExecutionUpperBound,
-				Set.copyOf(capabilities), List.copyOf(diagnostics));
+				Set.copyOf(capabilities), List.copyOf(diagnostics), totalClientCues, maxClientCuesPerTick);
 	}
 
 	private void addCap(SpellCapability cap) {

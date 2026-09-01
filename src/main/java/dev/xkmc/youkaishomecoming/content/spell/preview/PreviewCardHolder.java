@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.PreviewFeedbackSink;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
@@ -42,6 +43,7 @@ import java.util.function.BiConsumer;
  * Entities are stored in a local pool and never injected into the real world.
  */
 public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
+	private final PreviewFeedbackSink feedbackSink = new PreviewFeedbackSink();
 
 	private final Level level;
 	private final FakeCasterEntity fakeCaster;
@@ -111,6 +113,10 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		this.fakeTarget = new ArmorStand(EntityType.ARMOR_STAND, level);
 		this.fakeTarget.setPos(0, 0, -10);
 		this.fakeTarget.setInvisible(true);
+	}
+
+	public PreviewFeedbackSink feedbackSink() {
+		return feedbackSink;
 	}
 
 	@Override

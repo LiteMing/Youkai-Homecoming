@@ -4,6 +4,8 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.CueOrigin;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.SoundCue;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import net.minecraft.resources.ResourceLocation;
@@ -31,6 +33,7 @@ public class SpellActions {
 		register("force_spell", ForceSpell.CODEC, ForceSpell.class);
 		register("fire_spell", FireSpell.CODEC, FireSpell.class);
 		register("play_sound", PlaySoundAction.CODEC, PlaySoundAction.class);
+		register("camera_shake", CameraShakeAction.CODEC, CameraShakeAction.class);
 		register("run_command", RunCommandAction.CODEC, RunCommandAction.class);
 		register("show_spell_title", ShowSpellTitleAction.CODEC, ShowSpellTitleAction.class);
 		register("set_spell_circle", SetSpellCircleAction.CODEC, SetSpellCircleAction.class);
@@ -186,21 +189,48 @@ public class SpellActions {
 		}
 	}
 
-	public record PlaySoundAction(ResourceLocation soundId, float volume, float pitch) implements SpellAction {
+	public record PlaySoundAction(ResourceLocation soundId, float volume, float pitch,
+			SoundSource source, CueOrigin origin, double radius, boolean attenuation) implements SpellAction {
 		public static final Codec<PlaySoundAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 				ResourceLocation.CODEC.fieldOf("sound").forGetter(PlaySoundAction::soundId),
 				Codec.FLOAT.optionalFieldOf("volume", 1.0f).forGetter(PlaySoundAction::volume),
-				Codec.FLOAT.optionalFieldOf("pitch", 1.0f).forGetter(PlaySoundAction::pitch)
+				Codec.FLOAT.optionalFieldOf("pitch", 1.0f).forGetter(PlaySoundAction::pitch),
+				Codec.STRING.optionalFieldOf("source", "hostile").xmap(SpellActions::soundSource,
+						SoundSource::getName).forGetter(PlaySoundAction::source),
+				Codec.STRING.optionalFieldOf("origin", "caster").xmap(SpellActions::cueOrigin,
+						value -> value.name().toLowerCase(java.util.Locale.ROOT)).forGetter(PlaySoundAction::origin),
+				Codec.DOUBLE.optionalFieldOf("radius", 0d).forGetter(PlaySoundAction::radius),
+				Codec.BOOL.optionalFieldOf("attenuation", true).forGetter(PlaySoundAction::attenuation)
 		).apply(i, PlaySoundAction::new));
+
+		public PlaySoundAction(ResourceLocation soundId, float volume, float pitch) {
+			this(soundId, volume, pitch, SoundSource.HOSTILE, CueOrigin.CASTER, 0, true);
+		}
 
 		@Override
 		public void execute(SpellContext ctx) {
-			SoundEvent sound = ForgeRegistries.SOUND_EVENTS.getValue(soundId);
-			if (sound != null) {
-				var self = ctx.self();
-				self.level().playSound(null, self.getX(), self.getY(), self.getZ(),
-						sound, SoundSource.HOSTILE, volume, pitch);
+			if (ForgeRegistries.SOUND_EVENTS.containsKey(soundId)) {
+				ctx.feedback().playSound(new SoundCue(soundId, source, origin, null,
+						volume, pitch, radius, attenuation));
 			}
+		}
+	}
+
+	private static SoundSource soundSource(String value) {
+		if (value == null) return SoundSource.HOSTILE;
+		try {
+			return SoundSource.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+		} catch (IllegalArgumentException ignored) {
+			return SoundSource.HOSTILE;
+		}
+	}
+
+	private static CueOrigin cueOrigin(String value) {
+		if (value == null) return CueOrigin.CASTER;
+		try {
+			return CueOrigin.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+		} catch (IllegalArgumentException ignored) {
+			return CueOrigin.CASTER;
 		}
 	}
 

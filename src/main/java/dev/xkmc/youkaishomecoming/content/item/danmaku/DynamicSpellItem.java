@@ -12,6 +12,8 @@ import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManag
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellValidator;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
@@ -431,10 +433,21 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		}
 		if (nonSpell && def != null) {
 			try {
-				dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellValidator.validate(def, getRank(stack));
-			} catch (RuntimeException rejected) {
+				NonSpellValidator.validate(def, getRank(stack));
+			} catch (NonSpellValidator.PresentationNodeException rejected) {
 				if (player instanceof ServerPlayer sp) {
 					sp.displayClientMessage(YHLangData.NON_SPELL_INVALID.get(), false);
+				}
+				return false;
+			} catch (SpellAnalysisException rejected) {
+				if (player instanceof ServerPlayer sp) {
+					sp.displayClientMessage(YHLangData.NON_SPELL_REJECTED.get(rejected.getMessage()), false);
+				}
+				return false;
+			} catch (RuntimeException unexpected) {
+				YoukaisHomecoming.LOGGER.warn("Unexpected non-spell validation failure for {}", def.id, unexpected);
+				if (player instanceof ServerPlayer sp) {
+					sp.displayClientMessage(YHLangData.NON_SPELL_REJECTED_UNKNOWN.get(), false);
 				}
 				return false;
 			}

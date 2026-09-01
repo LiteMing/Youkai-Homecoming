@@ -100,6 +100,17 @@ public final class SpellAnalyzerSelfCheck {
 			}
 		}
 
+		private boolean rejectsAsPresentationNode(ThrowingRunnable r) {
+			try {
+				r.run();
+				return false;
+			} catch (NonSpellValidator.PresentationNodeException e) {
+				return true;
+			} catch (Exception e) {
+				return false;
+			}
+		}
+
 		private String rejectMessage(ThrowingRunnable r) {
 			try {
 				r.run();
@@ -174,7 +185,8 @@ public final class SpellAnalyzerSelfCheck {
 				+ "  \"trail_interval\": 5, \"on_trail\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
 		private static final String ON_HIT = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 24, \"speed\": 0.5, \"lifetime\": 60,\n"
 				+ "  \"hit_behavior_entity\": \"continue\", \"on_hit_entity\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
-		private static final String NON_SPELL_SAFE = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60, \"hit_behavior_block\": \"discard\"}");
+		private static final String NON_SPELL_SAFE_ACTION = "{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60, \"hit_behavior_block\": \"discard\"}";
+		private static final String NON_SPELL_SAFE = spell(NON_SPELL_SAFE_ACTION);
 		private static final String NON_SPELL_CONTINUE = NON_SPELL_SAFE.replace("\"hit_behavior_block\": \"discard\"", "\"hit_behavior_block\": \"continue\"");
 		private static final String NON_SPELL_HOOK = NON_SPELL_SAFE.replace("\"hit_behavior_block\": \"discard\"}", "\"hit_behavior_block\": \"discard\", \"on_hit_entity\": [{\"type\": \"set_variable\", \"key\": \"x\", \"value\": 1}]}");
 		private static final String NON_SPELL_FAST = NON_SPELL_SAFE.replace("\"speed\": 0.5", "\"speed\": 200");
@@ -182,6 +194,12 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String NON_SPELL_UNBOUNDED_ACCELERATION = NON_SPELL_SAFE.replace("\"speed\": 0.5", "\"speed\": 0").replace("\"lifetime\": 60", "\"lifetime\": 60, \"mover\": {\"type\": \"acceleration\", \"y\": -0.05}");
 		private static final String NON_SPELL_BOUNDED_ACCELERATION = NON_SPELL_UNBOUNDED_ACCELERATION.replace("\"y\": -0.05", "\"y\": -0.05, \"terminal_vy\": -1.0");
 		private static final String NON_SPELL_LASER = spell("{\"type\": \"fire_laser\", \"laser\": \"laser\", \"color\": \"red\", \"lifetime\": 20, \"length\": 8}");
+		private static final String NON_SPELL_PRESENTATION = spell("{\"type\": \"show_spell_title\", \"name\": \"Not allowed\"}");
+		private static final String NON_SPELL_TIER1_OVERLAP = spell(
+				"{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 2}, \"if_true\": [" + NON_SPELL_SAFE_ACTION + "]},"
+						+ "{\"type\": \"conditional\", \"condition\": {\"type\": \"compare\", \"left\": {\"type\": \"caster_power\"}, \"op\": \">\", \"right\": 2}, \"if_true\": ["
+						+ "{\"type\": \"spawn_shooter\", \"count\": 1, \"speed\": 0, \"lifetime\": 1, \"body\": ["
+						+ "{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 2}, \"if_true\": [" + NON_SPELL_SAFE_ACTION + "]}]}]}");
 		private static final String PERIODIC = spell("{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 200}, \"if_true\": [" + fire(1) + "]}");
 		private static final String EVENT_DRIVEN = spell(
 				"{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 200}, \"if_true\": ["
@@ -813,6 +831,12 @@ public final class SpellAnalyzerSelfCheck {
 					NonSpellValidator.validate(parse(NON_SPELL_BOUNDED_ACCELERATION), tier1)));
 			check("non-spell rejects laser nodes", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_LASER), tier1)));
+			check("non-spell presentation nodes use the dedicated rejection type",
+					rejectsAsPresentationNode(() -> NonSpellValidator.validate(parse(NON_SPELL_PRESENTATION), tier1)));
+			String overlap = rejectMessage(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_TIER1_OVERLAP), tier1));
+			check("tier-1 overlapping fire and shooter reports the spawn budget",
+					overlap != null && overlap.contains("maxSpawnPerTick") && !overlap.contains("presentation"), overlap);
 
 			SpellDefinition source = parse(FIRE24);
 			source.itemForm = source.itemForm

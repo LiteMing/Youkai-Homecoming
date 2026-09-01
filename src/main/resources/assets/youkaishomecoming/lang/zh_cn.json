@@ -793,6 +793,8 @@
   "youkaishomecoming.message.stg_exit": "弹幕战模式已关闭",
   "youkaishomecoming.message.stg_need_spell": "需要持有可用符卡才能进入弹幕模式",
   "youkaishomecoming.tooltip.non_spell_invalid": "非符不能使用符卡生命值或展示节点",
+  "youkaishomecoming.tooltip.non_spell_rejected": "非符无法启用：%s",
+  "youkaishomecoming.tooltip.non_spell_rejected_unknown": "非符校验发生异常，请查看服务端日志",
   "youkaishomecoming.message.spell_broken_unavailable": "这张符卡已被击破，本场弹幕战中无法再次使用",
   "youkaishomecoming.cert.screen.title": "符卡认证",
   "youkaishomecoming.cert.screen.health_source": "血量 / 超时：读取自 set_spell_health",

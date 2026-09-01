@@ -143,6 +143,8 @@ public enum YHLangData {
 	SPELL_OP_QUOTA("tooltip.spell_op_quota", "Experimental nodes available: %s (teleport / erase enemy danmaku / clear screen / on-damage / danmaku hooks)", 1, ChatFormatting.LIGHT_PURPLE),
 	SPELL_UNFINISHED_NO_COMBAT("tooltip.spell_unfinished_no_combat", "Unfinished spell card: cannot declare danmaku combat mode", 0, ChatFormatting.RED),
 	NON_SPELL_INVALID("tooltip.non_spell_invalid", "Non-spells cannot use spell health or presentation nodes", 0, ChatFormatting.RED),
+	NON_SPELL_REJECTED("tooltip.non_spell_rejected", "Non-spell cannot be activated: %s", 1, ChatFormatting.RED),
+	NON_SPELL_REJECTED_UNKNOWN("tooltip.non_spell_rejected_unknown", "Non-spell validation failed unexpectedly; see the server log", 0, ChatFormatting.RED),
 	MARKET_SEARCH("spell_market.search", "Search...", 0, null),
 	MARKET_REFRESH("spell_market.refresh", "Refresh", 0, null),
 	MARKET_UPLOAD("spell_market.upload", "Upload", 0, null),

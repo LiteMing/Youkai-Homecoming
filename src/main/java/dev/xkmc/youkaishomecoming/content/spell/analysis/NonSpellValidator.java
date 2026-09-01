@@ -24,6 +24,13 @@ import java.util.Optional;
 public final class NonSpellValidator {
 	private NonSpellValidator() {}
 
+	/** Lets the cast boundary keep presentation-node feedback distinct from other rules. */
+	public static final class PresentationNodeException extends SpellAnalysisException {
+		private PresentationNodeException() {
+			super("Non-spells cannot use spell presentation or health nodes");
+		}
+	}
+
 	public static void validate(SpellDefinition definition, SpellCardRank rank) {
 		if (definition == null) throw new SpellAnalysisException("Non-spell definition is missing");
 		if (definition.itemForm.casterMoves()) {
@@ -60,7 +67,7 @@ public final class NonSpellValidator {
 		}
 		if (inner instanceof SetSpellHealthAction || inner instanceof SetSpellCircleAction
 				|| inner instanceof ShowSpellTitleAction) {
-			throw new SpellAnalysisException("Non-spells cannot use spell presentation or health nodes");
+			throw new PresentationNodeException();
 		}
 		if (inner instanceof FireDanmakuAction danmaku) {
 			if (has(danmaku.onHitEntity()) || has(danmaku.onHitBlock()) || has(danmaku.onExpiry())

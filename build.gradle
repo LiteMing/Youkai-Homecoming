@@ -267,8 +267,11 @@ dependencies {
     runtimeOnly fg.deobf("maven.modrinth:justenoughcharacters:${jec_version}")
     compileOnly fg.deobf("curse.maven:thirst-was-taken-679270:5568703")
 
-    // Exposure mod - optional compat for danmaku photography
-    implementation fg.deobf("curse.maven:exposure-871755:5545255")
+    // Exposure 1.9.21 for Minecraft 1.20.1 Forge. The compatibility layer
+    // targets its new Frame/CameraHolder API and ModifyFrameExtraDataEvent.
+    // Exposure remains an external optional mod; userdev supplies a patched
+    // runtime copy because the published Forge jar omits its mixin refmap.
+    compileOnly fg.deobf("maven.modrinth:exposure:${exposure_version}")
 
     //implementation fg.deobf("curse.maven:better-advancements-272515:6010300")
 
@@ -278,6 +281,11 @@ dependencies {
     implementation fg.deobf("curse.maven:composite-material-982540:6310307")
     implementation fg.deobf("curse.maven:framework-549225:6531428")
 }
+
+// Exposure 1.9.21's Forge artifact omits its mixin refmap. Keep the workaround
+// strictly in userdev output; generated third-party mixin files are excluded
+// from this mod's published jar.
+apply from: 'gradle/exposure-userdev.gradle'
 
 // Example for how to get properties into the manifest for reading at runtime.
 jar {

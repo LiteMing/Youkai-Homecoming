@@ -1578,17 +1578,14 @@ public class ActionEditorPanel {
 	}
 
 	private void buildShowSpellTitleRows(ShowSpellTitleAction sta) {
-		addStringRow("Name", sta.name(), v ->
-				notifySimple(old -> new ShowSpellTitleAction(v, ((ShowSpellTitleAction) old).description(),
-						((ShowSpellTitleAction) old).duration(), ((ShowSpellTitleAction) old).radius())));
 		addStringRow("Description", sta.description(), v ->
-				notifySimple(old -> new ShowSpellTitleAction(((ShowSpellTitleAction) old).name(), v,
+				notifySimple(old -> new ShowSpellTitleAction("", v,
 						((ShowSpellTitleAction) old).duration(), ((ShowSpellTitleAction) old).radius())));
 		addIntRow("Duration", sta.duration(), v ->
-				notifySimple(old -> new ShowSpellTitleAction(((ShowSpellTitleAction) old).name(),
+				notifySimple(old -> new ShowSpellTitleAction("",
 						((ShowSpellTitleAction) old).description(), v, ((ShowSpellTitleAction) old).radius())));
 		addDoubleRow("Radius", sta.radius(), v ->
-				notifySimple(old -> new ShowSpellTitleAction(((ShowSpellTitleAction) old).name(),
+				notifySimple(old -> new ShowSpellTitleAction("",
 						((ShowSpellTitleAction) old).description(), ((ShowSpellTitleAction) old).duration(), v)));
 	}
 

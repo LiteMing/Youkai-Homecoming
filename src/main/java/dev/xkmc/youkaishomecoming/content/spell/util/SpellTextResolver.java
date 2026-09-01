@@ -16,8 +16,9 @@ import java.util.regex.Pattern;
  *       Zero if the variable is unset.</li>
  * </ul>
  * <p>
- * This is the single shared mechanism so {@code run_command}, {@code show_spell_title} and
- * {@code fire_text_danmaku} all interpolate runtime values consistently (e.g. a live score).
+ * This is the single shared mechanism for action text fields such as
+ * {@code run_command}, the show-title description, and {@code fire_text_danmaku}
+ * to interpolate runtime values consistently (e.g. a live score).
  */
 public final class SpellTextResolver {
 

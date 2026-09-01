@@ -6,7 +6,6 @@ import com.tterrag.registrate.util.entry.ItemEntry;
 import com.tterrag.registrate.util.entry.RegistryEntry;
 import dev.xkmc.fastprojectileapi.render.core.DisplayType;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuPoofParticleOptions;
-import dev.xkmc.youkaishomecoming.content.item.danmaku.CustomSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellAuraItem;
@@ -15,8 +14,6 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
-import dev.xkmc.youkaishomecoming.content.spell.custom.data.HomingSpellFormData;
-import dev.xkmc.youkaishomecoming.content.spell.custom.data.RingSpellFormData;
 import dev.xkmc.youkaishomecoming.content.spell.player.*;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
@@ -233,8 +230,6 @@ public class YHDanmaku {
 	public static final ItemEntry<SpellItem> YUKARI_SPELL_LASER;
 	public static final ItemEntry<SpellItem> YUKARI_SPELL_BUTTERFLY;
 	public static final ItemEntry<SpellItem> CLOWNPIECE_SPELL;
-	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_RING;
-	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_HOMING;
 	public static final ItemEntry<DynamicSpellItem> DYNAMIC_SPELL;
 	public static final ItemEntry<SpellReplicaFilmItem> SPELL_REPLICA_FILM;
 	public static final ItemEntry<SpellAuraItem> NON_SPELL_AURA, TIMEOUT_SPELL_AURA, LAST_SPELL_AURA, EX_SPELL_AURA;
@@ -245,19 +240,6 @@ public class YHDanmaku {
 
 		// spell
 		{
-
-			CUSTOM_SPELL_RING = YoukaisHomecoming.REGISTRATE
-					.item("custom_spell_ring", p -> new CustomSpellItem(p.stacksTo(1), false, RingSpellFormData.FLOWER))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/custom_spell")))
-					.tag(YHTagGen.CUSTOM_SPELL)
-					.register();
-
-			CUSTOM_SPELL_HOMING = YoukaisHomecoming.REGISTRATE
-					.item("custom_spell_homing",
-							p -> new CustomSpellItem(p.stacksTo(1), true, HomingSpellFormData.RING))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/custom_spell")))
-					.tag(YHTagGen.CUSTOM_SPELL)
-					.register();
 
 			DYNAMIC_SPELL = YoukaisHomecoming.REGISTRATE
 					.item("dynamic_spell", p -> new DynamicSpellItem(p.stacksTo(1)))

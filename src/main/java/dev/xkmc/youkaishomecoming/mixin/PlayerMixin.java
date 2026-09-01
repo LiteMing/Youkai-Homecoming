@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemCooldowns;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
@@ -41,6 +42,16 @@ public abstract class PlayerMixin extends LivingEntity {
 	public void youkaishomecoming$stopSliding(Player instance, Vec3 f4, Operation<Void> original) {
 		if (!FlyingToken.flyTravel(instance, f4, original)) {
 			original.call(instance, f4);
+		}
+	}
+
+	/** Keep spell-card item cooldowns visible and paused for the duration of STG combat. */
+	@WrapOperation(method = "tick", at = @At(value = "INVOKE",
+			target = "Lnet/minecraft/world/item/ItemCooldowns;tick()V"))
+	private void youkaishomecoming$pauseCombatCooldowns(ItemCooldowns cooldowns, Operation<Void> original) {
+		Player player = (Player) (Object) this;
+		if (!GrazeCapability.HOLDER.get(player).isInDanmakuCombat()) {
+			original.call(cooldowns);
 		}
 	}
 

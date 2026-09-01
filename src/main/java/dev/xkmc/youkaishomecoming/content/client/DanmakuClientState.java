@@ -52,7 +52,9 @@ public final class DanmakuClientState {
 				? DynamicSpellItem.getCardType(stack) : SpellCardType.NORMAL;
 		if (type == SpellCardType.NON_SPELL) return false;
 		if (type == SpellCardType.LAST_SPELL) {
-			return cap.canActivateLastSpell() && !cap.isPlayerSpellActive();
+			// Automatic fallback only considers a Last Spell after the player's
+			// bomb stock is exhausted. Manual item use remains server-authoritative.
+			return cap.getBomb() <= 0 && cap.canActivateLastSpell() && !cap.isPlayerSpellActive();
 		}
 
 		// 检查资源是否足够支付 (弹幕战内看 BOMB，战外看经验等级)

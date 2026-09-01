@@ -203,10 +203,6 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue fairyAttackYoukaified;
 		public final ForgeConfigSpec.DoubleValue fairySummonReinforcement;
 
-		public final ForgeConfigSpec.IntValue customSpellMaxDuration;
-		public final ForgeConfigSpec.IntValue ringSpellDanmakuPerItemCost;
-		public final ForgeConfigSpec.IntValue homingSpellDanmakuPerItemCost;
-
 		public final ForgeConfigSpec.BooleanValue useLegacySpellCards;
 
 		public final ForgeConfigSpec.BooleanValue smallFairyReplacement;
@@ -498,9 +494,9 @@ public class YHModConfig {
 				playerLaserCooldown = builder.comment("Player item cooldown for using laser")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerLaserCooldown")
 						.defineInRange("playerLaserCooldown", 80, 5, 1000);
-				playerSpellCooldown = builder.comment("Player item cooldown for using spellcard")
+				playerSpellCooldown = builder.comment("Player item cooldown for using spellcard; advances after danmaku combat")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerSpellCooldown")
-						.defineInRange("playerSpellCooldown", 40, 5, 1000);
+						.defineInRange("playerSpellCooldown", 60, 5, 1000);
 				spellBombCost = builder.comment("Bomb cost to cast a spellcard inside STG danmaku combat")
 						.translation("config.youkaishomecoming.common.danmaku_battle.spellBombCost")
 						.defineInRange("spellBombCost", 1, 0, 20);
@@ -638,20 +634,6 @@ public class YHModConfig {
 				fairySummonReinforcement = builder.comment("Chance for fairies to summon other fairies when killed by non-danmaku damage")
 						.translation("config.youkaishomecoming.common.cirno.fairySummonReinforcement")
 						.defineInRange("fairySummonReinforcement", 0.5, 0, 1);
-			}
-			builder.pop();
-
-			builder.translation("config.youkaishomecoming.common.custom_spell").push("custom_spell");
-			{
-				customSpellMaxDuration = builder.comment("Max duration of custom spell allowed")
-						.translation("config.youkaishomecoming.common.custom_spell.customSpellMaxDuration")
-						.defineInRange("customSpellMaxDuration", 1200, 0, 1200);
-				ringSpellDanmakuPerItemCost = builder.comment("Ring Spell: Max number of bullet allowed per item cost")
-						.translation("config.youkaishomecoming.common.custom_spell.ringSpellDanmakuPerItemCost")
-						.defineInRange("ringSpellDanmakuPerItemCost", 32, 1, 1024);
-				homingSpellDanmakuPerItemCost = builder.comment("Homing Spell: Max number of bullet allowed per item cost")
-						.translation("config.youkaishomecoming.common.custom_spell.homingSpellDanmakuPerItemCost")
-						.defineInRange("homingSpellDanmakuPerItemCost", 8, 1, 1024);
 			}
 			builder.pop();
 

@@ -246,7 +246,7 @@ public class GrazeHelper {
 	 */
 	public static boolean tryCastBombSpell(ServerPlayer player) {
 		if (forbidDanmaku(player)) return false;
-		ItemStack stack = findSpellCard(player);
+		ItemStack stack = findSpellCardForAutoBomb(player);
 		if (!(stack.getItem() instanceof ISpellItem spell)) return false;
 		if (player.getCooldowns().isOnCooldown(stack.getItem())) return false;
 		// The spell payment router owns Bomb deduction. This keeps duration-based
@@ -277,9 +277,44 @@ public class GrazeHelper {
 				stack -> isAvailableSpellStack(player, stack));
 	}
 
+	/**
+	 * Selects the card used by an automatic bomb. Last Spells are a terminal
+	 * fallback, and must not pre-empt an ordinary card or activate while bombs
+	 * remain. The order is otherwise identical to {@link #findSpellCard(Player)}.
+	 */
+	public static ItemStack findSpellCardForAutoBomb(Player player) {
+		ItemStack ordinary = findSpellCard(player, true, false);
+		if (!ordinary.isEmpty()) return ordinary;
+		if (GrazeCapability.HOLDER.get(player).getBomb() > 0) return ItemStack.EMPTY;
+		return findSpellCard(player, false, true);
+	}
+
+	private static ItemStack findSpellCard(Player player, boolean excludeLast, boolean onlyLast) {
+		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
+		if (isAvailableSpellStack(player, mainhand, excludeLast, onlyLast)) return mainhand;
+		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
+		if (isAvailableSpellStack(player, offhand, excludeLast, onlyLast)) return offhand;
+		var inventory = player.getInventory();
+		for (int i = 0; i < inventory.items.size(); i++) {
+			ItemStack stack = inventory.getItem(i);
+			if (isAvailableSpellStack(player, stack, excludeLast, onlyLast)) return stack;
+		}
+		return CuriosManager.findFirstSpellItem(player,
+				stack -> isAvailableSpellStack(player, stack, excludeLast, onlyLast));
+	}
+
 	private static boolean isAvailableSpellStack(Player player, ItemStack stack) {
+		return isAvailableSpellStack(player, stack, false, false);
+	}
+
+	private static boolean isAvailableSpellStack(Player player, ItemStack stack,
+			boolean excludeLast, boolean onlyLast) {
 		if (!isSpellStack(stack)) return false;
 		if (stack.getItem() instanceof DynamicSpellItem && DynamicSpellItem.isNonSpell(stack)) return false;
+		if (stack.getItem() instanceof DynamicSpellItem) {
+			boolean last = DynamicSpellItem.getCardType(stack) == dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType.LAST_SPELL;
+			if (excludeLast && last || onlyLast && !last) return false;
+		}
 		String cardKey = spellCardKey(stack);
 		if (GrazeCapability.HOLDER.get(player).isSpellCardUnavailable(cardKey)) return false;
 		// Automatic/passive casts must skip cards that cannot pay their current

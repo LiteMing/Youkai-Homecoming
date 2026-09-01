@@ -13,8 +13,6 @@ import net.minecraft.world.phys.Vec3;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * A TrailAction that executes data-driven SpellActions when a danmaku expires.
@@ -27,14 +25,11 @@ import org.slf4j.LoggerFactory;
  */
 @SerialClass
 public class DataDrivenTrailAction extends TrailAction {
-	private static final Logger LOGGER = LoggerFactory.getLogger(DataDrivenTrailAction.class);
-
 	private List<SpellAction> actions;
 	private SpellRuntime runtime;
 	private SpellDefinition definition;
 	/** Snapshot of runtime variables at the time the parent danmaku was created. */
 	private Map<String, Double> variableSnapshot;
-	private transient boolean stubDiagnosticLogged;
 
 	/** No-arg constructor for L2Serial deserialization. Deserialized instances are non-functional (server-only logic). */
 	public DataDrivenTrailAction() {
@@ -42,7 +37,6 @@ public class DataDrivenTrailAction extends TrailAction {
 		this.runtime = null;
 		this.definition = null;
 		this.variableSnapshot = null;
-		this.stubDiagnosticLogged = false;
 	}
 
 	public DataDrivenTrailAction(List<SpellAction> actions, SpellRuntime runtime, SpellDefinition definition) {
@@ -53,7 +47,6 @@ public class DataDrivenTrailAction extends TrailAction {
 		// Use Map.copyOf for compact immutable storage — avoids HashMap bucket allocation.
 		// Typical variable count is 1-5, where copyOf uses optimized small-map implementations.
 		this.variableSnapshot = Map.copyOf(runtime.getVariables());
-		this.stubDiagnosticLogged = false;
 	}
 
 	/** False for a no-arg deserialized stub, which cannot execute server callbacks. */
@@ -104,11 +97,6 @@ public class DataDrivenTrailAction extends TrailAction {
 			TrailCardHolder.HitType hitType, Entity hitEntity,
 			@org.jetbrains.annotations.Nullable dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
 		if (!hasRuntimeContext()) {
-			if (!stubDiagnosticLogged) {
-				stubDiagnosticLogged = true;
-				LOGGER.warn("[DanmakuHit] deserialized callback is non-functional; actions={} runtimePresent={} definitionPresent={}",
-						actions == null ? -1 : actions.size(), runtime != null, definition != null);
-			}
 			return;
 		}
 

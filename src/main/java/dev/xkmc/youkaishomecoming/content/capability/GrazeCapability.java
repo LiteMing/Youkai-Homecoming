@@ -252,7 +252,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		}
 		if (invul > 0) invul--;
 		if (weak > 0) weak--;
-		if (lastSpellCooldownTicks > 0) {
+		// Spell-card cooldowns are intentionally combat-scoped: the cooldown is
+		// visible while the player is fighting, but only advances once the STG
+		// session has ended. This keeps a broken/cancelled card from becoming
+		// immediately reusable during the same battle.
+		if (!activeCombat && lastSpellCooldownTicks > 0) {
 			if (lastSpellCooldownTotalTicks <= 0) {
 				lastSpellCooldownTotalTicks = Math.max(lastSpellCooldownTicks,
 						YHModConfig.COMMON.lastSpellCooldownTicks.get());

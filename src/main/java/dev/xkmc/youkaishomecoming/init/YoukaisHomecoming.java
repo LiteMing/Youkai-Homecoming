@@ -35,7 +35,6 @@ import dev.xkmc.youkaishomecoming.content.item.fluid.YHFluidHandler;
 import dev.xkmc.youkaishomecoming.content.pot.table.food.YHSushi;
 import dev.xkmc.youkaishomecoming.content.pot.table.item.ModelIngredientData;
 import dev.xkmc.youkaishomecoming.content.pot.table.item.TableItemManager;
-import dev.xkmc.youkaishomecoming.content.spell.custom.screen.SpellSetToServer;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellTitleToClient;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
 import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
@@ -97,7 +96,6 @@ public class YoukaisHomecoming {
 			loc("main"), 2,
 			e -> e.create(FrogSyncPacket.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(KoishiStartPacket.class, NetworkDirection.PLAY_TO_CLIENT),
-			e -> e.create(SpellSetToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(SpellEditorSyncToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(SpellCircleEditorSyncToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(CombatToClient.class, NetworkDirection.PLAY_TO_CLIENT),

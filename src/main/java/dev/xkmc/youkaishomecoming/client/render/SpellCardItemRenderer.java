@@ -100,8 +100,13 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 			poseStack.scale(0.6f, 0.6f, 0.6f);
 		}
 
-		// 使用 RenderType.entityCutoutNoCull 确保正反面双面可见且不受光照面剔除影响
-		VertexConsumer frontBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(cardTexture));
+		// GUI cards use the emissive entity pipeline so their artwork is not
+		// multiplied by the world lightmap (the regular hand-held path keeps the
+		// cutout pipeline and supplied packed light).
+		RenderType cardRenderType = transformType == ItemDisplayContext.GUI
+				? RenderType.entityTranslucentEmissive(cardTexture)
+				: RenderType.entityCutoutNoCull(cardTexture);
+		VertexConsumer frontBuilder = buffer.getBuffer(cardRenderType);
 		Matrix4f mat = poseStack.last().pose();
 		int renderLight = transformType == ItemDisplayContext.GUI
 				? net.minecraft.client.renderer.LightTexture.FULL_BRIGHT : packedLight;
@@ -112,14 +117,25 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		int r = (color >>> 16) & 0xFF;
 		int g = (color >>> 8) & 0xFF;
 		int b = color & 0xFF;
+		if (transformType == ItemDisplayContext.GUI) {
+			// GUI item models do not receive the world light contribution that makes
+			// the hand-held card readable at night. Keep the full-bright lightmap and
+			// lift tinted procedural cards as an additional presentation correction.
+			r = brightenGuiChannel(r);
+			g = brightenGuiChannel(g);
+			b = brightenGuiChannel(b);
+		}
 		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, renderLight, r, g, b, a);
 
 		// 背面（与正面保持一致材质，镜像贴附）
-		VertexConsumer backBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(cardTexture));
+		VertexConsumer backBuilder = buffer.getBuffer(cardRenderType);
 		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, renderLight, r, g, b, a);
 
 		if (frameTexture != null) {
-			VertexConsumer frameBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(frameTexture));
+			RenderType frameRenderType = transformType == ItemDisplayContext.GUI
+					? RenderType.entityTranslucentEmissive(frameTexture)
+					: RenderType.entityCutoutNoCull(frameTexture);
+			VertexConsumer frameBuilder = buffer.getBuffer(frameRenderType);
 			float frameOffset = 0.0005f;
 			quadColor(frameBuilder, mat, -w, w, -h, h, thickness + frameOffset,
 					0, 1, 0, 1, renderLight, 255, 255, 255, 255);
@@ -128,6 +144,10 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		}
 
 		poseStack.popPose();
+	}
+
+	private static int brightenGuiChannel(int value) {
+		return Math.min(255, (value * 3 + 1) / 2);
 	}
 
 	private static void quadColor(VertexConsumer builder, Matrix4f mat,

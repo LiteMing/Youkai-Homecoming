@@ -14,6 +14,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
@@ -23,8 +24,6 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
-import com.mojang.brigadier.StringReader;
-import com.mojang.brigadier.suggestion.Suggestion;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -246,7 +245,8 @@ public class ActionEditorPanel {
 	}
 
 	private void clearWidgets() {
-		commandCompletionRequest++;
+		if (commandSuggestions != null) commandSuggestions.hide();
+		commandSuggestions = null;
 		commandEditBox = null;
 		closeDropdown();
 		closeExprCompletion();
@@ -1603,54 +1603,22 @@ public class ActionEditorPanel {
 		addButtonRow("Delete preset", () -> CommandPresetStore.remove(commandEditBox == null ? rc.command() : commandEditBox.getValue()));
 	}
 
-	/**
-	 * Requests completions from the server's Brigadier dispatcher. Vanilla command
-	 * input is asynchronous because argument providers may perform work off the
-	 * render thread; polling the future with getNow() drops valid results.
-	 */
+	/** Uses the same Brigadier-backed component as the vanilla chat screen. */
 	private boolean requestVanillaCommandSuggestions(@Nullable EditBox editBox) {
 		if (editBox == null || editBox != commandEditBox) return false;
 		var mc = Minecraft.getInstance();
 		var connection = mc.getConnection();
-		if (connection == null || connection.getCommands() == null) {
-			commandCompletionRequest++;
-			closeStringCompletion();
-			return false;
+		if (connection == null || connection.getCommands() == null || mc.screen == null) return false;
+		var screen = mc.screen;
+		if (commandSuggestions == null) {
+			commandSuggestions = new CommandSuggestions(mc, screen, editBox, mc.font,
+					true, false, 0, 10, true, 0xF000F0);
+			commandSuggestions.setAllowSuggestions(true);
 		}
-		String command = editBox.getValue();
-		int cursor = Math.max(0, Math.min(editBox.getCursorPosition(), command.length()));
-		int slashOffset = command.startsWith("/") ? 1 : 0;
-		String input = command.substring(slashOffset);
-		int inputCursor = Math.max(0, cursor - slashOffset);
-		int request = ++commandCompletionRequest;
 		closeStringCompletion();
-		try {
-			var source = connection.getSuggestionsProvider();
-			var parse = connection.getCommands().parse(new StringReader(input), source);
-			var future = connection.getCommands().getCompletionSuggestions(parse, inputCursor);
-			future.thenAccept(result -> mc.execute(() -> {
-				if (request != commandCompletionRequest || editBox != commandEditBox
-						|| !editBox.visible || !command.equals(editBox.getValue())
-						|| cursor != editBox.getCursorPosition()) return;
-				if (result == null || result.isEmpty()) return;
-				List<String> values = new ArrayList<>();
-				for (Suggestion suggestion : result.getList()) {
-					if (!suggestion.getText().isBlank()) values.add(suggestion.getText());
-				}
-				if (values.isEmpty()) return;
-				var range = result.getRange();
-				stringCompletionItems = values.toArray(new String[0]);
-				stringCompletionHoverIndex = 0;
-				stringCompletionTarget = editBox;
-				// Brigadier ranges are relative to the slash-free input.
-				stringCompletionInsertStart = slashOffset + range.getStart();
-				stringCompletionInsertEnd = slashOffset + range.getEnd();
-				stringCompletionScrollOffset = 0;
-			}));
-			return true;
-		} catch (RuntimeException ignored) {
-			return false;
-		}
+		commandSuggestions.updateCommandInfo();
+		commandSuggestions.showSuggestions(true);
+		return true;
 	}
 
 	private RunCommandAction.HitContext[] availableRunCommandHitContexts() {
@@ -3894,8 +3862,7 @@ public class ActionEditorPanel {
 	private final Map<EditBox, java.util.function.Supplier<List<String>>> stringCompletionSuppliers = new HashMap<>();
 	private final Set<EditBox> listCompletionTargets = new HashSet<>();
 	private EditBox commandEditBox;
-	/** Monotonic token used to discard stale asynchronous Brigadier results. */
-	private int commandCompletionRequest;
+	private CommandSuggestions commandSuggestions;
 
 	// Expression completion overlay
 	private String[] exprCompletionItems = null;
@@ -4088,12 +4055,12 @@ public class ActionEditorPanel {
 			commandEditBox = editBox;
 			editBox.setResponder(text -> {
 				onChange.accept(text);
-				requestVanillaCommandSuggestions(editBox);
+				if (commandSuggestions != null) commandSuggestions.updateCommandInfo();
 			});
 		} else {
 			editBox.setResponder(onChange::accept);
 		}
-		stringCompletionSuppliers.put(editBox, suggestions);
+		if (!"Command".equals(label)) stringCompletionSuppliers.put(editBox, suggestions);
 		rows.add(new EditorRow(label, editBox, false));
 	}
 
@@ -4622,6 +4589,9 @@ public class ActionEditorPanel {
 
 	public void renderDropdown(GuiGraphics guiGraphics, int mouseX, int mouseY) {
 		Font font = Minecraft.getInstance().font;
+		if (commandSuggestions != null) {
+			commandSuggestions.renderSuggestions(guiGraphics, mouseX, mouseY);
+		}
 		// Red underline for invalid expressions, blue underline for $variables
 		for (var eb : exprEditBoxes) {
 			String text = eb.getValue().trim();
@@ -4704,6 +4674,9 @@ public class ActionEditorPanel {
 	// --- Mouse handling ---
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (commandSuggestions != null && commandSuggestions.mouseClicked(mouseX, mouseY, button)) {
+			return true;
+		}
 		// Ctrl+Click on expression EditBox → find $variable under cursor and jump to definition
 		if (button == 0 && net.minecraft.client.gui.screens.Screen.hasControlDown() && onVariableJump != null) {
 			for (var eb : exprEditBoxes) {
@@ -4899,6 +4872,9 @@ public class ActionEditorPanel {
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+		if (commandSuggestions != null && commandSuggestions.mouseScrolled(delta)) {
+			return true;
+		}
 		if (stringCompletionItems != null) {
 			int visible = getStringCompletionVisibleItems();
 			int maxScroll = Math.max(0, stringCompletionItems.length - visible);
@@ -4962,6 +4938,9 @@ public class ActionEditorPanel {
 	 * Handle key presses. Returns true if the key was consumed (e.g., Escape closes dropdown).
 	 */
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (commandSuggestions != null && commandSuggestions.keyPressed(keyCode, scanCode, modifiers)) {
+			return true;
+		}
 		if (dropdown != null) {
 			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
 				closeDropdown();
@@ -5036,6 +5015,7 @@ public class ActionEditorPanel {
 	 * Called from SpellPreviewScreen when Tab is pressed in an EditBox.
 	 */
 	public boolean handleTabCompletion(EditBox editBox) {
+		if (editBox == commandEditBox) return requestVanillaCommandSuggestions(editBox);
 		if (stringCompletionSuppliers.containsKey(editBox)) {
 			return openStringCompletion(editBox);
 		}

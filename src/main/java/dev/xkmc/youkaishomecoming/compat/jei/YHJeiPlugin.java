@@ -15,6 +15,7 @@ import dev.xkmc.youkaishomecoming.content.pot.table.recipe.CuisineRecipe;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHBlocks;
 import dev.xkmc.youkaishomecoming.init.registrate.YHItems;
+import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.ingredients.subtypes.UidContext;
@@ -23,9 +24,11 @@ import mezz.jei.api.registration.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import vectorwing.farmersdelight.common.registry.ModBlocks;
 
 import java.util.Objects;
+import java.util.List;
 
 @JeiPlugin
 public class YHJeiPlugin implements IModPlugin {
@@ -42,6 +45,7 @@ public class YHJeiPlugin implements IModPlugin {
 	public static final RecipeType<PotCookingRecipe<?>> BOWL_COOKING = RecipeType.create(YoukaisHomecoming.MODID, "bowl_cooking", Wrappers.cast(PotCookingRecipe.class));
 	public static final RecipeType<PotCookingRecipe<?>> POT_COOKING = RecipeType.create(YoukaisHomecoming.MODID, "pot_cooking", Wrappers.cast(PotCookingRecipe.class));
 	public static final RecipeType<PotCookingRecipe<?>> STOCK_COOKING = RecipeType.create(YoukaisHomecoming.MODID, "stock_cooking", Wrappers.cast(PotCookingRecipe.class));
+	public static final RecipeType<SpellAuraAnvilRecipe> SPELL_AURA_ANVIL = SpellAuraAnvilCategory.TYPE;
 
 	@Override
 	public ResourceLocation getPluginUid() {
@@ -69,6 +73,7 @@ public class YHJeiPlugin implements IModPlugin {
 		registry.addRecipeCategories(new PotCookingRecipeCategory("bowl_cooking", YHBlocks.IRON_BOWL.asStack()).init(helper));
 		registry.addRecipeCategories(new PotCookingRecipeCategory("pot_cooking", YHBlocks.IRON_POT.asStack()).init(helper));
 		registry.addRecipeCategories(new PotCookingRecipeCategory("stock_cooking", YHBlocks.STOCKPOT.asStack()).init(helper));
+		registry.addRecipeCategories(new SpellAuraAnvilCategory(helper));
 	}
 
 	public void registerRecipes(IRecipeRegistration registration) {
@@ -90,6 +95,11 @@ public class YHJeiPlugin implements IModPlugin {
 				.stream().filter(e -> e.matchContainer(YHBlocks.IRON_POT.asItem())).toList());
 		registration.addRecipes(STOCK_COOKING, m.getAllRecipesFor(YHBlocks.COOKING_RT.get())
 				.stream().filter(e -> e.matchContainer(YHBlocks.STOCKPOT.asItem())).toList());
+		registration.addRecipes(SPELL_AURA_ANVIL, List.of(
+				SpellAuraAnvilRecipe.of(YHDanmaku.NON_SPELL_AURA.get(), 5),
+				SpellAuraAnvilRecipe.of(YHDanmaku.TIMEOUT_SPELL_AURA.get(), 10),
+				SpellAuraAnvilRecipe.of(YHDanmaku.LAST_SPELL_AURA.get(), 15),
+				SpellAuraAnvilRecipe.of(YHDanmaku.EX_SPELL_AURA.get(), 30)));
 	}
 
 	public void registerRecipeCatalysts(IRecipeCatalystRegistration registration) {
@@ -105,6 +115,7 @@ public class YHJeiPlugin implements IModPlugin {
 		registration.addRecipeCatalyst(YHBlocks.IRON_BOWL.asStack(), BOWL_COOKING);
 		registration.addRecipeCatalyst(YHBlocks.IRON_POT.asStack(), POT_COOKING);
 		registration.addRecipeCatalyst(YHBlocks.STOCKPOT.asStack(), STOCK_COOKING);
+		registration.addRecipeCatalyst(Items.ANVIL.getDefaultInstance(), SPELL_AURA_ANVIL);
 		registration.addRecipeCatalyst(ModBlocks.STOVE.get().asItem().getDefaultInstance(), MOKA, KETTLE, STEAM, BOWL_COOKING, POT_COOKING, STOCK_COOKING);
 	}
 

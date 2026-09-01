@@ -335,6 +335,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
+		boolean editableDraft = getSpellId(stack) == null
+				|| (!isNonSpell(stack) && !CertifiedSpellValidator.isCertified(stack) && !isComplete(stack));
 		// Shift+right-click is the universal close action while a spell runtime is
 		// active.  Keep this ahead of the draft editor branch so a non-spell can
 		// always be used to leave combat without accidentally reopening its editor.
@@ -343,6 +345,18 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 				GrazeHelper.tryForceCloseSpell(sp, stack);
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
+		// Drafts cannot enter combat, but a draft held during an already active
+		// duel must still be able to leave it. This is distinct from closing an
+		// active spell runtime above.
+		if (player.isShiftKeyDown() && editableDraft && !level.isClientSide()
+				&& player instanceof ServerPlayer sp
+				&& GrazeCapability.HOLDER.get(sp).isInDanmakuCombat()
+				&& (CertificationManager.INSTANCE.getActiveTrial(sp) == null
+				|| !CertificationManager.INSTANCE.getActiveTrial(sp).isActive())) {
+			GrazeCapability.HOLDER.get(sp).clearCombatState(true);
+			sp.displayClientMessage(YHLangData.STG_EXIT.get(), true);
+			return InteractionResultHolder.sidedSuccess(stack, false);
 		}
 		if (player.isShiftKeyDown() && isNonSpell(stack)) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
@@ -362,8 +376,6 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		// An unfinished draft is an editor artifact, never a combat toggle.  Keep
 		// Shift+right-click available for editing while allowing the branch above
 		// to close an active spell first.
-		boolean editableDraft = getSpellId(stack) == null
-				|| (!isNonSpell(stack) && !CertifiedSpellValidator.isCertified(stack) && !isComplete(stack));
 		if (player.isShiftKeyDown() && editableDraft) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
 				if (getSpellId(stack) == null) {
@@ -478,7 +490,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 				return false;
 			} catch (SpellAnalysisException rejected) {
 				if (player instanceof ServerPlayer sp) {
-					sp.displayClientMessage(YHLangData.NON_SPELL_REJECTED.get(rejected.getMessage()), false);
+					sp.displayClientMessage(nonSpellRejectedMessage(rejected), false);
 				}
 				return false;
 			} catch (RuntimeException unexpected) {
@@ -582,6 +594,22 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 		}
 		return true;
+	}
+
+	private static Component nonSpellRejectedMessage(SpellAnalysisException rejected) {
+		String message = rejected.getMessage() == null ? "" : rejected.getMessage();
+		YHLangData reason = message.contains("restrict caster movement")
+				? YHLangData.NON_SPELL_REASON_MOVEMENT
+				: message.contains("projectile hooks")
+				? YHLangData.NON_SPELL_REASON_HOOKS
+				: message.contains("discard on every collision")
+				? YHLangData.NON_SPELL_REASON_COLLISION
+				: message.contains("experimental nodes")
+				? YHLangData.NON_SPELL_REASON_EXPERIMENTAL
+				: message.contains("use laser nodes")
+				? YHLangData.NON_SPELL_REASON_LASER
+				: YHLangData.NON_SPELL_REASON_GENERIC;
+		return YHLangData.NON_SPELL_REJECTED.get(reason.get());
 	}
 
 	@Override

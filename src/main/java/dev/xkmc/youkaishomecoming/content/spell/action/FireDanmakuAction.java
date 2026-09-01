@@ -57,7 +57,7 @@ public record FireDanmakuAction(
 			int trailInterval) {
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
-				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.CONTINUE,
+				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD,
 				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1));
 	}
 
@@ -72,7 +72,7 @@ public record FireDanmakuAction(
 			int trailInterval, Optional<NumberProvider> tiltAngle) {
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
-				tiltAngle, Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.CONTINUE,
+				tiltAngle, Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD,
 				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1));
 	}
 
@@ -131,7 +131,7 @@ public record FireDanmakuAction(
 			Codec.INT.optionalFieldOf("trail_interval", 1).forGetter(FireDanmakuAction::trailInterval)
 	).apply(i, (bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti) ->
 			new FireDanmakuAction(bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti,
-					Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.CONTINUE,
+					Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD,
 					Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1))));
 
 	public static final Codec<FireDanmakuAction> CODEC = RecordCodecBuilder.create(i -> i.group(
@@ -140,7 +140,7 @@ public record FireDanmakuAction(
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_entity").forGetter(FireDanmakuAction::onHitEntity),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_block").forGetter(FireDanmakuAction::onHitBlock),
 			HitBehavior.CODEC.optionalFieldOf("hit_behavior_entity", HitBehavior.DISCARD).forGetter(FireDanmakuAction::hitBehaviorEntity),
-			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.CONTINUE).forGetter(FireDanmakuAction::hitBehaviorBlock),
+			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.DISCARD).forGetter(FireDanmakuAction::hitBehaviorBlock),
 			DanmakuDamageType.CODEC.optionalFieldOf("damage_type").forGetter(FireDanmakuAction::damageType),
 			GroupRotation.CODEC.optionalFieldOf("group_rotation").forGetter(FireDanmakuAction::groupRotation),
 			DanmakuColorAnimation.CODEC.optionalFieldOf("color_animation").forGetter(FireDanmakuAction::colorAnimation),

@@ -183,7 +183,11 @@ public class VariablesDockPanel implements DockPanel {
 						: "Nodes: ordinary " + nodes.ordinaryNodes() + "/free " + budget.freeNodeCount()
 						+ "  excess " + excess + "  advanced hooks " + nodes.advancedHookNodes(),
 				excess > 0 ? 0xFFFFD36B : 0xFFAED8AE);
-		int powerScaledSpawnLimit = budget.maxSpawnPerTickForPower(scene.getCasterPower());
+		boolean nonSpell = scene.getDefinition() != null
+				&& scene.getDefinition().itemForm.cardType() == dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType.NON_SPELL;
+		int powerScaledSpawnLimit = budget.maxSpawnPerTickForPower(
+				dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.fromBudget(budget),
+				scene.getCasterPower(), nonSpell);
 		appendMetric(lines, font, width, zh ? "每tick生成" : "Spawn/tick",
 				analysis.maxSpawnPerTick(), powerScaledSpawnLimit);
 		appendMetric(lines, font, width, zh ? "峰值存活" : "Peak alive",
@@ -201,6 +205,14 @@ public class VariablesDockPanel implements DockPanel {
 						+ capabilityPair(nodes, budget, SpellCapability.CONFINED_TARGET, zh ? "限制目标" : "confine") + "  "
 						+ capabilityPair(nodes, budget, SpellCapability.EXPERIMENTAL_FIRE, zh ? "高级发射" : "advanced fire"),
 				budget.permitsExperimental(nodes) ? 0xFFCC9DFF : 0xFFFF7777);
+		appendWrapped(lines, font, width,
+				(zh ? "数据能力策略: " : "Data capability policies: ")
+						+ policyLabel(SpellCapability.ORIGIN_TARGET, zh ? "原点目标" : "origin target") + "  "
+						+ policyLabel(SpellCapability.SIZED_PROJECTILE, zh ? "尺寸" : "size") + "  "
+						+ policyLabel(SpellCapability.LONG_LIFETIME, zh ? "长寿命" : "long lifetime") + "  "
+						+ policyLabel(SpellCapability.TARGET_COORDINATE, zh ? "目标坐标" : "target xyz") + "  "
+						+ policyLabel(SpellCapability.TRACKING_MOVER, zh ? "追踪Mover" : "tracking mover"),
+				0xFFB7C9D6);
 		if (nodes.operatorOnlyNodes() > 0 || nodes.deniedNodes() > 0) {
 			appendWrapped(lines, font, width,
 					(zh ? "不可认证: OP " : "Not certifiable: OP ") + nodes.operatorOnlyNodes()
@@ -232,6 +244,12 @@ public class VariablesDockPanel implements DockPanel {
 		int grant = budget.legacyExperimentalQuota() > 0
 				? budget.legacyExperimentalQuota() : budget.experimentalGrant(capability);
 		return label + " " + nodes.experimentalCount(capability) + "/" + grant;
+	}
+
+	private static String policyLabel(SpellCapability capability, String label) {
+		String policy = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies
+				.currentPolicy(capability).name().toLowerCase(Locale.ROOT);
+		return label + "=" + policy;
 	}
 
 	private SpellDraftBudget findActiveBudget() {

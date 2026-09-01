@@ -58,6 +58,17 @@ public final class SpellReplicaService {
 		stack.getTag().remove(SOURCE_HASH);
 	}
 
+	/**
+	 * ItemStack NBT is mutable, so changing a tag does not notify the player's
+	 * inventory or the active menu by itself. Call this after a replica state
+	 * transition to make the change both saveable and visible to the client.
+	 */
+	public static void markInventoryChanged(ServerPlayer player) {
+		if (player == null) return;
+		player.getInventory().setChanged();
+		if (player.containerMenu != null) player.containerMenu.broadcastChanges();
+	}
+
 	/** Records one photograph's contribution, capped at 100 and one source per film. */
 	public static void record(ItemStack stack, ResourceLocation spellId, String definitionHash, int captured,
 			int requiredCaptures) {
@@ -110,6 +121,7 @@ public final class SpellReplicaService {
 			DynamicSpellItem.setExSpell(draft, false);
 			DynamicSpellItem.setComplete(draft, false);
 			replaceFilm(player, film, draft);
+			markInventoryChanged(player);
 			player.displayClientMessage(Component.translatable("youkaishomecoming.replica.completed"), false);
 			return true;
 		} catch (RuntimeException exception) {
@@ -190,19 +202,14 @@ public final class SpellReplicaService {
 	}
 
 	private static void replaceFilm(ServerPlayer player, ItemStack film, ItemStack draft) {
-		for (int i = 0; i < player.getInventory().items.size(); i++) {
-			if (player.getInventory().items.get(i) == film) {
-				player.getInventory().setItem(i, draft);
-				return;
-			}
-		}
-		for (int i = 0; i < player.getInventory().offhand.size(); i++) {
-			if (player.getInventory().offhand.get(i) == film) {
-				player.getInventory().offhand.set(i, draft);
+		var inventory = player.getInventory();
+		for (int i = 0; i < inventory.getContainerSize(); i++) {
+			if (inventory.getItem(i) == film) {
+				inventory.setItem(i, draft);
 				return;
 			}
 		}
 		film.shrink(1);
-		player.getInventory().placeItemBackInInventory(draft);
+		inventory.placeItemBackInInventory(draft);
 	}
 }

@@ -23,6 +23,8 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
+import com.mojang.brigadier.StringReader;
+import com.mojang.brigadier.suggestion.Suggestion;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -244,6 +246,8 @@ public class ActionEditorPanel {
 	}
 
 	private void clearWidgets() {
+		commandCompletionRequest++;
+		commandEditBox = null;
 		closeDropdown();
 		closeExprCompletion();
 		closeStringCompletion();
@@ -1589,30 +1593,64 @@ public class ActionEditorPanel {
 		addEnumSubsetRow("Hit Context", availableRunCommandHitContexts(), rc.hitContext(), v ->
 				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(), v,
 						((RunCommandAction) old).command()), true));
-		addSuggestStringRow("Command", rc.command(), this::getVanillaCommandSuggestions, v ->
+		addSuggestStringRow("Command", rc.command(), List::of, v ->
 				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(),
-						((RunCommandAction) old).hitContext(), v)));
+					((RunCommandAction) old).hitContext(), v)));
+		addButtonRow("Save preset", () -> CommandPresetStore.save(commandEditBox == null ? rc.command() : commandEditBox.getValue()));
+		addListSuggestStringRow("Load preset", "", CommandPresetStore::list, value -> {
+			if (commandEditBox != null && !value.isBlank()) commandEditBox.setValue(value);
+		});
+		addButtonRow("Delete preset", () -> CommandPresetStore.remove(commandEditBox == null ? rc.command() : commandEditBox.getValue()));
 	}
 
-	private List<String> getVanillaCommandSuggestions() {
+	/**
+	 * Requests completions from the server's Brigadier dispatcher. Vanilla command
+	 * input is asynchronous because argument providers may perform work off the
+	 * render thread; polling the future with getNow() drops valid results.
+	 */
+	private boolean requestVanillaCommandSuggestions(@Nullable EditBox editBox) {
+		if (editBox == null || editBox != commandEditBox) return false;
 		var mc = Minecraft.getInstance();
-		if (mc.getConnection() == null) return List.of();
-		var commands = mc.getConnection().getCommands();
-		if (commands == null) return List.of();
-		List<String> list = new ArrayList<>();
-		for (var node : commands.getRoot().getChildren()) {
-			list.add(node.getName());
+		var connection = mc.getConnection();
+		if (connection == null || connection.getCommands() == null) {
+			commandCompletionRequest++;
+			closeStringCompletion();
+			return false;
 		}
-		// 常用弹幕与特效指令置顶推荐
-		list.remove("particle");
-		list.remove("playsound");
-		list.remove("title");
-		list.remove("yhspell");
-		list.add(0, "particle");
-		list.add(1, "playsound");
-		list.add(2, "title");
-		list.add(3, "yhspell");
-		return list;
+		String command = editBox.getValue();
+		int cursor = Math.max(0, Math.min(editBox.getCursorPosition(), command.length()));
+		int slashOffset = command.startsWith("/") ? 1 : 0;
+		String input = command.substring(slashOffset);
+		int inputCursor = Math.max(0, cursor - slashOffset);
+		int request = ++commandCompletionRequest;
+		closeStringCompletion();
+		try {
+			var source = connection.getSuggestionsProvider();
+			var parse = connection.getCommands().parse(new StringReader(input), source);
+			var future = connection.getCommands().getCompletionSuggestions(parse, inputCursor);
+			future.thenAccept(result -> mc.execute(() -> {
+				if (request != commandCompletionRequest || editBox != commandEditBox
+						|| !editBox.visible || !command.equals(editBox.getValue())
+						|| cursor != editBox.getCursorPosition()) return;
+				if (result == null || result.isEmpty()) return;
+				List<String> values = new ArrayList<>();
+				for (Suggestion suggestion : result.getList()) {
+					if (!suggestion.getText().isBlank()) values.add(suggestion.getText());
+				}
+				if (values.isEmpty()) return;
+				var range = result.getRange();
+				stringCompletionItems = values.toArray(new String[0]);
+				stringCompletionHoverIndex = 0;
+				stringCompletionTarget = editBox;
+				// Brigadier ranges are relative to the slash-free input.
+				stringCompletionInsertStart = slashOffset + range.getStart();
+				stringCompletionInsertEnd = slashOffset + range.getEnd();
+				stringCompletionScrollOffset = 0;
+			}));
+			return true;
+		} catch (RuntimeException ignored) {
+			return false;
+		}
 	}
 
 	private RunCommandAction.HitContext[] availableRunCommandHitContexts() {
@@ -3855,6 +3893,9 @@ public class ActionEditorPanel {
 	private final List<EditBox> exprEditBoxes = new ArrayList<>();
 	private final Map<EditBox, java.util.function.Supplier<List<String>>> stringCompletionSuppliers = new HashMap<>();
 	private final Set<EditBox> listCompletionTargets = new HashSet<>();
+	private EditBox commandEditBox;
+	/** Monotonic token used to discard stale asynchronous Brigadier results. */
+	private int commandCompletionRequest;
 
 	// Expression completion overlay
 	private String[] exprCompletionItems = null;
@@ -4043,9 +4084,24 @@ public class ActionEditorPanel {
 		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength(256);
 		editBox.setValue(value);
-		editBox.setResponder(onChange::accept);
+		if ("Command".equals(label)) {
+			commandEditBox = editBox;
+			editBox.setResponder(text -> {
+				onChange.accept(text);
+				requestVanillaCommandSuggestions(editBox);
+			});
+		} else {
+			editBox.setResponder(onChange::accept);
+		}
 		stringCompletionSuppliers.put(editBox, suggestions);
 		rows.add(new EditorRow(label, editBox, false));
+	}
+
+	private void addButtonRow(String label, Runnable action) {
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		var button = Button.builder(Component.literal(SpellEditorLocalization.t(label)), ignored -> action.run())
+				.bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
+		rows.add(new EditorRow(label, button, false));
 	}
 
 	private void addListSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
@@ -5198,10 +5254,12 @@ public class ActionEditorPanel {
 	// --- String completion ---
 
 	private boolean openStringCompletion(EditBox editBox) {
+		if (editBox == commandEditBox) return requestVanillaCommandSuggestions(editBox);
 		return openStringOptions(editBox, true);
 	}
 
 	private boolean openStringDropdown(EditBox editBox) {
+		if (editBox == commandEditBox) return requestVanillaCommandSuggestions(editBox);
 		return openStringOptions(editBox, false);
 	}
 

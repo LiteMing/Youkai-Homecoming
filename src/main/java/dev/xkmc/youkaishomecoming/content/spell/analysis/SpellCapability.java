@@ -16,6 +16,14 @@ public enum SpellCapability {
 	BOSS_ON_DAMAGE("boss_on_damage"),
 	ORIGIN_TARGET("origin_target"),
 	ORIGIN_ABSOLUTE("origin_absolute"),
+	/** Projectile/laser/text size differs from its renderer default. */
+	SIZED_PROJECTILE("sized_projectile"),
+	/** A projectile/shooter lifetime is above the ordinary 200-tick threshold. */
+	LONG_LIFETIME("long_lifetime"),
+	/** A numeric expression reads target X/Y/Z coordinates. */
+	TARGET_COORDINATE("target_coordinate"),
+	/** A mover can retarget/homing-track an entity after launch. */
+	TRACKING_MOVER("tracking_mover"),
 	CONFINED_TARGET("confine_target"),
 	TELEPORT("teleport"),
 	ERASE_ENEMY_DANMAKU("erase_enemy_danmaku"),

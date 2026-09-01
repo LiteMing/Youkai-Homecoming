@@ -35,15 +35,18 @@ public final class SpellCapabilityPolicies {
 		put(SpellCapability.TELEPORT, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.ERASE_ENEMY_DANMAKU, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.CLEAR_SCREEN, SpellCapabilityPolicy.ALLOW);
-		// TARGET/ABSOLUTE origins are common in built-in spells; certification keeps
-		// them allowed — wrong-place spawning is neutralized by the active-threat
-		// discount (D6) and point-blank spawning is a legitimate danmaku challenge.
-		put(SpellCapability.ORIGIN_TARGET, SpellCapabilityPolicy.ALLOW);
+		// Target-relative origins depend on a live entity position and are therefore
+		// an EXP capability. Absolute origins remain ordinary and deterministic.
+		put(SpellCapability.ORIGIN_TARGET, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.ORIGIN_ABSOLUTE, SpellCapabilityPolicy.ALLOW);
 		// Confined target selection is symmetric in certification combat and may be
 		// granted by a draft budget. Entity flags and force/fire spell remain
 		// operator-only boss-authoring capabilities.
 		put(SpellCapability.CONFINED_TARGET, SpellCapabilityPolicy.EXPERIMENTAL);
+		put(SpellCapability.SIZED_PROJECTILE, SpellCapabilityPolicy.OP_ONLY);
+		put(SpellCapability.LONG_LIFETIME, SpellCapabilityPolicy.EXPERIMENTAL);
+		put(SpellCapability.TARGET_COORDINATE, SpellCapabilityPolicy.EXPERIMENTAL);
+		put(SpellCapability.TRACKING_MOVER, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.SET_ENTITY_FLAG, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.FORCE_PHASE, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.FORCE_SPELL, SpellCapabilityPolicy.OP_ONLY);
@@ -74,7 +77,31 @@ public final class SpellCapabilityPolicies {
 	/** Current effective policy: runtime override first, then the default table. */
 	public static SpellCapabilityPolicy currentPolicy(SpellCapability cap) {
 		if (cap == null) return SpellCapabilityPolicy.DENY;
-		return OVERRIDES.getOrDefault(cap, defaultPolicy(cap));
+		SpellCapabilityPolicy override = OVERRIDES.get(cap);
+		if (override != null) return override;
+		SpellCapabilityPolicy configured = configuredPolicy(cap);
+		return configured == null ? defaultPolicy(cap) : configured;
+	}
+
+	/** Reads persisted Forge config overrides without making config construction depend on this class. */
+	private static SpellCapabilityPolicy configuredPolicy(SpellCapability capability) {
+		try {
+			for (String entry : dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.spellCapabilityPolicies.get()) {
+				if (entry == null) continue;
+				int separator = entry.indexOf('=');
+				if (separator <= 0 || separator >= entry.length() - 1) continue;
+				String id = SpellCapability.normalize(entry.substring(0, separator).trim());
+				if (!id.equals(capability.id())) continue;
+				try {
+					return parsePolicy(entry.substring(separator + 1).trim());
+				} catch (IllegalArgumentException ignored) {
+					return null;
+				}
+			}
+		} catch (RuntimeException ignored) {
+			// Config may be unavailable during early class loading or a headless test.
+		}
+		return null;
 	}
 
 	/** Returns the capabilities currently classified as draft-unlockable. */

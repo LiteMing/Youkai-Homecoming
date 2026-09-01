@@ -103,6 +103,8 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		// 使用 RenderType.entityCutoutNoCull 确保正反面双面可见且不受光照面剔除影响
 		VertexConsumer frontBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(cardTexture));
 		Matrix4f mat = poseStack.last().pose();
+		int renderLight = transformType == ItemDisplayContext.GUI
+				? net.minecraft.client.renderer.LightTexture.FULL_BRIGHT : packedLight;
 
 		// 正面（弹幕快照或默认 84x128 底纹）
 		int color = (textureLoc == null) ? DynamicSpellItem.getColor(stack).argb() : 0xFFFFFFFF;
@@ -110,19 +112,19 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		int r = (color >>> 16) & 0xFF;
 		int g = (color >>> 8) & 0xFF;
 		int b = color & 0xFF;
-		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
+		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, renderLight, r, g, b, a);
 
 		// 背面（与正面保持一致材质，镜像贴附）
 		VertexConsumer backBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(cardTexture));
-		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
+		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, renderLight, r, g, b, a);
 
 		if (frameTexture != null) {
 			VertexConsumer frameBuilder = buffer.getBuffer(RenderType.entityCutoutNoCull(frameTexture));
 			float frameOffset = 0.0005f;
 			quadColor(frameBuilder, mat, -w, w, -h, h, thickness + frameOffset,
-					0, 1, 0, 1, packedLight, 255, 255, 255, 255);
+					0, 1, 0, 1, renderLight, 255, 255, 255, 255);
 			quadColor(frameBuilder, mat, w, -w, -h, h, -thickness - frameOffset,
-					0, 1, 0, 1, packedLight, 255, 255, 255, 255);
+					0, 1, 0, 1, renderLight, 255, 255, 255, 255);
 		}
 
 		poseStack.popPose();

@@ -129,7 +129,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue spellDraftFreeNodeCount;
 		public final ForgeConfigSpec.DoubleValue spellDraftBudgetMultiplier;
 		public final ForgeConfigSpec.LongValue spellDraftExcessNodeCostUnits;
-		public final ForgeConfigSpec.IntValue nonSpellMaxSpawnPerTier;
+		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellCapabilityPolicies;
 		public final ForgeConfigSpec.IntValue nonSpellMaxLifetimeTicks;
 		public final ForgeConfigSpec.DoubleValue nonSpellMaxInitialSpeed;
 		public final ForgeConfigSpec.DoubleValue nonSpellMaxOriginOffset;
@@ -343,9 +343,11 @@ public class YHModConfig {
 				spellDraftExcessNodeCostUnits = builder.comment("Additional cast-cost units per ordinary node above the card's free allowance")
 						.translation("config.youkaishomecoming.common.certification.draftExcessNodeCostUnits")
 						.defineInRange("draftExcessNodeCostUnits", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_EXCESS_NODE_COST_UNITS, 0L, 1_000_000L);
-				nonSpellMaxSpawnPerTier = builder.comment("Maximum danmaku spawned by a non-spell in one tick per card tier")
-						.translation("config.youkaishomecoming.common.certification.nonSpellMaxSpawnPerTier")
-						.defineInRange("nonSpellMaxSpawnPerTier", 1, 1, 64);
+				spellCapabilityPolicies = builder.comment(
+						"Capability policy overrides, one entry per line as capability_id=allow|experimental|op_only|deny")
+						.translation("config.youkaishomecoming.common.certification.capabilityPolicies")
+						.defineListAllowEmpty("capabilityPolicies", java.util.List.of(), value -> value instanceof String s
+								&& s.length() <= 128 && s.contains("="));
 				nonSpellMaxLifetimeTicks = builder.comment("Maximum projectile lifetime allowed in non-spells, in ticks")
 						.translation("config.youkaishomecoming.common.certification.nonSpellMaxLifetimeTicks")
 						.defineInRange("nonSpellMaxLifetimeTicks", 200, 1, 1200);

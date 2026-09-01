@@ -21,6 +21,10 @@ public record SpellDraftBudget(
 		int bossOnDamageGrants,
 		int confinedTargetGrants,
 		int experimentalFireGrants,
+		int originTargetGrants,
+		int longLifetimeGrants,
+		int targetCoordinateGrants,
+		int trackingMoverGrants,
 		/** Compatibility for pre-budget {@code yh_op_quota} cards/certificates. */
 		int legacyExperimentalQuota
 ) {
@@ -32,10 +36,14 @@ public record SpellDraftBudget(
 	private static final String TAG_MAX_PROJECTILE_TICKS = "max_projectile_ticks";
 	private static final String TAG_MAX_HOOKS = "max_hook_executions";
 	private static final String TAG_EXPERIMENTAL = "experimental_grants";
+	private static final String TAG_ORIGIN_TARGET = "origin_target";
+	private static final String TAG_LONG_LIFETIME = "long_lifetime";
+	private static final String TAG_TARGET_COORDINATE = "target_coordinate";
+	private static final String TAG_TRACKING_MOVER = "tracking_mover";
 
 	public static final int DEFAULT_FREE_NODE_COUNT = 5;
-	/** Base factor for the tier-1 formula: floor(1 / 4) + 1. */
-	public static final int DEFAULT_MAX_SPAWN_PER_TICK = 1;
+	/** Historical ordinary-card per-tick budget for tier 1 (128 * coefficient). */
+	public static final int DEFAULT_MAX_SPAWN_PER_TICK = 128;
 	public static final int DEFAULT_MAX_PEAK_ALIVE = 10_000;
 	public static final long DEFAULT_MAX_PROJECTILE_TICKS = 100_000_000L;
 	public static final long DEFAULT_MAX_HOOK_EXECUTIONS = 1_000_000L;
@@ -53,7 +61,23 @@ public record SpellDraftBudget(
 		bossOnDamageGrants = Math.max(0, bossOnDamageGrants);
 		confinedTargetGrants = Math.max(0, confinedTargetGrants);
 		experimentalFireGrants = Math.max(0, experimentalFireGrants);
+		originTargetGrants = Math.max(0, originTargetGrants);
+		longLifetimeGrants = Math.max(0, longLifetimeGrants);
+		targetCoordinateGrants = Math.max(0, targetCoordinateGrants);
+		trackingMoverGrants = Math.max(0, trackingMoverGrants);
 		legacyExperimentalQuota = Math.max(0, legacyExperimentalQuota);
+	}
+
+	/** Compatibility constructor for callers and NBT written before per-capability grants. */
+	public SpellDraftBudget(int freeNodeCount, int maxSpawnPerTick, int maxPeakAlive,
+			long maxProjectileTicks, long maxHookExecutions, int teleportGrants,
+			int eraseEnemyDanmakuGrants, int clearScreenGrants, int bossOnDamageGrants,
+			int confinedTargetGrants, int experimentalFireGrants, int legacyExperimentalQuota) {
+		this(freeNodeCount, maxSpawnPerTick, maxPeakAlive, maxProjectileTicks, maxHookExecutions,
+				teleportGrants, eraseEnemyDanmakuGrants, clearScreenGrants, bossOnDamageGrants,
+				confinedTargetGrants, experimentalFireGrants, experimentalFireGrants,
+				experimentalFireGrants, experimentalFireGrants, experimentalFireGrants,
+				legacyExperimentalQuota);
 	}
 
 	public static SpellDraftBudget defaults() {
@@ -94,6 +118,7 @@ public record SpellDraftBudget(
 		SpellDraftBudget fallback = defaults();
 		CompoundTag exp = tag.contains(TAG_EXPERIMENTAL, Tag.TAG_COMPOUND)
 				? tag.getCompound(TAG_EXPERIMENTAL) : new CompoundTag();
+		int experimentalFire = readInt(exp, SpellCapability.EXPERIMENTAL_FIRE.id(), 0);
 		return new SpellDraftBudget(
 				readInt(tag, TAG_FREE_NODES, fallback.freeNodeCount),
 				readInt(tag, TAG_MAX_SPAWN, fallback.maxSpawnPerTick),
@@ -105,7 +130,11 @@ public record SpellDraftBudget(
 				readInt(exp, SpellCapability.CLEAR_SCREEN.id(), 0),
 				readInt(exp, SpellCapability.BOSS_ON_DAMAGE.id(), 0),
 				readInt(exp, SpellCapability.CONFINED_TARGET.id(), 0),
-				readInt(exp, SpellCapability.EXPERIMENTAL_FIRE.id(), 0),
+				experimentalFire,
+				readInt(exp, TAG_ORIGIN_TARGET, experimentalFire),
+				readInt(exp, TAG_LONG_LIFETIME, experimentalFire),
+				readInt(exp, TAG_TARGET_COORDINATE, experimentalFire),
+				readInt(exp, TAG_TRACKING_MOVER, experimentalFire),
 				legacyQuota);
 	}
 
@@ -123,6 +152,10 @@ public record SpellDraftBudget(
 		exp.putInt(SpellCapability.BOSS_ON_DAMAGE.id(), bossOnDamageGrants);
 		exp.putInt(SpellCapability.CONFINED_TARGET.id(), confinedTargetGrants);
 		exp.putInt(SpellCapability.EXPERIMENTAL_FIRE.id(), experimentalFireGrants);
+		exp.putInt(TAG_ORIGIN_TARGET, originTargetGrants);
+		exp.putInt(TAG_LONG_LIFETIME, longLifetimeGrants);
+		exp.putInt(TAG_TARGET_COORDINATE, targetCoordinateGrants);
+		exp.putInt(TAG_TRACKING_MOVER, trackingMoverGrants);
 		tag.put(TAG_EXPERIMENTAL, exp);
 		itemTag.put(TAG_ROOT, tag);
 	}
@@ -140,6 +173,10 @@ public record SpellDraftBudget(
 				Math.max(bossOnDamageGrants, nodes.experimentalCount(SpellCapability.BOSS_ON_DAMAGE)),
 				Math.max(confinedTargetGrants, nodes.experimentalCount(SpellCapability.CONFINED_TARGET)),
 				Math.max(experimentalFireGrants, nodes.experimentalCount(SpellCapability.EXPERIMENTAL_FIRE)),
+				Math.max(originTargetGrants, nodes.experimentalCount(SpellCapability.ORIGIN_TARGET)),
+				Math.max(longLifetimeGrants, nodes.experimentalCount(SpellCapability.LONG_LIFETIME)),
+				Math.max(targetCoordinateGrants, nodes.experimentalCount(SpellCapability.TARGET_COORDINATE)),
+				Math.max(trackingMoverGrants, nodes.experimentalCount(SpellCapability.TRACKING_MOVER)),
 				0);
 	}
 
@@ -151,6 +188,11 @@ public record SpellDraftBudget(
 			case BOSS_ON_DAMAGE -> bossOnDamageGrants;
 			case CONFINED_TARGET -> confinedTargetGrants;
 			case EXPERIMENTAL_FIRE -> experimentalFireGrants;
+			case ORIGIN_TARGET -> originTargetGrants;
+			case LONG_LIFETIME -> longLifetimeGrants;
+			case TARGET_COORDINATE -> targetCoordinateGrants;
+			case TRACKING_MOVER -> trackingMoverGrants;
+			case SIZED_PROJECTILE -> 0;
 			default -> 0;
 		};
 	}
@@ -182,22 +224,23 @@ public record SpellDraftBudget(
 	}
 
 	/**
-	 * Returns the effective danmaku-per-tick ceiling for this budget and caster
-	 * power. Rank-created budgets use the tier formula; a budget whose spawn value
-	 * differs from its rank default is an explicit KJS/Boss override and remains
-	 * authoritative.
+	 * Returns the effective danmaku-per-tick ceiling. Ordinary cards retain the
+	 * historical tier budget (128 * tier coefficient); only non-spells use the
+	 * newer power-scaled formula.
 	 */
 	public int maxSpawnPerTickForPower(SpellCardRank rank, double power) {
-		SpellCardRank resolved = rank == null ? SpellCardRank.fromBudget(this) : rank;
-		if (maxSpawnPerTick == resolved.defaultMaxSpawnPerTick()) {
-			return resolved.danmakuPerTick(power);
-		}
 		return maxSpawnPerTick;
+	}
+
+	public int maxSpawnPerTickForPower(SpellCardRank rank, double power, boolean nonSpell) {
+		if (!nonSpell) return maxSpawnPerTick;
+		SpellCardRank resolved = rank == null ? SpellCardRank.fromBudget(this) : rank;
+		return resolved.danmakuPerTick(power);
 	}
 
 	/** Convenience form for UI callers that only have the frozen budget. */
 	public int maxSpawnPerTickForPower(double power) {
-		return maxSpawnPerTickForPower(SpellCardRank.fromBudget(this), power);
+		return maxSpawnPerTickForPower(SpellCardRank.fromBudget(this), power, false);
 	}
 
 	public void validatePerformance(SpellAnalysis analysis, SpellAnalysisLimits global) {

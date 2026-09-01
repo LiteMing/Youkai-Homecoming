@@ -132,6 +132,10 @@ public class SpellAnalyzerSelfTest {
 				SpellCardRank.fromTier(4).danmakuPerTick(0) == 2);
 		check("tier 12 at zero power allows four projectiles/tick",
 				SpellCardRank.fromTier(12).danmakuPerTick(0) == 4);
+		check("non-spell power formula scales by floored power",
+				SpellCardRank.fromTier(12).danmakuPerTick(2.99) == 12);
+		check("ordinary rank keeps historical spawn budget",
+				SpellCardRank.fromTier(12).createBudget().maxSpawnPerTick() == 8192);
 		check("fractional power is floored before scaling",
 				SpellCardRank.fromTier(12).danmakuPerTick(3.99) == 16);
 		check("negative power keeps the base allowance",
@@ -330,9 +334,14 @@ public class SpellAnalyzerSelfTest {
 				SpellCapabilityPolicies.defaultPolicy(SpellCapability.TELEPORT) == SpellCapabilityPolicy.EXPERIMENTAL
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.ERASE_ENEMY_DANMAKU) == SpellCapabilityPolicy.OP_ONLY
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.CLEAR_SCREEN) == SpellCapabilityPolicy.ALLOW);
-		check("origin target/absolute ALLOW",
-				SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_TARGET) == SpellCapabilityPolicy.ALLOW
+		check("origin target EXP, absolute ALLOW",
+				SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_TARGET) == SpellCapabilityPolicy.EXPERIMENTAL
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.ORIGIN_ABSOLUTE) == SpellCapabilityPolicy.ALLOW);
+		check("shape/lifetime/target/tracking policies",
+				SpellCapabilityPolicies.defaultPolicy(SpellCapability.SIZED_PROJECTILE) == SpellCapabilityPolicy.OP_ONLY
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.LONG_LIFETIME) == SpellCapabilityPolicy.EXPERIMENTAL
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.TARGET_COORDINATE) == SpellCapabilityPolicy.EXPERIMENTAL
+						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.TRACKING_MOVER) == SpellCapabilityPolicy.EXPERIMENTAL);
 		check("confine EXPERIMENTAL, flag/phase/force/fire OP_ONLY",
 				SpellCapabilityPolicies.defaultPolicy(SpellCapability.CONFINED_TARGET) == SpellCapabilityPolicy.EXPERIMENTAL
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.SET_ENTITY_FLAG) == SpellCapabilityPolicy.OP_ONLY

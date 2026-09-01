@@ -828,7 +828,7 @@ public final class SpellAnalyzerSelfCheck {
 					NonSpellValidator.validate(parse(NON_SPELL_HOOK), tier1)));
 			check("non-spell rejects excessive initial speed", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_FAST), tier1)));
-			check("non-spell accepts bounded homing speed", !rejects(() ->
+			check("non-spell rejects tracking homing mover", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_HOMING), tier1)));
 			check("non-spell rejects acceleration without terminal speed", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_UNBOUNDED_ACCELERATION), tier1)));
@@ -1150,7 +1150,32 @@ public final class SpellAnalyzerSelfCheck {
 			check("laser, text and shooter are experimental fire",
 					laserFire.requiredCapabilities().contains(SpellCapability.EXPERIMENTAL_FIRE)
 							&& textFire.requiredCapabilities().contains(SpellCapability.EXPERIMENTAL_FIRE)
-							&& shooterFire.requiredCapabilities().contains(SpellCapability.EXPERIMENTAL_FIRE));
+						&& shooterFire.requiredCapabilities().contains(SpellCapability.EXPERIMENTAL_FIRE));
+			SpellAnalysis sized = SpellAnalyzer.analyze(parse(FIRE24.replace("\"lifetime\": 60}",
+					"\"lifetime\": 60, \"size\": 1.5}")), SpellAnalysisProfile.MARKET);
+			check("custom projectile size is OP capability",
+					SpecialNodeCounter.policy(firstTickAction(parse(FIRE24.replace("\"lifetime\": 60}",
+							"\"lifetime\": 60, \"size\": 1.5}")))) == SpellCapabilityPolicy.OP_ONLY
+						&& sized.requiredCapabilities().contains(SpellCapability.SIZED_PROJECTILE));
+			SpellAnalysis longLife = SpellAnalyzer.analyze(parse(LONG_LIFETIME), SpellAnalysisProfile.MARKET);
+			check("lifetime above 200 is EXP capability",
+					longLife.requiredCapabilities().contains(SpellCapability.LONG_LIFETIME));
+			SpellAnalysis targetCoordinate = SpellAnalyzer.analyze(parse(FIRE24.replace("\"speed\": 0.5",
+					"\"speed\": {\"type\": \"target_x\"}")), SpellAnalysisProfile.MARKET);
+			check("target coordinate provider is EXP capability",
+				targetCoordinate.requiredCapabilities().contains(SpellCapability.TARGET_COORDINATE));
+		SpellAnalysis tracking = SpellAnalyzer.analyze(parse(NON_SPELL_HOMING), SpellAnalysisProfile.MARKET);
+		check("homing mover is tracking capability",
+				tracking.requiredCapabilities().contains(SpellCapability.TRACKING_MOVER));
+			check("special counter classifies target origin as experimental",
+				SpecialNodeCounter.summarize(parse(ALL_CAPS)).experimentalCount(SpellCapability.ORIGIN_TARGET) > 0);
+			check("special counter classifies long lifetime as experimental",
+				SpecialNodeCounter.summarize(parse(LONG_LIFETIME)).experimentalCount(SpellCapability.LONG_LIFETIME) > 0);
+			check("special counter classifies target provider as experimental",
+				SpecialNodeCounter.summarize(parse(FIRE24.replace("\"speed\": 0.5",
+						"\"speed\": {\"type\": \"target_x\"}"))).experimentalCount(SpellCapability.TARGET_COORDINATE) > 0);
+			check("special counter classifies homing mover as experimental",
+				SpecialNodeCounter.summarize(parse(NON_SPELL_HOMING)).experimentalCount(SpellCapability.TRACKING_MOVER) > 0);
 			// certification extracts the expected capability set from a comprehensive fixture
 			SpellAnalysis caps = SpellAnalyzer.analyze(parse(ALL_CAPS), SpellAnalysisProfile.MARKET);
 			var capsSet = caps.requiredCapabilities();

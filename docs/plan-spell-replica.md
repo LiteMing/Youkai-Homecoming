@@ -119,6 +119,14 @@ erase_enemy_danmaku  OP_ONLY
 
 `experimental_fire` 包括 `spawn_shooter`、`fire_laser`、`fire_text_danmaku`，以及使用非 Billboard 弹幕模型的 `fire_danmaku`。普通 Billboard 弹幕仍属于基础发射能力；认证时按基底等级的实验授权额度计数。非符的手动启用入口无论等级都拒绝实验发射节点，但管理员可用 `/yhspell proxy` 做强制测试。
 
+`0.26.1` 还把下列数据形状纳入同一套能力分析器：`origin.mode=target`、寿命上限超过
+200 tick、数值表达式读取 `target_x/target_y/target_z`、以及会追踪实体的 mover 均默认标记为
+`experimental`；弹幕/激光/文字弹幕的尺寸偏离渲染默认值标记为 `op_only`。这些分类和每阶
+实验额度可由 Forge 配置或 KJS 覆盖，分析器、编辑器和认证报价读取同一策略。普通符卡保留
+历史的 `128 * tier coefficient` 单刻预算；只有非符使用
+`(floor(tier / 4) + 1) * (floor(power) + 1)`，其中 `power` 在服务端取玩家 capability 的
+有效整数等级（小数向下取整）。
+
 `clear_screen` 只清除施法者自己的弹幕，不应占用实验能力额度。`erase_enemy_danmaku` 可以让玩家制造近似安全区，默认不得通过生存认证；`confine_target` 在认证对等条件下风险较低，可以进入实验授权。
 
 能力策略和每个基底等级的预算/授权由 KJS 在服务器启动脚本中配置，认证分析器、编辑器、报价、草稿保存和最终证书校验必须读取同一份运行时策略。未知能力和不可解码节点继续 fail-closed。

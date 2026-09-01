@@ -29,6 +29,7 @@ public class SpellReplicaFilmItem extends Item {
 				SpellReplicaService.completeIntoDraft(server, stack);
 			} else {
 				SpellReplicaService.clearProgress(stack);
+				SpellReplicaService.markInventoryChanged(server);
 			}
 		}
 		return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());

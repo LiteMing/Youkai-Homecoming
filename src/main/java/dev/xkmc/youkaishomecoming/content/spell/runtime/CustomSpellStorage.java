@@ -14,9 +14,11 @@ import org.slf4j.LoggerFactory;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 /**
@@ -123,8 +125,22 @@ public class CustomSpellStorage {
 		try {
 			var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition)
 					.getOrThrow(false, s -> {});
-			try (var writer = new FileWriter(file)) {
+			// FileWriter uses the host code page on Windows.  Spell display names are
+			// commonly Chinese, so an old save could be GBK and become unreadable on
+			// the next startup (Files.readString is UTF-8).  Persist the wire format
+			// explicitly as UTF-8 and make the write atomic enough for a crash-safe
+			// inventory transition.
+			File parent = file.getParentFile();
+			if (parent != null) parent.mkdirs();
+			File temp = new File(file.getPath() + ".tmp");
+			try (var writer = Files.newBufferedWriter(temp.toPath(), StandardCharsets.UTF_8)) {
 				GSON.toJson(json, writer);
+			}
+			try {
+				Files.move(temp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+						java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+			} catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+				Files.move(temp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 			}
 			LOGGER.info("Saved custom spell {} to {}", definition.id, file.getPath());
 			return true;
@@ -189,8 +205,8 @@ public class CustomSpellStorage {
 
 	private static void loadSpellFile(File file, boolean allowDefaultOverrides) {
 		try {
-			String content = Files.readString(file.toPath());
-			var json = com.google.gson.JsonParser.parseString(content);
+			DecodedText decoded = readTextWithLegacyFallback(file);
+			var json = com.google.gson.JsonParser.parseString(decoded.content());
 			SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
 					.resultOrPartial(err -> LOGGER.warn("Failed to parse spell file {}: {}", file.getPath(), err))
 					.ifPresent(def -> {
@@ -203,10 +219,38 @@ public class CustomSpellStorage {
 						}
 						SpellRegistry.register(def);
 						LOGGER.info("Loaded custom spell {} from {}", def.id, file.getPath());
+						if (decoded.legacy()) {
+							// Older Windows builds wrote JSON using the host code page.  Rewrite
+							// after a successful parse so the next restart is unambiguous UTF-8.
+							if (saveSpell(file, def)) {
+								LOGGER.info("Migrated legacy-encoded spell {} to UTF-8", def.id);
+							}
+						}
 					});
 		} catch (Exception e) {
 			LOGGER.warn("Failed to read spell file {}: {}", file.getPath(), e.getMessage());
 		}
+	}
+
+	/** Read modern UTF-8 files while accepting pre-0.26 Windows-code-page saves. */
+	private static DecodedText readTextWithLegacyFallback(File file) throws IOException {
+		byte[] bytes = Files.readAllBytes(file.toPath());
+		try {
+			return new DecodedText(StandardCharsets.UTF_8.newDecoder()
+					.onMalformedInput(CodingErrorAction.REPORT)
+					.onUnmappableCharacter(CodingErrorAction.REPORT)
+					.decode(java.nio.ByteBuffer.wrap(bytes)).toString(), false);
+		} catch (java.nio.charset.CharacterCodingException malformed) {
+			// The old FileWriter output on the development Windows host was GBK.
+			// Decode it once and migrate it immediately after parsing.  String's
+			// replacement behavior is intentional here: it keeps a damaged legacy
+			// file diagnosable by the JSON/codec error instead of aborting the whole
+			// custom-spell scan with a second decoder exception.
+			return new DecodedText(new String(bytes, Charset.forName("GBK")), true);
+		}
+	}
+
+	private record DecodedText(String content, boolean legacy) {
 	}
 
 }

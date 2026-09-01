@@ -335,6 +335,15 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
+		// Shift+right-click is the universal close action while a spell runtime is
+		// active.  Keep this ahead of the draft editor branch so a non-spell can
+		// always be used to leave combat without accidentally reopening its editor.
+		if (player.isShiftKeyDown() && GrazeHelper.isPlayerSpellBeingCast(player)) {
+			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				GrazeHelper.tryForceCloseSpell(sp, stack);
+			}
+			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
 		if (player.isShiftKeyDown() && isNonSpell(stack)) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
 				if (getSpellId(stack) == null) {
@@ -350,9 +359,23 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (player.isShiftKeyDown() && GrazeHelper.isPlayerSpellBeingCast(player)) {
+		// An unfinished draft is an editor artifact, never a combat toggle.  Keep
+		// Shift+right-click available for editing while allowing the branch above
+		// to close an active spell first.
+		boolean editableDraft = getSpellId(stack) == null
+				|| (!isNonSpell(stack) && !CertifiedSpellValidator.isCertified(stack) && !isComplete(stack));
+		if (player.isShiftKeyDown() && editableDraft) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
-				GrazeHelper.tryForceCloseSpell(sp, stack);
+				if (getSpellId(stack) == null) {
+					YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.draftEditor(), sp);
+				} else {
+					SpellDefinition def = resolveEditableDefinition(stack, sp);
+					if (def == null) {
+						sp.displayClientMessage(Component.literal("Unknown spell: " + getSpellId(stack)), false);
+					} else {
+						OpenSpellPreviewToClient.sendPreview(sp, applyDraftTraits(stack, def));
+					}
+				}
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
@@ -446,7 +469,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		}
 		if (nonSpell && def != null) {
 			try {
-				NonSpellValidator.validate(def, getRank(stack));
+				NonSpellValidator.validate(def, getRank(stack),
+						player instanceof ServerPlayer sp ? GrazeHelper.getEffectivePowerLevel(sp) : 0);
 			} catch (NonSpellValidator.PresentationNodeException rejected) {
 				if (player instanceof ServerPlayer sp) {
 					sp.displayClientMessage(YHLangData.NON_SPELL_INVALID.get(), false);
@@ -651,7 +675,9 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 	@Override
 	public void inventoryTick(ItemStack stack, Level level, Entity user, int slot, boolean sel) {
-		if (user instanceof Player player && level.isClientSide && sel) {
+		if (user instanceof Player player && level.isClientSide && sel
+				&& !isNonSpell(stack)
+				&& (CertifiedSpellValidator.isCertified(stack) || isComplete(stack))) {
 			RayTraceUtil.clientUpdateTarget(player, GrazeHelper.SPELL_TARGET_RANGE);
 		}
 	}

@@ -579,6 +579,9 @@ public final class SpellAnalyzer {
 		if (actions > limits.maxActions()) {
 			throw new SpellAnalysisException("Spell contains too many actions: " + actions);
 		}
+		// Keep capability classification identical to the editor's node counter,
+		// including provider- and condition-based EXP/OP rules.
+		SpecialNodeCounter.capabilities(action).forEach(this::addCap);
 		recordClientCue(action, projection, mult);
 		boolean handled = true;
 		if (action instanceof FireDanmakuAction a) {
@@ -775,7 +778,7 @@ public final class SpellAnalyzer {
 	// ------------------------------------------------------------ fire actions
 
 	private void handleFire(FireDanmakuAction a, TickProjection projection, long mult) {
-		addCap(SpecialNodeCounter.capability(a));
+		SpecialNodeCounter.capabilities(a).forEach(this::addCap);
 		checkOrigin(a.origin());
 		long count = boundCount(a.count(), "fire_danmaku count");
 		long outer = profile == SpellAnalysisProfile.CERTIFICATION
@@ -810,7 +813,7 @@ public final class SpellAnalyzer {
 	}
 
 	private void handleLaser(FireLaserAction a, TickProjection projection, long mult) {
-		addCap(SpellCapability.EXPERIMENTAL_FIRE);
+		SpecialNodeCounter.capabilities(a).forEach(this::addCap);
 		checkOrigin(a.origin());
 		long contrib = mult;
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
@@ -822,7 +825,7 @@ public final class SpellAnalyzer {
 	}
 
 	private void handleText(FireTextDanmakuAction a, TickProjection projection, long mult) {
-		addCap(SpellCapability.EXPERIMENTAL_FIRE);
+		SpecialNodeCounter.capabilities(a).forEach(this::addCap);
 		checkOrigin(a.origin());
 		long contrib = mult;
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
@@ -970,7 +973,7 @@ public final class SpellAnalyzer {
 	}
 
 	private void handleShooter(SpawnShooterAction a, TickProjection projection, long mult) {
-		addCap(SpellCapability.EXPERIMENTAL_FIRE);
+		SpecialNodeCounter.capabilities(a).forEach(this::addCap);
 		long count = boundCount(a.count(), "shooter count");
 		long shooterCount = satMul(mult, count);
 		if (profile == SpellAnalysisProfile.MARKET) {

@@ -15,7 +15,7 @@ public class DanmakuItemDeco implements IItemDecorator {
 	public boolean render(GuiGraphics g, Font font, ItemStack stack, int x, int y) {
 		Player player = Minecraft.getInstance().player;
 		if (player != null && GrazeHelper.isSpellStack(stack) && DynamicSpellItem.isNonSpell(stack)) {
-			int color = DanmakuClientState.isNonSpellActive(player, stack) ? 0xff267dff : 0xffffc928;
+			int color = DanmakuClientState.isNonSpellActive(player, stack) ? 0xffffc928 : 0xff267dff;
 			drawBorder(g, x, y, color);
 			return true;
 		}

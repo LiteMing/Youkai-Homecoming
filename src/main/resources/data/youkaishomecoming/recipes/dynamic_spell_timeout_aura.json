@@ -1,9 +1,0 @@
-{
-  "type": "youkaishomecoming:spell_draft",
-  "category": "misc",
-  "ingredients": [
-    { "item": "youkaishomecoming:dynamic_spell" },
-    { "item": "youkaishomecoming:timeout_spell_aura" }
-  ],
-  "result": { "item": "youkaishomecoming:dynamic_spell" }
-}

@@ -103,6 +103,7 @@ public final class DanmakuCaptureService {
 		}
 		SpellReplicaService.record(film, source, hash, result.countForSource(source),
 				YHModConfig.COMMON.spellReplicaRequiredDanmaku.get());
+		SpellReplicaService.markInventoryChanged(player);
 		if (SpellReplicaService.isComplete(film)) SpellReplicaService.completeIntoDraft(player, film);
 	}
 

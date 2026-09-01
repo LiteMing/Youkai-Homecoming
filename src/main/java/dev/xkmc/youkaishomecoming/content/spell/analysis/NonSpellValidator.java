@@ -32,7 +32,13 @@ public final class NonSpellValidator {
 	}
 
 	public static void validate(SpellDefinition definition, SpellCardRank rank) {
+		validate(definition, rank, 0);
+	}
+
+	/** Validate using the caster's current power for the non-spell per-tick ceiling. */
+	public static void validate(SpellDefinition definition, SpellCardRank rank, double power) {
 		if (definition == null) throw new SpellAnalysisException("Non-spell definition is missing");
+		if (rank == null) rank = SpellCardRank.LESSER_WISDOM;
 		if (definition.itemForm.casterMoves()) {
 			throw new SpellAnalysisException("Non-spells cannot restrict caster movement");
 		}
@@ -46,11 +52,10 @@ public final class NonSpellValidator {
 			checkList(phase.onDamage);
 		}
 		SpellAnalysisLimits base = SpellAnalysisLimits.certification();
-		int perTier = Math.max(1, YHModConfig.COMMON.nonSpellMaxSpawnPerTier.get());
 		int lifetime = Math.max(1, YHModConfig.COMMON.nonSpellMaxLifetimeTicks.get());
 		SpellAnalysisLimits limits = new SpellAnalysisLimits(base.maxPhases(), base.maxActions(), base.maxDepth(),
 				base.maxRepeat(), base.maxTotalProjectiles(), base.maxShooters(), lifetime,
-				base.maxExpressionLength(), Math.max(1, rank.tierNumber() * perTier),
+				base.maxExpressionLength(), Math.max(1, rank.danmakuPerTick(power)),
 				base.maxPeakAlive(), base.maxProjectileTicks(), 0, 1,
 				base.certificationWindowTicks());
 		SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION, limits, java.util.Set.of());

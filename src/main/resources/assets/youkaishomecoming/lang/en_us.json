@@ -1493,6 +1493,7 @@
   "youkaishomecoming.cert.quote_reason.unknown_definition": "The spell definition no longer exists",
   "youkaishomecoming.cert.quote_reason.missing_draft": "Hold an unfinished spell card bound to this definition",
   "youkaishomecoming.cert.quote_reason.invalid_health_plan": "The set_spell_health health, timeout, or completion chain is invalid",
+  "youkaishomecoming.cert.quote_reason.invalid_initialization": "Spell initialization and title actions may only execute during on_enter",
   "youkaishomecoming.cert.quote_reason.analysis_rejected": "The spell exceeds certification limits or uses capabilities that are not allowed",
   "youkaishomecoming.cert.quote_reason.internal_error": "An internal error occurred; see the server log",
   "youkaishomecoming.cert.start_fail": "Certification start failed: %s",

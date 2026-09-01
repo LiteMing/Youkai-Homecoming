@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManag
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationQuote;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.CertificationActionPlacement;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
@@ -42,6 +43,12 @@ public final class CertificationQuoteRequestHandler {
 				throw new IllegalStateException("Failed to persist draft card traits");
 			}
 			quote = CertificationService.quote(player, definition);
+		} catch (CertificationActionPlacement.PlacementException e) {
+			YoukaisHomecoming.LOGGER.info("Certification quote rejected by action placement for {}: {}",
+					definition.id, e.getMessage());
+			player.displayClientMessage(YHLangData.CERT_QUOTE_FAIL.get(
+					YHLangData.CERT_QUOTE_INVALID_INITIALIZATION.get()), false);
+			return;
 		} catch (SpellAnalysisException e) {
 			YoukaisHomecoming.LOGGER.info("Certification quote rejected by spell analysis for {}: {}",
 					definition.id, e.getMessage());

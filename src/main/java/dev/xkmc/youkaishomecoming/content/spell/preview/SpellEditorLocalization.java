@@ -245,6 +245,8 @@ public final class SpellEditorLocalization {
 			Map.entry("Editor <<", "编辑器 <<"),
 			Map.entry("Editor >>", "编辑器 >>"),
 			Map.entry("Save & Refresh", "保存并刷新"),
+			Map.entry("Capture Card Face", "卡面拍摄"),
+			Map.entry("Card face capture ready", "卡面取景已开启，请点击取景框内的拍摄按钮"),
 			Map.entry("Prev", "上一个"),
 			Map.entry("Next", "下一个"),
 			Map.entry("New", "新建"),

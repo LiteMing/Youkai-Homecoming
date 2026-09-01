@@ -1594,6 +1594,7 @@
   "youkaishomecoming.cert.quote_reason.unknown_definition": "符卡定义已不存在",
   "youkaishomecoming.cert.quote_reason.missing_draft": "需要持有绑定此定义的未完成符卡",
   "youkaishomecoming.cert.quote_reason.invalid_health_plan": "set_spell_health 的血量、超时或完成切换链不合法",
+  "youkaishomecoming.cert.quote_reason.invalid_initialization": "符卡初始化与符卡展示节点只能在 on_enter 执行",
   "youkaishomecoming.cert.quote_reason.analysis_rejected": "符卡超过认证限制，或使用了认证不允许的能力",
   "youkaishomecoming.cert.quote_reason.internal_error": "发生内部错误，请查看服务端日志",
   "youkaishomecoming.cert.start_fail": "认证启动失败：%s",

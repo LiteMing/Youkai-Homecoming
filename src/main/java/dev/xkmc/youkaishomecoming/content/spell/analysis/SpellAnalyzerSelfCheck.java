@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellTitleAction;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -578,6 +579,7 @@ public final class SpellAnalyzerSelfCheck {
 				unknownAction();
 				hashOrderIndependence();
 				healthPlanValidation();
+				initializationPlacementValidation();
 				if (player != null) {
 					certificationQuoteSanity(player);
 				}
@@ -1329,6 +1331,42 @@ public final class SpellAnalyzerSelfCheck {
 			String dynamicMessage = rejectMessage(() -> SpellHealthPlan.analyze(dynamic, id -> null));
 			check("health plan rejects dynamic health",
 					dynamicMessage != null && dynamicMessage.contains("must be constants"));
+		}
+
+		private void initializationPlacementValidation() {
+			SpellDefinition valid = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "initialization_placement_valid"), "boss");
+			PhaseDefinition validEntry = valid.getPhase(valid.entryPhase);
+			validEntry.onEnter.add(1, new ShowSpellTitleAction("", "", 100, 64));
+			CertificationActionPlacement.validate(valid);
+			check("cert placement accepts health and title during on_enter", true);
+
+			SpellDefinition tickHealth = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "initialization_tick_health"), "boss");
+			PhaseDefinition tickHealthEntry = tickHealth.getPhase(tickHealth.entryPhase);
+			SpellAction health = tickHealthEntry.onEnter.remove(0);
+			tickHealthEntry.onTick.add(health);
+			String healthMessage = rejectMessage(() -> CertificationActionPlacement.validate(tickHealth));
+			check("cert placement rejects spell health outside on_enter",
+					healthMessage != null && healthMessage.contains("on_tick"));
+
+			SpellDefinition tickTitle = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "initialization_tick_title"), "boss");
+			tickTitle.getPhase(tickTitle.entryPhase).onTick.add(
+					new ShowSpellTitleAction("", "", 100, 64));
+			String titleMessage = rejectMessage(() -> CertificationActionPlacement.validate(tickTitle));
+			check("cert placement rejects spell title outside on_enter",
+					titleMessage != null && titleMessage.contains("on_tick"));
+
+			SpellDefinition hookTitle = SpellTemplates.create(
+					new ResourceLocation("youkaishomecoming", "initialization_hook_title"), "boss");
+			PhaseDefinition hookEntry = hookTitle.getPhase(hookTitle.entryPhase);
+			hookEntry.onEnter.add(parse(spell(fire(1).replace("\"lifetime\": 60}",
+					"\"lifetime\": 60, \"on_hit_block\": [{\"type\": \"show_spell_title\"}]}")))
+					.phases.values().iterator().next().onTick.get(0));
+			String hookMessage = rejectMessage(() -> CertificationActionPlacement.validate(hookTitle));
+			check("cert placement rejects spell title in event callback",
+					hookMessage != null && hookMessage.contains("event"));
 		}
 
 		private SpellDefinition crossHealthSpell(String id, String targetSpell) {

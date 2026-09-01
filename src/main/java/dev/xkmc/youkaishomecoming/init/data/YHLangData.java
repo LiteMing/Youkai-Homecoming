@@ -44,6 +44,7 @@ public enum YHLangData {
 	CERT_QUOTE_UNKNOWN_DEFINITION("cert.quote_reason.unknown_definition", "The spell definition no longer exists", 0, null),
 	CERT_QUOTE_MISSING_DRAFT("cert.quote_reason.missing_draft", "Hold an unfinished spell card bound to this definition", 0, null),
 	CERT_QUOTE_INVALID_HEALTH_PLAN("cert.quote_reason.invalid_health_plan", "The set_spell_health health, timeout, or completion chain is invalid", 0, null),
+	CERT_QUOTE_INVALID_INITIALIZATION("cert.quote_reason.invalid_initialization", "Spell initialization and title actions may only execute during on_enter", 0, null),
 	CERT_QUOTE_ANALYSIS_REJECTED("cert.quote_reason.analysis_rejected", "The spell exceeds certification limits or uses capabilities that are not allowed", 0, null),
 	CERT_QUOTE_INTERNAL_ERROR("cert.quote_reason.internal_error", "An internal error occurred; see the server log", 0, null),
 	CERT_START_FAIL("cert.start_fail", "Certification start failed: %s", 1, ChatFormatting.RED),

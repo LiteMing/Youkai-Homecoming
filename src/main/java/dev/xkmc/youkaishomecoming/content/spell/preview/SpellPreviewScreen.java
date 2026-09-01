@@ -405,6 +405,10 @@ public class SpellPreviewScreen extends Screen {
 			editorVisible = !editorVisible;
 			rebuildScreen();
 		}, fullEdit, rightLimit);
+		// Card-face capture is independent from certification.  It is also
+		// available for non-spells and unfinished drafts so every card can have art.
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Capture Card Face"), 82,
+				btn -> openCardFaceCapture(), true, rightLimit);
 		// Save button: persist the edited spell and refresh entities using it
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Save & Refresh"), 76, btn -> applyToEntities(), fullEdit, rightLimit);
 		boolean canCertify = isCertifiable();
@@ -977,16 +981,22 @@ public class SpellPreviewScreen extends Screen {
 		return viewport;
 	}
 
+	private void openCardFaceCapture() {
+		viewport.setPerspectiveMode(false);
+		viewport.setCardFrameGuideActive(true);
+		if (minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
+				Component.literal("[YH] " + SpellEditorLocalization.t("Card face capture ready")), true);
+	}
+
 	public void onCaptureSnapshotConfirmedFromViewport() {
 		byte[] snap = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
 		if (snap != null && snap.length > 0) {
 			Minecraft.getInstance().setScreen(
 					new dev.xkmc.youkaishomecoming.client.screen.SpellCardSnapshotConfirmScreen(this, snap, () -> {
 						viewport.setCardFrameGuideActive(false);
-						saveConfirmedSnapshot(snap);
 						syncCustomNamesToDefinition();
-						Minecraft.getInstance().setScreen(
-								new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, this));
+						saveConfirmedSnapshot(snap);
+						Minecraft.getInstance().setScreen(this);
 					}));
 		}
 	}

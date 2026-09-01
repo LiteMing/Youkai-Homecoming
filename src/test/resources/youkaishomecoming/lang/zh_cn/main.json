@@ -41,6 +41,7 @@
         "unknown_definition": "符卡定义已不存在",
         "missing_draft": "需要持有绑定此定义的未完成符卡",
         "invalid_health_plan": "set_spell_health 的血量、超时或完成切换链不合法",
+        "invalid_initialization": "符卡初始化与符卡展示节点只能在 on_enter 执行",
         "analysis_rejected": "符卡超过认证限制，或使用了认证不允许的能力",
         "internal_error": "发生内部错误，请查看服务端日志"
       },

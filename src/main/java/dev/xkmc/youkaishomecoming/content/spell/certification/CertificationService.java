@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.certification;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.CertificationActionPlacement;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysis;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
@@ -61,11 +62,16 @@ public final class CertificationService {
 		if (definition.itemForm.cardType() == SpellCardType.NON_SPELL) {
 			throw new SpellAnalysisException("Non-spells do not enter certification");
 		}
+		CertificationActionPlacement.validate(definition);
 		// Health and timeout are declaration data. The break chain is the only
 		// successful certification path; timeout targets remain legal boss behavior
 		// but any timeout fails the trial.
-		SpellHealthPlan healthPlan = SpellHealthPlan.analyze(definition,
-				dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry::get);
+		SpellHealthPlan healthPlan = SpellHealthPlan.analyze(definition, spellId -> {
+			SpellDefinition dependency =
+					dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry.get(spellId);
+			if (dependency != null) CertificationActionPlacement.validate(dependency);
+			return dependency;
+		});
 		int durationTicks = healthPlan.totalDurationTicks();
 		int spellHp = healthPlan.totalHealth();
 		// the arena half size is fixed by config (UI selection is ignored)

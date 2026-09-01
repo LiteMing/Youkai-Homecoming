@@ -183,8 +183,9 @@ public class VariablesDockPanel implements DockPanel {
 						: "Nodes: ordinary " + nodes.ordinaryNodes() + "/free " + budget.freeNodeCount()
 						+ "  excess " + excess + "  advanced hooks " + nodes.advancedHookNodes(),
 				excess > 0 ? 0xFFFFD36B : 0xFFAED8AE);
+		int powerScaledSpawnLimit = budget.maxSpawnPerTickForPower(scene.getCasterPower());
 		appendMetric(lines, font, width, zh ? "每tick生成" : "Spawn/tick",
-				analysis.maxSpawnPerTick(), budget.maxSpawnPerTick());
+				analysis.maxSpawnPerTick(), powerScaledSpawnLimit);
 		appendMetric(lines, font, width, zh ? "峰值存活" : "Peak alive",
 				analysis.peakAliveUpperBound(), budget.maxPeakAlive());
 		appendMetric(lines, font, width, zh ? "弹幕tick（总量）" : "Projectile ticks (total)",
@@ -196,7 +197,9 @@ public class VariablesDockPanel implements DockPanel {
 						+ capabilityPair(nodes, budget, SpellCapability.TELEPORT, zh ? "传送" : "teleport") + "  "
 						+ capabilityPair(nodes, budget, SpellCapability.ERASE_ENEMY_DANMAKU, zh ? "消弹" : "erase") + "  "
 						+ capabilityPair(nodes, budget, SpellCapability.CLEAR_SCREEN, zh ? "清屏" : "clear") + "  "
-						+ capabilityPair(nodes, budget, SpellCapability.BOSS_ON_DAMAGE, zh ? "受伤Hook" : "onDamage"),
+						+ capabilityPair(nodes, budget, SpellCapability.BOSS_ON_DAMAGE, zh ? "受伤Hook" : "onDamage") + "  "
+						+ capabilityPair(nodes, budget, SpellCapability.CONFINED_TARGET, zh ? "限制目标" : "confine") + "  "
+						+ capabilityPair(nodes, budget, SpellCapability.EXPERIMENTAL_FIRE, zh ? "高级发射" : "advanced fire"),
 				budget.permitsExperimental(nodes) ? 0xFFCC9DFF : 0xFFFF7777);
 		if (nodes.operatorOnlyNodes() > 0 || nodes.deniedNodes() > 0) {
 			appendWrapped(lines, font, width,

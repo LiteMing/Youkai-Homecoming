@@ -26,6 +26,7 @@ public final class SpellCapabilityPolicies {
 
 	static {
 		put(SpellCapability.BASE_FIRE, SpellCapabilityPolicy.ALLOW);
+		put(SpellCapability.EXPERIMENTAL_FIRE, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.HOOK_ON_EXPIRY, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.HOOK_ON_TRAIL, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.HOOK_ON_HIT, SpellCapabilityPolicy.ALLOW);

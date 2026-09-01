@@ -111,10 +111,13 @@ DanmakuProxyEntity / EntitySpellProxyEntity / YoukaiEntity
 当前实验能力的默认分类由服务器策略决定，而不是复刻物品自行绕过认证。`0.25.4` 的默认策略为：
 
 ```text
+experimental_fire      EXPERIMENTAL
 clear_screen          ALLOW
 confine_target        EXPERIMENTAL
 erase_enemy_danmaku  OP_ONLY
 ```
+
+`experimental_fire` 包括 `spawn_shooter`、`fire_laser`、`fire_text_danmaku`，以及使用非 Billboard 弹幕模型的 `fire_danmaku`。普通 Billboard 弹幕仍属于基础发射能力；认证时按基底等级的实验授权额度计数。非符的手动启用入口无论等级都拒绝实验发射节点，但管理员可用 `/yhspell proxy` 做强制测试。
 
 `clear_screen` 只清除施法者自己的弹幕，不应占用实验能力额度。`erase_enemy_danmaku` 可以让玩家制造近似安全区，默认不得通过生存认证；`confine_target` 在认证对等条件下风险较低，可以进入实验授权。
 

@@ -65,6 +65,14 @@ public final class NonSpellValidator {
 		if (inner instanceof SpellActions.DisabledAction disabled) {
 			inner = disabled.inner();
 		}
+		SpellCapability capability = SpecialNodeCounter.capability(inner);
+		// Advanced emitters are structurally incompatible with non-spells. Keep this
+		// gate closed even if an administrator relaxes the general capability policy;
+		// /yhspell proxy remains the explicit force-test route.
+		if (capability == SpellCapability.EXPERIMENTAL_FIRE
+				|| SpecialNodeCounter.policy(inner) == SpellCapabilityPolicy.EXPERIMENTAL) {
+			throw new SpellAnalysisException("Non-spells cannot use experimental nodes");
+		}
 		if (inner instanceof SetSpellHealthAction || inner instanceof SetSpellCircleAction
 				|| inner instanceof ShowSpellTitleAction) {
 			throw new PresentationNodeException();

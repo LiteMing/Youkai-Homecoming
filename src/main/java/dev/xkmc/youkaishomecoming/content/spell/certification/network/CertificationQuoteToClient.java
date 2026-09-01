@@ -87,7 +87,7 @@ public class CertificationQuoteToClient extends SerialPacketBase {
 		this.freeNodeCount = quote.draftBudget().freeNodeCount();
 		this.experimentalNodes = quote.nodeSummary().experimentalNodes();
 		this.operatorOnlyNodes = quote.nodeSummary().operatorOnlyNodes();
-		this.maxSpawnBudget = quote.draftBudget().maxSpawnPerTick();
+		this.maxSpawnBudget = quote.maxSpawnPerTickBudget();
 		this.maxPeakBudget = quote.draftBudget().maxPeakAlive();
 		this.maxProjectileTicksBudget = quote.draftBudget().maxProjectileTicks();
 		this.maxHookExecutionsBudget = quote.draftBudget().maxHookExecutions();

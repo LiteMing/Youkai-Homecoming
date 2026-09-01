@@ -500,7 +500,10 @@ public class ControlsDockPanel implements DockPanel {
 	}
 
 	private int addEditBox(int bx, int by, int bw, String hint, java.util.function.Consumer<String> onSubmit) {
-		return addTextEditBox(bx, by, bw, "", hint, 16, s -> s.matches("[0-9.%\\-]*"), onSubmit);
+		// Preview controls are transient state rather than serialized editor data.
+		// Apply valid numeric input as it is typed so a focus change cannot silently
+		// discard the value (the Enter handler remains as an explicit confirmation).
+		return addTextEditBox(bx, by, bw, "", hint, 16, s -> s.matches("[0-9.%\\-]*"), onSubmit, true);
 	}
 
 	private static String formatDimension(double value) {
@@ -533,12 +536,21 @@ public class ControlsDockPanel implements DockPanel {
 	private int addTextEditBox(int bx, int by, int bw, String value, String hint, int maxLength,
 							   java.util.function.Predicate<String> filter,
 							   java.util.function.Consumer<String> onSubmit) {
+		return addTextEditBox(bx, by, bw, value, hint, maxLength, filter, onSubmit, false);
+	}
+
+	private int addTextEditBox(int bx, int by, int bw, String value, String hint, int maxLength,
+							   java.util.function.Predicate<String> filter,
+							   java.util.function.Consumer<String> onSubmit,
+							   boolean submitOnChange) {
 		EditBox box = new EditBox(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
 		EditorTextBoxes.configure(box);
 		box.setMaxLength(maxLength);
 		box.setValue(value);
 		box.setHint(Component.literal(SpellEditorLocalization.t(hint)).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
-		box.setResponder(val -> {}); // no live response
+		box.setResponder(submitOnChange ? val -> {
+			if (!val.isBlank()) onSubmit.accept(val);
+		} : val -> {}); // non-control fields commit explicitly on Enter
 		box.setFilter(filter::test);
 		editBoxes.add(box);
 		if (addWidgetCallback != null) {

@@ -9,6 +9,7 @@ import java.util.Locale;
 public enum SpellCapability {
 
 	BASE_FIRE("base_fire"),
+	EXPERIMENTAL_FIRE("experimental_fire"),
 	HOOK_ON_EXPIRY("hook_on_expiry"),
 	HOOK_ON_TRAIL("hook_on_trail"),
 	HOOK_ON_HIT("hook_on_hit"),

@@ -62,7 +62,7 @@
 	"config.youkaishomecoming.common.certification.draftFreeNodeCount": "符卡基底免费节点数",
 	"config.youkaishomecoming.common.certification.draftFreeNodeCount.tooltip": "默认空白符卡基底无需增加使用费用即可容纳的普通动作与钩子节点数",
 	"config.youkaishomecoming.common.certification.draftBudgetMultiplier": "符卡基底预算倍率",
-	"config.youkaishomecoming.common.certification.draftBudgetMultiplier.tooltip": "按倍率统一调整新空白符卡的性能预算；1.0 时为单刻生成 128、峰值存活 10000、弹幕 tick 100000000、钩子执行 1000000。实际换算值会写入新符卡基底。",
+	"config.youkaishomecoming.common.certification.draftBudgetMultiplier.tooltip": "按倍率统一调整新空白符卡的性能预算；单刻生成上限按符卡阶级与施法者 P 点计算，其余默认峰值存活 10000、弹幕 tick 100000000、钩子执行 1000000。实际换算值会写入新符卡基底。",
 	"config.youkaishomecoming.common.certification.draftExcessNodeCostUnits": "超额节点使用费用",
 	"config.youkaishomecoming.common.certification.draftExcessNodeCostUnits.tooltip": "每个超出符卡基底免费额度的普通节点所增加的使用费用单位",
 	"config.youkaishomecoming.common.certification.nonSpellMaxSpawnPerTier": "非符每阶单刻弹幕上限",

@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicy;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellBudgetScaling;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.payment.CastCost;
@@ -41,6 +42,7 @@ public class SpellAnalyzerSelfTest {
 		testCastCostBuckets();
 		testReplicaProgressMath();
 		testBudgetScaling();
+		testDanmakuPerTickFormula();
 		testSelfCheckFixtureJsonValid();
 		testConstantBounded();
 		testRandomRangeBounded();
@@ -121,6 +123,19 @@ public class SpellAnalyzerSelfTest {
 		check("budget multiplier clamps non-positive", SpellBudgetScaling.scale(10_000L, 0.0) == 1L);
 		check("budget multiplier saturates overflow", SpellBudgetScaling.scale(Long.MAX_VALUE, 2.0) == Long.MAX_VALUE);
 		check("budget multiplier handles infinity", SpellBudgetScaling.scale(10_000L, Double.POSITIVE_INFINITY) == Long.MAX_VALUE);
+	}
+
+	private static void testDanmakuPerTickFormula() {
+		check("tier 1 at zero power allows one projectile/tick",
+				SpellCardRank.fromTier(1).danmakuPerTick(0) == 1);
+		check("tier 4 at zero power allows two projectiles/tick",
+				SpellCardRank.fromTier(4).danmakuPerTick(0) == 2);
+		check("tier 12 at zero power allows four projectiles/tick",
+				SpellCardRank.fromTier(12).danmakuPerTick(0) == 4);
+		check("fractional power is floored before scaling",
+				SpellCardRank.fromTier(12).danmakuPerTick(3.99) == 16);
+		check("negative power keeps the base allowance",
+				SpellCardRank.fromTier(8).danmakuPerTick(-1) == 3);
 	}
 
 	/**
@@ -305,6 +320,8 @@ public class SpellAnalyzerSelfTest {
 
 	private static void testPolicyTable() {
 		check("base_fire ALLOW", SpellCapabilityPolicies.defaultPolicy(SpellCapability.BASE_FIRE) == SpellCapabilityPolicy.ALLOW);
+		check("experimental_fire EXPERIMENTAL",
+				SpellCapabilityPolicies.defaultPolicy(SpellCapability.EXPERIMENTAL_FIRE) == SpellCapabilityPolicy.EXPERIMENTAL);
 		check("hooks ALLOW", SpellCapabilityPolicies.defaultPolicy(SpellCapability.HOOK_ON_EXPIRY) == SpellCapabilityPolicy.ALLOW
 				&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.HOOK_ON_TRAIL) == SpellCapabilityPolicy.ALLOW
 				&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.HOOK_ON_HIT) == SpellCapabilityPolicy.ALLOW);
@@ -330,6 +347,7 @@ public class SpellAnalyzerSelfTest {
 						&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.YSM_RENDER) == SpellCapabilityPolicy.ALLOW);
 		check("certification allowed set", SpellCapabilityPolicies.defaultPolicy(SpellCapability.BASE_FIRE).allowsCertification()
 				&& SpellCapabilityPolicies.defaultPolicy(SpellCapability.HOOK_ON_HIT).allowsCertification()
+				&& !SpellCapabilityPolicies.defaultPolicy(SpellCapability.EXPERIMENTAL_FIRE).allowsCertification()
 				&& !SpellCapabilityPolicies.defaultPolicy(SpellCapability.TELEPORT).allowsCertification()
 				&& !SpellCapabilityPolicies.defaultPolicy(SpellCapability.RUN_COMMAND).allowsCertification()
 				&& !SpellCapabilityPolicies.defaultPolicy(SpellCapability.LEGACY_TICKER).allowsCertification());

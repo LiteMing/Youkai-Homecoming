@@ -309,7 +309,7 @@ public class YHModConfig {
 						.translation("config.youkaishomecoming.common.certification.draftFreeNodeCount")
 						.defineInRange("draftFreeNodeCount", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_FREE_NODE_COUNT, 0, 4096);
 				spellDraftBudgetMultiplier = builder.comment(
-						"Multiplier for all new blank-card performance budgets (1.0 = spawn 128/tick, peak 10000, projectile-ticks 100000000, hooks 1000000)")
+						"Multiplier for all new blank-card performance budgets (spawn/tick uses the tier and caster-power formula; 1.0 keeps peak 10000, projectile-ticks 100000000, hooks 1000000)")
 						.translation("config.youkaishomecoming.common.certification.draftBudgetMultiplier")
 						.defineInRange("draftBudgetMultiplier", 1.0, 0.05, 100.0);
 				spellDraftExcessNodeCostUnits = builder.comment("Additional cast-cost units per ordinary node above the card's free allowance")

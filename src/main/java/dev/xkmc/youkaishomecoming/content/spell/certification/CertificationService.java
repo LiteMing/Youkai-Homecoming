@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -21,6 +22,7 @@ import dev.xkmc.youkaishomecoming.content.spell.payment.PaymentResult;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellCostContext;
 import dev.xkmc.youkaishomecoming.content.spell.payment.SpellPaymentRouter;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -87,7 +89,14 @@ public final class CertificationService {
 			if (budget == null) throw new SpellAnalysisException("Certification rejected: matching draft budget missing");
 			analysis = analyzeSurvivalPlan(healthPlan, budget, nodes);
 		}
-		budget.validatePerformance(analysis, SpellAnalysisLimits.certification());
+		SpellCardRank rank = operatorTest ? null : draftRank(player, definition);
+		if (!operatorTest && rank == null) {
+			throw new SpellAnalysisException("Certification rejected: matching draft rank missing");
+		}
+		budget.validatePerformance(analysis, SpellAnalysisLimits.certification(), rank,
+				operatorTest ? 0 : GrazeHelper.getEffectivePowerLevel(player));
+		int maxSpawnPerTickBudget = operatorTest ? budget.maxSpawnPerTick()
+				: budget.maxSpawnPerTickForPower(rank, GrazeHelper.getEffectivePowerLevel(player));
 		String hash = SpellHash.canonicalBundleHash(healthPlan.definitions());
 		// Start fee is a fixed anti-spam toll (design §14), decoupled from spell power —
 		// spam protection lives in maxConcurrentTrials and quote expiration.
@@ -103,7 +112,7 @@ public final class CertificationService {
 		return new CertificationQuote(UUID.randomUUID().toString(), hash, durationTicks, halfSize,
 				startCost, issueCost, castCost, rewardDuration,
 				spellHp, budget.legacyExperimentalQuota(), budget, nodes,
-				operatorTest, healthPlan, analysis, player.level().getGameTime());
+				operatorTest, healthPlan, analysis, maxSpawnPerTickBudget, player.level().getGameTime());
 	}
 
 	@Nullable
@@ -122,6 +131,22 @@ public final class CertificationService {
 		return null;
 	}
 
+	@Nullable
+	private static SpellCardRank draftRank(ServerPlayer player, SpellDefinition definition) {
+		for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+			ItemStack stack = player.getInventory().getItem(slot);
+			if (stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+					&& !dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.isComplete(stack)
+					&& !CertifiedSpellValidator.isCertified(stack)) {
+				ResourceLocation bound = dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getSpellId(stack);
+				if (bound != null && definition.id != null && definition.id.equals(bound)) {
+					return dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem.getRank(stack);
+				}
+			}
+		}
+		return null;
+	}
+
 	private static SpellDraftBudget operatorBudget(SpecialNodeCounter.Summary nodes) {
 		SpellAnalysisLimits limits = SpellAnalysisLimits.certification();
 		return new SpellDraftBudget(nodes.ordinaryNodes(), limits.maxSpawnPerTick(),
@@ -130,7 +155,8 @@ public final class CertificationService {
 				nodes.experimentalCount(SpellCapability.ERASE_ENEMY_DANMAKU),
 				nodes.experimentalCount(SpellCapability.CLEAR_SCREEN),
 				nodes.experimentalCount(SpellCapability.BOSS_ON_DAMAGE),
-				nodes.experimentalCount(SpellCapability.CONFINED_TARGET), 0);
+				nodes.experimentalCount(SpellCapability.CONFINED_TARGET),
+				nodes.experimentalCount(SpellCapability.EXPERIMENTAL_FIRE), 0);
 	}
 
 	public static boolean hasUnfinishedDraft(ServerPlayer player, @Nullable ResourceLocation definitionId) {
@@ -314,7 +340,15 @@ public final class CertificationService {
 			SpellAnalysis currentAnalysis = quote.operatorTest()
 					? analyzePlan(quote.healthPlan(), true, java.util.Set.of())
 					: analyzeSurvivalPlan(quote.healthPlan(), quote.draftBudget(), currentNodes);
-			quote.draftBudget().validatePerformance(currentAnalysis, SpellAnalysisLimits.certification());
+			SpellCardRank rank = quote.operatorTest() ? null : draftRank(player, quote.healthPlan().rootDefinition());
+			if (!quote.operatorTest() && rank == null) return false;
+			if (!quote.operatorTest()) {
+				int expectedBudget = quote.draftBudget().maxSpawnPerTickForPower(rank,
+						GrazeHelper.getEffectivePowerLevel(player));
+				if (quote.maxSpawnPerTickBudget() != expectedBudget) return false;
+			}
+			quote.draftBudget().validatePerformance(currentAnalysis, SpellAnalysisLimits.certification(), rank,
+					quote.operatorTest() ? 0 : GrazeHelper.getEffectivePowerLevel(player));
 			return true;
 		} catch (IllegalArgumentException e) {
 			return false;
@@ -395,9 +429,7 @@ public final class CertificationService {
 		}
 		java.util.Set<SpellCapability> granted = nodes.experimentalNodes() > 0
 				? SpellCapabilityPolicies.experimentalCapabilities() : java.util.Set.of();
-		SpellAnalysis analysis = analyzePlan(plan, false, granted);
-		budget.validatePerformance(analysis, SpellAnalysisLimits.certification());
-		return analysis;
+		return analyzePlan(plan, false, granted);
 	}
 
 	static SpellAnalysis validateCertifiedPlan(SpellHealthPlan plan, SpellDraftBudget budget) {

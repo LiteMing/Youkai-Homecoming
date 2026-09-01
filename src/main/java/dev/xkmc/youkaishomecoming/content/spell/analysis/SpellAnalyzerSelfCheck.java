@@ -195,6 +195,9 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String NON_SPELL_UNBOUNDED_ACCELERATION = NON_SPELL_SAFE.replace("\"speed\": 0.5", "\"speed\": 0").replace("\"lifetime\": 60", "\"lifetime\": 60, \"mover\": {\"type\": \"acceleration\", \"y\": -0.05}");
 		private static final String NON_SPELL_BOUNDED_ACCELERATION = NON_SPELL_UNBOUNDED_ACCELERATION.replace("\"y\": -0.05", "\"y\": -0.05, \"terminal_vy\": -1.0");
 		private static final String NON_SPELL_LASER = spell("{\"type\": \"fire_laser\", \"laser\": \"laser\", \"color\": \"red\", \"lifetime\": 20, \"length\": 8}");
+		private static final String NON_SPELL_TEXT = spell("{\"type\": \"fire_text_danmaku\", \"text\": \"x\", \"lifetime\": 20}");
+		private static final String NON_SPELL_SHOOTER = spell("{\"type\": \"spawn_shooter\", \"count\": 1, \"speed\": 0, \"lifetime\": 1, \"body\": []}");
+		private static final String NON_SPELL_NON_BILLBOARD = NON_SPELL_SAFE.replace("\"bullet\": \"ball\"", "\"bullet\": \"butterfly\"");
 		private static final String NON_SPELL_PRESENTATION = spell("{\"type\": \"show_spell_title\", \"name\": \"Not allowed\"}");
 		private static final String NON_SPELL_TIER1_OVERLAP = spell(
 				"{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 2}, \"if_true\": [" + NON_SPELL_SAFE_ACTION + "]},"
@@ -833,6 +836,12 @@ public final class SpellAnalyzerSelfCheck {
 					NonSpellValidator.validate(parse(NON_SPELL_BOUNDED_ACCELERATION), tier1)));
 			check("non-spell rejects laser nodes", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_LASER), tier1)));
+			check("non-spell rejects text nodes", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_TEXT), tier1)));
+			check("non-spell rejects shooter nodes", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_SHOOTER), tier1)));
+			check("non-spell rejects non-billboard projectiles", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_NON_BILLBOARD), tier1)));
 			check("non-spell presentation nodes use the dedicated rejection type",
 					rejectsAsPresentationNode(() -> NonSpellValidator.validate(parse(NON_SPELL_PRESENTATION), tier1)));
 			String overlap = rejectMessage(() ->
@@ -1128,9 +1137,20 @@ public final class SpellAnalyzerSelfCheck {
 					parse(forcePhaseSpell), SpellAnalysisProfile.MARKET));
 			check("market rejects force_phase",
 					"Automatic market imports may not use action: force_phase".equals(marketForcePhase));
-			// 20 stable capability IDs
-			check("20 stable capability IDs", SpellCapability.values().length == 20
-					&& Set.of(SpellCapability.values()).stream().map(SpellCapability::id).distinct().count() == 20);
+			// Stable capability IDs must remain unique as new policy categories are added.
+			check("stable capability IDs", Set.of(SpellCapability.values()).stream().map(SpellCapability::id).distinct().count()
+					== SpellCapability.values().length);
+			SpellAnalysis advancedFire = SpellAnalyzer.analyze(parse(NON_SPELL_NON_BILLBOARD), SpellAnalysisProfile.MARKET);
+			check("non-billboard fire is experimental capability",
+					advancedFire.requiredCapabilities().contains(SpellCapability.EXPERIMENTAL_FIRE)
+							&& !advancedFire.requiredCapabilities().contains(SpellCapability.BASE_FIRE));
+			SpellAnalysis laserFire = SpellAnalyzer.analyze(parse(NON_SPELL_LASER), SpellAnalysisProfile.MARKET);
+			SpellAnalysis textFire = SpellAnalyzer.analyze(parse(NON_SPELL_TEXT), SpellAnalysisProfile.MARKET);
+			SpellAnalysis shooterFire = SpellAnalyzer.analyze(parse(NON_SPELL_SHOOTER), SpellAnalysisProfile.MARKET);
+			check("laser, text and shooter are experimental fire",
+					laserFire.requiredCapabilities().contains(SpellCapability.EXPERIMENTAL_FIRE)
+							&& textFire.requiredCapabilities().contains(SpellCapability.EXPERIMENTAL_FIRE)
+							&& shooterFire.requiredCapabilities().contains(SpellCapability.EXPERIMENTAL_FIRE));
 			// certification extracts the expected capability set from a comprehensive fixture
 			SpellAnalysis caps = SpellAnalyzer.analyze(parse(ALL_CAPS), SpellAnalysisProfile.MARKET);
 			var capsSet = caps.requiredCapabilities();

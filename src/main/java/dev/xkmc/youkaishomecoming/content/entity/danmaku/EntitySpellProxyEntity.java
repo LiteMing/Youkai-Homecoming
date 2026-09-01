@@ -41,7 +41,8 @@ import java.util.UUID;
  * <ul>
  *   <li>Follows any entity's position (or stays fixed for block traps)</li>
  *   <li>Sends danmaku packets to players tracking the <em>host</em> entity</li>
- *   <li>Selects targets automatically (nearest hostile player) or from a fixed reference</li>
+ *   <li>Selects targets automatically (nearest hostile player for non-player hosts)
+ *       or follows a player host's look ray</li>
  * </ul>
  */
 public class EntitySpellProxyEntity extends PathfinderMob
@@ -255,6 +256,10 @@ public class EntitySpellProxyEntity extends PathfinderMob
 
 	private void autoSelectTarget() {
 		if (!(level() instanceof ServerLevel)) return;
+		// A player-hosted proxy follows the player's current look ray. Selecting the
+		// nearest player here would make target-dependent aim differ between /proxy
+		// casts and ordinary player casts.
+		if (hostEntity instanceof Player) return;
 		Vec3 searchCenter = hostEntity != null ? hostEntity.position() : position();
 		AABB searchBox = AABB.ofSize(searchCenter, 64, 64, 64);
 		List<Player> players = level().getEntitiesOfClass(Player.class, searchBox,
@@ -292,7 +297,8 @@ public class EntitySpellProxyEntity extends PathfinderMob
 			}
 		}
 		if (targetId == null) {
-			targetPos = null;
+			targetPos = hostEntity instanceof Player player
+				? GrazeHelper.getAimTarget(player, center()) : null;
 			return;
 		}
 		if (!(level() instanceof ServerLevel sl)) return;

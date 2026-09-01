@@ -20,6 +20,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.TeleportRandomAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.YsmRenderAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.BulletProvider;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -176,10 +177,19 @@ public final class SpecialNodeCounter {
 		return action;
 	}
 
+	/** Capability of the action itself; nested actions are counted separately. */
+	static SpellCapability capability(SpellAction action) {
+		return directCapability(unwrap(action));
+	}
+
 	private static SpellCapability directCapability(SpellAction action) {
 		if (action instanceof SpellActions.BrokenAction) return SpellCapability.BROKEN_NODE;
-		if (action instanceof FireDanmakuAction || action instanceof FireLaserAction
-				|| action instanceof FireTextDanmakuAction) return SpellCapability.BASE_FIRE;
+		if (action instanceof FireDanmakuAction danmaku) {
+			return isExperimentalBullet(danmaku.bulletType())
+					? SpellCapability.EXPERIMENTAL_FIRE : SpellCapability.BASE_FIRE;
+		}
+		if (action instanceof FireLaserAction || action instanceof FireTextDanmakuAction
+				|| action instanceof SpawnShooterAction) return SpellCapability.EXPERIMENTAL_FIRE;
 		if (action instanceof TeleportAction || action instanceof TeleportRandomAction) return SpellCapability.TELEPORT;
 		if (action instanceof ConfineTargetAction) return SpellCapability.CONFINED_TARGET;
 		if (action instanceof EraseEnemyDanmakuAction) return SpellCapability.ERASE_ENEMY_DANMAKU;
@@ -194,6 +204,21 @@ public final class SpecialNodeCounter {
 		if (action instanceof YsmRenderAction) return SpellCapability.YSM_RENDER;
 		if (action instanceof LegacyTickerAction) return SpellCapability.LEGACY_TICKER;
 		return null;
+	}
+
+	private static boolean isExperimentalBullet(BulletProvider provider) {
+		if (provider instanceof BulletProvider.Constant constant) {
+			return !constant.bullet().isBillboard();
+		}
+		if (provider instanceof BulletProvider.Indexed indexed) {
+			return indexed.palette().stream().anyMatch(bullet -> !bullet.isBillboard());
+		}
+		if (provider instanceof BulletProvider.RandomChoice random) {
+			return random.palette().stream().anyMatch(bullet -> !bullet.isBillboard());
+		}
+		// Unknown providers must fail closed: a future provider may select geometry
+		// that is not safe for the ordinary player-facing budget.
+		return true;
 	}
 
 	private static final class MutableSummary {

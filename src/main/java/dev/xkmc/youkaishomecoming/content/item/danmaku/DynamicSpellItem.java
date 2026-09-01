@@ -599,12 +599,13 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 					budget.maxProjectileTicks(), budget.maxHookExecutions()).withStyle(ChatFormatting.DARK_GRAY));
 			int grants = budget.teleportGrants() + budget.eraseEnemyDanmakuGrants()
 					+ budget.clearScreenGrants() + budget.bossOnDamageGrants()
-					+ budget.confinedTargetGrants();
+					+ budget.confinedTargetGrants() + budget.experimentalFireGrants();
 			if (grants > 0 || budget.legacyExperimentalQuota() > 0) {
 				list.add(Component.translatable("youkaishomecoming.tooltip.spell_budget.experimental",
 						budget.teleportGrants(), budget.eraseEnemyDanmakuGrants(),
 						budget.clearScreenGrants(), budget.bossOnDamageGrants(),
 						budget.confinedTargetGrants(),
+						budget.experimentalFireGrants(),
 						budget.legacyExperimentalQuota()).withStyle(ChatFormatting.LIGHT_PURPLE));
 			}
 		}

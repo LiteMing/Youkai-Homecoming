@@ -769,7 +769,7 @@ public final class SpellAnalyzer {
 	// ------------------------------------------------------------ fire actions
 
 	private void handleFire(FireDanmakuAction a, TickProjection projection, long mult) {
-		addCap(SpellCapability.BASE_FIRE);
+		addCap(SpecialNodeCounter.capability(a));
 		checkOrigin(a.origin());
 		long count = boundCount(a.count(), "fire_danmaku count");
 		long outer = profile == SpellAnalysisProfile.CERTIFICATION
@@ -793,7 +793,7 @@ public final class SpellAnalyzer {
 	}
 
 	private void handleLaser(FireLaserAction a, TickProjection projection, long mult) {
-		addCap(SpellCapability.BASE_FIRE);
+		addCap(SpellCapability.EXPERIMENTAL_FIRE);
 		checkOrigin(a.origin());
 		long contrib = mult;
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
@@ -805,7 +805,7 @@ public final class SpellAnalyzer {
 	}
 
 	private void handleText(FireTextDanmakuAction a, TickProjection projection, long mult) {
-		addCap(SpellCapability.BASE_FIRE);
+		addCap(SpellCapability.EXPERIMENTAL_FIRE);
 		checkOrigin(a.origin());
 		long contrib = mult;
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
@@ -953,6 +953,7 @@ public final class SpellAnalyzer {
 	}
 
 	private void handleShooter(SpawnShooterAction a, TickProjection projection, long mult) {
+		addCap(SpellCapability.EXPERIMENTAL_FIRE);
 		long count = boundCount(a.count(), "shooter count");
 		long shooterCount = satMul(mult, count);
 		if (profile == SpellAnalysisProfile.MARKET) {

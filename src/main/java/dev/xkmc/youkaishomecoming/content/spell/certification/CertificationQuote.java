@@ -35,6 +35,8 @@ public record CertificationQuote(
 		/** Frozen phase/spell dependency closure used by trial and reward runtime. */
 		SpellHealthPlan healthPlan,
 		SpellAnalysis analysis,
+		/** Effective danmaku-per-tick budget at quote time (tier + caster power). */
+		int maxSpawnPerTickBudget,
 		long issuedAtGameTime
 ) {
 }

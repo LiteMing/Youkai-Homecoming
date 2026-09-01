@@ -111,6 +111,17 @@ public class YHDanmaku {
 			return size > 1;
 		}
 
+		/**
+		 * Whether this projectile uses the ordinary billboard renderer. Non-billboard
+		 * geometry is treated as an experimental fire capability by certification.
+		 */
+		public boolean isBillboard() {
+			return switch (this) {
+				case BUTTERFLY, TALISMAN, SCALE, KUNAI, KNIFE, MOON, GIANT_YINYANG -> false;
+				default -> true;
+			};
+		}
+
 		public String getName() {
 			return name;
 		}

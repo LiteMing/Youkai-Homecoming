@@ -19,18 +19,29 @@ public class DanmakuItemDeco implements IItemDecorator {
 			drawBorder(g, x, y, color);
 			return true;
 		}
+		if (DanmakuClientState.isBoundSpellDraft(stack)) {
+			drawBorder(g, x, y, 0xffffffff);
+			return true;
+		}
 		if (DanmakuClientState.isLocalPlayerSuppressed()) {
 			g.fill(x, y, x + 16, y + 16, 0x7fff0000);
 			return true;
 		}
 		if (player == null || !GrazeHelper.isSpellStack(stack)) return false;
+		float cooldown = DanmakuClientState.getLastSpellCooldownProgress(
+				player, stack, Minecraft.getInstance().getFrameTime());
+		boolean rendered = cooldown > 0;
+		if (rendered) {
+			int height = (int) Math.ceil(16 * cooldown);
+			g.fill(x, y + 16 - height, x + 16, y + 16, 0x99cc2020);
+		}
 
 		// Green marks exactly the next card that can be released. Every other
 		// cast-ready card that is broken or cannot pay is red, so it is visibly
 		// skipped without hiding a later usable card.
 		boolean castable = DanmakuClientState.isSpellCardCastable(player, stack);
 		boolean selected = DanmakuClientState.findNextCastableSpellCard(player) == stack;
-		if (!selected && castable) return false;
+		if (!selected && castable) return rendered;
 		int color = selected ? 0xff20d060 : 0xffff3333;
 		drawBorder(g, x, y, color);
 		return true;

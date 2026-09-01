@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItemCost;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
@@ -25,6 +26,19 @@ public final class DanmakuClientState {
 	public static boolean isNonSpellActive(Player player, ItemStack stack) {
 		if (player == null || stack.isEmpty() || !DynamicSpellItem.isNonSpell(stack)) return false;
 		return GrazeCapability.HOLDER.get(player).isNonSpellActive(GrazeHelper.spellCardKey(stack));
+	}
+
+	public static boolean isBoundSpellDraft(ItemStack stack) {
+		return stack.getItem() instanceof DynamicSpellItem
+				&& DynamicSpellItem.getSpellId(stack) != null
+				&& !DynamicSpellItem.isComplete(stack)
+				&& !CertifiedSpellValidator.isCertified(stack);
+	}
+
+	public static float getLastSpellCooldownProgress(Player player, ItemStack stack, float partialTick) {
+		if (player == null || !(stack.getItem() instanceof DynamicSpellItem)
+				|| DynamicSpellItem.getCardType(stack) != SpellCardType.LAST_SPELL) return 0;
+		return GrazeCapability.HOLDER.get(player).getLastSpellCooldownProgress(partialTick);
 	}
 
 	public static boolean isSpellCardCastable(Player player, ItemStack stack) {

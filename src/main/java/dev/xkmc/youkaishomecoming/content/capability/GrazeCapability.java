@@ -96,6 +96,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private boolean lastSpellUsedThisCombat = false;
 	@SerialClass.SerialField(toTracking = true)
 	private int lastSpellCooldownTicks = 0;
+	/** Synced denominator for the client inventory cooldown overlay. */
+	@SerialClass.SerialField(toTracking = true)
+	private int lastSpellCooldownTotalTicks = 0;
 	/** STG spell casts own invulnerability until their active caster ends. */
 	@SerialClass.SerialField
 	private boolean spellInvulnerable = false;
@@ -250,7 +253,12 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (invul > 0) invul--;
 		if (weak > 0) weak--;
 		if (lastSpellCooldownTicks > 0) {
+			if (lastSpellCooldownTotalTicks <= 0) {
+				lastSpellCooldownTotalTicks = Math.max(lastSpellCooldownTicks,
+						YHModConfig.COMMON.lastSpellCooldownTicks.get());
+			}
 			lastSpellCooldownTicks--;
+			if (lastSpellCooldownTicks <= 0) lastSpellCooldownTotalTicks = 0;
 			dirty = true;
 		}
 		int maxPower = GrazeHelper.getMaxPower(player) * MAX_GRAZE;
@@ -841,7 +849,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	/** Commit Last Spell activation atomically after its proxy entered the world. */
 	public void activateLastSpell() {
 		lastSpellUsedThisCombat = true;
-		lastSpellCooldownTicks = Math.max(0, YHModConfig.COMMON.lastSpellCooldownTicks.get());
+		lastSpellCooldownTotalTicks = Math.max(0, YHModConfig.COMMON.lastSpellCooldownTicks.get());
+		lastSpellCooldownTicks = lastSpellCooldownTotalTicks;
 		life = 0;
 		bomb = 0;
 		dirty = true;
@@ -850,6 +859,13 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public int getLastSpellCooldownTicks() {
 		return Math.max(0, lastSpellCooldownTicks);
+	}
+
+	public float getLastSpellCooldownProgress(float partialTick) {
+		int total = Math.max(0, lastSpellCooldownTotalTicks);
+		if (total <= 0 || lastSpellCooldownTicks <= 0) return 0;
+		float remaining = Math.max(0, lastSpellCooldownTicks - Math.max(0, Math.min(1, partialTick)));
+		return Math.max(0, Math.min(1, remaining / total));
 	}
 
 	/** Client rendering predicate shared by the base player STG circle passes. */

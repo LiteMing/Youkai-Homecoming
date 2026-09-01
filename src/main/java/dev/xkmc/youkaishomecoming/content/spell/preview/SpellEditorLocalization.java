@@ -209,6 +209,10 @@ public final class SpellEditorLocalization {
 		if (text.startsWith("show title ")) return text.replace("show title", "显示符卡标题");
 		if (text.startsWith("spell circle ")) return text.replace("spell circle", "魔法阵")
 				.replace(" size=", " 大小=");
+		if (text.startsWith("spell initialization ")) {
+			return text.replace("spell initialization", "符卡初始化")
+					.replace(" clear", " 清除").replace(" duration=", " 时长=");
+		}
 		if (text.startsWith("set ")) return "设置 " + text.substring(4);
 		if (text.startsWith("add ")) return "增加 " + text.substring(4);
 		if (text.startsWith("force ")) return "切换阶段 " + text.substring(6).replace("[clear]", "[清屏]").replace("[keep]", "[保留]");
@@ -309,7 +313,8 @@ public final class SpellEditorLocalization {
 			Map.entry("YSM Render", "YSM 渲染"),
 			Map.entry("Teleport Random", "随机传送"),
 			Map.entry("Caster Moves", "施法者移动"),
-			Map.entry("Spell Health", "符卡血量"),
+			Map.entry("Spell Initialization", "符卡初始化"),
+			Map.entry("Link Spell Title", "衔接符卡展示"),
 			Map.entry("Phase ID", "阶段 ID"),
 			Map.entry("Spell ID", "符卡 ID"),
 			Map.entry("Raw ID", "原始 ID"),

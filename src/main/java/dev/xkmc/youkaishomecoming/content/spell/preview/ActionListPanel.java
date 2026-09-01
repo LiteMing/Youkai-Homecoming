@@ -8,8 +8,8 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.ColorProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
-import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -487,6 +487,34 @@ public class ActionListPanel {
 		dirty = true;
 	}
 
+	public boolean hasLinkedSpellTitle(@Nullable ActionPath path) {
+		if (path == null || path.isNested()) return false;
+		List<SpellAction> list = getSectionList(path.section());
+		int index = path.leafIndex();
+		return list != null && index >= 0 && index + 1 < list.size()
+				&& list.get(index) instanceof SetSpellHealthAction
+				&& list.get(index + 1) instanceof ShowSpellTitleAction;
+	}
+
+	public boolean setLinkedSpellTitle(@Nullable ActionPath path, boolean enabled) {
+		if (path == null || path.isNested()) return false;
+		List<SpellAction> list = getSectionList(path.section());
+		int index = path.leafIndex();
+		if (list == null || index < 0 || index >= list.size()
+				|| !(list.get(index) instanceof SetSpellHealthAction)) return false;
+		boolean linked = index + 1 < list.size() && list.get(index + 1) instanceof ShowSpellTitleAction;
+		if (linked == enabled) return false;
+		pushUndo();
+		if (enabled) {
+			list.add(index + 1, new ShowSpellTitleAction("", "", 100, 64.0));
+		} else {
+			list.remove(index + 1);
+		}
+		dirty = true;
+		onMoved.run();
+		return true;
+	}
+
 	// --- Row building ---
 
 	private void buildRowsIfDirty() {
@@ -501,19 +529,36 @@ public class ActionListPanel {
 		if (phase == null) return;
 		int cy = y + PADDING - scrollOffset;
 		SpellDefinition definition = definitionSupplier == null ? null : definitionSupplier.get();
-		SpecialNodeCounter.Summary summary = definition == null
-				? SpecialNodeCounter.summarize(phase) : SpecialNodeCounter.summarize(definition);
-		String total = SpellEditorLocalization.isChinese()
-				? "节点 普通 " + summary.ordinaryNodes() + "  高级 " + summary.advancedHookNodes()
-				+ "  实验 " + summary.experimentalNodes() + "  OP " + summary.operatorOnlyNodes()
-				: "Nodes ordinary " + summary.ordinaryNodes() + "  advanced " + summary.advancedHookNodes()
-				+ "  EXP " + summary.experimentalNodes() + "  OP " + summary.operatorOnlyNodes();
-		rows.add(Row.summary(total, cy));
+		rows.add(Row.summary(spellHeader(definition), cy));
 		cy += ROW_HEIGHT;
 		cy = buildSection("onEnter", phase.onEnter, cy, "enter");
 		cy = buildSection("onTick", phase.onTick, cy, "tick");
 		cy = buildSection("onExit", phase.onExit, cy, "exit");
 		buildSection("onDamage", phase.onDamage, cy, "damage");
+	}
+
+	private static String spellHeader(@Nullable SpellDefinition definition) {
+		if (definition == null) return SpellEditorLocalization.t("Spell Card");
+		SpellCardType type = definition.itemForm.cardType() == null
+				? SpellCardType.NORMAL : definition.itemForm.cardType();
+		String name = definition.display.displayName().getString().trim();
+		if (name.isEmpty()) name = definition.id.getPath();
+		if (SpellEditorLocalization.isChinese()) {
+			String prefix = switch (type) {
+				case NORMAL -> "符卡";
+				case TIMEOUT_SPELL -> "时符";
+				case LAST_SPELL -> "终符";
+				case NON_SPELL -> "非符";
+			};
+			return prefix + "「" + name + "」";
+		}
+		String prefix = switch (type) {
+			case NORMAL -> "Spell Card";
+			case TIMEOUT_SPELL -> "Timeout Spell";
+			case LAST_SPELL -> "Last Spell";
+			case NON_SPELL -> "Non-Spell";
+		};
+		return prefix + " \"" + name + "\"";
 	}
 
 	private int buildSection(String title, List<SpellAction> actions, int startY, String section) {
@@ -2885,8 +2930,8 @@ public class ActionListPanel {
 		}
 		if (action instanceof SetSpellHealthAction sha) {
 			return sha.mode() == SetSpellHealthAction.Mode.CLEAR
-					? index + ": spell health clear"
-					: index + ": spell health hp=" + formatNumberProvider(sha.health())
+					? index + ": spell initialization clear"
+					: index + ": spell initialization hp=" + formatNumberProvider(sha.health())
 					+ " duration=" + formatNumberProvider(sha.duration())
 					+ describeSpellHealthTarget(" timeout", sha.onTimeout())
 					+ describeSpellHealthTarget(" break", sha.onBreak());

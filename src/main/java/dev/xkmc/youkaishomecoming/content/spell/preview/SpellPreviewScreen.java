@@ -214,6 +214,17 @@ public class SpellPreviewScreen extends Screen {
 				this::onDeleteAction
 		);
 		actionEditorPanel.setActionPathSupplier(actionListPanel::getSelectedPath);
+		actionEditorPanel.setSpellInitializationAccess(
+				() -> definition == null ? "" : definition.display.name(),
+				this::onSpellDisplayNameEdited,
+				() -> actionListPanel != null
+						&& actionListPanel.hasLinkedSpellTitle(actionListPanel.getSelectedPath()),
+				value -> {
+					if (actionListPanel != null) {
+						actionListPanel.setLinkedSpellTitle(actionListPanel.getSelectedPath(), value);
+					}
+				}
+		);
 		actionEditorPanel.setPhaseOptions(() -> List.copyOf(phaseController.getPhaseList()), phaseController::getPhaseOptionLabel);
 		actionEditorPanel.setSpellOptions(spellController::getSpellOptions, spellController::getSpellOptionLabel);
 		actionEditorPanel.setToggleDisableCallback(() -> {
@@ -664,6 +675,14 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
+	private void onSpellDisplayNameEdited(String value) {
+		if (definition == null || java.util.Objects.equals(definition.display.name(), value)) return;
+		definition.setDisplayName(value);
+		if (actionListPanel != null) actionListPanel.markDirty();
+		invalidateCurrentSnapshot();
+		if (autoReplay) replaySelectedPhase();
+	}
+
 	private void invalidateCurrentSnapshot() {
 		if (definition == null) return;
 		try {
@@ -1061,6 +1080,7 @@ public class SpellPreviewScreen extends Screen {
 	 */
 	private void onActionListReordered() {
 		if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
+		invalidateCurrentSnapshot();
 		replaySelectedPhase();
 	}
 

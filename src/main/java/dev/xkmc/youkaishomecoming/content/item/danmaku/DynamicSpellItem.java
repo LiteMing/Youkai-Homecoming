@@ -335,9 +335,22 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
-		boolean activeThisNonSpell = isNonSpell(stack) && GrazeCapability.HOLDER.get(player)
-				.isNonSpellActive(GrazeHelper.spellCardKey(stack));
-		if (player.isShiftKeyDown() && (activeThisNonSpell || GrazeHelper.isPlayerSpellBeingCast(player))) {
+		if (player.isShiftKeyDown() && isNonSpell(stack)) {
+			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				if (getSpellId(stack) == null) {
+					YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.draftEditor(), sp);
+				} else {
+					SpellDefinition def = resolveEditableDefinition(stack, sp);
+					if (def == null) {
+						sp.displayClientMessage(Component.literal("Unknown spell: " + getSpellId(stack)), false);
+					} else {
+						OpenSpellPreviewToClient.sendPreview(sp, applyDraftTraits(stack, def));
+					}
+				}
+			}
+			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
+		if (player.isShiftKeyDown() && GrazeHelper.isPlayerSpellBeingCast(player)) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
 				GrazeHelper.tryForceCloseSpell(sp, stack);
 			}

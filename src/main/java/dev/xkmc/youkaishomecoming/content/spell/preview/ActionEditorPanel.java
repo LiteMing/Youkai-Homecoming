@@ -88,6 +88,10 @@ public class ActionEditorPanel {
 	private java.util.function.Supplier<List<ResourceLocation>> spellOptionsSupplier = List::of;
 	private java.util.function.Function<ResourceLocation, String> spellDisplayFormatter = ResourceLocation::toString;
 	private java.util.function.Supplier<ActionListPanel.ActionPath> actionPathSupplier = () -> null;
+	private java.util.function.Supplier<String> spellDisplayNameSupplier = () -> "";
+	private Consumer<String> spellDisplayNameUpdater = value -> {};
+	private java.util.function.Supplier<Boolean> linkedSpellTitleSupplier = () -> false;
+	private Consumer<Boolean> linkedSpellTitleUpdater = value -> {};
 
 	private int x, y, w, h;
 	private SpellAction currentAction;
@@ -208,6 +212,16 @@ public class ActionEditorPanel {
 
 	public void setActionPathSupplier(java.util.function.Supplier<ActionListPanel.ActionPath> supplier) {
 		this.actionPathSupplier = supplier != null ? supplier : () -> null;
+	}
+
+	public void setSpellInitializationAccess(java.util.function.Supplier<String> displayNameSupplier,
+			Consumer<String> displayNameUpdater,
+			java.util.function.Supplier<Boolean> linkedTitleSupplier,
+			Consumer<Boolean> linkedTitleUpdater) {
+		this.spellDisplayNameSupplier = displayNameSupplier != null ? displayNameSupplier : () -> "";
+		this.spellDisplayNameUpdater = displayNameUpdater != null ? displayNameUpdater : value -> {};
+		this.linkedSpellTitleSupplier = linkedTitleSupplier != null ? linkedTitleSupplier : () -> false;
+		this.linkedSpellTitleUpdater = linkedTitleUpdater != null ? linkedTitleUpdater : value -> {};
 	}
 
 	public void refreshCurrentView() {
@@ -383,7 +397,7 @@ public class ActionEditorPanel {
 					"force_phase", "Force Phase",
 					"force_spell", "Force Spell",
 					"fire_spell", "Fire Spell",
-					"set_spell_health", "Spell Health"),
+					"set_spell_health", "Spell Initialization"),
 			group("Movement",
 					"teleport", "Teleport",
 					"teleport_random", "Teleport Random",
@@ -1602,6 +1616,7 @@ public class ActionEditorPanel {
 						((SetSpellHealthAction) old).health(), ((SetSpellHealthAction) old).duration(),
 						((SetSpellHealthAction) old).onTimeout(), ((SetSpellHealthAction) old).onBreak()), true));
 		if (action.mode() == SetSpellHealthAction.Mode.SET) {
+			addStringRow("Display Name", spellDisplayNameSupplier.get(), spellDisplayNameUpdater);
 			addNumberRow("Health", action.health(), v -> notifySimple(old ->
 					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(), v,
 							((SetSpellHealthAction) old).duration(), ((SetSpellHealthAction) old).onTimeout(),
@@ -1610,6 +1625,12 @@ public class ActionEditorPanel {
 					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(),
 							((SetSpellHealthAction) old).health(), v, ((SetSpellHealthAction) old).onTimeout(),
 							((SetSpellHealthAction) old).onBreak())));
+			if (currentActionPath != null && !currentActionPath.isNested()) {
+				addBoolRow("Link Spell Title", linkedSpellTitleSupplier.get(), value -> {
+					linkedSpellTitleUpdater.accept(value);
+					refreshCurrentView();
+				});
+			}
 			buildSpellHealthTargetRows("Timeout", true, action.onTimeout());
 			buildSpellHealthTargetRows("Break", false, action.onBreak());
 		}
@@ -5003,7 +5024,7 @@ public class ActionEditorPanel {
 			Map.entry("set_entity_flag", "Set Entity Flag"),
 			Map.entry("ysm_render", "YSM Render"),
 			Map.entry("caster_moves", "Caster Moves"),
-			Map.entry("set_spell_health", "Spell Health"),
+			Map.entry("set_spell_health", "Spell Initialization"),
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);

@@ -4,18 +4,16 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
-import io.github.mortuusars.exposure.Exposure.DataComponents;
-import io.github.mortuusars.exposure.Exposure.Items;
+import io.github.mortuusars.exposure.Exposure;
 import io.github.mortuusars.exposure.ExposureClient;
-import io.github.mortuusars.exposure.client.render.photograph.PhotographRenderer;
-import io.github.mortuusars.exposure.world.camera.frame.Frame;
+import io.github.mortuusars.exposure.camera.capture.CapturedFramesHistory;
+import io.github.mortuusars.exposure.render.PhotographRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -23,6 +21,8 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+
+import java.util.List;
 
 /**
  * Client-side overlay that displays a photo thumbnail and score notification
@@ -36,18 +36,15 @@ public class DanmakuPhotoOverlay {
 	private static int totalDisplayTicks = 0;
 	private static int lastTotalErased = 0;
 	private static int lastScore = 0;
-	private static Frame lastFrame = Frame.EMPTY;
-	private static final int PHOTO_SIZE = 256;
 
 	/**
 	 * Called from the network packet handler to trigger the overlay display.
 	 */
-	public static void trigger(int totalErased, int score, CompoundTag frameTag) {
+	public static void trigger(int totalErased, int score) {
 		totalDisplayTicks = YHModConfig.CLIENT.photoOverlayDuration.get();
 		displayTicksRemaining = totalDisplayTicks;
 		lastTotalErased = totalErased;
 		lastScore = score;
-		lastFrame = Frame.CODEC.parse(NbtOps.INSTANCE, frameTag).result().orElse(Frame.EMPTY);
 	}
 
 	@SubscribeEvent
@@ -84,9 +81,8 @@ public class DanmakuPhotoOverlay {
 		}
 		if (alpha <= 0.01f) return;
 
-		// Exposure 1.9's renderer uses normalized coordinates; retain the old
-		// 256-pixel layout baseline so existing scale config keeps its meaning.
-		int photoSize = PHOTO_SIZE;
+		// Photo thumbnail size (from Exposure's renderer)
+		int photoSize = ExposureClient.getExposureRenderer().getSize();
 		float scale = (float) (double) YHModConfig.CLIENT.photoOverlayScale.get();
 		int scaledPhotoSize = (int) (photoSize * scale);
 
@@ -172,24 +168,26 @@ public class DanmakuPhotoOverlay {
 	 * Render the latest captured photo as a thumbnail using Exposure's PhotographRenderer.
 	 */
 	private static void renderPhotoThumbnail(GuiGraphics graphics, int x, int y, float scale, int alpha) {
-		if (lastFrame.equals(Frame.EMPTY)) return;
+		List<CompoundTag> frames = CapturedFramesHistory.get();
+		if (frames.isEmpty()) return;
+
+		// Get the most recent frame
+		CompoundTag latestFrame = frames.get(0);
 
 		// Create a photograph ItemStack with the frame data
-		ItemStack photoStack = new ItemStack(Items.PHOTOGRAPH.get());
-		DataComponents.setPhotographFrame(photoStack, lastFrame);
+		ItemStack photoStack = new ItemStack(Exposure.Items.PHOTOGRAPH.get());
+		photoStack.setTag(latestFrame.copy());
 
 		PoseStack pose = graphics.pose();
 		pose.pushPose();
 		pose.translate(x, y, 100); // Z offset to render above background
-		float renderScale = PHOTO_SIZE * scale;
-		pose.scale(renderScale, renderScale, renderScale);
+		pose.scale(scale, scale, scale);
 
 		RenderSystem.enableBlend();
 		RenderSystem.defaultBlendFunc();
 
 		MultiBufferSource.BufferSource bufferSource = MultiBufferSource.immediate(Tesselator.getInstance().getBuilder());
-		PhotographRenderer renderer = ExposureClient.photographRenderer();
-		renderer.render(photoStack, false, false, pose, bufferSource,
+		PhotographRenderer.render(photoStack, false, false, pose, bufferSource,
 				LightTexture.FULL_BRIGHT, 255, 255, 255, alpha);
 		bufferSource.endBatch();
 

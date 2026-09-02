@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.client;
 
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -15,7 +16,9 @@ public class DanmakuItemDeco implements IItemDecorator {
 	public boolean render(GuiGraphics g, Font font, ItemStack stack, int x, int y) {
 		Player player = Minecraft.getInstance().player;
 		if (player != null && GrazeHelper.isSpellStack(stack) && DynamicSpellItem.isNonSpell(stack)) {
-			int color = DanmakuClientState.isNonSpellActive(player, stack) ? 0xffffc928 : 0xff267dff;
+			int color = player.hasEffect(YHEffects.BEATEN.get())
+					? 0xffff3333
+					: DanmakuClientState.isNonSpellActive(player, stack) ? 0xffffc928 : 0xff267dff;
 			drawBorder(g, x, y, color);
 			return true;
 		}

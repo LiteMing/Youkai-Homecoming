@@ -22,6 +22,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
+import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import net.minecraft.ChatFormatting;
@@ -463,6 +464,12 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 		}
 		if (player instanceof ServerPlayer sp0 && nonSpell) {
+			// Non-spells are ordinary attacks, but they still respect the player's
+			// beaten lockout. This keeps a defeated player from re-enabling a draft
+			// non-spell while the beaten state is active.
+			if (sp0.hasEffect(YHEffects.BEATEN.get())) {
+				return false;
+			}
 			var cap = GrazeCapability.HOLDER.get(sp0);
 			String key = GrazeHelper.spellCardKey(stack);
 			// A non-spell is a toggle. Releasing another non-spell first keeps the

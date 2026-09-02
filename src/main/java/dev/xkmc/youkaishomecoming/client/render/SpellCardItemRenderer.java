@@ -35,17 +35,13 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 							 int packedLight, int packedOverlay) {
 		String hash = CertifiedSpellValidator.getCertifiedHash(stack);
 		ResourceLocation textureLoc = hash != null && !hash.isBlank()
-				? (transformType == ItemDisplayContext.GUI
-					? SpellCardTextureCache.getOrRequestCertifiedGui(hash)
-					: SpellCardTextureCache.getOrRequestCertified(hash))
+				? SpellCardTextureCache.getOrRequestCertified(hash)
 				: null;
 
 		if (textureLoc == null) {
 			var id = DynamicSpellItem.getSpellId(stack);
 			if (id != null) {
-				textureLoc = transformType == ItemDisplayContext.GUI
-						? SpellCardTextureCache.getLocalGuiBySpellId(id)
-						: SpellCardTextureCache.getLocalBySpellId(id);
+				textureLoc = SpellCardTextureCache.getLocalBySpellId(id);
 			}
 		}
 
@@ -104,16 +100,9 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 			poseStack.scale(0.6f, 0.6f, 0.6f);
 		}
 
-		// GUI cards use the emissive entity pipeline so their artwork is not
-		// multiplied by the world lightmap (the regular hand-held path keeps the
-		// cutout pipeline and supplied packed light).
-		RenderType cardRenderType = transformType == ItemDisplayContext.GUI
-				? RenderType.entityTranslucentEmissive(cardTexture)
-				: RenderType.entityCutoutNoCull(cardTexture);
+		RenderType cardRenderType = RenderType.entityCutoutNoCull(cardTexture);
 		VertexConsumer frontBuilder = buffer.getBuffer(cardRenderType);
 		Matrix4f mat = poseStack.last().pose();
-		int renderLight = transformType == ItemDisplayContext.GUI
-				? net.minecraft.client.renderer.LightTexture.FULL_BRIGHT : packedLight;
 
 		// 正面（弹幕快照或默认 84x128 底纹）
 		int color = (textureLoc == null) ? DynamicSpellItem.getColor(stack).argb() : 0xFFFFFFFF;
@@ -121,37 +110,23 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		int r = (color >>> 16) & 0xFF;
 		int g = (color >>> 8) & 0xFF;
 		int b = color & 0xFF;
-		if (transformType == ItemDisplayContext.GUI) {
-			// GUI item models do not receive the world light contribution that makes
-			// the hand-held card readable at night. Keep the full-bright lightmap and
-			// lift tinted procedural cards as an additional presentation correction.
-			r = brightenGuiChannel(r);
-			g = brightenGuiChannel(g);
-			b = brightenGuiChannel(b);
-		}
-		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, renderLight, r, g, b, a);
+		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
 
 		// 背面（与正面保持一致材质，镜像贴附）
 		VertexConsumer backBuilder = buffer.getBuffer(cardRenderType);
-		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, renderLight, r, g, b, a);
+		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
 
 		if (frameTexture != null) {
-			RenderType frameRenderType = transformType == ItemDisplayContext.GUI
-					? RenderType.entityTranslucentEmissive(frameTexture)
-					: RenderType.entityCutoutNoCull(frameTexture);
+			RenderType frameRenderType = RenderType.entityCutoutNoCull(frameTexture);
 			VertexConsumer frameBuilder = buffer.getBuffer(frameRenderType);
 			float frameOffset = 0.0005f;
 			quadColor(frameBuilder, mat, -w, w, -h, h, thickness + frameOffset,
-					0, 1, 0, 1, renderLight, 255, 255, 255, 255);
+					0, 1, 0, 1, packedLight, 255, 255, 255, 255);
 			quadColor(frameBuilder, mat, w, -w, -h, h, -thickness - frameOffset,
-					0, 1, 0, 1, renderLight, 255, 255, 255, 255);
+					0, 1, 0, 1, packedLight, 255, 255, 255, 255);
 		}
 
 		poseStack.popPose();
-	}
-
-	private static int brightenGuiChannel(int value) {
-		return Math.min(255, (value * 3 + 1) / 2);
 	}
 
 	private static void quadColor(VertexConsumer builder, Matrix4f mat,

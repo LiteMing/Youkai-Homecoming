@@ -99,27 +99,32 @@ public class YHJeiPlugin implements IModPlugin {
 		registration.addRecipes(STOCK_COOKING, m.getAllRecipesFor(YHBlocks.COOKING_RT.get())
 				.stream().filter(e -> e.matchContainer(YHBlocks.STOCKPOT.asItem())).toList());
 		var anvil = registration.getVanillaRecipeFactory();
+		// JEI derives the displayed level cost by running these inputs through an
+		// AnvilMenu. The real aura handler accepts bound unfinished drafts, so the
+		// representative input must carry a spell id as well.
+		ItemStack auraInput = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(),
+				new ResourceLocation("fairy", "generic"));
 		registration.addRecipes(SPELL_AURA_ANVIL, List.of(
-				anvil.createAnvilRecipe(YHDanmaku.DYNAMIC_SPELL.asStack(),
+				anvil.createAnvilRecipe(auraInput,
 						List.of(YHDanmaku.NON_SPELL_AURA.asStack()),
-						List.of(auraOutput(YHDanmaku.NON_SPELL_AURA.get())),
+						List.of(auraOutput(auraInput, YHDanmaku.NON_SPELL_AURA.get())),
 						YoukaisHomecoming.loc("spell_aura_non_spell")),
-				anvil.createAnvilRecipe(YHDanmaku.DYNAMIC_SPELL.asStack(),
+				anvil.createAnvilRecipe(auraInput,
 						List.of(YHDanmaku.TIMEOUT_SPELL_AURA.asStack()),
-						List.of(auraOutput(YHDanmaku.TIMEOUT_SPELL_AURA.get())),
+						List.of(auraOutput(auraInput, YHDanmaku.TIMEOUT_SPELL_AURA.get())),
 						YoukaisHomecoming.loc("spell_aura_timeout")),
-				anvil.createAnvilRecipe(YHDanmaku.DYNAMIC_SPELL.asStack(),
+				anvil.createAnvilRecipe(auraInput,
 						List.of(YHDanmaku.LAST_SPELL_AURA.asStack()),
-						List.of(auraOutput(YHDanmaku.LAST_SPELL_AURA.get())),
+						List.of(auraOutput(auraInput, YHDanmaku.LAST_SPELL_AURA.get())),
 						YoukaisHomecoming.loc("spell_aura_last")),
-				anvil.createAnvilRecipe(YHDanmaku.DYNAMIC_SPELL.asStack(),
+				anvil.createAnvilRecipe(auraInput,
 						List.of(YHDanmaku.EX_SPELL_AURA.asStack()),
-						List.of(auraOutput(YHDanmaku.EX_SPELL_AURA.get())),
+						List.of(auraOutput(auraInput, YHDanmaku.EX_SPELL_AURA.get())),
 						YoukaisHomecoming.loc("spell_aura_ex"))));
 	}
 
-	private static ItemStack auraOutput(SpellAuraItem aura) {
-		ItemStack output = YHDanmaku.DYNAMIC_SPELL.asStack();
+	private static ItemStack auraOutput(ItemStack input, SpellAuraItem aura) {
+		ItemStack output = input.copy();
 		if (aura.isEx()) {
 			DynamicSpellItem.setExSpell(output, true);
 		} else {

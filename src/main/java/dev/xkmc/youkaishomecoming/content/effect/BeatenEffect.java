@@ -110,6 +110,21 @@ public class BeatenEffect extends MobEffect {
 		return List.of();
 	}
 
+	/**
+	 * Stop player-owned spell output as soon as beaten is applied, including
+	 * effects added by commands or integrations outside the normal STG defeat
+	 * path. The tick handler below remains a defensive fallback for restored
+	 * worlds and already-active effects.
+	 */
+	@SubscribeEvent(priority = EventPriority.HIGHEST)
+	public static void onMobEffectAdded(MobEffectEvent.Added event) {
+		MobEffectInstance effect = event.getEffectInstance();
+		if (effect == null || effect.getEffect() != YHEffects.BEATEN.get()) return;
+		if (event.getEntity() instanceof ServerPlayer sp) {
+			SpellContainer.clearForBeaten(sp);
+		}
+	}
+
 	@SubscribeEvent
 	public static void onLivingHeal(LivingHealEvent event) {
 		LivingEntity entity = event.getEntity();

@@ -6,6 +6,7 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
@@ -13,6 +14,7 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.client.ForgeRenderTypes;
 import org.joml.Matrix4f;
 
 /**
@@ -100,7 +102,7 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 			poseStack.scale(0.6f, 0.6f, 0.6f);
 		}
 
-		RenderType cardRenderType = RenderType.entityCutoutNoCull(cardTexture);
+		RenderType cardRenderType = ForgeRenderTypes.getUnlitTranslucent(cardTexture, false);
 		VertexConsumer frontBuilder = buffer.getBuffer(cardRenderType);
 		Matrix4f mat = poseStack.last().pose();
 
@@ -110,20 +112,22 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		int r = (color >>> 16) & 0xFF;
 		int g = (color >>> 8) & 0xFF;
 		int b = color & 0xFF;
-		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
+		quadColor(frontBuilder, mat, -w, w, -h, h, thickness, 0, 1, 0, 1,
+				LightTexture.FULL_BRIGHT, r, g, b, a);
 
 		// 背面（与正面保持一致材质，镜像贴附）
 		VertexConsumer backBuilder = buffer.getBuffer(cardRenderType);
-		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1, packedLight, r, g, b, a);
+		quadColor(backBuilder, mat, w, -w, -h, h, -thickness, 0, 1, 0, 1,
+				LightTexture.FULL_BRIGHT, r, g, b, a);
 
 		if (frameTexture != null) {
-			RenderType frameRenderType = RenderType.entityCutoutNoCull(frameTexture);
+			RenderType frameRenderType = ForgeRenderTypes.getUnlitTranslucent(frameTexture, false);
 			VertexConsumer frameBuilder = buffer.getBuffer(frameRenderType);
 			float frameOffset = 0.0005f;
 			quadColor(frameBuilder, mat, -w, w, -h, h, thickness + frameOffset,
-					0, 1, 0, 1, packedLight, 255, 255, 255, 255);
+					0, 1, 0, 1, LightTexture.FULL_BRIGHT, 255, 255, 255, 255);
 			quadColor(frameBuilder, mat, w, -w, -h, h, -thickness - frameOffset,
-					0, 1, 0, 1, packedLight, 255, 255, 255, 255);
+					0, 1, 0, 1, LightTexture.FULL_BRIGHT, 255, 255, 255, 255);
 		}
 
 		poseStack.popPose();

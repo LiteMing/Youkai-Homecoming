@@ -16,10 +16,14 @@ import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHBlocks;
 import dev.xkmc.youkaishomecoming.init.registrate.YHItems;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellAuraItem;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.ingredients.subtypes.UidContext;
 import mezz.jei.api.recipe.RecipeType;
+import mezz.jei.api.recipe.vanilla.IJeiAnvilRecipe;
+import mezz.jei.api.constants.RecipeTypes;
 import mezz.jei.api.registration.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
@@ -45,7 +49,7 @@ public class YHJeiPlugin implements IModPlugin {
 	public static final RecipeType<PotCookingRecipe<?>> BOWL_COOKING = RecipeType.create(YoukaisHomecoming.MODID, "bowl_cooking", Wrappers.cast(PotCookingRecipe.class));
 	public static final RecipeType<PotCookingRecipe<?>> POT_COOKING = RecipeType.create(YoukaisHomecoming.MODID, "pot_cooking", Wrappers.cast(PotCookingRecipe.class));
 	public static final RecipeType<PotCookingRecipe<?>> STOCK_COOKING = RecipeType.create(YoukaisHomecoming.MODID, "stock_cooking", Wrappers.cast(PotCookingRecipe.class));
-	public static final RecipeType<SpellAuraAnvilRecipe> SPELL_AURA_ANVIL = SpellAuraAnvilCategory.TYPE;
+	public static final RecipeType<IJeiAnvilRecipe> SPELL_AURA_ANVIL = RecipeTypes.ANVIL;
 
 	@Override
 	public ResourceLocation getPluginUid() {
@@ -73,7 +77,6 @@ public class YHJeiPlugin implements IModPlugin {
 		registry.addRecipeCategories(new PotCookingRecipeCategory("bowl_cooking", YHBlocks.IRON_BOWL.asStack()).init(helper));
 		registry.addRecipeCategories(new PotCookingRecipeCategory("pot_cooking", YHBlocks.IRON_POT.asStack()).init(helper));
 		registry.addRecipeCategories(new PotCookingRecipeCategory("stock_cooking", YHBlocks.STOCKPOT.asStack()).init(helper));
-		registry.addRecipeCategories(new SpellAuraAnvilCategory(helper));
 	}
 
 	public void registerRecipes(IRecipeRegistration registration) {
@@ -95,11 +98,34 @@ public class YHJeiPlugin implements IModPlugin {
 				.stream().filter(e -> e.matchContainer(YHBlocks.IRON_POT.asItem())).toList());
 		registration.addRecipes(STOCK_COOKING, m.getAllRecipesFor(YHBlocks.COOKING_RT.get())
 				.stream().filter(e -> e.matchContainer(YHBlocks.STOCKPOT.asItem())).toList());
+		var anvil = registration.getVanillaRecipeFactory();
 		registration.addRecipes(SPELL_AURA_ANVIL, List.of(
-				SpellAuraAnvilRecipe.of(YHDanmaku.NON_SPELL_AURA.get(), 5),
-				SpellAuraAnvilRecipe.of(YHDanmaku.TIMEOUT_SPELL_AURA.get(), 10),
-				SpellAuraAnvilRecipe.of(YHDanmaku.LAST_SPELL_AURA.get(), 15),
-				SpellAuraAnvilRecipe.of(YHDanmaku.EX_SPELL_AURA.get(), 30)));
+				anvil.createAnvilRecipe(YHDanmaku.DYNAMIC_SPELL.asStack(),
+						List.of(YHDanmaku.NON_SPELL_AURA.asStack()),
+						List.of(auraOutput(YHDanmaku.NON_SPELL_AURA.get())),
+						YoukaisHomecoming.loc("spell_aura_non_spell")),
+				anvil.createAnvilRecipe(YHDanmaku.DYNAMIC_SPELL.asStack(),
+						List.of(YHDanmaku.TIMEOUT_SPELL_AURA.asStack()),
+						List.of(auraOutput(YHDanmaku.TIMEOUT_SPELL_AURA.get())),
+						YoukaisHomecoming.loc("spell_aura_timeout")),
+				anvil.createAnvilRecipe(YHDanmaku.DYNAMIC_SPELL.asStack(),
+						List.of(YHDanmaku.LAST_SPELL_AURA.asStack()),
+						List.of(auraOutput(YHDanmaku.LAST_SPELL_AURA.get())),
+						YoukaisHomecoming.loc("spell_aura_last")),
+				anvil.createAnvilRecipe(YHDanmaku.DYNAMIC_SPELL.asStack(),
+						List.of(YHDanmaku.EX_SPELL_AURA.asStack()),
+						List.of(auraOutput(YHDanmaku.EX_SPELL_AURA.get())),
+						YoukaisHomecoming.loc("spell_aura_ex"))));
+	}
+
+	private static ItemStack auraOutput(SpellAuraItem aura) {
+		ItemStack output = YHDanmaku.DYNAMIC_SPELL.asStack();
+		if (aura.isEx()) {
+			DynamicSpellItem.setExSpell(output, true);
+		} else {
+			DynamicSpellItem.setCardType(output, aura.type());
+		}
+		return output;
 	}
 
 	public void registerRecipeCatalysts(IRecipeCatalystRegistration registration) {

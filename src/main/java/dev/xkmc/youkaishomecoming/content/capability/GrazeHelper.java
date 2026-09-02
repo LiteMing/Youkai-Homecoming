@@ -345,6 +345,19 @@ public class GrazeHelper {
 		return SpellContainer.forceCloseActiveSpell(player, spellCardKey(stack));
 	}
 
+	/**
+	 * Closes the currently enabled non-spell before entering its editor. Editing
+	 * is a state boundary: the runtime must not keep executing while its source
+	 * definition is being changed, and the single-active-non-spell invariant must
+	 * be restored even when a different non-spell is held in hand.
+	 */
+	public static void closeActiveNonSpellForEditor(ServerPlayer player) {
+		var cap = GrazeCapability.HOLDER.get(player);
+		if (cap.getActiveNonSpellCardKey() != null || SpellContainer.hasActiveSpell(player)) {
+			SpellContainer.clearActiveNonSpell(player);
+		}
+	}
+
 	public static boolean isPlayerSpellBeingCast(Player player) {
 		return GrazeCapability.HOLDER.get(player).isPlayerSpellActive()
 				|| SpellContainer.hasActiveSpellCard(player);

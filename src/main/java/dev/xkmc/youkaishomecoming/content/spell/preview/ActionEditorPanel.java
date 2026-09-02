@@ -1612,13 +1612,20 @@ public class ActionEditorPanel {
 		var screen = mc.screen;
 		if (commandSuggestions == null) {
 			commandSuggestions = new CommandSuggestions(mc, screen, editBox, mc.font,
-					true, false, 0, 10, true, 0xF000F0);
+					true, false, 0, 10, false, 0xF000F0);
 			commandSuggestions.setAllowSuggestions(true);
 		}
 		closeStringCompletion();
 		commandSuggestions.updateCommandInfo();
 		commandSuggestions.showSuggestions(true);
 		return true;
+	}
+
+	private int commandSuggestionOffsetY() {
+		if (commandEditBox == null) return 0;
+		int desired = commandEditBox.getY() + commandEditBox.getHeight();
+		if (desired + 120 > y + h) desired = commandEditBox.getY() - 120;
+		return desired - 72;
 	}
 
 	private RunCommandAction.HitContext[] availableRunCommandHitContexts() {
@@ -4590,7 +4597,11 @@ public class ActionEditorPanel {
 	public void renderDropdown(GuiGraphics guiGraphics, int mouseX, int mouseY) {
 		Font font = Minecraft.getInstance().font;
 		if (commandSuggestions != null) {
-			commandSuggestions.renderSuggestions(guiGraphics, mouseX, mouseY);
+			int offsetY = commandSuggestionOffsetY();
+			guiGraphics.pose().pushPose();
+			guiGraphics.pose().translate(0, offsetY, 250);
+			commandSuggestions.renderSuggestions(guiGraphics, mouseX, mouseY - offsetY);
+			guiGraphics.pose().popPose();
 		}
 		// Red underline for invalid expressions, blue underline for $variables
 		for (var eb : exprEditBoxes) {
@@ -4674,7 +4685,8 @@ public class ActionEditorPanel {
 	// --- Mouse handling ---
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		if (commandSuggestions != null && commandSuggestions.mouseClicked(mouseX, mouseY, button)) {
+		if (commandSuggestions != null && commandSuggestions.mouseClicked(
+				mouseX, mouseY - commandSuggestionOffsetY(), button)) {
 			return true;
 		}
 		// Ctrl+Click on expression EditBox → find $variable under cursor and jump to definition

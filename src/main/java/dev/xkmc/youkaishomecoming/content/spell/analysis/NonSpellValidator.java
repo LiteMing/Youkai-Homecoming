@@ -26,8 +26,8 @@ public final class NonSpellValidator {
 
 	/** Lets the cast boundary keep presentation-node feedback distinct from other rules. */
 	public static final class PresentationNodeException extends SpellAnalysisException {
-		private PresentationNodeException() {
-			super("Non-spells cannot use spell presentation or health nodes");
+		private PresentationNodeException(String node) {
+			super("Non-spells cannot use " + node);
 		}
 	}
 
@@ -78,10 +78,12 @@ public final class NonSpellValidator {
 				|| SpecialNodeCounter.policy(inner) == SpellCapabilityPolicy.EXPERIMENTAL) {
 			throw new SpellAnalysisException("Non-spells cannot use experimental nodes");
 		}
-		if (inner instanceof SetSpellHealthAction || inner instanceof SetSpellCircleAction
-				|| inner instanceof ShowSpellTitleAction) {
-			throw new PresentationNodeException();
-		}
+		if (inner instanceof SetSpellHealthAction)
+			throw new PresentationNodeException("spell initialization / health nodes");
+		if (inner instanceof SetSpellCircleAction)
+			throw new PresentationNodeException("spell-circle presentation nodes");
+		if (inner instanceof ShowSpellTitleAction)
+			throw new PresentationNodeException("spell-title presentation nodes");
 		if (inner instanceof FireDanmakuAction danmaku) {
 			if (has(danmaku.onHitEntity()) || has(danmaku.onHitBlock()) || has(danmaku.onExpiry())
 					|| has(danmaku.onTrail())) {

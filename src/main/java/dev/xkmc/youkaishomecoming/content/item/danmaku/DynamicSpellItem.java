@@ -360,6 +360,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		}
 		if (player.isShiftKeyDown() && isNonSpell(stack)) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				GrazeHelper.closeActiveNonSpellForEditor(sp);
 				if (getSpellId(stack) == null) {
 					YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.draftEditor(), sp);
 				} else {
@@ -378,6 +379,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		// to close an active spell first.
 		if (player.isShiftKeyDown() && editableDraft) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				if (isNonSpell(stack)) GrazeHelper.closeActiveNonSpellForEditor(sp);
 				if (getSpellId(stack) == null) {
 					YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.draftEditor(), sp);
 				} else {
@@ -404,12 +406,14 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		// editor. Certified (complete) and OP-given (complete) cards cast.
 		if (getSpellId(stack) == null) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				if (isNonSpell(stack)) GrazeHelper.closeActiveNonSpellForEditor(sp);
 				YoukaisHomecoming.HANDLER.toClientPlayer(OpenSpellPreviewToClient.draftEditor(), sp);
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
 		if (!isNonSpell(stack) && !CertifiedSpellValidator.isCertified(stack) && !isComplete(stack)) {
 			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				if (isNonSpell(stack)) GrazeHelper.closeActiveNonSpellForEditor(sp);
 				SpellDefinition def = resolveEditableDefinition(stack, sp);
 				if (def == null) {
 					sp.displayClientMessage(Component.literal("Unknown spell: " + getSpellId(stack)), false);
@@ -475,17 +479,13 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		} else if (GrazeHelper.forbidSpellCardWithMessage(player)) {
 			return false;
 		}
-		if (nonSpell && def != null && dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan.hasHealthDeclaration(def)) {
-			if (player instanceof ServerPlayer sp) sp.displayClientMessage(YHLangData.NON_SPELL_INVALID.get(), false);
-			return false;
-		}
 		if (nonSpell && def != null) {
 			try {
 				NonSpellValidator.validate(def, getRank(stack),
 						player instanceof ServerPlayer sp ? GrazeHelper.getEffectivePowerLevel(sp) : 0);
 			} catch (NonSpellValidator.PresentationNodeException rejected) {
 				if (player instanceof ServerPlayer sp) {
-					sp.displayClientMessage(YHLangData.NON_SPELL_INVALID.get(), false);
+					sp.displayClientMessage(nonSpellRejectedMessage(rejected), false);
 				}
 				return false;
 			} catch (SpellAnalysisException rejected) {
@@ -597,8 +597,14 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	}
 
 	private static Component nonSpellRejectedMessage(SpellAnalysisException rejected) {
-		String message = rejected.getMessage() == null ? "" : rejected.getMessage();
-		YHLangData reason = message.contains("restrict caster movement")
+		String message = rejected.getMessage() == null ? "" : rejected.getMessage().toLowerCase(Locale.ROOT);
+		YHLangData reason = message.contains("definition is missing")
+				? YHLangData.NON_SPELL_REASON_DEFINITION
+				: message.contains("spell health") || message.contains("spell initialization")
+				? YHLangData.NON_SPELL_REASON_HEALTH
+				: message.contains("presentation") || message.contains("spell-title") || message.contains("spell-circle")
+				? YHLangData.NON_SPELL_REASON_PRESENTATION
+				: message.contains("restrict caster movement")
 				? YHLangData.NON_SPELL_REASON_MOVEMENT
 				: message.contains("projectile hooks")
 				? YHLangData.NON_SPELL_REASON_HOOKS
@@ -608,6 +614,24 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 				? YHLangData.NON_SPELL_REASON_EXPERIMENTAL
 				: message.contains("use laser nodes")
 				? YHLangData.NON_SPELL_REASON_LASER
+				: message.contains("lifetime")
+				? YHLangData.NON_SPELL_REASON_LIFETIME
+				: message.contains("origin")
+				? YHLangData.NON_SPELL_REASON_ORIGIN
+				: message.contains("speed") || message.contains("terminal velocity")
+				? YHLangData.NON_SPELL_REASON_SPEED
+				: message.contains("mover") || message.contains("acceleration")
+						|| message.contains("turn rate") || message.contains("deceleration")
+				? YHLangData.NON_SPELL_REASON_MOVER
+				: message.contains("shooter")
+				? YHLangData.NON_SPELL_REASON_SHOOTER
+				: message.contains("maxspawnpertick") || message.contains("peakalive")
+						|| message.contains("projectileticks") || message.contains("hookexecutions")
+						|| message.contains("projectile budget") || message.contains("too many actions")
+				? YHLangData.NON_SPELL_REASON_BUDGET
+				: message.contains("phase") || message.contains("nesting")
+						|| message.contains("repeat") || message.contains("expression")
+				? YHLangData.NON_SPELL_REASON_STRUCTURE
 				: YHLangData.NON_SPELL_REASON_GENERIC;
 		return YHLangData.NON_SPELL_REJECTED.get(reason.get());
 	}

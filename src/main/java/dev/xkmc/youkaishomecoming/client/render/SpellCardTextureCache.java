@@ -27,6 +27,8 @@ public final class SpellCardTextureCache {
 
 	private static final Map<String, DynamicTexture> DYNAMIC_TEXTURES = new ConcurrentHashMap<>();
 	private static final Map<String, ResourceLocation> TEXTURES = new ConcurrentHashMap<>();
+	private static final Map<String, DynamicTexture> GUI_DYNAMIC_TEXTURES = new ConcurrentHashMap<>();
+	private static final Map<String, ResourceLocation> GUI_TEXTURES = new ConcurrentHashMap<>();
 	private static final Set<String> PENDING_REQUESTS = ConcurrentHashMap.newKeySet();
 
 	private SpellCardTextureCache() {
@@ -47,6 +49,14 @@ public final class SpellCardTextureCache {
 		return loadLocalSnapshot(spellId.toString(), false);
 	}
 
+	@Nullable
+	public static ResourceLocation getLocalGuiBySpellId(ResourceLocation spellId) {
+		if (spellId == null) return null;
+		String key = toStorageKey(spellId.toString());
+		loadLocalSnapshot(spellId.toString(), false);
+		return ensureGuiTexture(key);
+	}
+
 	/**
 	 * 按已认证的 definitionHash 查找或向服务端请求快照
 	 */
@@ -61,6 +71,16 @@ public final class SpellCardTextureCache {
 			YoukaisHomecoming.HANDLER.toServer(new CertifiedSpellSnapshotRequestToServer(definitionHash));
 		}
 		return null;
+	}
+
+	@Nullable
+	public static ResourceLocation getOrRequestCertifiedGui(String definitionHash) {
+		if (definitionHash == null || definitionHash.isBlank()) return null;
+		String key = toStorageKey(definitionHash);
+		ResourceLocation gui = GUI_TEXTURES.get(key);
+		if (gui != null) return gui;
+		getOrRequestCertified(definitionHash);
+		return ensureGuiTexture(key);
 	}
 
 	@Nullable
@@ -127,17 +147,26 @@ public final class SpellCardTextureCache {
 		if (pngBytes == null || pngBytes.length == 0 || storageKey == null || storageKey.isBlank()) return null;
 		try {
 			NativeImage img = NativeImage.read(new ByteArrayInputStream(pngBytes));
+			NativeImage guiImg = brighten(img);
 			DynamicTexture oldDyn = DYNAMIC_TEXTURES.get(storageKey);
 			if (oldDyn != null) {
 				// 复用/更新已有动态纹理，避免显存泄漏
 				oldDyn.setPixels(img);
 				oldDyn.upload();
+				DynamicTexture oldGui = GUI_DYNAMIC_TEXTURES.get(storageKey);
+				if (oldGui != null) {
+					oldGui.setPixels(guiImg);
+					oldGui.upload();
+				} else {
+					registerGuiTexture(storageKey, guiImg);
+				}
 				return TEXTURES.get(storageKey);
 			} else {
 				DynamicTexture dyn = new DynamicTexture(img);
 				ResourceLocation loc = Minecraft.getInstance().getTextureManager().register("spell_card_" + storageKey, dyn);
 				DYNAMIC_TEXTURES.put(storageKey, dyn);
 				TEXTURES.put(storageKey, loc);
+				registerGuiTexture(storageKey, guiImg);
 				return loc;
 			}
 		} catch (Exception e) {
@@ -146,13 +175,53 @@ public final class SpellCardTextureCache {
 		}
 	}
 
+	private static void registerGuiTexture(String storageKey, NativeImage image) {
+		DynamicTexture dyn = new DynamicTexture(image);
+		ResourceLocation loc = Minecraft.getInstance().getTextureManager().register("spell_card_gui_" + storageKey, dyn);
+		GUI_DYNAMIC_TEXTURES.put(storageKey, dyn);
+		GUI_TEXTURES.put(storageKey, loc);
+	}
+
+	@Nullable
+	private static ResourceLocation ensureGuiTexture(String storageKey) {
+		ResourceLocation existing = GUI_TEXTURES.get(storageKey);
+		if (existing != null) return existing;
+		DynamicTexture source = DYNAMIC_TEXTURES.get(storageKey);
+		if (source == null || source.getPixels() == null) return null;
+		registerGuiTexture(storageKey, brighten(source.getPixels()));
+		return GUI_TEXTURES.get(storageKey);
+	}
+
+	private static NativeImage brighten(NativeImage source) {
+		NativeImage result = new NativeImage(source.getWidth(), source.getHeight(), false);
+		for (int y = 0; y < source.getHeight(); y++) {
+			for (int x = 0; x < source.getWidth(); x++) {
+				int pixel = source.getPixelRGBA(x, y);
+				int r = brightenChannel(pixel & 0xFF);
+				int g = brightenChannel((pixel >>> 8) & 0xFF);
+				int b = brightenChannel((pixel >>> 16) & 0xFF);
+				result.setPixelRGBA(x, y, (pixel & 0xFF000000) | r | (g << 8) | (b << 16));
+			}
+		}
+		return result;
+	}
+
+	private static int brightenChannel(int value) {
+		if (value == 0) return 0;
+		return Math.min(255, value * 2 + 12);
+	}
+
 	public static void invalidate(String rawKey) {
 		if (rawKey == null || rawKey.isBlank()) return;
 		String storageKey = toStorageKey(rawKey);
 		DYNAMIC_TEXTURES.remove(storageKey);
+		DynamicTexture gui = GUI_DYNAMIC_TEXTURES.remove(storageKey);
+		if (gui != null) gui.close();
 		ResourceLocation loc = TEXTURES.remove(storageKey);
 		if (loc != null) {
 			Minecraft.getInstance().getTextureManager().release(loc);
 		}
+		ResourceLocation guiLoc = GUI_TEXTURES.remove(storageKey);
+		if (guiLoc != null) Minecraft.getInstance().getTextureManager().release(guiLoc);
 	}
 }

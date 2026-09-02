@@ -727,9 +727,10 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 
 	@Override
 	public void inventoryTick(ItemStack stack, Level level, Entity user, int slot, boolean sel) {
-		if (user instanceof Player player && level.isClientSide && sel
-				&& !isNonSpell(stack)
-				&& (CertifiedSpellValidator.isCertified(stack) || isComplete(stack))) {
+		// Only cast-ready cards maintain the client/server lock-on target. This keeps
+		// ordinary unfinished drafts inert while allowing draft-form non-spells,
+		// which intentionally cast without certification, to acquire a target.
+		if (user instanceof Player player && level.isClientSide && sel && isCastReady(stack)) {
 			RayTraceUtil.clientUpdateTarget(player, GrazeHelper.SPELL_TARGET_RANGE);
 		}
 	}

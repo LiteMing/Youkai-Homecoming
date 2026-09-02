@@ -52,6 +52,8 @@ public interface AimMode {
 			register("target", Target.CODEC, Target.class);
 			register("fixed", FixedDirection.CODEC, FixedDirection.class);
 			register("caster_facing", CasterFacing.CODEC, CasterFacing.class);
+			register("target_facing", TargetFacing.CODEC, TargetFacing.class);
+			register("source_direction", SourceDirection.CODEC, SourceDirection.class);
 			register("angle_offset", AngleOffset.CODEC, AngleOffset.class);
 			register("variable_angle", VariableAngle.CODEC, VariableAngle.class);
 			register("direction_to_target", DirectionToTarget.CODEC, DirectionToTarget.class);
@@ -104,6 +106,8 @@ public interface AimMode {
 					return switch (s) {
 						case "target" -> DataResult.success(Pair.of((AimMode) new Target(), ops.empty()));
 						case "caster_facing" -> DataResult.success(Pair.of((AimMode) new CasterFacing(), ops.empty()));
+						case "target_facing" -> DataResult.success(Pair.of((AimMode) new TargetFacing(), ops.empty()));
+						case "source_direction" -> DataResult.success(Pair.of((AimMode) new SourceDirection(), ops.empty()));
 						case "direction_to_target" -> DataResult.success(Pair.of((AimMode) new DirectionToTarget(), ops.empty()));
 						default -> DataResult.error(() -> "Unknown AimMode shorthand: " + s);
 					};
@@ -116,6 +120,8 @@ public interface AimMode {
 				// Encode simple modes as string shorthand
 				if (input instanceof Target) return DataResult.success(ops.createString("target"));
 				if (input instanceof CasterFacing) return DataResult.success(ops.createString("caster_facing"));
+				if (input instanceof TargetFacing) return DataResult.success(ops.createString("target_facing"));
+				if (input instanceof SourceDirection) return DataResult.success(ops.createString("source_direction"));
 				if (input instanceof DirectionToTarget) return DataResult.success(ops.createString("direction_to_target"));
 				return DISPATCH_CODEC.encode(input, ops, prefix);
 			}
@@ -156,6 +162,28 @@ public interface AimMode {
 			@Override
 			public Vec3 getBaseDirection(SpellContext ctx) {
 				return ctx.self().getLookAngle();
+			}
+		}
+
+		/** Current target entity's look direction. */
+		public record TargetFacing() implements AimMode {
+			public static final Codec<TargetFacing> CODEC = Codec.unit(TargetFacing::new);
+
+			@Override
+			public Vec3 getBaseDirection(SpellContext ctx) {
+				return ctx.targetFacing();
+			}
+		}
+
+		/** Direction of the projectile that invoked the current callback. */
+		public record SourceDirection() implements AimMode {
+			public static final Codec<SourceDirection> CODEC = Codec.unit(SourceDirection::new);
+
+			@Override
+			public Vec3 getBaseDirection(SpellContext ctx) {
+				return ctx.callbackContext()
+						.map(dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext::sourceDirection)
+						.orElseGet(ctx.holder()::forward);
 			}
 		}
 

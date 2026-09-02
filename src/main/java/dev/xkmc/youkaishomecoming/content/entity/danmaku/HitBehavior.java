@@ -5,7 +5,8 @@ import net.minecraft.util.StringRepresentable;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Controls what happens to a danmaku after it hits an entity or block.
+ * Controls what happens to a danmaku after its on-hit callback leaves the
+ * collision unresolved. This fallback does not decide whether on_hit runs.
  */
 public enum HitBehavior implements StringRepresentable {
 	/** Remove the danmaku on hit (default vanilla behavior). */

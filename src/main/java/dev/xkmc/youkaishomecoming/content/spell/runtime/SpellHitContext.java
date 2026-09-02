@@ -34,6 +34,8 @@ public class SpellHitContext {
 	private final Vec3 incomingVelocity;
 	@Nullable
 	private final Entity hitEntity;
+	@Nullable
+	private ProjectileCallbackContext callbackContext;
 
 	private HitDisposition disposition = HitDisposition.UNRESOLVED;
 	@Nullable
@@ -86,6 +88,33 @@ public class SpellHitContext {
 		this.hitEntity = hitEntity;
 	}
 
+	/** Builds the authoritative hit context shared by live and preview lasers. */
+	public static SpellHitContext laserHit(
+			SimplifiedProjectile source,
+			HitType hitType,
+			Vec3 sourcePosition,
+			Vec3 sourceVelocity,
+			Vec3 movementStart,
+			Vec3 movementEnd,
+			Vec3 sourceDirection,
+			Vec3 laserStart,
+			Vec3 laserEnd,
+			Vec3 laserClippedEnd,
+			Vec3 hitPosition,
+			Vec3 hitNormal,
+			@Nullable Entity hitEntity
+	) {
+		ProjectileCallbackContext.Kind kind = hitType == HitType.BLOCK
+				? ProjectileCallbackContext.Kind.HIT_BLOCK
+				: ProjectileCallbackContext.Kind.HIT_ENTITY;
+		var callback = ProjectileCallbackContext.laser(kind, source, sourcePosition,
+				sourceVelocity, movementStart, movementEnd, sourceDirection,
+				sourceVelocity.length(), laserStart, laserEnd, laserClippedEnd,
+				hitPosition, hitNormal, hitEntity);
+		return new SpellHitContext(source, hitType, movementStart, hitPosition,
+				movementEnd, hitNormal, sourceVelocity, hitEntity).withCallbackContext(callback);
+	}
+
 	public SimplifiedProjectile source() { return source; }
 	public HitType hitType() { return hitType; }
 	public Vec3 movementStart() { return movementStart; }
@@ -95,6 +124,14 @@ public class SpellHitContext {
 	public Vec3 incomingVelocity() { return incomingVelocity; }
 	@Nullable
 	public Entity hitEntity() { return hitEntity; }
+	public java.util.Optional<ProjectileCallbackContext> callbackContext() {
+		return java.util.Optional.ofNullable(callbackContext);
+	}
+
+	public SpellHitContext withCallbackContext(ProjectileCallbackContext callbackContext) {
+		this.callbackContext = callbackContext;
+		return this;
+	}
 
 	public HitDisposition disposition() { return disposition; }
 	@Nullable

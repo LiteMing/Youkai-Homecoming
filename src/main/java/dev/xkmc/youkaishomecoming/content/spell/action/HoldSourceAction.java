@@ -37,7 +37,8 @@ public record HoldSourceAction(NumberProvider duration, List<SpellAction> onRele
 			return;
 		}
 
-		if (ctx.hitContext().isPresent()) {
+		if (ctx.hitContext().isPresent()
+				&& ctx.hitContext().get().source() instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity) {
 			ctx.hitContext().get().resolveHold(
 					ticks,
 					onRelease,

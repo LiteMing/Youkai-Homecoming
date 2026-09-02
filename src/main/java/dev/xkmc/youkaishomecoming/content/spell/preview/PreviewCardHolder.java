@@ -8,11 +8,15 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserBlockHitEffect;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserHitDispositionEffect;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.feedback.PreviewFeedbackSink;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
@@ -93,6 +97,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private int currentSpawningActionIndex = -1;
 	/** The action index currently selected in the editor (for highlighting). */
 	private int highlightedActionIndex = -1;
+	private final java.util.IdentityHashMap<SpellAction, Integer> previewActionIds = new java.util.IdentityHashMap<>();
 	private String ysmModelOverride = "";
 	private String ysmTextureOverride = "";
 	private String ysmAnimationOverride = "";
@@ -217,6 +222,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		if (danmaku instanceof ItemDanmakuEntity ide) {
 			ide.sourceActionIndex = currentSpawningActionIndex;
 		}
+		if (danmaku instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser) {
+			laser.sourceActionIndex = currentSpawningActionIndex;
+		}
 		// Setup trail action so trail danmaku work in preview
 		if (danmaku instanceof ItemDanmakuEntity e && e.afterExpiry != null) {
 			e.afterExpiry.setup(this);
@@ -313,14 +321,15 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				if (!sp.isValid()) {
 					// Manually trigger trail actions (terminate() only runs on ServerLevel)
 					if (e instanceof ItemDanmakuEntity danmaku && danmaku.afterExpiry != null) {
-						CardHolder trailHolder = null;
-						Entity owner = danmaku.getOwner();
-						if (owner instanceof CardHolder h) trailHolder = h;
-						if (trailHolder == null) danmaku.afterExpiry.execute(danmaku.position(), danmaku.getDeltaMovement());
-						else danmaku.afterExpiry.execute(trailHolder, danmaku.position(), danmaku.getDeltaMovement());
+						Vec3 pos = danmaku.position();
+						Vec3 old = new Vec3(danmaku.xOld, danmaku.yOld, danmaku.zOld);
+						var callback = ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.EXPIRY,
+								danmaku, pos, danmaku.getDeltaMovement(), old, pos, null, null, null);
+						danmaku.afterExpiry.execute(this, callback);
 					}
 					if (e instanceof ItemLaserEntity laser && laser.afterExpiry != null) {
-						laser.runExpiryActionOnce(this, laser.position(), laser.getDeltaMovement());
+						laser.runExpiryActionOnce(this, createPreviewLaserExpiryContext(
+								laser, laser.position(), laser.getDeltaMovement()));
 					}
 					forgetProjectile(sp);
 					iterator.remove();
@@ -445,26 +454,94 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		} else if (projectile instanceof ItemLaserEntity laser) {
 			handlePreviewLaserHook(laser, hit,
 					hit.type() == PreviewTarget.HitType.ENTITY ? laser.onHitEntityAction : laser.onHitBlockAction,
-					hit.type() == PreviewTarget.HitType.ENTITY ? laser.hitBehaviorEntity : laser.hitBehaviorBlock,
-					laser.afterExpiry);
+					hit.type() == PreviewTarget.HitType.ENTITY ? laser.hitBehaviorEntity : laser.hitBehaviorBlock);
 		}
 	}
 
 	private void handlePreviewLaserHook(ItemLaserEntity laser, PreviewHit hit,
 			dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction hitAction,
-			dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior behavior,
-			dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry) {
-		if (hit.type() != PreviewTarget.HitType.BLOCK) {
-			handlePreviewProjectileHook(laser, hit, hitAction, behavior, afterExpiry);
+			dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior behavior) {
+		SpellHitContext hitContext = createPreviewLaserHitContext(laser, hit);
+		if (hitAction != null) {
+			if (hit.type() == PreviewTarget.HitType.BLOCK) hitAction.executeBlockHit(this, hitContext);
+			else hitAction.executeEntityHit(this, hitContext);
+		}
+
+		LaserHitDispositionEffect effect = LaserHitDispositionEffect.from(hitContext.disposition());
+		if (effect != LaserHitDispositionEffect.UNRESOLVED) {
+			applyPreviewLaserDisposition(laser, hitContext, effect);
 			return;
 		}
-		if (hitAction != null) hitAction.executeBlockHit(this, hit.position(), laser.getForward());
+
+		if (hit.type() == PreviewTarget.HitType.ENTITY) {
+			switch (behavior) {
+				case CONTINUE -> {
+				}
+				case DISCARD -> laser.markErased(false);
+				case EXPIRE -> {
+					laser.runExpiryActionOnce(this, hitContext.callbackContext().orElseThrow()
+							.asExpiry(hit.position(), hitContext.incomingVelocity()));
+					laser.markErased(false);
+				}
+			}
+			return;
+		}
+
 		switch (LaserBlockHitEffect.from(behavior)) {
 			case CLIP_ONLY -> {
 			}
 			case CLIP_AND_SUPPRESS_EXPIRY -> laser.suppressExpiryAction();
-			case CLIP_AND_RUN_EXPIRY -> laser.runExpiryActionOnce(this, hit.position(), laser.getForward());
+			case CLIP_AND_RUN_EXPIRY -> laser.runExpiryActionOnce(this,
+					hitContext.callbackContext().orElseThrow().asExpiry(hit.position(), hitContext.incomingVelocity()));
 		}
+	}
+
+	private void applyPreviewLaserDisposition(ItemLaserEntity laser, SpellHitContext hitContext,
+			LaserHitDispositionEffect effect) {
+		switch (effect) {
+			case KEEP, UNRESOLVED -> {
+			}
+			case DISCARD -> {
+				laser.suppressExpiryAction();
+				laser.markErased(false);
+			}
+			case EXPIRE -> {
+				laser.runExpiryActionOnce(this, hitContext.callbackContext().orElseThrow()
+						.asExpiry(hitContext.hitPosition(), hitContext.incomingVelocity()));
+				laser.markErased(false);
+			}
+		}
+	}
+
+	private SpellHitContext createPreviewLaserHitContext(ItemLaserEntity laser, PreviewHit hit) {
+		Vec3 direction = laser.getForward();
+		Vec3 start = laser.position().add(0, laser.getBbHeight() / 2, 0);
+		Vec3 end = start.add(direction.scale(laser.getLength()));
+		Vec3 clippedEnd = laser.earlyTerminate >= 0
+				? start.add(direction.scale(Math.min(laser.getLength(), laser.earlyTerminate))) : end;
+		if (hit.type() == PreviewTarget.HitType.BLOCK) clippedEnd = hit.position();
+		Vec3 movementStart = new Vec3(laser.xOld, laser.yOld, laser.zOld);
+		Vec3 movementEnd = laser.position();
+		SpellHitContext.HitType type = hit.type() == PreviewTarget.HitType.BLOCK
+				? SpellHitContext.HitType.BLOCK : SpellHitContext.HitType.ENTITY;
+		Entity hitEntity = type == SpellHitContext.HitType.ENTITY ? targetEntity() : null;
+		return SpellHitContext.laserHit(laser, type, laser.position(), laser.getDeltaMovement(),
+				movementStart, movementEnd, direction, start, end, clippedEnd, hit.position(),
+				hit.normal(), hitEntity);
+	}
+
+	private ProjectileCallbackContext createPreviewLaserExpiryContext(ItemLaserEntity laser,
+			Vec3 position, Vec3 velocity) {
+		Vec3 direction = laser.getForward();
+		Vec3 start = laser.position().add(0, laser.getBbHeight() / 2, 0);
+		Vec3 end = start.add(direction.scale(laser.getLength()));
+		Vec3 clippedEnd = laser.earlyTerminate >= 0
+				? start.add(direction.scale(Math.min(laser.getLength(), laser.earlyTerminate))) : end;
+		Vec3 movementStart = new Vec3(laser.xOld, laser.yOld, laser.zOld);
+		var callback = ProjectileCallbackContext.laser(ProjectileCallbackContext.Kind.EXPIRY, laser,
+				laser.position(), velocity, movementStart, laser.position(), direction,
+				velocity.length(), start, end, clippedEnd, null, null, null);
+		return callback.asExpiry(position, velocity);
 	}
 
 	private void handlePreviewProjectileHook(SimplifiedProjectile projectile, PreviewHit hit,
@@ -481,8 +558,12 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 				to,
 				hit.normal(),
 				projectile.getDeltaMovement(),
-				null
+				hit.type() == PreviewTarget.HitType.ENTITY ? targetEntity() : null
 		);
+		hitCtx.withCallbackContext(ProjectileCallbackContext.fromHit(hitCtx,
+				hit.type() == PreviewTarget.HitType.BLOCK
+						? ProjectileCallbackContext.Kind.HIT_BLOCK
+						: ProjectileCallbackContext.Kind.HIT_ENTITY, null));
 
 		if (hitAction != null) {
 			if (hit.type() == PreviewTarget.HitType.BLOCK) {
@@ -508,9 +589,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		}
 			case DISCARD -> projectile.markErased(false);
 			case EXPIRE -> {
-				if (afterExpiry != null) {
-					afterExpiry.execute(this, hit.position(), projectile.getDeltaMovement());
-				}
+				executePreviewExpiry(afterExpiry, hitCtx);
 				projectile.markErased(false);
 			}
 		}
@@ -531,9 +610,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			}
 		}
 			case EXPIRE -> {
-				if (afterExpiry != null) {
-					afterExpiry.execute(this, hitCtx.hitPosition(), hitCtx.incomingVelocity());
-				}
+				executePreviewExpiry(afterExpiry, hitCtx);
 				projectile.markErased(false);
 			}
 			case DISCARD -> projectile.markErased(false);
@@ -547,6 +624,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 							? resume.runtime()
 							: runtimeSupplier == null ? null : runtimeSupplier.get();
 					if (runtime != null) {
+						CardHolder resumeHolder = resume != null && resume.isUsable() ? resume.holder() : this;
 						runtime.schedulePersistentDelayed(runtime.getTotalTick() + hitCtx.holdTicks(), List.of(
 								new dev.xkmc.youkaishomecoming.content.spell.action.SpellAction() {
 									@Override
@@ -556,9 +634,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 											if (releaseBody != null) {
 												var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
 														resume != null && resume.isUsable() ? resume.holder() : ctx.holder(),
-														resume != null && resume.isUsable() ? resume.definition() : ctx.definition(),
-														resume != null && resume.isUsable() ? resume.runtime() : ctx.runtime(),
-														ctx.difficulty(), hitCtx);
+												resume != null && resume.isUsable() ? resume.definition() : ctx.definition(),
+												resume != null && resume.isUsable() ? resume.runtime() : ctx.runtime(),
+												ctx.difficulty(), hitCtx, hitCtx.callbackContext().orElse(null));
 												resumedCtx.executeList(releaseBody);
 											}
 											if (hitCtx.isTerminal()) {
@@ -570,10 +648,10 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 													case CONTINUE -> {
 														ide.applyContinueState(hitCtx.movementEnd(), hitCtx.incomingVelocity());
 													}
-													case EXPIRE -> {
-														ide.clearHoldState();
-														if (afterExpiry != null) afterExpiry.execute(PreviewCardHolder.this, hitCtx.hitPosition(), hitCtx.incomingVelocity());
-														projectile.markErased(false);
+											case EXPIRE -> {
+												ide.clearHoldState();
+												executePreviewExpiry(afterExpiry, hitCtx);
+												projectile.markErased(false);
 													}
 														case DISCARD -> {
 															ide.clearHoldState();
@@ -587,7 +665,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 											}
 										}
 									}
-						));
+						), resumeHolder, hitCtx.callbackContext().orElse(null));
 					} else {
 						ide.clearHoldState();
 						projectile.markErased(false);
@@ -608,7 +686,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 								return;
 							}
 							case EXPIRE -> {
-								if (afterExpiry != null) afterExpiry.execute(PreviewCardHolder.this, hitCtx.hitPosition(), hitCtx.incomingVelocity());
+								executePreviewExpiry(afterExpiry, hitCtx);
 								projectile.markErased(false);
 								return;
 							}
@@ -635,6 +713,19 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			}
 			case UNRESOLVED -> projectile.markErased(false);
 		}
+	}
+
+	private void executePreviewExpiry(
+			@Nullable dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry,
+			SpellHitContext hitContext) {
+		if (afterExpiry == null) return;
+		ProjectileCallbackContext hitCallback = hitContext.callbackContext().orElseGet(() ->
+				ProjectileCallbackContext.fromHit(hitContext,
+						hitContext.hitType() == SpellHitContext.HitType.BLOCK
+								? ProjectileCallbackContext.Kind.HIT_BLOCK
+								: ProjectileCallbackContext.Kind.HIT_ENTITY, null));
+		afterExpiry.execute(this,
+				hitCallback.asExpiry(hitContext.hitPosition(), hitContext.incomingVelocity()));
 	}
 
 	private record PreviewHit(PreviewTarget.HitType type, Vec3 position, double distanceSqr, Vec3 normal) {
@@ -696,6 +787,24 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		fakeTarget.setPos(pos);
 		// Maintain velocity by finite difference unless explicitly set the same tick by pilot
 		this.targetVelocity = pos.subtract(prev);
+	}
+
+	public void setTargetFacing(Vec3 facing) {
+		if (facing == null || facing.lengthSqr() < 1.0e-12) return;
+		Vec3 normalized = facing.normalize();
+		double horizontal = normalized.horizontalDistance();
+		float pitch = (float) Math.toDegrees(-Math.atan2(normalized.y, horizontal));
+		float yaw = (float) Math.toDegrees(Math.atan2(-normalized.x, normalized.z));
+		fakeTarget.setXRot(pitch);
+		fakeTarget.setYRot(yaw);
+		fakeTarget.xRotO = pitch;
+		fakeTarget.yRotO = yaw;
+		fakeTarget.yHeadRot = yaw;
+		fakeTarget.yHeadRotO = yaw;
+	}
+
+	public Vec3 getTargetFacing() {
+		return fakeTarget.getLookAngle();
 	}
 
 	/** Set position and velocity together (pilot path — avoids double-diff). */
@@ -999,6 +1108,19 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	public void setOnSpellSwitch(BiConsumer<SpellDefinition, Boolean> callback) { this.onSpellSwitch = callback; }
 	public void setOnPhaseSwitch(BiConsumer<ResourceLocation, Boolean> callback) { this.onPhaseSwitch = callback; }
 
+	public void setPreviewActionIds(java.util.Map<SpellAction, Integer> ids) {
+		previewActionIds.clear();
+		previewActionIds.putAll(ids);
+	}
+
+	public int beginPreviewAction(SpellAction action) {
+		int previous = currentSpawningActionIndex;
+		Integer id = previewActionIds.get(action);
+		if (id != null) currentSpawningActionIndex = id;
+		return previous;
+	}
+
+	public void restorePreviewAction(int previous) { currentSpawningActionIndex = previous; }
 	public void setCurrentSpawningActionIndex(int index) { this.currentSpawningActionIndex = index; }
 	public int getCurrentSpawningActionIndex() { return currentSpawningActionIndex; }
 	public void setHighlightedActionIndex(int index) { this.highlightedActionIndex = index; }

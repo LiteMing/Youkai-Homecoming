@@ -39,7 +39,7 @@ import java.util.Map;
  * 3. BoundedAcceleration rebase continuity across non-zero entity ticks
  * 4. Hold state machine, Hold -> Continue / Hold -> Bounce transitions
  * 5. Server/Client/Preview synchronization consistency (ResetKind: BOUNCE, HOLD, CONTINUE)
- * 6. Sequential hit control override authority (last writer wins via real SpellContext.executeList)
+ * 6. Sequential hit control authority (last writer wins except hard discard)
  */
 public class BounceSurfaceResponseTest {
 
@@ -141,6 +141,16 @@ public class BounceSurfaceResponseTest {
 		callback.executeBlockHit(hit);
 		check("DATA_DRIVEN_HIT_ACTION_USES_EXECUTE_LIST_LAST_WRITER_WINS",
 				hit.disposition() == SpellHitContext.HitDisposition.CONTINUE);
+		SpellHitContext discardHit = new SpellHitContext(null, SpellHitContext.HitType.BLOCK,
+				Vec3.ZERO, new Vec3(0, 1, 0), new Vec3(1, -1, 0), null);
+		var discardCallback = new DataDrivenTrailAction(List.of(
+				new DiscardSourceAction(),
+				new SpellActions.SetVariable("after_discard_callback", new NumberProviders.Constant(1.0))),
+				runtime, definition);
+		discardCallback.executeBlockHit(discardHit);
+		check("DATA_DRIVEN_DISCARD_SOURCE_STOPS_LATER_ON_HIT_NODE",
+				discardHit.disposition() == SpellHitContext.HitDisposition.DISCARD
+						&& runtime.getVariable("after_discard_callback") == 0.0);
 		check("DESERIALIZED_CALLBACK_BEHAVIOR_IS_EXPLICIT",
 				new DataDrivenTrailAction().isDeserializedStub()
 						&& !new DataDrivenTrailAction(List.of(), runtime, definition).isDeserializedStub());
@@ -391,23 +401,42 @@ public class BounceSurfaceResponseTest {
 				hitCtx.disposition() == SpellHitContext.HitDisposition.DISCARD
 						&& hitCtx.bounceConfig() == null);
 
-		// 3. DISCARD_THEN_BOUNCE_LAST_WRITER_WINS_VIA_EXECUTE_LIST
+		// 3. discard_source is a hard stop: later hit actions must not run.
 		List<SpellAction> list3 = List.of(
 				new DiscardSourceAction(),
 				new BounceAction(2, -0.8, 0.95, 0.0, 0.0, 0.0, Optional.empty(), false)
 		);
 		ctx.executeList(list3);
-		check("DISCARD_THEN_BOUNCE_LAST_WRITER_WINS_VIA_EXECUTE_LIST",
-				hitCtx.disposition() == SpellHitContext.HitDisposition.BOUNCE
-						&& hitCtx.bounceConfig() != null
-						&& hitCtx.bounceConfig().normalFactor() == -0.8);
+		check("DISCARD_SOURCE_STOPS_LATER_HIT_ACTIONS",
+				hitCtx.disposition() == SpellHitContext.HitDisposition.DISCARD
+						&& hitCtx.bounceConfig() == null);
 
-		// 4. HOLD_THEN_BOUNCE_CLEARS_HOLD_PAYLOAD_VIA_EXECUTE_LIST
-		List<SpellAction> list4 = List.of(
-				new HoldSourceAction(new NumberProviders.Constant(10.0), List.of(new ContinueSourceAction())),
-				new BounceAction(1, -1.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false)
-		);
-		ctx.executeList(list4);
+		// 4. expire_source selects expiry but still allows later on-hit effects.
+		hitCtx.resolve(SpellHitContext.HitDisposition.UNRESOLVED);
+		ctx.executeList(List.of(
+				new dev.xkmc.youkaishomecoming.content.spell.action.ExpireSourceAction(),
+				new SpellActions.SetVariable("after_expire", new NumberProviders.Constant(1.0))
+		));
+		check("EXPIRE_SOURCE_ALLOWS_LATER_HIT_ACTIONS",
+				hitCtx.disposition() == SpellHitContext.HitDisposition.EXPIRE
+						&& ctx.getVariable("after_expire") == 1.0);
+
+		// 5. A discard nested in repeat aborts the remaining body and iterations.
+		hitCtx.resolve(SpellHitContext.HitDisposition.UNRESOLVED);
+		ctx.executeList(List.of(new SpellActions.RepeatAction(
+				new NumberProviders.Constant(3.0), "i", List.of(
+				new DiscardSourceAction(),
+				new SpellActions.AddVariable("after_discard", 1.0)
+		))));
+		check("NESTED_DISCARD_SOURCE_STOPS_REMAINING_HIT_CALLBACK",
+				hitCtx.disposition() == SpellHitContext.HitDisposition.DISCARD
+						&& ctx.getVariable("after_discard") == 0.0);
+
+		// 6. Resolving bounce after hold clears the hold payload.
+		hitCtx.resolve(SpellHitContext.HitDisposition.UNRESOLVED);
+		hitCtx.resolveHold(10, List.of(new ContinueSourceAction()));
+		hitCtx.resolveBounce(new DanmakuBounceConfig(
+				1, -1.0, 1.0, 0.0, 0.0, 0.0, Optional.empty(), false));
 		check("HOLD_THEN_BOUNCE_CLEARS_HOLD_PAYLOAD_VIA_EXECUTE_LIST",
 				hitCtx.disposition() == SpellHitContext.HitDisposition.BOUNCE
 						&& hitCtx.bounceConfig() != null

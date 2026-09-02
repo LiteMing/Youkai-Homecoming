@@ -141,8 +141,12 @@ public class NumberExprParser {
 		if (p instanceof NumberProviders.TargetX) return "target_x";
 		if (p instanceof NumberProviders.TargetY) return "target_y";
 		if (p instanceof NumberProviders.TargetZ) return "target_z";
+		if (p instanceof NumberProviders.TargetFacingX) return "target_facing_x";
+		if (p instanceof NumberProviders.TargetFacingY) return "target_facing_y";
+		if (p instanceof NumberProviders.TargetFacingZ) return "target_facing_z";
 		if (p instanceof NumberProviders.TargetFlyTime) return "target_fly_time";
 		if (p instanceof NumberProviders.TargetSpeed) return "target_speed";
+		if (p instanceof NumberProviders.CallbackValue c) return c.key();
 		if (p instanceof NumberProviders.Max m) {
 			String as = unparse(m.a()), bs = unparse(m.b());
 			if (as == null || bs == null) return null;
@@ -433,8 +437,25 @@ public class NumberExprParser {
 			case "target_x" -> new NumberProviders.TargetX();
 			case "target_y" -> new NumberProviders.TargetY();
 			case "target_z" -> new NumberProviders.TargetZ();
+			case "target_facing_x" -> new NumberProviders.TargetFacingX();
+			case "target_facing_y" -> new NumberProviders.TargetFacingY();
+			case "target_facing_z" -> new NumberProviders.TargetFacingZ();
 			case "target_fly_time" -> new NumberProviders.TargetFlyTime();
 			case "target_speed" -> new NumberProviders.TargetSpeed();
+			case "source_x", "source_y", "source_z", "source_position_x", "source_position_y", "source_position_z",
+					"source_velocity_x", "source_velocity_y", "source_velocity_z", "velocity_x", "velocity_y", "velocity_z", "vx", "vy", "vz",
+					"source_direction_x", "source_direction_y", "source_direction_z",
+					"source_speed", "source_size", "source_spread", "source_lifetime", "source_age", "source_remaining_lifetime",
+					"size", "spread", "lifetime", "position_x", "position_y", "position_z",
+					"hook_x", "hook_y", "hook_z", "hookpos_x", "hookpos_y", "hookpos_z",
+					"movement_start_x", "movement_start_y", "movement_start_z",
+					"movement_end_x", "movement_end_y", "movement_end_z",
+					"hit_x", "hit_y", "hit_z", "hit_normal_x", "hit_normal_y", "hit_normal_z",
+					"laser_start_x", "laser_start_y", "laser_start_z", "start_x", "start_y", "start_z",
+					"laser_end_x", "laser_end_y", "laser_end_z", "end_x", "end_y", "end_z",
+					"laser_clipped_end_x", "laser_clipped_end_y", "laser_clipped_end_z",
+					"clipped_end_x", "clipped_end_y", "clipped_end_z"
+					-> new NumberProviders.CallbackValue(name);
 			default -> throw new ParseException("Unknown keyword: " + name);
 		};
 	}

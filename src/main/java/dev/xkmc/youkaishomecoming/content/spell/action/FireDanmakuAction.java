@@ -188,17 +188,20 @@ public record FireDanmakuAction(
 		Vec3 originPos = origin.resolve(ctx);
 		var settings = new PatternEmitter.Settings(count, speed, angleOffset, spread, elevation, pattern,
 				aimMode, origin.rotation(), outerCount, tiltAngle, groupRotation);
-		PatternEmitter.emit(ctx, originPos, settings, (dir, baseDir, spawnIndex) ->
-				emitDanmaku(holder, ctx, life, dir, originPos, baseDir, spawnIndex));
+		PatternEmitter.emit(ctx, originPos, settings, (dir, baseDir, spawnIndex, resolvedSpread) ->
+				emitDanmaku(holder, ctx, life, dir, originPos, baseDir, spawnIndex, resolvedSpread));
 	}
 
-	private void emitDanmaku(CardHolder holder, SpellContext ctx, int life, Vec3 dir, Vec3 originPos, Vec3 baseDir, int spawnIndex) {
+	private void emitDanmaku(CardHolder holder, SpellContext ctx, int life, Vec3 dir, Vec3 originPos,
+			Vec3 baseDir, int spawnIndex, double resolvedSpread) {
 		YHDanmaku.Bullet resolvedBullet = bulletType.get(ctx);
 		DanmakuColor resolvedColor = color.get(ctx);
 		var danmaku = holder.prepareDanmaku(life, dir, resolvedBullet, resolvedColor);
 		colorAnimation.ifPresent(animation -> danmaku.configureColorAnimation(animation.resolve(ctx, spawnIndex)));
+		double resolvedSize = size.get(ctx);
 		NumberProvider scaleFunction = size instanceof NumberProviders.Constant ? null : size;
-		danmaku.configureVisualScale((float) size.get(ctx), scaleFunction);
+		danmaku.configureVisualScale((float) resolvedSize, scaleFunction);
+		danmaku.setCallbackSourceMetadata(resolvedSize, resolvedSpread, life, resolvedColor);
 		danmaku.setPos(originPos);
 		// Apply per-action damage type override
 		if (damageType.isPresent()) {

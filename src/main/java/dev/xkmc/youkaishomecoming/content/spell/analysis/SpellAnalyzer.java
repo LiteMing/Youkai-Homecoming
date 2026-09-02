@@ -1072,8 +1072,8 @@ public final class SpellAnalyzer {
 	private void checkOrigin(OriginConfig origin) {
 		if (origin == null) return;
 		switch (origin.mode()) {
-			case TARGET -> addCap(SpellCapability.ORIGIN_TARGET);
-			case ABSOLUTE -> addCap(SpellCapability.ORIGIN_ABSOLUTE);
+			case TARGET, TARGET_FACING -> addCap(SpellCapability.ORIGIN_TARGET);
+			case ABSOLUTE, WORLD -> addCap(SpellCapability.ORIGIN_ABSOLUTE);
 			default -> {
 			}
 		}

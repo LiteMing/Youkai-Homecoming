@@ -76,6 +76,8 @@ public class ActionListPanel {
 	 * For section-level: parentPath=null, branch=null.
 	 * For conditional branch: parentPath = path to the ConditionalAction, branch = "true"/"false".
 	 */
+	public record ActionEntry(ActionPath path, SpellAction action) {}
+
 	public record AddTarget(String section, @Nullable ActionPath parentPath, @Nullable String branch) {
 		public static AddTarget section(String section) {
 			return new AddTarget(section, null, null);
@@ -430,6 +432,61 @@ public class ActionListPanel {
 	@Nullable
 	public SpellAction getActionAtPath(ActionPath path) {
 		return path == null ? null : getActionAt(path);
+	}
+
+	public List<ActionEntry> getActionEntries() {
+		List<ActionEntry> result = new ArrayList<>();
+		if (phase == null) return List.of();
+		collectActionEntries(result, "enter", phase.onEnter);
+		collectActionEntries(result, "tick", phase.onTick);
+		collectActionEntries(result, "exit", phase.onExit);
+		collectActionEntries(result, "damage", phase.onDamage);
+		return List.copyOf(result);
+	}
+
+	private static void collectActionEntries(List<ActionEntry> output, String section,
+			List<SpellAction> actions) {
+		for (int i = 0; i < actions.size(); i++) {
+			collectActionEntry(output, ActionPath.topLevel(section, i), actions.get(i));
+		}
+	}
+
+	private static void collectActionEntry(List<ActionEntry> output, ActionPath path, SpellAction action) {
+		output.add(new ActionEntry(path, action));
+		SpellAction inner = action instanceof SpellActions.DisabledAction disabled ? disabled.inner() : action;
+		if (inner instanceof SpellActions.ConditionalAction conditional) {
+			collectActionBranch(output, path, "true", conditional.ifTrue());
+			collectActionBranch(output, path, "false", conditional.ifFalse());
+		} else if (inner instanceof SpellActions.RepeatAction repeat) {
+			collectActionBranch(output, path, "body", repeat.body());
+		} else if (inner instanceof SpellActions.SequenceAction sequence) {
+			collectActionBranch(output, path, "actions", sequence.actions());
+		} else if (inner instanceof DelayAction delay) {
+			collectActionBranch(output, path, "body", delay.body());
+		} else if (inner instanceof HoldSourceAction hold) {
+			collectActionBranch(output, path, "onRelease", hold.onRelease());
+		} else if (inner instanceof BurstAction burst) {
+			collectActionBranch(output, path, "body", burst.body());
+		} else if (inner instanceof FireDanmakuAction fire) {
+			collectActionBranch(output, path, "onExpiry", fire.onExpiry().orElse(List.of()));
+			collectActionBranch(output, path, "onTrail", fire.onTrail().orElse(List.of()));
+			collectActionBranch(output, path, "onHitEntity", fire.onHitEntity().orElse(List.of()));
+			collectActionBranch(output, path, "onHitBlock", fire.onHitBlock().orElse(List.of()));
+		} else if (inner instanceof FireLaserAction laser) {
+			collectActionBranch(output, path, "onExpiry", laser.onExpiry().orElse(List.of()));
+			collectActionBranch(output, path, "onTrail", laser.onTrail().orElse(List.of()));
+			collectActionBranch(output, path, "onHitEntity", laser.onHitEntity().orElse(List.of()));
+			collectActionBranch(output, path, "onHitBlock", laser.onHitBlock().orElse(List.of()));
+		} else if (inner instanceof SpawnShooterAction shooter) {
+			collectActionBranch(output, path, "body", shooter.body());
+		}
+	}
+
+	private static void collectActionBranch(List<ActionEntry> output, ActionPath parent,
+			String branch, List<SpellAction> children) {
+		for (int i = 0; i < children.size(); i++) {
+			collectActionEntry(output, parent.child(branch, i), children.get(i));
+		}
 	}
 
 	public boolean selectPath(ActionPath path) {
@@ -1663,6 +1720,18 @@ public class ActionListPanel {
 	/** Explicitly push an undo snapshot (e.g. at the start of a drag gesture). */
 	public void pushUndoSnapshot() {
 		pushUndo();
+	}
+
+	/** Captures the pre-edit phase without changing undo/redo history. */
+	public UndoManager.Snapshot captureUndoSnapshot() {
+		if (phase == null) return null;
+		syncCustomNamesFromActions();
+		return undoManager.capture(phase, customNames);
+	}
+
+	/** Commits a captured pre-edit phase as one undoable gesture. */
+	public void commitUndoSnapshot(UndoManager.Snapshot snapshot) {
+		undoManager.pushUndo(snapshot);
 	}
 
 	public void replaceAction(ActionPath path, SpellAction newAction) {

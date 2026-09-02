@@ -309,7 +309,7 @@ public record SpawnShooterAction(
 		Vec3 spawnPos = origin.resolve(ctx);
 		var settings = new PatternEmitter.Settings(count, speed, angleOffset, spread, elevation, pattern,
 				aimMode, origin.rotation(), outerCount, tiltAngle, groupRotation);
-		PatternEmitter.emit(ctx, spawnPos, settings, (vel, baseDir, spawnIndex) ->
+		PatternEmitter.emit(ctx, spawnPos, settings, (vel, baseDir, spawnIndex, resolvedSpread) ->
 				spawnOne(ctx, spawnPos, vel, baseDir));
 	}
 

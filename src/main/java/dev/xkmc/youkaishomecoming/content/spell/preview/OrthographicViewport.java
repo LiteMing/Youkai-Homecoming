@@ -33,6 +33,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.debug.PilotDebugView;
+import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
@@ -197,6 +198,13 @@ public class OrthographicViewport {
 
 	public Vec3 getCameraPos() {
 		return new Vec3(camX, camY, camZ);
+	}
+
+	public Vec3 getCameraLookDirection() {
+		double yaw = Math.toRadians(camYaw);
+		double pitch = Math.toRadians(camPitch);
+		return new Vec3(-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch),
+				Math.cos(yaw) * Math.cos(pitch)).normalize();
 	}
 
 	/** Free-look: mouse movement rotates camera (when captured) */
@@ -1380,6 +1388,16 @@ public class OrthographicViewport {
 				ry * dx + uy * dy,
 				rz * dx + uz * dy
 		);
+	}
+
+	/** Convert a world-space drag into the offset axes used by an OriginConfig. */
+	public Vec3 worldDeltaToOriginOffsetDelta(OriginConfig.OriginMode mode, double rotation,
+			Vec3 worldDelta, Vec3 casterCenter, @Nullable Vec3 targetCenter,
+			Vec3 casterFacing, @Nullable Entity targetEntity) {
+		Vec3 targetFacing = targetEntity != null ? targetEntity.getLookAngle()
+				: targetCenter == null ? casterFacing : targetCenter.subtract(casterCenter);
+		return OriginConfig.worldDeltaToOffsetDelta(mode, rotation, worldDelta,
+				casterFacing, targetFacing);
 	}
 
 	public boolean isMouseOver(double mouseX, double mouseY) {

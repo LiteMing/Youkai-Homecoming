@@ -1,6 +1,8 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.FireTextDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.GroupRotation;
@@ -84,6 +86,17 @@ public class SpellPreviewScreen extends Screen {
 	private com.google.gson.JsonObject pendingDockLayout;
 	private boolean preferHelpOnNextInit;
 	private boolean preferViewportOnNextInit;
+	@Nullable
+	private SpellAction originEditBaseAction;
+	@Nullable
+	private OriginConfig originEditBaseOrigin;
+	@Nullable
+	private UndoManager.Snapshot originEditUndoSnapshot;
+	private Vec3 originEditWorldOffset = Vec3.ZERO;
+	private int originEditActionIndex = -1;
+	private final java.util.IdentityHashMap<SpellAction, Integer> previewActionIds = new java.util.IdentityHashMap<>();
+	private final java.util.Map<Integer, ActionListPanel.ActionPath> previewActionPaths = new java.util.HashMap<>();
+	private final java.util.Map<ActionListPanel.ActionPath, Integer> previewPathIds = new java.util.HashMap<>();
 
 	public SpellPreviewScreen(SpellDefinition definition) {
 		this(definition, SpellEditorController.isDraftDefinition(definition));
@@ -110,6 +123,12 @@ public class SpellPreviewScreen extends Screen {
 				this::onGroupDeselect,
 				this::onClickSelectDanmaku
 		);
+		this.viewportPanel.setOriginEditCallbacks(
+				this::beginOriginEdit,
+				this::applyOriginEdit,
+				this::cancelOriginEdit
+		);
+		this.scene.setBeforeTimelineAdvance(viewportPanel::cancelOriginEdit);
 		this.viewportPanel.setOnRotationSpeedChanged(this::onRotationSpeedDragged);
 		this.viewportPanel.setEditBoxFocusedSupplier(this::isAnyEditBoxFocused);
 		this.viewportPanel.setTriggerSnapshotConfirmCallback(this::onCaptureSnapshotConfirmedFromViewport);
@@ -196,8 +215,8 @@ public class SpellPreviewScreen extends Screen {
 		actionListPanel = new ActionListPanel(
 				(action, path) -> {
 					setActionEditorAction(action, path.leafIndex());
-					// Highlight the selected action's danmaku in the viewport
-					scene.getHolder().setHighlightedActionIndex(path.leafIndex());
+					Integer previewId = previewPathIds.get(path);
+					scene.getHolder().setHighlightedActionIndex(previewId == null ? -1 : previewId);
 					// Update rotation gizmo state based on selected action
 					updateRotationGizmoForAction(action);
 				},
@@ -674,6 +693,7 @@ public class SpellPreviewScreen extends Screen {
 	private void onActionEdited(SpellAction newAction) {
 		if (actionListPanel != null) {
 			actionListPanel.replaceSelectedAction(newAction);
+			refreshPreviewActionIds();
 			invalidateCurrentSnapshot();
 			if (autoReplay) replaySelectedPhase();
 		}
@@ -789,38 +809,93 @@ public class SpellPreviewScreen extends Screen {
 	private void onActionEditedTransient(SpellAction newAction) {
 		if (actionListPanel != null) {
 			actionListPanel.replaceSelectedActionWithoutUndo(newAction);
-			if (autoReplay) replaySelectedPhase();
+			refreshPreviewActionIds();
+			// Viewport transforms are deliberately paused-only. The current frame is
+			// already rendered from the edited in-memory action; replaying here would
+		// destroy the frame the user is dragging and make the gizmo jump.
 		}
 	}
 
 	// --- Group transform callbacks (viewport drag interaction) ---
 
-	/** Called by viewport when a drag gesture begins — push a single undo snapshot for the whole drag. */
+	/** Called by viewport rotation gestures; origin editing owns a separate transaction. */
 	private void onGroupDragBegin() {
 		if (actionListPanel != null) actionListPanel.pushUndoSnapshot();
 	}
 
+	private boolean beginOriginEdit() {
+		if (scene.isPlaying() || actionListPanel == null || actionEditorPanel == null) return false;
+		SpellAction action = actionEditorPanel.getCurrentAction();
+		OriginConfig origin = originOf(action);
+		if (origin == null) return false;
+		originEditBaseAction = action;
+		originEditBaseOrigin = origin;
+		originEditUndoSnapshot = actionListPanel.captureUndoSnapshot();
+		originEditWorldOffset = Vec3.ZERO;
+		Integer previewId = previewPathIds.get(actionListPanel.getSelectedPath());
+		originEditActionIndex = previewId == null ? -1 : previewId;
+		return originEditUndoSnapshot != null;
+	}
+
+	private void applyOriginEdit() {
+		if (originEditBaseAction == null) return;
+		if (originEditWorldOffset.lengthSqr() > 1.0e-12 && actionListPanel != null) {
+			actionListPanel.commitUndoSnapshot(originEditUndoSnapshot);
+			invalidateCurrentSnapshot();
+		}
+		clearOriginEditSession();
+	}
+
+	private void cancelOriginEdit() {
+		if (originEditBaseAction == null) return;
+		SpellAction original = originEditBaseAction;
+		int index = originEditActionIndex;
+		Vec3 visualDelta = originEditWorldOffset.scale(-1);
+		onActionEditedTransient(original);
+		scene.translateActionProjectiles(index, visualDelta);
+		setActionEditorAction(original, index);
+		clearOriginEditSession();
+	}
+
+	private void clearOriginEditSession() {
+		originEditBaseAction = null;
+		originEditBaseOrigin = null;
+		originEditUndoSnapshot = null;
+		originEditWorldOffset = Vec3.ZERO;
+		originEditActionIndex = -1;
+	}
+
+	@Nullable
+	private static OriginConfig originOf(@Nullable SpellAction action) {
+		if (action instanceof FireDanmakuAction fire) return fire.origin();
+		if (action instanceof FireLaserAction laser) return laser.origin();
+		if (action instanceof FireTextDanmakuAction text) return text.origin();
+		return null;
+	}
+
+	private static SpellAction withOrigin(SpellAction action, OriginConfig origin) {
+		if (action instanceof FireDanmakuAction fire) return fire.withOrigin(origin);
+		if (action instanceof FireLaserAction laser) return laser.withOrigin(origin);
+		if (action instanceof FireTextDanmakuAction text) return text.withOrigin(origin);
+		return action;
+	}
+
 	private void onGroupOffsetDragged(Vec3 delta) {
 		if (delta.lengthSqr() < 1e-8) return;
-		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
-		SpellAction action = actionEditorPanel.getCurrentAction();
-		if (action instanceof FireDanmakuAction fda) {
-			var origin = fda.origin();
-			// Only edit axes whose offset is a plain constant — non-constant expressions
-			// (random/expression/etc.) would be silently flattened to constants, losing the user's intent.
-			NumberProvider newX = bumpConstant(origin.offsetX(), delta.x);
-			NumberProvider newY = bumpConstant(origin.offsetY(), delta.y);
-			NumberProvider newZ = bumpConstant(origin.offsetZ(), delta.z);
-			if (newX == origin.offsetX() && newY == origin.offsetY() && newZ == origin.offsetZ()) {
-				return; // nothing constant to bump
-			}
-			var newOrigin = new OriginConfig(origin.mode(), newX, newY, newZ, origin.rotation());
-			var newAction = fda.withOrigin(newOrigin);
-			onActionEditedTransient(newAction);
-			if (actionEditorPanel != null) {
-				setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
-			}
-		}
+		if (originEditBaseAction == null || originEditBaseOrigin == null || actionEditorPanel == null) return;
+		originEditWorldOffset = originEditWorldOffset.add(delta);
+		OriginConfig origin = originEditBaseOrigin;
+		Vec3 local = viewport.worldDeltaToOriginOffsetDelta(origin.mode(),
+				origin.rotation().get(scene.previewContext()), originEditWorldOffset,
+				scene.getHolder().center(), scene.getHolder().target(), scene.getHolder().self().getLookAngle(), scene.getHolder().targetEntity());
+		NumberProvider newX = bumpOffset(origin.offsetX(), local.x);
+		NumberProvider newY = bumpOffset(origin.offsetY(), local.y);
+		NumberProvider newZ = bumpOffset(origin.offsetZ(), local.z);
+		var newOrigin = new OriginConfig(origin.mode(), newX, newY, newZ, origin.rotation());
+		var newAction = withOrigin(originEditBaseAction, newOrigin);
+		scene.translateActionProjectiles(originEditActionIndex, delta);
+		onActionEditedTransient(newAction);
+		setActionEditorAction(newAction, originEditActionIndex);
 	}
 
 	private void onGroupAngleDragged(double angleDelta) {
@@ -833,31 +908,69 @@ public class SpellPreviewScreen extends Screen {
 
 			GroupRotation current = fda.groupRotation().orElse(
 					new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
+			rotatePausedActionPreview(action, current, axis, angleDelta);
 			NumberProvider newX = current.rotX(), newY = current.rotY(), newZ = current.rotZ();
 			NumberProvider bumped;
 			switch (axis) {
 				case 0 -> {
-					bumped = bumpConstant(current.rotX(), angleDelta);
-					if (bumped == current.rotX()) return; // non-constant, refuse to clobber
+					bumped = bumpOffset(current.rotX(), angleDelta);
 					newX = bumped;
 				}
 				case 1 -> {
-					bumped = bumpConstant(current.rotY(), angleDelta);
-					if (bumped == current.rotY()) return;
+					bumped = bumpOffset(current.rotY(), angleDelta);
 					newY = bumped;
 				}
 				case 2 -> {
-					bumped = bumpConstant(current.rotZ(), angleDelta);
-					if (bumped == current.rotZ()) return;
+					bumped = bumpOffset(current.rotZ(), angleDelta);
 					newZ = bumped;
 				}
 			}
 			var newGr = new GroupRotation(newX, newY, newZ);
 			var newAction = fda.withGroupRotation(Optional.of(newGr));
 			onActionEditedTransient(newAction);
+			invalidateCurrentSnapshot();
 			if (actionEditorPanel != null) {
 				setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
 			}
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction shooter) {
+			int axis = viewportPanel != null ? viewportPanel.getRotateAxis() : 1;
+			if (axis < 0) axis = 1;
+			GroupRotation current = shooter.groupRotation().orElse(
+					new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
+			rotatePausedActionPreview(action, current, axis, angleDelta);
+			NumberProvider newX = current.rotX(), newY = current.rotY(), newZ = current.rotZ();
+			if (axis == 0) newX = bumpOffset(newX, angleDelta);
+			else if (axis == 1) newY = bumpOffset(newY, angleDelta);
+			else newZ = bumpOffset(newZ, angleDelta);
+			var newAction = shooter.withGroupRotation(Optional.of(new GroupRotation(newX, newY, newZ)));
+			onActionEditedTransient(newAction);
+			invalidateCurrentSnapshot();
+			setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
+		}
+	}
+
+	private void rotatePausedActionPreview(SpellAction action, GroupRotation rotation, int axis, double angleDelta) {
+		if (scene.isPlaying() || actionListPanel == null) return;
+		var ctx = scene.previewContext();
+		OriginConfig origin;
+		dev.xkmc.youkaishomecoming.content.spell.definition.AimMode aim;
+		if (action instanceof FireDanmakuAction fire) {
+			origin = fire.origin();
+			aim = fire.aimMode();
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction shooter) {
+			origin = shooter.origin();
+			aim = shooter.aimMode();
+		} else {
+			return;
+		}
+		Vec3 pivot = origin.resolve(ctx);
+		Vec3 baseDirection = aim.getBaseDirection(ctx, pivot);
+		var frame = dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper.getOrientation(baseDirection);
+		frame = rotation.apply(frame, ctx);
+		Vec3 worldAxis = axis == 0 ? frame.side() : axis == 1 ? frame.normal() : frame.forward();
+		Integer previewId = previewPathIds.get(actionListPanel.getSelectedPath());
+		if (previewId != null) {
+			scene.rotateActionProjectiles(previewId, pivot, worldAxis, angleDelta);
 		}
 	}
 
@@ -865,11 +978,21 @@ public class SpellPreviewScreen extends Screen {
 	 * Returns a Constant NumberProvider with value bumped by delta, or the original if
 	 * the input isn't a Constant (signaling "non-constant — don't clobber").
 	 */
-	private static NumberProvider bumpConstant(NumberProvider p, double delta) {
+	/** Preserve dynamic/random providers while applying a drag as an additive offset. */
+	private static NumberProvider bumpOffset(NumberProvider p, double delta) {
+		if (Math.abs(delta) < 1.0e-8) return p;
 		if (p instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Constant c) {
 			return NumberProvider.constant(c.value() + delta);
 		}
-		return p;
+		if (p instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.RandomRange r) {
+			return new dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.RandomRange(r.min() + delta, r.max() + delta);
+		}
+		if (p instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Add add
+				&& add.b() instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Constant offset) {
+			return new dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Add(
+					add.a(), NumberProvider.constant(offset.value() + delta));
+		}
+		return new dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Add(p, NumberProvider.constant(delta));
 	}
 
 	private void onGroupDeselect() {
@@ -882,6 +1005,8 @@ public class SpellPreviewScreen extends Screen {
 	private void updateRotationGizmoForAction(@Nullable SpellAction action) {
 		if (viewportPanel != null) {
 			viewportPanel.setRotationGizmo(false, 0, 0, 0);
+			viewportPanel.setGroupRotationAvailable(action instanceof FireDanmakuAction
+					|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction);
 		}
 	}
 
@@ -895,7 +1020,10 @@ public class SpellPreviewScreen extends Screen {
 
 	private void onClickSelectDanmaku(int actionIndex) {
 		if (actionIndex < 0) return;
-		scene.getHolder().setHighlightedActionIndex(actionIndex);
+		ActionListPanel.ActionPath path = previewActionPaths.get(actionIndex);
+		if (path != null && actionListPanel != null && actionListPanel.selectPath(path)) {
+			scene.getHolder().setHighlightedActionIndex(actionIndex);
+		}
 	}
 
 	private void onRequestAddAction(ActionListPanel.AddTarget target) {
@@ -1058,10 +1186,28 @@ public class SpellPreviewScreen extends Screen {
 		ResourceLocation phaseId = phaseController.getSelectedPhaseId();
 		if (phaseId == null) {
 			actionListPanel.setPhase(null);
+			refreshPreviewActionIds();
 			return;
 		}
 		PhaseDefinition phase = definition.phases.get(phaseId);
 		actionListPanel.setPhase(phase);
+		refreshPreviewActionIds();
+	}
+
+	private void refreshPreviewActionIds() {
+		previewActionIds.clear();
+		previewActionPaths.clear();
+		previewPathIds.clear();
+		if (actionListPanel != null) {
+			int id = 0;
+			for (ActionListPanel.ActionEntry entry : actionListPanel.getActionEntries()) {
+				previewActionIds.put(entry.action(), id);
+				previewActionPaths.put(id, entry.path());
+				previewPathIds.put(entry.path(), id);
+				id++;
+			}
+		}
+		scene.getHolder().setPreviewActionIds(previewActionIds);
 	}
 
 	private ResourceLocation getSelectedPhaseId() {
@@ -1090,6 +1236,7 @@ public class SpellPreviewScreen extends Screen {
 	 */
 	private void onActionListReordered() {
 		if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
+		refreshPreviewActionIds();
 		invalidateCurrentSnapshot();
 		replaySelectedPhase();
 	}
@@ -1133,7 +1280,11 @@ public class SpellPreviewScreen extends Screen {
 	/** Clear both the action editor focus and the viewport highlight — used whenever the active
 	 *  phase changes, since action indices are phase-scoped and would otherwise dangle. */
 	private void clearActionSelection() {
+		if (viewportPanel != null && viewportPanel.isOriginEditMode()) {
+			viewportPanel.cancelOriginEdit();
+		}
 		scene.getHolder().setHighlightedActionIndex(-1);
+		if (actionListPanel != null) actionListPanel.clearSelection();
 		if (actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
 		}
@@ -1348,6 +1499,11 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (viewportPanel != null && viewportPanel.isOriginEditMode()
+				&& (mouseX < viewportPanel.getX() || mouseX >= viewportPanel.getX() + viewportPanel.getWidth()
+				|| mouseY < viewportPanel.getY() || mouseY >= viewportPanel.getY() + viewportPanel.getHeight())) {
+			viewportPanel.cancelOriginEdit();
+		}
 		// Editor dropdown/completion may extend beyond panel bounds — check first
 		if (isEditorDockActive() && actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
 			// 同步 activeGroup 到编辑器所在的 Group

@@ -18,7 +18,7 @@ public class UndoManager {
 
 	private static final int MAX_HISTORY = 100;
 	public record Restored(PhaseDefinition phase, Map<String, String> customNames) {}
-	private record Snapshot(JsonElement phase, Map<String, String> customNames) {}
+	public record Snapshot(JsonElement phase, Map<String, String> customNames) {}
 
 	private final Deque<Snapshot> undoStack = new ArrayDeque<>();
 	private final Deque<Snapshot> redoStack = new ArrayDeque<>();
@@ -28,14 +28,22 @@ public class UndoManager {
 	 * Call this before every action that modifies the phase.
 	 */
 	public void pushUndo(PhaseDefinition phase, Map<String, String> customNames) {
-		var result = PhaseDefinition.CODEC.encodeStart(JsonOps.INSTANCE, phase);
-		result.result().ifPresent(json -> {
-			undoStack.push(new Snapshot(json, new HashMap<>(customNames)));
-			if (undoStack.size() > MAX_HISTORY) {
-				undoStack.removeLast();
-			}
-			redoStack.clear(); // New edit invalidates redo history
-		});
+		Snapshot snapshot = capture(phase, customNames);
+		if (snapshot != null) pushUndo(snapshot);
+	}
+
+	/** Captures a state that can be committed after a transient editor gesture. */
+	public Snapshot capture(PhaseDefinition phase, Map<String, String> customNames) {
+		return PhaseDefinition.CODEC.encodeStart(JsonOps.INSTANCE, phase)
+				.result().map(json -> new Snapshot(json, new HashMap<>(customNames))).orElse(null);
+	}
+
+	/** Adds a previously captured pre-edit state to the undo history. */
+	public void pushUndo(Snapshot snapshot) {
+		if (snapshot == null) return;
+		undoStack.push(snapshot);
+		if (undoStack.size() > MAX_HISTORY) undoStack.removeLast();
+		redoStack.clear();
 	}
 
 	/**

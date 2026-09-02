@@ -233,8 +233,10 @@ public record FireLaserAction(
 		}
 
 		var laser = holder.prepareLaser(life, originPos, dir, len, laserType, color);
+		double resolvedThickness = thickness.get(ctx);
 		NumberProvider scaleFunction = thickness instanceof NumberProviders.Constant ? null : thickness;
-		laser.configureVisualScale((float) thickness.get(ctx), scaleFunction);
+		laser.configureVisualScale((float) resolvedThickness, scaleFunction);
+		laser.setCallbackSourceMetadata(resolvedThickness, 0.0, life, DanmakuColor.of(color));
 		// Apply per-action damage type override
 		if (damageType.isPresent()) {
 			laser.damageTypeOverride = damageType.get();

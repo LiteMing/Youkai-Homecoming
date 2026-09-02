@@ -77,7 +77,8 @@ public class ActionEditorPanel {
 	};
 
 	private static final String[] AIM_MODE_TYPES = {
-			"target", "direction_to_target", "fixed", "caster_facing", "angle_offset", "variable_angle", "random_angle"
+			"target", "direction_to_target", "fixed", "caster_facing", "target_facing", "source_direction",
+			"angle_offset", "variable_angle", "random_angle"
 	};
 
 	private final Consumer<AbstractWidget> addWidget;
@@ -100,7 +101,7 @@ public class ActionEditorPanel {
 	private int actionIndex = -1;
 	private final List<EditorRow> rows = new ArrayList<>();
 	private int scrollOffset = 0;
-	private final Map<Integer, Integer> scrollStateMap = new HashMap<>();
+	private final Map<ActionListPanel.ActionPath, Integer> scrollStateMap = new HashMap<>();
 	private boolean widgetsRegistered = false;
 	private boolean scrollbarDragging = false;
 
@@ -150,15 +151,15 @@ public class ActionEditorPanel {
 		if (action == currentAction && index == actionIndex
 				&& java.util.Objects.equals(path, currentActionPath)) return;
 		// Save current scroll state before switching
-		if (actionIndex >= 0) {
-			scrollStateMap.put(actionIndex, scrollOffset);
+		if (currentActionPath != null) {
+			scrollStateMap.put(currentActionPath, scrollOffset);
 		}
 		clearWidgets();
 		editingFixedDirInner = false;
 		this.currentAction = action;
 		this.currentActionPath = path;
 		this.actionIndex = index;
-		this.scrollOffset = scrollStateMap.getOrDefault(index, 0);
+		this.scrollOffset = path == null ? 0 : scrollStateMap.getOrDefault(path, 0);
 		this.typeSelectorMode = false;
 		buildActionRows(action);
 		layoutWidgets();
@@ -772,7 +773,7 @@ public class ActionEditorPanel {
 		addSectionHeader("Origin");
 		if (!isSectionCollapsed("Origin")) {
 			currentDepth++;
-			addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
+			addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), a.origin().mode(), v -> {
 				notifyDanmaku(old -> {
 					var current = old.origin();
 					return old.withOrigin(ActionEditorValueUpdates.withOriginMode(current, v));
@@ -918,10 +919,11 @@ public class ActionEditorPanel {
 		String mode = provider instanceof ColorProvider.Indexed ? "indexed" :
 				provider instanceof ColorProvider.ByVariable ? "by_variable" :
 						provider instanceof ColorProvider.Cycle ? "cycle" :
-								provider instanceof ColorProvider.RandomChoice ? "random_choice" : "constant";
+								provider instanceof ColorProvider.RandomChoice ? "random_choice" :
+										provider instanceof ColorProvider.SourceColor ? "source_color" : "constant";
 		addStringOptionRow("Color Mode",
-				new String[]{"constant", "indexed", "by_variable", "cycle", "random_choice"},
-				new String[]{"Constant", "Indexed", "Variable", "Cycle", "Random"},
+				new String[]{"constant", "indexed", "by_variable", "cycle", "random_choice", "source_color"},
+				new String[]{"Constant", "Indexed", "Variable", "Cycle", "Random", "Source Color"},
 				mode,
 				next -> notifyDanmaku(old -> {
 					ColorProvider current = old.color();
@@ -1007,6 +1009,7 @@ public class ActionEditorPanel {
 					new ColorProvider.Cycle(palette, 1);
 			case "random_choice" -> old instanceof ColorProvider.RandomChoice random ? random :
 					new ColorProvider.RandomChoice(palette);
+			case "source_color" -> new ColorProvider.SourceColor();
 			default -> ColorProvider.constant(fallback);
 		};
 	}
@@ -1143,7 +1146,7 @@ public class ActionEditorPanel {
 		});
 
 		// OriginConfig mode
-		addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
+		addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), a.origin().mode(), v -> {
 			notifyLaser(old -> {
 				var current = old.origin();
 				return old.withOrigin(ActionEditorValueUpdates.withOriginMode(current, v));
@@ -1252,7 +1255,7 @@ public class ActionEditorPanel {
 		});
 
 		// OriginConfig mode
-		addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
+		addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), a.origin().mode(), v -> {
 			notifyTextDanmaku(old -> {
 				var current = old.origin();
 				return old.withOrigin(ActionEditorValueUpdates.withOriginMode(current, v));
@@ -1945,7 +1948,7 @@ public class ActionEditorPanel {
 	// --- Teleport rows ---
 
 	private void buildTeleportRows(TeleportAction ta) {
-		addEnumRow("Origin", OriginConfig.OriginMode.values(), ta.destination().mode(), v -> {
+		addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), ta.destination().mode(), v -> {
 			notifySimple(old -> {
 				var teleport = (TeleportAction) old;
 				var current = teleport.destination();
@@ -2211,7 +2214,7 @@ public class ActionEditorPanel {
 		addSectionHeader("Origin");
 		if (!isSectionCollapsed("Origin")) {
 			currentDepth++;
-			addEnumRow("Origin", OriginConfig.OriginMode.values(), ssa.origin().mode(), v -> {
+			addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), ssa.origin().mode(), v -> {
 				notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
@@ -3710,7 +3713,15 @@ public class ActionEditorPanel {
 			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose",
 			"tick", "phase_tick", "total_tick", "distance",
 			"target_height", "target_fly_time", "target_speed", "game_difficulty",
-			"caster_x", "caster_y", "caster_z", "caster_max_health", "caster_power", "target_x", "target_y", "target_z"
+			"caster_x", "caster_y", "caster_z", "caster_max_health", "caster_power",
+			"target_x", "target_y", "target_z", "target_facing_x", "target_facing_y", "target_facing_z",
+			"source_position_x", "source_position_y", "source_position_z",
+			"source_velocity_x", "source_velocity_y", "source_velocity_z", "vx", "vy", "vz",
+			"source_direction_x", "source_direction_y", "source_direction_z", "source_speed",
+			"source_size", "source_spread", "source_lifetime", "source_age", "source_remaining_lifetime",
+			"hook_x", "hook_y", "hook_z", "hit_x", "hit_y", "hit_z", "start_x", "start_y", "start_z",
+			"end_x", "end_y", "end_z", "clipped_end_x", "clipped_end_y", "clipped_end_z",
+			"hit_normal_x", "hit_normal_y", "hit_normal_z"
 	};
 
 	/** Returns the insert template for a function (with parens and commas). */
@@ -3876,6 +3887,7 @@ public class ActionEditorPanel {
 	private int exprCompletionHoverIndex = -1;
 	private EditBox exprCompletionTarget = null;
 	private int exprCompletionInsertStart = -1;
+	private int exprCompletionScrollOffset = 0;
 
 	// Plain string field completion overlay
 	private String[] stringCompletionItems = null;
@@ -3884,6 +3896,21 @@ public class ActionEditorPanel {
 	private int stringCompletionInsertStart = -1;
 	private int stringCompletionInsertEnd = -1;
 	private int stringCompletionScrollOffset = 0;
+
+	private int[] computeCompletionBounds(EditBox target, int itemCount) {
+		int cx = Math.max(x, Math.min(x + w - 20, target.getX()));
+		int cw = Math.max(20, Math.min(Math.max(target.getWidth(), 120), x + w - cx));
+		int desired = Math.min(itemCount, DROPDOWN_MAX_VISIBLE);
+		int below = Math.max(0, y + h - (target.getY() + target.getHeight()));
+		int above = Math.max(0, target.getY() - y);
+		boolean openBelow = below >= desired * DROPDOWN_ITEM_H || below >= above;
+		int available = openBelow ? below : above;
+		int visible = Math.max(1, Math.min(desired, available / DROPDOWN_ITEM_H));
+		int height = visible * DROPDOWN_ITEM_H;
+		int cy = openBelow ? target.getY() + target.getHeight() : target.getY() - height;
+		cy = Math.max(y, Math.min(y + h - height, cy));
+		return new int[]{cx, cy, cw, height, visible};
+	}
 
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange) {
 		addNumberRow(label, provider, onChange, false, null);
@@ -4223,7 +4250,7 @@ public class ActionEditorPanel {
 		dropdown = new DropdownOverlay(options, selected, onSelect, triggerRowIndex);
 		dropdownHoverIndex = -1;
 		// Auto-scroll to make selected item visible
-		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int visibleItems = computeDropdownBounds()[4];
 		int maxScroll = Math.max(0, options.length - visibleItems);
 		if (selected >= visibleItems) {
 			dropdownScrollOffset = selected - visibleItems + 1;
@@ -4246,26 +4273,19 @@ public class ActionEditorPanel {
 		if (dropdown == null) return new int[]{0, 0, 0, 0, 0};
 		String[] options = dropdown.options();
 		if (options == null || options.length == 0) return new int[]{0, 0, 0, 0, 0};
-		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int rowIndex = Math.max(0, Math.min(rows.size() - 1, dropdown.triggerRowIndex()));
+		AbstractWidget trigger = rows.get(rowIndex).widget();
+		int dropdownX = Math.max(x, Math.min(x + w - 20, trigger.getX()));
+		int dropdownW = Math.max(20, Math.min(trigger.getWidth(), x + w - dropdownX));
+		int desiredItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int below = Math.max(0, y + h - (trigger.getY() + trigger.getHeight()));
+		int above = Math.max(0, trigger.getY() - y);
+		boolean openBelow = below >= desiredItems * DROPDOWN_ITEM_H || below >= above;
+		int available = openBelow ? below : above;
+		int visibleItems = Math.max(1, Math.min(desiredItems, available / DROPDOWN_ITEM_H));
 		int totalH = visibleItems * DROPDOWN_ITEM_H;
-
-		int triggerRowY = y + getRowY(dropdown.triggerRowIndex()) - scrollOffset;
-		int dropdownX = x + LABEL_WIDTH + PADDING * 2;
-		int dropdownW = w - LABEL_WIDTH - PADDING * 3;
-		if (dropdownW < 20) dropdownW = 20;
-
-		int triggerRowH = getRowHeight(dropdown.triggerRowIndex());
-		int dropdownY = triggerRowY + triggerRowH;
-		if (dropdownY + totalH > y + h) {
-			dropdownY = triggerRowY - totalH;
-		}
-		if (dropdownY < y) {
-			dropdownY = y;
-		}
-		if (dropdownY + totalH > y + h) {
-			totalH = y + h - dropdownY;
-		}
-		if (totalH < DROPDOWN_ITEM_H) totalH = DROPDOWN_ITEM_H;
+		int dropdownY = openBelow ? trigger.getY() + trigger.getHeight() : trigger.getY() - totalH;
+		dropdownY = Math.max(y, Math.min(y + h - totalH, dropdownY));
 		return new int[]{dropdownX, dropdownY, dropdownW, totalH, visibleItems};
 	}
 
@@ -4279,6 +4299,7 @@ public class ActionEditorPanel {
 		if (options == null || options.length == 0) return;
 
 		boolean needsScroll = options.length > visibleItems;
+		dropdownScrollOffset = Math.max(0, Math.min(options.length - visibleItems, dropdownScrollOffset));
 		int scrollbarW = needsScroll ? 6 : 0;
 
 		// Render without scissor - background is fully opaque and will cover any text beneath
@@ -4355,7 +4376,8 @@ public class ActionEditorPanel {
 		int[] bounds = computeDropdownBounds();
 		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
 		String[] options = dropdown.options();
-		boolean needsScroll = options.length > DROPDOWN_MAX_VISIBLE;
+		int visibleItems = bounds[4];
+		boolean needsScroll = options.length > visibleItems;
 		int scrollbarW = needsScroll ? 6 : 0;
 		int contentW = dw - scrollbarW;
 
@@ -4729,14 +4751,11 @@ public class ActionEditorPanel {
 				return true;
 			}
 			if (button == 0) {
-				int cx = stringCompletionTarget.getX();
-				int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
-				int cw = Math.max(stringCompletionTarget.getWidth(), 120);
+				int[] bounds = computeCompletionBounds(stringCompletionTarget, stringCompletionItems.length);
+				int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
 				int itemH = DROPDOWN_ITEM_H;
 				int itemCount = stringCompletionItems.length;
-				int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-				if (cy + totalH > y + h) totalH = y + h - cy;
-				int visibleItems = Math.max(1, totalH / itemH);
+				int visibleItems = bounds[4];
 				int scrollbarW = itemCount > visibleItems ? 6 : 0;
 				int contentW = cw - scrollbarW;
 
@@ -4764,17 +4783,15 @@ public class ActionEditorPanel {
 		// Handle expression completion overlay
 		if (exprCompletionItems != null) {
 			if (button == 0) {
-				// Compute hover index from click position
-				int cx = exprCompletionTarget.getX();
-				int cy = exprCompletionTarget.getY() + exprCompletionTarget.getHeight();
-				int cw = Math.max(exprCompletionTarget.getWidth(), 120);
+				int[] bounds = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.length);
+				int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
 				int itemH = DROPDOWN_ITEM_H;
 				int itemCount = exprCompletionItems.length;
-				int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-				if (cy + totalH > y + h) totalH = y + h - cy;
+				int scrollbarW = itemCount > bounds[4] ? 6 : 0;
+				int contentW = cw - scrollbarW;
 
-				if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
-					int idx = (int) ((mouseY - cy) / itemH);
+				if (mouseX >= cx && mouseX < cx + contentW && mouseY >= cy && mouseY < cy + totalH) {
+					int idx = (int) ((mouseY - cy) / itemH) + exprCompletionScrollOffset;
 					if (idx >= 0 && idx < itemCount) {
 						exprCompletionHoverIndex = idx;
 						applyExprCompletion();
@@ -4894,6 +4911,13 @@ public class ActionEditorPanel {
 					stringCompletionScrollOffset - (int) (delta * 3)));
 			return true;
 		}
+		if (exprCompletionItems != null && exprCompletionTarget != null) {
+			int visible = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.length)[4];
+			int maxScroll = Math.max(0, exprCompletionItems.length - visible);
+			exprCompletionScrollOffset = Math.max(0, Math.min(maxScroll,
+					exprCompletionScrollOffset - (int) (delta * 3)));
+			return true;
+		}
 		if (dropdown != null) {
 			String[] options = dropdown.options();
 			if (options == null) return true;
@@ -4996,10 +5020,12 @@ public class ActionEditorPanel {
 			}
 			if (keyCode == GLFW.GLFW_KEY_UP) {
 				if (exprCompletionHoverIndex > 0) exprCompletionHoverIndex--;
+				ensureExprCompletionHoverVisible();
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_DOWN) {
 				if (exprCompletionHoverIndex < exprCompletionItems.length - 1) exprCompletionHoverIndex++;
+				ensureExprCompletionHoverVisible();
 				return true;
 			}
 			closeExprCompletion();
@@ -5050,6 +5076,7 @@ public class ActionEditorPanel {
 		exprCompletionHoverIndex = 0;
 		exprCompletionTarget = editBox;
 		exprCompletionInsertStart = tokenStart;
+		exprCompletionScrollOffset = 0;
 		return true;
 	}
 
@@ -5236,6 +5263,8 @@ public class ActionEditorPanel {
 			case "direction_to_target" -> new AimMode.AimModes.DirectionToTarget();
 			case "fixed" -> new AimMode.AimModes.FixedDirection(new net.minecraft.world.phys.Vec3(0, 0, 1));
 			case "caster_facing" -> new AimMode.AimModes.CasterFacing();
+			case "target_facing" -> new AimMode.AimModes.TargetFacing();
+			case "source_direction" -> new AimMode.AimModes.SourceDirection();
 			case "angle_offset" -> new AimMode.AimModes.AngleOffset(NumberProvider.constant(0));
 			case "variable_angle" -> new AimMode.AimModes.VariableAngle("aim_angle");
 			case "random_angle" -> new AimMode.AimModes.RandomAngle(NumberProvider.constant(360));
@@ -5365,14 +5394,7 @@ public class ActionEditorPanel {
 		if (stringCompletionItems == null || stringCompletionTarget == null) {
 			return 1;
 		}
-		int itemCount = stringCompletionItems.length;
-		int itemH = DROPDOWN_ITEM_H;
-		int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-		int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
-		if (cy + totalH > y + h) {
-			totalH = y + h - cy;
-		}
-		return Math.max(1, totalH / itemH);
+		return computeCompletionBounds(stringCompletionTarget, stringCompletionItems.length)[4];
 	}
 
 	private void ensureStringCompletionHoverVisible() {
@@ -5394,13 +5416,9 @@ public class ActionEditorPanel {
 		Font font = Minecraft.getInstance().font;
 		int itemCount = stringCompletionItems.length;
 		int itemH = DROPDOWN_ITEM_H;
-		int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-		int cx = stringCompletionTarget.getX();
-		int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
-		int cw = Math.max(stringCompletionTarget.getWidth(), 120);
-		if (cy + totalH > y + h) totalH = y + h - cy;
-		if (totalH < itemH) return;
-		int visibleItems = Math.max(1, totalH / itemH);
+		int[] bounds = computeCompletionBounds(stringCompletionTarget, itemCount);
+		int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
+		int visibleItems = bounds[4];
 		int maxScroll = Math.max(0, itemCount - visibleItems);
 		stringCompletionScrollOffset = Math.max(0, Math.min(maxScroll, stringCompletionScrollOffset));
 		int scrollbarW = itemCount > visibleItems ? 6 : 0;
@@ -5505,6 +5523,19 @@ public class ActionEditorPanel {
 		exprCompletionItems = null;
 		exprCompletionHoverIndex = -1;
 		exprCompletionTarget = null;
+		exprCompletionScrollOffset = 0;
+	}
+
+	private void ensureExprCompletionHoverVisible() {
+		if (exprCompletionItems == null || exprCompletionTarget == null) return;
+		int visible = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.length)[4];
+		if (exprCompletionHoverIndex < exprCompletionScrollOffset) {
+			exprCompletionScrollOffset = exprCompletionHoverIndex;
+		} else if (exprCompletionHoverIndex >= exprCompletionScrollOffset + visible) {
+			exprCompletionScrollOffset = exprCompletionHoverIndex - visible + 1;
+		}
+		int maxScroll = Math.max(0, exprCompletionItems.length - visible);
+		exprCompletionScrollOffset = Math.max(0, Math.min(maxScroll, exprCompletionScrollOffset));
 	}
 
 	private void doRenderExprCompletion(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -5512,12 +5543,13 @@ public class ActionEditorPanel {
 		Font font = Minecraft.getInstance().font;
 		int itemCount = exprCompletionItems.length;
 		int itemH = DROPDOWN_ITEM_H;
-		int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-		int cx = exprCompletionTarget.getX();
-		int cy = exprCompletionTarget.getY() + exprCompletionTarget.getHeight();
-		int cw = Math.max(exprCompletionTarget.getWidth(), 120);
-		if (cy + totalH > y + h) totalH = y + h - cy;
-		if (totalH < itemH) return;
+		int[] bounds = computeCompletionBounds(exprCompletionTarget, itemCount);
+		int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
+		int visibleItems = bounds[4];
+		int maxScroll = Math.max(0, itemCount - visibleItems);
+		exprCompletionScrollOffset = Math.max(0, Math.min(maxScroll, exprCompletionScrollOffset));
+		int scrollbarW = itemCount > visibleItems ? 6 : 0;
+		int contentW = cw - scrollbarW;
 
 		guiGraphics.pose().pushPose();
 		guiGraphics.pose().translate(0, 0, 200);
@@ -5528,21 +5560,32 @@ public class ActionEditorPanel {
 		guiGraphics.fill(cx, cy, cx + 1, cy + totalH, 0xFF666688);
 		guiGraphics.fill(cx + cw - 1, cy, cx + cw, cy + totalH, 0xFF666688);
 
-		exprCompletionHoverIndex = -1;
-		if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
-			int rawIdx = (mouseY - cy) / itemH;
+		if (mouseX >= cx && mouseX < cx + contentW && mouseY >= cy && mouseY < cy + totalH) {
+			int rawIdx = (mouseY - cy) / itemH + exprCompletionScrollOffset;
 			if (rawIdx >= 0 && rawIdx < itemCount) exprCompletionHoverIndex = rawIdx;
 		}
 
-		int visCount = Math.min(itemCount, totalH / itemH);
+		int visCount = Math.min(itemCount - exprCompletionScrollOffset, visibleItems);
 		for (int i = 0; i < visCount; i++) {
-			if (i >= itemCount) break;
+			int itemIndex = i + exprCompletionScrollOffset;
+			if (itemIndex >= itemCount) break;
 			int iy = cy + i * itemH;
 			if (iy + itemH > cy + totalH) break;
-			boolean hovered = i == exprCompletionHoverIndex;
-			if (hovered) guiGraphics.fill(cx + 1, iy, cx + cw - 1, iy + itemH, 0x44FFFFFF);
-			guiGraphics.drawString(font, getFuncDisplayName(exprCompletionItems[i]), cx + 4, iy + 4,
+			boolean hovered = itemIndex == exprCompletionHoverIndex;
+			if (hovered) guiGraphics.fill(cx + 1, iy, cx + contentW - 1, iy + itemH, 0x44FFFFFF);
+			guiGraphics.drawString(font, getFuncDisplayName(exprCompletionItems[itemIndex]), cx + 4, iy + 4,
 					hovered ? 0xFFFFDD66 : 0xFFDDDDDD, false);
+		}
+		if (itemCount > visibleItems) {
+			int sbX = cx + cw - scrollbarW;
+			guiGraphics.fill(sbX, cy, sbX + scrollbarW, cy + totalH, 0x33FFFFFF);
+			int trackH = totalH - 2;
+			int thumbH = Math.max(10, trackH * visibleItems / itemCount);
+			int thumbTravel = trackH - thumbH;
+			if (thumbTravel > 0) {
+				int thumbY = cy + 1 + thumbTravel * exprCompletionScrollOffset / Math.max(1, maxScroll);
+				guiGraphics.fill(sbX + 1, thumbY, sbX + scrollbarW - 1, thumbY + thumbH, 0xAAAAAACC);
+			}
 		}
 		guiGraphics.pose().popPose();
 	}

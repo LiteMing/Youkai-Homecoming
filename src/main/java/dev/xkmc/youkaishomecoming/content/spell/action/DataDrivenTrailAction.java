@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import net.minecraft.world.entity.Entity;
@@ -60,17 +61,34 @@ public class DataDrivenTrailAction extends TrailAction {
 
 	@Override
 	public void execute(CardHolder holder, Vec3 pos, Vec3 dir) {
-		execute(holder, pos, dir, TrailCardHolder.HitType.NONE, null, null);
+		execute(holder, pos, dir, TrailCardHolder.HitType.NONE, null, null,
+				ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.EXPIRY, null, pos, dir, pos, pos, null, null, null));
+	}
+
+	@Override
+	public void execute(CardHolder holder, ProjectileCallbackContext callback) {
+		execute(holder, callback.position(), callback.sourceDirection(), hitType(callback.kind()),
+				callback.hitEntity(), null, callback);
 	}
 
 	@Override
 	public void executeEntityHit(CardHolder holder, Vec3 pos, Vec3 dir, Entity hitEntity) {
-		execute(holder, pos, dir, TrailCardHolder.HitType.ENTITY, hitEntity, null);
+		execute(holder, pos, dir, TrailCardHolder.HitType.ENTITY, hitEntity, null,
+				ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.HIT_ENTITY, null, pos, dir, pos, pos, pos, null, hitEntity));
 	}
 
 	@Override
 	public void executeEntityHit(CardHolder holder, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
-		execute(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), TrailCardHolder.HitType.ENTITY, hitContext.hitEntity(), hitContext);
+		execute(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), TrailCardHolder.HitType.ENTITY,
+				hitContext.hitEntity(), hitContext,
+				hitContext.callbackContext().orElseGet(() ->
+						ProjectileCallbackContext.fromHit(hitContext, ProjectileCallbackContext.Kind.HIT_ENTITY, null)));
+	}
+
+	@Override
+	public void executeEntityHit(CardHolder holder, ProjectileCallbackContext callback) {
+		execute(holder, callback.position(), callback.sourceDirection(), TrailCardHolder.HitType.ENTITY,
+				callback.hitEntity(), null, callback);
 	}
 
 	@Override
@@ -80,12 +98,21 @@ public class DataDrivenTrailAction extends TrailAction {
 
 	@Override
 	public void executeBlockHit(CardHolder holder, Vec3 pos, Vec3 dir) {
-		execute(holder, pos, dir, TrailCardHolder.HitType.BLOCK, null, null);
+		execute(holder, pos, dir, TrailCardHolder.HitType.BLOCK, null, null,
+				ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.HIT_BLOCK, null, pos, dir, pos, pos, pos, null, null));
 	}
 
 	@Override
 	public void executeBlockHit(CardHolder holder, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
-		execute(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), TrailCardHolder.HitType.BLOCK, null, hitContext);
+		execute(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), TrailCardHolder.HitType.BLOCK, null, hitContext,
+				hitContext.callbackContext().orElseGet(() ->
+						ProjectileCallbackContext.fromHit(hitContext, ProjectileCallbackContext.Kind.HIT_BLOCK, null)));
+	}
+
+	@Override
+	public void executeBlockHit(CardHolder holder, ProjectileCallbackContext callback) {
+		execute(holder, callback.position(), callback.sourceDirection(), TrailCardHolder.HitType.BLOCK,
+				null, null, callback);
 	}
 
 	@Override
@@ -95,7 +122,8 @@ public class DataDrivenTrailAction extends TrailAction {
 
 	private void execute(CardHolder holder, Vec3 pos, Vec3 dir,
 			TrailCardHolder.HitType hitType, Entity hitEntity,
-			@org.jetbrains.annotations.Nullable dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+			@org.jetbrains.annotations.Nullable dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext,
+			@org.jetbrains.annotations.Nullable ProjectileCallbackContext callback) {
 		if (!hasRuntimeContext()) {
 			return;
 		}
@@ -116,7 +144,7 @@ public class DataDrivenTrailAction extends TrailAction {
 		// the authoritative hit context usable without manufacturing a holder that
 		// would fail on self()/target access.
 		CardHolder trailHolder = holder == null ? null : new TrailCardHolder(holder, pos, dir, hitType, hitEntity);
-		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT, hitContext);
+		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT, hitContext, callback);
 		// Capture which variables the callback actually writes (setVariable calls).
 		Set<String> written = variableSnapshot != null ? runtime.beginTrackWrites() : null;
 		try {
@@ -136,6 +164,14 @@ public class DataDrivenTrailAction extends TrailAction {
 				}
 			}
 		}
+	}
+
+	private static TrailCardHolder.HitType hitType(ProjectileCallbackContext.Kind kind) {
+		return switch (kind) {
+			case HIT_ENTITY -> TrailCardHolder.HitType.ENTITY;
+			case HIT_BLOCK -> TrailCardHolder.HitType.BLOCK;
+			default -> TrailCardHolder.HitType.NONE;
+		};
 	}
 
 	@Override

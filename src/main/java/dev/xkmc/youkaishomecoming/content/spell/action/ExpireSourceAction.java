@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
 public record ExpireSourceAction() implements SpellAction {
 	public static final Codec<ExpireSourceAction> CODEC = Codec.unit(ExpireSourceAction::new);
 
+	/** Selects expiry (including on_expiry) without suppressing later on-hit effects. */
 	@Override
 	public void execute(SpellContext ctx) {
 		ctx.hitContext().ifPresent(hit -> hit.resolve(SpellHitContext.HitDisposition.EXPIRE));

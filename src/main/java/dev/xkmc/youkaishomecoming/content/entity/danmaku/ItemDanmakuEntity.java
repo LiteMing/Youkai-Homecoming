@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverOwner;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.CompoundTag;
@@ -255,8 +256,12 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		CardHolder holder = null;
 		Entity e = getOwner();
 		if (e instanceof CardHolder h) holder = h;
-		if (holder == null) afterExpiry.execute(position(), getDeltaMovement());
-		else afterExpiry.execute(holder, position(), getDeltaMovement());
+		Vec3 pos = position();
+		Vec3 velocity = getDeltaMovement();
+		var callback = ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.EXPIRY,
+				this, pos, velocity, pos, pos, null, null, null);
+		if (holder == null) afterExpiry.execute(callback);
+		else afterExpiry.execute(holder, callback);
 	}
 
 	@Override
@@ -277,8 +282,12 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		if (e instanceof CardHolder h) holder = h;
 		Vec3 pos = data.moveSrc == null ? position() : data.moveSrc;
 		Vec3 vec = data.inputVelocity == null ? getDeltaMovement() : data.inputVelocity;
-		if (holder != null) onTrail.execute(holder, pos, vec);
-		else onTrail.execute(pos, vec);
+		var callback = ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.TRAIL,
+				this, pos, vec,
+				data.moveSrc == null ? pos : data.moveSrc,
+				data.movementEndOr(pos.add(vec)), null, null, null);
+		if (holder != null) onTrail.execute(holder, callback);
+		else onTrail.execute(callback);
 	}
 
 	public ItemStack getItem() {

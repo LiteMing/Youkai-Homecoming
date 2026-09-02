@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
 public record DiscardSourceAction() implements SpellAction {
 	public static final Codec<DiscardSourceAction> CODEC = Codec.unit(DiscardSourceAction::new);
 
+	/** Selects erase-without-expiry and hard-stops the remaining hit callback. */
 	@Override
 	public void execute(SpellContext ctx) {
 		ctx.hitContext().ifPresent(hit -> hit.resolve(SpellHitContext.HitDisposition.DISCARD));

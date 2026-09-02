@@ -236,7 +236,8 @@ public final class SpecialNodeCounter {
 			Optional<MoverConfig> mover, NumberProvider lifetimeProvider,
 			NumberProvider sizeProvider, double sizeDefault, NumberProvider... providers) {
 		if (origin != null) {
-			if (origin.mode() == dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig.OriginMode.TARGET) {
+			if (origin.mode() == dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig.OriginMode.TARGET
+					|| origin.mode() == dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig.OriginMode.TARGET_FACING) {
 				result.add(SpellCapability.ORIGIN_TARGET);
 			}
 			if (containsTargetCoordinate(origin.offsetX()) || containsTargetCoordinate(origin.offsetY())

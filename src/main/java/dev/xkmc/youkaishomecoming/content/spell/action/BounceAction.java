@@ -50,7 +50,8 @@ public record BounceAction(
 	@Override
 	public void execute(SpellContext ctx) {
 		ctx.hitContext().ifPresent(hit -> {
-			if (hit.hitType() == SpellHitContext.HitType.BLOCK) {
+			if (hit.hitType() == SpellHitContext.HitType.BLOCK
+					&& hit.source() instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity) {
 				hit.resolveBounce(new DanmakuBounceConfig(maxBounces, normalFactor, tangentFactor, tangentOffsetX, tangentOffsetY, tangentOffsetZ, outputSpeed, retarget));
 			}
 		});

@@ -44,12 +44,14 @@ public record BurstAction(int waves, int interval, String waveVariable, List<Spe
 		boolean hasVar = waveVariable != null && !waveVariable.isEmpty();
 		if (interval == 0) {
 			for (int w = 0; w < waves; w++) {
+				if (ctx.shouldAbortActionList()) break;
 				if (hasVar) ctx.setVariable(waveVariable, w);
 				ctx.executeList(body);
 			}
 			return;
 		}
 		for (int w = 0; w < waves; w++) {
+			if (ctx.shouldAbortActionList()) break;
 			if (w == 0) {
 				// First wave: execute immediately
 				if (hasVar) ctx.setVariable(waveVariable, w);
@@ -66,7 +68,8 @@ public record BurstAction(int waves, int interval, String waveVariable, List<Spe
 				} else {
 					scheduled = body;
 				}
-				ctx.runtime().scheduleDelayed(ctx.totalTick() + interval * waveIdx, scheduled);
+				ctx.runtime().scheduleDelayed(ctx.totalTick() + interval * waveIdx, scheduled,
+						ctx.holder(), ctx.callbackContext().orElse(null));
 			}
 		}
 	}

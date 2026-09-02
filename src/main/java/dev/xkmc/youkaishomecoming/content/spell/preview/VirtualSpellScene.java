@@ -16,6 +16,7 @@ import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.SelfBoxModel;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatFilters;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.ThreatSnapshot;
 import net.minecraft.world.entity.Entity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -41,6 +42,7 @@ public class VirtualSpellScene {
 	private final PreviewCardHolder holder;
 
 	private boolean playing = false;
+	private Runnable beforeTimelineAdvance;
 	private int speedIndex = 2; // index into SPEED_OPTIONS
 	private float targetDistance = 10f;
 	private float healthRatio = 1.0f;
@@ -319,6 +321,7 @@ public class VirtualSpellScene {
 	}
 
 	public void play() {
+		beforeTimelineAdvance();
 		playing = true;
 	}
 
@@ -327,12 +330,26 @@ public class VirtualSpellScene {
 	}
 
 	public void togglePlayPause() {
-		playing = !playing;
+		if (playing) {
+			playing = false;
+		} else {
+			beforeTimelineAdvance();
+			playing = true;
+		}
 	}
 
 	public void step() {
+		beforeTimelineAdvance();
 		playing = false;
 		doTick();
+	}
+
+	public void setBeforeTimelineAdvance(Runnable callback) {
+		this.beforeTimelineAdvance = callback;
+	}
+
+	private void beforeTimelineAdvance() {
+		if (beforeTimelineAdvance != null) beforeTimelineAdvance.run();
 	}
 
 	public void reset() {
@@ -419,6 +436,14 @@ public class VirtualSpellScene {
 
 	public void setTargetPos(Vec3 pos) {
 		holder.setTargetPos(pos);
+	}
+
+	public void setTargetFacing(Vec3 facing) {
+		holder.setTargetFacing(facing);
+	}
+
+	public Vec3 getTargetFacing() {
+		return holder.getTargetFacing();
 	}
 
 	/** Set only the Y coordinate of the target position (target_height). */
@@ -532,6 +557,63 @@ public class VirtualSpellScene {
 
 	public PreviewCardHolder getHolder() {
 		return holder;
+	}
+
+	/** Move only the already-rendered projectiles emitted by one action. This is
+	 * used by paused origin dragging so the viewport updates without replaying
+	 * the whole spell on every mouse event. */
+	public void translateActionProjectiles(int actionIndex, Vec3 delta) {
+		if (delta == null || delta.lengthSqr() < 1.0e-12) return;
+		for (Entity entity : holder.getLocalEntities()) {
+			int source = entity instanceof ItemDanmakuEntity ide ? ide.sourceActionIndex
+					: entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser
+					? laser.sourceActionIndex : -1;
+			if (source != actionIndex) continue;
+			entity.setPos(entity.position().add(delta));
+			entity.setOldPosAndRot();
+		}
+	}
+
+	public void rotateActionProjectiles(int actionIndex, Vec3 pivot, Vec3 axis, double degrees) {
+		if (actionIndex < 0 || pivot == null || axis == null || axis.lengthSqr() < 1.0e-12) return;
+		double radians = Math.toRadians(degrees);
+		for (Entity entity : holder.getLocalEntities()) {
+			int source = entity instanceof ItemDanmakuEntity ide ? ide.sourceActionIndex
+					: entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser
+					? laser.sourceActionIndex : -1;
+			if (source != actionIndex) continue;
+			Vec3 position = pivot.add(rotateAroundAxis(entity.position().subtract(pivot), axis, radians));
+			Vec3 velocity = rotateAroundAxis(entity.getDeltaMovement(), axis, radians);
+			entity.setPos(position);
+			entity.setDeltaMovement(velocity);
+			Vec3 facing = entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser
+					? rotateAroundAxis(laser.getForward(), axis, radians) : velocity;
+			if (facing.lengthSqr() > 1.0e-12) {
+				var rotation = dev.xkmc.fastprojectileapi.entity.ProjectileMovement.of(facing).rot();
+				float pitch = (float) Math.toDegrees(rotation.x);
+				float yaw = (float) Math.toDegrees(rotation.y);
+				entity.setXRot(pitch);
+				entity.setYRot(yaw);
+				entity.xRotO = pitch;
+				entity.yRotO = yaw;
+			}
+			entity.setOldPosAndRot();
+		}
+	}
+
+	private static Vec3 rotateAroundAxis(Vec3 value, Vec3 axis, double angle) {
+		Vec3 normalized = axis.normalize();
+		double cos = Math.cos(angle);
+		double sin = Math.sin(angle);
+		return value.scale(cos)
+				.add(normalized.cross(value).scale(sin))
+				.add(normalized.scale(normalized.dot(value) * (1.0 - cos)));
+	}
+
+	/** Transient context for paused editor transform evaluation. */
+	public SpellContext previewContext() {
+		return new SpellContext(holder, definition, runtime,
+				definition.difficulty.resolve(1.0f));
 	}
 
 	public ResourceLocation getCurrentPhaseId() {

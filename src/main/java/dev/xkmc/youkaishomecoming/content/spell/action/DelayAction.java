@@ -36,7 +36,8 @@ public record DelayAction(NumberProvider delayTicks, List<SpellAction> body) imp
 			ctx.executeList(body);
 		} else {
 			// Schedule for future execution (pure temporal delay)
-			ctx.runtime().scheduleDelayed(ctx.totalTick() + delay, body);
+			ctx.runtime().scheduleDelayed(ctx.totalTick() + delay, body, ctx.holder(),
+					ctx.callbackContext().orElse(null));
 		}
 	}
 }

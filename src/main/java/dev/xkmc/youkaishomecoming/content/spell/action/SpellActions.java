@@ -285,6 +285,7 @@ public class SpellActions {
 		public void execute(SpellContext ctx) {
 			int n = (int) count.get(ctx);
 			for (int idx = 0; idx < n; idx++) {
+				if (ctx.shouldAbortActionList()) break;
 				ctx.setVariable(indexVariable, idx);
 				ctx.executeList(body);
 			}

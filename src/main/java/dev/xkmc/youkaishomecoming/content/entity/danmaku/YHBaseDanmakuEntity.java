@@ -18,6 +18,7 @@ import net.minecraft.world.level.Level;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -42,6 +43,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	private boolean harmfulPlayerSnapshotPresent = false;
 	@SerialClass.SerialField
 	private final LinkedHashSet<UUID> harmfulPlayerIds = new LinkedHashSet<>();
+	@SerialClass.SerialField
+	private double callbackSourceSize = 1.0, callbackSourceSpread = 0.0, callbackSourceLifetime = 0.0;
+	@SerialClass.SerialField
+	private int callbackSourceColor = 0xffffffff;
 
 	public void setBypassWall(boolean bypass) { this.bypassWall = bypass; }
 	public void setBypassEntity(boolean bypass) { this.bypassEntity = bypass; }
@@ -83,6 +88,21 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 	@Override
 	public SimplifiedProjectile self() {
 		return this;
+	}
+
+	public void setCallbackSourceMetadata(double size, double spread, double lifetime,
+			dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor color) {
+		callbackSourceSize = Double.isFinite(size) ? size : 1.0;
+		callbackSourceSpread = Double.isFinite(spread) ? spread : 0.0;
+		callbackSourceLifetime = Double.isFinite(lifetime) ? lifetime : 0.0;
+		callbackSourceColor = color == null ? 0xffffffff : color.argb();
+	}
+
+	@Override public double callbackSourceSize() { return callbackSourceSize; }
+	@Override public double callbackSourceSpread() { return callbackSourceSpread; }
+	@Override public double callbackSourceLifetime() { return callbackSourceLifetime; }
+	@Override public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor callbackSourceColor() {
+		return new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor(callbackSourceColor);
 	}
 
 	/** Keeps a held projectile alive until its delayed release callback can run. */
@@ -249,7 +269,11 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 										var body = hitCtx.beginResumeAndTakeBody();
 										if (body != null) {
 											var resumedCtx = new dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext(
-													resume.holder(), resume.definition(), resume.runtime(), ctx.difficulty(), hitCtx);
+													resume.holder(), resume.definition(), resume.runtime(), ctx.difficulty(), hitCtx,
+													ProjectileCallbackContext.fromHit(hitCtx,
+															 hitCtx.hitType() == SpellHitContext.HitType.BLOCK
+																	? ProjectileCallbackContext.Kind.HIT_BLOCK
+																	: ProjectileCallbackContext.Kind.HIT_ENTITY, null));
 											resumedCtx.executeList(body);
 										}
 										if (hitCtx.isTerminal()) {
@@ -276,7 +300,10 @@ public class YHBaseDanmakuEntity extends BaseProjectile implements IYHDanmaku {
 									}
 								}
 							}
-					));
+					), ProjectileCallbackContext.fromHit(hitCtx,
+								 hitCtx.hitType() == SpellHitContext.HitType.BLOCK
+										? ProjectileCallbackContext.Kind.HIT_BLOCK
+										: ProjectileCallbackContext.Kind.HIT_ENTITY, null));
 				}
 			}
 			case CONTINUE -> {

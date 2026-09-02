@@ -31,6 +31,9 @@ public interface ColorProvider {
 			var strResult = Codec.STRING.decode(ops, input);
 			if (strResult.result().isPresent()) {
 				String text = strResult.result().get().getFirst();
+				if ("source_color".equals(text)) {
+					return DataResult.success(Pair.of(new SourceColor(), strResult.result().get().getSecond()));
+				}
 				var parsed = DanmakuColor.parse(text);
 				if (parsed.isPresent()) {
 					return DataResult.success(Pair.of(new Constant(parsed.get()), strResult.result().get().getSecond()));
@@ -50,6 +53,9 @@ public interface ColorProvider {
 			if (value instanceof Constant c) {
 				return Codec.STRING.encode(c.color.format(), ops, prefix);
 			}
+			if (value instanceof SourceColor) {
+				return Codec.STRING.encode("source_color", ops, prefix);
+			}
 			String type = CLASS_TO_TYPE.get(value.getClass());
 			if (type == null) return DataResult.error(() -> "Unknown ColorProvider class: " + value.getClass());
 			var codec = (Codec<ColorProvider>) REGISTRY.get(type);
@@ -66,6 +72,7 @@ public interface ColorProvider {
 		register("indexed", Indexed.CODEC, Indexed.class);
 		register("cycle", Cycle.CODEC, Cycle.class);
 		register("random_choice", RandomChoice.CODEC, RandomChoice.class);
+		register("source_color", SourceColor.CODEC, SourceColor.class);
 		return true;
 	}
 
@@ -86,6 +93,11 @@ public interface ColorProvider {
 		public DanmakuColor get(SpellContext ctx) {
 			return color;
 		}
+	}
+
+	record SourceColor() implements ColorProvider {
+		public static final Codec<SourceColor> CODEC = Codec.unit(SourceColor::new);
+		@Override public DanmakuColor get(SpellContext ctx) { return ctx.callbackColor(); }
 	}
 
 	record ByVariable(String key, List<DanmakuColor> palette) implements ColorProvider {

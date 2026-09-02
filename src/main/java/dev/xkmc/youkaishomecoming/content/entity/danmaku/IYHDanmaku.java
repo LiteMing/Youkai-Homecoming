@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationContactGateway;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.events.GeneralEventHandlers;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
@@ -29,6 +30,12 @@ public interface IYHDanmaku extends GrazingEntity {
 	float damage(Entity target);
 
 	SimplifiedProjectile self();
+
+	/** Resolved spawn metadata exposed to data-driven projectile callbacks. */
+	default double callbackSourceSize() { return 1.0; }
+	default double callbackSourceSpread() { return 0.0; }
+	default double callbackSourceLifetime() { return 0.0; }
+	default DanmakuColor callbackSourceColor() { return DanmakuColor.WHITE; }
 
 	default boolean canHitDanmakuTarget(EntityInfo target) {
 		return true;

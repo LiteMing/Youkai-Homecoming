@@ -433,7 +433,7 @@ public class SpellRuntime {
 		} else {
 			clearSpellHealth();
 		}
-		target.execute(ctx);
+		ctx.executeList(java.util.List.of(target));
 		return true;
 	}
 
@@ -511,9 +511,7 @@ public class SpellRuntime {
 		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 		SpellContext ctx = new SpellContext(holder, definition, this,
 				definition.difficulty.resolve(healthRatio));
-		for (SpellAction action : phase.onEnter) {
-			action.execute(ctx);
-		}
+		ctx.executeList(phase.onEnter);
 	}
 
 	public void tick(CardHolder holder) {
@@ -545,18 +543,7 @@ public class SpellRuntime {
 			if (phase == null) return;
 		}
 
-		// Execute tick actions
-		for (int i = 0; i < phase.onTick.size(); i++) {
-			// Track action index for preview highlighting
-			if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
-				preview.setCurrentSpawningActionIndex(i);
-			}
-			phase.onTick.get(i).execute(ctx);
-		}
-		// Reset action index after tick
-		if (holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview) {
-			preview.setCurrentSpawningActionIndex(-1);
-		}
+		ctx.executeList(phase.onTick);
 
 		// Execute scheduled delayed actions
 		executeScheduledActions(ctx);
@@ -598,9 +585,7 @@ public class SpellRuntime {
 				float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 				DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 				SpellContext ctx = new SpellContext(holder, definition, this, diff);
-				for (SpellAction action : phase.onDamage) {
-					action.execute(ctx);
-				}
+				ctx.executeList(phase.onDamage);
 			}
 		}
 	}
@@ -666,9 +651,7 @@ public class SpellRuntime {
 	private void doTransition(SpellContext ctx, ResourceLocation targetPhase, boolean clearScreen, boolean resetVars) {
 		PhaseDefinition oldPhase = definition.getPhase(currentPhaseId);
 		if (oldPhase != null) {
-			for (SpellAction action : oldPhase.onExit) {
-				action.execute(ctx);
-			}
+			ctx.executeList(oldPhase.onExit);
 		}
 
 		if (clearScreen) {
@@ -690,9 +673,7 @@ public class SpellRuntime {
 		}
 
 		if (newPhase != null) {
-			for (SpellAction action : newPhase.onEnter) {
-				action.execute(ctx);
-			}
+			ctx.executeList(newPhase.onEnter);
 			enteredCurrentPhase = true;
 		}
 		notifyPhaseChange();
@@ -717,9 +698,7 @@ public class SpellRuntime {
 		clearSpellHealth();
 		initializeStaticSpellHealthPlan(targetPhase);
 		resetLegacyActions(phase);
-		for (SpellAction action : phase.onEnter) {
-			action.execute(ctx);
-		}
+		ctx.executeList(phase.onEnter);
 		enteredCurrentPhase = true;
 		notifyPhaseChange();
 	}
@@ -730,12 +709,34 @@ public class SpellRuntime {
 	 * Schedule a list of actions to execute at a specific totalTick.
 	 */
 	public void scheduleDelayed(int executeAtTick, List<SpellAction> actions) {
-		scheduledActions.add(new ScheduledAction(executeAtTick, actions));
+		scheduleDelayed(executeAtTick, actions, null, null);
+	}
+
+	public void scheduleDelayed(int executeAtTick, List<SpellAction> actions,
+			@Nullable ProjectileCallbackContext callbackContext) {
+		scheduleDelayed(executeAtTick, actions, null, callbackContext);
+	}
+
+	public void scheduleDelayed(int executeAtTick, List<SpellAction> actions,
+			@Nullable CardHolder callbackHolder,
+			@Nullable ProjectileCallbackContext callbackContext) {
+		scheduledActions.add(new ScheduledAction(executeAtTick, actions, callbackHolder, callbackContext));
 	}
 
 	/** Schedule a hold release that must survive phase transitions and cast-loop end. */
 	public void schedulePersistentDelayed(int executeAtTick, List<SpellAction> actions) {
-		persistentScheduledActions.add(new ScheduledAction(executeAtTick, actions));
+		schedulePersistentDelayed(executeAtTick, actions, null, null);
+	}
+
+	public void schedulePersistentDelayed(int executeAtTick, List<SpellAction> actions,
+			@Nullable ProjectileCallbackContext callbackContext) {
+		schedulePersistentDelayed(executeAtTick, actions, null, callbackContext);
+	}
+
+	public void schedulePersistentDelayed(int executeAtTick, List<SpellAction> actions,
+			@Nullable CardHolder callbackHolder,
+			@Nullable ProjectileCallbackContext callbackContext) {
+		persistentScheduledActions.add(new ScheduledAction(executeAtTick, actions, callbackHolder, callbackContext));
 	}
 
 	public void startChildRuntime(CardHolder holder, SpellDefinition definition, @Nullable ResourceLocation phaseId, int duration) {
@@ -767,9 +768,7 @@ public class SpellRuntime {
 		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 		SpellContext ctx = new SpellContext(holder, definition, runtime, diff);
-		for (SpellAction action : phase.onEnter) {
-			action.execute(ctx);
-		}
+		ctx.executeList(phase.onEnter);
 		runtime.enteredCurrentPhase = true;
 		runtime.notifyPhaseChange();
 		childRuntimes.add(new ChildRuntime(runtime, duration));
@@ -826,16 +825,22 @@ public class SpellRuntime {
 		}
 		// Execute outside the iteration so new scheduleDelayed() calls are safe
 		for (var scheduled : ready) {
-			for (var action : scheduled.actions()) {
-				action.execute(ctx);
-			}
+			CardHolder scheduledHolder = scheduled.callbackHolder() == null
+					? ctx.holder() : scheduled.callbackHolder();
+			SpellContext scheduledContext = scheduled.callbackContext() == null
+					&& scheduled.callbackHolder() == null ? ctx
+					: new SpellContext(scheduledHolder, ctx.definition(), this, ctx.difficulty(),
+					ctx.hitContext().orElse(null), scheduled.callbackContext(), ctx.feedback());
+			scheduledContext.executeList(scheduled.actions());
 		}
 	}
 
 	/**
 	 * A delayed action entry: actions to execute when totalTick reaches executeAtTick.
 	 */
-	private record ScheduledAction(int executeAtTick, List<SpellAction> actions) {
+	private record ScheduledAction(int executeAtTick, List<SpellAction> actions,
+			@Nullable CardHolder callbackHolder,
+			@Nullable ProjectileCallbackContext callbackContext) {
 	}
 
 	private record ChildRuntime(SpellRuntime runtime, int remainingTicks) {

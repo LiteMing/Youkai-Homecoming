@@ -117,11 +117,19 @@ tasks.register('runPilotThreatTest', JavaExec) {
     dependsOn tasks.named('testClasses')
 }
 
-tasks.register('runSpellAnalyzerSelfTest', JavaExec) {
+tasks.register('runSpellCallbackContractTest', JavaExec) {
     group = 'verification'
-    description = 'Run Phase 0 spell analyzer self-tests (gen.SpellAnalyzerSelfTest).'
+    description = 'Run narrow spell callback and viewport-math contracts (gen.SpellCallbackContextTest).'
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'gen.SpellAnalyzerSelfTest'
+    mainClass = 'gen.SpellCallbackContextTest'
+    dependsOn tasks.named('testClasses')
+}
+
+tasks.register('runBounceSurfaceResponseTest', JavaExec) {
+    group = 'verification'
+    description = 'Run bounce, hold, and source-disposition contracts (gen.BounceSurfaceResponseTest).'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'gen.BounceSurfaceResponseTest'
     dependsOn tasks.named('testClasses')
 }
 

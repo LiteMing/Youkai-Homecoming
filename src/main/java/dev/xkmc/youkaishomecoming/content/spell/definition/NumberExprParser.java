@@ -447,6 +447,7 @@ public class NumberExprParser {
 					"source_direction_x", "source_direction_y", "source_direction_z",
 					"source_speed", "source_size", "source_spread", "source_lifetime", "source_age", "source_remaining_lifetime",
 					"size", "spread", "lifetime", "position_x", "position_y", "position_z",
+					"source_hook_x", "source_hook_y", "source_hook_z",
 					"hook_x", "hook_y", "hook_z", "hookpos_x", "hookpos_y", "hookpos_z",
 					"movement_start_x", "movement_start_y", "movement_start_z",
 					"movement_end_x", "movement_end_y", "movement_end_z",

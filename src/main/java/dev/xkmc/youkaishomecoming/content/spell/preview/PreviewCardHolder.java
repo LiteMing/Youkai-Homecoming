@@ -461,19 +461,34 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private void handlePreviewLaserHook(ItemLaserEntity laser, PreviewHit hit,
 			dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction hitAction,
 			dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior behavior) {
+		// A laser's hit callback is an edge-triggered hook: execute it only for
+		// the first block/entity hit, even though the preview collision probe may
+		// report the same overlap on every tick.  Keep a resolved CONTINUE result
+		// authoritative for later overlap ticks, matching the live entity path.
+		boolean priorKeep = laser.hitCallbackDisposition() == LaserHitDispositionEffect.KEEP;
+		boolean priorKeepOnBlock = priorKeep
+				&& laser.hitCallbackHitType() == SpellHitContext.HitType.BLOCK;
 		SpellHitContext hitContext = createPreviewLaserHitContext(laser, hit);
-		if (hitAction != null) {
+		if (!priorKeep && hitAction != null && laser.tryConsumeHitCallback()) {
 			if (hit.type() == PreviewTarget.HitType.BLOCK) hitAction.executeBlockHit(this, hitContext);
 			else hitAction.executeEntityHit(this, hitContext);
 		}
 
 		LaserHitDispositionEffect effect = LaserHitDispositionEffect.from(hitContext.disposition());
 		if (effect != LaserHitDispositionEffect.UNRESOLVED) {
+			laser.rememberHitCallbackDisposition(effect, hitContext.hitType());
+			// A CONTINUE callback on a block intentionally overrides the block's
+			// fallback behavior for that laser.  An entity callback does not suppress
+			// clipping/expiry handling for a simultaneous wall hit.
+			if (effect == LaserHitDispositionEffect.KEEP && hit.type() == PreviewTarget.HitType.BLOCK) {
+				return;
+			}
 			applyPreviewLaserDisposition(laser, hitContext, effect);
 			return;
 		}
 
 		if (hit.type() == PreviewTarget.HitType.ENTITY) {
+			if (priorKeep) return;
 			switch (behavior) {
 				case CONTINUE -> {
 				}
@@ -487,6 +502,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			return;
 		}
 
+		if (priorKeepOnBlock) return;
 		switch (LaserBlockHitEffect.from(behavior)) {
 			case CLIP_ONLY -> {
 			}

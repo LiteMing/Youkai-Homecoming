@@ -67,9 +67,9 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction onTrail = null;
 	public int trailInterval = 1;
 
-	/** Action executed when this laser hits a living entity. */
+	/** Action executed once, on the first entity/block hit reported by this laser. */
 	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction onHitEntityAction = null;
-	/** Action executed when this laser hits a block. */
+	/** Action executed once, on the first entity/block hit reported by this laser. */
 	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction onHitBlockAction = null;
 	/**
 	 * Behavior after hitting an entity:
@@ -86,6 +86,44 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	public double earlyTerminate = -1;
 	private boolean expiryActionConsumed = false;
 	private BlockPos activeBlockHit = null;
+	/** on-hit hooks are one-shot per laser; onTrail remains per-tick by design. */
+	private final LaserHitCallbackGate hitCallbackGate = new LaserHitCallbackGate();
+	/** A one-shot CONTINUE callback must keep suppressing the fallback on later overlap ticks. */
+	private LaserHitDispositionEffect hitCallbackDisposition = LaserHitDispositionEffect.UNRESOLVED;
+	/** Hit kind that produced the remembered disposition (needed when a tick has both hits). */
+	@Nullable
+	private SpellHitContext.HitType hitCallbackHitType = null;
+
+	/**
+	 * Claims the single on-hit callback slot for this laser instance.  Preview
+	 * uses the same entity class as live simulation, so both paths share the
+	 * one-shot contract instead of maintaining separate collision counters.
+	 */
+	public boolean tryConsumeHitCallback() {
+		return hitCallbackGate.tryConsume();
+	}
+
+	public LaserHitDispositionEffect hitCallbackDisposition() {
+		return hitCallbackDisposition;
+	}
+
+	/** Remembers a resolved callback disposition for subsequent overlap ticks. */
+	public void rememberHitCallbackDisposition(LaserHitDispositionEffect effect) {
+		rememberHitCallbackDisposition(effect, null);
+	}
+
+	public void rememberHitCallbackDisposition(LaserHitDispositionEffect effect,
+			@Nullable SpellHitContext.HitType hitType) {
+		if (effect != LaserHitDispositionEffect.UNRESOLVED) {
+			hitCallbackDisposition = effect;
+			hitCallbackHitType = hitType;
+		}
+	}
+
+	@Nullable
+	public SpellHitContext.HitType hitCallbackHitType() {
+		return hitCallbackHitType;
+	}
 
 	protected YHBaseLaserEntity(EntityType<? extends YHBaseLaserEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -342,7 +380,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	@Override
 	protected void onHit(BlockHitResult blockHit, Iterable<Entity> hitEntities) {
 		boolean hitEntity = false;
-		boolean entityDispositionResolved = false;
+		boolean entityDispositionResolved = hitCallbackDisposition == LaserHitDispositionEffect.KEEP;
 		SpellHitContext firstEntityHitContext = null;
 		LaserGeometry geometry = laserGeometry(blockHit);
 		for (var e : hitEntities) {
@@ -351,10 +389,11 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 			if (!level().isClientSide()) {
 				SpellHitContext hitContext = createEntityHitContext(e, geometry);
 				if (firstEntityHitContext == null) firstEntityHitContext = hitContext;
-				if (onHitEntityAction != null) {
+				if (onHitEntityAction != null && tryConsumeHitCallback()) {
 					executeEntityHitAction(onHitEntityAction, hitContext);
 					LaserHitDispositionEffect effect = LaserHitDispositionEffect.from(hitContext.disposition());
 					if (effect != LaserHitDispositionEffect.UNRESOLVED) {
+						rememberHitCallbackDisposition(effect, hitContext.hitType());
 						entityDispositionResolved = true;
 						if (applyLaserHitDisposition(effect, hitContext)) return;
 					}
@@ -381,10 +420,16 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 			Vec3 hitPos = blockHit.getLocation();
 			BlockPos blockPos = blockHit.getBlockPos();
 			SpellHitContext hitContext = createBlockHitContext(blockHit, geometry);
-			if (!blockPos.equals(activeBlockHit) && onHitBlockAction != null) {
+			if (hitCallbackDisposition == LaserHitDispositionEffect.KEEP
+					&& hitCallbackHitType == SpellHitContext.HitType.BLOCK) {
+				activeBlockHit = blockPos;
+				return;
+			}
+			if (!blockPos.equals(activeBlockHit) && onHitBlockAction != null && tryConsumeHitCallback()) {
 				executeBlockHitAction(onHitBlockAction, hitContext);
 				LaserHitDispositionEffect effect = LaserHitDispositionEffect.from(hitContext.disposition());
 				if (effect != LaserHitDispositionEffect.UNRESOLVED) {
+					rememberHitCallbackDisposition(effect, hitContext.hitType());
 					if (applyLaserHitDisposition(effect, hitContext)) return;
 					activeBlockHit = blockPos;
 					return;

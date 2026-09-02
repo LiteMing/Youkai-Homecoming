@@ -93,12 +93,11 @@ public class DockLayout {
 	// ---- 事件分发 ----
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		// 先更新活跃 Group
-		if (button == 0) {
-			DockGroup clicked = root.findGroupAt(mouseX, mouseY);
-			if (clicked != null && clicked != activeGroup) {
-				activeGroup = clicked;
-			}
+		// Any mouse button establishes dock focus. Viewport orbit/pan commonly starts
+		// with RMB/MMB, and those gestures must unfocus edit boxes just like LMB.
+		DockGroup clicked = root.findGroupAt(mouseX, mouseY);
+		if (clicked != null && clicked != activeGroup) {
+			activeGroup = clicked;
 		}
 		return root.mouseClicked(mouseX, mouseY, button);
 	}

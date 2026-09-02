@@ -112,9 +112,9 @@ public class SpellContext {
 			case "source_lifetime", "lifetime" -> c.sourceLifetime();
 			case "source_age" -> c.sourceAge();
 			case "source_remaining_lifetime" -> c.sourceRemainingLifetime();
-			case "position_x", "hook_x", "hookpos_x" -> c.position().x;
-			case "position_y", "hook_y", "hookpos_y" -> c.position().y;
-			case "position_z", "hook_z", "hookpos_z" -> c.position().z;
+			case "position_x", "source_hook_x", "hook_x", "hookpos_x" -> c.position().x;
+			case "position_y", "source_hook_y", "hook_y", "hookpos_y" -> c.position().y;
+			case "position_z", "source_hook_z", "hook_z", "hookpos_z" -> c.position().z;
 			case "movement_start_x" -> c.movementStart().x;
 			case "movement_start_y" -> c.movementStart().y;
 			case "movement_start_z" -> c.movementStart().z;

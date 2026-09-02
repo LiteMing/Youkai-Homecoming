@@ -109,6 +109,12 @@ public class ViewportDockPanel implements DockPanel {
 		viewport.setRotationGizmo(rotationGizmoActive,
 				(float) rotationGizmoAxisX, (float) rotationGizmoAxisY, (float) rotationGizmoAxisZ);
 		viewport.render(graphics, scene, partialTick);
+
+		// World rendering leaves depth testing enabled. Keep all viewport interaction
+		// controls on a single GUI overlay plane above bullets/lasers so a large
+		// projectile cannot cover the button or its hover label.
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 400);
 		renderOriginEditControls(graphics, mouseX, mouseY);
 
 		// Persistent control legend + live hover/drag feedback so it is always clear
@@ -116,6 +122,7 @@ public class ViewportDockPanel implements DockPanel {
 		renderLegend(graphics);
 		renderInteractionFeedback(graphics, mouseX, mouseY);
 		renderSnapButtonIfGuideActive(graphics, mouseX, mouseY);
+		graphics.pose().popPose();
 	}
 
 	private void renderOriginEditControls(GuiGraphics graphics, int mouseX, int mouseY) {

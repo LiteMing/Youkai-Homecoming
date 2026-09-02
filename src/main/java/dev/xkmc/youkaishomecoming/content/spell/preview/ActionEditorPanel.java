@@ -3719,7 +3719,7 @@ public class ActionEditorPanel {
 			"source_velocity_x", "source_velocity_y", "source_velocity_z", "vx", "vy", "vz",
 			"source_direction_x", "source_direction_y", "source_direction_z", "source_speed",
 			"source_size", "source_spread", "source_lifetime", "source_age", "source_remaining_lifetime",
-			"hook_x", "hook_y", "hook_z", "hit_x", "hit_y", "hit_z", "start_x", "start_y", "start_z",
+			"source_hook_x", "source_hook_y", "source_hook_z", "hit_x", "hit_y", "hit_z", "start_x", "start_y", "start_z",
 			"end_x", "end_y", "end_z", "clipped_end_x", "clipped_end_y", "clipped_end_z",
 			"hit_normal_x", "hit_normal_y", "hit_normal_z"
 	};

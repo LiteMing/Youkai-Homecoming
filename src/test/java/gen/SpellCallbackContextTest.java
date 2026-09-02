@@ -4,6 +4,7 @@ import com.google.gson.JsonPrimitive;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserHitDispositionEffect;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserHitCallbackGate;
 import dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.DelayAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
@@ -48,6 +49,10 @@ public final class SpellCallbackContextTest {
 	}
 
 	private static void testLaserHitGeometryAndDisposition() {
+		LaserHitCallbackGate gate = new LaserHitCallbackGate();
+		check("LASER_ON_HIT_CALLBACK_IS_ONE_SHOT", gate.tryConsume() && !gate.tryConsume()
+				&& gate.consumed());
+
 		Vec3 source = new Vec3(3, 4, 5);
 		Vec3 velocity = new Vec3(0.25, 0, 0.5);
 		Vec3 movementStart = new Vec3(2.75, 4, 4.5);
@@ -97,7 +102,7 @@ public final class SpellCallbackContextTest {
 	private static void testCallbackExpressionsAndDelayedSnapshot() {
 		String[] aliases = {
 				"source_speed", "source_position_x", "source_velocity_y", "source_direction_z",
-				"source_size", "source_spread", "source_lifetime", "hook_x", "hit_y",
+				"source_size", "source_spread", "source_lifetime", "source_hook_x", "hook_x", "hookpos_z", "hit_y",
 				"start_z", "end_x", "clipped_end_y", "vx"
 		};
 		for (String alias : aliases) {

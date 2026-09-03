@@ -49,6 +49,8 @@ public class SpellPreviewScreen extends Screen {
 	private static final int TOP_BAR_MARGIN = 4;
 	private static final int TOP_BAR_GROUP_GAP = 10;
 	private static final int TOP_BAR_NAME_MIN_WIDTH = 48;
+	private static final int TOP_BAR_MORE_WIDTH = 48;
+	private static final int TOP_BAR_MENU_ITEM_HEIGHT = 18;
 	private static final double EDITOR_REFERENCE_WIDTH = 960.0D;
 	private static final double EDITOR_REFERENCE_HEIGHT = 540.0D;
 
@@ -81,6 +83,17 @@ public class SpellPreviewScreen extends Screen {
 	private ActionListPanel.AddTarget pendingAddTarget;
 	private int topBarLeftEnd = TOP_BAR_MARGIN;
 	private int topBarMarketX = Integer.MAX_VALUE;
+	private int topBarNameRight = Integer.MAX_VALUE;
+	private final java.util.List<TopBarMenuEntry> topBarOverflow = new java.util.ArrayList<>();
+	private boolean topBarMoreOpen;
+	private int topBarMoreX;
+	private int topBarMoreY;
+	private int topBarMoreWidth;
+	@Nullable
+	private Button topBarMoreButton;
+
+	private record TopBarMenuEntry(String label, Button.OnPress action, boolean enabled) {
+	}
 
 	/** Persists across editor open/close within the same game session. */
 	private static boolean autoReplay = true;
@@ -175,6 +188,9 @@ public class SpellPreviewScreen extends Screen {
 		super.init();
 		boolean fullEdit = !isDraftMode();
 		boolean circleMode = editorMode == EditorMode.MAGIC_CIRCLE;
+		topBarOverflow.clear();
+		topBarMoreOpen = false;
+		topBarMoreButton = null;
 		int bx = TOP_BAR_MARGIN;
 		int by = 2;
 		String marketLabel = SpellMarketLocalization.toMarket().getString();
@@ -187,32 +203,50 @@ public class SpellPreviewScreen extends Screen {
 			}
 		}, !circleMode);
 		int rightLimit = Math.max(TOP_BAR_MARGIN, topBarMarketX - TOP_BAR_GROUP_GAP);
+		// Keep a reserved slot for the adaptive More menu.  Without this reserve,
+		// the old fit-only logic silently dropped the last controls when the
+		// perspective/advanced toolbar became wider than the window.
+		int primaryRightLimit = Math.max(TOP_BAR_MARGIN,
+				rightLimit - TOP_BAR_MORE_WIDTH - BUTTON_SPACING);
 		// Mode switch — always first and always enabled: it is the only way back.
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(editorMode.buttonLabel()), 82,
-				btn -> switchMode(editorMode.next()), true, rightLimit);
-		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
+				btn -> switchMode(editorMode.next()), true, primaryRightLimit);
+		// View presets are useful but secondary to save/certify/editor controls.
+		// Keep them in More instead of allowing them to crowd essential actions.
 		for (ViewAngle angle : ViewAngle.values()) {
-			bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(angle.getLabel()), 50, btn -> {
+			addTopBarOverflowEntry(SpellEditorLocalization.t(angle.getLabel()), btn -> {
 				viewport.setPerspectiveMode(false);
 				viewport.setViewAngle(angle);
-			}, fullEdit || circleMode, rightLimit);
+			}, fullEdit || circleMode);
 		}
 		bx = circleMode
-				? addCircleTopBarButtons(bx, by, rightLimit)
-				: addSpellTopBarButtons(bx, by, rightLimit, fullEdit);
-		// Shared tail: language, help and layout reset exist in both modes.
-		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.modeButtonLabel(), 34, btn -> {
+				? addCircleTopBarButtons(bx, by, primaryRightLimit)
+				: addSpellTopBarButtons(bx, by, primaryRightLimit, fullEdit);
+		// Shared utilities stay available from More without consuming permanent
+		// horizontal space in every editor mode.
+		addTopBarOverflowEntry(SpellEditorLocalization.modeButtonLabel(), btn -> {
 			SpellEditorLocalization.toggle();
 			rebuildScreen();
-		}, true, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Help"), 32,
-				btn -> toggleHelpPanel(), true, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("RstLayout"), 56, btn -> {
+		}, true);
+		addTopBarOverflowEntry(SpellEditorLocalization.t("Help"), btn -> toggleHelpPanel(), true);
+		addTopBarOverflowEntry(SpellEditorLocalization.t("RstLayout"), btn -> {
 			DockSerializer.deleteLayout(editorMode.key());
 			rebuildScreen(false);
-		}, true, rightLimit);
+		}, true);
+
+		if (!topBarOverflow.isEmpty()) {
+			topBarMoreX = primaryRightLimit + BUTTON_SPACING;
+			topBarMoreY = by;
+			topBarMoreWidth = TOP_BAR_MORE_WIDTH;
+			topBarMoreButton = Button.builder(Component.literal(SpellEditorLocalization.t("More")), btn -> {
+				topBarMoreOpen = !topBarMoreOpen;
+			}).bounds(topBarMoreX, topBarMoreY, topBarMoreWidth, BUTTON_HEIGHT).build();
+			addRenderableWidget(topBarMoreButton);
+		}
 		topBarLeftEnd = Math.max(TOP_BAR_MARGIN, bx - BUTTON_SPACING);
+		topBarNameRight = topBarMoreButton == null
+				? topBarMarketX - TOP_BAR_GROUP_GAP
+				: topBarMoreX - TOP_BAR_GROUP_GAP;
 
 		// --- Create editor panels ---
 		actionListPanel = new ActionListPanel(
@@ -379,9 +413,17 @@ public class SpellPreviewScreen extends Screen {
 									  Button.OnPress onPress, boolean active, int rightLimit) {
 		int bw = topBarButtonWidth(label, minWidth);
 		if (bx + bw > rightLimit) {
+			// Do not silently drop controls when the translated labels or the
+			// perspective-only controls make the toolbar wider than the window.
+			// They remain available from the adaptive More menu below.
+			topBarOverflow.add(new TopBarMenuEntry(label, onPress, active));
 			return bx;
 		}
 		return addTopBarButtonAt(bx, by, label, bw, onPress, active) + BUTTON_SPACING;
+	}
+
+	private void addTopBarOverflowEntry(String label, Button.OnPress onPress, boolean active) {
+		topBarOverflow.add(new TopBarMenuEntry(label, onPress, active));
 	}
 
 	private int addTopBarButtonAt(int bx, int by, String label, int width,
@@ -413,13 +455,14 @@ public class SpellPreviewScreen extends Screen {
 			}
 			rebuildScreen();
 		}, fullEdit, rightLimit);
-		// Bind target toggle (only in perspective mode)
+		// Bind target is a view-detail control. Keep it in the adaptive menu so
+		// entering perspective mode never pushes save/certify out of the row.
 		if (viewport.isPerspectiveMode()) {
 			String bindLabel = SpellEditorLocalization.t(viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt");
-			bx = addTopBarButtonIfFits(bx, by, bindLabel, 48, btn -> {
+			addTopBarOverflowEntry(bindLabel, btn -> {
 				viewport.setTargetBoundToCamera(!viewport.isTargetBoundToCamera());
 				rebuildScreen();
-			}, fullEdit, rightLimit);
+			}, fullEdit);
 		}
 		// Toggle editor button
 		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
@@ -427,37 +470,40 @@ public class SpellPreviewScreen extends Screen {
 			editorVisible = !editorVisible;
 			rebuildScreen();
 		}, fullEdit, rightLimit);
-		// Card-face capture is independent from certification.  It is also
-		// available for non-spells and unfinished drafts so every card can have art.
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Capture Card Face"), 82,
-				btn -> openCardFaceCapture(), true, rightLimit);
-		// Save button: persist the edited spell and refresh entities using it
+		// Persist/certify are the highest-priority document actions and must be
+		// offered before secondary presentation and tree-management controls.
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Save & Refresh"), 76, btn -> applyToEntities(), fullEdit, rightLimit);
 		boolean canCertify = isCertifiable();
 		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Certify & Export"), 84, btn -> openCertification(), fullEdit && canCertify, rightLimit);
-		// Reset button: restore to original (built-in) or open-snapshot (custom)
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit, rightLimit);
-		// Auto Replay toggle
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF"), 52, btn -> {
+		// Card-face capture remains a direct top-bar action when space permits,
+		// while the same entry automatically falls back to More on narrow layouts.
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Capture Card Face"), 82,
+				btn -> openCardFaceCapture(), true, rightLimit);
+
+		// Secondary or infrequent actions live in More by design.  Keeping these
+		// out of the permanent row prevents perspective-only controls from causing
+		// the document actions above to disappear.
+		addTopBarOverflowEntry(SpellEditorLocalization.t("Reset"), btn -> resetToDefault(), fullEdit);
+		addTopBarOverflowEntry(SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF"), btn -> {
 			autoReplay = !autoReplay;
 			rebuildScreen();
-		}, fullEdit, rightLimit);
-		// Collapse All / Expand All
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("▶All"), 34, btn -> {
+		}, fullEdit);
+		addTopBarOverflowEntry(SpellEditorLocalization.t("▶All"), btn -> {
 			if (actionListPanel != null) actionListPanel.collapseAll();
-		}, fullEdit, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("▼All"), 34, btn -> {
+		}, fullEdit);
+		addTopBarOverflowEntry(SpellEditorLocalization.t("▼All"), btn -> {
 			if (actionListPanel != null) actionListPanel.expandAll();
-		}, fullEdit, rightLimit);
+		}, fullEdit);
 		// Toggle show all add-buttons
 		String addLabel = SpellEditorLocalization.t(
 				actionListPanel != null && actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel");
-		return addTopBarButtonIfFits(bx, by, addLabel, 42, btn -> {
+		addTopBarOverflowEntry(addLabel, btn -> {
 			if (actionListPanel != null) {
 				actionListPanel.toggleShowAllAddButtons();
 				rebuildScreen();
 			}
-		}, fullEdit, rightLimit);
+		}, fullEdit);
+		return bx;
 	}
 
 	/**
@@ -1541,15 +1587,74 @@ public class SpellPreviewScreen extends Screen {
 		if (dockLayout != null) {
 			dockLayout.renderOverlay(guiGraphics, mouseX, mouseY);
 		}
-		if (viewportPanel != null) {
-			viewportPanel.renderFocusIndicator(guiGraphics);
-		}
+		renderTopBarOverflow(guiGraphics, mouseX, mouseY);
 
+	}
+
+	private void renderTopBarOverflow(GuiGraphics graphics, int mouseX, int mouseY) {
+		if (!topBarMoreOpen || topBarOverflow.isEmpty() || topBarMoreButton == null) return;
+		var font = Minecraft.getInstance().font;
+		int menuW = TOP_BAR_MORE_WIDTH;
+		for (TopBarMenuEntry entry : topBarOverflow) {
+			menuW = Math.max(menuW, Math.min(180, font.width(SpellEditorLocalization.t(entry.label())) + 16));
+		}
+		int menuH = topBarOverflow.size() * TOP_BAR_MENU_ITEM_HEIGHT + 4;
+		int menuX = Math.max(2, Math.min(width - menuW - 2, topBarMoreX));
+		int menuY = topBarMoreY + BUTTON_HEIGHT + 2;
+		if (menuY + menuH > height) menuY = Math.max(2, topBarMoreY - menuH - 2);
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 1000);
+		graphics.fill(menuX, menuY, menuX + menuW, menuY + menuH, 0xF022222A);
+		graphics.renderOutline(menuX, menuY, menuW, menuH, 0xFF6699DD);
+		for (int i = 0; i < topBarOverflow.size(); i++) {
+			TopBarMenuEntry entry = topBarOverflow.get(i);
+			int iy = menuY + 2 + i * TOP_BAR_MENU_ITEM_HEIGHT;
+			boolean hovered = mouseX >= menuX && mouseX < menuX + menuW
+					&& mouseY >= iy && mouseY < iy + TOP_BAR_MENU_ITEM_HEIGHT;
+			int fill = hovered && entry.enabled() ? 0xFF3B5F88 : 0x00000000;
+			if (fill != 0) graphics.fill(menuX + 1, iy, menuX + menuW - 1, iy + TOP_BAR_MENU_ITEM_HEIGHT, fill);
+			int color = entry.enabled() ? 0xFFFFFFFF : 0xFF777777;
+			graphics.drawString(font, SpellEditorLocalization.t(entry.label()), menuX + 6,
+					iy + 5, color, false);
+		}
+		graphics.pose().popPose();
+	}
+
+	private boolean handleTopBarOverflowClick(double mouseX, double mouseY) {
+		if (!topBarMoreOpen || topBarOverflow.isEmpty()) return false;
+		if (topBarMoreButton != null && mouseX >= topBarMoreButton.getX()
+				&& mouseX < topBarMoreButton.getX() + topBarMoreButton.getWidth()
+				&& mouseY >= topBarMoreButton.getY()
+				&& mouseY < topBarMoreButton.getY() + topBarMoreButton.getHeight()) {
+			// Let the actual button toggle the menu closed. Closing it here first
+			// would make the subsequent button press immediately reopen it.
+			return false;
+		}
+		var font = Minecraft.getInstance().font;
+		int menuW = TOP_BAR_MORE_WIDTH;
+		for (TopBarMenuEntry entry : topBarOverflow) {
+			menuW = Math.max(menuW, Math.min(180, font.width(SpellEditorLocalization.t(entry.label())) + 16));
+		}
+		int menuH = topBarOverflow.size() * TOP_BAR_MENU_ITEM_HEIGHT + 4;
+		int menuX = Math.max(2, Math.min(width - menuW - 2, topBarMoreX));
+		int menuY = topBarMoreY + BUTTON_HEIGHT + 2;
+		if (menuY + menuH > height) menuY = Math.max(2, topBarMoreY - menuH - 2);
+		if (mouseX < menuX || mouseX >= menuX + menuW || mouseY < menuY || mouseY >= menuY + menuH) {
+			topBarMoreOpen = false;
+			return false;
+		}
+		int index = ((int) mouseY - menuY - 2) / TOP_BAR_MENU_ITEM_HEIGHT;
+		if (index >= 0 && index < topBarOverflow.size()) {
+			TopBarMenuEntry entry = topBarOverflow.get(index);
+			topBarMoreOpen = false;
+			if (entry.enabled()) entry.action().onPress(topBarMoreButton);
+		}
+		return true;
 	}
 
 	private void renderTopBarSpellName(GuiGraphics guiGraphics) {
 		int textLeft = topBarLeftEnd + TOP_BAR_GROUP_GAP;
-		int textRight = topBarMarketX - TOP_BAR_GROUP_GAP;
+		int textRight = topBarNameRight;
 		if (textRight - textLeft < TOP_BAR_NAME_MIN_WIDTH) {
 			return;
 		}
@@ -1584,12 +1689,20 @@ public class SpellPreviewScreen extends Screen {
 				|| mouseY < viewportPanel.getY() || mouseY >= viewportPanel.getY() + viewportPanel.getHeight())) {
 			viewportPanel.cancelOriginEdit();
 		}
+		// The adaptive More menu is a screen-level overlay, so route its entries
+		// before dock/widget dispatch can consume the click underneath it.
+		if (handleTopBarOverflowClick(mouseX, mouseY)) {
+			return true;
+		}
 		// Editor dropdown/completion may extend beyond panel bounds — check first
 		if (isEditorDockActive() && actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
 			// 同步 activeGroup 到编辑器所在的 Group
 			if (dockLayout != null) {
 				DockGroup eg = dockLayout.findGroupContaining(editorDockPanel);
-				if (eg != null) dockLayout.setActiveGroup(eg);
+				if (eg != null) {
+					dockLayout.setActiveGroup(eg);
+					dockLayout.setFocusedGroup(eg);
+				}
 			}
 			syncEditorDockWidgetVisibility();
 			return true;
@@ -1600,7 +1713,9 @@ public class SpellPreviewScreen extends Screen {
 			// Capturing the perspective viewport also releases any text widget that
 			// happened to be focused in the same dock group.  Otherwise WASD movement
 			// would remain blocked by the EditBox focus gate.
-			if (viewport != null && viewport.isPerspectiveCaptured()) {
+			if (viewport != null && viewport.isPerspectiveCaptured()
+					&& dockLayout.getFocusedPanel() != viewportPanel) {
+				releasePerspectiveViewportCapture();
 				if (actionEditorPanel != null) {
 					actionEditorPanel.unfocusAllEditBoxes();
 				}
@@ -1673,6 +1788,10 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (topBarMoreOpen && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+			topBarMoreOpen = false;
+			return true;
+		}
 		// Perspective viewport focus owns the keyboard before editor widgets and
 		// action-list shortcuts get a chance to handle it.
 		if (viewport.isPerspectiveCaptured()) {
@@ -1910,6 +2029,13 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void releasePerspectiveViewportFocus() {
+		releasePerspectiveViewportCapture();
+		if (dockLayout != null) {
+			dockLayout.clearFocusedGroup();
+		}
+	}
+
+	private void releasePerspectiveViewportCapture() {
 		viewport.setPerspectiveCaptured(false);
 		viewport.setPerspectiveOrbiting(false);
 		viewport.setPerspectivePanning(false);

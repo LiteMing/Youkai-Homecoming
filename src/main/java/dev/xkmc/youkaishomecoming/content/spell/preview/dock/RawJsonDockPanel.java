@@ -13,6 +13,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.preview.ActionListPanel;
+import dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellJsonSalvage;
 import net.minecraft.client.Minecraft;
@@ -42,15 +43,19 @@ import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @OnlyIn(Dist.CLIENT)
 public class RawJsonDockPanel implements DockPanel {
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final int PADDING = 4;
-	private static final int STATUS_HEIGHT = 13;
+	private static final int STATUS_HEIGHT = 18;
+	private static final int LINE_NUMBER_WIDTH = 32;
 	private static final int MAX_JSON_LENGTH = 1_048_576;
 	private static final String DRAFT_DIR = "youkaishomecoming_spells/raw_json_drafts";
+	private static final Pattern ERROR_LINE = Pattern.compile("(?i)\\bline\\s+(\\d+)");
 
 	private final Supplier<SpellDefinition> definitionSupplier;
 	private final Supplier<ResourceLocation> phaseSupplier;
@@ -72,6 +77,7 @@ public class RawJsonDockPanel implements DockPanel {
 	private ContentMode displayedMode;
 	private String status = "";
 	private int statusColor = 0xFF888888;
+	private int errorLine = -1;
 
 	public enum ContentMode {
 		SPELL,
@@ -148,9 +154,42 @@ public class RawJsonDockPanel implements DockPanel {
 		syncEditorFromContext();
 		Font font = Minecraft.getInstance().font;
 		String msg = SpellEditorLocalization.t(status);
-		int maxWidth = Math.max(0, w - PADDING * 2);
-		msg = font.plainSubstrByWidth(msg, maxWidth);
-		graphics.drawString(font, msg, x + PADDING, y + h - STATUS_HEIGHT, statusColor, false);
+		if (editor != null) {
+			editor.setDiagnostics(errorLine, statusColor == 0xFFFF8888 ? msg : "", statusColor);
+			renderLineNumbers(graphics, font);
+		}
+		// Keep diagnostics in a dedicated strip inside the Raw JSON dock. The
+		// multiline widget's gray character counter remains above this strip.
+		if (statusColor != 0xFFFF8888 || msg.isBlank()) {
+			int maxWidth = Math.max(0, w - PADDING * 2);
+			msg = font.plainSubstrByWidth(msg, maxWidth);
+			graphics.drawString(font, msg, x + PADDING, y + h - STATUS_HEIGHT + 4, statusColor, false);
+		}
+	}
+
+	private void renderLineNumbers(GuiGraphics graphics, Font font) {
+		if (editor == null || !editor.visible) {
+			return;
+		}
+		int lineCount = editor.lineCount();
+		int firstLine = editor.firstVisibleLine();
+		int lineOffset = editor.visibleLineOffset();
+		int visibleLines = Math.max(1, editor.getHeight() / RawJsonEditBox.LINE_HEIGHT + 2);
+		int numberRight = editor.getX() - 6;
+		for (int i = 0; i < visibleLines; i++) {
+			int line = firstLine + i + 1;
+			if (line > lineCount) {
+				break;
+			}
+			int lineY = editor.getY() + editor.textTop() + i * RawJsonEditBox.LINE_HEIGHT - lineOffset;
+			if (lineY + RawJsonEditBox.LINE_HEIGHT < editor.getY()
+					|| lineY > editor.getY() + editor.getHeight()) {
+				continue;
+			}
+			int color = line == errorLine ? 0xFFFF7777 : 0xFF777777;
+			String label = Integer.toString(line);
+			graphics.drawString(font, label, numberRight - font.width(label), lineY, color, false);
+		}
 	}
 
 	@Override
@@ -239,7 +278,7 @@ public class RawJsonDockPanel implements DockPanel {
 	}
 
 	private int editorX() {
-		return x + PADDING;
+		return x + PADDING + LINE_NUMBER_WIDTH;
 	}
 
 	private int editorY() {
@@ -247,7 +286,7 @@ public class RawJsonDockPanel implements DockPanel {
 	}
 
 	private int editorWidth() {
-		return Math.max(10, w - PADDING * 2);
+		return Math.max(10, w - PADDING * 2 - LINE_NUMBER_WIDTH);
 	}
 
 	private int editorHeight() {
@@ -444,6 +483,19 @@ public class RawJsonDockPanel implements DockPanel {
 
 	public Path dirtyDraftPath() {
 		return dirtyDraftPath;
+	}
+
+	/** Drop an invalid local draft when the user explicitly abandons editor edits. */
+	public void discardDraft() {
+		if (dirtyDraftPath != null) {
+			try {
+				Files.deleteIfExists(dirtyDraftPath);
+			} catch (IOException ignored) {
+			}
+		}
+		dirtyInvalidDraft = false;
+		dirtyDraftMessage = "";
+		dirtyDraftPath = null;
 	}
 
 	private void markDraft(String text, String message) {
@@ -1036,6 +1088,23 @@ public class RawJsonDockPanel implements DockPanel {
 	private void setStatus(String status, int color) {
 		this.status = status == null ? "" : status;
 		this.statusColor = color;
+		this.errorLine = color == 0xFFFF8888 ? extractErrorLine(this.status) : -1;
+	}
+
+	private static int extractErrorLine(String message) {
+		if (message == null || message.isBlank()) {
+			return -1;
+		}
+		Matcher matcher = ERROR_LINE.matcher(message);
+		if (!matcher.find()) {
+			return -1;
+		}
+		try {
+			int line = Integer.parseInt(matcher.group(1));
+			return line > 0 ? line : -1;
+		} catch (NumberFormatException ignored) {
+			return -1;
+		}
 	}
 
 	private record FormattedJson(String text, int highlightStart, int highlightEnd) {
@@ -1050,10 +1119,80 @@ public class RawJsonDockPanel implements DockPanel {
 		private final List<String> redoHistory = new ArrayList<>();
 		private String lastHistoryValue = "";
 		private boolean applyingHistory;
+		private int diagnosticLine = -1;
+		private String diagnosticMessage = "";
+		private int diagnosticColor = 0xFFFF7777;
+		private int lineCount = 1;
 
 		private RawJsonEditBox(Font font, int x, int y, int width, int height,
 							   Component placeholder, Component message) {
 			super(font, x, y, width, height, placeholder, message);
+		}
+
+		private void setDiagnostics(int line, String message, int color) {
+			diagnosticLine = line;
+			diagnosticMessage = message == null ? "" : message;
+			diagnosticColor = color;
+		}
+
+		@Override
+		public void setValue(String value) {
+			super.setValue(value);
+			lineCount = countLines(value);
+		}
+
+		private int lineCount() {
+			return lineCount;
+		}
+
+		private static int countLines(String value) {
+			if (value == null || value.isEmpty()) {
+				return 1;
+			}
+			int count = 1;
+			for (int i = 0; i < value.length(); i++) {
+				if (value.charAt(i) == '\n') {
+					count++;
+				}
+			}
+			return count;
+		}
+
+		@Override
+		public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+			super.renderWidget(graphics, mouseX, mouseY, partialTick);
+			if (diagnosticLine > 0) {
+				int lineY = getY() + innerPadding() + (diagnosticLine - 1) * LINE_HEIGHT
+						- (int) scrollAmount();
+				if (lineY + LINE_HEIGHT >= getY() && lineY <= getY() + getHeight()) {
+					// Draw after vanilla text so the diagnostic remains visible while
+					// preserving the source text under a translucent red tint.
+					graphics.fill(getX(), lineY, getX() + getWidth(), lineY + LINE_HEIGHT, 0x44FF3333);
+					graphics.fill(getX(), lineY, getX() + 2, lineY + LINE_HEIGHT, 0xFFFF5555);
+				}
+			}
+			if (!diagnosticMessage.isBlank()) {
+				int stripY = getY() + getHeight() - 12;
+				int textRight = getX() + getWidth() - 52;
+				graphics.fill(getX() + 2, stripY - 1, Math.max(getX() + 2, textRight), getY() + getHeight() - 1,
+						0xDD260E0E);
+				int maxWidth = Math.max(0, getWidth() - 52);
+				String text = Minecraft.getInstance().font.plainSubstrByWidth(diagnosticMessage, maxWidth);
+				graphics.drawString(Minecraft.getInstance().font, text, getX() + 5, stripY + 1,
+						diagnosticColor, false);
+			}
+		}
+
+		private int firstVisibleLine() {
+			return Math.max(0, (int) Math.floor(scrollAmount() / LINE_HEIGHT));
+		}
+
+		private int visibleLineOffset() {
+			return (int) scrollAmount() % LINE_HEIGHT;
+		}
+
+		private int textTop() {
+			return innerPadding();
 		}
 
 		@Override
@@ -1072,6 +1211,7 @@ public class RawJsonDockPanel implements DockPanel {
 					String selected = textField.getSelectedText();
 					if (!selected.isEmpty()) {
 						Minecraft.getInstance().keyboardHandler.setClipboard(selected);
+						EditorTextBoxes.notifyCopied();
 					}
 				}
 				return true;

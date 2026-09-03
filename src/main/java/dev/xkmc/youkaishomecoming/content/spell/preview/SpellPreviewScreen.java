@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -86,6 +87,8 @@ public class SpellPreviewScreen extends Screen {
 	private com.google.gson.JsonObject pendingDockLayout;
 	private boolean preferHelpOnNextInit;
 	private boolean preferViewportOnNextInit;
+	private boolean changed;
+	private boolean discardPromptOpen;
 	@Nullable
 	private SpellAction originEditBaseAction;
 	@Nullable
@@ -180,7 +183,7 @@ public class SpellPreviewScreen extends Screen {
 		topBarMarketX = Math.max(TOP_BAR_MARGIN, width - TOP_BAR_MARGIN - marketWidth);
 		addTopBarButtonAt(topBarMarketX, by, marketLabel, marketWidth, btn -> {
 			if (minecraft != null) {
-				minecraft.setScreen(new SpellMarketScreen(this, definition));
+				runAfterDiscardConfirmation(() -> minecraft.setScreen(new SpellMarketScreen(this, definition)));
 			}
 		}, !circleMode);
 		int rightLimit = Math.max(TOP_BAR_MARGIN, topBarMarketX - TOP_BAR_GROUP_GAP);
@@ -248,6 +251,7 @@ public class SpellPreviewScreen extends Screen {
 		actionEditorPanel.setSpellOptions(spellController::getSpellOptions, spellController::getSpellOptionLabel);
 		actionEditorPanel.setToggleDisableCallback(() -> {
 			if (actionListPanel != null && actionListPanel.toggleSelectedDisabled()) {
+				markChanged();
 				actionEditorPanel.clearAction();
 				if (autoReplay) replaySelectedPhase();
 			}
@@ -284,7 +288,7 @@ public class SpellPreviewScreen extends Screen {
 				scene, viewport, this::rebuildScreen, () -> resetSelectedPhasePreview(false),
 				spellController::getSpellOptions, spellController::getCurrentSpellSelectionId,
 				spellController::getCurrentSpellButtonLabel, spellController::getSpellOptionLabel,
-				spellController::switchSelectedSpell, spellController::enterDraftSpellEditor,
+				this::switchSelectedSpell, this::enterDraftSpellEditor,
 				spellController::deleteSelectedSpell, spellController::canDeleteSelectedSpell,
 				spellController::isDraftMode, spellController::getDefaultSpellNamespace,
 				spellController::nameCurrentDraftSpell, this::cyclePhase,
@@ -479,6 +483,14 @@ public class SpellPreviewScreen extends Screen {
 		if (target == null || target == editorMode) {
 			return;
 		}
+		if (hasUnsavedChanges()) {
+			runAfterDiscardConfirmation(() -> switchModeConfirmed(target));
+			return;
+		}
+		switchModeConfirmed(target);
+	}
+
+	private void switchModeConfirmed(EditorMode target) {
 		if (dockLayout != null) {
 			DockSerializer.saveLayout(editorMode.key(), dockLayout.getRoot());
 		}
@@ -693,6 +705,7 @@ public class SpellPreviewScreen extends Screen {
 	private void onActionEdited(SpellAction newAction) {
 		if (actionListPanel != null) {
 			actionListPanel.replaceSelectedAction(newAction);
+			markChanged();
 			refreshPreviewActionIds();
 			invalidateCurrentSnapshot();
 			if (autoReplay) replaySelectedPhase();
@@ -703,6 +716,7 @@ public class SpellPreviewScreen extends Screen {
 		if (definition == null || java.util.Objects.equals(definition.display.name(), value)) return;
 		definition.setDisplayName(value);
 		if (actionListPanel != null) actionListPanel.markDirty();
+		markChanged();
 		invalidateCurrentSnapshot();
 		if (autoReplay) replaySelectedPhase();
 	}
@@ -743,6 +757,7 @@ public class SpellPreviewScreen extends Screen {
 		if (actionListPanel != null) {
 			actionListPanel.loadCustomNames(newDefinition.customNames);
 		}
+		markChanged();
 		refreshPhaseControls();
 		scene.switchSpellDefinition(newDefinition, true);
 		resetSelectedPhasePreview(wasPlaying || autoReplay);
@@ -841,6 +856,7 @@ public class SpellPreviewScreen extends Screen {
 		if (originEditBaseAction == null) return;
 		if (originEditWorldOffset.lengthSqr() > 1.0e-12 && actionListPanel != null) {
 			actionListPanel.commitUndoSnapshot(originEditUndoSnapshot);
+			markChanged();
 			invalidateCurrentSnapshot();
 		}
 		clearOriginEditSession();
@@ -884,6 +900,7 @@ public class SpellPreviewScreen extends Screen {
 		if (delta.lengthSqr() < 1e-8) return;
 		if (originEditBaseAction == null || originEditBaseOrigin == null || actionEditorPanel == null) return;
 		originEditWorldOffset = originEditWorldOffset.add(delta);
+		markChanged();
 		OriginConfig origin = originEditBaseOrigin;
 		Vec3 local = viewport.worldDeltaToOriginOffsetDelta(origin.mode(),
 				origin.rotation().get(scene.previewContext()), originEditWorldOffset,
@@ -928,6 +945,7 @@ public class SpellPreviewScreen extends Screen {
 			var newGr = new GroupRotation(newX, newY, newZ);
 			var newAction = fda.withGroupRotation(Optional.of(newGr));
 			onActionEditedTransient(newAction);
+			markChanged();
 			invalidateCurrentSnapshot();
 			if (actionEditorPanel != null) {
 				setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
@@ -944,6 +962,7 @@ public class SpellPreviewScreen extends Screen {
 			else newZ = bumpOffset(newZ, angleDelta);
 			var newAction = shooter.withGroupRotation(Optional.of(new GroupRotation(newX, newY, newZ)));
 			onActionEditedTransient(newAction);
+			markChanged();
 			invalidateCurrentSnapshot();
 			setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
 		}
@@ -1036,6 +1055,7 @@ public class SpellPreviewScreen extends Screen {
 	private void onTypeSelected(SpellAction action) {
 		if (actionListPanel != null && pendingAddTarget != null) {
 			actionListPanel.insertAction(pendingAddTarget, action);
+			markChanged();
 			pendingAddTarget = null;
 			if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 			if (autoReplay) replaySelectedPhase();
@@ -1044,6 +1064,7 @@ public class SpellPreviewScreen extends Screen {
 
 	private void onDeleteAction() {
 		if (actionListPanel != null && actionListPanel.deleteSelected()) {
+			markChanged();
 			if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 			clearActionSelection();
 			if (autoReplay) replaySelectedPhase();
@@ -1058,9 +1079,19 @@ public class SpellPreviewScreen extends Screen {
 		if (isDraftMode() || refuseIfBroken()) {
 			return;
 		}
+		if (rawJsonDockPanel != null && rawJsonDockPanel.hasDirtyDraft()) {
+			refuseIfBroken();
+			return;
+		}
 		syncCustomNamesToDefinition();
 		if (SpellEditorNetworkClient.saveAndReapply(definition)) {
 			SpellRegistry.register(definition);
+			spellController.markDefinitionSaved();
+			changed = false;
+			if (minecraft != null && minecraft.player != null) {
+				minecraft.player.displayClientMessage(
+						Component.translatable("youkaishomecoming.spell_editor.saved_refresh"), true);
+			}
 		}
 	}
 
@@ -1168,6 +1199,7 @@ public class SpellPreviewScreen extends Screen {
 	 */
 	private void resetToDefault() {
 		spellController.resetToDefault();
+		markChanged();
 		// Reload phase list after reset
 		phaseController.reloadPhaseList();
 
@@ -1238,6 +1270,7 @@ public class SpellPreviewScreen extends Screen {
 		if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 		refreshPreviewActionIds();
 		invalidateCurrentSnapshot();
+		markChanged();
 		replaySelectedPhase();
 	}
 
@@ -1253,6 +1286,7 @@ public class SpellPreviewScreen extends Screen {
 
 	private void addPhase() {
 		phaseController.addPhase();
+		markChanged();
 		resetSelectedPhasePreview(autoReplay);
 		clearActionSelection();
 		updateActionListPhase();
@@ -1269,6 +1303,7 @@ public class SpellPreviewScreen extends Screen {
 		if (removedPhaseId == null) {
 			return;
 		}
+		markChanged();
 		boolean wasPlaying = scene.isPlaying();
 		clearActionSelection();
 		updateActionListPhase();
@@ -1294,6 +1329,7 @@ public class SpellPreviewScreen extends Screen {
 
 	private void renameSelectedPhase(String name) {
 		phaseController.renameSelectedPhase(name);
+		markChanged();
 		// Sync custom name changes to actionListPanel
 		ResourceLocation phaseId = phaseController.getSelectedPhaseId();
 		if (phaseId != null && actionListPanel != null) {
@@ -1328,7 +1364,13 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void switchSelectedSpell(ResourceLocation spellId) {
-		spellController.switchSelectedSpell(spellId);
+		if (spellId == null || (!isDraftMode() && spellId.equals(definition.id))) {
+			return;
+		}
+		runAfterDiscardConfirmation(() -> {
+			spellController.switchSelectedSpell(spellId);
+			changed = false;
+		});
 	}
 
 	private boolean canDeleteSelectedSpell() {
@@ -1336,7 +1378,10 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void enterDraftSpellEditor() {
-		spellController.enterDraftSpellEditor();
+		runAfterDiscardConfirmation(() -> {
+			spellController.enterDraftSpellEditor();
+			changed = false;
+		});
 	}
 
 	private void deleteSelectedSpell() {
@@ -1366,12 +1411,49 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
-	private void saveCurrentDefinition() {
-		if (isDraftMode()) {
+	private boolean hasUnsavedChanges() {
+		return changed
+				|| rawJsonDockPanel != null && rawJsonDockPanel.hasDirtyDraft()
+				|| magicCircleDockPanel != null && magicCircleDockPanel.hasUnsavedChanges();
+	}
+
+	private void markChanged() {
+		changed = true;
+	}
+
+	private void discardLocalChanges() {
+		if (rawJsonDockPanel != null && rawJsonDockPanel.hasDirtyDraft()) {
+			rawJsonDockPanel.discardDraft();
+		}
+		if (magicCircleDockPanel != null && magicCircleDockPanel.hasUnsavedChanges()) {
+			magicCircleDockPanel.discardUnsavedChanges();
+		}
+		spellController.discardCurrentDefinitionChanges();
+		definition = spellController.getDefinition();
+		changed = false;
+	}
+
+	/** Run a navigation action, asking before abandoning client-only edits. */
+	private void runAfterDiscardConfirmation(Runnable action) {
+		if (!hasUnsavedChanges()) {
+			action.run();
 			return;
 		}
-		syncCustomNamesToDefinition();
-		spellController.saveCurrentDefinition();
+		if (discardPromptOpen) {
+			return;
+		}
+		discardPromptOpen = true;
+		Minecraft client = Minecraft.getInstance();
+		client.setScreen(new ConfirmScreen(accepted -> {
+			discardPromptOpen = false;
+			if (accepted) {
+				discardLocalChanges();
+				action.run();
+			} else {
+				client.setScreen(this);
+			}
+		}, Component.translatable("youkaishomecoming.spell_editor.unsaved.title"),
+				Component.translatable("youkaishomecoming.spell_editor.unsaved.message")));
 	}
 
 	private boolean isDraftMode() {
@@ -1386,9 +1468,6 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void switchToDefinition(SpellDefinition definition) {
-		if (!spellController.isSkipSaveOnNextDefinitionSwitch()) {
-			saveCurrentDefinition();
-		}
 		spellController.clearSkipFlag();
 		boolean oldDraftMode = spellController.isDraftMode();
 		this.definition = definition;
@@ -1477,6 +1556,9 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		String spellName = isDraftMode() ? SpellEditorLocalization.t("New Spell") : definition.id.toString();
+		if (hasUnsavedChanges()) {
+			spellName += " *";
+		}
 		String display = fitTopBarText(spellName, textRight - textLeft);
 		if (display.isEmpty()) {
 			return;
@@ -1646,6 +1728,7 @@ public class SpellPreviewScreen extends Screen {
 		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && actionListPanel != null) {
 				if (actionListPanel.undo()) {
+					markChanged();
 					if (actionEditorPanel != null) actionEditorPanel.clearAction();
 					if (autoReplay) replaySelectedPhase();
 					return true;
@@ -1653,6 +1736,7 @@ public class SpellPreviewScreen extends Screen {
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y && actionListPanel != null) {
 				if (actionListPanel.redo()) {
+					markChanged();
 					if (actionEditorPanel != null) actionEditorPanel.clearAction();
 					if (autoReplay) replaySelectedPhase();
 					return true;
@@ -1814,10 +1898,12 @@ public class SpellPreviewScreen extends Screen {
 		return true;
 	}
 
-	/**
-	 * Auto-save when the editor screen is closed.
-	 * This ensures edits are persisted even if the user forgets to click Apply.
-	 */
+	/** Close the editor only after the user confirms that client-only edits may be discarded. */
+	@Override
+	public void onClose() {
+		runAfterDiscardConfirmation(() -> Minecraft.getInstance().setScreen(null));
+	}
+
 	@Override
 	public void removed() {
 		super.removed();
@@ -1831,7 +1917,6 @@ public class SpellPreviewScreen extends Screen {
 					org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
 		}
 		reportRawJsonDraftOnClose();
-		saveCurrentDefinition();
 		// Save dock layout
 		if (dockLayout != null) {
 			DockSerializer.saveLayout(editorMode.key(), dockLayout.getRoot());

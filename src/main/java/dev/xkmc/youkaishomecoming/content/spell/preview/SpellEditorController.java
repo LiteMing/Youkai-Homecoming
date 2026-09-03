@@ -40,6 +40,7 @@ public class SpellEditorController {
 	private SpellDefinition definition;
 	private boolean draftMode;
 	private boolean skipSaveOnNextDefinitionSwitch;
+	private ResourceLocation baselineDefinitionId;
 
 	public SpellEditorController(SpellDefinition definition, boolean draftMode,
 								 VirtualSpellScene scene, Runnable rebuildCallback) {
@@ -47,6 +48,7 @@ public class SpellEditorController {
 		this.draftMode = draftMode;
 		this.scene = scene;
 		this.rebuildCallback = rebuildCallback;
+		this.baselineDefinitionId = draftMode || definition == null ? null : definition.id;
 		if (!draftMode) {
 			rememberOpenSnapshot(definition);
 		}
@@ -114,8 +116,8 @@ public class SpellEditorController {
 		if (target == null) {
 			return;
 		}
-		saveCurrentDefinition();
 		skipSaveOnNextDefinitionSwitch = true;
+		baselineDefinitionId = target.id;
 		boolean wasPlaying = scene.isPlaying();
 		scene.pause();
 		scene.switchSpellDefinition(target, true);
@@ -131,8 +133,8 @@ public class SpellEditorController {
 	}
 
 	public void enterDraftSpellEditor() {
-		saveCurrentDefinition();
 		skipSaveOnNextDefinitionSwitch = true;
+		baselineDefinitionId = null;
 		draftMode = true;
 		scene.pause();
 		scene.switchSpellDefinition(createDraftDefinition(), true);
@@ -215,16 +217,44 @@ public class SpellEditorController {
 
 // --- Save / Reset ---
 
-	public void saveCurrentDefinition() {
+	/**
+	 * Restore the definition that was visible when this editor session last saved
+	 * it. This is deliberately client-side: abandoning edits must never send a
+	 * compensating write to the server.
+	 */
+	public void discardCurrentDefinitionChanges() {
 		if (isDraftMode()) {
+			definition = createDraftDefinition();
 			return;
 		}
-		// legacy_ticker factory cannot survive JSON encode — skip remote save
-		if (definition.hasLegacyTicker()) {
+		SpellDefinition restored = null;
+		ResourceLocation baselineId = baselineDefinitionId == null ? definition.id : baselineDefinitionId;
+		var snapshot = openSnapshots.get(baselineId);
+		if (snapshot != null) {
+			restored = SpellDefinition.CODEC.parse(
+					com.mojang.serialization.JsonOps.INSTANCE, snapshot).result().orElse(null);
+		}
+		if (restored == null) {
+			restored = SpellRegistry.getDefault(baselineId);
+		}
+		if (restored != null) {
+			definition = restored;
+			SpellRegistry.register(restored);
+			baselineDefinitionId = restored.id;
+		}
+	}
+
+	/** Refresh the client-side saved baseline after an explicit server save. */
+	public void markDefinitionSaved() {
+		if (isDraftMode() || definition == null || definition.hasLegacyTicker()) {
 			return;
 		}
-		SpellRegistry.register(definition);
-		SpellEditorNetworkClient.save(definition);
+		SpellDefinition.CODEC.encodeStart(
+				com.mojang.serialization.JsonOps.INSTANCE, definition)
+				.result().ifPresent(json -> {
+					openSnapshots.put(definition.id, json);
+					baselineDefinitionId = definition.id;
+				});
 	}
 
 	public void resetToDefault() {

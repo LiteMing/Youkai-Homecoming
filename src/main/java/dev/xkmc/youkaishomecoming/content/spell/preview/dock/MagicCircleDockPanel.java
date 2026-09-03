@@ -93,6 +93,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	private float previewSize = 1.0f;
 	private String status = "Magic Circle ready";
 	private int statusColor = 0xFF88AACC;
+	private boolean changed;
 
 	private Button circleDropdownButton;
 	private Button circleDeleteButton;
@@ -166,6 +167,36 @@ public class MagicCircleDockPanel implements DockPanel {
 		save();
 	}
 
+	public boolean hasUnsavedChanges() {
+		return changed;
+	}
+
+	/** Discard local edits without sending a compensating update to the server. */
+	public void discardUnsavedChanges() {
+		for (var entry : openSnapshots.entrySet()) {
+			try {
+				SpellComponent restored = GSON.fromJson(entry.getValue(), SpellComponent.class);
+				if (restored == null) continue;
+				restored.invalidateCache();
+				linkedComponents.put(entry.getKey(), restored);
+				YoukaisHomecoming.SPELL.getMerged().map.put(entry.getKey().toString(), restored);
+			} catch (RuntimeException ignored) {
+				// Keep the current local value if an old snapshot cannot be decoded.
+			}
+		}
+		SpellComponent restored = linkedComponents.get(selectedId);
+		if (restored != null) {
+			component = cloneComponent(restored);
+		} else {
+			loadSelectedComponent();
+		}
+		component.invalidateCache();
+		publishLocal(false);
+		changed = false;
+		clampSelection();
+		if (active) rebuildWidgets();
+	}
+
 	public void resetCircleFromTopBar() {
 		resetToDefault();
 	}
@@ -203,6 +234,7 @@ public class MagicCircleDockPanel implements DockPanel {
 		scrollOffset = 0;
 		clampSelection();
 		publishLocal(true);
+		changed = false;
 		rebuildWidgets();
 		setStatus("Magic Circle reset", 0xFF88FF88);
 	}
@@ -276,6 +308,7 @@ public class MagicCircleDockPanel implements DockPanel {
 		linkedComponents.remove(old);
 		selectedId = id;
 		publishLocal(true);
+		changed = true;
 		rebuildWidgets();
 		setStatus("Magic Circle renamed", 0xFF88FF88);
 	}
@@ -1176,6 +1209,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	private void onComponentEdited(String message) {
 		clampSelection();
 		publishLocal(true);
+		changed = true;
 		setStatus(message, 0xFF88FF88);
 	}
 
@@ -1206,6 +1240,7 @@ public class MagicCircleDockPanel implements DockPanel {
 		component.invalidateCache();
 		clampSelection();
 		publishLocal(false);
+		changed = true;
 		boolean structureChanged = strokesBefore != component.strokes.size()
 				|| itemsBefore != getItemCount()
 				|| textsBefore != getTextCount()
@@ -1306,6 +1341,7 @@ public class MagicCircleDockPanel implements DockPanel {
 		selectedLayer = 0;
 		scrollOffset = 0;
 		publishLocal(true);
+		changed = true;
 		rebuildWidgets();
 		setStatus("Magic Circle created", 0xFF88FF88);
 	}
@@ -1316,6 +1352,7 @@ public class MagicCircleDockPanel implements DockPanel {
 		publishLocal(true);
 		Map<ResourceLocation, SpellComponent> components = componentsForSave();
 		SpellCircleEditorNetworkClient.save(id, components);
+		changed = false;
 		setStatus("Magic Circle save sent", 0xFF88FF88);
 	}
 
@@ -1328,6 +1365,7 @@ public class MagicCircleDockPanel implements DockPanel {
 		List<ResourceLocation> before = circleIds();
 		int removedIndex = before.indexOf(removed);
 		SpellCircleEditorNetworkClient.delete(removed);
+		changed = false;
 		removeLocalCircle(removed);
 		ResourceLocation next = nextSelectionAfterDelete(removed, removedIndex);
 		if (next == null) {

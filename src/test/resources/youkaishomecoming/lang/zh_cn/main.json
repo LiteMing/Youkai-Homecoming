@@ -295,5 +295,9 @@
 	"youkaishomecoming.spell_editor.help.line.86": "",
 	"youkaishomecoming.spell_editor.help.line.87": "",
 	"youkaishomecoming.spell_editor.help.line.88": "",
-	"youkaishomecoming.spell_editor.help.line.89": ""
+	"youkaishomecoming.spell_editor.help.line.89": "",
+	"youkaishomecoming.spell_editor.copied": "已复制",
+	"youkaishomecoming.spell_editor.unsaved.title": "放弃未保存改动？",
+	"youkaishomecoming.spell_editor.unsaved.message": "当前编辑器有未保存改动，离开后这些改动将丢失。",
+	"youkaishomecoming.spell_editor.saved_refresh": "已保存并刷新"
 }

@@ -6,7 +6,10 @@ import com.mojang.serialization.Codec;
  * Danmaku arrangement pattern for FireDanmakuAction.
  */
 public enum PatternType {
-	/** Evenly distributed around a full circle */
+	/**
+	 * Evenly distributed around a full circle when {@code spread >= 360}; for a
+	 * narrower spread, emits an open arc centred on {@code angle_offset}.
+	 */
 	RING,
 	/** Linear spread in a fan/cone */
 	LINE,

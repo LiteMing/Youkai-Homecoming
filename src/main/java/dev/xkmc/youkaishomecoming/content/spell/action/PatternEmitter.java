@@ -189,7 +189,16 @@ public class PatternEmitter {
 			double a = angle;
 			double v = elevDeg;
 			switch (settings.pattern()) {
-				case RING -> a += (360.0 / n) * i;
+				case RING -> {
+					// A full-width ring keeps the legacy closed-loop distribution.  A
+					// narrower spread is an open arc centred on angle_offset, with the
+					// endpoints included so the configured span is visible at any count.
+					if (Math.abs(spreadDeg) >= 360.0 - 1e-3) {
+						a += (360.0 / n) * i;
+					} else if (n > 1) {
+						a += spreadDeg * (i - (n - 1) / 2.0) / (n - 1);
+					}
+				}
 				case LINE -> {
 					if (n > 1) {
 						a += spreadDeg * (i - (n - 1) / 2.0) / (n - 1);

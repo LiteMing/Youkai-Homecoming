@@ -39,6 +39,12 @@ public class TouhouSpellCards {
 		// Marisa is not yet migrated — always legacy.
 		registerSpell("touhou_little_maid:kirisame_marisa", MarisaSpell::new);
 
+		// Rumia keeps her entity-owned charge/ram state machine, but the ranged
+		// danmaku volley is data-driven. These definitions are always available;
+		// there is no legacy Rumia SpellCard implementation to fall back to.
+		registerMigrated(MigratedSpellCards.rumia());
+		registerMigrated(MigratedSpellCards.exRumia());
+
 		// All other Touhou spells have data-driven equivalents in MigratedSpellCards.
 		// The useLegacySpellCards config toggles between the two implementations
 		// (data-driven by default; flip to true to fall back to the original Java classes).

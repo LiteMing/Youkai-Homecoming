@@ -2743,6 +2743,64 @@ public class MigratedSpellCards {
 		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:yukari_yakumo");
 	}
 
+	// ============================
+	// Rumia — data-driven ranged danmaku
+	// ============================
+
+	/**
+	 * Rumia's ranged volley, separated from the entity's charge/ram attack state
+	 * machine.  The entity still owns Ex conversion and physical damage; this
+	 * definition only schedules the primary-target danmaku pattern.
+	 */
+	public static SpellDefinition rumia() {
+		return rumia(false);
+	}
+
+	public static SpellDefinition exRumia() {
+		return rumia(true);
+	}
+
+	private static SpellDefinition rumia(boolean ex) {
+		var id = new ResourceLocation("youkaishomecoming", ex ? "ex_rumia" : "rumia");
+		var phaseId = new ResourceLocation(id.getNamespace(), id.getPath() + "/main");
+		int round = ex ? 5 : 3;
+		int interval = ex ? 20 : 40;
+		NumberProvider index = new NumberProviders.Variable("rumia_wave");
+		NumberProvider speed = new NumberProviders.Add(NumberProvider.constant(0.64),
+				new NumberProviders.Mul(index, NumberProvider.constant(0.08)));
+		NumberProvider angle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("rumia_side"),
+						new NumberProviders.Add(NumberProvider.constant(round - 2),
+								new NumberProviders.Mul(index, NumberProvider.constant(-1)))),
+				NumberProvider.constant(0));
+		SpellAction redLeft = rumiaBullet(DyeColor.RED, speed,
+				new NumberProviders.Add(angle, NumberProvider.constant(-12)));
+		SpellAction black = rumiaBullet(DyeColor.BLACK, speed, angle);
+		SpellAction redRight = rumiaBullet(DyeColor.RED, speed,
+				new NumberProviders.Add(angle, NumberProvider.constant(12)));
+		SpellAction volley = new SpellActions.RepeatAction(NumberProvider.constant(round), "rumia_wave",
+				List.of(redLeft, black, redRight));
+		List<SpellAction> tick = List.of(new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(interval, interval / 2),
+				List.of(new SpellActions.SetVariable("rumia_side",
+						new NumberProviders.RandomChoice(List.of(-3d, 3d))), volley), List.of()));
+		var phase = new PhaseDefinition(phaseId, List.of(), tick, List.of(), List.of(), List.of());
+		var display = new SpellDisplay(
+				ex ? "entity.youkaishomecoming.ex_rumia" : "entity.youkaishomecoming.rumia",
+				"", Optional.empty(), Optional.empty());
+		return new SpellDefinition(id, display, SpellItemForm.NONE, phaseId,
+				Map.of(phaseId, phase), DifficultyProfile.DEFAULT);
+	}
+
+	private static SpellAction rumiaBullet(DyeColor color, NumberProvider speed, NumberProvider angle) {
+		return new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(color), NumberProvider.constant(1), speed,
+				new NumberProviders.Div(NumberProvider.constant(48), speed), angle,
+				NumberProvider.constant(0), NumberProvider.constant(0), PatternType.AIMED,
+				OriginConfig.caster(), new AimMode.AimModes.Target(), Optional.empty(), Optional.empty(),
+				Optional.empty(), Optional.empty(), 1);
+	}
+
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,
 												   PhaseDefinition phase, String modelId) {
 		SpellDisplay display = new SpellDisplay(

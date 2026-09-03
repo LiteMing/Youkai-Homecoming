@@ -267,6 +267,11 @@ public class ControlsDockPanel implements DockPanel {
 				rebuildCallback.run();
 			} catch (NumberFormatException ignored) {}
 		});
+		bx = addEditBox(bx, row4Y, 72, "DmgInt:" + scene.getDamageInterval() + "t", val -> {
+			try {
+				scene.setDamageInterval(Integer.parseInt(val.trim()));
+			} catch (NumberFormatException ignored) {}
+		});
 
 		// Row 5: compact preview-only block target transform. This state is never serialized into spell JSON.
 		bx = x + 4;

@@ -2784,7 +2784,18 @@ public class MigratedSpellCards {
 				new SpellConditions.TickInterval(interval, interval / 2),
 				List.of(new SpellActions.SetVariable("rumia_side",
 						new NumberProviders.RandomChoice(List.of(-3d, 3d))), volley), List.of()));
-		var phase = new PhaseDefinition(phaseId, List.of(), tick, List.of(), List.of(), List.of());
+		// Legacy Rumia retaliates when she is hurt: a red ring emitted from her
+		// position, aimed along the current target direction. The real hurt event
+		// supplies this callback; Preview invokes the same runtime entry explicitly.
+		SpellAction retaliation = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.RED),
+				NumberProvider.constant(ex ? 24 : 12), NumberProvider.constant(0.8),
+				NumberProvider.constant(40), NumberProvider.constant(0), NumberProvider.constant(360),
+				NumberProvider.constant(0), PatternType.RING, OriginConfig.caster(),
+				new AimMode.AimModes.Target(), Optional.empty(), Optional.empty(),
+				Optional.empty(), Optional.empty(), 1);
+		var phase = new PhaseDefinition(phaseId, List.of(), tick, List.of(),
+				List.of(retaliation), List.of());
 		var display = new SpellDisplay(
 				ex ? "entity.youkaishomecoming.ex_rumia" : "entity.youkaishomecoming.rumia",
 				"", Optional.empty(), Optional.empty());

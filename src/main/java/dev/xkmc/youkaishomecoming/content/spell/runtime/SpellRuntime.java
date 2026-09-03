@@ -560,24 +560,15 @@ public class SpellRuntime {
 		phaseTick++;
 		totalTick++;
 		triggerSpellHealthTimeout(holder);
-		if (hurtCooldownRemaining > 0) hurtCooldownRemaining--;
 	}
 
 	public void tick(SpellRuntimeHost host) {
 		tick((CardHolder) host);
 	}
 
-	/** Minimum ticks between on_damage triggers to prevent feedback loops (e.g. border → hit → on_hurt → border). */
-	private static final int HURT_COOLDOWN = 20;
-	private int hurtCooldownRemaining = 0;
-
 	public void hurt(CardHolder holder, DamageSource source, float amount) {
 		if (source.getEntity() instanceof LivingEntity && amount > 1) {
 			hitCount++;
-
-			// Enforce cooldown to prevent exponential feedback from danmaku-hit → on_hurt → more danmaku
-			if (hurtCooldownRemaining > 0) return;
-			hurtCooldownRemaining = HURT_COOLDOWN;
 
 			// Execute on_damage actions for current phase
 			PhaseDefinition phase = definition.getPhase(currentPhaseId);
@@ -601,7 +592,6 @@ public class SpellRuntime {
 		hitCount = 0;
 		enteredCurrentPhase = false;
 		targetFlyTime = 0;
-		hurtCooldownRemaining = 0;
 		variables.clear();
 		scheduledActions.clear();
 		persistentScheduledActions.clear();
@@ -690,7 +680,6 @@ public class SpellRuntime {
 		hitCount = 0;
 		enteredCurrentPhase = false;
 		targetFlyTime = 0;
-		hurtCooldownRemaining = 0;
 		variables.clear();
 		scheduledActions.clear();
 		persistentScheduledActions.clear();
@@ -759,7 +748,6 @@ public class SpellRuntime {
 		runtime.hitCount = 0;
 		runtime.enteredCurrentPhase = false;
 		runtime.targetFlyTime = 0;
-		runtime.hurtCooldownRemaining = 0;
 		runtime.variables.clear();
 		runtime.variables.putAll(variables);
 		runtime.scheduledActions.clear();
@@ -1014,7 +1002,6 @@ public class SpellRuntime {
 		// Delayed execution uses the runtime clock for schedule comparisons, but
 		// does not advance phaseTick or execute the phase's regular actions.
 		totalTick++;
-		if (hurtCooldownRemaining > 0) hurtCooldownRemaining--;
 	}
 
 	public boolean hasPendingDelayedActions() {

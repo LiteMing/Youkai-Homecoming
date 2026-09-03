@@ -46,6 +46,9 @@ public class VirtualSpellScene {
 	private int speedIndex = 2; // index into SPEED_OPTIONS
 	private float targetDistance = 10f;
 	private float healthRatio = 1.0f;
+	/** Preview-only cadence for simulating damage dealt to the caster. Zero disables it. */
+	private int damageInterval = 0;
+	private int damageIntervalTicks = 0;
 	private Runnable onStateChanged;
 
 	/** Duration of the last tick() call in nanoseconds. */
@@ -84,12 +87,6 @@ public class VirtualSpellScene {
 		}
 		this.holder.setOnSpellSwitch(this::switchSpellDefinition);
 		this.holder.setOnPhaseSwitch(this::switchPreviewPhase);
-		// Wire hit callback: when a danmaku hits the target AABB, notify runtime
-		// Use mobAttack(fakeCaster) so source.getEntity() instanceof LivingEntity passes
-		this.holder.setOnTargetHit(() -> {
-			var ds = level.damageSources().mobAttack(holder.getFakeCaster());
-			runtime.hurt(holder, ds, 2.0f);
-		});
 		// Preview providers: T1 exact → T2 ballistic → T3 observation
 		pilotRegistry.register(new MoverExactProvider());
 		pilotRegistry.register(new BallisticProvider());
@@ -133,10 +130,29 @@ public class VirtualSpellScene {
 		}
 		runtime.tick(holder);
 		holder.tick();
+		triggerPreviewDamageIfDue();
 		// Safety: auto-pause if entity count exceeds limit
 		if (holder.isSafetyTripped()) {
 			playing = false;
 		}
+	}
+
+	/**
+	 * Simulates the target attacking the caster. This deliberately does not make
+	 * the target cast a spell: it only feeds the same hurt entry point used by a
+	 * real Boss/Player damage event, so on_damage callbacks can be previewed.
+	 */
+	private void triggerPreviewDamageIfDue() {
+		if (damageInterval <= 0) {
+			damageIntervalTicks = 0;
+			return;
+		}
+		damageIntervalTicks++;
+		if (damageIntervalTicks < damageInterval) return;
+		damageIntervalTicks = 0;
+		var attacker = holder.getFakeTarget();
+		var ds = holder.getFakeTarget().level().damageSources().mobAttack(attacker);
+		runtime.hurt(holder, ds, 2.0f);
 	}
 
 	private void runPilotStep() {
@@ -344,6 +360,16 @@ public class VirtualSpellScene {
 		doTick();
 	}
 
+	/** Preview-only on-damage simulation cadence in logical ticks; zero disables it. */
+	public int getDamageInterval() {
+		return damageInterval;
+	}
+
+	public void setDamageInterval(int interval) {
+		damageInterval = Math.max(0, interval);
+		damageIntervalTicks = 0;
+	}
+
 	public void setBeforeTimelineAdvance(Runnable callback) {
 		this.beforeTimelineAdvance = callback;
 	}
@@ -361,6 +387,7 @@ public class VirtualSpellScene {
 		pilot.reset();
 		observedProvider.clear();
 		lastPilotNanos = 0;
+		damageIntervalTicks = 0;
 		notifyStateChanged();
 	}
 
@@ -373,6 +400,7 @@ public class VirtualSpellScene {
 		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 		SpellContext ctx = new SpellContext(holder, definition, runtime, diff);
 		runtime.restartAtPhase(ctx, phaseId);
+		damageIntervalTicks = 0;
 	}
 
 	public boolean isPlaying() {
@@ -540,6 +568,7 @@ public class VirtualSpellScene {
 		this.runtime = new SpellRuntime(definition);
 		bindRuntime(this.runtime);
 		this.runtime.setPhasePreviewLock(definition.entryPhase);
+		damageIntervalTicks = 0;
 		notifyStateChanged();
 	}
 

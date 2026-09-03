@@ -278,14 +278,21 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 	}
 
 	@Override
+	protected boolean shouldTriggerSpellDamage(DamageSource source, float amount) {
+		// The legacy charge-flight and blocked states do not emit the retaliation
+		// volley. BLOCKED still shortens its timer in state.onHurt below.
+		return state.allowsDamageRetaliation();
+	}
+
+	@Override
 	protected void actuallyHurt(DamageSource source, float amount) {
 		boolean isVoid = source.is(DamageTypeTags.BYPASSES_INVULNERABILITY);
 		if (!isVoid && !isEx() && amount >= getMaxHealth()) {
 			if (YHModConfig.COMMON.exRumiaConversion.get())
 				setEx(true);
 		}
-		if (source.getEntity() instanceof LivingEntity le) {
-			state.onHurt(le, amount);
+		if (source.getEntity() instanceof LivingEntity) {
+			state.onHurt(amount);
 		}
 		if (!isVoid && YHModConfig.COMMON.rumiaDamageCap.get()) {
 			int reduction = isEx() ? 20 : 5;

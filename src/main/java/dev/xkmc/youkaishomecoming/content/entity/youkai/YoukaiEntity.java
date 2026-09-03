@@ -409,9 +409,20 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	protected void actuallyHurt(DamageSource source, float amount) {
-		if (spellRuntime != null) spellRuntime.hurt(this, source, amount);
+		if (spellRuntime != null && shouldTriggerSpellDamage(source, amount)) {
+			spellRuntime.hurt(this, source, amount);
+		}
 		if (spellCard != null) spellCard.hurt(this, source, amount);
 		actuallyHurtImpl(source, amount);
+	}
+
+	/**
+	 * Allows entity state machines to suppress a data-driven on_damage callback
+	 * for an otherwise valid hurt event. The default is the real-game behavior:
+	 * every accepted hurt event reaches the spell runtime.
+	 */
+	protected boolean shouldTriggerSpellDamage(DamageSource source, float amount) {
+		return true;
 	}
 
 	protected final void actuallyHurtImpl(DamageSource source, float amount) {

@@ -61,8 +61,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	/** Whether the safety limit has been tripped. */
 	private boolean safetyTripped = false;
 	private final RandomSource random = RandomSource.create();
-	/** Callback invoked when a danmaku uses entity-hit semantics on the preview target. */
-	private Runnable onTargetHit = null;
 	/** Callback invoked when the preview runtime should switch to another spell definition. */
 	private BiConsumer<SpellDefinition, Boolean> onSpellSwitch = null;
 	/** Callback invoked when the preview runtime should switch to another phase. */
@@ -447,9 +445,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	}
 
 	private void handlePreviewTargetHit(SimplifiedProjectile projectile, PreviewHit hit) {
-		if (hit.type() == PreviewTarget.HitType.ENTITY && onTargetHit != null) {
-			onTargetHit.run();
-		}
 		if (projectile instanceof ItemDanmakuEntity danmaku) {
 			handlePreviewProjectileHook(projectile, hit,
 					hit.type() == PreviewTarget.HitType.ENTITY ? danmaku.onHitEntityAction : danmaku.onHitBlockAction,
@@ -1149,7 +1144,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	}
 	public Vec3 getTargetBoxSize() { return targetBoxSize; }
 
-	public void setOnTargetHit(Runnable callback) { this.onTargetHit = callback; }
 	public void setOnSpellSwitch(BiConsumer<SpellDefinition, Boolean> callback) { this.onSpellSwitch = callback; }
 	public void setOnPhaseSwitch(BiConsumer<ResourceLocation, Boolean> callback) { this.onPhaseSwitch = callback; }
 

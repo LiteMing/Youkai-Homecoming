@@ -118,6 +118,9 @@ public final class SpellEditorLocalization {
 		if (text.startsWith("Power:")) {
 			return italic + prefix + "P点:" + text.substring("Power:".length());
 		}
+		if (text.startsWith("DmgInt:")) {
+			return italic + prefix + "受伤间隔:" + text.substring("DmgInt:".length());
+		}
 		if (text.startsWith("Caster Marker: ")) {
 			return italic + prefix + "施法者标记: " + t(text.substring("Caster Marker: ".length()));
 		}

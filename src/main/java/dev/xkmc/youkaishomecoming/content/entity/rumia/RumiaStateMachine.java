@@ -2,12 +2,10 @@ package dev.xkmc.youkaishomecoming.content.entity.rumia;
 
 import dev.xkmc.l2library.util.math.MathHelper;
 import dev.xkmc.l2serial.serialization.SerialClass;
-import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.UUID;
@@ -18,7 +16,6 @@ public class RumiaStateMachine {
 	private static final int PREPARE_TIME = 20, FLY_TIME = 60, BLOCK_TIME = 100;
 	private static final int SUCCESS_DELAY = 100, BLOCK_DELAY = 200;
 	private static final float SPEED = 2, KNOCK = 3;
-	private static final float DANMAKU_SPEED = 0.8f;
 	private static final UUID ATK = MathHelper.getUUIDFromString("rumia_charge_attack");
 
 	public enum RumiaStage {
@@ -116,27 +113,17 @@ public class RumiaStateMachine {
 		ballDelay = SUCCESS_DELAY;
 	}
 
-	public void onHurt(LivingEntity le, float amount) {
+	public void onHurt(float amount) {
 		if (stage == RumiaStage.BLOCKED) {
 			if (amount >= 2) {
 				time = time / 2 + 1;
 			}
-		} else if (stage != RumiaStage.FLY) {
-			if (amount >= 2) shoot(le);
 		}
 	}
 
-	private void shoot(LivingEntity target) {
-		double dx = target.getX() - rumia.getX();
-		double dy = target.getY(0.5D) - rumia.getY(0.5D);
-		double dz = target.getZ() - rumia.getZ();
-		var vec = new Vec3(dx, dy, dz).normalize();
-		var ori = DanmakuHelper.getOrientation(vec);
-		float dmg = (float) rumia.getAttributeValue(Attributes.ATTACK_DAMAGE);
-		int n = rumia.isEx() ? 24 : 12;
-		for (int i = 0; i < n; i++) {
-			rumia.shoot(dmg, 40, ori.rotateDegrees(360f / n * i).scale(DANMAKU_SPEED), DyeColor.RED);
-		}
+	/** True when the data-driven on_damage retaliation should be emitted. */
+	boolean allowsDamageRetaliation() {
+		return stage != RumiaStage.FLY && stage != RumiaStage.BLOCKED;
 	}
 
 	public void onBlocked() {

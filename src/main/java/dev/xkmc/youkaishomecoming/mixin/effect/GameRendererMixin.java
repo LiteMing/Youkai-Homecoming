@@ -16,9 +16,4 @@ public class GameRendererMixin {
 		ClientEventHandlers.drunkView(pose, pTick);
 	}
 
-	@Inject(at = @At("HEAD"), method = "bobView")
-	public void youkaishomecoming$cameraShake(PoseStack pose, float pTick, CallbackInfo ci) {
-		dev.xkmc.youkaishomecoming.content.spell.client.CameraShakeManager.apply(pose, pTick);
-	}
-
 }

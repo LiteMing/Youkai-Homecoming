@@ -2,9 +2,11 @@ package dev.xkmc.youkaishomecoming.content.spell.feedback;
 
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -29,6 +31,16 @@ public final class ServerFeedbackSink implements SpellFeedbackSink {
 		for (var player : level.players()) if (player.distanceToSqr(pos) <= radius * radius)
 			ServerFeedbackDispatcher.enqueue(level, player, resolved);
 	}
+
+	/**
+	 * Camera feedback is an in-combat player-facing effect.  Do not shake every
+	 * nearby player for a world-space spell: only the active STG target (or a
+	 * player casting at an enemy) receives it.
+	 */
+	private boolean isCameraObserver(ServerPlayer player) {
+		if (!YHStgApi.isInDanmakuSession(player)) return false;
+		return holder.self() == player || holder.targetEntity() == player;
+	}
 	@Override public void cameraShake(CameraShakeCue cue) {
 		if (cue == null || !allow() || !(holder.self().level() instanceof ServerLevel level)) return;
 		Vec3 pos = resolvePosition(cue.origin(), cue.position());
@@ -40,8 +52,10 @@ public final class ServerFeedbackSink implements SpellFeedbackSink {
 				: Math.min(cue.radius(), common.feedbackMaxRadius.get());
 		CameraShakeCue resolved = new CameraShakeCue(cue.origin(), pos, intensity, duration,
 				cue.frequency(), radius, cue.falloff(), cue.channel());
-		for (var player : level.players()) if (player.distanceToSqr(pos) <= radius * radius)
+		for (var player : level.players()) {
+			if (player.distanceToSqr(pos) > radius * radius || !isCameraObserver(player)) continue;
 			ServerFeedbackDispatcher.enqueue(level, player, resolved);
+		}
 	}
 	private boolean allow() { return emitted++ < YHModConfig.COMMON.feedbackMaxCuesPerContext.get(); }
 	@Nullable private Vec3 resolvePosition(CueOrigin origin, @Nullable Vec3 explicit) {

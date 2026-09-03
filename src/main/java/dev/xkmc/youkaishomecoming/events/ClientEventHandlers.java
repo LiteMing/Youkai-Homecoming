@@ -35,7 +35,8 @@ public class ClientEventHandlers {
 		float lv = drunkLevel();
 		tilt = Mth.lerp(0.03f, tilt, lv);
 		if (event.phase == TickEvent.Phase.END) {
-			CameraShakeManager.tick();
+			if (Minecraft.getInstance().level == null) CameraShakeManager.clear();
+			else CameraShakeManager.tick();
 			syncBeatenPose();
 			if (ModList.get().isLoaded("exposure")) {
 				dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();

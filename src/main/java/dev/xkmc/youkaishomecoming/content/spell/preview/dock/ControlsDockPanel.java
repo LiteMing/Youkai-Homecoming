@@ -543,8 +543,7 @@ public class ControlsDockPanel implements DockPanel {
 							   java.util.function.Predicate<String> filter,
 							   java.util.function.Consumer<String> onSubmit,
 							   boolean submitOnChange) {
-		EditBox box = new EditBox(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
-		EditorTextBoxes.configure(box);
+		EditBox box = EditorTextBoxes.create(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
 		box.setMaxLength(maxLength);
 		box.setValue(value);
 		box.setHint(Component.literal(SpellEditorLocalization.t(hint)).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));

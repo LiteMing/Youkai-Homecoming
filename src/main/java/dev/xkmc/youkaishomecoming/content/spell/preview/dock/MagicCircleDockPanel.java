@@ -902,8 +902,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	}
 
 	private EditBox makeEditBox(Font font, int x, int y, int w, String value, Consumer<String> responder) {
-		EditBox box = new EditBox(font, x, y, w, 16, Component.empty());
-		EditorTextBoxes.configure(box);
+		EditBox box = EditorTextBoxes.create(font, x, y, w, 16, Component.empty());
 		box.setMaxLength(1024);
 		box.setValue(value == null ? "" : value);
 		box.setResponder(text -> {

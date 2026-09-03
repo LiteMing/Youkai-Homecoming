@@ -14,7 +14,7 @@ public record CameraShakeAction(CueOrigin origin, NumberProvider intensity, Numb
 	public static final Codec<CameraShakeAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 			Codec.STRING.optionalFieldOf("origin", "caster").xmap(CameraShakeAction::parseOrigin,
 					CameraShakeAction::formatOrigin).forGetter(CameraShakeAction::origin),
-			NumberProvider.CODEC.optionalFieldOf("intensity", NumberProvider.constant(0.25)).forGetter(CameraShakeAction::intensity),
+			NumberProvider.CODEC.optionalFieldOf("intensity", NumberProvider.constant(0.5)).forGetter(CameraShakeAction::intensity),
 			NumberProvider.CODEC.optionalFieldOf("duration", NumberProvider.constant(8)).forGetter(CameraShakeAction::duration),
 			NumberProvider.CODEC.optionalFieldOf("frequency", NumberProvider.constant(1)).forGetter(CameraShakeAction::frequency),
 			NumberProvider.CODEC.optionalFieldOf("radius", NumberProvider.constant(16)).forGetter(CameraShakeAction::radius),
@@ -24,7 +24,7 @@ public record CameraShakeAction(CueOrigin origin, NumberProvider intensity, Numb
 	).apply(i, CameraShakeAction::new));
 
 	public CameraShakeAction() {
-		this(CueOrigin.CASTER, NumberProvider.constant(0.25), NumberProvider.constant(8),
+		this(CueOrigin.CASTER, NumberProvider.constant(0.5), NumberProvider.constant(8),
 				NumberProvider.constant(1), NumberProvider.constant(16), CueFalloff.LINEAR, "impact");
 	}
 

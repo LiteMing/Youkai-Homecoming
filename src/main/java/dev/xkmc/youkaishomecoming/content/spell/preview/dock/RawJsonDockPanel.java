@@ -1066,6 +1066,16 @@ public class RawJsonDockPanel implements DockPanel {
 
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button == 1 && withinContentAreaPoint(mouseX, mouseY)) {
+				MultilineTextField textField = textField();
+				if (textField != null) {
+					String selected = textField.getSelectedText();
+					if (!selected.isEmpty()) {
+						Minecraft.getInstance().keyboardHandler.setClipboard(selected);
+					}
+				}
+				return true;
+			}
 			if (button == 0 && withinContentAreaPoint(mouseX, mouseY)) {
 				setFocused(true);
 				MultilineTextField textField = textField();

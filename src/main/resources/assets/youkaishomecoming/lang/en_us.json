@@ -595,7 +595,7 @@
   "config.youkaishomecoming.common.feedback": "Spell Feedback",
   "config.youkaishomecoming.common.feedback.tooltip": "Server limits for spell sound and camera feedback",
   "config.youkaishomecoming.common.feedback.maxCameraIntensity": "Camera Shake Intensity Cap",
-  "config.youkaishomecoming.common.feedback.maxCameraIntensity.tooltip": "Server cap for one camera shake cue intensity",
+  "config.youkaishomecoming.common.feedback.maxCameraIntensity.tooltip": "Server cap for one camera shake cue intensity (default 2.0; higher is more visible)",
   "config.youkaishomecoming.common.feedback.maxCameraDurationTicks": "Camera Shake Duration Cap",
   "config.youkaishomecoming.common.feedback.maxCameraDurationTicks.tooltip": "Server cap for one camera shake cue duration in ticks",
   "config.youkaishomecoming.common.feedback.maxRadius": "Feedback Radius Cap",

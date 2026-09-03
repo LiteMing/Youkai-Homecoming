@@ -28,9 +28,9 @@ public final class CameraShakeManager {
 
 	/* Keep the requested intensity in cue units while producing a visible,
 	 * bounded angle offset.  The server still owns the intensity cap. */
-	private static final float YAW_DEGREES_PER_INTENSITY = 1.8f;
-	private static final float PITCH_DEGREES_PER_INTENSITY = 1.35f;
-	private static final float ROLL_DEGREES_PER_INTENSITY = 2.1f;
+	private static final float YAW_DEGREES_PER_INTENSITY = 4.0f;
+	private static final float PITCH_DEGREES_PER_INTENSITY = 3.0f;
+	private static final float ROLL_DEGREES_PER_INTENSITY = 4.6f;
 
 	private CameraShakeManager() {
 	}

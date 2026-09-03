@@ -312,7 +312,7 @@ public class YHModConfig {
 			{
 				feedbackMaxCameraIntensity = builder.comment("Server cap for one camera shake cue intensity")
 						.translation("config.youkaishomecoming.common.feedback.maxCameraIntensity")
-						.defineInRange("maxCameraIntensity", 0.5, 0.0, 1.0);
+						.defineInRange("maxCameraIntensity", 2.0, 0.0, 10.0);
 				feedbackMaxCameraDurationTicks = builder.comment("Server cap for one camera shake cue duration")
 						.translation("config.youkaishomecoming.common.feedback.maxCameraDurationTicks")
 						.defineInRange("maxCameraDurationTicks", 40, 1, 100);

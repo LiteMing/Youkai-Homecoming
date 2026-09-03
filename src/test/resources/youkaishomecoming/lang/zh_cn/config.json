@@ -337,7 +337,7 @@
 	"config.youkaishomecoming.common.feedback": "符卡表现反馈",
 	"config.youkaishomecoming.common.feedback.tooltip": "服务端符卡音效与镜头反馈限制",
 	"config.youkaishomecoming.common.feedback.maxCameraIntensity": "镜头抖动强度上限",
-	"config.youkaishomecoming.common.feedback.maxCameraIntensity.tooltip": "单个镜头抖动提示的服务端强度上限",
+	"config.youkaishomecoming.common.feedback.maxCameraIntensity.tooltip": "单个镜头抖动提示的服务端强度上限（默认 2.0；强度越高画面越明显）",
 	"config.youkaishomecoming.common.feedback.maxCameraDurationTicks": "镜头抖动时长上限",
 	"config.youkaishomecoming.common.feedback.maxCameraDurationTicks.tooltip": "单个镜头抖动提示的服务端时长上限（刻）",
 	"config.youkaishomecoming.common.feedback.maxRadius": "表现反馈半径上限",

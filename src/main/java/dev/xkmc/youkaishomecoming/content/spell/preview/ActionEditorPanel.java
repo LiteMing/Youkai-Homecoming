@@ -4117,8 +4117,8 @@ public class ActionEditorPanel {
 	}
 
 	private EditBox newEditorEditBox(String label, int widgetW) {
-		return EditorTextBoxes.configure(new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label)));
+		return EditorTextBoxes.create(Minecraft.getInstance().font, 0, 0,
+				widgetW, ROW_HEIGHT - 4, Component.literal(label));
 	}
 
 	private static String sanitizeFormulaForValidation(String text) {

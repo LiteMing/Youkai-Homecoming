@@ -22,6 +22,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.DyeColor;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
@@ -249,6 +250,7 @@ public class ActionEditorPanel {
 		if (commandSuggestions != null) commandSuggestions.hide();
 		commandSuggestions = null;
 		commandEditBox = null;
+		soundEditBox = null;
 		closeDropdown();
 		closeExprCompletion();
 		closeStringCompletion();
@@ -1547,7 +1549,7 @@ public class ActionEditorPanel {
 	// --- PlaySound rows ---
 
 	private void buildPlaySoundRows(SpellActions.PlaySoundAction ps) {
-		addStringRow("Sound", ps.soundId().toString(), v -> {
+		addSuggestStringRow("Sound", ps.soundId().toString(), ActionEditorPanel::soundEventOptions, v -> {
 			ResourceLocation id = ResourceLocation.tryParse(v);
 			if (id != null) notifySimple(old -> new SpellActions.PlaySoundAction(id,
 					((SpellActions.PlaySoundAction) old).volume(), ((SpellActions.PlaySoundAction) old).pitch(),
@@ -1582,6 +1584,18 @@ public class ActionEditorPanel {
 				((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(),
 				((SpellActions.PlaySoundAction) old).pitch(), ((SpellActions.PlaySoundAction) old).source(),
 				((SpellActions.PlaySoundAction) old).origin(), ((SpellActions.PlaySoundAction) old).radius(), v)));
+		addButtonRow("Save preset", () -> SoundPresetStore.save(soundEditBox == null ? ps.soundId().toString() : soundEditBox.getValue()));
+		addListSuggestStringRow("Load preset", "", SoundPresetStore::list, value -> {
+			if (soundEditBox != null && !value.isBlank()) soundEditBox.setValue(value);
+		});
+		addButtonRow("Delete preset", () -> SoundPresetStore.remove(soundEditBox == null ? ps.soundId().toString() : soundEditBox.getValue()));
+	}
+
+	private static List<String> soundEventOptions() {
+		return ForgeRegistries.SOUND_EVENTS.getKeys().stream()
+				.map(ResourceLocation::toString)
+				.sorted()
+				.toList();
 	}
 
 	private void buildCameraShakeRows(dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction action) {
@@ -3910,6 +3924,7 @@ public class ActionEditorPanel {
 	private final Map<EditBox, java.util.function.Supplier<List<String>>> stringCompletionSuppliers = new HashMap<>();
 	private final Set<EditBox> listCompletionTargets = new HashSet<>();
 	private EditBox commandEditBox;
+	private EditBox soundEditBox;
 	private CommandSuggestions commandSuggestions;
 
 	// Expression completion overlay
@@ -4129,6 +4144,7 @@ public class ActionEditorPanel {
 				if (commandSuggestions != null) commandSuggestions.updateCommandInfo();
 			});
 		} else {
+			if ("Sound".equals(label)) soundEditBox = editBox;
 			editBox.setResponder(onChange::accept);
 		}
 		if (!"Command".equals(label)) stringCompletionSuppliers.put(editBox, suggestions);

@@ -1541,6 +1541,9 @@ public class SpellPreviewScreen extends Screen {
 		if (dockLayout != null) {
 			dockLayout.renderOverlay(guiGraphics, mouseX, mouseY);
 		}
+		if (viewportPanel != null) {
+			viewportPanel.renderFocusIndicator(guiGraphics);
+		}
 
 	}
 
@@ -1594,6 +1597,15 @@ public class SpellPreviewScreen extends Screen {
 		// Dock layout dispatches to panels (also updates activeGroup)
 		if (dockLayout != null && dockLayout.mouseClicked(mouseX, mouseY, button)) {
 			syncEditorDockWidgetVisibility();
+			// Capturing the perspective viewport also releases any text widget that
+			// happened to be focused in the same dock group.  Otherwise WASD movement
+			// would remain blocked by the EditBox focus gate.
+			if (viewport != null && viewport.isPerspectiveCaptured()) {
+				if (actionEditorPanel != null) {
+					actionEditorPanel.unfocusAllEditBoxes();
+				}
+				setFocused(null);
+			}
 			// When clicking outside the properties panel (e.g. viewport), clear editbox focus
 			// to remove the highlight, but keep the properties panel itself open.
 			DockGroup editorGroup = dockLayout.findGroupContaining(editorDockPanel);
@@ -1661,17 +1673,30 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		// ESC in perspective mode
-		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && viewport.isPerspectiveMode()) {
-			if (viewport.isPerspectiveCaptured()) {
-				// First ESC: exit captured free-look, restore cursor
-				viewport.setPerspectiveCaptured(false);
-				org.lwjgl.glfw.GLFW.glfwSetInputMode(
-						Minecraft.getInstance().getWindow().getWindow(),
-						org.lwjgl.glfw.GLFW.GLFW_CURSOR,
-						org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+		// Perspective viewport focus owns the keyboard before editor widgets and
+		// action-list shortcuts get a chance to handle it.
+		if (viewport.isPerspectiveCaptured()) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+				releasePerspectiveViewportFocus();
 				return true;
 			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_E) {
+				scene.togglePlayPause();
+				return true;
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_R) {
+				replaySelectedPhase();
+				return true;
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_F) {
+				scene.step();
+				return true;
+			}
+			return true;
+		}
+
+		// ESC in an unfocused perspective viewport exits perspective mode.
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && viewport.isPerspectiveMode()) {
 			// Second ESC (not captured): exit perspective mode entirely
 			viewport.setPerspectiveMode(false);
 			rebuildScreen();
@@ -1835,19 +1860,6 @@ public class SpellPreviewScreen extends Screen {
 
 
 
-		// In captured perspective mode, suppress keys used for camera movement
-		// WASD, Space, Shift are consumed by perspective camera in tick()
-		if (viewport.isPerspectiveCaptured()) {
-			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_W
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_A
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_D
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) {
-				return true; // consumed by perspective camera
-			}
-		}
-
 		// Space = play/pause (orthographic mode only now)
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) {
 			scene.togglePlayPause();
@@ -1877,6 +1889,9 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean charTyped(char codePoint, int modifiers) {
+		if (viewport.isPerspectiveCaptured()) {
+			return true;
+		}
 		if (isAnyEditBoxFocused()) {
 			return super.charTyped(codePoint, modifiers);
 		}
@@ -1884,6 +1899,24 @@ public class SpellPreviewScreen extends Screen {
 			return true;
 		}
 		return super.charTyped(codePoint, modifiers);
+	}
+
+	@Override
+	public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+		if (viewport.isPerspectiveCaptured()) {
+			return true;
+		}
+		return super.keyReleased(keyCode, scanCode, modifiers);
+	}
+
+	private void releasePerspectiveViewportFocus() {
+		viewport.setPerspectiveCaptured(false);
+		viewport.setPerspectiveOrbiting(false);
+		viewport.setPerspectivePanning(false);
+		org.lwjgl.glfw.GLFW.glfwSetInputMode(
+				Minecraft.getInstance().getWindow().getWindow(),
+				org.lwjgl.glfw.GLFW.GLFW_CURSOR,
+				org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
 	}
 
 	@Override
@@ -1905,11 +1938,7 @@ public class SpellPreviewScreen extends Screen {
 		restoreConfiguredGuiScale(Minecraft.getInstance());
 		// Restore cursor if hidden during perspective capture
 		if (viewport.isPerspectiveCaptured()) {
-			viewport.setPerspectiveCaptured(false);
-			org.lwjgl.glfw.GLFW.glfwSetInputMode(
-					Minecraft.getInstance().getWindow().getWindow(),
-					org.lwjgl.glfw.GLFW.GLFW_CURSOR,
-					org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+			releasePerspectiveViewportFocus();
 		}
 		reportRawJsonDraftOnClose();
 		// Save dock layout

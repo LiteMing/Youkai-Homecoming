@@ -129,6 +129,28 @@ public class ViewportDockPanel implements DockPanel {
 		graphics.pose().popPose();
 	}
 
+	/**
+	 * Draw the perspective keyboard-focus indicator after every dock overlay.  The
+	 * frame intentionally sits just outside the viewport content bounds so it is
+	 * visible without covering the preview itself.
+	 */
+	public void renderFocusIndicator(GuiGraphics graphics) {
+		if (!viewport.isPerspectiveMode() || !viewport.isPerspectiveCaptured()) return;
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 500);
+		int glow = 0x805599FF;
+		int blue = 0xFF55AAFF;
+		graphics.renderOutline(x - 3, y - 3, w + 6, h + 6, glow);
+		graphics.fill(x - 2, y - 2, x + w + 2, y, blue);
+		graphics.fill(x - 2, y + h, x + w + 2, y + h + 2, blue);
+		graphics.fill(x - 2, y, x, y + h, blue);
+		graphics.fill(x + w, y, x + w + 2, y + h, blue);
+		// Keep a one-pixel inner edge visible when a dock touches the screen edge
+		// and its outside frame is clipped by the GUI viewport.
+		graphics.renderOutline(x, y, w, h, blue);
+		graphics.pose().popPose();
+	}
+
 	private void renderOriginEditControls(GuiGraphics graphics, int mouseX, int mouseY) {
 		if (isMagicCirclePreviewEditing() || viewport.isPerspectiveMode() || !hasHighlightedGroup()) return;
 		int toolbarW = originEditMode ? 104 : rotateMode ? 116 : groupRotationAvailable ? 132 : 68;
@@ -308,7 +330,12 @@ public class ViewportDockPanel implements DockPanel {
 				c2 = 0xFFAAAAAA;
 			}
 		} else if (viewport.isPerspectiveMode()) {
-			if (hasHighlightedGroup()) {
+			if (viewport.isPerspectiveCaptured()) {
+				l1 = "VIEWPORT FOCUS  E play/pause · R replay";
+				c1 = 0xFF77BBFF;
+				l2 = "F next frame (pause) · Esc release focus";
+				c2 = 0xFFBBDDFF;
+			} else if (hasHighlightedGroup()) {
 				l1 = "SELECTED — switch to orthographic to edit";
 				c1 = 0xFFFFAA44;
 			} else {
@@ -521,16 +548,11 @@ public class ViewportDockPanel implements DockPanel {
 
 		if (viewport.isPerspectiveMode()) {
 			if (!viewport.isPerspectiveCaptured()) {
-				if (button == 0) {
-					viewport.setPerspectiveCaptured(true);
-					lastMouseX = mouseX;
-					lastMouseY = mouseY;
-					org.lwjgl.glfw.GLFW.glfwSetInputMode(
-							Minecraft.getInstance().getWindow().getWindow(),
-							org.lwjgl.glfw.GLFW.GLFW_CURSOR,
-							org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
-					return true;
-				}
+				// Any mouse button establishes viewport focus.  This keeps RMB orbit and
+				// MMB pan consistent with LMB look and makes the keyboard shortcuts
+				// available as soon as the user interacts with the perspective view.
+				capturePerspectiveFocus(mouseX, mouseY);
+				if (button == 0) return true;
 			}
 			if (button == 1) {
 				viewport.setPerspectiveOrbiting(true);
@@ -630,6 +652,16 @@ public class ViewportDockPanel implements DockPanel {
 			}
 		}
 		return false;
+	}
+
+	private void capturePerspectiveFocus(double mouseX, double mouseY) {
+		viewport.setPerspectiveCaptured(true);
+		lastMouseX = mouseX;
+		lastMouseY = mouseY;
+		org.lwjgl.glfw.GLFW.glfwSetInputMode(
+				Minecraft.getInstance().getWindow().getWindow(),
+				org.lwjgl.glfw.GLFW.GLFW_CURSOR,
+				org.lwjgl.glfw.GLFW.GLFW_CURSOR_DISABLED);
 	}
 
 	@Override

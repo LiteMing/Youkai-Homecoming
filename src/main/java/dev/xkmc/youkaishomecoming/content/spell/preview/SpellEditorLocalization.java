@@ -759,6 +759,8 @@ public final class SpellEditorLocalization {
 			Map.entry("Select an existing spell or enter a new spell id and press Enter.", "选择已有符卡，或输入新的符卡 ID 后按 Enter。"),
 			Map.entry("SELECTED — switch to orthographic to edit", "已选中 - 切换到正交模式编辑"),
 			Map.entry("Perspective  LMB look · RMB orbit · MMB pan · wheel speed", "透视  左键视角 · 右键环绕 · 中键平移 · 滚轮调速"),
+			Map.entry("VIEWPORT FOCUS  E play/pause · R replay", "视口已聚焦  E 播放/暂停 · R 重新播放"),
+			Map.entry("F next frame (pause) · Esc release focus", "F 下一帧（并暂停）· Esc 取消视口焦点"),
 			Map.entry("ROTATE X  LMB drag: rotate", "旋转 X  左键拖拽: 旋转"),
 			Map.entry("ROTATE Y  LMB drag: rotate", "旋转 Y  左键拖拽: 旋转"),
 			Map.entry("ROTATE Z  LMB drag: rotate", "旋转 Z  左键拖拽: 旋转"),

@@ -225,12 +225,12 @@ public record FireDanmakuAction(
 			danmaku.onTrail = trailAction;
 			danmaku.trailInterval = Math.max(1, trailInterval);
 		}
-		if (onHitEntity.isPresent()) {
+		if (onHitEntity.filter(actions -> !actions.isEmpty()).isPresent()) {
 			var hitAction = new DataDrivenTrailAction(onHitEntity.get(), ctx.runtime(), ctx.definition());
 			hitAction.setup(holder);
 			danmaku.onHitEntityAction = hitAction;
 		}
-		if (onHitBlock.isPresent()) {
+		if (onHitBlock.filter(actions -> !actions.isEmpty()).isPresent()) {
 			var hitAction = new DataDrivenTrailAction(onHitBlock.get(), ctx.runtime(), ctx.definition());
 			hitAction.setup(holder);
 			danmaku.onHitBlockAction = hitAction;
@@ -240,7 +240,8 @@ public record FireDanmakuAction(
 		// Default from prepareDanmaku is bypassWall=true, bypassEntity=true (boss danmaku defaults).
 		// Keep the legacy pass-through behavior unless this action explicitly uses block hit handling:
 		// either a block-hit callback is configured, or block hits should stop/expire the danmaku.
-		if (onHitBlock.isPresent() || hitBehaviorBlock != HitBehavior.CONTINUE) {
+		if (onHitBlock.filter(actions -> !actions.isEmpty()).isPresent()
+				|| hitBehaviorBlock != HitBehavior.CONTINUE) {
 			danmaku.setBypassWall(false);
 		}
 		// Data-driven danmaku always enable entity collision detection.

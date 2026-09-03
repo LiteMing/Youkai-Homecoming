@@ -109,6 +109,9 @@ public final class YoukaiDodgePilot {
 		if (desired.length() > maxSpeed) {
 			desired = desired.normalize().scale(maxSpeed);
 		}
+		var oracle = new LevelCollisionOracle(entity.level(), entity);
+		if (!oracle.isPathFree(entity.getBoundingBox(), desired)
+				|| !oracle.isFree(entity.getBoundingBox().move(desired))) return;
 		entity.getNavigation().stop();
 		entity.setDeltaMovement(desired);
 		entity.hasImpulse = true;

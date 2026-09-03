@@ -3,6 +3,11 @@ package gen;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.Threat;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ThreatFrame;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ThreatSemantic;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotProfile;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotState;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.search.ActionModel;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.search.PilotSearchNode;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.search.SpatioTemporalSearch;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.*;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -30,6 +35,7 @@ public class PilotThreatTest {
 		testLaserSweep();
 		testSelfBoxPlayerShrinkVsVanilla();
 		testNodeScorerGrazeVsDead();
+		testPilotPathOracleRejectsWallCrossing();
 		testSnapshotPerf();
 
 		System.out.println("\n=== Results: " + passed + " passed, " + failed + " failed ===");
@@ -231,6 +237,34 @@ public class PilotThreatTest {
 		check("perf under 1ms (CI)", ms < 1.0);
 		check("snapshot size 100", snap.size() == 100);
 		check("broadphase present", snap.broadphase() != null);
+		System.out.println();
+	}
+
+	private static void testPilotPathOracleRejectsWallCrossing() {
+		System.out.println("[pilot path collision gate]");
+		final boolean[] pathChecked = {false};
+		CollisionOracle oracle = new CollisionOracle() {
+			@Override
+			public boolean isFree(AABB box) {
+				return true; // Endpoint is empty on the far side of the wall.
+			}
+
+			@Override
+			public boolean isPathFree(AABB from, Vec3 delta) {
+				pathChecked[0] = true;
+				return false; // The swept segment crosses the wall.
+			}
+		};
+		PilotState state = new PilotState(Vec3.ZERO, Vec3.ZERO, SelfBoxModel.vanillaPlayer());
+		state.oracle = oracle;
+		ActionModel oneStep = (parent, high, low) -> List.of(
+				new ActionModel.Action(new Vec3(2, 0, 0), false, 0));
+		var result = new SpatioTemporalSearch(oneStep, NodeScorer.defaults()).search(
+				ThreatSnapshot.of(List.of(), 2), state,
+				new PilotProfile("TEST", 2, 1, 0, 0, 0, 0, 0, 1, 1, 16, 1, 1, 2,
+						1.5f, 0, 1, 0));
+		check("search checks complete path, not only endpoint", pathChecked[0]);
+		check("wall-crossing candidate is rejected", result.firstStep().lengthSqr() < 1e-10);
 		System.out.println();
 	}
 

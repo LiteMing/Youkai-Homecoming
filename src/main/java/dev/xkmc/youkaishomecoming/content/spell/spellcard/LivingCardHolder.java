@@ -93,7 +93,7 @@ public interface LivingCardHolder extends CardHolder {
 		danmaku.setItem(type.get(color).asStack());
 		danmaku.setup(getDamage(type),
 				life, len, true, vec);
-		danmaku.setPos(pos);
+		danmaku.setBeamStart(pos);
 		danmaku.setupLength = type.setupLength();
 		return danmaku;
 	}

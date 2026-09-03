@@ -1146,6 +1146,35 @@ public class ActionEditorPanel {
 			notifyLaser(old -> old.withAimMode(newMode));
 		});
 
+		addSectionHeader("Group Rotation (post-origin/tilt)");
+		if (!isSectionCollapsed("Group Rotation (post-origin/tilt)")) {
+			currentDepth++;
+			if (a.groupRotation().isPresent()) {
+				var gr = a.groupRotation().get();
+				addNumberRow("Rot X", gr.rotX(), v ->
+						notifyLaser(old -> old.withGroupRotation(Optional.of(new GroupRotation(v,
+								old.groupRotation().map(GroupRotation::rotY).orElse(NumberProvider.constant(0)),
+								old.groupRotation().map(GroupRotation::rotZ).orElse(NumberProvider.constant(0))))), false));
+				addNumberRow("Rot Y", gr.rotY(), v ->
+						notifyLaser(old -> old.withGroupRotation(Optional.of(new GroupRotation(
+								old.groupRotation().map(GroupRotation::rotX).orElse(NumberProvider.constant(0)),
+								v,
+								old.groupRotation().map(GroupRotation::rotZ).orElse(NumberProvider.constant(0))))), false));
+				addNumberRow("Rot Z", gr.rotZ(), v ->
+						notifyLaser(old -> old.withGroupRotation(Optional.of(new GroupRotation(
+								old.groupRotation().map(GroupRotation::rotX).orElse(NumberProvider.constant(0)),
+								old.groupRotation().map(GroupRotation::rotY).orElse(NumberProvider.constant(0)),
+								v))), false));
+				addFullWidthButton("[Remove Group Rotation]", () ->
+						notifyLaser(old -> old.withGroupRotation(Optional.empty())));
+			} else {
+				addFullWidthButton("[+ Group Rotation]", () ->
+						notifyLaser(old -> old.withGroupRotation(Optional.of(new GroupRotation(
+								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0))))));
+			}
+			currentDepth--;
+		}
+
 		// OriginConfig mode
 		addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), a.origin().mode(), v -> {
 			notifyLaser(old -> {
@@ -3720,8 +3749,10 @@ public class ActionEditorPanel {
 			"source_velocity_x", "source_velocity_y", "source_velocity_z", "vx", "vy", "vz",
 			"source_direction_x", "source_direction_y", "source_direction_z", "source_speed",
 			"source_size", "source_spread", "source_lifetime", "source_age", "source_remaining_lifetime",
-			"source_hook_x", "source_hook_y", "source_hook_z", "hit_x", "hit_y", "hit_z", "start_x", "start_y", "start_z",
-			"end_x", "end_y", "end_z", "clipped_end_x", "clipped_end_y", "clipped_end_z",
+			"source_hook_x", "source_hook_y", "source_hook_z",
+			"source_end_x", "source_end_y", "source_end_z",
+			"source_clipped_end_x", "source_clipped_end_y", "source_clipped_end_z",
+			"hit_x", "hit_y", "hit_z", "start_x", "start_y", "start_z",
 			"hit_normal_x", "hit_normal_y", "hit_normal_z"
 	};
 
@@ -3813,11 +3844,9 @@ public class ActionEditorPanel {
 			"tick_mod", "sin_deg", "cos_deg", "sin_rad", "cos_rad", "sqrt", "abs", "floor", "ceil", "round",
 			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose"
 	);
-	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
-			"tick", "t", "bullet_tick", "bulletTick", "phase_tick", "total_tick", "distance", "target_height", "target_fly_time",
-			"target_speed", "game_difficulty",
-			"caster_x", "caster_y", "caster_z", "caster_max_health", "caster_power", "target_x", "target_y", "target_z"
-	);
+	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Arrays.stream(EXPR_FUNCTIONS)
+			.filter(name -> !KNOWN_FUNCTIONS.contains(name))
+			.collect(java.util.stream.Collectors.toUnmodifiableSet());
 
 	/**
 	 * Compute per-character color array for expression syntax highlighting.
@@ -3884,7 +3913,14 @@ public class ActionEditorPanel {
 	private CommandSuggestions commandSuggestions;
 
 	// Expression completion overlay
-	private String[] exprCompletionItems = null;
+	private record ExprCompletionItem(@Nullable String value, String label, boolean folder,
+			String groupKey, int depth) {
+	}
+
+	private static final Set<String> EXPANDED_EXPR_COMPLETION_GROUPS = new HashSet<>();
+	private List<ExprCompletionItem> exprCompletionItems = null;
+	private List<String> exprCompletionMatches = List.of();
+	private boolean exprCompletionGrouped = false;
 	private int exprCompletionHoverIndex = -1;
 	private EditBox exprCompletionTarget = null;
 	private int exprCompletionInsertStart = -1;
@@ -4784,10 +4820,10 @@ public class ActionEditorPanel {
 		// Handle expression completion overlay
 		if (exprCompletionItems != null) {
 			if (button == 0) {
-				int[] bounds = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.length);
+				int[] bounds = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.size());
 				int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
 				int itemH = DROPDOWN_ITEM_H;
-				int itemCount = exprCompletionItems.length;
+				int itemCount = exprCompletionItems.size();
 				int scrollbarW = itemCount > bounds[4] ? 6 : 0;
 				int contentW = cw - scrollbarW;
 
@@ -4913,8 +4949,8 @@ public class ActionEditorPanel {
 			return true;
 		}
 		if (exprCompletionItems != null && exprCompletionTarget != null) {
-			int visible = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.length)[4];
-			int maxScroll = Math.max(0, exprCompletionItems.length - visible);
+			int visible = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.size())[4];
+			int maxScroll = Math.max(0, exprCompletionItems.size() - visible);
 			exprCompletionScrollOffset = Math.max(0, Math.min(maxScroll,
 					exprCompletionScrollOffset - (int) (delta * 3)));
 			return true;
@@ -5025,7 +5061,7 @@ public class ActionEditorPanel {
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_DOWN) {
-				if (exprCompletionHoverIndex < exprCompletionItems.length - 1) exprCompletionHoverIndex++;
+				if (exprCompletionHoverIndex < exprCompletionItems.size() - 1) exprCompletionHoverIndex++;
 				ensureExprCompletionHoverVisible();
 				return true;
 			}
@@ -5073,12 +5109,53 @@ public class ActionEditorPanel {
 			}
 		}
 		if (matches.isEmpty()) return false;
-		exprCompletionItems = matches.toArray(new String[0]);
-		exprCompletionHoverIndex = 0;
 		exprCompletionTarget = editBox;
 		exprCompletionInsertStart = tokenStart;
+		exprCompletionMatches = List.copyOf(matches);
+		exprCompletionGrouped = prefix.isEmpty();
+		rebuildExprCompletionItems();
+		exprCompletionHoverIndex = 0;
 		exprCompletionScrollOffset = 0;
 		return true;
+	}
+
+	private void rebuildExprCompletionItems() {
+		if (!exprCompletionGrouped) {
+			exprCompletionItems = exprCompletionMatches.stream()
+					.map(value -> new ExprCompletionItem(value, getFuncDisplayName(value), false, "", 0))
+					.toList();
+			return;
+		}
+		Map<String, List<String>> groups = new java.util.LinkedHashMap<>();
+		for (String value : exprCompletionMatches) {
+			groups.computeIfAbsent(exprCompletionGroup(value), ignored -> new ArrayList<>()).add(value);
+		}
+		List<ExprCompletionItem> items = new ArrayList<>();
+		for (var entry : groups.entrySet()) {
+			String group = entry.getKey();
+			boolean expanded = EXPANDED_EXPR_COMPLETION_GROUPS.contains(group);
+			String icon = expanded ? "\u25BC " : "\u25B6 ";
+			items.add(new ExprCompletionItem(null,
+					icon + group + " (" + entry.getValue().size() + ")", true, group, 0));
+			if (expanded) {
+				for (String value : entry.getValue()) {
+					items.add(new ExprCompletionItem(value, getFuncDisplayName(value), false, group, 1));
+				}
+			}
+		}
+		exprCompletionItems = items;
+	}
+
+	private static String exprCompletionGroup(String value) {
+		if (KNOWN_FUNCTIONS.contains(value)) return "Functions";
+		if (value.startsWith("source_")) return "source_...";
+		if (value.startsWith("target_")) return "target_...";
+		if (value.startsWith("caster_")) return "caster_...";
+		if (value.startsWith("hit_")) return "hit_...";
+		if (value.startsWith("movement_")) return "movement_...";
+		if (value.startsWith("start_")) return "laser geometry";
+		if (value.equals("vx") || value.equals("vy") || value.equals("vz")) return "Aliases";
+		return "Context";
 	}
 
 	public boolean isMouseOver(double mouseX, double mouseY) {
@@ -5501,8 +5578,25 @@ public class ActionEditorPanel {
 
 	private void applyExprCompletion() {
 		if (exprCompletionItems == null || exprCompletionTarget == null) return;
-		if (exprCompletionHoverIndex < 0 || exprCompletionHoverIndex >= exprCompletionItems.length) return;
-		String chosen = exprCompletionItems[exprCompletionHoverIndex];
+		if (exprCompletionHoverIndex < 0 || exprCompletionHoverIndex >= exprCompletionItems.size()) return;
+		ExprCompletionItem item = exprCompletionItems.get(exprCompletionHoverIndex);
+		if (item.folder()) {
+			if (!EXPANDED_EXPR_COMPLETION_GROUPS.remove(item.groupKey())) {
+				EXPANDED_EXPR_COMPLETION_GROUPS.add(item.groupKey());
+			}
+			rebuildExprCompletionItems();
+			for (int i = 0; i < exprCompletionItems.size(); i++) {
+				ExprCompletionItem rebuilt = exprCompletionItems.get(i);
+				if (rebuilt.folder() && rebuilt.groupKey().equals(item.groupKey())) {
+					exprCompletionHoverIndex = i;
+					break;
+				}
+			}
+			ensureExprCompletionHoverVisible();
+			return;
+		}
+		String chosen = item.value();
+		if (chosen == null) return;
 		String template = getFuncInsertText(chosen);
 		int cursorInTemplate = getFuncCursorInTemplate(chosen);
 		String text = exprCompletionTarget.getValue();
@@ -5522,6 +5616,8 @@ public class ActionEditorPanel {
 
 	private void closeExprCompletion() {
 		exprCompletionItems = null;
+		exprCompletionMatches = List.of();
+		exprCompletionGrouped = false;
 		exprCompletionHoverIndex = -1;
 		exprCompletionTarget = null;
 		exprCompletionScrollOffset = 0;
@@ -5529,20 +5625,20 @@ public class ActionEditorPanel {
 
 	private void ensureExprCompletionHoverVisible() {
 		if (exprCompletionItems == null || exprCompletionTarget == null) return;
-		int visible = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.length)[4];
+		int visible = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.size())[4];
 		if (exprCompletionHoverIndex < exprCompletionScrollOffset) {
 			exprCompletionScrollOffset = exprCompletionHoverIndex;
 		} else if (exprCompletionHoverIndex >= exprCompletionScrollOffset + visible) {
 			exprCompletionScrollOffset = exprCompletionHoverIndex - visible + 1;
 		}
-		int maxScroll = Math.max(0, exprCompletionItems.length - visible);
+		int maxScroll = Math.max(0, exprCompletionItems.size() - visible);
 		exprCompletionScrollOffset = Math.max(0, Math.min(maxScroll, exprCompletionScrollOffset));
 	}
 
 	private void doRenderExprCompletion(GuiGraphics guiGraphics, int mouseX, int mouseY) {
 		if (exprCompletionItems == null || exprCompletionTarget == null) return;
 		Font font = Minecraft.getInstance().font;
-		int itemCount = exprCompletionItems.length;
+		int itemCount = exprCompletionItems.size();
 		int itemH = DROPDOWN_ITEM_H;
 		int[] bounds = computeCompletionBounds(exprCompletionTarget, itemCount);
 		int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
@@ -5572,10 +5668,14 @@ public class ActionEditorPanel {
 			if (itemIndex >= itemCount) break;
 			int iy = cy + i * itemH;
 			if (iy + itemH > cy + totalH) break;
+			ExprCompletionItem item = exprCompletionItems.get(itemIndex);
 			boolean hovered = itemIndex == exprCompletionHoverIndex;
 			if (hovered) guiGraphics.fill(cx + 1, iy, cx + contentW - 1, iy + itemH, 0x44FFFFFF);
-			guiGraphics.drawString(font, getFuncDisplayName(exprCompletionItems[itemIndex]), cx + 4, iy + 4,
-					hovered ? 0xFFFFDD66 : 0xFFDDDDDD, false);
+			int textColor = item.folder()
+					? (hovered ? 0xFFFFFFFF : 0xFFB0C4DE)
+					: (hovered ? 0xFFFFDD66 : 0xFFDDDDDD);
+			guiGraphics.drawString(font, item.label(), cx + 4 + item.depth() * 8, iy + 4,
+					textColor, false);
 		}
 		if (itemCount > visibleItems) {
 			int sbX = cx + cw - scrollbarW;

@@ -3,6 +3,8 @@ package gen;
 import com.google.gson.JsonPrimitive;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserBlockHitEffect;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserHitDispositionEffect;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserHitCallbackGate;
 import dev.xkmc.youkaishomecoming.content.spell.action.ContinueSourceAction;
@@ -68,12 +70,18 @@ public final class SpellCallbackContextTest {
 				source, velocity, movementStart, movementEnd, direction, laserStart,
 				laserEnd, clippedEnd, hit, normal, null);
 		ProjectileCallbackContext callback = context.callbackContext().orElseThrow();
+		SpellContext spellContext = new SpellContext(null, null, null, DifficultyModifiers.DEFAULT,
+				null, callback);
 		check("LASER_BLOCK_HIT_HAS_SPELL_HIT_CONTEXT", context.hitType() == SpellHitContext.HitType.BLOCK);
 		check("CALLBACK_POSITION_IS_HOOK_POINT", near(callback.position(), hit));
 		check("CALLBACK_SOURCE_POSITION_IS_LASER_ANCHOR", near(callback.sourcePosition(), source));
 		check("LASER_START_IS_BEAM_START", near(callback.laserStart(), laserStart));
 		check("LASER_END_IS_UNCLIPPED_END", near(callback.laserEnd(), laserEnd));
 		check("LASER_CLIPPED_END_IS_BLOCK_HIT", near(callback.laserClippedEnd(), clippedEnd));
+		check("SOURCE_END_READS_UNCLIPPED_LASER_END",
+				spellContext.callbackValue("source_end_z") == laserEnd.z);
+		check("SOURCE_CLIPPED_END_READS_VISIBLE_LASER_END",
+				spellContext.callbackValue("source_clipped_end_z") == clippedEnd.z);
 
 		ProjectileCallbackContext expiry = callback.asExpiry(hit, velocity);
 		check("LASER_EXPIRE_RETAINS_HIT_GEOMETRY",
@@ -86,6 +94,12 @@ public final class SpellCallbackContextTest {
 		check("LASER_CONTINUE_SOURCE_SKIPS_DEFAULT_DISCARD",
 				LaserHitDispositionEffect.from(SpellHitContext.HitDisposition.CONTINUE)
 						== LaserHitDispositionEffect.KEEP);
+		check("LASER_BLOCK_FALLBACK_CONTINUE_PASSES_THROUGH",
+				LaserBlockHitEffect.from(HitBehavior.CONTINUE) == LaserBlockHitEffect.PASS_THROUGH);
+		check("LASER_PASS_THROUGH_RETAINS_FULL_LENGTH",
+				LaserBlockHitEffect.PASS_THROUGH.visibleLength(40, 12.5) == 40);
+		check("LASER_NON_CONTINUE_RETAINS_CLIPPED_PREFIX",
+				LaserBlockHitEffect.CLIP_ONLY.visibleLength(40, 12.5) == 12.5);
 		check("LASER_DISCARD_SOURCE_SUPPRESSES_EXPIRY",
 				LaserHitDispositionEffect.from(SpellHitContext.HitDisposition.DISCARD)
 						== LaserHitDispositionEffect.DISCARD);
@@ -103,7 +117,7 @@ public final class SpellCallbackContextTest {
 		String[] aliases = {
 				"source_speed", "source_position_x", "source_velocity_y", "source_direction_z",
 				"source_size", "source_spread", "source_lifetime", "source_hook_x", "hook_x", "hookpos_z", "hit_y",
-				"start_z", "end_x", "clipped_end_y", "vx"
+				"start_z", "source_end_x", "source_clipped_end_y", "vx"
 		};
 		for (String alias : aliases) {
 			NumberProvider parsed = NumberExprParser.parse(alias);
@@ -111,6 +125,13 @@ public final class SpellCallbackContextTest {
 					parsed instanceof NumberProviders.CallbackValue value && alias.equals(value.key())
 							&& alias.equals(NumberExprParser.unparse(parsed)));
 		}
+		check("LEGACY_END_CALLBACK_NAME_IS_REJECTED", NumberExprParser.parse("end_x") == null);
+		check("LEGACY_LASER_END_CALLBACK_NAME_IS_REJECTED",
+				NumberExprParser.parse("laser_end_x") == null);
+		check("LEGACY_CLIPPED_END_CALLBACK_NAME_IS_REJECTED",
+				NumberExprParser.parse("clipped_end_y") == null);
+		check("LEGACY_LASER_CLIPPED_END_CALLBACK_NAME_IS_REJECTED",
+				NumberExprParser.parse("laser_clipped_end_y") == null);
 
 		ColorProvider sourceColor = ColorProvider.CODEC.parse(JsonOps.INSTANCE, new JsonPrimitive("source_color"))
 				.result().orElseThrow();

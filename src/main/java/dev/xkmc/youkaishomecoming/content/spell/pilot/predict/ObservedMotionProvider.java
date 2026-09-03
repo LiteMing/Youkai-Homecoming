@@ -98,8 +98,7 @@ public class ObservedMotionProvider implements ThreatProvider {
 	}
 
 	private static Threat captureLaser(YHBaseLaserEntity laser, int horizon) {
-		// Align with Vertical_radar / BaseLaser: anchor at BbHeight/2, look direction
-		Vec3 anchor = laser.position().add(0, laser.getBbHeight() / 2, 0);
+		Vec3 anchor = laser.beamStart();
 		Vec3 orient = laser.getLookAngle();
 		if (orient.lengthSqr() < 1e-12) {
 			Vec3 rot = laser.rot();

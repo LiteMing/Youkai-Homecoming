@@ -55,7 +55,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 
 	public void setDelayedMover(float v0, float v1, int prepare, int setup) {
 		var dir = getForward();
-		var pos = position;
+		var pos = beamStart();
 		var m = new CompositeMover();
 		m.add(prepare, new ZeroMover(dir, dir, prepare));
 		m.add(setup, new RectMover(pos, dir.scale(v0), Vec3.ZERO));
@@ -82,9 +82,9 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 		MoverInfo.OwnerInfo ownerInfo = snapshotOwnerInfo(getOwner());
 		Vec3 originalVelocity = getDeltaMovement();
 
-		MoverInfo zeroInfo = new MoverInfo(0, position(), originalVelocity, this, ownerInfo);
+		MoverInfo zeroInfo = new MoverInfo(0, beamStart(), originalVelocity, this, ownerInfo);
 		Vec3 startPos = targetMover.pos(zeroInfo);
-		setPos(startPos);
+		setBeamStart(startPos);
 
 		MoverInfo firstInfo = new MoverInfo(1, startPos, originalVelocity, this, ownerInfo);
 		ProjectileMovement firstMove = targetMover.move(firstInfo);
@@ -95,7 +95,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	@Override
 	public void tick() {
 		if (visualScaleFunction != null) {
-			updateVisualScaleDimensions(false);
+			updateVisualScaleDimensions(false, true);
 		}
 		super.tick();
 	}
@@ -112,7 +112,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {
 		if (mover != null) {
-			return mover.move(new MoverInfo(tickCount, pos, vec, this, tickData().ownerInfo));
+			return mover.move(new MoverInfo(tickCount, beamStartAt(pos), vec, this, tickData().ownerInfo));
 		}
 		return new ProjectileMovement(vec, rot());
 	}
@@ -126,7 +126,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	public void configureVisualScale(float scale, NumberProvider function) {
 		visualScale = Math.max(0.05f, scale);
 		visualScaleFunction = function;
-		updateVisualScaleDimensions(true);
+		updateVisualScaleDimensions(true, true);
 	}
 
 	public ItemStack getItem() {
@@ -136,7 +136,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 	public void readAdditionalSaveData(CompoundTag nbt) {
 		super.readAdditionalSaveData(nbt);
 		readScaleFunction(nbt);
-		updateVisualScaleDimensions(true);
+		updateVisualScaleDimensions(true, false);
 	}
 
 	@Override
@@ -160,7 +160,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 		if (tag != null) {
 			readScaleFunction(tag);
 		}
-		updateVisualScaleDimensions(true);
+		updateVisualScaleDimensions(true, false);
 	}
 
 	@Override
@@ -183,11 +183,13 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 		return (sizeCache == null ? 1 : sizeCache) * currentVisualScale;
 	}
 
-	private void updateVisualScaleDimensions(boolean force) {
+	private void updateVisualScaleDimensions(boolean force, boolean preserveBeamStart) {
 		float next = visualScaleFunction == null ? visualScale : evaluateVisualScaleFunction();
 		if (force || Math.abs(next - currentVisualScale) > VISUAL_SCALE_EPSILON) {
+			Vec3 start = preserveBeamStart ? beamStart() : null;
 			currentVisualScale = next;
 			refreshDimensions();
+			if (start != null) setBeamStart(start);
 		}
 	}
 
@@ -237,7 +239,7 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 		if (!level().isClientSide()) return;
 		if (!(getItem().getItem() instanceof LaserItem item)) return;
 		int col = item.color.getTextColor();
-		var pos = position().add(0, getBbHeight() / 2, 0);
+		var pos = beamStart();
 		DanmakuParticleHelper.line(level(), pos, getForward(), col, length, getBbWidth() / 2, random);
 	}
 

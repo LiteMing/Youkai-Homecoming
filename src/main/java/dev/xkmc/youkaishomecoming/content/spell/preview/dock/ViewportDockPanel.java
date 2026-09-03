@@ -164,9 +164,8 @@ public class ViewportDockPanel implements DockPanel {
 			if (source != selected) continue;
 			Vec3 anchor = entity.position();
 			if (entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser) {
-				double visibleLength = laser.earlyTerminate < 0
-						? laser.getLength() : Math.min(laser.getLength(), laser.earlyTerminate);
-				anchor = laser.position().add(0, laser.getBbHeight() / 2, 0)
+				double visibleLength = laser.effectiveLength(0);
+				anchor = laser.beamStart()
 						.add(laser.getForward().scale(visibleLength * 0.5));
 			}
 			Vec3 screen = viewport.worldToScreen(anchor);
@@ -362,12 +361,12 @@ public class ViewportDockPanel implements DockPanel {
 		if (viewport.isPerspectiveMode()) return;
 		int hm = hitTestMarker(mouseX, mouseY);
 		if (hm == 0) {
-			markerRing(graphics, scene.getHolder().getFakeCaster().position(), 7, 0xFFFF5555);
+			markerRing(graphics, scene.getCasterPos(), 7, 0xFFFF5555);
 			graphics.drawString(font, SpellEditorLocalization.t("Caster — drag to move"), mouseX + 8, mouseY - 4, 0xFFFF7777, true);
 			return;
 		}
 		if (hm == 1) {
-			markerRing(graphics, scene.getHolder().getFakeTarget().position(), 7, 0xFFFFEE55);
+			markerRing(graphics, scene.getTargetPos(), 7, 0xFFFFEE55);
 			graphics.drawString(font, SpellEditorLocalization.t("Entity Target — drag to move"), mouseX + 8, mouseY - 4, 0xFFFFEE77, true);
 			return;
 		}
@@ -828,7 +827,7 @@ public class ViewportDockPanel implements DockPanel {
 		}
 		if (viewport.isPerspectiveMode() && viewport.isTargetBoundToCamera()) {
 			Vec3 camPos = viewport.getCameraPos();
-			scene.setTargetPos(new Vec3(camPos.x, camPos.y - 1.6, camPos.z));
+			scene.setTargetPos(camPos);
 			scene.setTargetFacing(viewport.getCameraLookDirection());
 		}
 	}
@@ -931,7 +930,7 @@ public class ViewportDockPanel implements DockPanel {
 		int bestKind = -1;
 
 		if (viewport.isShowCasterMarker()) {
-			Vec3 cp = scene.getHolder().getFakeCaster().position();
+			Vec3 cp = scene.getCasterPos();
 			Vec3 sp = viewport.worldToScreen(cp);
 			double dx = sp.x - screenX, dy = sp.y - screenY;
 			double distSq = dx * dx + dy * dy;
@@ -941,7 +940,7 @@ public class ViewportDockPanel implements DockPanel {
 			}
 		}
 		if (viewport.isShowTargetMarker()) {
-			Vec3 tp = scene.getHolder().getFakeTarget().position();
+			Vec3 tp = scene.getTargetPos();
 			Vec3 sp = viewport.worldToScreen(tp);
 			double dx = sp.x - screenX, dy = sp.y - screenY;
 			double distSq = dx * dx + dy * dy;
@@ -995,9 +994,8 @@ public class ViewportDockPanel implements DockPanel {
 					best = new ProjectilePick(entity, danmaku.sourceActionIndex, sp);
 				}
 			} else if (entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser) {
-				Vec3 start = laser.position().add(0, laser.getBbHeight() / 2, 0);
-				double visibleLength = laser.earlyTerminate < 0
-						? laser.getLength() : Math.min(laser.getLength(), laser.earlyTerminate);
+				Vec3 start = laser.beamStart();
+				double visibleLength = laser.effectiveLength(0);
 				Vec3 end = start.add(laser.getForward().scale(visibleLength));
 				Vec3 screenStart = viewport.worldToScreen(start);
 				Vec3 screenEnd = viewport.worldToScreen(end);

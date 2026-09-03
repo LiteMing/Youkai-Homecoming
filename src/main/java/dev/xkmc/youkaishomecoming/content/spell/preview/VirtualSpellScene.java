@@ -145,7 +145,7 @@ public class VirtualSpellScene {
 		var config = YHModConfig.COMMON;
 		if (pilotRescueCooldown > 0) pilotRescueCooldown--;
 
-		Vec3 feet = holder.getTargetPos();
+		Vec3 feet = holder.getTargetFeetPos();
 		Vec3 curVel = holder.targetVelocity() == null ? Vec3.ZERO : holder.targetVelocity();
 		int horizon = pilot.profile().predictHorizon();
 		int topK = pilot.profile().threatTopK();
@@ -207,7 +207,7 @@ public class VirtualSpellScene {
 			);
 			vel = next.subtract(feet);
 		}
-		holder.setTargetPosAndVelocity(next, vel);
+		holder.setTargetFeetPosAndVelocity(next, vel);
 		lastPilotNanos = System.nanoTime() - t0;
 	}
 
@@ -405,37 +405,35 @@ public class VirtualSpellScene {
 	}
 
 	public Vec3 getCasterPos() {
-		return holder.getFakeCaster().position();
+		return holder.getCasterCenter();
 	}
 
 	public void setCasterPos(Vec3 pos) {
-		holder.getFakeCaster().setPos(pos);
+		holder.setCasterCenter(pos);
 	}
 
 	public void moveCaster(Vec3 delta) {
-		Vec3 current = holder.getFakeCaster().position();
-		holder.getFakeCaster().setPos(current.add(delta));
+		holder.setCasterCenter(holder.getCasterCenter().add(delta));
 	}
 
 	public void resetCasterPos() {
-		holder.getFakeCaster().setPos(0, 0, 0);
+		holder.setCasterCenter(Vec3.ZERO);
 	}
 
 	public void resetTargetPos() {
-		holder.setTargetPos(new Vec3(0, 0, -10));
+		holder.setTargetCenter(new Vec3(0, 0, -10));
 	}
 
 	public void moveTarget(Vec3 delta) {
-		Vec3 current = holder.getTargetPos();
-		holder.setTargetPos(current.add(delta));
+		holder.setTargetCenter(holder.getTargetCenter().add(delta));
 	}
 
 	public Vec3 getTargetPos() {
-		return holder.getTargetPos();
+		return holder.getTargetCenter();
 	}
 
 	public void setTargetPos(Vec3 pos) {
-		holder.setTargetPos(pos);
+		holder.setTargetCenter(pos);
 	}
 
 	public void setTargetFacing(Vec3 facing) {
@@ -448,13 +446,13 @@ public class VirtualSpellScene {
 
 	/** Set only the Y coordinate of the target position (target_height). */
 	public void setTargetHeight(double y) {
-		Vec3 current = holder.getTargetPos();
-		holder.setTargetPos(new Vec3(current.x, y, current.z));
+		Vec3 current = holder.getTargetCenter();
+		holder.setTargetCenter(new Vec3(current.x, y, current.z));
 	}
 
 	/** Get the target's Y coordinate (target_height). */
 	public double getTargetHeight() {
-		return holder.getTargetPos().y;
+		return holder.getTargetCenter().y;
 	}
 
 	// Target properties
@@ -582,9 +580,15 @@ public class VirtualSpellScene {
 					: entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser
 					? laser.sourceActionIndex : -1;
 			if (source != actionIndex) continue;
-			Vec3 position = pivot.add(rotateAroundAxis(entity.position().subtract(pivot), axis, radians));
+			Vec3 sourcePosition = entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser
+					? laser.beamStart() : entity.position();
+			Vec3 position = pivot.add(rotateAroundAxis(sourcePosition.subtract(pivot), axis, radians));
 			Vec3 velocity = rotateAroundAxis(entity.getDeltaMovement(), axis, radians);
-			entity.setPos(position);
+			if (entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser) {
+				laser.setBeamStart(position);
+			} else {
+				entity.setPos(position);
+			}
 			entity.setDeltaMovement(velocity);
 			Vec3 facing = entity instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity laser
 					? rotateAroundAxis(laser.getForward(), axis, radians) : velocity;

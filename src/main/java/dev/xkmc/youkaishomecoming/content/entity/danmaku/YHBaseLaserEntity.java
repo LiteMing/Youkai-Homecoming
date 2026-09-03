@@ -78,8 +78,8 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	public HitBehavior hitBehaviorEntity = HitBehavior.CONTINUE;
 	/**
 	 * Behavior after hitting a block:
-	 * All modes clip the beam at the wall without removing its visible prefix.
-	 * DISCARD suppresses expiry, EXPIRE triggers expiry once, and CONTINUE defers expiry to lifetime end.
+	 * CONTINUE passes through, DISCARD keeps the clipped prefix and suppresses expiry,
+	 * and EXPIRE keeps the clipped prefix and triggers expiry once.
 	 */
 	public HitBehavior hitBehaviorBlock = HitBehavior.CONTINUE;
 
@@ -144,6 +144,20 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		setup(damage, life, length, bypassWall,
 				(float) (-Mth.atan2(vec3.x, vec3.z) * Mth.RAD_TO_DEG),
 				(float) (-Mth.atan2(vec3.y, d0) * Mth.RAD_TO_DEG));
+	}
+
+	/** Logical laser origin used by spell actions, movers, rendering, and hit callbacks. */
+	public Vec3 beamStart() {
+		return beamStartAt(position());
+	}
+
+	/** Converts a logical beam origin to Minecraft's bottom-center entity position. */
+	public void setBeamStart(Vec3 start) {
+		setPos(start.x, start.y - getBbHeight() * 0.5, start.z);
+	}
+
+	public Vec3 beamStartAt(Vec3 entityPosition) {
+		return entityPosition.add(0, getBbHeight() * 0.5, 0);
 	}
 
 
@@ -227,7 +241,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	@Override
 	public boolean checkBlockHit() {
-		return !bypassWall;
+		return !bypassWall && !passesThroughBlocks();
 	}
 
 	public void setBypassWall(boolean bypassWall) {
@@ -281,7 +295,28 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	public float effectiveLength(float pTick) {
 		float visualLength = setupLength ? percentLoad(pTick) * length : length;
-		return LaserBlockHitEffect.clipLength(visualLength, earlyTerminate);
+		return effectiveBlockHitEffect().visibleLength(visualLength, earlyTerminate);
+	}
+
+	public boolean passesThroughBlocks() {
+		return effectiveBlockHitEffect() == LaserBlockHitEffect.PASS_THROUGH;
+	}
+
+	private LaserBlockHitEffect effectiveBlockHitEffect() {
+		if (hitCallbackHitType == SpellHitContext.HitType.BLOCK) {
+			return switch (hitCallbackDisposition) {
+				case KEEP -> LaserBlockHitEffect.PASS_THROUGH;
+				case DISCARD -> LaserBlockHitEffect.CLIP_AND_SUPPRESS_EXPIRY;
+				case EXPIRE -> LaserBlockHitEffect.CLIP_AND_RUN_EXPIRY;
+				case UNRESOLVED -> LaserBlockHitEffect.from(hitBehaviorBlock);
+			};
+		}
+		// The first wall must remain detectable until its one-shot callback decides
+		// whether CONTINUE overrides the configured fallback behavior.
+		if (onHitBlockAction != null && !hitCallbackGate.consumed()) {
+			return LaserBlockHitEffect.CLIP_ONLY;
+		}
+		return LaserBlockHitEffect.from(hitBehaviorBlock);
 	}
 
 	@Override
@@ -305,7 +340,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	protected void finishTick(TickData data) {
 		super.finishTick(data);
 		if (level().isClientSide()) {
-			Vec3 src = (data.moveDst == null ? position() : data.moveDst).add(0, getBbHeight() / 2f, 0);
+			Vec3 src = beamStartAt(data.moveDst == null ? position() : data.moveDst);
 			earlyTerminate = data.blockHit == null ? -1 : src.distanceTo(data.blockHit.getLocation());
 		} else if (data.blockHit == null) {
 			activeBlockHit = null;
@@ -314,20 +349,21 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		// Like danmaku, the hook is transient (server-only); the client copy has no onTrail.
 		if (onTrail != null && tickCount > 0 && tickCount % trailInterval == 0) {
 			CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-			Vec3 pos = data.moveSrc == null ? position() : data.moveSrc;
+			Vec3 entityMoveStart = data.moveSrc == null ? position() : data.moveSrc;
+			Vec3 pos = beamStartAt(entityMoveStart);
 			Vec3 vec = data.inputVelocity == null ? getDeltaMovement() : data.inputVelocity;
 			Vec3 direction = getForward();
-			Vec3 start = pos.add(0, getBbHeight() / 2f, 0);
+			Vec3 start = pos;
 			Vec3 end = start.add(direction.scale(length));
 			Vec3 clipped = data.blockHit == null ? end : data.blockHit.getLocation();
 			var callback = ProjectileCallbackContext.laser(ProjectileCallbackContext.Kind.TRAIL, this,
-					pos, vec, pos, data.movementEndOr(pos.add(vec)), direction, vec.length(),
+					pos, vec, pos, beamStartAt(data.movementEndOr(entityMoveStart.add(vec))), direction, vec.length(),
 					start, end, clipped, null, null, null);
 			if (holder != null) onTrail.execute(holder, callback);
 			else onTrail.execute(callback);
 		}
 		if (!level().isClientSide() && tickCount > life) {
-			runExpiryActionOnce(null, position(), getDeltaMovement());
+			runExpiryActionOnce(null, beamStart(), getDeltaMovement());
 			markErased(false);
 		}
 	}
@@ -437,6 +473,8 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 			}
 			activeBlockHit = blockPos;
 			switch (LaserBlockHitEffect.from(hitBehaviorBlock)) {
+				case PASS_THROUGH -> {
+				}
 				case CLIP_ONLY -> {
 				}
 				case CLIP_AND_RUN_EXPIRY -> runExpiryActionOnce(null,
@@ -447,7 +485,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	private void expireLaserNow() {
-		expireLaserNow(position(), getDeltaMovement());
+		expireLaserNow(beamStart(), getDeltaMovement());
 	}
 
 	private void expireLaserNow(Vec3 pos, Vec3 velocity) {
@@ -482,7 +520,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	private ProjectileCallbackContext createExpiryContext(Vec3 pos, Vec3 velocity) {
 		LaserGeometry geometry = laserGeometry(tickData().blockHit);
 		var callback = ProjectileCallbackContext.laser(ProjectileCallbackContext.Kind.EXPIRY, this,
-				position(), velocity, geometry.movementStart(), geometry.movementEnd(),
+				beamStart(), velocity, geometry.movementStart(), geometry.movementEnd(),
 				geometry.direction(), velocity.length(), geometry.start(), geometry.end(),
 				geometry.clippedEnd(), null, null, null);
 		return callback.asExpiry(pos, velocity);
@@ -513,7 +551,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		Vec3 normal = new Vec3(hit.getDirection().getStepX(), hit.getDirection().getStepY(), hit.getDirection().getStepZ());
 		Vec3 incoming = tickData().incomingMovementOr(getDeltaMovement());
 		return SpellHitContext.laserHit(this, SpellHitContext.HitType.BLOCK,
-				position(), incoming, geometry.movementStart(), geometry.movementEnd(),
+				beamStart(), incoming, geometry.movementStart(), geometry.movementEnd(),
 				geometry.direction(), geometry.start(), geometry.end(), geometry.clippedEnd(),
 				hit.getLocation(), normal, null);
 	}
@@ -522,7 +560,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		Vec3 hitPos = closestPointOnSegment(entity.getBoundingBox().getCenter(), geometry.start(), geometry.clippedEnd());
 		Vec3 incoming = tickData().incomingMovementOr(getDeltaMovement());
 		return SpellHitContext.laserHit(this, SpellHitContext.HitType.ENTITY,
-				position(), incoming, geometry.movementStart(), geometry.movementEnd(),
+				beamStart(), incoming, geometry.movementStart(), geometry.movementEnd(),
 				geometry.direction(), geometry.start(), geometry.end(), geometry.clippedEnd(),
 				hitPos, Vec3.ZERO, entity);
 	}
@@ -547,11 +585,11 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	private LaserGeometry laserGeometry(@Nullable BlockHitResult blockHit) {
 		Vec3 direction = getForward();
-		Vec3 start = position().add(0, getBbHeight() / 2f, 0);
+		Vec3 start = beamStart();
 		Vec3 end = start.add(direction.scale(length));
 		Vec3 clippedEnd = blockHit == null ? end : blockHit.getLocation();
-		Vec3 movementStart = tickData().moveSrc == null ? position() : tickData().moveSrc;
-		Vec3 movementEnd = tickData().movementEndOr(position());
+		Vec3 movementStart = beamStartAt(tickData().moveSrc == null ? position() : tickData().moveSrc);
+		Vec3 movementEnd = beamStartAt(tickData().movementEndOr(position()));
 		return new LaserGeometry(direction, start, end, clippedEnd, movementStart, movementEnd);
 	}
 
@@ -569,7 +607,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	@Override
 	public AABB getBoundingBoxForCulling() {
-		var src = position().add(0, getBbHeight() / 2f, 0);
+		var src = beamStart();
 		return new AABB(src, src.add(getForward().scale(length))).inflate(getBbWidth() / 2f);
 	}
 

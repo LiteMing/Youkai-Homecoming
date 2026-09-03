@@ -453,9 +453,8 @@ public class NumberExprParser {
 					"movement_end_x", "movement_end_y", "movement_end_z",
 					"hit_x", "hit_y", "hit_z", "hit_normal_x", "hit_normal_y", "hit_normal_z",
 					"laser_start_x", "laser_start_y", "laser_start_z", "start_x", "start_y", "start_z",
-					"laser_end_x", "laser_end_y", "laser_end_z", "end_x", "end_y", "end_z",
-					"laser_clipped_end_x", "laser_clipped_end_y", "laser_clipped_end_z",
-					"clipped_end_x", "clipped_end_y", "clipped_end_z"
+					"source_end_x", "source_end_y", "source_end_z",
+					"source_clipped_end_x", "source_clipped_end_y", "source_clipped_end_z"
 					-> new NumberProviders.CallbackValue(name);
 			default -> throw new ParseException("Unknown keyword: " + name);
 		};

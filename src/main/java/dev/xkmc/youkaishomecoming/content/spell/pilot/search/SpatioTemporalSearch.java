@@ -66,8 +66,10 @@ public final class SpatioTemporalSearch {
 					continue;
 				}
 				// Terrain uses full body box
+				var currentBox = state.selfBox.bodyAt(cur.feet);
 				var nextBox = state.selfBox.bodyAt(nextFeet);
-				if (!state.oracle.isFree(nextBox)) continue;
+				if (!state.oracle.isPathFree(currentBox, act.velocity())
+						|| !state.oracle.isFree(nextBox)) continue;
 
 				int tick = Math.min(cur.depth, snapshot.horizon() - 1);
 				ScoreResult sc = scorer.score(snapshot, state.selfBox, cur.feet, act.velocity(), tick, state);

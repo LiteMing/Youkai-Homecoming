@@ -130,12 +130,12 @@ public class SpellContext {
 			case "laser_start_x", "start_x" -> componentOr(c.laserStart(), c.movementStart(), 0);
 			case "laser_start_y", "start_y" -> componentOr(c.laserStart(), c.movementStart(), 1);
 			case "laser_start_z", "start_z" -> componentOr(c.laserStart(), c.movementStart(), 2);
-			case "laser_end_x", "end_x" -> componentOr(c.laserEnd(), c.movementEnd(), 0);
-			case "laser_end_y", "end_y" -> componentOr(c.laserEnd(), c.movementEnd(), 1);
-			case "laser_end_z", "end_z" -> componentOr(c.laserEnd(), c.movementEnd(), 2);
-			case "laser_clipped_end_x", "clipped_end_x" -> component(c.laserClippedEnd(), 0);
-			case "laser_clipped_end_y", "clipped_end_y" -> component(c.laserClippedEnd(), 1);
-			case "laser_clipped_end_z", "clipped_end_z" -> component(c.laserClippedEnd(), 2);
+			case "source_end_x" -> componentOr(c.laserEnd(), c.movementEnd(), 0);
+			case "source_end_y" -> componentOr(c.laserEnd(), c.movementEnd(), 1);
+			case "source_end_z" -> componentOr(c.laserEnd(), c.movementEnd(), 2);
+			case "source_clipped_end_x" -> component(c.laserClippedEnd(), 0);
+			case "source_clipped_end_y" -> component(c.laserClippedEnd(), 1);
+			case "source_clipped_end_z" -> component(c.laserClippedEnd(), 2);
 			default -> 0;
 		};
 	}

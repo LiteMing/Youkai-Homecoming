@@ -282,13 +282,16 @@ public class PilotPredictTest {
 
 	private static void testLaserBlockHitSemantics() {
 		System.out.println("[Laser block hit semantics]");
-		check("continue keeps wall-clipped prefix",
-				LaserBlockHitEffect.from(HitBehavior.CONTINUE) == LaserBlockHitEffect.CLIP_ONLY);
+		check("continue passes through wall",
+				LaserBlockHitEffect.from(HitBehavior.CONTINUE) == LaserBlockHitEffect.PASS_THROUGH);
 		check("discard keeps prefix and suppresses expiry",
 				LaserBlockHitEffect.from(HitBehavior.DISCARD) == LaserBlockHitEffect.CLIP_AND_SUPPRESS_EXPIRY);
 		check("expire keeps prefix and runs expiry",
 				LaserBlockHitEffect.from(HitBehavior.EXPIRE) == LaserBlockHitEffect.CLIP_AND_RUN_EXPIRY);
-		approx("wall removes only laser suffix", LaserBlockHitEffect.clipLength(40, 12.5), 12.5, 1e-6);
+		approx("continue preserves full laser length",
+				LaserBlockHitEffect.PASS_THROUGH.visibleLength(40, 12.5), 40, 1e-6);
+		approx("clip behavior removes only laser suffix",
+				LaserBlockHitEffect.CLIP_ONLY.visibleLength(40, 12.5), 12.5, 1e-6);
 		approx("short growing beam remains shorter than wall",
 				LaserBlockHitEffect.clipLength(8, 12.5), 8, 1e-6);
 		approx("no wall restores full laser", LaserBlockHitEffect.clipLength(40, -1), 40, 1e-6);

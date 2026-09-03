@@ -409,8 +409,7 @@ public class SpellPreviewScreen extends Screen {
 			boolean newPersp = !viewport.isPerspectiveMode();
 			viewport.setPerspectiveMode(newPersp);
 			if (newPersp) {
-				// Set camera to dummy target position
-				viewport.setCameraToTarget(scene.getTargetPos());
+				viewport.setCameraToTarget(scene.getTargetPos(), scene.getCasterPos());
 			}
 			rebuildScreen();
 		}, fullEdit, rightLimit);
@@ -920,54 +919,46 @@ public class SpellPreviewScreen extends Screen {
 	private void onGroupAngleDragged(double angleDelta) {
 		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
 		SpellAction action = actionEditorPanel.getCurrentAction();
-		if (action instanceof FireDanmakuAction fda) {
-			// Determine which axis to rotate based on viewport's rotate mode
-			int axis = viewportPanel != null ? viewportPanel.getRotateAxis() : 1;
-			if (axis < 0) axis = 1; // default Y if not in rotate mode
+		if (!supportsGroupRotation(action)) return;
+		int axis = viewportPanel != null ? viewportPanel.getRotateAxis() : 1;
+		if (axis < 0) axis = 1;
+		GroupRotation current = groupRotationOf(action).orElse(
+				new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
+		rotatePausedActionPreview(action, current, axis, angleDelta);
+		NumberProvider newX = current.rotX(), newY = current.rotY(), newZ = current.rotZ();
+		if (axis == 0) newX = bumpOffset(newX, angleDelta);
+		else if (axis == 1) newY = bumpOffset(newY, angleDelta);
+		else newZ = bumpOffset(newZ, angleDelta);
+		SpellAction newAction = withGroupRotation(action,
+				Optional.of(new GroupRotation(newX, newY, newZ)));
+		onActionEditedTransient(newAction);
+		markChanged();
+		invalidateCurrentSnapshot();
+		setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
+	}
 
-			GroupRotation current = fda.groupRotation().orElse(
-					new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
-			rotatePausedActionPreview(action, current, axis, angleDelta);
-			NumberProvider newX = current.rotX(), newY = current.rotY(), newZ = current.rotZ();
-			NumberProvider bumped;
-			switch (axis) {
-				case 0 -> {
-					bumped = bumpOffset(current.rotX(), angleDelta);
-					newX = bumped;
-				}
-				case 1 -> {
-					bumped = bumpOffset(current.rotY(), angleDelta);
-					newY = bumped;
-				}
-				case 2 -> {
-					bumped = bumpOffset(current.rotZ(), angleDelta);
-					newZ = bumped;
-				}
-			}
-			var newGr = new GroupRotation(newX, newY, newZ);
-			var newAction = fda.withGroupRotation(Optional.of(newGr));
-			onActionEditedTransient(newAction);
-			markChanged();
-			invalidateCurrentSnapshot();
-			if (actionEditorPanel != null) {
-				setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
-			}
-		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction shooter) {
-			int axis = viewportPanel != null ? viewportPanel.getRotateAxis() : 1;
-			if (axis < 0) axis = 1;
-			GroupRotation current = shooter.groupRotation().orElse(
-					new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
-			rotatePausedActionPreview(action, current, axis, angleDelta);
-			NumberProvider newX = current.rotX(), newY = current.rotY(), newZ = current.rotZ();
-			if (axis == 0) newX = bumpOffset(newX, angleDelta);
-			else if (axis == 1) newY = bumpOffset(newY, angleDelta);
-			else newZ = bumpOffset(newZ, angleDelta);
-			var newAction = shooter.withGroupRotation(Optional.of(new GroupRotation(newX, newY, newZ)));
-			onActionEditedTransient(newAction);
-			markChanged();
-			invalidateCurrentSnapshot();
-			setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
+	private static boolean supportsGroupRotation(@Nullable SpellAction action) {
+		return action instanceof FireDanmakuAction
+				|| action instanceof FireLaserAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
+	}
+
+	private static Optional<GroupRotation> groupRotationOf(SpellAction action) {
+		if (action instanceof FireDanmakuAction fire) return fire.groupRotation();
+		if (action instanceof FireLaserAction laser) return laser.groupRotation();
+		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction shooter) {
+			return shooter.groupRotation();
 		}
+		return Optional.empty();
+	}
+
+	private static SpellAction withGroupRotation(SpellAction action, Optional<GroupRotation> rotation) {
+		if (action instanceof FireDanmakuAction fire) return fire.withGroupRotation(rotation);
+		if (action instanceof FireLaserAction laser) return laser.withGroupRotation(rotation);
+		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction shooter) {
+			return shooter.withGroupRotation(rotation);
+		}
+		return action;
 	}
 
 	private void rotatePausedActionPreview(SpellAction action, GroupRotation rotation, int axis, double angleDelta) {
@@ -978,6 +969,9 @@ public class SpellPreviewScreen extends Screen {
 		if (action instanceof FireDanmakuAction fire) {
 			origin = fire.origin();
 			aim = fire.aimMode();
+		} else if (action instanceof FireLaserAction laser) {
+			origin = laser.origin();
+			aim = laser.aimMode();
 		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction shooter) {
 			origin = shooter.origin();
 			aim = shooter.aimMode();
@@ -1026,8 +1020,7 @@ public class SpellPreviewScreen extends Screen {
 	private void updateRotationGizmoForAction(@Nullable SpellAction action) {
 		if (viewportPanel != null) {
 			viewportPanel.setRotationGizmo(false, 0, 0, 0);
-			viewportPanel.setGroupRotationAvailable(action instanceof FireDanmakuAction
-					|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction);
+			viewportPanel.setGroupRotationAvailable(supportsGroupRotation(action));
 		}
 	}
 

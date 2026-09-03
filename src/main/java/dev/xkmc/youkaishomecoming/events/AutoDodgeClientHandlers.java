@@ -337,11 +337,13 @@ public class AutoDodgeClientHandlers {
 		if (toPlayer.dot(perp) < 0) perp = perp.scale(-1);
 		Vec3 step = perp.scale(speed);
 		// Prefer free side; if blocked try opposite
-		AABB next = player.getBoundingBox().move(step.x, 0, step.z);
-		if (!player.level().noCollision(player, next)) {
+		var oracle = new LevelCollisionOracle(player.level(), player);
+		AABB current = player.getBoundingBox();
+		AABB next = current.move(step.x, 0, step.z);
+		if (!oracle.isPathFree(current, step) || !oracle.isFree(next)) {
 			step = perp.scale(-speed);
-			next = player.getBoundingBox().move(step.x, 0, step.z);
-			if (!player.level().noCollision(player, next)) return Vec3.ZERO;
+			next = current.move(step.x, 0, step.z);
+			if (!oracle.isPathFree(current, step) || !oracle.isFree(next)) return Vec3.ZERO;
 		}
 		return step;
 	}
@@ -381,11 +383,13 @@ public class AutoDodgeClientHandlers {
 			desired = new Vec3(desired.x, 0, desired.z);
 			if (desired.lengthSqr() < 1e-10) return;
 		}
-		AABB next = player.getBoundingBox().move(desired.x, Math.max(0, desired.y), desired.z);
-		if (!player.level().noCollision(player, next)) {
+		Vec3 pathDelta = desired;
+		var oracle = new LevelCollisionOracle(player.level(), player);
+		AABB next = player.getBoundingBox().move(pathDelta);
+		if (!oracle.isPathFree(player.getBoundingBox(), pathDelta) || !oracle.isFree(next)) {
 			Vec3 h = new Vec3(desired.x, 0, desired.z);
 			next = player.getBoundingBox().move(h.x, 0, h.z);
-			if (!player.level().noCollision(player, next)) return;
+			if (!oracle.isPathFree(player.getBoundingBox(), h) || !oracle.isFree(next)) return;
 			desired = h;
 		}
 		if (replace) {
@@ -464,7 +468,7 @@ public class AutoDodgeClientHandlers {
 	 */
 	private static double threatScanDistSqr(Entity e, Vec3 self) {
 		if (e instanceof YHBaseLaserEntity laser) {
-			Vec3 start = laser.position().add(0, laser.getBbHeight() / 2.0, 0);
+			Vec3 start = laser.beamStart();
 			Vec3 dir = laser.getLookAngle();
 			if (dir.lengthSqr() < 1e-12) dir = new Vec3(0, 0, 1);
 			dir = dir.normalize();

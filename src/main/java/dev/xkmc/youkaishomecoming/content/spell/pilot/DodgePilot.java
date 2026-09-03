@@ -140,8 +140,9 @@ public final class DodgePilot {
 		}
 
 		if (desired.lengthSqr() > 1e-8) {
+			var currentBox = state.selfBox.bodyAt(state.feet);
 			var nextBox = state.selfBox.bodyAt(state.feet.add(desired));
-			if (!state.oracle.isFree(nextBox)) {
+			if (!state.oracle.isPathFree(currentBox, desired) || !state.oracle.isFree(nextBox)) {
 				desired = Vec3.ZERO;
 			}
 		}

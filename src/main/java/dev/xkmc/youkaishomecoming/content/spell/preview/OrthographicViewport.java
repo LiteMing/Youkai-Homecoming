@@ -182,18 +182,17 @@ public class OrthographicViewport {
 	}
 
 	/**
-	 * Set camera position to the dummy target position when entering perspective.
-	 * Camera looks toward the caster (at origin).
+	 * Set the camera at the preview target's collision center and face the caster center.
 	 */
-	public void setCameraToTarget(Vec3 targetPos) {
-		this.camX = targetPos.x;
-		this.camY = targetPos.y + 1.6; // eye height
-		this.camZ = targetPos.z;
-		// Compute yaw to look toward origin (caster position)
-		double dx = -targetPos.x;
-		double dz = -targetPos.z;
-		this.camYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-		this.camPitch = 0;
+	public void setCameraToTarget(Vec3 targetCenter, Vec3 casterCenter) {
+		this.camX = targetCenter.x;
+		this.camY = targetCenter.y;
+		this.camZ = targetCenter.z;
+		Vec3 look = casterCenter.subtract(targetCenter);
+		if (look.lengthSqr() > 1.0e-12) {
+			this.camYaw = (float) Math.toDegrees(Math.atan2(-look.x, look.z));
+			this.camPitch = (float) Math.toDegrees(-Math.atan2(look.y, look.horizontalDistance()));
+		}
 	}
 
 	public Vec3 getCameraPos() {
@@ -818,6 +817,9 @@ public class OrthographicViewport {
 		com.mojang.blaze3d.platform.GlStateManager._viewport(fbX, fbY, fbW, fbH);
 
 		// 5. Clear depth buffer in this region so 3D content isn't occluded by GUI
+		// glClear(GL_DEPTH_BUFFER_BIT) is ignored while depth writes are disabled.
+		// render() enters with the GUI depth mask disabled, so restore it first.
+		RenderSystem.depthMask(true);
 		org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
 		org.lwjgl.opengl.GL11.glScissor(fbX, fbY, fbW, fbH);
 		org.lwjgl.opengl.GL11.glClear(org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT);
@@ -1151,20 +1153,24 @@ public class OrthographicViewport {
 
 		// Caster marker - red cross + diamond
 		if (showCasterMarker) {
-			Vec3 cp = scene.getHolder().getFakeCaster().position();
+			Vec3 cp = scene.getCasterPos();
 			float cx = (float) cp.x, cy = (float) cp.y, cz = (float) cp.z;
 			float cs = 0.8f;
 			drawCross3D(builder, mat, cx, cy, cz, cs, 1f, 0.3f, 0.3f, 1f);
 			drawDiamond(builder, mat, cx, cy, cz, cs, 1f, 0.2f, 0.2f, 1f);
+			drawAabb(builder, mat, scene.getHolder().getFakeCaster().getBoundingBox(),
+					1f, 0.2f, 0.2f, 0.45f);
 		}
 
 		// Target marker - yellow cross + diamond
 		if (showTargetMarker) {
-			Vec3 tp = scene.getHolder().getFakeTarget().position();
+			Vec3 tp = scene.getTargetPos();
 			float tx = (float) tp.x, ty = (float) tp.y, tz = (float) tp.z;
 			float ts = 1.0f;
 			drawCross3D(builder, mat, tx, ty, tz, ts, 1f, 1f, 0.2f, 1f);
 			drawDiamond(builder, mat, tx, ty, tz, ts, 1f, 0.8f, 0f, 1f);
+			drawAabb(builder, mat, scene.getEntityTargetCollisionBox(),
+					1f, 0.8f, 0f, 0.6f);
 			Vec3 bp = scene.getBlockTargetHandlePos();
 			drawCross3D(builder, mat, (float) bp.x, (float) bp.y, (float) bp.z,
 					0.7f, 0.25f, 0.8f, 1f, 1f);

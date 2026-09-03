@@ -113,10 +113,10 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	public PreviewCardHolder(Level level) {
 		this.level = level;
 		this.fakeCaster = new FakeCasterEntity(level, this);
-		this.fakeCaster.setPos(0, 0, 0);
+		setEntityCenter(this.fakeCaster, Vec3.ZERO);
 		this.fakeCaster.setInvisible(true);
 		this.fakeTarget = new ArmorStand(EntityType.ARMOR_STAND, level);
-		this.fakeTarget.setPos(0, 0, -10);
+		setEntityCenter(this.fakeTarget, new Vec3(0, 0, -10));
 		this.fakeTarget.setInvisible(true);
 	}
 
@@ -126,7 +126,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	@Override
 	public Vec3 center() {
-		return fakeCaster.position().add(0, fakeCaster.getBbHeight() / 2, 0);
+		return fakeCaster.getBoundingBox().getCenter();
 	}
 
 	@Override
@@ -139,7 +139,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	@Nullable
 	@Override
 	public Vec3 target() {
-		return fakeTarget.position().add(0, fakeTarget.getBbHeight() / 2, 0);
+		return fakeTarget.getBoundingBox().getCenter();
 	}
 
 	@Override
@@ -170,7 +170,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		ItemLaserEntity laser = new ItemLaserEntity(YHEntities.ITEM_LASER.get(), fakeCaster, level);
 		laser.setItem(type.get(color).asStack());
 		laser.setup(getDamage(type), life, len, true, vec);
-		laser.setPos(pos);
+		laser.setBeamStart(pos);
 		laser.setupLength = type.setupLength();
 		return laser;
 	}
@@ -329,7 +329,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 					}
 					if (e instanceof ItemLaserEntity laser && laser.afterExpiry != null) {
 						laser.runExpiryActionOnce(this, createPreviewLaserExpiryContext(
-								laser, laser.position(), laser.getDeltaMovement()));
+								laser, laser.beamStart(), laser.getDeltaMovement()));
 					}
 					forgetProjectile(sp);
 					iterator.remove();
@@ -361,8 +361,12 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			Entity entity = localEntities.get(i);
 			if (!(entity instanceof SimplifiedProjectile projectile) || projectile.tickCount <= 0) continue;
 			List<PreviewHit> hits = new ArrayList<>(2);
-			java.util.Optional<PreviewHit> blockHit = findTargetHit(
-					projectile, getBlockTargetCollisionBox(), PreviewTarget.HitType.BLOCK);
+			// Match the live projectile path: a pass-through projectile must not
+			// spend time searching for a clipped endpoint.  This is especially
+			// important for lasers with the default CONTINUE behavior and no hook.
+			java.util.Optional<PreviewHit> blockHit = shouldProbeBlock(projectile)
+					? findTargetHit(projectile, getBlockTargetCollisionBox(), PreviewTarget.HitType.BLOCK)
+					: java.util.Optional.empty();
 			if (projectile instanceof YHBaseLaserEntity laser) {
 				laser.earlyTerminate = blockHit.map(hit -> Math.sqrt(hit.distanceSqr())).orElse(-1.0);
 			}
@@ -412,7 +416,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			if (type == PreviewTarget.HitType.ENTITY) {
 				targetBox = targetBox.inflate(laser.getEffectiveHitRadius());
 			}
-			from = laser.position().add(0, laser.getBbHeight() / 2, 0);
+			from = laser.beamStart();
 			float length = type == PreviewTarget.HitType.BLOCK
 					? (float) laser.getLength() : laser.effectiveLength(0);
 			to = from.add(laser.getForward().scale(length));
@@ -456,6 +460,11 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 					hit.type() == PreviewTarget.HitType.ENTITY ? laser.onHitEntityAction : laser.onHitBlockAction,
 					hit.type() == PreviewTarget.HitType.ENTITY ? laser.hitBehaviorEntity : laser.hitBehaviorBlock);
 		}
+	}
+
+	private boolean shouldProbeBlock(SimplifiedProjectile projectile) {
+		return !(projectile instanceof dev.xkmc.fastprojectileapi.entity.BaseProjectile base)
+				|| base.checkBlockHit();
 	}
 
 	private void handlePreviewLaserHook(ItemLaserEntity laser, PreviewHit hit,
@@ -504,6 +513,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 		if (priorKeepOnBlock) return;
 		switch (LaserBlockHitEffect.from(behavior)) {
+			case PASS_THROUGH -> {
+			}
 			case CLIP_ONLY -> {
 			}
 			case CLIP_AND_SUPPRESS_EXPIRY -> laser.suppressExpiryAction();
@@ -531,17 +542,17 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	private SpellHitContext createPreviewLaserHitContext(ItemLaserEntity laser, PreviewHit hit) {
 		Vec3 direction = laser.getForward();
-		Vec3 start = laser.position().add(0, laser.getBbHeight() / 2, 0);
+		Vec3 start = laser.beamStart();
 		Vec3 end = start.add(direction.scale(laser.getLength()));
-		Vec3 clippedEnd = laser.earlyTerminate >= 0
+		Vec3 clippedEnd = !laser.passesThroughBlocks() && laser.earlyTerminate >= 0
 				? start.add(direction.scale(Math.min(laser.getLength(), laser.earlyTerminate))) : end;
 		if (hit.type() == PreviewTarget.HitType.BLOCK) clippedEnd = hit.position();
-		Vec3 movementStart = new Vec3(laser.xOld, laser.yOld, laser.zOld);
-		Vec3 movementEnd = laser.position();
+		Vec3 movementStart = laser.beamStartAt(new Vec3(laser.xOld, laser.yOld, laser.zOld));
+		Vec3 movementEnd = laser.beamStart();
 		SpellHitContext.HitType type = hit.type() == PreviewTarget.HitType.BLOCK
 				? SpellHitContext.HitType.BLOCK : SpellHitContext.HitType.ENTITY;
 		Entity hitEntity = type == SpellHitContext.HitType.ENTITY ? targetEntity() : null;
-		return SpellHitContext.laserHit(laser, type, laser.position(), laser.getDeltaMovement(),
+		return SpellHitContext.laserHit(laser, type, laser.beamStart(), laser.getDeltaMovement(),
 				movementStart, movementEnd, direction, start, end, clippedEnd, hit.position(),
 				hit.normal(), hitEntity);
 	}
@@ -549,13 +560,13 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private ProjectileCallbackContext createPreviewLaserExpiryContext(ItemLaserEntity laser,
 			Vec3 position, Vec3 velocity) {
 		Vec3 direction = laser.getForward();
-		Vec3 start = laser.position().add(0, laser.getBbHeight() / 2, 0);
+		Vec3 start = laser.beamStart();
 		Vec3 end = start.add(direction.scale(laser.getLength()));
-		Vec3 clippedEnd = laser.earlyTerminate >= 0
+		Vec3 clippedEnd = !laser.passesThroughBlocks() && laser.earlyTerminate >= 0
 				? start.add(direction.scale(Math.min(laser.getLength(), laser.earlyTerminate))) : end;
-		Vec3 movementStart = new Vec3(laser.xOld, laser.yOld, laser.zOld);
+		Vec3 movementStart = laser.beamStartAt(new Vec3(laser.xOld, laser.yOld, laser.zOld));
 		var callback = ProjectileCallbackContext.laser(ProjectileCallbackContext.Kind.EXPIRY, laser,
-				laser.position(), velocity, movementStart, laser.position(), direction,
+				laser.beamStart(), velocity, movementStart, laser.beamStart(), direction,
 				velocity.length(), start, end, clippedEnd, null, null, null);
 		return callback.asExpiry(position, velocity);
 	}
@@ -795,12 +806,13 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	public void setTargetDistance(float distance) {
 		Vec3 dir = forward();
-		fakeTarget.setPos(center().add(dir.scale(distance)));
+		setTargetCenter(center().add(dir.scale(distance)));
 	}
 
-	public void setTargetPos(Vec3 pos) {
-		Vec3 prev = fakeTarget.position();
-		fakeTarget.setPos(pos);
+	/** Editor-facing target coordinate. Always the center of the collision box. */
+	public void setTargetCenter(Vec3 pos) {
+		Vec3 prev = getTargetCenter();
+		setEntityCenter(fakeTarget, pos);
 		// Maintain velocity by finite difference unless explicitly set the same tick by pilot
 		this.targetVelocity = pos.subtract(prev);
 	}
@@ -823,14 +835,31 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		return fakeTarget.getLookAngle();
 	}
 
-	/** Set position and velocity together (pilot path — avoids double-diff). */
-	public void setTargetPosAndVelocity(Vec3 pos, Vec3 velocity) {
+	/** Set feet position and velocity together (pilot path - avoids double-diff). */
+	public void setTargetFeetPosAndVelocity(Vec3 pos, Vec3 velocity) {
 		fakeTarget.setPos(pos);
 		this.targetVelocity = velocity == null ? Vec3.ZERO : velocity;
 	}
 
-	public Vec3 getTargetPos() {
+	/** Internal pilot coordinate. Minecraft entity positions are bottom-center. */
+	public Vec3 getTargetFeetPos() {
 		return fakeTarget.position();
+	}
+
+	public Vec3 getTargetCenter() {
+		return fakeTarget.getBoundingBox().getCenter();
+	}
+
+	public Vec3 getCasterCenter() {
+		return fakeCaster.getBoundingBox().getCenter();
+	}
+
+	public void setCasterCenter(Vec3 pos) {
+		setEntityCenter(fakeCaster, pos);
+	}
+
+	private static void setEntityCenter(Entity entity, Vec3 center) {
+		entity.setPos(center.x, center.y - entity.getBbHeight() * 0.5, center.z);
 	}
 
 	public AABB getEntityTargetCollisionBox() {

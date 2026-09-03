@@ -846,7 +846,9 @@ public final class SpellAnalyzer {
 			long perProjectile = ceilDiv(lifetimeUpper, Math.max(1, trailInterval));
 			walkHook("on_trail", onTrail.get(), satMul(contrib, perProjectile), projection, mult);
 		}
-		if (onHitEntity.isPresent() || onHitBlock.isPresent()) {
+		boolean hasEntityHook = onHitEntity.filter(actions -> !actions.isEmpty()).isPresent();
+		boolean hasBlockHook = onHitBlock.filter(actions -> !actions.isEmpty()).isPresent();
+		if (hasEntityHook || hasBlockHook) {
 			addCap(SpellCapability.HOOK_ON_HIT);
 			// CONTINUE may hit repeatedly up to the server hard cap (design §10).
 			// Entity and block behaviors are independent: a spell with only an
@@ -854,7 +856,7 @@ public final class SpellAnalyzer {
 			// — hit count is derived per hook list from its own behavior.
 			// For BOUNCE, on_hit_block fires up to (max_bounces + 1) times.
 			long maxHits = limits.maxHitsPerProjectile();
-			if (onHitEntity.isPresent()) {
+			if (hasEntityHook) {
 				HitControlSummary entitySummary = summarizeHitControl(onHitEntity.get());
 				long entityMultiplier = 1;
 				if (entitySummary.mayContinue || hitBehaviorEntity == HitBehavior.CONTINUE) {
@@ -863,7 +865,7 @@ public final class SpellAnalyzer {
 				long execs = satMul(contrib, entityMultiplier);
 				walkHook("on_hit_entity", onHitEntity.get(), execs, projection, mult);
 			}
-			if (onHitBlock.isPresent()) {
+			if (hasBlockHook) {
 				HitControlSummary blockSummary = summarizeHitControl(onHitBlock.get());
 				long blockMultiplier = 1;
 				// A callback may contain both a default CONTINUE fallback and an explicit

@@ -35,8 +35,14 @@ public final class CameraShakeManager {
 	private CameraShakeManager() {
 	}
 
+	/** Shared accessibility switch for spell cues and combat defeat visuals. */
+	public static boolean isEnabled() {
+		return YHModConfig.CLIENT.feedbackCameraShakeEnabled.get()
+				&& YHModConfig.CLIENT.feedbackCameraShakeScale.get() > 0;
+	}
+
 	public static void add(CameraShakeCue cue) {
-		if (cue == null || !YHModConfig.CLIENT.feedbackCameraShakeEnabled.get()) return;
+		if (cue == null || !isEnabled()) return;
 		var player = Minecraft.getInstance().player;
 		if (player == null) return;
 		double distance = player.position().distanceTo(cue.position() == null ? player.position() : cue.position());
@@ -49,7 +55,7 @@ public final class CameraShakeManager {
 				case QUADRATIC -> (1 - ratio) * (1 - ratio);
 			};
 		}
-		float strength = (float) (cue.intensity() * attenuation * YHModConfig.CLIENT.feedbackCameraShakeScale.get());
+		float strength = (float) (cue.intensity() * attenuation);
 		if (strength <= 0) return;
 		ActiveShake old = ACTIVE.get(cue.channel());
 		if (old == null) {
@@ -77,7 +83,7 @@ public final class CameraShakeManager {
 
 	@SubscribeEvent
 	public static void cameraShake(ViewportEvent.ComputeCameraAngles event) {
-		if (ACTIVE.isEmpty() || !YHModConfig.CLIENT.feedbackCameraShakeEnabled.get()) return;
+		if (ACTIVE.isEmpty() || !isEnabled()) return;
 		float yaw = 0, pitch = 0, roll = 0;
 		float partialTick = (float) event.getPartialTick();
 		for (ActiveShake shake : ACTIVE.values()) {
@@ -96,10 +102,18 @@ public final class CameraShakeManager {
 			roll += (float) (Math.sin(phase * 0.97 + 4.2) * shake.intensity * envelope
 					* ROLL_DEGREES_PER_INTENSITY);
 		}
-		float option = Minecraft.getInstance().options.fovEffectScale().get().floatValue();
-		event.setYaw(event.getYaw() + Mth.clamp(yaw, -3.0f, 3.0f) * option);
-		event.setPitch(event.getPitch() + Mth.clamp(pitch, -2.25f, 2.25f) * option);
-		event.setRoll(event.getRoll() + Mth.clamp(roll, -3.5f, 3.5f) * option);
+		applyAngles(event, Mth.clamp(yaw, -3.0f, 3.0f),
+				Mth.clamp(pitch, -2.25f, 2.25f), Mth.clamp(roll, -3.5f, 3.5f));
+	}
+
+	/** Apply a bounded visual-only camera offset through the shared client settings. */
+	public static void applyAngles(ViewportEvent.ComputeCameraAngles event, float yaw, float pitch, float roll) {
+		if (!isEnabled()) return;
+		float accessibility = Minecraft.getInstance().options.fovEffectScale().get().floatValue();
+		float scale = accessibility * YHModConfig.CLIENT.feedbackCameraShakeScale.get().floatValue();
+		event.setYaw(event.getYaw() + yaw * scale);
+		event.setPitch(event.getPitch() + pitch * scale);
+		event.setRoll(event.getRoll() + roll * scale);
 	}
 
 	private static final class ActiveShake {

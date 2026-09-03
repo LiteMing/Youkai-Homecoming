@@ -84,10 +84,10 @@ public class YHModConfig {
 			spellCardTotemAnimation = builder.comment("Play totem of undying activation animation when casting a spell card.")
 					.translation("config.youkaishomecoming.client.spellCardTotemAnimation")
 					.define("spellCardTotemAnimation", true);
-			feedbackCameraShakeEnabled = builder.comment("Enable client-side spell camera shake feedback.")
+			feedbackCameraShakeEnabled = builder.comment("Enable client-side camera shake for spell feedback and defeat visuals.")
 					.translation("config.youkaishomecoming.client.feedbackCameraShakeEnabled")
 					.define("feedbackCameraShakeEnabled", true);
-			feedbackCameraShakeScale = builder.comment("Client multiplier for camera shake feedback (0 disables it).")
+			feedbackCameraShakeScale = builder.comment("Client multiplier for all camera shake (0 disables it).")
 					.translation("config.youkaishomecoming.client.feedbackCameraShakeScale")
 					.defineInRange("feedbackCameraShakeScale", 1.0, 0.0, 1.0);
 

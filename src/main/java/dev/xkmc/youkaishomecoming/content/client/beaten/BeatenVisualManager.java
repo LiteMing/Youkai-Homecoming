@@ -6,6 +6,7 @@ import com.mojang.math.Axis;
 import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuPoofParticleOptions;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.client.CameraShakeManager;
 import dev.xkmc.youkaishomecoming.events.YoukaiBeatenPhaseEvent;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
@@ -230,7 +231,7 @@ public final class BeatenVisualManager {
 
 	@SubscribeEvent
 	public static void cameraShake(ViewportEvent.ComputeCameraAngles event) {
-		if (ACTIVE.isEmpty()) return;
+		if (ACTIVE.isEmpty() || !CameraShakeManager.isEnabled()) return;
 		Vec3 camera = event.getCamera().getPosition();
 		float yaw = 0, pitch = 0, roll = 0;
 		for (BeatenVisual visual : ACTIVE) {
@@ -246,10 +247,8 @@ public final class BeatenVisualManager {
 			pitch += Mth.cos(phase * 1.17f) * 0.24f * envelope;
 			roll += Mth.sin(phase * 0.73f) * 0.42f * envelope;
 		}
-		float option = Minecraft.getInstance().options.fovEffectScale().get().floatValue();
-		event.setYaw(event.getYaw() + Mth.clamp(yaw, -1.25f, 1.25f) * option);
-		event.setPitch(event.getPitch() + Mth.clamp(pitch, -0.9f, 0.9f) * option);
-		event.setRoll(event.getRoll() + Mth.clamp(roll, -1.5f, 1.5f) * option);
+		CameraShakeManager.applyAngles(event, Mth.clamp(yaw, -1.25f, 1.25f),
+				Mth.clamp(pitch, -0.9f, 0.9f), Mth.clamp(roll, -1.5f, 1.5f));
 	}
 
 	private BeatenVisualManager() {

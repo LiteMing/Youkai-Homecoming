@@ -41,6 +41,39 @@ public class SpellMarketValidator {
 	}
 
 	/**
+	 * Validate a player-requested download before it is copied into world storage.
+	 *
+	 * Manual downloads are not automatic market synchronization: they are opened by
+	 * the player and must retain the authored spell faithfully, including health
+	 * initialization and large repeat counts.  The automatic market budget is
+	 * therefore deliberately not applied here.  A small recursive safety walk still
+	 * rejects operator-only spell control actions before the definition is archived.
+	 */
+	public static void validateManualImport(String rawJson, JsonElement json, SpellDefinition definition) {
+		if (rawJson == null) {
+			throw new IllegalArgumentException("Spell JSON is missing");
+		}
+		if (rawJson.getBytes(StandardCharsets.UTF_8).length > MAX_JSON_BYTES) {
+			throw new IllegalArgumentException("Spell JSON exceeds " + MAX_JSON_BYTES + " bytes");
+		}
+		if (json == null || !json.isJsonObject()) {
+			throw new IllegalArgumentException("Spell JSON root must be an object");
+		}
+		ManualImportGuard.check(json);
+		if (definition.phases.isEmpty() || definition.phases.size() > 64) {
+			throw new IllegalArgumentException("Spell phase count must be between 1 and 64");
+		}
+		if (!definition.phases.containsKey(definition.entryPhase)) {
+			throw new IllegalArgumentException("Entry phase is not present in phases: " + definition.entryPhase);
+		}
+		definition.phases.forEach((id, phase) -> {
+			if (!id.equals(phase.id)) {
+				throw new IllegalArgumentException("Phase key/id mismatch: " + id + " != " + phase.id);
+			}
+		});
+	}
+
+	/**
 	 * Historical market import guard — original raw-JSON semantics preserved verbatim.
 	 */
 	private static final class HistoricalMarketJsonGuard {
@@ -151,6 +184,29 @@ public class SpellMarketValidator {
 
 		private static long add(long a, long b) {
 			return Math.min(MAX_PROJECTILES + 1L, a + b);
+		}
+	}
+
+	/** Lightweight safety walk for a player-requested/manual import. */
+	private static final class ManualImportGuard {
+		private static final Set<String> BANNED_ACTIONS = Set.of(
+				"run_command", "force_phase", "force_spell", "fire_spell");
+
+		static void check(JsonElement element) {
+			if (element == null || element.isJsonNull()) return;
+			if (element.isJsonArray()) {
+				for (JsonElement child : element.getAsJsonArray()) check(child);
+				return;
+			}
+			if (!element.isJsonObject()) return;
+			JsonElement type = element.getAsJsonObject().get("type");
+			if (type != null && type.isJsonPrimitive() && type.getAsJsonPrimitive().isString()) {
+				String id = type.getAsString();
+				if (BANNED_ACTIONS.contains(id)) {
+					throw new IllegalArgumentException("Market download contains operator-only action: " + id);
+				}
+			}
+			for (var entry : element.getAsJsonObject().entrySet()) check(entry.getValue());
 		}
 	}
 }

@@ -104,6 +104,18 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		return new SpellEditorSyncToServer(Action.IMPORT_MARKET, definition.id.toString(), GSON.toJson(json));
 	}
 
+	/**
+	 * Import the exact JSON downloaded from the market.  Keeping the raw payload
+	 * avoids a client-side codec round trip before the server archives it and lets
+	 * the Raw JSON editor remain the recovery path when a client cannot decode it.
+	 */
+	public static SpellEditorSyncToServer importMarketRaw(ResourceLocation spellId, String rawJson) {
+		if (spellId == null || rawJson == null || rawJson.isBlank()) {
+			throw new IllegalArgumentException("Market spell JSON is missing");
+		}
+		return new SpellEditorSyncToServer(Action.IMPORT_MARKET, spellId.toString(), rawJson);
+	}
+
 	public static SpellEditorSyncToServer delete(ResourceLocation spellId) {
 		return new SpellEditorSyncToServer(Action.DELETE, spellId.toString(), "");
 	}
@@ -351,7 +363,9 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		SpellDefinition definition = parseDefinition();
 		validateMarketImport(definition);
 		SpellRegistry.register(definition);
-		CustomSpellStorage.saveSpell(sender.server, definition);
+		if (!CustomSpellStorage.saveSpell(sender.server, definition, definitionJson)) {
+			throw new IllegalStateException("Failed to save downloaded spell to world storage: " + definition.id);
+		}
 		sender.sendSystemMessage(Component.literal("[YH] Imported market spell " + definition.id));
 	}
 
@@ -366,7 +380,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 			throw new IllegalArgumentException("Market spell contains run_command and requires operator permission");
 		}
 		var json = JsonParser.parseString(definitionJson);
-		SpellMarketValidator.validate(definitionJson, json, definition);
+		SpellMarketValidator.validateManualImport(definitionJson, json, definition);
 	}
 
 	private void deleteSpell(ServerPlayer sender) {

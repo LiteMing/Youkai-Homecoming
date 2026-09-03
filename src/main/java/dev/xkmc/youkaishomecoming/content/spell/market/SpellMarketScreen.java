@@ -681,12 +681,18 @@ public class SpellMarketScreen extends Screen {
 		if (api == null) return;
 		String name = textOrUnknown(entry.name);
 		minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloading(name).getString()));
-		api.downloadSpell(entry.uuid).thenAccept(def -> {
+		api.downloadSpellRaw(entry.uuid).thenAccept(download -> {
 			Minecraft.getInstance().execute(() -> {
-				if (def != null) {
+				if (download != null) {
 					// 保存到世界存档
 					try {
-						SpellEditorNetworkClient.importMarket(def);
+						SpellDefinition def = SpellMarketAPI.parseDownloadedSpell(download.json());
+						if (def == null) {
+							SpellMarketAPI.copyRawJsonToClipboard(download.json());
+							minecraft.setScreen(msgScreen(SpellMarketLocalization.downloadParseFailedCopied().getString()));
+							return;
+						}
+						SpellEditorNetworkClient.importMarketRaw(def.id, download.json());
 						minecraft.setScreen(msgScreen(SpellMarketLocalization.downloadSuccess(name).getString()));
 					} catch (Exception e) {
 						org.slf4j.LoggerFactory.getLogger("SpellMarket").error("Error saving downloaded spell '{}'", entry.uuid, e);

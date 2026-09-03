@@ -160,6 +160,10 @@ public class SpellMarketLocalization {
 		return YHLangData.MARKET_DOWNLOAD_INCOMPATIBLE.get().copy();
 	}
 
+	public static MutableComponent downloadParseFailedCopied() {
+		return YHLangData.MARKET_DOWNLOAD_PARSE_FAILED_COPIED.get().copy();
+	}
+
 	public static MutableComponent saveFail(String message) {
 		return YHLangData.MARKET_SAVE_FAIL.get(message).copy();
 	}

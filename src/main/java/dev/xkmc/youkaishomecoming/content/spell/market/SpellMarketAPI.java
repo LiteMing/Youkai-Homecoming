@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.market;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.market.dto.*;
@@ -95,21 +96,38 @@ public class SpellMarketAPI {
 	}
 
 	public CompletableFuture<SpellDefinition> downloadSpell(String uuid) {
+		return downloadSpellRaw(uuid).thenApply(download ->
+				download == null ? null : parseDownloadedSpell(download.json()));
+	}
+
+	/** Download without forcing a client-side definition round trip. */
+	public CompletableFuture<SpellMarketHttpClient.DownloadedSpell> downloadSpellRaw(String uuid) {
 		return transport.download(uuid, null)
-				.thenApply(download -> {
-					try {
-						var json = GSON.fromJson(download.json(), com.google.gson.JsonElement.class);
-						return SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
-								.getOrThrow(false, err -> LOGGER.warn("Parse error: {}", err));
-					} catch (Exception e) {
-						LOGGER.error("Error parsing spell", e);
-						return null;
-					}
-				})
 				.exceptionally(e -> {
 					LOGGER.error("Error downloading spell", e);
 					return null;
 				});
+	}
+
+	/** Parse only for the editor preview; the server remains authoritative for storage. */
+	public static SpellDefinition parseDownloadedSpell(String rawJson) {
+		try {
+			var json = JsonParser.parseString(rawJson);
+			return SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
+					.getOrThrow(false, err -> LOGGER.warn("Parse error: {}", err));
+		} catch (Exception e) {
+			LOGGER.error("Error parsing downloaded spell", e);
+			return null;
+		}
+	}
+
+	/** Preserve an undecodable download so the player can repair it in Raw JSON. */
+	public static void copyRawJsonToClipboard(String rawJson) {
+		Minecraft mc = Minecraft.getInstance();
+		if (rawJson != null) {
+			mc.keyboardHandler.setClipboard(rawJson);
+			dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes.notifyCopied();
+		}
 	}
 
 	public CompletableFuture<SpellDetail> getSpellDetail(String uuid) {

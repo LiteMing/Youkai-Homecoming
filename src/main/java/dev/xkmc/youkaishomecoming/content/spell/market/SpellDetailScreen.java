@@ -304,10 +304,17 @@ public class SpellDetailScreen extends Screen {
 		if (api == null || entry.uuid == null || entry.uuid.isBlank()) return;
 		String name = safe(entry.name, SpellMarketLocalization.unknown().getString());
 		minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloading(name).getString()));
-		api.downloadSpell(entry.uuid).thenAccept(def -> Minecraft.getInstance().execute(() -> {
-			if (def != null) {
+		api.downloadSpellRaw(entry.uuid).thenAccept(download -> Minecraft.getInstance().execute(() -> {
+			if (download != null) {
 				try {
-					SpellEditorNetworkClient.importMarket(def);
+					SpellDefinition def = SpellMarketAPI.parseDownloadedSpell(download.json());
+					if (def == null) {
+						SpellMarketAPI.copyRawJsonToClipboard(download.json());
+						minecraft.setScreen(new InfoScreen(this,
+								SpellMarketLocalization.downloadParseFailedCopied().getString()));
+						return;
+					}
+					SpellEditorNetworkClient.importMarketRaw(def.id, download.json());
 					minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloadSuccess(name).getString()));
 				} catch (Exception e) {
 					minecraft.setScreen(new InfoScreen(this, SpellMarketLocalization.downloadFail().getString()));

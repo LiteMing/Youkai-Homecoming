@@ -22,6 +22,21 @@ public class SpellEditorNetworkClient {
 		return trySend(definition, () -> SpellEditorSyncToServer.importMarket(definition));
 	}
 
+	public static boolean importMarketRaw(ResourceLocation spellId, String rawJson) {
+		try {
+			sendChunked(SpellEditorSyncToServer.importMarketRaw(spellId, rawJson));
+			return true;
+		} catch (RuntimeException e) {
+			YoukaisHomecoming.LOGGER.error("Failed to encode downloaded market spell {}", spellId, e);
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.player != null) {
+				mc.player.displayClientMessage(Component.translatable(
+						"youkaishomecoming.spell_editor.error.encode_failed"), false);
+			}
+			return false;
+		}
+	}
+
 	public static void delete(ResourceLocation spellId) {
 		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.delete(spellId));
 	}

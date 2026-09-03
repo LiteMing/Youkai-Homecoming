@@ -113,6 +113,33 @@ public class CustomSpellStorage {
 	}
 
 	/**
+	 * Save a downloaded/custom definition without rewriting its JSON payload.  The
+	 * market download path uses this overload so fields introduced by a newer
+	 * client remain available to the Raw JSON editor after a world restart.
+	 */
+	public static boolean saveSpell(MinecraftServer server, SpellDefinition definition, String rawJson) {
+		if (rawJson == null || rawJson.isBlank()) return saveSpell(server, definition);
+		File file = getSpellFile(server, definition.id);
+		try {
+			File parent = file.getParentFile();
+			if (parent != null) parent.mkdirs();
+			File temp = new File(file.getPath() + ".tmp");
+			Files.writeString(temp.toPath(), rawJson, StandardCharsets.UTF_8);
+			try {
+				Files.move(temp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+						java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+			} catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+				Files.move(temp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			}
+			LOGGER.info("Saved custom spell {} to {}", definition.id, file.getPath());
+			return true;
+		} catch (Exception e) {
+			LOGGER.error("Failed to save raw spell {} to {}", definition.id, file.getPath(), e);
+			return false;
+		}
+	}
+
+	/**
 	 * Export a spell definition into the game/server directory so every save loads it.
 	 */
 	public static File saveGlobalSpell(SpellDefinition definition) {

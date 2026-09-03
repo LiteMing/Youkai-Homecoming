@@ -1200,6 +1200,17 @@ public class RawJsonDockPanel implements DockPanel {
 			if (handleUndoRedoKey(keyCode)) {
 				return true;
 			}
+			// MultiLineEditBox handles the actual clipboard operation. Mirror the
+			// right-click path with an actionbar notification after it succeeds.
+			if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C) {
+				MultilineTextField textField = textField();
+				boolean hasSelection = textField != null && !textField.getSelectedText().isEmpty();
+				boolean handled = super.keyPressed(keyCode, scanCode, modifiers);
+				if (handled && hasSelection) {
+					EditorTextBoxes.notifyCopied();
+				}
+				return handled;
+			}
 			return super.keyPressed(keyCode, scanCode, modifiers);
 		}
 

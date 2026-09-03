@@ -105,6 +105,16 @@ public final class EditorTextBoxes {
 			if (handleUndoRedoKey(keyCode)) {
 				return true;
 			}
+			// Keep vanilla Ctrl+C clipboard semantics, but provide the same feedback
+			// as the editor's right-click copy shortcut.
+			if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C) {
+				boolean hasSelection = !getHighlighted().isEmpty();
+				boolean handled = super.keyPressed(keyCode, scanCode, modifiers);
+				if (handled && hasSelection) {
+					notifyCopied();
+				}
+				return handled;
+			}
 			userInput = true;
 			try {
 				return super.keyPressed(keyCode, scanCode, modifiers);

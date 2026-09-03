@@ -1863,6 +1863,15 @@ public class SpellPreviewScreen extends Screen {
 
 		// === Below: no EditBox is focused, custom hotkeys active ===
 
+		// Ctrl+S = save and refresh, using the same guarded path as the toolbar.
+		// Keep this outside the EditBox and perspective-viewport gates so text input
+		// and viewport playback retain their own keyboard semantics.
+		if (net.minecraft.client.gui.screens.Screen.hasControlDown()
+				&& keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) {
+			applyToEntities();
+			return true;
+		}
+
 		// Ctrl+Z/Y for undo/redo
 		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && actionListPanel != null) {

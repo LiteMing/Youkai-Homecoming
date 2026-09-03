@@ -16,6 +16,7 @@ public final class EditorTextBoxes {
 	private static final int TEXT_COLOR = 0xFFE6E6E6;
 	private static final int DISABLED_TEXT_COLOR = 0xFF888888;
 	private static final String COPIED_KEY = "youkaishomecoming.spell_editor.copied";
+	private static SelectableEditBox activeSelectionBox;
 
 	private EditorTextBoxes() {
 	}
@@ -39,6 +40,15 @@ public final class EditorTextBoxes {
 		if (minecraft.player != null) {
 			minecraft.player.displayClientMessage(Component.translatable(COPIED_KEY), true);
 		}
+	}
+
+	/** Collapse the last editor selection before another text widget receives focus. */
+	public static void clearActiveSelection() {
+		SelectableEditBox box = activeSelectionBox;
+		if (box != null) {
+			box.collapseSelection();
+		}
+		activeSelectionBox = null;
 	}
 
 	/**
@@ -72,6 +82,7 @@ public final class EditorTextBoxes {
 				return true;
 			}
 			if (button != 0) return false;
+			clearActiveSelection();
 			boolean result = super.mouseClicked(mouseX, mouseY, button);
 			if (result) {
 				dragAnchor = getCursorPosition();
@@ -147,6 +158,26 @@ public final class EditorTextBoxes {
 				return redoEdit();
 			}
 			return false;
+		}
+
+		@Override
+		public void setFocused(boolean focused) {
+			if (focused) {
+				clearActiveSelection();
+				activeSelectionBox = this;
+			} else {
+				collapseSelection();
+				if (activeSelectionBox == this) {
+					activeSelectionBox = null;
+				}
+			}
+			super.setFocused(focused);
+		}
+
+		private void collapseSelection() {
+			setHighlightPos(getCursorPosition());
+			dragAnchor = -1;
+			dragging = false;
 		}
 
 		private void resetUndoHistory(String value) {

@@ -269,6 +269,7 @@ public class ActionEditorPanel {
 	public void unfocusAllEditBoxes() {
 		for (var row : rows) {
 			if (row.widget() instanceof EditBox eb) {
+				EditorTextBoxes.collapseSelection(eb);
 				eb.setFocused(false);
 			}
 		}

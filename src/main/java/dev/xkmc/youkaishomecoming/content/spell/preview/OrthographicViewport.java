@@ -620,6 +620,10 @@ public class OrthographicViewport {
 
 	public void render(GuiGraphics guiGraphics, VirtualSpellScene scene, float partialTick) {
 		if (width <= 0 || height <= 0) return;
+		// A previous viewport pass may have enabled depth testing for 3D entities.
+		// Start every pass in the GUI state so its background and later overlays are
+		// never rejected by stale depth-buffer values.
+		restoreGuiRenderState();
 
 		if (magicCirclePreviewActive) {
 			renderMagicCirclePreview(guiGraphics, partialTick);
@@ -651,6 +655,7 @@ public class OrthographicViewport {
 
 		Quaternionf previewOrientation = ViewAngle.computeOrientation(xRot, yRot);
 		ProjectileRenderHelper.cameraOrientationOverride = previewOrientation;
+		RenderSystem.depthMask(true);
 		RenderSystem.enableDepthTest();
 
 		renderGrid(poseStack);
@@ -675,6 +680,7 @@ public class OrthographicViewport {
 		buffer.endBatch();
 		ProjectileRenderHelper.cameraOrientationOverride = null;
 		poseStack.popPose();
+		restoreGuiRenderState();
 		guiGraphics.disableScissor();
 	}
 
@@ -716,6 +722,7 @@ public class OrthographicViewport {
 		ProjectileRenderHelper.cameraOrientationOverride = previewOrientation;
 
 		// 6. Enable depth testing for 3D content
+		RenderSystem.depthMask(true);
 		RenderSystem.enableDepthTest();
 
 		// 7. Render grid and axes
@@ -772,6 +779,7 @@ public class OrthographicViewport {
 		ProjectileRenderHelper.cameraOrientationOverride = null;
 
 		poseStack.popPose();
+		restoreGuiRenderState();
 
 		// 12. 仅在认证或导出构图阶段开启 84:128 卡面取景构图辅助遮幅与线框
 		if (cardFrameGuideActive) {
@@ -900,6 +908,12 @@ public class OrthographicViewport {
 
 		// 18. Restore GUI projection
 		RenderSystem.setProjectionMatrix(savedProjection, com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z);
+		restoreGuiRenderState();
+	}
+
+	private static void restoreGuiRenderState() {
+		RenderSystem.disableDepthTest();
+		RenderSystem.depthMask(false);
 	}
 
 	private void renderPreviewCasterSpellCircle(VirtualSpellScene scene, PoseStack poseStack,

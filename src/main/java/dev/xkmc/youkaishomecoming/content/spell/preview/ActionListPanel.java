@@ -1706,15 +1706,48 @@ public class ActionListPanel {
 	// --- Action manipulation (recursive tree traversal) ---
 
 	public void replaceSelectedAction(SpellAction newAction) {
-		if (selectedPath == null) return;
+		if (newAction == null || (selectedPath == null && selectedPaths.isEmpty())) return;
 		pushUndo();
-		replaceAction(selectedPath, newAction);
+		replaceSelectedActions(newAction);
 	}
 
 	/** Replace the selected action without pushing an undo snapshot (for transient drag edits). */
 	public void replaceSelectedActionWithoutUndo(SpellAction newAction) {
-		if (selectedPath == null) return;
-		replaceAction(selectedPath, newAction);
+		if (newAction == null) return;
+		replaceSelectedActions(newAction);
+	}
+
+	/**
+	 * Replace every selected root with the edited action. A multi-selection may
+	 * include descendants of a selected parent; those descendants are implicit and
+	 * are intentionally skipped so one replacement cannot be applied twice.
+	 */
+	private boolean replaceSelectedActions(SpellAction newAction) {
+		List<ActionPath> paths;
+		if (selectedPaths.size() <= 1) {
+			paths = selectedPath == null ? List.of() : List.of(selectedPath);
+		} else {
+			paths = selectedRootPaths(getSelectedPathsInTreeOrder());
+		}
+		if (paths.isEmpty()) return false;
+
+		boolean replaced = false;
+		for (int i = 0; i < paths.size(); i++) {
+			ActionPath path = paths.get(i);
+			List<SpellAction> list = getSectionList(path.section());
+			if (list == null) continue;
+			// Keep the editor's primary action instance for the first path. Other
+			// paths receive codec-copied instances so future mutable list fields do
+			// not accidentally alias one another.
+			SpellAction replacement = i == 0 ? newAction : deepCopy(newAction);
+			if (doReplace(list, path.path(), 0, replacement)) {
+				replaced = true;
+			}
+		}
+		if (replaced) {
+			dirty = true;
+		}
+		return replaced;
 	}
 
 	/** Explicitly push an undo snapshot (e.g. at the start of a drag gesture). */

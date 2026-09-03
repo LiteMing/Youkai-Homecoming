@@ -109,12 +109,16 @@ public class ViewportDockPanel implements DockPanel {
 		viewport.setRotationGizmo(rotationGizmoActive,
 				(float) rotationGizmoAxisX, (float) rotationGizmoAxisY, (float) rotationGizmoAxisZ);
 		viewport.render(graphics, scene, partialTick);
+	}
 
-		// World rendering leaves depth testing enabled. Keep all viewport interaction
-		// controls on a single GUI overlay plane above bullets/lasers so a large
-		// projectile cannot cover the button or its hover label.
+	/**
+	 * Draw viewport controls after screen widgets and all 3D content. The viewport
+	 * renderer restores the GUI depth state, so these controls and other dock
+	 * overlays cannot be occluded by a projectile.
+	 */
+	@Override
+	public void renderOverlay(GuiGraphics graphics, int mouseX, int mouseY) {
 		graphics.pose().pushPose();
-		graphics.pose().translate(0, 0, 400);
 		renderOriginEditControls(graphics, mouseX, mouseY);
 
 		// Persistent control legend + live hover/drag feedback so it is always clear

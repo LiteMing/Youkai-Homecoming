@@ -1136,6 +1136,19 @@ public class RawJsonDockPanel implements DockPanel {
 		}
 
 		@Override
+		public void setFocused(boolean focused) {
+			if (focused) {
+				EditorTextBoxes.clearActiveSelection();
+			} else {
+				MultilineTextField textField = textField();
+				if (textField != null) {
+					collapseSelection(textField);
+				}
+			}
+			super.setFocused(focused);
+		}
+
+		@Override
 		public void setValue(String value) {
 			super.setValue(value);
 			lineCount = countLines(value);
@@ -1217,6 +1230,7 @@ public class RawJsonDockPanel implements DockPanel {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
 			if (button == 1 && withinContentAreaPoint(mouseX, mouseY)) {
+				EditorTextBoxes.clearActiveSelection();
 				MultilineTextField textField = textField();
 				if (textField != null) {
 					String selected = textField.getSelectedText();

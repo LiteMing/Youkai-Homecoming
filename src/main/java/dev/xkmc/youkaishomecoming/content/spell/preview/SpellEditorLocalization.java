@@ -383,6 +383,7 @@ public final class SpellEditorLocalization {
 			Map.entry("Cols", "列数"),
 			Map.entry("Outer Cnt", "外层数量"),
 			Map.entry("Aim Mode", "瞄准模式"),
+			Map.entry("Random Axis", "随机轴"),
 			Map.entry("Axis Tilt", "轴倾斜"),
 			Map.entry("Tilt Angle", "倾斜角"),
 			Map.entry("Group Rotation (post-origin/tilt)", "整体旋转 (原点/倾斜后)"),

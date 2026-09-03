@@ -16,7 +16,8 @@ public class PatternEmitter {
 	public record Settings(NumberProvider count, NumberProvider speed, NumberProvider angleOffset,
 						   NumberProvider spread, NumberProvider elevation, PatternType pattern,
 						   AimMode aimMode, NumberProvider originRotation, Optional<NumberProvider> outerCount,
-						   Optional<NumberProvider> tiltAngle, Optional<GroupRotation> groupRotation) {
+						   Optional<NumberProvider> tiltAngle, Optional<GroupRotation> groupRotation,
+						   boolean randomAxis) {
 	}
 
 	@FunctionalInterface
@@ -113,25 +114,27 @@ public class PatternEmitter {
 			double goldenAngle = 360.0 / ((1 + Math.sqrt(5)) / 2);
 			double sinLatMin = Math.sin(Math.toRadians(-latRange / 2.0));
 			double sinLatMax = Math.sin(Math.toRadians(latRange / 2.0));
-			var rand = holder.random();
 			boolean fullSphere = latRange >= 180.0 - 1e-3 && lonRange >= 360.0 - 1e-3;
-			if (fullSphere) {
-				double alpha = rand.nextDouble() * 2 * Math.PI;
-				double cosTheta = 2 * rand.nextDouble() - 1;
-				double thetaRad = Math.acos(cosTheta);
-				double gamma = rand.nextDouble() * 2 * Math.PI;
-				Vec3 n1 = ori.normal().scale(Math.cos(alpha)).add(ori.side().scale(Math.sin(alpha)));
-				Vec3 s1 = ori.normal().scale(-Math.sin(alpha)).add(ori.side().scale(Math.cos(alpha)));
-				Vec3 f2 = ori.forward().scale(Math.cos(thetaRad)).add(n1.scale(Math.sin(thetaRad)));
-				Vec3 n2 = ori.forward().scale(-Math.sin(thetaRad)).add(n1.scale(Math.cos(thetaRad)));
-				Vec3 n3 = n2.scale(Math.cos(gamma)).add(s1.scale(Math.sin(gamma)));
-				Vec3 s3 = n2.scale(-Math.sin(gamma)).add(s1.scale(Math.cos(gamma)));
-				ori = new DanmakuHelper.Orientation(f2, n3, s3);
-			} else {
-				double spin = rand.nextDouble() * 2 * Math.PI;
-				Vec3 rn = ori.normal().scale(Math.cos(spin)).add(ori.side().scale(Math.sin(spin)));
-				Vec3 rs = ori.normal().scale(-Math.sin(spin)).add(ori.side().scale(Math.cos(spin)));
-				ori = new DanmakuHelper.Orientation(ori.forward(), rn, rs);
+			if (settings.randomAxis()) {
+				var rand = holder.random();
+				if (fullSphere) {
+					double alpha = rand.nextDouble() * 2 * Math.PI;
+					double cosTheta = 2 * rand.nextDouble() - 1;
+					double thetaRad = Math.acos(cosTheta);
+					double gamma = rand.nextDouble() * 2 * Math.PI;
+					Vec3 n1 = ori.normal().scale(Math.cos(alpha)).add(ori.side().scale(Math.sin(alpha)));
+					Vec3 s1 = ori.normal().scale(-Math.sin(alpha)).add(ori.side().scale(Math.cos(alpha)));
+					Vec3 f2 = ori.forward().scale(Math.cos(thetaRad)).add(n1.scale(Math.sin(thetaRad)));
+					Vec3 n2 = ori.forward().scale(-Math.sin(thetaRad)).add(n1.scale(Math.cos(thetaRad)));
+					Vec3 n3 = n2.scale(Math.cos(gamma)).add(s1.scale(Math.sin(gamma)));
+					Vec3 s3 = n2.scale(-Math.sin(gamma)).add(s1.scale(Math.cos(gamma)));
+					ori = new DanmakuHelper.Orientation(f2, n3, s3);
+				} else {
+					double spin = rand.nextDouble() * 2 * Math.PI;
+					Vec3 rn = ori.normal().scale(Math.cos(spin)).add(ori.side().scale(Math.sin(spin)));
+					Vec3 rs = ori.normal().scale(-Math.sin(spin)).add(ori.side().scale(Math.cos(spin)));
+					ori = new DanmakuHelper.Orientation(ori.forward(), rn, rs);
+				}
 			}
 			for (int i = 0; i < n; i++) {
 				double t = n > 1 ? (double) i / (n - 1) : 0.5;

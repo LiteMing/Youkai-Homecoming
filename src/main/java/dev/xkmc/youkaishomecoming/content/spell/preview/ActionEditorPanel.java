@@ -707,6 +707,10 @@ public class ActionEditorPanel {
 
 			addEnumRow("Pattern", PatternType.values(), a.pattern(), v ->
 					notifyDanmaku(old -> old.withPattern(v)));
+			if (a.pattern() == PatternType.SPHERE) {
+				addBoolRow("Random Axis", a.randomAxis(), v ->
+						notifyDanmaku(old -> old.withRandomAxis(v)));
+			}
 
 			if (a.pattern() == PatternType.NESTED_RING || a.pattern() == PatternType.GRID) {
 				String label = switch (a.pattern()) {
@@ -2192,6 +2196,10 @@ public class ActionEditorPanel {
 					notifySimple(old -> ((SpawnShooterAction) old).withElevation(v), false));
 			addEnumRow("Pattern", PatternType.values(), ssa.pattern(), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withPattern(v), true));
+			if (ssa.pattern() == PatternType.SPHERE) {
+				addBoolRow("Random Axis", ssa.randomAxis(), v ->
+						notifySimple(old -> ((SpawnShooterAction) old).withRandomAxis(v), true));
+			}
 			if (ssa.pattern() == PatternType.NESTED_RING || ssa.pattern() == PatternType.GRID) {
 				String label = ssa.pattern() == PatternType.GRID ? "Cols" : "Outer Cnt";
 				NumberProvider outerProv = ssa.outerCount().orElse(NumberProvider.constant(1));

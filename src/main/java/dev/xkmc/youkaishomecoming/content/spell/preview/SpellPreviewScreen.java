@@ -704,7 +704,9 @@ public class SpellPreviewScreen extends Screen {
 
 	private void onActionEdited(SpellAction newAction) {
 		if (actionListPanel != null) {
-			actionListPanel.replaceSelectedAction(newAction);
+			if (!actionListPanel.replaceSelectedAction(newAction)) {
+				return;
+			}
 			markChanged();
 			refreshPreviewActionIds();
 			invalidateCurrentSnapshot();

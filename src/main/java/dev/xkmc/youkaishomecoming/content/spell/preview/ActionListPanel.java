@@ -1705,16 +1705,33 @@ public class ActionListPanel {
 
 	// --- Action manipulation (recursive tree traversal) ---
 
-	public void replaceSelectedAction(SpellAction newAction) {
-		if (newAction == null || (selectedPath == null && selectedPaths.isEmpty())) return;
+	public boolean replaceSelectedAction(SpellAction newAction) {
+		if (newAction == null || !selectedActionsDifferFrom(newAction)) return false;
 		pushUndo();
-		replaceSelectedActions(newAction);
+		return replaceSelectedActions(newAction);
 	}
 
 	/** Replace the selected action without pushing an undo snapshot (for transient drag edits). */
-	public void replaceSelectedActionWithoutUndo(SpellAction newAction) {
-		if (newAction == null) return;
-		replaceSelectedActions(newAction);
+	public boolean replaceSelectedActionWithoutUndo(SpellAction newAction) {
+		if (newAction == null || !selectedActionsDifferFrom(newAction)) return false;
+		return replaceSelectedActions(newAction);
+	}
+
+	private boolean selectedActionsDifferFrom(SpellAction newAction) {
+		List<ActionPath> paths = selectedReplacementPaths();
+		for (ActionPath path : paths) {
+			if (!java.util.Objects.equals(getActionAt(path), newAction)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private List<ActionPath> selectedReplacementPaths() {
+		if (selectedPaths.size() <= 1) {
+			return selectedPath == null ? List.of() : List.of(selectedPath);
+		}
+		return selectedRootPaths(getSelectedPathsInTreeOrder());
 	}
 
 	/**
@@ -1723,12 +1740,7 @@ public class ActionListPanel {
 	 * are intentionally skipped so one replacement cannot be applied twice.
 	 */
 	private boolean replaceSelectedActions(SpellAction newAction) {
-		List<ActionPath> paths;
-		if (selectedPaths.size() <= 1) {
-			paths = selectedPath == null ? List.of() : List.of(selectedPath);
-		} else {
-			paths = selectedRootPaths(getSelectedPathsInTreeOrder());
-		}
+		List<ActionPath> paths = selectedReplacementPaths();
 		if (paths.isEmpty()) return false;
 
 		boolean replaced = false;
@@ -1736,6 +1748,7 @@ public class ActionListPanel {
 			ActionPath path = paths.get(i);
 			List<SpellAction> list = getSectionList(path.section());
 			if (list == null) continue;
+			if (java.util.Objects.equals(getActionAt(path), newAction)) continue;
 			// Keep the editor's primary action instance for the first path. Other
 			// paths receive codec-copied instances so future mutable list fields do
 			// not accidentally alias one another.

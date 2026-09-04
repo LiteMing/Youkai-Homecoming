@@ -252,6 +252,17 @@ public class PilotPredictTest {
 
 	private static void testPreviewTargetSurface() {
 		System.out.println("[Preview target surface]");
+		approx("default block target position", PreviewTarget.DEFAULT_BOX_POS,
+				new Vec3(0, -25, -16), 1e-8);
+		approx("default block target width", PreviewTarget.DEFAULT_BOX_SIZE.x, 50, 1e-8);
+		approx("default block target height", PreviewTarget.DEFAULT_BOX_SIZE.y, 50, 1e-8);
+		approx("default block target depth", PreviewTarget.DEFAULT_BOX_SIZE.z, 64, 1e-8);
+		AABB safe = PreviewTarget.safeFeetBounds(
+				new AABB(-5, -5, -5, 5, 5, 5), new AABB(-1, 0, -1, 1, 2, 1));
+		approx("pilot safe bounds min", new Vec3(safe.minX, safe.minY, safe.minZ),
+				new Vec3(-4, -5, -4), 1e-8);
+		approx("pilot safe bounds max", new Vec3(safe.maxX, safe.maxY, safe.maxZ),
+				new Vec3(4, 3, 4), 1e-8);
 		AABB box = PreviewTarget.boxAt(Vec3.ZERO, new Vec3(2, 4, 6));
 		approx("box width", box.getXsize(), 2, 1e-8);
 		approx("box height", box.getYsize(), 4, 1e-8);

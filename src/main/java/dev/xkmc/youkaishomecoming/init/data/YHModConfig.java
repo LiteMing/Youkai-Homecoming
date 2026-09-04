@@ -28,6 +28,12 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue spellCardTotemAnimation;
 		public final ForgeConfigSpec.BooleanValue feedbackCameraShakeEnabled;
 		public final ForgeConfigSpec.DoubleValue feedbackCameraShakeScale;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetX;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetY;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetZ;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetWidth;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetHeight;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetDepth;
 
 		// Exposure compat: photo overlay display
 		public final ForgeConfigSpec.DoubleValue photoOverlayAlpha;
@@ -90,6 +96,29 @@ public class YHModConfig {
 			feedbackCameraShakeScale = builder.comment("Client multiplier for all camera shake (0 disables it).")
 					.translation("config.youkaishomecoming.client.feedbackCameraShakeScale")
 					.defineInRange("feedbackCameraShakeScale", 1.0, 0.0, 1.0);
+
+			builder.translation("config.youkaishomecoming.client.preview").push("preview");
+			{
+				previewBlockTargetX = builder.comment("Default preview block target bottom-center X position")
+						.translation("config.youkaishomecoming.client.preview.blockTargetX")
+						.defineInRange("blockTargetX", 0.0, -128.0, 128.0);
+				previewBlockTargetY = builder.comment("Default preview block target bottom-center Y position")
+						.translation("config.youkaishomecoming.client.preview.blockTargetY")
+						.defineInRange("blockTargetY", -25.0, -128.0, 128.0);
+				previewBlockTargetZ = builder.comment("Default preview block target bottom-center Z position")
+						.translation("config.youkaishomecoming.client.preview.blockTargetZ")
+						.defineInRange("blockTargetZ", -16.0, -128.0, 128.0);
+				previewBlockTargetWidth = builder.comment("Default preview block target width")
+						.translation("config.youkaishomecoming.client.preview.blockTargetWidth")
+						.defineInRange("blockTargetWidth", 50.0, 0.05, 128.0);
+				previewBlockTargetHeight = builder.comment("Default preview block target height")
+						.translation("config.youkaishomecoming.client.preview.blockTargetHeight")
+						.defineInRange("blockTargetHeight", 50.0, 0.05, 128.0);
+				previewBlockTargetDepth = builder.comment("Default preview block target depth")
+						.translation("config.youkaishomecoming.client.preview.blockTargetDepth")
+						.defineInRange("blockTargetDepth", 64.0, 0.05, 128.0);
+			}
+			builder.pop();
 
 			builder.translation("config.youkaishomecoming.client.exposure_compat").push("exposure_compat");
 			{

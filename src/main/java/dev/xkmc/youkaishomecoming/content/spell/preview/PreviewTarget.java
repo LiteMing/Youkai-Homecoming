@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -8,15 +9,39 @@ import java.util.Optional;
 /** Temporary collision target used only by the spell preview scene. */
 public final class PreviewTarget {
 
-	public static final Vec3 DEFAULT_BOX_POS = new Vec3(0, -32, 0);
-	public static final Vec3 DEFAULT_BOX_SIZE = new Vec3(64, 64, 64);
+	private static final Vec3 FALLBACK_BOX_POS = new Vec3(0, -25, -16);
+	private static final Vec3 FALLBACK_BOX_SIZE = new Vec3(50, 50, 64);
+	public static final Vec3 DEFAULT_BOX_POS = configuredBoxPos();
+	public static final Vec3 DEFAULT_BOX_SIZE = configuredBoxSize();
 	private static Vec3 rememberedBoxPos = DEFAULT_BOX_POS;
 	private static Vec3 rememberedBoxSize = DEFAULT_BOX_SIZE;
 
 	public static Vec3 getRememberedBoxPos() { return rememberedBoxPos; }
-	public static void rememberBoxPos(Vec3 pos) { rememberedBoxPos = pos == null ? DEFAULT_BOX_POS : pos; }
+	public static void rememberBoxPos(Vec3 pos) { rememberedBoxPos = pos == null ? configuredBoxPos() : pos; }
 	public static Vec3 getRememberedBoxSize() { return rememberedBoxSize; }
 	public static void rememberBoxSize(Vec3 size) { rememberedBoxSize = sanitizeSize(size); }
+
+	/** Read the current client-configured preview block target defaults. */
+	public static Vec3 configuredBoxPos() {
+		try {
+			return new Vec3(YHModConfig.CLIENT.previewBlockTargetX.get(),
+					YHModConfig.CLIENT.previewBlockTargetY.get(),
+					YHModConfig.CLIENT.previewBlockTargetZ.get());
+		} catch (RuntimeException ignored) {
+			return FALLBACK_BOX_POS;
+		}
+	}
+
+	/** Read the current client-configured preview block target dimensions. */
+	public static Vec3 configuredBoxSize() {
+		try {
+			return sanitizeSize(new Vec3(YHModConfig.CLIENT.previewBlockTargetWidth.get(),
+					YHModConfig.CLIENT.previewBlockTargetHeight.get(),
+					YHModConfig.CLIENT.previewBlockTargetDepth.get()));
+		} catch (RuntimeException ignored) {
+			return FALLBACK_BOX_SIZE;
+		}
+	}
 	private static final double MIN_SIZE = 0.05;
 	private static final double MAX_SIZE = 128;
 	private static final double EPSILON = 1.0e-9;
@@ -30,7 +55,7 @@ public final class PreviewTarget {
 	}
 
 	public static Vec3 sanitizeSize(Vec3 size) {
-		if (size == null) return DEFAULT_BOX_SIZE;
+		if (size == null) return configuredBoxSize();
 		return new Vec3(sanitizeDimension(size.x), sanitizeDimension(size.y), sanitizeDimension(size.z));
 	}
 
@@ -42,6 +67,31 @@ public final class PreviewTarget {
 				bottomCenter.x - halfX, bottomCenter.y, bottomCenter.z - halfZ,
 				bottomCenter.x + halfX, bottomCenter.y + size.y, bottomCenter.z + halfZ
 		);
+	}
+
+	/**
+	 * Convert a world-space boundary into the valid feet-position range for a
+	 * pilot. The supplied body box is expressed relative to the feet position,
+	 * so the complete simulated body remains inside the boundary.
+	 */
+	public static AABB safeFeetBounds(AABB boundary, AABB bodyAtOrigin) {
+		if (boundary == null || bodyAtOrigin == null) return boundary;
+		return new AABB(
+				fitMin(boundary.minX - bodyAtOrigin.minX, boundary.maxX - bodyAtOrigin.maxX),
+				fitMin(boundary.minY - bodyAtOrigin.minY, boundary.maxY - bodyAtOrigin.maxY),
+				fitMin(boundary.minZ - bodyAtOrigin.minZ, boundary.maxZ - bodyAtOrigin.maxZ),
+				fitMax(boundary.minX - bodyAtOrigin.minX, boundary.maxX - bodyAtOrigin.maxX),
+				fitMax(boundary.minY - bodyAtOrigin.minY, boundary.maxY - bodyAtOrigin.maxY),
+				fitMax(boundary.minZ - bodyAtOrigin.minZ, boundary.maxZ - bodyAtOrigin.maxZ)
+		);
+	}
+
+	private static double fitMin(double min, double max) {
+		return min <= max ? min : (min + max) * 0.5;
+	}
+
+	private static double fitMax(double min, double max) {
+		return min <= max ? max : (min + max) * 0.5;
 	}
 
 	public record SurfaceHit(Vec3 pos, Vec3 normal) {}

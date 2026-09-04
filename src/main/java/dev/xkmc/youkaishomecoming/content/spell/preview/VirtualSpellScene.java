@@ -44,7 +44,7 @@ public class VirtualSpellScene {
 	private boolean playing = false;
 	private Runnable beforeTimelineAdvance;
 	private int speedIndex = 2; // index into SPEED_OPTIONS
-	private float targetDistance = 10f;
+	private float targetDistance = 32f;
 	private float healthRatio = 1.0f;
 	/** Preview-only cadence for simulating damage dealt to the caster. Zero disables it. */
 	private int damageInterval = 0;
@@ -71,7 +71,7 @@ public class VirtualSpellScene {
 	private boolean pilotDebugOverlay = true;
 
 	public static final float[] SPEED_OPTIONS = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f};
-	public static final float[] DISTANCE_OPTIONS = {5f, 10f, 15f, 20f};
+	public static final float[] DISTANCE_OPTIONS = {8f, 16f, 32f, 64f};
 	public static final float[] HP_OPTIONS = {1.0f, 0.75f, 0.5f, 0.25f};
 
 	public VirtualSpellScene(SpellDefinition definition) {
@@ -81,6 +81,7 @@ public class VirtualSpellScene {
 		this.runtime = new SpellRuntime(definition);
 		bindRuntime(this.runtime);
 		this.holder = new PreviewCardHolder(level);
+		this.holder.setTargetDistance(targetDistance);
 		this.holder.setRuntimeSupplier(() -> this.runtime);
 		if (Minecraft.getInstance().player != null) {
 			this.holder.setCasterPower(GrazeHelper.getEffectivePowerLevel(Minecraft.getInstance().player));
@@ -176,7 +177,24 @@ public class VirtualSpellScene {
 		state.oracle = CollisionOracle.ALWAYS_FREE;
 		state.anchor = new Vec3(0, feet.y, -targetDistance);
 		double h = config.previewPilotArenaHalf.get();
-		state.arena = new AABB(-h, feet.y - h, -h - targetDistance, h, feet.y + h, h - targetDistance);
+		// Keep the existing preview arena as a horizontal convenience limit, but
+		// make the block-target box the authoritative hard boundary. Convert it to
+		// a feet range so the pilot cannot move its whole body through the edge.
+		AABB blockBounds = PreviewTarget.safeFeetBounds(
+				holder.getBlockTargetCollisionBox(), state.selfBox.bodyAt(Vec3.ZERO));
+		double minX = Math.max(-h, blockBounds.minX);
+		double maxX = Math.min(h, blockBounds.maxX);
+		if (minX > maxX) {
+			minX = blockBounds.minX;
+			maxX = blockBounds.maxX;
+		}
+		double minZ = Math.max(-h - targetDistance, blockBounds.minZ);
+		double maxZ = Math.min(h - targetDistance, blockBounds.maxZ);
+		if (minZ > maxZ) {
+			minZ = blockBounds.minZ;
+			maxZ = blockBounds.maxZ;
+		}
+		state.arena = new AABB(minX, blockBounds.minY, minZ, maxX, blockBounds.maxY, maxZ);
 		state.tick = runtime.getTotalTick();
 
 		Vec3 vel = Vec3.ZERO;
@@ -449,7 +467,7 @@ public class VirtualSpellScene {
 	}
 
 	public void resetTargetPos() {
-		holder.setTargetCenter(new Vec3(0, 0, -10));
+		holder.setTargetCenter(new Vec3(0, 0, -targetDistance));
 	}
 
 	public void moveTarget(Vec3 delta) {
@@ -512,7 +530,7 @@ public class VirtualSpellScene {
 		holder.setBlockTargetPos(holder.getBlockTargetPos().add(delta));
 	}
 
-	public void resetBlockTargetPos() { holder.setBlockTargetPos(new Vec3(0, -32, 0)); }
+	public void resetBlockTargetPos() { holder.setBlockTargetPos(PreviewTarget.configuredBoxPos()); }
 
 	public AABB getEntityTargetCollisionBox() { return holder.getEntityTargetCollisionBox(); }
 	public AABB getBlockTargetCollisionBox() { return holder.getBlockTargetCollisionBox(); }

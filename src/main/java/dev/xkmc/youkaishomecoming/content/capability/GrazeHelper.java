@@ -289,6 +289,25 @@ public class GrazeHelper {
 		return findSpellCard(player, false, true);
 	}
 
+	/** Selects the first usable non-spell in the same hand/inventory/Curios order as spell cards. */
+	public static ItemStack findNonSpell(Player player) {
+		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
+		if (isAvailableNonSpell(mainhand)) return mainhand;
+		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
+		if (isAvailableNonSpell(offhand)) return offhand;
+		var inventory = player.getInventory();
+		for (int i = 0; i < inventory.items.size(); i++) {
+			ItemStack stack = inventory.getItem(i);
+			if (isAvailableNonSpell(stack)) return stack;
+		}
+		return CuriosManager.findFirstSpellItem(player, GrazeHelper::isAvailableNonSpell);
+	}
+
+	private static boolean isAvailableNonSpell(ItemStack stack) {
+		return isSpellStack(stack) && stack.getItem() instanceof DynamicSpellItem
+				&& DynamicSpellItem.isNonSpell(stack);
+	}
+
 	private static ItemStack findSpellCard(Player player, boolean excludeLast, boolean onlyLast) {
 		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
 		if (isAvailableSpellStack(player, mainhand, excludeLast, onlyLast)) return mainhand;

@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.events;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.xkmc.l2damagetracker.contents.curios.AttrTooltip;
+import dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlClient;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.CombatProgress;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
@@ -35,6 +36,7 @@ public class ClientEventHandlers {
 		float lv = drunkLevel();
 		tilt = Mth.lerp(0.03f, tilt, lv);
 		if (event.phase == TickEvent.Phase.END) {
+			ClassicControlClient.tick();
 			if (Minecraft.getInstance().level == null) CameraShakeManager.clear();
 			else CameraShakeManager.tick();
 			syncBeatenPose();
@@ -61,6 +63,7 @@ public class ClientEventHandlers {
 
 	@SubscribeEvent
 	public static void onInput(MovementInputUpdateEvent event) {
+		ClassicControlClient.applyMovement(event);
 		if (oTilt > 0.01) {
 			float t = oTilt;
 			float time = event.getEntity().tickCount;

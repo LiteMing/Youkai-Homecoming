@@ -28,6 +28,15 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue spellCardTotemAnimation;
 		public final ForgeConfigSpec.BooleanValue feedbackCameraShakeEnabled;
 		public final ForgeConfigSpec.DoubleValue feedbackCameraShakeScale;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlForwardKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlBackwardKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlLeftKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlRightKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlFocusKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlToggleKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlNonSpellKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlNextSpellKey;
+		public final ForgeConfigSpec.DoubleValue classicControlLowSpeedMultiplier;
 		public final ForgeConfigSpec.DoubleValue previewBlockTargetX;
 		public final ForgeConfigSpec.DoubleValue previewBlockTargetY;
 		public final ForgeConfigSpec.DoubleValue previewBlockTargetZ;
@@ -96,6 +105,33 @@ public class YHModConfig {
 			feedbackCameraShakeScale = builder.comment("Client multiplier for all camera shake (0 disables it).")
 					.translation("config.youkaishomecoming.client.feedbackCameraShakeScale")
 					.defineInRange("feedbackCameraShakeScale", 1.0, 0.0, 1.0);
+			classicControlForwardKey = builder.comment("Serialized Minecraft keyboard key used to move forward in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlForwardKey")
+					.define("classicControlForwardKey", "key.keyboard.up");
+			classicControlBackwardKey = builder.comment("Serialized Minecraft keyboard key used to move backward in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlBackwardKey")
+					.define("classicControlBackwardKey", "key.keyboard.down");
+			classicControlLeftKey = builder.comment("Serialized Minecraft keyboard key used to move left in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlLeftKey")
+					.define("classicControlLeftKey", "key.keyboard.left");
+			classicControlRightKey = builder.comment("Serialized Minecraft keyboard key used to move right in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlRightKey")
+					.define("classicControlRightKey", "key.keyboard.right");
+			classicControlFocusKey = builder.comment("Serialized Minecraft keyboard key used for focus and low-speed movement.")
+					.translation("config.youkaishomecoming.client.classicControlFocusKey")
+					.define("classicControlFocusKey", "key.keyboard.left.shift");
+			classicControlToggleKey = builder.comment("Serialized Minecraft keyboard key combined with the focus key to toggle classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlToggleKey")
+					.define("classicControlToggleKey", "key.keyboard.space");
+			classicControlNonSpellKey = builder.comment("Serialized Minecraft keyboard key used to hold-fire a non-spell in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlNonSpellKey")
+					.define("classicControlNonSpellKey", "key.keyboard.z");
+			classicControlNextSpellKey = builder.comment("Serialized Minecraft keyboard key used to cast the next spell in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlNextSpellKey")
+					.define("classicControlNextSpellKey", "key.keyboard.x");
+			classicControlLowSpeedMultiplier = builder.comment("Fraction of vanilla sprint speed while holding the focus key in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlLowSpeedMultiplier")
+					.defineInRange("classicControlLowSpeedMultiplier", 0.5, 0.0, 1.0);
 
 			builder.translation("config.youkaishomecoming.client.preview").push("preview");
 			{

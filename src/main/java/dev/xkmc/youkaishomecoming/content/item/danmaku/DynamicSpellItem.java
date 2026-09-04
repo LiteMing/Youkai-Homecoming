@@ -586,7 +586,10 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 				SpellContainer.startSpellBar(sp, playerHealthPlan.totalHealth(), cardKey,
 						def.display.displayName());
 			}
-			if (cooldown) {
+			// Non-spells are toggle/held-fire attacks. Their runtime state is the
+			// limiter, so an item cooldown would only delay a legitimate key-up or
+			// manual disable action.
+			if (cooldown && !nonSpell) {
 				int cd = def.itemForm.cooldown() > 0 ? def.itemForm.cooldown() : YHModConfig.COMMON.playerSpellCooldown.get();
 				sp.getCooldowns().addCooldown(this, cd);
 			}

@@ -19,4 +19,13 @@ public final class SpellProxyLifecycle {
 			boolean runtimeFinished, boolean pendingHold, boolean danmakuEmpty) {
 		return shouldCleanup(maxDuration, elapsedTicks, runtimeFinished, pendingHold) && danmakuEmpty;
 	}
+
+	/**
+	 * A manually disabled non-spell keeps its proxy alive solely to drain the
+	 * projectiles that were already emitted.  It may be removed only after that
+	 * virtual projectile list is empty.
+	 */
+	public static boolean shouldFinishStoppedGeneration(boolean generationStopped, boolean danmakuEmpty) {
+		return generationStopped && danmakuEmpty;
+	}
 }

@@ -16,6 +16,7 @@ import dev.xkmc.fastprojectileapi.spellcircle.CustomSpellCircleStorage;
 import dev.xkmc.fastprojectileapi.spellcircle.EntitySpellCircleManager;
 import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
 import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
+import dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlService;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
@@ -136,6 +137,7 @@ public class YHCommands {
 
 	@SubscribeEvent
 	public static void onServerStopping(ServerStoppingEvent event) {
+		ClassicControlService.clearAll();
 		SpellMarketServerManager.stop();
 	}
 
@@ -261,6 +263,21 @@ public class YHCommands {
 											YHStgApi.setDanmakuCombat(player, enabled);
 											ctx.getSource().sendSuccess(() -> Component.literal(
 													"Set STG combat for " + player.getName().getString() + " to " + enabled), true);
+											return 1;
+										}))))
+				.then(literal("classic")
+						.then(argument("player", EntityArgument.player())
+								.then(argument("enabled", BoolArgumentType.bool())
+										.executes(ctx -> {
+											ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
+											boolean enabled = BoolArgumentType.getBool(ctx, "enabled");
+											if (!ClassicControlService.setEnabled(player, enabled)) {
+												ctx.getSource().sendFailure(Component.literal(
+														"Classic controls require active STG combat"));
+												return 0;
+											}
+											ctx.getSource().sendSuccess(() -> Component.literal(
+													"Set classic controls for " + player.getName().getString() + " to " + enabled), true);
 											return 1;
 										}))))
 				.then(literal("erase")

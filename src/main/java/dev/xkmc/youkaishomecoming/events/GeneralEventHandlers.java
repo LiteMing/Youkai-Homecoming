@@ -4,6 +4,7 @@ import dev.xkmc.l2library.init.events.GeneralEventHandler;
 import dev.xkmc.fastprojectileapi.spellcircle.CustomSpellCircleStorage;
 import dev.xkmc.fastprojectileapi.spellcircle.EntitySpellCircleManager;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
+import dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlService;
 import dev.xkmc.youkaishomecoming.content.block.variants.LeftClickBlock;
 import dev.xkmc.youkaishomecoming.content.capability.FrogGodCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
@@ -87,6 +88,9 @@ public class GeneralEventHandlers {
 	public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
 		if (event.phase != TickEvent.Phase.END) return;
 		var e = event.player;
+		if (e instanceof ServerPlayer player) {
+			ClassicControlService.tick(player);
+		}
 		if (e.hasEffect(YHEffects.FAIRY.get()) && CuriosManager.hasAnyWings(e)) {
 			FlyingToken.tickFlying(e);
 		}
@@ -209,6 +213,7 @@ public class GeneralEventHandlers {
 	@SubscribeEvent
 	public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
 		if (event.getEntity() instanceof ServerPlayer player) {
+			ClassicControlService.reset(player);
 			CustomSpellCircleStorage.syncAllToPlayer(player);
 			dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideServerHandler.syncToPlayer(player);
 		}
@@ -275,6 +280,7 @@ public class GeneralEventHandlers {
 
 	private static void clearPlayerSpells(LivingEntity entity) {
 		if (entity instanceof ServerPlayer player) {
+			ClassicControlService.reset(player);
 			GrazeCapability.HOLDER.get(player).clearCombatState(true);
 			SpellContainer.clear(player);
 		}

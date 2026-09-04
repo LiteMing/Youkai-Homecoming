@@ -69,12 +69,15 @@ public class SpellContainer extends ConditionalToken {
 		if (proxy.cardType() != SpellCardType.NON_SPELL) data.activeSpellCardKey = cardKey;
 	}
 
-	/** Stops only the enabled non-spell, preserving an independently active spell card. */
+	/**
+	 * Stops only the enabled non-spell, preserving an independently active spell
+	 * card and the non-spell projectiles already in flight.
+	 */
 	public static void clearActiveNonSpell(ServerPlayer sp) {
 		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
 		for (var proxy : List.copyOf(data.proxies)) {
 			if (!proxy.isRemoved() && proxy.cardType() == SpellCardType.NON_SPELL) {
-				proxy.cleanup(DanmakuProxyEntity.EndReason.PLAYER_CANCEL);
+				proxy.stopGenerationPreserveDanmaku();
 			}
 		}
 		data.proxies.removeIf(DanmakuProxyEntity::isRemoved);
@@ -103,14 +106,14 @@ public class SpellContainer extends ConditionalToken {
 	/** True while the player is releasing a spell card (an active proxy exists). */
 	public static boolean hasActiveProxy(Player player) {
 		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
-		return data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved());
+		return data.proxies.stream().anyMatch(DanmakuProxyEntity::isGenerating);
 	}
 
 	/** True while either a legacy or data-driven player spell is being released. */
 	public static boolean hasActiveSpell(Player player) {
 		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
 		return !data.spells.isEmpty() ||
-				data.proxies.stream().anyMatch(proxy -> !proxy.isRemoved());
+				data.proxies.stream().anyMatch(DanmakuProxyEntity::isGenerating);
 	}
 
 	/** True only for a real spell card; an enabled non-spell remains an ordinary attack. */
@@ -242,7 +245,7 @@ public class SpellContainer extends ConditionalToken {
 		} else if (data.spellBarMax > 0) {
 			data.syncPlayerSpellStatus(sp);
 		}
-		if (data.proxies.stream().noneMatch(other -> !other.isRemoved()
+		if (data.proxies.stream().noneMatch(other -> other.isGenerating()
 				&& other.cardType() == SpellCardType.NON_SPELL)) {
 			GrazeCapability.HOLDER.get(sp).clearActiveNonSpellCard();
 		}
@@ -515,7 +518,7 @@ public class SpellContainer extends ConditionalToken {
 		if (spells.isEmpty() && proxies.stream().noneMatch(SpellContainer::isActiveSpellCardProxy)) {
 			activeSpellCardKey = null;
 		}
-		if (proxies.stream().noneMatch(proxy -> !proxy.isRemoved()
+		if (proxies.stream().noneMatch(proxy -> proxy.isGenerating()
 				&& proxy.cardType() == SpellCardType.NON_SPELL) && player instanceof ServerPlayer sp) {
 			GrazeCapability.HOLDER.get(sp).clearActiveNonSpellCard();
 		}

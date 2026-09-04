@@ -80,6 +80,19 @@ public class BounceSurfaceResponseTest {
 		testDataDrivenCallbackContract();
 		testAccelerationConfigNormalization();
 		testLegacyCleanupContract();
+		testStoppedNonSpellPreservesDanmaku();
+	}
+
+	private static void testStoppedNonSpellPreservesDanmaku() {
+		check("NON_SPELL_CLOSE_PRESERVES_ACTIVE_DANMAKU",
+				!dev.xkmc.youkaishomecoming.content.entity.danmaku.SpellProxyLifecycle
+						.shouldFinishStoppedGeneration(true, false));
+		check("NON_SPELL_CLOSE_REMOVES_AFTER_DANMAKU_DRAINS",
+				dev.xkmc.youkaishomecoming.content.entity.danmaku.SpellProxyLifecycle
+						.shouldFinishStoppedGeneration(true, true));
+		check("ACTIVE_NON_SPELL_CONTINUES_GENERATING",
+				!dev.xkmc.youkaishomecoming.content.entity.danmaku.SpellProxyLifecycle
+						.shouldFinishStoppedGeneration(false, false));
 	}
 
 	private static SpellDefinition minimalDefinition() {

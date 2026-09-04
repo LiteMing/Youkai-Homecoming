@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
@@ -71,6 +72,8 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private SpellCardType cardType = SpellCardType.NORMAL;
 	private boolean certifiedCard;
 	private boolean ending;
+	/** True after a non-spell is toggled off; existing danmaku still drain. */
+	private boolean generationStopped;
 	@Nullable
 	private String cardKey;
 
@@ -132,6 +135,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		this.cardType = definition.itemForm.cardType();
 		this.certifiedCard = certifiedCard;
 		this.ending = false;
+		this.generationStopped = false;
 
 		if (target != null) {
 			this.targetId = target.getUUID();
@@ -176,8 +180,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 		// Refresh target tracking
 		refreshTarget();
 
-		// Drive the spell runtime
-		if (runtime != null) {
+		// Drive the spell runtime while generation is enabled.  A stopped non-spell
+		// keeps its runtime available to callbacks owned by already emitted
+		// projectiles, but must not execute its cast loop or create new output.
+		if (runtime != null && !generationStopped) {
 			// A fixed player-card duration ends the normal on_tick cast loop, but
 			// held projectiles may still own persistent release callbacks. Keep the
 			// proxy alive and advance only that callback queue until it drains.
@@ -187,7 +193,15 @@ public class DanmakuProxyEntity extends PathfinderMob
 				runtime.tickDelayed(this);
 			}
 			applySpellMovement();
-			tickDanmaku();
+		}
+		// Existing virtual projectiles continue to move, collide, expire, and run
+		// their own callbacks after a non-spell key-up/toggle-off.
+		tickDanmaku();
+
+		if (SpellProxyLifecycle.shouldFinishStoppedGeneration(generationStopped,
+				danmakuHolder.isEmpty())) {
+			finishStoppedGeneration();
+			return;
 		}
 
 		// Check for completion
@@ -247,6 +261,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 
 	@Override
 	public void shoot(Entity danmaku) {
+		if (generationStopped && danmaku instanceof SimplifiedProjectile projectile) {
+			// A callback from an already emitted projectile may still execute, but
+			// closing the non-spell must not allow that callback to create new output.
+			projectile.markErased(true);
+			return;
+		}
 		if (danmaku instanceof ItemDanmakuEntity e) {
 			if (e.afterExpiry != null) {
 				e.afterExpiry.setup(this);
@@ -346,6 +366,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	@Override
+	public boolean restrictsManualMovement() {
+		return !generationStopped && SpellRuntimeHost.super.restrictsManualMovement();
+	}
+
+	@Override
 	public void eraseDanmaku(@Nullable Player player) {
 		eraseAllDanmaku(player);
 	}
@@ -404,6 +429,31 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	/**
+	 * Disable future cast-loop output without erasing projectiles already in
+	 * flight.  Global combat cleanup must continue to use {@link #cleanup}.
+	 */
+	public void stopGenerationPreserveDanmaku() {
+		if (ending || isRemoved()) return;
+		generationStopped = true;
+	}
+
+	public boolean isGenerationStopped() {
+		return generationStopped;
+	}
+
+	public boolean isGenerating() {
+		return !generationStopped && !isRemoved();
+	}
+
+	private void finishStoppedGeneration() {
+		if (ending || isRemoved()) return;
+		ending = true;
+		// The holder is already empty, so discard cannot trigger the safety-net
+		// erase path in remove(). onProxyRemoved drops the active-card marker.
+		discard();
+	}
+
+	/**
 	 * Safety net: ensure virtual danmaku are erased no matter how this entity is removed.
 	 * Covers: /kill, void fall (checkBelowWorld → discard), chunk unload, or any
 	 * unexpected removal path that bypasses {@link #cleanup()}.
@@ -425,6 +475,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 */
 	public boolean isFinished() {
 		if (isRemoved()) return true;
+		if (generationStopped) return danmakuHolder.isEmpty();
 		boolean runtimeFinished = runtime != null && runtime.isFinished();
 		boolean pendingHold = runtime != null && runtime.hasPendingHoldActions();
 		return SpellProxyLifecycle.isFinished(maxDuration, spellTickCount,

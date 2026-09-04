@@ -96,6 +96,8 @@ public class YoukaisHomecoming {
 			loc("main"), 2,
 			e -> e.create(FrogSyncPacket.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(KoishiStartPacket.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellEditorSyncToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(SpellCircleEditorSyncToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(CombatToClient.class, NetworkDirection.PLAY_TO_CLIENT),

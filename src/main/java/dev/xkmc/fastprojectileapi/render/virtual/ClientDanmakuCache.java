@@ -376,4 +376,13 @@ public class ClientDanmakuCache {
 		LevelRenderer.renderLineBox(pose, vc, graze, 0.25F, 1, 0, 1);
 	}
 
+	public static void renderPlayerDanmakuHitbox(PoseStack pose, VertexConsumer vc, Player e,
+			double camx, double camy, double camz, float pTick) {
+		double dx = Mth.lerp(pTick, e.xOld, e.getX()) - camx - e.getX();
+		double dy = Mth.lerp(pTick, e.yOld, e.getY()) - camy - e.getY();
+		double dz = Mth.lerp(pTick, e.zOld, e.getZ()) - camz - e.getZ();
+		AABB hit = IYHDanmaku.alterEntityHitBox(e, 0, 0).move(dx, dy, dz);
+		LevelRenderer.renderLineBox(pose, vc, hit, 1, 0.25F, 0.25F, 1);
+	}
+
 }

@@ -773,30 +773,42 @@ public class MoverConfigs {
 	 * "forward" (pattern base direction), "velocity" (initial projectile velocity),
 	 * "fixed" (x/y/z as a fixed direction), "none" (use x/y/z formulas)
 	 * <p>
+	 * Formula {@code space} defaults to {@code world} (east/up/south). Set it to
+	 * {@code local} to use the launch frame (forward/right/up). The launch frame is
+	 * captured once after group rotation, so group {@code rot_y} (yaw) and
+	 * {@code rot_x} (pitch) change the plane at emission without changing it during flight.
+	 * <p>
 	 * JSON: {"type": "translate", "x": "tick * 0.1", "y": "0", "z": "0"}
+	 * JSON: {"type": "translate", "space": "local", "x": "0", "y": "2 * cos_deg(tick * 4)", "z": "2 * sin_deg(tick * 4)"}
 	 * JSON: {"type": "translate", "speed": 0.3, "aim": "target"}
 	 */
-	public record TranslateMoverConfig(String x, String y, String z, NumberProvider speed, String aim) implements MoverConfig {
+	public record TranslateMoverConfig(String x, String y, String z, NumberProvider speed, String aim,
+										String space) implements MoverConfig {
 		public static final Codec<TranslateMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.optionalFieldOf("x", "0").forGetter(TranslateMoverConfig::x),
 				Codec.STRING.optionalFieldOf("y", "0").forGetter(TranslateMoverConfig::y),
 				Codec.STRING.optionalFieldOf("z", "0").forGetter(TranslateMoverConfig::z),
 				NumberProvider.CODEC.optionalFieldOf("speed", NumberProvider.constant(0)).forGetter(TranslateMoverConfig::speed),
-				Codec.STRING.optionalFieldOf("aim", "none").forGetter(TranslateMoverConfig::aim)
+				Codec.STRING.optionalFieldOf("aim", "none").forGetter(TranslateMoverConfig::aim),
+				Codec.STRING.optionalFieldOf("space", "world").forGetter(TranslateMoverConfig::space)
 		).apply(i, TranslateMoverConfig::new));
 
 		public TranslateMoverConfig(String x, String y, String z, double speed, String aim) {
-			this(x, y, z, NumberProvider.constant(speed), aim);
+			this(x, y, z, NumberProvider.constant(speed), aim, "world");
+		}
+
+		public TranslateMoverConfig(String x, String y, String z, double speed, String aim, String space) {
+			this(x, y, z, NumberProvider.constant(speed), aim, space);
 		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			return new TranslateMover(origin, x, y, z, Vec3.ZERO, Vec3.ZERO);
+			return createFormulaMover(origin, velocity, velocity, Vec3.ZERO, Vec3.ZERO);
 		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
-			return new TranslateMover(origin, x, y, z, Vec3.ZERO, Vec3.ZERO);
+			return createFormulaMover(origin, velocity, baseDirection, Vec3.ZERO, Vec3.ZERO);
 		}
 
 		@Override
@@ -805,7 +817,7 @@ public class MoverConfigs {
 			if (resolvedSpeed != 0 && !"none".equals(aim)) {
 				return new TranslateMover(origin, resolveAimDirection(null, origin, velocity, baseDirection, targetPos, casterPos), resolvedSpeed);
 			}
-			return new TranslateMover(origin, x, y, z, targetPos, casterPos);
+			return createFormulaMover(origin, velocity, baseDirection, targetPos, casterPos);
 		}
 
 		@Override
@@ -814,7 +826,24 @@ public class MoverConfigs {
 			if (resolvedSpeed != 0 && !"none".equals(aim)) {
 				return new TranslateMover(origin, resolveAimDirection(ctx, origin, velocity, baseDirection, targetPos, casterPos), resolvedSpeed);
 			}
-			return new TranslateMover(origin, bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx), targetPos, casterPos);
+			return new TranslateMover(origin, bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx),
+					targetPos, casterPos, localDirection(velocity, baseDirection), isLocalSpace());
+		}
+
+		private TranslateMover createFormulaMover(Vec3 origin, Vec3 velocity, Vec3 baseDirection,
+											 Vec3 targetPos, Vec3 casterPos) {
+			return new TranslateMover(origin, x, y, z, targetPos, casterPos,
+					localDirection(velocity, baseDirection), isLocalSpace());
+		}
+
+		private boolean isLocalSpace() {
+			return "local".equalsIgnoreCase(space);
+		}
+
+		private static Vec3 localDirection(Vec3 velocity, Vec3 baseDirection) {
+			if (velocity != null && velocity.lengthSqr() > 1e-8) return velocity;
+			if (baseDirection != null && baseDirection.lengthSqr() > 1e-8) return baseDirection;
+			return new Vec3(0, 0, 1);
 		}
 
 		@Override

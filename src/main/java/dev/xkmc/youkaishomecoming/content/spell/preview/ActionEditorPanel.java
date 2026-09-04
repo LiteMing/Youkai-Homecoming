@@ -2310,6 +2310,7 @@ public class ActionEditorPanel {
 	// Top-level mover types (includes "none" for removal and special types like attached)
 	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "translate", "homing", "attached", "attached_free_rot", "fixed_dir"};
 	private static final String[] TRANSLATE_AIM_MODES = {"none", "target", "caster_to_target", "forward", "velocity", "fixed"};
+	private static final String[] TRANSLATE_SPACE_MODES = {"world", "local"};
 
 	/**
 	 * Sub-mover types available inside composite segments, layered layers, and fixed_dir inner.
@@ -2894,37 +2895,47 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (cfg instanceof MoverConfigs.TranslateMoverConfig tr) {
-			// Translate mover: aim mode + speed, or raw x/y/z formulas
+			// Translate mover: launch-time aim plus formula offsets. Local offsets use
+			// the post-group-rotation forward/right/up frame captured at emission.
+			addStringCycleRow("Space", TRANSLATE_SPACE_MODES, tr.space(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
+					onTypeChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), t.aim(), v)));
+				}
+			});
 			addStringCycleRow("Aim", TRANSLATE_AIM_MODES, tr.aim(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onTypeChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v)));
+					onTypeChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v, t.space())));
 				}
 			});
 			addNumberRow("Speed", tr.speed(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim(), t.space())));
 				}
 			});
-			addStringRow("X (east)", tr.x(), v -> {
+			String xLabel = "local".equalsIgnoreCase(tr.space()) ? "X (fwd)" : "X (east)";
+			String yLabel = "local".equalsIgnoreCase(tr.space()) ? "Y (right)" : "Y (up)";
+			String zLabel = "local".equalsIgnoreCase(tr.space()) ? "Z (up)" : "Z (south)";
+			addStringRow(xLabel, tr.x(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim(), t.space())));
 				}
-			});
-			addStringRow("Y (up)", tr.y(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(yLabel, tr.y(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim(), t.space())));
 				}
-			});
-			addStringRow("Z (south)", tr.z(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(zLabel, tr.z(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim(), t.space())));
 				}
-			});
+			}, EvaluationTiming.MIXED);
 		} else if (cfg instanceof MoverConfigs.HomingMoverConfig homing) {
 			addNumberRow("Speed", homing.speed(), v -> {
 				var cur = getCurrentMover();
@@ -3123,36 +3134,45 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (subCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
+			addStringCycleRow("  Space", TRANSLATE_SPACE_MODES, tr.space(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), t.aim(), v), onTypeChanged);
+				}
+			});
 			addStringCycleRow("  Aim", TRANSLATE_AIM_MODES, tr.aim(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v, t.space()), onTypeChanged);
 				}
 			});
 			addNumberRow("  Speed", tr.speed(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim(), t.space()), onParamChanged);
 				}
 			});
-			addStringRow("  X (east)", tr.x(), v -> {
+			String xLabel = "local".equalsIgnoreCase(tr.space()) ? "  X (fwd)" : "  X (east)";
+			String yLabel = "local".equalsIgnoreCase(tr.space()) ? "  Y (right)" : "  Y (up)";
+			String zLabel = "local".equalsIgnoreCase(tr.space()) ? "  Z (up)" : "  Z (south)";
+			addStringRow(xLabel, tr.x(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
-			addStringRow("  Y (up)", tr.y(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(yLabel, tr.y(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
-			addStringRow("  Z (south)", tr.z(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(zLabel, tr.z(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
+			}, EvaluationTiming.MIXED);
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -3278,36 +3298,45 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (layerCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
+			addStringCycleRow("  Space", TRANSLATE_SPACE_MODES, tr.space(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), t.aim(), v), onTypeChanged);
+				}
+			});
 			addStringCycleRow("  Aim", TRANSLATE_AIM_MODES, tr.aim(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v, t.space()), onTypeChanged);
 				}
 			});
 			addNumberRow("  Speed", tr.speed(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim(), t.space()), onParamChanged);
 				}
 			});
-			addStringRow("  X (east)", tr.x(), v -> {
+			String xLabel = "local".equalsIgnoreCase(tr.space()) ? "  X (fwd)" : "  X (east)";
+			String yLabel = "local".equalsIgnoreCase(tr.space()) ? "  Y (right)" : "  Y (up)";
+			String zLabel = "local".equalsIgnoreCase(tr.space()) ? "  Z (up)" : "  Z (south)";
+			addStringRow(xLabel, tr.x(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
-			addStringRow("  Y (up)", tr.y(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(yLabel, tr.y(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
-			addStringRow("  Z (south)", tr.z(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(zLabel, tr.z(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
+			}, EvaluationTiming.MIXED);
 		}
 		// ZeroMoverConfig has no params
 	}

@@ -3,6 +3,7 @@ package gen;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserBlockHitEffect;
 import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfig;
@@ -37,6 +38,8 @@ public class PilotPredictTest {
 		testZeroMoverPrediction();
 		testRotateMoverPrediction();
 		testTranslateMoverAimPrediction();
+		testTranslateMoverLocalSpace();
+		testTranslateMoverCodec();
 		testFixedDirLaunchDirection();
 		testHomingMoverSteering();
 		testHomingMoverCodec();
@@ -295,6 +298,53 @@ public class PilotPredictTest {
 		approx("short growing beam remains shorter than wall",
 				LaserBlockHitEffect.clipLength(8, 12.5), 8, 1e-6);
 		approx("no wall restores full laser", LaserBlockHitEffect.clipLength(40, -1), 40, 1e-6);
+		System.out.println();
+	}
+
+	private static void testTranslateMoverLocalSpace() {
+		System.out.println("[T1 TranslateMover local launch frame]");
+		Vec3 origin = new Vec3(10, 20, 30);
+		Vec3 launch = new Vec3(0, 0, 1);
+		var orientation = DanmakuHelper.getOrientation(launch);
+		var translate = new TranslateMover(origin, "tick", "2", "3",
+				Vec3.ZERO, Vec3.ZERO, launch, true);
+
+		// The launch frame is captured once. Formula tick still advances the
+		// projectile along the captured forward axis, while right/up remain fixed.
+		Vec3 expectedAtOne = origin.add(orientation.forward())
+				.add(orientation.side().scale(2))
+				.add(orientation.normal().scale(3));
+		approx("local frame maps forward/right/up at t=1", translate.pos(1), expectedAtOne, 1e-8);
+		Vec3 expectedAtTwo = origin.add(orientation.forward().scale(2))
+				.add(orientation.side().scale(2))
+				.add(orientation.normal().scale(3));
+		approx("local frame stays fixed while formula tick advances", translate.pos(2), expectedAtTwo, 1e-8);
+
+		// A non-axis-aligned launch direction must use the same orthogonal frame
+		// as FormulaMover, rather than world east/up/south axes.
+		Vec3 angledLaunch = new Vec3(1, 1, 0).normalize();
+		var angledOrientation = DanmakuHelper.getOrientation(angledLaunch);
+		var angled = new TranslateMover(Vec3.ZERO, "0", "1", "0",
+				Vec3.ZERO, Vec3.ZERO, angledLaunch, true);
+		approx("local right follows launch direction", angled.pos(0), angledOrientation.side(), 1e-8);
+		System.out.println();
+	}
+
+	private static void testTranslateMoverCodec() {
+		System.out.println("[TranslateMover codec]");
+		var legacyJson = JsonParser.parseString("{\"type\":\"translate\",\"x\":\"1\"}");
+		MoverConfig legacy = MoverConfig.CODEC.parse(JsonOps.INSTANCE, legacyJson).result().orElse(null);
+		check("legacy translate defaults to world space",
+				legacy instanceof MoverConfigs.TranslateMoverConfig t && "world".equals(t.space()));
+
+		var localJson = JsonParser.parseString("{\"type\":\"translate\",\"space\":\"local\",\"x\":\"tick\",\"y\":\"sin_deg(tick * 4)\"}");
+		MoverConfig local = MoverConfig.CODEC.parse(JsonOps.INSTANCE, localJson).result().orElse(null);
+		check("local translate decodes", local instanceof MoverConfigs.TranslateMoverConfig t
+				&& "local".equals(t.space()) && t.x().equals("tick"));
+		var encoded = local == null ? null : MoverConfig.CODEC.encodeStart(JsonOps.INSTANCE, local).result().orElse(null);
+		check("local translate round-trips space and formulas",
+				encoded != null && encoded.toString().contains("\"space\":\"local\"")
+						&& encoded.toString().contains("sin_deg(tick * 4)"));
 		System.out.println();
 	}
 

@@ -283,12 +283,13 @@ public class PilotPredictTest {
 				box, new Vec3(0, 1, 0), new Vec3(0.5, 2, 0.5)).isPresent());
 		Vec3 sweepStart = new Vec3(0, 0.5, 0);
 		Vec3 sweepEnd = new Vec3(0, 0.5, -10);
+		Vec3 sweepBoxSize = new Vec3(2, 4, 2);
 		check("origin block catches an outward shot at its exit face", PreviewTarget.firstSurfaceIntersection(
-				PreviewTarget.boxAt(Vec3.ZERO, PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).isPresent());
+				PreviewTarget.boxAt(Vec3.ZERO, sweepBoxSize), sweepStart, sweepEnd).isPresent());
 		Vec3 entityHit = PreviewTarget.firstVolumeIntersection(
-				PreviewTarget.boxAt(new Vec3(0, 0, -3), PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).orElseThrow();
+				PreviewTarget.boxAt(new Vec3(0, 0, -3), sweepBoxSize), sweepStart, sweepEnd).orElseThrow();
 		Vec3 blockHit = PreviewTarget.firstSurfaceIntersection(
-				PreviewTarget.boxAt(new Vec3(0, 0, -7), PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).orElseThrow();
+				PreviewTarget.boxAt(new Vec3(0, 0, -7), sweepBoxSize), sweepStart, sweepEnd).orElseThrow();
 		check("nearest target hit can be selected by sweep distance",
 				sweepStart.distanceToSqr(entityHit) < sweepStart.distanceToSqr(blockHit));
 		System.out.println();

@@ -105,15 +105,15 @@ public enum YHDrink implements IYHFluidHolder {
 			new EffectEntry(YHEffects.DRUNK, 1200, 1, 1),
 			new EffectEntry(() -> MobEffects.MOVEMENT_SPEED, 1200, 2, 1)
 	), YHTagGen.SAKE),
-	/** Experimental pilot rescue drink (amp 0, 2 min). Balance TBD. */
+	/** Experimental basic pilot drink (amp 0, 2 min). Balance TBD. */
 	DODGE_SAKE(FoodType.SAKE, 0xff88CCFF, List.of(
 			new EffectEntry(YHEffects.AUTO_DODGE, 2400, 0, 1)
 	), YHTagGen.SAKE),
-	/** Experimental pilot assist drink (amp 1, 2 min). */
+	/** Experimental enhanced pilot drink (amp 1, 2 min). */
 	DODGE_SAKE_II(FoodType.SAKE, 0xff66AAEE, List.of(
 			new EffectEntry(YHEffects.AUTO_DODGE, 2400, 1, 1)
 	), YHTagGen.SAKE),
-	/** Experimental pilot takeover drink (amp 2, 90s). */
+	/** Experimental advanced pilot drink (amp 2, 90s). */
 	DODGE_SAKE_III(FoodType.SAKE, 0xff4488DD, List.of(
 			new EffectEntry(YHEffects.AUTO_DODGE, 1800, 2, 1)
 	), YHTagGen.SAKE),

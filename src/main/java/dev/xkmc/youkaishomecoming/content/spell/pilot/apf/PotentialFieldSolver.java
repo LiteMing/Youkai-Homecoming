@@ -111,6 +111,12 @@ public final class PotentialFieldSolver {
 		if (ad > 1e-4) {
 			force = force.add(toAnchor.scale(profile.attractGain() / Math.max(1.0, ad)));
 		}
+		if (state.gapPreference.lengthSqr() > 1e-10) {
+			force = force.add(state.gapPreference.normalize().scale(profile.maxForce() * 0.24));
+		}
+		if (state.inputPreference.lengthSqr() > 1e-10) {
+			force = force.add(state.inputPreference.normalize().scale(profile.maxForce() * 0.5));
+		}
 
 		// Soft wall clearance only when relatively safe — never steal necessary dodge
 		double wallScale = state.wallSafetyFactor(minThreatDist);
@@ -125,6 +131,10 @@ public final class PotentialFieldSolver {
 				wall = wall.scale(wallScale);
 			}
 			force = force.add(wall);
+		}
+
+		if (state.grounded) {
+			force = new Vec3(force.x, 0, force.z);
 		}
 
 		// Clamp

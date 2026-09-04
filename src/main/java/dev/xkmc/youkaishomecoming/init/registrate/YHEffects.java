@@ -134,12 +134,12 @@ public class YHEffects {
 			"Severely wounded, forces crawling and reduces max health by half. Duration reduces when healing.");
 
 	/**
-	 * Client auto-dodge pilot. Amplifier: 0 rescue, 1 assist, 2+ takeover.
+	 * Client auto-dodge pilot. Amplifier selects a linearly stronger profile.
 	 * Movement is applied on local client only (see AutoDodgeClientHandlers).
 	 */
 	public static final RegistryEntry<MobEffect> AUTO_DODGE = genEffect("auto_dodge",
 			() -> new AutoDodgeEffect(MobEffectCategory.BENEFICIAL, 0x88CCFF),
-			"Automatically dodge projectiles and danmaku. Higher levels assist more aggressively.");
+			"Automatically dodge projectiles and danmaku. Higher levels move and search farther.");
 
 	private static <T extends MobEffect> RegistryEntry<T> genEffect(String name, NonNullSupplier<T> sup, String desc) {
 		return YoukaisHomecoming.REGISTRATE.effect(name, sup, desc).lang(MobEffect::getDescriptionId).register();

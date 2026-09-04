@@ -102,6 +102,11 @@ public final class PreviewTarget {
 	 */
 	public static Optional<SurfaceHit> firstSurfaceIntersectionWithNormal(AABB box, Vec3 from, Vec3 to) {
 		Vec3 delta = to.subtract(from);
+		Vec3 startNormal = surfaceNormal(box, from);
+		if (startNormal.lengthSqr() > 0) {
+			if (delta.dot(startNormal) > 0) startNormal = startNormal.scale(-1);
+			return Optional.of(new SurfaceHit(from, startNormal));
+		}
 		double bestT = Double.POSITIVE_INFINITY;
 		Vec3 bestNormal = Vec3.ZERO;
 
@@ -199,6 +204,16 @@ public final class PreviewTarget {
 		return withinY && withinZ && (near(point.x, box.minX) || near(point.x, box.maxX))
 				|| withinX && withinZ && (near(point.y, box.minY) || near(point.y, box.maxY))
 				|| withinX && withinY && (near(point.z, box.minZ) || near(point.z, box.maxZ));
+	}
+
+	private static Vec3 surfaceNormal(AABB box, Vec3 point) {
+		if (!isOnSurface(box, point)) return Vec3.ZERO;
+		if (near(point.x, box.minX)) return new Vec3(-1, 0, 0);
+		if (near(point.x, box.maxX)) return new Vec3(1, 0, 0);
+		if (near(point.y, box.minY)) return new Vec3(0, -1, 0);
+		if (near(point.y, box.maxY)) return new Vec3(0, 1, 0);
+		if (near(point.z, box.minZ)) return new Vec3(0, 0, -1);
+		return new Vec3(0, 0, 1);
 	}
 
 	private static boolean near(double a, double b) {

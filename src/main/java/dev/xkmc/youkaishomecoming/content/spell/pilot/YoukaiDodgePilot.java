@@ -15,6 +15,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -27,6 +28,7 @@ public final class YoukaiDodgePilot {
 	private DodgePilot pilot = new DodgePilot(PilotProfile.SERVER_BUDGET);
 	private long profileFingerprint = Long.MIN_VALUE;
 	private Vec3 heldVelocity = Vec3.ZERO;
+	private Vec3 anchor;
 	private int holdTicks;
 
 	public YoukaiDodgePilot() {
@@ -59,6 +61,7 @@ public final class YoukaiDodgePilot {
 		}
 
 		Vec3 feet = entity.position();
+		if (anchor == null) anchor = feet;
 		ThreatSnapshot snapshot = ThreatSnapshot.capture(threats, registry,
 				pilot.profile().predictHorizon(), pilot.profile().threatTopK(), feet);
 		if (snapshot.size() == 0) {
@@ -69,7 +72,9 @@ public final class YoukaiDodgePilot {
 		PilotState state = new PilotState(feet, entity.getDeltaMovement(),
 				SelfBoxModel.youkaiDanmaku(entity.getBbWidth(), entity.getBbHeight()));
 		state.oracle = new LevelCollisionOracle(entity.level(), entity);
-		state.anchor = feet;
+		state.anchor = anchor;
+		state.arena = new AABB(anchor.x - 10, anchor.y - 5, anchor.z - 10,
+				anchor.x + 10, anchor.y + 7, anchor.z + 10);
 		state.tick = entity.tickCount;
 		state.wallClearanceRadius = config.youkaiAutoDodgeWallClearanceRadius.get();
 		state.wallClearanceGain = config.youkaiAutoDodgeWallClearanceGain.get();
@@ -105,13 +110,12 @@ public final class YoukaiDodgePilot {
 	}
 
 	private static void apply(YoukaiEntity entity, Vec3 desired, double maxSpeed) {
-		if (desired.lengthSqr() < 1.0e-8) return;
 		if (desired.length() > maxSpeed) {
 			desired = desired.normalize().scale(maxSpeed);
 		}
 		var oracle = new LevelCollisionOracle(entity.level(), entity);
-		if (!oracle.isPathFree(entity.getBoundingBox(), desired)
-				|| !oracle.isFree(entity.getBoundingBox().move(desired))) return;
+		if (desired.lengthSqr() > 1.0e-8 && (!oracle.isPathFree(entity.getBoundingBox(), desired)
+				|| !oracle.isFree(entity.getBoundingBox().move(desired)))) return;
 		entity.getNavigation().stop();
 		entity.setDeltaMovement(desired);
 		entity.hasImpulse = true;
@@ -121,6 +125,7 @@ public final class YoukaiDodgePilot {
 		pilot.reset();
 		observed.clear();
 		heldVelocity = Vec3.ZERO;
+		anchor = null;
 		holdTicks = 0;
 	}
 }

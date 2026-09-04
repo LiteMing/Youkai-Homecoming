@@ -14,6 +14,14 @@ public final class PilotState {
 	public SelfBoxModel selfBox;
 	public CollisionOracle oracle;
 	public Vec3 anchor;
+	/** Direction requested through Control + movement input. */
+	public Vec3 inputPreference;
+	/** Cached low-frequency open-space direction. */
+	public Vec3 gapPreference;
+	/** Previous committed route, used only to break otherwise similar scores. */
+	public Vec3 continuityPreference;
+	/** Grounded consumers search horizontally except for explicit jump actions. */
+	public boolean grounded;
 	/** Arena clamp for preview target (nullable = unbounded). */
 	public net.minecraft.world.phys.AABB arena;
 	/** Live HITBOX delta for player models (informational). */
@@ -39,6 +47,10 @@ public final class PilotState {
 		this.selfBox = selfBox;
 		this.oracle = CollisionOracle.ALWAYS_FREE;
 		this.anchor = feet;
+		this.inputPreference = Vec3.ZERO;
+		this.gapPreference = Vec3.ZERO;
+		this.continuityPreference = velocity;
+		this.grounded = false;
 		this.arena = null;
 		this.hitBoxDelta = 0;
 		this.tick = 0;
@@ -57,6 +69,28 @@ public final class PilotState {
 		if (threatClearance <= danger) return 0;
 		if (threatClearance >= safe) return 1;
 		return (threatClearance - danger) / (safe - danger);
+	}
+
+	/** Navigation terms are deliberately smaller than collision safety terms. */
+	public double navigationScore(Vec3 position, Vec3 velocity) {
+		double score = 0;
+		if (velocity.lengthSqr() > 1e-10) {
+			Vec3 dir = velocity.normalize();
+			if (inputPreference.lengthSqr() > 1e-10) {
+				score += dir.dot(inputPreference.normalize()) * 0.9;
+			}
+			if (gapPreference.lengthSqr() > 1e-10) {
+				score += dir.dot(gapPreference.normalize()) * 0.28;
+			}
+			if (continuityPreference.lengthSqr() > 1e-10) {
+				score += dir.dot(continuityPreference.normalize()) * 0.18;
+			}
+		}
+		double away = position.distanceTo(anchor);
+		if (away > 4.0) {
+			score -= Math.min(1.5, (away - 4.0) * 0.08);
+		}
+		return score;
 	}
 
 	/**

@@ -277,29 +277,10 @@ public class YHModConfig {
 
 		// Shared autonomous dodge — COMMON / youkaishomecoming-common.toml
 		public final ForgeConfigSpec.BooleanValue autoDodgeEnabled;
-		public final ForgeConfigSpec.DoubleValue autoDodgeScanRadius;
-		public final ForgeConfigSpec.IntValue autoDodgeEmergencyCooldown;
-		public final ForgeConfigSpec.DoubleValue autoDodgeRescueClearance;
-		public final ForgeConfigSpec.DoubleValue autoDodgeInputPriority;
-		public final ForgeConfigSpec.DoubleValue autoDodgeAssistPilotWeight;
-		public final ForgeConfigSpec.DoubleValue autoDodgeAssistCurrentWeight;
-		public final ForgeConfigSpec.DoubleValue autoDodgeAssistSpeedCap;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTakeoverMinSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeRescuePulseSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeRescueJump;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIHighSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierILowSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIHighSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIILowSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIIHighSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIILowSpeed;
-		public final ForgeConfigSpec.IntValue autoDodgeThreatTopK;
-		public final ForgeConfigSpec.IntValue autoDodgePredictHorizon;
-		public final ForgeConfigSpec.IntValue autoDodgeDebugLogInterval;
-		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceRadius;
-		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceGain;
-		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceDangerDist;
-		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceSafeDist;
+		public final ForgeConfigSpec.DoubleValue autoDodgeBaseSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeSpeedPerTier;
+		public final ForgeConfigSpec.DoubleValue autoDodgeBaseScanRadius;
+		public final ForgeConfigSpec.DoubleValue autoDodgeScanRadiusPerTier;
 		public final ForgeConfigSpec.DoubleValue previewPilotArenaHalf;
 		public final ForgeConfigSpec.BooleanValue youkaiAutoDodgeEnabled;
 		public final ForgeConfigSpec.IntValue youkaiAutoDodgeTickInterval;
@@ -750,82 +731,18 @@ public class YHModConfig {
 				autoDodgeEnabled = builder.comment("Master switch for player auto-dodge buff logic")
 						.translation("config.youkaishomecoming.common.auto_dodge.enabled")
 						.define("enabled", true);
-				autoDodgeScanRadius = builder.comment("Threat scan radius in blocks (world projectiles + client danmaku cache)")
-						.translation("config.youkaishomecoming.common.auto_dodge.scanRadius")
-						.defineInRange("scanRadius", 16.0, 4.0, 48.0);
-				autoDodgeEmergencyCooldown = builder.comment("Cooldown ticks after a rescue (tier I) pulse")
-						.translation("config.youkaishomecoming.common.auto_dodge.emergencyCooldown")
-						.defineInRange("emergencyCooldown", 4, 0, 40);
-				autoDodgeRescueClearance = builder.comment("Tier I: only act when min clearance is at or below this")
-						.translation("config.youkaishomecoming.common.auto_dodge.rescueClearance")
-						.defineInRange("rescueClearance", 1.25, 0.1, 8.0);
-				autoDodgeInputPriority = builder.comment("Tier II: player input length above this prefers steering over pilot")
-						.translation("config.youkaishomecoming.common.auto_dodge.inputPriority")
-						.defineInRange("inputPriority", 0.25, 0.0, 2.0);
-				autoDodgeAssistPilotWeight = builder.comment("Tier II: blend weight of pilot velocity when idle (0-1)")
-						.translation("config.youkaishomecoming.common.auto_dodge.assistPilotWeight")
-						.defineInRange("assistPilotWeight", 0.65, 0.0, 1.0);
-				autoDodgeAssistCurrentWeight = builder.comment("Tier II: blend weight of current velocity when idle (0-1)")
-						.translation("config.youkaishomecoming.common.auto_dodge.assistCurrentWeight")
-						.defineInRange("assistCurrentWeight", 0.35, 0.0, 1.0);
-				autoDodgeAssistSpeedCap = builder.comment("Tier II: max horizontal speed while assisting")
-						.translation("config.youkaishomecoming.common.auto_dodge.assistSpeedCap")
-						.defineInRange("assistSpeedCap", 0.28, 0.05, 1.5);
-				autoDodgeTakeoverMinSpeed = builder.comment("Tier III: boost horizontal speed up to at least this when non-zero")
-						.translation("config.youkaishomecoming.common.auto_dodge.takeoverMinSpeed")
-						.defineInRange("takeoverMinSpeed", 0.35, 0.05, 1.5);
-				autoDodgeRescuePulseSpeed = builder.comment("Tier I fallback horizontal kick speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.rescuePulseSpeed")
-						.defineInRange("rescuePulseSpeed", 0.4, 0.05, 1.5);
-				autoDodgeRescueJump = builder.comment("Tier I fallback upward impulse")
-						.translation("config.youkaishomecoming.common.auto_dodge.rescueJump")
-						.defineInRange("rescueJump", 0.2, 0.0, 1.0);
-				autoDodgeTierIHighSpeed = builder.comment("Tier I pilot profile high speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIHighSpeed")
-						.defineInRange("tierIHighSpeed", 0.25, 0.05, 2.0);
-				autoDodgeTierILowSpeed = builder.comment("Tier I pilot profile low speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierILowSpeed")
-						.defineInRange("tierILowSpeed", 0.12, 0.02, 1.0);
-				autoDodgeTierIIHighSpeed = builder.comment("Tier II pilot profile high speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIIHighSpeed")
-						.defineInRange("tierIIHighSpeed", 0.35, 0.05, 2.0);
-				autoDodgeTierIILowSpeed = builder.comment("Tier II pilot profile low speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIILowSpeed")
-						.defineInRange("tierIILowSpeed", 0.16, 0.02, 1.0);
-				autoDodgeTierIIIHighSpeed = builder.comment("Tier III pilot profile high speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIIIHighSpeed")
-						.defineInRange("tierIIIHighSpeed", 0.45, 0.05, 2.0);
-				autoDodgeTierIIILowSpeed = builder.comment("Tier III pilot profile low speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIIILowSpeed")
-						.defineInRange("tierIIILowSpeed", 0.2, 0.02, 1.0);
-				autoDodgeThreatTopK = builder.comment("Max threats kept per tick after nearest-sort (Top-K)")
-						.translation("config.youkaishomecoming.common.auto_dodge.threatTopK")
-						.defineInRange("threatTopK", 80, 8, 256);
-				autoDodgePredictHorizon = builder.comment("Prediction horizon in ticks")
-						.translation("config.youkaishomecoming.common.auto_dodge.predictHorizon")
-						.defineInRange("predictHorizon", 16, 4, 40);
-				autoDodgeDebugLogInterval = builder.comment("Log [AutoDodge] every N ticks (0 = off; rescue/takeover still log)")
-						.translation("config.youkaishomecoming.common.auto_dodge.debugLogInterval")
-						.defineInRange("debugLogInterval", 40, 0, 200);
-				autoDodgeWallClearanceRadius = builder.comment(
-								"Soft wall clearance probe radius in blocks (0 = off).",
-								"When safe from bullets, pilot prefers staying this far from solids to keep escape room.")
-						.translation("config.youkaishomecoming.common.auto_dodge.wallClearanceRadius")
-						.defineInRange("wallClearanceRadius", 1.5, 0.0, 8.0);
-				autoDodgeWallClearanceGain = builder.comment(
-								"Max soft wall repulsion when fully safe (threat clearance >= wallClearanceSafeDist).",
-								"Does not override necessary bullet dodge; hard collisions still blocked.")
-						.translation("config.youkaishomecoming.common.auto_dodge.wallClearanceGain")
-						.defineInRange("wallClearanceGain", 0.75, 0.0, 10.0);
-				autoDodgeWallClearanceDangerDist = builder.comment(
-								"Threat clearance at or below this → wall force fully off (dodge bullets first).")
-						.translation("config.youkaishomecoming.common.auto_dodge.wallClearanceDangerDist")
-						.defineInRange("wallClearanceDangerDist", 0.85, 0.05, 8.0);
-				autoDodgeWallClearanceSafeDist = builder.comment(
-								"Threat clearance at or above this → full wall force (claim free space).",
-								"Between danger and safe: linear ramp.")
-						.translation("config.youkaishomecoming.common.auto_dodge.wallClearanceSafeDist")
-						.defineInRange("wallClearanceSafeDist", 2.5, 0.1, 16.0);
+				autoDodgeBaseSpeed = builder.comment("Maximum movement speed of Auto Dodge I")
+						.translation("config.youkaishomecoming.common.auto_dodge.baseSpeed")
+						.defineInRange("baseSpeed", 0.30, 0.05, 2.0);
+				autoDodgeSpeedPerTier = builder.comment("Movement speed added by each Auto Dodge level")
+						.translation("config.youkaishomecoming.common.auto_dodge.speedPerTier")
+						.defineInRange("speedPerTier", 0.10, 0.0, 1.0);
+				autoDodgeBaseScanRadius = builder.comment("Threat scan radius of Auto Dodge I")
+						.translation("config.youkaishomecoming.common.auto_dodge.baseScanRadius")
+						.defineInRange("baseScanRadius", 12.0, 4.0, 48.0);
+				autoDodgeScanRadiusPerTier = builder.comment("Threat scan radius added by each Auto Dodge level")
+						.translation("config.youkaishomecoming.common.auto_dodge.scanRadiusPerTier")
+						.defineInRange("scanRadiusPerTier", 4.0, 0.0, 24.0);
 				previewPilotArenaHalf = builder.comment("Preview pilot arena half-size in blocks")
 						.translation("config.youkaishomecoming.common.auto_dodge.previewArenaHalfSize")
 						.defineInRange("previewArenaHalfSize", 12.0, 2.0, 64.0);

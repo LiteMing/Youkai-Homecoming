@@ -266,9 +266,9 @@
 					"red_wine": "经典红葡萄酒",
 					"van_allen": "范艾伦干红葡萄酒",
 					"white_wine": "白桦森林半干白葡萄酒",
-					"dodge_sake": "闪避酒·救场",
-					"dodge_sake_ii": "闪避酒·辅助",
-					"dodge_sake_iii": "闪避酒·接管"
+					"dodge_sake": "闪避酒·初阶",
+					"dodge_sake_ii": "闪避酒·进阶",
+					"dodge_sake_iii": "闪避酒·高阶"
 				}
 			]
 		},

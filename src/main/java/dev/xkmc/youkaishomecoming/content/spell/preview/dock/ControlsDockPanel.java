@@ -341,9 +341,9 @@ public class ControlsDockPanel implements DockPanel {
 			rebuildCallback.run();
 		}, true));
 		String[] labels = {
-				"I  Rescue (amp 0)",
-				"II Assist (amp 1)",
-				"III Takeover (amp 2)"
+				"I Basic",
+				"II Enhanced",
+				"III Advanced"
 		};
 		for (int t = 0; t <= 2; t++) {
 			final int tier = t;

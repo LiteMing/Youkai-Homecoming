@@ -25,8 +25,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
-import org.slf4j.Logger;
-import com.mojang.logging.LogUtils;
 
 import java.util.Map;
 import java.util.Set;
@@ -55,17 +53,15 @@ public class VirtualSpellScene {
 	private long lastTickNanos = 0;
 
 	// --- AI pilot (aligned with player AUTO_DODGE amp 0/1/2) ---
-	private static final Logger LOGGER = LogUtils.getLogger();
-	/** 0 = rescue, 1 = assist, 2 = takeover (buff amp mapping). */
-	public static final int PILOT_TIER_RESCUE = 0;
-	public static final int PILOT_TIER_ASSIST = 1;
-	public static final int PILOT_TIER_TAKEOVER = 2;
+	public static final int PILOT_TIER_BASIC = 0;
+	public static final int PILOT_TIER_ENHANCED = 1;
+	public static final int PILOT_TIER_ADVANCED = 2;
 	private boolean pilotEnabled = false;
-	private int pilotTier = PILOT_TIER_ASSIST;
-	private int pilotRescueCooldown = 0;
+	private int pilotTier = PILOT_TIER_ENHANCED;
+	private Vec3 pilotAnchor;
 	private final ThreatProviderRegistry pilotRegistry = new ThreatProviderRegistry();
 	private final ObservedMotionProvider observedProvider = new ObservedMotionProvider();
-	private DodgePilot pilot = new DodgePilot(PilotProfile.ADEPT);
+	private DodgePilot pilot = new DodgePilot(PilotProfile.ENHANCED);
 	private long pilotProfileFingerprint = Long.MIN_VALUE;
 	private long lastPilotNanos = 0;
 	private boolean pilotDebugOverlay = true;
@@ -160,9 +156,9 @@ public class VirtualSpellScene {
 		long t0 = System.nanoTime();
 		refreshPilotProfileIfNeeded();
 		var config = YHModConfig.COMMON;
-		if (pilotRescueCooldown > 0) pilotRescueCooldown--;
 
 		Vec3 feet = holder.getTargetFeetPos();
+		if (pilotAnchor == null) pilotAnchor = feet;
 		Vec3 curVel = holder.targetVelocity() == null ? Vec3.ZERO : holder.targetVelocity();
 		int horizon = pilot.profile().predictHorizon();
 		int topK = pilot.profile().threatTopK();
@@ -175,27 +171,25 @@ public class VirtualSpellScene {
 		ThreatSnapshot snap = ThreatSnapshot.capture(hostile, pilotRegistry, horizon, topK, feet);
 		PilotState state = new PilotState(feet, curVel, SelfBoxModel.previewTarget());
 		state.oracle = CollisionOracle.ALWAYS_FREE;
-		// Preview has no Level collision oracle; feed the same configurable soft
-		// wall parameters so its virtual block target behaves like a real boundary.
-		state.wallClearanceRadius = config.autoDodgeWallClearanceRadius.get();
-		state.wallClearanceGain = config.autoDodgeWallClearanceGain.get();
-		state.wallClearanceDangerDist = config.autoDodgeWallClearanceDangerDist.get();
-		state.wallClearanceSafeDist = config.autoDodgeWallClearanceSafeDist.get();
-		state.anchor = new Vec3(0, feet.y, -targetDistance);
+		state.wallClearanceRadius = pilot.profile().wallClearanceRadius();
+		state.wallClearanceGain = pilot.profile().wallClearanceGain();
+		state.wallClearanceDangerDist = pilot.profile().wallClearanceDangerDist();
+		state.wallClearanceSafeDist = pilot.profile().wallClearanceSafeDist();
+		state.anchor = pilotAnchor;
 		double h = config.previewPilotArenaHalf.get();
 		// Keep the existing preview arena as a horizontal convenience limit, but
 		// make the block-target box the authoritative hard boundary. Convert it to
 		// a feet range so the pilot cannot move its whole body through the edge.
 		AABB blockBounds = PreviewTarget.safeFeetBounds(
 				holder.getBlockTargetCollisionBox(), state.selfBox.bodyAt(Vec3.ZERO));
-		double minX = Math.max(-h, blockBounds.minX);
-		double maxX = Math.min(h, blockBounds.maxX);
+		double minX = Math.max(pilotAnchor.x - h, blockBounds.minX);
+		double maxX = Math.min(pilotAnchor.x + h, blockBounds.maxX);
 		if (minX > maxX) {
 			minX = blockBounds.minX;
 			maxX = blockBounds.maxX;
 		}
-		double minZ = Math.max(-h - targetDistance, blockBounds.minZ);
-		double maxZ = Math.min(h - targetDistance, blockBounds.maxZ);
+		double minZ = Math.max(pilotAnchor.z - h, blockBounds.minZ);
+		double maxZ = Math.min(pilotAnchor.z + h, blockBounds.maxZ);
 		if (minZ > maxZ) {
 			minZ = blockBounds.minZ;
 			maxZ = blockBounds.maxZ;
@@ -203,40 +197,7 @@ public class VirtualSpellScene {
 		state.arena = new AABB(minX, blockBounds.minY, minZ, maxX, blockBounds.maxY, maxZ);
 		state.tick = runtime.getTotalTick();
 
-		Vec3 vel = Vec3.ZERO;
-		int tier = Math.max(0, Math.min(2, pilotTier));
-		if (tier == PILOT_TIER_RESCUE) {
-			// I: only move when clearance is critical (buff amp 0)
-			var sc = pilot.scorer().score(snap, state.selfBox, feet, curVel, 0);
-			boolean danger = sc.hardHit() || sc.minClearance() <= config.autoDodgeRescueClearance.get();
-			if (danger && pilotRescueCooldown <= 0) {
-				vel = pilot.tick(snap, state);
-				if (vel.lengthSqr() < 1e-6 && snap.size() > 0) {
-					// Fallback lateral kick
-					var th = snap.threats().get(0);
-					if (th.frames().length > 0) {
-						Vec3 away = feet.subtract(th.frames()[0].position());
-						away = new Vec3(away.x, away.y, away.z);
-						if (away.lengthSqr() > 1e-8) {
-							vel = away.normalize().scale(pilot.profile().highSpeed());
-						}
-					}
-				}
-				pilotRescueCooldown = config.autoDodgeEmergencyCooldown.get();
-			}
-		} else if (tier == PILOT_TIER_ASSIST) {
-			// II: soft APF blend — full pilot output scaled down (buff amp 1)
-			Vec3 full = pilot.tick(snap, state);
-			vel = curVel.scale(config.autoDodgeAssistCurrentWeight.get())
-					.add(full.scale(config.autoDodgeAssistPilotWeight.get()));
-			double cap = config.autoDodgeAssistSpeedCap.get();
-			if (vel.length() > cap) {
-				vel = vel.normalize().scale(cap);
-			}
-		} else {
-			// III: full takeover (buff amp 2)
-			vel = pilot.tick(snap, state);
-		}
+		Vec3 vel = pilot.tick(snap, state);
 
 		Vec3 next = feet.add(vel);
 		if (state.arena != null) {
@@ -259,8 +220,10 @@ public class VirtualSpellScene {
 		this.pilotEnabled = enabled;
 		if (!enabled) {
 			pilot.reset();
-			pilotRescueCooldown = 0;
+			pilotAnchor = null;
 			holder.setTargetVelocity(Vec3.ZERO);
+		} else {
+			pilotAnchor = holder.getTargetFeetPos();
 		}
 	}
 
@@ -268,11 +231,11 @@ public class VirtualSpellScene {
 		setPilotEnabled(!pilotEnabled);
 	}
 
-	/** 0 = I rescue, 1 = II assist, 2 = III takeover. Enables pilot. */
+	/** 0 = basic, 1 = enhanced, 2 = advanced. Enables pilot. */
 	public void setPilotTier(int tier) {
 		this.pilotTier = Math.max(0, Math.min(2, tier));
 		this.pilotEnabled = true;
-		this.pilotRescueCooldown = 0;
+		this.pilotAnchor = holder.getTargetFeetPos();
 		this.pilotProfileFingerprint = Long.MIN_VALUE;
 		refreshPilotProfileIfNeeded();
 	}
@@ -284,46 +247,30 @@ public class VirtualSpellScene {
 	public String getPilotTierLabel() {
 		if (!pilotEnabled) return "AI:OFF";
 		return switch (pilotTier) {
-			case PILOT_TIER_RESCUE -> "AI:I";
-			case PILOT_TIER_ASSIST -> "AI:II";
+			case PILOT_TIER_BASIC -> "AI:I";
+			case PILOT_TIER_ENHANCED -> "AI:II";
 			default -> "AI:III";
 		};
 	}
 
 	public String getPilotTierName() {
 		return switch (pilotTier) {
-			case PILOT_TIER_RESCUE -> "I Rescue";
-			case PILOT_TIER_ASSIST -> "II Assist";
-			default -> "III Takeover";
+			case PILOT_TIER_BASIC -> "I Basic";
+			case PILOT_TIER_ENHANCED -> "II Enhanced";
+			default -> "III Advanced";
 		};
 	}
 
 	private void refreshPilotProfileIfNeeded() {
 		var config = YHModConfig.COMMON;
-		double high = switch (pilotTier) {
-			case PILOT_TIER_RESCUE -> config.autoDodgeTierIHighSpeed.get();
-			case PILOT_TIER_ASSIST -> config.autoDodgeTierIIHighSpeed.get();
-			default -> config.autoDodgeTierIIIHighSpeed.get();
-		};
-		double low = switch (pilotTier) {
-			case PILOT_TIER_RESCUE -> config.autoDodgeTierILowSpeed.get();
-			case PILOT_TIER_ASSIST -> config.autoDodgeTierIILowSpeed.get();
-			default -> config.autoDodgeTierIIILowSpeed.get();
-		};
+		double baseSpeed = config.autoDodgeBaseSpeed.get();
+		double speedStep = config.autoDodgeSpeedPerTier.get();
 		long fingerprint = pilotTier
-				^ Double.doubleToLongBits(high) * 31
-				^ Double.doubleToLongBits(low) * 37
-				^ ((long) config.autoDodgeThreatTopK.get() << 16)
-				^ config.autoDodgePredictHorizon.get();
+				^ Double.doubleToLongBits(baseSpeed) * 31
+				^ Double.doubleToLongBits(speedStep) * 37;
 		if (fingerprint == pilotProfileFingerprint) return;
 		pilotProfileFingerprint = fingerprint;
-		PilotProfile base = switch (pilotTier) {
-			case PILOT_TIER_RESCUE -> PilotProfile.NOVICE;
-			case PILOT_TIER_ASSIST -> PilotProfile.ADEPT;
-			default -> PilotProfile.LUNATIC;
-		};
-		setPilotProfile(base.withMotion(high, low,
-				config.autoDodgeThreatTopK.get(), config.autoDodgePredictHorizon.get()));
+		setPilotProfile(PilotProfile.playerTier(pilotTier, baseSpeed, speedStep));
 	}
 
 	public long getLastPilotNanos() {
@@ -410,6 +357,7 @@ public class VirtualSpellScene {
 		holder.resetTargetHitCount();
 		holder.clearYsmRenderOverride();
 		pilot.reset();
+		pilotAnchor = null;
 		observedProvider.clear();
 		lastPilotNanos = 0;
 		damageIntervalTicks = 0;
@@ -426,6 +374,8 @@ public class VirtualSpellScene {
 		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 		SpellContext ctx = new SpellContext(holder, definition, runtime, diff);
 		runtime.restartAtPhase(ctx, phaseId);
+		pilot.reset();
+		pilotAnchor = holder.getTargetFeetPos();
 		damageIntervalTicks = 0;
 	}
 
@@ -456,6 +406,7 @@ public class VirtualSpellScene {
 	public void setTargetDistance(float distance) {
 		this.targetDistance = distance;
 		holder.setTargetDistance(distance);
+		pilotAnchor = holder.getTargetFeetPos();
 	}
 
 	public Vec3 getCasterPos() {
@@ -476,10 +427,12 @@ public class VirtualSpellScene {
 
 	public void resetTargetPos() {
 		holder.setTargetCenter(new Vec3(0, 0, -targetDistance));
+		pilotAnchor = holder.getTargetFeetPos();
 	}
 
 	public void moveTarget(Vec3 delta) {
 		holder.setTargetCenter(holder.getTargetCenter().add(delta));
+		pilotAnchor = holder.getTargetFeetPos();
 	}
 
 	public Vec3 getTargetPos() {
@@ -488,6 +441,7 @@ public class VirtualSpellScene {
 
 	public void setTargetPos(Vec3 pos) {
 		holder.setTargetCenter(pos);
+		pilotAnchor = holder.getTargetFeetPos();
 	}
 
 	public void setTargetFacing(Vec3 facing) {
@@ -502,6 +456,7 @@ public class VirtualSpellScene {
 	public void setTargetHeight(double y) {
 		Vec3 current = holder.getTargetCenter();
 		holder.setTargetCenter(new Vec3(current.x, y, current.z));
+		pilotAnchor = holder.getTargetFeetPos();
 	}
 
 	/** Get the target's Y coordinate (target_height). */

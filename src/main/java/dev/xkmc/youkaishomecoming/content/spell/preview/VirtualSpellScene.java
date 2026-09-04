@@ -407,6 +407,7 @@ public class VirtualSpellScene {
 		runtime.setPhasePreviewLock(null);
 		runtime.reset();
 		holder.clear();
+		holder.resetTargetHitCount();
 		holder.clearYsmRenderOverride();
 		pilot.reset();
 		observedProvider.clear();
@@ -418,6 +419,7 @@ public class VirtualSpellScene {
 	public void resetToPhase(ResourceLocation phaseId) {
 		playing = false;
 		holder.clear();
+		holder.resetTargetHitCount();
 		holder.clearYsmRenderOverride();
 		holder.setCasterHealth(healthRatio);
 		runtime.setPhasePreviewLock(phaseId);
@@ -590,6 +592,7 @@ public class VirtualSpellScene {
 		}
 		this.definition = definition;
 		this.runtime = new SpellRuntime(definition);
+		holder.resetTargetHitCount();
 		bindRuntime(this.runtime);
 		this.runtime.setPhasePreviewLock(definition.entryPhase);
 		damageIntervalTicks = 0;
@@ -693,8 +696,8 @@ public class VirtualSpellScene {
 		return holder.isSafetyTripped();
 	}
 
-	public int getHitCount() {
-		return runtime.getHitCount();
+	public int getTargetHitCount() {
+		return holder.getTargetHitCount();
 	}
 
 	public Map<String, Double> getVariables() {

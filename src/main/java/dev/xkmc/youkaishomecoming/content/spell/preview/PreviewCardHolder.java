@@ -76,6 +76,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		blockContactStates.remove(p);
 	}
 	private final java.util.Set<SimplifiedProjectile> entityHitProjectiles = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+	/** Preview statistic: distinct projectiles that have collided with the entity target. */
+	private int targetHitCount;
 	private record BlockContactState(int lastHitTick, Vec3 lastNormal) {}
 	private final java.util.Map<SimplifiedProjectile, BlockContactState> blockContactStates = new java.util.IdentityHashMap<>();
 
@@ -445,6 +447,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	}
 
 	private void handlePreviewTargetHit(SimplifiedProjectile projectile, PreviewHit hit) {
+		if (hit.type() == PreviewTarget.HitType.ENTITY) {
+			targetHitCount++;
+		}
 		if (projectile instanceof ItemDanmakuEntity danmaku) {
 			handlePreviewProjectileHook(projectile, hit,
 					hit.type() == PreviewTarget.HitType.ENTITY ? danmaku.onHitEntityAction : danmaku.onHitBlockAction,
@@ -797,6 +802,14 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		safetyTripped = false;
 		targetVelocity = Vec3.ZERO;
 		clearPreviewSpellCircle();
+	}
+
+	public int getTargetHitCount() {
+		return targetHitCount;
+	}
+
+	public void resetTargetHitCount() {
+		targetHitCount = 0;
 	}
 
 	public void setTargetDistance(float distance) {

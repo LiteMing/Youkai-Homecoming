@@ -35,6 +35,7 @@ public class PilotThreatTest {
 		testLaserSweep();
 		testSelfBoxPlayerShrinkVsVanilla();
 		testNodeScorerGrazeVsDead();
+		testArenaClearanceForce();
 		testPilotPathOracleRejectsWallCrossing();
 		testSnapshotPerf();
 
@@ -265,6 +266,22 @@ public class PilotThreatTest {
 						1.5f, 0, 1, 0));
 		check("search checks complete path, not only endpoint", pathChecked[0]);
 		check("wall-crossing candidate is rejected", result.firstStep().lengthSqr() < 1e-10);
+		System.out.println();
+	}
+
+	private static void testArenaClearanceForce() {
+		System.out.println("[arena soft clearance]");
+		PilotState state = new PilotState(new Vec3(0.8, 0, 0), Vec3.ZERO, SelfBoxModel.vanillaPlayer());
+		state.arena = new AABB(-1, -1, -1, 1, 1, 1);
+		state.wallClearanceRadius = 0.5;
+		state.wallClearanceGain = 1.0;
+		Vec3 force = state.arenaClearanceForce();
+		check("near max X pushes inward", force.x < -0.1);
+		state.feet = new Vec3(0, 0, 0);
+		check("center has no boundary force", state.arenaClearanceForce().lengthSqr() < 1e-10);
+		state.feet = new Vec3(1.1, 0, 0);
+		check("outside max X recovers inward", state.arenaClearanceForce().x < 0);
+		check("outside max X is penalized", state.arenaClearancePenalty() < 0);
 		System.out.println();
 	}
 

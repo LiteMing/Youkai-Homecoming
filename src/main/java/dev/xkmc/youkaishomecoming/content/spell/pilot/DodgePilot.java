@@ -125,17 +125,15 @@ public final class DodgePilot {
 		if (state.arena != null && desired.lengthSqr() > 1e-8) {
 			Vec3 next = state.feet.add(desired);
 			if (!state.arena.contains(next)) {
-				Vec3 c = new Vec3(
-						(state.arena.minX + state.arena.maxX) * 0.5,
-						(state.arena.minY + state.arena.maxY) * 0.5,
-						(state.arena.minZ + state.arena.maxZ) * 0.5
+				// Keep tangential dodge motion and only remove the outward component.
+				// Pulling all the way to the arena center made wall contact look like
+				// a sudden teleport and could override a valid bullet escape route.
+				Vec3 clamped = new Vec3(
+						Math.max(state.arena.minX, Math.min(state.arena.maxX, next.x)),
+						Math.max(state.arena.minY, Math.min(state.arena.maxY, next.y)),
+						Math.max(state.arena.minZ, Math.min(state.arena.maxZ, next.z))
 				);
-				Vec3 inward = c.subtract(state.feet);
-				if (inward.lengthSqr() > 1e-8) {
-					desired = inward.normalize().scale(Math.min(profile.highSpeed(), inward.length() * 0.5));
-				} else {
-					desired = Vec3.ZERO;
-				}
+				desired = clamped.subtract(state.feet);
 			}
 		}
 

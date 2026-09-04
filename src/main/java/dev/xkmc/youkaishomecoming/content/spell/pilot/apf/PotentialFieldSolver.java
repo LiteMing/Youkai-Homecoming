@@ -115,7 +115,7 @@ public final class PotentialFieldSolver {
 		// Soft wall clearance only when relatively safe — never steal necessary dodge
 		double wallScale = state.wallSafetyFactor(minThreatDist);
 		if (wallScale > 1e-4) {
-			Vec3 wall = wallClearanceForce(state, box);
+			Vec3 wall = wallClearanceForce(state, box).add(state.arenaClearanceForce());
 			// Cap wall contribution so it cannot dominate threat repulsion
 			double wallCap = profile.maxForce() * 0.35 * wallScale;
 			double wl = wall.length();

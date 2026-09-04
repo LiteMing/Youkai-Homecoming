@@ -59,6 +59,60 @@ public final class PilotState {
 		return (threatClearance - danger) / (safe - danger);
 	}
 
+	/**
+	 * Smooth inward force for the optional arena boundary. The arena is stored
+	 * as a range of valid feet positions, so this deliberately does not inspect
+	 * the body box again (the range was already derived with {@code safeFeetBounds}).
+	 * A quadratic falloff gives the pilot time to turn while retaining a hard
+	 * collision clamp for numerical overshoot.
+	 */
+	public Vec3 arenaClearanceForce() {
+		if (arena == null || wallClearanceRadius <= 0 || wallClearanceGain <= 0) {
+			return Vec3.ZERO;
+		}
+		Vec3 force = Vec3.ZERO;
+		force = force.add(arenaFaceForce(feet.x - arena.minX, new Vec3(1, 0, 0)));
+		force = force.add(arenaFaceForce(arena.maxX - feet.x, new Vec3(-1, 0, 0)));
+		force = force.add(arenaFaceForce(feet.y - arena.minY, new Vec3(0, 1, 0)));
+		force = force.add(arenaFaceForce(arena.maxY - feet.y, new Vec3(0, -1, 0)));
+		force = force.add(arenaFaceForce(feet.z - arena.minZ, new Vec3(0, 0, 1)));
+		force = force.add(arenaFaceForce(arena.maxZ - feet.z, new Vec3(0, 0, -1)));
+		return force;
+	}
+
+	/** Negative candidate score near the arena faces, for search-mode ranking. */
+	public double arenaClearancePenalty() {
+		return arenaClearancePenalty(feet);
+	}
+
+	/** Negative candidate score near the arena faces for an arbitrary feet pose. */
+	public double arenaClearancePenalty(Vec3 position) {
+		if (arena == null || wallClearanceRadius <= 0 || wallClearanceGain <= 0) {
+			return 0;
+		}
+		double penalty = 0;
+		penalty += arenaFacePenalty(position.x - arena.minX);
+		penalty += arenaFacePenalty(arena.maxX - position.x);
+		penalty += arenaFacePenalty(position.y - arena.minY);
+		penalty += arenaFacePenalty(arena.maxY - position.y);
+		penalty += arenaFacePenalty(position.z - arena.minZ);
+		penalty += arenaFacePenalty(arena.maxZ - position.z);
+		return penalty;
+	}
+
+	private Vec3 arenaFaceForce(double gap, Vec3 inward) {
+		if (gap >= wallClearanceRadius) return Vec3.ZERO;
+		if (gap <= 0) return inward.scale(wallClearanceGain);
+		double fraction = (wallClearanceRadius - gap) / wallClearanceRadius;
+		return inward.scale(wallClearanceGain * fraction * fraction);
+	}
+
+	private double arenaFacePenalty(double gap) {
+		if (gap >= wallClearanceRadius) return 0;
+		double fraction = gap <= 0 ? 1 : (wallClearanceRadius - gap) / wallClearanceRadius;
+		return -wallClearanceGain * fraction * fraction * 0.35;
+	}
+
 	public boolean timedOut() {
 		return deadlineNanos > 0 && System.nanoTime() >= deadlineNanos;
 	}

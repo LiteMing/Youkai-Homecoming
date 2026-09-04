@@ -175,6 +175,12 @@ public class VirtualSpellScene {
 		ThreatSnapshot snap = ThreatSnapshot.capture(hostile, pilotRegistry, horizon, topK, feet);
 		PilotState state = new PilotState(feet, curVel, SelfBoxModel.previewTarget());
 		state.oracle = CollisionOracle.ALWAYS_FREE;
+		// Preview has no Level collision oracle; feed the same configurable soft
+		// wall parameters so its virtual block target behaves like a real boundary.
+		state.wallClearanceRadius = config.autoDodgeWallClearanceRadius.get();
+		state.wallClearanceGain = config.autoDodgeWallClearanceGain.get();
+		state.wallClearanceDangerDist = config.autoDodgeWallClearanceDangerDist.get();
+		state.wallClearanceSafeDist = config.autoDodgeWallClearanceSafeDist.get();
 		state.anchor = new Vec3(0, feet.y, -targetDistance);
 		double h = config.previewPilotArenaHalf.get();
 		// Keep the existing preview arena as a horizontal convenience limit, but

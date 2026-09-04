@@ -178,6 +178,10 @@ public final class NodeScorer {
 				penalty -= gain * (radius - free) / radius * 0.35;
 			}
 		}
+		// Preview arenas have no world solids in their oracle. Apply the same
+		// safety-gated penalty to their virtual faces so search prefers interior
+		// paths instead of riding the hard boundary.
+		penalty += state.arenaClearancePenalty(feet) * safety;
 		return penalty;
 	}
 }

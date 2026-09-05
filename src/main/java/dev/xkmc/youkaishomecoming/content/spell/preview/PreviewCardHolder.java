@@ -3,6 +3,8 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleHolder;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationState;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
@@ -99,6 +101,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private int highlightedActionIndex = -1;
 	private final java.util.IdentityHashMap<SpellAction, Integer> previewActionIds = new java.util.IdentityHashMap<>();
 	private String ysmModelOverride = "";
+	private YsmPresentationState ysmPresentation = YsmPresentationState.EMPTY;
+	private YsmPresentationSignals ysmSignals = YsmPresentationSignals.EMPTY;
 	private String ysmTextureOverride = "";
 	private String ysmAnimationOverride = "";
 	private int ysmModelOverrideUntil = 0;
@@ -303,6 +307,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	 */
 	public void tick() {
 		expireYsmRenderOverride();
+		expireYsmPresentation();
 		tickFakeCaster();
 		// Auto-reset safety flag when entity count drops below limit
 		if (safetyTripped && localEntities.size() + pendingEntities.size() < maxEntityCount) {
@@ -795,6 +800,8 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	}
 
 	public void clear() {
+		ysmPresentation = YsmPresentationState.EMPTY;
+		ysmSignals = YsmPresentationSignals.EMPTY;
 		localEntities.clear();
 		pendingEntities.clear();
 		entityHitProjectiles.clear();
@@ -930,6 +937,41 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			return 1.0f;
 		}
 		return Math.max(0.0f, Math.min(64.0f, size));
+	}
+
+	@Override
+	public YsmPresentationState getYsmPresentation() {
+		return ysmPresentation;
+	}
+
+	@Override
+	public void setYsmPresentation(YsmPresentationState state) {
+		ysmPresentation = state;
+	}
+
+	@Override
+	public long getYsmPresentationTime() {
+		return fakeCaster.tickCount;
+	}
+
+	@Override
+	public YsmPresentationSignals getYsmSignals() { return ysmSignals; }
+
+	@Override
+	public void setYsmSignals(YsmPresentationSignals signals) { ysmSignals = signals; }
+
+	/** Advances only the isolated model clock; no spell, damage, AI or world ticks. */
+	public void tickModelPreview() {
+		fakeCaster.tickCount++;
+		ysmPresentation = ysmPresentation.expire(getYsmPresentationTime());
+		fakeCaster.setOnGround(ysmSignals.state() != dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FLY
+				&& ysmSignals.state() != dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FALLING);
+		fakeCaster.walkAnimation.update(ysmSignals.state() == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.WALK ? 0.8f : 0, 0.4f);
+	}
+
+	@Override
+	public boolean canMutateYsmPresentation() {
+		return true; // Isolated editor simulation, never a world entity.
 	}
 
 	@Override
@@ -1197,7 +1239,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	 * using {@code getOwner() instanceof CardHolder} checks (AttachedMover,
 	 * terminate trail actions, damage source) will work correctly in preview.
 	 */
-	static class FakeCasterEntity extends ArmorStand implements CardHolder, SpellCircleHolder {
+	static class FakeCasterEntity extends ArmorStand implements CardHolder, SpellCircleHolder, YsmRenderOverrideTarget {
 
 		private final PreviewCardHolder holder;
 
@@ -1205,6 +1247,21 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 			super(EntityType.ARMOR_STAND, level);
 			this.holder = holder;
 		}
+
+		@Override public void setYsmRenderOverride(String model, String texture, String animation, int duration, String clear) { holder.setYsmRenderOverride(model, texture, animation, duration, clear); }
+		@Override public void clearYsmRenderOverride(String target) { holder.clearYsmRenderOverride(target); }
+		@Override public boolean hasYsmRenderOverride() { return holder.hasYsmRenderOverride(); }
+		@Override public String getYsmModelOverride() { return holder.getYsmModelOverride(); }
+		@Override public String getYsmTextureOverride() { return holder.getYsmTextureOverride(); }
+		@Override public String getYsmAnimationOverride() { return holder.getYsmAnimationOverride(); }
+		@Override public int getYsmOverrideTicksRemaining() { return holder.getYsmOverrideTicksRemaining(); }
+		@Override public String describeYsmRenderOverride() { return holder.describeYsmRenderOverride(); }
+		@Override public YsmPresentationState getYsmPresentation() { return holder.getYsmPresentation(); }
+		@Override public void setYsmPresentation(YsmPresentationState state) { holder.setYsmPresentation(state); }
+		@Override public long getYsmPresentationTime() { return holder.getYsmPresentationTime(); }
+		@Override public YsmPresentationSignals getYsmSignals() { return holder.getYsmSignals(); }
+		@Override public void setYsmSignals(YsmPresentationSignals signals) { holder.setYsmSignals(signals); }
+		@Override public boolean canMutateYsmPresentation() { return true; }
 
 		@Override
 		public Vec3 center() {

@@ -27,6 +27,11 @@ public class YsmOverrideData extends SavedData {
 
 	private final Map<ResourceLocation, RenderBinding> typeOverrides = new LinkedHashMap<>();
 	private final Map<UUID, RenderBinding> entityOverrides = new LinkedHashMap<>();
+	private long revision;
+
+	public long revision() { return revision; }
+
+	private void changed() { revision = Math.addExact(revision, 1); setDirty(); }
 
 	public static YsmOverrideData get(MinecraftServer server) {
 		return server.overworld().getDataStorage()
@@ -35,6 +40,7 @@ public class YsmOverrideData extends SavedData {
 
 	public static YsmOverrideData load(CompoundTag tag) {
 		YsmOverrideData data = new YsmOverrideData();
+		data.revision = Math.max(0, tag.getLong("revision"));
 		CompoundTag typeTag = tag.getCompound(KEY_TYPE);
 		for (String key : typeTag.getAllKeys()) {
 			ResourceLocation id = ResourceLocation.tryParse(key);
@@ -54,6 +60,7 @@ public class YsmOverrideData extends SavedData {
 
 	@Override
 	public CompoundTag save(CompoundTag tag) {
+		tag.putLong("revision", revision);
 		CompoundTag typeTag = new CompoundTag();
 		typeOverrides.forEach((id, binding) -> typeTag.put(id.toString(), bindingToTag(binding)));
 		tag.put(KEY_TYPE, typeTag);
@@ -88,28 +95,28 @@ public class YsmOverrideData extends SavedData {
 
 	public void setType(ResourceLocation type, RenderBinding binding) {
 		typeOverrides.put(type, binding);
-		setDirty();
+		changed();
 	}
 
 	public void removeType(ResourceLocation type) {
 		typeOverrides.remove(type);
-		setDirty();
+		changed();
 	}
 
 	public void setEntity(UUID uuid, RenderBinding binding) {
 		entityOverrides.put(uuid, binding);
-		setDirty();
+		changed();
 	}
 
 	public void removeEntity(UUID uuid) {
 		entityOverrides.remove(uuid);
-		setDirty();
+		changed();
 	}
 
 	public void clearAll() {
 		typeOverrides.clear();
 		entityOverrides.clear();
-		setDirty();
+		changed();
 	}
 
 }

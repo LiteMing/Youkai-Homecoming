@@ -289,6 +289,15 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue smallFairySummonStrongFairy;
 		public final ForgeConfigSpec.IntValue smallFairyStrength;
 
+		// 0.28: bounded, server-authored model presentation requests.
+		public final ForgeConfigSpec.IntValue modelPresentationDefaultTicks;
+		public final ForgeConfigSpec.IntValue modelPresentationMaxTicks;
+		public final ForgeConfigSpec.IntValue modelPresentationMaxParameters;
+		public final ForgeConfigSpec.DoubleValue modelPresentationMaxParameterValue;
+		public final ForgeConfigSpec.DoubleValue modelPresentationWalkSpeed;
+		public final ForgeConfigSpec.IntValue modelPresentationMaxProfiles;
+		public final ForgeConfigSpec.IntValue modelPresentationMaxPresets;
+
 		public final ForgeConfigSpec.IntValue danmakuMaxResource;
 		public final ForgeConfigSpec.IntValue danmakuMaxPower;
 		public final ForgeConfigSpec.DoubleValue danmakuPowerBonus;
@@ -723,6 +732,32 @@ public class YHModConfig {
 						.comment("Read at startup — restart required to apply.")
 						.translation("config.youkaishomecoming.common.spell_migration.useLegacySpellCards")
 						.define("useLegacySpellCards", false);
+			}
+			builder.pop();
+
+			builder.translation("config.youkaishomecoming.common.model_presentation").push("model_presentation");
+			{
+				modelPresentationDefaultTicks = builder.comment("Default duration of manual model animation/parameter requests, in ticks. Clamped to maxTicks.")
+						.translation("config.youkaishomecoming.common.model_presentation.defaultTicks")
+						.defineInRange("defaultTicks", 100, 1, Integer.MAX_VALUE);
+				modelPresentationMaxTicks = builder.comment("Maximum finite model presentation duration. An explicit duration of 0 lasts until cleared or the entity unloads.")
+						.translation("config.youkaishomecoming.common.model_presentation.maxTicks")
+						.defineInRange("maxTicks", 72000, 1, Integer.MAX_VALUE);
+				modelPresentationMaxParameters = builder.comment("Maximum simultaneous numeric parameter overrides per entity.")
+						.translation("config.youkaishomecoming.common.model_presentation.maxParameters")
+						.defineInRange("maxParameters", 32, 1, dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationState.WIRE_MAX_PARAMETERS);
+				modelPresentationMaxParameterValue = builder.comment("Maximum absolute numeric model parameter value accepted by commands and scripts.")
+						.translation("config.youkaishomecoming.common.model_presentation.maxParameterValue")
+						.defineInRange("maxParameterValue", 1000000.0, 1.0, dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationState.WIRE_MAX_PARAMETER_VALUE);
+				modelPresentationWalkSpeed = builder.comment("Minimum horizontal blocks per tick for the model WALK signal; presentation only.")
+						.translation("config.youkaishomecoming.common.model_presentation.walkSpeed")
+						.defineInRange("walkSpeed", 0.05, 0.0, 1.0);
+				modelPresentationMaxProfiles = builder.comment("Maximum server-saved model profiles per world.")
+						.translation("config.youkaishomecoming.common.model_presentation.maxProfiles")
+						.defineInRange("maxProfiles", 256, 1, 4096);
+				modelPresentationMaxPresets = builder.comment("Maximum named presets per model profile.")
+						.translation("config.youkaishomecoming.common.model_presentation.maxPresets")
+						.defineInRange("maxPresets", 64, 1, dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.MAX_PRESETS);
 			}
 			builder.pop();
 

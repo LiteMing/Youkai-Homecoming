@@ -29,6 +29,29 @@ public interface YsmRenderOverrideTarget {
 
 	String describeYsmRenderOverride();
 
+	YsmPresentationState getYsmPresentation();
+
+	void setYsmPresentation(YsmPresentationState state);
+
+	/** World game time for live entities; the isolated simulation clock for previews. */
+	long getYsmPresentationTime();
+
+	YsmPresentationSignals getYsmSignals();
+
+	void setYsmSignals(YsmPresentationSignals signals);
+
+	default boolean canMutateYsmPresentation() {
+		return this instanceof net.minecraft.world.entity.Entity entity && !entity.level().isClientSide()
+				&& entity.getServer() != null && entity.getServer().isSameThread();
+	}
+
+	default void expireYsmPresentation() {
+		YsmPresentationState current = getYsmPresentation();
+		YsmPresentationState next = current.expire(getYsmPresentationTime());
+		if (next != current) setYsmPresentation(next);
+		YsmPresentationRuntime.tick(this);
+	}
+
 	static String normalizeYsmOverride(String value) {
 		return value == null ? "" : value.trim();
 	}

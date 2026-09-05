@@ -216,6 +216,7 @@ public class GeneralEventHandlers {
 			ClassicControlService.reset(player);
 			CustomSpellCircleStorage.syncAllToPlayer(player);
 			dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideServerHandler.syncToPlayer(player);
+			dev.xkmc.youkaishomecoming.compat.ysm.YsmProfileServerHandler.syncToPlayer(player);
 		}
 	}
 

@@ -24,6 +24,9 @@ public class YsmOverrideRequestToServer extends SerialPacketBase {
 	/** Comma-joined entity UUIDs for entity-level actions. */
 	@SerialClass.SerialField
 	public String uuidList = "";
+	/** -1 preserves legacy command semantics. Editor saves must compare the synchronized revision. */
+	@SerialClass.SerialField public long expectedRevision = -1;
+	@SerialClass.SerialField public String requestId = "";
 
 	@Deprecated
 	public YsmOverrideRequestToServer() {
@@ -39,7 +42,7 @@ public class YsmOverrideRequestToServer extends SerialPacketBase {
 
 	@Override
 	public void handle(NetworkEvent.Context context) {
-		YsmOverrideServerHandler.handle(context.getSender(), this);
+		context.enqueueWork(() -> YsmOverrideServerHandler.handle(context.getSender(), this));
 	}
 
 }

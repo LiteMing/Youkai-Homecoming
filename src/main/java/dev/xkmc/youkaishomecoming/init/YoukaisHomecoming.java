@@ -117,6 +117,8 @@ public class YoukaisHomecoming {
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmProfileRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmProfileSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationQuoteRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationQuoteToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStartRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
@@ -215,6 +217,7 @@ public class YoukaisHomecoming {
 	@SubscribeEvent
 	public static void commonSetup(FMLCommonSetupEvent event) {
 		event.enqueueWork(() -> {
+			dev.xkmc.youkaishomecoming.compat.ysm.YsmCommandSuggestions.init();
 			Terrablender.registerBiomes();
 			for (var e : YHCrops.values())
 				e.registerComposter();

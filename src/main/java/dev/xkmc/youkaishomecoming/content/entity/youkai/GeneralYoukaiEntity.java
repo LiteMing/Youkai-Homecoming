@@ -2,6 +2,8 @@ package dev.xkmc.youkaishomecoming.content.entity.youkai;
 
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationState;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
@@ -10,6 +12,7 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializer;
+import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.DifficultyInstance;
@@ -46,12 +49,20 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 	private static final EntityDataAccessor<Integer> YSM_MODEL_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmModelOverrideUntil");
 	private static final EntityDataAccessor<Integer> YSM_TEXTURE_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmTextureOverrideUntil");
 	private static final EntityDataAccessor<Integer> YSM_ANIMATION_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmAnimationOverrideUntil");
+	private static final EntityDataAccessor<CompoundTag> YSM_PRESENTATION = SPELL_DATA.define(
+			new SyncedData.Serializer<>(EntityDataSerializers.COMPOUND_TAG, CompoundTag::copy,
+					tag -> tag instanceof CompoundTag value ? value.copy() : new CompoundTag()), new CompoundTag(), null);
+	private static final EntityDataAccessor<CompoundTag> YSM_SIGNALS = SPELL_DATA.define(
+			new SyncedData.Serializer<>(EntityDataSerializers.COMPOUND_TAG, CompoundTag::copy,
+					tag -> tag instanceof CompoundTag value ? value.copy() : new CompoundTag()), new CompoundTag(), null);
 	private static final int YSM_CLEAR_MODEL = 1;
 	private static final int YSM_CLEAR_TEXTURE = 2;
 	private static final int YSM_CLEAR_ANIMATION = 4;
 	private static final int YSM_CLEAR_ALL = YSM_CLEAR_MODEL | YSM_CLEAR_TEXTURE | YSM_CLEAR_ANIMATION;
 
 	private int tickAggressive;
+	private final YsmPresentationState.Cache ysmPresentationCache = new YsmPresentationState.Cache();
+	private final YsmPresentationSignals.Cache ysmSignalsCache = new YsmPresentationSignals.Cache();
 
 	public GeneralYoukaiEntity(EntityType<? extends GeneralYoukaiEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -74,6 +85,27 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 		if (model == null) model = "";
 		entityData.set(SPELL_MODEL, model);
 	}
+
+	@Override
+	public YsmPresentationState getYsmPresentation() {
+		return ysmPresentationCache.read(entityData.get(YSM_PRESENTATION));
+	}
+
+	@Override
+	public void setYsmPresentation(YsmPresentationState state) {
+		entityData.set(YSM_PRESENTATION, state.toTag());
+	}
+
+	@Override
+	public long getYsmPresentationTime() {
+		return level().getGameTime();
+	}
+
+	@Override
+	public YsmPresentationSignals getYsmSignals() { return ysmSignalsCache.read(entityData.get(YSM_SIGNALS)); }
+
+	@Override
+	public void setYsmSignals(YsmPresentationSignals signals) { entityData.set(YSM_SIGNALS, signals.toTag()); }
 
 	public void setYsmRenderOverride(String modelId, String textureName, String animationHint, int duration, String clearTarget) {
 		String model = normalizeYsmOverride(modelId);
@@ -267,6 +299,7 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 	public void tick() {
 		super.tick();
 		if (!level().isClientSide()) {
+			expireYsmPresentation();
 			int expiredMask = 0;
 			if (isYsmFieldExpired(YSM_MODEL_OVERRIDE_UNTIL)) {
 				expiredMask |= YSM_CLEAR_MODEL;

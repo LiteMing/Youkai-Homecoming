@@ -1,4 +1,11 @@
 {
+  "config.youkaishomecoming.common.model_presentation.walkSpeed": "Walking Presentation Speed Threshold",
+  "config.youkaishomecoming.common.model_presentation.walkSpeed.tooltip": "Minimum server horizontal speed in blocks/tick for the WALK presentation signal; does not change movement",
+  "config.youkaishomecoming.common.model_presentation.maxProfiles": "World Model Profile Limit",
+  "config.youkaishomecoming.common.model_presentation.maxProfiles.tooltip": "Maximum saved model profiles per world; lowering this does not delete existing profiles",
+  "config.youkaishomecoming.common.model_presentation.maxPresets": "Presets Per Model Limit",
+  "config.youkaishomecoming.common.model_presentation.maxPresets.tooltip": "Maximum named presets accepted when saving a model profile",
+  "commands.youkaishomecoming.model.presets": "[YH/YSM] Model %s has %s server-registered presets (not the client's native catalog).",
   "advancements.youkaishomecoming.advancements.main.alcoholic.description": "Brew and drink an alcoholic drink and obtain Drunk effect",
   "advancements.youkaishomecoming.advancements.main.alcoholic.title": "Alcoholic",
   "advancements.youkaishomecoming.advancements.main.bloody.description": "Get a Blood Bottle",
@@ -1804,5 +1811,19 @@
   "fluid.youkaishomecoming.dodge_sake_iii": "Advanced Dodge Sake",
   "item.youkaishomecoming.dodge_sake": "Basic Dodge Sake",
   "item.youkaishomecoming.dodge_sake_ii": "Enhanced Dodge Sake",
-  "item.youkaishomecoming.dodge_sake_iii": "Advanced Dodge Sake"
+  "item.youkaishomecoming.dodge_sake_iii": "Advanced Dodge Sake",
+  "config.youkaishomecoming.common.model_presentation": "Model Animation and Expressions",
+  "config.youkaishomecoming.common.model_presentation.tooltip": "Server-side presentation durations and safety limits; never affects combat rules",
+  "config.youkaishomecoming.common.model_presentation.defaultTicks": "Default Duration",
+  "config.youkaishomecoming.common.model_presentation.defaultTicks.tooltip": "Default duration of manual animation and parameter requests, in ticks, capped by maxTicks",
+  "config.youkaishomecoming.common.model_presentation.maxTicks": "Maximum Duration",
+  "config.youkaishomecoming.common.model_presentation.maxTicks.tooltip": "Maximum finite duration in ticks; explicitly specifying 0 keeps a request until cleared or the entity unloads",
+  "config.youkaishomecoming.common.model_presentation.maxParameters": "Simultaneous Parameter Limit",
+  "config.youkaishomecoming.common.model_presentation.maxParameters.tooltip": "Maximum number of simultaneous numeric model parameter overrides per entity",
+  "config.youkaishomecoming.common.model_presentation.maxParameterValue": "Maximum Absolute Parameter Value",
+  "config.youkaishomecoming.common.model_presentation.maxParameterValue.tooltip": "Maximum absolute numeric value accepted by commands and scripts; declared model controls further restrict actual application",
+  "commands.youkaishomecoming.model.invalid": "[YH/YSM] Invalid request: %s",
+  "commands.youkaishomecoming.model.no_targets": "[YH/YSM] No supported targets. Select YH youkai or shooters.",
+  "commands.youkaishomecoming.model.accepted": "[YH/YSM] Updated presentation requests for %s targets; skipped %s unsupported entities. Check asset availability with /yhysm inspect.",
+  "commands.youkaishomecoming.model.state": "[YH/YSM] Server requests for %s: %s"
 }

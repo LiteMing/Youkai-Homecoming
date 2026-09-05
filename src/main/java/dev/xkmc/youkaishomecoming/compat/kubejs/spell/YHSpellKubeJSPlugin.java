@@ -5,6 +5,7 @@ import dev.latvian.mods.kubejs.script.BindingsEvent;
 import dev.latvian.mods.kubejs.script.ScriptType;
 import dev.latvian.mods.kubejs.util.ClassFilter;
 import dev.xkmc.youkaishomecoming.compat.stg.YHStg;
+import dev.xkmc.youkaishomecoming.compat.ysm.YHModel;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellConditions;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
@@ -25,6 +26,7 @@ public class YHSpellKubeJSPlugin extends KubeJSPlugin {
 		event.add("YHSpellMarket", YHSpellMarket.class);
 		event.add("YHSpellConfig", YHSpellConfig.class);
 		event.add("YHStg", YHStg.class);
+		event.add("YHModel", YHModel.class);
 		event.add("SpellConditions", SpellConditions.class);
 		event.add("SpellActions", SpellActions.class);
 	}
@@ -32,6 +34,7 @@ public class YHSpellKubeJSPlugin extends KubeJSPlugin {
 	@Override
 	public void registerClasses(ScriptType type, ClassFilter filter) {
 		filter.allow("dev.xkmc.youkaishomecoming.compat.stg");
+		filter.allow("dev.xkmc.youkaishomecoming.compat.ysm.YHModel");
 		filter.allow("dev.xkmc.youkaishomecoming.content.spell");
 	}
 

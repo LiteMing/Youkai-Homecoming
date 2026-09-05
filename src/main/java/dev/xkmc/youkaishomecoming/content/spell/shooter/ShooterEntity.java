@@ -19,6 +19,8 @@ import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationState;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
@@ -48,6 +50,10 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 	private static final EntityDataAccessor<Integer> YSM_MODEL_OVERRIDE_UNTIL = SynchedEntityData.defineId(ShooterEntity.class, EntityDataSerializers.INT);
 	private static final EntityDataAccessor<Integer> YSM_TEXTURE_OVERRIDE_UNTIL = SynchedEntityData.defineId(ShooterEntity.class, EntityDataSerializers.INT);
 	private static final EntityDataAccessor<Integer> YSM_ANIMATION_OVERRIDE_UNTIL = SynchedEntityData.defineId(ShooterEntity.class, EntityDataSerializers.INT);
+	private static final EntityDataAccessor<CompoundTag> YSM_PRESENTATION = SynchedEntityData.defineId(ShooterEntity.class, EntityDataSerializers.COMPOUND_TAG);
+	private final YsmPresentationState.Cache ysmPresentationCache = new YsmPresentationState.Cache();
+	private static final EntityDataAccessor<CompoundTag> YSM_SIGNALS = SynchedEntityData.defineId(ShooterEntity.class, EntityDataSerializers.COMPOUND_TAG);
+	private final YsmPresentationSignals.Cache ysmSignalsCache = new YsmPresentationSignals.Cache();
 
 	@SerialClass.SerialField
 	private ShooterData data = ShooterData.EMPTY;
@@ -79,6 +85,8 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 		entityData.define(YSM_MODEL_OVERRIDE_UNTIL, 0);
 		entityData.define(YSM_TEXTURE_OVERRIDE_UNTIL, 0);
 		entityData.define(YSM_ANIMATION_OVERRIDE_UNTIL, 0);
+		entityData.define(YSM_PRESENTATION, new CompoundTag());
+		entityData.define(YSM_SIGNALS, new CompoundTag());
 	}
 
 	public void setup(@Nullable LivingEntity owner, @Nullable LivingEntity target, ShooterData data, SpellCard card) {
@@ -122,8 +130,30 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 		super.tick();
 		if (!level().isClientSide()) {
 			expireYsmRenderOverride();
+			expireYsmPresentation();
 		}
 	}
+
+	@Override
+	public YsmPresentationState getYsmPresentation() {
+		return ysmPresentationCache.read(entityData.get(YSM_PRESENTATION));
+	}
+
+	@Override
+	public void setYsmPresentation(YsmPresentationState state) {
+		entityData.set(YSM_PRESENTATION, state.toTag());
+	}
+
+	@Override
+	public long getYsmPresentationTime() {
+		return level().getGameTime();
+	}
+
+	@Override
+	public YsmPresentationSignals getYsmSignals() { return ysmSignalsCache.read(entityData.get(YSM_SIGNALS)); }
+
+	@Override
+	public void setYsmSignals(YsmPresentationSignals signals) { entityData.set(YSM_SIGNALS, signals.toTag()); }
 
 	@Override
 	protected ProjectileMovement updateVelocity(Vec3 vec, Vec3 pos) {

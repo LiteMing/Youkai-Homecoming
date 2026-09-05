@@ -27,11 +27,21 @@ public class YsmOverrideServerHandler {
 		if (server == null) {
 			return;
 		}
+		YsmOverrideData data = YsmOverrideData.get(server);
 		if (!player.hasPermissions(REQUIRED_PERMISSION_LEVEL)) {
-			broadcastResult(server, null, "[YH/YSM] Requires operator permission (level 2).");
+			reply(player, data, request, false, "[YH/YSM] Requires operator permission (level 2).");
 			return;
 		}
-		YsmOverrideData data = YsmOverrideData.get(server);
+		if (request.expectedRevision >= 0 && request.expectedRevision != data.revision()) {
+			reply(player, data, request, false, "revision_conflict");
+			return;
+		}
+		if (request.action == null || request.modelId == null || request.textureName == null || request.entityType == null || request.uuidList == null
+				|| request.modelId.length() > 256 || request.textureName.length() > 256 || request.entityType.length() > 256 || request.uuidList.length() > 65536) {
+			reply(player, data, request, false, "[YH/YSM] Override request is too large.");
+			return;
+		}
+		long previous = data.revision();
 		String message;
 		switch (request.action) {
 			case "type_set" -> message = applyTypeSet(data, request);
@@ -46,7 +56,16 @@ public class YsmOverrideServerHandler {
 			}
 			default -> message = "[YH/YSM] Unknown override action: " + request.action;
 		}
-		broadcastResult(server, data, message);
+		boolean success = previous != data.revision();
+		if (success) broadcastResult(server, data, "");
+		reply(player, data, request, success, message);
+	}
+
+	private static void reply(ServerPlayer player, YsmOverrideData data, YsmOverrideRequestToServer request, boolean success, String message) {
+		YsmOverrideSyncToClient packet = new YsmOverrideSyncToClient(data, message);
+		packet.requestId = request.requestId != null && request.requestId.length() <= 64 ? request.requestId : "";
+		packet.success = success;
+		YoukaisHomecoming.HANDLER.toClientPlayer(packet, player);
 	}
 
 	/** Send the current table to a single player (on login). */
@@ -58,7 +77,7 @@ public class YsmOverrideServerHandler {
 		YoukaisHomecoming.HANDLER.toClientPlayer(new YsmOverrideSyncToClient(YsmOverrideData.get(server), ""), player);
 	}
 
-	private static void broadcastResult(MinecraftServer server, @Nullable YsmOverrideData data, @Nullable String message) {
+	private static void broadcastResult(MinecraftServer server, YsmOverrideData data, @Nullable String message) {
 		YsmOverrideSyncToClient packet = new YsmOverrideSyncToClient(data, message == null ? "" : message);
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			YoukaisHomecoming.HANDLER.toClientPlayer(packet, player);
@@ -175,7 +194,7 @@ public class YsmOverrideServerHandler {
 	}
 
 	@Nullable
-	private static Entity findEntity(MinecraftServer server, UUID uuid) {
+	public static Entity findEntity(MinecraftServer server, UUID uuid) {
 		for (ServerLevel level : server.getAllLevels()) {
 			Entity entity = level.getEntity(uuid);
 			if (entity != null) {

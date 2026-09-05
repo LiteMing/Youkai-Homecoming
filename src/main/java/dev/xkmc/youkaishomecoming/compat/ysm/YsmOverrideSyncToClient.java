@@ -23,12 +23,16 @@ public class YsmOverrideSyncToClient extends SerialPacketBase {
 	public CompoundTag entityOverrides = new CompoundTag();
 	@SerialClass.SerialField
 	public String message = "";
+	@SerialClass.SerialField public long revision;
+	@SerialClass.SerialField public String requestId = "";
+	@SerialClass.SerialField public boolean success;
 
 	@Deprecated
 	public YsmOverrideSyncToClient() {
 	}
 
 	public YsmOverrideSyncToClient(YsmOverrideData data, String message) {
+		this.revision = data.revision();
 		data.getTypeOverrides().forEach((id, binding) -> typeOverrides.put(id.toString(), YsmOverrideData.bindingToTag(binding)));
 		data.getEntityOverrides().forEach((uuid, binding) -> entityOverrides.put(uuid.toString(), YsmOverrideData.bindingToTag(binding)));
 		this.message = message;
@@ -36,7 +40,11 @@ public class YsmOverrideSyncToClient extends SerialPacketBase {
 
 	@Override
 	public void handle(NetworkEvent.Context context) {
-		YSMClientCompat.applySyncedOverrides(typeOverrides, entityOverrides, message);
+		context.enqueueWork(() -> {
+			YSMClientCompat.applySyncedOverrides(typeOverrides, entityOverrides, message);
+			YSMClientCompat.setBindingRevision(revision);
+			YsmClientProfiles.response(requestId, success, message, revision, "");
+		});
 	}
 
 }

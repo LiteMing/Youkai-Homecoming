@@ -64,6 +64,17 @@ public class YSMClientCompat {
 	private static final boolean LOADED = ModList.get().isLoaded(MOD_ID);
 	private static final Map<ResourceLocation, RenderBinding> TYPE_DEBUG_OVERRIDES = new LinkedHashMap<>();
 	private static final Map<UUID, RenderBinding> ENTITY_DEBUG_OVERRIDES = new LinkedHashMap<>();
+	private static long bindingRevision;
+
+	public static long bindingRevision() { return bindingRevision; }
+	static void setBindingRevision(long revision) { bindingRevision = revision; }
+	public static Map<ResourceLocation, RenderBinding> typeBindings() { return Map.copyOf(TYPE_DEBUG_OVERRIDES); }
+	public static Map<UUID, RenderBinding> entityBindings() { return Map.copyOf(ENTITY_DEBUG_OVERRIDES); }
+	public static String effectiveModel(LivingEntity entity) {
+		var request = resolveRenderRequest(entity);
+		return request == null ? "" : request.modelId();
+	}
+	public static String bindingSource(LivingEntity entity) { return resolveBindingWithSource(entity).source(); }
 	private static final int DEBUG_TEXT_COLOR = 0xffffffff;
 	private static final int DEBUG_LABEL_COLOR = 0xffb8e6ff;
 	private static final int DEBUG_BG_A = 0xa0000000;

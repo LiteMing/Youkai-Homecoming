@@ -12,13 +12,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Transient, server-authored presentation. No gameplay or OYSM classes belong here. */
+/** Server-authored presentation state persisted by live YH entities. No gameplay or OYSM classes belong here. */
 public record YsmPresentationState(long sequence, @Nullable Animation animation, Map<String, Parameter> parameters) {
 
 	// Wire-format bounds, not gameplay defaults. The configurable limit may be lower.
 	public static final int WIRE_MAX_PARAMETERS = 128;
 	public static final int WIRE_MAX_NAME_LENGTH = 128;
 	public static final double WIRE_MAX_PARAMETER_VALUE = 1_000_000_000.0;
+	public static final String ENTITY_TAG = "ysmPresentation";
 	public static final YsmPresentationState EMPTY = new YsmPresentationState(0, null, Map.of());
 	private static final Pattern PARAMETER = Pattern.compile("v\\.(?:roaming\\.)?[a-z_][a-z0-9_]*");
 

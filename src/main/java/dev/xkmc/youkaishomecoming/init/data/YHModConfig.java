@@ -740,7 +740,7 @@ public class YHModConfig {
 				modelPresentationDefaultTicks = builder.comment("Default duration of manual model animation/parameter requests, in ticks. Clamped to maxTicks.")
 						.translation("config.youkaishomecoming.common.model_presentation.defaultTicks")
 						.defineInRange("defaultTicks", 100, 1, Integer.MAX_VALUE);
-				modelPresentationMaxTicks = builder.comment("Maximum finite model presentation duration. An explicit duration of 0 lasts until cleared or the entity unloads.")
+				modelPresentationMaxTicks = builder.comment("Maximum finite model presentation duration. An explicit duration of 0 lasts until explicitly cleared.")
 						.translation("config.youkaishomecoming.common.model_presentation.maxTicks")
 						.defineInRange("maxTicks", 72000, 1, Integer.MAX_VALUE);
 				modelPresentationMaxParameters = builder.comment("Maximum simultaneous numeric parameter overrides per entity.")

@@ -979,9 +979,18 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	public void tickModelPreview() {
 		fakeCaster.tickCount++;
 		ysmPresentation = ysmPresentation.expire(getYsmPresentationTime());
-		fakeCaster.setOnGround(ysmSignals.state() != dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FLY
-				&& ysmSignals.state() != dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FALLING);
-		fakeCaster.walkAnimation.update(ysmSignals.state() == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.WALK ? 0.8f : 0, 0.4f);
+		var state = ysmSignals.state();
+		boolean walking = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.WALK;
+		boolean flying = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FLY;
+		fakeCaster.setOnGround(!flying && state != dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FALLING);
+		fakeCaster.setNoGravity(flying);
+		// The native movement controller and Molang read more than the YH trigger:
+		// provide real movement inputs on this isolated entity, without ticking AI/world physics.
+		Vec3 motion = walking ? Vec3.directionFromRotation(0, fakeCaster.getYRot()).scale(0.2) : Vec3.ZERO;
+		fakeCaster.setOldPosAndRot();
+		fakeCaster.setDeltaMovement(motion);
+		fakeCaster.setPos(fakeCaster.position().add(motion));
+		fakeCaster.walkAnimation.update(walking ? 0.8f : 0, 0.4f);
 	}
 
 	@Override

@@ -18,8 +18,13 @@ public final class YsmPresentationResolver {
 
 	public static Resolved resolve(String model, @Nullable YsmModelProfile profile, YsmPresentationSignals signals,
 			YsmPresentationState explicit, long now) {
+		return resolve(model, profile, signals, explicit, now, Map.of());
+	}
+
+	public static Resolved resolve(String model, @Nullable YsmModelProfile profile, YsmPresentationSignals signals,
+			YsmPresentationState explicit, long now, Map<String, Float> bindingParameters) {
 		if (profile != null && !profile.model().equals(model)) profile = null;
-		Map<String, Float> parameters = new LinkedHashMap<>();
+		Map<String, Float> parameters = new LinkedHashMap<>(bindingParameters);
 		Body body = null;
 		if (!signals.state().beaten()) {
 			body = layer(profile, signals.state(), signals.stateAt(), signals.stateSequence(), now, parameters, body);

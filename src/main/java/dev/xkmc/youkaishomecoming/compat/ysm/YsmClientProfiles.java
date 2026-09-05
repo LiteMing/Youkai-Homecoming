@@ -15,7 +15,8 @@ public final class YsmClientProfiles {
 	public record Response(boolean success, String message, long revision, String json) { }
 	private static final Map<String, YsmProfileData.Entry> PROFILES = new LinkedHashMap<>();
 	private static final Map<String, Response> RESPONSES = new LinkedHashMap<>();
-	private static final Map<LivingEntity, YsmModelProfile> PREVIEWS = new WeakHashMap<>();
+	private record Preview(YsmModelProfile profile, Map<String, Float> parameters) { }
+	private static final Map<LivingEntity, Preview> PREVIEWS = new WeakHashMap<>();
 
 	private YsmClientProfiles() { }
 
@@ -51,14 +52,24 @@ public final class YsmClientProfiles {
 	}
 
 	public static Response takeResponse(String id) { return RESPONSES.remove(id); }
-	public static void preview(LivingEntity entity, YsmModelProfile profile) { PREVIEWS.put(entity, profile); }
+	public static void preview(LivingEntity entity, YsmModelProfile profile) { preview(entity, profile, Map.of()); }
+	public static void preview(LivingEntity entity, YsmModelProfile profile, Map<String, Float> parameters) {
+		PREVIEWS.put(entity, new Preview(profile, Map.copyOf(parameters)));
+	}
 	public static boolean isPreview(LivingEntity entity) { return PREVIEWS.containsKey(entity); }
 	public static java.util.List<String> models() { return PROFILES.keySet().stream().sorted().toList(); }
 	public static void forgetPreview(LivingEntity entity) { PREVIEWS.remove(entity); }
 	public static void clear() { PROFILES.clear(); RESPONSES.clear(); PREVIEWS.clear(); }
 
 	public static YsmPresentationResolver.Resolved resolve(LivingEntity entity, String model) {
-		var profile = PREVIEWS.get(entity);
+		var preview = PREVIEWS.get(entity);
+		var profile = preview == null ? null : preview.profile();
+		Map<String, Float> bindingParameters = Map.of();
+		if (preview != null && preview.profile().model().equals(model)) bindingParameters = preview.parameters();
+		else if (preview == null) {
+			var binding = YSMClientCompat.resolveBinding(entity);
+			if (binding != null && binding.modelId().equals(model)) bindingParameters = binding.parameters();
+		}
 		if (profile == null) {
 			var entry = PROFILES.get(model);
 			profile = entry == null ? null : entry.profile();
@@ -78,7 +89,7 @@ public final class YsmClientProfiles {
 					Math.max(0, target.getYsmPresentationTime() - youkai.getBeatenPhaseTicks()));
 			else if (state == null && signals.state().beaten()) signals = signals.advance(YsmModelProfile.Trigger.IDLE, false, target.getYsmPresentationTime());
 		}
-		var resolved = YsmPresentationResolver.resolve(model, profile, signals, target.getYsmPresentation(), target.getYsmPresentationTime());
+		var resolved = YsmPresentationResolver.resolve(model, profile, signals, target.getYsmPresentation(), target.getYsmPresentationTime(), bindingParameters);
 		// Legacy spell hints retain their existing semantics and precedence over automatic actions.
 		if (!resolved.beaten() && resolved.body() != null && !resolved.body().explicit() && !target.getYsmAnimationOverride().isEmpty())
 			return new YsmPresentationResolver.Resolved(null, resolved.parameters(), false);

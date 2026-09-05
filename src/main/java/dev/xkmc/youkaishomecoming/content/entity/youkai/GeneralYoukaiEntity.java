@@ -51,7 +51,7 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 	private static final EntityDataAccessor<Integer> YSM_ANIMATION_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmAnimationOverrideUntil");
 	private static final EntityDataAccessor<CompoundTag> YSM_PRESENTATION = SPELL_DATA.define(
 			new SyncedData.Serializer<>(EntityDataSerializers.COMPOUND_TAG, CompoundTag::copy,
-					tag -> tag instanceof CompoundTag value ? value.copy() : new CompoundTag()), new CompoundTag(), null);
+					tag -> tag instanceof CompoundTag value ? value.copy() : new CompoundTag()), new CompoundTag(), YsmPresentationState.ENTITY_TAG);
 	private static final EntityDataAccessor<CompoundTag> YSM_SIGNALS = SPELL_DATA.define(
 			new SyncedData.Serializer<>(EntityDataSerializers.COMPOUND_TAG, CompoundTag::copy,
 					tag -> tag instanceof CompoundTag value ? value.copy() : new CompoundTag()), new CompoundTag(), null);

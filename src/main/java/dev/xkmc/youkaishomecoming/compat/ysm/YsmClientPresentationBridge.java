@@ -96,51 +96,60 @@ public final class YsmClientPresentationBridge {
 		}
 	}
 
-	/** Called immediately around the synchronous ExternalLivingRenderAPI.render invocation. */
+	/** Called immediately before ExternalLivingRenderAPI.render. Parameter leases span the next async evaluation. */
 	public static Frame beforeRender(LivingEntity entity, String model, YsmPresentationResolver.Resolved state) {
 		if (!(entity instanceof YsmRenderOverrideTarget target)) return Frame.EMPTY;
 		long now = target.getYsmPresentationTime();
 		ClientState client = ENTITIES.get(entity);
 		if (state.body() == null && state.parameters().isEmpty()) {
-			if (client != null) {
-				client.replayKey = "";
-				client.clipStatus = "";
-				client.suppressed = false;
-				client.applied = "";
-				client.skipped = "";
-			}
-			return Frame.EMPTY;
+			if (client == null) return Frame.EMPTY;
 		}
 		if (client == null) {
 			client = new ClientState();
 			ENTITIES.put(entity, client);
 		}
 		YsmParameterOverlay overlay = new YsmParameterOverlay();
-		boolean applyingParameters = false;
+		boolean applyingParameters = client.parameterOverlay != null;
 		try {
 			RuntimeAccess access = runtimeAccess();
-			CatalogAccess modelAccess = catalogAccess();
-			if (access == null || modelAccess == null) return Frame.EMPTY;
+			if (access == null) return Frame.EMPTY;
 			Object animatable = access.animatable(entity);
+			Object previousAnimatable = client.animatable.get();
+			if (previousAnimatable != null && previousAnimatable != animatable) access.await.invoke(previousAnimatable);
+			if (animatable != null) access.await.invoke(animatable);
+			closeParameterOverlay(client);
+			client.animatable = new WeakReference<>(animatable);
+			if (state.body() == null && state.parameters().isEmpty()) {
+				client.replayKey = "";
+				client.clipStatus = "";
+				client.suppressed = false;
+				client.applied = "";
+				client.skipped = "";
+				return Frame.EMPTY;
+			}
 			if (animatable == null || !Boolean.TRUE.equals(access.ready.invoke(animatable)) || !model.equals(access.modelId.invoke(animatable))) {
 				client.skipped = "model_not_ready";
 				return Frame.EMPTY;
 			}
-			// ExternalLivingRenderer owns a synchronous cache. Join optional work before touching its controller or variables.
-			access.await.invoke(animatable);
-			// A reload may replace the assembly before the renderer ticks the model. Never overlay the old storage.
+			CatalogAccess modelAccess = catalogAccess();
+			if (modelAccess == null) return Frame.EMPTY;
+			// A reload may replace the assembly before the renderer ticks the model. Never lease the old storage.
 			if (access.assembly.invoke(animatable) != modelAccess.assembly(model)) return Frame.EMPTY;
 			YsmModelCatalog catalog = catalog(model);
 			updatePlayback(client, state, entity, animatable, catalog);
 			client.applied = "";
 			client.skipped = "";
-			if (state.parameters().isEmpty()) return Frame.EMPTY;
+			if (state.parameters().isEmpty()) {
+				client.parameterBases.clear();
+				return Frame.EMPTY;
+			}
 			applyingParameters = true;
 			ParameterAccess values = parameterAccess();
 			if (values == null) return Frame.EMPTY;
 			Object storage = values.storage.invoke(access.processor.invoke(animatable));
 			List<String> applied = new ArrayList<>();
 			List<String> skipped = new ArrayList<>();
+			Map<String, Object> bases = new LinkedHashMap<>();
 			for (var entry : state.parameters().entrySet()) {
 				String name = entry.getKey();
 				if (!catalog.accepts(name, entry.getValue())) {
@@ -148,12 +157,26 @@ public final class YsmClientPresentationBridge {
 					continue;
 				}
 				YsmParameterOverlay.Slot slot = values.slot(storage, name);
-				if (slot != null && overlay.apply(slot, entry.getValue())) applied.add(name);
-				else skipped.add(name + " (not_numeric_or_not_ready)");
+				if (slot != null) {
+					Object base = slot.get();
+					if (overlay.apply(slot, entry.getValue())) {
+						bases.put(name, base);
+						applied.add(name);
+						continue;
+					}
+				}
+				skipped.add(name + " (not_numeric_or_not_ready)");
 			}
 			client.applied = String.join(", ", applied);
 			client.skipped = String.join(", ", skipped);
-			return new Frame(overlay);
+			if (!applied.isEmpty()) {
+				client.parameterOverlay = overlay;
+				client.parameterBases = bases;
+				overlay = null;
+			} else {
+				client.parameterBases.clear();
+			}
+			return Frame.EMPTY;
 		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
 			if (applyingParameters) {
 				parameterFailure = failure(ex);
@@ -162,9 +185,17 @@ public final class YsmClientPresentationBridge {
 				runtimeFailure = failure(ex);
 				runtime = null;
 			}
-			new Frame(overlay).close();
+			try { overlay.close(); }
+			catch (ReflectiveOperationException ignored) { }
 			return Frame.EMPTY;
 		}
+	}
+
+	private static void closeParameterOverlay(ClientState client) throws ReflectiveOperationException {
+		YsmParameterOverlay active = client.parameterOverlay;
+		client.parameterOverlay = null;
+		client.parameterBases.clear();
+		if (active != null) active.close();
 	}
 
 	private static void updatePlayback(ClientState client, YsmPresentationResolver.Resolved state, LivingEntity entity,
@@ -197,10 +228,13 @@ public final class YsmClientPresentationBridge {
 		}
 	}
 
-	/** Returns the underlying numeric input between frames, not the transient YH override. */
+	/** Returns the underlying numeric input hidden by the active cross-frame lease. */
 	@Nullable
 	public static Object parameterBaseValue(LivingEntity entity, String name) {
 		try {
+			String normalized = YsmPresentationState.normalizeParameter(name);
+			ClientState client = ENTITIES.get(entity);
+			if (client != null && client.parameterBases.containsKey(normalized)) return client.parameterBases.get(normalized);
 			RuntimeAccess access = runtimeAccess();
 			ParameterAccess values = parameterAccess();
 			if (access == null || values == null) return null;
@@ -208,7 +242,7 @@ public final class YsmClientPresentationBridge {
 			if (animatable == null || !Boolean.TRUE.equals(access.ready.invoke(animatable))) return null;
 			access.await.invoke(animatable);
 			Object storage = values.storage.invoke(access.processor.invoke(animatable));
-			YsmParameterOverlay.Slot slot = values.slot(storage, YsmPresentationState.normalizeParameter(name));
+			YsmParameterOverlay.Slot slot = values.slot(storage, normalized);
 			return slot == null ? null : slot.get();
 		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
 			return null;
@@ -219,7 +253,7 @@ public final class YsmClientPresentationBridge {
 		Map<String, String> result = new LinkedHashMap<>();
 		if (!YSMClientCompat.isLoaded()) return Map.of("presentation", "not_installed");
 		result.put("presentation.runtime", runtimeAccess() != null ? "available" : String.valueOf(runtimeFailure));
-		result.put("presentation.parameters", parameterAccess() != null ? "numeric_render_overlay" : String.valueOf(parameterFailure));
+		result.put("presentation.parameters", parameterAccess() != null ? "numeric_async_lease" : String.valueOf(parameterFailure));
 		result.put("presentation.replay", replayAccess() != null ? "cap_reset" : String.valueOf(replayFailure));
 		ClientState state = ENTITIES.get(entity);
 		if (state != null) {
@@ -243,13 +277,27 @@ public final class YsmClientPresentationBridge {
 	}
 
 	private static void clearCaches() {
+		for (ClientState state : ENTITIES.values()) releaseParameters(state);
 		ENTITIES.clear();
 		CATALOGS.clear();
 	}
 
+	private static void releaseParameters(ClientState client) {
+		try {
+			Object animatable = client.animatable.get();
+			RuntimeAccess access = runtimeAccess();
+			if (animatable != null && access != null) access.await.invoke(animatable);
+			closeParameterOverlay(client);
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
+			parameterFailure = failure(ex);
+			parameters = null;
+		}
+	}
+
 	/** OYSM's cache value retains its key entity. Evict ONLY our marked preview on close/reset. */
 	public static void forgetPreview(LivingEntity entity) {
-		ENTITIES.remove(entity);
+		ClientState state = ENTITIES.remove(entity);
+		if (state != null) releaseParameters(state);
 		if (!YsmClientProfiles.isPreview(entity) || !YSMClientCompat.isLoaded()) return;
 		try {
 			RuntimeAccess access = runtimeAccess();
@@ -272,26 +320,20 @@ public final class YsmClientPresentationBridge {
 	}
 
 	public static final class Frame implements AutoCloseable {
-		private static final Frame EMPTY = new Frame(null);
-		private final YsmParameterOverlay overlay;
+		private static final Frame EMPTY = new Frame();
 
-		private Frame(@Nullable YsmParameterOverlay overlay) { this.overlay = overlay; }
+		private Frame() { }
 
 		@Override
-		public void close() {
-			if (overlay == null) return;
-			try {
-				overlay.close();
-			} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
-				parameterFailure = failure(ex);
-				parameters = null;
-			}
-		}
+		public void close() { }
 	}
 
 	private static final class ClientState {
 		// Do not retain the animatable/controller strongly: it references the WeakHashMap's entity key.
+		private WeakReference<Object> animatable = new WeakReference<>(null);
 		private WeakReference<Object> controller = new WeakReference<>(null);
+		private YsmParameterOverlay parameterOverlay;
+		private Map<String, Object> parameterBases = new LinkedHashMap<>();
 		private String replayKey = "";
 		private boolean suppressed;
 		private String clipStatus = "", applied = "", skipped = "";

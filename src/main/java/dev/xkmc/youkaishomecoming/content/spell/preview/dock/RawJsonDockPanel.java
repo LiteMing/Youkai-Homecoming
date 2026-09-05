@@ -1278,6 +1278,21 @@ public class RawJsonDockPanel implements DockPanel {
 			lastHistoryValue = text == null ? "" : text;
 		}
 
+		/** Retain the caret and undo stack when a dock resize rebuilds the multiline field. */
+		void restoreEditingState(RawJsonEditBox previous) {
+			if (previous == null || !getValue().equals(previous.getValue())) return;
+			undoHistory.clear(); undoHistory.addAll(previous.undoHistory);
+			redoHistory.clear(); redoHistory.addAll(previous.redoHistory);
+			lastHistoryValue = previous.lastHistoryValue;
+			var before = previous.textField();
+			var after = textField();
+			if (before != null && after != null) {
+				after.setSelecting(false);
+				after.seekCursor(Whence.ABSOLUTE, before.cursor());
+			}
+			setScrollAmount(previous.scrollAmount());
+		}
+
 		void recordUserChange(String text) {
 			if (applyingHistory) {
 				return;

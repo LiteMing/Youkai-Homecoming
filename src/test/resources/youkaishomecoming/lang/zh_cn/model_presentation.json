@@ -11,7 +11,7 @@
   "config.youkaishomecoming.common.model_presentation.defaultTicks": "默认持续时间",
   "config.youkaishomecoming.common.model_presentation.defaultTicks.tooltip": "手动动画与参数请求的默认持续 tick 数，不超过最大持续时间",
   "config.youkaishomecoming.common.model_presentation.maxTicks": "最大持续时间",
-  "config.youkaishomecoming.common.model_presentation.maxTicks.tooltip": "有限请求允许的最大 tick 数；显式指定 0 则保持到清除或实体卸载",
+  "config.youkaishomecoming.common.model_presentation.maxTicks.tooltip": "有限请求允许的最大 tick 数；显式指定 0 则跨存档保持到手动清除",
   "config.youkaishomecoming.common.model_presentation.maxParameters": "同时覆盖参数上限",
   "config.youkaishomecoming.common.model_presentation.maxParameters.tooltip": "每个实体允许同时覆盖的数值模型参数数量",
   "config.youkaishomecoming.common.model_presentation.maxParameterValue": "参数绝对值上限",

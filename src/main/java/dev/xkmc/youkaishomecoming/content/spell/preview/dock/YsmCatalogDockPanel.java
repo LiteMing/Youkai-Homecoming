@@ -192,13 +192,19 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 	private String controlTitle(YsmModelCatalog.Control control) { return control.title().isBlank() ? control.parameter() : control.title(); }
 	private String rangeKey(YsmModelCatalog.Control control) { return editor.model() + "\n" + controlKey(control); }
 	private Float value(YsmModelCatalog.Control control) {
-		var explicit = editor.parameters().get(control.parameter());
+		var explicit = editor.controlParameters().get(control.parameter());
 		if (explicit != null) return explicit;
+		if (editor.presetControls() && editor.bindingParameters().containsKey(control.parameter()))
+			return editor.bindingParameters().get(control.parameter());
 		var preview = editor.preview();
 		Object base = preview == null ? null : YsmClientPresentationBridge.parameterBaseValue(preview.getFakeCaster(), control.parameter());
 		return base instanceof Number number && Float.isFinite(number.floatValue()) ? number.floatValue() : null;
 	}
 	private void controls(YsmModelCatalog catalog) {
+		select("control_scope", text("control_scope"), editor.presetControls() ? "preset" : "binding", List.of(
+				new Option("binding", text("control_scope.binding")), new Option("preset", text("control_scope.preset"))),
+				value -> { editor.presetControls(value.equals("preset")); rangeInputs.clear(); });
+		label(editor.presetControls() ? text("control_preset", editor.presetId()) : text("control_binding"));
 		var editable = catalog.controls().stream().filter(this::editable).toList();
 		if (editable.isEmpty()) { label(text("no_editable_parameters")); return; }
 		var groups = new LinkedHashMap<String, Option>();
@@ -232,7 +238,7 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 			String initial = current == null ? "" : Float.toString(current);
 			edit("native_value", text("parameter_value"), rangeInputs.getOrDefault(key, initial), 40, input -> rangeInputs.put(key, input));
 			label(text("range", control.min(), control.max(), control.step()));
-			button(text("use_value"), () -> editor.parameter(control.parameter(),
+			button(text("use_value"), () -> editor.controlParameter(control.parameter(),
 					Float.parseFloat(rangeInputs.getOrDefault(key, initial))), true);
 		} else {
 			var choices = new ArrayList<Option>();
@@ -244,9 +250,10 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 				choices.add(new Option(number, Component.literal(choice.label().isBlank() ? number : choice.label())));
 			}
 			select("native_choice", text("parameter_value"), current == null ? "" : Float.toString(current), choices,
-					input -> editor.parameter(control.parameter(), Float.parseFloat(input)));
+					input -> editor.controlParameter(control.parameter(), Float.parseFloat(input)));
 		}
-		button(text("remove_parameter"), () -> editor.removeParameter(control.parameter()), editor.parameters().containsKey(control.parameter()));
+		button(text(editor.presetControls() ? "remove_parameter" : "remove_binding_parameter"),
+				() -> editor.removeControlParameter(control.parameter()), editor.controlParameters().containsKey(control.parameter()));
 		label(text("control_help"));
 	}
 }

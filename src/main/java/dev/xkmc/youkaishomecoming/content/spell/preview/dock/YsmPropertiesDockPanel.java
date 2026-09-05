@@ -11,7 +11,6 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.TreeSet;
@@ -20,20 +19,23 @@ import java.util.concurrent.CompletableFuture;
 import static dev.xkmc.youkaishomecoming.content.spell.preview.YsmEditorController.text;
 
 public final class YsmPropertiesDockPanel extends YsmEditorPanel {
+	private final Runnable openPresets;
 	private int page;
-	private String parameterName = "", parameterValue = "0";
 	private YsmModelProfile.Trigger trigger = YsmModelProfile.Trigger.IDLE;
 	private String scenario = "model";
-	public YsmPropertiesDockPanel(YsmEditorController editor) { super(editor); }
+	public YsmPropertiesDockPanel(YsmEditorController editor, Runnable openPresets) {
+		super(editor);
+		this.openPresets = openPresets;
+	}
 	@Override public String dockId() { return "ysm_properties"; }
 	@Override public String dockTitle() { return text("properties").getString(); }
 
 	@Override protected void build() {
 		select("properties_page", text("workspace"), Integer.toString(page), List.of(
 				new Option("0", text("scenarios")), new Option("1", text("bindings")),
-				new Option("2", text("presets")), new Option("3", text("triggers"))),
+				new Option("2", text("triggers"))),
 				value -> { page = Integer.parseInt(value); toTop(); });
-		if (page == 0) scenarios(); else if (page == 1) bindings(); else if (page == 2) presets(); else triggers();
+		if (page == 0) scenarios(); else if (page == 1) bindings(); else triggers();
 	}
 
 	public void showScenarios() { page = 0; toTop(); }
@@ -63,7 +65,13 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 		for (var event : List.of(YsmModelProfile.Trigger.IDLE, YsmModelProfile.Trigger.WALK, YsmModelProfile.Trigger.FLY,
 				YsmModelProfile.Trigger.HURT, YsmModelProfile.Trigger.DEFEAT, YsmModelProfile.Trigger.FALLING, YsmModelProfile.Trigger.PRONE))
 			options.add(new Option(event.id(), text("trigger." + event.id())));
-		select("scenario", text("scenario_choice"), scenario, options, value -> { scenario = value; toTop(); });
+		select("scenario", text("scenario_choice"), scenario, options, value -> {
+			scenario = value;
+			if (value.equals("model")) editor.stopPreview();
+			else if (value.equals("preset")) editor.previewDraft();
+			else editor.simulate(YsmModelProfile.Trigger.parse(value));
+			toTop();
+		});
 		targetAndModel();
 		if (scenario.equals("model")) {
 			edit("texture", text("texture"), editor.texture(), 256, editor::texture, () -> YSMClientCompat.loadedTextureNames(editor.modelInput()));
@@ -77,13 +85,13 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 			button(text("preview_play"), editor::previewDraft, !editor.presetId().isEmpty());
 			button(text("apply_entity"), () -> editor.applyToEntity(false), editor.mayWriteWorld() && !editor.typeTarget() && !editor.presetId().isEmpty());
 			button(text("clear_entity"), () -> editor.applyToEntity(true), editor.mayWriteWorld() && !editor.typeTarget());
-			button(text("edit_selected_preset"), () -> { page = 2; toTop(); }, true);
+			button(text("edit_selected_preset"), openPresets, true);
 			return;
 		}
 		var event = YsmModelProfile.Trigger.parse(scenario);
 		select("scene_preset", text("trigger_preset"), editor.profile().triggers().getOrDefault(event, ""),
 				presetOptions(true), id -> editor.route(event, id));
-		button(text("configure_scene"), () -> { if (editor.editScenario(event)) { page = 2; toTop(); } }, true);
+		button(text("configure_scene"), () -> { if (editor.editScenario(event)) openPresets.run(); }, true);
 		button(text("simulate", text("trigger." + event.id())), () -> editor.simulate(event), true);
 		button(text("save_and_bind"), editor::saveAndBind, editor.mayWriteWorld());
 		label(text(event.event() ? "trigger_event_duration" : "trigger_state_duration"));
@@ -139,56 +147,11 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 						Component.literal(entry.getValue().description()))));
 		return options;
 	}
-	private void presets() {
-		if (editor.profile() == null) { label(text("select_model_first")); return; }
-		if (editor.editingTrigger() != null) label(text("editing_scene", text("trigger." + editor.editingTrigger().id())));
-		var presets = new ArrayList<>(presetOptions(false));
-		presets.add(0, new Option("", text("new_preset")));
-		select("saved_preset", text("pick_preset"), editor.presetId(), presets, editor::selectPreset);
-		edit("id", text("preset_id"), editor.presetId(), 128, editor::presetId);
-		edit("description", text("description"), editor.description(), 256, editor::description);
-		edit("clip", text("clip"), editor.clip(), 128, editor::clip, () -> editor.catalog().animations());
-		edit("ticks", text("ticks"), editor.ticks(), 10, editor::ticks);
-		label(text("parameter_count", editor.parameters().size()));
-		editOptions("parameter", text("parameter_name"), parameterName, 128, value -> {
-			boolean wasEmpty = parameterName.isBlank(), wasIncluded = editor.parameters().containsKey(parameterName);
-			parameterName = value;
-			if (wasEmpty != value.isBlank() || wasIncluded != editor.parameters().containsKey(value)) changed();
-		},
-				localOptions(this::parameterOptions), option -> {
-					parameterName = option.value();
-					parameterValue = Float.toString(editor.parameters().getOrDefault(parameterName, 0f));
-					changed();
-				});
-		edit("value", text("parameter_value"), parameterValue, 40, value -> parameterValue = value);
-		button(text("add_parameter"), () -> editor.parameter(parameterName, Float.parseFloat(parameterValue)), !parameterName.isBlank());
-		button(text("remove_parameter"), () -> editor.removeParameter(parameterName), editor.parameters().containsKey(parameterName));
-		button(text("store_preset"), editor::storePreset, true);
-		button(text("back_to_scenarios"), () -> { if (editor.stagePresetEdits()) showScenarios(); }, true);
-		button(text("discard_fields"), editor::discardPresetFields, true);
-		button(text("delete_preset"), editor::deletePreset, editor.profile().presets().containsKey(editor.presetId()));
-		button(text("save_profile"), editor::saveProfile, editor.mayWriteWorld());
-		button(text("apply_entity"), () -> editor.applyToEntity(false), editor.mayWriteWorld() && !editor.typeTarget());
-		button(text("clear_entity"), () -> editor.applyToEntity(true), editor.mayWriteWorld() && !editor.typeTarget());
-	}
-	private List<Option> parameterOptions() {
-		var options = new LinkedHashMap<String, Option>();
-		for (var control : editor.catalog().controls()) if (!control.parameter().isEmpty())
-			options.putIfAbsent(control.parameter(), new Option(control.parameter(),
-					Component.literal(control.title().isBlank() ? control.parameter() : control.title()),
-					Component.literal(control.parameter())));
-		editor.parameters().forEach((name, value) -> {
-			var known = options.get(name);
-			options.put(name, new Option(name, known == null ? Component.literal(name) : known.label(),
-					Component.literal(name + " = " + value)));
-		});
-		return List.copyOf(options.values());
-	}
 	private void triggers() {
 		if (editor.profile() == null) { label(text("select_model_first")); return; }
 		select("trigger", text("trigger_choice"), trigger.id(), java.util.Arrays.stream(YsmModelProfile.Trigger.values())
 				.map(value -> new Option(value.id(), text("trigger." + value.id()))).toList(),
-				value -> { trigger = YsmModelProfile.Trigger.parse(value); changed(); });
+				value -> { trigger = YsmModelProfile.Trigger.parse(value); editor.simulate(trigger); changed(); });
 		String selected = editor.profile().triggers().getOrDefault(trigger, "");
 		select("route", text("trigger_preset"), selected, presetOptions(true), value -> editor.route(trigger, value));
 		label(text(trigger.event() ? "trigger_event_duration" : "trigger_state_duration"));

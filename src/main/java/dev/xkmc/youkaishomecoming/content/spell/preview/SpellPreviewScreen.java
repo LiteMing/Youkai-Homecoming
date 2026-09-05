@@ -72,6 +72,7 @@ public class SpellPreviewScreen extends Screen {
 	private MagicCircleDockPanel magicCircleDockPanel;
 	private YsmEditorController ysmEditor;
 	private YsmPropertiesDockPanel ysmProperties;
+	private YsmPresetsDockPanel ysmPresets;
 	private YsmCatalogDockPanel ysmCatalog;
 	private YsmPreviewDockPanel ysmPreview;
 	private YsmHelpDockPanel ysmHelp;
@@ -432,7 +433,11 @@ public class SpellPreviewScreen extends Screen {
 	private void initYsmEditor() {
 		if (ysmEditor == null) {
 			ysmEditor = new YsmEditorController(() -> confirmYsmDiscard(() -> ysmEditor.loadModel()));
-			ysmProperties = new YsmPropertiesDockPanel(ysmEditor);
+			ysmProperties = new YsmPropertiesDockPanel(ysmEditor, () -> activateDockPanel(ysmPresets));
+			ysmPresets = new YsmPresetsDockPanel(ysmEditor, () -> {
+				ysmProperties.showScenarios();
+				activateDockPanel(ysmProperties);
+			});
 			ysmCatalog = new YsmCatalogDockPanel(ysmEditor);
 			ysmPreview = new YsmPreviewDockPanel(ysmEditor);
 			ysmHelp = new YsmHelpDockPanel(ysmEditor);
@@ -445,22 +450,14 @@ public class SpellPreviewScreen extends Screen {
 				btn -> switchMode(editorMode.next()), true, limit);
 		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("save_and_bind").getString(), 76,
 				btn -> ysmEditor.saveAndBind(), true, limit);
-		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("save_profile").getString(), 64,
-				btn -> ysmEditor.saveProfile(), true, limit);
-		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("save_binding_only").getString(), 64,
-				btn -> ysmEditor.saveBinding("set"), true, limit);
 		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("scenarios").getString(), 60,
 				btn -> { ysmProperties.showScenarios(); activateDockPanel(ysmProperties); }, true, limit);
-		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("use_in_spell").getString(), 88,
-				btn -> useYsmInSpellPreview(), true, limit);
-		bx = addTopBarButtonIfFits(bx, 2, "Raw JSON", 58,
-				btn -> activateDockPanel(ysmRawJson), true, limit);
-		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("reload_profile").getString(), 64,
-				btn -> ysmEditor.requestReload(), true, limit);
-		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("export").getString(), 52,
-				btn -> ysmEditor.exportClipboard(), true, limit);
-		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("import").getString(), 52,
-				btn -> confirmYsmDiscard(() -> ysmEditor.importClipboard()), true, limit);
+		addTopBarOverflowEntry(YsmEditorController.text("save_profile").getString(), btn -> ysmEditor.saveProfile(), true);
+		addTopBarOverflowEntry(YsmEditorController.text("save_binding_only").getString(), btn -> ysmEditor.saveBinding("set"), true);
+		addTopBarOverflowEntry(YsmEditorController.text("use_in_spell").getString(), btn -> useYsmInSpellPreview(), true);
+		addTopBarOverflowEntry(YsmEditorController.text("reload_profile").getString(), btn -> ysmEditor.requestReload(), true);
+		addTopBarOverflowEntry(YsmEditorController.text("export").getString(), btn -> ysmEditor.exportClipboard(), true);
+		addTopBarOverflowEntry(YsmEditorController.text("import").getString(), btn -> confirmYsmDiscard(() -> ysmEditor.importClipboard()), true);
 		addTopBarOverflowEntry(YsmEditorController.text("help").getString(), btn -> activateDockPanel(ysmHelp), true);
 		addTopBarOverflowEntry(SpellEditorLocalization.t("RstLayout"), btn -> { DockSerializer.deleteLayout(editorMode.key()); rebuildScreen(false); }, true);
 		topBarMoreX = limit + BUTTON_SPACING; topBarMoreY = 2; topBarMoreWidth = TOP_BAR_MORE_WIDTH;
@@ -469,14 +466,17 @@ public class SpellPreviewScreen extends Screen {
 		addRenderableWidget(topBarMoreButton);
 		topBarLeftEnd = bx; topBarNameRight = topBarMoreX - TOP_BAR_GROUP_GAP;
 		java.util.Map<String, DockPanel> panels = new java.util.LinkedHashMap<>();
-		for (DockPanel panel : List.of(ysmPreview, ysmCatalog, ysmProperties, ysmHelp, ysmRawJson)) panels.put(panel.dockId(), panel);
+		for (DockPanel panel : List.of(ysmPreview, ysmCatalog, ysmProperties, ysmPresets, ysmHelp, ysmRawJson)) panels.put(panel.dockId(), panel);
 		java.util.function.Function<java.util.Map<String, DockPanel>, DockNode> defaults = map ->
 				new DockSplit(true, .44f, new DockGroup(map.get("ysm_preview"), map.get("ysm_raw_json"), map.get("ysm_help")),
-						new DockGroup(map.get("ysm_properties"), map.get("ysm_catalog")));
+						new DockGroup(map.get("ysm_properties"), map.get("ysm_presets"), map.get("ysm_catalog")));
 		var snapshot = pendingDockLayout; pendingDockLayout = null;
+		boolean placeNewPresetTab = snapshot == null && DockSerializer.hasSavedLayout(editorMode.key())
+				&& !DockSerializer.savedLayoutContainsPanel(editorMode.key(), ysmPresets.dockId());
 		dockLayout = new DockLayout(snapshot == null ? DockSerializer.loadLayout(editorMode.key(), panels, defaults)
 				: DockSerializer.loadLayout(snapshot, panels, defaults));
-		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
+		if (placeNewPresetTab) moveDockPanelBeside(ysmPresets, ysmProperties);
+		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT - 18);
 		dockLayout.setActiveGroup(dockLayout.findGroupContaining(ysmProperties));
 	}
 
@@ -650,6 +650,7 @@ public class SpellPreviewScreen extends Screen {
 		}
 		if (ysmEditor != null) ysmEditor.closePreview();
 		if (ysmProperties != null) ysmProperties.closeOverlay();
+		if (ysmPresets != null) ysmPresets.closeOverlay();
 		if (ysmCatalog != null) ysmCatalog.closeOverlay();
 		if (target != EditorMode.SPELL && viewport.isPerspectiveCaptured()) releasePerspectiveViewportFocus();
 		editorMode = target;
@@ -718,6 +719,13 @@ public class SpellPreviewScreen extends Screen {
 		int index = group.getPanels().indexOf(panel);
 		if (index >= 0) group.setActiveIndex(index);
 		dockLayout.setActiveGroup(group);
+	}
+
+	private void moveDockPanelBeside(DockPanel panel, DockPanel anchor) {
+		DockGroup current = dockLayout.findGroupContaining(panel);
+		DockGroup target = dockLayout.findGroupContaining(anchor);
+		if (current == null || target == null || current == target || !current.removePanel(panel)) return;
+		target.addPanel(target.getPanels().indexOf(anchor) + 1, panel);
 	}
 
 	private void relocateMissingStatusPanel() {
@@ -1682,6 +1690,7 @@ public class SpellPreviewScreen extends Screen {
 		if (editorMode == EditorMode.YSM) {
 			if (ysmEditor != null) ysmEditor.tick();
 			if (ysmProperties != null) ysmProperties.tick();
+			if (ysmPresets != null) ysmPresets.tick();
 			if (ysmCatalog != null) ysmCatalog.tick();
 			return;
 		}
@@ -1709,6 +1718,11 @@ public class SpellPreviewScreen extends Screen {
 		super.render(guiGraphics, mouseX, mouseY, partialTick);
 
 		renderTopBarSpellName(guiGraphics);
+		if (editorMode == EditorMode.YSM && ysmEditor != null) {
+			guiGraphics.fill(0, height - 18, width, height, 0xff121b23);
+			guiGraphics.drawString(font, font.plainSubstrByWidth(ysmEditor.status().getString(), Math.max(0, width - 12)),
+					6, height - 13, 0xffc6d4df, false);
+		}
 
 		// Dropdown/completion overlay on top of everything
 		if (dockLayout != null) {
@@ -1814,6 +1828,7 @@ public class SpellPreviewScreen extends Screen {
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
 		if (editorMode == EditorMode.YSM) {
 			if (ysmProperties != null && ysmProperties.overlayMouseClicked(mouseX, mouseY, button)) return true;
+			if (ysmPresets != null && ysmPresets.overlayMouseClicked(mouseX, mouseY, button)) return true;
 			if (ysmCatalog != null && ysmCatalog.overlayMouseClicked(mouseX, mouseY, button)) return true;
 			if (handleTopBarOverflowClick(mouseX, mouseY)) return true;
 			return dockLayout != null && dockLayout.mouseClicked(mouseX, mouseY, button) || super.mouseClicked(mouseX, mouseY, button);
@@ -1903,6 +1918,7 @@ public class SpellPreviewScreen extends Screen {
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
 		if (editorMode == EditorMode.YSM) {
 			if (ysmProperties != null && ysmProperties.overlayMouseScrolled(mouseX, mouseY, delta)) return true;
+			if (ysmPresets != null && ysmPresets.overlayMouseScrolled(mouseX, mouseY, delta)) return true;
 			if (ysmCatalog != null && ysmCatalog.overlayMouseScrolled(mouseX, mouseY, delta)) return true;
 		}
 		if (viewport.isPerspectiveCaptured()) {
@@ -2216,6 +2232,7 @@ public class SpellPreviewScreen extends Screen {
 		super.removed();
 		scene.releaseYsmPreview();
 		if (ysmProperties != null) ysmProperties.closeOverlay();
+		if (ysmPresets != null) ysmPresets.closeOverlay();
 		if (ysmCatalog != null) ysmCatalog.closeOverlay();
 		if (ysmEditor != null) ysmEditor.closePreview();
 		restoreConfiguredGuiScale(Minecraft.getInstance());

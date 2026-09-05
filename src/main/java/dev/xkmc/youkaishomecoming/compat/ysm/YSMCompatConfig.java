@@ -173,10 +173,23 @@ public final class YSMCompatConfig {
 	private record ModelRule(Map<String, List<String>> expressions) {
 	}
 
-	public record RenderBinding(String modelId, String textureName, boolean enabled) {
+	public record RenderBinding(String modelId, String textureName, boolean enabled, Map<String, Float> parameters) {
+
+		public RenderBinding {
+			// Binding appearance uses the same bounded numeric literals as presets, but never expires.
+			parameters = new YsmModelProfile.Preset("", "", 0, parameters).parameters();
+		}
+
+		public RenderBinding(String modelId, String textureName, boolean enabled) {
+			this(modelId, textureName, enabled, Map.of());
+		}
 
 		public static RenderBinding enabled(String modelId, String textureName) {
 			return new RenderBinding(modelId, textureName, true);
+		}
+
+		public static RenderBinding enabled(String modelId, String textureName, Map<String, Float> parameters) {
+			return new RenderBinding(modelId, textureName, true, parameters);
 		}
 
 		public static RenderBinding disabled() {

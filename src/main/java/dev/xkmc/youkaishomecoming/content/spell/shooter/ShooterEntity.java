@@ -427,12 +427,16 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 	public void addAdditionalSaveData(CompoundTag nbt) {
 		super.addAdditionalSaveData(nbt);
 		nbt.put("auto-serial", Objects.requireNonNull(TagCodec.toTag(new CompoundTag(), this)));
+		nbt.put(YsmPresentationState.ENTITY_TAG, entityData.get(YSM_PRESENTATION).copy());
 	}
 
 	public void readAdditionalSaveData(CompoundTag nbt) {
 		super.readAdditionalSaveData(nbt);
 		if (nbt.contains("auto-serial")) {
 			Wrappers.run(() -> TagCodec.fromTag(nbt.getCompound("auto-serial"), getClass(), this, (f) -> true));
+		}
+		if (nbt.contains(YsmPresentationState.ENTITY_TAG, net.minecraft.nbt.Tag.TAG_COMPOUND)) {
+			entityData.set(YSM_PRESENTATION, nbt.getCompound(YsmPresentationState.ENTITY_TAG).copy());
 		}
 	}
 

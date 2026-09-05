@@ -18,14 +18,17 @@ public final class YsmEditorController {
 	private long revision;
 	private String presetId = "", description = "", clip = "", ticks = Integer.toString(YHModel.defaultDuration());
 	private final Map<String, Float> parameters = new LinkedHashMap<>();
+	private final Map<String, Float> bindingParameters = new LinkedHashMap<>();
+	private boolean presetControls;
 	private boolean presetDirty;
 	private String rawDraft;
 	private RawBaseline rawBaseline;
-	private record RawBaseline(YsmModelProfile profile, String id, String description, String clip, String ticks, Map<String, Float> parameters) { }
+	private record RawBaseline(YsmModelProfile profile, String id, String description, String clip, String ticks,
+			Map<String, Float> parameters, YsmModelProfile.Trigger trigger, YsmEditorDocument.Binding binding) { }
 	private String modelInput = "", texture = "default", target = "";
 	private boolean typeTarget, bindingDirty;
 	private long bindingRevision;
-	private String bindingBaseline = "";
+	private YsmEditorDocument.Binding bindingBaseline, sentBinding;
 	private String pending = "", pendingKind = "";
 	private long requestAt;
 	private Component status = text("welcome");
@@ -60,6 +63,16 @@ public final class YsmEditorController {
 	public String clip() { return clip; }
 	public String ticks() { return ticks; }
 	public Map<String, Float> parameters() { return Collections.unmodifiableMap(parameters); }
+	public Map<String, Float> bindingParameters() { return Collections.unmodifiableMap(bindingParameters); }
+	public boolean presetControls() { return presetControls; }
+	public Map<String, Float> controlParameters() { return presetControls ? parameters() : bindingParameters(); }
+	public void presetControls(boolean value) {
+		if (waiting()) return;
+		if (value != presetControls && preview != null)
+			preview.setYsmPresentation(preview.getYsmPresentation().clearParameters());
+		presetControls = value;
+		refresh();
+	}
 	public Component status() { return status; }
 	public long revision() { return revision; }
 	public boolean waiting() { return !pending.isEmpty(); }
@@ -69,7 +82,10 @@ public final class YsmEditorController {
 	public boolean mayWriteWorld() { return Minecraft.getInstance().player != null && Minecraft.getInstance().player.hasPermissions(2); }
 	public boolean profileDirty() { return rawDraft != null || presetDirty || profile != null && !profile.toJson().equals(savedJson); }
 	public boolean isDirty() { return profileDirty() || bindingDirty; }
-	public void modelInput(String value) { modelInput = value; bindingDirty = true; }
+	public void modelInput(String value) {
+		if (!modelInput.equals(value)) bindingParameters.clear();
+		modelInput = value; bindingDirty = true;
+	}
 	public void texture(String value) { texture = value; bindingDirty = true; }
 	public void target(String value) { target = value; bindingDirty = true; }
 	public void presetId(String value) { presetId = value; presetDirty = true; }
@@ -98,6 +114,7 @@ public final class YsmEditorController {
 		if (detail.startsWith("Event presets")) return text("error_event_duration");
 		if (detail.startsWith("Save the shared profile")) return text("error_save_first");
 		if (detail.equals("binding_model_mismatch")) return text("error_binding_model");
+		if (detail.equals("Invalid binding texture")) return text("error_binding_texture");
 		if (detail.equals("unsaved_model")) return text("dirty_model");
 		if (detail.equals("raw_draft_conflict")) return text("error_raw_conflict");
 		if (detail.contains("Expected v.name")) return text("error_parameter_name");
@@ -122,13 +139,15 @@ public final class YsmEditorController {
 		if (waiting()) return;
 		attempt(() -> {
 			var entry = YsmClientProfiles.entry(modelInput);
+			if (profile != null && !profile.model().equals(modelInput)) bindingParameters.clear();
 			profile = entry.profile();
 			rawDraft = null; rawBaseline = null;
 			savedJson = profile.toJson();
 			revision = entry.revision();
 			presetDirty = false;
+			presetControls = false;
 			editingTrigger = null;
-			loadPresetFields(profile.presets().keySet().stream().findFirst().orElse(""));
+			loadPresetFields("");
 			status = text("loaded", profile.model());
 			resetPreview();
 			refresh();
@@ -174,6 +193,8 @@ public final class YsmEditorController {
 				modelInput = binding.modelId(); texture = binding.textureName();
 				if (!model().equals(modelInput)) loadModel();
 			}
+			bindingParameters.clear();
+			if (binding != null && binding.enabled()) bindingParameters.putAll(binding.parameters());
 			status = binding == null ? text("binding_none") : !binding.enabled() ? text("binding_disabled") :
 					text("binding_source", text("binding_source." + source), binding.modelId());
 			bindingDirty = false;
@@ -188,21 +209,33 @@ public final class YsmEditorController {
 	}
 
 	private void rememberBinding(long acknowledgedRevision) {
-		bindingBaseline = (typeTarget ? "type\n" : "uuid\n") + target + "\n" + modelInput + "\n" + texture;
+		bindingBaseline = currentBinding();
 		bindingRevision = acknowledgedRevision;
 	}
+
+	private YsmEditorDocument.Binding currentBinding() {
+		return new YsmEditorDocument.Binding(typeTarget, target, modelInput, texture, bindingParameters);
+	}
+
+	private YsmEditorDocument document() { return new YsmEditorDocument(profile, currentBinding()); }
 
 	public void saveBinding(String operation) {
 		if (waiting()) return;
 		attempt(() -> {
 			if (!mayWriteWorld()) throw new IllegalArgumentException("Requires operator permission (level 2)");
+			if (operation.equals("set") && !applyRawDraft()) return;
 			if (typeTarget) {
 				if (ResourceLocation.tryParse(target) == null) throw new IllegalArgumentException("Invalid entity type");
 			} else UUID.fromString(target);
-			if (operation.equals("set")) YsmModelProfile.modelId(modelInput);
+			if (operation.equals("set")) {
+				YsmModelProfile.modelId(modelInput);
+				if (texture.isBlank()) throw new IllegalArgumentException("Invalid binding texture");
+			}
 			var request = new YsmOverrideRequestToServer((typeTarget ? "type_" : "entity_") + operation,
 					typeTarget ? target : "", modelInput, texture, typeTarget ? "" : target);
 			request.expectedRevision = bindingRevision;
+			request.parameters = new LinkedHashMap<>(bindingParameters);
+			sentBinding = currentBinding();
 			request.requestId = beginRequest("binding");
 			YoukaisHomecoming.HANDLER.toServer(request);
 		});
@@ -212,6 +245,7 @@ public final class YsmEditorController {
 		if (waiting()) return;
 		if (presetDirty) { storePreset(); if (presetDirty) return; }
 		editingTrigger = null;
+		presetControls = true;
 		loadPresetFields(id);
 	}
 
@@ -222,6 +256,7 @@ public final class YsmEditorController {
 		String id = profile.triggers().getOrDefault(trigger, trigger.id());
 		loadPresetFields(id);
 		editingTrigger = trigger;
+		presetControls = true;
 		if (!profile.presets().containsKey(id)) description = text("trigger." + trigger.id()).getString();
 		presetDirty = !id.equals(profile.triggers().get(trigger));
 		refresh();
@@ -293,17 +328,54 @@ public final class YsmEditorController {
 			if (!Float.isFinite(value) || Math.abs(value) > YsmPresentationState.WIRE_MAX_PARAMETER_VALUE || !catalog().accepts(key, value))
 				throw new IllegalArgumentException("Value outside the model's declared options or numeric limit");
 			if (!parameters.containsKey(key) && parameters.size() >= YsmPresentationState.WIRE_MAX_PARAMETERS) throw new IllegalArgumentException("Too many parameters");
-			int duration = Integer.parseInt(ticks.trim());
-			if (duration < 0) throw new IllegalArgumentException("Duration must not be negative");
+			int configuredDuration = Integer.parseInt(ticks.trim());
+			if (configuredDuration < 0) throw new IllegalArgumentException("Duration must not be negative");
+			ensurePresetId();
 			parameters.put(key, value);
 			presetDirty = true;
 			var holder = preview();
 			if (holder != null) holder.setYsmPresentation(holder.getYsmPresentation().setParameter(key, value,
-					holder.getYsmPresentationTime(), duration, YsmPresentationState.Source.PREVIEW, YsmPresentationState.WIRE_MAX_PARAMETERS));
+					holder.getYsmPresentationTime(), 0, YsmPresentationState.Source.PREVIEW, YsmPresentationState.WIRE_MAX_PARAMETERS));
 			paused = false;
-			status = text("preview_only");
+			status = text("preset_parameter_staged");
 			refresh();
 		});
+	}
+
+	/** Native controls edit persistent binding appearance unless a preset was explicitly selected. */
+	public void controlParameter(String name, float value) {
+		if (presetControls) { parameter(name, value); return; }
+		if (waiting()) return;
+		attempt(() -> {
+			String key = YsmPresentationState.normalizeParameter(name);
+			if (!Float.isFinite(value) || Math.abs(value) > YsmPresentationState.WIRE_MAX_PARAMETER_VALUE || !catalog().accepts(key, value))
+				throw new IllegalArgumentException("Value outside the model's declared options or numeric limit");
+			if (!bindingParameters.containsKey(key) && bindingParameters.size() >= YsmPresentationState.WIRE_MAX_PARAMETERS)
+				throw new IllegalArgumentException("Too many parameters");
+			bindingParameters.put(key, value);
+			bindingDirty = true;
+			if (preview != null) preview.setYsmPresentation(preview.getYsmPresentation().clearParameter(key));
+			paused = false;
+			status = text("binding_parameter_staged");
+			refresh();
+		});
+	}
+
+	public void removeControlParameter(String name) {
+		if (presetControls) { removeParameter(name); return; }
+		if (!waiting() && bindingParameters.remove(name) != null) {
+			bindingDirty = true;
+			if (preview != null) preview.setYsmPresentation(preview.getYsmPresentation().clearParameter(name));
+			status = text("binding_parameter_staged");
+			refresh();
+		}
+	}
+
+	private void ensurePresetId() {
+		if (!presetId.isBlank()) return;
+		String id = "custom";
+		for (int suffix = 2; profile != null && profile.presets().containsKey(id); suffix++) id = "custom_" + suffix;
+		presetId = id;
 	}
 	public void removeParameter(String name) {
 		if (!waiting() && parameters.containsKey(name)) {
@@ -312,7 +384,7 @@ public final class YsmEditorController {
 			refresh();
 		}
 	}
-	public void selectClip(String name) { if (!waiting()) { clip(name); refresh(); previewDraft(); } }
+	public void selectClip(String name) { if (!waiting()) { ensurePresetId(); presetControls = true; clip(name); refresh(); previewDraft(); } }
 	public YsmModelCatalog catalog() { return YsmClientPresentationBridge.catalog(model()); }
 
 	public void saveProfile() { saveProfile(false); }
@@ -377,7 +449,7 @@ public final class YsmEditorController {
 			}
 			if (presetDirty) { storePreset(); if (presetDirty) return; }
 			if (profile == null) return;
-			Minecraft.getInstance().keyboardHandler.setClipboard(profile.toJson());
+			Minecraft.getInstance().keyboardHandler.setClipboard(document().toJson());
 			status = text("copied");
 			refresh();
 		});
@@ -385,9 +457,9 @@ public final class YsmEditorController {
 	public void importClipboard() {
 		if (waiting()) return;
 		attempt(() -> {
-			var imported = YsmModelProfile.fromJson(Minecraft.getInstance().keyboardHandler.getClipboard());
-			if (profile == null || !imported.model().equals(model())) throw new IllegalArgumentException("Load the imported profile's model first");
-			profile = imported;
+			var imported = YsmEditorDocument.fromJson(Minecraft.getInstance().keyboardHandler.getClipboard());
+			if (profile == null || !imported.profile().model().equals(model())) throw new IllegalArgumentException("Load the imported profile's model first");
+			adoptDocument(imported);
 			rawDraft = null; rawBaseline = null;
 			loadPresetFields(profile.presets().keySet().stream().findFirst().orElse(""));
 			status = text("staged");
@@ -395,21 +467,21 @@ public final class YsmEditorController {
 		});
 	}
 
-	/** The raw editor is a local draft of format=1, never a third-party ysm.json file. */
+	/** Raw text includes the optional binding; the shared profile API still receives only format=1. */
 	public boolean prepareRawDraft() {
 		if (rawDraft == null && presetDirty) storePreset();
 		return profile != null && (!presetDirty || rawDraft != null);
 	}
-	public String rawJson() { return rawDraft != null ? rawDraft : profile == null ? "" : profile.toJson(); }
+	public String rawJson() { return rawDraft != null ? rawDraft : profile == null ? "" : document().toJson(); }
 	public boolean rawDirty() { return rawDraft != null; }
 	public boolean rawEditable() { return profile != null && (!presetDirty || rawDraft != null); }
-	private RawBaseline rawBaseline() { return new RawBaseline(profile, presetId, description, clip, ticks, Map.copyOf(parameters)); }
+	private RawBaseline rawBaseline() { return new RawBaseline(profile, presetId, description, clip, ticks, Map.copyOf(parameters), editingTrigger, currentBinding()); }
 	public void rawJson(String value) {
 		if (waiting() || profile == null) return;
 		boolean wasDirty = rawDraft != null;
 		if (!wasDirty) rawBaseline = rawBaseline();
 		rawDraft = value;
-		if (!presetDirty && value.equals(profile.toJson())) { rawDraft = null; rawBaseline = null; }
+		if (!presetDirty && value.equals(document().toJson())) { rawDraft = null; rawBaseline = null; }
 		if (wasDirty != (rawDraft != null)) refresh();
 	}
 	public boolean applyRawDraft() {
@@ -417,15 +489,25 @@ public final class YsmEditorController {
 		if (waiting()) return false;
 		attempt(() -> {
 			if (!Objects.equals(rawBaseline, rawBaseline())) throw new IllegalArgumentException("raw_draft_conflict");
-			var parsed = YsmModelProfile.fromJson(rawDraft);
-			if (!parsed.model().equals(model())) throw new IllegalArgumentException("Load the imported profile's model first");
-			profile = parsed;
+			var parsed = YsmEditorDocument.fromJson(rawDraft);
+			if (!parsed.profile().model().equals(model())) throw new IllegalArgumentException("Load the imported profile's model first");
+			adoptDocument(parsed);
 			rawDraft = null; rawBaseline = null;
 			loadPresetFields(profile.presets().containsKey(presetId) ? presetId : profile.presets().keySet().stream().findFirst().orElse(""));
 			status = text("staged");
 			resetPreview();
 		});
 		return rawDraft == null;
+	}
+
+	private void adoptDocument(YsmEditorDocument document) {
+		profile = document.profile();
+		if (document.binding() != null) {
+			var binding = document.binding();
+			typeTarget = binding.typeTarget(); target = binding.target(); modelInput = binding.model(); texture = binding.texture();
+			bindingParameters.clear(); bindingParameters.putAll(binding.parameters());
+			bindingDirty = !binding.equals(bindingBaseline);
+		}
 	}
 	public void discardRawDraft() { if (!waiting()) { rawDraft = null; rawBaseline = null; refresh(); } }
 
@@ -438,7 +520,7 @@ public final class YsmEditorController {
 		}
 		if (preview != null && profile != null) {
 			preview.setYsmRenderOverride(model(), texture, "", 0, "changed");
-			YsmClientProfiles.preview(preview.getFakeCaster(), profile);
+			YsmClientProfiles.preview(preview.getFakeCaster(), profile, model().equals(modelInput) ? bindingParameters : Map.of());
 		}
 		return preview;
 	}
@@ -448,13 +530,14 @@ public final class YsmEditorController {
 			if (holder == null || profile == null) return;
 			var preset = currentPreset();
 			holder.setYsmPresentation(holder.getYsmPresentation().stop().clearParameters().applyPreset(model(), preset,
-					holder.getYsmPresentationTime(), preset.ticks(), YsmPresentationState.Source.PREVIEW, YsmPresentationState.WIRE_MAX_PARAMETERS));
+					holder.getYsmPresentationTime(), 0, YsmPresentationState.Source.PREVIEW, YsmPresentationState.WIRE_MAX_PARAMETERS));
 			paused = false;
 			status = text("preview_only");
 			refresh();
 		});
 	}
 	public void simulate(YsmModelProfile.Trigger trigger) {
+		if (!applyRawDraft() || !stagePresetEdits()) return;
 		var holder = preview();
 		if (holder == null) return;
 		// Starting a simulated trigger drops the explicit audition so lower-priority mappings are visible.
@@ -476,6 +559,7 @@ public final class YsmEditorController {
 	public void stopPreview() {
 		if (preview != null) { preview.setYsmPresentation(preview.getYsmPresentation().stop().clearParameters()); preview.setYsmSignals(YsmPresentationSignals.EMPTY); }
 		previewState = YsmModelProfile.Trigger.IDLE;
+		paused = false;
 		refresh();
 	}
 	public void togglePause() { paused = !paused; refresh(); }
@@ -492,8 +576,10 @@ public final class YsmEditorController {
 	public void discardAll() {
 		rawDraft = null; rawBaseline = null;
 		if (profile != null && savedJson != null) { profile = YsmModelProfile.fromJson(savedJson); loadPresetFields(""); }
-		String[] parts = bindingBaseline.split("\n", -1);
-		if (parts.length == 4) { typeTarget = parts[0].equals("type"); target = parts[1]; modelInput = parts[2]; texture = parts[3]; }
+		if (bindingBaseline != null) {
+			typeTarget = bindingBaseline.typeTarget(); target = bindingBaseline.target(); modelInput = bindingBaseline.model(); texture = bindingBaseline.texture();
+			bindingParameters.clear(); bindingParameters.putAll(bindingBaseline.parameters());
+		}
 		bindingDirty = false;
 		resetPreview();
 	}
@@ -507,7 +593,11 @@ public final class YsmEditorController {
 					revision = response.revision();
 					savedJson = response.json();
 				}
-				if (response.success() && (pendingKind.equals("binding") || pendingKind.equals("binding_after_profile"))) { bindingDirty = false; rememberBinding(response.revision()); }
+				if (response.success() && (pendingKind.equals("binding") || pendingKind.equals("binding_after_profile"))) {
+					bindingBaseline = sentBinding;
+					bindingRevision = response.revision();
+					bindingDirty = !Objects.equals(currentBinding(), sentBinding);
+				}
 				boolean bindNext = response.success() && pendingKind.equals("profile_then_binding");
 				status = response.success() ? text(switch (pendingKind) {
 					case "profile", "profile_then_binding" -> "profile_saved";

@@ -37,8 +37,14 @@ public class YsmOverrideServerHandler {
 			return;
 		}
 		if (request.action == null || request.modelId == null || request.textureName == null || request.entityType == null || request.uuidList == null
-				|| request.modelId.length() > 256 || request.textureName.length() > 256 || request.entityType.length() > 256 || request.uuidList.length() > 65536) {
+				|| request.parameters == null || request.modelId.length() > 256 || request.textureName.length() > 256 || request.entityType.length() > 256 || request.uuidList.length() > 65536) {
 			reply(player, data, request, false, "[YH/YSM] Override request is too large.");
+			return;
+		}
+		try {
+			YHModel.validatePreset(new YsmModelProfile.Preset("", "", 0, request.parameters));
+		} catch (IllegalArgumentException ex) {
+			reply(player, data, request, false, ex.getMessage());
 			return;
 		}
 		long previous = data.revision();
@@ -102,7 +108,7 @@ public class YsmOverrideServerHandler {
 		if (request.modelId.isBlank() || request.textureName.isBlank()) {
 			return "[YH/YSM] Model and texture must not be blank.";
 		}
-		data.setType(type, RenderBinding.enabled(request.modelId, request.textureName));
+		data.setType(type, RenderBinding.enabled(request.modelId, request.textureName, request.parameters));
 		return "[YH/YSM] type " + type + " -> " + request.modelId + " / " + request.textureName;
 	}
 
@@ -128,7 +134,7 @@ public class YsmOverrideServerHandler {
 		if (request.modelId.isBlank() || request.textureName.isBlank()) {
 			return "[YH/YSM] Model and texture must not be blank.";
 		}
-		return applyToEntities(server, data, request, RenderBinding.enabled(request.modelId, request.textureName));
+		return applyToEntities(server, data, request, RenderBinding.enabled(request.modelId, request.textureName, request.parameters));
 	}
 
 	private static String applyEntityOff(MinecraftServer server, YsmOverrideData data, YsmOverrideRequestToServer request) {

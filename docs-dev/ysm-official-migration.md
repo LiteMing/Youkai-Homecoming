@@ -38,12 +38,15 @@
 不创建尚无第二个真实消费者的 Backend/Registry/Factory；迁移真正发生时在这些窄接缝替换即可。
 目录文件夹按真实模型 ID/动画名前缀分层；原生包名仅为可选显示信息，不写进 profile。
 模型候选小预览复用 YH 自己的隔离假实体，不打开 OYSM Screen、不设置玩家模型。
-Raw JSON 使用同一 `format=1` 契约；顶部组合保存仍走既有 profile/绑定请求，不新增供应商存档格式。
+共享 profile 仍使用同一 `format=1` 契约。Editor Raw JSON 可附带 `binding`（scope/target/model/texture/parameters），
+解析后分别走既有 profile/绑定请求。绑定外观是供应商无关的数值默认值，随 UUID/type 持久化；
+旧绑定无 parameters 时为空。不把 Editor 导出扩展传给共享 profile API，不新增供应商存档格式。
 
 ## 0.28.0 场景化与符卡预览
 
 主流程现在围绕目标、模型和场景：弹幕战开启、换卡、近战命中及切换现有模型预设；
-原生素材目录作为辅助页。新增场景仍只使用 `YsmModelProfile.Trigger` 和普通事件时间/序号，
+动作与表情预设是独立 Dock 标签，场景配置直接进入该标签；原生素材目录作为辅助页，素材试听不套用
+运行时 preset ticks。新增场景仍只使用 `YsmModelProfile.Trigger` 和普通事件时间/序号，
 没有在预设或信号包中引入 OYSM 类名、回调或播放器控制器。
 
 `ysm_render` 有意替换为必填 operation 的节点设计（完整字段见脚本契约文档），无旧设计兼容层。
@@ -78,13 +81,13 @@ Raw JSON 使用同一 `format=1` 契约；顶部组合保存仍走既有 profile
 | 运行时对象 | `RendererManager.getExternalLivingRenderer()`、`getCachedAnimatable(LivingEntity)`、model readiness / assembly identity |
 | 数值覆盖 | animatable evaluation context / public variable storage、StringPool、`getScoped/setScoped`、roaming Struct property |
 | 重播 | `AnimationData` 中 `player.cap` 控制器、`PredicateBasedController.clearAnimation()` |
-| 生命周期 | render 前 join 可选异步工作；assembly 身份变化失效；断线/换世界清缓存；实体只弱引用 |
+| 生命周期 | render 前 join 已提交的异步工作；数值租约跨到下一次异步求值完成；assembly 身份变化失效；断线/换世界恢复并清缓存；实体只弱引用 |
 | 隔离预览回收 | 在关闭/重建时对 OYSM `ExternalLivingRenderer.cache` 做一次可选字段探测，join 后仅移除 YH 标记的假实体；不遍历或删除真实实体缓存 |
 
 这里没有执行任意用户 Molang，也没有导出内部对象供脚本缓存。
 未来官方 adapter 必须返回同一个 `YsmModelCatalog`，消费同一个 `Resolved`；
-如果其异步模型不允许当前“同步 render 前覆盖、返回后恢复”的窗口，必须先实现新的安全数值入口，
-不能照搬变量地址或放任异步线程在 overlay 作用域外读取。
+适配器必须明确异步求值发生在 render 前还是 render 内。当前 OYSM 基线在 render 前提交任务，
+所以数值租约跨帧交接并在 join 后恢复；不能退回只包住同步 render 的假作用域，也不能照搬变量地址。
 
 `YsmParameterOverlay` 本身是供应商无关的数值作用域恢复工具，但它**不是**全局模型脚本沙盒：
 模型在作用域内主动写入不同的新值时保留写入；动画自身其他脚本副作用不回滚。
@@ -136,11 +139,13 @@ Raw JSON 使用同一 `format=1` 契约；顶部组合保存仍走既有 profile
 
 - `YoukaisHomecoming.java`：增加两种 profile 包注册及命名补全 provider 初始化，保留全部上游注册/监听器。
 - `GeneralEventHandlers.java`：登录时多发送共享 profile 快照，保留其他登录处理。
-- `GeneralYoukaiEntity` / `ShooterEntity`：瞬态表现快照+信号；近战表现只观察 `doHurtTarget` 的成功结果，不改伤害、AI 或 beaten 状态机。
+- `GeneralYoukaiEntity` / `ShooterEntity`：表现快照随实体 NBT 持久化，行为信号仍为瞬态；近战表现只观察 `doHurtTarget` 的成功结果，不改伤害、AI 或 beaten 状态机。
 - `SpellRuntime` / `SpellCardWrapper`：真实首次 tick 发出进入/换卡事件；并行子图不发换卡事件。信号包改为事件表，两端同版本更新。
 - `OrthographicViewport` / `SpellSnapshotRenderer`：共享有显式模型时才运行的预览委托；未选择模型时保留原行为。
 - `SpellPreviewScreen` / `EditorMode`：第三模式局部分支，独立停靠布局与输入分发；缩放保留模式内快照，确认后切模式返回真实 Screen；不把模型表塞进符卡 schema。
-- `RawJsonDockPanel`：仅将原多行 widget 的构造和撤销记录方法开放给同包 YSM 消费者；不改符卡/魔法阵解析逻辑。
+- `RawJsonDockPanel`：复用原多行 widget 的构造、撤销和缩放时的光标/历史恢复；不改符卡/魔法阵解析逻辑。
+- `YSMCompatConfig.RenderBinding` / `YsmOverrideData`：新增绑定数值默认外观，旧存档缺省为空；绑定包同步更新两端，公开脚本 API 保持原契约。
+- `PreviewCardHolder`：仅隔离模型预览更新移动、步幅与飞行输入，以驱动模型原生状态机；不 tick 世界或修改真实实体物理。
 - `build.gradle`：定向测试任务与隔离专服／客户端 smoke 参数，仅显式启用时生效；datagen 仍禁用。`gradle.properties` 按维护者要求在最后提升到 0.28.0。
 - 中文新分片经 organizeLang 生成；英文运行时文件手工维护；未改上游生成器或配置脚手架。
 

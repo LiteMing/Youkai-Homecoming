@@ -361,7 +361,7 @@ public class YSMClientCompat {
 		return result;
 	}
 
-	private static RenderBinding resolveBinding(LivingEntity e) {
+	static RenderBinding resolveBinding(LivingEntity e) {
 		BindingResolution resolution = resolveBindingWithSource(e);
 		RenderBinding binding = resolution.binding();
 		return binding != null && binding.enabled() ? binding : null;

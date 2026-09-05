@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.compat.ysm;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import dev.xkmc.youkaishomecoming.content.spell.preview.YsmEditorDocument;
 
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ public final class ModelPresentationTest {
 		stateContracts();
 		serializationContracts();
 		profileContracts();
+		bindingAppearanceContracts();
 		signalContracts();
 		compositionContracts();
 		acknowledgementContracts();
@@ -81,6 +83,15 @@ public final class ModelPresentationTest {
 				.setParameter("v.roaming.mouth", 2.5f, 9000000000L, 0, YsmPresentationState.Source.SCRIPT, 4);
 		CompoundTag tag = state.toTag();
 		equal("round trip", YsmPresentationState.fromTag(tag), state);
+		CompoundTag entityTag = new CompoundTag();
+		entityTag.put(YsmPresentationState.ENTITY_TAG, tag.copy());
+		var reloaded = YsmPresentationState.fromTag(entityTag.getCompound(YsmPresentationState.ENTITY_TAG));
+		equal("persistent parameter survives entity NBT reload", reloaded.parameters().get("v.roaming.mouth").value(), 2.5f);
+		check("zero-duration parameter remains active after world reload", reloaded.parameters().get("v.roaming.mouth").active(9001000000L));
+		var finite = YsmPresentationState.EMPTY.setParameter("v.roaming.b", 1, 100, 20, SOURCE, 4);
+		var finiteReloaded = YsmPresentationState.fromTag(finite.toTag());
+		check("finite persisted parameter resumes before deadline", finiteReloaded.parameters().get("v.roaming.b").active(119));
+		check("finite persisted parameter expires on world clock", finiteReloaded.expire(120).parameters().isEmpty());
 		var cache = new YsmPresentationState.Cache();
 		var cached = cache.read(tag);
 		check("reference cache reused", cache.read(tag) == cached);
@@ -190,6 +201,52 @@ public final class ModelPresentationTest {
 		check("expression expires independently from body", restored.parameters().isEmpty() && restored.animation() != null);
 		reject("atomic preset parameter bound", () -> scoped.applyPreset(profile.model(), new YsmModelProfile.Preset("", "extra5", 20, Map.of("v.new", 1f)), 110, 20, SOURCE, 1));
 		equal("failed preset leaves original body", scoped.animation().clip(), "attacked");
+	}
+
+	private static void bindingAppearanceContracts() {
+		var appearance = YSMCompatConfig.RenderBinding.enabled("test/model", "default", Map.of("variable.roaming.face", 2f, "v.hat", 1f));
+		equal("binding aliases normalized", appearance.parameters().get("v.roaming.face"), 2f);
+		reject("binding parameters immutable", () -> appearance.parameters().clear());
+		reject("invalid binding literal", () -> YSMCompatConfig.RenderBinding.enabled("test/model", "default", Map.of("v.face", Float.NaN)));
+		reject("binding expression is not a parameter", () -> YSMCompatConfig.RenderBinding.enabled("test/model", "default", Map.of("v.face=1", 1f)));
+		var data = new YsmOverrideData();
+		var uuid = new java.util.UUID(0, 2);
+		data.setEntity(uuid, appearance);
+		data.setType(new net.minecraft.resources.ResourceLocation("youkaishomecoming", "rumia"), appearance);
+		var restored = YsmOverrideData.load(data.save(new CompoundTag()));
+		equal("UUID appearance survives world reload", restored.getEntityOverrides(), data.getEntityOverrides());
+		equal("type appearance survives world reload", restored.getTypeOverrides(), data.getTypeOverrides());
+		var legacy = YsmOverrideData.bindingToTag(appearance);
+		legacy.remove("parameters");
+		check("old bindings retain empty appearance", YsmOverrideData.bindingFromTag(legacy).parameters().isEmpty());
+		var corrupt = YsmOverrideData.bindingToTag(appearance);
+		corrupt.getCompound("parameters").putFloat("v.bad", Float.NaN);
+		corrupt.getCompound("parameters").putString("v.script", "v.face=1");
+		equal("malformed stored parameters do not erase valid appearance", YsmOverrideData.bindingFromTag(corrupt), appearance);
+
+		var profile = YsmModelProfile.empty(appearance.modelId());
+		var binding = new YsmEditorDocument.Binding(false, uuid.toString(), profile.model(), "default", appearance.parameters());
+		var document = new YsmEditorDocument(profile, binding);
+		equal("raw document includes binding appearance", YsmEditorDocument.fromJson(document.toJson()), document);
+		equal("portable profile remains importable", YsmEditorDocument.fromJson(profile.toJson()), new YsmEditorDocument(profile, null));
+		equal("editor binding does not enter shared profile", YsmEditorDocument.fromJson(document.toJson()).profile().toJson(), profile.toJson());
+		reject("raw binding scope typo", () -> YsmEditorDocument.fromJson(document.toJson().replace("\"uuid\"", "\"uuud\"")));
+		reject("raw binding numeric string", () -> YsmEditorDocument.fromJson(document.toJson().replace("\"v.hat\": 1.0", "\"v.hat\": \"1\"")));
+
+		var idle = YsmPresentationSignals.EMPTY;
+		var explicit = YsmPresentationState.EMPTY.setParameter("v.hat", 0, 100, 10, SOURCE, 2);
+		var result = YsmPresentationResolver.resolve(profile.model(), profile, idle, explicit, 100, appearance.parameters());
+		equal("temporary expression overrides binding", result.parameters().get("v.hat"), 0f);
+		equal("unrelated binding parameter stays active", result.parameters().get("v.roaming.face"), 2f);
+		result = YsmPresentationResolver.resolve(profile.model(), profile, idle, explicit, 110, appearance.parameters());
+		equal("temporary expiry restores bound appearance", result.parameters(), appearance.parameters());
+		result = YsmPresentationResolver.resolve(profile.model(), profile, idle.advance(YsmModelProfile.Trigger.WALK, false, 120),
+				YsmPresentationState.EMPTY, 5000, appearance.parameters());
+		equal("movement and elapsed time preserve binding appearance", result.parameters(), appearance.parameters());
+		var routed = exampleProfile();
+		result = YsmPresentationResolver.resolve(routed.model(), routed, idle, YsmPresentationState.EMPTY, 1, Map.of("v.face", 9f, "v.hat", 1f));
+		equal("scene parameters override binding defaults", result.parameters().get("v.face"), 1f);
+		equal("scene retains unrelated binding defaults", result.parameters().get("v.hat"), 1f);
 	}
 
 	private static void signalContracts() {
@@ -336,12 +393,12 @@ public final class ModelPresentationTest {
 		check("actual OYSM slots found", mouth != null && emoji != null);
 		mouth.set(4f);
 		emoji.set(7f);
-		try (var overlay = new YsmParameterOverlay()) {
-			overlay.apply(mouth, 2);
-			overlay.apply(emoji, 1);
-			equal("OYSM roaming override", mouth.get(), 2f);
-			equal("OYSM scoped override", emoji.get(), 1f);
-		}
+		var lease = new YsmParameterOverlay();
+		lease.apply(mouth, 2);
+		lease.apply(emoji, 1);
+		equal("OYSM next async update sees roaming lease", mouth.get(), 2f);
+		equal("OYSM next async update sees scoped lease", emoji.get(), 1f);
+		lease.close();
 		equal("OYSM roaming restored", mouth.get(), 4f);
 		equal("OYSM scoped restored", emoji.get(), 7f);
 	}

@@ -24,6 +24,7 @@ public class YsmOverrideData extends SavedData {
 	private static final String KEY_MODEL = "model";
 	private static final String KEY_TEXTURE = "texture";
 	private static final String KEY_ENABLED = "enabled";
+	private static final String KEY_PARAMETERS = "parameters";
 
 	private final Map<ResourceLocation, RenderBinding> typeOverrides = new LinkedHashMap<>();
 	private final Map<UUID, RenderBinding> entityOverrides = new LinkedHashMap<>();
@@ -75,12 +76,25 @@ public class YsmOverrideData extends SavedData {
 		tag.putString(KEY_MODEL, binding.modelId());
 		tag.putString(KEY_TEXTURE, binding.textureName());
 		tag.putBoolean(KEY_ENABLED, binding.enabled());
+		CompoundTag parameters = new CompoundTag();
+		binding.parameters().forEach(parameters::putFloat);
+		tag.put(KEY_PARAMETERS, parameters);
 		return tag;
 	}
 
 	static RenderBinding bindingFromTag(CompoundTag tag) {
 		if (tag.getBoolean(KEY_ENABLED)) {
-			return RenderBinding.enabled(tag.getString(KEY_MODEL), tag.getString(KEY_TEXTURE));
+			var parameters = new LinkedHashMap<String, Float>();
+			var values = tag.getCompound(KEY_PARAMETERS);
+			for (String key : values.getAllKeys()) {
+				if (parameters.size() >= YsmPresentationState.WIRE_MAX_PARAMETERS) break;
+				if (!values.contains(key, net.minecraft.nbt.Tag.TAG_ANY_NUMERIC)) continue;
+				float value = values.getFloat(key);
+				if (!Float.isFinite(value) || Math.abs(value) > YsmPresentationState.WIRE_MAX_PARAMETER_VALUE) continue;
+				try { parameters.put(YsmPresentationState.normalizeParameter(key), value); }
+				catch (IllegalArgumentException ignored) { }
+			}
+			return RenderBinding.enabled(tag.getString(KEY_MODEL), tag.getString(KEY_TEXTURE), parameters);
 		}
 		return RenderBinding.disabled();
 	}

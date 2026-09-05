@@ -31,6 +31,6 @@ public final class ClassicControlHitboxRenderer {
 		var buffers = MultiBufferSource.immediate(new BufferBuilder(hitboxType.bufferSize()));
 		ClientDanmakuCache.renderPlayerDanmakuHitbox(pose, buffers.getBuffer(hitboxType),
 				minecraft.player, camera.x, camera.y, camera.z, event.getPartialTick());
-		buffers.endBatch(hitboxType);
+		ClientDanmakuCache.endHitboxBatch(buffers);
 	}
 }

@@ -35,6 +35,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import com.mojang.blaze3d.systems.RenderSystem;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
@@ -212,7 +213,6 @@ public class ClientDanmakuCache {
 		double camy = vec3.y();
 		double camz = vec3.z();
 		EntityRenderDispatcher disp = Minecraft.getInstance().getEntityRenderDispatcher();
-		boolean renderHitBoxes = disp.shouldRenderHitBoxes() && !Minecraft.getInstance().showOnlyReducedInfo();
 
 		// PE-2: Extract view matrix once for billboard fast path (same idea as PB3 for preview).
 		// For billboard types, bypass PoseStack push/translate/scale/pop entirely.
@@ -284,13 +284,53 @@ public class ClientDanmakuCache {
 			}
 
 			// Standard path: PoseStack-based rendering for non-billboard types and non-danmaku entities
-			this.maybeRenderEntity(disp, frustum, e, camx, camy, camz, pTick, pose, buffer, renderHitBoxes);
+			this.maybeRenderEntity(disp, frustum, e, camx, camy, camz, pTick, pose, buffer, false);
 		}
-		if (renderHitBoxes && cam.getEntity() instanceof Player pl && !all.isEmpty() &&
-				!Minecraft.getInstance().options.getCameraType().isFirstPerson()) {
-			var lineBuffers = MultiBufferSource.immediate(new BufferBuilder(DANMAKU_HITBOX_LINES.bufferSize()));
-			renderPlayerHitbox(pose, lineBuffers.getBuffer(DANMAKU_HITBOX_LINES), pl, camx, camy, camz, pTick);
-			lineBuffers.endBatch(DANMAKU_HITBOX_LINES);
+	}
+
+	/** Render debug hit boxes after the complete world pass, above all entity models. */
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	public void renderHitboxes(Camera cam, Frustum frustum, PoseStack pose, float pTick) {
+		Minecraft minecraft = Minecraft.getInstance();
+		EntityRenderDispatcher disp = minecraft.getEntityRenderDispatcher();
+		if (!disp.shouldRenderHitBoxes() || minecraft.showOnlyReducedInfo()) return;
+		Vec3 camera = cam.getPosition();
+		double camx = camera.x();
+		double camy = camera.y();
+		double camz = camera.z();
+		var lineBuffers = MultiBufferSource.immediate(new BufferBuilder(DANMAKU_HITBOX_LINES.bufferSize()));
+		VertexConsumer lines = lineBuffers.getBuffer(DANMAKU_HITBOX_LINES);
+		for (var e : all) {
+			EntityRenderer renderer = getRenderer(disp, e);
+			if (!renderer.shouldRender(e, frustum, camx, camy, camz)) continue;
+			double x = Mth.lerp(pTick, e.xOld, e.getX()) - camx;
+			double y = Mth.lerp(pTick, e.yOld, e.getY()) - camy;
+			double z = Mth.lerp(pTick, e.zOld, e.getZ()) - camz;
+			pose.pushPose();
+			pose.translate(x, y, z);
+			renderHitbox(pose, lines, e, pTick);
+			pose.popPose();
+		}
+		if (cam.getEntity() instanceof Player player && !all.isEmpty()
+				&& !minecraft.options.getCameraType().isFirstPerson()) {
+			renderPlayerHitbox(pose, lines, player, camx, camy, camz, pTick);
+		}
+		endHitboxBatch(lineBuffers);
+	}
+
+	/**
+	 * Submit the overlay with depth disabled. The render type also carries this
+	 * state, but setting it around the immediate batch keeps the overlay visible
+	 * when a level renderer or shader mod leaves a stale depth state behind.
+	 */
+	public static void endHitboxBatch(MultiBufferSource.BufferSource buffers) {
+		RenderSystem.disableDepthTest();
+		RenderSystem.depthMask(false);
+		try {
+			buffers.endBatch(DANMAKU_HITBOX_LINES);
+		} finally {
+			RenderSystem.depthMask(true);
+			RenderSystem.enableDepthTest();
 		}
 	}
 

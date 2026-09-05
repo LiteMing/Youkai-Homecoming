@@ -75,6 +75,8 @@ public class ProjectileRenderHelper {
 			var buffer = Minecraft.getInstance().renderBuffers().bufferSource();
 			QUEUE.flush(buffer);
 			buffer.endLastBatch();
+			ClientDanmakuCache.get(level).renderHitboxes(event.getCamera(), event.getFrustum(),
+					event.getPoseStack(), event.getPartialTick());
 		}
 	}
 

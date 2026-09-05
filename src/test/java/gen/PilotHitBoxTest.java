@@ -22,11 +22,14 @@ public class PilotHitBoxTest {
 	private static void testScale() {
 		AABB base = new AABB(-0.3, 0, -0.3, 0.3, 1.8, 0.3);
 		AABB normal = DanmakuHitBox.scaled(base, new Vec3(0, 1.62, 0), 1);
-		approx("scale one keeps width", normal.getXsize(), 0.6);
-		approx("scale one keeps height", normal.getYsize(), 1.8);
+		approx("scale one uses average edge", normal.getXsize(), 1.0);
+		approx("scale one is cubic", normal.getYsize(), normal.getXsize());
+		approx("scale one keeps depth cubic", normal.getZsize(), normal.getXsize());
+		approx("scale one follows eye Y", normal.getCenter().y, 1.62);
 		AABB half = DanmakuHitBox.scaled(base, new Vec3(0, 1.62, 0), 0.5);
-		approx("half scale width", half.getXsize(), 0.3);
-		approx("half scale height", half.getYsize(), 0.9);
+		approx("half scale edge", half.getXsize(), 0.5);
+		approx("half scale is cubic", half.getYsize(), half.getXsize());
+		approx("half scale follows eye Y", half.getCenter().y, 1.62);
 		AABB point = DanmakuHitBox.scaled(base, new Vec3(0, 1.62, 0), 0);
 		approx("zero scale keeps one pixel X", point.getXsize(), 1d / 16);
 		approx("zero scale keeps one pixel Y", point.getYsize(), 1d / 16);

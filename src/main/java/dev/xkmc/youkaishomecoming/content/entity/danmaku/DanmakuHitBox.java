@@ -25,58 +25,38 @@ public final class DanmakuHitBox {
 		return 1;
 	}
 
-	/** Scales a world-space box around the living entity's eye anchor. */
+	/** Centers an equal-sided danmaku volume on the eye anchor. */
 	public static AABB scaled(Entity entity, AABB box) {
 		return scaled(box, anchor(entity, box), scale(entity));
 	}
 
 	public static AABB scaled(AABB box, Vec3 anchor, double multiplier) {
 		double factor = Math.max(0, multiplier);
+		double edge = (box.getXsize() + box.getYsize() + box.getZsize()) / 3.0 * factor;
 		return new AABB(
-				scaledMin(box.minX, box.maxX, anchor.x, factor),
-				scaledMin(box.minY, box.maxY, anchor.y, factor),
-				scaledMin(box.minZ, box.maxZ, anchor.z, factor),
-				scaledMax(box.minX, box.maxX, anchor.x, factor),
-				scaledMax(box.minY, box.maxY, anchor.y, factor),
-				scaledMax(box.minZ, box.maxZ, anchor.z, factor)
+				centeredMin(anchor.x, edge),
+				centeredMin(anchor.y, edge),
+				centeredMin(anchor.z, edge),
+				centeredMax(anchor.x, edge),
+				centeredMax(anchor.y, edge),
+				centeredMax(anchor.z, edge)
 		);
 	}
 
-	private static double scaledMin(double min, double max, double anchor, double factor) {
-		double value = anchor + (min - anchor) * factor;
-		double other = anchor + (max - anchor) * factor;
-		double lo = Math.min(value, other);
-		double hi = Math.max(value, other);
-		return hi - lo >= MIN_EDGE ? lo : anchor - MIN_EDGE * 0.5;
+	private static double centeredMin(double center, double size) {
+		return center - Math.max(MIN_EDGE, size) * 0.5;
 	}
 
-	private static double scaledMax(double min, double max, double anchor, double factor) {
-		double value = anchor + (min - anchor) * factor;
-		double other = anchor + (max - anchor) * factor;
-		double lo = Math.min(value, other);
-		double hi = Math.max(value, other);
-		if (hi - lo >= MIN_EDGE) return hi;
-		return anchor + MIN_EDGE * 0.5;
+	private static double centeredMax(double center, double size) {
+		return center + Math.max(MIN_EDGE, size) * 0.5;
 	}
 
 	private static Vec3 anchor(Entity entity, AABB box) {
 		Entity root = entity;
 		while (root instanceof PartEntity<?> part) root = part.getParent();
 		if (root instanceof LivingEntity) {
-			return clamp(new Vec3(root.getX(), root.getEyeY(), root.getZ()), box);
+			return new Vec3(root.getX(), root.getEyeY(), root.getZ());
 		}
 		return box.getCenter();
-	}
-
-	private static Vec3 clamp(Vec3 pos, AABB box) {
-		return new Vec3(
-				clamp(pos.x, box.minX, box.maxX),
-				clamp(pos.y, box.minY, box.maxY),
-				clamp(pos.z, box.minZ, box.maxZ)
-		);
-	}
-
-	private static double clamp(double value, double min, double max) {
-		return Math.max(min, Math.min(max, value));
 	}
 }

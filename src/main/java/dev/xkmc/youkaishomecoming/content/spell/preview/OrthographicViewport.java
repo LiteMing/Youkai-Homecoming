@@ -728,7 +728,7 @@ public class OrthographicViewport {
 		renderGrid(poseStack);
 		renderAxes(poseStack);
 
-		renderPreviewCasterSpellCircle(scene, poseStack, buffer, partialTick, previewOrientation);
+		renderPreviewCaster(scene, poseStack, buffer, partialTick, previewOrientation);
 
 		// 8. Render markers
 		renderMarkers(poseStack, scene);
@@ -864,7 +864,7 @@ public class OrthographicViewport {
 		renderGrid(poseStack);
 		renderAxes(poseStack);
 
-		renderPreviewCasterSpellCircle(scene, poseStack, buffer, partialTick, previewOrientation);
+		renderPreviewCaster(scene, poseStack, buffer, partialTick, previewOrientation);
 
 		// 12. Render markers
 		renderMarkers(poseStack, scene);
@@ -918,7 +918,7 @@ public class OrthographicViewport {
 		RenderSystem.depthMask(false);
 	}
 
-	private void renderPreviewCasterSpellCircle(VirtualSpellScene scene, PoseStack poseStack,
+	static void renderPreviewCaster(VirtualSpellScene scene, PoseStack poseStack,
 											   MultiBufferSource buffer, float partialTick,
 											   @Nullable Quaternionf previewOrientation) {
 		var caster = scene.getHolder().getFakeCaster();
@@ -929,6 +929,17 @@ public class OrthographicViewport {
 		poseStack.translate(ex, ey, ez);
 		SpellCircleLayer.renderImpl(poseStack, buffer, LightTexture.FULL_BRIGHT,
 				caster, partialTick, previewOrientation);
+		// Only an explicitly selected preview binding or a model action enables the model.
+		String model = scene.getHolder().getYsmModelOverride();
+		if (!model.isBlank()) {
+			dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.preview(caster, scene.getHolder().ysmProfile(model));
+			boolean invisible = caster.isInvisible();
+			caster.setInvisible(false);
+			try {
+				dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat.delegateRender(caster,
+						Mth.rotLerp(partialTick, caster.yBodyRotO, caster.yBodyRot), partialTick, poseStack, buffer, LightTexture.FULL_BRIGHT);
+			} finally { caster.setInvisible(invisible); }
+		}
 		poseStack.popPose();
 	}
 

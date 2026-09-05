@@ -107,6 +107,13 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 	@Override
 	public void setYsmSignals(YsmPresentationSignals signals) { entityData.set(YSM_SIGNALS, signals.toTag()); }
 
+	@Override
+	public boolean doHurtTarget(net.minecraft.world.entity.Entity target) {
+		boolean hit = super.doHurtTarget(target);
+		if (hit) dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationRuntime.meleeHit(this);
+		return hit;
+	}
+
 	public void setYsmRenderOverride(String modelId, String textureName, String animationHint, int duration, String clearTarget) {
 		String model = normalizeYsmOverride(modelId);
 		String texture = normalizeYsmOverride(textureName);

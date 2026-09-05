@@ -18,15 +18,21 @@ public class SpellCardWrapper extends SpellCard {
 
 	@SerialClass.SerialField
 	public SpellCard card;
+	private SpellCard presentedCard;
 
 	@Override
 	public void tick(CardHolder holder) {
+		if (card != null && presentedCard != card) {
+			presentedCard = card;
+			dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationRuntime.spellStarted(holder);
+		}
 		super.tick(holder);
 		if (card != null) card.tick(holder);
 	}
 
 	@Override
 	public void reset() {
+		presentedCard = null;
 		if (card != null) card.reset();
 	}
 

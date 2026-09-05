@@ -17,10 +17,10 @@ public record YsmModelProfile(String model, Map<String, Preset> presets, Map<Tri
 	private static final Gson JSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
 	public enum Trigger {
-		IDLE, WALK, FLY, ENTER_COMBAT, HURT, DEFEAT, FALLING, PRONE;
+		IDLE, WALK, FLY, ENTER_COMBAT, SPELL_SWITCH, MELEE_ATTACK, HURT, DEFEAT, FALLING, PRONE;
 
 		public String id() { return name().toLowerCase(Locale.ROOT); }
-		public boolean event() { return this == ENTER_COMBAT || this == HURT; }
+		public boolean event() { return this == ENTER_COMBAT || this == SPELL_SWITCH || this == MELEE_ATTACK || this == HURT; }
 		public boolean beaten() { return this == DEFEAT || this == FALLING || this == PRONE; }
 		public static Trigger parse(String id) { return valueOf(id.toUpperCase(Locale.ROOT)); }
 	}

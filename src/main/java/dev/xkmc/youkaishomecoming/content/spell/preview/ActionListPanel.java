@@ -3082,27 +3082,14 @@ public class ActionListPanel {
 			return index + ": shooter" + pattern + "(hp=" + ssa.health() + ")" + ysm;
 		}
 		if (action instanceof YsmRenderAction yra) {
-			if (yra.clear()) {
-				return index + ": ysm clear " + ysmClearTargetBrief(yra.clearTarget(), "all");
-			}
-			StringBuilder builder = new StringBuilder(index + ": ysm set");
-			if (!yra.model().isBlank()) {
-				builder.append(" model=").append(yra.model());
-			}
-			if (!yra.texture().isBlank()) {
-				builder.append(" tex=").append(yra.texture());
-			}
-			if (!yra.animation().isBlank()) {
-				builder.append(" anim=").append(yra.animation());
-			}
-			if (yra.model().isBlank() && yra.texture().isBlank() && yra.animation().isBlank()) {
-				builder.append(" render");
-			}
-			if (yra.duration() > 0) {
-				builder.append(" ").append(yra.duration()).append("t expire=")
-						.append(ysmClearTargetBrief(yra.clearTarget(), "changed"));
-			}
-			return builder.toString();
+			String value = switch (yra.operation()) {
+				case MODEL -> yra.model();
+				case PRESET -> yra.preset();
+				case ANIMATION -> yra.clip();
+				case PARAMETER -> yra.parameter() + " = " + yra.value();
+				default -> "";
+			};
+			return index + ": YSM " + YsmEditorController.text("action." + yra.operation().getSerializedName()).getString() + " " + value;
 		}
 		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";

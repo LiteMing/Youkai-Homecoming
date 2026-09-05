@@ -263,7 +263,7 @@ public final class SpellAnalyzerSelfCheck {
 				"        \"origin\": {\"mode\": \"target\"}},\n" +
 				"        {\"type\": \"teleport\", \"destination\": {\"mode\": \"caster\"}},\n" +
 				"        {\"type\": \"set_entity_flag\", \"flag\": 1},\n" +
-				"        {\"type\": \"ysm_render\", \"model\": \"x\"},\n" +
+				"        {\"type\": \"ysm_render\", \"operation\": \"model\", \"model\": \"x\"},\n" +
 				"        {\"type\": \"erase_enemy_danmaku\"},\n" +
 				"        {\"type\": \"clear_screen\"},\n" +
 				"        {\"type\": \"confine_target\", \"max_distance\": 10},\n" +

@@ -1,7 +1,7 @@
 package dev.xkmc.youkaishomecoming.compat.ysm;
 
-import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
@@ -38,8 +38,11 @@ public final class YsmPresentationRuntime {
 			double movement = Math.max(dx * dx + dz * dz, entity.getDeltaMovement().horizontalDistanceSqr());
 			state = entity.onGround() && movement > speed * speed ? Trigger.WALK : Trigger.IDLE;
 		}
-		boolean combat = !beaten && entity instanceof GeneralYoukaiEntity youkai && youkai.getTarget() != null;
 		var current = target.getYsmSignals();
+		// Entry is emitted by the actual spell tick, not merely acquiring an AI target.
+		boolean combat = current.combat() && !beaten && (!(entity instanceof YoukaiEntity youkai)
+				|| youkai.shouldTickSpell() && (youkai.getSpellRuntime() != null && !youkai.getSpellRuntime().isFinished()
+				|| youkai.getSpellRuntime() == null && youkai.spellCard != null && youkai.spellCard.card != null));
 		var next = current.advance(state, combat, target.getYsmPresentationTime());
 		if (next != current) target.setYsmSignals(next);
 	}
@@ -48,5 +51,19 @@ public final class YsmPresentationRuntime {
 	public static void hurt(LivingDamageEvent event) {
 		if (event.getAmount() <= 0 || event.getEntity().level().isClientSide() || !(event.getEntity() instanceof YsmRenderOverrideTarget target)) return;
 		target.setYsmSignals(target.getYsmSignals().hurt(target.getYsmPresentationTime()));
+	}
+
+	public static void spellStarted(CardHolder holder) {
+		YsmRenderOverrideTarget target = holder instanceof YsmRenderOverrideTarget value ? value :
+				holder.self() instanceof YsmRenderOverrideTarget value ? value : null;
+		if (target == null || !target.canMutateYsmPresentation()) return;
+		var current = target.getYsmSignals();
+		long now = target.getYsmPresentationTime();
+		target.setYsmSignals(current.combat() ? current.fire(Trigger.SPELL_SWITCH, now) : current.advance(current.state(), true, now));
+	}
+
+	public static void meleeHit(YsmRenderOverrideTarget target) {
+		if (target.canMutateYsmPresentation())
+			target.setYsmSignals(target.getYsmSignals().fire(Trigger.MELEE_ATTACK, target.getYsmPresentationTime()));
 	}
 }

@@ -40,6 +40,24 @@ public interface YsmRenderOverrideTarget {
 
 	void setYsmSignals(YsmPresentationSignals signals);
 
+	/** Only server-saved bindings are knowable here; client resource defaults need an explicit model ID. */
+	default String currentYsmModel() {
+		if (!getYsmModelOverride().isEmpty()) return getYsmModelOverride();
+		if (this instanceof net.minecraft.world.entity.Entity entity && entity.getServer() != null) {
+			var data = YsmOverrideData.get(entity.getServer());
+			var binding = data.getEntityOverrides().get(entity.getUUID());
+			if (binding == null) binding = data.getTypeOverrides().get(net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()));
+			if (binding != null && binding.enabled()) return binding.modelId();
+		}
+		return "";
+	}
+
+	default YsmModelProfile ysmProfile(String model) {
+		if (this instanceof net.minecraft.world.entity.Entity entity && entity.getServer() != null)
+			return YsmProfileData.get(entity.getServer()).entry(model).profile();
+		throw new IllegalArgumentException("Shared preset queries require a server entity or isolated preview");
+	}
+
 	default boolean canMutateYsmPresentation() {
 		return this instanceof net.minecraft.world.entity.Entity entity && !entity.level().isClientSide()
 				&& entity.getServer() != null && entity.getServer().isSameThread();

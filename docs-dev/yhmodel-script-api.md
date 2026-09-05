@@ -1,4 +1,4 @@
-# YHModel — 0.28 开发中的模型表现接口
+# YHModel — 0.28.0 模型表现接口
 
 状态：控制接口、预设查询与应用已接入源码；不是 0.28.0 发布声明，画面和联机验收尚未完成。
 第三种 YSM Editor、服务端共享预设和状态映射已接入。用户操作见 `docs/ysm-editor-user-checklist.md`；
@@ -19,11 +19,11 @@
 | `supports(target)` | 对象是否实现当前表现目标接口；不表示模型已绑定或客户端资源存在 |
 | `defaultDuration()` | 配置中的默认 tick 数，并受最大持续时间限制 |
 | `play(target, clip, ticks)` | 请求一个真实动画片段，当前仅 LOOP；重复调用会生成新的重播序号 |
-| `stop(target)` | 清除新动画请求，恢复现行 legacy `ysm_render`／日常表现，不清模型绑定或参数 |
+| `stop(target)` | 清除新动画请求，恢复日常表现／既有发射器提示，不清模型绑定或参数 |
 | `setParameter(target, name, value, ticks)` | 设置一个数值参数的临时覆盖 |
 | `clearParameter(target, name)` | 清除此参数的新覆盖 |
 | `clearParameters(target)` | 清除全部新参数覆盖，不停止动画 |
-| `clear(target)` | 停止新动画并清除新参数，不修改模型、纹理绑定和旧 `ysm_render` |
+| `clear(target)` | 停止新动画并清除新参数，不修改模型、纹理绑定或临时模型覆盖 |
 | `getAnimation(target)` | 当前请求的片段名；无请求为 `""`，不是客户端实际选中结果 |
 | `getAnimationTicksRemaining(target)` | `0` 无请求，`-1` 保持，其余为剩余 tick |
 | `getParameter(target, name)` | 当前请求的数值覆盖；无覆盖为 `null`，不是模型的基础值 |
@@ -34,7 +34,8 @@
 | `applyPreset(target, model, id)` | 原子应用模型限定的预设，使用其默认 ticks |
 | `applyPreset(target, model, id, ticks)` | 原子应用指定持续时间；0 保持，内部 -1 表示使用定义时长 |
 
-预设查询和应用需要服务端线程上的真实 YH 实体；本地 Editor 直接读已同步副本。
+真实实体的预设查询和应用需要服务端线程；隔离假施法者通过目标接口读取已同步副本，供符卡节点本地试播。
+真实客户端实体仍拒绝写操作；`listModels` 仍是服务端世界目录。
 纯表情预设不重启现有身体动画；预设未提及的显式参数不清除。同名参数被新值取代。
 预设在目标当前模型 ID 不匹配时不渲染，但到期时钟继续走；它不会自动替实体绑定另一个模型。
 显式预设请求保留调用当时的值，后来编辑共享预设不会追溯改写已有请求；自动映射使用最新同步定义。
@@ -81,8 +82,8 @@ YHModel.clearParameter(entity, 'v.roaming.mouth')
 - 底层 raw 请求跟随实体当前有效模型；切换模型会重新验证新模型的控件约束。
   `applyPreset` 的身体/参数带 model scope，不能把 raw 请求当成已有的逐模型适配规则。
 - 动画、参数相互独立；战败三相位的身体动画始终优先于手动动画。
-  状态映射按身体和逐参数分别合成：战败 > 显式 > 受伤 > 进入战斗 > 日常。
-  旧符卡身体提示在显式请求之下、自动事件/日常之上，保持原兼容语义。
+  状态映射按身体和逐参数分别合成：战败 > 显式 > 受伤 > 近战命中 > 换卡 > 弹幕战开启 > 日常。
+  发射器等既有身体 hint 在显式请求之下、自动事件/日常之上；新符卡节点直接使用显式请求。
   战败时未被战败预设同名覆盖的显式参数仍可应用；无战败映射继续既有模型无关回退链。
 - 客户端目录按已加载模型 assembly 的身份缓存，资源替换后重建；实体缓存不强持有外部 animatable。
   断线清除本次会话的绑定和调试缓存。未安装 OYSM 时不安装其专用内置模型目录。
@@ -135,10 +136,35 @@ Raw JSON 编辑同一个 `format=1` profile，没有另建存档 schema 或脚�
 radio 标签中的复杂表达式仅保留在指令诊断目录；普通 Editor 隐藏不能直接操作的条目，不执行或猜测其含义。
 `param get` 展示帧间基础输入及 YH 请求；实际播放仍用 `/yhysm debug inspect` 核对。
 
+## 0.28.0 场景与符卡节点（破坏性调整）
+
+`enter_combat` 改为真实符卡第一次 tick 的进入边沿，不再把 `getTarget()!=null` 当作弹幕战开始。
+`spell_switch` 在已有弹幕战中开始另一张符卡时发出；普通 phase 与并行子图不发换卡事件。
+`melee_attack` 由妖怪成功的 `doHurtTarget` 发出。三个事件都使用有限时长预设，不反向改变战斗判定。
+
+`ysm_render` 保留节点类型名，但要求 `operation` 字段；旧 animation/clear/clear_target 不兼容。
+
+| operation | 字段 | 行为 |
+| --- | --- | --- |
+| model | model、texture、duration | 临时设置模型与纹理，不写永久绑定 |
+| preset | model（可空）、preset、duration | 应用共享预设，不替换模型 |
+| animation | clip、duration | 一个真实片段，不解析旧语义 hint |
+| parameter | parameter、value、duration | 单个数值参数；组合表情用 preset |
+| clear | 无 | 清除手动动画/参数和旧动画 hint，不改模型绑定 |
+| reset_model | 无 | 清除临时模型/纹理，恢复原绑定或本地预览选择 |
+
+duration=-1：预设使用定义时长，片段/参数使用配置默认时长，模型保持；0：保持；正数：tick。
+preset 的 model 留空时使用当前临时模型或服务端保存的 UUID/type 绑定。
+客户端资源包默认绑定不在服务器可知范围，此时请填写预设所属模型；不根据预设名称猜模型。
+新节点通过 `YHModel` 共用显式请求与限制；预设缺失/尚未同步时跳过该表现操作，不中断弹幕。
+旧底层 hint 字段仍供发射器等消费者使用。
+符卡预览只有明确的本地模型选择或 model 节点生效后才委托渲染；法阵先渲染。
+正交、透视和截图共用同一入口；预览选择及请求只修改假实体。
+
 ## 兼容和验证边界
 
-本次没有修改 OYSM/TLM 源码、冻结外部渲染 API、已有 KubeJS 事件或 `ysm_render` 语义。
-新增实体同步字段要求服务端和客户端使用相同的 YH 开发构建；不提前提升正式版本号。
+本次没有修改 OYSM/TLM 源码、冻结外部渲染 API 或已有 KubeJS 事件。
+`ysm_render` 节点有意更换旧设计，信号包改用事件表；客户端与服务端必须同时更新到 0.28.0。
 内部适配基线是整合包中的 `openysm-forge-2.6.6.2-HCD-0.1.2.jar`，没有宣称支持官方 YSM 3.0。
 
 ```powershell

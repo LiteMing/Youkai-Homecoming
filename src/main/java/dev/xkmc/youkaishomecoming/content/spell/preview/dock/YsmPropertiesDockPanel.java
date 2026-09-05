@@ -23,18 +23,22 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 	private int page;
 	private String parameterName = "", parameterValue = "0";
 	private YsmModelProfile.Trigger trigger = YsmModelProfile.Trigger.IDLE;
+	private String scenario = "model";
 	public YsmPropertiesDockPanel(YsmEditorController editor) { super(editor); }
 	@Override public String dockId() { return "ysm_properties"; }
 	@Override public String dockTitle() { return text("properties").getString(); }
 
 	@Override protected void build() {
 		select("properties_page", text("workspace"), Integer.toString(page), List.of(
-				new Option("0", text("bindings")), new Option("1", text("presets")), new Option("2", text("triggers"))),
+				new Option("0", text("scenarios")), new Option("1", text("bindings")),
+				new Option("2", text("presets")), new Option("3", text("triggers"))),
 				value -> { page = Integer.parseInt(value); toTop(); });
-		if (page == 0) bindings(); else if (page == 1) presets(); else triggers();
+		if (page == 0) scenarios(); else if (page == 1) bindings(); else if (page == 2) presets(); else triggers();
 	}
 
-	private void bindings() {
+	public void showScenarios() { page = 0; toTop(); }
+
+	private void targetAndModel() {
 		select("target_scope", text("target_scope"), editor.typeTarget() ? "type" : "uuid", List.of(
 				new Option("uuid", text("target_uuid")), new Option("type", text("target_type"))),
 				value -> { if (editor.typeTarget() != value.equals("type")) editor.toggleTargetType(); });
@@ -48,6 +52,45 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 			return List.copyOf(models);
 		});
 		button(text("load_model"), () -> editor.selectModel(editor.modelInput()), true);
+	}
+
+	private void scenarios() {
+		var options = new ArrayList<Option>();
+		options.add(new Option("model", text("scenario.model")));
+		for (var event : List.of(YsmModelProfile.Trigger.ENTER_COMBAT, YsmModelProfile.Trigger.SPELL_SWITCH, YsmModelProfile.Trigger.MELEE_ATTACK))
+			options.add(new Option(event.id(), text("trigger." + event.id())));
+		options.add(new Option("preset", text("scenario.preset")));
+		for (var event : List.of(YsmModelProfile.Trigger.IDLE, YsmModelProfile.Trigger.WALK, YsmModelProfile.Trigger.FLY,
+				YsmModelProfile.Trigger.HURT, YsmModelProfile.Trigger.DEFEAT, YsmModelProfile.Trigger.FALLING, YsmModelProfile.Trigger.PRONE))
+			options.add(new Option(event.id(), text("trigger." + event.id())));
+		select("scenario", text("scenario_choice"), scenario, options, value -> { scenario = value; toTop(); });
+		targetAndModel();
+		if (scenario.equals("model")) {
+			edit("texture", text("texture"), editor.texture(), 256, editor::texture, () -> YSMClientCompat.loadedTextureNames(editor.modelInput()));
+			button(text("bind_save"), () -> editor.saveBinding("set"), editor.mayWriteWorld() && !editor.modelInput().isBlank());
+			return;
+		}
+		if (editor.profile() == null) { label(text("select_model_first")); return; }
+		label(text("scene_model", editor.model()));
+		if (scenario.equals("preset")) {
+			select("use_preset", text("trigger_preset"), editor.presetId(), presetOptions(false), editor::selectPreset);
+			button(text("preview_play"), editor::previewDraft, !editor.presetId().isEmpty());
+			button(text("apply_entity"), () -> editor.applyToEntity(false), editor.mayWriteWorld() && !editor.typeTarget() && !editor.presetId().isEmpty());
+			button(text("clear_entity"), () -> editor.applyToEntity(true), editor.mayWriteWorld() && !editor.typeTarget());
+			button(text("edit_selected_preset"), () -> { page = 2; toTop(); }, true);
+			return;
+		}
+		var event = YsmModelProfile.Trigger.parse(scenario);
+		select("scene_preset", text("trigger_preset"), editor.profile().triggers().getOrDefault(event, ""),
+				presetOptions(true), id -> editor.route(event, id));
+		button(text("configure_scene"), () -> { if (editor.editScenario(event)) { page = 2; toTop(); } }, true);
+		button(text("simulate", text("trigger." + event.id())), () -> editor.simulate(event), true);
+		button(text("save_and_bind"), editor::saveAndBind, editor.mayWriteWorld());
+		label(text(event.event() ? "trigger_event_duration" : "trigger_state_duration"));
+	}
+
+	private void bindings() {
+		targetAndModel();
 		edit("texture", text("texture"), editor.texture(), 256, editor::texture, () -> YSMClientCompat.loadedTextureNames(editor.modelInput()));
 		button(text("default_texture"), () -> { editor.texture(YSMClientCompat.defaultTextureName(editor.modelInput())); changed(); }, true);
 		button(text("bind_save"), () -> editor.saveBinding("set"), editor.mayWriteWorld());
@@ -98,6 +141,7 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 	}
 	private void presets() {
 		if (editor.profile() == null) { label(text("select_model_first")); return; }
+		if (editor.editingTrigger() != null) label(text("editing_scene", text("trigger." + editor.editingTrigger().id())));
 		var presets = new ArrayList<>(presetOptions(false));
 		presets.add(0, new Option("", text("new_preset")));
 		select("saved_preset", text("pick_preset"), editor.presetId(), presets, editor::selectPreset);
@@ -120,6 +164,7 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 		button(text("add_parameter"), () -> editor.parameter(parameterName, Float.parseFloat(parameterValue)), !parameterName.isBlank());
 		button(text("remove_parameter"), () -> editor.removeParameter(parameterName), editor.parameters().containsKey(parameterName));
 		button(text("store_preset"), editor::storePreset, true);
+		button(text("back_to_scenarios"), () -> { if (editor.stagePresetEdits()) showScenarios(); }, true);
 		button(text("discard_fields"), editor::discardPresetFields, true);
 		button(text("delete_preset"), editor::deletePreset, editor.profile().presets().containsKey(editor.presetId()));
 		button(text("save_profile"), editor::saveProfile, editor.mayWriteWorld());

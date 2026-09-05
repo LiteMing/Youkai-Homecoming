@@ -242,6 +242,14 @@ public class SpellPreviewScreen extends Screen {
 		bx = circleMode
 				? addCircleTopBarButtons(bx, by, primaryRightLimit)
 				: addSpellTopBarButtons(bx, by, primaryRightLimit, fullEdit);
+		if (!circleMode) {
+			addTopBarOverflowEntry(YsmEditorController.text("choose_preview_model").getString(), btn -> switchMode(EditorMode.YSM), true);
+			addTopBarOverflowEntry(YsmEditorController.text("clear_preview_model").getString(), btn -> {
+				scene.releaseYsmPreview();
+				scene.getHolder().setPreviewYsmBinding("", "");
+				scene.getHolder().clearYsmRenderOverride("model_texture");
+			}, true);
+		}
 		// Shared utilities stay available from More without consuming permanent
 		// horizontal space in every editor mode.
 		addTopBarOverflowEntry(SpellEditorLocalization.modeButtonLabel(), btn -> {
@@ -290,6 +298,7 @@ public class SpellPreviewScreen extends Screen {
 				this::onDeleteAction
 		);
 		actionEditorPanel.setActionPathSupplier(actionListPanel::getSelectedPath);
+		actionEditorPanel.setYsmPreviewModel(() -> scene.getHolder().getYsmModelOverride());
 		actionEditorPanel.setSpellInitializationAccess(
 				() -> definition == null ? "" : definition.display.name(),
 				this::onSpellDisplayNameEdited,
@@ -440,6 +449,10 @@ public class SpellPreviewScreen extends Screen {
 				btn -> ysmEditor.saveProfile(), true, limit);
 		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("save_binding_only").getString(), 64,
 				btn -> ysmEditor.saveBinding("set"), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("scenarios").getString(), 60,
+				btn -> { ysmProperties.showScenarios(); activateDockPanel(ysmProperties); }, true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("use_in_spell").getString(), 88,
+				btn -> useYsmInSpellPreview(), true, limit);
 		bx = addTopBarButtonIfFits(bx, 2, "Raw JSON", 58,
 				btn -> activateDockPanel(ysmRawJson), true, limit);
 		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("reload_profile").getString(), 64,
@@ -458,8 +471,8 @@ public class SpellPreviewScreen extends Screen {
 		java.util.Map<String, DockPanel> panels = new java.util.LinkedHashMap<>();
 		for (DockPanel panel : List.of(ysmPreview, ysmCatalog, ysmProperties, ysmHelp, ysmRawJson)) panels.put(panel.dockId(), panel);
 		java.util.function.Function<java.util.Map<String, DockPanel>, DockNode> defaults = map ->
-				new DockSplit(true, .36f, new DockGroup(map.get("ysm_preview"), map.get("ysm_raw_json"), map.get("ysm_help")),
-						new DockSplit(true, .46f, new DockGroup(map.get("ysm_catalog")), new DockGroup(map.get("ysm_properties"))));
+				new DockSplit(true, .44f, new DockGroup(map.get("ysm_preview"), map.get("ysm_raw_json"), map.get("ysm_help")),
+						new DockGroup(map.get("ysm_properties"), map.get("ysm_catalog")));
 		var snapshot = pendingDockLayout; pendingDockLayout = null;
 		dockLayout = new DockLayout(snapshot == null ? DockSerializer.loadLayout(editorMode.key(), panels, defaults)
 				: DockSerializer.loadLayout(snapshot, panels, defaults));
@@ -602,6 +615,18 @@ public class SpellPreviewScreen extends Screen {
 	 * 切换编辑模式。先把当前模式的布局落盘，再重建 —— 重建时不保留内存快照，
 	 * 这样目标模式会加载它自己的已存布局而不是继承上一个模式的。
 	 */
+	private void useYsmInSpellPreview() {
+		if (ysmEditor == null || ysmEditor.waiting() || ysmEditor.model().isEmpty()) return;
+		if (ysmEditor.profileDirty()) {
+			ysmEditor.attempt(() -> { throw new IllegalArgumentException("unsaved_model"); });
+			return;
+		}
+		scene.releaseYsmPreview();
+		scene.getHolder().setPreviewYsmBinding(ysmEditor.model(), ysmEditor.texture());
+		// This is a local preview choice, not a request to save or discard the target's binding.
+		switchModeConfirmed(EditorMode.SPELL);
+	}
+
 	private void switchMode(EditorMode target) {
 		if (editorMode == EditorMode.YSM && ysmEditor != null && ysmEditor.waiting()) return;
 		if (target == null || target == editorMode) {
@@ -2189,6 +2214,7 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	public void removed() {
 		super.removed();
+		scene.releaseYsmPreview();
 		if (ysmProperties != null) ysmProperties.closeOverlay();
 		if (ysmCatalog != null) ysmCatalog.closeOverlay();
 		if (ysmEditor != null) ysmEditor.closePreview();

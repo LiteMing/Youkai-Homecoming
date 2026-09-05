@@ -33,16 +33,13 @@ public final class YsmEditorController {
 	private PreviewCardHolder preview;
 	private boolean paused;
 	private YsmModelProfile.Trigger previewState = YsmModelProfile.Trigger.IDLE;
+	private YsmModelProfile.Trigger editingTrigger;
 	private final Runnable confirmReload;
 
 	public YsmEditorController(Runnable confirmReload) {
 		this.confirmReload = confirmReload;
 		pickTarget();
-		if (modelInput.isEmpty()) {
-			var models = YSMClientCompat.loadedModelIds();
-			if (!models.isEmpty()) modelInput = models.get(0);
-		}
-		if (!modelInput.isEmpty()) loadModel();
+		if (profile == null && !modelInput.isEmpty()) loadModel();
 		bindingDirty = false;
 		rememberBinding();
 	}
@@ -68,6 +65,7 @@ public final class YsmEditorController {
 	public boolean waiting() { return !pending.isEmpty(); }
 	public boolean paused() { return paused; }
 	public YsmModelProfile.Trigger previewState() { return previewState; }
+	public YsmModelProfile.Trigger editingTrigger() { return editingTrigger; }
 	public boolean mayWriteWorld() { return Minecraft.getInstance().player != null && Minecraft.getInstance().player.hasPermissions(2); }
 	public boolean profileDirty() { return rawDraft != null || presetDirty || profile != null && !profile.toJson().equals(savedJson); }
 	public boolean isDirty() { return profileDirty() || bindingDirty; }
@@ -100,6 +98,7 @@ public final class YsmEditorController {
 		if (detail.startsWith("Event presets")) return text("error_event_duration");
 		if (detail.startsWith("Save the shared profile")) return text("error_save_first");
 		if (detail.equals("binding_model_mismatch")) return text("error_binding_model");
+		if (detail.equals("unsaved_model")) return text("dirty_model");
 		if (detail.equals("raw_draft_conflict")) return text("error_raw_conflict");
 		if (detail.contains("Expected v.name")) return text("error_parameter_name");
 		if (detail.contains("animation clip name")) return text("error_clip");
@@ -128,6 +127,7 @@ public final class YsmEditorController {
 			savedJson = profile.toJson();
 			revision = entry.revision();
 			presetDirty = false;
+			editingTrigger = null;
 			loadPresetFields(profile.presets().keySet().stream().findFirst().orElse(""));
 			status = text("loaded", profile.model());
 			resetPreview();
@@ -169,7 +169,11 @@ public final class YsmEditorController {
 					}
 				}
 			}
-			if (binding != null && binding.enabled()) { modelInput = binding.modelId(); texture = binding.textureName(); }
+			if (binding != null && binding.enabled()) {
+				if (profileDirty() && !model().equals(binding.modelId())) throw new IllegalArgumentException("unsaved_model");
+				modelInput = binding.modelId(); texture = binding.textureName();
+				if (!model().equals(modelInput)) loadModel();
+			}
 			status = binding == null ? text("binding_none") : !binding.enabled() ? text("binding_disabled") :
 					text("binding_source", text("binding_source." + source), binding.modelId());
 			bindingDirty = false;
@@ -207,10 +211,25 @@ public final class YsmEditorController {
 	public void selectPreset(String id) {
 		if (waiting()) return;
 		if (presetDirty) { storePreset(); if (presetDirty) return; }
+		editingTrigger = null;
 		loadPresetFields(id);
 	}
 
+	/** Creating a scenario's preset and route is one local edit. */
+	public boolean editScenario(YsmModelProfile.Trigger trigger) {
+		if (waiting() || profile == null || !applyRawDraft()) return false;
+		if (presetDirty) { storePreset(); if (presetDirty) return false; }
+		String id = profile.triggers().getOrDefault(trigger, trigger.id());
+		loadPresetFields(id);
+		editingTrigger = trigger;
+		if (!profile.presets().containsKey(id)) description = text("trigger." + trigger.id()).getString();
+		presetDirty = !id.equals(profile.triggers().get(trigger));
+		refresh();
+		return true;
+	}
+
 	private void loadPresetFields(String id) {
+		editingTrigger = null;
 		presetId = id;
 		var preset = profile == null ? null : profile.presets().get(id);
 		description = preset == null ? "" : preset.description();
@@ -223,6 +242,7 @@ public final class YsmEditorController {
 	}
 
 	public void discardPresetFields() { if (!waiting()) loadPresetFields(presetId); }
+	public boolean stagePresetEdits() { if (presetDirty) storePreset(); return !presetDirty; }
 
 	public YsmModelProfile.Preset currentPreset() {
 		return new YsmModelProfile.Preset(description, clip, Integer.parseInt(ticks.trim()), parameters);
@@ -235,7 +255,9 @@ public final class YsmEditorController {
 			String id = YsmModelProfile.presetId(presetId);
 			var presets = new LinkedHashMap<>(profile.presets());
 			presets.put(id, currentPreset());
-			profile = new YsmModelProfile(profile.model(), presets, profile.triggers());
+			var routes = new LinkedHashMap<>(profile.triggers());
+			if (editingTrigger != null) routes.put(editingTrigger, id);
+			profile = new YsmModelProfile(profile.model(), presets, routes);
 			presetDirty = false;
 			status = text("staged");
 			refresh();
@@ -410,6 +432,7 @@ public final class YsmEditorController {
 	public PreviewCardHolder preview() {
 		if (preview == null && Minecraft.getInstance().level != null) {
 			preview = new PreviewCardHolder(Minecraft.getInstance().level);
+			preview.setYsmProfiles(model -> profile != null && profile.model().equals(model) ? profile : YsmClientProfiles.entry(model).profile());
 			preview.getFakeCaster().setInvisible(false);
 			preview.getFakeCaster().setPos(0, 0, 0);
 		}
@@ -439,8 +462,11 @@ public final class YsmEditorController {
 		long now = holder.getYsmPresentationTime();
 		var signal = holder.getYsmSignals();
 		if (trigger.event() && previewState.beaten()) { previewState = YsmModelProfile.Trigger.IDLE; signal = signal.advance(previewState, false, now); }
-		if (trigger == YsmModelProfile.Trigger.HURT) signal = signal.hurt(now);
-		else if (trigger == YsmModelProfile.Trigger.ENTER_COMBAT) signal = signal.advance(previewState, false, now).advance(previewState, true, now);
+		if (trigger == YsmModelProfile.Trigger.ENTER_COMBAT) signal = signal.advance(previewState, false, now).advance(previewState, true, now);
+		else if (trigger.event()) {
+			if (trigger == YsmModelProfile.Trigger.SPELL_SWITCH) signal = signal.advance(previewState, true, now);
+			signal = signal.fire(trigger, now);
+		}
 		else { previewState = trigger; signal = signal.advance(trigger, false, now); }
 		holder.setYsmSignals(signal);
 		paused = false;

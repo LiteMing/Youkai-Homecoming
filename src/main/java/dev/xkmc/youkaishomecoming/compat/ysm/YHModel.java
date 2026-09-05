@@ -105,8 +105,7 @@ public final class YHModel {
 
 	private static YsmModelProfile profile(YsmRenderOverrideTarget target, String model) {
 		currentForMutation(target);
-		if (!(target instanceof Entity entity) || entity.getServer() == null) throw new IllegalArgumentException("Shared preset queries require a server entity");
-		return YsmProfileData.get(entity.getServer()).entry(model).profile();
+		return target.ysmProfile(model);
 	}
 
 	private static YsmModelProfile.Preset preset(YsmRenderOverrideTarget target, String model, String id) {

@@ -40,6 +40,22 @@
 模型候选小预览复用 YH 自己的隔离假实体，不打开 OYSM Screen、不设置玩家模型。
 Raw JSON 使用同一 `format=1` 契约；顶部组合保存仍走既有 profile/绑定请求，不新增供应商存档格式。
 
+## 0.28.0 场景化与符卡预览
+
+主流程现在围绕目标、模型和场景：弹幕战开启、换卡、近战命中及切换现有模型预设；
+原生素材目录作为辅助页。新增场景仍只使用 `YsmModelProfile.Trigger` 和普通事件时间/序号，
+没有在预设或信号包中引入 OYSM 类名、回调或播放器控制器。
+
+`ysm_render` 有意替换为必填 operation 的节点设计（完整字段见脚本契约文档），无旧设计兼容层。
+它与脚本共用 `YHModel`；`YsmRenderOverrideTarget.ysmProfile` 的真实实体实现读取服务端 SavedData，
+隔离预览实现读取同步 DTO，不将 Minecraft client 类引用引入 common 接口。
+同名预设不用于猜模型；服务器不知道客户端资源默认绑定时，节点显式指定预设所属模型。
+
+符卡正交、透视和截图共用 `OrthographicViewport.renderPreviewCaster`，只在假施法者
+存在明确模型选择/临时模型覆盖时调用原有 `YSMClientCompat` 委托，法阵顺序不变。
+关闭或重置预览时释放供应商缓存；不设置玩家模型、不写真实实体绑定。
+迁移官方版仍替换下面的窄接缝，无需重写场景 UI、节点操作或服务端战斗事件。
+
 ## 仍然专属于 OYSM 的接缝
 
 ### 1. `YSMClientCompat`
@@ -120,10 +136,12 @@ Raw JSON 使用同一 `format=1` 契约；顶部组合保存仍走既有 profile
 
 - `YoukaisHomecoming.java`：增加两种 profile 包注册及命名补全 provider 初始化，保留全部上游注册/监听器。
 - `GeneralEventHandlers.java`：登录时多发送共享 profile 快照，保留其他登录处理。
-- `GeneralYoukaiEntity` / `ShooterEntity`：瞬态表现快照+信号；没有改伤害、AI 或 beaten 状态机。
+- `GeneralYoukaiEntity` / `ShooterEntity`：瞬态表现快照+信号；近战表现只观察 `doHurtTarget` 的成功结果，不改伤害、AI 或 beaten 状态机。
+- `SpellRuntime` / `SpellCardWrapper`：真实首次 tick 发出进入/换卡事件；并行子图不发换卡事件。信号包改为事件表，两端同版本更新。
+- `OrthographicViewport` / `SpellSnapshotRenderer`：共享有显式模型时才运行的预览委托；未选择模型时保留原行为。
 - `SpellPreviewScreen` / `EditorMode`：第三模式局部分支，独立停靠布局与输入分发；缩放保留模式内快照，确认后切模式返回真实 Screen；不把模型表塞进符卡 schema。
 - `RawJsonDockPanel`：仅将原多行 widget 的构造和撤销记录方法开放给同包 YSM 消费者；不改符卡/魔法阵解析逻辑。
-- `build.gradle`：定向测试任务与隔离专服／客户端 smoke 参数，仅显式启用时生效；datagen 仍禁用。`gradle.properties` 正式版本本轮不提前 bump。
+- `build.gradle`：定向测试任务与隔离专服／客户端 smoke 参数，仅显式启用时生效；datagen 仍禁用。`gradle.properties` 按维护者要求在最后提升到 0.28.0。
 - 中文新分片经 organizeLang 生成；英文运行时文件手工维护；未改上游生成器或配置脚手架。
 
 ## 历史隔离验证环境（非本轮 UI 验收）

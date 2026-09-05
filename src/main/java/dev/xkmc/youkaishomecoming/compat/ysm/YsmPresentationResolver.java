@@ -12,6 +12,7 @@ public final class YsmPresentationResolver {
 
 	public record Body(String clip, String replayKey, String source, boolean explicit) { }
 	public record Resolved(@Nullable Body body, Map<String, Float> parameters, boolean beaten) { }
+	private static final Trigger[] EVENT_LAYERS = {Trigger.ENTER_COMBAT, Trigger.SPELL_SWITCH, Trigger.MELEE_ATTACK, Trigger.HURT};
 
 	private YsmPresentationResolver() { }
 
@@ -22,8 +23,11 @@ public final class YsmPresentationResolver {
 		Body body = null;
 		if (!signals.state().beaten()) {
 			body = layer(profile, signals.state(), signals.stateAt(), signals.stateSequence(), now, parameters, body);
-			if (signals.combat()) body = layer(profile, Trigger.ENTER_COMBAT, signals.combatAt(), signals.combatSequence(), now, parameters, body);
-			body = layer(profile, Trigger.HURT, signals.hurtAt(), signals.hurtSequence(), now, parameters, body);
+			for (Trigger trigger : EVENT_LAYERS) {
+				if ((trigger == Trigger.ENTER_COMBAT || trigger == Trigger.SPELL_SWITCH) && !signals.combat()) continue;
+				var event = signals.event(trigger);
+				body = layer(profile, trigger, event.at(), event.sequence(), now, parameters, body);
+			}
 		}
 		var animation = explicit.animation();
 		if (animation != null && animation.active(now) && animation.matchesModel(model))

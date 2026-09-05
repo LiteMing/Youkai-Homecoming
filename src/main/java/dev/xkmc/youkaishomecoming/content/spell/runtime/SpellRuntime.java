@@ -46,6 +46,7 @@ public class SpellRuntime {
 	private int totalTick;
 	private int hitCount;
 	private boolean enteredCurrentPhase;
+	private boolean presentationStarted;
 	private final Map<String, Double> variables = new HashMap<>();
 	@Nullable
 	private Set<String> trackWritesTo = null;
@@ -517,6 +518,10 @@ public class SpellRuntime {
 	public void tick(CardHolder holder) {
 		PhaseDefinition phase = definition.getPhase(currentPhaseId);
 		if (phase == null) return;
+		if (!presentationStarted) {
+			presentationStarted = true;
+			dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationRuntime.spellStarted(holder);
+		}
 		movementDirective = SpellMovementDirective.random();
 
 		// Track target fly time — use the same logic as SpellContext.targetOnGround()
@@ -586,6 +591,7 @@ public class SpellRuntime {
 	}
 
 	public void reset() {
+		presentationStarted = false;
 		currentPhaseId = definition.entryPhase;
 		phaseTick = 0;
 		totalTick = 0;
@@ -742,6 +748,8 @@ public class SpellRuntime {
 			return;
 		}
 		runtime.currentPhaseId = targetPhase;
+		// Parallel child patterns are not a new spell on the caster.
+		runtime.presentationStarted = true;
 		runtime.initializeStaticSpellHealthPlan(targetPhase);
 		runtime.phaseTick = 0;
 		runtime.totalTick = 0;

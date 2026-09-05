@@ -89,6 +89,8 @@ public class ActionEditorPanel {
 	private java.util.function.Supplier<List<ResourceLocation>> phaseOptionsSupplier = List::of;
 	private java.util.function.Function<ResourceLocation, String> phaseDisplayFormatter = ResourceLocation::toString;
 	private java.util.function.Supplier<List<ResourceLocation>> spellOptionsSupplier = List::of;
+	private java.util.function.Supplier<String> ysmPreviewModel = () -> "";
+	public void setYsmPreviewModel(java.util.function.Supplier<String> supplier) { ysmPreviewModel = supplier; }
 	private java.util.function.Function<ResourceLocation, String> spellDisplayFormatter = ResourceLocation::toString;
 	private java.util.function.Supplier<ActionListPanel.ActionPath> actionPathSupplier = () -> null;
 	private java.util.function.Supplier<String> spellDisplayNameSupplier = () -> "";
@@ -525,7 +527,7 @@ public class ActionEditorPanel {
 		case "sequence" -> new SpellActions.SequenceAction(new ArrayList<>());
 		case "confine_target" -> new ConfineTargetAction(32, 1.0);
 		case "set_entity_flag" -> new SetEntityFlagAction(4, true);
-		case "ysm_render" -> new YsmRenderAction("", "", "special", 40, false);
+		case "ysm_render" -> YsmRenderAction.empty();
 		case "teleport_random" -> new TeleportRandomAction(32, 0.8, 0.4, 16, true, true);
 		case "caster_moves" -> new CasterMovesAction(SpellMovementDirective.Mode.RANDOM);
 		case "bounce", "bounce_source" -> new BounceAction();
@@ -2057,50 +2059,49 @@ public class ActionEditorPanel {
 	// --- YSM Render rows ---
 
 	private void buildYsmRenderRows(YsmRenderAction yra) {
-		addStringOptionRow("Mode", new String[]{"set", "clear"}, new String[]{"Set / switch", "Clear overrides"},
-				yra.clear() ? "clear" : "set", v ->
-				notifySimple(old -> {
-					var y = (YsmRenderAction) old;
-					boolean clear = "clear".equals(v);
-					return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), clear, clear ? "all" : "changed");
-				}, true));
-		if (yra.clear()) {
-			addStringOptionRow("Clear Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(yra.clearTarget(), "all"), v ->
-					notifySimple(old -> {
-						var y = (YsmRenderAction) old;
-						return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), y.clear(), v);
-					}));
-			return;
+		var operations = YsmRenderAction.Operation.values();
+		addStringOptionRow(ysmLabel("action.operation"),
+				java.util.Arrays.stream(operations).map(YsmRenderAction.Operation::getSerializedName).toArray(String[]::new),
+				java.util.Arrays.stream(operations).map(op -> ysmLabel("action." + op.getSerializedName())).toArray(String[]::new),
+				yra.operation().getSerializedName(), v -> notifySimple(old -> ((YsmRenderAction) old).withOperation(
+						YsmRenderAction.Operation.valueOf(v.toUpperCase(java.util.Locale.ROOT))), true));
+		if (yra.operation() == YsmRenderAction.Operation.CLEAR || yra.operation() == YsmRenderAction.Operation.RESET_MODEL) return;
+		if (yra.operation() == YsmRenderAction.Operation.MODEL || yra.operation() == YsmRenderAction.Operation.PRESET) {
+			addSuggestStringRow(ysmLabel(yra.operation() == YsmRenderAction.Operation.MODEL ? "action.model_id" : "action.preset_model"),
+					yra.model(), () -> {
+						var models = new java.util.TreeSet<>(YSMClientCompat.loadedModelIds());
+						models.addAll(dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.models());
+						return List.copyOf(models);
+					}, v -> notifySimple(old -> ((YsmRenderAction) old).withModel(v), true));
 		}
-		addSuggestStringRow("Model ID", yra.model(), YSMClientCompat::loadedModelIds, v ->
-				notifySimple(old -> {
-					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(v, y.texture(), y.animation(), y.duration(), y.clear(), y.clearTarget());
-				}, true));
-		addSuggestStringRow("Texture", yra.texture(), () -> YSMClientCompat.loadedTextureNames(currentYsmModel(yra)), v ->
-				notifySimple(old -> {
-					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(y.model(), v, y.animation(), y.duration(), y.clear(), y.clearTarget());
-				}));
-		addSuggestStringRow("Anim Hint", yra.animation(), () -> YSMClientCompat.loadedAnimationNames(currentYsmModel(yra)), v ->
-				notifySimple(old -> {
-					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(y.model(), y.texture(), v, y.duration(), y.clear(), y.clearTarget());
-				}));
-		addIntRow("Duration", yra.duration(), v ->
-				notifySimple(old -> {
-					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(y.model(), y.texture(), y.animation(), v, y.clear(), y.clearTarget());
-				}));
-		addStringOptionRow("Expire Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(yra.clearTarget(), "changed"), v ->
-				notifySimple(old -> {
-					var y = (YsmRenderAction) old;
-					return new YsmRenderAction(y.model(), y.texture(), y.animation(), y.duration(), y.clear(), v);
-				}));
+		switch (yra.operation()) {
+			case MODEL -> addSuggestStringRow(ysmLabel("texture"), yra.texture(),
+					() -> YSMClientCompat.loadedTextureNames(currentYsmModel(yra)),
+					v -> notifySimple(old -> ((YsmRenderAction) old).withTexture(v)));
+			case PRESET -> addSuggestStringRow(ysmLabel("trigger_preset"), yra.preset(),
+					() -> currentYsmModel(yra).isEmpty() ? List.of() : dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.entry(currentYsmModel(yra))
+							.profile().presets().keySet().stream().sorted().toList(), v -> notifySimple(old -> ((YsmRenderAction) old).withPreset(v)));
+			case ANIMATION -> addSuggestStringRow(ysmLabel("clip"), yra.clip(),
+					() -> dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge.catalog(currentYsmModel(yra)).animations(),
+					v -> notifySimple(old -> ((YsmRenderAction) old).withClip(v)));
+			case PARAMETER -> {
+				addSuggestStringRow(ysmLabel("parameter_name"), yra.parameter(),
+						() -> dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge.catalog(currentYsmModel(yra)).controls().stream()
+								.map(dev.xkmc.youkaishomecoming.compat.ysm.YsmModelCatalog.Control::parameter).filter(v -> !v.isEmpty()).distinct().toList(),
+						v -> notifySimple(old -> ((YsmRenderAction) old).withParameter(v)));
+				addFloatRow(ysmLabel("parameter_value"), yra.value(), v -> notifySimple(old -> ((YsmRenderAction) old).withValue(v)));
+			}
+			default -> { }
+		}
+		addIntRow(ysmLabel(yra.operation() == YsmRenderAction.Operation.MODEL ? "action.model_duration" : "action.duration"),
+				yra.duration(), v -> notifySimple(old -> ((YsmRenderAction) old).withDuration(v)));
 	}
 
-	private static String currentYsmModel(YsmRenderAction action) {
-		return action.model().isBlank() ? "" : action.model();
+	private static String ysmLabel(String key) { return YsmEditorController.text(key).getString(); }
+
+	private String currentYsmModel(YsmRenderAction action) {
+		return action.model().isBlank() || action.operation() == YsmRenderAction.Operation.ANIMATION
+				|| action.operation() == YsmRenderAction.Operation.PARAMETER ? ysmPreviewModel.get() : action.model();
 	}
 
 	private static String currentYsmModel(SpawnShooterAction action) {

@@ -101,6 +101,9 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private int highlightedActionIndex = -1;
 	private final java.util.IdentityHashMap<SpellAction, Integer> previewActionIds = new java.util.IdentityHashMap<>();
 	private String ysmModelOverride = "";
+	private String previewModel = "", previewTexture = "default";
+	private java.util.function.Function<String, dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile> ysmProfiles =
+			dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile::empty;
 	private YsmPresentationState ysmPresentation = YsmPresentationState.EMPTY;
 	private YsmPresentationSignals ysmSignals = YsmPresentationSignals.EMPTY;
 	private String ysmTextureOverride = "";
@@ -944,6 +947,18 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		return ysmPresentation;
 	}
 
+	public void setPreviewYsmBinding(String model, String texture) {
+		previewModel = YsmRenderOverrideTarget.normalizeYsmOverride(model);
+		previewTexture = texture == null || texture.isBlank() ? "default" : texture;
+	}
+
+	public void setYsmProfiles(java.util.function.Function<String, dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile> profiles) {
+		ysmProfiles = profiles;
+	}
+
+	@Override
+	public dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile ysmProfile(String model) { return ysmProfiles.apply(model); }
+
 	@Override
 	public void setYsmPresentation(YsmPresentationState state) {
 		ysmPresentation = state;
@@ -1073,12 +1088,13 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	@Override
 	public String getYsmModelOverride() {
-		return hasActiveYsmField(ysmModelOverride, ysmModelOverrideUntil) ? ysmModelOverride : "";
+		return hasActiveYsmField(ysmModelOverride, ysmModelOverrideUntil) ? ysmModelOverride : previewModel;
 	}
 
 	@Override
 	public String getYsmTextureOverride() {
-		return hasActiveYsmField(ysmTextureOverride, ysmTextureOverrideUntil) ? ysmTextureOverride : "";
+		return hasActiveYsmField(ysmTextureOverride, ysmTextureOverrideUntil) ? ysmTextureOverride :
+				hasActiveYsmField(ysmModelOverride, ysmModelOverrideUntil) ? "default" : previewModel.isEmpty() ? "" : previewTexture;
 	}
 
 	@Override
@@ -1262,6 +1278,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		@Override public YsmPresentationSignals getYsmSignals() { return holder.getYsmSignals(); }
 		@Override public void setYsmSignals(YsmPresentationSignals signals) { holder.setYsmSignals(signals); }
 		@Override public boolean canMutateYsmPresentation() { return true; }
+		@Override public dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile ysmProfile(String model) { return holder.ysmProfile(model); }
 
 		@Override
 		public Vec3 center() {

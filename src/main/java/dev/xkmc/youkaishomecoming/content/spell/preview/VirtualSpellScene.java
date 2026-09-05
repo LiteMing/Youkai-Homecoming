@@ -77,6 +77,7 @@ public class VirtualSpellScene {
 		this.runtime = new SpellRuntime(definition);
 		bindRuntime(this.runtime);
 		this.holder = new PreviewCardHolder(level);
+		this.holder.setYsmProfiles(model -> dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.entry(model).profile());
 		this.holder.setTargetDistance(targetDistance);
 		this.holder.setRuntimeSupplier(() -> this.runtime);
 		if (Minecraft.getInstance().player != null) {
@@ -89,6 +90,11 @@ public class VirtualSpellScene {
 		pilotRegistry.register(new BallisticProvider());
 		pilotRegistry.register(observedProvider);
 		pilot.debugView().enabled = pilotDebugOverlay;
+	}
+
+	public void releaseYsmPreview() {
+		dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge.forgetPreview(holder.getFakeCaster());
+		dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.forgetPreview(holder.getFakeCaster());
 	}
 
 	public void tick() {
@@ -350,6 +356,7 @@ public class VirtualSpellScene {
 	}
 
 	public void reset() {
+		releaseYsmPreview();
 		playing = false;
 		runtime.setPhasePreviewLock(null);
 		runtime.reset();
@@ -365,6 +372,7 @@ public class VirtualSpellScene {
 	}
 
 	public void resetToPhase(ResourceLocation phaseId) {
+		releaseYsmPreview();
 		playing = false;
 		holder.clear();
 		holder.resetTargetHitCount();
@@ -542,8 +550,13 @@ public class VirtualSpellScene {
 
 	public void switchSpellDefinition(SpellDefinition definition, boolean clearScreen) {
 		if (clearScreen) {
+			releaseYsmPreview();
+			var signals = holder.getYsmSignals();
 			holder.clear();
 			holder.clearYsmRenderOverride();
+			// Clearing bullets resets the local clock, but does not turn a spell switch into battle entry.
+			holder.setYsmSignals(new dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals(
+					signals.state(), 0, signals.stateSequence(), signals.combat(), Map.of()));
 		}
 		this.definition = definition;
 		this.runtime = new SpellRuntime(definition);

@@ -98,17 +98,7 @@ public final class SpellSnapshotRenderer {
 			EntityRenderDispatcher dispatcher = mc.getEntityRenderDispatcher();
 
 			// 3. 渲染施法者魔法阵（如有）
-			var caster = scene.getHolder().getFakeCaster();
-			if (caster != null) {
-				double ex = net.minecraft.util.Mth.lerp(partialTick, caster.xOld, caster.getX());
-				double ey = net.minecraft.util.Mth.lerp(partialTick, caster.yOld, caster.getY());
-				double ez = net.minecraft.util.Mth.lerp(partialTick, caster.zOld, caster.getZ());
-				poseStack.pushPose();
-				poseStack.translate(ex, ey, ez);
-				dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer.renderImpl(poseStack, buffer, LightTexture.FULL_BRIGHT,
-						caster, partialTick, previewOrientation);
-				poseStack.popPose();
-			}
+			OrthographicViewport.renderPreviewCaster(scene, poseStack, buffer, partialTick, previewOrientation);
 
 			// 4. 渲染纯净实体与弹幕（包含延迟弹幕队列）
 			dispatcher.setRenderShadow(false);

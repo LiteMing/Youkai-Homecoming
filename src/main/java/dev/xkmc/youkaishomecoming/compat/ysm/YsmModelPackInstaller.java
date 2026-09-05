@@ -27,6 +27,7 @@ public final class YsmModelPackInstaller {
 	}
 
 	public static void install() {
+		if (!ModList.get().isLoaded("yes_steve_model")) return;
 		try {
 			var modFile = ModList.get().getModFileById(YoukaisHomecoming.MODID);
 			if (modFile == null) return;

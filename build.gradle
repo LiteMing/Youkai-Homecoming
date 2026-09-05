@@ -141,6 +141,21 @@ tasks.register('runBounceSurfaceResponseTest', JavaExec) {
     dependsOn tasks.named('testClasses')
 }
 
+tasks.register('runModelPresentationTest', JavaExec) {
+    group = 'verification'
+    description = 'Run model presentation state, catalog and numeric restore contracts. Optional -PoysmJar=... checks the installed OYSM bridge.'
+    // The developer's runClient may include an OYSM shadow jar. Never let it silently
+    // turn the no-OYSM run into a provider-present test, or shadow the explicitly tested jar.
+    classpath = sourceSets.test.runtimeClasspath.filter { !it.name.toLowerCase(java.util.Locale.ROOT).contains('openysm') }
+    mainClass = 'dev.xkmc.youkaishomecoming.compat.ysm.ModelPresentationTest'
+    dependsOn tasks.named('testClasses')
+    if (project.hasProperty('oysmJar')) {
+        classpath += files(project.property('oysmJar'))
+        systemProperty 'yh.test.oysm', 'true'
+        systemProperty 'yh.test.oysm.jar', file(project.property('oysmJar')).absolutePath
+    }
+}
+
 mixin {
     add sourceSets.main, "${modid}.refmap.json"
     config "${modid}.mixins.json"

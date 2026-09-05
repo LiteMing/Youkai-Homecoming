@@ -131,7 +131,7 @@ public class YSMClientCompat {
 			return false;
 		}
 		delegatedRenderDepth++;
-		try {
+		try (var frame = YsmClientPresentationBridge.beforeRender(e, request.modelId(), request.presentation())) {
 			Object result = method.invoke(null, e, request.modelId(), request.textureName(), request.animationHint(), yaw, pTick, pose, buffer, light);
 			return result instanceof Boolean value && value;
 		} catch (IllegalAccessException | InvocationTargetException ex) {
@@ -304,7 +304,7 @@ public class YSMClientCompat {
 		}
 	}
 
-	private static Map<String, String> getYsmDebugSnapshot(LivingEntity entity) {
+	static Map<String, String> getYsmDebugSnapshot(LivingEntity entity) {
 		if (!LOADED) {
 			return Map.of("loaded", "false");
 		}
@@ -367,7 +367,7 @@ public class YSMClientCompat {
 		return binding != null && binding.enabled() ? binding : null;
 	}
 
-	private static RenderRequest resolveRenderRequest(LivingEntity e) {
+	static RenderRequest resolveRenderRequest(LivingEntity e) {
 		BindingResolution resolution = resolveBindingWithSource(e);
 		RenderBinding binding = resolution.binding();
 		if (binding != null && !binding.enabled()) {
@@ -382,7 +382,8 @@ public class YSMClientCompat {
 		String textureName = !textureOverride.isBlank() ? textureOverride :
 				!modelOverride.isBlank() ? TEXTURE_DEFAULT :
 						binding == null ? TEXTURE_DEFAULT : binding.textureName();
-		return new RenderRequest(modelId, textureName, selectAnimation(e, modelId));
+		var presentation = YsmClientProfiles.resolve(e, modelId);
+		return new RenderRequest(modelId, textureName, selectAnimation(e, modelId, presentation), presentation);
 	}
 
 	private static BindingResolution resolveBindingWithSource(LivingEntity e) {
@@ -402,22 +403,32 @@ public class YSMClientCompat {
 		return new BindingResolution(binding, binding == null ? "none" : "default");
 	}
 
-	private static String selectAnimation(LivingEntity e, String modelId) {
+	private static String selectAnimation(LivingEntity e, String modelId, YsmPresentationResolver.Resolved presentation) {
+		String mappedBeaten = presentation.beaten() && presentation.body() != null ? presentation.body().clip() + "+" : "";
 		if (e instanceof YoukaiEntity youkai && youkai.isBeaten()) {
 			// Route beaten poses through the special= group: the base-predicate keys
 			// (defeat/falling/climbing) are only consumed when OpenYSM's base controller runs,
 			// which model state machines can replace. The cap controller resolves special=
 			// via resolveSpecialAnimationHint with a + fallback chain, so any model works:
 			// own beaten_* animations first, then ubiquitous generic ones.
-			return switch (youkai.getBeatenPhase()) {
+			String fallback = switch (youkai.getBeatenPhase()) {
 				case YoukaiEntity.BEATEN_DEFEAT -> "special=beaten_defeat+defeat+death+die+attacked";
 				case YoukaiEntity.BEATEN_FALLING -> "special=beaten_falling+falling+fall+jump+fly";
 				case YoukaiEntity.BEATEN_PRONE -> "special=beaten_prone+prone+climbing+climb+sleep";
 				default -> "special=beaten_defeat+defeat+death+die+attacked";
 			};
+			return "special=" + mappedBeaten + fallback.substring("special=".length());
 		}
 		if (e.hasEffect(YHEffects.BEATEN.get())) {
-			return "special=beaten_prone+prone+climbing+climb+sleep";
+			return "special=" + mappedBeaten + "beaten_prone+prone+climbing+climb+sleep";
+		}
+		// Isolated previews use the same signal composition without assigning effects or physical poses.
+		if (presentation.beaten() && e instanceof YsmRenderOverrideTarget target) {
+			return "special=" + mappedBeaten + switch (target.getYsmSignals().state()) {
+				case DEFEAT -> "beaten_defeat+defeat+death+die+attacked";
+				case FALLING -> "beaten_falling+falling+fall+jump+fly";
+				default -> "beaten_prone+prone+climbing+climb+sleep";
+			};
 		}
 		Vec3 motion = e.getDeltaMovement();
 		double horizontalSpeedSqr = motion.x * motion.x + motion.z * motion.z;
@@ -430,6 +441,12 @@ public class YSMClientCompat {
 		}
 		boolean angry = isAngryExpression(e);
 		String overrideHint = e instanceof YsmRenderOverrideTarget target ? target.getYsmAnimationOverride() : "";
+		if (presentation.body() != null) {
+			// Exact native clip; declared absence falls back to the ordinary movement/legacy hints.
+			var catalog = YsmClientPresentationBridge.catalog(modelId);
+			if (catalog.status() != YsmModelCatalog.Status.READY || catalog.animations().contains(presentation.body().clip()))
+				overrideHint = "special=" + presentation.body().clip();
+		}
 		String actionHint = actionAnimationHint(modelId, overrideHint);
 		List<String> hints = new ArrayList<>(3);
 		if (flying) {
@@ -448,6 +465,10 @@ public class YSMClientCompat {
 			hints.add(actionHint);
 		}
 		return hints.isEmpty() ? null : String.join(" ", hints);
+	}
+
+	static boolean isBeatenProjection(LivingEntity entity) {
+		return entity instanceof YoukaiEntity youkai && youkai.isBeaten() || entity.hasEffect(YHEffects.BEATEN.get());
 	}
 
 	private static String actionAnimationHint(String modelId, String animation) {
@@ -697,6 +718,7 @@ public class YSMClientCompat {
 								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
 										.suggests(TARGET_ENTITY_SUGGESTIONS)
 										.executes(ctx -> unsetEntityMapping(ctx))))));
+		YsmPresentationClientCommands.register(event.getDispatcher(), ENTITY_TARGET_ARGUMENT, TARGET_ENTITY_SUGGESTIONS);
 	}
 
 	private static int showStatus(CommandContext<CommandSourceStack> ctx) {
@@ -838,6 +860,10 @@ public class YSMClientCompat {
 			}
 		}
 		if (entity instanceof LivingEntity living) {
+			if (living instanceof YsmRenderOverrideTarget target) {
+				lines.add(new DebugLine("yh.presentation", target.getYsmPresentation().expire(target.getYsmPresentationTime()).toTag().toString()));
+			}
+			YsmClientPresentationBridge.diagnostics(living).forEach((key, value) -> lines.add(new DebugLine(key, value)));
 			lines.addAll(collectYsmDebugLines(living));
 		}
 		return lines;
@@ -1039,7 +1065,7 @@ public class YSMClientCompat {
 		return null;
 	}
 
-	private static Entity getPointedEntityOrSelected() {
+	static Entity getPointedEntityOrSelected() {
 		Entity pointed = getPointedEntity();
 		return pointed != null ? pointed : getDebugTargetEntity();
 	}
@@ -1057,7 +1083,7 @@ public class YSMClientCompat {
 		return null;
 	}
 
-	private static Entity getFirstResolvedEntity(CommandContext<CommandSourceStack> ctx) {
+	static Entity getFirstResolvedEntity(CommandContext<CommandSourceStack> ctx) {
 		List<Entity> entities = resolveClientEntities(ctx);
 		return entities.isEmpty() ? null : entities.get(0);
 	}
@@ -1068,13 +1094,22 @@ public class YSMClientCompat {
 
 	private static List<Entity> resolveClientEntities(CommandContext<CommandSourceStack> ctx) {
 		String target = ctx.getArgument("entities", String.class);
+		return resolveClientEntities(target, ctx.getSource()::sendFailure);
+	}
+
+	/** Read-only completion lookup: never emits chat errors while the user is typing. */
+	static List<Entity> entitiesForSuggestions(String target) {
+		return resolveClientEntities(target, ignored -> { });
+	}
+
+	private static List<Entity> resolveClientEntities(String target, java.util.function.Consumer<Component> error) {
 		Minecraft minecraft = Minecraft.getInstance();
 		if (minecraft.level == null) {
-			ctx.getSource().sendFailure(Component.literal("[YH/YSM] No client level is loaded."));
+			error.accept(Component.literal("[YH/YSM] No client level is loaded."));
 			return List.of();
 		}
 		if (target.startsWith("@")) {
-			return resolveClientSelector(ctx, target, minecraft);
+			return resolveClientSelector(error, target, minecraft);
 		}
 		try {
 			UUID uuid = UUID.fromString(target);
@@ -1083,7 +1118,7 @@ public class YSMClientCompat {
 					return List.of(entity);
 				}
 			}
-			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Entity UUID is not visible on the client: " + uuid));
+			error.accept(Component.literal("[YH/YSM] Entity UUID is not visible on the client: " + uuid));
 			return List.of();
 		} catch (IllegalArgumentException ignored) {
 			for (Entity entity : collectClientEntities(minecraft)) {
@@ -1091,12 +1126,12 @@ public class YSMClientCompat {
 					return List.of(entity);
 				}
 			}
-			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Unsupported entity target or invisible entity: " + target));
+			error.accept(Component.literal("[YH/YSM] Unsupported entity target or invisible entity: " + target));
 			return List.of();
 		}
 	}
 
-	private static List<Entity> resolveClientSelector(CommandContext<CommandSourceStack> ctx, String target, Minecraft minecraft) {
+	private static List<Entity> resolveClientSelector(java.util.function.Consumer<Component> error, String target, Minecraft minecraft) {
 		char selector = target.length() > 1 ? target.charAt(1) : '\0';
 		Map<String, String> options = parseSelectorOptions(target);
 		List<Entity> result = new ArrayList<>();
@@ -1124,7 +1159,7 @@ public class YSMClientCompat {
 			}
 			case 'e' -> result.addAll(collectClientEntities(minecraft));
 			default -> {
-				ctx.getSource().sendFailure(Component.literal("[YH/YSM] Unsupported client selector: @" + selector));
+				error.accept(Component.literal("[YH/YSM] Unsupported client selector: @" + selector));
 				return List.of();
 			}
 		}
@@ -1134,12 +1169,12 @@ public class YSMClientCompat {
 			try {
 				limitEntities(result, Math.max(0, Integer.parseInt(options.get("limit"))));
 			} catch (NumberFormatException ex) {
-				ctx.getSource().sendFailure(Component.literal("[YH/YSM] Invalid selector limit: " + options.get("limit")));
+				error.accept(Component.literal("[YH/YSM] Invalid selector limit: " + options.get("limit")));
 				return List.of();
 			}
 		}
 		if (result.isEmpty()) {
-			ctx.getSource().sendFailure(Component.literal("[YH/YSM] No visible client entities matched: " + target));
+			error.accept(Component.literal("[YH/YSM] No visible client entities matched: " + target));
 		}
 		return result;
 	}
@@ -1243,7 +1278,21 @@ public class YSMClientCompat {
 	private record BindingResolution(RenderBinding binding, String source) {
 	}
 
-	private record RenderRequest(String modelId, String textureName, String animationHint) {
+	static void clearSessionState() {
+		bindingRevision = 0;
+		YsmClientProfiles.clear();
+		TYPE_DEBUG_OVERRIDES.clear();
+		ENTITY_DEBUG_OVERRIDES.clear();
+		textureNameCache.clear();
+		animationNameCache.clear();
+		defaultTextureCache.clear();
+		loadedModelIdsCache = List.of();
+		loadedModelIdsCacheAt = 0;
+		debugTarget = null;
+		debugOverlay = false;
+	}
+
+	static record RenderRequest(String modelId, String textureName, String animationHint, YsmPresentationResolver.Resolved presentation) {
 	}
 
 	private record DebugLine(String label, String value) {

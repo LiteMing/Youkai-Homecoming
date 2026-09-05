@@ -1110,7 +1110,7 @@ public class RawJsonDockPanel implements DockPanel {
 	private record FormattedJson(String text, int highlightStart, int highlightEnd) {
 	}
 
-	private static final class RawJsonEditBox extends MultiLineEditBox {
+	static final class RawJsonEditBox extends MultiLineEditBox {
 
 		private static final int HISTORY_LIMIT = 100;
 		private static final int LINE_HEIGHT = 9;
@@ -1124,7 +1124,7 @@ public class RawJsonDockPanel implements DockPanel {
 		private int diagnosticColor = 0xFFFF7777;
 		private int lineCount = 1;
 
-		private RawJsonEditBox(Font font, int x, int y, int width, int height,
+		RawJsonEditBox(Font font, int x, int y, int width, int height,
 							   Component placeholder, Component message) {
 			super(font, x, y, width, height, placeholder, message);
 		}
@@ -1272,13 +1272,13 @@ public class RawJsonDockPanel implements DockPanel {
 			return false;
 		}
 
-		private void resetUndoHistory(String text) {
+		void resetUndoHistory(String text) {
 			undoHistory.clear();
 			redoHistory.clear();
 			lastHistoryValue = text == null ? "" : text;
 		}
 
-		private void recordUserChange(String text) {
+		void recordUserChange(String text) {
 			if (applyingHistory) {
 				return;
 			}

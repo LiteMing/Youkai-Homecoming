@@ -4,7 +4,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
 /**
- * 编辑器的两种工作模式。符卡编辑与魔法阵编辑共用同一个 Screen，
+ * 编辑器的三种工作模式，共用同一个 Screen，
  * 但各自拥有独立的面板集合、顶栏按钮与停靠布局。
  *
  * <p>模式是 raw json 面板内容与 viewport 渲染路径的唯一真源；不要再从
@@ -14,7 +14,8 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 public enum EditorMode {
 
 	SPELL("spell", "Spell", "Mode: Spell"),
-	MAGIC_CIRCLE("magic_circle", "Magic Circle", "Mode: Circle");
+	MAGIC_CIRCLE("magic_circle", "Magic Circle", "Mode: Circle"),
+	YSM("ysm", "YSM", "Mode: YSM");
 
 	private final String key;
 	private final String displayName;
@@ -42,7 +43,7 @@ public enum EditorMode {
 
 	/** 点击模式按钮后切换到的模式。 */
 	public EditorMode next() {
-		return this == SPELL ? MAGIC_CIRCLE : SPELL;
+		return values()[(ordinal() + 1) % values().length];
 	}
 
 }

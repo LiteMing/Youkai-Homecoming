@@ -1,7 +1,8 @@
 # YHModel — 0.28 开发中的模型表现接口
 
 状态：控制接口、预设查询与应用已接入源码；不是 0.28.0 发布声明，画面和联机验收尚未完成。
-服务端共享预设、状态映射与原生目录适配已接入，第三种 Editor 在独立提交中接入。
+第三种 YSM Editor、服务端共享预设和状态映射已接入。用户操作见 `docs/ysm-editor-user-checklist.md`；
+供应商边界及迁移官方 YSM 的说明见 `docs-dev/ysm-official-migration.md`。
 
 ## 公共契约登记
 
@@ -9,7 +10,7 @@
 - KubeJS：同一个类注册为全局 `YHModel`，没有第二套实现或客户端执行权限。
 - 目标参数类型：`YsmRenderOverrideTarget`；实际世界消费者为 YH 妖怪和发射器。
 - 世界修改必须在服务端线程执行；客户端真实实体、已移除实体会拒绝修改。
-- `PreviewCardHolder` 与假实体已接通独立内存状态和模拟时钟；预览请求不向真实世界写入。
+- `PreviewCardHolder` 与假实体已接通独立内存状态和模拟时钟；YSM Editor 本地试播不向真实世界写入。
 - 接口提交的是表现请求。专用服务器无须安装 OYSM，也无须读取客户端模型资产；
   请求被接受不代表每个观察者都拥有相同模型、动画或控件。
 
@@ -114,6 +115,7 @@ YHModel.clearParameter(entity, 'v.roaming.mouth')
 列表中的蓝色条目只会**填入**命令，用户确认提交后仍由服务端权限与选择器校验。
 客户端目标解析沿用旧 `/yhysm` 工具，支持可见 UUID、名称和 `@e` 的 type/sort/limit 等有限选项；
 它不是完整的服务端选择器解析器。跨范围／复杂筛选的修改应使用服务端命令。
+Editor 输入框的 Tab 补全复用真实目录。type 使用原生命令/注册表补全，UUID 附类型和距离。
 原生查询的客户端选择器仍只支持上述有限子集。
 `anim play`、`param set/get/clear`、数值选项及 `preset list/apply` 都提供候选。
 候选优先来自可见目标的实际模型；不能在客户端解析目标时回退到本地目录/共享定义合集。
@@ -121,10 +123,16 @@ YHModel.clearParameter(entity, 'v.roaming.mouth')
 不能再只在客户端重复注册同名参数：Forge 合并时保留原参数节点，会丢失新补全回调。
 补全不执行修改；完整选择器与权限仍由服务端原命令检查。
 
+`/yhysm editor` 打开第三模式；配置是世界共享 SavedData，不是客户端私有绑定。
+保存需要 OP 2，profile 保存按模型 revision 做冲突检查；显式本地试播不会发包。
+顶栏“保存并绑定”先保存 profile，确认成功后再发原绑定请求；两个请求分别校验 revision，
+绑定失败不回滚已保存的共享预设，UI 必须明确提示部分完成。“仅保存预设”/Ctrl+S 不改绑定。
+Raw JSON 编辑同一个 `format=1` profile，没有另建存档 schema 或脚本 API；未应用文本保留，
+与表单同时编辑时检查基线，拒绝静默覆盖。暂停与原有 Editor 一致，单人暂停、联机不暂停。
 
 真实片段目录不混入 `cast` / `angry` 等 legacy 语义提示。
 原生转盘的同一条目可以同时具有动画和配置组入口，子菜单也会单独标识。
-radio 标签中的复杂表达式仅保留在指令诊断目录；不执行或猜测其含义。
+radio 标签中的复杂表达式仅保留在指令诊断目录；普通 Editor 隐藏不能直接操作的条目，不执行或猜测其含义。
 `param get` 展示帧间基础输入及 YH 请求；实际播放仍用 `/yhysm debug inspect` 核对。
 
 ## 兼容和验证边界
@@ -137,7 +145,7 @@ radio 标签中的复杂表达式仅保留在指令诊断目录；不执行或�
 .\gradlew.bat compileJava organizeLang --no-daemon --console=plain
 ```
 
-UI/动画开发以实机操作为准，不把大量自动测试加到每个提交前。
+UI/动画开发以用户 checklist 的实机操作为准，不把大量自动测试加到每个提交前。
 现有 `runModelPresentationTest [-PoysmJar=...]` 只在相关状态/数值恢复契约确实需要核实时选用；
 它不启动游戏，不能证明模型渲染、异步更新、重播、多观察者或战败回归。
 

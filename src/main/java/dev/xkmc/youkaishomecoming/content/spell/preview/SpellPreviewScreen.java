@@ -70,6 +70,12 @@ public class SpellPreviewScreen extends Screen {
 	private HelpDockPanel helpDockPanel;
 	private RawJsonDockPanel rawJsonDockPanel;
 	private MagicCircleDockPanel magicCircleDockPanel;
+	private YsmEditorController ysmEditor;
+	private YsmPropertiesDockPanel ysmProperties;
+	private YsmCatalogDockPanel ysmCatalog;
+	private YsmPreviewDockPanel ysmPreview;
+	private YsmHelpDockPanel ysmHelp;
+	private YsmRawJsonDockPanel ysmRawJson;
 	/**
 	 * 当前编辑模式。符卡与魔法阵共用本 Screen，但面板集合、顶栏与停靠布局各自独立。
 	 * {@link #rebuildScreen} 是在同一实例上重跑 {@link #init}，所以实例字段跨重建存活。
@@ -157,6 +163,13 @@ public class SpellPreviewScreen extends Screen {
 		return new SpellPreviewScreen(SpellEditorController.createDraftDefinition(), true);
 	}
 
+	public static SpellPreviewScreen createYsmEditor() {
+		var screen = createDraftEditor();
+		screen.editorMode = EditorMode.YSM;
+		screen.preferHelpOnNextInit = false;
+		return screen;
+	}
+
 	@Override
 	public void added() {
 		super.added();
@@ -189,6 +202,10 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	protected void init() {
 		super.init();
+		if (editorMode == EditorMode.YSM) {
+			initYsmEditor();
+			return;
+		}
 		boolean fullEdit = !isDraftMode();
 		boolean circleMode = editorMode == EditorMode.MAGIC_CIRCLE;
 		topBarOverflow.clear();
@@ -403,6 +420,64 @@ public class SpellPreviewScreen extends Screen {
 		updateActionListPhase();
 	}
 
+	private void initYsmEditor() {
+		if (ysmEditor == null) {
+			ysmEditor = new YsmEditorController(() -> confirmYsmDiscard(() -> ysmEditor.loadModel()));
+			ysmProperties = new YsmPropertiesDockPanel(ysmEditor);
+			ysmCatalog = new YsmCatalogDockPanel(ysmEditor);
+			ysmPreview = new YsmPreviewDockPanel(ysmEditor);
+			ysmHelp = new YsmHelpDockPanel(ysmEditor);
+			ysmRawJson = new YsmRawJsonDockPanel(ysmEditor);
+		}
+		topBarOverflow.clear(); topBarMoreOpen = false; topBarMoreButton = null;
+		topBarMarketX = width - TOP_BAR_MARGIN;
+		int limit = Math.max(TOP_BAR_MARGIN, width - TOP_BAR_MORE_WIDTH - TOP_BAR_MARGIN - BUTTON_SPACING);
+		int bx = addTopBarButtonIfFits(TOP_BAR_MARGIN, 2, YsmEditorController.text("mode").getString(), 82,
+				btn -> switchMode(editorMode.next()), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("save_and_bind").getString(), 76,
+				btn -> ysmEditor.saveAndBind(), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("save_profile").getString(), 64,
+				btn -> ysmEditor.saveProfile(), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("save_binding_only").getString(), 64,
+				btn -> ysmEditor.saveBinding("set"), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, "Raw JSON", 58,
+				btn -> activateDockPanel(ysmRawJson), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("reload_profile").getString(), 64,
+				btn -> ysmEditor.requestReload(), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("export").getString(), 52,
+				btn -> ysmEditor.exportClipboard(), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("import").getString(), 52,
+				btn -> confirmYsmDiscard(() -> ysmEditor.importClipboard()), true, limit);
+		addTopBarOverflowEntry(YsmEditorController.text("help").getString(), btn -> activateDockPanel(ysmHelp), true);
+		addTopBarOverflowEntry(SpellEditorLocalization.t("RstLayout"), btn -> { DockSerializer.deleteLayout(editorMode.key()); rebuildScreen(false); }, true);
+		topBarMoreX = limit + BUTTON_SPACING; topBarMoreY = 2; topBarMoreWidth = TOP_BAR_MORE_WIDTH;
+		topBarMoreButton = Button.builder(Component.literal(SpellEditorLocalization.t("More")), btn -> topBarMoreOpen = !topBarMoreOpen)
+				.bounds(topBarMoreX, 2, TOP_BAR_MORE_WIDTH, BUTTON_HEIGHT).build();
+		addRenderableWidget(topBarMoreButton);
+		topBarLeftEnd = bx; topBarNameRight = topBarMoreX - TOP_BAR_GROUP_GAP;
+		java.util.Map<String, DockPanel> panels = new java.util.LinkedHashMap<>();
+		for (DockPanel panel : List.of(ysmPreview, ysmCatalog, ysmProperties, ysmHelp, ysmRawJson)) panels.put(panel.dockId(), panel);
+		java.util.function.Function<java.util.Map<String, DockPanel>, DockNode> defaults = map ->
+				new DockSplit(true, .36f, new DockGroup(map.get("ysm_preview"), map.get("ysm_raw_json"), map.get("ysm_help")),
+						new DockSplit(true, .46f, new DockGroup(map.get("ysm_catalog")), new DockGroup(map.get("ysm_properties"))));
+		var snapshot = pendingDockLayout; pendingDockLayout = null;
+		dockLayout = new DockLayout(snapshot == null ? DockSerializer.loadLayout(editorMode.key(), panels, defaults)
+				: DockSerializer.loadLayout(snapshot, panels, defaults));
+		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
+		dockLayout.setActiveGroup(dockLayout.findGroupContaining(ysmProperties));
+	}
+
+	private void confirmYsmDiscard(Runnable action) {
+		if (ysmEditor == null || ysmEditor.waiting()) return;
+		if (!ysmEditor.profileDirty()) { action.run(); return; }
+		Minecraft client = Minecraft.getInstance();
+		client.setScreen(new ConfirmScreen(accepted -> {
+			client.setScreen(this);
+			if (accepted) action.run();
+		}, Component.translatable("youkaishomecoming.spell_editor.unsaved.title"),
+				Component.translatable("youkaishomecoming.spell_editor.unsaved.message")));
+	}
+
 	private int addTopBarButton(int bx, int by, String label, int minWidth, Button.OnPress onPress, boolean active) {
 		int bw = topBarButtonWidth(label, minWidth);
 		Button button = Button.builder(Component.literal(label), onPress)
@@ -528,6 +603,7 @@ public class SpellPreviewScreen extends Screen {
 	 * 这样目标模式会加载它自己的已存布局而不是继承上一个模式的。
 	 */
 	private void switchMode(EditorMode target) {
+		if (editorMode == EditorMode.YSM && ysmEditor != null && ysmEditor.waiting()) return;
 		if (target == null || target == editorMode) {
 			return;
 		}
@@ -547,14 +623,22 @@ public class SpellPreviewScreen extends Screen {
 		if (dockLayout != null) {
 			DockSerializer.saveLayout(editorMode.key(), dockLayout.getRoot());
 		}
+		if (ysmEditor != null) ysmEditor.closePreview();
+		if (ysmProperties != null) ysmProperties.closeOverlay();
+		if (ysmCatalog != null) ysmCatalog.closeOverlay();
+		if (target != EditorMode.SPELL && viewport.isPerspectiveCaptured()) releasePerspectiveViewportFocus();
 		editorMode = target;
 		// 切换回符卡模式时，确保清除魔法阵预览状态，恢复符卡视口场景
 		if (target == EditorMode.SPELL && viewport != null) {
 			viewport.clearMagicCirclePreview();
 		}
 		// 切模式时符卡的选中态没有意义了，清掉以免属性面板显示上一模式的残留。
-		if (target == EditorMode.MAGIC_CIRCLE && actionEditorPanel != null) {
+		if (target != EditorMode.SPELL && actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
+		}
+		if (target == EditorMode.YSM && magicCircleDockPanel != null) {
+			magicCircleDockPanel.setEditorActive(false);
+			magicCircleDockPanel.setPreviewActive(false);
 		}
 		rebuildScreen(false);
 	}
@@ -843,6 +927,7 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void syncEditorDockWidgetVisibility() {
+		if (editorMode == EditorMode.YSM) return;
 		if (dockLayout == null) {
 			return;
 		}
@@ -1461,6 +1546,7 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private boolean hasUnsavedChanges() {
+		if (editorMode == EditorMode.YSM) return ysmEditor != null && ysmEditor.isDirty();
 		return changed
 				|| rawJsonDockPanel != null && rawJsonDockPanel.hasDirtyDraft()
 				|| magicCircleDockPanel != null && magicCircleDockPanel.hasUnsavedChanges();
@@ -1471,6 +1557,7 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void discardLocalChanges() {
+		if (editorMode == EditorMode.YSM) { if (ysmEditor != null) ysmEditor.discardAll(); return; }
 		if (rawJsonDockPanel != null && rawJsonDockPanel.hasDirtyDraft()) {
 			rawJsonDockPanel.discardDraft();
 		}
@@ -1484,6 +1571,7 @@ public class SpellPreviewScreen extends Screen {
 
 	/** Run a navigation action, asking before abandoning client-only edits. */
 	private void runAfterDiscardConfirmation(Runnable action) {
+		if (editorMode == EditorMode.YSM && ysmEditor != null && ysmEditor.waiting()) return;
 		if (!hasUnsavedChanges()) {
 			action.run();
 			return;
@@ -1566,6 +1654,12 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	public void tick() {
 		super.tick();
+		if (editorMode == EditorMode.YSM) {
+			if (ysmEditor != null) ysmEditor.tick();
+			if (ysmProperties != null) ysmProperties.tick();
+			if (ysmCatalog != null) ysmCatalog.tick();
+			return;
+		}
 		scene.tick();
 
 		// Perspective camera movement (delegated to ViewportDockPanel)
@@ -1666,7 +1760,8 @@ public class SpellPreviewScreen extends Screen {
 		if (textRight - textLeft < TOP_BAR_NAME_MIN_WIDTH) {
 			return;
 		}
-		String spellName = isDraftMode() ? SpellEditorLocalization.t("New Spell") : definition.id.toString();
+		String spellName = editorMode == EditorMode.YSM && ysmEditor != null ? ysmEditor.model()
+				: isDraftMode() ? SpellEditorLocalization.t("New Spell") : definition.id.toString();
 		if (hasUnsavedChanges()) {
 			spellName += " *";
 		}
@@ -1692,6 +1787,12 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (editorMode == EditorMode.YSM) {
+			if (ysmProperties != null && ysmProperties.overlayMouseClicked(mouseX, mouseY, button)) return true;
+			if (ysmCatalog != null && ysmCatalog.overlayMouseClicked(mouseX, mouseY, button)) return true;
+			if (handleTopBarOverflowClick(mouseX, mouseY)) return true;
+			return dockLayout != null && dockLayout.mouseClicked(mouseX, mouseY, button) || super.mouseClicked(mouseX, mouseY, button);
+		}
 		if (viewportPanel != null && viewportPanel.isOriginEditMode()
 				&& (mouseX < viewportPanel.getX() || mouseX >= viewportPanel.getX() + viewportPanel.getWidth()
 				|| mouseY < viewportPanel.getY() || mouseY >= viewportPanel.getY() + viewportPanel.getHeight())) {
@@ -1767,7 +1868,7 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public void mouseMoved(double mouseX, double mouseY) {
-		if (viewportPanel != null && viewportPanel.mouseMoved(mouseX, mouseY)) {
+		if (editorMode != EditorMode.YSM && viewportPanel != null && viewportPanel.mouseMoved(mouseX, mouseY)) {
 			return;
 		}
 		super.mouseMoved(mouseX, mouseY);
@@ -1775,6 +1876,10 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+		if (editorMode == EditorMode.YSM) {
+			if (ysmProperties != null && ysmProperties.overlayMouseScrolled(mouseX, mouseY, delta)) return true;
+			if (ysmCatalog != null && ysmCatalog.overlayMouseScrolled(mouseX, mouseY, delta)) return true;
+		}
 		if (viewport.isPerspectiveCaptured()) {
 			viewport.perspectiveAdjustSpeed((float) delta);
 			return true;
@@ -1799,6 +1904,11 @@ public class SpellPreviewScreen extends Screen {
 		if (topBarMoreOpen && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
 			topBarMoreOpen = false;
 			return true;
+		}
+		if (editorMode == EditorMode.YSM) {
+			if (hasControlDown() && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) { ysmEditor.saveProfile(); return true; }
+			if (dockLayout != null && dockLayout.keyPressed(keyCode, scanCode, modifiers)) return true;
+			return super.keyPressed(keyCode, scanCode, modifiers);
 		}
 		// Perspective viewport focus owns the keyboard before editor widgets and
 		// action-list shortcuts get a chance to handle it.
@@ -2025,6 +2135,7 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean charTyped(char codePoint, int modifiers) {
+		if (editorMode == EditorMode.YSM) return dockLayout != null && dockLayout.charTyped(codePoint, modifiers);
 		if (viewport.isPerspectiveCaptured()) {
 			return true;
 		}
@@ -2078,6 +2189,9 @@ public class SpellPreviewScreen extends Screen {
 	@Override
 	public void removed() {
 		super.removed();
+		if (ysmProperties != null) ysmProperties.closeOverlay();
+		if (ysmCatalog != null) ysmCatalog.closeOverlay();
+		if (ysmEditor != null) ysmEditor.closePreview();
 		restoreConfiguredGuiScale(Minecraft.getInstance());
 		// Restore cursor if hidden during perspective capture
 		if (viewport.isPerspectiveCaptured()) {

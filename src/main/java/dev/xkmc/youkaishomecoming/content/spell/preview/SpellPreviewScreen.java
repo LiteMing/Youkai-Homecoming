@@ -165,6 +165,9 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public void resize(Minecraft minecraft, int width, int height) {
+		// A window resize is an in-place rebuild, not a request to reload an older
+		// layout from disk. Keep the current mode's tabs and split ratios.
+		pendingDockLayout = dockLayout == null ? null : DockSerializer.serialize(dockLayout.getRoot());
 		applyEditorGuiScale(minecraft);
 		super.resize(minecraft, minecraft.getWindow().getGuiScaledWidth(),
 				minecraft.getWindow().getGuiScaledHeight());
@@ -529,7 +532,12 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		if (hasUnsavedChanges()) {
-			runAfterDiscardConfirmation(() -> switchModeConfirmed(target));
+			runAfterDiscardConfirmation(() -> {
+				// Confirmation replaces this Screen. Return before rebuilding the mode;
+				// otherwise the confirm screen remains open over an inactive editor.
+				Minecraft.getInstance().setScreen(this);
+				switchModeConfirmed(target);
+			});
 			return;
 		}
 		switchModeConfirmed(target);

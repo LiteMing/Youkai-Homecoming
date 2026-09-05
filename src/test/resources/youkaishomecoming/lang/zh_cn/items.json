@@ -118,8 +118,7 @@
 		"spell_koishi": "反应「妖怪测谎仪」",
 		"spell_yukari_butterfly": "魍魉「二重黑死蝶」",
 		"spell_yukari_laser": "结界「光与暗的网目」",
-		"custom_spell_ring": "自定义符卡 - 开花弹",
-		"custom_spell_homing": "自定义符卡 - 追踪弹",
+		"dynamic_spell": "空符卡",
 		"mantou": "馒头",
 		"raw_bun": "生包子",
 		"raw_oyaki": "生御烧",
@@ -267,9 +266,9 @@
 					"red_wine": "经典红葡萄酒",
 					"van_allen": "范艾伦干红葡萄酒",
 					"white_wine": "白桦森林半干白葡萄酒",
-					"dodge_sake": "闪避酒·救场",
-					"dodge_sake_ii": "闪避酒·辅助",
-					"dodge_sake_iii": "闪避酒·接管"
+					"dodge_sake": "闪避酒·初阶",
+					"dodge_sake_ii": "闪避酒·进阶",
+					"dodge_sake_iii": "闪避酒·高阶"
 				}
 			]
 		},

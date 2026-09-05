@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.util.SpellTextResolver;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Optional;
@@ -110,7 +111,7 @@ public record FireTextDanmakuAction(
 		}
 
 		// Resolve text placeholders
-		String resolvedText = resolveTextPlaceholders(text, ctx);
+		String resolvedText = SpellTextResolver.resolve(text, ctx);
 
 		if (perChar) {
 			var chars = splitCodePoints(resolvedText);
@@ -141,26 +142,7 @@ public record FireTextDanmakuAction(
 		return ans;
 	}
 
-	/**
-	 * Resolve text placeholders like {spell_name}, {caster_name}, etc.
-	 */
-	private String resolveTextPlaceholders(String text, SpellContext ctx) {
-		String result = text;
-		
-		// {spell_id} - spell card definition ID
-		if (result.contains("{spell_id}") && ctx.definition() != null) {
-			String spellId = ctx.definition().id.toString();
-			result = result.replace("{spell_id}", spellId);
-		}
-		
-		// {caster_name} - caster entity name
-		if (result.contains("{caster_name}")) {
-			String casterName = ctx.holder().self().getName().getString();
-			result = result.replace("{caster_name}", casterName);
-		}
-		
-		return result;
-	}
+	
 
 	private void spawn(SpellContext ctx, CardHolder holder, int life, Vec3 pos, Vec3 dir, Vec3 baseDir, float size, String str, String backStr, float rollDeg) {
 		TextDanmakuEntity e = holder.prepareTextDanmaku(life, pos, dir, size, str, textColor);

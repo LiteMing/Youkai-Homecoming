@@ -10,6 +10,10 @@ import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
+/**
+ * @deprecated Migrated to data-driven definition. See {@link dev.xkmc.youkaishomecoming.content.spell.game.MigratedSpellCards#mediumFairy(int, DyeColor, DyeColor)}.
+ */
+@Deprecated
 @SerialClass
 public class MediumFairySpell extends ActualSpellCard {
 
@@ -45,6 +49,7 @@ public class MediumFairySpell extends ActualSpellCard {
 						int life = (int) (40 / v * (1 + r.nextDouble() * 0.5));
 						var e = holder.prepareDanmaku(life, vel,
 								YHDanmaku.Bullet.CIRCLE, secondary);
+						e.setBypassWall(false);
 						holder.shoot(e);
 					}
 				}
@@ -90,6 +95,7 @@ public class MediumFairySpell extends ActualSpellCard {
 			var vel = dir.scale(v);
 			int life = (int) (40 / v * (1 + r.nextDouble() * 0.5));
 			var e = holder.prepareDanmaku(life, vel, type, color);
+			e.setBypassWall(false);
 			holder.shoot(e);
 			super.tick(holder, card);
 			return tick >= duration;

@@ -1,6 +1,9 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.FireTextDanmakuAction;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.definition.GroupRotation;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
@@ -11,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -45,6 +49,10 @@ public class SpellPreviewScreen extends Screen {
 	private static final int TOP_BAR_MARGIN = 4;
 	private static final int TOP_BAR_GROUP_GAP = 10;
 	private static final int TOP_BAR_NAME_MIN_WIDTH = 48;
+	private static final int TOP_BAR_MORE_WIDTH = 48;
+	private static final int TOP_BAR_MENU_ITEM_HEIGHT = 18;
+	private static final double EDITOR_REFERENCE_WIDTH = 960.0D;
+	private static final double EDITOR_REFERENCE_HEIGHT = 540.0D;
 
 	// Controllers (extracted logic)
 	private final SpellEditorController spellController;
@@ -62,7 +70,11 @@ public class SpellPreviewScreen extends Screen {
 	private HelpDockPanel helpDockPanel;
 	private RawJsonDockPanel rawJsonDockPanel;
 	private MagicCircleDockPanel magicCircleDockPanel;
-	private RawJsonDockPanel.ContentMode rawJsonContext = RawJsonDockPanel.ContentMode.SPELL;
+	/**
+	 * 当前编辑模式。符卡与魔法阵共用本 Screen，但面板集合、顶栏与停靠布局各自独立。
+	 * {@link #rebuildScreen} 是在同一实例上重跑 {@link #init}，所以实例字段跨重建存活。
+	 */
+	private EditorMode editorMode = EditorMode.SPELL;
 
 	// Editor panels (direct references for hotkey access)
 	private ActionListPanel actionListPanel;
@@ -71,10 +83,36 @@ public class SpellPreviewScreen extends Screen {
 	private ActionListPanel.AddTarget pendingAddTarget;
 	private int topBarLeftEnd = TOP_BAR_MARGIN;
 	private int topBarMarketX = Integer.MAX_VALUE;
+	private int topBarNameRight = Integer.MAX_VALUE;
+	private final java.util.List<TopBarMenuEntry> topBarOverflow = new java.util.ArrayList<>();
+	private boolean topBarMoreOpen;
+	private int topBarMoreX;
+	private int topBarMoreY;
+	private int topBarMoreWidth;
+	@Nullable
+	private Button topBarMoreButton;
+
+	private record TopBarMenuEntry(String label, Button.OnPress action, boolean enabled) {
+	}
 
 	/** Persists across editor open/close within the same game session. */
 	private static boolean autoReplay = true;
 	private com.google.gson.JsonObject pendingDockLayout;
+	private boolean preferHelpOnNextInit;
+	private boolean preferViewportOnNextInit;
+	private boolean changed;
+	private boolean discardPromptOpen;
+	@Nullable
+	private SpellAction originEditBaseAction;
+	@Nullable
+	private OriginConfig originEditBaseOrigin;
+	@Nullable
+	private UndoManager.Snapshot originEditUndoSnapshot;
+	private Vec3 originEditWorldOffset = Vec3.ZERO;
+	private int originEditActionIndex = -1;
+	private final java.util.IdentityHashMap<SpellAction, Integer> previewActionIds = new java.util.IdentityHashMap<>();
+	private final java.util.Map<Integer, ActionListPanel.ActionPath> previewActionPaths = new java.util.HashMap<>();
+	private final java.util.Map<ActionListPanel.ActionPath, Integer> previewPathIds = new java.util.HashMap<>();
 
 	public SpellPreviewScreen(SpellDefinition definition) {
 		this(definition, SpellEditorController.isDraftDefinition(definition));
@@ -83,6 +121,7 @@ public class SpellPreviewScreen extends Screen {
 	private SpellPreviewScreen(SpellDefinition definition, boolean draftMode) {
 		super(Component.literal(draftMode ? SpellEditorLocalization.t("Spell Editor") : SpellEditorLocalization.t("Spell Preview") + ": " + definition.id));
 		this.definition = definition;
+		this.preferHelpOnNextInit = draftMode;
 		this.scene = new VirtualSpellScene(definition);
 		this.scene.setOnStateChanged(this::syncSceneState);
 		this.viewport = new OrthographicViewport();
@@ -100,8 +139,15 @@ public class SpellPreviewScreen extends Screen {
 				this::onGroupDeselect,
 				this::onClickSelectDanmaku
 		);
+		this.viewportPanel.setOriginEditCallbacks(
+				this::beginOriginEdit,
+				this::applyOriginEdit,
+				this::cancelOriginEdit
+		);
+		this.scene.setBeforeTimelineAdvance(viewportPanel::cancelOriginEdit);
 		this.viewportPanel.setOnRotationSpeedChanged(this::onRotationSpeedDragged);
 		this.viewportPanel.setEditBoxFocusedSupplier(this::isAnyEditBoxFocused);
+		this.viewportPanel.setTriggerSnapshotConfirmCallback(this::onCaptureSnapshotConfirmedFromViewport);
 		this.statusDockPanel = new StatusDockPanel(scene, viewport);
 		this.variablesDockPanel = new VariablesDockPanel(scene);
 		this.helpDockPanel = new HelpDockPanel();
@@ -112,9 +158,39 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	@Override
+	public void added() {
+		super.added();
+		applyEditorGuiScale(Minecraft.getInstance());
+	}
+
+	@Override
+	public void resize(Minecraft minecraft, int width, int height) {
+		applyEditorGuiScale(minecraft);
+		super.resize(minecraft, minecraft.getWindow().getGuiScaledWidth(),
+				minecraft.getWindow().getGuiScaledHeight());
+	}
+
+	private static void applyEditorGuiScale(Minecraft minecraft) {
+		double widthScale = minecraft.getWindow().getWidth() / EDITOR_REFERENCE_WIDTH;
+		double heightScale = minecraft.getWindow().getHeight() / EDITOR_REFERENCE_HEIGHT;
+		double scale = Math.max(1.0D, Math.min(widthScale, heightScale));
+		minecraft.getWindow().setGuiScale(scale);
+	}
+
+	private static void restoreConfiguredGuiScale(Minecraft minecraft) {
+		int scale = minecraft.getWindow().calculateScale(
+				minecraft.options.guiScale().get(), minecraft.isEnforceUnicode());
+		minecraft.getWindow().setGuiScale(scale);
+	}
+
+	@Override
 	protected void init() {
 		super.init();
 		boolean fullEdit = !isDraftMode();
+		boolean circleMode = editorMode == EditorMode.MAGIC_CIRCLE;
+		topBarOverflow.clear();
+		topBarMoreOpen = false;
+		topBarMoreButton = null;
 		int bx = TOP_BAR_MARGIN;
 		int by = 2;
 		String marketLabel = SpellMarketLocalization.toMarket().getString();
@@ -123,94 +199,67 @@ public class SpellPreviewScreen extends Screen {
 		topBarMarketX = Math.max(TOP_BAR_MARGIN, width - TOP_BAR_MARGIN - marketWidth);
 		addTopBarButtonAt(topBarMarketX, by, marketLabel, marketWidth, btn -> {
 			if (minecraft != null) {
-				minecraft.setScreen(new SpellMarketScreen(this, definition));
+				runAfterDiscardConfirmation(() -> minecraft.setScreen(new SpellMarketScreen(this, definition)));
 			}
-		}, true);
+		}, !circleMode);
 		int rightLimit = Math.max(TOP_BAR_MARGIN, topBarMarketX - TOP_BAR_GROUP_GAP);
+		// Keep a reserved slot for the adaptive More menu.  Without this reserve,
+		// the old fit-only logic silently dropped the last controls when the
+		// perspective/advanced toolbar became wider than the window.
+		int primaryRightLimit = Math.max(TOP_BAR_MARGIN,
+				rightLimit - TOP_BAR_MORE_WIDTH - BUTTON_SPACING);
+		// Mode switch — always first and always enabled: it is the only way back.
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(editorMode.buttonLabel()), 82,
+				btn -> switchMode(editorMode.next()), true, primaryRightLimit);
+		// View presets are useful but secondary to save/certify/editor controls.
+		// Keep them in More instead of allowing them to crowd essential actions.
 		for (ViewAngle angle : ViewAngle.values()) {
-			bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(angle.getLabel()), 50, btn -> {
+			addTopBarOverflowEntry(SpellEditorLocalization.t(angle.getLabel()), btn -> {
 				viewport.setPerspectiveMode(false);
 				viewport.setViewAngle(angle);
-			}, fullEdit, rightLimit);
+			}, fullEdit || circleMode);
 		}
-		// Perspective / Orthographic toggle
-		String perspLabel = SpellEditorLocalization.t(viewport.isPerspectiveMode() ? "Ortho" : "Persp");
-		bx = addTopBarButtonIfFits(bx, by, perspLabel, 40, btn -> {
-			boolean newPersp = !viewport.isPerspectiveMode();
-			viewport.setPerspectiveMode(newPersp);
-			if (newPersp) {
-				// Set camera to dummy target position
-				viewport.setCameraToTarget(scene.getTargetPos());
-			}
-			rebuildScreen();
-		}, fullEdit, rightLimit);
-		// Bind target toggle (only in perspective mode)
-		if (viewport.isPerspectiveMode()) {
-			String bindLabel = SpellEditorLocalization.t(viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt");
-			bx = addTopBarButtonIfFits(bx, by, bindLabel, 48, btn -> {
-				viewport.setTargetBoundToCamera(!viewport.isTargetBoundToCamera());
-				rebuildScreen();
-			}, fullEdit, rightLimit);
-		}
-		// Toggle editor button
-		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(editorVisible ? "Editor <<" : "Editor >>"), 60, btn -> {
-			editorVisible = !editorVisible;
-			rebuildScreen();
-		}, fullEdit, rightLimit);
-		// Apply button: re-apply edited spell to all entities using it
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Apply"), 40, btn -> applyToEntities(), fullEdit, rightLimit);
-		// Export button: save spell definition as JSON datapack file
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Export"), 46, btn -> exportToDatapack(), fullEdit, rightLimit);
-		// Reset button: restore to original (built-in) or open-snapshot (custom)
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 40, btn -> resetToDefault(), fullEdit, rightLimit);
-		// Auto Replay toggle
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF"), 52, btn -> {
-			autoReplay = !autoReplay;
-			rebuildScreen();
-		}, fullEdit, rightLimit);
-		// Help button — toggles HelpDockPanel as a docked tab
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Help"), 32, btn -> {
-			toggleHelpPanel();
-		}, fullEdit, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.modeButtonLabel(), 34, btn -> {
+		bx = circleMode
+				? addCircleTopBarButtons(bx, by, primaryRightLimit)
+				: addSpellTopBarButtons(bx, by, primaryRightLimit, fullEdit);
+		// Shared utilities stay available from More without consuming permanent
+		// horizontal space in every editor mode.
+		addTopBarOverflowEntry(SpellEditorLocalization.modeButtonLabel(), btn -> {
 			SpellEditorLocalization.toggle();
 			rebuildScreen();
-		}, fullEdit, rightLimit);
-		// Collapse All / Expand All
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("\u25B6All"), 34, btn -> {
-			if (actionListPanel != null) actionListPanel.collapseAll();
-		}, fullEdit, rightLimit);
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("\u25BCAll"), 34, btn -> {
-			if (actionListPanel != null) actionListPanel.expandAll();
-		}, fullEdit, rightLimit);
-		// Toggle show all add-buttons
-		String addLabel = SpellEditorLocalization.t(
-				actionListPanel != null && actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel");
-		bx = addTopBarButtonIfFits(bx, by, addLabel, 42, btn -> {
-			if (actionListPanel != null) {
-				actionListPanel.toggleShowAllAddButtons();
-				rebuildScreen();
-			}
-		}, fullEdit, rightLimit);
-		// Reset Layout button
-		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("RstLayout"), 56, btn -> {
-			DockSerializer.deleteLayout();
+		}, true);
+		addTopBarOverflowEntry(SpellEditorLocalization.t("Help"), btn -> toggleHelpPanel(), true);
+		addTopBarOverflowEntry(SpellEditorLocalization.t("RstLayout"), btn -> {
+			DockSerializer.deleteLayout(editorMode.key());
 			rebuildScreen(false);
-		}, fullEdit, rightLimit);
+		}, true);
+
+		if (!topBarOverflow.isEmpty()) {
+			topBarMoreX = primaryRightLimit + BUTTON_SPACING;
+			topBarMoreY = by;
+			topBarMoreWidth = TOP_BAR_MORE_WIDTH;
+			topBarMoreButton = Button.builder(Component.literal(SpellEditorLocalization.t("More")), btn -> {
+				topBarMoreOpen = !topBarMoreOpen;
+			}).bounds(topBarMoreX, topBarMoreY, topBarMoreWidth, BUTTON_HEIGHT).build();
+			addRenderableWidget(topBarMoreButton);
+		}
 		topBarLeftEnd = Math.max(TOP_BAR_MARGIN, bx - BUTTON_SPACING);
+		topBarNameRight = topBarMoreButton == null
+				? topBarMarketX - TOP_BAR_GROUP_GAP
+				: topBarMoreX - TOP_BAR_GROUP_GAP;
 
 		// --- Create editor panels ---
 		actionListPanel = new ActionListPanel(
 				(action, path) -> {
 					setActionEditorAction(action, path.leafIndex());
-					// Highlight the selected action's danmaku in the viewport
-					scene.getHolder().setHighlightedActionIndex(path.leafIndex());
+					Integer previewId = previewPathIds.get(path);
+					scene.getHolder().setHighlightedActionIndex(previewId == null ? -1 : previewId);
 					// Update rotation gizmo state based on selected action
 					updateRotationGizmoForAction(action);
 				},
 				this::onRequestAddAction,
-				this::onActionListReordered
+				this::onActionListReordered,
+				() -> definition
 		);
 		actionListPanel.loadCustomNames(definition.customNames);
 
@@ -220,10 +269,23 @@ public class SpellPreviewScreen extends Screen {
 				this::onActionEdited,
 				this::onDeleteAction
 		);
+		actionEditorPanel.setActionPathSupplier(actionListPanel::getSelectedPath);
+		actionEditorPanel.setSpellInitializationAccess(
+				() -> definition == null ? "" : definition.display.name(),
+				this::onSpellDisplayNameEdited,
+				() -> actionListPanel != null
+						&& actionListPanel.hasLinkedSpellTitle(actionListPanel.getSelectedPath()),
+				value -> {
+					if (actionListPanel != null) {
+						actionListPanel.setLinkedSpellTitle(actionListPanel.getSelectedPath(), value);
+					}
+				}
+		);
 		actionEditorPanel.setPhaseOptions(() -> List.copyOf(phaseController.getPhaseList()), phaseController::getPhaseOptionLabel);
 		actionEditorPanel.setSpellOptions(spellController::getSpellOptions, spellController::getSpellOptionLabel);
 		actionEditorPanel.setToggleDisableCallback(() -> {
 			if (actionListPanel != null && actionListPanel.toggleSelectedDisabled()) {
+				markChanged();
 				actionEditorPanel.clearAction();
 				if (autoReplay) replaySelectedPhase();
 			}
@@ -248,7 +310,7 @@ public class SpellPreviewScreen extends Screen {
 		magicCircleDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
 		viewportPanel.setMagicCircleEditor(magicCircleDockPanel);
 		rawJsonDockPanel.setMagicCircleContext(
-				() -> rawJsonContext == RawJsonDockPanel.ContentMode.MAGIC_CIRCLE,
+				() -> editorMode == EditorMode.MAGIC_CIRCLE,
 				() -> magicCircleDockPanel == null ? "" : magicCircleDockPanel.encodeRawJson(),
 				text -> {
 					if (magicCircleDockPanel != null) {
@@ -260,38 +322,53 @@ public class SpellPreviewScreen extends Screen {
 				scene, viewport, this::rebuildScreen, () -> resetSelectedPhasePreview(false),
 				spellController::getSpellOptions, spellController::getCurrentSpellSelectionId,
 				spellController::getCurrentSpellButtonLabel, spellController::getSpellOptionLabel,
-				spellController::switchSelectedSpell, spellController::enterDraftSpellEditor,
+				this::switchSelectedSpell, this::enterDraftSpellEditor,
 				spellController::deleteSelectedSpell, spellController::canDeleteSelectedSpell,
-				spellController::isDraftMode, spellController::nameCurrentDraftSpell, this::cyclePhase,
+				spellController::isDraftMode, spellController::getDefaultSpellNamespace,
+				spellController::nameCurrentDraftSpell, this::cyclePhase,
 				phaseController::getSelectedPhaseDisplayName, this::renameSelectedPhase, this::addPhase,
 				this::deleteSelectedPhase, phaseController::canDeleteSelectedPhase);
 		controlsDockPanel.setWidgetCallbacks(w -> this.addRenderableWidget(w), this::removeWidget);
 		perfDockPanel = new PerfDockPanel(scene);
 
 		// --- Build dock layout tree (load from config or use default) ---
+		// 面板集合按模式装配：符卡模式不含魔法阵面板，魔法阵模式不含动作/属性/控制/性能面板。
+		boolean circleLayout = editorMode == EditorMode.MAGIC_CIRCLE;
+		if (!circleLayout && viewport != null) {
+			viewport.clearMagicCirclePreview();
+		}
 		java.util.Map<String, DockPanel> panelMap = new java.util.LinkedHashMap<>();
 		panelMap.put(viewportPanel.dockId(), viewportPanel);
-		panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
-		panelMap.put(editorDockPanel.dockId(), editorDockPanel);
+		if (circleLayout) {
+			panelMap.put(magicCircleDockPanel.dockId(), magicCircleDockPanel);
+		} else {
+			panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
+			panelMap.put(editorDockPanel.dockId(), editorDockPanel);
+		}
 		panelMap.put(rawJsonDockPanel.dockId(), rawJsonDockPanel);
-		panelMap.put(magicCircleDockPanel.dockId(), magicCircleDockPanel);
-		panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
-		panelMap.put(statusDockPanel.dockId(), statusDockPanel);
-		panelMap.put(variablesDockPanel.dockId(), variablesDockPanel);
-		panelMap.put(perfDockPanel.dockId(), perfDockPanel);
+		if (!circleLayout) {
+			panelMap.put(controlsDockPanel.dockId(), controlsDockPanel);
+			panelMap.put(statusDockPanel.dockId(), statusDockPanel);
+			panelMap.put(variablesDockPanel.dockId(), variablesDockPanel);
+			panelMap.put(perfDockPanel.dockId(), perfDockPanel);
+		}
 		panelMap.put(helpDockPanel.dockId(), helpDockPanel);
 
+		java.util.function.Function<java.util.Map<String, DockPanel>, DockNode> defaultLayout =
+				circleLayout ? SpellPreviewScreen::buildDefaultCircleLayout : SpellPreviewScreen::buildDefaultSpellLayout;
+		String modeKey = editorMode.key();
 		com.google.gson.JsonObject layoutSnapshot = pendingDockLayout;
 		pendingDockLayout = null;
 		if (layoutSnapshot != null) {
-			dockLayout = new DockLayout(DockSerializer.loadLayout(layoutSnapshot, panelMap, SpellPreviewScreen::buildDefaultLayout));
+			dockLayout = new DockLayout(DockSerializer.loadLayout(layoutSnapshot, panelMap, defaultLayout));
+		} else if (circleLayout) {
+			dockLayout = new DockLayout(DockSerializer.loadLayout(modeKey, panelMap, defaultLayout));
 		} else {
-			boolean hadSavedLayout = DockSerializer.hasSavedLayout();
-			boolean savedLayoutHasStatusPanel = DockSerializer.savedLayoutContainsPanel(statusDockPanel.dockId());
-			boolean savedLayoutHasVariablesPanel = DockSerializer.savedLayoutContainsPanel(variablesDockPanel.dockId());
-			boolean savedLayoutHasRawJsonPanel = DockSerializer.savedLayoutContainsPanel(rawJsonDockPanel.dockId());
-			boolean savedLayoutHasMagicCirclePanel = DockSerializer.savedLayoutContainsPanel(magicCircleDockPanel.dockId());
-			DockNode root = DockSerializer.loadLayout(panelMap, SpellPreviewScreen::buildDefaultLayout);
+			boolean hadSavedLayout = DockSerializer.hasSavedLayout(modeKey);
+			boolean savedLayoutHasStatusPanel = DockSerializer.savedLayoutContainsPanel(modeKey, statusDockPanel.dockId());
+			boolean savedLayoutHasVariablesPanel = DockSerializer.savedLayoutContainsPanel(modeKey, variablesDockPanel.dockId());
+			boolean savedLayoutHasRawJsonPanel = DockSerializer.savedLayoutContainsPanel(modeKey, rawJsonDockPanel.dockId());
+			DockNode root = DockSerializer.loadLayout(modeKey, panelMap, defaultLayout);
 			dockLayout = new DockLayout(root);
 			if (hadSavedLayout && !savedLayoutHasStatusPanel) {
 				relocateMissingStatusPanel();
@@ -302,17 +379,24 @@ public class SpellPreviewScreen extends Screen {
 			if (hadSavedLayout && (!savedLayoutHasRawJsonPanel || rawJsonSharesEditorGroup())) {
 				relocateMissingRawJsonPanel();
 			}
-			if (hadSavedLayout && !savedLayoutHasMagicCirclePanel) {
-				relocateMissingMagicCirclePanel();
-			}
 		}
 		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
 		// Set active group to the one containing the viewport
 		DockGroup vpGroup = dockLayout.findGroupContaining(viewportPanel);
 		if (vpGroup != null) dockLayout.setActiveGroup(vpGroup);
+		if (preferHelpOnNextInit) {
+			activateDockPanel(helpDockPanel);
+			preferHelpOnNextInit = false;
+		} else if (preferViewportOnNextInit) {
+			activateDockPanel(viewportPanel);
+			preferViewportOnNextInit = false;
+		}
 		syncEditorDockWidgetVisibility();
 
-		controlsDockPanel.buildButtons();
+		// 魔法阵模式下控制面板不在布局里，跳过按钮构建，避免创建一批永远不可见的 widget。
+		if (editorMode != EditorMode.MAGIC_CIRCLE) {
+			controlsDockPanel.buildButtons();
+		}
 		updateActionListPhase();
 	}
 
@@ -329,9 +413,17 @@ public class SpellPreviewScreen extends Screen {
 									  Button.OnPress onPress, boolean active, int rightLimit) {
 		int bw = topBarButtonWidth(label, minWidth);
 		if (bx + bw > rightLimit) {
+			// Do not silently drop controls when the translated labels or the
+			// perspective-only controls make the toolbar wider than the window.
+			// They remain available from the adaptive More menu below.
+			topBarOverflow.add(new TopBarMenuEntry(label, onPress, active));
 			return bx;
 		}
 		return addTopBarButtonAt(bx, by, label, bw, onPress, active) + BUTTON_SPACING;
+	}
+
+	private void addTopBarOverflowEntry(String label, Button.OnPress onPress, boolean active) {
+		topBarOverflow.add(new TopBarMenuEntry(label, onPress, active));
 	}
 
 	private int addTopBarButtonAt(int bx, int by, String label, int width,
@@ -351,31 +443,164 @@ public class SpellPreviewScreen extends Screen {
 		return Math.max(minWidth, font.width(label) + 12);
 	}
 
+	/** 符卡模式专属顶栏按钮。魔法阵模式下这些操作没有意义，一律不创建。 */
+	private int addSpellTopBarButtons(int bx, int by, int rightLimit, boolean fullEdit) {
+		// Perspective / Orthographic toggle
+		String perspLabel = SpellEditorLocalization.t(viewport.isPerspectiveMode() ? "Ortho" : "Persp");
+		bx = addTopBarButtonIfFits(bx, by, perspLabel, 40, btn -> {
+			boolean newPersp = !viewport.isPerspectiveMode();
+			viewport.setPerspectiveMode(newPersp);
+			if (newPersp) {
+				viewport.setCameraToTarget(scene.getTargetPos(), scene.getCasterPos());
+			}
+			rebuildScreen();
+		}, fullEdit, rightLimit);
+		// Bind target is a view-detail control. Keep it in the adaptive menu so
+		// entering perspective mode never pushes save/certify out of the row.
+		if (viewport.isPerspectiveMode()) {
+			String bindLabel = SpellEditorLocalization.t(viewport.isTargetBoundToCamera() ? "Unbind" : "BindTgt");
+			addTopBarOverflowEntry(bindLabel, btn -> {
+				viewport.setTargetBoundToCamera(!viewport.isTargetBoundToCamera());
+				rebuildScreen();
+			}, fullEdit);
+		}
+		// Toggle editor button
+		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t(editorVisible ? "Editor <<" : "Editor >>"), 60, btn -> {
+			editorVisible = !editorVisible;
+			rebuildScreen();
+		}, fullEdit, rightLimit);
+		// Persist/certify are the highest-priority document actions and must be
+		// offered before secondary presentation and tree-management controls.
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Save & Refresh"), 76, btn -> applyToEntities(), fullEdit, rightLimit);
+		boolean canCertify = isCertifiable();
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Certify & Export"), 84, btn -> openCertification(), fullEdit && canCertify, rightLimit);
+		// Card-face capture remains a direct top-bar action when space permits,
+		// while the same entry automatically falls back to More on narrow layouts.
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Capture Card Face"), 82,
+				btn -> openCardFaceCapture(), true, rightLimit);
+
+		// Secondary or infrequent actions live in More by design.  Keeping these
+		// out of the permanent row prevents perspective-only controls from causing
+		// the document actions above to disappear.
+		addTopBarOverflowEntry(SpellEditorLocalization.t("Reset"), btn -> resetToDefault(), fullEdit);
+		addTopBarOverflowEntry(SpellEditorLocalization.t(autoReplay ? "Auto:ON" : "Auto:OFF"), btn -> {
+			autoReplay = !autoReplay;
+			rebuildScreen();
+		}, fullEdit);
+		addTopBarOverflowEntry(SpellEditorLocalization.t("▶All"), btn -> {
+			if (actionListPanel != null) actionListPanel.collapseAll();
+		}, fullEdit);
+		addTopBarOverflowEntry(SpellEditorLocalization.t("▼All"), btn -> {
+			if (actionListPanel != null) actionListPanel.expandAll();
+		}, fullEdit);
+		// Toggle show all add-buttons
+		String addLabel = SpellEditorLocalization.t(
+				actionListPanel != null && actionListPanel.isShowAllAddButtons() ? "[+]:All" : "[+]:Sel");
+		addTopBarOverflowEntry(addLabel, btn -> {
+			if (actionListPanel != null) {
+				actionListPanel.toggleShowAllAddButtons();
+				rebuildScreen();
+			}
+		}, fullEdit);
+		return bx;
+	}
+
 	/**
-	 * 构建默认布局树。用于首次打开或布局文件损坏时的回退。
+	 * 魔法阵模式专属顶栏按钮。与符卡的保存 / 重置操作对齐；
+	 * 新建与删除跟随符卡惯例放在面板里的选择器旁边，不在顶栏。
 	 */
-	static DockNode buildDefaultLayout(java.util.Map<String, DockPanel> panelMap) {
+	private int addCircleTopBarButtons(int bx, int by, int rightLimit) {
+		bx = addTopBarGapIfFits(bx, TOP_BAR_GROUP_GAP, rightLimit);
+		bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Save"), 52, btn -> {
+			if (magicCircleDockPanel != null) magicCircleDockPanel.saveCircleFromTopBar();
+		}, true, rightLimit);
+		return addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("Reset"), 48, btn -> {
+			if (magicCircleDockPanel != null) magicCircleDockPanel.resetCircleFromTopBar();
+		}, true, rightLimit);
+	}
+
+	/**
+	 * 切换编辑模式。先把当前模式的布局落盘，再重建 —— 重建时不保留内存快照，
+	 * 这样目标模式会加载它自己的已存布局而不是继承上一个模式的。
+	 */
+	private void switchMode(EditorMode target) {
+		if (target == null || target == editorMode) {
+			return;
+		}
+		if (hasUnsavedChanges()) {
+			runAfterDiscardConfirmation(() -> switchModeConfirmed(target));
+			return;
+		}
+		switchModeConfirmed(target);
+	}
+
+	private void switchModeConfirmed(EditorMode target) {
+		if (dockLayout != null) {
+			DockSerializer.saveLayout(editorMode.key(), dockLayout.getRoot());
+		}
+		editorMode = target;
+		// 切换回符卡模式时，确保清除魔法阵预览状态，恢复符卡视口场景
+		if (target == EditorMode.SPELL && viewport != null) {
+			viewport.clearMagicCirclePreview();
+		}
+		// 切模式时符卡的选中态没有意义了，清掉以免属性面板显示上一模式的残留。
+		if (target == EditorMode.MAGIC_CIRCLE && actionEditorPanel != null) {
+			actionEditorPanel.clearAction();
+		}
+		rebuildScreen(false);
+	}
+
+	/**
+	 * 符卡模式默认布局树。用于首次打开或布局文件损坏时的回退。
+	 */
+	static DockNode buildDefaultSpellLayout(java.util.Map<String, DockPanel> panelMap) {
 		DockPanel viewport = panelMap.get("viewport");
 		DockPanel actions = panelMap.get("actions");
 		DockPanel properties = panelMap.get("properties");
 		DockPanel rawJson = panelMap.get("raw_json");
-		DockPanel magicCircle = panelMap.get("magic_circle");
 		DockPanel controls = panelMap.get("controls");
 		DockPanel status = panelMap.get("status");
 		DockPanel variables = panelMap.get("variables");
 		DockPanel perf = panelMap.get("perf");
+		DockPanel help = panelMap.get("help");
 
-		DockGroup viewportGroup = new DockGroup(viewport);
+		DockGroup viewportGroup = new DockGroup(viewport, help);
 		DockGroup actionListGroup = new DockGroup(actions);
 		DockGroup editorGroup = new DockGroup(properties);
 		DockGroup controlsGroup = new DockGroup(controls, perf);
-		DockGroup statusGroup = new DockGroup(status, variables, rawJson, magicCircle);
-		// Help 面板默认不显示
+		DockGroup statusGroup = new DockGroup(status, variables, rawJson);
 
 		DockSplit rightSplit = new DockSplit(false, 0.4f, actionListGroup, editorGroup);
 		DockSplit mainSplit = new DockSplit(true, 0.6f, viewportGroup, rightSplit);
 		DockSplit bottomSplit = new DockSplit(true, 0.72f, controlsGroup, statusGroup);
 		return new DockSplit(false, 0.8f, mainSplit, bottomSplit);
+	}
+
+	/**
+	 * 魔法阵模式默认布局树。左侧预览、右侧元素属性、底部 raw json。
+	 */
+	static DockNode buildDefaultCircleLayout(java.util.Map<String, DockPanel> panelMap) {
+		DockPanel viewport = panelMap.get("viewport");
+		DockPanel magicCircle = panelMap.get("magic_circle");
+		DockPanel rawJson = panelMap.get("raw_json");
+		DockPanel help = panelMap.get("help");
+
+		DockGroup viewportGroup = new DockGroup(viewport, help);
+		DockGroup circleGroup = new DockGroup(magicCircle);
+		DockGroup rawJsonGroup = new DockGroup(rawJson);
+
+		DockSplit mainSplit = new DockSplit(true, 0.62f, viewportGroup, circleGroup);
+		return new DockSplit(false, 0.74f, mainSplit, rawJsonGroup);
+	}
+
+	private void activateDockPanel(DockPanel panel) {
+		if (dockLayout == null || panel == null) return;
+		DockGroup group = dockLayout.findGroupContaining(panel);
+		if (group == null) return;
+		int index = group.getPanels().indexOf(panel);
+		if (index >= 0) group.setActiveIndex(index);
+		dockLayout.setActiveGroup(group);
 	}
 
 	private void relocateMissingStatusPanel() {
@@ -450,24 +675,6 @@ public class SpellPreviewScreen extends Screen {
 		statusGroup.addPanel(rawJsonDockPanel);
 	}
 
-	private void relocateMissingMagicCirclePanel() {
-		if (dockLayout == null || magicCircleDockPanel == null || statusDockPanel == null) {
-			return;
-		}
-		DockGroup statusGroup = dockLayout.findGroupContaining(statusDockPanel);
-		if (statusGroup == null) {
-			return;
-		}
-		DockGroup currentGroup = dockLayout.findGroupContaining(magicCircleDockPanel);
-		if (currentGroup == statusGroup) {
-			return;
-		}
-		if (currentGroup != null) {
-			currentGroup.removePanel(magicCircleDockPanel);
-		}
-		statusGroup.addPanel(magicCircleDockPanel);
-	}
-
 	private boolean rawJsonSharesEditorGroup() {
 		if (dockLayout == null || rawJsonDockPanel == null || editorDockPanel == null) {
 			return false;
@@ -490,6 +697,27 @@ public class SpellPreviewScreen extends Screen {
 					|| replaceDockNode(split.getSecond(), oldNode, newNode);
 		}
 		return false;
+	}
+
+	public boolean hasValidCertificationDraft() {
+		var player = Minecraft.getInstance().player;
+		if (player == null || definition == null) return false;
+		if (player.isCreative() || player.hasPermissions(2)) return true; // OP 模式无需草稿
+
+		for (var stack : player.getInventory().items) {
+			if (stack.getItem() instanceof DynamicSpellItem && !DynamicSpellItem.isComplete(stack)
+					&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) {
+				var bound = DynamicSpellItem.getSpellId(stack);
+				if (bound == null || bound.equals(definition.id)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private boolean isCertifiable() {
+		return hasValidCertificationDraft();
 	}
 
 	private void rebuildScreen() {
@@ -521,8 +749,37 @@ public class SpellPreviewScreen extends Screen {
 
 	private void onActionEdited(SpellAction newAction) {
 		if (actionListPanel != null) {
-			actionListPanel.replaceSelectedAction(newAction);
+			if (!actionListPanel.replaceSelectedAction(newAction)) {
+				return;
+			}
+			markChanged();
+			refreshPreviewActionIds();
+			invalidateCurrentSnapshot();
 			if (autoReplay) replaySelectedPhase();
+		}
+	}
+
+	private void onSpellDisplayNameEdited(String value) {
+		if (definition == null || java.util.Objects.equals(definition.display.name(), value)) return;
+		definition.setDisplayName(value);
+		if (actionListPanel != null) actionListPanel.markDirty();
+		markChanged();
+		invalidateCurrentSnapshot();
+		if (autoReplay) replaySelectedPhase();
+	}
+
+	private void invalidateCurrentSnapshot() {
+		if (definition == null) return;
+		try {
+			// 修改符卡内容时，清理原先快照，使其失效需重新拍照
+			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
+			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.toStorageKey(definition.id.toString());
+			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
+			java.nio.file.Files.deleteIfExists(outDir.resolve(safeId + ".png"));
+			java.nio.file.Files.deleteIfExists(outDir.resolve(defHash + ".png"));
+			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.invalidate(definition.id.toString());
+			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.invalidate(defHash);
+		} catch (Exception ignored) {
 		}
 	}
 
@@ -536,16 +793,18 @@ public class SpellPreviewScreen extends Screen {
 		ActionListPanel.ActionPath selectedPath = actionListPanel == null ? null : actionListPanel.getSelectedPath();
 		boolean wasPlaying = scene.isPlaying();
 
+		invalidateCurrentSnapshot();
 		this.definition = newDefinition;
 		spellController.setDefinition(newDefinition);
 		spellController.setDraftMode(SpellEditorController.isDraftDefinition(newDefinition));
 		phaseController.setDefinition(newDefinition);
 		phaseController.reloadPhaseList();
 		selectPhaseAfterRawJsonApply(selectedPhase);
+		updateActionListPhase();
 		if (actionListPanel != null) {
 			actionListPanel.loadCustomNames(newDefinition.customNames);
 		}
-		updateActionListPhase();
+		markChanged();
 		refreshPhaseControls();
 		scene.switchSpellDefinition(newDefinition, true);
 		resetSelectedPhasePreview(wasPlaying || autoReplay);
@@ -579,6 +838,7 @@ public class SpellPreviewScreen extends Screen {
 		if (dockLayout == null) {
 			return;
 		}
+		boolean circleMode = editorMode == EditorMode.MAGIC_CIRCLE;
 		if (editorDockPanel != null && actionEditorPanel != null) {
 			DockGroup editorGroup = dockLayout.findGroupContaining(editorDockPanel);
 			actionEditorPanel.setAllWidgetsVisible(editorGroup != null && editorGroup.getActivePanel() == editorDockPanel);
@@ -586,16 +846,16 @@ public class SpellPreviewScreen extends Screen {
 		if (rawJsonDockPanel != null) {
 			DockGroup rawJsonGroup = dockLayout.findGroupContaining(rawJsonDockPanel);
 			boolean rawJsonActive = rawJsonGroup != null && rawJsonGroup.getActivePanel() == rawJsonDockPanel;
-			DockGroup magicCircleGroup = magicCircleDockPanel == null ? null : dockLayout.findGroupContaining(magicCircleDockPanel);
-			boolean magicCircleActive = magicCircleGroup != null && magicCircleGroup.getActivePanel() == magicCircleDockPanel;
-			rawJsonContext = magicCircleActive ? RawJsonDockPanel.ContentMode.MAGIC_CIRCLE : RawJsonDockPanel.ContentMode.SPELL;
 			rawJsonDockPanel.setEditorActive(rawJsonActive);
 		}
 		if (magicCircleDockPanel != null) {
+			// 魔法阵模式下面板一定在布局里；预览与编辑状态直接跟随模式，
+			// 不再从「哪个 tab 处于激活」反推上下文。
 			DockGroup magicCircleGroup = dockLayout.findGroupContaining(magicCircleDockPanel);
-			boolean magicCircleActive = magicCircleGroup != null && magicCircleGroup.getActivePanel() == magicCircleDockPanel;
-			magicCircleDockPanel.setEditorActive(magicCircleActive);
-			magicCircleDockPanel.setPreviewActive(magicCircleActive);
+			boolean panelActive = circleMode && magicCircleGroup != null
+					&& magicCircleGroup.getActivePanel() == magicCircleDockPanel;
+			magicCircleDockPanel.setEditorActive(panelActive);
+			magicCircleDockPanel.setPreviewActive(circleMode);
 		}
 	}
 
@@ -611,75 +871,167 @@ public class SpellPreviewScreen extends Screen {
 	private void onActionEditedTransient(SpellAction newAction) {
 		if (actionListPanel != null) {
 			actionListPanel.replaceSelectedActionWithoutUndo(newAction);
-			if (autoReplay) replaySelectedPhase();
+			refreshPreviewActionIds();
+			// Viewport transforms are deliberately paused-only. The current frame is
+			// already rendered from the edited in-memory action; replaying here would
+		// destroy the frame the user is dragging and make the gizmo jump.
 		}
 	}
 
 	// --- Group transform callbacks (viewport drag interaction) ---
 
-	/** Called by viewport when a drag gesture begins — push a single undo snapshot for the whole drag. */
+	/** Called by viewport rotation gestures; origin editing owns a separate transaction. */
 	private void onGroupDragBegin() {
 		if (actionListPanel != null) actionListPanel.pushUndoSnapshot();
 	}
 
+	private boolean beginOriginEdit() {
+		if (scene.isPlaying() || actionListPanel == null || actionEditorPanel == null) return false;
+		SpellAction action = actionEditorPanel.getCurrentAction();
+		OriginConfig origin = originOf(action);
+		if (origin == null) return false;
+		originEditBaseAction = action;
+		originEditBaseOrigin = origin;
+		originEditUndoSnapshot = actionListPanel.captureUndoSnapshot();
+		originEditWorldOffset = Vec3.ZERO;
+		Integer previewId = previewPathIds.get(actionListPanel.getSelectedPath());
+		originEditActionIndex = previewId == null ? -1 : previewId;
+		return originEditUndoSnapshot != null;
+	}
+
+	private void applyOriginEdit() {
+		if (originEditBaseAction == null) return;
+		if (originEditWorldOffset.lengthSqr() > 1.0e-12 && actionListPanel != null) {
+			actionListPanel.commitUndoSnapshot(originEditUndoSnapshot);
+			markChanged();
+			invalidateCurrentSnapshot();
+		}
+		clearOriginEditSession();
+	}
+
+	private void cancelOriginEdit() {
+		if (originEditBaseAction == null) return;
+		SpellAction original = originEditBaseAction;
+		int index = originEditActionIndex;
+		Vec3 visualDelta = originEditWorldOffset.scale(-1);
+		onActionEditedTransient(original);
+		scene.translateActionProjectiles(index, visualDelta);
+		setActionEditorAction(original, index);
+		clearOriginEditSession();
+	}
+
+	private void clearOriginEditSession() {
+		originEditBaseAction = null;
+		originEditBaseOrigin = null;
+		originEditUndoSnapshot = null;
+		originEditWorldOffset = Vec3.ZERO;
+		originEditActionIndex = -1;
+	}
+
+	@Nullable
+	private static OriginConfig originOf(@Nullable SpellAction action) {
+		if (action instanceof FireDanmakuAction fire) return fire.origin();
+		if (action instanceof FireLaserAction laser) return laser.origin();
+		if (action instanceof FireTextDanmakuAction text) return text.origin();
+		return null;
+	}
+
+	private static SpellAction withOrigin(SpellAction action, OriginConfig origin) {
+		if (action instanceof FireDanmakuAction fire) return fire.withOrigin(origin);
+		if (action instanceof FireLaserAction laser) return laser.withOrigin(origin);
+		if (action instanceof FireTextDanmakuAction text) return text.withOrigin(origin);
+		return action;
+	}
+
 	private void onGroupOffsetDragged(Vec3 delta) {
 		if (delta.lengthSqr() < 1e-8) return;
-		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
-		SpellAction action = actionEditorPanel.getCurrentAction();
-		if (action instanceof FireDanmakuAction fda) {
-			var origin = fda.origin();
-			// Only edit axes whose offset is a plain constant — non-constant expressions
-			// (random/expression/etc.) would be silently flattened to constants, losing the user's intent.
-			NumberProvider newX = bumpConstant(origin.offsetX(), delta.x);
-			NumberProvider newY = bumpConstant(origin.offsetY(), delta.y);
-			NumberProvider newZ = bumpConstant(origin.offsetZ(), delta.z);
-			if (newX == origin.offsetX() && newY == origin.offsetY() && newZ == origin.offsetZ()) {
-				return; // nothing constant to bump
-			}
-			var newOrigin = new OriginConfig(origin.mode(), newX, newY, newZ, origin.rotation());
-			var newAction = fda.withOrigin(newOrigin);
-			onActionEditedTransient(newAction);
-			if (actionEditorPanel != null) {
-				setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
-			}
-		}
+		if (originEditBaseAction == null || originEditBaseOrigin == null || actionEditorPanel == null) return;
+		originEditWorldOffset = originEditWorldOffset.add(delta);
+		markChanged();
+		OriginConfig origin = originEditBaseOrigin;
+		Vec3 local = viewport.worldDeltaToOriginOffsetDelta(origin.mode(),
+				origin.rotation().get(scene.previewContext()), originEditWorldOffset,
+				scene.getHolder().center(), scene.getHolder().target(), scene.getHolder().self().getLookAngle(), scene.getHolder().targetEntity());
+		NumberProvider newX = bumpOffset(origin.offsetX(), local.x);
+		NumberProvider newY = bumpOffset(origin.offsetY(), local.y);
+		NumberProvider newZ = bumpOffset(origin.offsetZ(), local.z);
+		var newOrigin = new OriginConfig(origin.mode(), newX, newY, newZ, origin.rotation());
+		var newAction = withOrigin(originEditBaseAction, newOrigin);
+		scene.translateActionProjectiles(originEditActionIndex, delta);
+		onActionEditedTransient(newAction);
+		setActionEditorAction(newAction, originEditActionIndex);
 	}
 
 	private void onGroupAngleDragged(double angleDelta) {
 		if (actionEditorPanel == null || actionEditorPanel.getCurrentAction() == null) return;
 		SpellAction action = actionEditorPanel.getCurrentAction();
-		if (action instanceof FireDanmakuAction fda) {
-			// Determine which axis to rotate based on viewport's rotate mode
-			int axis = viewportPanel != null ? viewportPanel.getRotateAxis() : 1;
-			if (axis < 0) axis = 1; // default Y if not in rotate mode
+		if (!supportsGroupRotation(action)) return;
+		int axis = viewportPanel != null ? viewportPanel.getRotateAxis() : 1;
+		if (axis < 0) axis = 1;
+		GroupRotation current = groupRotationOf(action).orElse(
+				new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
+		rotatePausedActionPreview(action, current, axis, angleDelta);
+		NumberProvider newX = current.rotX(), newY = current.rotY(), newZ = current.rotZ();
+		if (axis == 0) newX = bumpOffset(newX, angleDelta);
+		else if (axis == 1) newY = bumpOffset(newY, angleDelta);
+		else newZ = bumpOffset(newZ, angleDelta);
+		SpellAction newAction = withGroupRotation(action,
+				Optional.of(new GroupRotation(newX, newY, newZ)));
+		onActionEditedTransient(newAction);
+		markChanged();
+		invalidateCurrentSnapshot();
+		setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
+	}
 
-			GroupRotation current = fda.groupRotation().orElse(
-					new GroupRotation(NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0)));
-			NumberProvider newX = current.rotX(), newY = current.rotY(), newZ = current.rotZ();
-			NumberProvider bumped;
-			switch (axis) {
-				case 0 -> {
-					bumped = bumpConstant(current.rotX(), angleDelta);
-					if (bumped == current.rotX()) return; // non-constant, refuse to clobber
-					newX = bumped;
-				}
-				case 1 -> {
-					bumped = bumpConstant(current.rotY(), angleDelta);
-					if (bumped == current.rotY()) return;
-					newY = bumped;
-				}
-				case 2 -> {
-					bumped = bumpConstant(current.rotZ(), angleDelta);
-					if (bumped == current.rotZ()) return;
-					newZ = bumped;
-				}
-			}
-			var newGr = new GroupRotation(newX, newY, newZ);
-			var newAction = fda.withGroupRotation(Optional.of(newGr));
-			onActionEditedTransient(newAction);
-			if (actionEditorPanel != null) {
-				setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
-			}
+	private static boolean supportsGroupRotation(@Nullable SpellAction action) {
+		return action instanceof FireDanmakuAction
+				|| action instanceof FireLaserAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
+	}
+
+	private static Optional<GroupRotation> groupRotationOf(SpellAction action) {
+		if (action instanceof FireDanmakuAction fire) return fire.groupRotation();
+		if (action instanceof FireLaserAction laser) return laser.groupRotation();
+		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction shooter) {
+			return shooter.groupRotation();
+		}
+		return Optional.empty();
+	}
+
+	private static SpellAction withGroupRotation(SpellAction action, Optional<GroupRotation> rotation) {
+		if (action instanceof FireDanmakuAction fire) return fire.withGroupRotation(rotation);
+		if (action instanceof FireLaserAction laser) return laser.withGroupRotation(rotation);
+		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction shooter) {
+			return shooter.withGroupRotation(rotation);
+		}
+		return action;
+	}
+
+	private void rotatePausedActionPreview(SpellAction action, GroupRotation rotation, int axis, double angleDelta) {
+		if (scene.isPlaying() || actionListPanel == null) return;
+		var ctx = scene.previewContext();
+		OriginConfig origin;
+		dev.xkmc.youkaishomecoming.content.spell.definition.AimMode aim;
+		if (action instanceof FireDanmakuAction fire) {
+			origin = fire.origin();
+			aim = fire.aimMode();
+		} else if (action instanceof FireLaserAction laser) {
+			origin = laser.origin();
+			aim = laser.aimMode();
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction shooter) {
+			origin = shooter.origin();
+			aim = shooter.aimMode();
+		} else {
+			return;
+		}
+		Vec3 pivot = origin.resolve(ctx);
+		Vec3 baseDirection = aim.getBaseDirection(ctx, pivot);
+		var frame = dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper.getOrientation(baseDirection);
+		frame = rotation.apply(frame, ctx);
+		Vec3 worldAxis = axis == 0 ? frame.side() : axis == 1 ? frame.normal() : frame.forward();
+		Integer previewId = previewPathIds.get(actionListPanel.getSelectedPath());
+		if (previewId != null) {
+			scene.rotateActionProjectiles(previewId, pivot, worldAxis, angleDelta);
 		}
 	}
 
@@ -687,11 +1039,21 @@ public class SpellPreviewScreen extends Screen {
 	 * Returns a Constant NumberProvider with value bumped by delta, or the original if
 	 * the input isn't a Constant (signaling "non-constant — don't clobber").
 	 */
-	private static NumberProvider bumpConstant(NumberProvider p, double delta) {
+	/** Preserve dynamic/random providers while applying a drag as an additive offset. */
+	private static NumberProvider bumpOffset(NumberProvider p, double delta) {
+		if (Math.abs(delta) < 1.0e-8) return p;
 		if (p instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Constant c) {
 			return NumberProvider.constant(c.value() + delta);
 		}
-		return p;
+		if (p instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.RandomRange r) {
+			return new dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.RandomRange(r.min() + delta, r.max() + delta);
+		}
+		if (p instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Add add
+				&& add.b() instanceof dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Constant offset) {
+			return new dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Add(
+					add.a(), NumberProvider.constant(offset.value() + delta));
+		}
+		return new dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders.Add(p, NumberProvider.constant(delta));
 	}
 
 	private void onGroupDeselect() {
@@ -704,6 +1066,7 @@ public class SpellPreviewScreen extends Screen {
 	private void updateRotationGizmoForAction(@Nullable SpellAction action) {
 		if (viewportPanel != null) {
 			viewportPanel.setRotationGizmo(false, 0, 0, 0);
+			viewportPanel.setGroupRotationAvailable(supportsGroupRotation(action));
 		}
 	}
 
@@ -717,7 +1080,10 @@ public class SpellPreviewScreen extends Screen {
 
 	private void onClickSelectDanmaku(int actionIndex) {
 		if (actionIndex < 0) return;
-		scene.getHolder().setHighlightedActionIndex(actionIndex);
+		ActionListPanel.ActionPath path = previewActionPaths.get(actionIndex);
+		if (path != null && actionListPanel != null && actionListPanel.selectPath(path)) {
+			scene.getHolder().setHighlightedActionIndex(actionIndex);
+		}
 	}
 
 	private void onRequestAddAction(ActionListPanel.AddTarget target) {
@@ -730,6 +1096,7 @@ public class SpellPreviewScreen extends Screen {
 	private void onTypeSelected(SpellAction action) {
 		if (actionListPanel != null && pendingAddTarget != null) {
 			actionListPanel.insertAction(pendingAddTarget, action);
+			markChanged();
 			pendingAddTarget = null;
 			if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 			if (autoReplay) replaySelectedPhase();
@@ -738,6 +1105,7 @@ public class SpellPreviewScreen extends Screen {
 
 	private void onDeleteAction() {
 		if (actionListPanel != null && actionListPanel.deleteSelected()) {
+			markChanged();
 			if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 			clearActionSelection();
 			if (autoReplay) replaySelectedPhase();
@@ -749,21 +1117,120 @@ public class SpellPreviewScreen extends Screen {
 	 * Sends the full edited definition to the server before reapplying it.
 	 */
 	private void applyToEntities() {
-		if (isDraftMode()) {
+		if (isDraftMode() || refuseIfBroken()) {
+			return;
+		}
+		if (rawJsonDockPanel != null && rawJsonDockPanel.hasDirtyDraft()) {
+			refuseIfBroken();
 			return;
 		}
 		syncCustomNamesToDefinition();
-		SpellRegistry.register(definition);
-		SpellEditorNetworkClient.saveAndReapply(definition);
+		if (SpellEditorNetworkClient.saveAndReapply(definition)) {
+			SpellRegistry.register(definition);
+			spellController.markDefinitionSaved();
+			changed = false;
+			if (minecraft != null && minecraft.player != null) {
+				minecraft.player.displayClientMessage(
+						Component.translatable("youkaishomecoming.spell_editor.saved_refresh"), true);
+			}
+		}
 	}
 
 	/**
-	 * Export the current spell definition to the server global spell directory.
-	 * Exported spells are loaded for every save on the same game/server instance.
+	 * 抢救出来的坏节点只是占位符，不能被当成真实内容送出编辑器。
+	 * 认证与生存草稿保存已由 DENY 策略在服务端拦下，这里补上保存出口。
+	 *
+	 * @return true 表示存在坏节点、调用方应放弃本次操作
 	 */
-	private void exportToDatapack() {
+	private boolean refuseIfBroken() {
+		if (!SpellJsonSalvage.containsBrokenNodes(definition)) {
+			return false;
+		}
+		if (minecraft != null && minecraft.player != null) {
+			minecraft.player.displayClientMessage(
+					Component.literal("[YH] " + SpellEditorLocalization.t("Fix broken nodes first")), true);
+		}
+		return true;
+	}
+
+	private void takeSnapshotTest() {
+		byte[] pngBytes = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
+		if (pngBytes != null && pngBytes.length > 0) {
+			try {
+				java.nio.file.Path outDir = net.minecraft.client.Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
+				java.nio.file.Files.createDirectories(outDir);
+				String name = (definition != null ? definition.id.getPath() : "spell") + "_" + System.currentTimeMillis() + ".png";
+				java.nio.file.Path file = outDir.resolve(name);
+				java.nio.file.Files.write(file, pngBytes);
+				if (minecraft != null && minecraft.player != null) {
+					minecraft.player.displayClientMessage(
+							net.minecraft.network.chat.Component.literal("[YH] Saved snapshot (" + pngBytes.length + " bytes) to: " + file.getFileName()), false);
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		} else {
+			if (minecraft != null && minecraft.player != null) {
+				minecraft.player.displayClientMessage(
+						net.minecraft.network.chat.Component.literal("[YH] Failed to capture snapshot"), false);
+			}
+		}
+	}
+
+	public OrthographicViewport getViewport() {
+		return viewport;
+	}
+
+	private void openCardFaceCapture() {
+		viewport.setPerspectiveMode(false);
+		viewport.setCardFrameGuideActive(true);
+		if (minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
+				Component.literal("[YH] " + SpellEditorLocalization.t("Card face capture ready")), true);
+	}
+
+	public void onCaptureSnapshotConfirmedFromViewport() {
+		byte[] snap = SpellSnapshotRenderer.captureSnapshot(scene, viewport, 0);
+		if (snap != null && snap.length > 0) {
+			Minecraft.getInstance().setScreen(
+					new dev.xkmc.youkaishomecoming.client.screen.SpellCardSnapshotConfirmScreen(this, snap, () -> {
+						viewport.setCardFrameGuideActive(false);
+						syncCustomNamesToDefinition();
+						saveConfirmedSnapshot(snap);
+						Minecraft.getInstance().setScreen(this);
+					}));
+		}
+	}
+
+	public VirtualSpellScene getScene() {
+		return scene;
+	}
+
+	public SpellDefinition getDefinition() {
+		return definition;
+	}
+
+	/** Opens the server certification dialog for the current definition. */
+	private void openCertification() {
+		if (refuseIfBroken()) {
+			return;
+		}
+		if (!hasValidCertificationDraft()) {
+			if (minecraft != null && minecraft.player != null) {
+				minecraft.player.displayClientMessage(
+						Component.literal("[YH] " + SpellEditorLocalization.t("Hold a blank or matching spell card to certify")), true);
+			}
+			return;
+		}
 		syncCustomNamesToDefinition();
-		spellController.exportToDatapack();
+		Minecraft.getInstance().setScreen(new dev.xkmc.youkaishomecoming.client.screen.CertificationScreen(definition, this));
+	}
+
+	private void saveConfirmedSnapshot(byte[] snapBytes) {
+		if (snapBytes == null || snapBytes.length == 0 || definition == null) return;
+		dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.saveLocalSnapshot(
+				definition.id.toString(), snapBytes);
+		String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
+		dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.saveLocalSnapshot(defHash, snapBytes);
 	}
 
 	/**
@@ -773,15 +1240,16 @@ public class SpellPreviewScreen extends Screen {
 	 */
 	private void resetToDefault() {
 		spellController.resetToDefault();
+		markChanged();
 		// Reload phase list after reset
 		phaseController.reloadPhaseList();
 
 		// Refresh UI
 		clearActionSelection();
+		updateActionListPhase();
 		if (actionListPanel != null) {
 			actionListPanel.loadCustomNames(definition.customNames);
 		}
-		updateActionListPhase();
 		refreshPhaseControls();
 		replaySelectedPhase();
 	}
@@ -791,10 +1259,28 @@ public class SpellPreviewScreen extends Screen {
 		ResourceLocation phaseId = phaseController.getSelectedPhaseId();
 		if (phaseId == null) {
 			actionListPanel.setPhase(null);
+			refreshPreviewActionIds();
 			return;
 		}
 		PhaseDefinition phase = definition.phases.get(phaseId);
 		actionListPanel.setPhase(phase);
+		refreshPreviewActionIds();
+	}
+
+	private void refreshPreviewActionIds() {
+		previewActionIds.clear();
+		previewActionPaths.clear();
+		previewPathIds.clear();
+		if (actionListPanel != null) {
+			int id = 0;
+			for (ActionListPanel.ActionEntry entry : actionListPanel.getActionEntries()) {
+				previewActionIds.put(entry.action(), id);
+				previewActionPaths.put(id, entry.path());
+				previewPathIds.put(entry.path(), id);
+				id++;
+			}
+		}
+		scene.getHolder().setPreviewActionIds(previewActionIds);
 	}
 
 	private ResourceLocation getSelectedPhaseId() {
@@ -823,6 +1309,9 @@ public class SpellPreviewScreen extends Screen {
 	 */
 	private void onActionListReordered() {
 		if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
+		refreshPreviewActionIds();
+		invalidateCurrentSnapshot();
+		markChanged();
 		replaySelectedPhase();
 	}
 
@@ -838,6 +1327,7 @@ public class SpellPreviewScreen extends Screen {
 
 	private void addPhase() {
 		phaseController.addPhase();
+		markChanged();
 		resetSelectedPhasePreview(autoReplay);
 		clearActionSelection();
 		updateActionListPhase();
@@ -854,6 +1344,7 @@ public class SpellPreviewScreen extends Screen {
 		if (removedPhaseId == null) {
 			return;
 		}
+		markChanged();
 		boolean wasPlaying = scene.isPlaying();
 		clearActionSelection();
 		updateActionListPhase();
@@ -865,7 +1356,11 @@ public class SpellPreviewScreen extends Screen {
 	/** Clear both the action editor focus and the viewport highlight — used whenever the active
 	 *  phase changes, since action indices are phase-scoped and would otherwise dangle. */
 	private void clearActionSelection() {
+		if (viewportPanel != null && viewportPanel.isOriginEditMode()) {
+			viewportPanel.cancelOriginEdit();
+		}
 		scene.getHolder().setHighlightedActionIndex(-1);
+		if (actionListPanel != null) actionListPanel.clearSelection();
 		if (actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
 		}
@@ -875,6 +1370,7 @@ public class SpellPreviewScreen extends Screen {
 
 	private void renameSelectedPhase(String name) {
 		phaseController.renameSelectedPhase(name);
+		markChanged();
 		// Sync custom name changes to actionListPanel
 		ResourceLocation phaseId = phaseController.getSelectedPhaseId();
 		if (phaseId != null && actionListPanel != null) {
@@ -909,7 +1405,13 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void switchSelectedSpell(ResourceLocation spellId) {
-		spellController.switchSelectedSpell(spellId);
+		if (spellId == null || (!isDraftMode() && spellId.equals(definition.id))) {
+			return;
+		}
+		runAfterDiscardConfirmation(() -> {
+			spellController.switchSelectedSpell(spellId);
+			changed = false;
+		});
 	}
 
 	private boolean canDeleteSelectedSpell() {
@@ -917,11 +1419,10 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void enterDraftSpellEditor() {
-		spellController.enterDraftSpellEditor();
-	}
-
-	private void nameCurrentDraftSpell(String name) {
-		spellController.nameCurrentDraftSpell(name);
+		runAfterDiscardConfirmation(() -> {
+			spellController.enterDraftSpellEditor();
+			changed = false;
+		});
 	}
 
 	private void deleteSelectedSpell() {
@@ -951,12 +1452,49 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
-	private void saveCurrentDefinition() {
-		if (isDraftMode()) {
+	private boolean hasUnsavedChanges() {
+		return changed
+				|| rawJsonDockPanel != null && rawJsonDockPanel.hasDirtyDraft()
+				|| magicCircleDockPanel != null && magicCircleDockPanel.hasUnsavedChanges();
+	}
+
+	private void markChanged() {
+		changed = true;
+	}
+
+	private void discardLocalChanges() {
+		if (rawJsonDockPanel != null && rawJsonDockPanel.hasDirtyDraft()) {
+			rawJsonDockPanel.discardDraft();
+		}
+		if (magicCircleDockPanel != null && magicCircleDockPanel.hasUnsavedChanges()) {
+			magicCircleDockPanel.discardUnsavedChanges();
+		}
+		spellController.discardCurrentDefinitionChanges();
+		definition = spellController.getDefinition();
+		changed = false;
+	}
+
+	/** Run a navigation action, asking before abandoning client-only edits. */
+	private void runAfterDiscardConfirmation(Runnable action) {
+		if (!hasUnsavedChanges()) {
+			action.run();
 			return;
 		}
-		syncCustomNamesToDefinition();
-		spellController.saveCurrentDefinition();
+		if (discardPromptOpen) {
+			return;
+		}
+		discardPromptOpen = true;
+		Minecraft client = Minecraft.getInstance();
+		client.setScreen(new ConfirmScreen(accepted -> {
+			discardPromptOpen = false;
+			if (accepted) {
+				discardLocalChanges();
+				action.run();
+			} else {
+				client.setScreen(this);
+			}
+		}, Component.translatable("youkaishomecoming.spell_editor.unsaved.title"),
+				Component.translatable("youkaishomecoming.spell_editor.unsaved.message")));
 	}
 
 	private boolean isDraftMode() {
@@ -971,9 +1509,6 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void switchToDefinition(SpellDefinition definition) {
-		if (!spellController.isSkipSaveOnNextDefinitionSwitch()) {
-			saveCurrentDefinition();
-		}
 		spellController.clearSkipFlag();
 		boolean oldDraftMode = spellController.isDraftMode();
 		this.definition = definition;
@@ -983,6 +1518,8 @@ public class SpellPreviewScreen extends Screen {
 		phaseController.setDefinition(definition);
 		phaseController.reloadPhaseList();
 		if (oldDraftMode != spellController.isDraftMode()) {
+			preferHelpOnNextInit = !oldDraftMode && spellController.isDraftMode();
+			preferViewportOnNextInit = oldDraftMode && !spellController.isDraftMode();
 			rebuildScreen();
 			return;
 		}
@@ -992,10 +1529,10 @@ public class SpellPreviewScreen extends Screen {
 		if (actionEditorPanel != null) {
 			actionEditorPanel.clearAction();
 		}
+		updateActionListPhase();
 		if (actionListPanel != null) {
 			actionListPanel.loadCustomNames(definition.customNames);
 		}
-		updateActionListPhase();
 		refreshPhaseControls();
 		refreshActionEditor();
 	}
@@ -1050,16 +1587,81 @@ public class SpellPreviewScreen extends Screen {
 		if (dockLayout != null) {
 			dockLayout.renderOverlay(guiGraphics, mouseX, mouseY);
 		}
+		renderTopBarOverflow(guiGraphics, mouseX, mouseY);
 
+	}
+
+	private void renderTopBarOverflow(GuiGraphics graphics, int mouseX, int mouseY) {
+		if (!topBarMoreOpen || topBarOverflow.isEmpty() || topBarMoreButton == null) return;
+		var font = Minecraft.getInstance().font;
+		int menuW = TOP_BAR_MORE_WIDTH;
+		for (TopBarMenuEntry entry : topBarOverflow) {
+			menuW = Math.max(menuW, Math.min(180, font.width(SpellEditorLocalization.t(entry.label())) + 16));
+		}
+		int menuH = topBarOverflow.size() * TOP_BAR_MENU_ITEM_HEIGHT + 4;
+		int menuX = Math.max(2, Math.min(width - menuW - 2, topBarMoreX));
+		int menuY = topBarMoreY + BUTTON_HEIGHT + 2;
+		if (menuY + menuH > height) menuY = Math.max(2, topBarMoreY - menuH - 2);
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 1000);
+		graphics.fill(menuX, menuY, menuX + menuW, menuY + menuH, 0xF022222A);
+		graphics.renderOutline(menuX, menuY, menuW, menuH, 0xFF6699DD);
+		for (int i = 0; i < topBarOverflow.size(); i++) {
+			TopBarMenuEntry entry = topBarOverflow.get(i);
+			int iy = menuY + 2 + i * TOP_BAR_MENU_ITEM_HEIGHT;
+			boolean hovered = mouseX >= menuX && mouseX < menuX + menuW
+					&& mouseY >= iy && mouseY < iy + TOP_BAR_MENU_ITEM_HEIGHT;
+			int fill = hovered && entry.enabled() ? 0xFF3B5F88 : 0x00000000;
+			if (fill != 0) graphics.fill(menuX + 1, iy, menuX + menuW - 1, iy + TOP_BAR_MENU_ITEM_HEIGHT, fill);
+			int color = entry.enabled() ? 0xFFFFFFFF : 0xFF777777;
+			graphics.drawString(font, SpellEditorLocalization.t(entry.label()), menuX + 6,
+					iy + 5, color, false);
+		}
+		graphics.pose().popPose();
+	}
+
+	private boolean handleTopBarOverflowClick(double mouseX, double mouseY) {
+		if (!topBarMoreOpen || topBarOverflow.isEmpty()) return false;
+		if (topBarMoreButton != null && mouseX >= topBarMoreButton.getX()
+				&& mouseX < topBarMoreButton.getX() + topBarMoreButton.getWidth()
+				&& mouseY >= topBarMoreButton.getY()
+				&& mouseY < topBarMoreButton.getY() + topBarMoreButton.getHeight()) {
+			// Let the actual button toggle the menu closed. Closing it here first
+			// would make the subsequent button press immediately reopen it.
+			return false;
+		}
+		var font = Minecraft.getInstance().font;
+		int menuW = TOP_BAR_MORE_WIDTH;
+		for (TopBarMenuEntry entry : topBarOverflow) {
+			menuW = Math.max(menuW, Math.min(180, font.width(SpellEditorLocalization.t(entry.label())) + 16));
+		}
+		int menuH = topBarOverflow.size() * TOP_BAR_MENU_ITEM_HEIGHT + 4;
+		int menuX = Math.max(2, Math.min(width - menuW - 2, topBarMoreX));
+		int menuY = topBarMoreY + BUTTON_HEIGHT + 2;
+		if (menuY + menuH > height) menuY = Math.max(2, topBarMoreY - menuH - 2);
+		if (mouseX < menuX || mouseX >= menuX + menuW || mouseY < menuY || mouseY >= menuY + menuH) {
+			topBarMoreOpen = false;
+			return false;
+		}
+		int index = ((int) mouseY - menuY - 2) / TOP_BAR_MENU_ITEM_HEIGHT;
+		if (index >= 0 && index < topBarOverflow.size()) {
+			TopBarMenuEntry entry = topBarOverflow.get(index);
+			topBarMoreOpen = false;
+			if (entry.enabled()) entry.action().onPress(topBarMoreButton);
+		}
+		return true;
 	}
 
 	private void renderTopBarSpellName(GuiGraphics guiGraphics) {
 		int textLeft = topBarLeftEnd + TOP_BAR_GROUP_GAP;
-		int textRight = topBarMarketX - TOP_BAR_GROUP_GAP;
+		int textRight = topBarNameRight;
 		if (textRight - textLeft < TOP_BAR_NAME_MIN_WIDTH) {
 			return;
 		}
 		String spellName = isDraftMode() ? SpellEditorLocalization.t("New Spell") : definition.id.toString();
+		if (hasUnsavedChanges()) {
+			spellName += " *";
+		}
 		String display = fitTopBarText(spellName, textRight - textLeft);
 		if (display.isEmpty()) {
 			return;
@@ -1082,12 +1684,25 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (viewportPanel != null && viewportPanel.isOriginEditMode()
+				&& (mouseX < viewportPanel.getX() || mouseX >= viewportPanel.getX() + viewportPanel.getWidth()
+				|| mouseY < viewportPanel.getY() || mouseY >= viewportPanel.getY() + viewportPanel.getHeight())) {
+			viewportPanel.cancelOriginEdit();
+		}
+		// The adaptive More menu is a screen-level overlay, so route its entries
+		// before dock/widget dispatch can consume the click underneath it.
+		if (handleTopBarOverflowClick(mouseX, mouseY)) {
+			return true;
+		}
 		// Editor dropdown/completion may extend beyond panel bounds — check first
 		if (isEditorDockActive() && actionEditorPanel != null && actionEditorPanel.mouseClicked(mouseX, mouseY, button)) {
 			// 同步 activeGroup 到编辑器所在的 Group
 			if (dockLayout != null) {
 				DockGroup eg = dockLayout.findGroupContaining(editorDockPanel);
-				if (eg != null) dockLayout.setActiveGroup(eg);
+				if (eg != null) {
+					dockLayout.setActiveGroup(eg);
+					dockLayout.setFocusedGroup(eg);
+				}
 			}
 			syncEditorDockWidgetVisibility();
 			return true;
@@ -1095,6 +1710,17 @@ public class SpellPreviewScreen extends Screen {
 		// Dock layout dispatches to panels (also updates activeGroup)
 		if (dockLayout != null && dockLayout.mouseClicked(mouseX, mouseY, button)) {
 			syncEditorDockWidgetVisibility();
+			// Capturing the perspective viewport also releases any text widget that
+			// happened to be focused in the same dock group.  Otherwise WASD movement
+			// would remain blocked by the EditBox focus gate.
+			if (viewport != null && viewport.isPerspectiveCaptured()
+					&& dockLayout.getFocusedPanel() != viewportPanel) {
+				releasePerspectiveViewportCapture();
+				if (actionEditorPanel != null) {
+					actionEditorPanel.unfocusAllEditBoxes();
+				}
+				setFocused(null);
+			}
 			// When clicking outside the properties panel (e.g. viewport), clear editbox focus
 			// to remove the highlight, but keep the properties panel itself open.
 			DockGroup editorGroup = dockLayout.findGroupContaining(editorDockPanel);
@@ -1162,17 +1788,34 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		// ESC in perspective mode
-		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && viewport.isPerspectiveMode()) {
-			if (viewport.isPerspectiveCaptured()) {
-				// First ESC: exit captured free-look, restore cursor
-				viewport.setPerspectiveCaptured(false);
-				org.lwjgl.glfw.GLFW.glfwSetInputMode(
-						Minecraft.getInstance().getWindow().getWindow(),
-						org.lwjgl.glfw.GLFW.GLFW_CURSOR,
-						org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+		if (topBarMoreOpen && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+			topBarMoreOpen = false;
+			return true;
+		}
+		// Perspective viewport focus owns the keyboard before editor widgets and
+		// action-list shortcuts get a chance to handle it.
+		if (viewport.isPerspectiveCaptured()) {
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+				releasePerspectiveViewportFocus();
 				return true;
 			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_E) {
+				scene.togglePlayPause();
+				return true;
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_R) {
+				replaySelectedPhase();
+				return true;
+			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_F) {
+				scene.step();
+				return true;
+			}
+			return true;
+		}
+
+		// ESC in an unfocused perspective viewport exits perspective mode.
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && viewport.isPerspectiveMode()) {
 			// Second ESC (not captured): exit perspective mode entirely
 			viewport.setPerspectiveMode(false);
 			rebuildScreen();
@@ -1220,10 +1863,20 @@ public class SpellPreviewScreen extends Screen {
 
 		// === Below: no EditBox is focused, custom hotkeys active ===
 
+		// Ctrl+S = save and refresh, using the same guarded path as the toolbar.
+		// Keep this outside the EditBox and perspective-viewport gates so text input
+		// and viewport playback retain their own keyboard semantics.
+		if (net.minecraft.client.gui.screens.Screen.hasControlDown()
+				&& keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) {
+			applyToEntities();
+			return true;
+		}
+
 		// Ctrl+Z/Y for undo/redo
 		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && actionListPanel != null) {
 				if (actionListPanel.undo()) {
+					markChanged();
 					if (actionEditorPanel != null) actionEditorPanel.clearAction();
 					if (autoReplay) replaySelectedPhase();
 					return true;
@@ -1231,6 +1884,7 @@ public class SpellPreviewScreen extends Screen {
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y && actionListPanel != null) {
 				if (actionListPanel.redo()) {
+					markChanged();
 					if (actionEditorPanel != null) actionEditorPanel.clearAction();
 					if (autoReplay) replaySelectedPhase();
 					return true;
@@ -1334,19 +1988,6 @@ public class SpellPreviewScreen extends Screen {
 
 
 
-		// In captured perspective mode, suppress keys used for camera movement
-		// WASD, Space, Shift are consumed by perspective camera in tick()
-		if (viewport.isPerspectiveCaptured()) {
-			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_W
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_A
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_D
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE
-					|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) {
-				return true; // consumed by perspective camera
-			}
-		}
-
 		// Space = play/pause (orthographic mode only now)
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) {
 			scene.togglePlayPause();
@@ -1376,6 +2017,9 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean charTyped(char codePoint, int modifiers) {
+		if (viewport.isPerspectiveCaptured()) {
+			return true;
+		}
 		if (isAnyEditBoxFocused()) {
 			return super.charTyped(codePoint, modifiers);
 		}
@@ -1386,32 +2030,55 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	@Override
+	public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+		if (viewport.isPerspectiveCaptured()) {
+			return true;
+		}
+		return super.keyReleased(keyCode, scanCode, modifiers);
+	}
+
+	private void releasePerspectiveViewportFocus() {
+		releasePerspectiveViewportCapture();
+		if (dockLayout != null) {
+			dockLayout.clearFocusedGroup();
+		}
+	}
+
+	private void releasePerspectiveViewportCapture() {
+		viewport.setPerspectiveCaptured(false);
+		viewport.setPerspectiveOrbiting(false);
+		viewport.setPerspectivePanning(false);
+		org.lwjgl.glfw.GLFW.glfwSetInputMode(
+				Minecraft.getInstance().getWindow().getWindow(),
+				org.lwjgl.glfw.GLFW.GLFW_CURSOR,
+				org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+	}
+
+	@Override
 	public boolean isPauseScreen() {
 		// Pause in singleplayer like vanilla book screen.
 		// Minecraft engine automatically skips pausing in multiplayer/LAN.
 		return true;
 	}
 
-	/**
-	 * Auto-save when the editor screen is closed.
-	 * This ensures edits are persisted even if the user forgets to click Apply.
-	 */
+	/** Close the editor only after the user confirms that client-only edits may be discarded. */
+	@Override
+	public void onClose() {
+		runAfterDiscardConfirmation(() -> Minecraft.getInstance().setScreen(null));
+	}
+
 	@Override
 	public void removed() {
 		super.removed();
+		restoreConfiguredGuiScale(Minecraft.getInstance());
 		// Restore cursor if hidden during perspective capture
 		if (viewport.isPerspectiveCaptured()) {
-			viewport.setPerspectiveCaptured(false);
-			org.lwjgl.glfw.GLFW.glfwSetInputMode(
-					Minecraft.getInstance().getWindow().getWindow(),
-					org.lwjgl.glfw.GLFW.GLFW_CURSOR,
-					org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL);
+			releasePerspectiveViewportFocus();
 		}
 		reportRawJsonDraftOnClose();
-		saveCurrentDefinition();
 		// Save dock layout
 		if (dockLayout != null) {
-			DockSerializer.saveLayout(dockLayout.getRoot());
+			DockSerializer.saveLayout(editorMode.key(), dockLayout.getRoot());
 		}
 	}
 

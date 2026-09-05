@@ -35,6 +35,13 @@ public class DockLayout {
 	// 活跃面板追踪（用于键盘事件路由）
 	@Nullable
 	private DockGroup activeGroup = null;
+	/**
+	 * Dock group that owns the current mouse/keyboard focus. This is separate from
+	 * {@link #activeGroup}: setup may select a tab without giving it a visible
+	 * interaction focus until the user actually clicks it.
+	 */
+	@Nullable
+	private DockGroup focusedGroup = null;
 
 	public DockLayout(DockNode root) {
 		this.root = root;
@@ -46,6 +53,7 @@ public class DockLayout {
 
 	public void setRoot(DockNode root) {
 		this.root = root;
+		this.focusedGroup = null;
 	}
 
 	// ---- 布局 ----
@@ -88,19 +96,51 @@ public class DockLayout {
 
 	public void renderOverlay(GuiGraphics graphics, int mouseX, int mouseY) {
 		root.renderOverlay(graphics, mouseX, mouseY);
+		renderFocusIndicator(graphics);
+	}
+
+	/**
+	 * Draw one consistent focus frame around the currently focused dock group.
+	 * Rendering at the layout overlay layer keeps it above viewport content,
+	 * dropdowns, completion lists and other dock-specific overlays.
+	 */
+	private void renderFocusIndicator(GuiGraphics graphics) {
+		DockGroup group = focusedGroup;
+		DockPanel panel = group == null ? null : group.getActivePanel();
+		if (panel == null) return;
+		int gx = panel.getX();
+		int gy = panel.getY();
+		int gw = panel.getWidth();
+		int gh = panel.getHeight();
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 500);
+		int glow = 0x805599FF;
+		int blue = 0xFF55AAFF;
+		graphics.renderOutline(gx - 3, gy - 3, gw + 6, gh + 6, glow);
+		graphics.fill(gx - 2, gy - 2, gx + gw + 2, gy, blue);
+		graphics.fill(gx - 2, gy + gh, gx + gw + 2, gy + gh + 2, blue);
+		graphics.fill(gx - 2, gy, gx, gy + gh, blue);
+		graphics.fill(gx + gw, gy, gx + gw + 2, gy + gh, blue);
+		graphics.renderOutline(gx, gy, gw, gh, blue);
+		graphics.pose().popPose();
 	}
 
 	// ---- 事件分发 ----
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		// 先更新活跃 Group
-		if (button == 0) {
-			DockGroup clicked = root.findGroupAt(mouseX, mouseY);
-			if (clicked != null && clicked != activeGroup) {
-				activeGroup = clicked;
-			}
+		// Any mouse button establishes dock focus. Viewport orbit/pan commonly starts
+		// with RMB/MMB, and those gestures must unfocus edit boxes just like LMB.
+		DockGroup clicked = root.findGroupAt(mouseX, mouseY);
+		if (clicked != null && clicked != activeGroup) {
+			activeGroup = clicked;
 		}
-		return root.mouseClicked(mouseX, mouseY, button);
+		boolean handled = root.mouseClicked(mouseX, mouseY, button);
+		if (clicked != null) {
+			// A tab click may switch the active panel during dispatch; the group is
+			// still the interaction owner regardless of which tab became active.
+			focusedGroup = clicked;
+		}
+		return handled;
 	}
 
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
@@ -163,6 +203,27 @@ public class DockLayout {
 
 	public void setActiveGroup(@Nullable DockGroup group) {
 		this.activeGroup = group;
+	}
+
+	/** Mark a dock group as focused without changing its active tab. */
+	public void setFocusedGroup(@Nullable DockGroup group) {
+		this.focusedGroup = group;
+	}
+
+	/** Mark the group containing a panel as focused. */
+	public void focusPanel(@Nullable DockPanel panel) {
+		this.focusedGroup = panel == null ? null : findGroupContaining(panel);
+	}
+
+	/** Clear the visible dock focus frame. */
+	public void clearFocusedGroup() {
+		this.focusedGroup = null;
+	}
+
+	/** The panel currently owning the visible dock focus, if any. */
+	@Nullable
+	public DockPanel getFocusedPanel() {
+		return focusedGroup == null ? null : focusedGroup.getActivePanel();
 	}
 
 	@Nullable

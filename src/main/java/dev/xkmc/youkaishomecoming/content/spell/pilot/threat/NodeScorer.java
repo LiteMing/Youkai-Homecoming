@@ -48,9 +48,8 @@ public final class NodeScorer {
 	                         @Nullable PilotState state) {
 		List<Threat> threats = snapshot.threats();
 		if (threats.isEmpty()) {
-			// No threats → fully safe → full wall-space preference
-			double wall = wallClearanceScore(state, selfBox, feet.add(selfDelta), 1.0);
-			return ScoreResult.safe(wall, Double.POSITIVE_INFINITY, 0, -1);
+			double arena = state == null ? 0 : state.arenaClearancePenalty(feet.add(selfDelta));
+			return ScoreResult.safe(arena, Double.POSITIVE_INFINITY, 0, -1);
 		}
 
 		// Broadphase pad must cover mid-range projectiles (arrows spawn ~8–16m out).
@@ -64,6 +63,8 @@ public final class NodeScorer {
 		int nearestId = -1;
 		double scoreSum = 0;
 		int count = 0;
+		double earliestHit = Double.POSITIVE_INFINITY;
+		int hitThreatId = -1;
 
 		SpatioTemporalHash hash = snapshot.broadphase();
 		// Small threat sets: skip hash (cheap full scan, avoids cell-edge misses)
@@ -99,7 +100,11 @@ public final class NodeScorer {
 				}
 			}
 			if (hitT >= 0) {
-				return ScoreResult.dead(threat.entityId());
+				if (hitT < earliestHit) {
+					earliestHit = hitT;
+					hitThreatId = threat.entityId();
+				}
+				continue;
 			}
 
 			// Static clearance at end of step (self moved)
@@ -118,7 +123,11 @@ public final class NodeScorer {
 				nearestId = threat.entityId();
 			}
 			if (clear <= 0) {
-				return ScoreResult.dead(threat.entityId());
+				if (1.0 < earliestHit) {
+					earliestHit = 1.0;
+					hitThreatId = threat.entityId();
+				}
+				continue;
 			}
 			if (clear < grazeBand) {
 				grazes++;
@@ -128,14 +137,19 @@ public final class NodeScorer {
 			count++;
 		}
 
+		if (hitThreatId >= 0) {
+			return ScoreResult.dead(hitThreatId, earliestHit);
+		}
+
 		double score = count == 0 ? 0 : scoreSum / count;
 		// Bonus for large min clearance
 		if (minClear < Double.POSITIVE_INFINITY) {
 			score += Math.min(2.0, minClear * 0.1);
 		}
-		// Wall-space bias only when threat clearance is comfortable
+		// World solids are hard-gated by CollisionOracle. Only the cheap virtual
+		// arena penalty belongs in every search-node score; APF probes soft walls once.
 		double safety = state != null ? state.wallSafetyFactor(minClear) : 0;
-		score += wallClearanceScore(state, selfBox, feet.add(selfDelta), safety);
+		if (state != null) score += state.arenaClearancePenalty(feet.add(selfDelta)) * safety;
 		return ScoreResult.safe(score, minClear, grazes, nearestId);
 	}
 
@@ -147,37 +161,4 @@ public final class NodeScorer {
 		return p.distanceTo(a.add(ab.scale(t)));
 	}
 
-	/**
-	 * Negative score when near solids. Scaled by {@code safety} (0 under fire → 1 when safe)
-	 * so necessary dodge paths are not discarded for wall distance.
-	 */
-	private static double wallClearanceScore(@Nullable PilotState state, SelfBoxModel box, Vec3 feet, double safety) {
-		if (safety <= 1e-4 || state == null || state.wallClearanceRadius <= 0 || state.wallClearanceGain <= 0) {
-			return 0;
-		}
-		double radius = state.wallClearanceRadius;
-		double gain = state.wallClearanceGain * safety;
-		double step = 0.25;
-		double penalty = 0;
-		Vec3[] dirs = {
-				new Vec3(1, 0, 0), new Vec3(-1, 0, 0),
-				new Vec3(0, 1, 0), new Vec3(0, -1, 0),
-				new Vec3(0, 0, 1), new Vec3(0, 0, -1)
-		};
-		for (Vec3 dir : dirs) {
-			double free = radius;
-			for (double d = step; d <= radius + 1e-6; d += step) {
-				// Terrain uses full body box, not danmaku-shrunk hitbox
-				if (!state.oracle.isFree(box.bodyAt(feet.add(dir.scale(d))))) {
-					free = d;
-					break;
-				}
-			}
-			if (free < radius) {
-				// Mild penalty — secondary to threat terms
-				penalty -= gain * (radius - free) / radius * 0.35;
-			}
-		}
-		return penalty;
-	}
 }

@@ -4,7 +4,7 @@ import net.minecraft.world.effect.MobEffectCategory;
 
 /**
  * Flag effect for client-side auto-dodge pilot.
- * Amplifier maps to tier: 0 = rescue, 1 = assist, 2+ = takeover.
+ * Amplifier maps to linearly stronger basic, enhanced and advanced profiles.
  * Decision/execution run on local client player (see AutoDodgeClientHandlers).
  */
 public class AutoDodgeEffect extends EmptyEffect {

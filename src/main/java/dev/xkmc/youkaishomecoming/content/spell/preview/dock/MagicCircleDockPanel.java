@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
+import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleConfig;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellComponent;
 import dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OrthographicViewport;
@@ -46,6 +47,24 @@ public class MagicCircleDockPanel implements DockPanel {
 	private static final int SCROLLBAR_WIDTH = 6;
 	private static final int DROPDOWN_ITEM_H = 18;
 	private static final int DROPDOWN_MAX_VISIBLE = 10;
+	private static final int LABEL_WIDTH = 76;
+	private static final int SECTION_HEIGHT = 14;
+
+	private static final String SECTION_STROKES = "strokes";
+	private static final String SECTION_ITEMS = "items";
+	private static final String SECTION_TEXTS = "texts";
+	private static final String SECTION_LAYERS = "layers";
+	private static final String SECTION_RESOURCE = "resource_layout";
+
+	/** 会话级：跨面板重建保留的选中魔法阵 ID。见 {@link #loadInitialSelection()}。 */
+	@Nullable
+	private static ResourceLocation lastSelectedId;
+
+	/**
+	 * 会话级：跨面板重建保留的分区折叠状态。
+	 * 默认展开笔画与文字（文字是新功能，折叠会让人找不到入口），物品与层默认折叠。
+	 */
+	private static final Set<String> collapsedSections = new HashSet<>(Set.of(SECTION_ITEMS, SECTION_LAYERS, SECTION_RESOURCE));
 
 	private final OrthographicViewport viewport;
 	private final List<AbstractWidget> widgets = new ArrayList<>();
@@ -61,17 +80,32 @@ public class MagicCircleDockPanel implements DockPanel {
 	private int contentHeight;
 	private boolean scrollbarDragging;
 	private final Map<ResourceLocation, SpellComponent> linkedComponents = new LinkedHashMap<>();
+	/** 标签与控件的唯一真源，供 render 绘制标签、mouseClicked 命中分区表头。 */
+	private final List<CircleRow> rows = new ArrayList<>();
+	/** rebuildWidgets 期间的游标 Y。 */
+	private int rowY;
 	private ResourceLocation selectedId = new ResourceLocation("youkaishomecoming", "custom_circle");
 	private SpellComponent component = createDefaultComponent();
 	private int selectedStroke;
 	private int selectedItem;
+	private int selectedText;
 	private int selectedLayer;
 	private float previewSize = 1.0f;
 	private String status = "Magic Circle ready";
 	private int statusColor = 0xFF88AACC;
+	private boolean changed;
 
 	private Button circleDropdownButton;
+	private Button circleDeleteButton;
 	private DropdownOverlay circleDropdown;
+	private ConfirmOverlay deleteConfirm;
+	private int deleteConfirmHoverIndex = -1;
+	/** 本次编辑会话首次载入各魔法阵时的快照，供 Reset 还原。 */
+	private final Map<ResourceLocation, JsonElement> openSnapshots = new LinkedHashMap<>();
+	/** ID 输入框里尚未提交的文本；null 表示没有待提交改名。 */
+	@Nullable
+	private String pendingId;
+	private boolean idBoxWasFocused;
 	private int circleDropdownHoverIndex = -1;
 	private int circleDropdownScrollOffset;
 	private EditBox idBox;
@@ -82,10 +116,26 @@ public class MagicCircleDockPanel implements DockPanel {
 	private EditBox strokeVertexBox;
 	private EditBox strokeCycleBox;
 	private EditBox strokeRuneBox;
+	private EditBox strokeZBox;
+	private EditBox strokeAngleBox;
 	private EditBox itemIdBox;
+	private EditBox itemXBox;
+	private EditBox itemYBox;
+	private EditBox itemZBox;
 	private EditBox itemScaleBox;
 	private EditBox itemRotationBox;
 	private EditBox itemAlphaBox;
+	private EditBox textContentBox;
+	private EditBox textColorBox;
+	private EditBox textScaleBox;
+	private EditBox textRotationBox;
+	private EditBox textAlphaBox;
+	private EditBox textSpacingBox;
+	private EditBox textRadiusBox;
+	private EditBox textArcSpanBox;
+	private EditBox textXBox;
+	private EditBox textYBox;
+	private EditBox textZBox;
 	private EditBox layerChildrenBox;
 	private EditBox layerRadiusBox;
 	private EditBox layerRotationBox;
@@ -93,8 +143,263 @@ public class MagicCircleDockPanel implements DockPanel {
 	private EditBox layerScaleBox;
 	private EditBox layerZBox;
 	private EditBox layerAlphaBox;
+	private EditBox resourceRadiusBox;
+	private EditBox resourceRadiusSpeedBox;
+	private EditBox resourceRadiusAmplitudeBox;
+	private EditBox resourceRadiusPeriodBox;
+	private EditBox resourceAngleBox;
+	private EditBox resourceAngleSpeedBox;
+	private EditBox resourceAngleAmplitudeBox;
+	private EditBox resourceAnglePeriodBox;
+	private EditBox resourceArcBox;
 
 	private record DropdownOverlay(List<ResourceLocation> values, String[] options, int selectedIndex) {
+	}
+
+	private record ConfirmOverlay(String[] options) {
+	}
+
+	// --- Top bar entry points (magic circle mode) ---
+	// Save/Reset live on the top bar, mirroring the spell card editor.
+	// New and delete sit next to the circle picker instead, mirroring "Spell: [▼] [+] [-]".
+
+	public void saveCircleFromTopBar() {
+		save();
+	}
+
+	public boolean hasUnsavedChanges() {
+		return changed;
+	}
+
+	/** Discard local edits without sending a compensating update to the server. */
+	public void discardUnsavedChanges() {
+		for (var entry : openSnapshots.entrySet()) {
+			try {
+				SpellComponent restored = GSON.fromJson(entry.getValue(), SpellComponent.class);
+				if (restored == null) continue;
+				restored.invalidateCache();
+				linkedComponents.put(entry.getKey(), restored);
+				YoukaisHomecoming.SPELL.getMerged().map.put(entry.getKey().toString(), restored);
+			} catch (RuntimeException ignored) {
+				// Keep the current local value if an old snapshot cannot be decoded.
+			}
+		}
+		SpellComponent restored = linkedComponents.get(selectedId);
+		if (restored != null) {
+			component = cloneComponent(restored);
+		} else {
+			loadSelectedComponent();
+		}
+		component.invalidateCache();
+		publishLocal(false);
+		changed = false;
+		clampSelection();
+		if (active) rebuildWidgets();
+	}
+
+	public void resetCircleFromTopBar() {
+		resetToDefault();
+	}
+
+	/**
+	 * Restore the selected circle to the state it had when this editor session first
+	 * loaded it — the same contract as the spell card's Reset, which falls back to its
+	 * open-snapshot when there is no built-in default. Built-in circles use their
+	 * packaged resource definition as the snapshot even when a server override is
+	 * currently visible in the merged map.
+	 */
+	private void resetToDefault() {
+		JsonElement snapshot = openSnapshots.get(selectedId);
+		if (snapshot == null) {
+			setStatus("No snapshot to reset to", 0xFFFFCC88);
+			return;
+		}
+		SpellComponent restored;
+		try {
+			restored = GSON.fromJson(snapshot, SpellComponent.class);
+		} catch (RuntimeException e) {
+			setStatus("No snapshot to reset to", 0xFFFFCC88);
+			return;
+		}
+		if (restored == null) {
+			setStatus("No snapshot to reset to", 0xFFFFCC88);
+			return;
+		}
+		restored.invalidateCache();
+		component = restored;
+		selectedStroke = 0;
+		selectedItem = 0;
+		selectedText = 0;
+		selectedLayer = 0;
+		scrollOffset = 0;
+		clampSelection();
+		publishLocal(true);
+		changed = false;
+		rebuildWidgets();
+		setStatus("Magic Circle reset", 0xFF88FF88);
+	}
+
+	/** Remember a circle's contents the first time this session sees it, for Reset. */
+	private void captureSnapshot(ResourceLocation id, SpellComponent value) {
+		if (id == null || value == null) {
+			return;
+		}
+		// A built-in may first be seen through a merged/network override before
+		// the resource-pack source is available.  Prefer the source whenever it
+		// can be resolved so Reset never captures an edited override as "default".
+		if (openSnapshots.containsKey(id) && !SpellCircleConfig.isBuiltin(id)) {
+			return;
+		}
+		value.invalidateCache();
+		openSnapshots.put(id, GSON.toJsonTree(value));
+	}
+
+	/**
+	 * 提交 ID 输入框里的改名。
+	 *
+	 * <p>把当前编辑内容移到新 ID 下，并把旧 ID 还原成本次会话载入时的快照 —— 改名不应该
+	 * 顺手改掉原来那个魔法阵。旧 ID 若本来就是新建出来的（没有快照），则直接从本地注册表移除，
+	 * 不留下空壳。
+	 */
+	private void commitIdRename() {
+		String text = pendingId;
+		pendingId = null;
+		if (text == null) {
+			return;
+		}
+		ResourceLocation id = ResourceLocation.tryParse(text.trim());
+		if (id == null) {
+			setStatus("Invalid circle id", 0xFFFF8888);
+			if (idBox != null) {
+				suppress = true;
+				idBox.setValue(selectedId.toString());
+				suppress = false;
+			}
+			return;
+		}
+		if (id.equals(selectedId)) {
+			return;
+		}
+		if (YoukaisHomecoming.SPELL.getMerged().map.containsKey(id.toString())) {
+			setStatus("Magic Circle id already exists", 0xFFFF8888);
+			if (idBox != null) {
+				suppress = true;
+				idBox.setValue(selectedId.toString());
+				suppress = false;
+			}
+			return;
+		}
+		ResourceLocation old = selectedId;
+		JsonElement snapshot = openSnapshots.get(old);
+		if (snapshot != null) {
+			try {
+				SpellComponent original = GSON.fromJson(snapshot, SpellComponent.class);
+				if (original != null) {
+					original.invalidateCache();
+					YoukaisHomecoming.SPELL.getMerged().map.put(old.toString(), original);
+				}
+			} catch (RuntimeException ignored) {
+				// 快照坏了就退回到直接移除，至少不会留下被改坏的原件。
+				YoukaisHomecoming.SPELL.getMerged().map.remove(old.toString());
+			}
+		} else {
+			YoukaisHomecoming.SPELL.getMerged().map.remove(old.toString());
+		}
+		linkedComponents.remove(old);
+		selectedId = id;
+		publishLocal(true);
+		changed = true;
+		rebuildWidgets();
+		setStatus("Magic Circle renamed", 0xFF88FF88);
+	}
+
+	private void openDeleteConfirm() {
+		if (!canDeleteSelectedCircle()) {
+			setStatus("Built-in magic circles cannot be deleted", 0xFFFFCC88);
+			return;
+		}
+		closeCircleDropdown();
+		deleteConfirm = new ConfirmOverlay(new String[]{
+				"Cancel",
+				"Delete " + fitToWidth(selectedId.toString(), 150)
+		});
+		deleteConfirmHoverIndex = -1;
+	}
+
+	private void closeDeleteConfirm() {
+		deleteConfirm = null;
+		deleteConfirmHoverIndex = -1;
+	}
+
+	private int[] computeDeleteConfirmBounds() {
+		if (deleteConfirm == null || circleDeleteButton == null) {
+			return new int[]{0, 0, 0, 0};
+		}
+		String[] options = deleteConfirm.options();
+		Font font = Minecraft.getInstance().font;
+		int dw = 120;
+		for (String option : options) {
+			dw = Math.max(dw, font.width(SpellEditorLocalization.t(option)) + 18);
+		}
+		dw = Math.min(dw, Math.max(120, w - PADDING * 2));
+		int dh = options.length * DROPDOWN_ITEM_H;
+		int dx = Math.max(x, circleDeleteButton.getX() + circleDeleteButton.getWidth() - dw);
+		int dy = circleDeleteButton.getY() + circleDeleteButton.getHeight();
+		return new int[]{dx, dy, dw, dh};
+	}
+
+	private void renderDeleteConfirm(GuiGraphics graphics, int mouseX, int mouseY) {
+		if (deleteConfirm == null) {
+			return;
+		}
+		Font font = Minecraft.getInstance().font;
+		String[] options = deleteConfirm.options();
+		int[] bounds = computeDeleteConfirmBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+
+		graphics.pose().pushPose();
+		graphics.pose().translate(0, 0, 200);
+		graphics.fill(dx + 3, dy + 3, dx + dw + 3, dy + dh + 3, 0x88000000);
+		graphics.fill(dx, dy, dx + dw, dy + dh, 0xFF301818);
+		graphics.fill(dx, dy, dx + dw, dy + 1, 0xFFAA6666);
+		graphics.fill(dx, dy + dh - 1, dx + dw, dy + dh, 0xFFAA6666);
+		graphics.fill(dx, dy, dx + 1, dy + dh, 0xFFAA6666);
+		graphics.fill(dx + dw - 1, dy, dx + dw, dy + dh, 0xFFAA6666);
+
+		deleteConfirmHoverIndex = -1;
+		if (mouseX >= dx && mouseX < dx + dw && mouseY >= dy && mouseY < dy + dh) {
+			int rawIdx = (mouseY - dy) / DROPDOWN_ITEM_H;
+			if (rawIdx >= 0 && rawIdx < options.length) {
+				deleteConfirmHoverIndex = rawIdx;
+			}
+		}
+		for (int i = 0; i < options.length; i++) {
+			int itemY = dy + i * DROPDOWN_ITEM_H;
+			boolean hovered = i == deleteConfirmHoverIndex;
+			if (hovered) {
+				graphics.fill(dx + 1, itemY, dx + dw - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
+			}
+			int color = i == 0 ? 0xFFDDDDDD : (hovered ? 0xFFFF8888 : 0xFFFF6666);
+			graphics.drawString(font, SpellEditorLocalization.t(options[i]), dx + 6, itemY + 4, color, false);
+		}
+		graphics.pose().popPose();
+	}
+
+	private boolean handleDeleteConfirmClick(double mouseX, double mouseY) {
+		if (deleteConfirm == null) {
+			return false;
+		}
+		int[] bounds = computeDeleteConfirmBounds();
+		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
+		if (mouseX >= dx && mouseX < dx + dw && mouseY >= dy && mouseY < dy + dh) {
+			int idx = (int) ((mouseY - dy) / DROPDOWN_ITEM_H);
+			closeDeleteConfirm();
+			if (idx == 1) {
+				deleteCircle();
+			}
+			return true;
+		}
+		return false;
 	}
 
 	public MagicCircleDockPanel(OrthographicViewport viewport) {
@@ -154,61 +459,30 @@ public class MagicCircleDockPanel implements DockPanel {
 		graphics.fill(x, y, x + w, y + h, 0xCC000000);
 		clampScrollOffset();
 		updateWidgetScroll();
-		Font font = Minecraft.getInstance().font;
-		int labelX = x + PADDING;
-		int yy = contentTop() + 2;
-		int bottom = contentBottom();
-		if (bottom > contentTop()) {
-			graphics.enableScissor(x, contentTop(), x + w, bottom);
+		// 点走焦点等同于确认改名，和符卡的 ID 输入框行为一致。
+		boolean idFocused = idBox != null && idBox.isFocused();
+		if (idBoxWasFocused && !idFocused) {
+			commitIdRename();
 		}
-		drawLabel(graphics, font, "Circle", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "ID", labelX, yy - scrollOffset);
-		yy += ROW;
-		yy += ROW;
-		yy += ROW;
-		drawLabel(graphics, font, "Color", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Radius", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Width", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Vertex", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Cycle", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Rune", labelX, yy - scrollOffset);
-		yy += ROW;
-		yy += ROW;
-		drawLabel(graphics, font, "Item ID", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Scale", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Rot", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Alpha", labelX, yy - scrollOffset);
-		yy += ROW;
-		yy += ROW;
-		drawLabel(graphics, font, "Layer", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Child", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Children", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Radius", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Rot", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Rot Speed", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Scale", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Z", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Alpha", labelX, yy - scrollOffset);
-		yy += ROW;
-		drawLabel(graphics, font, "Preview", labelX, yy - scrollOffset);
-		if (bottom > contentTop()) {
+		idBoxWasFocused = idFocused;
+		Font font = Minecraft.getInstance().font;
+		renderFixedHeader(graphics, font);
+		int labelX = x + PADDING;
+		int top = contentTop();
+		int bottom = contentBottom();
+		if (bottom > top) {
+			graphics.enableScissor(x, top, x + w, bottom);
+			// 标签直接来自与控件同源的 rows，不可能再和控件顺序错位。
+			for (CircleRow row : rows) {
+				int rowY = row.baseY() - scrollOffset;
+				if (rowY + row.height() < top || rowY > bottom) {
+					continue;
+				}
+				if (row.section() != null) {
+					graphics.fill(x + 1, rowY - 1, x + w - SCROLLBAR_WIDTH - 3, rowY + row.height() - 2, 0x33FFFFFF);
+				}
+				drawLabel(graphics, font, row.label(), labelX, rowY);
+			}
 			graphics.disableScissor();
 		}
 		renderScrollbar(graphics);
@@ -222,8 +496,22 @@ public class MagicCircleDockPanel implements DockPanel {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		if (circleDropdown != null && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
-			closeCircleDropdown();
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+			if (deleteConfirm != null) {
+				closeDeleteConfirm();
+				return true;
+			}
+			if (circleDropdown != null) {
+				closeCircleDropdown();
+				return true;
+			}
+		}
+		boolean enter = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER
+				|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
+		if (enter && idBox != null && idBox.isFocused()) {
+			idBox.setFocused(false);
+			idBoxWasFocused = false;
+			commitIdRename();
 			return true;
 		}
 		return false;
@@ -231,6 +519,12 @@ public class MagicCircleDockPanel implements DockPanel {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (deleteConfirm != null) {
+			if (!handleDeleteConfirmClick(mouseX, mouseY)) {
+				closeDeleteConfirm();
+			}
+			return true;
+		}
 		if (circleDropdown != null) {
 			if (handleCircleDropdownClick(mouseX, mouseY)) {
 				return true;
@@ -242,6 +536,28 @@ public class MagicCircleDockPanel implements DockPanel {
 			scrollbarDragging = true;
 			updateScrollFromMouse(mouseY);
 			return true;
+		}
+		return button == 0 && toggleSectionAt(mouseX, mouseY);
+	}
+
+	/** 命中分区表头则折叠/展开该分区。 */
+	private boolean toggleSectionAt(double mouseX, double mouseY) {
+		if (mouseX < x || mouseX > x + w || mouseY < contentTop() || mouseY > contentBottom()) {
+			return false;
+		}
+		for (CircleRow row : rows) {
+			String section = row.section();
+			if (section == null) {
+				continue;
+			}
+			int top = row.baseY() - scrollOffset;
+			if (mouseY >= top - 1 && mouseY < top + row.height() - 1) {
+				if (!collapsedSections.remove(section)) {
+					collapsedSections.add(section);
+				}
+				rebuildWidgets();
+				return true;
+			}
 		}
 		return false;
 	}
@@ -290,6 +606,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	@Override
 	public void renderOverlay(GuiGraphics graphics, int mouseX, int mouseY) {
 		renderCircleDropdown(graphics, mouseX, mouseY);
+		renderDeleteConfirm(graphics, mouseX, mouseY);
 	}
 
 	@Override
@@ -339,6 +656,13 @@ public class MagicCircleDockPanel implements DockPanel {
 		}
 	}
 
+	/**
+	 * 重建面板内容。
+	 *
+	 * <p>标签与控件在同一次调用里成对产生（{@link #fieldRow} / {@link #buttonRow}），
+	 * 因此 {@link #render} 画的标签一定对应此处创建的控件。旧实现把两者拆成两份
+	 * 平行列表，插入任何一行都必须同时改两处，且错位不会被编译器发现。
+	 */
 	private void rebuildWidgets() {
 		if (addWidgetCallback == null) {
 			return;
@@ -350,122 +674,268 @@ public class MagicCircleDockPanel implements DockPanel {
 		}
 		widgets.clear();
 		widgetBaseY.clear();
+		rows.clear();
 		closeCircleDropdown();
 		circleDropdownButton = null;
+		clampSelection();
 		Font font = Minecraft.getInstance().font;
-		int controlsW = controlsWidth();
-		int labelW = 76;
-		int fieldX = x + PADDING + labelW;
-		int fieldW = Math.max(50, controlsW - labelW - PADDING);
-		int yy = contentTop();
-		circleDropdownButton = addDropdownButton(fieldX, yy, fieldW);
-		yy += ROW;
-		idBox = addEditBox(font, fieldX, yy, fieldW, selectedId.toString(), text -> {
-			ResourceLocation id = ResourceLocation.tryParse(text);
-			if (id != null) {
-				selectedId = id;
-				publishLocal(true);
-			}
-		});
-		yy += ROW;
-		int bx = x + PADDING;
-		bx = addButton(bx, yy, 44, "New", this::newCircle);
-		bx = addButton(bx, yy, 52, "Save", () -> save(false));
-		bx = addButton(bx, yy, 58, "Export", () -> save(true));
-		addButton(bx, yy, 54, "Delete", this::deleteCircle);
 
-		yy += ROW;
-		bx = x + PADDING;
-		bx = addButton(bx, yy, 64, "+Stroke", this::addStroke);
-		bx = addButton(bx, yy, 64, "-Stroke", this::removeStroke);
-		bx = addButton(bx, yy, 28, "<", this::prevStroke);
-		addButton(bx, yy, 28, ">", this::nextStroke);
-		yy += ROW;
-		strokeColorBox = addEditBox(font, fieldX, yy, fieldW, currentStrokeColor(), this::setStrokeColor);
-		yy += ROW;
-		strokeRadiusBox = addEditBox(font, fieldX, yy, fieldW, fmt(currentStroke() == null ? 48 : currentStroke().radius),
-				text -> setStrokeFloat(text, "radius"));
-		yy += ROW;
-		strokeWidthBox = addEditBox(font, fieldX, yy, fieldW, fmt(currentStroke() == null ? 2 : currentStroke().width),
-				text -> setStrokeFloat(text, "width"));
-		yy += ROW;
-		strokeVertexBox = addEditBox(font, fieldX, yy, fieldW, String.valueOf(currentStroke() == null ? 64 : currentStroke().vertex),
-				text -> setStrokeInt(text, "vertex"));
-		yy += ROW;
-		strokeCycleBox = addEditBox(font, fieldX, yy, fieldW, String.valueOf(currentStroke() == null ? 1 : currentStroke().cycle),
-				text -> setStrokeInt(text, "cycle"));
-		yy += ROW;
-		strokeRuneBox = addEditBox(font, fieldX, yy, fieldW, String.valueOf(currentStroke() == null ? 0 : currentStroke().rune),
-				text -> setStrokeInt(text, "rune"));
+		// --- 固定表头：始终可见，不随正文滚动 ---
+		// 与符卡的 "Spell: [▼] [+] [-]" 保持一致：新建/删除紧挨着选择器，而不是散在顶栏。
+		int headerY = y + PADDING;
+		int actionW = 20;
+		int actionGap = 2;
+		int pickerW = Math.max(40, fieldWidth() - (actionW + actionGap) * 2);
+		circleDropdownButton = addFixedWidget(Button.builder(
+						Component.literal(dropdownLabel(pickerW)), b -> openCircleDropdown())
+				.bounds(fieldX(), headerY, pickerW, BUTTON_HEIGHT).build());
+		int newX = fieldX() + pickerW + actionGap;
+		addFixedWidget(Button.builder(Component.literal("+"), b -> newCircle())
+				.bounds(newX, headerY, actionW, BUTTON_HEIGHT).build());
+		int deleteX = newX + actionW + actionGap;
+		circleDeleteButton = addFixedWidget(Button.builder(Component.literal("-"), b -> openDeleteConfirm())
+				.bounds(deleteX, headerY, actionW, BUTTON_HEIGHT).build());
+		circleDeleteButton.active = canDeleteSelectedCircle();
+		headerY += ROW;
+		// 逐键提交会把每个中间串都注册成一个魔法阵（输入 "1123" 会留下 1 / 11 / 112 / 1123）。
+		// 与符卡的新建 ID 框一致：只记录待提交值，回车或失焦时才真正改名。
+		idBox = addFixedWidget(makeEditBox(font, fieldX(), headerY, fieldWidth(), selectedId.toString(),
+				text -> pendingId = text));
+		headerY += ROW;
+		previewSizeBox = addFixedWidget(makeEditBox(font, fieldX(), headerY, fieldWidth(),
+				fmt(previewSize), this::setPreviewSize));
 
-		yy += ROW;
-		bx = x + PADDING;
-		bx = addButton(bx, yy, 58, "+Item", this::addItem);
-		bx = addButton(bx, yy, 58, "-Item", this::removeItem);
-		bx = addButton(bx, yy, 28, "<", this::prevItem);
-		addButton(bx, yy, 28, ">", this::nextItem);
-		yy += ROW;
-		itemIdBox = addEditBox(font, fieldX, yy, fieldW, currentItem() == null ? "minecraft:air" : currentItem().item, this::setItemId);
-		yy += ROW;
-		itemScaleBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentItem() == null ? null : currentItem().scale, 16)),
-				text -> setItemValue(text, "scale", 16));
-		yy += ROW;
-		itemRotationBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentItem() == null ? null : currentItem().rotation, 0)),
-				text -> setItemValue(text, "rotation", 0));
-		yy += ROW;
-		itemAlphaBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentItem() == null ? null : currentItem().alpha, 1)),
-				text -> setItemValue(text, "alpha", 1));
-		yy += ROW;
+		// --- 可滚动正文：每个分区只展开选中元素的字段 ---
+		rowY = contentTop();
+		buildResourceSection(font);
+		buildStrokeSection(font);
+		buildItemSection(font);
+		buildTextSection(font);
+		buildLayerSection(font);
 
-		bx = x + PADDING;
-		bx = addButton(bx, yy, 58, "+Layer", this::addLayer);
-		bx = addButton(bx, yy, 58, "-Layer", this::removeLayer);
-		bx = addButton(bx, yy, 28, "<", this::prevLayer);
-		addButton(bx, yy, 28, ">", this::nextLayer);
-		yy += ROW;
-		bx = x + PADDING;
-		bx = addButton(bx, yy, 70, "+Child", this::addChildComponent);
-		addButton(bx, yy, 78, "Open Child", this::openFirstChildComponent);
-		yy += ROW;
-		layerChildrenBox = addEditBox(font, fieldX, yy, fieldW, currentLayerChildren(), this::setLayerChildren);
-		yy += ROW;
-		layerRadiusBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().radius, 0)),
-				text -> setLayerValue(text, "radius", 0));
-		yy += ROW;
-		layerRotationBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().rotation, 0)),
-				text -> setLayerValue(text, "rotation", 0));
-		yy += ROW;
-		layerRotationSpeedBox = addEditBox(font, fieldX, yy, fieldW, fmt(deltaOf(currentLayer() == null ? null : currentLayer().rotation, 0)),
-				this::setLayerRotationSpeed);
-		yy += ROW;
-		layerScaleBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().scale, 1)),
-				text -> setLayerValue(text, "scale", 1));
-		yy += ROW;
-		layerZBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().z_offset, 0)),
-				text -> setLayerValue(text, "z", 0));
-		yy += ROW;
-		layerAlphaBox = addEditBox(font, fieldX, yy, fieldW, fmt(valueOf(currentLayer() == null ? null : currentLayer().alpha, 1)),
-				text -> setLayerValue(text, "alpha", 1));
-		yy += ROW;
-
-		previewSizeBox = addEditBox(font, fieldX, yy, fieldW, fmt(previewSize), this::setPreviewSize);
-		contentHeight = yy - contentTop() + ROW;
+		contentHeight = rowY - contentTop();
 		clampScrollOffset();
 		updateWidgetScroll();
 		refreshWidgetValues();
 	}
 
-	private Button addDropdownButton(int x, int y, int w) {
-		String text = fitToWidth(selectedId.toString(), Math.max(0, w - 14));
-		Button button = Button.builder(Component.literal(text + " \u25BC"), b -> openCircleDropdown())
-				.bounds(x, y, w, BUTTON_HEIGHT).build();
-		addWidget(button);
-		return button;
+	private void buildResourceSection(Font font) {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (!sectionRow(SECTION_RESOURCE, "Resource Layout", layout == null ? 0 : 1, 0)) {
+			return;
+		}
+		if (layout == null) {
+			buttonRow(new ButtonSpec("Enable Resource Layout", 140, this::enableResourceLayout));
+			return;
+		}
+		buttonRow(new ButtonSpec("Disable", 58, this::disableResourceLayout),
+				new ButtonSpec("Plane: " + normalizedPlane(layout), 76, this::toggleResourcePlane),
+				new ButtonSpec(layout.counter_rotate ? "Face: Fixed" : "Face: Orbit", 82, this::toggleResourceFacing));
+		resourceRadiusBox = fieldRow(font, "Orbit Radius", fmt(valueOf(layout.radius, 44)),
+				value -> setResourceValue(value, "radius", "value", 44));
+		resourceRadiusSpeedBox = fieldRow(font, "Radius Speed", fmt(deltaOf(layout.radius, 0)),
+				value -> setResourceValue(value, "radius", "delta", 44));
+		resourceRadiusAmplitudeBox = fieldRow(font, "Radius Swing", fmt(amplitudeOf(layout.radius, 0)),
+				value -> setResourceValue(value, "radius", "amplitude", 44));
+		resourceRadiusPeriodBox = fieldRow(font, "Radius Period", fmt(periodOf(layout.radius, 0)),
+				value -> setResourceValue(value, "radius", "period", 44));
+		resourceAngleBox = fieldRow(font, "Start Angle", fmt(valueOf(layout.angle, 0)),
+				value -> setResourceValue(value, "angle", "value", 0));
+		resourceAngleSpeedBox = fieldRow(font, "Angular Speed", fmt(deltaOf(layout.angle, 0)),
+				value -> setResourceValue(value, "angle", "delta", 0));
+		resourceAngleAmplitudeBox = fieldRow(font, "Angle Swing", fmt(amplitudeOf(layout.angle, 0)),
+				value -> setResourceValue(value, "angle", "amplitude", 0));
+		resourceAnglePeriodBox = fieldRow(font, "Angle Period", fmt(periodOf(layout.angle, 0)),
+				value -> setResourceValue(value, "angle", "period", 0));
+		resourceArcBox = fieldRow(font, "Slot Arc", fmt(layout.arc), this::setResourceArc);
 	}
 
-	private EditBox addEditBox(Font font, int x, int y, int w, String value, Consumer<String> responder) {
-		EditBox box = new EditBox(font, x, y, w, 16, Component.empty());
-		EditorTextBoxes.configure(box);
+	private void buildStrokeSection(Font font) {
+		int count = component.strokes.size();
+		if (!sectionRow(SECTION_STROKES, "Strokes", count, selectedStroke)) {
+			return;
+		}
+		buttonRow(new ButtonSpec("+Stroke", 60, this::addStroke), new ButtonSpec("-Stroke", 60, this::removeStroke),
+				new ButtonSpec("<", 24, this::prevStroke), new ButtonSpec(">", 24, this::nextStroke));
+		if (count == 0) {
+			emptyRow("No strokes");
+			return;
+		}
+		SpellComponent.Stroke stroke = currentStroke();
+		strokeColorBox = fieldRow(font, "Color", currentStrokeColor(), this::setStrokeColor);
+		strokeRadiusBox = fieldRow(font, "Radius", fmt(stroke == null ? 48 : stroke.radius),
+				text -> setStrokeFloat(text, "radius"));
+		strokeWidthBox = fieldRow(font, "Width", fmt(stroke == null ? 2 : stroke.width),
+				text -> setStrokeFloat(text, "width"));
+		strokeVertexBox = fieldRow(font, "Vertex", String.valueOf(stroke == null ? 64 : stroke.vertex),
+				text -> setStrokeInt(text, "vertex"));
+		strokeCycleBox = fieldRow(font, "Cycle", String.valueOf(stroke == null ? 1 : stroke.cycle),
+				text -> setStrokeInt(text, "cycle"));
+		strokeRuneBox = fieldRow(font, "Rune", String.valueOf(stroke == null ? 0 : stroke.rune),
+				text -> setStrokeInt(text, "rune"));
+		strokeZBox = fieldRow(font, "Z", fmt(stroke == null ? 0 : stroke.z),
+				text -> setStrokeFloat(text, "z"));
+		strokeAngleBox = fieldRow(font, "Angle", fmt(stroke == null ? 0 : stroke.angle),
+				text -> setStrokeFloat(text, "angle"));
+	}
+
+	private void buildItemSection(Font font) {
+		int count = getItemCount();
+		if (!sectionRow(SECTION_ITEMS, "Items", count, selectedItem)) {
+			return;
+		}
+		buttonRow(new ButtonSpec("+Item", 54, this::addItem), new ButtonSpec("-Item", 54, this::removeItem),
+				new ButtonSpec("<", 24, this::prevItem), new ButtonSpec(">", 24, this::nextItem));
+		if (count == 0) {
+			emptyRow("No items");
+			return;
+		}
+		SpellComponent.ItemLayer item = currentItem();
+		itemIdBox = fieldRow(font, "Item ID", item == null ? "minecraft:air" : item.item, this::setItemId);
+		itemXBox = fieldRow(font, "X", fmt(valueOf(item == null ? null : item.x_offset, 0)),
+				text -> setItemValue(text, "x", 0));
+		itemYBox = fieldRow(font, "Y", fmt(valueOf(item == null ? null : item.y_offset, 0)),
+				text -> setItemValue(text, "y", 0));
+		itemZBox = fieldRow(font, "Z", fmt(valueOf(item == null ? null : item.z_offset, 0)),
+				text -> setItemValue(text, "z", 0));
+		itemScaleBox = fieldRow(font, "Scale", fmt(valueOf(item == null ? null : item.scale, 16)),
+				text -> setItemValue(text, "scale", 16));
+		itemRotationBox = fieldRow(font, "Rot", fmt(valueOf(item == null ? null : item.rotation, 0)),
+				text -> setItemValue(text, "rotation", 0));
+		itemAlphaBox = fieldRow(font, "Alpha", fmt(valueOf(item == null ? null : item.alpha, 1)),
+				text -> setItemValue(text, "alpha", 1));
+	}
+
+	private void buildTextSection(Font font) {
+		int count = getTextCount();
+		if (!sectionRow(SECTION_TEXTS, "Texts", count, selectedText)) {
+			return;
+		}
+		buttonRow(new ButtonSpec("+Text", 54, this::addText), new ButtonSpec("-Text", 54, this::removeText),
+				new ButtonSpec("<", 24, this::prevText), new ButtonSpec(">", 24, this::nextText));
+		if (count == 0) {
+			emptyRow("No texts");
+			return;
+		}
+		SpellComponent.TextLayer text = currentText();
+		textContentBox = fieldRow(font, "Text", text == null ? "" : text.text, this::setTextContent);
+		textColorBox = fieldRow(font, "Color", currentTextColor(), this::setTextColor);
+		textScaleBox = fieldRow(font, "Scale", fmt(valueOf(text == null ? null : text.scale, 1)),
+				value -> setTextValue(value, "scale", 1));
+		textRotationBox = fieldRow(font, "Rot", fmt(valueOf(text == null ? null : text.rotation, 0)),
+				value -> setTextValue(value, "rotation", 0));
+		textAlphaBox = fieldRow(font, "Alpha", fmt(valueOf(text == null ? null : text.alpha, 1)),
+				value -> setTextValue(value, "alpha", 1));
+		textSpacingBox = fieldRow(font, "Spacing", fmt(text == null ? 0 : text.char_spacing), this::setTextSpacing);
+		// Arc Radius 0 = 直排；仅环绕模式才需要跨度与朝向，所以这两行按需出现。
+		textRadiusBox = fieldRow(font, "Arc Radius", fmt(text == null ? 0 : text.radius), this::setTextRadius);
+		if (text != null && text.radius > 0) {
+			textArcSpanBox = fieldRow(font, "Arc Span", fmt(text.arc_span), this::setTextArcSpan);
+			buttonRow(new ButtonSpec(text.flip ? "Read: Inward" : "Read: Outward", 110, this::toggleTextFlip));
+		} else {
+			textArcSpanBox = null;
+		}
+		textXBox = fieldRow(font, "X", fmt(valueOf(text == null ? null : text.x_offset, 0)),
+				value -> setTextValue(value, "x", 0));
+		textYBox = fieldRow(font, "Y", fmt(valueOf(text == null ? null : text.y_offset, 0)),
+				value -> setTextValue(value, "y", 0));
+		textZBox = fieldRow(font, "Z", fmt(valueOf(text == null ? null : text.z_offset, 0)),
+				value -> setTextValue(value, "z", 0));
+	}
+
+	private void buildLayerSection(Font font) {
+		int count = component.layers.size();
+		if (!sectionRow(SECTION_LAYERS, "Layers", count, selectedLayer)) {
+			return;
+		}
+		buttonRow(new ButtonSpec("+Layer", 54, this::addLayer), new ButtonSpec("-Layer", 54, this::removeLayer),
+				new ButtonSpec("<", 24, this::prevLayer), new ButtonSpec(">", 24, this::nextLayer));
+		if (count == 0) {
+			emptyRow("No layers");
+			return;
+		}
+		buttonRow(new ButtonSpec("+Child", 66, this::addChildComponent),
+				new ButtonSpec("Open Child", 74, this::openFirstChildComponent));
+		SpellComponent.Layer layer = currentLayer();
+		layerChildrenBox = fieldRow(font, "Children", currentLayerChildren(), this::setLayerChildren);
+		layerRadiusBox = fieldRow(font, "Radius", fmt(valueOf(layer == null ? null : layer.radius, 0)),
+				text -> setLayerValue(text, "radius", 0));
+		layerRotationBox = fieldRow(font, "Rot", fmt(valueOf(layer == null ? null : layer.rotation, 0)),
+				text -> setLayerValue(text, "rotation", 0));
+		layerRotationSpeedBox = fieldRow(font, "Rot Speed", fmt(deltaOf(layer == null ? null : layer.rotation, 0)),
+				this::setLayerRotationSpeed);
+		layerScaleBox = fieldRow(font, "Scale", fmt(valueOf(layer == null ? null : layer.scale, 1)),
+				text -> setLayerValue(text, "scale", 1));
+		layerZBox = fieldRow(font, "Z", fmt(valueOf(layer == null ? null : layer.z_offset, 0)),
+				text -> setLayerValue(text, "z", 0));
+		layerAlphaBox = fieldRow(font, "Alpha", fmt(valueOf(layer == null ? null : layer.alpha, 1)),
+				text -> setLayerValue(text, "alpha", 1));
+	}
+
+	// --- Row builders: label and widget are always produced together ---
+
+	/** 分区表头。返回是否展开；折叠时调用方直接跳过该分区的字段。 */
+	private boolean sectionRow(String key, String title, int count, int selected) {
+		boolean collapsed = collapsedSections.contains(key);
+		String indicator = count == 0 ? "(0)" : "(" + (Math.min(selected, count - 1) + 1) + "/" + count + ")";
+		rows.add(new CircleRow((collapsed ? "▶ " : "▼ ") + SpellEditorLocalization.t(title) + " " + indicator,
+				rowY, SECTION_HEIGHT, key));
+		rowY += SECTION_HEIGHT;
+		return !collapsed;
+	}
+
+	private EditBox fieldRow(Font font, String label, String value, Consumer<String> responder) {
+		EditBox box = addEditBox(font, fieldX(), rowY, fieldWidth(), value, responder);
+		rows.add(new CircleRow(SpellEditorLocalization.t(label), rowY, ROW, null));
+		rowY += ROW;
+		return box;
+	}
+
+	private void buttonRow(ButtonSpec... specs) {
+		int bx = x + PADDING;
+		for (ButtonSpec spec : specs) {
+			bx = addButton(bx, rowY, spec.minWidth(), spec.label(), spec.onPress());
+		}
+		rows.add(new CircleRow("", rowY, ROW, null));
+		rowY += ROW;
+	}
+
+	/** 分区展开但一个元素都没有时的占位行。 */
+	private void emptyRow(String label) {
+		rows.add(new CircleRow("§o" + SpellEditorLocalization.t(label), rowY, ROW, null));
+		rowY += ROW;
+	}
+
+	private void renderFixedHeader(GuiGraphics graphics, Font font) {
+		int labelX = x + PADDING;
+		int headerY = y + PADDING;
+		drawLabel(graphics, font, SpellEditorLocalization.t("Circle"), labelX, headerY);
+		drawLabel(graphics, font, SpellEditorLocalization.t("ID"), labelX, headerY + ROW);
+		drawLabel(graphics, font, SpellEditorLocalization.t("Preview"), labelX, headerY + ROW * 2);
+		int sep = y + PADDING + ROW * 3 - 2;
+		graphics.fill(x + 1, sep, x + w - 1, sep + 1, 0x44FFFFFF);
+	}
+
+	private String dropdownLabel(int width) {
+		return fitToWidth(selectedId.toString(), Math.max(0, width - 14)) + " ▼";
+	}
+
+	private int fieldX() {
+		return x + PADDING + LABEL_WIDTH;
+	}
+
+	private int fieldWidth() {
+		return Math.max(50, controlsWidth() - LABEL_WIDTH - PADDING);
+	}
+
+	private record CircleRow(String label, int baseY, int height, @Nullable String section) {
+	}
+
+	private record ButtonSpec(String label, int minWidth, Runnable onPress) {
+	}
+
+	private EditBox makeEditBox(Font font, int x, int y, int w, String value, Consumer<String> responder) {
+		EditBox box = EditorTextBoxes.create(font, x, y, w, 16, Component.empty());
 		box.setMaxLength(1024);
 		box.setValue(value == null ? "" : value);
 		box.setResponder(text -> {
@@ -473,8 +943,11 @@ public class MagicCircleDockPanel implements DockPanel {
 				responder.accept(text);
 			}
 		});
-		addWidget(box);
 		return box;
+	}
+
+	private EditBox addEditBox(Font font, int x, int y, int w, String value, Consumer<String> responder) {
+		return addWidget(makeEditBox(font, x, y, w, value, responder));
 	}
 
 	private int addButton(int x, int y, int minWidth, String label, Runnable onPress) {
@@ -493,12 +966,21 @@ public class MagicCircleDockPanel implements DockPanel {
 		return widget;
 	}
 
+	/**
+	 * \u56FA\u5B9A\u8868\u5934\u63A7\u4EF6\uFF1A\u4E0D\u767B\u8BB0 baseY\uFF0C{@link #updateWidget} \u56E0\u6B64\u4E0D\u4F1A\u968F\u6EDA\u52A8\u79FB\u52A8\u6216\u88C1\u526A\u5B83\u3002
+	 */
+	private <T extends AbstractWidget> T addFixedWidget(T widget) {
+		widgets.add(widget);
+		addWidgetCallback.accept(widget);
+		updateWidget(widget);
+		return widget;
+	}
+
 	private void refreshWidgetValues() {
 		suppress = true;
 		if (idBox != null) idBox.setValue(selectedId.toString());
 		if (circleDropdownButton != null) {
-			String text = fitToWidth(selectedId.toString(), Math.max(0, circleDropdownButton.getWidth() - 14));
-			circleDropdownButton.setMessage(Component.literal(text + " \u25BC"));
+			circleDropdownButton.setMessage(Component.literal(dropdownLabel(circleDropdownButton.getWidth())));
 		}
 		if (previewSizeBox != null) previewSizeBox.setValue(fmt(previewSize));
 		SpellComponent.Stroke stroke = currentStroke();
@@ -508,11 +990,28 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (strokeVertexBox != null) strokeVertexBox.setValue(String.valueOf(stroke == null ? 64 : stroke.vertex));
 		if (strokeCycleBox != null) strokeCycleBox.setValue(String.valueOf(stroke == null ? 1 : stroke.cycle));
 		if (strokeRuneBox != null) strokeRuneBox.setValue(String.valueOf(stroke == null ? 0 : stroke.rune));
+		if (strokeZBox != null) strokeZBox.setValue(fmt(stroke == null ? 0 : stroke.z));
+		if (strokeAngleBox != null) strokeAngleBox.setValue(fmt(stroke == null ? 0 : stroke.angle));
 		SpellComponent.ItemLayer item = currentItem();
 		if (itemIdBox != null) itemIdBox.setValue(item == null ? "minecraft:air" : item.item);
+		if (itemXBox != null) itemXBox.setValue(fmt(valueOf(item == null ? null : item.x_offset, 0)));
+		if (itemYBox != null) itemYBox.setValue(fmt(valueOf(item == null ? null : item.y_offset, 0)));
+		if (itemZBox != null) itemZBox.setValue(fmt(valueOf(item == null ? null : item.z_offset, 0)));
 		if (itemScaleBox != null) itemScaleBox.setValue(fmt(valueOf(item == null ? null : item.scale, 16)));
 		if (itemRotationBox != null) itemRotationBox.setValue(fmt(valueOf(item == null ? null : item.rotation, 0)));
 		if (itemAlphaBox != null) itemAlphaBox.setValue(fmt(valueOf(item == null ? null : item.alpha, 1)));
+		SpellComponent.TextLayer text = currentText();
+		if (textContentBox != null) textContentBox.setValue(text == null ? "" : text.text);
+		if (textColorBox != null) textColorBox.setValue(currentTextColor());
+		if (textScaleBox != null) textScaleBox.setValue(fmt(valueOf(text == null ? null : text.scale, 1)));
+		if (textRotationBox != null) textRotationBox.setValue(fmt(valueOf(text == null ? null : text.rotation, 0)));
+		if (textAlphaBox != null) textAlphaBox.setValue(fmt(valueOf(text == null ? null : text.alpha, 1)));
+		if (textSpacingBox != null) textSpacingBox.setValue(fmt(text == null ? 0 : text.char_spacing));
+		if (textRadiusBox != null) textRadiusBox.setValue(fmt(text == null ? 0 : text.radius));
+		if (textArcSpanBox != null) textArcSpanBox.setValue(fmt(text == null ? 0 : text.arc_span));
+		if (textXBox != null) textXBox.setValue(fmt(valueOf(text == null ? null : text.x_offset, 0)));
+		if (textYBox != null) textYBox.setValue(fmt(valueOf(text == null ? null : text.y_offset, 0)));
+		if (textZBox != null) textZBox.setValue(fmt(valueOf(text == null ? null : text.z_offset, 0)));
 		SpellComponent.Layer layer = currentLayer();
 		if (layerChildrenBox != null) layerChildrenBox.setValue(currentLayerChildren());
 		if (layerRadiusBox != null) layerRadiusBox.setValue(fmt(valueOf(layer == null ? null : layer.radius, 0)));
@@ -521,10 +1020,17 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (layerScaleBox != null) layerScaleBox.setValue(fmt(valueOf(layer == null ? null : layer.scale, 1)));
 		if (layerZBox != null) layerZBox.setValue(fmt(valueOf(layer == null ? null : layer.z_offset, 0)));
 		if (layerAlphaBox != null) layerAlphaBox.setValue(fmt(valueOf(layer == null ? null : layer.alpha, 1)));
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (resourceRadiusBox != null) resourceRadiusBox.setValue(fmt(valueOf(layout == null ? null : layout.radius, 44)));
+		if (resourceRadiusSpeedBox != null) resourceRadiusSpeedBox.setValue(fmt(deltaOf(layout == null ? null : layout.radius, 0)));
+		if (resourceRadiusAmplitudeBox != null) resourceRadiusAmplitudeBox.setValue(fmt(amplitudeOf(layout == null ? null : layout.radius, 0)));
+		if (resourceRadiusPeriodBox != null) resourceRadiusPeriodBox.setValue(fmt(periodOf(layout == null ? null : layout.radius, 0)));
+		if (resourceAngleBox != null) resourceAngleBox.setValue(fmt(valueOf(layout == null ? null : layout.angle, 0)));
+		if (resourceAngleSpeedBox != null) resourceAngleSpeedBox.setValue(fmt(deltaOf(layout == null ? null : layout.angle, 0)));
+		if (resourceAngleAmplitudeBox != null) resourceAngleAmplitudeBox.setValue(fmt(amplitudeOf(layout == null ? null : layout.angle, 0)));
+		if (resourceAnglePeriodBox != null) resourceAnglePeriodBox.setValue(fmt(periodOf(layout == null ? null : layout.angle, 0)));
+		if (resourceArcBox != null) resourceArcBox.setValue(fmt(layout == null ? 360 : layout.arc));
 		suppress = false;
-	}
-
-	private void syncRawFromComponent() {
 	}
 
 	private void openCircleDropdown() {
@@ -685,6 +1191,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	}
 
 	private void publishLocal(boolean syncRaw) {
+		lastSelectedId = selectedId;
 		component.invalidateCache();
 		YoukaisHomecoming.SPELL.getMerged().map.put(selectedId.toString(), component);
 		if (!linkedComponents.isEmpty()) {
@@ -702,6 +1209,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	private void onComponentEdited(String message) {
 		clampSelection();
 		publishLocal(true);
+		changed = true;
 		setStatus(message, 0xFF88FF88);
 	}
 
@@ -722,11 +1230,24 @@ public class MagicCircleDockPanel implements DockPanel {
 		if (parsed.id() != null) {
 			selectedId = parsed.id();
 		}
+		// 行结构（分区计数、直排/弧排字段集）依赖元素数量，数量变了必须重建行；
+		// 本方法在 raw json 面板里是逐键调用的，所以数量不变时只刷新取值。
+		int strokesBefore = component.strokes.size();
+		int itemsBefore = getItemCount();
+		int textsBefore = getTextCount();
+		int layersBefore = component.layers.size();
 		component = cloneComponent(parsed.component());
 		component.invalidateCache();
 		clampSelection();
 		publishLocal(false);
-		if (active) {
+		changed = true;
+		boolean structureChanged = strokesBefore != component.strokes.size()
+				|| itemsBefore != getItemCount()
+				|| textsBefore != getTextCount()
+				|| layersBefore != component.layers.size();
+		if (structureChanged) {
+			rebuildWidgets();
+		} else if (active) {
 			refreshWidgetValues();
 		}
 		setStatus("Magic Circle JSON applied", 0xFF88FF88);
@@ -816,32 +1337,35 @@ public class MagicCircleDockPanel implements DockPanel {
 		linkedComponents.clear();
 		selectedStroke = 0;
 		selectedItem = 0;
+		selectedText = 0;
 		selectedLayer = 0;
 		scrollOffset = 0;
 		publishLocal(true);
+		changed = true;
 		rebuildWidgets();
 		setStatus("Magic Circle created", 0xFF88FF88);
 	}
 
-	private void save(boolean global) {
+	private void save() {
 		ResourceLocation id = selectedId;
 		selectedId = id;
 		publishLocal(true);
 		Map<ResourceLocation, SpellComponent> components = componentsForSave();
-		if (global) {
-			SpellCircleEditorNetworkClient.exportGlobal(id, components);
-			setStatus("Magic Circle export sent", 0xFF88FF88);
-		} else {
-			SpellCircleEditorNetworkClient.save(id, components);
-			setStatus("Magic Circle save sent", 0xFF88FF88);
-		}
+		SpellCircleEditorNetworkClient.save(id, components);
+		changed = false;
+		setStatus("Magic Circle save sent", 0xFF88FF88);
 	}
 
 	private void deleteCircle() {
+		if (!canDeleteSelectedCircle()) {
+			setStatus("Built-in magic circles cannot be deleted", 0xFFFFCC88);
+			return;
+		}
 		ResourceLocation removed = selectedId;
 		List<ResourceLocation> before = circleIds();
 		int removedIndex = before.indexOf(removed);
 		SpellCircleEditorNetworkClient.delete(removed);
+		changed = false;
 		removeLocalCircle(removed);
 		ResourceLocation next = nextSelectionAfterDelete(removed, removedIndex);
 		if (next == null) {
@@ -851,6 +1375,7 @@ public class MagicCircleDockPanel implements DockPanel {
 			selectedStroke = 0;
 			selectedItem = 0;
 			selectedLayer = 0;
+			selectedText = 0;
 			scrollOffset = 0;
 			publishLocal(true);
 			rebuildWidgets();
@@ -858,6 +1383,10 @@ public class MagicCircleDockPanel implements DockPanel {
 			selectCircle(next);
 		}
 		setStatus("Magic Circle delete sent", 0xFF88FF88);
+	}
+
+	public boolean canDeleteSelectedCircle() {
+		return !SpellCircleConfig.isBuiltin(selectedId);
 	}
 
 	@Nullable
@@ -925,13 +1454,13 @@ public class MagicCircleDockPanel implements DockPanel {
 	private void prevStroke() {
 		if (component.strokes.isEmpty()) return;
 		selectedStroke = (selectedStroke - 1 + component.strokes.size()) % component.strokes.size();
-		refreshWidgetValues();
+		rebuildWidgets();
 	}
 
 	private void nextStroke() {
 		if (component.strokes.isEmpty()) return;
 		selectedStroke = (selectedStroke + 1) % component.strokes.size();
-		refreshWidgetValues();
+		rebuildWidgets();
 	}
 
 	private void addItem() {
@@ -952,13 +1481,233 @@ public class MagicCircleDockPanel implements DockPanel {
 	private void prevItem() {
 		if (component.items.isEmpty()) return;
 		selectedItem = (selectedItem - 1 + component.items.size()) % component.items.size();
-		refreshWidgetValues();
+		rebuildWidgets();
 	}
 
 	private void nextItem() {
 		if (component.items.isEmpty()) return;
 		selectedItem = (selectedItem + 1) % component.items.size();
-		refreshWidgetValues();
+		rebuildWidgets();
+	}
+
+	// --- Text layers ---
+
+	public int getTextCount() {
+		return component.texts == null ? 0 : component.texts.size();
+	}
+
+	@Nullable
+	private SpellComponent.TextLayer currentText() {
+		int count = getTextCount();
+		if (count == 0) return null;
+		return component.texts.get(Math.max(0, Math.min(selectedText, count - 1)));
+	}
+
+	private void addText() {
+		component.texts.add(defaultText());
+		selectedText = component.texts.size() - 1;
+		rebuildWidgets();
+		onComponentEdited("Text node added");
+	}
+
+	private void removeText() {
+		if (getTextCount() == 0) return;
+		component.texts.remove(Math.min(selectedText, component.texts.size() - 1));
+		clampSelection();
+		rebuildWidgets();
+		onComponentEdited("Text node removed");
+	}
+
+	private void prevText() {
+		int count = getTextCount();
+		if (count == 0) return;
+		selectedText = (selectedText - 1 + count) % count;
+		rebuildWidgets();
+	}
+
+	private void nextText() {
+		int count = getTextCount();
+		if (count == 0) return;
+		selectedText = (selectedText + 1) % count;
+		rebuildWidgets();
+	}
+
+	private String currentTextColor() {
+		SpellComponent.TextLayer text = currentText();
+		return text == null || text.color == null ? "0xFFFFFFFF" : text.color;
+	}
+
+	private void setTextContent(String value) {
+		SpellComponent.TextLayer text = currentText();
+		if (text == null) return;
+		text.text = value == null ? "" : value;
+		onComponentEdited("Text changed");
+	}
+
+	private void setTextColor(String value) {
+		SpellComponent.TextLayer text = currentText();
+		if (text == null) return;
+		if (!isValidColor(value)) {
+			setStatus("Invalid color", 0xFFFF8888);
+			return;
+		}
+		text.color = value;
+		onComponentEdited("Text color changed");
+	}
+
+	private void setTextValue(String value, String field, float fallback) {
+		SpellComponent.TextLayer text = currentText();
+		if (text == null) return;
+		float parsed = parseFloat(value, Float.NaN);
+		if (!Float.isFinite(parsed)) return;
+		switch (field) {
+			case "scale" -> text.scale = withValue(text.scale, fallback, parsed);
+			case "rotation" -> text.rotation = withValue(text.rotation, fallback, parsed);
+			case "alpha" -> text.alpha = withValue(text.alpha, fallback, parsed);
+			case "x" -> text.x_offset = withValue(text.x_offset, fallback, parsed);
+			case "y" -> text.y_offset = withValue(text.y_offset, fallback, parsed);
+			case "z" -> text.z_offset = withValue(text.z_offset, fallback, parsed);
+			default -> {
+				return;
+			}
+		}
+		onComponentEdited("Text changed");
+	}
+
+	private void setTextSpacing(String value) {
+		SpellComponent.TextLayer text = currentText();
+		if (text == null) return;
+		float parsed = parseFloat(value, Float.NaN);
+		if (!Float.isFinite(parsed)) return;
+		text.char_spacing = parsed;
+		onComponentEdited("Text changed");
+	}
+
+	private void setTextRadius(String value) {
+		SpellComponent.TextLayer text = currentText();
+		if (text == null) return;
+		float parsed = parseFloat(value, Float.NaN);
+		if (!Float.isFinite(parsed)) return;
+		boolean wasArc = text.radius > 0;
+		text.radius = Math.max(0, parsed);
+		publishLocal(true);
+		setStatus("Text changed", 0xFF88FF88);
+		// 直排与弧排的字段集合不同，跨越 0 时必须重建行。
+		if (wasArc != (text.radius > 0)) {
+			rebuildWidgets();
+		}
+	}
+
+	private void setTextArcSpan(String value) {
+		SpellComponent.TextLayer text = currentText();
+		if (text == null) return;
+		float parsed = parseFloat(value, Float.NaN);
+		if (!Float.isFinite(parsed)) return;
+		text.arc_span = parsed;
+		onComponentEdited("Text changed");
+	}
+
+	private void toggleTextFlip() {
+		SpellComponent.TextLayer text = currentText();
+		if (text == null) return;
+		text.flip = !text.flip;
+		rebuildWidgets();
+		onComponentEdited("Text changed");
+	}
+
+	private static SpellComponent.Value withValue(@Nullable SpellComponent.Value existing, float fallback, float value) {
+		SpellComponent.Value val = editableValue(existing, fallback);
+		val.value = value;
+		return val;
+	}
+
+	private void enableResourceLayout() {
+		SpellComponent.ResourceLayout layout = new SpellComponent.ResourceLayout();
+		layout.radius = value(defaultResourceRadius());
+		layout.angle = value(defaultResourceAngle());
+		layout.plane = selectedId.getPath().endsWith("_bomb") ? "xz" : "xy";
+		component.resource_layout = layout;
+		rebuildWidgets();
+		onComponentEdited("Resource layout enabled");
+	}
+
+	private void disableResourceLayout() {
+		component.resource_layout = null;
+		rebuildWidgets();
+		onComponentEdited("Resource layout disabled");
+	}
+
+	private void toggleResourcePlane() {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (layout == null) return;
+		layout.plane = "xz".equals(normalizedPlane(layout)) ? "xy" : "xz";
+		rebuildWidgets();
+		onComponentEdited("Resource plane changed");
+	}
+
+	private void toggleResourceFacing() {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (layout == null) return;
+		layout.counter_rotate = !layout.counter_rotate;
+		rebuildWidgets();
+		onComponentEdited("Resource facing changed");
+	}
+
+	private void setResourceValue(String text, String target, String field, float fallback) {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (layout == null) return;
+		float parsed = parseFloat(text, Float.NaN);
+		if (!Float.isFinite(parsed)) return;
+		SpellComponent.Value value = editableValue("radius".equals(target) ? layout.radius : layout.angle, fallback);
+		switch (field) {
+			case "value" -> value.value = parsed;
+			case "delta" -> value.delta = parsed;
+			case "amplitude" -> value.amplitude = parsed;
+			case "period" -> value.period = Math.max(0, parsed);
+			default -> { return; }
+		}
+		if ("radius".equals(target)) layout.radius = value;
+		else layout.angle = value;
+		onComponentEdited("Resource layout changed");
+	}
+
+	private void setResourceArc(String text) {
+		SpellComponent.ResourceLayout layout = component.resource_layout;
+		if (layout == null) return;
+		float parsed = parseFloat(text, Float.NaN);
+		if (!Float.isFinite(parsed)) return;
+		layout.arc = parsed;
+		onComponentEdited("Resource layout changed");
+	}
+
+	private float defaultResourceRadius() {
+		String path = selectedId.getPath();
+		if (path.endsWith("_power")) return 60;
+		if (path.endsWith("_points")) return 68;
+		return 44;
+	}
+
+	private float defaultResourceAngle() {
+		return selectedId.getPath().endsWith("_power") ? 180 : 0;
+	}
+
+	private static String normalizedPlane(SpellComponent.ResourceLayout layout) {
+		return "xz".equalsIgnoreCase(layout.plane) ? "xz" : "xy";
+	}
+
+	/**
+	 * 新建文字层的默认值。直接给成环绕排布 —— 这是魔法阵最典型的用法，
+	 * 点一下 +Text 就能立刻看到效果，而不是一行几乎看不见的小字。
+	 * 半径对齐默认组件的外圈笔画（48）。
+	 */
+	private static SpellComponent.TextLayer defaultText() {
+		SpellComponent.TextLayer text = new SpellComponent.TextLayer();
+		text.text = "妖々夢";
+		text.color = "0xFFFFFFFF";
+		text.scale = value(2);
+		text.alpha = value(1);
+		text.radius = 40;
+		return text;
 	}
 
 	private void addLayer() {
@@ -979,13 +1728,13 @@ public class MagicCircleDockPanel implements DockPanel {
 	private void prevLayer() {
 		if (component.layers.isEmpty()) return;
 		selectedLayer = (selectedLayer - 1 + component.layers.size()) % component.layers.size();
-		refreshWidgetValues();
+		rebuildWidgets();
 	}
 
 	private void nextLayer() {
 		if (component.layers.isEmpty()) return;
 		selectedLayer = (selectedLayer + 1) % component.layers.size();
-		refreshWidgetValues();
+		rebuildWidgets();
 	}
 
 	private void addChildComponent() {
@@ -1051,6 +1800,10 @@ public class MagicCircleDockPanel implements DockPanel {
 			stroke.radius = value;
 		} else if ("width".equals(field)) {
 			stroke.width = value;
+		} else if ("z".equals(field)) {
+			stroke.z = value;
+		} else if ("angle".equals(field)) {
+			stroke.angle = value;
 		}
 		onComponentEdited("Stroke changed");
 	}
@@ -1095,6 +1848,12 @@ public class MagicCircleDockPanel implements DockPanel {
 			SpellComponent.Value val = editableValue(item.alpha, fallback);
 			val.value = value;
 			item.alpha = val;
+		} else if ("x".equals(field)) {
+			item.x_offset = withValue(item.x_offset, fallback, value);
+		} else if ("y".equals(field)) {
+			item.y_offset = withValue(item.y_offset, fallback, value);
+		} else if ("z".equals(field)) {
+			item.z_offset = withValue(item.z_offset, fallback, value);
 		}
 		onComponentEdited("Item changed");
 	}
@@ -1290,12 +2049,17 @@ public class MagicCircleDockPanel implements DockPanel {
 		return stroke == null || stroke.color == null ? "0xFFFFFFFF" : stroke.color;
 	}
 
+	/**
+	 * 面板会在每次 Screen 重建（切模式、切语言等）时重新实例化。
+	 * 把上次选中的魔法阵 ID 记在会话级静态字段里，否则每次重建都会跳回第一个魔法阵。
+	 */
 	private void loadInitialSelection() {
 		List<ResourceLocation> ids = circleIds();
-		if (!ids.isEmpty()) {
-			selectedId = ids.get(0);
-			loadSelectedComponent();
+		if (ids.isEmpty()) {
+			return;
 		}
+		selectedId = lastSelectedId != null && ids.contains(lastSelectedId) ? lastSelectedId : ids.get(0);
+		loadSelectedComponent();
 	}
 
 	private void loadSelectedComponent() {
@@ -1308,6 +2072,11 @@ public class MagicCircleDockPanel implements DockPanel {
 				collectReferencedComponents(linkedComponents);
 			}
 		}
+		// Built-ins reset to their resource-pack source even when a saved editor
+		// override currently occupies the merged map. Custom circles keep their
+		// open-session snapshot, matching the spell editor's fallback contract.
+		SpellComponent builtin = SpellCircleConfig.builtinComponent(selectedId);
+		captureSnapshot(selectedId, builtin == null ? existing : builtin);
 		component = existing == null ? createDefaultComponent() : cloneComponent(existing);
 		clampSelection();
 		publishLocal(true);
@@ -1316,6 +2085,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	private void clampSelection() {
 		selectedStroke = component.strokes.isEmpty() ? 0 : Math.max(0, Math.min(selectedStroke, component.strokes.size() - 1));
 		selectedItem = component.items.isEmpty() ? 0 : Math.max(0, Math.min(selectedItem, component.items.size() - 1));
+		selectedText = getTextCount() == 0 ? 0 : Math.max(0, Math.min(selectedText, getTextCount() - 1));
 		selectedLayer = component.layers.isEmpty() ? 0 : Math.max(0, Math.min(selectedLayer, component.layers.size() - 1));
 	}
 
@@ -1422,6 +2192,14 @@ public class MagicCircleDockPanel implements DockPanel {
 		return value == null ? value(fallback) : value;
 	}
 
+	private static float amplitudeOf(@Nullable SpellComponent.Value value, float fallback) {
+		return value == null ? fallback : value.amplitude;
+	}
+
+	private static float periodOf(@Nullable SpellComponent.Value value, float fallback) {
+		return value == null ? fallback : value.period;
+	}
+
 	private static float valueOf(@Nullable SpellComponent.Value value, float fallback) {
 		return value == null ? fallback : value.value;
 	}
@@ -1478,8 +2256,9 @@ public class MagicCircleDockPanel implements DockPanel {
 		return Math.max(140, w - PADDING * 2 - SCROLLBAR_WIDTH - 2);
 	}
 
+	/** 正文顶部：让开固定表头（circle 下拉、ID、Preview 三行）与其分隔线。 */
 	private int contentTop() {
-		return y + PADDING;
+		return y + PADDING + ROW * 3 + 2;
 	}
 
 	private int contentBottom() {

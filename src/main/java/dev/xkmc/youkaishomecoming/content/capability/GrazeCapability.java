@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.events.DanmakuLastHitEvent;
@@ -28,6 +29,7 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
@@ -53,12 +55,21 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private static final int WEAK = 60, GRAZE_CACHE = 10;
 	private static final double ACTIVE_DANMAKU_HOST_SEARCH_RANGE = 128.0;
 
+	/** Power and point progress are rendered on tracked players' STG circles. */
+	@SerialClass.SerialField(toTracking = true)
+	private int power;
+	@SerialClass.SerialField(toTracking = true)
+	private int hidden;
 	@SerialClass.SerialField
-	private int power, hidden, step, bomb, life, invul, weak;
+	private int step, invul, weak;
+	@SerialClass.SerialField(toTracking = true)
+	private int bomb, life;
 	@SerialClass.SerialField
 	private Map<UUID, CombatSession> sessions = new LinkedHashMap<>();
 	@SerialClass.SerialField
 	private Set<UUID> playerOpponents = new LinkedHashSet<>();
+	@SerialClass.SerialField
+	private Set<String> brokenSpellCards = new LinkedHashSet<>();
 	@SerialClass.SerialField
 	private boolean forcedDanmakuCombat = false;
 	/** Debug/admin forced combat may ignore the spell-card inventory requirement. */
@@ -69,6 +80,34 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	/** True after resources have been seeded at least once; persists across combat sessions. */
 	@SerialClass.SerialField
 	private boolean resourcesPrimed = false;
+	/** Synced client projection used by inventory overlays. */
+	@SerialClass.SerialField(toTracking = true)
+	private boolean playerSpellActive = false;
+	/** Tracked-client projection; session ownership remains server-authoritative. */
+	@SerialClass.SerialField(toTracking = true)
+	private boolean trackedDanmakuCombat = false;
+	/** Synced client projection: the active spell currently owns player movement. */
+	@SerialClass.SerialField
+	private boolean spellMovementRestricted = false;
+	/** Synced key for the single active non-spell runtime, if any. */
+	@SerialClass.SerialField(toTracking = true)
+	private String activeNonSpellCardKey = "";
+	@SerialClass.SerialField(toTracking = true)
+	private boolean lastSpellUsedThisCombat = false;
+	@SerialClass.SerialField(toTracking = true)
+	private int lastSpellCooldownTicks = 0;
+	/** Synced denominator for the client inventory cooldown overlay. */
+	@SerialClass.SerialField(toTracking = true)
+	private int lastSpellCooldownTotalTicks = 0;
+	/** STG spell casts own invulnerability until their active caster ends. */
+	@SerialClass.SerialField
+	private boolean spellInvulnerable = false;
+	@SerialClass.SerialField
+	private int playerSpellHealth, playerSpellMaxHealth, playerSpellElapsedTicks, playerSpellDurationTicks;
+	@SerialClass.SerialField
+	private int playerSpellCompletedHealth;
+	@SerialClass.SerialField
+	private int[] playerSpellHealthSegments = new int[0];
 	@SerialClass.SerialField
 	private String stgCombatMode = StgCombatMode.NOVICE_AUTO_BOMB.name();
 
@@ -78,6 +117,24 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private int pvpStatusSyncCooldown = 0;
 	private boolean pvpStatusVisible = false;
 
+	public record SpellProgressStatus(int health, int maxHealth, int elapsedTicks, int durationTicks,
+			int completedHealth, int[] healthSegments) {
+		public static final SpellProgressStatus NONE = new SpellProgressStatus(0, 0, 0, 0, 0, new int[0]);
+
+		public SpellProgressStatus {
+			healthSegments = healthSegments == null ? new int[0] : healthSegments.clone();
+		}
+
+		@Override
+		public int[] healthSegments() {
+			return healthSegments.clone();
+		}
+
+		public boolean active() {
+			return maxHealth > 0 || durationTicks > 0;
+		}
+	}
+
 	@Override
 	public void onClone(boolean isWasDeath) {
 		if (isWasDeath) {
@@ -85,10 +142,23 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			step = 0;
 			invul = 0;
 			weak = 0;
+			playerSpellActive = false;
+			trackedDanmakuCombat = false;
+			spellMovementRestricted = false;
+			activeNonSpellCardKey = "";
+			lastSpellUsedThisCombat = false;
+			spellInvulnerable = false;
+			playerSpellHealth = 0;
+			playerSpellMaxHealth = 0;
+			playerSpellElapsedTicks = 0;
+			playerSpellDurationTicks = 0;
+			playerSpellCompletedHealth = 0;
+			playerSpellHealthSegments = new int[0];
 			forcedDanmakuCombat = false;
 			combatAdminBypass = false;
 			statusInitialized = false;
 			playerOpponents.clear();
+			brokenSpellCards.clear();
 			// Respawn restores default STG resources (not zero)
 			applyDefaultResources(true);
 			resourcesPrimed = true;
@@ -101,6 +171,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	 * never tops up depleted values on re-entry (that was abusable).
 	 */
 	public void initStatus() {
+		if (!statusInitialized && !isInDanmakuCombat()) {
+			brokenSpellCards.clear();
+			lastSpellUsedThisCombat = false;
+		}
 		if (!resourcesPrimed) {
 			applyDefaultResources(true);
 			resourcesPrimed = true;
@@ -143,9 +217,28 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	@Override
 	public void tick() {
 		if (player.level() instanceof ServerLevel && GrazeHelper.isManualCombatMode()
-				&& isInDanmakuCombat() && !combatAdminBypass && !GrazeHelper.hasSpellCard(player)) {
-			// No spell card left: leave STG without wiping life/bomb/power
+				&& forcedDanmakuCombat && !combatAdminBypass
+				&& sessions.isEmpty() && playerOpponents.isEmpty()
+				&& !SpellContainer.hasActiveSpell(player) && !GrazeHelper.hasSpellCard(player)) {
+			// Do not strand a manual-mode player after their last card ends. Active
+			// boss/PvP opponents keep combat alive so a cardless hit still costs life.
 			clearCombatState(true);
+		}
+		if (player.level() instanceof ServerLevel) {
+			boolean activeSpell = SpellContainer.hasActiveSpellCard(player);
+			if (playerSpellActive != activeSpell) {
+				playerSpellActive = activeSpell;
+				dirty = true;
+			}
+			boolean movementRestricted = SpellContainer.restrictsManualMovement(player);
+			if (spellMovementRestricted != movementRestricted) {
+				spellMovementRestricted = movementRestricted;
+				dirty = true;
+			}
+			if (spellInvulnerable && !activeSpell) {
+				spellInvulnerable = false;
+				dirty = true;
+			}
 		}
 		boolean activeCombat = isInDanmakuCombat();
 		if (tempGraze > 0) {
@@ -159,6 +252,19 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		}
 		if (invul > 0) invul--;
 		if (weak > 0) weak--;
+		// Spell-card cooldowns are intentionally combat-scoped: the cooldown is
+		// visible while the player is fighting, but only advances once the STG
+		// session has ended. This keeps a broken/cancelled card from becoming
+		// immediately reusable during the same battle.
+		if (!activeCombat && lastSpellCooldownTicks > 0) {
+			if (lastSpellCooldownTotalTicks <= 0) {
+				lastSpellCooldownTotalTicks = Math.max(lastSpellCooldownTicks,
+						YHModConfig.COMMON.lastSpellCooldownTicks.get());
+			}
+			lastSpellCooldownTicks--;
+			if (lastSpellCooldownTicks <= 0) lastSpellCooldownTotalTicks = 0;
+			dirty = true;
+		}
 		int maxPower = GrazeHelper.getMaxPower(player) * MAX_GRAZE;
 		int maxResource = GrazeHelper.getMaxResource(player) * SHARD;
 		if (power > maxPower) power = maxPower;
@@ -192,14 +298,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			syncPvpOpponentStatus(sl);
 		}
 		dirty = false;
-		if (player.level().isClientSide) {
-			GrazeHelper.globalInvulTime = invul;
-			GrazeHelper.globalForbidTime = Math.max(invul, weak);
-		}
 	}
 
 	public boolean graze() {
-		if (invul > 0) return false;
+		if (isInvul()) return false;
 		if (!EffectEventHandlers.canDanmakuCombat(player)) return false;
 		if (tempGraze < GRAZE_CACHE)
 			tempGraze++;
@@ -239,19 +341,51 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		}
 	}
 
-	public HitType performErase(YoukaiEntity e) {
+	public HitType performErase(YoukaiEntity e, float damage) {
 		if (!prepareDanmakuHitContext(e)) return HitType.ERASE;
-		return performDanmakuHit(e);
+		return performDanmakuHit(e, damage);
 	}
 
-	public HitType performDanmakuHit(@Nullable LivingEntity source) {
+	public HitType performDanmakuHit(@Nullable LivingEntity source, float damage) {
+		return performDanmakuHit(source, damage, false);
+	}
+
+	public HitType performDanmakuHit(@Nullable LivingEntity source, float damage,
+			boolean playerSpellProjectile) {
 		if (!hasInitializedCombatContext(source)) return HitType.NONE;
-		if (invul > 0) return HitType.INVUL;
+		// Timed miss/bomb i-frames still suppress repeated contacts. Spell-cast
+		// protection, however, must not hide a set_spell_health bar: that bar is
+		// the active spell's protection and needs to absorb the hit itself.
+		if (invul > 0 || spellInvulnerable && !SpellContainer.hasActiveSpellBar(player)) {
+			return HitType.INVUL;
+		}
 		int erased = eraseActiveDanmakuForHit(source);
-		if (getStgCombatMode().autoBombOnHit() && useBomb()) {
-			if (player instanceof ServerPlayer sp) {
-				MinecraftForge.EVENT_BUS.post(new StgBombEvent.Auto(sp, source, erased));
+		// An active player spell bar absorbs misses until it reaches zero. The breaking
+		// hit interrupts the card and costs one LIFE, without normal POWER loss.
+		if (player instanceof ServerPlayer sp) {
+			HitType spellHit = SpellContainer.consumeSpellBarHit(sp, source, damage, playerSpellProjectile);
+			if (spellHit != null) {
+				invul = YHModConfig.COMMON.spellHealthInvulTime.get();
+				dirty = true;
+				return spellHit;
 			}
+		}
+		// Auto-bomb is still a bomb use for certification purposes. Fail the
+		// trial, but leave resources untouched and absorb this contact so the
+		// player is not double-punished by a normal miss in the same tick.
+		if (player instanceof ServerPlayer sp) {
+			var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+					.getActiveTrial(sp);
+			if (trial != null && trial.isActive()) {
+				trial.onPlayerBomb();
+				invul = YHModConfig.COMMON.missInvulTime.get();
+				dirty = true;
+				return HitType.INVUL;
+			}
+		}
+		if (getStgCombatMode().autoBombOnHit() && player instanceof ServerPlayer sp
+				&& GrazeHelper.tryCastBombSpell(sp)) {
+			MinecraftForge.EVENT_BUS.post(new StgBombEvent.Auto(sp, source, erased));
 			return HitType.BOMB;
 		}
 		int maxLoss = (int) (YHModConfig.COMMON.maxPowerLossOnMiss.get() * MAX_GRAZE);
@@ -265,7 +399,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		weak = Math.max(weak, invul);
 		if (player instanceof ServerPlayer sp) {
 			YoukaisHomecoming.HANDLER.toClientPlayer(new GrazeHelper.GrazeToClient().set(1), sp);
-			SpellContainer.clear(sp);
+			SpellContainer.clearCombat(sp);
 		}
 		if (life < SHARD) {
 			if (source != null && MinecraftForge.EVENT_BUS.post(new DanmakuLastHitEvent(player, source))) {
@@ -283,13 +417,14 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		weak = duration;
 		dirty = true;
 	}
-	public boolean useBomb() {
-		if (!statusInitialized || !isInDanmakuCombat()) return false;
-		if (bomb < SHARD) return false;
-		bomb -= SHARD;
-		invul = YHModConfig.COMMON.bombInvulTime.get();
+
+	public void startPlayerSpell() {
+		playerSpellActive = true;
+		if (isInDanmakuCombat()) {
+			spellInvulnerable = true;
+		}
 		dirty = true;
-		return true;
+		sync();
 	}
 
 	public int eraseActiveDanmaku(double radius, boolean sessionsOnly) {
@@ -360,7 +495,12 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return !sessions.isEmpty();
 	}
 
+	public boolean hasYoukaiSessionOtherThan(UUID excludedId) {
+		return PlayerDanmakuPolicy.hasForeignSession(sessions.keySet(), excludedId);
+	}
+
 	public boolean isInDanmakuCombat() {
+		if (player != null && player.level().isClientSide) return trackedDanmakuCombat;
 		return forcedDanmakuCombat || !sessions.isEmpty() || !playerOpponents.isEmpty();
 	}
 
@@ -371,6 +511,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private void settleCombatIfIdle() {
 		if (isInDanmakuCombat()) return;
 		boolean changed = false;
+		if (!brokenSpellCards.isEmpty()) {
+			brokenSpellCards.clear();
+			changed = true;
+		}
 		if (statusInitialized) {
 			statusInitialized = false;
 			changed = true;
@@ -392,6 +536,44 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return playerOpponents.contains(id);
 	}
 
+	public boolean isSpellCardUnavailable(@Nullable String cardKey) {
+		return isInDanmakuCombat() && cardKey != null && !cardKey.isBlank()
+				&& brokenSpellCards.contains(cardKey);
+	}
+
+	public void disableSpellCardForCombat(@Nullable String cardKey) {
+		if (!isInDanmakuCombat() || cardKey == null || cardKey.isBlank()) return;
+		brokenSpellCards.add(cardKey);
+		dirty = true;
+		if (player instanceof ServerPlayer sp) {
+			sp.displayClientMessage(YHLangData.SPELL_BROKEN_UNAVAILABLE.get(), true);
+			sync();
+		}
+	}
+
+	public HitType breakSpellCardForCombat(@Nullable String cardKey, @Nullable LivingEntity source) {
+		if (cardKey != null && !cardKey.isBlank()) {
+			brokenSpellCards.add(cardKey);
+		}
+		dirty = true;
+		if (player instanceof ServerPlayer sp) {
+			sp.displayClientMessage(YHLangData.SPELL_BROKEN_UNAVAILABLE.get(), true);
+			// Match an ordinary LIFE loss: play the miss sound and defeat burst.
+			// The last LIFE continues into the authoritative beaten flow below.
+			YoukaisHomecoming.HANDLER.toClientPlayer(new GrazeHelper.GrazeToClient().set(1), sp);
+		}
+		if (life < SHARD) {
+			if (source != null && MinecraftForge.EVENT_BUS.post(new DanmakuLastHitEvent(player, source))) {
+				return HitType.LIFE;
+			}
+			exitDanmakuCombatOnLastHit(source);
+			return HitType.LAST;
+		}
+		life -= SHARD;
+		restoreInitialBomb();
+		return HitType.LIFE;
+	}
+
 	public void setForcedDanmakuCombat(boolean enabled) {
 		setForcedDanmakuCombat(enabled, false);
 	}
@@ -399,6 +581,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	public void setForcedDanmakuCombat(boolean enabled, boolean adminBypass) {
 		if (enabled) {
 			if (!isInDanmakuCombat()) {
+				if (player instanceof ServerPlayer sp) {
+					SpellContainer.clearOutsideCombat(sp);
+				}
 				initStatus();
 			}
 			forcedDanmakuCombat = true;
@@ -424,6 +609,8 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public void initSession(YoukaiEntity youkai) {
+		if (!GrazeHelper.canReceiveDanmaku(player)) return;
+		if (youkai instanceof SpellCertificationEntity) return;
 		if (!statusInitialized) initStatus();
 		if (sessions.containsKey(youkai.getUUID())) return;
 		if (!hasActiveSession(youkai)) {
@@ -449,6 +636,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public void addPlayerOpponent(Player target) {
 		if (target == player || target.level() != player.level()) return;
+		if (!GrazeHelper.canReceiveDanmaku(player) || !GrazeHelper.canReceiveDanmaku(target)) return;
 		if (!statusInitialized) initStatus();
 		if (playerOpponents.add(target.getUUID())) {
 			pvpStatusSyncCooldown = 0;
@@ -481,6 +669,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public boolean shouldHurt(LivingEntity le) {
 		if (le instanceof YoukaiEntity youkai) {
+			if (youkai instanceof SpellCertificationEntity) return true;
 			if (weak > 0) return false;
 			if (sessions.containsKey(youkai.getUUID())) return true;
 			if (GrazeHelper.isManualCombatMode()) {
@@ -519,6 +708,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	 * Establishes the explicit STG context for a legitimate first hostile hit.
 	 */
 	public boolean prepareDanmakuHitContext(@Nullable LivingEntity source) {
+		if (!GrazeHelper.canReceiveDanmaku(player)) return false;
 		if (forcedDanmakuCombat) {
 			if (!statusInitialized) initStatus();
 			return true;
@@ -627,7 +817,68 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	}
 
 	public boolean isInvul() {
-		return invul > 0;
+		return invul > 0 || spellInvulnerable;
+	}
+
+	public boolean isPlayerSpellActive() {
+		return playerSpellActive;
+	}
+
+	/** Returns the server-selected non-spell card key, or {@code null} when none is active. */
+	@Nullable
+	public String getActiveNonSpellCardKey() {
+		return activeNonSpellCardKey == null || activeNonSpellCardKey.isBlank() ? null : activeNonSpellCardKey;
+	}
+
+	public boolean isNonSpellActive(@Nullable String cardKey) {
+		return cardKey != null && cardKey.equals(getActiveNonSpellCardKey());
+	}
+
+	public void setActiveNonSpellCard(@Nullable String cardKey) {
+		String next = cardKey == null ? "" : cardKey;
+		if (next.equals(activeNonSpellCardKey)) return;
+		activeNonSpellCardKey = next;
+		dirty = true;
+		if (player instanceof ServerPlayer) sync();
+	}
+
+	public void clearActiveNonSpellCard() {
+		setActiveNonSpellCard(null);
+	}
+
+	public boolean canActivateLastSpell() {
+		return isInDanmakuCombat() && !lastSpellUsedThisCombat && lastSpellCooldownTicks <= 0;
+	}
+
+	/** Commit Last Spell activation atomically after its proxy entered the world. */
+	public void activateLastSpell() {
+		lastSpellUsedThisCombat = true;
+		lastSpellCooldownTotalTicks = Math.max(0, YHModConfig.COMMON.lastSpellCooldownTicks.get());
+		lastSpellCooldownTicks = lastSpellCooldownTotalTicks;
+		life = 0;
+		bomb = 0;
+		dirty = true;
+		if (player instanceof ServerPlayer) sync();
+	}
+
+	public int getLastSpellCooldownTicks() {
+		return Math.max(0, lastSpellCooldownTicks);
+	}
+
+	public float getLastSpellCooldownProgress(float partialTick) {
+		int total = Math.max(0, lastSpellCooldownTotalTicks);
+		if (total <= 0 || lastSpellCooldownTicks <= 0) return 0;
+		float remaining = Math.max(0, lastSpellCooldownTicks - Math.max(0, Math.min(1, partialTick)));
+		return Math.max(0, Math.min(1, remaining / total));
+	}
+
+	/** Client rendering predicate shared by the base player STG circle passes. */
+	public boolean shouldRenderPlayerStgCircle() {
+		return playerSpellActive || trackedDanmakuCombat || isInDanmakuCombat();
+	}
+
+	public boolean isSpellMovementRestricted() {
+		return spellMovementRestricted;
 	}
 
 	public boolean isWeak() {
@@ -646,13 +897,37 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return power;
 	}
 
+	/** Player-facing power level. Internally power is stored in hundredths. */
+	public double getPowerLevel() {
+		return Math.max(0, power) / (double) MAX_GRAZE;
+	}
+
 	public int getPoints() {
 		return hidden;
 	}
 
+	public SpellProgressStatus getPlayerSpellStatus() {
+		return new SpellProgressStatus(playerSpellHealth, playerSpellMaxHealth,
+				playerSpellElapsedTicks, playerSpellDurationTicks,
+				playerSpellCompletedHealth, playerSpellHealthSegments);
+	}
+
+	public void setPlayerSpellStatus(SpellProgressStatus status) {
+		playerSpellHealth = Math.max(0, status.health());
+		playerSpellMaxHealth = Math.max(0, status.maxHealth());
+		playerSpellElapsedTicks = Math.max(0, status.elapsedTicks());
+		playerSpellDurationTicks = Math.max(0, status.durationTicks());
+		playerSpellCompletedHealth = Math.max(0, status.completedHealth());
+		playerSpellHealthSegments = status.healthSegments();
+		dirty = true;
+	}
+
 	public void sync() {
-		if (player instanceof ServerPlayer sp)
+		if (player instanceof ServerPlayer sp) {
+			trackedDanmakuCombat = isInDanmakuCombat();
 			HOLDER.network.toClientSyncAll(sp);
+			HOLDER.network.toTracking(sp);
+		}
 	}
 
 	private void syncPvpOpponentStatus(ServerLevel sl) {
@@ -668,13 +943,15 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			if (!(sl.getEntity(id) instanceof ServerPlayer target)) continue;
 			var cap = HOLDER.get(target);
 			int maxResource = GrazeHelper.getMaxResource(target) * SHARD;
+			var spell = SpellContainer.activeSpellStatus(target);
 			YoukaisHomecoming.HANDLER.toClientPlayer(PvpDanmakuStatusToClient.status(
 					target.getId(),
 					target.getGameProfile().getName(),
 					cap.getLife(),
 					cap.getBomb(),
 					maxResource,
-					maxResource
+					maxResource,
+					spell
 			), sp);
 		}
 	}
@@ -794,7 +1071,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private int eraseActiveDanmakuForHit(@Nullable LivingEntity source) {
 		int erased = eraseActiveDanmaku(0, true);
 		if (source instanceof ServerPlayer sp) {
-			SpellContainer.clear(sp);
+			SpellContainer.clearCombat(sp);
 		}
 		return erased;
 	}
@@ -804,8 +1081,13 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		dirty = true;
 	}
 
-	private void exitDanmakuCombatOnLastHit() {
-		exitDanmakuCombatOnLastHit(null);
+	/**
+	 * Public defeat entry (used by the certification No-Hit failure): run the
+	 * full danmaku battle defeat flow — clear sessions, reset resources, apply
+	 * weak/beaten, fire {@link StgCombatEvent.Defeat}.
+	 */
+	public void defeat(@Nullable LivingEntity fatalSource) {
+		exitDanmakuCombatOnLastHit(fatalSource);
 	}
 
 	/**
@@ -827,18 +1109,24 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		forcedDanmakuCombat = false;
 		combatAdminBypass = false;
 		statusInitialized = false;
+		brokenSpellCards.clear();
+		playerSpellActive = false;
+		spellMovementRestricted = false;
+		activeNonSpellCardKey = "";
+		lastSpellUsedThisCombat = false;
+		spellInvulnerable = false;
 		hidden = 0;
 		step = 0;
 		weak = WEAK;
 		if (player instanceof ServerPlayer sp) {
 			SpellContainer.clear(sp);
-			sp.displayClientMessage(YHLangData.STG_DEFEAT.get(), true);
 			sp.playNotifySound(SoundEvents.PLAYER_DEATH, SoundSource.PLAYERS, 1.0f, 0.8f);
-			if (YHModConfig.COMMON.applyBeatenOnDefeat.get()) {
-				int duration = YHModConfig.COMMON.beatenDurationTicks.get();
-				if (duration > 0 && !sp.hasEffect(YHEffects.BEATEN.get())) {
-					sp.addEffect(new MobEffectInstance(YHEffects.BEATEN.get(), duration, 0));
-				}
+			int duration = YHModConfig.COMMON.beatenDurationTicks.get();
+			boolean enteredBeaten = duration > 0 && !sp.hasEffect(YHEffects.BEATEN.get())
+					&& sp.addEffect(new MobEffectInstance(YHEffects.BEATEN.get(), duration, 0));
+			if (enteredBeaten && sp.level().getGameRules().getBoolean(GameRules.RULE_SHOWDEATHMESSAGES)) {
+				var message = YHLangData.STG_DEFEAT.get(sp.getDisplayName());
+				sp.server.getPlayerList().broadcastSystemMessage(message, false);
 			}
 			MinecraftForge.EVENT_BUS.post(new StgCombatEvent.Defeat(sp, fatalSource, snap.ids(), snap.entities()));
 			sync();
@@ -853,7 +1141,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 		for (UUID opponentId : playerOpponents) {
 			if (level.getEntity(opponentId) instanceof ServerPlayer opponent) {
-				SpellContainer.clear(opponent);
+				SpellContainer.clearCombat(opponent);
 			}
 		}
 
@@ -924,7 +1212,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			if (player.level() instanceof ServerLevel level) {
 				for (UUID opponentId : playerOpponents) {
 					if (level.getEntity(opponentId) instanceof ServerPlayer opponent) {
-						SpellContainer.clear(opponent);
+						SpellContainer.clearCombat(opponent);
 					}
 				}
 			}
@@ -937,11 +1225,17 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		forcedDanmakuCombat = false;
 		combatAdminBypass = false;
 		statusInitialized = false;
+		brokenSpellCards.clear();
+		playerSpellActive = false;
+		spellMovementRestricted = false;
+		activeNonSpellCardKey = "";
+		lastSpellUsedThisCombat = false;
+		spellInvulnerable = false;
 		hidden = 0;
 		step = 0;
 		dirty = true;
 		if (player instanceof ServerPlayer sp) {
-			SpellContainer.clear(sp);
+			SpellContainer.clearCombat(sp);
 			sync();
 		}
 	}

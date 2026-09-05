@@ -132,6 +132,14 @@ public final class YHStg {
 		return YHStgApi.tryManualBomb(requirePlayer(player));
 	}
 
+	public static boolean castSpell(Object player) {
+		return YHStgApi.castSpell(requirePlayer(player));
+	}
+
+	public static boolean castSpell(Object player, Object stack) {
+		return YHStgApi.castSpell(requirePlayer(player), requireItemStack(stack));
+	}
+
 	public static int eraseActiveDanmaku(Object player, double radius, boolean sessionsOnly) {
 		return YHStgApi.eraseActiveDanmaku(requirePlayer(player), radius, sessionsOnly);
 	}

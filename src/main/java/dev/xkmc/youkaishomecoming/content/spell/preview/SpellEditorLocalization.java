@@ -15,8 +15,10 @@ import java.util.regex.Pattern;
 public final class SpellEditorLocalization {
 
 	private static final Pattern COUNT_SECTION = Pattern.compile("^(onEnter|onTick|onExit|onDamage) \\((\\d+)\\)$");
+	private static final Pattern COUNT_BRANCH = Pattern.compile("^(if_true|if_false|body|actions|onExpiry|onTrail|onHitEntity|onHitBlock) \\((\\d+)\\)$");
 	private static final Pattern ACTION_ROW = Pattern.compile("^([TFBEH]?)(\\d+: )(.*)$");
 	private static final Pattern NUMBER_PREFIX = Pattern.compile("^(\\d+:)(.+)$");
+	private static final String[] POLICY_MARKERS = {"[EXP] ", "[OP] ", "[Q] ", "[X] "};
 
 	private static Boolean chineseOverride;
 
@@ -57,6 +59,13 @@ public final class SpellEditorLocalization {
 			prefix = text.substring(0, 2);
 			text = text.substring(2);
 		}
+		for (String marker : POLICY_MARKERS) {
+			if (text.startsWith(marker)) {
+				prefix += marker;
+				text = text.substring(marker.length());
+				break;
+			}
+		}
 		if (text.startsWith("* ")) {
 			return italic + prefix + "* " + t(text.substring(2));
 		}
@@ -67,6 +76,10 @@ public final class SpellEditorLocalization {
 		Matcher count = COUNT_SECTION.matcher(text);
 		if (count.matches()) {
 			return italic + prefix + exact(count.group(1)) + " (" + count.group(2) + ")";
+		}
+		Matcher branch = COUNT_BRANCH.matcher(text);
+		if (branch.matches()) {
+			return italic + prefix + exact(branch.group(1)) + " (" + branch.group(2) + ")";
 		}
 		Matcher action = ACTION_ROW.matcher(text);
 		if (action.matches()) {
@@ -101,6 +114,12 @@ public final class SpellEditorLocalization {
 		}
 		if (text.startsWith("HP:")) {
 			return italic + prefix + "HP:" + text.substring("HP:".length());
+		}
+		if (text.startsWith("Power:")) {
+			return italic + prefix + "P点:" + text.substring("Power:".length());
+		}
+		if (text.startsWith("DmgInt:")) {
+			return italic + prefix + "受伤间隔:" + text.substring("DmgInt:".length());
 		}
 		if (text.startsWith("Caster Marker: ")) {
 			return italic + prefix + "施法者标记: " + t(text.substring("Caster Marker: ".length()));
@@ -190,9 +209,14 @@ public final class SpellEditorLocalization {
 		if (text.equals("clear_screen")) return "清屏";
 		if (text.startsWith("erase enemy r=")) return "擦除敌弹 r=" + text.substring("erase enemy r=".length());
 		if (text.equals("play_sound")) return "播放声音";
+		if (text.equals("camera_shake")) return "镜头抖动";
 		if (text.startsWith("show title ")) return text.replace("show title", "显示符卡标题");
 		if (text.startsWith("spell circle ")) return text.replace("spell circle", "魔法阵")
 				.replace(" size=", " 大小=");
+		if (text.startsWith("spell initialization ")) {
+			return text.replace("spell initialization", "符卡初始化")
+					.replace(" clear", " 清除").replace(" duration=", " 时长=");
+		}
 		if (text.startsWith("set ")) return "设置 " + text.substring(4);
 		if (text.startsWith("add ")) return "增加 " + text.substring(4);
 		if (text.startsWith("force ")) return "切换阶段 " + text.substring(6).replace("[clear]", "[清屏]").replace("[keep]", "[保留]");
@@ -224,13 +248,22 @@ public final class SpellEditorLocalization {
 			Map.entry("Unbind", "解绑"),
 			Map.entry("Editor <<", "编辑器 <<"),
 			Map.entry("Editor >>", "编辑器 >>"),
-			Map.entry("Apply", "应用"),
-			Map.entry("Export", "导出"),
+			Map.entry("Save & Refresh", "保存并刷新"),
+			Map.entry("Capture Card Face", "卡面拍摄"),
+			Map.entry("Card face capture ready", "卡面取景已开启，请点击取景框内的拍摄按钮"),
 			Map.entry("Prev", "上一个"),
 			Map.entry("Next", "下一个"),
 			Map.entry("New", "新建"),
 			Map.entry("Save", "保存"),
+			Map.entry("Delete", "删除"),
+			Map.entry("Built-in magic circles cannot be deleted", "内置魔法阵不可删除"),
+			Map.entry("Magic Circle id already exists", "魔法阵 ID 已存在"),
+			Map.entry("Magic Circle reset", "魔法阵已重置"),
+			Map.entry("No snapshot to reset to", "没有可还原的快照"),
+			Map.entry("Mode: Spell", "模式: 符卡"),
+			Map.entry("Mode: Circle", "模式: 魔法阵"),
 			Map.entry("Reset", "重置"),
+			Map.entry("Certify & Export", "认证并导出"),
 			Map.entry("Auto:ON", "自动:开"),
 			Map.entry("Auto:OFF", "自动:关"),
 			Map.entry("Help", "帮助"),
@@ -239,6 +272,11 @@ public final class SpellEditorLocalization {
 			Map.entry("[+]:All", "[+]:全部"),
 			Map.entry("[+]:Sel", "[+]:选中"),
 			Map.entry("RstLayout", "重置布局"),
+			Map.entry("More", "更多"),
+			Map.entry("AI Pilot Tier", "AI Pilot 等级"),
+			Map.entry("I Basic", "I 初阶"),
+			Map.entry("II Enhanced", "II 进阶"),
+			Map.entry("III Advanced", "III 高阶"),
 			Map.entry("Front (XY)", "正面 (XY)"),
 			Map.entry("Side (ZY)", "侧面 (ZY)"),
 			Map.entry("Top (XZ)", "顶面 (XZ)"),
@@ -285,6 +323,20 @@ public final class SpellEditorLocalization {
 			Map.entry("Set Entity Flag", "设置实体标志"),
 			Map.entry("YSM Render", "YSM 渲染"),
 			Map.entry("Teleport Random", "随机传送"),
+			Map.entry("Caster Moves", "施法者移动"),
+			Map.entry("Spell Initialization", "符卡初始化"),
+			Map.entry("Link Spell Title", "衔接符卡展示"),
+			Map.entry("Phase ID", "阶段 ID"),
+			Map.entry("Spell ID", "符卡 ID"),
+			Map.entry("Raw ID", "原始 ID"),
+			Map.entry("Timeout Target", "超时切换"),
+			Map.entry("Timeout Phase", "超时阶段"),
+			Map.entry("Timeout Spell", "超时符卡"),
+			Map.entry("Timeout Clear Screen", "超时清屏"),
+			Map.entry("Break Target", "击破切换"),
+			Map.entry("Break Phase", "击破阶段"),
+			Map.entry("Break Spell", "击破符卡"),
+			Map.entry("Break Clear Screen", "击破清屏"),
 			Map.entry("Noop", "空操作"),
 			Map.entry("Legacy Ticker", "旧版计时器"),
 			Map.entry("\u26A0 DISABLED (press D to enable)", "\u26A0 已禁用 (按 D 启用)"),
@@ -335,6 +387,7 @@ public final class SpellEditorLocalization {
 			Map.entry("Cols", "列数"),
 			Map.entry("Outer Cnt", "外层数量"),
 			Map.entry("Aim Mode", "瞄准模式"),
+			Map.entry("Random Axis", "随机轴"),
 			Map.entry("Axis Tilt", "轴倾斜"),
 			Map.entry("Tilt Angle", "倾斜角"),
 			Map.entry("Group Rotation (post-origin/tilt)", "整体旋转 (原点/倾斜后)"),
@@ -382,6 +435,7 @@ public final class SpellEditorLocalization {
 			Map.entry("Min Diff", "最低难度"),
 			Map.entry("Inner", "内部"),
 			Map.entry("Mode", "模式"),
+			Map.entry("Hit Context", "命中上下文"),
 			Map.entry("Command", "命令"),
 			Map.entry("Set / switch", "设置/切换"),
 			Map.entry("Clear overrides", "清除覆盖"),
@@ -418,6 +472,59 @@ public final class SpellEditorLocalization {
 			Map.entry("-Layer", "-层"),
 			Map.entry("+Child", "+子组件"),
 			Map.entry("Open Child", "打开子组件"),
+			Map.entry("+Text", "+文字"),
+			Map.entry("-Text", "-文字"),
+			Map.entry("Fire", "发射"),
+			Map.entry("Flow", "流程控制"),
+			Map.entry("Variables", "变量"),
+			Map.entry("Field", "清场"),
+			Map.entry("Presentation", "表现"),
+			Map.entry("Spell Flow", "符卡流程"),
+			Map.entry("Movement", "移动"),
+			Map.entry("Privileged", "特权"),
+			Map.entry("Salvaged broken nodes", "已抢救损坏节点"),
+			Map.entry("Fix broken nodes first", "请先修复损坏节点"),
+			Map.entry("⚠ BROKEN NODE (not executed, blocks certify/export)",
+					"⚠ 损坏节点（不会执行，且阻止认证/导出）"),
+			Map.entry("[Replace with another type]", "[替换为其他类型]"),
+			Map.entry("Error", "错误"),
+			Map.entry("Raw", "原文"),
+			Map.entry("Strokes", "笔画"),
+			Map.entry("Items", "物品"),
+			Map.entry("Texts", "文字"),
+			Map.entry("Layers", "层"),
+			Map.entry("Resource Layout", "资源阵列"),
+			Map.entry("Enable Resource Layout", "启用资源阵列"),
+			Map.entry("Disable", "停用"),
+			Map.entry("Plane: xy", "平面: XY"),
+			Map.entry("Plane: xz", "平面: XZ"),
+			Map.entry("Face: Fixed", "朝向: 固定"),
+			Map.entry("Face: Orbit", "朝向: 随轨道"),
+			Map.entry("Orbit Radius", "轨道半径"),
+			Map.entry("Radius Speed", "径向速度"),
+			Map.entry("Radius Swing", "径向摆幅"),
+			Map.entry("Radius Period", "径向周期"),
+			Map.entry("Start Angle", "起始角"),
+			Map.entry("Angular Speed", "角速度"),
+			Map.entry("Angle Swing", "角度摆幅"),
+			Map.entry("Angle Period", "角度周期"),
+			Map.entry("Slot Arc", "排列弧度"),
+			Map.entry("Width", "宽度"),
+			Map.entry("ID", "ID"),
+			Map.entry("Spacing", "字距"),
+			Map.entry("Arc Radius", "环绕半径"),
+			Map.entry("Arc Span", "环绕跨度"),
+			Map.entry("Read: Inward", "朝向: 向内"),
+			Map.entry("Read: Outward", "朝向: 向外"),
+			Map.entry("No strokes", "无笔画"),
+			Map.entry("Camera Shake", "镜头抖动"),
+			Map.entry("No items", "无物品"),
+			Map.entry("No texts", "无文字"),
+			Map.entry("No layers", "无层"),
+			Map.entry("Text node added", "已添加文字"),
+			Map.entry("Text node removed", "已移除文字"),
+			Map.entry("Text changed", "文字已变更"),
+			Map.entry("Text color changed", "文字颜色已变更"),
 			Map.entry("Magic Circle ready", "魔法阵就绪"),
 			Map.entry("Magic Circle loaded", "魔法阵已载入"),
 			Map.entry("Magic Circle created", "魔法阵已创建"),
@@ -449,7 +556,7 @@ public final class SpellEditorLocalization {
 			Map.entry("Preview size changed", "预览大小已变更"),
 			Map.entry("ON", "开"),
 			Map.entry("OFF", "关"),
-			Map.entry("Y", "是"),
+			Map.entry("Y", "Y"),
 			Map.entry("N", "否"),
 			Map.entry("N/A", "不可用"),
 			Map.entry("true", "真"),
@@ -484,10 +591,10 @@ public final class SpellEditorLocalization {
 			Map.entry("onHitEntity", "命中实体时"),
 			Map.entry("onHitBlock", "命中方块时"),
 			Map.entry("actions", "动作"),
-			Map.entry("target", "目标"),
+			Map.entry("target", "目标相对"),
 			Map.entry("direction_to_target", "朝向目标"),
 			Map.entry("fixed", "固定方向"),
-			Map.entry("caster_facing", "施法者朝向"),
+			Map.entry("caster_facing", "施法者视线绑定"),
 			Map.entry("angle_offset", "角度偏移"),
 			Map.entry("variable_angle", "变量角度"),
 			Map.entry("random_angle", "随机角度"),
@@ -521,6 +628,10 @@ public final class SpellEditorLocalization {
 			Map.entry("NORMAL", "普通"),
 			Map.entry("HARD", "困难"),
 			Map.entry("none", "无"),
+			Map.entry("phase", "阶段"),
+			Map.entry("spell", "符卡"),
+			Map.entry("set", "设置"),
+			Map.entry("clear", "清除"),
 			Map.entry("acceleration", "加速度"),
 			Map.entry("rotate", "旋转"),
 			Map.entry("polar", "极坐标"),
@@ -540,6 +651,10 @@ public final class SpellEditorLocalization {
 			Map.entry("as caster", "以施法者"),
 			Map.entry("console", "控制台"),
 			Map.entry("non cheat", "非作弊权限"),
+			Map.entry("default", "默认"),
+			Map.entry("as hit entity", "以命中实体"),
+			Map.entry("at entity pos", "位于实体坐标"),
+			Map.entry("at block pos", "位于方块命中坐标"),
 			Map.entry("white", "白色"),
 			Map.entry("orange", "橙色"),
 			Map.entry("magenta", "品红"),
@@ -562,15 +677,63 @@ public final class SpellEditorLocalization {
 			Map.entry("random", "随机"),
 			Map.entry("grid", "网格"),
 			Map.entry("nested ring", "嵌套环"),
-			Map.entry("caster", "施法者"),
+			Map.entry("caster", "施法者相对"),
 			Map.entry("target_pos", "目标位置"),
-			Map.entry("absolute", "绝对位置"),
+			Map.entry("absolute", "施法者世界轴（旧）"),
+			Map.entry("target_facing", "目标视线绑定"),
+			Map.entry("world", "绝对世界坐标"),
+			Map.entry("relative", "相对位移"),
 			Map.entry("self", "自身"),
 			Map.entry("pass", "穿透"),
 			Map.entry("bounce", "反弹"),
 			Map.entry("vanish", "消失"),
 			Map.entry("standard", "标准"),
 			Map.entry("abyssal", "深渊"),
+			Map.entry("Hit Control", "命中控制"),
+			Map.entry("Space", "坐标系"),
+			Map.entry("World", "世界"),
+			Map.entry("Local", "局部"),
+			Map.entry("Limit Vx", "限制 Vx"),
+			Map.entry("Limit Vy", "限制 Vy"),
+			Map.entry("Limit Vz", "限制 Vz"),
+			Map.entry("Limit Forward", "限制前进速度"),
+			Map.entry("Limit Right", "限制横向速度"),
+			Map.entry("Limit Up", "限制垂直速度"),
+			Map.entry("Term Vx", "终端 Vx"),
+			Map.entry("Term Vy", "终端 Vy"),
+			Map.entry("Term Vz", "终端 Vz"),
+			Map.entry("Term Forward", "终端前进速度"),
+			Map.entry("Term Right", "终端横向速度"),
+			Map.entry("Term Up", "终端垂直速度"),
+			Map.entry("Acc Forward", "前进加速度"),
+			Map.entry("Acc Right", "横向加速度"),
+			Map.entry("Acc Up", "垂直加速度"),
+			Map.entry("Bounce Source", "反弹 (Bounce)"),
+			Map.entry("Continue Source", "穿透 (Continue)"),
+			Map.entry("Expire Source", "结束弹幕寿命 (触发 onExpiry)"),
+			Map.entry("Discard Source", "抹除弹幕 (停止本次 onHit 后续节点)"),
+			Map.entry("Hold Source", "命中后冻结 (Hold Source)"),
+			Map.entry("bounce_source", "反弹 (Bounce)"),
+			Map.entry("continue_source", "穿透 (Continue)"),
+			Map.entry("expire_source", "结束弹幕寿命 (触发 onExpiry)"),
+			Map.entry("discard_source", "抹除弹幕 (停止本次 onHit 后续节点)"),
+			Map.entry("hold_source", "命中后冻结 (Hold Source)"),
+			Map.entry("onRelease", "释放时动作"),
+			Map.entry("Delay Ticks", "延迟刻数"),
+			Map.entry("Preset", "预设模式"),
+			Map.entry("Specular Reflect", "镜面反射"),
+			Map.entry("Bouncy Dampened", "弹性衰减"),
+			Map.entry("Surface Slide", "沿面偏转"),
+			Map.entry("Custom", "自定义"),
+			Map.entry("Normal Factor", "法向反弹系数 [-5, 0]"),
+			Map.entry("Tangent Factor", "切向保留系数 [-5, 5]"),
+			Map.entry("Tangent Offset X (World)", "切向偏置 X (世界坐标)"),
+			Map.entry("Tangent Offset Y (World)", "切向偏置 Y (世界坐标)"),
+			Map.entry("Tangent Offset Z (World)", "切向偏置 Z (世界坐标)"),
+			Map.entry("Reset Speed", "重设速度大小"),
+			Map.entry("New Speed", "重设速度值"),
+			Map.entry("Max Bounces", "最大反弹次数"),
+			Map.entry("Retarget", "反弹重瞄"),
 			Map.entry("Safety Limit", "安全上限"),
 			Map.entry("Caster HP", "施法者 HP"),
 			Map.entry("Viewport Range", "视口范围"),
@@ -595,10 +758,18 @@ public final class SpellEditorLocalization {
 			Map.entry("Spell:", "符卡:"),
 			Map.entry("Display Name", "显示名"),
 			Map.entry("New Spell ID", "新符卡 ID"),
+			Map.entry("Apply", "应用"),
 			Map.entry("Cancel", "取消"),
+			Map.entry("Done", "完成"),
+			Map.entry("Move Origin", "移动原点"),
+			Map.entry("Rotate Group", "旋转弹幕组"),
+			Map.entry("Edit Origin", "编辑原点"),
+			Map.entry("Group Rotation", "弹幕组旋转"),
 			Map.entry("Select an existing spell or enter a new spell id and press Enter.", "选择已有符卡，或输入新的符卡 ID 后按 Enter。"),
 			Map.entry("SELECTED — switch to orthographic to edit", "已选中 - 切换到正交模式编辑"),
 			Map.entry("Perspective  LMB look · RMB orbit · MMB pan · wheel speed", "透视  左键视角 · 右键环绕 · 中键平移 · 滚轮调速"),
+			Map.entry("VIEWPORT FOCUS  E play/pause · R replay", "视口已聚焦  E 播放/暂停 · R 重新播放"),
+			Map.entry("F next tick (pause) · Esc release focus", "F 下一刻（并暂停）· Esc 取消视口焦点"),
 			Map.entry("ROTATE X  LMB drag: rotate", "旋转 X  左键拖拽: 旋转"),
 			Map.entry("ROTATE Y  LMB drag: rotate", "旋转 Y  左键拖拽: 旋转"),
 			Map.entry("ROTATE Z  LMB drag: rotate", "旋转 Z  左键拖拽: 旋转"),

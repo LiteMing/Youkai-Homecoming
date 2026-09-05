@@ -3,10 +3,12 @@ package dev.xkmc.youkaishomecoming.events;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.xkmc.l2damagetracker.contents.curios.AttrTooltip;
+import dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlClient;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.CombatProgress;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
+import dev.xkmc.youkaishomecoming.content.spell.client.CameraShakeManager;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.Minecraft;
@@ -20,6 +22,7 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.ModList;
 
 @Mod.EventBusSubscriber(value = Dist.CLIENT, modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ClientEventHandlers {
@@ -33,8 +36,13 @@ public class ClientEventHandlers {
 		float lv = drunkLevel();
 		tilt = Mth.lerp(0.03f, tilt, lv);
 		if (event.phase == TickEvent.Phase.END) {
+			ClassicControlClient.tick();
+			if (Minecraft.getInstance().level == null) CameraShakeManager.clear();
+			else CameraShakeManager.tick();
 			syncBeatenPose();
-			dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();
+			if (ModList.get().isLoaded("exposure")) {
+				dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();
+			}
 		}
 	}
 
@@ -55,6 +63,7 @@ public class ClientEventHandlers {
 
 	@SubscribeEvent
 	public static void onInput(MovementInputUpdateEvent event) {
+		ClassicControlClient.applyMovement(event);
 		if (oTilt > 0.01) {
 			float t = oTilt;
 			float time = event.getEntity().tickCount;
@@ -104,7 +113,21 @@ public class ClientEventHandlers {
 									 @org.jetbrains.annotations.Nullable ResourceLocation spellId,
 									 @org.jetbrains.annotations.Nullable ResourceLocation phaseId,
 									 int phaseTick,
-									 boolean inDanmakuCombat) {
+									 boolean inDanmakuCombat,
+								 int spellMaxHealth, int spellElapsedTicks, int spellDurationTicks) {
+		setSpellState(entityId, spellId, phaseId, phaseTick, inDanmakuCombat,
+				spellMaxHealth, spellElapsedTicks, spellDurationTicks, spellMaxHealth, 0, 1,
+				spellMaxHealth > 0 ? new int[]{spellMaxHealth} : new int[0]);
+	}
+
+	public static void setSpellState(int entityId,
+								 @org.jetbrains.annotations.Nullable ResourceLocation spellId,
+								 @org.jetbrains.annotations.Nullable ResourceLocation phaseId,
+								 int phaseTick,
+								 boolean inDanmakuCombat,
+								 int spellMaxHealth, int spellElapsedTicks, int spellDurationTicks,
+								 int spellHealthTotal, int spellHealthCompleted, int spellHealthSegmentCount,
+								 int[] spellHealthSegments) {
 		var level = Minecraft.getInstance().level;
 		if (level == null) return;
 		if (level.getEntity(entityId) instanceof YoukaiEntity e) {
@@ -112,6 +135,15 @@ public class ClientEventHandlers {
 			e.clientPhaseId = phaseId;
 			e.clientPhaseTick = phaseTick;
 			e.clientInDanmakuCombat = inDanmakuCombat;
+			e.clientSpellMaxHealth = Math.max(0, spellMaxHealth);
+			e.clientSpellElapsedTicks = Math.max(0, spellElapsedTicks);
+			e.clientSpellDurationTicks = Math.max(0, spellDurationTicks);
+			e.clientSpellHealthTotal = Math.max(0, spellHealthTotal);
+			e.clientSpellHealthCompleted = Math.max(0, spellHealthCompleted);
+			e.clientSpellHealthSegmentCount = Math.max(0, spellHealthSegmentCount);
+			e.clientSpellHealthSegments = spellHealthSegments == null ? new int[0] : spellHealthSegments.clone();
+			var player = Minecraft.getInstance().player;
+			e.clientSpellStateReceivedTick = player == null ? 0 : player.tickCount;
 		}
 	}
 }

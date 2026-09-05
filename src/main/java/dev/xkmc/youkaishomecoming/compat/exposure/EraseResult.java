@@ -1,10 +1,20 @@
 package dev.xkmc.youkaishomecoming.compat.exposure;
 
+import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.render.virtual.DanmakuManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * Collects statistics about danmaku erased during a photo capture.
@@ -17,13 +27,26 @@ public class EraseResult {
 	private final Map<String, Integer> typeCount = new HashMap<>();
 	/** Map of color name → count erased. e.g. "red" → 10, "blue" → 5 */
 	private final Map<String, Integer> colorCount = new HashMap<>();
+	private final Map<ResourceLocation, Integer> sourceCount = new HashMap<>();
+	private final Map<ResourceLocation, Integer> committedSourceCount = new HashMap<>();
+	private final List<Candidate> candidates = new ArrayList<>();
+	private final IdentityHashMap<SimplifiedProjectile, Boolean> seen = new IdentityHashMap<>();
+	private boolean committed;
 
 	public void record(String typeName, String colorName) {
+		record(typeName, colorName, null, null, null);
+	}
+
+	public void record(String typeName, String colorName, @Nullable ResourceLocation source,
+			@Nullable LivingEntity trackingHost, @Nullable SimplifiedProjectile projectile) {
+		if (projectile != null && seen.put(projectile, Boolean.TRUE) != null) return;
 		totalErased++;
 		typeCount.merge(typeName, 1, Integer::sum);
 		if (colorName != null && !colorName.isEmpty()) {
 			colorCount.merge(colorName, 1, Integer::sum);
 		}
+		if (source != null) sourceCount.merge(source, 1, Integer::sum);
+		if (projectile != null) candidates.add(new Candidate(projectile, trackingHost, source));
 	}
 
 	public int getTotal() {
@@ -36,6 +59,69 @@ public class EraseResult {
 
 	public int remaining(int limit) {
 		return limit - totalErased;
+	}
+
+	/** Select an already-bound source, or the unique most common source for a blank film. */
+	@Nullable
+	public ResourceLocation selectReplicaSource(@Nullable ResourceLocation boundSource) {
+		return selectReplicaSource(boundSource, ignored -> true);
+	}
+
+	@Nullable
+	public ResourceLocation selectReplicaSource(@Nullable ResourceLocation boundSource,
+			Predicate<ResourceLocation> eligible) {
+		Map<ResourceLocation, Integer> counts = committed ? committedSourceCount : sourceCount;
+		if (boundSource != null) return counts.containsKey(boundSource) && eligible.test(boundSource)
+				? boundSource : null;
+		ResourceLocation best = null;
+		int bestCount = 0;
+		boolean tied = false;
+		for (var entry : counts.entrySet()) {
+			if (!eligible.test(entry.getKey())) continue;
+			if (entry.getValue() > bestCount) {
+				best = entry.getKey();
+				bestCount = entry.getValue();
+				tied = false;
+			} else if (entry.getValue() == bestCount) {
+				tied = true;
+			}
+		}
+		return tied ? null : best;
+	}
+
+	public boolean hasLiveCandidates() {
+		return candidates.stream().anyMatch(candidate -> {
+			SimplifiedProjectile projectile = candidate.projectile();
+			return !projectile.isRemoved() && projectile.isValid();
+		});
+	}
+
+	public int countForSource(ResourceLocation source) {
+		return (committed ? committedSourceCount : sourceCount).getOrDefault(source, 0);
+	}
+
+	/** Erase exactly the projectiles counted before Exposure serialized the frame. */
+	public int eraseCandidates(Player player) {
+		int erased = 0;
+		committedSourceCount.clear();
+		try {
+			for (Candidate candidate : candidates) {
+				SimplifiedProjectile projectile = candidate.projectile();
+				if (projectile.isRemoved() || !projectile.isValid()) continue;
+				DanmakuManager.setTrackingOverride(candidate.trackingHost());
+				projectile.erase(player);
+				if (!projectile.isRemoved() && projectile.isValid()) continue;
+				erased++;
+				if (candidate.source() != null) {
+					committedSourceCount.merge(candidate.source(), 1, Integer::sum);
+				}
+			}
+			DanmakuManager.flushErases();
+		} finally {
+			committed = true;
+			DanmakuManager.setTrackingOverride(null);
+		}
+		return erased;
 	}
 
 	/**
@@ -122,5 +208,9 @@ public class EraseResult {
 	/** Get color count map for packet serialization. */
 	public Map<String, Integer> getColorCount() {
 		return colorCount;
+	}
+
+	private record Candidate(SimplifiedProjectile projectile, @Nullable LivingEntity trackingHost,
+			@Nullable ResourceLocation source) {
 	}
 }

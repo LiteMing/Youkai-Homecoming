@@ -12,6 +12,7 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 public class HelpDockPanel implements DockPanel {
 
 	private static final String KEY_PREFIX = YoukaisHomecoming.MODID + ".spell_editor.help.";
+	private static final int SURVIVAL_LINE_COUNT = 9;
 	private static final int LINE_COUNT = 110;
 
 	private int x, y, w, h;
@@ -25,11 +26,16 @@ public class HelpDockPanel implements DockPanel {
 		String lang = Minecraft.getInstance().getLanguageManager().getSelected();
 		if (cachedLines != null && lang.equals(cachedLang)) return cachedLines;
 		cachedLang = lang;
-		cachedLines = new String[LINE_COUNT];
+		cachedLines = new String[SURVIVAL_LINE_COUNT + LINE_COUNT];
+		for (int i = 0; i < SURVIVAL_LINE_COUNT; i++) {
+			String key = KEY_PREFIX + "survival." + i;
+			String val = I18n.get(key);
+			cachedLines[i] = val.equals(key) ? "" : val;
+		}
 		for (int i = 0; i < LINE_COUNT; i++) {
 			String key = KEY_PREFIX + "line." + i;
 			String val = I18n.get(key);
-			cachedLines[i] = val.equals(key) ? "" : val;
+			cachedLines[SURVIVAL_LINE_COUNT + i] = val.equals(key) ? "" : val;
 		}
 		return cachedLines;
 	}

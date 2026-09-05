@@ -13,7 +13,9 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.preview.ActionListPanel;
+import dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
+import dev.xkmc.youkaishomecoming.content.spell.preview.SpellJsonSalvage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -41,15 +43,19 @@ import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @OnlyIn(Dist.CLIENT)
 public class RawJsonDockPanel implements DockPanel {
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final int PADDING = 4;
-	private static final int STATUS_HEIGHT = 13;
+	private static final int STATUS_HEIGHT = 18;
+	private static final int LINE_NUMBER_WIDTH = 32;
 	private static final int MAX_JSON_LENGTH = 1_048_576;
 	private static final String DRAFT_DIR = "youkaishomecoming_spells/raw_json_drafts";
+	private static final Pattern ERROR_LINE = Pattern.compile("(?i)\\bline\\s+(\\d+)");
 
 	private final Supplier<SpellDefinition> definitionSupplier;
 	private final Supplier<ResourceLocation> phaseSupplier;
@@ -71,6 +77,7 @@ public class RawJsonDockPanel implements DockPanel {
 	private ContentMode displayedMode;
 	private String status = "";
 	private int statusColor = 0xFF888888;
+	private int errorLine = -1;
 
 	public enum ContentMode {
 		SPELL,
@@ -147,9 +154,42 @@ public class RawJsonDockPanel implements DockPanel {
 		syncEditorFromContext();
 		Font font = Minecraft.getInstance().font;
 		String msg = SpellEditorLocalization.t(status);
-		int maxWidth = Math.max(0, w - PADDING * 2);
-		msg = font.plainSubstrByWidth(msg, maxWidth);
-		graphics.drawString(font, msg, x + PADDING, y + h - STATUS_HEIGHT, statusColor, false);
+		if (editor != null) {
+			editor.setDiagnostics(errorLine, statusColor == 0xFFFF8888 ? msg : "", statusColor);
+			renderLineNumbers(graphics, font);
+		}
+		// Keep diagnostics in a dedicated strip inside the Raw JSON dock. The
+		// multiline widget's gray character counter remains above this strip.
+		if (statusColor != 0xFFFF8888 || msg.isBlank()) {
+			int maxWidth = Math.max(0, w - PADDING * 2);
+			msg = font.plainSubstrByWidth(msg, maxWidth);
+			graphics.drawString(font, msg, x + PADDING, y + h - STATUS_HEIGHT + 4, statusColor, false);
+		}
+	}
+
+	private void renderLineNumbers(GuiGraphics graphics, Font font) {
+		if (editor == null || !editor.visible) {
+			return;
+		}
+		int lineCount = editor.lineCount();
+		int firstLine = editor.firstVisibleLine();
+		int lineOffset = editor.visibleLineOffset();
+		int visibleLines = Math.max(1, editor.getHeight() / RawJsonEditBox.LINE_HEIGHT + 2);
+		int numberRight = editor.getX() - 6;
+		for (int i = 0; i < visibleLines; i++) {
+			int line = firstLine + i + 1;
+			if (line > lineCount) {
+				break;
+			}
+			int lineY = editor.getY() + editor.textTop() + i * RawJsonEditBox.LINE_HEIGHT - lineOffset;
+			if (lineY + RawJsonEditBox.LINE_HEIGHT < editor.getY()
+					|| lineY > editor.getY() + editor.getHeight()) {
+				continue;
+			}
+			int color = line == errorLine ? 0xFFFF7777 : 0xFF777777;
+			String label = Integer.toString(line);
+			graphics.drawString(font, label, numberRight - font.width(label), lineY, color, false);
+		}
 	}
 
 	@Override
@@ -238,7 +278,7 @@ public class RawJsonDockPanel implements DockPanel {
 	}
 
 	private int editorX() {
-		return x + PADDING;
+		return x + PADDING + LINE_NUMBER_WIDTH;
 	}
 
 	private int editorY() {
@@ -246,7 +286,7 @@ public class RawJsonDockPanel implements DockPanel {
 	}
 
 	private int editorWidth() {
-		return Math.max(10, w - PADDING * 2);
+		return Math.max(10, w - PADDING * 2 - LINE_NUMBER_WIDTH);
 	}
 
 	private int editorHeight() {
@@ -352,7 +392,7 @@ public class RawJsonDockPanel implements DockPanel {
 			Optional<SpellDefinition> parsed = SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
 					.resultOrPartial(msg -> parseError[0] = msg);
 			if (parsed.isEmpty()) {
-				markDraft(text, errorStatus("Invalid spell JSON", parseError[0]));
+				applySalvageOrDraft(text, json, errorStatus("Invalid spell JSON", parseError[0]));
 				return;
 			}
 			String[] encodeError = new String[1];
@@ -365,7 +405,7 @@ public class RawJsonDockPanel implements DockPanel {
 			DroppedField droppedField = findDroppedField(json, encoded.get(), "$");
 			if (droppedField != null) {
 				String key = droppedField.parseError ? "Invalid spell JSON" : "Raw JSON has unsupported field";
-				markDraft(text, errorStatus(key, droppedField.message()));
+				applySalvageOrDraft(text, json, errorStatus(key, droppedField.message()));
 				return;
 			}
 			dirtyInvalidDraft = false;
@@ -384,6 +424,37 @@ public class RawJsonDockPanel implements DockPanel {
 		} catch (RuntimeException e) {
 			markDraft(text, errorStatus("Invalid spell JSON", e.getMessage()));
 		}
+	}
+
+	/**
+	 * 严格解析失败后的抢救回退。
+	 *
+	 * <p>逐个动作重解析，把解析不了的片段降级成惰性占位节点，让节点树照常建立，
+	 * 用户可以直接定位、替换或删除坏节点，而不是只看到一行错误信息。
+	 * 抢救不了（骨架本身坏了）时仍走原本的硬错误路径。
+	 *
+	 * <p>草稿文件照常写入，原文永远不会因为抢救而丢失。
+	 */
+	private void applySalvageOrDraft(String text, JsonElement json, String strictError) {
+		SpellJsonSalvage.Result salvaged;
+		try {
+			salvaged = SpellJsonSalvage.salvage(json, text);
+		} catch (RuntimeException e) {
+			salvaged = null;
+		}
+		if (salvaged == null || salvaged.brokenCount() == 0) {
+			markDraft(text, strictError);
+			return;
+		}
+		// 抢救过的定义必须留下草稿：它含有占位节点，不能被当成一份干净的存档。
+		dirtyInvalidDraft = true;
+		dirtyDraftMessage = strictError;
+		dirtyDraftPath = saveDraftFile(text);
+		highlightedPath = null;
+		applyDefinition.accept(salvaged.definition());
+		String detail = salvaged.messages().isEmpty() ? "" : "  " + salvaged.messages().get(0);
+		setStatus(SpellEditorLocalization.t("Salvaged broken nodes") + ": "
+				+ salvaged.brokenCount() + detail, 0xFFFFCC66);
 	}
 
 	private void onMagicCircleJsonChanged(String text) {
@@ -412,6 +483,19 @@ public class RawJsonDockPanel implements DockPanel {
 
 	public Path dirtyDraftPath() {
 		return dirtyDraftPath;
+	}
+
+	/** Drop an invalid local draft when the user explicitly abandons editor edits. */
+	public void discardDraft() {
+		if (dirtyDraftPath != null) {
+			try {
+				Files.deleteIfExists(dirtyDraftPath);
+			} catch (IOException ignored) {
+			}
+		}
+		dirtyInvalidDraft = false;
+		dirtyDraftMessage = "";
+		dirtyDraftPath = null;
 	}
 
 	private void markDraft(String text, String message) {
@@ -1004,6 +1088,23 @@ public class RawJsonDockPanel implements DockPanel {
 	private void setStatus(String status, int color) {
 		this.status = status == null ? "" : status;
 		this.statusColor = color;
+		this.errorLine = color == 0xFFFF8888 ? extractErrorLine(this.status) : -1;
+	}
+
+	private static int extractErrorLine(String message) {
+		if (message == null || message.isBlank()) {
+			return -1;
+		}
+		Matcher matcher = ERROR_LINE.matcher(message);
+		if (!matcher.find()) {
+			return -1;
+		}
+		try {
+			int line = Integer.parseInt(matcher.group(1));
+			return line > 0 ? line : -1;
+		} catch (NumberFormatException ignored) {
+			return -1;
+		}
 	}
 
 	private record FormattedJson(String text, int highlightStart, int highlightEnd) {
@@ -1018,10 +1119,93 @@ public class RawJsonDockPanel implements DockPanel {
 		private final List<String> redoHistory = new ArrayList<>();
 		private String lastHistoryValue = "";
 		private boolean applyingHistory;
+		private int diagnosticLine = -1;
+		private String diagnosticMessage = "";
+		private int diagnosticColor = 0xFFFF7777;
+		private int lineCount = 1;
 
 		private RawJsonEditBox(Font font, int x, int y, int width, int height,
 							   Component placeholder, Component message) {
 			super(font, x, y, width, height, placeholder, message);
+		}
+
+		private void setDiagnostics(int line, String message, int color) {
+			diagnosticLine = line;
+			diagnosticMessage = message == null ? "" : message;
+			diagnosticColor = color;
+		}
+
+		@Override
+		public void setFocused(boolean focused) {
+			if (focused) {
+				EditorTextBoxes.clearActiveSelection();
+			} else {
+				MultilineTextField textField = textField();
+				if (textField != null) {
+					collapseSelection(textField);
+				}
+			}
+			super.setFocused(focused);
+		}
+
+		@Override
+		public void setValue(String value) {
+			super.setValue(value);
+			lineCount = countLines(value);
+		}
+
+		private int lineCount() {
+			return lineCount;
+		}
+
+		private static int countLines(String value) {
+			if (value == null || value.isEmpty()) {
+				return 1;
+			}
+			int count = 1;
+			for (int i = 0; i < value.length(); i++) {
+				if (value.charAt(i) == '\n') {
+					count++;
+				}
+			}
+			return count;
+		}
+
+		@Override
+		public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+			super.renderWidget(graphics, mouseX, mouseY, partialTick);
+			if (diagnosticLine > 0) {
+				int lineY = getY() + innerPadding() + (diagnosticLine - 1) * LINE_HEIGHT
+						- (int) scrollAmount();
+				if (lineY + LINE_HEIGHT >= getY() && lineY <= getY() + getHeight()) {
+					// Draw after vanilla text so the diagnostic remains visible while
+					// preserving the source text under a translucent red tint.
+					graphics.fill(getX(), lineY, getX() + getWidth(), lineY + LINE_HEIGHT, 0x44FF3333);
+					graphics.fill(getX(), lineY, getX() + 2, lineY + LINE_HEIGHT, 0xFFFF5555);
+				}
+			}
+			if (!diagnosticMessage.isBlank()) {
+				int stripY = getY() + getHeight() - 12;
+				int textRight = getX() + getWidth() - 52;
+				graphics.fill(getX() + 2, stripY - 1, Math.max(getX() + 2, textRight), getY() + getHeight() - 1,
+						0xDD260E0E);
+				int maxWidth = Math.max(0, getWidth() - 52);
+				String text = Minecraft.getInstance().font.plainSubstrByWidth(diagnosticMessage, maxWidth);
+				graphics.drawString(Minecraft.getInstance().font, text, getX() + 5, stripY + 1,
+						diagnosticColor, false);
+			}
+		}
+
+		private int firstVisibleLine() {
+			return Math.max(0, (int) Math.floor(scrollAmount() / LINE_HEIGHT));
+		}
+
+		private int visibleLineOffset() {
+			return (int) scrollAmount() % LINE_HEIGHT;
+		}
+
+		private int textTop() {
+			return innerPadding();
 		}
 
 		@Override
@@ -1029,11 +1213,34 @@ public class RawJsonDockPanel implements DockPanel {
 			if (handleUndoRedoKey(keyCode)) {
 				return true;
 			}
+			// MultiLineEditBox handles the actual clipboard operation. Mirror the
+			// right-click path with an actionbar notification after it succeeds.
+			if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C) {
+				MultilineTextField textField = textField();
+				boolean hasSelection = textField != null && !textField.getSelectedText().isEmpty();
+				boolean handled = super.keyPressed(keyCode, scanCode, modifiers);
+				if (handled && hasSelection) {
+					EditorTextBoxes.notifyCopied();
+				}
+				return handled;
+			}
 			return super.keyPressed(keyCode, scanCode, modifiers);
 		}
 
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button == 1 && withinContentAreaPoint(mouseX, mouseY)) {
+				EditorTextBoxes.clearActiveSelection();
+				MultilineTextField textField = textField();
+				if (textField != null) {
+					String selected = textField.getSelectedText();
+					if (!selected.isEmpty()) {
+						Minecraft.getInstance().keyboardHandler.setClipboard(selected);
+						EditorTextBoxes.notifyCopied();
+					}
+				}
+				return true;
+			}
 			if (button == 0 && withinContentAreaPoint(mouseX, mouseY)) {
 				setFocused(true);
 				MultilineTextField textField = textField();

@@ -9,6 +9,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fml.ModList;
 import top.theillusivec4.curios.api.CuriosApi;
 
+import java.util.function.Predicate;
+
 public class CuriosManager {
 
 	public static boolean hasHead(LivingEntity le, Item item, boolean checkRender) {
@@ -47,19 +49,23 @@ public class CuriosManager {
 	}
 
 	public static boolean hasAnySpellItem(LivingEntity le) {
-		if (!ModList.get().isLoaded("curios")) return false;
-		return CuriosApi.getCuriosInventory(le).resolve().map(handler -> {
-			for (var stacksHandler : handler.getCurios().values()) {
-				var stacks = stacksHandler.getStacks();
-				for (int i = 0; i < stacks.getSlots(); i++) {
-					ItemStack stack = stacks.getStackInSlot(i);
-					if (!stack.isEmpty() && stack.getItem() instanceof ISpellItem) {
-						return true;
-					}
-				}
-			}
-			return false;
-		}).orElse(false);
+		return !findFirstSpellItem(le).isEmpty();
+	}
+
+	/** Returns the first spell card in Curios order, or an empty stack. */
+	public static ItemStack findFirstSpellItem(LivingEntity le) {
+		return findFirstSpellItem(le, stack -> true);
+	}
+
+	/** Returns the first spell card accepted by the caller in Curios order. */
+	public static ItemStack findFirstSpellItem(LivingEntity le, Predicate<ItemStack> predicate) {
+		if (!ModList.get().isLoaded("curios")) return ItemStack.EMPTY;
+		return CuriosApi.getCuriosInventory(le).resolve()
+				.flatMap(handler -> handler.findFirstCurio(stack ->
+						stack.getItem() instanceof ISpellItem spell && spell.isCastReady(stack)
+								&& predicate.test(stack)))
+				.map(result -> result.stack())
+				.orElse(ItemStack.EMPTY);
 	}
 
 }

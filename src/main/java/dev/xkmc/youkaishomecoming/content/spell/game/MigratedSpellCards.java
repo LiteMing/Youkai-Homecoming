@@ -22,6 +22,191 @@ import java.util.*;
 public class MigratedSpellCards {
 
 	// ============================
+	// FairySpell — 妖精符卡 (Small Fairy & Medium Fairy)
+	// ============================
+
+	/**
+	 * Small Fairy (小妖精) 符卡:
+	 * 每 20 tick (在 5 步循环的前 3 步内，即 tick%100 < 60) 发射扇形弹幕。
+	 * n=2: 5个角度 (-30°, -15°, 0°, 15°, 30°)，每角度 3 发不同速度 (0.3, 0.5, 0.7) 的 BALL 弹幕。
+	 */
+	public static SpellDefinition smallFairy(int index, DyeColor color) {
+		var id = new ResourceLocation("fairy", String.valueOf(index));
+		var mainPhase = new ResourceLocation("fairy", index + "/main");
+		return smallFairy(id, mainPhase, ColorProvider.constant(color), List.of());
+	}
+
+	/**
+	 * Shared small-fairy pattern used when a fairy-specific definition is absent.
+	 * The color is selected once on phase entry and then reused for every bullet.
+	 */
+	public static SpellDefinition genericFairy() {
+		var palette = Arrays.stream(DyeColor.values()).map(DanmakuColor::of).toList();
+		var indices = new ArrayList<Double>(palette.size());
+		for (int i = 0; i < palette.size(); i++) {
+			indices.add((double) i);
+		}
+		return smallFairy(
+				new ResourceLocation("fairy", "generic"),
+				new ResourceLocation("fairy", "generic/main"),
+				new ColorProvider.ByVariable("fairy_color", palette),
+				List.of(new SpellActions.SetVariable(
+						"fairy_color", new NumberProviders.RandomChoice(indices))));
+	}
+
+	private static SpellDefinition smallFairy(ResourceLocation id, ResourceLocation mainPhase,
+			ColorProvider color, List<SpellAction> onEnter) {
+
+		// angle: (fi - 2) * 15°
+		var angle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("fi"), NumberProvider.constant(15)),
+				NumberProvider.constant(-30));
+		// speed: 0.3 + fj * 0.2
+		var speed = new NumberProviders.Add(
+				NumberProvider.constant(0.3),
+				new NumberProviders.Mul(new NumberProviders.Variable("fj"), NumberProvider.constant(0.2)));
+		// life: 40 / speed * (1 + rand(0, 0.5))
+		var life = new NumberProviders.Mul(
+				new NumberProviders.Div(NumberProvider.constant(40), speed),
+				new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.RandomRange(0, 0.5)));
+
+		var danmaku = new FireDanmakuAction(
+				YHDanmaku.Bullet.BALL, color,
+				NumberProvider.constant(1), speed,
+				life, angle,
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		).withHitBehaviorBlock(HitBehavior.DISCARD);
+
+		var cluster = new SpellActions.RepeatAction(NumberProvider.constant(5), "fi", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(3), "fj", List.of(danmaku))
+		));
+
+		// tick%20 == 0 AND tick%100 < 60
+		List<SpellAction> tickActions = List.of(
+				new SpellActions.ConditionalAction(
+						new SpellConditions.AndCondition(List.of(
+								new SpellConditions.TickInterval(20, 0),
+								new SpellConditions.CompareNumbers(
+										new NumberProviders.PhaseTickMod(100),
+										"<",
+										NumberProvider.constant(60)
+								)
+						)),
+						List.of(cluster),
+						List.of()
+				)
+		);
+
+		var phase = new PhaseDefinition(mainPhase, onEnter, tickActions, List.of(), List.of(), List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:fairy");
+	}
+
+	/**
+	 * Medium Fairy (大妖精/中妖精) 符卡:
+	 * 循环节奏: 每 20 tick 切换子模式 (round = step / 2 % 7)。
+	 * round 0 / 3 (step%2==0): 旋回旋转弹幕 (Round ticker: duration=20, w=±9°/tick, BALL primary color)
+	 * round 1 / 4: 扇形抖动弹幕 (5角度 × 3层速度, CIRCLE secondary color, 带随机小抖动)
+	 */
+	public static SpellDefinition mediumFairy(int index, DyeColor primary, DyeColor secondary) {
+		var id = new ResourceLocation("fairy", String.valueOf(index));
+		var mainPhase = new ResourceLocation("fairy", index + "/main");
+
+		// === Round 0: 顺时针旋转弹幕 (w = +9°/tick, dur=20, speed=0.5, life≈80) ===
+		// angle: (wave - 10) * 9°
+		var round0Angle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("rw0"), NumberProvider.constant(9)),
+				NumberProvider.constant(-90));
+		var round0Bullet = new FireDanmakuAction(
+				YHDanmaku.Bullet.BALL, ColorProvider.constant(primary),
+				NumberProvider.constant(1), NumberProvider.constant(0.5),
+				new NumberProviders.Mul(NumberProvider.constant(80), new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.RandomRange(0, 0.5))),
+				round0Angle,
+				NumberProvider.constant(0), new NumberProviders.RandomRange(-3, 3),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		).withHitBehaviorBlock(HitBehavior.DISCARD);
+		var round0Burst = new BurstAction(20, 1, "rw0", List.of(round0Bullet));
+
+		// === Round 3: 逆时针旋转弹幕 (w = -9°/tick, dur=20, speed=0.5, life≈80) ===
+		var round3Angle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("rw3"), NumberProvider.constant(-9)),
+				NumberProvider.constant(90));
+		var round3Bullet = new FireDanmakuAction(
+				YHDanmaku.Bullet.BALL, ColorProvider.constant(primary),
+				NumberProvider.constant(1), NumberProvider.constant(0.5),
+				new NumberProviders.Mul(NumberProvider.constant(80), new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.RandomRange(0, 0.5))),
+				round3Angle,
+				NumberProvider.constant(0), new NumberProviders.RandomRange(-3, 3),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		).withHitBehaviorBlock(HitBehavior.DISCARD);
+		var round3Burst = new BurstAction(20, 1, "rw3", List.of(round3Bullet));
+
+		// === Round 1 / 4: 扇形弹幕 (5 角度 × 3 速度, CIRCLE secondary) ===
+		var fanAngle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("mfi"), NumberProvider.constant(15)),
+				NumberProvider.constant(-30));
+		var fanSpeed = new NumberProviders.Add(
+				NumberProvider.constant(0.3),
+				new NumberProviders.Mul(new NumberProviders.Variable("mfj"), NumberProvider.constant(0.3)));
+		var fanLife = new NumberProviders.Mul(
+				new NumberProviders.Div(NumberProvider.constant(40), fanSpeed),
+				new NumberProviders.Add(NumberProvider.constant(1), new NumberProviders.RandomRange(0, 0.5)));
+		var fanDanmaku = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(secondary),
+				NumberProvider.constant(1), fanSpeed,
+				fanLife, fanAngle,
+				NumberProvider.constant(0), new NumberProviders.RandomRange(-3, 3),
+				PatternType.AIMED, OriginConfig.caster(),
+				new AimMode.AimModes.Target(),
+				Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty(), 1
+		).withHitBehaviorBlock(HitBehavior.DISCARD);
+		var fanCluster = new SpellActions.RepeatAction(NumberProvider.constant(5), "mfi", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(3), "mfj", List.of(fanDanmaku))
+		));
+
+		// 周期: 每 140 tick (7 round * 20 tick)
+		// round 0: tick 0 (TickInterval(140, 0)) -> round0Burst
+		// round 1: tick 20 (TickInterval(140, 20)) -> fanCluster
+		// round 3: tick 60 (TickInterval(140, 60)) -> round3Burst
+		// round 4: tick 80 (TickInterval(140, 80)) -> fanCluster
+		List<SpellAction> tickActions = List.of(
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(140, 0),
+						List.of(round0Burst),
+						List.of()
+				),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(140, 20),
+						List.of(fanCluster),
+						List.of()
+				),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(140, 60),
+						List.of(round3Burst),
+						List.of()
+				),
+				new SpellActions.ConditionalAction(
+						new SpellConditions.TickInterval(140, 80),
+						List.of(fanCluster),
+						List.of()
+				)
+		);
+
+		var phase = new PhaseDefinition(mainPhase, List.of(), tickActions, List.of(), List.of(), List.of());
+		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:fairy");
+	}
+
+	// ============================
 	// SunnySpell — 三色环形弹幕
 	// ============================
 	// Legacy: 每 10 tick 发射 40 发 BALL，颜色按 tick/10%3 循环 (YELLOW/ORANGE/RED)
@@ -1405,8 +1590,8 @@ public class MigratedSpellCards {
 		);
 
 		// === Phase definitions with transitions ===
-		var phase0 = new PhaseDefinition(phase0id, List.of(), p0Tick, List.of(new SpellActions.ClearScreen()), List.of(),
-				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), phase1id, TransitionMode.IMMEDIATE)));
+		var phase0 = withCasterSpellHealth(new PhaseDefinition(phase0id, List.of(), p0Tick, List.of(new SpellActions.ClearScreen()), List.of(),
+				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), phase1id, TransitionMode.IMMEDIATE))));
 		var phase1 = new PhaseDefinition(phase1id, List.of(), p1Tick, List.of(new SpellActions.ClearScreen()), List.of(),
 				List.of(new Transition(new SpellConditions.HealthBelow(0.33f), phase2id, TransitionMode.IMMEDIATE)));
 		var phase2 = new PhaseDefinition(phase2id, List.of(), p2Tick, List.of(), List.of(), List.of());
@@ -1513,9 +1698,9 @@ public class MigratedSpellCards {
 				new SpellConditions.TickInterval(80, 0), List.of(summonFar), List.of());
 
 		// === Phase definitions ===
-		var phase0 = new PhaseDefinition(p0id, List.of(), List.of(p0Action),
+		var phase0 = withCasterSpellHealth(new PhaseDefinition(p0id, List.of(), List.of(p0Action),
 				List.of(new SpellActions.ClearScreen()), List.of(),
-				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), p1id, TransitionMode.IMMEDIATE)));
+				List.of(new Transition(new SpellConditions.HealthBelow(0.67f), p1id, TransitionMode.IMMEDIATE))));
 		var phase1 = new PhaseDefinition(p1id, List.of(), List.of(p1Action),
 				List.of(new SpellActions.ClearScreen()), List.of(),
 				List.of(new Transition(new SpellConditions.HealthBelow(0.33f), p2id, TransitionMode.IMMEDIATE)));
@@ -2558,6 +2743,75 @@ public class MigratedSpellCards {
 		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:yukari_yakumo");
 	}
 
+	// ============================
+	// Rumia — data-driven ranged danmaku
+	// ============================
+
+	/**
+	 * Rumia's ranged volley, separated from the entity's charge/ram attack state
+	 * machine.  The entity still owns Ex conversion and physical damage; this
+	 * definition only schedules the primary-target danmaku pattern.
+	 */
+	public static SpellDefinition rumia() {
+		return rumia(false);
+	}
+
+	public static SpellDefinition exRumia() {
+		return rumia(true);
+	}
+
+	private static SpellDefinition rumia(boolean ex) {
+		var id = new ResourceLocation("youkaishomecoming", ex ? "ex_rumia" : "rumia");
+		var phaseId = new ResourceLocation(id.getNamespace(), id.getPath() + "/main");
+		int round = ex ? 5 : 3;
+		int interval = ex ? 20 : 40;
+		NumberProvider index = new NumberProviders.Variable("rumia_wave");
+		NumberProvider speed = new NumberProviders.Add(NumberProvider.constant(0.64),
+				new NumberProviders.Mul(index, NumberProvider.constant(0.08)));
+		NumberProvider angle = new NumberProviders.Add(
+				new NumberProviders.Mul(new NumberProviders.Variable("rumia_side"),
+						new NumberProviders.Add(NumberProvider.constant(round - 2),
+								new NumberProviders.Mul(index, NumberProvider.constant(-1)))),
+				NumberProvider.constant(0));
+		SpellAction redLeft = rumiaBullet(DyeColor.RED, speed,
+				new NumberProviders.Add(angle, NumberProvider.constant(-12)));
+		SpellAction black = rumiaBullet(DyeColor.BLACK, speed, angle);
+		SpellAction redRight = rumiaBullet(DyeColor.RED, speed,
+				new NumberProviders.Add(angle, NumberProvider.constant(12)));
+		SpellAction volley = new SpellActions.RepeatAction(NumberProvider.constant(round), "rumia_wave",
+				List.of(redLeft, black, redRight));
+		List<SpellAction> tick = List.of(new SpellActions.ConditionalAction(
+				new SpellConditions.TickInterval(interval, interval / 2),
+				List.of(new SpellActions.SetVariable("rumia_side",
+						new NumberProviders.RandomChoice(List.of(-3d, 3d))), volley), List.of()));
+		// Legacy Rumia retaliates when she is hurt: a red ring emitted from her
+		// position, aimed along the current target direction. The real hurt event
+		// supplies this callback; Preview invokes the same runtime entry explicitly.
+		SpellAction retaliation = new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(DyeColor.RED),
+				NumberProvider.constant(ex ? 24 : 12), NumberProvider.constant(0.8),
+				NumberProvider.constant(40), NumberProvider.constant(0), NumberProvider.constant(360),
+				NumberProvider.constant(0), PatternType.RING, OriginConfig.caster(),
+				new AimMode.AimModes.Target(), Optional.empty(), Optional.empty(),
+				Optional.empty(), Optional.empty(), 1);
+		var phase = new PhaseDefinition(phaseId, List.of(), tick, List.of(),
+				List.of(retaliation), List.of());
+		var display = new SpellDisplay(
+				ex ? "entity.youkaishomecoming.ex_rumia" : "entity.youkaishomecoming.rumia",
+				"", Optional.empty(), Optional.empty());
+		return new SpellDefinition(id, display, SpellItemForm.NONE, phaseId,
+				Map.of(phaseId, phase), DifficultyProfile.DEFAULT);
+	}
+
+	private static SpellAction rumiaBullet(DyeColor color, NumberProvider speed, NumberProvider angle) {
+		return new FireDanmakuAction(
+				YHDanmaku.Bullet.CIRCLE, ColorProvider.constant(color), NumberProvider.constant(1), speed,
+				new NumberProviders.Div(NumberProvider.constant(48), speed), angle,
+				NumberProvider.constant(0), NumberProvider.constant(0), PatternType.AIMED,
+				OriginConfig.caster(), new AimMode.AimModes.Target(), Optional.empty(), Optional.empty(),
+				Optional.empty(), Optional.empty(), 1);
+	}
+
 	private static SpellDefinition buildDefinition(ResourceLocation id, ResourceLocation mainPhase,
 												   PhaseDefinition phase, String modelId) {
 		SpellDisplay display = new SpellDisplay(
@@ -2567,11 +2821,21 @@ public class MigratedSpellCards {
 				Optional.of(new ResourceLocation(modelId))
 		);
 
+		PhaseDefinition entry = withCasterSpellHealth(phase);
 		return new SpellDefinition(
 				id, display, SpellItemForm.NONE,
-				mainPhase, Map.of(mainPhase, phase),
+				mainPhase, Map.of(mainPhase, entry),
 				DifficultyProfile.DEFAULT
 		);
+	}
+
+	private static PhaseDefinition withCasterSpellHealth(PhaseDefinition phase) {
+		List<SpellAction> onEnter = new ArrayList<>(phase.onEnter.size() + 1);
+		onEnter.add(new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
+				new NumberProviders.CasterMaxHealth(), NumberProvider.constant(0)));
+		onEnter.addAll(phase.onEnter);
+		return new PhaseDefinition(phase.id, onEnter, phase.onTick, phase.onExit,
+				phase.onDamage, phase.transitions);
 	}
 
 	private static ResourceLocation rl(String path) {

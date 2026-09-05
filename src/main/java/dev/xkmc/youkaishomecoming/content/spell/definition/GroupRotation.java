@@ -2,19 +2,19 @@ package dev.xkmc.youkaishomecoming.content.spell.definition;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import net.minecraft.world.phys.Vec3;
 
 /**
  * Group-level rotation applied to the entire danmaku pattern's coordinate system.
  * Rotates the Orientation (baseDir + normal + side) by Euler angles (degrees).
- * Applied AFTER aimMode/origin.rotation/tiltAngle, as an outer transform.
+ * Applied after aimMode/origin.rotation/tiltAngle in the firing frame's local axes.
  *
  * rotX = pitch (tilt forward/backward)
  * rotY = yaw (rotate left/right)
  * rotZ = roll (spin around forward axis)
  *
- * This only affects the pattern's spawn positions and initial velocities.
- * It does NOT affect mover behavior (movers use the rotated dir as their local frame).
+ * This affects initial velocities and the base direction supplied to movers.
  */
 public record GroupRotation(NumberProvider rotX, NumberProvider rotY, NumberProvider rotZ) {
 
@@ -24,21 +24,32 @@ public record GroupRotation(NumberProvider rotX, NumberProvider rotY, NumberProv
 			NumberProvider.CODEC.optionalFieldOf("rot_z", NumberProvider.constant(0)).forGetter(GroupRotation::rotZ)
 	).apply(i, GroupRotation::new));
 
-	/**
-	 * Apply this rotation to a direction vector.
-	 * Order: rotZ (roll) → rotX (pitch) → rotY (yaw).
-	 */
-	public Vec3 apply(Vec3 dir, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
+	/** Apply local roll, pitch and yaw to the complete firing frame. */
+	public DanmakuHelper.Orientation apply(DanmakuHelper.Orientation input,
+			dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext ctx) {
 		double rx = Math.toRadians(rotX.get(ctx));
 		double ry = Math.toRadians(rotY.get(ctx));
 		double rz = Math.toRadians(rotZ.get(ctx));
 
-		// Apply rotations in order: Z → X → Y
-		Vec3 v = dir;
-		if (rz != 0) v = rotateAroundAxis(v, new Vec3(0, 0, 1), rz);
-		if (rx != 0) v = rotateAroundAxis(v, new Vec3(1, 0, 0), rx);
-		if (ry != 0) v = rotateAroundAxis(v, new Vec3(0, 1, 0), ry);
-		return v;
+		Vec3 forward = input.forward().normalize();
+		Vec3 normal = input.normal().normalize();
+		Vec3 side = input.side().normalize();
+		if (rz != 0) {
+			normal = rotateAroundAxis(normal, forward, rz);
+			side = rotateAroundAxis(side, forward, rz);
+		}
+		if (rx != 0) {
+			forward = rotateAroundAxis(forward, side, rx);
+			normal = rotateAroundAxis(normal, side, rx);
+		}
+		if (ry != 0) {
+			forward = rotateAroundAxis(forward, normal, ry);
+			side = rotateAroundAxis(side, normal, ry);
+		}
+		forward = forward.normalize();
+		normal = normal.subtract(forward.scale(normal.dot(forward))).normalize();
+		side = forward.cross(normal).normalize();
+		return new DanmakuHelper.Orientation(forward, normal, side);
 	}
 
 	/**

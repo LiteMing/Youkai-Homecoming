@@ -33,6 +33,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.debug.PilotDebugView;
+import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
@@ -62,6 +63,15 @@ public class OrthographicViewport {
 
 	private static final float MIN_ZOOM = 5f;
 	private static final float MAX_ZOOM = 100f;
+	private boolean cardFrameGuideActive = false;
+
+	public void setCardFrameGuideActive(boolean active) {
+		this.cardFrameGuideActive = active;
+	}
+
+	public boolean isCardFrameGuideActive() {
+		return cardFrameGuideActive;
+	}
 	private float gridExtent = 50f;
 	private float clipDepth = 200f; // Z translate for depth range
 
@@ -172,22 +182,28 @@ public class OrthographicViewport {
 	}
 
 	/**
-	 * Set camera position to the dummy target position when entering perspective.
-	 * Camera looks toward the caster (at origin).
+	 * Set the camera at the preview target's collision center and face the caster center.
 	 */
-	public void setCameraToTarget(Vec3 targetPos) {
-		this.camX = targetPos.x;
-		this.camY = targetPos.y + 1.6; // eye height
-		this.camZ = targetPos.z;
-		// Compute yaw to look toward origin (caster position)
-		double dx = -targetPos.x;
-		double dz = -targetPos.z;
-		this.camYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-		this.camPitch = 0;
+	public void setCameraToTarget(Vec3 targetCenter, Vec3 casterCenter) {
+		this.camX = targetCenter.x;
+		this.camY = targetCenter.y;
+		this.camZ = targetCenter.z;
+		Vec3 look = casterCenter.subtract(targetCenter);
+		if (look.lengthSqr() > 1.0e-12) {
+			this.camYaw = (float) Math.toDegrees(Math.atan2(-look.x, look.z));
+			this.camPitch = (float) Math.toDegrees(-Math.atan2(look.y, look.horizontalDistance()));
+		}
 	}
 
 	public Vec3 getCameraPos() {
 		return new Vec3(camX, camY, camZ);
+	}
+
+	public Vec3 getCameraLookDirection() {
+		double yaw = Math.toRadians(camYaw);
+		double pitch = Math.toRadians(camPitch);
+		return new Vec3(-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch),
+				Math.cos(yaw) * Math.cos(pitch)).normalize();
 	}
 
 	/** Free-look: mouse movement rotates camera (when captured) */
@@ -571,22 +587,42 @@ public class OrthographicViewport {
 		zoom = Mth.clamp(zoom * factor, MIN_ZOOM, MAX_ZOOM);
 	}
 
-	private float currentXRot() {
+	public int getWidth() {
+		return width;
+	}
+
+	public int getHeight() {
+		return height;
+	}
+
+	public float currentXRot() {
 		if (presetAngle != null) {
 			return presetFlipped ? -presetAngle.getXRot() : presetAngle.getXRot();
 		}
 		return freeXRot;
 	}
 
-	private float currentYRot() {
+	public float currentYRot() {
 		if (presetAngle != null) {
 			return presetFlipped ? presetAngle.getYRot() + 180 : presetAngle.getYRot();
 		}
 		return freeYRot;
 	}
 
+	public float getViewX() {
+		return viewX;
+	}
+
+	public float getViewY() {
+		return viewY;
+	}
+
 	public void render(GuiGraphics guiGraphics, VirtualSpellScene scene, float partialTick) {
 		if (width <= 0 || height <= 0) return;
+		// A previous viewport pass may have enabled depth testing for 3D entities.
+		// Start every pass in the GUI state so its background and later overlays are
+		// never rejected by stale depth-buffer values.
+		restoreGuiRenderState();
 
 		if (magicCirclePreviewActive) {
 			renderMagicCirclePreview(guiGraphics, partialTick);
@@ -618,6 +654,7 @@ public class OrthographicViewport {
 
 		Quaternionf previewOrientation = ViewAngle.computeOrientation(xRot, yRot);
 		ProjectileRenderHelper.cameraOrientationOverride = previewOrientation;
+		RenderSystem.depthMask(true);
 		RenderSystem.enableDepthTest();
 
 		renderGrid(poseStack);
@@ -625,18 +662,24 @@ public class OrthographicViewport {
 		if (magicCirclePreviewComponent != null && magicCirclePreviewSize > 0) {
 			float tick = (System.currentTimeMillis() % 1_000_000L) / 50.0f + partialTick;
 			SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(poseStack, buffer,
-					buffer.getBuffer(SpellRenderState.getSpell(SPELL_CIRCLE_TEXTURE)),
+					SpellRenderState.getSpell(SPELL_CIRCLE_TEXTURE),
 					tick, LightTexture.FULL_BRIGHT);
 			poseStack.pushPose();
 			poseStack.scale(magicCirclePreviewSize / 16f, magicCirclePreviewSize / 16f, magicCirclePreviewSize / 16f);
-			poseStack.mulPose(previewOrientation);
-			poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+			// Face the circle at the viewer by undoing the view rotation exactly.
+			// computeOrientation() is not that inverse: applyRotation is Rx(x)·Ry(y) but
+			// the quaternion is Ry(-y)·Rx(+x), so the Y terms cancel while the X terms
+			// add — leaving Rx(2x)·Ry(180). That double-pitched the circle and left its
+			// back face toward the camera, which culled the text outright.
+			poseStack.mulPose(Axis.YP.rotationDegrees(-yRot));
+			poseStack.mulPose(Axis.XP.rotationDegrees(-xRot));
 			magicCirclePreviewComponent.render(handle);
 			poseStack.popPose();
 		}
 		buffer.endBatch();
 		ProjectileRenderHelper.cameraOrientationOverride = null;
 		poseStack.popPose();
+		restoreGuiRenderState();
 		guiGraphics.disableScissor();
 	}
 
@@ -678,6 +721,7 @@ public class OrthographicViewport {
 		ProjectileRenderHelper.cameraOrientationOverride = previewOrientation;
 
 		// 6. Enable depth testing for 3D content
+		RenderSystem.depthMask(true);
 		RenderSystem.enableDepthTest();
 
 		// 7. Render grid and axes
@@ -734,6 +778,13 @@ public class OrthographicViewport {
 		ProjectileRenderHelper.cameraOrientationOverride = null;
 
 		poseStack.popPose();
+		restoreGuiRenderState();
+
+		// 12. 仅在认证或导出构图阶段开启 84:128 卡面取景构图辅助遮幅与线框
+		if (cardFrameGuideActive) {
+			renderCardFrameGuide(guiGraphics);
+		}
+
 		guiGraphics.disableScissor();
 	}
 
@@ -766,6 +817,9 @@ public class OrthographicViewport {
 		com.mojang.blaze3d.platform.GlStateManager._viewport(fbX, fbY, fbW, fbH);
 
 		// 5. Clear depth buffer in this region so 3D content isn't occluded by GUI
+		// glClear(GL_DEPTH_BUFFER_BIT) is ignored while depth writes are disabled.
+		// render() enters with the GUI depth mask disabled, so restore it first.
+		RenderSystem.depthMask(true);
 		org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
 		org.lwjgl.opengl.GL11.glScissor(fbX, fbY, fbW, fbH);
 		org.lwjgl.opengl.GL11.glClear(org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT);
@@ -856,6 +910,12 @@ public class OrthographicViewport {
 
 		// 18. Restore GUI projection
 		RenderSystem.setProjectionMatrix(savedProjection, com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z);
+		restoreGuiRenderState();
+	}
+
+	private static void restoreGuiRenderState() {
+		RenderSystem.disableDepthTest();
+		RenderSystem.depthMask(false);
 	}
 
 	private void renderPreviewCasterSpellCircle(VirtualSpellScene scene, PoseStack poseStack,
@@ -982,6 +1042,55 @@ public class OrthographicViewport {
 		poseStack.popPose();
 	}
 
+	private void renderCardFrameGuide(GuiGraphics guiGraphics) {
+		// 计算 84:128 居中取景框
+		int frameW, frameH;
+		if (width * 128 > height * 84) {
+			// 视口偏宽，高度撑满，两侧遮幅
+			frameH = height;
+			frameW = Math.round((height * 84f) / 128f);
+		} else {
+			// 视口偏高，宽度撑满，上下遮幅
+			frameW = width;
+			frameH = Math.round((width * 128f) / 84f);
+		}
+
+		int fx = x + (width - frameW) / 2;
+		int fy = y + (height - frameH) / 2;
+
+		// 框外微弱半透明遮幅 (Dark letterbox/pillarbox)
+		int shadeColor = 0x55000000;
+		if (fx > x) {
+			guiGraphics.fill(x, y, fx, y + height, shadeColor);
+			guiGraphics.fill(fx + frameW, y, x + width, y + height, shadeColor);
+		}
+		if (fy > y) {
+			guiGraphics.fill(x, y, x + width, fy, shadeColor);
+			guiGraphics.fill(x, fy + frameH, x + width, y + height, shadeColor);
+		}
+
+		// 金色取景边框与四角标记 (Card Frame Guide)
+		int gold = 0xCCFFD54F;
+		guiGraphics.fill(fx, fy, fx + frameW, fy + 1, gold);
+		guiGraphics.fill(fx, fy + frameH - 1, fx + frameW, fy + frameH, gold);
+		guiGraphics.fill(fx, fy, fx + 1, fy + frameH, gold);
+		guiGraphics.fill(fx + frameW - 1, fy, fx + frameW, fy + frameH, gold);
+
+		// 四角 L 形加粗标记
+		int cornerLen = Math.min(12, Math.min(frameW, frameH) / 6);
+		guiGraphics.fill(fx, fy + 1, fx + cornerLen, fy + 2, gold);
+		guiGraphics.fill(fx + 1, fy + 1, fx + 2, fy + cornerLen, gold);
+
+		guiGraphics.fill(fx + frameW - cornerLen, fy + 1, fx + frameW, fy + 2, gold);
+		guiGraphics.fill(fx + frameW - 2, fy + 1, fx + frameW - 1, fy + cornerLen, gold);
+
+		guiGraphics.fill(fx, fy + frameH - 2, fx + cornerLen, fy + frameH - 1, gold);
+		guiGraphics.fill(fx + 1, fy + frameH - cornerLen, fx + 2, fy + frameH - 1, gold);
+
+		guiGraphics.fill(fx + frameW - cornerLen, fy + frameH - 2, fx + frameW, fy + frameH - 1, gold);
+		guiGraphics.fill(fx + frameW - 2, fy + frameH - cornerLen, fx + frameW - 1, fy + frameH - 1, gold);
+	}
+
 	private void renderGrid(PoseStack poseStack) {
 		var tesselator = Tesselator.getInstance();
 		var builder = tesselator.getBuilder();
@@ -1044,20 +1153,24 @@ public class OrthographicViewport {
 
 		// Caster marker - red cross + diamond
 		if (showCasterMarker) {
-			Vec3 cp = scene.getHolder().getFakeCaster().position();
+			Vec3 cp = scene.getCasterPos();
 			float cx = (float) cp.x, cy = (float) cp.y, cz = (float) cp.z;
 			float cs = 0.8f;
 			drawCross3D(builder, mat, cx, cy, cz, cs, 1f, 0.3f, 0.3f, 1f);
 			drawDiamond(builder, mat, cx, cy, cz, cs, 1f, 0.2f, 0.2f, 1f);
+			drawAabb(builder, mat, scene.getHolder().getFakeCaster().getBoundingBox(),
+					1f, 0.2f, 0.2f, 0.45f);
 		}
 
 		// Target marker - yellow cross + diamond
 		if (showTargetMarker) {
-			Vec3 tp = scene.getHolder().getFakeTarget().position();
+			Vec3 tp = scene.getTargetPos();
 			float tx = (float) tp.x, ty = (float) tp.y, tz = (float) tp.z;
 			float ts = 1.0f;
 			drawCross3D(builder, mat, tx, ty, tz, ts, 1f, 1f, 0.2f, 1f);
 			drawDiamond(builder, mat, tx, ty, tz, ts, 1f, 0.8f, 0f, 1f);
+			drawAabb(builder, mat, scene.getEntityTargetCollisionBox(),
+					1f, 0.8f, 0f, 0.6f);
 			Vec3 bp = scene.getBlockTargetHandlePos();
 			drawCross3D(builder, mat, (float) bp.x, (float) bp.y, (float) bp.z,
 					0.7f, 0.25f, 0.8f, 1f, 1f);
@@ -1295,6 +1408,16 @@ public class OrthographicViewport {
 				ry * dx + uy * dy,
 				rz * dx + uz * dy
 		);
+	}
+
+	/** Convert a world-space drag into the offset axes used by an OriginConfig. */
+	public Vec3 worldDeltaToOriginOffsetDelta(OriginConfig.OriginMode mode, double rotation,
+			Vec3 worldDelta, Vec3 casterCenter, @Nullable Vec3 targetCenter,
+			Vec3 casterFacing, @Nullable Entity targetEntity) {
+		Vec3 targetFacing = targetEntity != null ? targetEntity.getLookAngle()
+				: targetCenter == null ? casterFacing : targetCenter.subtract(casterCenter);
+		return OriginConfig.worldDeltaToOffsetDelta(mode, rotation, worldDelta,
+				casterFacing, targetFacing);
 	}
 
 	public boolean isMouseOver(double mouseX, double mouseY) {

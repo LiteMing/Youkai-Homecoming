@@ -13,16 +13,18 @@ import static dev.xkmc.l2damagetracker.init.L2DamageTracker.ATTR_TAGS;
 
 public class YHAttributes {
 
+	public static final double MAX_POWER_BONUS_LIMIT = 10;
+
 	public static final RegistryEntry<Attribute> MAX_RESOURCE, MAX_POWER, INITIAL_RESOURCE, INITIAL_POWER, GRAZE_EFFECTIVENESS, HITBOX;
 
 	static {
 		var reg = YoukaisHomecoming.REGISTRATE;
 		MAX_RESOURCE = reg(reg, "max_resource", 0, -10, 10, "Additional Max Resource");
-		MAX_POWER = reg(reg, "max_power", 0, -10, 10, "Additional Max Power");
+		MAX_POWER = reg(reg, "max_power", 0, -10, MAX_POWER_BONUS_LIMIT, "Additional Max Power");
 		INITIAL_RESOURCE = reg(reg, "initial_resource", 0, -10, 10, "Additional Initial Resource");
 		INITIAL_POWER = reg(reg, "initial_power", 0, -10, 10, "Additional Initial Power");
 		GRAZE_EFFECTIVENESS = reg(reg, "graze_effectiveness", 1, 0, 10, "Graze Multiplier", L2DamageTracker.PERCENTAGE);
-		HITBOX = reg(reg, "hit_box", 0, -0.2, 1, "Hit Box Modification", L2DamageTracker.NEGATIVE);
+		HITBOX = reg(reg, "hit_box", 1, 0, 10, "Danmaku Hit Box Scale");
 	}
 
 	@SafeVarargs

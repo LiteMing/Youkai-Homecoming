@@ -3,6 +3,7 @@ package dev.xkmc.fastprojectileapi.entity;
 import dev.xkmc.fastprojectileapi.collision.LaserHitHelper;
 import dev.xkmc.fastprojectileapi.collision.IEntityIterator;
 import dev.xkmc.fastprojectileapi.collision.UserMatrixCache;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
@@ -30,24 +31,24 @@ public abstract class BaseLaser extends AsyncProjectile {
 		if (checkEntityHit()) {
 			Vec3 src = pos.add(0, getBbHeight() / 2f, 0);
 			Vec3 direction = Vec3.directionFromRotation((float) Math.toDegrees(rot.x), (float) Math.toDegrees(rot.y)).scale(getLength());
-			Vec3 dst = src.add(direction);
-			LaserHitHelper.collectEntityHitOnProjection(this, pos, src, dst, direction, data.hitEntities, iterator);
+			Vec3 dst = data.blockHit == null ? src.add(direction) : data.blockHit.getLocation();
+			LaserHitHelper.collectEntityHitOnProjection(this, pos, src, dst, dst.subtract(src), data.hitEntities, iterator);
 		}
 	}
 
 	@Override
 	protected void trimMove(TickData data) {
 		data.blockHit = null;
-		if (!checkBlockHit()) return;
+		if (!checkBlockHit() || !(level() instanceof ServerLevel)) return;
 		Vec3 pos = data.moveDst == null ? position() : data.moveDst;
 		Vec3 rot = data.plannedMovement == null ? rot() : data.plannedMovement.rot();
 		Vec3 src = pos.add(0, getBbHeight() / 2f, 0);
 		Vec3 dst = src.add(Vec3.directionFromRotation((float) Math.toDegrees(rot.x), (float) Math.toDegrees(rot.y)).scale(getLength()));
 		var hit = LaserHitHelper.getBlockHitResultOnProjection(this, src, dst);
 		if (hit != null) {
+			// moveDst is the laser's next anchor, not a projectile endpoint. Replacing it with
+			// the wall hit makes later stages cast from the wall and renders a zero-length beam.
 			data.blockHit = hit;
-			Vec3 delta = hit.getLocation().subtract(src);
-			data.moveDst = pos.add(delta);
 		}
 	}
 

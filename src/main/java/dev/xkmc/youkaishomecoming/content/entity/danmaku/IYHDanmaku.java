@@ -4,12 +4,16 @@ import dev.xkmc.fastprojectileapi.collision.EntityInfo;
 import dev.xkmc.fastprojectileapi.entity.GrazingEntity;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationContactGateway;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType;
+import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.events.GeneralEventHandlers;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -26,6 +30,53 @@ public interface IYHDanmaku extends GrazingEntity {
 	float damage(Entity target);
 
 	SimplifiedProjectile self();
+
+	/** Resolved spawn metadata exposed to data-driven projectile callbacks. */
+	default double callbackSourceSize() { return 1.0; }
+	default double callbackSourceSpread() { return 0.0; }
+	default double callbackSourceLifetime() { return 0.0; }
+	default DanmakuColor callbackSourceColor() { return DanmakuColor.WHITE; }
+
+	default boolean canHitDanmakuTarget(EntityInfo target) {
+		return true;
+	}
+
+	default void restrictPlayerSpellDamage(@Nullable LivingEntity target) {
+	}
+
+	/** True only for projectiles emitted through a player spell-card holder. */
+	default boolean isPlayerSpellProjectile() {
+		return false;
+	}
+
+	default void setHarmfulPlayerSnapshot(java.util.Collection<java.util.UUID> playerIds) {
+	}
+
+	default boolean hasHarmfulPlayerSnapshot() {
+		return false;
+	}
+
+	default boolean isHarmfulToPlayer(java.util.UUID playerId) {
+		return true;
+	}
+
+	static boolean canPlayerSpellHit(IYHDanmaku projectile, EntityInfo candidate,
+			boolean restricted, @Nullable java.util.UUID targetId) {
+		if (!candidate.canReceiveDanmaku()) return false;
+		if (!restricted) return true;
+		if (targetId != null && targetId.equals(candidate.rootUuid())) return true;
+		if (candidate.entity() instanceof Player) {
+			// New projectiles use one authoritative snapshot for collision and client
+			// fading. Explicit targets were accepted above.
+			return canHitPlayerFromSnapshot(projectile.hasHarmfulPlayerSnapshot(),
+					projectile.isHarmfulToPlayer(candidate.rootUuid()));
+		}
+		return candidate.untargetedPlayerSpellTarget();
+	}
+
+	static boolean canHitPlayerFromSnapshot(boolean snapshotPresent, boolean listed) {
+		return snapshotPresent && listed;
+	}
 
 	@Override
 	default float grazeRange() {
@@ -82,6 +133,13 @@ public interface IYHDanmaku extends GrazingEntity {
 		if (self().level().isClientSide) return;
 		var e = result.getEntity();
 		if (e instanceof DanmakuHostProxy) return;
+		if (e instanceof Player player && !GrazeHelper.canReceiveDanmaku(player)) return;
+		// Certification No-Hit contact must precede hurt-time invul checks, auto-bomb
+		// and damage events (design doc §8, D8): a hit is a hit even under i-frames.
+		if (e instanceof ServerPlayer sp && self().getOwner() instanceof SpellCertificationEntity cert) {
+			CertificationContactGateway.onCertificationContact(cert, sp);
+			return;
+		}
 		var source = source();
 		if (e instanceof LivingEntity le) {
 			if (le.hurtTime > 0 && (YHModConfig.COMMON.invulFrameForDanmaku.get() || e instanceof Player || e instanceof YoukaiEntity)) {
@@ -106,22 +164,17 @@ public interface IYHDanmaku extends GrazingEntity {
 
 	static AABB alterEntityHitBox(EntityInfo x, float radius, float graze) {
 		var box = x.boundingBox();
+		if (x.ownerTrackedByYoukai() && x.entity() instanceof YoukaiEntity) {
+			return DanmakuHitBox.scaled(x.entity(), box).inflate(GRAZE_RANGE);
+		}
 		if (graze > 0) return box.inflate(radius + graze);
-		float shrink = -x.hitBoxDelta();
-		return new AABB(
-				box.minX + shrink - radius, box.minY + shrink * 2 - radius, box.minZ + shrink - radius,
-				box.maxX - shrink + radius, box.maxY + radius, box.maxZ - shrink + radius
-		);
+		return DanmakuHitBox.scaled(x.entity(), box).inflate(radius);
 	}
 
 	static AABB alterEntityHitBox(Entity x, float radius, float graze) {
 		var box = x.getBoundingBox();
 		if (graze > 0) return box.inflate(radius + graze);
-		float shrink = x instanceof Player player ? -GrazeHelper.getHitBoxDelta(player) : 0;
-		return new AABB(
-				box.minX + shrink - radius, box.minY + shrink * 2 - radius, box.minZ + shrink - radius,
-				box.maxX - shrink + radius, box.maxY + radius, box.maxZ - shrink + radius
-		);
+		return DanmakuHitBox.scaled(x, box).inflate(radius);
 	}
 
 }

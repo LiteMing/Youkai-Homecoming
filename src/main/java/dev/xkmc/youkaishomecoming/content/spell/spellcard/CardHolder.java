@@ -42,6 +42,11 @@ public interface CardHolder {
 
 	LivingEntity self();
 
+	/** Player STG power exposed to data-driven spells. Non-player casters have no power resource. */
+	default double casterPower() {
+		return 0;
+	}
+
 	default DamageSource getDanmakuDamageSource(IYHDanmaku danmaku) {
 		return YHDamageTypes.danmaku(danmaku);
 	}

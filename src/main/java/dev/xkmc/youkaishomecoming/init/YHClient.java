@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.init;
 import com.github.tartaricacid.touhoulittlemaid.TouhouLittleMaid;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
+import dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlClient;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMRenderHandler;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMCompatConfig;
@@ -122,8 +123,7 @@ public class YHClient {
 				event.register(e.get(col), deco);
 			}
 		}
-		event.register(YHDanmaku.CUSTOM_SPELL_RING.get(), deco);
-		event.register(YHDanmaku.CUSTOM_SPELL_HOMING.get(), deco);
+		event.register(YHDanmaku.DYNAMIC_SPELL.get(), deco);
 		for (var e : SpellItem.LIST) {
 			event.register(e, deco);
 		}
@@ -147,6 +147,7 @@ public class YHClient {
 	@SubscribeEvent
 	public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
 		event.register(OPEN_SPELL_EDITOR);
+		ClassicControlClient.registerKeyMappings(event);
 	}
 
 	@SubscribeEvent
@@ -230,6 +231,7 @@ public class YHClient {
 
 		@SubscribeEvent
 		public static void onKeyInput(InputEvent.Key event) {
+			ClassicControlClient.handleKey(event);
 			Minecraft mc = Minecraft.getInstance();
 			while (OPEN_SPELL_EDITOR.consumeClick()) {
 				if (mc.player != null && mc.player.connection != null && mc.screen == null) {

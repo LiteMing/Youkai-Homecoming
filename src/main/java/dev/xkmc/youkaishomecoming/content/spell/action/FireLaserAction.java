@@ -44,6 +44,7 @@ public record FireLaserAction(
 		Optional<Double> delayedV1,
 		Optional<DanmakuDamageType> damageType,
 		NumberProvider thickness,
+		Optional<GroupRotation> groupRotation,
 		Optional<List<SpellAction>> onExpiry,
 		Optional<List<SpellAction>> onTrail,
 		int trailInterval,
@@ -60,6 +61,7 @@ public record FireLaserAction(
 						   int setupPrepare, int setupStart, int setupEnd) {
 		this(laserType, color, lifetime, length, angleOffset, NumberProvider.constant(0), aimMode, origin, mover,
 				setupPrepare, setupStart, setupEnd, Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1),
+				Optional.empty(),
 				Optional.empty(), Optional.empty(), 1, Optional.empty(), Optional.empty(),
 				HitBehavior.CONTINUE, HitBehavior.CONTINUE);
 	}
@@ -72,6 +74,7 @@ public record FireLaserAction(
 						   Optional<Double> delayedV0, Optional<Double> delayedV1) {
 		this(laserType, color, lifetime, length, angleOffset, NumberProvider.constant(0), aimMode, origin, mover,
 				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, Optional.empty(), NumberProvider.constant(1),
+				Optional.empty(),
 				Optional.empty(), Optional.empty(), 1, Optional.empty(), Optional.empty(),
 				HitBehavior.CONTINUE, HitBehavior.CONTINUE);
 	}
@@ -84,6 +87,7 @@ public record FireLaserAction(
 						   Optional<Double> delayedV0, Optional<Double> delayedV1) {
 		this(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover,
 				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, Optional.empty(), NumberProvider.constant(1),
+				Optional.empty(),
 				Optional.empty(), Optional.empty(), 1, Optional.empty(), Optional.empty(),
 				HitBehavior.CONTINUE, HitBehavior.CONTINUE);
 	}
@@ -96,17 +100,19 @@ public record FireLaserAction(
 						   Optional<DanmakuDamageType> damageType) {
 		this(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover,
 				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, NumberProvider.constant(1),
+				Optional.empty(),
 				Optional.empty(), Optional.empty(), 1, Optional.empty(), Optional.empty(),
 				HitBehavior.CONTINUE, HitBehavior.CONTINUE);
 	}
 
-	/** Full constructor with all fields including hooks (23 args). */
+	/** Full constructor with all fields including hooks. */
 	public FireLaserAction(YHDanmaku.Laser laserType, DyeColor color,
 						   NumberProvider lifetime, NumberProvider length, NumberProvider angleOffset,
 						   NumberProvider elevation, AimMode aimMode, OriginConfig origin,
 						   Optional<MoverConfig> mover, int setupPrepare, int setupStart, int setupEnd,
 						   Optional<Double> delayedV0, Optional<Double> delayedV1,
 						   Optional<DanmakuDamageType> damageType, NumberProvider thickness,
+						   Optional<GroupRotation> groupRotation,
 						   Optional<List<SpellAction>> onExpiry, Optional<List<SpellAction>> onTrail,
 						   int trailInterval, Optional<List<SpellAction>> onHitEntity,
 						   Optional<List<SpellAction>> onHitBlock,
@@ -127,6 +133,7 @@ public record FireLaserAction(
 		this.delayedV1 = delayedV1;
 		this.damageType = damageType;
 		this.thickness = thickness;
+		this.groupRotation = groupRotation;
 		this.onExpiry = onExpiry;
 		this.onTrail = onTrail;
 		this.trailInterval = trailInterval;
@@ -155,12 +162,14 @@ public record FireLaserAction(
 			NumberProvider.CODEC.optionalFieldOf("thickness", NumberProvider.constant(1)).forGetter(FireLaserAction::thickness)
 	).apply(i, (lt, c, lf, ln, ao, el, am, o, m, sp, ss, se, dv0, dv1, ddt, th) ->
 			new FireLaserAction(lt, c, lf, ln, ao, el, am, o, m, sp, ss, se, dv0, dv1, ddt, th,
+					Optional.empty(),
 					Optional.empty(), Optional.empty(), 1, Optional.empty(), Optional.empty(),
 					HitBehavior.CONTINUE, HitBehavior.CONTINUE)));
 
 	// Extra hook fields beyond 16-field limit (merged at same JSON level via codec composition)
 	public static final Codec<FireLaserAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 			BASE_MAP.forGetter(f -> f),
+			GroupRotation.CODEC.optionalFieldOf("group_rotation").forGetter(FireLaserAction::groupRotation),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_expiry").forGetter(FireLaserAction::onExpiry),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_trail").forGetter(FireLaserAction::onTrail),
 			Codec.INT.optionalFieldOf("trail_interval", 1).forGetter(FireLaserAction::trailInterval),
@@ -168,37 +177,39 @@ public record FireLaserAction(
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_block").forGetter(FireLaserAction::onHitBlock),
 			HitBehavior.CODEC.optionalFieldOf("hit_behavior_entity", HitBehavior.CONTINUE).forGetter(FireLaserAction::hitBehaviorEntity),
 			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.CONTINUE).forGetter(FireLaserAction::hitBehaviorBlock)
-	).apply(i, (base, oe, ot, ti, ohe, ohb, hbe, hbb) -> new FireLaserAction(
+	).apply(i, (base, gr, oe, ot, ti, ohe, ohb, hbe, hbb) -> new FireLaserAction(
 			base.laserType, base.color, base.lifetime, base.length, base.angleOffset, base.elevation,
 			base.aimMode, base.origin, base.mover, base.setupPrepare, base.setupStart, base.setupEnd,
 			base.delayedV0, base.delayedV1, base.damageType, base.thickness,
+			gr,
 			oe, ot, ti, ohe, ohb, hbe, hbb)));
 
 	// withXxx helper methods for editor use (preserve all fields)
-	private FireLaserAction all(YHDanmaku.Laser lt, DyeColor c, NumberProvider lf, NumberProvider ln, NumberProvider ao, NumberProvider el, AimMode am, OriginConfig o, Optional<MoverConfig> m, int sp, int ss, int se, Optional<Double> dv0, Optional<Double> dv1, Optional<DanmakuDamageType> ddt, NumberProvider th, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hbe, HitBehavior hbb) { return new FireLaserAction(lt, c, lf, ln, ao, el, am, o, m, sp, ss, se, dv0, dv1, ddt, th, oe, ot, ti, ohe, ohb, hbe, hbb); }
-	public FireLaserAction withLaserType(YHDanmaku.Laser v) { return all(v, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withColor(DyeColor v) { return all(laserType, v, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withLifetime(NumberProvider v) { return all(laserType, color, v, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withLength(NumberProvider v) { return all(laserType, color, lifetime, v, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withAngleOffset(NumberProvider v) { return all(laserType, color, lifetime, length, v, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withElevation(NumberProvider v) { return all(laserType, color, lifetime, length, angleOffset, v, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withAimMode(AimMode v) { return all(laserType, color, lifetime, length, angleOffset, elevation, v, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withOrigin(OriginConfig v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, v, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withMover(Optional<MoverConfig> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, v, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withSetupPrepare(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, v, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withSetupStart(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, v, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withSetupEnd(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, v, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withDelayedV0(Optional<Double> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, v, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withDelayedV1(Optional<Double> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, v, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withDamageType(Optional<DanmakuDamageType> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, v, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withThickness(NumberProvider v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, v, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withOnExpiry(Optional<List<SpellAction>> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, v, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withOnTrail(Optional<List<SpellAction>> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, v, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withTrailInterval(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, v, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withOnHitEntity(Optional<List<SpellAction>> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, v, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withOnHitBlock(Optional<List<SpellAction>> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, v, hitBehaviorEntity, hitBehaviorBlock); }
-	public FireLaserAction withHitBehaviorEntity(HitBehavior v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, v, hitBehaviorBlock); }
-	public FireLaserAction withHitBehaviorBlock(HitBehavior v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, v); }
+	private FireLaserAction all(YHDanmaku.Laser lt, DyeColor c, NumberProvider lf, NumberProvider ln, NumberProvider ao, NumberProvider el, AimMode am, OriginConfig o, Optional<MoverConfig> m, int sp, int ss, int se, Optional<Double> dv0, Optional<Double> dv1, Optional<DanmakuDamageType> ddt, NumberProvider th, Optional<GroupRotation> gr, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hbe, HitBehavior hbb) { return new FireLaserAction(lt, c, lf, ln, ao, el, am, o, m, sp, ss, se, dv0, dv1, ddt, th, gr, oe, ot, ti, ohe, ohb, hbe, hbb); }
+	public FireLaserAction withLaserType(YHDanmaku.Laser v) { return all(v, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withColor(DyeColor v) { return all(laserType, v, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withLifetime(NumberProvider v) { return all(laserType, color, v, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withLength(NumberProvider v) { return all(laserType, color, lifetime, v, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withAngleOffset(NumberProvider v) { return all(laserType, color, lifetime, length, v, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withElevation(NumberProvider v) { return all(laserType, color, lifetime, length, angleOffset, v, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withAimMode(AimMode v) { return all(laserType, color, lifetime, length, angleOffset, elevation, v, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withOrigin(OriginConfig v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, v, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withMover(Optional<MoverConfig> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, v, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withSetupPrepare(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, v, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withSetupStart(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, v, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withSetupEnd(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, v, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withDelayedV0(Optional<Double> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, v, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withDelayedV1(Optional<Double> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, v, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withDamageType(Optional<DanmakuDamageType> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, v, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withThickness(NumberProvider v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, v, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withGroupRotation(Optional<GroupRotation> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, v, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withOnExpiry(Optional<List<SpellAction>> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, v, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withOnTrail(Optional<List<SpellAction>> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, v, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withTrailInterval(int v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, v, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withOnHitEntity(Optional<List<SpellAction>> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, v, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withOnHitBlock(Optional<List<SpellAction>> v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, v, hitBehaviorEntity, hitBehaviorBlock); }
+	public FireLaserAction withHitBehaviorEntity(HitBehavior v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, v, hitBehaviorBlock); }
+	public FireLaserAction withHitBehaviorBlock(HitBehavior v) { return all(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, v); }
 
 	@Override
 	public void execute(SpellContext ctx) {
@@ -224,17 +235,24 @@ public record FireLaserAction(
 			);
 		}
 
+		var orientation = DanmakuHelper.getOrientation(baseDir);
+		if (groupRotation.isPresent()) {
+			orientation = groupRotation.get().apply(orientation, ctx);
+			baseDir = orientation.forward();
+		}
+
 		Vec3 dir;
 		if (angle != 0 || elev != 0) {
-			var ori = DanmakuHelper.getOrientation(baseDir);
-			dir = ori.rotateDegrees(angle, elev);
+			dir = orientation.rotateDegrees(angle, elev);
 		} else {
 			dir = baseDir;
 		}
 
 		var laser = holder.prepareLaser(life, originPos, dir, len, laserType, color);
+		double resolvedThickness = thickness.get(ctx);
 		NumberProvider scaleFunction = thickness instanceof NumberProviders.Constant ? null : thickness;
-		laser.configureVisualScale((float) thickness.get(ctx), scaleFunction);
+		laser.configureVisualScale((float) resolvedThickness, scaleFunction);
+		laser.setCallbackSourceMetadata(resolvedThickness, 0.0, life, DanmakuColor.of(color));
 		// Apply per-action damage type override
 		if (damageType.isPresent()) {
 			laser.damageTypeOverride = damageType.get();
@@ -251,19 +269,23 @@ public record FireLaserAction(
 			laser.onTrail = trailAction;
 			laser.trailInterval = Math.max(1, trailInterval);
 		}
-		if (onHitEntity.isPresent()) {
+		if (onHitEntity.filter(actions -> !actions.isEmpty()).isPresent()) {
 			var hitAction = new DataDrivenTrailAction(onHitEntity.get(), ctx.runtime(), ctx.definition());
 			hitAction.setup(holder);
 			laser.onHitEntityAction = hitAction;
 		}
-		if (onHitBlock.isPresent()) {
+		if (onHitBlock.filter(actions -> !actions.isEmpty()).isPresent()) {
 			var hitAction = new DataDrivenTrailAction(onHitBlock.get(), ctx.runtime(), ctx.definition());
 			hitAction.setup(holder);
 			laser.onHitBlockAction = hitAction;
 		}
 		laser.hitBehaviorEntity = hitBehaviorEntity;
 		laser.hitBehaviorBlock = hitBehaviorBlock;
-		if (onHitBlock.isPresent() || hitBehaviorBlock != HitBehavior.CONTINUE) {
+		// An explicitly empty on_hit_block list is no hook.  Preserve the legacy
+		// pass-through fast path for CONTINUE so the laser does not probe walls or
+		// calculate a clipped endpoint when there is nothing to execute.
+		if (onHitBlock.filter(actions -> !actions.isEmpty()).isPresent()
+				|| hitBehaviorBlock != HitBehavior.CONTINUE) {
 			laser.setBypassWall(false);
 		}
 		if (setupPrepare > 0 || setupStart > 0 || setupEnd > 0) {

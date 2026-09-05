@@ -6,14 +6,14 @@ import com.tterrag.registrate.util.entry.ItemEntry;
 import com.tterrag.registrate.util.entry.RegistryEntry;
 import dev.xkmc.fastprojectileapi.render.core.DisplayType;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuPoofParticleOptions;
-import dev.xkmc.youkaishomecoming.content.item.danmaku.CustomSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellAuraItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellReplicaFilmItem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
-import dev.xkmc.youkaishomecoming.content.spell.custom.data.HomingSpellFormData;
-import dev.xkmc.youkaishomecoming.content.spell.custom.data.RingSpellFormData;
 import dev.xkmc.youkaishomecoming.content.spell.player.*;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
@@ -24,6 +24,8 @@ import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Rarity;
+import net.minecraft.world.item.crafting.RecipeSerializer;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.Locale;
@@ -104,6 +106,17 @@ public class YHDanmaku {
 
 		public boolean bypass() {
 			return size > 1;
+		}
+
+		/**
+		 * Whether this projectile uses the ordinary billboard renderer. Non-billboard
+		 * geometry is treated as an experimental fire capability by certification.
+		 */
+		public boolean isBillboard() {
+			return switch (this) {
+				case BUTTERFLY, TALISMAN, SCALE, KUNAI, KNIFE, MOON, GIANT_YINYANG -> false;
+				default -> true;
+			};
 		}
 
 		public String getName() {
@@ -217,9 +230,9 @@ public class YHDanmaku {
 	public static final ItemEntry<SpellItem> YUKARI_SPELL_LASER;
 	public static final ItemEntry<SpellItem> YUKARI_SPELL_BUTTERFLY;
 	public static final ItemEntry<SpellItem> CLOWNPIECE_SPELL;
-	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_RING;
-	public static final ItemEntry<CustomSpellItem> CUSTOM_SPELL_HOMING;
 	public static final ItemEntry<DynamicSpellItem> DYNAMIC_SPELL;
+	public static final ItemEntry<SpellReplicaFilmItem> SPELL_REPLICA_FILM;
+	public static final ItemEntry<SpellAuraItem> NON_SPELL_AURA, TIMEOUT_SPELL_AURA, LAST_SPELL_AURA, EX_SPELL_AURA;
 
 	static {
 
@@ -228,23 +241,20 @@ public class YHDanmaku {
 		// spell
 		{
 
-			CUSTOM_SPELL_RING = YoukaisHomecoming.REGISTRATE
-					.item("custom_spell_ring", p -> new CustomSpellItem(p.stacksTo(1), false, RingSpellFormData.FLOWER))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/custom_spell")))
-					.tag(YHTagGen.CUSTOM_SPELL)
-					.register();
-
-			CUSTOM_SPELL_HOMING = YoukaisHomecoming.REGISTRATE
-					.item("custom_spell_homing",
-							p -> new CustomSpellItem(p.stacksTo(1), true, HomingSpellFormData.RING))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/custom_spell")))
-					.tag(YHTagGen.CUSTOM_SPELL)
-					.register();
-
 			DYNAMIC_SPELL = YoukaisHomecoming.REGISTRATE
 					.item("dynamic_spell", p -> new DynamicSpellItem(p.stacksTo(1)))
-					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/spell/custom_spell")))
+					.color(() -> () -> (stack, i) -> i == 0 ? DynamicSpellItem.getColor(stack).argb() : 0xffffffff)
 					.register();
+
+			SPELL_REPLICA_FILM = YoukaisHomecoming.REGISTRATE
+					.item("spell_replica_film", SpellReplicaFilmItem::new)
+					.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/" + ctx.getName())))
+					.lang("Spell Replica Film")
+					.register();
+			NON_SPELL_AURA = aura("non_spell_aura", SpellCardType.NON_SPELL, "Non-spell Aura");
+			TIMEOUT_SPELL_AURA = aura("timeout_spell_aura", SpellCardType.TIMEOUT_SPELL, "Timeout Spell Aura");
+			LAST_SPELL_AURA = aura("last_spell_aura", SpellCardType.LAST_SPELL, "Last Spell Aura");
+			EX_SPELL_AURA = aura("ex_spell_aura", SpellCardType.NORMAL, true, "EX Spell Aura");
 
 			REIMU_SPELL = YoukaisHomecoming.REGISTRATE
 					.item("spell_reimu", p -> new SpellItem(
@@ -398,6 +408,16 @@ public class YHDanmaku {
 	}
 
 	public static void register() {
+	}
+
+	private static ItemEntry<SpellAuraItem> aura(String id, SpellCardType type, String name) {
+		return aura(id, type, false, name);
+	}
+
+	private static ItemEntry<SpellAuraItem> aura(String id, SpellCardType type, boolean ex, String name) {
+		return YoukaisHomecoming.REGISTRATE.item(id, p -> new SpellAuraItem(p, type, ex))
+				.model((ctx, pvd) -> pvd.generated(ctx, pvd.modLoc("item/" + ctx.getName())))
+				.lang(name).register();
 	}
 
 }

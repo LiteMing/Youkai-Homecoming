@@ -1,0 +1,14 @@
+{
+	"type": "youkaishomecoming:spell_draft",
+  "category": "misc",
+  "ingredients": [
+    { "item": "minecraft:paper" },
+    { "item": "minecraft:paper" },
+    { "item": "minecraft:paper" },
+    { "item": "minecraft:paper" },
+    { "item": "minecraft:ink_sac" }
+  ],
+  "result": {
+    "item": "youkaishomecoming:dynamic_spell"
+  }
+}

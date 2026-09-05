@@ -11,6 +11,7 @@ import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TouhouConditionalSpawns;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RestrictData;
@@ -124,6 +125,14 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public ResourceLocation clientPhaseId;
 	public int clientPhaseTick;
 	public boolean clientInDanmakuCombat;
+	public int clientSpellMaxHealth;
+	public int clientSpellElapsedTicks;
+	public int clientSpellDurationTicks;
+	public int clientSpellHealthTotal;
+	public int clientSpellHealthCompleted;
+	public int clientSpellHealthSegmentCount;
+	public int[] clientSpellHealthSegments = new int[0];
+	public int clientSpellStateReceivedTick;
 
 	public YoukaiEntity(EntityType<? extends YoukaiEntity> pEntityType, Level pLevel) {
 		this(pEntityType, pLevel, 10);
@@ -350,8 +359,13 @@ public abstract class YoukaiEntity extends PathfinderMob
 					// New runtime takes priority over legacy
 					if (shouldTickSpell()) {
 						spellRuntime.tick(this);
+						applySpellMovement();
 						tickDanmaku();
+						if (spellRuntime.isFinished()) {
+							clearTemporarySpellCircle();
+						}
 					} else {
+						clearTemporarySpellCircle();
 						spellRuntime.reset();
 						eraseAllDanmaku(null);
 						danmakuHolder.clearSentQueue();
@@ -372,6 +386,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 		}
 		super.aiStep();
 		if (!level().isClientSide()) {
+			if ((tickCount & 15) == 0) {
+				syncSpellState();
+			}
 			if (!hasEffect(YHEffects.BEATEN.get())) {
 				dodgePilot.tick(this);
 			}
@@ -392,9 +409,20 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	protected void actuallyHurt(DamageSource source, float amount) {
-		if (spellRuntime != null) spellRuntime.hurt(this, source, amount);
+		if (spellRuntime != null && shouldTriggerSpellDamage(source, amount)) {
+			spellRuntime.hurt(this, source, amount);
+		}
 		if (spellCard != null) spellCard.hurt(this, source, amount);
 		actuallyHurtImpl(source, amount);
+	}
+
+	/**
+	 * Allows entity state machines to suppress a data-driven on_damage callback
+	 * for an otherwise valid hurt event. The default is the real-game behavior:
+	 * every accepted hurt event reaches the spell runtime.
+	 */
+	protected boolean shouldTriggerSpellDamage(DamageSource source, float amount) {
+		return true;
 	}
 
 	protected final void actuallyHurtImpl(DamageSource source, float amount) {
@@ -438,6 +466,9 @@ public abstract class YoukaiEntity extends PathfinderMob
 		float remaining = getCombatProgress() - amount;
 		if (remaining > 0) {
 			setCombatProgress(remaining);
+			return;
+		}
+		if (spellRuntime != null && spellRuntime.triggerSpellHealthBreak(this, source)) {
 			return;
 		}
 		eraseAllDanmaku(null);
@@ -548,6 +579,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	private void stopSpellsAndClearDanmaku() {
 		if (level().isClientSide() || deathSpellCleanupDone) return;
 		deathSpellCleanupDone = true;
+		clearTemporarySpellCircle();
 		if (spellRuntime != null) spellRuntime.reset();
 		if (spellCard != null) spellCard.reset();
 		danmakuHolder.cleanup(this);
@@ -766,16 +798,33 @@ public abstract class YoukaiEntity extends PathfinderMob
 		ResourceLocation spellId = null;
 		ResourceLocation phaseId = null;
 		int phaseTick = 0;
+		int spellMaxHealth = 0;
+		int spellElapsedTicks = 0;
+		int spellDurationTicks = 0;
+		int spellHealthTotal = 0;
+		int spellHealthCompleted = 0;
+		int spellHealthSegmentCount = 0;
+		int[] spellHealthSegments = new int[0];
 		boolean inCombat = getTarget() != null;
 		if (spellRuntime != null) {
 			spellId = spellRuntime.getDefinition().id;
 			phaseId = spellRuntime.getCurrentPhaseId();
 			phaseTick = spellRuntime.getPhaseTick();
+			spellMaxHealth = spellRuntime.getSpellMaxHealth();
+			spellElapsedTicks = spellRuntime.getSpellElapsedTicks();
+			spellDurationTicks = spellRuntime.getSpellDurationTicks();
+			spellHealthTotal = spellRuntime.getSpellHealthTotal();
+			spellHealthCompleted = spellRuntime.getSpellHealthCompleted();
+			spellHealthSegmentCount = spellRuntime.getSpellHealthSegmentCount();
+			spellHealthSegments = spellRuntime.getSpellHealthSegments();
 		} else if (spellCard != null && spellCard.spellId != null) {
 			spellId = spellCard.spellId;
 		}
 		YoukaisHomecoming.HANDLER.toTrackingPlayers(
-				new SpellStateToClient(getId(), spellId, phaseId, phaseTick, inCombat), this);
+				new SpellStateToClient(getId(), spellId, phaseId, phaseTick, inCombat,
+						spellMaxHealth, spellElapsedTicks, spellDurationTicks,
+						spellHealthTotal, spellHealthCompleted, spellHealthSegmentCount,
+						spellHealthSegments), this);
 	}
 
 	public void setSpellRuntime(@Nullable SpellRuntime runtime) {
@@ -810,9 +859,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 	public void danmakuHitTarget(IYHDanmaku self, DamageSource source, LivingEntity target) {
 		if (combatProgress.progress <= 0) return;
 		if (!shouldHurt(target)) return;
+		float damage = self.damage(target);
 		if (target instanceof Player player) {
 			var graze = GrazeCapability.HOLDER.get(player);
-			var type = graze.performErase(this);
+			var type = graze.performErase(this, damage);
 			if (type.erase()) {
 				eraseAllDanmaku(player);
 			}
@@ -821,16 +871,47 @@ public abstract class YoukaiEntity extends PathfinderMob
 			}
 		}
 		float hp = target.getHealth();
-		boolean immune = !target.hurt(source, self.damage(target));
+		boolean immune = !target.hurt(source, damage);
 		float ahp = target.getHealth();
 		if (ahp >= hp && ahp > 0) immune = true;
 		onDanmakuHit(target, self);
+		if (target instanceof ServerPlayer player
+				&& this instanceof BossYoukaiEntity
+				&& YHModConfig.COMMON.bossDanmakuDefeatOutsideCombat.get()
+				&& !EffectEventHandlers.canDanmakuCombat(player)
+				&& !player.hasEffect(YHEffects.BEATEN.get())) {
+			int duration = YHModConfig.COMMON.beatenDurationTicks.get();
+			if (duration > 0) {
+				player.addEffect(new net.minecraft.world.effect.MobEffectInstance(
+						YHEffects.BEATEN.get(), duration, 0));
+			}
+		}
 		if (immune) {
 			onDanmakuImmune(target, self, source);
 		}
 	}
 
 	private final VirtualDanmakuHolder danmakuHolder = new VirtualDanmakuHolder();
+	public VirtualDanmakuHolder getDanmakuHolder() { return danmakuHolder; }
+
+	@Override
+	public int activeDanmakuCount() {
+		return danmakuHolder.activeProjectileCount();
+	}
+
+	@Override
+	public void settleSpellHealthTimeout() {
+		if (level().isClientSide() || combatProgress == null || getCombatProgress() <= 0) return;
+		eraseAllDanmaku(null);
+		boolean defeated = false;
+		if (targetEntity() instanceof Player player) {
+			defeated = GrazeHelper.tryDanmakuDefeat(player, this,
+					player.damageSources().playerAttack(player));
+		}
+		if (!defeated) {
+			setCombatProgress(0);
+		}
+	}
 
 	public void shoot(Entity danmaku) {
 		if (!danmakuHolder.shoot(danmaku)) {
@@ -855,7 +936,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	public void countDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit, dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result) {
-		danmakuHolder.countDanmakuInFrustum(frustum, limit, result);
+		danmakuHolder.countDanmakuInFrustum(this, frustum, limit, result, getSpellDefinitionId());
 	}
 
 	public void eraseDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, @Nullable Player player, int limit) {
@@ -864,6 +945,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	public void remove(RemovalReason reason) {
+		clearTemporarySpellCircle();
 		if (!danmakuHolder.isEmpty()) {
 			danmakuHolder.cleanup(this);
 		}

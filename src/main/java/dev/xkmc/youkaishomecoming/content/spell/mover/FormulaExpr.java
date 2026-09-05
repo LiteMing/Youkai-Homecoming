@@ -186,10 +186,34 @@ public final class FormulaExpr {
 			case "exp" -> parseFunc1(Math::exp);
 			case "min" -> parseFunc2(Math::min);
 			case "max" -> parseFunc2(Math::max);
+			case "clamp" -> parseFunc3((v, min, max) -> Math.max(min, Math.min(max, v)));
 			case "pow" -> parseFunc2(Math::pow);
 			case "root" -> parseFunc2((value, degree) -> degree == 0 ? 0 : Math.pow(value, 1.0 / degree));
-			default -> t -> 0; // Unknown identifier
+			default -> throw new IllegalArgumentException("Unknown identifier: " + id);
 		};
+	}
+
+	@FunctionalInterface
+	private interface TriFunction {
+		double apply(double a, double b, double c);
+	}
+
+	private Evaluable parseFunc3(TriFunction op) {
+		skipWhitespace();
+		if (pos < source.length() && source.charAt(pos) == '(') {
+			pos++;
+			Evaluable arg1 = parseExpr();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ',') pos++;
+			Evaluable arg2 = parseExpr();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ',') pos++;
+			Evaluable arg3 = parseExpr();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ')') pos++;
+			return t -> op.apply(arg1.eval(t), arg2.eval(t), arg3.eval(t));
+		}
+		throw new IllegalArgumentException("Expected '(' for 3-argument function");
 	}
 
 	private Evaluable parseFunc1(java.util.function.DoubleUnaryOperator op) {
@@ -377,10 +401,32 @@ public final class FormulaExpr {
 			case "exp" -> parseFuncRich1(Math::exp);
 			case "min" -> parseFuncRich2(Math::min);
 			case "max" -> parseFuncRich2(Math::max);
+			case "clamp" -> parseFuncRich3((v, min, max) -> Math.max(min, Math.min(max, v)));
 			case "pow" -> parseFuncRich2(Math::pow);
 			case "root" -> parseFuncRich2((value, degree) -> degree == 0 ? 0 : Math.pow(value, 1.0 / degree));
-			default -> (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> 0;
+			default -> throw new IllegalArgumentException("Unknown identifier in rich formula: " + id);
 		};
+	}
+
+	private RichEvaluable parseFuncRich3(TriFunction op) {
+		skipWhitespace();
+		if (pos < source.length() && source.charAt(pos) == '(') {
+			pos++;
+			RichEvaluable arg1 = parseExprRich();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ',') pos++;
+			RichEvaluable arg2 = parseExprRich();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ',') pos++;
+			RichEvaluable arg3 = parseExprRich();
+			skipWhitespace();
+			if (pos < source.length() && source.charAt(pos) == ')') pos++;
+			return (t, tx, ty, tz, cx, cy, cz, ox, oy, oz) -> op.apply(
+					arg1.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz),
+					arg2.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz),
+					arg3.eval(t, tx, ty, tz, cx, cy, cz, ox, oy, oz));
+		}
+		throw new IllegalArgumentException("Expected '(' for 3-argument function");
 	}
 
 	private RichEvaluable parseFuncRich1(java.util.function.DoubleUnaryOperator op) {

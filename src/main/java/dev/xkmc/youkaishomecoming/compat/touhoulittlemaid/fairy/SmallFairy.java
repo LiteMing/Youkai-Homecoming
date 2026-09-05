@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.fairy;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.monster.IHasPowerPoint;
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.content.entity.UntargetedPlayerSpellHostile;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.FairyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
@@ -13,7 +14,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.Level;
 
 @SerialClass
-public class SmallFairy extends FairyEntity implements IHasPowerPoint {
+public class SmallFairy extends FairyEntity implements IHasPowerPoint, UntargetedPlayerSpellHostile {
 
 	private static final int MIN_POWER_POINT = 300;
 	private static final int MAX_POWER_POINT = 500;

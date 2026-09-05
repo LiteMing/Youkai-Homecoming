@@ -3,7 +3,10 @@ package dev.xkmc.youkaishomecoming.init.data;
 import dev.xkmc.l2damagetracker.init.data.DamageTypeAndTagsGen;
 import dev.xkmc.l2damagetracker.init.data.L2DamageTypes;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
+import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
+import net.minecraft.network.chat.Component;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.PackOutput;
@@ -13,10 +16,15 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.TraceableEntity;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.data.ExistingFileHelper;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 
 public class YHDamageTypes extends DamageTypeAndTagsGen {
 
@@ -58,15 +66,40 @@ public class YHDamageTypes extends DamageTypeAndTagsGen {
 	}
 
 	public static DamageSource danmaku(IYHDanmaku self) {
-		return new DamageSource(self.self().level().registryAccess()
+		return new DanmakuDamageSource(self.self().level().registryAccess()
 				.registryOrThrow(Registries.DAMAGE_TYPE).getHolderOrThrow(DANMAKU), self.self(),
-				self.self().getOwner());
+				rootOwner(self.self().getOwner()));
 	}
 
 	public static DamageSource abyssal(IYHDanmaku self) {
-		return new DamageSource(self.self().level().registryAccess()
+		return new DanmakuDamageSource(self.self().level().registryAccess()
 				.registryOrThrow(Registries.DAMAGE_TYPE).getHolderOrThrow(ABYSSAL), self.self(),
-				self.self().getOwner());
+				rootOwner(self.self().getOwner()));
+	}
+
+	private static Entity rootOwner(Entity owner) {
+		Set<Entity> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+		while (owner instanceof TraceableEntity traceable && seen.add(owner)) {
+			Entity next = traceable.getOwner();
+			if (next == null) break;
+			owner = next;
+		}
+		return owner;
+	}
+
+	private static final class DanmakuDamageSource extends DamageSource {
+		private final boolean bossOwned;
+
+		private DanmakuDamageSource(Holder<DamageType> type, Entity direct, Entity owner) {
+			super(type, direct, owner);
+			this.bossOwned = owner instanceof BossYoukaiEntity;
+		}
+
+		@Override
+		public Component getLocalizedDeathMessage(LivingEntity victim) {
+			return Component.translatable(bossOwned ? "death.attack.danmaku.boss" : "death.attack.danmaku.other",
+					victim.getDisplayName());
+		}
 	}
 
 

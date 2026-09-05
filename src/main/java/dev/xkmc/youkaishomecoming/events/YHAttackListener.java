@@ -5,12 +5,16 @@ import dev.xkmc.l2damagetracker.contents.attack.AttackListener;
 import dev.xkmc.l2damagetracker.contents.attack.DamageModifier;
 import dev.xkmc.l2library.base.effects.EffectBuilder;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.effect.UdumbaraEffect;
 import dev.xkmc.youkaishomecoming.content.entity.animal.tuna.TunaEntity;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationContactGateway;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -38,6 +42,20 @@ public class YHAttackListener implements AttackListener {
 		var event = cache.getLivingHurtEvent();
 		assert event != null;
 		var source = event.getSource();
+		if (source.is(YHDamageTypes.DANMAKU_TYPE) && cache.getAttackTarget() instanceof Player target
+				&& !GrazeHelper.canReceiveDanmaku(target)) {
+			event.setCanceled(true);
+			return;
+		}
+		// Certification legacy/fallback path (D8): any danmaku damage event still
+		// surfacing from the certification enemy against the creator is a No-Hit
+		// contact and must fail the trial before any Graze handling.
+		if (source.getEntity() instanceof SpellCertificationEntity cert
+				&& cache.getAttackTarget() instanceof ServerPlayer sp) {
+			CertificationContactGateway.onCertificationContact(cert, sp);
+			event.setCanceled(true);
+			return;
+		}
 		if (source.is(YHDamageTypes.DANMAKU_TYPE) &&
 				cache.getAttackTarget() instanceof Player target &&
 				source.getEntity() instanceof LivingEntity attacker &&
@@ -45,7 +63,10 @@ public class YHAttackListener implements AttackListener {
 			var targetGraze = GrazeCapability.HOLDER.get(target);
 			if (targetGraze.prepareDanmakuHitContext(attacker) &&
 					targetGraze.shouldAbsorbDanmakuFrom(attacker)) {
-				var type = targetGraze.performDanmakuHit(attacker);
+				boolean playerSpellProjectile = source.getDirectEntity()
+						instanceof dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku danmaku
+						&& danmaku.isPlayerSpellProjectile();
+				var type = targetGraze.performDanmakuHit(attacker, event.getAmount(), playerSpellProjectile);
 				if (type.skipDamage()) {
 					event.setCanceled(true);
 					return;

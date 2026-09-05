@@ -4,6 +4,8 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.CueOrigin;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.SoundCue;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import net.minecraft.resources.ResourceLocation;
@@ -31,9 +33,11 @@ public class SpellActions {
 		register("force_spell", ForceSpell.CODEC, ForceSpell.class);
 		register("fire_spell", FireSpell.CODEC, FireSpell.class);
 		register("play_sound", PlaySoundAction.CODEC, PlaySoundAction.class);
+		register("camera_shake", CameraShakeAction.CODEC, CameraShakeAction.class);
 		register("run_command", RunCommandAction.CODEC, RunCommandAction.class);
 		register("show_spell_title", ShowSpellTitleAction.CODEC, ShowSpellTitleAction.class);
 		register("set_spell_circle", SetSpellCircleAction.CODEC, SetSpellCircleAction.class);
+		register("set_spell_health", SetSpellHealthAction.CODEC, SetSpellHealthAction.class);
 		register("conditional", ConditionalAction.CODEC, ConditionalAction.class);
 		register("sequence", SequenceAction.CODEC, SequenceAction.class);
 		register("legacy_ticker", LegacyTickerAction.CODEC, LegacyTickerAction.class);
@@ -47,10 +51,18 @@ public class SpellActions {
 		register("spawn_shooter", SpawnShooterAction.CODEC, SpawnShooterAction.class);
 		register("burst", BurstAction.CODEC, BurstAction.class);
 		register("disabled", DisabledAction.CODEC, DisabledAction.class);
+		register("broken", BrokenAction.CODEC, BrokenAction.class);
 		register("confine_target", ConfineTargetAction.CODEC, ConfineTargetAction.class);
 		register("set_entity_flag", SetEntityFlagAction.CODEC, SetEntityFlagAction.class);
 		register("teleport_random", TeleportRandomAction.CODEC, TeleportRandomAction.class);
 		register("ysm_render", YsmRenderAction.CODEC, YsmRenderAction.class);
+		register("caster_moves", CasterMovesAction.CODEC, CasterMovesAction.class);
+		register("bounce", BounceAction.CODEC, BounceAction.class);
+		register("bounce_source", BounceAction.CODEC, BounceAction.class);
+		register("expire_source", ExpireSourceAction.CODEC, ExpireSourceAction.class);
+		register("discard_source", DiscardSourceAction.CODEC, DiscardSourceAction.class);
+		register("continue_source", ContinueSourceAction.CODEC, ContinueSourceAction.class);
+		register("hold_source", HoldSourceAction.CODEC, HoldSourceAction.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellAction> codec) {
@@ -177,21 +189,48 @@ public class SpellActions {
 		}
 	}
 
-	public record PlaySoundAction(ResourceLocation soundId, float volume, float pitch) implements SpellAction {
+	public record PlaySoundAction(ResourceLocation soundId, float volume, float pitch,
+			SoundSource source, CueOrigin origin, double radius, boolean attenuation) implements SpellAction {
 		public static final Codec<PlaySoundAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 				ResourceLocation.CODEC.fieldOf("sound").forGetter(PlaySoundAction::soundId),
 				Codec.FLOAT.optionalFieldOf("volume", 1.0f).forGetter(PlaySoundAction::volume),
-				Codec.FLOAT.optionalFieldOf("pitch", 1.0f).forGetter(PlaySoundAction::pitch)
+				Codec.FLOAT.optionalFieldOf("pitch", 1.0f).forGetter(PlaySoundAction::pitch),
+				Codec.STRING.optionalFieldOf("source", "hostile").xmap(SpellActions::soundSource,
+						SoundSource::getName).forGetter(PlaySoundAction::source),
+				Codec.STRING.optionalFieldOf("origin", "caster").xmap(SpellActions::cueOrigin,
+						value -> value.name().toLowerCase(java.util.Locale.ROOT)).forGetter(PlaySoundAction::origin),
+				Codec.DOUBLE.optionalFieldOf("radius", 0d).forGetter(PlaySoundAction::radius),
+				Codec.BOOL.optionalFieldOf("attenuation", true).forGetter(PlaySoundAction::attenuation)
 		).apply(i, PlaySoundAction::new));
+
+		public PlaySoundAction(ResourceLocation soundId, float volume, float pitch) {
+			this(soundId, volume, pitch, SoundSource.HOSTILE, CueOrigin.CASTER, 0, true);
+		}
 
 		@Override
 		public void execute(SpellContext ctx) {
-			SoundEvent sound = ForgeRegistries.SOUND_EVENTS.getValue(soundId);
-			if (sound != null) {
-				var self = ctx.self();
-				self.level().playSound(null, self.getX(), self.getY(), self.getZ(),
-						sound, SoundSource.HOSTILE, volume, pitch);
+			if (ForgeRegistries.SOUND_EVENTS.containsKey(soundId)) {
+				ctx.feedback().playSound(new SoundCue(soundId, source, origin, null,
+						volume, pitch, radius, attenuation));
 			}
+		}
+	}
+
+	private static SoundSource soundSource(String value) {
+		if (value == null) return SoundSource.HOSTILE;
+		try {
+			return SoundSource.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+		} catch (IllegalArgumentException ignored) {
+			return SoundSource.HOSTILE;
+		}
+	}
+
+	private static CueOrigin cueOrigin(String value) {
+		if (value == null) return CueOrigin.CASTER;
+		try {
+			return CueOrigin.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+		} catch (IllegalArgumentException ignored) {
+			return CueOrigin.CASTER;
 		}
 	}
 
@@ -206,9 +245,7 @@ public class SpellActions {
 		@Override
 		public void execute(SpellContext ctx) {
 			var actions = condition.test(ctx) ? ifTrue : ifFalse;
-			for (var action : actions) {
-				action.execute(ctx);
-			}
+			ctx.executeList(actions);
 		}
 	}
 
@@ -219,9 +256,7 @@ public class SpellActions {
 
 		@Override
 		public void execute(SpellContext ctx) {
-			for (var action : actions) {
-				action.execute(ctx);
-			}
+			ctx.executeList(actions);
 		}
 	}
 
@@ -250,10 +285,9 @@ public class SpellActions {
 		public void execute(SpellContext ctx) {
 			int n = (int) count.get(ctx);
 			for (int idx = 0; idx < n; idx++) {
+				if (ctx.shouldAbortActionList()) break;
 				ctx.setVariable(indexVariable, idx);
-				for (var action : body) {
-					action.execute(ctx);
-				}
+				ctx.executeList(body);
 			}
 		}
 	}
@@ -270,6 +304,34 @@ public class SpellActions {
 		@Override
 		public void execute(SpellContext ctx) {
 			// Intentionally empty — disabled action does nothing
+		}
+	}
+
+	/**
+	 * Placeholder for a JSON fragment the editor could not decode.
+	 *
+	 * <p>When the Raw JSON panel fails a strict parse, {@code SpellJsonSalvage}
+	 * rebuilds the tree action by action and wraps each undecodable element in one
+	 * of these, so the node panel still comes up and the user can inspect, replace
+	 * or delete the offending node instead of staring at a single error string.
+	 *
+	 * <p>The original fragment is kept as a raw string rather than a parsed element,
+	 * so re-encoding a salvaged definition can never fail a second time.
+	 *
+	 * <p>It never executes, and {@code SpecialNodeCounter} classifies it as DENY —
+	 * that is what keeps a salvaged definition out of certification and out of a
+	 * survival draft save.
+	 */
+	public record BrokenAction(String originalType, String rawJson, String error) implements SpellAction {
+		public static final Codec<BrokenAction> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.STRING.optionalFieldOf("original_type", "").forGetter(BrokenAction::originalType),
+				Codec.STRING.optionalFieldOf("raw", "").forGetter(BrokenAction::rawJson),
+				Codec.STRING.optionalFieldOf("error", "").forGetter(BrokenAction::error)
+		).apply(i, BrokenAction::new));
+
+		@Override
+		public void execute(SpellContext ctx) {
+			// Intentionally empty — a fragment we could not decode must never run.
 		}
 	}
 }

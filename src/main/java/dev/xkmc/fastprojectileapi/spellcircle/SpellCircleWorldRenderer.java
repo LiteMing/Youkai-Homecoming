@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.content.entity.fairy.CirnoRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.reimu.ReimuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RumiaRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiRenderer;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterRenderer;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
@@ -84,6 +85,10 @@ public class SpellCircleWorldRenderer {
 		EntitySpellCircleManager.State state = EntitySpellCircleManager.getClientOverride(entity);
 		if (state != null) {
 			return state.enabled() && state.circle() != null && state.size() > 0;
+		}
+		if (entity instanceof net.minecraft.world.entity.player.Player player) {
+			GrazeCapability cap = GrazeCapability.HOLDER.get(player);
+			return cap != null && cap.shouldRenderPlayerStgCircle();
 		}
 		if (entity instanceof SpellCircleHolder holder) {
 			return holder.shouldShowSpellCircle() && holder.getSpellCircle() != null && holder.getCircleSize(pTick) > 0;

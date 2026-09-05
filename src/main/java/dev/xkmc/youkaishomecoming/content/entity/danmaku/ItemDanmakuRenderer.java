@@ -4,7 +4,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
-import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
+import dev.xkmc.youkaishomecoming.content.client.DanmakuClientState;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -43,7 +44,8 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 			return Math.min((dist - 2) / 12, 1) * fading;
 		}
 		double fading = YHModConfig.CLIENT.farDanmakuFading.get();
-		double global = GrazeHelper.globalForbidTime > 0 ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
+		double global = DanmakuClientState.isLocalPlayerSuppressed() ? YHModConfig.CLIENT.selfDanmakuFading.get() : 1;
+		global = Math.min(global, DanmakuRenderStates.localPlayerDamageVisibility(e));
 		if (fading == 0) return global;
 		double dist = entityRenderDispatcher.camera.getPosition().distanceTo(e.position());
 		double start = YHModConfig.CLIENT.fadingStart.get();

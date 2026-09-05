@@ -38,19 +38,26 @@ public abstract class BaseProjectile extends AsyncProjectile {
 		data.moveSrc = position();
 		data.inputVelocity = getDeltaMovement();
 		data.plannedMovement = computeMove(data.inputVelocity, data.moveSrc);
-		data.moveDst = data.moveSrc.add(data.plannedMovement.vec());
+		data.plannedMovementVec = data.plannedMovement.vec();
+		data.untrimmedMoveDst = data.moveSrc.add(data.plannedMovementVec);
+		data.moveDst = data.untrimmedMoveDst;
 	}
 
 	@Override
 	protected void trimMove(TickData data) {
 		data.blockHit = null;
-		if (!checkBlockHit()) return;
+		if (!checkBlockHit() || !(level() instanceof ServerLevel)) return;
 		Vec3 src = data.moveSrc == null ? position() : data.moveSrc;
 		Vec3 dst = data.moveDst == null ? src.add(getDeltaMovement()) : data.moveDst;
 		var hit = ProjectileHitHelper.getBlockHitResultOnMoveVector(this, src, dst);
 		if (hit != null) {
 			data.blockHit = hit;
 			data.moveDst = hit.getLocation();
+			if (data.plannedMovement != null) {
+				// Trim the applied step to the collision point
+				Vec3 step = hit.getLocation().subtract(src);
+				data.plannedMovement = new ProjectileMovement(step, data.plannedMovement.rot());
+			}
 		}
 	}
 
@@ -72,22 +79,34 @@ public abstract class BaseProjectile extends AsyncProjectile {
 		cache.preheat(box.inflate(1 + radius + graze));
 	}
 
+	protected long movementRevision = 0;
+
+	public void notifyTrajectoryChanged() {
+		this.movementRevision++;
+	}
+
 	@Override
 	protected void resolveCollision(TickData data) {
+		long revBefore = this.movementRevision;
+		if (data.blockHit != null) {
+			onHitBlock(data.blockHit);
+			if (!isValid() || isRemoved() || data.removed || this.movementRevision != revBefore) {
+				return;
+			}
+		}
 		if (!data.hitEntities.isEmpty()) {
 			for (Entity entity : data.hitEntities) {
 				onHitEntity(new EntityHitResult(entity));
-				if (!isValid() || isRemoved() || data.removed) {
+				if (!isValid() || isRemoved() || data.removed || this.movementRevision != revBefore) {
 					break;
 				}
 			}
-		} else if (data.blockHit != null) {
-			onHitBlock(data.blockHit);
 		}
 	}
 
 	@Override
 	protected void applyMoveTick(TickData data) {
+		// applyMove is performed before resolveCollision in ParallelTicker, but for single-thread fallback:
 		if (data.plannedMovement != null) {
 			applyMove(data.plannedMovement);
 		}

@@ -2,6 +2,10 @@ package gen;
 
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
+import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.LaserBlockHitEffect;
 import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfigs;
 import dev.xkmc.youkaishomecoming.content.spell.mover.*;
@@ -34,6 +38,9 @@ public class PilotPredictTest {
 		testZeroMoverPrediction();
 		testRotateMoverPrediction();
 		testTranslateMoverAimPrediction();
+		testTranslateMoverLocalSpace();
+		testTranslateMoverCodec();
+		testFixedDirLaunchDirection();
 		testHomingMoverSteering();
 		testHomingMoverCodec();
 		testPreviewTargetSurface();
@@ -49,6 +56,7 @@ public class PilotPredictTest {
 		testUnsupportedMoverFallsThrough();
 		testC2bGenerality();
 		testLaserGeometryConstants();
+		testLaserBlockHitSemantics();
 
 		System.out.println("\n=== Results: " + passed + " passed, " + failed + " failed ===");
 		if (failed > 0) {
@@ -244,6 +252,17 @@ public class PilotPredictTest {
 
 	private static void testPreviewTargetSurface() {
 		System.out.println("[Preview target surface]");
+		approx("default block target position", PreviewTarget.DEFAULT_BOX_POS,
+				new Vec3(0, -25, -16), 1e-8);
+		approx("default block target width", PreviewTarget.DEFAULT_BOX_SIZE.x, 50, 1e-8);
+		approx("default block target height", PreviewTarget.DEFAULT_BOX_SIZE.y, 50, 1e-8);
+		approx("default block target depth", PreviewTarget.DEFAULT_BOX_SIZE.z, 64, 1e-8);
+		AABB safe = PreviewTarget.safeFeetBounds(
+				new AABB(-5, -5, -5, 5, 5, 5), new AABB(-1, 0, -1, 1, 2, 1));
+		approx("pilot safe bounds min", new Vec3(safe.minX, safe.minY, safe.minZ),
+				new Vec3(-4, -5, -4), 1e-8);
+		approx("pilot safe bounds max", new Vec3(safe.maxX, safe.maxY, safe.maxZ),
+				new Vec3(4, 3, 4), 1e-8);
 		AABB box = PreviewTarget.boxAt(Vec3.ZERO, new Vec3(2, 4, 6));
 		approx("box width", box.getXsize(), 2, 1e-8);
 		approx("box height", box.getYsize(), 4, 1e-8);
@@ -264,14 +283,93 @@ public class PilotPredictTest {
 				box, new Vec3(0, 1, 0), new Vec3(0.5, 2, 0.5)).isPresent());
 		Vec3 sweepStart = new Vec3(0, 0.5, 0);
 		Vec3 sweepEnd = new Vec3(0, 0.5, -10);
+		Vec3 sweepBoxSize = new Vec3(2, 4, 2);
 		check("origin block catches an outward shot at its exit face", PreviewTarget.firstSurfaceIntersection(
-				PreviewTarget.boxAt(Vec3.ZERO, PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).isPresent());
+				PreviewTarget.boxAt(Vec3.ZERO, sweepBoxSize), sweepStart, sweepEnd).isPresent());
 		Vec3 entityHit = PreviewTarget.firstVolumeIntersection(
-				PreviewTarget.boxAt(new Vec3(0, 0, -3), PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).orElseThrow();
+				PreviewTarget.boxAt(new Vec3(0, 0, -3), sweepBoxSize), sweepStart, sweepEnd).orElseThrow();
 		Vec3 blockHit = PreviewTarget.firstSurfaceIntersection(
-				PreviewTarget.boxAt(new Vec3(0, 0, -7), PreviewTarget.DEFAULT_BOX_SIZE), sweepStart, sweepEnd).orElseThrow();
+				PreviewTarget.boxAt(new Vec3(0, 0, -7), sweepBoxSize), sweepStart, sweepEnd).orElseThrow();
 		check("nearest target hit can be selected by sweep distance",
 				sweepStart.distanceToSqr(entityHit) < sweepStart.distanceToSqr(blockHit));
+		System.out.println();
+	}
+
+	private static void testLaserBlockHitSemantics() {
+		System.out.println("[Laser block hit semantics]");
+		check("continue passes through wall",
+				LaserBlockHitEffect.from(HitBehavior.CONTINUE) == LaserBlockHitEffect.PASS_THROUGH);
+		check("discard keeps prefix and suppresses expiry",
+				LaserBlockHitEffect.from(HitBehavior.DISCARD) == LaserBlockHitEffect.CLIP_AND_SUPPRESS_EXPIRY);
+		check("expire keeps prefix and runs expiry",
+				LaserBlockHitEffect.from(HitBehavior.EXPIRE) == LaserBlockHitEffect.CLIP_AND_RUN_EXPIRY);
+		approx("continue preserves full laser length",
+				LaserBlockHitEffect.PASS_THROUGH.visibleLength(40, 12.5), 40, 1e-6);
+		approx("clip behavior removes only laser suffix",
+				LaserBlockHitEffect.CLIP_ONLY.visibleLength(40, 12.5), 12.5, 1e-6);
+		approx("short growing beam remains shorter than wall",
+				LaserBlockHitEffect.clipLength(8, 12.5), 8, 1e-6);
+		approx("no wall restores full laser", LaserBlockHitEffect.clipLength(40, -1), 40, 1e-6);
+		System.out.println();
+	}
+
+	private static void testTranslateMoverLocalSpace() {
+		System.out.println("[T1 TranslateMover local launch frame]");
+		Vec3 origin = new Vec3(10, 20, 30);
+		Vec3 launch = new Vec3(0, 0, 1);
+		var orientation = DanmakuHelper.getOrientation(launch);
+		var translate = new TranslateMover(origin, "tick", "2", "3",
+				Vec3.ZERO, Vec3.ZERO, launch, true);
+
+		// The launch frame is captured once. Formula tick still advances the
+		// projectile along the captured forward axis, while right/up remain fixed.
+		Vec3 expectedAtOne = origin.add(orientation.forward())
+				.add(orientation.side().scale(2))
+				.add(orientation.normal().scale(3));
+		approx("local frame maps forward/right/up at t=1", translate.pos(1), expectedAtOne, 1e-8);
+		Vec3 expectedAtTwo = origin.add(orientation.forward().scale(2))
+				.add(orientation.side().scale(2))
+				.add(orientation.normal().scale(3));
+		approx("local frame stays fixed while formula tick advances", translate.pos(2), expectedAtTwo, 1e-8);
+
+		// A non-axis-aligned launch direction must use the same orthogonal frame
+		// as FormulaMover, rather than world east/up/south axes.
+		Vec3 angledLaunch = new Vec3(1, 1, 0).normalize();
+		var angledOrientation = DanmakuHelper.getOrientation(angledLaunch);
+		var angled = new TranslateMover(Vec3.ZERO, "0", "1", "0",
+				Vec3.ZERO, Vec3.ZERO, angledLaunch, true);
+		approx("local right follows launch direction", angled.pos(0), angledOrientation.side(), 1e-8);
+		System.out.println();
+	}
+
+	private static void testTranslateMoverCodec() {
+		System.out.println("[TranslateMover codec]");
+		var legacyJson = JsonParser.parseString("{\"type\":\"translate\",\"x\":\"1\"}");
+		MoverConfig legacy = MoverConfig.CODEC.parse(JsonOps.INSTANCE, legacyJson).result().orElse(null);
+		check("legacy translate defaults to world space",
+				legacy instanceof MoverConfigs.TranslateMoverConfig t && "world".equals(t.space()));
+
+		var localJson = JsonParser.parseString("{\"type\":\"translate\",\"space\":\"local\",\"x\":\"tick\",\"y\":\"sin_deg(tick * 4)\"}");
+		MoverConfig local = MoverConfig.CODEC.parse(JsonOps.INSTANCE, localJson).result().orElse(null);
+		check("local translate decodes", local instanceof MoverConfigs.TranslateMoverConfig t
+				&& "local".equals(t.space()) && t.x().equals("tick"));
+		var encoded = local == null ? null : MoverConfig.CODEC.encodeStart(JsonOps.INSTANCE, local).result().orElse(null);
+		check("local translate round-trips space and formulas",
+				encoded != null && encoded.toString().contains("\"space\":\"local\"")
+						&& encoded.toString().contains("sin_deg(tick * 4)"));
+		System.out.println();
+	}
+
+	private static void testFixedDirLaunchDirection() {
+		System.out.println("[FixedDirMover launch direction]");
+		var config = new MoverConfigs.FixedDirMoverConfig(
+				new MoverConfigs.AccelerationConfig(Vec3.ZERO));
+		Vec3 launch = new Vec3(1, 0, 0);
+		Vec3 base = new Vec3(0, 0, 1);
+		DanmakuMover mover = config.create(Vec3.ZERO, launch, base);
+		var movement = mover.move(new MoverInfo(1, Vec3.ZERO, launch, null, null));
+		approx("fixed direction follows final launch vector", movement.rot(), ProjectileMovement.of(launch).rot(), 1e-8);
+		approx("inner mover displacement is preserved", movement.vec(), launch, 1e-8);
 		System.out.println();
 	}
 
@@ -519,6 +617,16 @@ public class PilotPredictTest {
 		check("warn inactive t=10", !(10 > start && 10 < end));
 		check("active t=50", 50 > start && 50 < end);
 		check("fade inactive t=90", !(90 > start && 90 < end));
+
+		// A wall clips the collision segment; the laser anchor remains the ray origin.
+		Vec3 wallHit = anchor.add(orient.scale(4));
+		approx("wall clips laser length", anchor.distanceTo(wallHit), 4, 1e-10);
+		AABB beforeWall = new AABB(2.9, 0.9, -0.1, 3.1, 1.1, 0.1);
+		AABB behindWall = new AABB(4.9, 0.9, -0.1, 5.1, 1.1, 0.1);
+		check("laser hits target before wall",
+				beforeWall.clip(anchor, wallHit).isPresent());
+		check("laser does not hit target behind wall",
+				behindWall.clip(anchor, wallHit).isEmpty());
 		System.out.println();
 	}
 }

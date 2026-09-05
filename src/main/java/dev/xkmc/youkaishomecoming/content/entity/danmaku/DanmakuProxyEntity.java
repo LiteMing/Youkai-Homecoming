@@ -2,8 +2,12 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
+import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -65,6 +69,20 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private SpellRuntime runtime;
 	private int spellTickCount = 0;
 	private int maxDuration;
+	private SpellCardType cardType = SpellCardType.NORMAL;
+	private boolean certifiedCard;
+	private boolean ending;
+	/** True after a non-spell is toggled off; existing danmaku still drain. */
+	private boolean generationStopped;
+	@Nullable
+	private String cardKey;
+
+	public enum EndReason {
+		TIMEOUT,
+		SPELL_BREAK,
+		PLAYER_CANCEL,
+		EXTERNAL_ABORT
+	}
 
 	// ==================== Constructor ====================
 
@@ -89,12 +107,35 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 */
 	public void init(ServerPlayer player, SpellDefinition definition, int duration,
 					 @Nullable LivingEntity target) {
+		init(player, definition, duration, target, null);
+	}
+
+	public void init(ServerPlayer player, SpellDefinition definition, int duration,
+						 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan) {
+		init(player, definition, duration, target, healthPlan, null);
+	}
+
+	public void init(ServerPlayer player, SpellDefinition definition, int duration,
+						 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan,
+						 @Nullable Integer durationOverride) {
+		init(player, definition, duration, target, healthPlan, durationOverride, false);
+	}
+
+	public void init(ServerPlayer player, SpellDefinition definition, int duration,
+						 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan,
+						 @Nullable Integer durationOverride, boolean certifiedCard) {
 		this.ownerPlayerId = player.getUUID();
 		this.ownerPlayer = player;
 		this.maxDuration = duration;
-		this.runtime = new SpellRuntime(definition);
+		this.runtime = healthPlan == null ? new SpellRuntime(definition)
+				: new SpellRuntime(definition, healthPlan::resolve, healthPlan);
 		this.runtime.reset();
+		this.runtime.setDurationOverride(durationOverride);
 		this.spellTickCount = 0;
+		this.cardType = definition.itemForm.cardType();
+		this.certifiedCard = certifiedCard;
+		this.ending = false;
+		this.generationStopped = false;
 
 		if (target != null) {
 			this.targetId = target.getUUID();
@@ -125,7 +166,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		if (ownerPlayer == null || ownerPlayer.isRemoved() || !ownerPlayer.isAlive()) {
 			resolveOwner();
 			if (ownerPlayer == null) {
-				cleanup();
+				cleanup(EndReason.EXTERNAL_ABORT);
 				return;
 			}
 		}
@@ -139,18 +180,40 @@ public class DanmakuProxyEntity extends PathfinderMob
 		// Refresh target tracking
 		refreshTarget();
 
-		// Drive the spell runtime
-		if (runtime != null) {
-			runtime.tick(this);
-			tickDanmaku();
+		// Drive the spell runtime while generation is enabled.  A stopped non-spell
+		// keeps its runtime available to callbacks owned by already emitted
+		// projectiles, but must not execute its cast loop or create new output.
+		if (runtime != null && !generationStopped) {
+			// A fixed player-card duration ends the normal on_tick cast loop, but
+			// held projectiles may still own persistent release callbacks. Keep the
+			// proxy alive and advance only that callback queue until it drains.
+			if (SpellProxyLifecycle.castLoopActive(maxDuration, spellTickCount, runtime.isFinished())) {
+				runtime.tick(this);
+			} else {
+				runtime.tickDelayed(this);
+			}
+			applySpellMovement();
+		}
+		// Existing virtual projectiles continue to move, collide, expire, and run
+		// their own callbacks after a non-spell key-up/toggle-off.
+		tickDanmaku();
+
+		if (SpellProxyLifecycle.shouldFinishStoppedGeneration(generationStopped,
+				danmakuHolder.isEmpty())) {
+			finishStoppedGeneration();
+			return;
 		}
 
 		// Check for completion
 		spellTickCount++;
-		boolean naturalEnd = maxDuration < 0 && runtime != null && runtime.isFinished();
-		boolean timedOut = maxDuration >= 0 && spellTickCount >= maxDuration;
-		if (naturalEnd || timedOut) {
-			cleanup();
+		boolean runtimeFinished = runtime != null && runtime.isFinished();
+		boolean pendingHold = runtime != null && runtime.hasPendingHoldActions();
+		if (SpellProxyLifecycle.shouldCleanup(maxDuration, spellTickCount, runtimeFinished, pendingHold)) {
+			cleanup(EndReason.TIMEOUT);
+		} else if ((spellTickCount & 3) == 0 && ownerPlayer != null) {
+			// The proxy owns the authoritative elapsed tick; refresh the Bossbar
+			// after advancing the runtime rather than waiting for capability order.
+			SpellContainer.refreshSpellBossBar(ownerPlayer, this);
 		}
 	}
 
@@ -198,6 +261,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 
 	@Override
 	public void shoot(Entity danmaku) {
+		if (generationStopped && danmaku instanceof SimplifiedProjectile projectile) {
+			// A callback from an already emitted projectile may still execute, but
+			// closing the non-spell must not allow that callback to create new output.
+			projectile.markErased(true);
+			return;
+		}
 		if (danmaku instanceof ItemDanmakuEntity e) {
 			if (e.afterExpiry != null) {
 				e.afterExpiry.setup(this);
@@ -217,6 +286,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 		danmakuHolder.tickDanmaku(this, shooter());
 	}
 
+	@Override
+	public int activeDanmakuCount() {
+		return danmakuHolder.activeProjectileCount();
+	}
+
 	public void eraseAllDanmaku(@Nullable Player player) {
 		eraseAllDanmakuAndCount(player);
 	}
@@ -230,7 +304,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	public void countDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit, dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result) {
-		danmakuHolder.countDanmakuInFrustum(frustum, limit, result);
+		danmakuHolder.countDanmakuInFrustum(this, frustum, limit, result, getSpellDefinitionId());
 	}
 
 	public void eraseDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, @Nullable Player player, int limit) {
@@ -267,6 +341,12 @@ public class DanmakuProxyEntity extends PathfinderMob
 		return ownerPlayer != null ? ownerPlayer : this;
 	}
 
+	@Override
+	public double casterPower() {
+		resolveOwner();
+		return ownerPlayer == null ? 0 : GrazeHelper.getEffectivePowerLevel(ownerPlayer);
+	}
+
 	@Nullable
 	@Override
 	public LivingEntity owner() {
@@ -286,12 +366,20 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	@Override
+	public boolean restrictsManualMovement() {
+		return !generationStopped && SpellRuntimeHost.super.restrictsManualMovement();
+	}
+
+	@Override
 	public void eraseDanmaku(@Nullable Player player) {
 		eraseAllDanmaku(player);
 	}
 
 	@Override
 	public void syncSpellState() {
+		if (ownerPlayer != null && runtime != null) {
+			SpellContainer.syncRuntimeSpellBar(ownerPlayer, this);
+		}
 	}
 
 	@Override
@@ -325,8 +413,44 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 * Clean up all virtual danmaku and remove this proxy entity from the world.
 	 */
 	public void cleanup() {
+		cleanup(EndReason.EXTERNAL_ABORT);
+	}
+
+	public void cleanup(EndReason reason) {
+		if (ending || isRemoved()) return;
+		ending = true;
+		ServerPlayer owner = ownerPlayer;
 		eraseAllDanmaku(null);
 		this.discard();
+		if (owner != null) {
+			SpellContainer.onProxyEnded(owner, this,
+					reason == null ? EndReason.EXTERNAL_ABORT : reason);
+		}
+	}
+
+	/**
+	 * Disable future cast-loop output without erasing projectiles already in
+	 * flight.  Global combat cleanup must continue to use {@link #cleanup}.
+	 */
+	public void stopGenerationPreserveDanmaku() {
+		if (ending || isRemoved()) return;
+		generationStopped = true;
+	}
+
+	public boolean isGenerationStopped() {
+		return generationStopped;
+	}
+
+	public boolean isGenerating() {
+		return !generationStopped && !isRemoved();
+	}
+
+	private void finishStoppedGeneration() {
+		if (ending || isRemoved()) return;
+		ending = true;
+		// The holder is already empty, so discard cannot trigger the safety-net
+		// erase path in remove(). onProxyRemoved drops the active-card marker.
+		discard();
 	}
 
 	/**
@@ -336,6 +460,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 */
 	@Override
 	public void remove(RemovalReason reason) {
+		if (!level().isClientSide() && ownerPlayer != null) {
+			SpellContainer.onProxyRemoved(ownerPlayer, this);
+		}
+		clearTemporarySpellCircle();
 		if (!danmakuHolder.isEmpty()) {
 			eraseAllDanmaku(null);
 		}
@@ -346,7 +474,48 @@ public class DanmakuProxyEntity extends PathfinderMob
 	 * @return true if this proxy has finished its spell and all danmaku have expired
 	 */
 	public boolean isFinished() {
-		return isRemoved() || (spellTickCount >= maxDuration && danmakuHolder.isEmpty());
+		if (isRemoved()) return true;
+		if (generationStopped) return danmakuHolder.isEmpty();
+		boolean runtimeFinished = runtime != null && runtime.isFinished();
+		boolean pendingHold = runtime != null && runtime.hasPendingHoldActions();
+		return SpellProxyLifecycle.isFinished(maxDuration, spellTickCount,
+				runtimeFinished, pendingHold, danmakuHolder.isEmpty());
+	}
+
+	public int spellElapsedTicks() {
+		if (runtime != null && runtime.getSpellHealthTotal() > 0) {
+			return runtime.getSpellElapsedTicks();
+		}
+		return Math.max(0, spellTickCount);
+	}
+
+	/** Zero means natural end / no fixed countdown. */
+	public int spellDurationTicks() {
+		if (runtime != null && runtime.getSpellHealthTotal() > 0) {
+			return Math.max(0, runtime.getSpellDurationTicks());
+		}
+		return Math.max(0, maxDuration);
+	}
+
+	public SpellCardType cardType() {
+		return cardType;
+	}
+
+	public boolean isCertifiedCard() {
+		return certifiedCard;
+	}
+
+	public boolean isExSpell() {
+		return runtime != null && runtime.getDefinition().itemForm.exSpell();
+	}
+
+	public void bindCardKey(@Nullable String cardKey) {
+		this.cardKey = cardKey;
+	}
+
+	@Nullable
+	public String cardKey() {
+		return cardKey;
 	}
 
 	// ==================== Entity properties: invisible, invulnerable, no AI ====================

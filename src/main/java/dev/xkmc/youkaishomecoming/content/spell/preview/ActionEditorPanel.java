@@ -5,6 +5,8 @@ import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
+import dev.xkmc.youkaishomecoming.content.spell.mover.FormulaExpr;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellMovementDirective;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.client.Minecraft;
@@ -12,6 +14,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
@@ -19,6 +22,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.DyeColor;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.registries.ForgeRegistries;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -32,6 +37,7 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Editor panel for editing SpellAction properties within the preview screen.
@@ -47,6 +53,7 @@ public class ActionEditorPanel {
 	private static final int DROPDOWN_ITEM_H = 16;
 	private static final int DROPDOWN_MAX_VISIBLE = 10;
 	private static final int STRING_DROPDOWN_W = 14;
+	private enum SpellHealthTargetType { NONE, PHASE, SPELL }
 
 	private static final String[] CONDITION_TYPES = {
 			"tick_interval", "health_below", "health_above", "tick_elapsed",
@@ -71,7 +78,8 @@ public class ActionEditorPanel {
 	};
 
 	private static final String[] AIM_MODE_TYPES = {
-			"target", "direction_to_target", "fixed", "caster_facing", "angle_offset", "variable_angle", "random_angle"
+			"target", "direction_to_target", "fixed", "caster_facing", "target_facing", "source_direction",
+			"angle_offset", "variable_angle", "random_angle"
 	};
 
 	private final Consumer<AbstractWidget> addWidget;
@@ -82,20 +90,32 @@ public class ActionEditorPanel {
 	private java.util.function.Function<ResourceLocation, String> phaseDisplayFormatter = ResourceLocation::toString;
 	private java.util.function.Supplier<List<ResourceLocation>> spellOptionsSupplier = List::of;
 	private java.util.function.Function<ResourceLocation, String> spellDisplayFormatter = ResourceLocation::toString;
+	private java.util.function.Supplier<ActionListPanel.ActionPath> actionPathSupplier = () -> null;
+	private java.util.function.Supplier<String> spellDisplayNameSupplier = () -> "";
+	private Consumer<String> spellDisplayNameUpdater = value -> {};
+	private java.util.function.Supplier<Boolean> linkedSpellTitleSupplier = () -> false;
+	private Consumer<Boolean> linkedSpellTitleUpdater = value -> {};
 
 	private int x, y, w, h;
 	private SpellAction currentAction;
+	private ActionListPanel.ActionPath currentActionPath;
 	private int actionIndex = -1;
 	private final List<EditorRow> rows = new ArrayList<>();
 	private int scrollOffset = 0;
-	private final Map<Integer, Integer> scrollStateMap = new HashMap<>();
+	private final Map<ActionListPanel.ActionPath, Integer> scrollStateMap = new HashMap<>();
 	private boolean widgetsRegistered = false;
 	private boolean scrollbarDragging = false;
 
 	// Depth tracking for nested mover editors
 	private int currentDepth = 0;
-	// Collapsed sections: key = section label at specific row index
-	private final java.util.Set<String> collapsedSections = new java.util.HashSet<>();
+	// While editing fixed_dir, nested mover callbacks must resolve the inner config
+	// instead of the outer action mover. This remains active until the selected
+	// action changes; the resolver only unwraps an actual fixed_dir mover.
+	private boolean editingFixedDirInner = false;
+	// Collapsed sections: key = section label at specific row index.
+	// Session-scoped (static) so folding survives the screen rebuilds triggered by
+	// mode/language/layout changes — the panel itself is re-instantiated each time.
+	private static final java.util.Set<String> collapsedSections = new java.util.HashSet<>();
 
 	// Type selector mode
 	private boolean typeSelectorMode = false;
@@ -128,15 +148,19 @@ public class ActionEditorPanel {
 	}
 
 	public void setAction(SpellAction action, int index) {
-		if (action == currentAction && index == actionIndex) return;
+		ActionListPanel.ActionPath path = actionPathSupplier.get();
+		if (action == currentAction && index == actionIndex
+				&& java.util.Objects.equals(path, currentActionPath)) return;
 		// Save current scroll state before switching
-		if (actionIndex >= 0) {
-			scrollStateMap.put(actionIndex, scrollOffset);
+		if (currentActionPath != null) {
+			scrollStateMap.put(currentActionPath, scrollOffset);
 		}
 		clearWidgets();
+		editingFixedDirInner = false;
 		this.currentAction = action;
+		this.currentActionPath = path;
 		this.actionIndex = index;
-		this.scrollOffset = scrollStateMap.getOrDefault(index, 0);
+		this.scrollOffset = path == null ? 0 : scrollStateMap.getOrDefault(path, 0);
 		this.typeSelectorMode = false;
 		buildActionRows(action);
 		layoutWidgets();
@@ -149,7 +173,9 @@ public class ActionEditorPanel {
 
 	public void clearAction() {
 		clearWidgets();
+		editingFixedDirInner = false;
 		currentAction = null;
+		currentActionPath = null;
 		actionIndex = -1;
 		typeSelectorMode = false;
 	}
@@ -165,7 +191,9 @@ public class ActionEditorPanel {
 
 	public void showTypeSelector(Consumer<SpellAction> onCreated) {
 		clearWidgets();
+		editingFixedDirInner = false;
 		currentAction = null;
+		currentActionPath = null;
 		actionIndex = -1;
 		typeSelectorMode = true;
 		typeSelectorCallback = onCreated;
@@ -185,6 +213,20 @@ public class ActionEditorPanel {
 		this.spellDisplayFormatter = formatter != null ? formatter : ResourceLocation::toString;
 	}
 
+	public void setActionPathSupplier(java.util.function.Supplier<ActionListPanel.ActionPath> supplier) {
+		this.actionPathSupplier = supplier != null ? supplier : () -> null;
+	}
+
+	public void setSpellInitializationAccess(java.util.function.Supplier<String> displayNameSupplier,
+			Consumer<String> displayNameUpdater,
+			java.util.function.Supplier<Boolean> linkedTitleSupplier,
+			Consumer<Boolean> linkedTitleUpdater) {
+		this.spellDisplayNameSupplier = displayNameSupplier != null ? displayNameSupplier : () -> "";
+		this.spellDisplayNameUpdater = displayNameUpdater != null ? displayNameUpdater : value -> {};
+		this.linkedSpellTitleSupplier = linkedTitleSupplier != null ? linkedTitleSupplier : () -> false;
+		this.linkedSpellTitleUpdater = linkedTitleUpdater != null ? linkedTitleUpdater : value -> {};
+	}
+
 	public void refreshCurrentView() {
 		if (typeSelectorMode) {
 			clearWidgets();
@@ -196,6 +238,7 @@ public class ActionEditorPanel {
 			var action = currentAction;
 			int index = actionIndex;
 			clearWidgets();
+			editingFixedDirInner = false;
 			this.currentAction = action;
 			this.actionIndex = index;
 			buildActionRows(action);
@@ -204,6 +247,10 @@ public class ActionEditorPanel {
 	}
 
 	private void clearWidgets() {
+		if (commandSuggestions != null) commandSuggestions.hide();
+		commandSuggestions = null;
+		commandEditBox = null;
+		soundEditBox = null;
 		closeDropdown();
 		closeExprCompletion();
 		closeStringCompletion();
@@ -224,6 +271,7 @@ public class ActionEditorPanel {
 	public void unfocusAllEditBoxes() {
 		for (var row : rows) {
 			if (row.widget() instanceof EditBox eb) {
+				EditorTextBoxes.collapseSelection(eb);
 				eb.setFocused(false);
 			}
 		}
@@ -250,6 +298,8 @@ public class ActionEditorPanel {
 		}
 		if (action instanceof FireDanmakuAction fda) {
 			buildFireDanmakuRows(fda);
+		} else if (action instanceof SpellActions.BrokenAction ba) {
+			buildBrokenRows(ba);
 		} else if (action instanceof FireLaserAction fla) {
 			buildFireLaserRows(fla);
 		} else if (action instanceof FireTextDanmakuAction ftda) {
@@ -264,12 +314,16 @@ public class ActionEditorPanel {
 			buildEraseEnemyDanmakuRows(ee);
 		} else if (action instanceof SpellActions.PlaySoundAction ps) {
 			buildPlaySoundRows(ps);
+		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction csa) {
+			buildCameraShakeRows(csa);
 		} else if (action instanceof RunCommandAction rc) {
 			buildRunCommandRows(rc);
 		} else if (action instanceof ShowSpellTitleAction sta) {
 			buildShowSpellTitleRows(sta);
 		} else if (action instanceof SetSpellCircleAction sca) {
 			buildSetSpellCircleRows(sca);
+		} else if (action instanceof SetSpellHealthAction sha) {
+			buildSetSpellHealthRows(sha);
 		} else if (action instanceof SpellActions.ForcePhase fp) {
 			buildForcePhaseRows(fp);
 		} else if (action instanceof SpellActions.ForceSpell fs) {
@@ -296,35 +350,110 @@ public class ActionEditorPanel {
 			buildYsmRenderRows(yra);
 		} else if (action instanceof TeleportRandomAction tra) {
 			buildTeleportRandomRows(tra);
+		} else if (action instanceof CasterMovesAction cma) {
+			buildCasterMovesRows(cma);
+		} else if (action instanceof BounceAction ba) {
+			buildBounceActionRows(ba);
+		} else if (action instanceof HoldSourceAction hsa) {
+			buildHoldSourceRows(hsa);
+		}
+	}
+
+	/**
+	 * 动作类型选择器的分组。27 个类型平铺成一长列很难扫读，收拢成可折叠文件夹后
+	 * 常用的发射与流程默认展开，其余按需展开。
+	 *
+	 * <p>分组顺序即显示顺序；组名同时是 {@link #collapsedSections} 的键，
+	 * 因此不能与属性面板里的分区标题重名（Pattern / Mover / Origin / Advanced / Group Rotation）。
+	 */
+	private record TypeEntry(String type, String label) {
+	}
+
+	private record TypeGroup(String label, List<TypeEntry> entries) {
+	}
+
+	private static TypeGroup group(String label, String... typeAndLabel) {
+		List<TypeEntry> entries = new ArrayList<>();
+		for (int i = 0; i + 1 < typeAndLabel.length; i += 2) {
+			entries.add(new TypeEntry(typeAndLabel[i], typeAndLabel[i + 1]));
+		}
+		return new TypeGroup(label, List.copyOf(entries));
+	}
+
+	private static final List<TypeGroup> TYPE_GROUPS = List.of(
+			group("Fire",
+					"fire_danmaku", "Fire Danmaku",
+					"fire_laser", "Fire Laser",
+					"fire_text_danmaku", "Fire Text Danmaku",
+					"spawn_shooter", "Spawn Shooter"),
+			group("Flow",
+					"conditional", "Conditional",
+					"repeat", "Repeat",
+					"delay", "Delay",
+					"sequence", "Sequence",
+					"burst", "Burst"),
+			group("Variables",
+					"set_variable", "Set Variable",
+					"add_variable", "Add Variable"),
+			group("Field",
+					"clear_screen", "Clear Screen",
+					"erase_enemy_danmaku", "Erase Enemy Danmaku"),
+			group("Presentation",
+					"play_sound", "Play Sound",
+					"camera_shake", "Camera Shake",
+					"show_spell_title", "Show Spell Title",
+					"set_spell_circle", "Custom Magic Circle",
+					"ysm_render", "YSM Render"),
+			group("Spell Flow",
+					"force_phase", "Force Phase",
+					"force_spell", "Force Spell",
+					"fire_spell", "Fire Spell",
+					"set_spell_health", "Spell Initialization"),
+			group("Movement",
+					"teleport", "Teleport",
+					"teleport_random", "Teleport Random",
+					"caster_moves", "Caster Moves",
+					"confine_target", "Confine Target"),
+			group("Hit Control",
+					"bounce_source", "Bounce Source",
+					"continue_source", "Continue Source",
+					"expire_source", "Expire Source",
+					"discard_source", "Discard Source",
+					"hold_source", "Hold Source"),
+			group("Privileged",
+					"run_command", "Run Command",
+					"set_entity_flag", "Set Entity Flag"));
+
+	/** 只有前两组默认展开。 */
+	private static boolean typeGroupDefaultsApplied = false;
+
+	private static void applyTypeGroupDefaults() {
+		if (typeGroupDefaultsApplied) {
+			return;
+		}
+		typeGroupDefaultsApplied = true;
+		for (int i = 2; i < TYPE_GROUPS.size(); i++) {
+			collapsedSections.add(TYPE_GROUPS.get(i).label());
 		}
 	}
 
 	private void buildTypeSelectorRows() {
-		addFullWidthButton("Fire Danmaku", () -> selectType("fire_danmaku"));
-		addFullWidthButton("Fire Laser", () -> selectType("fire_laser"));
-		addFullWidthButton("Fire Text Danmaku", () -> selectType("fire_text_danmaku"));
-		addFullWidthButton("Conditional", () -> selectType("conditional"));
-		addFullWidthButton("Repeat", () -> selectType("repeat"));
-		addFullWidthButton("Delay", () -> selectType("delay"));
-		addFullWidthButton("Teleport", () -> selectType("teleport"));
-		addFullWidthButton("Spawn Shooter", () -> selectType("spawn_shooter"));
-		addFullWidthButton("Burst", () -> selectType("burst"));
-		addFullWidthButton("Set Variable", () -> selectType("set_variable"));
-		addFullWidthButton("Add Variable", () -> selectType("add_variable"));
-		addFullWidthButton("Sequence", () -> selectType("sequence"));
-		addFullWidthButton("Clear Screen", () -> selectType("clear_screen"));
-		addFullWidthButton("Erase Enemy Danmaku", () -> selectType("erase_enemy_danmaku"));
-		addFullWidthButton("Play Sound", () -> selectType("play_sound"));
-		addFullWidthButton("Run Command", () -> selectType("run_command"));
-		addFullWidthButton("Show Spell Title", () -> selectType("show_spell_title"));
-		addFullWidthButton("Custom Magic Circle", () -> selectType("set_spell_circle"));
-		addFullWidthButton("Force Phase", () -> selectType("force_phase"));
-		addFullWidthButton("Force Spell", () -> selectType("force_spell"));
-		addFullWidthButton("Fire Spell", () -> selectType("fire_spell"));
-		addFullWidthButton("Confine Target", () -> selectType("confine_target"));
-		addFullWidthButton("Set Entity Flag", () -> selectType("set_entity_flag"));
-		addFullWidthButton("YSM Render", () -> selectType("ysm_render"));
-		addFullWidthButton("Teleport Random", () -> selectType("teleport_random"));
+		applyTypeGroupDefaults();
+		currentDepth = 0;
+		for (TypeGroup group : TYPE_GROUPS) {
+			addSectionHeader(group.label());
+			if (isSectionCollapsed(group.label())) {
+				continue;
+			}
+			for (TypeEntry entry : group.entries()) {
+				addTypeButton(entry.type(), entry.label());
+			}
+		}
+	}
+
+	private void addTypeButton(String type, String label) {
+		String marker = SpellEditorNodeLabels.actionMarker(createDefaultAction(type));
+		addFullWidthButton(marker + label, () -> selectType(type));
 	}
 
 	private void selectType(String type) {
@@ -367,13 +496,16 @@ public class ActionEditorPanel {
 			case "add_variable" -> new SpellActions.AddVariable("var", 1);
 			case "clear_screen" -> new SpellActions.ClearScreen();
 			case "erase_enemy_danmaku" -> new EraseEnemyDanmakuAction(NumberProvider.constant(4), false);
-			case "play_sound" -> new SpellActions.PlaySoundAction(
+		case "play_sound" -> new SpellActions.PlaySoundAction(
 					new ResourceLocation("minecraft", "entity.experience_orb.pickup"), 1f, 1f);
+		case "camera_shake" -> new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction();
 			case "run_command" -> new RunCommandAction(RunCommandAction.Mode.AS_CASTER,
-					"yhspell stop @s 32");
+					RunCommandAction.HitContext.DEFAULT, "yhspell stop @s 32");
 			case "show_spell_title" -> new ShowSpellTitleAction("", "", 100, 64.0);
 			case "set_spell_circle" -> new SetSpellCircleAction(SetSpellCircleAction.Mode.SET,
 					new ResourceLocation("youkaishomecoming", "test_spell"), 1.0f);
+			case "set_spell_health" -> new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
+					NumberProvider.constant(50), NumberProvider.constant(100));
 			case "force_phase" -> new SpellActions.ForcePhase(
 					new ResourceLocation("youkaishomecoming", "main"), true);
 			case "force_spell" -> new SpellActions.ForceSpell(
@@ -395,11 +527,149 @@ public class ActionEditorPanel {
 		case "set_entity_flag" -> new SetEntityFlagAction(4, true);
 		case "ysm_render" -> new YsmRenderAction("", "", "special", 40, false);
 		case "teleport_random" -> new TeleportRandomAction(32, 0.8, 0.4, 16, true, true);
+		case "caster_moves" -> new CasterMovesAction(SpellMovementDirective.Mode.RANDOM);
+		case "bounce", "bounce_source" -> new BounceAction();
+		case "continue_source" -> new ContinueSourceAction();
+		case "expire_source" -> new ExpireSourceAction();
+		case "discard_source" -> new DiscardSourceAction();
+		case "hold_source" -> new HoldSourceAction(20, new ArrayList<>());
 		default -> new SpellActions.NoopAction();
 		};
 	}
 
+	private void buildCasterMovesRows(CasterMovesAction action) {
+		addEnumRow("Mode", SpellMovementDirective.Mode.values(), action.mode(), mode ->
+				notifySimple(old -> {
+					var current = (CasterMovesAction) old;
+					return new CasterMovesAction(mode, current.x(), current.y(), current.z());
+				}, true));
+		if (action.mode() == SpellMovementDirective.Mode.RELATIVE
+				|| action.mode() == SpellMovementDirective.Mode.ABSOLUTE) {
+			addNumberRow("X", action.x(), v -> notifySimple(old -> {
+				var current = (CasterMovesAction) old;
+				return new CasterMovesAction(current.mode(), v, current.y(), current.z());
+			}));
+			addNumberRow("Y", action.y(), v -> notifySimple(old -> {
+				var current = (CasterMovesAction) old;
+				return new CasterMovesAction(current.mode(), current.x(), v, current.z());
+			}));
+			addNumberRow("Z", action.z(), v -> notifySimple(old -> {
+				var current = (CasterMovesAction) old;
+				return new CasterMovesAction(current.mode(), current.x(), current.y(), v);
+			}));
+		}
+	}
+
+	private String customBouncePresetMode = null;
+
+	private void buildBounceActionRows(BounceAction action) {
+		addIntRow("Max Bounces", action.maxBounces(), v ->
+				notifySimple(old -> ((BounceAction) old).withMaxBounces(v)));
+
+		// Presets: Specular (-1, 1), Bouncy (-0.8, 0.95), Surface Slide (0, 1)
+		String preset = "custom";
+		if (customBouncePresetMode != null) {
+			preset = customBouncePresetMode;
+		} else {
+			boolean isZeroOffset = Math.abs(action.tangentOffsetX()) < 1e-6 && Math.abs(action.tangentOffsetY()) < 1e-6 && Math.abs(action.tangentOffsetZ()) < 1e-6;
+			if (isZeroOffset) {
+				if (Math.abs(action.normalFactor() - (-1.0)) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "specular";
+				else if (Math.abs(action.normalFactor() - (-0.8)) < 1e-6 && Math.abs(action.tangentFactor() - 0.95) < 1e-6) preset = "bouncy";
+				else if (Math.abs(action.normalFactor()) < 1e-6 && Math.abs(action.tangentFactor() - 1.0) < 1e-6) preset = "slide";
+			}
+		}
+
+		addStringOptionRow("Preset",
+				new String[]{"specular", "bouncy", "slide", "custom"},
+				new String[]{"Specular Reflect", "Bouncy Dampened", "Surface Slide", "Custom"},
+				preset,
+				p -> {
+					customBouncePresetMode = p;
+					if ("specular".equals(p)) {
+						notifySimple(old -> ((BounceAction) old).withNormalFactor(-1.0).withTangentFactor(1.0)
+								.withTangentOffsetX(0.0).withTangentOffsetY(0.0).withTangentOffsetZ(0.0), true);
+					} else if ("bouncy".equals(p)) {
+						notifySimple(old -> ((BounceAction) old).withNormalFactor(-0.8).withTangentFactor(0.95)
+								.withTangentOffsetX(0.0).withTangentOffsetY(0.0).withTangentOffsetZ(0.0), true);
+					} else if ("slide".equals(p)) {
+						notifySimple(old -> ((BounceAction) old).withNormalFactor(0.0).withTangentFactor(1.0)
+								.withTangentOffsetX(0.0).withTangentOffsetY(0.0).withTangentOffsetZ(0.0), true);
+					} else if ("custom".equals(p)) {
+						notifySimple(old -> old, true);
+					}
+				});
+
+		addDoubleRow("Normal Factor", action.normalFactor(), v -> {
+			customBouncePresetMode = null;
+			notifySimple(old -> ((BounceAction) old).withNormalFactor(v));
+		});
+		addDoubleRow("Tangent Factor", action.tangentFactor(), v -> {
+			customBouncePresetMode = null;
+			notifySimple(old -> ((BounceAction) old).withTangentFactor(v));
+		});
+
+		if ("custom".equals(preset)) {
+			addDoubleRow("Tangent Offset X (World)", action.tangentOffsetX(), v -> {
+				customBouncePresetMode = null;
+				notifySimple(old -> ((BounceAction) old).withTangentOffsetX(v));
+			});
+			addDoubleRow("Tangent Offset Y (World)", action.tangentOffsetY(), v -> {
+				customBouncePresetMode = null;
+				notifySimple(old -> ((BounceAction) old).withTangentOffsetY(v));
+			});
+			addDoubleRow("Tangent Offset Z (World)", action.tangentOffsetZ(), v -> {
+				customBouncePresetMode = null;
+				notifySimple(old -> ((BounceAction) old).withTangentOffsetZ(v));
+			});
+		}
+
+		addBooleanRow("Reset Speed", action.outputSpeed().isPresent(), enable -> {
+			notifySimple(old -> ((BounceAction) old).withOutputSpeed(enable ? Optional.of(0.8) : Optional.empty()), true);
+		});
+		if (action.outputSpeed().isPresent()) {
+			addDoubleRow("  New Speed", action.outputSpeed().get(), v ->
+					notifySimple(old -> ((BounceAction) old).withOutputSpeed(Optional.of(v))));
+		}
+
+		addBoolRow("Retarget", action.retarget(), v ->
+				notifySimple(old -> ((BounceAction) old).withRetarget(v), true));
+	}
+
+	private void buildHoldSourceRows(HoldSourceAction action) {
+		addNumberRow("Duration", action.duration(), v ->
+				notifySimple(old -> ((HoldSourceAction) old).withDuration(v)));
+	}
+
 	// --- FireDanmaku rows ---
+
+	/**
+	 * 抢救出来的坏节点。原文只读展示，不提供逐字段编辑 —— 我们本来就没能理解它。
+	 * 用户可以看清是哪一段坏了，然后就地换成一个正常类型或直接删除。
+	 */
+	private void buildBrokenRows(SpellActions.BrokenAction action) {
+		addFullWidthButton("⚠ BROKEN NODE (not executed, blocks certify/export)", () -> {});
+		addTextDisplayRow("Type", action.originalType());
+		addTextDisplayRow("Error", action.error());
+		addTextDisplayRow("Raw", action.rawJson());
+		addFullWidthButton("[Replace with another type]", () -> {
+			// 直接选中坏节点时没有插入回调，改为用新动作原地替换当前节点。
+			Consumer<SpellAction> callback = typeSelectorCallback != null ? typeSelectorCallback
+					: replacement -> {
+						typeSelectorMode = false;
+						currentAction = replacement;
+						onActionChanged.accept(replacement);
+						setAction(replacement, actionIndex);
+					};
+			showTypeSelector(callback);
+		});
+	}
+
+	/** 只读文本行：值本身就是内容，超宽时按面板宽度截断。 */
+	private void addTextDisplayRow(String label, String value) {
+		String shown = value == null ? "" : value.replace('\n', ' ');
+		var placeholder = createInvisiblePlaceholder(1, ROW_HEIGHT - 2);
+		rows.add(new EditorRow(SpellEditorLocalization.t(label) + ": " + shown, placeholder, true));
+	}
 
 	private void buildFireDanmakuRows(FireDanmakuAction a) {
 		// Compute mover override state
@@ -411,32 +681,36 @@ public class ActionEditorPanel {
 		addColorAnimationRows(a);
 
 		addNumberRow("Count", a.count(), v ->
-				notifyDanmaku(old -> old.withCount(v), false));
+				notifyDanmaku(old -> old.withCount(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Speed", a.speed(), v ->
-				notifyDanmaku(old -> old.withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides));
+				notifyDanmaku(old -> old.withSpeed(v), false), MoverOverrideResolver.isLabelOverridden("Speed", overrides), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Lifetime", a.lifetime(), v ->
-				notifyDanmaku(old -> old.withLifetime(v), false));
+				notifyDanmaku(old -> old.withLifetime(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Size", a.size(), v ->
-				notifyDanmaku(old -> old.withSize(v), false));
+				notifyDanmaku(old -> old.withSize(v), false), EvaluationTiming.PROJECTILE_TICK);
 
 		// === Pattern group ===
 		addSectionHeader("Pattern");
 		if (!isSectionCollapsed("Pattern")) {
 			currentDepth++;
 			addNumberRow("Angle", a.angleOffset(), v ->
-					notifyDanmaku(old -> old.withAngleOffset(v), false));
+					notifyDanmaku(old -> old.withAngleOffset(v), false), EvaluationTiming.SNAPSHOT);
 
 			addNumberRow("Spread", a.spread(), v ->
-					notifyDanmaku(old -> old.withSpread(v), false));
+					notifyDanmaku(old -> old.withSpread(v), false), EvaluationTiming.SNAPSHOT);
 
 			addNumberRow("Elevation", a.elevation(), v ->
-					notifyDanmaku(old -> old.withElevation(v), false));
+					notifyDanmaku(old -> old.withElevation(v), false), EvaluationTiming.SNAPSHOT);
 
 			addEnumRow("Pattern", PatternType.values(), a.pattern(), v ->
 					notifyDanmaku(old -> old.withPattern(v)));
+			if (a.pattern() == PatternType.SPHERE) {
+				addBoolRow("Random Axis", a.randomAxis(), v ->
+						notifyDanmaku(old -> old.withRandomAxis(v)));
+			}
 
 			if (a.pattern() == PatternType.NESTED_RING || a.pattern() == PatternType.GRID) {
 				String label = switch (a.pattern()) {
@@ -445,7 +719,7 @@ public class ActionEditorPanel {
 				};
 				NumberProvider outerProv = a.outerCount().orElse(NumberProvider.constant(1));
 				addNumberRow(label, outerProv, v ->
-						notifyDanmaku(old -> old.withOuterCount(Optional.of(v)), false));
+						notifyDanmaku(old -> old.withOuterCount(Optional.of(v)), false), EvaluationTiming.SNAPSHOT);
 			}
 
 			// AimMode dropdown
@@ -459,10 +733,10 @@ public class ActionEditorPanel {
 			if (a.pattern() == PatternType.NESTED_RING) {
 				NumberProvider tiltProv = a.tiltAngle().orElse(NumberProvider.constant(0));
 				addNumberRow("Axis Tilt", tiltProv, v ->
-						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
+						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false), EvaluationTiming.SNAPSHOT);
 			} else if (a.tiltAngle().isPresent()) {
 				addNumberRow("Tilt Angle", a.tiltAngle().get(), v ->
-						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false));
+						notifyDanmaku(old -> old.withTiltAngle(Optional.of(v)), false), EvaluationTiming.SNAPSHOT);
 				addFullWidthButton("[Remove Tilt]", () ->
 						notifyDanmaku(old -> old.withTiltAngle(Optional.empty())));
 			} else {
@@ -506,10 +780,11 @@ public class ActionEditorPanel {
 		addSectionHeader("Origin");
 		if (!isSectionCollapsed("Origin")) {
 			currentDepth++;
-			addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
-				var newOrigin = new OriginConfig(v, a.origin().offsetX(), a.origin().offsetY(),
-						a.origin().offsetZ(), a.origin().rotation());
-				notifyDanmaku(old -> old.withOrigin(newOrigin));
+			addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), a.origin().mode(), v -> {
+				notifyDanmaku(old -> {
+					var current = old.origin();
+					return old.withOrigin(ActionEditorValueUpdates.withOriginMode(current, v));
+				});
 			});
 			buildOriginOffsetRows(a.origin(), newOrigin -> notifyDanmaku(old -> old.withOrigin(newOrigin), false), overrides);
 			currentDepth--;
@@ -567,36 +842,56 @@ public class ActionEditorPanel {
 						"hue_cycle".equals(next) ? Optional.of(DanmakuColorAnimation.hueCycle()) : Optional.empty()), true));
 		if (a.colorAnimation().orElse(null) instanceof DanmakuColorAnimation.HueCycle hue) {
 			addNumberRow("Hue Period", hue.period(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							v, hue.hueOffset(), hue.indexStep(), hue.saturation(), hue.brightness(), hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHuePeriod(current, v)));
+					}, false));
 			addNumberRow("Hue Offset", hue.hueOffset(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), v, hue.indexStep(), hue.saturation(), hue.brightness(), hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueOffset(current, v)));
+					}, false));
 			addNumberRow("Index Step", hue.indexStep(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), hue.hueOffset(), v, hue.saturation(), hue.brightness(), hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueIndexStep(current, v)));
+					}, false));
 			addNumberRow("Saturation", hue.saturation(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), hue.hueOffset(), hue.indexStep(), v, hue.brightness(), hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueSaturation(current, v)));
+					}, false));
 			addNumberRow("Brightness", hue.brightness(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), hue.hueOffset(), hue.indexStep(), hue.saturation(), v, hue.alpha()))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueBrightness(current, v)));
+					}, false));
 			addNumberRow("Alpha", hue.alpha(), v ->
-					notifyDanmaku(old -> old.withColorAnimation(Optional.of(new DanmakuColorAnimation.HueCycle(
-							hue.period(), hue.hueOffset(), hue.indexStep(), hue.saturation(), hue.brightness(), v))), false));
+					notifyDanmaku(old -> {
+						var current = currentHueCycle(old, hue);
+						return old.withColorAnimation(Optional.of(ActionEditorValueUpdates.withHueAlpha(current, v)));
+					}, false));
 		}
+	}
+
+	private static DanmakuColorAnimation.HueCycle currentHueCycle(
+			FireDanmakuAction action, DanmakuColorAnimation.HueCycle fallback) {
+		return action.colorAnimation().orElse(null) instanceof DanmakuColorAnimation.HueCycle current
+				? current : fallback;
 	}
 
 	private void addBulletProviderRows(FireDanmakuAction a) {
 		BulletProvider provider = a.bulletType();
 		String mode = provider instanceof BulletProvider.Indexed ? "indexed" :
 				provider instanceof BulletProvider.RandomChoice ? "random_choice" : "constant";
-		YHDanmaku.Bullet fallback = firstBullet(provider);
 		addStringOptionRow("Bullet Mode",
 				new String[]{"constant", "indexed", "random_choice"},
 				new String[]{"Constant", "Indexed", "Random"},
 				mode,
-				next -> notifyDanmaku(old -> old.withBulletProvider(createBulletProvider(next, provider, fallback)), true));
+				next -> notifyDanmaku(old -> {
+					BulletProvider current = old.bulletType();
+					return old.withBulletProvider(createBulletProvider(next, current, firstBullet(current)));
+				}, true));
 		if (provider instanceof BulletProvider.Constant bc) {
 			addBulletRow(bc.bullet(), v -> notifyDanmaku(old -> old.withBulletType(v)));
 		} else if (provider instanceof BulletProvider.Indexed indexed) {
@@ -631,13 +926,16 @@ public class ActionEditorPanel {
 		String mode = provider instanceof ColorProvider.Indexed ? "indexed" :
 				provider instanceof ColorProvider.ByVariable ? "by_variable" :
 						provider instanceof ColorProvider.Cycle ? "cycle" :
-								provider instanceof ColorProvider.RandomChoice ? "random_choice" : "constant";
-		DanmakuColor fallback = firstColor(provider);
+								provider instanceof ColorProvider.RandomChoice ? "random_choice" :
+										provider instanceof ColorProvider.SourceColor ? "source_color" : "constant";
 		addStringOptionRow("Color Mode",
-				new String[]{"constant", "indexed", "by_variable", "cycle", "random_choice"},
-				new String[]{"Constant", "Indexed", "Variable", "Cycle", "Random"},
+				new String[]{"constant", "indexed", "by_variable", "cycle", "random_choice", "source_color"},
+				new String[]{"Constant", "Indexed", "Variable", "Cycle", "Random", "Source Color"},
 				mode,
-				next -> notifyDanmaku(old -> old.withColor(createColorProvider(next, provider, fallback)), true));
+				next -> notifyDanmaku(old -> {
+					ColorProvider current = old.color();
+					return old.withColor(createColorProvider(next, current, firstColor(current)));
+				}, true));
 		if (provider instanceof ColorProvider.Constant cc) {
 			addSuggestStringRow("Color", cc.color().format(), ActionEditorPanel::colorListOptions, v ->
 					DanmakuColor.parse(v).ifPresent(color ->
@@ -718,6 +1016,7 @@ public class ActionEditorPanel {
 					new ColorProvider.Cycle(palette, 1);
 			case "random_choice" -> old instanceof ColorProvider.RandomChoice random ? random :
 					new ColorProvider.RandomChoice(palette);
+			case "source_color" -> new ColorProvider.SourceColor();
 			default -> ColorProvider.constant(fallback);
 		};
 	}
@@ -832,19 +1131,19 @@ public class ActionEditorPanel {
 				notifyLaser(old -> old.withColor(v)));
 
 		addNumberRow("Lifetime", a.lifetime(), v ->
-				notifyLaser(old -> old.withLifetime(v), false));
+				notifyLaser(old -> old.withLifetime(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Length", a.length(), v ->
-				notifyLaser(old -> old.withLength(v), false));
+				notifyLaser(old -> old.withLength(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Thickness", a.thickness(), v ->
-				notifyLaser(old -> old.withThickness(v), false));
+				notifyLaser(old -> old.withThickness(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Angle", a.angleOffset(), v ->
-				notifyLaser(old -> old.withAngleOffset(v), false));
+				notifyLaser(old -> old.withAngleOffset(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Elevation", a.elevation(), v ->
-				notifyLaser(old -> old.withElevation(v), false));
+				notifyLaser(old -> old.withElevation(v), false), EvaluationTiming.SNAPSHOT);
 
 		// AimMode dropdown
 		String currentAim = getAimModeType(a.aimMode());
@@ -853,11 +1152,41 @@ public class ActionEditorPanel {
 			notifyLaser(old -> old.withAimMode(newMode));
 		});
 
+		addSectionHeader("Group Rotation (post-origin/tilt)");
+		if (!isSectionCollapsed("Group Rotation (post-origin/tilt)")) {
+			currentDepth++;
+			if (a.groupRotation().isPresent()) {
+				var gr = a.groupRotation().get();
+				addNumberRow("Rot X", gr.rotX(), v ->
+						notifyLaser(old -> old.withGroupRotation(Optional.of(new GroupRotation(v,
+								old.groupRotation().map(GroupRotation::rotY).orElse(NumberProvider.constant(0)),
+								old.groupRotation().map(GroupRotation::rotZ).orElse(NumberProvider.constant(0))))), false));
+				addNumberRow("Rot Y", gr.rotY(), v ->
+						notifyLaser(old -> old.withGroupRotation(Optional.of(new GroupRotation(
+								old.groupRotation().map(GroupRotation::rotX).orElse(NumberProvider.constant(0)),
+								v,
+								old.groupRotation().map(GroupRotation::rotZ).orElse(NumberProvider.constant(0))))), false));
+				addNumberRow("Rot Z", gr.rotZ(), v ->
+						notifyLaser(old -> old.withGroupRotation(Optional.of(new GroupRotation(
+								old.groupRotation().map(GroupRotation::rotX).orElse(NumberProvider.constant(0)),
+								old.groupRotation().map(GroupRotation::rotY).orElse(NumberProvider.constant(0)),
+								v))), false));
+				addFullWidthButton("[Remove Group Rotation]", () ->
+						notifyLaser(old -> old.withGroupRotation(Optional.empty())));
+			} else {
+				addFullWidthButton("[+ Group Rotation]", () ->
+						notifyLaser(old -> old.withGroupRotation(Optional.of(new GroupRotation(
+								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0))))));
+			}
+			currentDepth--;
+		}
+
 		// OriginConfig mode
-		addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
-			var newOrigin = new OriginConfig(v, a.origin().offsetX(), a.origin().offsetY(),
-					a.origin().offsetZ(), a.origin().rotation());
-			notifyLaser(old -> old.withOrigin(newOrigin));
+		addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), a.origin().mode(), v -> {
+			notifyLaser(old -> {
+				var current = old.origin();
+				return old.withOrigin(ActionEditorValueUpdates.withOriginMode(current, v));
+			});
 		});
 
 		// setupTime params
@@ -916,7 +1245,7 @@ public class ActionEditorPanel {
 						notifyLaser(old -> old.withTrailInterval(v), false));
 			}
 
-			// Hit behavior: separate entity/block controls
+			// Hit behavior: separate entity/block controls for Laser
 			addEnumRow("Hit Entity", HitBehavior.values(), a.hitBehaviorEntity(), v ->
 					notifyLaser(old -> old.withHitBehaviorEntity(v)));
 			addEnumRow("Hit Block", HitBehavior.values(), a.hitBehaviorBlock(), v ->
@@ -929,7 +1258,7 @@ public class ActionEditorPanel {
 
 	private void buildFireTextDanmakuRows(FireTextDanmakuAction a) {
 		addStringRow("Text", a.text(), v ->
-				notifyTextDanmaku(old -> old.withText(v)));
+				notifyTextDanmaku(old -> old.withText(v), false));
 
 		addColorRow("Text Color", a.textColor(), v ->
 				notifyTextDanmaku(old -> old.withTextColor(v), false));
@@ -938,20 +1267,20 @@ public class ActionEditorPanel {
 				notifyTextDanmaku(old -> old.withPerChar(v)));
 
 		addNumberRow("Lifetime", a.lifetime(), v ->
-				notifyTextDanmaku(old -> old.withLifetime(v), false));
+				notifyTextDanmaku(old -> old.withLifetime(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Size", a.size(), v ->
-				notifyTextDanmaku(old -> old.withSize(v), false));
+				notifyTextDanmaku(old -> old.withSize(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Angle", a.angleOffset(), v ->
-				notifyTextDanmaku(old -> old.withAngleOffset(v), false));
+				notifyTextDanmaku(old -> old.withAngleOffset(v), false), EvaluationTiming.SNAPSHOT);
 
 		addNumberRow("Elevation", a.elevation(), v ->
-				notifyTextDanmaku(old -> old.withElevation(v), false));
+				notifyTextDanmaku(old -> old.withElevation(v), false), EvaluationTiming.SNAPSHOT);
 
 		if (!a.perChar()) {
 			addNumberRow("Roll", a.roll(), v ->
-					notifyTextDanmaku(old -> old.withRoll(v), false));
+					notifyTextDanmaku(old -> old.withRoll(v), false), EvaluationTiming.SNAPSHOT);
 		}
 
 		// AimMode dropdown
@@ -962,10 +1291,11 @@ public class ActionEditorPanel {
 		});
 
 		// OriginConfig mode
-		addEnumRow("Origin", OriginConfig.OriginMode.values(), a.origin().mode(), v -> {
-			var newOrigin = new OriginConfig(v, a.origin().offsetX(), a.origin().offsetY(),
-					a.origin().offsetZ(), a.origin().rotation());
-			notifyTextDanmaku(old -> old.withOrigin(newOrigin));
+		addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), a.origin().mode(), v -> {
+			notifyTextDanmaku(old -> {
+				var current = old.origin();
+				return old.withOrigin(ActionEditorValueUpdates.withOriginMode(current, v));
+			});
 		});
 
 		// setupTime params
@@ -1071,45 +1401,58 @@ public class ActionEditorPanel {
 	}
 
 	private void buildConditionParamRows(String prefix, SpellCondition cond, BiConsumer<SpellCondition, Boolean> onChanged) {
+		ConditionEditorDraft draft = new ConditionEditorDraft(cond, onChanged);
 		if (cond instanceof SpellConditions.TickInterval ti) {
 			addIntRow(prefix + "Interval", ti.interval(), v ->
-					onChanged.accept(new SpellConditions.TickInterval(v, ti.offset()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.TickInterval) current;
+						return new SpellConditions.TickInterval(v, latest.offset());
+					}, false));
 			addIntRow(prefix + "Offset", ti.offset(), v ->
-					onChanged.accept(new SpellConditions.TickInterval(ti.interval(), v), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.TickInterval) current;
+						return new SpellConditions.TickInterval(latest.interval(), v);
+					}, false));
 		} else if (cond instanceof SpellConditions.HealthBelow hb) {
 			addFloatRow(prefix + "Threshold", hb.threshold(), v ->
-					onChanged.accept(new SpellConditions.HealthBelow(v), false));
+					draft.replace(new SpellConditions.HealthBelow(v), false));
 		} else if (cond instanceof SpellConditions.HealthAbove ha) {
 			addFloatRow(prefix + "Threshold", ha.threshold(), v ->
-					onChanged.accept(new SpellConditions.HealthAbove(v), false));
+					draft.replace(new SpellConditions.HealthAbove(v), false));
 		} else if (cond instanceof SpellConditions.TickElapsed te) {
 			addIntRow(prefix + "Ticks", te.ticks(), v ->
-					onChanged.accept(new SpellConditions.TickElapsed(v), false));
+					draft.replace(new SpellConditions.TickElapsed(v), false));
 		} else if (cond instanceof SpellConditions.DistanceAbove da) {
 			addDoubleRow(prefix + "Distance", da.distance(), v ->
-					onChanged.accept(new SpellConditions.DistanceAbove(v), false));
+					draft.replace(new SpellConditions.DistanceAbove(v), false));
 		} else if (cond instanceof SpellConditions.DistanceBelow db) {
 			addDoubleRow(prefix + "Distance", db.distance(), v ->
-					onChanged.accept(new SpellConditions.DistanceBelow(v), false));
+					draft.replace(new SpellConditions.DistanceBelow(v), false));
 		} else if (cond instanceof SpellConditions.HitCountCondition hc) {
 			addIntRow(prefix + "Count", hc.count(), v ->
-					onChanged.accept(new SpellConditions.HitCountCondition(v), false));
+					draft.replace(new SpellConditions.HitCountCondition(v), false));
 		} else if (cond instanceof SpellConditions.TargetOnGround) {
 			// No parameters - just a label
 		} else if (cond instanceof SpellConditions.TargetSpeed ts) {
 			addDoubleRow(prefix + "Threshold", ts.threshold(), v ->
-					onChanged.accept(new SpellConditions.TargetSpeed(v, ts.op()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.TargetSpeed) current;
+						return new SpellConditions.TargetSpeed(v, latest.op());
+					}, false));
 			addStringCycleRow(prefix + "Op", new String[]{">", ">=", "<", "<="}, ts.op(), v ->
-					onChanged.accept(new SpellConditions.TargetSpeed(ts.threshold(), v), true));
+					draft.update(current -> {
+						var latest = (SpellConditions.TargetSpeed) current;
+						return new SpellConditions.TargetSpeed(latest.threshold(), v);
+					}, true));
 		} else if (cond instanceof SpellConditions.RandomChance rc) {
 			addFloatRow(prefix + "Probability", rc.probability(), v ->
-					onChanged.accept(new SpellConditions.RandomChance(v), false));
+					draft.replace(new SpellConditions.RandomChance(v), false));
 		} else if (cond instanceof SpellConditions.TargetHealthBelow thb) {
 			addFloatRow(prefix + "Threshold", thb.threshold(), v ->
-					onChanged.accept(new SpellConditions.TargetHealthBelow(v), false));
+					draft.replace(new SpellConditions.TargetHealthBelow(v), false));
 		} else if (cond instanceof SpellConditions.TargetHealthAbove tha) {
 			addFloatRow(prefix + "Threshold", tha.threshold(), v ->
-					onChanged.accept(new SpellConditions.TargetHealthAbove(v), false));
+					draft.replace(new SpellConditions.TargetHealthAbove(v), false));
 		} else if (cond instanceof SpellConditions.TargetIsFlying) {
 			// No parameters
 		} else if (cond instanceof SpellConditions.TargetIsFallFlying) {
@@ -1117,46 +1460,70 @@ public class ActionEditorPanel {
 		} else if (cond instanceof SpellConditions.AlwaysCondition ac) {
 			addStringCycleRow(prefix + "Value", new String[]{"true", "false"},
 					ac.value() ? "true" : "false", v ->
-					onChanged.accept(new SpellConditions.AlwaysCondition(v.equals("true")), true));
+					draft.replace(new SpellConditions.AlwaysCondition(v.equals("true")), true));
 		} else if (cond instanceof SpellConditions.DynamicTickInterval dti) {
 			addNumberRow(prefix + "Period", dti.period(), v ->
-					onChanged.accept(new SpellConditions.DynamicTickInterval(v, dti.offset()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.DynamicTickInterval) current;
+						return new SpellConditions.DynamicTickInterval(v, latest.offset());
+					}, false));
 			addNumberRow(prefix + "Offset", dti.offset(), v ->
-					onChanged.accept(new SpellConditions.DynamicTickInterval(dti.period(), v), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.DynamicTickInterval) current;
+						return new SpellConditions.DynamicTickInterval(latest.period(), v);
+					}, false));
 		} else if (cond instanceof SpellConditions.EntityTrait et) {
 			addStringRow(prefix + "Trait", et.trait(), v ->
-					onChanged.accept(new SpellConditions.EntityTrait(v), false));
+					draft.replace(new SpellConditions.EntityTrait(v), false));
 		} else if (cond instanceof SpellConditions.EntityFlagCondition ef) {
 			addIntRow(prefix + "Flag", ef.flag(), v ->
-					onChanged.accept(new SpellConditions.EntityFlagCondition(v), false));
+					draft.replace(new SpellConditions.EntityFlagCondition(v), false));
 		} else if (cond instanceof SpellConditions.CompareNumbers cn) {
 			addNumberRow(prefix + "Left", cn.left(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(v, cn.op(), cn.right()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.CompareNumbers) current;
+						return new SpellConditions.CompareNumbers(v, latest.op(), latest.right());
+					}, false));
 			addStringCycleRow(prefix + "Op", new String[]{"<", ">", "==", "!=", "<=", ">="}, cn.op(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), v, cn.right()), true));
+					draft.update(current -> {
+						var latest = (SpellConditions.CompareNumbers) current;
+						return new SpellConditions.CompareNumbers(latest.left(), v, latest.right());
+					}, true));
 			addNumberRow(prefix + "Right", cn.right(), v ->
-					onChanged.accept(new SpellConditions.CompareNumbers(cn.left(), cn.op(), v), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.CompareNumbers) current;
+						return new SpellConditions.CompareNumbers(latest.left(), latest.op(), v);
+					}, false));
 		} else if (cond instanceof SpellConditions.VariableCheck vc) {
 			addStringRow(prefix + "Key", vc.key(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(v, vc.op(), vc.value()), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.VariableCheck) current;
+						return new SpellConditions.VariableCheck(v, latest.op(), latest.value());
+					}, false));
 			addStringCycleRow(prefix + "Op", new String[]{"==", "!=", "<", ">", "<=", ">="}, vc.op(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), v, vc.value()), true));
+					draft.update(current -> {
+						var latest = (SpellConditions.VariableCheck) current;
+						return new SpellConditions.VariableCheck(latest.key(), v, latest.value());
+					}, true));
 			addDoubleRow(prefix + "Value", vc.value(), v ->
-					onChanged.accept(new SpellConditions.VariableCheck(vc.key(), vc.op(), v), false));
+					draft.update(current -> {
+						var latest = (SpellConditions.VariableCheck) current;
+						return new SpellConditions.VariableCheck(latest.key(), latest.op(), v);
+					}, false));
 		} else if (cond instanceof SpellConditions.DifficultyEquals de) {
 			addStringCycleRow(prefix + "Difficulty", new String[]{"PEACEFUL", "EASY", "NORMAL", "HARD"},
 					difficultyName(de.difficultyId()), v ->
-					onChanged.accept(new SpellConditions.DifficultyEquals(difficultyId(v)), true));
+					draft.replace(new SpellConditions.DifficultyEquals(difficultyId(v)), true));
 		} else if (cond instanceof SpellConditions.DifficultyAbove da) {
 			addStringCycleRow(prefix + "Min Diff", new String[]{"PEACEFUL", "EASY", "NORMAL", "HARD"},
 					difficultyName(da.minDifficultyId()), v ->
-					onChanged.accept(new SpellConditions.DifficultyAbove(difficultyId(v)), true));
+					draft.replace(new SpellConditions.DifficultyAbove(difficultyId(v)), true));
 		} else if (cond instanceof SpellConditions.NotCondition nc) {
 			// Show inner condition type and params
 			addStringCycleRow(prefix + "Inner", SIMPLE_CONDITION_TYPES, getConditionType(nc.condition()), newType ->
-					onChanged.accept(new SpellConditions.NotCondition(createDefaultCondition(newType)), true));
+					draft.replace(new SpellConditions.NotCondition(createDefaultCondition(newType)), true));
 			buildConditionParamRows(prefix + "!", nc.condition(), (inner, rebuild) ->
-					onChanged.accept(new SpellConditions.NotCondition(inner), rebuild));
+					draft.replace(new SpellConditions.NotCondition(inner), rebuild));
 		}
 	}
 
@@ -1186,38 +1553,166 @@ public class ActionEditorPanel {
 	// --- PlaySound rows ---
 
 	private void buildPlaySoundRows(SpellActions.PlaySoundAction ps) {
-		addStringRow("Sound", ps.soundId().toString(), v -> {
+		addSuggestStringRow("Sound", ps.soundId().toString(), ActionEditorPanel::soundEventOptions, v -> {
 			ResourceLocation id = ResourceLocation.tryParse(v);
 			if (id != null) notifySimple(old -> new SpellActions.PlaySoundAction(id,
-					((SpellActions.PlaySoundAction) old).volume(), ((SpellActions.PlaySoundAction) old).pitch()));
+					((SpellActions.PlaySoundAction) old).volume(), ((SpellActions.PlaySoundAction) old).pitch(),
+					((SpellActions.PlaySoundAction) old).source(), ((SpellActions.PlaySoundAction) old).origin(),
+					((SpellActions.PlaySoundAction) old).radius(), ((SpellActions.PlaySoundAction) old).attenuation()));
 		});
 		addFloatRow("Volume", ps.volume(), v ->
 				notifySimple(old -> new SpellActions.PlaySoundAction(
-						((SpellActions.PlaySoundAction) old).soundId(), v, ((SpellActions.PlaySoundAction) old).pitch())));
+						((SpellActions.PlaySoundAction) old).soundId(), v, ((SpellActions.PlaySoundAction) old).pitch(),
+						((SpellActions.PlaySoundAction) old).source(), ((SpellActions.PlaySoundAction) old).origin(),
+						((SpellActions.PlaySoundAction) old).radius(), ((SpellActions.PlaySoundAction) old).attenuation())));
 		addFloatRow("Pitch", ps.pitch(), v ->
 				notifySimple(old -> new SpellActions.PlaySoundAction(
-						((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(), v)));
+						((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(), v,
+						((SpellActions.PlaySoundAction) old).source(), ((SpellActions.PlaySoundAction) old).origin(),
+						((SpellActions.PlaySoundAction) old).radius(), ((SpellActions.PlaySoundAction) old).attenuation())));
+		addEnumRow("Source", net.minecraft.sounds.SoundSource.values(), ps.source(), v ->
+				notifySimple(old -> new SpellActions.PlaySoundAction(((SpellActions.PlaySoundAction) old).soundId(),
+						((SpellActions.PlaySoundAction) old).volume(), ((SpellActions.PlaySoundAction) old).pitch(), v,
+						((SpellActions.PlaySoundAction) old).origin(), ((SpellActions.PlaySoundAction) old).radius(),
+						((SpellActions.PlaySoundAction) old).attenuation())));
+		addEnumRow("Origin", dev.xkmc.youkaishomecoming.content.spell.feedback.CueOrigin.values(), ps.origin(), v ->
+				notifySimple(old -> new SpellActions.PlaySoundAction(((SpellActions.PlaySoundAction) old).soundId(),
+						((SpellActions.PlaySoundAction) old).volume(), ((SpellActions.PlaySoundAction) old).pitch(),
+						((SpellActions.PlaySoundAction) old).source(), v, ((SpellActions.PlaySoundAction) old).radius(),
+						((SpellActions.PlaySoundAction) old).attenuation())));
+		addDoubleRow("Radius", ps.radius(), v -> notifySimple(old -> new SpellActions.PlaySoundAction(
+				((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(),
+				((SpellActions.PlaySoundAction) old).pitch(), ((SpellActions.PlaySoundAction) old).source(),
+				((SpellActions.PlaySoundAction) old).origin(), v, ((SpellActions.PlaySoundAction) old).attenuation())));
+		addBoolRow("Attenuation", ps.attenuation(), v -> notifySimple(old -> new SpellActions.PlaySoundAction(
+				((SpellActions.PlaySoundAction) old).soundId(), ((SpellActions.PlaySoundAction) old).volume(),
+				((SpellActions.PlaySoundAction) old).pitch(), ((SpellActions.PlaySoundAction) old).source(),
+				((SpellActions.PlaySoundAction) old).origin(), ((SpellActions.PlaySoundAction) old).radius(), v)));
+		addButtonRow("Save preset", () -> SoundPresetStore.save(soundEditBox == null ? ps.soundId().toString() : soundEditBox.getValue()));
+		addListSuggestStringRow("Load preset", "", SoundPresetStore::list, value -> {
+			if (soundEditBox != null && !value.isBlank()) soundEditBox.setValue(value);
+		});
+		addButtonRow("Delete preset", () -> SoundPresetStore.remove(soundEditBox == null ? ps.soundId().toString() : soundEditBox.getValue()));
+	}
+
+	private static List<String> soundEventOptions() {
+		return ForgeRegistries.SOUND_EVENTS.getKeys().stream()
+				.map(ResourceLocation::toString)
+				.sorted()
+				.toList();
+	}
+
+	private void buildCameraShakeRows(dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction action) {
+		addEnumRow("Origin", dev.xkmc.youkaishomecoming.content.spell.feedback.CueOrigin.values(), action.origin(), v ->
+				notifySimple(old -> new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(v,
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).intensity(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).duration(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).frequency(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).radius(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).falloff(),
+						((dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old).channel()), true));
+		addNumberRow("Intensity", action.intensity(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), v, o.duration(), o.frequency(), o.radius(), o.falloff(), o.channel());
+		}));
+		addNumberRow("Duration", action.duration(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), v, o.frequency(), o.radius(), o.falloff(), o.channel());
+		}));
+		addNumberRow("Frequency", action.frequency(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), o.duration(), v, o.radius(), o.falloff(), o.channel());
+		}));
+		addNumberRow("Radius", action.radius(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), o.duration(), o.frequency(), v, o.falloff(), o.channel());
+		}));
+		addEnumRow("Falloff", dev.xkmc.youkaishomecoming.content.spell.feedback.CueFalloff.values(), action.falloff(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), o.duration(), o.frequency(), o.radius(), v, o.channel());
+		}, true));
+		addStringRow("Channel", action.channel(), v -> notifySimple(old -> {
+			var o = (dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) old;
+			return new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction(o.origin(), o.intensity(), o.duration(), o.frequency(), o.radius(), o.falloff(), v);
+		}));
 	}
 
 	private void buildRunCommandRows(RunCommandAction rc) {
 		addEnumRow("Mode", RunCommandAction.Mode.values(), rc.mode(), v ->
-				notifySimple(old -> new RunCommandAction(v, ((RunCommandAction) old).command()), true));
-		addStringRow("Command", rc.command(), v ->
-				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(), v)));
+				notifySimple(old -> new RunCommandAction(v, ((RunCommandAction) old).hitContext(),
+						((RunCommandAction) old).command()), true));
+		addEnumSubsetRow("Hit Context", availableRunCommandHitContexts(), rc.hitContext(), v ->
+				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(), v,
+						((RunCommandAction) old).command()), true));
+		addSuggestStringRow("Command", rc.command(), List::of, v ->
+				notifySimple(old -> new RunCommandAction(((RunCommandAction) old).mode(),
+					((RunCommandAction) old).hitContext(), v)));
+		addButtonRow("Save preset", () -> CommandPresetStore.save(commandEditBox == null ? rc.command() : commandEditBox.getValue()));
+		addListSuggestStringRow("Load preset", "", CommandPresetStore::list, value -> {
+			if (commandEditBox != null && !value.isBlank()) commandEditBox.setValue(value);
+		});
+		addButtonRow("Delete preset", () -> CommandPresetStore.remove(commandEditBox == null ? rc.command() : commandEditBox.getValue()));
+	}
+
+	/** Uses the same Brigadier-backed component as the vanilla chat screen. */
+	private boolean requestVanillaCommandSuggestions(@Nullable EditBox editBox) {
+		if (editBox == null || editBox != commandEditBox) return false;
+		var mc = Minecraft.getInstance();
+		var connection = mc.getConnection();
+		if (connection == null || connection.getCommands() == null || mc.screen == null) return false;
+		var screen = mc.screen;
+		if (commandSuggestions == null) {
+			commandSuggestions = new CommandSuggestions(mc, screen, editBox, mc.font,
+					true, false, 0, 10, false, 0xF000F0);
+			commandSuggestions.setAllowSuggestions(true);
+		}
+		closeStringCompletion();
+		commandSuggestions.updateCommandInfo();
+		commandSuggestions.showSuggestions(true);
+		return true;
+	}
+
+	private int commandSuggestionOffsetY() {
+		if (commandEditBox == null) return 0;
+		int desired = commandEditBox.getY() + commandEditBox.getHeight();
+		if (desired + 120 > y + h) desired = commandEditBox.getY() - 120;
+		return desired - 72;
+	}
+
+	private RunCommandAction.HitContext[] availableRunCommandHitContexts() {
+		String nearestHitBranch = null;
+		if (currentActionPath != null) {
+			for (ActionListPanel.PathEntry entry : currentActionPath.path()) {
+				if ("onHitEntity".equals(entry.branch()) || "onHitBlock".equals(entry.branch())) {
+					nearestHitBranch = entry.branch();
+				}
+			}
+		}
+		if ("onHitEntity".equals(nearestHitBranch)) {
+			return new RunCommandAction.HitContext[]{
+					RunCommandAction.HitContext.DEFAULT,
+					RunCommandAction.HitContext.AS_HIT_ENTITY,
+					RunCommandAction.HitContext.AT_ENTITY_POS
+			};
+		}
+		if ("onHitBlock".equals(nearestHitBranch)) {
+			return new RunCommandAction.HitContext[]{
+					RunCommandAction.HitContext.DEFAULT,
+					RunCommandAction.HitContext.AT_BLOCK_POS
+			};
+		}
+		return new RunCommandAction.HitContext[]{RunCommandAction.HitContext.DEFAULT};
 	}
 
 	private void buildShowSpellTitleRows(ShowSpellTitleAction sta) {
-		addStringRow("Name", sta.name(), v ->
-				notifySimple(old -> new ShowSpellTitleAction(v, ((ShowSpellTitleAction) old).description(),
-						((ShowSpellTitleAction) old).duration(), ((ShowSpellTitleAction) old).radius())));
 		addStringRow("Description", sta.description(), v ->
-				notifySimple(old -> new ShowSpellTitleAction(((ShowSpellTitleAction) old).name(), v,
+				notifySimple(old -> new ShowSpellTitleAction("", v,
 						((ShowSpellTitleAction) old).duration(), ((ShowSpellTitleAction) old).radius())));
 		addIntRow("Duration", sta.duration(), v ->
-				notifySimple(old -> new ShowSpellTitleAction(((ShowSpellTitleAction) old).name(),
+				notifySimple(old -> new ShowSpellTitleAction("",
 						((ShowSpellTitleAction) old).description(), v, ((ShowSpellTitleAction) old).radius())));
 		addDoubleRow("Radius", sta.radius(), v ->
-				notifySimple(old -> new ShowSpellTitleAction(((ShowSpellTitleAction) old).name(),
+				notifySimple(old -> new ShowSpellTitleAction("",
 						((ShowSpellTitleAction) old).description(), ((ShowSpellTitleAction) old).duration(), v)));
 	}
 
@@ -1239,27 +1734,140 @@ public class ActionEditorPanel {
 		}
 	}
 
+	private void buildSetSpellHealthRows(SetSpellHealthAction action) {
+		addEnumRow("Mode", SetSpellHealthAction.Mode.values(), action.mode(), v ->
+				notifySimple(old -> new SetSpellHealthAction(v,
+						((SetSpellHealthAction) old).health(), ((SetSpellHealthAction) old).duration(),
+						((SetSpellHealthAction) old).onTimeout(), ((SetSpellHealthAction) old).onBreak()), true));
+		if (action.mode() == SetSpellHealthAction.Mode.SET) {
+			addStringRow("Display Name", spellDisplayNameSupplier.get(), spellDisplayNameUpdater);
+			addNumberRow("Health", action.health(), v -> notifySimple(old ->
+					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(), v,
+							((SetSpellHealthAction) old).duration(), ((SetSpellHealthAction) old).onTimeout(),
+							((SetSpellHealthAction) old).onBreak())));
+			addNumberRow("Duration", action.duration(), v -> notifySimple(old ->
+					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(),
+							((SetSpellHealthAction) old).health(), v, ((SetSpellHealthAction) old).onTimeout(),
+							((SetSpellHealthAction) old).onBreak())));
+			if (currentActionPath != null && !currentActionPath.isNested()) {
+				addBoolRow("Link Spell Title", linkedSpellTitleSupplier.get(), value -> {
+					linkedSpellTitleUpdater.accept(value);
+					refreshCurrentView();
+				});
+			}
+			buildSpellHealthTargetRows("Timeout", true, action.onTimeout());
+			buildSpellHealthTargetRows("Break", false, action.onBreak());
+		}
+	}
+
+	private void buildSpellHealthTargetRows(String prefix, boolean timeout, Optional<SpellAction> target) {
+		SpellHealthTargetType type = target.map(value -> value instanceof SpellActions.ForceSpell
+				? SpellHealthTargetType.SPELL : SpellHealthTargetType.PHASE).orElse(SpellHealthTargetType.NONE);
+		addEnumRow(prefix + " Target", SpellHealthTargetType.values(), type,
+				value -> updateSpellHealthTarget(timeout, defaultSpellHealthTarget(value), true));
+		if (target.orElse(null) instanceof SpellActions.ForcePhase forcePhase) {
+			List<ResourceLocation> options = phaseOptionsSupplier.get();
+			if (options != null && !options.isEmpty()) {
+				addChoiceRow(prefix + " Phase", options, forcePhase.phaseId(), this::formatPhaseOption,
+						id -> updateSpellHealthForcePhaseTarget(timeout,
+								current -> ActionEditorValueUpdates.withPhaseId(current, id), false));
+			} else {
+				addStringRow(prefix + " Phase", forcePhase.phaseId().toString(), value -> {
+					ResourceLocation id = ResourceLocation.tryParse(value);
+					if (id != null) updateSpellHealthForcePhaseTarget(timeout,
+							current -> ActionEditorValueUpdates.withPhaseId(current, id), false);
+				});
+			}
+			addBoolRow(prefix + " Clear Screen", forcePhase.clearScreen(), value ->
+					updateSpellHealthForcePhaseTarget(timeout,
+							current -> ActionEditorValueUpdates.withPhaseClearScreen(current, value), true));
+		} else if (target.orElse(null) instanceof SpellActions.ForceSpell forceSpell) {
+			List<ResourceLocation> options = spellOptionsSupplier.get();
+			if (options != null && !options.isEmpty()) {
+				addChoiceRow(prefix + " Spell", options, forceSpell.spellId(), this::formatSpellOption,
+						id -> updateSpellHealthForceSpellTarget(timeout,
+								current -> ActionEditorValueUpdates.withSpellId(current, id), false));
+			} else {
+				addStringRow(prefix + " Spell", forceSpell.spellId().toString(), value -> {
+					ResourceLocation id = ResourceLocation.tryParse(value);
+					if (id != null) updateSpellHealthForceSpellTarget(timeout,
+							current -> ActionEditorValueUpdates.withSpellId(current, id), false);
+				});
+			}
+			addBoolRow(prefix + " Clear Screen", forceSpell.clearScreen(), value ->
+					updateSpellHealthForceSpellTarget(timeout,
+							current -> ActionEditorValueUpdates.withSpellClearScreen(current, value), true));
+		}
+	}
+
+	private void updateSpellHealthForcePhaseTarget(boolean timeout,
+			Function<SpellActions.ForcePhase, SpellActions.ForcePhase> modifier, boolean rebuild) {
+		modifySpellHealthTarget(timeout, target ->
+				target.orElse(null) instanceof SpellActions.ForcePhase current
+						? Optional.of(modifier.apply(current)) : target, rebuild);
+	}
+
+	private void updateSpellHealthForceSpellTarget(boolean timeout,
+			Function<SpellActions.ForceSpell, SpellActions.ForceSpell> modifier, boolean rebuild) {
+		modifySpellHealthTarget(timeout, target ->
+				target.orElse(null) instanceof SpellActions.ForceSpell current
+						? Optional.of(modifier.apply(current)) : target, rebuild);
+	}
+
+	private Optional<SpellAction> defaultSpellHealthTarget(SpellHealthTargetType type) {
+		if (type == SpellHealthTargetType.NONE) return Optional.empty();
+		if (type == SpellHealthTargetType.PHASE) {
+			List<ResourceLocation> options = phaseOptionsSupplier.get();
+			ResourceLocation id = options != null && !options.isEmpty() ? options.get(0)
+					: new ResourceLocation("youkaishomecoming", "main");
+			return Optional.of(new SpellActions.ForcePhase(id, true));
+		}
+		List<ResourceLocation> options = spellOptionsSupplier.get();
+		ResourceLocation id = options != null && !options.isEmpty() ? options.get(0)
+				: new ResourceLocation("youkaishomecoming", "main");
+		return Optional.of(new SpellActions.ForceSpell(id, true));
+	}
+
+	private void updateSpellHealthTarget(boolean timeout, Optional<SpellAction> target, boolean rebuild) {
+		modifySpellHealthTarget(timeout, current -> target, rebuild);
+	}
+
+	private void modifySpellHealthTarget(boolean timeout,
+			Function<Optional<SpellAction>, Optional<SpellAction>> modifier, boolean rebuild) {
+		notifySimple(old -> {
+			SetSpellHealthAction action = (SetSpellHealthAction) old;
+			Optional<SpellAction> current = timeout ? action.onTimeout() : action.onBreak();
+			Optional<SpellAction> target = modifier.apply(current);
+			return new SetSpellHealthAction(action.mode(), action.health(), action.duration(),
+					timeout ? target : action.onTimeout(), timeout ? action.onBreak() : target);
+		}, rebuild);
+	}
+
 	// --- ForcePhase rows ---
 
 	private void buildForcePhaseRows(SpellActions.ForcePhase fp) {
 		List<ResourceLocation> phaseOptions = phaseOptionsSupplier.get();
 		if (phaseOptions != null && !phaseOptions.isEmpty()) {
 			addChoiceRow("Phase ID", phaseOptions, fp.phaseId(), this::formatPhaseOption, id ->
-					notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen())));
+					notifySimple(old -> ActionEditorValueUpdates.withPhaseId(
+							(SpellActions.ForcePhase) old, id)));
 		} else {
 			addStringRow("Phase ID", fp.phaseId().toString(), v -> {
 				ResourceLocation id = ResourceLocation.tryParse(v);
-				if (id != null) notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen()));
+				if (id != null) notifySimple(old -> ActionEditorValueUpdates.withPhaseId(
+						(SpellActions.ForcePhase) old, id));
 			});
 		}
 		if (phaseOptions == null || !phaseOptions.contains(fp.phaseId())) {
 			addStringRow("Raw ID", fp.phaseId().toString(), v -> {
 				ResourceLocation id = ResourceLocation.tryParse(v);
-				if (id != null) notifySimple(old -> new SpellActions.ForcePhase(id, fp.clearScreen()));
+				if (id != null) notifySimple(old -> ActionEditorValueUpdates.withPhaseId(
+						(SpellActions.ForcePhase) old, id));
 			});
 		}
 		addBoolRow("Clear Screen", fp.clearScreen(), v ->
-				notifySimple(old -> new SpellActions.ForcePhase(fp.phaseId(), v), true));
+				notifySimple(old -> ActionEditorValueUpdates.withPhaseClearScreen(
+						(SpellActions.ForcePhase) old, v), true));
 	}
 
 	private String formatPhaseOption(ResourceLocation phaseId) {
@@ -1299,21 +1907,25 @@ public class ActionEditorPanel {
 		List<ResourceLocation> spellOptions = spellOptionsSupplier.get();
 		if (spellOptions != null && !spellOptions.isEmpty()) {
 			addChoiceRow("Spell ID", spellOptions, fs.spellId(), this::formatSpellOption, id ->
-					notifySimple(old -> new SpellActions.ForceSpell(id, fs.clearScreen())));
+					notifySimple(old -> ActionEditorValueUpdates.withSpellId(
+							(SpellActions.ForceSpell) old, id)));
 		} else {
 			addStringRow("Spell ID", fs.spellId().toString(), v -> {
 				ResourceLocation id = ResourceLocation.tryParse(v);
-				if (id != null) notifySimple(old -> new SpellActions.ForceSpell(id, fs.clearScreen()));
+				if (id != null) notifySimple(old -> ActionEditorValueUpdates.withSpellId(
+						(SpellActions.ForceSpell) old, id));
 			});
 		}
 		if (spellOptions == null || !spellOptions.contains(fs.spellId())) {
 			addStringRow("Raw ID", fs.spellId().toString(), v -> {
 				ResourceLocation id = ResourceLocation.tryParse(v);
-				if (id != null) notifySimple(old -> new SpellActions.ForceSpell(id, fs.clearScreen()));
+				if (id != null) notifySimple(old -> ActionEditorValueUpdates.withSpellId(
+						(SpellActions.ForceSpell) old, id));
 			});
 		}
 		addBoolRow("Clear Screen", fs.clearScreen(), v ->
-				notifySimple(old -> new SpellActions.ForceSpell(fs.spellId(), v), true));
+				notifySimple(old -> ActionEditorValueUpdates.withSpellClearScreen(
+						(SpellActions.ForceSpell) old, v), true));
 	}
 
 	private void buildFireSpellRows(SpellActions.FireSpell fs) {
@@ -1384,10 +1996,13 @@ public class ActionEditorPanel {
 	// --- Teleport rows ---
 
 	private void buildTeleportRows(TeleportAction ta) {
-		addEnumRow("Origin", OriginConfig.OriginMode.values(), ta.destination().mode(), v -> {
-			var newDest = new OriginConfig(v, ta.destination().offsetX(), ta.destination().offsetY(),
-					ta.destination().offsetZ(), ta.destination().rotation());
-			notifySimple(old -> new TeleportAction(newDest, ((TeleportAction) old).playSound()));
+		addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), ta.destination().mode(), v -> {
+			notifySimple(old -> {
+				var teleport = (TeleportAction) old;
+				var current = teleport.destination();
+				var newDest = ActionEditorValueUpdates.withOriginMode(current, v);
+				return new TeleportAction(newDest, teleport.playSound());
+			});
 		});
 		buildOriginOffsetRows(ta.destination(), newDest ->
 				notifySimple(old -> new TeleportAction(newDest, ((TeleportAction) old).playSound())));
@@ -1401,12 +2016,12 @@ public class ActionEditorPanel {
 		addIntRow("Waves", ba.waves(), v ->
 				notifySimple(old -> {
 					var b = (BurstAction) old;
-					return new BurstAction(v, b.interval(), b.waveVariable(), b.body());
+					return new BurstAction(Math.max(1, v), b.interval(), b.waveVariable(), b.body());
 				}));
 		addIntRow("Interval", ba.interval(), v ->
 				notifySimple(old -> {
 					var b = (BurstAction) old;
-					return new BurstAction(b.waves(), v, b.waveVariable(), b.body());
+					return new BurstAction(b.waves(), Math.max(0, v), b.waveVariable(), b.body());
 				}));
 		addStringRow("Wave Var", ba.waveVariable(), v ->
 				notifySimple(old -> {
@@ -1561,6 +2176,8 @@ public class ActionEditorPanel {
 				notifySimple(old -> ((SpawnShooterAction) old).withHealth(v)));
 		addFloatRow("Damage", ssa.damage(), v ->
 				notifySimple(old -> ((SpawnShooterAction) old).withDamage(v)));
+		addBoolRow("Targetable", ssa.targetable(), v ->
+				notifySimple(old -> ((SpawnShooterAction) old).withTargetable(v), true));
 		addSuggestStringRow("Circle", ssa.circle().toString(), ActionEditorPanel::spellCircleOptions, v -> {
 			ResourceLocation id = ResourceLocation.tryParse(v);
 			if (id != null) {
@@ -1579,6 +2196,10 @@ public class ActionEditorPanel {
 					notifySimple(old -> ((SpawnShooterAction) old).withElevation(v), false));
 			addEnumRow("Pattern", PatternType.values(), ssa.pattern(), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withPattern(v), true));
+			if (ssa.pattern() == PatternType.SPHERE) {
+				addBoolRow("Random Axis", ssa.randomAxis(), v ->
+						notifySimple(old -> ((SpawnShooterAction) old).withRandomAxis(v), true));
+			}
 			if (ssa.pattern() == PatternType.NESTED_RING || ssa.pattern() == PatternType.GRID) {
 				String label = ssa.pattern() == PatternType.GRID ? "Cols" : "Outer Cnt";
 				NumberProvider outerProv = ssa.outerCount().orElse(NumberProvider.constant(1));
@@ -1645,7 +2266,7 @@ public class ActionEditorPanel {
 		addSectionHeader("Origin");
 		if (!isSectionCollapsed("Origin")) {
 			currentDepth++;
-			addEnumRow("Origin", OriginConfig.OriginMode.values(), ssa.origin().mode(), v -> {
+			addEnumSubsetRow("Origin", OriginConfig.OriginMode.editorValues(), ssa.origin().mode(), v -> {
 				notifySimple(old -> {
 					var s = (SpawnShooterAction) old;
 					var newOrigin = new OriginConfig(v, s.origin().offsetX(), s.origin().offsetY(),
@@ -1689,6 +2310,7 @@ public class ActionEditorPanel {
 	// Top-level mover types (includes "none" for removal and special types like attached)
 	private static final String[] MOVER_TYPES = {"none", "acceleration", "deceleration", "rotate", "polar", "composite", "layered", "zero", "bezier", "multi_bezier", "spline", "formula", "orbital", "translate", "homing", "attached", "attached_free_rot", "fixed_dir"};
 	private static final String[] TRANSLATE_AIM_MODES = {"none", "target", "caster_to_target", "forward", "velocity", "fixed"};
+	private static final String[] TRANSLATE_SPACE_MODES = {"world", "local"};
 
 	/**
 	 * Sub-mover types available inside composite segments, layered layers, and fixed_dir inner.
@@ -1702,10 +2324,17 @@ public class ActionEditorPanel {
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
 	 */
 	private Optional<MoverConfig> getCurrentMover() {
-		if (currentAction instanceof FireDanmakuAction fda) return fda.mover();
-		if (currentAction instanceof FireLaserAction fla) return fla.mover();
-		if (currentAction instanceof SpawnShooterAction ssa) return ssa.mover();
-		return Optional.empty();
+		Optional<MoverConfig> mover;
+		if (currentAction instanceof FireDanmakuAction fda) mover = fda.mover();
+		else if (currentAction instanceof FireLaserAction fla) mover = fla.mover();
+		else if (currentAction instanceof FireTextDanmakuAction ftda) mover = ftda.mover();
+		else if (currentAction instanceof SpawnShooterAction ssa) mover = ssa.mover();
+		else mover = Optional.empty();
+		if (editingFixedDirInner && mover.isPresent()
+				&& mover.get() instanceof MoverConfigs.FixedDirMoverConfig fixed) {
+			return Optional.of(fixed.inner());
+		}
+		return mover;
 	}
 
 	/**
@@ -1714,7 +2343,9 @@ public class ActionEditorPanel {
 	private OriginConfig getCurrentOrigin() {
 		if (currentAction instanceof FireDanmakuAction fda) return fda.origin();
 		if (currentAction instanceof FireLaserAction fla) return fla.origin();
+		if (currentAction instanceof FireTextDanmakuAction ftda) return ftda.origin();
 		if (currentAction instanceof SpawnShooterAction ssa) return ssa.origin();
+		if (currentAction instanceof TeleportAction teleport) return teleport.destination();
 		return OriginConfig.caster();
 	}
 
@@ -1726,19 +2357,19 @@ public class ActionEditorPanel {
 		addNumberRow("Off X", cfg.offsetX(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), v, cur.offsetY(), cur.offsetZ(), cur.rotation()));
-		}, MoverOverrideResolver.isLabelOverridden("Off X", overrides));
+		}, MoverOverrideResolver.isLabelOverridden("Off X", overrides), EvaluationTiming.SNAPSHOT);
 		addNumberRow("Off Y", cfg.offsetY(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), cur.offsetX(), v, cur.offsetZ(), cur.rotation()));
-		}, MoverOverrideResolver.isLabelOverridden("Off Y", overrides));
+		}, MoverOverrideResolver.isLabelOverridden("Off Y", overrides), EvaluationTiming.SNAPSHOT);
 		addNumberRow("Off Z", cfg.offsetZ(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), cur.offsetX(), cur.offsetY(), v, cur.rotation()));
-		}, MoverOverrideResolver.isLabelOverridden("Off Z", overrides));
+		}, MoverOverrideResolver.isLabelOverridden("Off Z", overrides), EvaluationTiming.SNAPSHOT);
 		addNumberRow("Rot", cfg.rotation(), v -> {
 			var cur = getCurrentOrigin();
 			onChanged.accept(new OriginConfig(cur.mode(), cur.offsetX(), cur.offsetY(), cur.offsetZ(), v));
-		});
+		}, false, EvaluationTiming.SNAPSHOT);
 	}
 
 	/**
@@ -1748,38 +2379,138 @@ public class ActionEditorPanel {
 	private void buildMoverRows(Optional<MoverConfig> moverOpt,
 								Consumer<Optional<MoverConfig>> onTypeChanged,
 								Consumer<Optional<MoverConfig>> onParamChanged) {
-		String currentType = getMoverType(moverOpt);
-		addStringCycleRow("Mover", MOVER_TYPES, currentType, newType -> {
-			onTypeChanged.accept(createDefaultMover(newType));
+		buildMoverRows(moverOpt, onTypeChanged, onParamChanged, true);
+	}
+
+	private void buildAccelerationRows(
+			String prefix,
+			MoverConfigs.AccelerationConfig acc,
+			Consumer<Optional<MoverConfigs.AccelerationConfig>> updater,
+			Runnable onStructureChanged
+	) {
+		buildAccelerationRows(prefix, acc, () -> {
+			MoverConfig current = getCurrentMover().orElse(null);
+			return current instanceof MoverConfigs.AccelerationConfig live ? live : acc;
+		}, updater, onStructureChanged);
+	}
+
+	private void buildAccelerationRows(
+			String prefix,
+			MoverConfigs.AccelerationConfig acc,
+			Supplier<MoverConfigs.AccelerationConfig> currentSupplier,
+			Consumer<Optional<MoverConfigs.AccelerationConfig>> updater,
+			Runnable onStructureChanged
+	) {
+		String space = acc.space().orElse("world");
+		boolean isLocal = "local".equalsIgnoreCase(space);
+
+		addStringOptionRow(prefix + "Space", new String[]{"world", "local"}, new String[]{"World", "Local"}, space, s -> {
+			var current = currentSupplier.get();
+			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+					current.x(), current.y(), current.z(), current.terminalVx(), current.terminalVy(), current.terminalVz(), Optional.of(s))));
+			if (onStructureChanged != null) onStructureChanged.run();
 		});
+
+		String xLabel = isLocal ? "Forward" : "X";
+		String yLabel = isLocal ? "Right" : "Y";
+		String zLabel = isLocal ? "Up" : "Z";
+
+		// Axis X
+		addNumberRow(prefix + "Acc " + xLabel, acc.x(), v -> {
+			var current = currentSupplier.get();
+			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+					v, current.y(), current.z(), current.terminalVx(), current.terminalVy(), current.terminalVz(), current.space())));
+		}, EvaluationTiming.SNAPSHOT);
+		addBooleanRow(prefix + "Limit " + xLabel, acc.terminalVx().isPresent(), enable -> {
+			var current = currentSupplier.get();
+			double defaultVal = current.x() instanceof NumberProviders.Constant c && c.value() < 0 ? -0.8 : 0.8;
+			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+					current.x(), current.y(), current.z(), enable ? Optional.of(NumberProvider.constant(defaultVal)) : Optional.empty(),
+					current.terminalVy(), current.terminalVz(), current.space())));
+			if (onStructureChanged != null) onStructureChanged.run();
+		});
+		if (acc.terminalVx().isPresent()) {
+			addNumberRow(prefix + "  Term " + xLabel, acc.terminalVx().get(), v -> {
+				var current = currentSupplier.get();
+				updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+						current.x(), current.y(), current.z(), Optional.of(v), current.terminalVy(), current.terminalVz(), current.space())));
+			}, EvaluationTiming.SNAPSHOT);
+		}
+
+		// Axis Y
+		addNumberRow(prefix + "Acc " + yLabel, acc.y(), v -> {
+			var current = currentSupplier.get();
+			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+					current.x(), v, current.z(), current.terminalVx(), current.terminalVy(), current.terminalVz(), current.space())));
+		}, EvaluationTiming.SNAPSHOT);
+		addBooleanRow(prefix + "Limit " + yLabel, acc.terminalVy().isPresent(), enable -> {
+			var current = currentSupplier.get();
+			double defaultVal = current.y() instanceof NumberProviders.Constant c && c.value() < 0 ? -0.8 : 0.8;
+			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+					current.x(), current.y(), current.z(), current.terminalVx(),
+					enable ? Optional.of(NumberProvider.constant(defaultVal)) : Optional.empty(),
+					current.terminalVz(), current.space())));
+			if (onStructureChanged != null) onStructureChanged.run();
+		});
+		if (acc.terminalVy().isPresent()) {
+			addNumberRow(prefix + "  Term " + yLabel, acc.terminalVy().get(), v -> {
+				var current = currentSupplier.get();
+				updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+						current.x(), current.y(), current.z(), current.terminalVx(), Optional.of(v), current.terminalVz(), current.space())));
+			}, EvaluationTiming.SNAPSHOT);
+		}
+
+		// Axis Z
+		addNumberRow(prefix + "Acc " + zLabel, acc.z(), v -> {
+			var current = currentSupplier.get();
+			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+					current.x(), current.y(), v, current.terminalVx(), current.terminalVy(), current.terminalVz(), current.space())));
+		}, EvaluationTiming.SNAPSHOT);
+		addBooleanRow(prefix + "Limit " + zLabel, acc.terminalVz().isPresent(), enable -> {
+			var current = currentSupplier.get();
+			double defaultVal = current.z() instanceof NumberProviders.Constant c && c.value() < 0 ? -0.8 : 0.8;
+			updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+					current.x(), current.y(), current.z(), current.terminalVx(), current.terminalVy(),
+					enable ? Optional.of(NumberProvider.constant(defaultVal)) : Optional.empty(),
+					current.space())));
+			if (onStructureChanged != null) onStructureChanged.run();
+		});
+		if (acc.terminalVz().isPresent()) {
+			addNumberRow(prefix + "  Term " + zLabel, acc.terminalVz().get(), v -> {
+				var current = currentSupplier.get();
+				updater.accept(Optional.of(new MoverConfigs.AccelerationConfig(
+						current.x(), current.y(), current.z(), current.terminalVx(), current.terminalVy(), Optional.of(v), current.space())));
+			}, EvaluationTiming.SNAPSHOT);
+		}
+	}
+
+	/**
+	 * Render mover controls. The type row can be omitted when the method is used
+	 * to render the controls for a fixed_dir inner mover.
+	 */
+	private void buildMoverRows(Optional<MoverConfig> moverOpt,
+								Consumer<Optional<MoverConfig>> onTypeChanged,
+								Consumer<Optional<MoverConfig>> onParamChanged,
+								boolean includeTypeSelector) {
+		String currentType = getMoverType(moverOpt);
+		if (includeTypeSelector) {
+			addStringCycleRow("Mover", MOVER_TYPES, currentType, newType -> {
+				onTypeChanged.accept(createDefaultMover(newType));
+			});
+		}
 
 		if (moverOpt.isPresent()) {
 			MoverConfig cfg = moverOpt.get();
 			if (cfg instanceof MoverConfigs.AccelerationConfig acc) {
-				addNumberRow("Accel X", acc.x(), v -> {
-					var cur = getCurrentMover();
-					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(v, a.y(), a.z())));
-					}
-				});
-				addNumberRow("Accel Y", acc.y(), v -> {
-					var cur = getCurrentMover();
-					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), v, a.z())));
-					}
-				});
-				addNumberRow("Accel Z", acc.z(), v -> {
-					var cur = getCurrentMover();
-					if (cur.isPresent() && cur.get() instanceof MoverConfigs.AccelerationConfig a) {
-						onParamChanged.accept(Optional.of(new MoverConfigs.AccelerationConfig(a.x(), a.y(), v)));
-					}
-				});
+				buildAccelerationRows("", acc,
+						updated -> onParamChanged.accept(updated.map(a -> a)),
+						() -> onTypeChanged.accept(getCurrentMover()));
 			} else if (cfg instanceof MoverConfigs.DecelerationConfig dc) {
 				addNumberRow("Factor", dc.factor(), v ->
-						onParamChanged.accept(Optional.of(new MoverConfigs.DecelerationConfig(v))));
+						onParamChanged.accept(Optional.of(new MoverConfigs.DecelerationConfig(v))), EvaluationTiming.SNAPSHOT);
 			} else if (cfg instanceof MoverConfigs.RotateConfig rot) {
 				addNumberRow("Deg/tick", rot.degreesPerTick(), v ->
-						onParamChanged.accept(Optional.of(new MoverConfigs.RotateConfig(v))));
+						onParamChanged.accept(Optional.of(new MoverConfigs.RotateConfig(v))), EvaluationTiming.SNAPSHOT);
 			} else if (cfg instanceof MoverConfigs.PolarMoverConfig polar) {
 				addNumberRow("Radius", polar.radius(), v -> {
 					var cur = getCurrentMover();
@@ -1787,42 +2518,42 @@ public class ActionEditorPanel {
 						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 								v, p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel())));
 					}
-				});
+				}, EvaluationTiming.SNAPSHOT);
 				addNumberRow("Rad Spd", polar.radialSpeed(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 								p.radius(), v, p.radialAccel(), p.initialAngle(), p.angularSpeed(), p.angularAccel())));
 					}
-				});
+				}, EvaluationTiming.SNAPSHOT);
 				addNumberRow("Ang Spd", polar.angularSpeed(), v -> {
 					var cur = getCurrentMover();
 					if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 						onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 								p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), v, p.angularAccel())));
 					}
-				});
+				}, EvaluationTiming.SNAPSHOT);
 			addNumberRow("Init Ang", polar.initialAngle(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), p.radialAccel(), v, p.angularSpeed(), p.angularAccel())));
 				}
-			});
+			}, EvaluationTiming.SNAPSHOT);
 			addNumberRow("Rad Acc", polar.radialAccel(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), v, p.initialAngle(), p.angularSpeed(), p.angularAccel())));
 				}
-			});
+			}, EvaluationTiming.SNAPSHOT);
 			addNumberRow("Ang Acc", polar.angularAccel(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.PolarMoverConfig p) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.PolarMoverConfig(
 							p.radius(), p.radialSpeed(), p.radialAccel(), p.initialAngle(), p.angularSpeed(), v)));
 				}
-			});
+			}, EvaluationTiming.SNAPSHOT);
 		} else if (cfg instanceof MoverConfigs.CompositeMoverConfig comp) {
 			// Display segment count and per-segment editors
 			addStringRow("Segments", String.valueOf(comp.segments().size()), v -> {});
@@ -2124,25 +2855,25 @@ public class ActionEditorPanel {
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), f.z(), v)));
 				}
-			});
+			}, EvaluationTiming.SNAPSHOT);
 			addStringRow("X (fwd)", fm.x(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(v, f.y(), f.z(), f.speed())));
 				}
-			});
+			}, EvaluationTiming.MIXED);
 			addStringRow("Y (right)", fm.y(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), v, f.z(), f.speed())));
 				}
-			});
+			}, EvaluationTiming.MIXED);
 			addStringRow("Z (up)", fm.z(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.FormulaMoverConfig f) {
 					onParamChanged.accept(Optional.of(new MoverConfigs.FormulaMoverConfig(f.x(), f.y(), v, f.speed())));
 				}
-			});
+			}, EvaluationTiming.MIXED);
 		} else if (cfg instanceof MoverConfigs.OrbitalMoverConfig orb) {
 			// Orbital mover: angular_speed, radius formula, drift formula
 			addNumberRow("Ang Spd (°/t)", orb.angularSpeed(), v -> {
@@ -2164,37 +2895,47 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (cfg instanceof MoverConfigs.TranslateMoverConfig tr) {
-			// Translate mover: aim mode + speed, or raw x/y/z formulas
+			// Translate mover: launch-time aim plus formula offsets. Local offsets use
+			// the post-group-rotation forward/right/up frame captured at emission.
+			addStringCycleRow("Space", TRANSLATE_SPACE_MODES, tr.space(), v -> {
+				var cur = getCurrentMover();
+				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
+					onTypeChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), t.aim(), v)));
+				}
+			});
 			addStringCycleRow("Aim", TRANSLATE_AIM_MODES, tr.aim(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onTypeChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v)));
+					onTypeChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v, t.space())));
 				}
 			});
 			addNumberRow("Speed", tr.speed(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim(), t.space())));
 				}
 			});
-			addStringRow("X (east)", tr.x(), v -> {
+			String xLabel = "local".equalsIgnoreCase(tr.space()) ? "X (fwd)" : "X (east)";
+			String yLabel = "local".equalsIgnoreCase(tr.space()) ? "Y (right)" : "Y (up)";
+			String zLabel = "local".equalsIgnoreCase(tr.space()) ? "Z (up)" : "Z (south)";
+			addStringRow(xLabel, tr.x(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim(), t.space())));
 				}
-			});
-			addStringRow("Y (up)", tr.y(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(yLabel, tr.y(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim(), t.space())));
 				}
-			});
-			addStringRow("Z (south)", tr.z(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(zLabel, tr.z(), v -> {
 				var cur = getCurrentMover();
 				if (cur.isPresent() && cur.get() instanceof MoverConfigs.TranslateMoverConfig t) {
-					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim())));
+					onParamChanged.accept(Optional.of(new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim(), t.space())));
 				}
-			});
+			}, EvaluationTiming.MIXED);
 		} else if (cfg instanceof MoverConfigs.HomingMoverConfig homing) {
 			addNumberRow("Speed", homing.speed(), v -> {
 				var cur = getCurrentMover();
@@ -2220,7 +2961,8 @@ public class ActionEditorPanel {
 		} else if (cfg instanceof MoverConfigs.AttachedFreeRotMoverConfig) {
 			addStringRow("Mode", "Locks pos+facing to owner", v -> {});
 		} else if (cfg instanceof MoverConfigs.FixedDirMoverConfig fdm) {
-			// fixed_dir wraps an inner mover; expose inner type selector. Inner params are not edited inline here.
+			// fixed_dir wraps an inner mover. Render both its type and the full inner
+			// parameter editor so the wrapper is usable without hand-editing JSON.
 			String innerType = getMoverType(Optional.of(fdm.inner()));
 			String[] innerTypes = SUB_MOVER_TYPES;
 			addStringCycleRow("Inner", innerTypes, innerType, newType -> {
@@ -2229,6 +2971,13 @@ public class ActionEditorPanel {
 					onTypeChanged.accept(Optional.of(new MoverConfigs.FixedDirMoverConfig(newInner.get())));
 				}
 			});
+			editingFixedDirInner = true;
+			currentDepth++;
+			buildMoverRows(Optional.of(fdm.inner()),
+					inner -> onTypeChanged.accept(inner.map(value -> new MoverConfigs.FixedDirMoverConfig(value))),
+					inner -> onParamChanged.accept(inner.map(value -> new MoverConfigs.FixedDirMoverConfig(value))),
+					false);
+			currentDepth--;
 		}
 		}
 	}
@@ -2300,24 +3049,13 @@ public class ActionEditorPanel {
 											Consumer<Optional<MoverConfig>> onTypeChanged,
 											Consumer<Optional<MoverConfig>> onParamChanged) {
 		if (subCfg instanceof MoverConfigs.AccelerationConfig acc) {
-			addNumberRow("  Acc X", acc.x(), v -> {
-				MoverConfig current = getCompositeSegmentMover(segIdx);
-				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(v, a.y(), a.z()), onParamChanged);
-				}
-			});
-			addNumberRow("  Acc Y", acc.y(), v -> {
-				MoverConfig current = getCompositeSegmentMover(segIdx);
-				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(a.x(), v, a.z()), onParamChanged);
-				}
-			});
-			addNumberRow("  Acc Z", acc.z(), v -> {
-				MoverConfig current = getCompositeSegmentMover(segIdx);
-				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateCompositeSegment(segIdx, new MoverConfigs.AccelerationConfig(a.x(), a.y(), v), onParamChanged);
-				}
-			});
+			buildAccelerationRows("  ", acc,
+					() -> {
+						MoverConfig current = getCompositeSegmentMover(segIdx);
+						return current instanceof MoverConfigs.AccelerationConfig live ? live : acc;
+					},
+					updated -> updateCompositeSegment(segIdx, updated.get(), onParamChanged),
+					() -> onTypeChanged.accept(getCurrentMover()));
 		} else if (subCfg instanceof MoverConfigs.DecelerationConfig dc) {
 			addNumberRow("  Factor", dc.factor(), v -> updateCompositeSegment(segIdx,
 					new MoverConfigs.DecelerationConfig(v), onParamChanged));
@@ -2396,36 +3134,45 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (subCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
+			addStringCycleRow("  Space", TRANSLATE_SPACE_MODES, tr.space(), v -> {
+				MoverConfig current = getCompositeSegmentMover(segIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), t.aim(), v), onTypeChanged);
+				}
+			});
 			addStringCycleRow("  Aim", TRANSLATE_AIM_MODES, tr.aim(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v, t.space()), onTypeChanged);
 				}
 			});
 			addNumberRow("  Speed", tr.speed(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim(), t.space()), onParamChanged);
 				}
 			});
-			addStringRow("  X (east)", tr.x(), v -> {
+			String xLabel = "local".equalsIgnoreCase(tr.space()) ? "  X (fwd)" : "  X (east)";
+			String yLabel = "local".equalsIgnoreCase(tr.space()) ? "  Y (right)" : "  Y (up)";
+			String zLabel = "local".equalsIgnoreCase(tr.space()) ? "  Z (up)" : "  Z (south)";
+			addStringRow(xLabel, tr.x(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
-			addStringRow("  Y (up)", tr.y(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(yLabel, tr.y(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
-			addStringRow("  Z (south)", tr.z(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(zLabel, tr.z(), v -> {
 				MoverConfig current = getCompositeSegmentMover(segIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim()), onParamChanged);
+					updateCompositeSegment(segIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
+			}, EvaluationTiming.MIXED);
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -2466,24 +3213,13 @@ public class ActionEditorPanel {
 										 Consumer<Optional<MoverConfig>> onTypeChanged,
 										 Consumer<Optional<MoverConfig>> onParamChanged) {
 		if (layerCfg instanceof MoverConfigs.AccelerationConfig acc) {
-			addNumberRow("  Acc X", acc.x(), v -> {
-				MoverConfig current = getLayeredLayerMover(layerIdx);
-				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(v, a.y(), a.z()), onParamChanged);
-				}
-			});
-			addNumberRow("  Acc Y", acc.y(), v -> {
-				MoverConfig current = getLayeredLayerMover(layerIdx);
-				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(a.x(), v, a.z()), onParamChanged);
-				}
-			});
-			addNumberRow("  Acc Z", acc.z(), v -> {
-				MoverConfig current = getLayeredLayerMover(layerIdx);
-				if (current instanceof MoverConfigs.AccelerationConfig a) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.AccelerationConfig(a.x(), a.y(), v), onParamChanged);
-				}
-			});
+			buildAccelerationRows("  ", acc,
+					() -> {
+						MoverConfig current = getLayeredLayerMover(layerIdx);
+						return current instanceof MoverConfigs.AccelerationConfig live ? live : acc;
+					},
+					updated -> updateLayeredLayer(layerIdx, updated.get(), onParamChanged),
+					() -> onTypeChanged.accept(getCurrentMover()));
 		} else if (layerCfg instanceof MoverConfigs.DecelerationConfig dc) {
 			addNumberRow("  Factor", dc.factor(), v -> updateLayeredLayer(layerIdx,
 					new MoverConfigs.DecelerationConfig(v), onParamChanged));
@@ -2562,36 +3298,45 @@ public class ActionEditorPanel {
 				}
 			});
 		} else if (layerCfg instanceof MoverConfigs.TranslateMoverConfig tr) {
+			addStringCycleRow("  Space", TRANSLATE_SPACE_MODES, tr.space(), v -> {
+				MoverConfig current = getLayeredLayerMover(layerIdx);
+				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), t.aim(), v), onTypeChanged);
+				}
+			});
 			addStringCycleRow("  Aim", TRANSLATE_AIM_MODES, tr.aim(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v), onTypeChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), t.speed(), v, t.space()), onTypeChanged);
 				}
 			});
 			addNumberRow("  Speed", tr.speed(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), t.z(), v, t.aim(), t.space()), onParamChanged);
 				}
 			});
-			addStringRow("  X (east)", tr.x(), v -> {
+			String xLabel = "local".equalsIgnoreCase(tr.space()) ? "  X (fwd)" : "  X (east)";
+			String yLabel = "local".equalsIgnoreCase(tr.space()) ? "  Y (right)" : "  Y (up)";
+			String zLabel = "local".equalsIgnoreCase(tr.space()) ? "  Z (up)" : "  Z (south)";
+			addStringRow(xLabel, tr.x(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(v, t.y(), t.z(), t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
-			addStringRow("  Y (up)", tr.y(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(yLabel, tr.y(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), v, t.z(), t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
-			addStringRow("  Z (south)", tr.z(), v -> {
+			}, EvaluationTiming.MIXED);
+			addStringRow(zLabel, tr.z(), v -> {
 				MoverConfig current = getLayeredLayerMover(layerIdx);
 				if (current instanceof MoverConfigs.TranslateMoverConfig t) {
-					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim()), onParamChanged);
+					updateLayeredLayer(layerIdx, new MoverConfigs.TranslateMoverConfig(t.x(), t.y(), v, t.speed(), t.aim(), t.space()), onParamChanged);
 				}
-			});
+			}, EvaluationTiming.MIXED);
 		}
 		// ZeroMoverConfig has no params
 	}
@@ -2982,6 +3727,24 @@ public class ActionEditorPanel {
 		rows.add(new EditorRow(label, btn, false));
 	}
 
+	private <E extends Enum<E>> void addEnumSubsetRow(String label, E[] values, E current, Consumer<E> onChange) {
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		String[] displayNames = new String[values.length];
+		int selectedIndex = -1;
+		for (int i = 0; i < values.length; i++) {
+			displayNames[i] = SpellEditorLocalization.t(formatEnum(values[i]));
+			if (values[i] == current) selectedIndex = i;
+		}
+		int dropdownSelectedIndex = Math.max(0, selectedIndex);
+		String currentName = selectedIndex >= 0
+				? displayNames[selectedIndex] : SpellEditorLocalization.t(formatEnum(current));
+		int rowIndex = rows.size();
+		var btn = Button.builder(Component.literal(currentName + " \u25BC"), b -> {
+			openDropdown(displayNames, dropdownSelectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
+		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
+		rows.add(new EditorRow(label, btn, false));
+	}
+
 	private void addBulletRow(YHDanmaku.Bullet current, Consumer<YHDanmaku.Bullet> onChange) {
 		YHDanmaku.Bullet[] values = YHDanmaku.Bullet.values();
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
@@ -3031,7 +3794,17 @@ public class ActionEditorPanel {
 			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose",
 			"tick", "phase_tick", "total_tick", "distance",
 			"target_height", "target_fly_time", "target_speed", "game_difficulty",
-			"caster_x", "caster_y", "caster_z", "target_x", "target_y", "target_z"
+			"caster_x", "caster_y", "caster_z", "caster_max_health", "caster_power",
+			"target_x", "target_y", "target_z", "target_facing_x", "target_facing_y", "target_facing_z",
+			"source_position_x", "source_position_y", "source_position_z",
+			"source_velocity_x", "source_velocity_y", "source_velocity_z", "vx", "vy", "vz",
+			"source_direction_x", "source_direction_y", "source_direction_z", "source_speed",
+			"source_size", "source_spread", "source_lifetime", "source_age", "source_remaining_lifetime",
+			"source_hook_x", "source_hook_y", "source_hook_z",
+			"source_end_x", "source_end_y", "source_end_z",
+			"source_clipped_end_x", "source_clipped_end_y", "source_clipped_end_z",
+			"hit_x", "hit_y", "hit_z", "start_x", "start_y", "start_z",
+			"hit_normal_x", "hit_normal_y", "hit_normal_z"
 	};
 
 	/** Returns the insert template for a function (with parens and commas). */
@@ -3122,11 +3895,9 @@ public class ActionEditorPanel {
 			"tick_mod", "sin_deg", "cos_deg", "sin_rad", "cos_rad", "sqrt", "abs", "floor", "ceil", "round",
 			"pow", "root", "log", "ln", "exp", "max", "min", "clamp", "gaussian", "choose"
 	);
-	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Set.of(
-			"tick", "phase_tick", "total_tick", "distance", "target_height", "target_fly_time",
-			"target_speed", "game_difficulty",
-			"caster_x", "caster_y", "caster_z", "target_x", "target_y", "target_z"
-	);
+	private static final java.util.Set<String> KNOWN_KEYWORDS = java.util.Arrays.stream(EXPR_FUNCTIONS)
+			.filter(name -> !KNOWN_FUNCTIONS.contains(name))
+			.collect(java.util.stream.Collectors.toUnmodifiableSet());
 
 	/**
 	 * Compute per-character color array for expression syntax highlighting.
@@ -3189,12 +3960,23 @@ public class ActionEditorPanel {
 	private final List<EditBox> exprEditBoxes = new ArrayList<>();
 	private final Map<EditBox, java.util.function.Supplier<List<String>>> stringCompletionSuppliers = new HashMap<>();
 	private final Set<EditBox> listCompletionTargets = new HashSet<>();
+	private EditBox commandEditBox;
+	private EditBox soundEditBox;
+	private CommandSuggestions commandSuggestions;
 
 	// Expression completion overlay
-	private String[] exprCompletionItems = null;
+	private record ExprCompletionItem(@Nullable String value, String label, boolean folder,
+			String groupKey, int depth) {
+	}
+
+	private static final Set<String> EXPANDED_EXPR_COMPLETION_GROUPS = new HashSet<>();
+	private List<ExprCompletionItem> exprCompletionItems = null;
+	private List<String> exprCompletionMatches = List.of();
+	private boolean exprCompletionGrouped = false;
 	private int exprCompletionHoverIndex = -1;
 	private EditBox exprCompletionTarget = null;
 	private int exprCompletionInsertStart = -1;
+	private int exprCompletionScrollOffset = 0;
 
 	// Plain string field completion overlay
 	private String[] stringCompletionItems = null;
@@ -3204,11 +3986,34 @@ public class ActionEditorPanel {
 	private int stringCompletionInsertEnd = -1;
 	private int stringCompletionScrollOffset = 0;
 
+	private int[] computeCompletionBounds(EditBox target, int itemCount) {
+		int cx = Math.max(x, Math.min(x + w - 20, target.getX()));
+		int cw = Math.max(20, Math.min(Math.max(target.getWidth(), 120), x + w - cx));
+		int desired = Math.min(itemCount, DROPDOWN_MAX_VISIBLE);
+		int below = Math.max(0, y + h - (target.getY() + target.getHeight()));
+		int above = Math.max(0, target.getY() - y);
+		boolean openBelow = below >= desired * DROPDOWN_ITEM_H || below >= above;
+		int available = openBelow ? below : above;
+		int visible = Math.max(1, Math.min(desired, available / DROPDOWN_ITEM_H));
+		int height = visible * DROPDOWN_ITEM_H;
+		int cy = openBelow ? target.getY() + target.getHeight() : target.getY() - height;
+		cy = Math.max(y, Math.min(y + h - height, cy));
+		return new int[]{cx, cy, cw, height, visible};
+	}
+
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange) {
-		addNumberRow(label, provider, onChange, false);
+		addNumberRow(label, provider, onChange, false, null);
+	}
+
+	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, @Nullable EvaluationTiming timing) {
+		addNumberRow(label, provider, onChange, false, timing);
 	}
 
 	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, boolean overridden) {
+		addNumberRow(label, provider, onChange, overridden, null);
+	}
+
+	private void addNumberRow(String label, NumberProvider provider, Consumer<NumberProvider> onChange, boolean overridden, @Nullable EvaluationTiming timing) {
 		double value = provider instanceof NumberProviders.Constant c ? c.value() : 0;
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = newEditorEditBox(label, widgetW);
@@ -3221,6 +4026,8 @@ public class ActionEditorPanel {
 				onChange.accept(parsed);
 			}
 		});
+		// 离开焦点时主动触发解析同步，防止切换运算符时丢失编辑框最新值
+		editBox.setFocused(false);
 		// Syntax-aware formatter: variables=aqua, functions=yellow, rainbow brackets
 		editBox.setFormatter((text, displayPos) -> {
 			String fullValue = editBox.getValue();
@@ -3254,7 +4061,7 @@ public class ActionEditorPanel {
 			displayLabel = label + "*";
 		}
 		exprEditBoxes.add(editBox);
-		rows.add(new EditorRow(displayLabel, editBox, false, -1, currentDepth, false, overridden));
+		rows.add(new EditorRow(displayLabel, editBox, false, -1, currentDepth, false, overridden, timing));
 	}
 
 	private void addBoolRow(String label, boolean value, Consumer<Boolean> onChange) {
@@ -3319,12 +4126,47 @@ public class ActionEditorPanel {
 	}
 
 	private void addStringRow(String label, String value, Consumer<String> onChange) {
+		addStringRow(label, value, onChange, null);
+	}
+
+	private void addStringRow(String label, String value, Consumer<String> onChange, @Nullable EvaluationTiming timing) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength(256);
-		editBox.setValue(value);
-		editBox.setResponder(onChange::accept);
-		rows.add(new EditorRow(label, editBox, false));
+		editBox.setValue(value == null ? "" : value);
+		editBox.setResponder(onChange);
+		if (timing != null) {
+			// 公式输入框附加语法高亮与变量补全
+			editBox.setFormatter((text, displayPos) -> {
+				String fullValue = editBox.getValue();
+				boolean valid = !fullValue.trim().isEmpty()
+						&& (FormulaExpr.parse(sanitizeFormulaForValidation(fullValue.trim())) != null
+						|| FormulaExpr.parseRich(sanitizeFormulaForValidation(fullValue.trim())) != null);
+				int[] colors = computeExprColors(fullValue, valid);
+				var defaultStyle = net.minecraft.network.chat.Style.EMPTY;
+				var parts = new java.util.ArrayList<FormattedCharSequence>();
+				int end = Math.min(displayPos + text.length(), fullValue.length());
+				int runStart = displayPos;
+				for (int ci = displayPos; ci <= end; ci++) {
+					if (ci == end || (ci > runStart && colors[ci] != colors[ci - 1])) {
+						int localStart = runStart - displayPos;
+						int localEnd = ci - displayPos;
+						if (localEnd > localStart && localEnd <= text.length()) {
+							int c = colors[runStart];
+							var style = c != 0 ? defaultStyle.withColor(net.minecraft.network.chat.TextColor.fromRgb(c)) : defaultStyle;
+							parts.add(FormattedCharSequence.forward(text.substring(localStart, localEnd), style));
+						}
+						runStart = ci;
+					}
+				}
+				if (parts.isEmpty()) {
+					parts.add(FormattedCharSequence.forward(text, defaultStyle));
+				}
+				return FormattedCharSequence.composite(parts);
+			});
+			exprEditBoxes.add(editBox);
+		}
+		rows.add(new EditorRow(label, editBox, false, -1, currentDepth, false, false, timing));
 	}
 
 	private void addSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
@@ -3332,9 +4174,25 @@ public class ActionEditorPanel {
 		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength(256);
 		editBox.setValue(value);
-		editBox.setResponder(onChange::accept);
-		stringCompletionSuppliers.put(editBox, suggestions);
+		if ("Command".equals(label)) {
+			commandEditBox = editBox;
+			editBox.setResponder(text -> {
+				onChange.accept(text);
+				if (commandSuggestions != null) commandSuggestions.updateCommandInfo();
+			});
+		} else {
+			if ("Sound".equals(label)) soundEditBox = editBox;
+			editBox.setResponder(onChange::accept);
+		}
+		if (!"Command".equals(label)) stringCompletionSuppliers.put(editBox, suggestions);
 		rows.add(new EditorRow(label, editBox, false));
+	}
+
+	private void addButtonRow(String label, Runnable action) {
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		var button = Button.builder(Component.literal(SpellEditorLocalization.t(label)), ignored -> action.run())
+				.bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
+		rows.add(new EditorRow(label, button, false));
 	}
 
 	private void addListSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
@@ -3349,8 +4207,17 @@ public class ActionEditorPanel {
 	}
 
 	private EditBox newEditorEditBox(String label, int widgetW) {
-		return EditorTextBoxes.configure(new EditBox(Minecraft.getInstance().font, 0, 0,
-				widgetW, ROW_HEIGHT - 4, Component.literal(label)));
+		return EditorTextBoxes.create(Minecraft.getInstance().font, 0, 0,
+				widgetW, ROW_HEIGHT - 4, Component.literal(label));
+	}
+
+	private static String sanitizeFormulaForValidation(String text) {
+		if (text == null) return "";
+		// $var, phase_tick, total_tick 等在创建 mover 前会被 bindFormula 替换为数值常数
+		String sanitized = text.replaceAll("\\$[a-zA-Z0-9_]+", "1.0");
+		sanitized = sanitized.replaceAll("\\bphase_tick\\b", "1.0");
+		sanitized = sanitized.replaceAll("\\btotal_tick\\b", "1.0");
+		return sanitized;
 	}
 
 	private Integer parseColor(String text) {
@@ -3392,6 +4259,36 @@ public class ActionEditorPanel {
 	}
 
 	/** Color for section header text based on depth. */
+	/**
+	 * 命中分区表头则折叠/展开该分区。属性面板与类型选择器共用同一实现。
+	 *
+	 * @return true 表示本次点击已被消费
+	 */
+	private boolean toggleSectionHeaderAt(double mouseX, double mouseY) {
+		if (!isMouseOver(mouseX, mouseY)) {
+			return false;
+		}
+		for (int i = 0; i < rows.size(); i++) {
+			EditorRow row = rows.get(i);
+			if (!row.sectionHeader()) continue;
+			int rowY = y + getRowY(i) - scrollOffset;
+			int rowH = getRowHeight(i);
+			if (mouseY >= rowY && mouseY < rowY + rowH
+					&& mouseX >= x + PADDING && mouseX < x + w - PADDING) {
+				// Strip the collapse indicator prefix (▶ or ▼ + space) to get the section key
+				String fullLabel = row.label();
+				String sectionLabel = fullLabel.length() > 2 ? fullLabel.substring(2) : fullLabel;
+				if (!collapsedSections.remove(sectionLabel)) {
+					collapsedSections.add(sectionLabel);
+				}
+				// Rebuild panel to reflect new collapsed/expanded state
+				refreshCurrentView();
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static int getSectionHeaderColor(int depth) {
 		return switch (depth) {
 			case 0 -> 0xFFFFCC44; // gold (top level)
@@ -3426,11 +4323,24 @@ public class ActionEditorPanel {
 			int triggerRowIndex
 	) {}
 
+	private void flushActiveEditBoxes() {
+		for (EditBox editBox : exprEditBoxes) {
+			if (editBox.isFocused()) {
+				String text = editBox.getValue().trim();
+				if (!text.isEmpty()) {
+					// 强制失焦以提交最新输入
+					editBox.setFocused(false);
+				}
+			}
+		}
+	}
+
 	private void openDropdown(String[] options, int selected, Consumer<Integer> onSelect, int triggerRowIndex) {
+		flushActiveEditBoxes();
 		dropdown = new DropdownOverlay(options, selected, onSelect, triggerRowIndex);
 		dropdownHoverIndex = -1;
 		// Auto-scroll to make selected item visible
-		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int visibleItems = computeDropdownBounds()[4];
 		int maxScroll = Math.max(0, options.length - visibleItems);
 		if (selected >= visibleItems) {
 			dropdownScrollOffset = selected - visibleItems + 1;
@@ -3453,26 +4363,19 @@ public class ActionEditorPanel {
 		if (dropdown == null) return new int[]{0, 0, 0, 0, 0};
 		String[] options = dropdown.options();
 		if (options == null || options.length == 0) return new int[]{0, 0, 0, 0, 0};
-		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int rowIndex = Math.max(0, Math.min(rows.size() - 1, dropdown.triggerRowIndex()));
+		AbstractWidget trigger = rows.get(rowIndex).widget();
+		int dropdownX = Math.max(x, Math.min(x + w - 20, trigger.getX()));
+		int dropdownW = Math.max(20, Math.min(trigger.getWidth(), x + w - dropdownX));
+		int desiredItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int below = Math.max(0, y + h - (trigger.getY() + trigger.getHeight()));
+		int above = Math.max(0, trigger.getY() - y);
+		boolean openBelow = below >= desiredItems * DROPDOWN_ITEM_H || below >= above;
+		int available = openBelow ? below : above;
+		int visibleItems = Math.max(1, Math.min(desiredItems, available / DROPDOWN_ITEM_H));
 		int totalH = visibleItems * DROPDOWN_ITEM_H;
-
-		int triggerRowY = y + getRowY(dropdown.triggerRowIndex()) - scrollOffset;
-		int dropdownX = x + LABEL_WIDTH + PADDING * 2;
-		int dropdownW = w - LABEL_WIDTH - PADDING * 3;
-		if (dropdownW < 20) dropdownW = 20;
-
-		int triggerRowH = getRowHeight(dropdown.triggerRowIndex());
-		int dropdownY = triggerRowY + triggerRowH;
-		if (dropdownY + totalH > y + h) {
-			dropdownY = triggerRowY - totalH;
-		}
-		if (dropdownY < y) {
-			dropdownY = y;
-		}
-		if (dropdownY + totalH > y + h) {
-			totalH = y + h - dropdownY;
-		}
-		if (totalH < DROPDOWN_ITEM_H) totalH = DROPDOWN_ITEM_H;
+		int dropdownY = openBelow ? trigger.getY() + trigger.getHeight() : trigger.getY() - totalH;
+		dropdownY = Math.max(y, Math.min(y + h - totalH, dropdownY));
 		return new int[]{dropdownX, dropdownY, dropdownW, totalH, visibleItems};
 	}
 
@@ -3486,6 +4389,7 @@ public class ActionEditorPanel {
 		if (options == null || options.length == 0) return;
 
 		boolean needsScroll = options.length > visibleItems;
+		dropdownScrollOffset = Math.max(0, Math.min(options.length - visibleItems, dropdownScrollOffset));
 		int scrollbarW = needsScroll ? 6 : 0;
 
 		// Render without scissor - background is fully opaque and will cover any text beneath
@@ -3562,7 +4466,8 @@ public class ActionEditorPanel {
 		int[] bounds = computeDropdownBounds();
 		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
 		String[] options = dropdown.options();
-		boolean needsScroll = options.length > DROPDOWN_MAX_VISIBLE;
+		int visibleItems = bounds[4];
+		boolean needsScroll = options.length > visibleItems;
 		int scrollbarW = needsScroll ? 6 : 0;
 		int contentW = dw - scrollbarW;
 
@@ -3626,7 +4531,19 @@ public class ActionEditorPanel {
 			for (int i = 0; i < rows.size(); i++) {
 				int rowY = y + getRowY(i) - scrollOffset;
 				int rowH = getRowHeight(i);
-				rows.get(i).widget().visible = rowY >= y && rowY + rowH <= y + h;
+				var row = rows.get(i);
+				boolean visible = rowY >= y && rowY + rowH <= y + h;
+				// Section headers are drawn directly; their placeholder widget must stay
+				// hidden or it renders as a blank disabled button where the folder title
+				// should be.
+				row.widget().visible = visible && !row.sectionHeader();
+				if (visible && row.sectionHeader()) {
+					int sectionColor = getSectionHeaderColor(row.depth());
+					int separatorColor = (sectionColor & 0x00FFFFFF) | 0x80000000;
+					guiGraphics.fill(x + PADDING, rowY, x + w - PADDING, rowY + 1, separatorColor);
+					guiGraphics.drawString(font, SpellEditorLocalization.t(row.label()),
+							x + PADDING, rowY + 3, sectionColor, false);
+				}
 			}
 			renderScrollbar(guiGraphics);
 			if (renderDropdown && dropdown != null) {
@@ -3670,6 +4587,7 @@ public class ActionEditorPanel {
 
 		// Row labels
 		String overrideTooltipText = null;
+		String timingTooltipText = null;
 		for (int i = 0; i < rows.size(); i++) {
 			int rowY = y + getRowY(i) - scrollOffset;
 			int rowH = getRowHeight(i);
@@ -3687,14 +4605,21 @@ public class ActionEditorPanel {
 					guiGraphics.drawString(font, SpellEditorLocalization.t(row.label()), x + PADDING, rowY + 3, sectionColor, false);
 				} else if (!row.fullWidth() && !row.label().isEmpty()) {
 					String rowLabel = SpellEditorLocalization.t(row.label());
+					int labelX = x + PADDING;
+					int labelY = rowY + 4;
+					// 绘制求值时机徽标 (S / D / M)
+					int badgeReserved = row.timing() != null ? 8 : 0;
+					int maxLabelW = LABEL_WIDTH - badgeReserved - 2;
+					String fittedLabel = font.width(rowLabel) > maxLabelW
+							? font.plainSubstrByWidth(rowLabel, Math.max(0, maxLabelW - font.width(".."))) + ".."
+							: rowLabel;
+
 					if (row.overridden()) {
 						// Overridden row: reduced opacity (50% alpha) and strikethrough
 						int labelColor = 0x80BBBBBB; // ~50% opacity
-						int labelX = x + PADDING;
-						int labelY = rowY + 4;
-						guiGraphics.drawString(font, rowLabel, labelX, labelY, labelColor, false);
+						guiGraphics.drawString(font, fittedLabel, labelX, labelY, labelColor, false);
 						// Draw 1px strikethrough line through the middle of the text
-						int textWidth = font.width(rowLabel);
+						int textWidth = font.width(fittedLabel);
 						int strikeY = labelY + font.lineHeight / 2;
 						guiGraphics.fill(labelX, strikeY, labelX + textWidth, strikeY + 1, labelColor);
 						// Check if mouse is hovering over the label area for tooltip
@@ -3703,7 +4628,19 @@ public class ActionEditorPanel {
 							overrideTooltipText = MoverOverrideResolver.getTooltip(getCurrentMover());
 						}
 					} else {
-						guiGraphics.drawString(font, rowLabel, x + PADDING, rowY + 4, 0xFFBBBBBB, false);
+						guiGraphics.drawString(font, fittedLabel, labelX, labelY, 0xFFBBBBBB, false);
+					}
+
+					if (row.timing() != null) {
+						EvaluationTiming timing = row.timing();
+						String tag = timing.tag();
+						int tagW = font.width(tag);
+						int tagX = x + LABEL_WIDTH - tagW - 2;
+						guiGraphics.drawString(font, tag, tagX, labelY, timing.color(), false);
+
+						if (mouseX >= tagX - 2 && mouseX <= tagX + tagW + 2 && mouseY >= rowY && mouseY < rowY + rowH) {
+							timingTooltipText = SpellEditorLocalization.t(timing.tooltipKey());
+						}
 					}
 				}
 			}
@@ -3712,8 +4649,10 @@ public class ActionEditorPanel {
 		// Scrollbar for content area
 		renderScrollbar(guiGraphics);
 
-		// Render override tooltip on top of other content (but below dropdown)
-		if (overrideTooltipText != null && !overrideTooltipText.isEmpty()) {
+		// Render timing or override tooltip on top of other content
+		if (timingTooltipText != null && !timingTooltipText.isEmpty()) {
+			guiGraphics.renderTooltip(font, Component.translatable(timingTooltipText), mouseX, mouseY);
+		} else if (overrideTooltipText != null && !overrideTooltipText.isEmpty()) {
 			guiGraphics.renderTooltip(font, Component.literal(SpellEditorLocalization.t(overrideTooltipText)), mouseX, mouseY);
 		}
 
@@ -3769,17 +4708,29 @@ public class ActionEditorPanel {
 
 	public void renderDropdown(GuiGraphics guiGraphics, int mouseX, int mouseY) {
 		Font font = Minecraft.getInstance().font;
+		if (commandSuggestions != null) {
+			int offsetY = commandSuggestionOffsetY();
+			guiGraphics.pose().pushPose();
+			guiGraphics.pose().translate(0, offsetY, 250);
+			commandSuggestions.renderSuggestions(guiGraphics, mouseX, mouseY - offsetY);
+			guiGraphics.pose().popPose();
+		}
 		// Red underline for invalid expressions, blue underline for $variables
 		for (var eb : exprEditBoxes) {
 			String text = eb.getValue().trim();
-			if (!text.isEmpty() && NumberExprParser.parse(text) == null) {
-				int ex = eb.getX();
-				int ey = eb.getY() + eb.getHeight();
-				int ew = eb.getWidth();
-				guiGraphics.pose().pushPose();
-				guiGraphics.pose().translate(0, 0, 200);
-				guiGraphics.fill(ex, ey, ex + ew, ey + 2, 0xFFFF4444);
-				guiGraphics.pose().popPose();
+			if (!text.isEmpty()) {
+				boolean valid = NumberExprParser.parse(text) != null
+						|| FormulaExpr.parse(sanitizeFormulaForValidation(text)) != null
+						|| FormulaExpr.parseRich(sanitizeFormulaForValidation(text)) != null;
+				if (!valid) {
+					int ex = eb.getX();
+					int ey = eb.getY() + eb.getHeight();
+					int ew = eb.getWidth();
+					guiGraphics.pose().pushPose();
+					guiGraphics.pose().translate(0, 0, 200);
+					guiGraphics.fill(ex, ey, ex + ew, ey + 2, 0xFFFF4444);
+					guiGraphics.pose().popPose();
+				}
 			}
 			// Variable highlighting is now handled by EditBox.setFormatter() — no overlay needed
 		}
@@ -3846,6 +4797,10 @@ public class ActionEditorPanel {
 	// --- Mouse handling ---
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (commandSuggestions != null && commandSuggestions.mouseClicked(
+				mouseX, mouseY - commandSuggestionOffsetY(), button)) {
+			return true;
+		}
 		// Ctrl+Click on expression EditBox → find $variable under cursor and jump to definition
 		if (button == 0 && net.minecraft.client.gui.screens.Screen.hasControlDown() && onVariableJump != null) {
 			for (var eb : exprEditBoxes) {
@@ -3886,14 +4841,11 @@ public class ActionEditorPanel {
 				return true;
 			}
 			if (button == 0) {
-				int cx = stringCompletionTarget.getX();
-				int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
-				int cw = Math.max(stringCompletionTarget.getWidth(), 120);
+				int[] bounds = computeCompletionBounds(stringCompletionTarget, stringCompletionItems.length);
+				int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
 				int itemH = DROPDOWN_ITEM_H;
 				int itemCount = stringCompletionItems.length;
-				int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-				if (cy + totalH > y + h) totalH = y + h - cy;
-				int visibleItems = Math.max(1, totalH / itemH);
+				int visibleItems = bounds[4];
 				int scrollbarW = itemCount > visibleItems ? 6 : 0;
 				int contentW = cw - scrollbarW;
 
@@ -3921,17 +4873,15 @@ public class ActionEditorPanel {
 		// Handle expression completion overlay
 		if (exprCompletionItems != null) {
 			if (button == 0) {
-				// Compute hover index from click position
-				int cx = exprCompletionTarget.getX();
-				int cy = exprCompletionTarget.getY() + exprCompletionTarget.getHeight();
-				int cw = Math.max(exprCompletionTarget.getWidth(), 120);
+				int[] bounds = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.size());
+				int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
 				int itemH = DROPDOWN_ITEM_H;
-				int itemCount = exprCompletionItems.length;
-				int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-				if (cy + totalH > y + h) totalH = y + h - cy;
+				int itemCount = exprCompletionItems.size();
+				int scrollbarW = itemCount > bounds[4] ? 6 : 0;
+				int contentW = cw - scrollbarW;
 
-				if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
-					int idx = (int) ((mouseY - cy) / itemH);
+				if (mouseX >= cx && mouseX < cx + contentW && mouseY >= cy && mouseY < cy + totalH) {
+					int idx = (int) ((mouseY - cy) / itemH) + exprCompletionScrollOffset;
 					if (idx >= 0 && idx < itemCount) {
 						exprCompletionHoverIndex = idx;
 						applyExprCompletion();
@@ -3970,6 +4920,12 @@ public class ActionEditorPanel {
 			}
 		}
 
+		// 类型选择器没有 currentAction，但它同样有可折叠的分组表头，
+		// 必须在下面的 currentAction 守卫之前处理，否则文件夹永远展不开。
+		if (button == 0 && typeSelectorMode && toggleSectionHeaderAt(mouseX, mouseY)) {
+			return true;
+		}
+
 		if (button != 0 || currentAction == null) return false;
 
 		// Scrollbar click detection
@@ -3985,28 +4941,8 @@ public class ActionEditorPanel {
 		}
 
 		// Section header click detection
-		if (isMouseOver(mouseX, mouseY)) {
-			for (int i = 0; i < rows.size(); i++) {
-				EditorRow row = rows.get(i);
-				if (!row.sectionHeader()) continue;
-				int rowY = y + getRowY(i) - scrollOffset;
-				int rowH = getRowHeight(i);
-				if (mouseY >= rowY && mouseY < rowY + rowH
-						&& mouseX >= x + PADDING && mouseX < x + w - PADDING) {
-					// Extract section label without the collapse indicator prefix (▶ or ▼ + space)
-					String fullLabel = row.label();
-					String sectionLabel = fullLabel.length() > 2 ? fullLabel.substring(2) : fullLabel;
-					// Toggle collapsed state
-					if (collapsedSections.contains(sectionLabel)) {
-						collapsedSections.remove(sectionLabel);
-					} else {
-						collapsedSections.add(sectionLabel);
-					}
-					// Rebuild panel to reflect new collapsed/expanded state
-					refreshCurrentView();
-					return true;
-				}
-			}
+		if (toggleSectionHeaderAt(mouseX, mouseY)) {
+			return true;
 		}
 
 		Font font = Minecraft.getInstance().font;
@@ -4055,11 +4991,21 @@ public class ActionEditorPanel {
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+		if (commandSuggestions != null && commandSuggestions.mouseScrolled(delta)) {
+			return true;
+		}
 		if (stringCompletionItems != null) {
 			int visible = getStringCompletionVisibleItems();
 			int maxScroll = Math.max(0, stringCompletionItems.length - visible);
 			stringCompletionScrollOffset = Math.max(0, Math.min(maxScroll,
 					stringCompletionScrollOffset - (int) (delta * 3)));
+			return true;
+		}
+		if (exprCompletionItems != null && exprCompletionTarget != null) {
+			int visible = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.size())[4];
+			int maxScroll = Math.max(0, exprCompletionItems.size() - visible);
+			exprCompletionScrollOffset = Math.max(0, Math.min(maxScroll,
+					exprCompletionScrollOffset - (int) (delta * 3)));
 			return true;
 		}
 		if (dropdown != null) {
@@ -4118,6 +5064,9 @@ public class ActionEditorPanel {
 	 * Handle key presses. Returns true if the key was consumed (e.g., Escape closes dropdown).
 	 */
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (commandSuggestions != null && commandSuggestions.keyPressed(keyCode, scanCode, modifiers)) {
+			return true;
+		}
 		if (dropdown != null) {
 			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
 				closeDropdown();
@@ -4161,10 +5110,12 @@ public class ActionEditorPanel {
 			}
 			if (keyCode == GLFW.GLFW_KEY_UP) {
 				if (exprCompletionHoverIndex > 0) exprCompletionHoverIndex--;
+				ensureExprCompletionHoverVisible();
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_DOWN) {
-				if (exprCompletionHoverIndex < exprCompletionItems.length - 1) exprCompletionHoverIndex++;
+				if (exprCompletionHoverIndex < exprCompletionItems.size() - 1) exprCompletionHoverIndex++;
+				ensureExprCompletionHoverVisible();
 				return true;
 			}
 			closeExprCompletion();
@@ -4192,6 +5143,7 @@ public class ActionEditorPanel {
 	 * Called from SpellPreviewScreen when Tab is pressed in an EditBox.
 	 */
 	public boolean handleTabCompletion(EditBox editBox) {
+		if (editBox == commandEditBox) return requestVanillaCommandSuggestions(editBox);
 		if (stringCompletionSuppliers.containsKey(editBox)) {
 			return openStringCompletion(editBox);
 		}
@@ -4210,11 +5162,53 @@ public class ActionEditorPanel {
 			}
 		}
 		if (matches.isEmpty()) return false;
-		exprCompletionItems = matches.toArray(new String[0]);
-		exprCompletionHoverIndex = 0;
 		exprCompletionTarget = editBox;
 		exprCompletionInsertStart = tokenStart;
+		exprCompletionMatches = List.copyOf(matches);
+		exprCompletionGrouped = prefix.isEmpty();
+		rebuildExprCompletionItems();
+		exprCompletionHoverIndex = 0;
+		exprCompletionScrollOffset = 0;
 		return true;
+	}
+
+	private void rebuildExprCompletionItems() {
+		if (!exprCompletionGrouped) {
+			exprCompletionItems = exprCompletionMatches.stream()
+					.map(value -> new ExprCompletionItem(value, getFuncDisplayName(value), false, "", 0))
+					.toList();
+			return;
+		}
+		Map<String, List<String>> groups = new java.util.LinkedHashMap<>();
+		for (String value : exprCompletionMatches) {
+			groups.computeIfAbsent(exprCompletionGroup(value), ignored -> new ArrayList<>()).add(value);
+		}
+		List<ExprCompletionItem> items = new ArrayList<>();
+		for (var entry : groups.entrySet()) {
+			String group = entry.getKey();
+			boolean expanded = EXPANDED_EXPR_COMPLETION_GROUPS.contains(group);
+			String icon = expanded ? "\u25BC " : "\u25B6 ";
+			items.add(new ExprCompletionItem(null,
+					icon + group + " (" + entry.getValue().size() + ")", true, group, 0));
+			if (expanded) {
+				for (String value : entry.getValue()) {
+					items.add(new ExprCompletionItem(value, getFuncDisplayName(value), false, group, 1));
+				}
+			}
+		}
+		exprCompletionItems = items;
+	}
+
+	private static String exprCompletionGroup(String value) {
+		if (KNOWN_FUNCTIONS.contains(value)) return "Functions";
+		if (value.startsWith("source_")) return "source_...";
+		if (value.startsWith("target_")) return "target_...";
+		if (value.startsWith("caster_")) return "caster_...";
+		if (value.startsWith("hit_")) return "hit_...";
+		if (value.startsWith("movement_")) return "movement_...";
+		if (value.startsWith("start_")) return "laser geometry";
+		if (value.equals("vx") || value.equals("vy") || value.equals("vz")) return "Aliases";
+		return "Context";
 	}
 
 	public boolean isMouseOver(double mouseX, double mouseY) {
@@ -4295,6 +5289,8 @@ public class ActionEditorPanel {
 			Map.entry("confine_target", "Confine Target"),
 			Map.entry("set_entity_flag", "Set Entity Flag"),
 			Map.entry("ysm_render", "YSM Render"),
+			Map.entry("caster_moves", "Caster Moves"),
+			Map.entry("set_spell_health", "Spell Initialization"),
 			Map.entry("noop", "Noop"),
 			Map.entry("legacy_ticker", "Legacy Ticker")
 	);
@@ -4350,15 +5346,38 @@ public class ActionEditorPanel {
 		return btn;
 	}
 
-	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader, boolean overridden) {
+	public enum EvaluationTiming {
+		SNAPSHOT("S", 0xFF88AAFF, "youkaishomecoming.spell_editor.timing.snapshot"),
+		PROJECTILE_TICK("D", 0xFF66FF88, "youkaishomecoming.spell_editor.timing.dynamic"),
+		MIXED("M", 0xFFFFD700, "youkaishomecoming.spell_editor.timing.mixed");
+
+		private final String tag;
+		private final int color;
+		private final String tooltipKey;
+
+		EvaluationTiming(String tag, int color, String tooltipKey) {
+			this.tag = tag;
+			this.color = color;
+			this.tooltipKey = tooltipKey;
+		}
+
+		public String tag() { return tag; }
+		public int color() { return color; }
+		public String tooltipKey() { return tooltipKey; }
+	}
+
+	private record EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader, boolean overridden, @Nullable EvaluationTiming timing) {
 		EditorRow(String label, AbstractWidget widget) {
-			this(label, widget, false, -1, 0, false, false);
+			this(label, widget, false, -1, 0, false, false, null);
 		}
 		EditorRow(String label, AbstractWidget widget, boolean fullWidth) {
-			this(label, widget, fullWidth, -1, 0, false, false);
+			this(label, widget, fullWidth, -1, 0, false, false, null);
 		}
 		EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW) {
-			this(label, widget, fullWidth, customWidgetW, 0, false, false);
+			this(label, widget, fullWidth, customWidgetW, 0, false, false, null);
+		}
+		EditorRow(String label, AbstractWidget widget, boolean fullWidth, int customWidgetW, int depth, boolean sectionHeader, boolean overridden) {
+			this(label, widget, fullWidth, customWidgetW, depth, sectionHeader, overridden, null);
 		}
 	}
 
@@ -4375,6 +5394,8 @@ public class ActionEditorPanel {
 			case "direction_to_target" -> new AimMode.AimModes.DirectionToTarget();
 			case "fixed" -> new AimMode.AimModes.FixedDirection(new net.minecraft.world.phys.Vec3(0, 0, 1));
 			case "caster_facing" -> new AimMode.AimModes.CasterFacing();
+			case "target_facing" -> new AimMode.AimModes.TargetFacing();
+			case "source_direction" -> new AimMode.AimModes.SourceDirection();
 			case "angle_offset" -> new AimMode.AimModes.AngleOffset(NumberProvider.constant(0));
 			case "variable_angle" -> new AimMode.AimModes.VariableAngle("aim_angle");
 			case "random_angle" -> new AimMode.AimModes.RandomAngle(NumberProvider.constant(360));
@@ -4385,10 +5406,12 @@ public class ActionEditorPanel {
 	// --- String completion ---
 
 	private boolean openStringCompletion(EditBox editBox) {
+		if (editBox == commandEditBox) return requestVanillaCommandSuggestions(editBox);
 		return openStringOptions(editBox, true);
 	}
 
 	private boolean openStringDropdown(EditBox editBox) {
+		if (editBox == commandEditBox) return requestVanillaCommandSuggestions(editBox);
 		return openStringOptions(editBox, false);
 	}
 
@@ -4502,14 +5525,7 @@ public class ActionEditorPanel {
 		if (stringCompletionItems == null || stringCompletionTarget == null) {
 			return 1;
 		}
-		int itemCount = stringCompletionItems.length;
-		int itemH = DROPDOWN_ITEM_H;
-		int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-		int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
-		if (cy + totalH > y + h) {
-			totalH = y + h - cy;
-		}
-		return Math.max(1, totalH / itemH);
+		return computeCompletionBounds(stringCompletionTarget, stringCompletionItems.length)[4];
 	}
 
 	private void ensureStringCompletionHoverVisible() {
@@ -4531,13 +5547,9 @@ public class ActionEditorPanel {
 		Font font = Minecraft.getInstance().font;
 		int itemCount = stringCompletionItems.length;
 		int itemH = DROPDOWN_ITEM_H;
-		int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-		int cx = stringCompletionTarget.getX();
-		int cy = stringCompletionTarget.getY() + stringCompletionTarget.getHeight();
-		int cw = Math.max(stringCompletionTarget.getWidth(), 120);
-		if (cy + totalH > y + h) totalH = y + h - cy;
-		if (totalH < itemH) return;
-		int visibleItems = Math.max(1, totalH / itemH);
+		int[] bounds = computeCompletionBounds(stringCompletionTarget, itemCount);
+		int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
+		int visibleItems = bounds[4];
 		int maxScroll = Math.max(0, itemCount - visibleItems);
 		stringCompletionScrollOffset = Math.max(0, Math.min(maxScroll, stringCompletionScrollOffset));
 		int scrollbarW = itemCount > visibleItems ? 6 : 0;
@@ -4619,8 +5631,25 @@ public class ActionEditorPanel {
 
 	private void applyExprCompletion() {
 		if (exprCompletionItems == null || exprCompletionTarget == null) return;
-		if (exprCompletionHoverIndex < 0 || exprCompletionHoverIndex >= exprCompletionItems.length) return;
-		String chosen = exprCompletionItems[exprCompletionHoverIndex];
+		if (exprCompletionHoverIndex < 0 || exprCompletionHoverIndex >= exprCompletionItems.size()) return;
+		ExprCompletionItem item = exprCompletionItems.get(exprCompletionHoverIndex);
+		if (item.folder()) {
+			if (!EXPANDED_EXPR_COMPLETION_GROUPS.remove(item.groupKey())) {
+				EXPANDED_EXPR_COMPLETION_GROUPS.add(item.groupKey());
+			}
+			rebuildExprCompletionItems();
+			for (int i = 0; i < exprCompletionItems.size(); i++) {
+				ExprCompletionItem rebuilt = exprCompletionItems.get(i);
+				if (rebuilt.folder() && rebuilt.groupKey().equals(item.groupKey())) {
+					exprCompletionHoverIndex = i;
+					break;
+				}
+			}
+			ensureExprCompletionHoverVisible();
+			return;
+		}
+		String chosen = item.value();
+		if (chosen == null) return;
 		String template = getFuncInsertText(chosen);
 		int cursorInTemplate = getFuncCursorInTemplate(chosen);
 		String text = exprCompletionTarget.getValue();
@@ -4640,21 +5669,37 @@ public class ActionEditorPanel {
 
 	private void closeExprCompletion() {
 		exprCompletionItems = null;
+		exprCompletionMatches = List.of();
+		exprCompletionGrouped = false;
 		exprCompletionHoverIndex = -1;
 		exprCompletionTarget = null;
+		exprCompletionScrollOffset = 0;
+	}
+
+	private void ensureExprCompletionHoverVisible() {
+		if (exprCompletionItems == null || exprCompletionTarget == null) return;
+		int visible = computeCompletionBounds(exprCompletionTarget, exprCompletionItems.size())[4];
+		if (exprCompletionHoverIndex < exprCompletionScrollOffset) {
+			exprCompletionScrollOffset = exprCompletionHoverIndex;
+		} else if (exprCompletionHoverIndex >= exprCompletionScrollOffset + visible) {
+			exprCompletionScrollOffset = exprCompletionHoverIndex - visible + 1;
+		}
+		int maxScroll = Math.max(0, exprCompletionItems.size() - visible);
+		exprCompletionScrollOffset = Math.max(0, Math.min(maxScroll, exprCompletionScrollOffset));
 	}
 
 	private void doRenderExprCompletion(GuiGraphics guiGraphics, int mouseX, int mouseY) {
 		if (exprCompletionItems == null || exprCompletionTarget == null) return;
 		Font font = Minecraft.getInstance().font;
-		int itemCount = exprCompletionItems.length;
+		int itemCount = exprCompletionItems.size();
 		int itemH = DROPDOWN_ITEM_H;
-		int totalH = Math.min(itemCount * itemH, DROPDOWN_MAX_VISIBLE * itemH);
-		int cx = exprCompletionTarget.getX();
-		int cy = exprCompletionTarget.getY() + exprCompletionTarget.getHeight();
-		int cw = Math.max(exprCompletionTarget.getWidth(), 120);
-		if (cy + totalH > y + h) totalH = y + h - cy;
-		if (totalH < itemH) return;
+		int[] bounds = computeCompletionBounds(exprCompletionTarget, itemCount);
+		int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
+		int visibleItems = bounds[4];
+		int maxScroll = Math.max(0, itemCount - visibleItems);
+		exprCompletionScrollOffset = Math.max(0, Math.min(maxScroll, exprCompletionScrollOffset));
+		int scrollbarW = itemCount > visibleItems ? 6 : 0;
+		int contentW = cw - scrollbarW;
 
 		guiGraphics.pose().pushPose();
 		guiGraphics.pose().translate(0, 0, 200);
@@ -4665,21 +5710,36 @@ public class ActionEditorPanel {
 		guiGraphics.fill(cx, cy, cx + 1, cy + totalH, 0xFF666688);
 		guiGraphics.fill(cx + cw - 1, cy, cx + cw, cy + totalH, 0xFF666688);
 
-		exprCompletionHoverIndex = -1;
-		if (mouseX >= cx && mouseX < cx + cw && mouseY >= cy && mouseY < cy + totalH) {
-			int rawIdx = (mouseY - cy) / itemH;
+		if (mouseX >= cx && mouseX < cx + contentW && mouseY >= cy && mouseY < cy + totalH) {
+			int rawIdx = (mouseY - cy) / itemH + exprCompletionScrollOffset;
 			if (rawIdx >= 0 && rawIdx < itemCount) exprCompletionHoverIndex = rawIdx;
 		}
 
-		int visCount = Math.min(itemCount, totalH / itemH);
+		int visCount = Math.min(itemCount - exprCompletionScrollOffset, visibleItems);
 		for (int i = 0; i < visCount; i++) {
-			if (i >= itemCount) break;
+			int itemIndex = i + exprCompletionScrollOffset;
+			if (itemIndex >= itemCount) break;
 			int iy = cy + i * itemH;
 			if (iy + itemH > cy + totalH) break;
-			boolean hovered = i == exprCompletionHoverIndex;
-			if (hovered) guiGraphics.fill(cx + 1, iy, cx + cw - 1, iy + itemH, 0x44FFFFFF);
-			guiGraphics.drawString(font, getFuncDisplayName(exprCompletionItems[i]), cx + 4, iy + 4,
-					hovered ? 0xFFFFDD66 : 0xFFDDDDDD, false);
+			ExprCompletionItem item = exprCompletionItems.get(itemIndex);
+			boolean hovered = itemIndex == exprCompletionHoverIndex;
+			if (hovered) guiGraphics.fill(cx + 1, iy, cx + contentW - 1, iy + itemH, 0x44FFFFFF);
+			int textColor = item.folder()
+					? (hovered ? 0xFFFFFFFF : 0xFFB0C4DE)
+					: (hovered ? 0xFFFFDD66 : 0xFFDDDDDD);
+			guiGraphics.drawString(font, item.label(), cx + 4 + item.depth() * 8, iy + 4,
+					textColor, false);
+		}
+		if (itemCount > visibleItems) {
+			int sbX = cx + cw - scrollbarW;
+			guiGraphics.fill(sbX, cy, sbX + scrollbarW, cy + totalH, 0x33FFFFFF);
+			int trackH = totalH - 2;
+			int thumbH = Math.max(10, trackH * visibleItems / itemCount);
+			int thumbTravel = trackH - thumbH;
+			if (thumbTravel > 0) {
+				int thumbY = cy + 1 + thumbTravel * exprCompletionScrollOffset / Math.max(1, maxScroll);
+				guiGraphics.fill(sbX + 1, thumbY, sbX + scrollbarW - 1, thumbY + thumbH, 0xAAAAAACC);
+			}
 		}
 		guiGraphics.pose().popPose();
 	}

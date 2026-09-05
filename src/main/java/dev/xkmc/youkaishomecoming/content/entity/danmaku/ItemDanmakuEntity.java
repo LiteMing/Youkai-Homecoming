@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverOwner;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.CompoundTag;
@@ -21,7 +22,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ItemSupplier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 @SerialClass
 public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSupplier, MoverOwner {
@@ -54,6 +57,19 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	 * DISCARD = remove immediately, EXPIRE = trigger expiry immediately, CONTINUE = keep flying.
 	 */
 	public HitBehavior hitBehaviorBlock = HitBehavior.DISCARD;
+	/**
+	 * Bounce configuration parameters (multi-bounce limit, decay, mode, retarget, ground offset, etc.)
+	 */
+	public int currentBounces = 0;
+	/** Target locked when the spell action created this projectile. */
+	@SerialClass.SerialField
+	@Nullable
+	private java.util.UUID retargetTargetId;
+	@SerialClass.SerialField
+	@Nullable
+	private Vec3 retargetTargetPosition;
+	@org.jetbrains.annotations.Nullable
+	public DanmakuMover suspendedMover = null;
 	/**
 	 * Per-danmaku damage type override. When non-null, this takes priority over
 	 * the CardHolder/SpellCard damage source resolution chain.
@@ -144,6 +160,44 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		updateVisualScaleDimensions(true);
 	}
 
+	public void enterHoldState(Vec3 holdPos, Vec3 incomingVel) {
+		if (this.mover != null && !(this.mover instanceof dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover)) {
+			this.suspendedMover = this.mover;
+		}
+		this.mover = new dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover(incomingVel);
+		setPos(holdPos);
+		snapMotionAndRotation(Vec3.ZERO);
+		notifyTrajectoryChanged();
+	}
+
+	public void clearHoldState() {
+		this.suspendedMover = null;
+		if (this.mover instanceof dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover) {
+			this.mover = null;
+		}
+	}
+
+	public void applyContinueState(Vec3 newPos, Vec3 newVel) {
+		clearHoldState();
+		setPos(newPos);
+		snapMotionAndRotation(newVel);
+		notifyTrajectoryChanged();
+	}
+
+	public void applyBounceState(Vec3 newPos, Vec3 newVel, int bounceCount) {
+		DanmakuMover oldMover = this.suspendedMover != null ? this.suspendedMover : this.mover;
+		this.suspendedMover = null;
+		if (oldMover instanceof dev.xkmc.youkaishomecoming.content.spell.mover.CollisionRebasableMover rebasable) {
+			this.mover = rebasable.rebaseAfterCollision(newPos, newVel, this.tickCount);
+		} else {
+			this.mover = null;
+		}
+		this.currentBounces = bounceCount;
+		notifyTrajectoryChanged();
+		setPos(newPos);
+		snapMotionAndRotation(newVel);
+	}
+
 	@Override
 	public void tick() {
 		if (visualScaleFunction != null) {
@@ -157,6 +211,40 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		return this;
 	}
 
+	/**
+	 * Locks the action's target independently of the projectile owner. Real player
+	 * spells use a plain Player as owner, so owner-side CardHolder lookup is not a
+	 * reliable source for BounceAction retargeting.
+	 */
+	public void setRetargetTarget(@Nullable LivingEntity target) {
+		if (target == null) {
+			retargetTargetId = null;
+			retargetTargetPosition = null;
+			return;
+		}
+		retargetTargetId = target.getUUID();
+		retargetTargetPosition = targetPosition(target);
+	}
+
+	@Nullable
+	public Vec3 resolveRetargetTarget() {
+		if (retargetTargetId != null && level() instanceof ServerLevel server) {
+			Entity entity = server.getEntity(retargetTargetId);
+			if (entity instanceof LivingEntity living && living.isAlive()) {
+				retargetTargetPosition = targetPosition(living);
+			}
+		}
+		return retargetTargetPosition;
+	}
+
+	private static Vec3 targetPosition(LivingEntity target) {
+		return target.position().add(0, target.getBbHeight() / 2, 0);
+	}
+
+	public boolean isHolding() {
+		return mover instanceof dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover;
+	}
+
 	@Override
 	protected void prepareMoveState() {
 		if (mover != null) mover.prepare(this);
@@ -168,8 +256,12 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		CardHolder holder = null;
 		Entity e = getOwner();
 		if (e instanceof CardHolder h) holder = h;
-		if (holder == null) afterExpiry.execute(position(), getDeltaMovement());
-		else afterExpiry.execute(holder, position(), getDeltaMovement());
+		Vec3 pos = position();
+		Vec3 velocity = getDeltaMovement();
+		var callback = ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.EXPIRY,
+				this, pos, velocity, pos, pos, null, null, null);
+		if (holder == null) afterExpiry.execute(callback);
+		else afterExpiry.execute(holder, callback);
 	}
 
 	@Override
@@ -190,8 +282,12 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		if (e instanceof CardHolder h) holder = h;
 		Vec3 pos = data.moveSrc == null ? position() : data.moveSrc;
 		Vec3 vec = data.inputVelocity == null ? getDeltaMovement() : data.inputVelocity;
-		if (holder != null) onTrail.execute(holder, pos, vec);
-		else onTrail.execute(pos, vec);
+		var callback = ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.TRAIL,
+				this, pos, vec,
+				data.moveSrc == null ? pos : data.moveSrc,
+				data.movementEndOr(pos.add(vec)), null, null, null);
+		if (holder != null) onTrail.execute(holder, callback);
+		else onTrail.execute(callback);
 	}
 
 	public ItemStack getItem() {

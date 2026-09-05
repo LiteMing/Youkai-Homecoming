@@ -11,6 +11,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -102,16 +103,43 @@ public class MoverConfigs {
 	);
 
 	/**
-	 * Adds acceleration to the projectile (creates RectMover).
-	 * Each component is a NumberProvider evaluated when the projectile is spawned.
-	 * JSON: {"type": "acceleration", "x": "$i * 0.02", "y": 0, "z": "sin_rad(tick) * 0.01"}
+	 * Adds acceleration to the projectile (creates BoundedAccelerationMover).
+	 * Supports independent XYZ acceleration and optional per-axis terminal velocities.
+	 * JSON: {"type": "acceleration", "x": 0.02, "y": -0.03, "z": 0, "terminal_vx": 0.8, "terminal_vy": -0.6}
 	 */
-	public record AccelerationConfig(NumberProvider x, NumberProvider y, NumberProvider z) implements MoverConfig {
+	public record AccelerationConfig(
+			NumberProvider x,
+			NumberProvider y,
+			NumberProvider z,
+			Optional<NumberProvider> terminalVx,
+			Optional<NumberProvider> terminalVy,
+			Optional<NumberProvider> terminalVz,
+			Optional<String> space
+	) implements MoverConfig {
+		/** Normalize malformed/legacy editor payloads before they reach a mover. */
+		public AccelerationConfig {
+			x = x == null ? NumberProvider.constant(0) : x;
+			y = y == null ? NumberProvider.constant(0) : y;
+			z = z == null ? NumberProvider.constant(0) : z;
+			terminalVx = terminalVx == null ? Optional.empty() : terminalVx;
+			terminalVy = terminalVy == null ? Optional.empty() : terminalVy;
+			terminalVz = terminalVz == null ? Optional.empty() : terminalVz;
+			space = space == null ? Optional.empty() : space.filter(s -> !s.isBlank());
+		}
+
 		public static final Codec<AccelerationConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				NumberProvider.CODEC.optionalFieldOf("x", NumberProvider.constant(0)).forGetter(AccelerationConfig::x),
 				NumberProvider.CODEC.optionalFieldOf("y", NumberProvider.constant(0)).forGetter(AccelerationConfig::y),
-				NumberProvider.CODEC.optionalFieldOf("z", NumberProvider.constant(0)).forGetter(AccelerationConfig::z)
+				NumberProvider.CODEC.optionalFieldOf("z", NumberProvider.constant(0)).forGetter(AccelerationConfig::z),
+				NumberProvider.CODEC.optionalFieldOf("terminal_vx").forGetter(AccelerationConfig::terminalVx),
+				NumberProvider.CODEC.optionalFieldOf("terminal_vy").forGetter(AccelerationConfig::terminalVy),
+				NumberProvider.CODEC.optionalFieldOf("terminal_vz").forGetter(AccelerationConfig::terminalVz),
+				Codec.STRING.optionalFieldOf("space").forGetter(AccelerationConfig::space)
 		).apply(i, AccelerationConfig::new));
+
+		public AccelerationConfig(NumberProvider x, NumberProvider y, NumberProvider z) {
+			this(x, y, z, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+		}
 
 		public AccelerationConfig(Vec3 acceleration) {
 			this(NumberProvider.constant(acceleration.x), NumberProvider.constant(acceleration.y),
@@ -120,12 +148,34 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			return new RectMover(origin, velocity, new Vec3(getNumber(x, null), getNumber(y, null), getNumber(z, null)));
+			return create(null, origin, velocity, velocity, null, null);
 		}
 
 		@Override
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
-			return new RectMover(origin, velocity, new Vec3(getNumber(x, ctx), getNumber(y, ctx), getNumber(z, ctx)));
+			double ax = getNumber(x, ctx);
+			double ay = getNumber(y, ctx);
+			double az = getNumber(z, ctx);
+			Vec3 rawAcc = new Vec3(ax, ay, az);
+
+			Double tvx = terminalVx.map(p -> getNumber(p, ctx)).orElse(null);
+			Double tvy = terminalVy.map(p -> getNumber(p, ctx)).orElse(null);
+			Double tvz = terminalVz.map(p -> getNumber(p, ctx)).orElse(null);
+
+			if ("local".equalsIgnoreCase(space.orElse("world")) && velocity.lengthSqr() > 1e-8) {
+				// Local space aligned with FormulaMover convention:
+				// X = Forward (along velocity), Y = Right, Z = Up
+				Vec3 fwd = velocity.normalize();
+				Vec3 worldUp = Math.abs(fwd.y) > 0.99 ? new Vec3(0, 0, 1) : new Vec3(0, 1, 0);
+				Vec3 right = fwd.cross(worldUp).normalize();
+				Vec3 up = right.cross(fwd).normalize();
+
+				return dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover.local(
+						origin, velocity, fwd, right, up, rawAcc, tvx, tvy, tvz);
+			} else {
+				return dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover.world(
+						origin, velocity, rawAcc, tvx, tvy, tvz);
+			}
 		}
 	}
 
@@ -629,7 +679,8 @@ public class MoverConfigs {
 
 	/**
 	 * Fixed direction wrapper: runs an inner mover but locks the projectile's visual
-	 * rotation to the pattern's baseDirection (the group's shared aim direction).
+	 * rotation to its own launch direction. The launch direction is the final per-
+	 * projectile velocity after pattern angle/elevation offsets are applied.
 	 * The inner mover controls displacement; this wrapper only overrides rotation.
 	 * JSON: {"type": "fixed_dir", "inner": { ... mover ... }}
 	 */
@@ -645,13 +696,15 @@ public class MoverConfigs {
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
-			Vec3 fixedDir = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1);
+			Vec3 fixedDir = velocity.lengthSqr() > 1e-8 ? velocity.normalize()
+					: (baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1));
 			return new FixedDirMover(inner.create(origin, velocity, baseDirection), fixedDir);
 		}
 
 		@Override
 		public DanmakuMover create(SpellContext ctx, Vec3 origin, Vec3 velocity, Vec3 baseDirection, Vec3 targetPos, Vec3 casterPos) {
-			Vec3 fixedDir = baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1);
+			Vec3 fixedDir = velocity.lengthSqr() > 1e-8 ? velocity.normalize()
+					: (baseDirection.lengthSqr() > 1e-8 ? baseDirection.normalize() : new Vec3(0, 0, 1));
 			return new FixedDirMover(inner.create(ctx, origin, velocity, baseDirection, targetPos, casterPos), fixedDir);
 		}
 	}
@@ -720,30 +773,42 @@ public class MoverConfigs {
 	 * "forward" (pattern base direction), "velocity" (initial projectile velocity),
 	 * "fixed" (x/y/z as a fixed direction), "none" (use x/y/z formulas)
 	 * <p>
+	 * Formula {@code space} defaults to {@code world} (east/up/south). Set it to
+	 * {@code local} to use the launch frame (forward/right/up). The launch frame is
+	 * captured once after group rotation, so group {@code rot_y} (yaw) and
+	 * {@code rot_x} (pitch) change the plane at emission without changing it during flight.
+	 * <p>
 	 * JSON: {"type": "translate", "x": "tick * 0.1", "y": "0", "z": "0"}
+	 * JSON: {"type": "translate", "space": "local", "x": "0", "y": "2 * cos_deg(tick * 4)", "z": "2 * sin_deg(tick * 4)"}
 	 * JSON: {"type": "translate", "speed": 0.3, "aim": "target"}
 	 */
-	public record TranslateMoverConfig(String x, String y, String z, NumberProvider speed, String aim) implements MoverConfig {
+	public record TranslateMoverConfig(String x, String y, String z, NumberProvider speed, String aim,
+										String space) implements MoverConfig {
 		public static final Codec<TranslateMoverConfig> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.optionalFieldOf("x", "0").forGetter(TranslateMoverConfig::x),
 				Codec.STRING.optionalFieldOf("y", "0").forGetter(TranslateMoverConfig::y),
 				Codec.STRING.optionalFieldOf("z", "0").forGetter(TranslateMoverConfig::z),
 				NumberProvider.CODEC.optionalFieldOf("speed", NumberProvider.constant(0)).forGetter(TranslateMoverConfig::speed),
-				Codec.STRING.optionalFieldOf("aim", "none").forGetter(TranslateMoverConfig::aim)
+				Codec.STRING.optionalFieldOf("aim", "none").forGetter(TranslateMoverConfig::aim),
+				Codec.STRING.optionalFieldOf("space", "world").forGetter(TranslateMoverConfig::space)
 		).apply(i, TranslateMoverConfig::new));
 
 		public TranslateMoverConfig(String x, String y, String z, double speed, String aim) {
-			this(x, y, z, NumberProvider.constant(speed), aim);
+			this(x, y, z, NumberProvider.constant(speed), aim, "world");
+		}
+
+		public TranslateMoverConfig(String x, String y, String z, double speed, String aim, String space) {
+			this(x, y, z, NumberProvider.constant(speed), aim, space);
 		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity) {
-			return new TranslateMover(origin, x, y, z, Vec3.ZERO, Vec3.ZERO);
+			return createFormulaMover(origin, velocity, velocity, Vec3.ZERO, Vec3.ZERO);
 		}
 
 		@Override
 		public DanmakuMover create(Vec3 origin, Vec3 velocity, Vec3 baseDirection) {
-			return new TranslateMover(origin, x, y, z, Vec3.ZERO, Vec3.ZERO);
+			return createFormulaMover(origin, velocity, baseDirection, Vec3.ZERO, Vec3.ZERO);
 		}
 
 		@Override
@@ -752,7 +817,7 @@ public class MoverConfigs {
 			if (resolvedSpeed != 0 && !"none".equals(aim)) {
 				return new TranslateMover(origin, resolveAimDirection(null, origin, velocity, baseDirection, targetPos, casterPos), resolvedSpeed);
 			}
-			return new TranslateMover(origin, x, y, z, targetPos, casterPos);
+			return createFormulaMover(origin, velocity, baseDirection, targetPos, casterPos);
 		}
 
 		@Override
@@ -761,7 +826,24 @@ public class MoverConfigs {
 			if (resolvedSpeed != 0 && !"none".equals(aim)) {
 				return new TranslateMover(origin, resolveAimDirection(ctx, origin, velocity, baseDirection, targetPos, casterPos), resolvedSpeed);
 			}
-			return new TranslateMover(origin, bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx), targetPos, casterPos);
+			return new TranslateMover(origin, bindFormula(x, ctx), bindFormula(y, ctx), bindFormula(z, ctx),
+					targetPos, casterPos, localDirection(velocity, baseDirection), isLocalSpace());
+		}
+
+		private TranslateMover createFormulaMover(Vec3 origin, Vec3 velocity, Vec3 baseDirection,
+											 Vec3 targetPos, Vec3 casterPos) {
+			return new TranslateMover(origin, x, y, z, targetPos, casterPos,
+					localDirection(velocity, baseDirection), isLocalSpace());
+		}
+
+		private boolean isLocalSpace() {
+			return "local".equalsIgnoreCase(space);
+		}
+
+		private static Vec3 localDirection(Vec3 velocity, Vec3 baseDirection) {
+			if (velocity != null && velocity.lengthSqr() > 1e-8) return velocity;
+			if (baseDirection != null && baseDirection.lengthSqr() > 1e-8) return baseDirection;
+			return new Vec3(0, 0, 1);
 		}
 
 		@Override

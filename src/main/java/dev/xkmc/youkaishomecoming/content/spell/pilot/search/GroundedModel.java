@@ -58,4 +58,14 @@ public final class GroundedModel implements ActionModel {
 		}
 		return out;
 	}
+
+	@Override
+	public List<Vec3> directionSeeds() {
+		return List.of(HORIZ);
+	}
+
+	@Override
+	public boolean supportsVerticalMovement() {
+		return false;
+	}
 }

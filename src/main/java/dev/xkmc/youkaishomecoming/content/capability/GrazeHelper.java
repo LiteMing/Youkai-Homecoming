@@ -6,16 +6,29 @@ import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
+import dev.xkmc.youkaishomecoming.content.entity.UntargetedPlayerSpellHostile;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItemCost;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
+import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
+import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.events.DanmakuGrazeEvent;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHAttributes;
+import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
@@ -26,9 +39,6 @@ import org.jetbrains.annotations.Nullable;
 public class GrazeHelper {
 
 	public static final int SPELL_TARGET_RANGE = 64;
-
-	public static int globalInvulTime = 0;
-	public static int globalForbidTime = 0;
 
 	public static void graze(Player entity, GrazingEntity e) {
 		var graze = GrazeCapability.HOLDER.get(entity);
@@ -48,11 +58,70 @@ public class GrazeHelper {
 	@Nullable
 	public static LivingEntity resolveSpellTarget(Player player) {
 		LivingEntity target = RayTraceUtil.serverGetTarget(player);
-		if (target != null && target.isAlive() && target.level() == player.level()) {
+		if (isValidPlayerSpellTarget(player, target)) {
 			addSession(player, target);
 			return target;
 		}
-		return getTarget(player);
+		target = getTarget(player);
+		return isValidPlayerSpellTarget(player, target) ? target : null;
+	}
+
+	public static boolean isValidPlayerSpellTarget(Player player, @Nullable LivingEntity target) {
+		if (target == null || target == player || !target.isAlive() || target.level() != player.level()
+				|| player.isAlliedTo(target)) {
+			return false;
+		}
+		if (target instanceof ShooterEntity shooter) {
+			var owner = shooter.getOwner();
+			return owner != player && (owner == null || !player.isAlliedTo(owner));
+		}
+		if (target instanceof YoukaiEntity || target instanceof Player) {
+			return true;
+		}
+		if (target instanceof Enemy) {
+			return true;
+		}
+		return target instanceof Mob mob && mob.getTarget() == player;
+	}
+
+	/**
+	 * Static combat category used by untargeted player spells. Order matters:
+	 * Marked small fairies are combat targets, other YH characters stay neutral, and the
+	 * vanilla Enemy marker wins over NeutralMob (Endermen and zombified piglins).
+	 */
+	public static PlayerDanmakuPolicy.TargetDisposition classifyPlayerSpellTarget(Class<?> targetClass,
+			boolean playerHasTeam) {
+		return PlayerDanmakuPolicy.classifyTarget(
+				Player.class.isAssignableFrom(targetClass), playerHasTeam,
+				UntargetedPlayerSpellHostile.class.isAssignableFrom(targetClass),
+				YoukaiEntity.class.isAssignableFrom(targetClass),
+				Enemy.class.isAssignableFrom(targetClass),
+				NeutralMob.class.isAssignableFrom(targetClass));
+	}
+
+	public static boolean canReceiveDanmaku(Player player) {
+		return PlayerDanmakuPolicy.canReceiveDanmaku(player.hasEffect(YHEffects.BEATEN.get()));
+	}
+
+	/** True when an untargeted spell may hit this candidate right now. */
+	public static boolean isUntargetedPlayerSpellTarget(Player player, @Nullable LivingEntity target) {
+		if (target == null || target == player || !target.isAlive() || target.level() != player.level()
+				|| player.isAlliedTo(target)) {
+			return false;
+		}
+		if (target instanceof ShooterEntity shooter) {
+			var owner = shooter.getOwner();
+			return owner != player && (owner == null || !player.isAlliedTo(owner));
+		}
+		PlayerDanmakuPolicy.TargetDisposition disposition = classifyPlayerSpellTarget(
+				target.getClass(), target instanceof Player candidate && candidate.getTeam() != null);
+		boolean engaged = target instanceof YoukaiEntity youkai
+				&& (GrazeCapability.HOLDER.get(player).isInSession(youkai.getUUID())
+				|| youkai.targets.contains(player));
+		if (!engaged && target instanceof Mob mob) {
+			engaged = mob.getTarget() == player;
+		}
+		return PlayerDanmakuPolicy.isUntargetedTarget(disposition, engaged);
 	}
 
 	public static Vec3 getAimDirection(Player player) {
@@ -68,20 +137,15 @@ public class GrazeHelper {
 	}
 
 	public static boolean hasSpellCard(Player player) {
-		if (isSpellStack(player.getMainHandItem()) || isSpellStack(player.getOffhandItem())) {
-			return true;
-		}
-		var inv = player.getInventory();
-		for (int i = 0; i < inv.getContainerSize(); i++) {
-			if (isSpellStack(inv.getItem(i))) {
-				return true;
-			}
+		if (isSpellStack(player.getMainHandItem()) || isSpellStack(player.getOffhandItem())) return true;
+		for (ItemStack stack : player.getInventory().items) {
+			if (isSpellStack(stack)) return true;
 		}
 		return CuriosManager.hasAnySpellItem(player);
 	}
 
 	public static boolean isSpellStack(ItemStack stack) {
-		return !stack.isEmpty() && stack.getItem() instanceof ISpellItem;
+		return !stack.isEmpty() && stack.getItem() instanceof ISpellItem spell && spell.isCastReady(stack);
 	}
 
 	/**
@@ -92,6 +156,14 @@ public class GrazeHelper {
 		if (player.level().isClientSide()) return false;
 		if (!(player instanceof ServerPlayer sp)) return false;
 		if (!isManualCombatMode()) return false;
+		if (forbidDanmaku(sp)) {
+			return false;
+		}
+		var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+				.getActiveTrial(sp);
+		if (trial != null && trial.isActive()) {
+			return false;
+		}
 		var cap = GrazeCapability.HOLDER.get(sp);
 		if (cap.isForcedDanmakuCombat()) {
 			cap.clearCombatState(true);
@@ -110,6 +182,7 @@ public class GrazeHelper {
 
 	public static void addSession(Player player, LivingEntity target) {
 		if (player.level().isClientSide()) return;
+		if (!canReceiveDanmaku(player)) return;
 		var cap = GrazeCapability.HOLDER.get(player);
 		if (target instanceof YoukaiEntity e) {
 			if (isManualCombatMode() && !cap.isInDanmakuCombat()) return;
@@ -128,7 +201,8 @@ public class GrazeHelper {
 	 */
 	public static void enterPvpSpellDuel(Player attacker, Player opponent) {
 		if (attacker.level().isClientSide()) return;
-		if (attacker == opponent || attacker.level() != opponent.level()) return;
+		if (attacker == opponent || attacker.level() != opponent.level() || attacker.isAlliedTo(opponent)) return;
+		if (!canReceiveDanmaku(attacker) || !canReceiveDanmaku(opponent)) return;
 		var atkCap = GrazeCapability.HOLDER.get(attacker);
 		var defCap = GrazeCapability.HOLDER.get(opponent);
 
@@ -157,7 +231,205 @@ public class GrazeHelper {
 
 	public static boolean forbidDanmaku(Player player) {
 		var cap = GrazeCapability.HOLDER.get(player);
-		return cap.isInvul() || cap.isWeak();
+		if (player.hasEffect(YHEffects.BEATEN.get()) || cap.isInvul() || cap.isWeak()) {
+			return true;
+		}
+		// while releasing a spell card, other danmaku (and other spell cards)
+		// cannot be used
+		return cap.isPlayerSpellActive() ||
+				dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveSpellCard(player);
+	}
+
+	/**
+	 * Casts the spell card selected with normal item interaction ordering: main
+	 * hand, offhand, then inventory slots. No card means no bomb activation.
+	 */
+	public static boolean tryCastBombSpell(ServerPlayer player) {
+		if (forbidDanmaku(player)) return false;
+		ItemStack stack = findSpellCardForAutoBomb(player);
+		if (!(stack.getItem() instanceof ISpellItem spell)) return false;
+		if (player.getCooldowns().isOnCooldown(stack.getItem())) return false;
+		// The spell payment router owns Bomb deduction. This keeps duration-based
+		// and script-replaced payment providers authoritative and avoids double cost.
+		boolean success = spell.castSpell(stack, player, !player.getAbilities().instabuild, true);
+		if (success) {
+			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toClientPlayer(
+					new dev.xkmc.youkaishomecoming.content.spell.client.SpellCardActivationToClient(stack), player);
+		}
+		return success;
+	}
+
+	/**
+	 * Select a spell card using normal item interaction order, with Curios as an
+	 * explicit fallback for script-driven and accessory-held cards.
+	 */
+	public static ItemStack findSpellCard(Player player) {
+		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
+		if (isAvailableSpellStack(player, mainhand)) return mainhand;
+		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
+		if (isAvailableSpellStack(player, offhand)) return offhand;
+		var inventory = player.getInventory();
+		for (int i = 0; i < inventory.items.size(); i++) {
+			ItemStack stack = inventory.getItem(i);
+			if (isAvailableSpellStack(player, stack)) return stack;
+		}
+		return CuriosManager.findFirstSpellItem(player,
+				stack -> isAvailableSpellStack(player, stack));
+	}
+
+	/**
+	 * Selects the card used by an automatic bomb. Last Spells are a terminal
+	 * fallback, and must not pre-empt an ordinary card or activate while bombs
+	 * remain. The order is otherwise identical to {@link #findSpellCard(Player)}.
+	 */
+	public static ItemStack findSpellCardForAutoBomb(Player player) {
+		ItemStack ordinary = findSpellCard(player, true, false);
+		if (!ordinary.isEmpty()) return ordinary;
+		if (GrazeCapability.HOLDER.get(player).getBomb() > 0) return ItemStack.EMPTY;
+		return findSpellCard(player, false, true);
+	}
+
+	/** Selects the first usable non-spell in the same hand/inventory/Curios order as spell cards. */
+	public static ItemStack findNonSpell(Player player) {
+		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
+		if (isAvailableNonSpell(mainhand)) return mainhand;
+		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
+		if (isAvailableNonSpell(offhand)) return offhand;
+		var inventory = player.getInventory();
+		for (int i = 0; i < inventory.items.size(); i++) {
+			ItemStack stack = inventory.getItem(i);
+			if (isAvailableNonSpell(stack)) return stack;
+		}
+		return CuriosManager.findFirstSpellItem(player, GrazeHelper::isAvailableNonSpell);
+	}
+
+	private static boolean isAvailableNonSpell(ItemStack stack) {
+		return isSpellStack(stack) && stack.getItem() instanceof DynamicSpellItem
+				&& DynamicSpellItem.isNonSpell(stack);
+	}
+
+	private static ItemStack findSpellCard(Player player, boolean excludeLast, boolean onlyLast) {
+		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
+		if (isAvailableSpellStack(player, mainhand, excludeLast, onlyLast)) return mainhand;
+		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
+		if (isAvailableSpellStack(player, offhand, excludeLast, onlyLast)) return offhand;
+		var inventory = player.getInventory();
+		for (int i = 0; i < inventory.items.size(); i++) {
+			ItemStack stack = inventory.getItem(i);
+			if (isAvailableSpellStack(player, stack, excludeLast, onlyLast)) return stack;
+		}
+		return CuriosManager.findFirstSpellItem(player,
+				stack -> isAvailableSpellStack(player, stack, excludeLast, onlyLast));
+	}
+
+	private static boolean isAvailableSpellStack(Player player, ItemStack stack) {
+		return isAvailableSpellStack(player, stack, false, false);
+	}
+
+	private static boolean isAvailableSpellStack(Player player, ItemStack stack,
+			boolean excludeLast, boolean onlyLast) {
+		if (!isSpellStack(stack)) return false;
+		if (stack.getItem() instanceof DynamicSpellItem && DynamicSpellItem.isNonSpell(stack)) return false;
+		if (stack.getItem() instanceof DynamicSpellItem) {
+			boolean last = DynamicSpellItem.getCardType(stack) == dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType.LAST_SPELL;
+			if (excludeLast && last || onlyLast && !last) return false;
+		}
+		String cardKey = spellCardKey(stack);
+		if (GrazeCapability.HOLDER.get(player).isSpellCardUnavailable(cardKey)) return false;
+		// Automatic/passive casts must skip cards that cannot pay their current
+		// resource cost, otherwise an earlier red card blocks a later usable card.
+		// Client-side rendering performs the same preflight from the synced state;
+		// the server remains authoritative for the actual payment and KJS overrides.
+		return !(player instanceof ServerPlayer sp) || SpellItemCost.canAfford(sp, stack);
+	}
+
+	public static String spellCardKey(ItemStack stack) {
+		String certificateId = CertifiedSpellValidator.getCertificateId(stack);
+		if (certificateId != null) return "certificate:" + certificateId;
+		if (stack.getItem() instanceof DynamicSpellItem) {
+			var spellId = DynamicSpellItem.getSpellId(stack);
+			if (spellId != null) return "spell:" + spellId;
+		}
+		return "item:" + BuiltInRegistries.ITEM.getKey(stack.getItem());
+	}
+
+	public static boolean tryForceCloseSpell(ServerPlayer player, ItemStack stack) {
+		if (!SpellContainer.hasActiveSpell(player)) return false;
+		var cap = GrazeCapability.HOLDER.get(player);
+		if (cap.isNonSpellActive(spellCardKey(stack))) {
+			SpellContainer.clearActiveNonSpell(player);
+			cap.clearActiveNonSpellCard();
+			return true;
+		}
+		return SpellContainer.forceCloseActiveSpell(player, spellCardKey(stack));
+	}
+
+	/**
+	 * Closes the currently enabled non-spell before entering its editor. Editing
+	 * is a state boundary: the runtime must not keep executing while its source
+	 * definition is being changed, and the single-active-non-spell invariant must
+	 * be restored even when a different non-spell is held in hand.
+	 */
+	public static void closeActiveNonSpellForEditor(ServerPlayer player) {
+		var cap = GrazeCapability.HOLDER.get(player);
+		if (cap.getActiveNonSpellCardKey() != null || SpellContainer.hasActiveSpell(player)) {
+			SpellContainer.clearActiveNonSpell(player);
+		}
+	}
+
+	public static boolean isPlayerSpellBeingCast(Player player) {
+		return GrazeCapability.HOLDER.get(player).isPlayerSpellActive()
+				|| SpellContainer.hasActiveSpellCard(player);
+	}
+
+	/** Cast a specific card supplied by an integration or script. */
+	public static boolean castSpell(ServerPlayer player, ItemStack stack) {
+		boolean nonSpell = stack.getItem() instanceof DynamicSpellItem
+				&& DynamicSpellItem.isNonSpell(stack);
+		if (!nonSpell && forbidSpellCardWithMessage(player)) return false;
+		if (!(stack.getItem() instanceof ISpellItem spell)) return false;
+		if (player.getCooldowns().isOnCooldown(stack.getItem())) return false;
+		boolean success = spell.castSpell(stack, player, !player.getAbilities().instabuild, true);
+		if (success) {
+			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.HANDLER.toClientPlayer(
+					new dev.xkmc.youkaishomecoming.content.spell.client.SpellCardActivationToClient(stack), player);
+		}
+		return success;
+	}
+
+	/** Cast the first available card using the same selection order as Bomb. */
+	public static boolean castSpell(ServerPlayer player) {
+		return castSpell(player, findSpellCard(player));
+	}
+
+	/** Syncs the active cast immediately and grants duration-bound protection in STG. */
+	public static void onPlayerSpellCast(ServerPlayer player) {
+		GrazeCapability.HOLDER.get(player).startPlayerSpell();
+	}
+
+	/**
+	 * Spell-card-only gate used by ISpellItem implementations. Normal danmaku
+	 * and laser shots remain available during certification so the player can
+	 * break the certification target; bombs and other spell cards do not.
+	 */
+	public static boolean forbidSpellCardWithMessage(Player player) {
+		if (forbidDanmaku(player)) {
+			return true;
+		}
+		if (player instanceof net.minecraft.server.level.ServerPlayer sp) {
+			var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+					.getActiveTrial(sp);
+			if (trial != null && trial.isActive()) {
+				trial.onPlayerCastsOtherSpell();
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Compatibility wrapper retained for item entry points; intentionally silent. */
+	public static boolean forbidDanmakuWithMessage(Player player) {
+		return forbidDanmaku(player);
 	}
 
 	public static void onDanmakuKill(Player player, YoukaiEntity e) {
@@ -202,6 +474,16 @@ public class GrazeHelper {
 				(int) player.getAttributeValue(YHAttributes.MAX_POWER.get());
 	}
 
+	/** Power visible to spell expressions, clamped to this player's effective cap. */
+	public static double getEffectivePowerLevel(Player player) {
+		return Mth.clamp(GrazeCapability.HOLDER.get(player).getPowerLevel(), 0, Math.max(0, getMaxPower(player)));
+	}
+
+	/** Conservative upper bound used when statically analyzing caster_power expressions. */
+	public static double getMaximumPowerLevel() {
+		return Math.max(0, YHModConfig.COMMON.danmakuMaxPower.get() + YHAttributes.MAX_POWER_BONUS_LIMIT);
+	}
+
 	public static double getGrazeEffectiveness(Player player) {
 		return YHModConfig.COMMON.grazeEffectiveness.get() +
 				player.getAttributeValue(YHAttributes.GRAZE_EFFECTIVENESS.get());
@@ -212,8 +494,8 @@ public class GrazeHelper {
 				(int) player.getAttributeValue(YHAttributes.MAX_RESOURCE.get());
 	}
 
-	public static float getHitBoxDelta(Player player) {
-		return (float) player.getAttributeValue(YHAttributes.HITBOX.get());
+	public static float getHitBoxScale(Player player) {
+		return (float) Math.max(0, player.getAttributeValue(YHAttributes.HITBOX.get()));
 	}
 
 	@SerialClass

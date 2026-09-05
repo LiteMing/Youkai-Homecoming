@@ -16,6 +16,7 @@ import dev.xkmc.fastprojectileapi.spellcircle.CustomSpellCircleStorage;
 import dev.xkmc.fastprojectileapi.spellcircle.EntitySpellCircleManager;
 import dev.xkmc.youkaishomecoming.compat.stg.StgCombatMode;
 import dev.xkmc.youkaishomecoming.compat.stg.YHStgApi;
+import dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlService;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
@@ -24,6 +25,22 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicy;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager;
+
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellRewardService;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellStorage;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
+import dev.xkmc.youkaishomecoming.content.spell.certification.PendingRewardStorage;
+import dev.xkmc.youkaishomecoming.content.spell.certification.SpellColorExtractor;
+import dev.xkmc.youkaishomecoming.content.spell.certification.SpellCertificate;
+
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
@@ -36,8 +53,10 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
 import dev.xkmc.youkaishomecoming.content.spell.template.SpellTemplates;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -90,20 +109,41 @@ public class YHCommands {
 
 	@SubscribeEvent
 	public static void onServerStarted(ServerStartedEvent event) {
+		CertificationManager.INSTANCE.reset();
 		CustomSpellStorage.loadAllIntoRegistry(event.getServer());
 		CustomSpellCircleStorage.loadAllIntoConfig(event.getServer());
 		SpellMarketServerManager.start(event.getServer());
+		runHeadlessSelfTest(event.getServer());
+	}
+
+	/** Re-delivers pending certified rewards when the creator logs in (design doc §16). */
+	@SubscribeEvent
+	public static void onPlayerLoggedIn(net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent event) {
+		if (!(event.getEntity() instanceof ServerPlayer player)) return;
+		String hash = PendingRewardStorage.peek(player.server, player.getUUID());
+		if (hash == null) return;
+		SpellCertificate certificate = CertifiedSpellStorage.loadCertificate(player.server, hash);
+		SpellDefinition definition = CertifiedSpellStorage.loadDefinition(player.server, hash);
+		if (certificate == null || definition == null) return;
+		ItemStack stack = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), definition.id, true);
+		CertifiedSpellValidator.tagCertified(stack, certificate);
+		if (player.getInventory().add(stack)) {
+			PendingRewardStorage.claim(player.server, player.getUUID(), hash);
+			player.displayClientMessage(Component.literal("[YH] Pending certified spell delivered: " + definition.display.name()), false);
+		} else {
+			player.displayClientMessage(Component.literal("[YH] Certified reward waiting (inventory full): " + definition.display.name()), false);
+		}
 	}
 
 	@SubscribeEvent
 	public static void onServerStopping(ServerStoppingEvent event) {
+		ClassicControlService.clearAll();
 		SpellMarketServerManager.stop();
 	}
 
 	@SubscribeEvent
 	public static void register(RegisterCommandsEvent event) {
-		event.getDispatcher().register(literal("danmaku")
-				.requires(e -> e.hasPermission(2))
+		event.getDispatcher().register(literal("danmaku")				.requires(e -> e.hasPermission(2))
 				.then(literal("resetRender")
 						.requires(e -> e.hasPermission(2))
 						.executes(ctx -> {
@@ -206,7 +246,8 @@ public class YHCommands {
 								.executes(ctx -> {
 									ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
 									if (!YHStgApi.tryManualBomb(player)) {
-										ctx.getSource().sendFailure(Component.literal("Manual Bomb failed: no Bomb available"));
+										ctx.getSource().sendFailure(Component.literal(
+												"Manual Bomb failed: no usable spell card or payment available"));
 										return 0;
 									}
 									ctx.getSource().sendSuccess(() -> Component.literal(
@@ -222,6 +263,21 @@ public class YHCommands {
 											YHStgApi.setDanmakuCombat(player, enabled);
 											ctx.getSource().sendSuccess(() -> Component.literal(
 													"Set STG combat for " + player.getName().getString() + " to " + enabled), true);
+											return 1;
+										}))))
+				.then(literal("classic")
+						.then(argument("player", EntityArgument.player())
+								.then(argument("enabled", BoolArgumentType.bool())
+										.executes(ctx -> {
+											ServerPlayer player = EntityArgument.getPlayer(ctx, "player");
+											boolean enabled = BoolArgumentType.getBool(ctx, "enabled");
+											if (!ClassicControlService.setEnabled(player, enabled)) {
+												ctx.getSource().sendFailure(Component.literal(
+														"Classic controls require active STG combat"));
+												return 0;
+											}
+											ctx.getSource().sendSuccess(() -> Component.literal(
+													"Set classic controls for " + player.getName().getString() + " to " + enabled), true);
 											return 1;
 										}))))
 				.then(literal("erase")
@@ -616,8 +672,196 @@ public class YHCommands {
 						}))
 				)
 		);
+
+		// /yhdev developer commands
+		event.getDispatcher().register(literal("yhdev")				.requires(e -> e.hasPermission(2))
+				.then(literal("spell_analyzer_self_test")
+						.executes(ctx -> runAnalyzerSelfTest(ctx.getSource())))
+				.then(literal("certification")
+						.then(literal("boss")
+								// OP/console: summon certification for any registered spell.
+								.then(argument("targets", EntityArgument.players())
+										.then(argument("spell", ResourceLocationArgument.id())
+												.suggests(SPELL_SUGGESTIONS)
+												.executes(ctx -> runCertificationTest(ctx, false)))))
+						.then(literal("test")
+								.then(argument("targets", EntityArgument.players())
+										.then(argument("spell", ResourceLocationArgument.id())
+												.suggests(SPELL_SUGGESTIONS)
+												.executes(ctx -> runCertificationTest(ctx, true))
+												.then(argument("breakHealth", FloatArgumentType.floatArg(1, 1_000_000))
+														.executes(ctx -> runCertificationTest(ctx, true))))))
+						.then(literal("abort")
+								.then(argument("targets", EntityArgument.players())
+										.executes(ctx -> abortCertification(ctx))))
+						.then(literal("claim")
+								.then(argument("targets", EntityArgument.players())
+										.executes(ctx -> claimCertifiedRewards(ctx))))));
+
+		// /yhspell capability commands (Phase 6)
+		event.getDispatcher().register(literal("yhspell")
+				.then(opLiteral("capability")
+						.then(literal("get")
+								.then(argument("id", StringArgumentType.string())
+										.executes(ctx -> capabilityGet(ctx))))
+						.then(literal("set")
+								.then(argument("id", StringArgumentType.string())
+										.then(argument("policy", StringArgumentType.string())
+												.suggests((ctx2, builder) -> SharedSuggestionProvider.suggest(
+														new String[]{"allow", "experimental", "deny", "op_only"}, builder))
+												.executes(ctx -> capabilitySet(ctx)))))));
 	}
 
+	private static int capabilityGet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		SpellCapability cap = SpellCapability.byId(StringArgumentType.getString(ctx, "id"));
+		ctx.getSource().sendSystemMessage(Component.literal("[YH] capability " + cap.id() + " policy: "
+				+ SpellCapabilityPolicies.currentPolicy(cap)));
+		return 1;
+	}
+
+	private static int capabilitySet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		try {
+			SpellCapability cap = SpellCapability.byId(StringArgumentType.getString(ctx, "id"));
+			String policyName = StringArgumentType.getString(ctx, "policy");
+			SpellCapabilityPolicy policy = switch (policyName) {
+				case "allow" -> SpellCapabilityPolicy.ALLOW;
+				case "experimental" -> SpellCapabilityPolicy.EXPERIMENTAL;
+				case "deny" -> SpellCapabilityPolicy.DENY;
+				case "op_only" -> SpellCapabilityPolicy.OP_ONLY;
+				default -> throw new IllegalArgumentException("unknown policy: " + policyName);
+			};
+			SpellCapabilityPolicies.setPolicy(cap, policy);
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] capability " + cap.id()
+					+ " policy set to " + SpellCapabilityPolicies.currentPolicy(cap)));
+			return 1;
+		} catch (IllegalArgumentException e) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] " + e.getMessage()));
+			return 0;
+		}
+	}
+
+	private static int runCertificationTest(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx,
+			boolean noHitDefault) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var player = EntityArgument.getPlayer(ctx, "targets");
+		var spellId = ResourceLocationArgument.getId(ctx, "spell");
+		Float breakHealth = null;
+		try {
+			breakHealth = FloatArgumentType.getFloat(ctx, "breakHealth");
+		} catch (IllegalArgumentException ignored) {
+			// certification test defaults to an invulnerable no-hit survival trial
+		}
+		var definition = SpellRegistry.get(spellId);
+		if (definition == null) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] unknown spell: " + spellId));
+			return 0;
+		}
+		try {
+			var quote = CertificationService.quoteOperatorTest(player, definition);
+			CertificationManager.INSTANCE.setQuote(player, quote, definition);
+			// OP test command: skip the start fee so certification can be exercised
+			// without resources; the in-game UI path pays through SpellPaymentRouter.
+			if (!YHModConfig.COMMON.certificationEnabled.get()) {
+				ctx.getSource().sendSystemMessage(Component.literal("[YH] certification disabled in config"));
+				return 0;
+			}
+			if (dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(player).isInSession()
+					|| !dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(player)
+					.snapshotOpponents().ids().isEmpty()) {
+				ctx.getSource().sendSystemMessage(Component.literal("[YH] player is in a real battle (D15)"));
+				return 0;
+			}
+			if (CertificationManager.INSTANCE.hasActiveTrial(player)) {
+				ctx.getSource().sendSystemMessage(Component.literal("[YH] player already has an active certification trial"));
+				return 0;
+			}
+			if (!noHitDefault && breakHealth == null) breakHealth = (float) quote.spellHp();
+			boolean started = CertificationService.startFree(player, quote, breakHealth);
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] certification started=" + started
+					+ " cost=" + quote.startCostUnits() + " breakHealth="
+					+ (breakHealth == null ? "no-hit" : breakHealth)
+					+ " hash=" + quote.definitionHash().substring(0, 8)));
+			return started ? 1 : 0;
+		} catch (Exception e) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] certification failed: " + e.getMessage()));
+			return 0;
+		}
+	}
+
+	private static int claimCertifiedRewards(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var player = EntityArgument.getPlayer(ctx, "targets");
+		String hash = PendingRewardStorage.peek(player.server, player.getUUID());
+		if (hash == null) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] no pending certified rewards"));
+			return 0;
+		}
+		SpellCertificate certificate = CertifiedSpellStorage.loadCertificate(player.server, hash);
+		SpellDefinition definition = CertifiedSpellStorage.loadDefinition(player.server, hash);
+		if (certificate == null || definition == null) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] pending reward data missing"));
+			return 0;
+		}
+		ItemStack stack = CertifiedSpellRewardService.buildCertifiedStack(player.server, certificate, definition);
+		if (player.getInventory().add(stack)) {
+			PendingRewardStorage.claim(player.server, player.getUUID(), hash);
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] claimed: " + definition.display.name()));
+			return 1;
+		}
+		ctx.getSource().sendSystemMessage(Component.literal("[YH] inventory full"));
+		return 0;
+	}
+
+	private static int abortCertification(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var player = EntityArgument.getPlayer(ctx, "targets");
+		var trial = CertificationManager.INSTANCE.getActiveTrial(player);
+		if (trial == null) {
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] no active certification for player"));
+			return 0;
+		}
+		trial.abort();
+		ctx.getSource().sendSystemMessage(Component.literal("[YH] certification aborted"));
+		return 1;
+	}
+
+	private static int runAnalyzerSelfTest(CommandSourceStack source) {
+		var result = SpellAnalyzerSelfCheck.run(source.getPlayer());
+		source.sendSystemMessage(Component.literal("[YH] spell analyzer self-test: " + result.passed() + "/" + result.total() + " passed"));
+		if (!result.allPassed()) {
+			for (String failure : result.failures()) {
+				source.sendSystemMessage(Component.literal("[YH] FAIL: " + failure));
+			}
+		}
+		return result.allPassed() ? 1 : 0;
+	}
+
+	/**
+	 * Headless self-test for scripts/CI — no client/chat interaction required.
+	 * Trigger with system property {@code -Dyhdev.selftest=true} OR environment
+	 * variable {@code YHDEV_SELFTEST=1}; add {@code yhdev.selftest.stop} /
+	 * {@code YHDEV_SELFTEST_STOP=1} to halt the server right after. Results are
+	 * logged and written to {@code <serverDir>/yhdev-selftest-result.txt}.
+	 */
+	private static void runHeadlessSelfTest(MinecraftServer server) {
+		boolean enabled = SpellSelfTestFlags.enabled("yhdev.selftest", "YHDEV_SELFTEST");
+		if (!enabled) return;
+		var result = SpellAnalyzerSelfCheck.run();
+		StringBuilder sb = new StringBuilder("[YH] spell analyzer self-test: ")
+				.append(result.passed()).append("/").append(result.total()).append(" passed");
+		if (!result.allPassed()) {
+			for (String failure : result.failures()) {
+				sb.append('\n').append("[YH] FAIL: ").append(failure);
+			}
+		}
+		YoukaisHomecoming.LOGGER.info(sb.toString());
+		try {
+			java.nio.file.Path out = server.getServerDirectory().toPath().resolve("yhdev-selftest-result.txt");
+			java.nio.file.Files.writeString(out, sb.toString());
+		} catch (Exception e) {
+			YoukaisHomecoming.LOGGER.error("Failed to write selftest result file", e);
+		}
+		if (SpellSelfTestFlags.enabled("yhdev.selftest.stop", "YHDEV_SELFTEST_STOP")) {
+			server.halt(false);
+		}
+	}
 	protected static LiteralArgumentBuilder<CommandSourceStack> literal(String str) {
 		return LiteralArgumentBuilder.literal(str);
 	}
@@ -820,13 +1064,33 @@ public class YHCommands {
 			return 0;
 		}
 		ServerPlayer player = ctx.getSource().getPlayerOrException();
-		ItemStack stack = duration == DynamicSpellItem.DURATION_NATURAL
+		SpellHealthPlan healthPlan = null;
+		try {
+			healthPlan = SpellHealthPlan.analyzeIfPresent(def, SpellRegistry::get).orElse(null);
+		} catch (IllegalArgumentException ignored) {
+			// Legacy and entity-scaled boss definitions remain giveable. Their runtime
+			// set_spell_health values are evaluated when the card is cast.
+		}
+		int resolvedDuration = duration;
+		if (resolvedDuration == DynamicSpellItem.DURATION_NATURAL && healthPlan != null) {
+			resolvedDuration = healthPlan.totalDurationTicks();
+		} else if (resolvedDuration == DynamicSpellItem.DURATION_NATURAL) {
+			resolvedDuration = SpellHealthPlan.singleSegmentDuration(def)
+					.orElse(DynamicSpellItem.DURATION_NATURAL);
+		}
+		ItemStack stack = resolvedDuration == DynamicSpellItem.DURATION_NATURAL
 				? DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(), spellId, singleUse)
-				: DynamicSpellItem.createStackWithDuration(YHDanmaku.DYNAMIC_SPELL.get(), spellId, duration, singleUse);
+				: DynamicSpellItem.createStackWithDuration(YHDanmaku.DYNAMIC_SPELL.get(), spellId, resolvedDuration, singleUse);
+		// OP-given cards are complete: right-click casts directly, never the editor.
+		DynamicSpellItem.setComplete(stack, true);
+		SpellColorExtractor.applyToStack(stack, def, player.getRandom());
 		if (!player.getInventory().add(stack)) {
 			player.drop(stack, false);
 		}
-		String detail = formatDuration(duration) + (singleUse ? ", single-use" : "");
+		int displayedDuration = resolvedDuration;
+		String detail = (displayedDuration == 0 ? " with no timeout" : formatDuration(displayedDuration))
+				+ (healthPlan == null ? "" : ", " + healthPlan.totalHealth() + " HP")
+				+ (singleUse ? ", single-use" : "");
 		ctx.getSource().sendSuccess(
 				() -> Component.literal("Gave spell item [" + spellId + "]" + detail + " to " + player.getName().getString()), true);
 		return 1;

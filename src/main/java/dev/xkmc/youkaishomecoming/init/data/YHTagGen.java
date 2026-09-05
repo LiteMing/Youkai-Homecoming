@@ -90,7 +90,6 @@ public class YHTagGen {
 	public static final TagKey<Item> IRON_BOWL_FOOD = item("iron_bowl_food");
 	public static final TagKey<Item> FLESH_FOOD = item("flesh_food");
 	public static final TagKey<Item> APPARENT_FLESH_FOOD = item("apparent_flesh_food");
-	public static final TagKey<Item> CUSTOM_SPELL = item("custom_spell");
 	public static final TagKey<Item> PRESET_SPELL = item("preset_spell");
 	public static final TagKey<Item> DANMAKU = item("danmaku");
 	public static final TagKey<Item> LASER = item("laser");
@@ -196,7 +195,7 @@ public class YHTagGen {
 		for (var e : YHDanmaku.Laser.values()) {
 			laser.addTag(e.tag);
 		}
-		pvd.addTag(DANMAKU_SHOOTER).addTags(DANMAKU, LASER, CUSTOM_SPELL, PRESET_SPELL);
+		pvd.addTag(DANMAKU_SHOOTER).addTags(DANMAKU, LASER, PRESET_SPELL);
 		pvd.addTag(ItemTags.create(Tags.HIDDEN_FROM_RECIPE_VIEWERS))
 				.addTags(DANMAKU, LASER);
 		if (ModList.get().isLoaded(SereneSeasons.MOD_ID)) {

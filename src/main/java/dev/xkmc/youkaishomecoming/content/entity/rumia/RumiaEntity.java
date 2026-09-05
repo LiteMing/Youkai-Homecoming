@@ -7,6 +7,9 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.IYoukaiMerchant;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.MultiHurtByTargetGoal;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.game.MigratedSpellCards;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
@@ -158,6 +161,11 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 
 	@Override
 	public void aiStep() {
+		if (!level().isClientSide() && spellRuntime == null) {
+			// Rumia is a direct YoukaiEntity rather than GeneralYoukaiEntity, so it
+			// does not receive the latter's initSpellCard hook.
+			setSpellRuntime(resolveRumiaRuntime(isEx()));
+		}
 		super.aiStep();
 		state.tick();
 		if (isEx() && !getActiveEffectsMap().isEmpty()) {
@@ -211,6 +219,34 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 		}
 		setHealth(getMaxHealth());
 		setFlag(4, ex);
+		if (!level().isClientSide()) {
+			setSpellRuntime(resolveRumiaRuntime(ex));
+		}
+	}
+
+	private SpellRuntime resolveRumiaRuntime(boolean ex) {
+		return new SpellRuntime(resolveRumiaDefinition(ex));
+	}
+
+	private dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition resolveRumiaDefinition(boolean ex) {
+		ResourceLocation id = ex ? SPELL_EX_RUMIA : SPELL_RUMIA;
+		var definition = SpellRegistry.get(id);
+		return definition != null ? definition : (ex ? MigratedSpellCards.exRumia() : MigratedSpellCards.rumia());
+	}
+
+	@Override
+	public void readAdditionalSaveData(CompoundTag tag) {
+		super.readAdditionalSaveData(tag);
+		if (!level().isClientSide() && tag.contains("SpellRuntime")) {
+			var runtimeTag = tag.getCompound("SpellRuntime");
+			var id = ResourceLocation.tryParse(runtimeTag.getString("DefinitionId"));
+			var definition = id == null ? null : SpellRegistry.get(id);
+			if (definition != null) {
+				var runtime = new SpellRuntime(definition);
+				runtime.loadFromTag(runtimeTag);
+				setSpellRuntime(runtime);
+			}
+		}
 	}
 
 	@Override
@@ -242,14 +278,21 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 	}
 
 	@Override
+	protected boolean shouldTriggerSpellDamage(DamageSource source, float amount) {
+		// The legacy charge-flight and blocked states do not emit the retaliation
+		// volley. BLOCKED still shortens its timer in state.onHurt below.
+		return state.allowsDamageRetaliation();
+	}
+
+	@Override
 	protected void actuallyHurt(DamageSource source, float amount) {
 		boolean isVoid = source.is(DamageTypeTags.BYPASSES_INVULNERABILITY);
 		if (!isVoid && !isEx() && amount >= getMaxHealth()) {
 			if (YHModConfig.COMMON.exRumiaConversion.get())
 				setEx(true);
 		}
-		if (source.getEntity() instanceof LivingEntity le) {
-			state.onHurt(le, amount);
+		if (source.getEntity() instanceof LivingEntity) {
+			state.onHurt(amount);
 		}
 		if (!isVoid && YHModConfig.COMMON.rumiaDamageCap.get()) {
 			int reduction = isEx() ? 20 : 5;

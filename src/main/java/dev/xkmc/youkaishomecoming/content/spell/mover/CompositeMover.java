@@ -44,28 +44,50 @@ public class CompositeMover extends TargetPosMover {
 		if (list.isEmpty()) return info.prevPos();
 
 		int tick = info.tick();
-		// Find the active segment
-		int segIdx = 0;
-		for (int i = 1; i < list.size(); i++) {
-			if (list.get(i).startTick <= tick) {
-				segIdx = i;
+		Vec3 currentBase = null;
+
+		for (int i = 0; i < list.size(); i++) {
+			Entry entry = list.get(i);
+			int nextStart = (i + 1 < list.size()) ? list.get(i + 1).startTick : Integer.MAX_VALUE;
+
+			if (tick < nextStart) {
+				// 当前活跃分段
+				int localTick = tick - entry.startTick;
+				MoverInfo localInfo = new MoverInfo(localTick, info.prevPos(), info.prevVel(), info.self(), info.ownerInfo());
+
+				Vec3 segPos;
+				if (entry.mover instanceof TargetPosMover tpm) {
+					segPos = tpm.pos(localInfo);
+				} else {
+					ProjectileMovement pm = entry.mover.move(localInfo);
+					segPos = info.prevPos().add(pm.vec());
+				}
+
+				if (currentBase != null && entry.mover instanceof TargetPosMover tpm) {
+					// 继承前置分段累积位移
+					Vec3 initialPos = tpm.pos(new MoverInfo(0, info.prevPos(), info.prevVel(), info.self(), info.ownerInfo()));
+					return currentBase.add(segPos.subtract(initialPos));
+				}
+				return segPos;
 			} else {
-				break;
+				// 累积前置分段的终点绝对位置
+				MoverInfo endInfo = new MoverInfo(entry.duration, info.prevPos(), info.prevVel(), info.self(), info.ownerInfo());
+				Vec3 segEndPos;
+				if (entry.mover instanceof TargetPosMover tpm) {
+					segEndPos = tpm.pos(endInfo);
+					if (currentBase != null) {
+						Vec3 initialPos = tpm.pos(new MoverInfo(0, info.prevPos(), info.prevVel(), info.self(), info.ownerInfo()));
+						currentBase = currentBase.add(segEndPos.subtract(initialPos));
+					} else {
+						currentBase = segEndPos;
+					}
+				} else {
+					// 非 TargetPosMover 保持原有相对基准
+				}
 			}
 		}
 
-		var entry = list.get(segIdx);
-		int localTick = tick - entry.startTick;
-		MoverInfo localInfo = new MoverInfo(localTick, info.prevPos(), info.prevVel(), info.self(), info.ownerInfo());
-
-		if (entry.mover instanceof TargetPosMover tpm) {
-			return tpm.pos(localInfo);
-		}
-
-		// Fallback for non-TargetPosMover: use move() delta from prevPos
-		// This is less accurate but handles edge cases like RotateMover
-		ProjectileMovement pm = entry.mover.move(localInfo);
-		return info.prevPos().add(pm.vec());
+		return info.prevPos();
 	}
 
 	@Override

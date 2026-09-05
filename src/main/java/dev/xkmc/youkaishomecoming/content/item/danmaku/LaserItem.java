@@ -4,6 +4,7 @@ import dev.xkmc.fastprojectileapi.render.core.ProjTypeHolder;
 import dev.xkmc.fastprojectileapi.render.type.CylinderLaserType;
 import dev.xkmc.fastprojectileapi.render.type.PencilLayerLaserType;
 import dev.xkmc.fastprojectileapi.render.type.RenderableProjectileType;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
@@ -49,7 +50,7 @@ public class LaserItem extends Item {
 
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
-		if (GrazeHelper.forbidDanmaku(player))
+		if (GrazeHelper.forbidDanmakuWithMessage(player))
 			return InteractionResultHolder.fail(stack);
 		level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SNOWBALL_THROW, SoundSource.PLAYERS,
 				0.5F, 0.4F / (level.getRandom().nextFloat() * 0.4F + 0.8F));
@@ -74,7 +75,7 @@ public class LaserItem extends Item {
 			}
 			level.addFreshEntity(danmaku);
 			if (player instanceof ServerPlayer sp)
-				SpellContainer.track(sp, danmaku);
+				SpellContainer.track(sp, danmaku, GrazeCapability.HOLDER.get(sp).isInDanmakuCombat());
 		}
 		player.awardStat(Stats.ITEM_USED.get(this));
 		ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);

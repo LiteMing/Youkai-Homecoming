@@ -1,15 +1,12 @@
 package dev.xkmc.youkaishomecoming.compat.thirst;
 
 import dev.ghen.thirst.foundation.common.event.RegisterThirstValueEvent;
-import dev.xkmc.youkaishomecoming.compat.food.FruitsDelightCompatDrink;
-import dev.xkmc.youkaishomecoming.compat.food.FruitsDelightCompatFood;
 import dev.xkmc.youkaishomecoming.init.food.YHBowl;
 import dev.xkmc.youkaishomecoming.init.food.YHCoffee;
 import dev.xkmc.youkaishomecoming.init.food.YHDrink;
 import dev.xkmc.youkaishomecoming.init.food.YHFood;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.ModList;
 
 public class ThirstCompat {
 
@@ -38,13 +35,6 @@ public class ThirstCompat {
 		event.addDrink(YHBowl.MUSHROOM_SOUP.asItem(), 8, 13);
 		event.addDrink(YHBowl.MISO_SOUP.asItem(), 8, 13);
 		event.addDrink(YHBowl.SEAFOOD_MISO_SOUP.asItem(), 8, 13);
-
-		if (ModList.get().isLoaded("fruitsdelight")) {
-			event.addDrink(FruitsDelightCompatDrink.LEMON_BLACK_TEA.item.get(), 8, 13);
-			event.addDrink(FruitsDelightCompatDrink.MOON_ROCKET.item.get(), 8, 13);
-			event.addDrink(FruitsDelightCompatFood.PEACH_TAPIOCA.item.get(), 8, 13);
-		}
-
 
 	}
 

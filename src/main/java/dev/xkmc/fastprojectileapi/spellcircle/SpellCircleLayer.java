@@ -15,7 +15,7 @@ import org.joml.Quaternionf;
 
 public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> extends RenderLayer<T, M> {
 
-	private static final ResourceLocation SPELL = YoukaisHomecoming.loc("textures/entities/spell_circle.png");
+	private static final ResourceLocation SPELL_TEXTURE = YoukaisHomecoming.loc("textures/entities/spell_circle.png");
 
 	public SpellCircleLayer(LivingEntityRenderer<T, M> pRenderer) {
 		super(pRenderer);
@@ -38,8 +38,15 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 		if (override != null) {
 			if (!override.enabled() || override.circle() == null)
 				return;
+			// Explicit /yhspell circle overrides intentionally render one static
+			// component.  The player_stg resource/bomb projection belongs only to
+			// the automatic player STG path below; command overrides must not infer
+			// combat resources or append dynamic resource sub-circles.
 			rl = override.circle();
 			scale = override.size();
+		} else if (entity instanceof net.minecraft.world.entity.player.Player player) {
+			PlayerStgSpellCircle.render(pose, buffer, light, player, pTick, front);
+			return;
 		} else if (entity instanceof SpellCircleHolder e) {
 			if (!e.shouldShowSpellCircle())
 				return;
@@ -53,7 +60,7 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 			return;
 		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(pose,
 				buffer,
-				buffer.getBuffer(SpellRenderState.getSpell(SPELL)),
+				SpellRenderState.getSpell(SPELL_TEXTURE),
 				entity.tickCount + pTick, light);
 		pose.pushPose();
 		pose.translate(0, entity.getBbHeight() / 2, 0);
@@ -63,6 +70,7 @@ public class SpellCircleLayer<T extends LivingEntity, M extends EntityModel<T>> 
 			pose.mulPose(Axis.YP.rotationDegrees(180.0F));
 		}
 		component.render(handle);
+		SpellProgressCircleRenderer.render(pose, buffer, light, entity, pTick, handle.alpha);
 		pose.popPose();
 	}
 

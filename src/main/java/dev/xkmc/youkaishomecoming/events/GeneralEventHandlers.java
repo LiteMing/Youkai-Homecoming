@@ -4,6 +4,7 @@ import dev.xkmc.l2library.init.events.GeneralEventHandler;
 import dev.xkmc.fastprojectileapi.spellcircle.CustomSpellCircleStorage;
 import dev.xkmc.fastprojectileapi.spellcircle.EntitySpellCircleManager;
 import dev.xkmc.youkaishomecoming.compat.curios.CuriosManager;
+import dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlService;
 import dev.xkmc.youkaishomecoming.content.block.variants.LeftClickBlock;
 import dev.xkmc.youkaishomecoming.content.capability.FrogGodCapability;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
@@ -87,8 +88,31 @@ public class GeneralEventHandlers {
 	public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
 		if (event.phase != TickEvent.Phase.END) return;
 		var e = event.player;
+		if (e instanceof ServerPlayer player) {
+			ClassicControlService.tick(player);
+		}
 		if (e.hasEffect(YHEffects.FAIRY.get()) && CuriosManager.hasAnyWings(e)) {
 			FlyingToken.tickFlying(e);
+		}
+	}
+
+	/**
+	 * Picking up a certified reward item clears its pending marker so the
+	 * creator cannot claim a second copy via /yhdev certification claim.
+	 */
+	@SubscribeEvent
+	public static void onItemPickup(net.minecraftforge.event.entity.player.PlayerEvent.ItemPickupEvent event) {
+		var itemEntity = event.getOriginalEntity();
+		if (itemEntity instanceof dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellRewardService.CertifiedRewardItem reward) {
+			String hash = dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator
+					.getCertifiedHash(reward.getItem());
+			if (hash != null && !hash.isEmpty()
+					&& event.getEntity() instanceof net.minecraft.server.level.ServerPlayer sp) {
+				if (!reward.isOwnerLocked() || sp.getUUID().equals(reward.ownerId())) {
+					dev.xkmc.youkaishomecoming.content.spell.certification.PendingRewardStorage.claim(
+							sp.server, reward.ownerId(), hash);
+				}
+			}
 		}
 	}
 
@@ -189,6 +213,7 @@ public class GeneralEventHandlers {
 	@SubscribeEvent
 	public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
 		if (event.getEntity() instanceof ServerPlayer player) {
+			ClassicControlService.reset(player);
 			CustomSpellCircleStorage.syncAllToPlayer(player);
 			dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideServerHandler.syncToPlayer(player);
 		}
@@ -197,11 +222,19 @@ public class GeneralEventHandlers {
 	@SubscribeEvent
 	public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
 		clearPlayerSpells(event.getEntity());
+		if (event.getEntity() instanceof ServerPlayer player) {
+			dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+					.clearQuote(player.getUUID());
+		}
 	}
 
 	@SubscribeEvent
 	public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
 		clearPlayerSpells(event.getEntity());
+		if (event.getEntity() instanceof ServerPlayer player) {
+			dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE
+					.clearQuote(player.getUUID());
+		}
 	}
 
 	@SubscribeEvent
@@ -247,6 +280,7 @@ public class GeneralEventHandlers {
 
 	private static void clearPlayerSpells(LivingEntity entity) {
 		if (entity instanceof ServerPlayer player) {
+			ClassicControlService.reset(player);
 			GrazeCapability.HOLDER.get(player).clearCombatState(true);
 			SpellContainer.clear(player);
 		}

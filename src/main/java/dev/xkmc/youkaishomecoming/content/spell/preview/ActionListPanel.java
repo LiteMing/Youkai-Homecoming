@@ -8,6 +8,8 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.ColorProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -74,6 +76,8 @@ public class ActionListPanel {
 	 * For section-level: parentPath=null, branch=null.
 	 * For conditional branch: parentPath = path to the ConditionalAction, branch = "true"/"false".
 	 */
+	public record ActionEntry(ActionPath path, SpellAction action) {}
+
 	public record AddTarget(String section, @Nullable ActionPath parentPath, @Nullable String branch) {
 		public static AddTarget section(String section) {
 			return new AddTarget(section, null, null);
@@ -88,7 +92,7 @@ public class ActionListPanel {
 		}
 	}
 
-	private enum RowKind {SECTION, ACTION, ADD_BUTTON}
+	private enum RowKind {SUMMARY, SECTION, ACTION, BRANCH}
 
 	private record Row(RowKind kind, int y, int indent, boolean ancestorDisabled,
 					   String section, String sectionTitle,
@@ -98,17 +102,23 @@ public class ActionListPanel {
 			return new Row(RowKind.SECTION, y, 0, false, section, title, null, null, null, null);
 		}
 
+		static Row summary(String title, int y) {
+			return new Row(RowKind.SUMMARY, y, 0, false, null, title, null, null, null, null);
+		}
+
 		static Row action(ActionPath path, SpellAction action, int indent, int y, boolean ancestorDisabled) {
 			return new Row(RowKind.ACTION, y, indent, ancestorDisabled, null, null, path, action, null, null);
 		}
 
-		static Row addButton(AddTarget target, String label, int indent, int y) {
-			return new Row(RowKind.ADD_BUTTON, y, indent, false, null, null, null, null, target, label);
+		static Row branch(AddTarget target, String label, int indent, int y) {
+			return new Row(RowKind.BRANCH, y, indent, false, null, null,
+					target.parentPath(), null, target, label);
 		}
 	}
 
 	private int x, y, w, h;
 	private PhaseDefinition phase;
+	private final java.util.function.Supplier<SpellDefinition> definitionSupplier;
 	private ActionPath selectedPath;
 	private final List<Row> rows = new ArrayList<>();
 	private int scrollOffset = 0;
@@ -122,6 +132,10 @@ public class ActionListPanel {
 
 	// Collapse state: set of action paths that are collapsed
 	private final java.util.Set<String> collapsedPaths = new java.util.HashSet<>();
+	// Optional action branches have their own folder state. This is deliberately
+	// separate from the parent action collapse state so a callback can be folded
+	// without hiding the action's ordinary fields and sibling callbacks.
+	private final java.util.Set<String> collapsedBranchPaths = new java.util.HashSet<>();
 	// When true, all add-buttons are shown (toggle with Ctrl+B); when false only selected node's add-buttons show
 	private boolean showAllAddButtons = false;
 
@@ -130,6 +144,12 @@ public class ActionListPanel {
 
 	// Custom node names (collapseKey → display name)
 	private final java.util.Map<String, String> customNames = new java.util.HashMap<>();
+	// Names are attached to action identity while the editor is open. Paths are
+	// only the serialized representation and therefore must not drive the UI
+	// after a move or a parent record has been rebuilt.
+	private final java.util.IdentityHashMap<SpellAction, String> nodeCustomNames = new java.util.IdentityHashMap<>();
+	private final java.util.IdentityHashMap<SpellAction, Boolean> nodeCustomNameScoped = new java.util.IdentityHashMap<>();
+	private final java.util.Map<String, SpellAction> customNameOwners = new java.util.HashMap<>();
 	private boolean showCustomNames = true;
 
 	// Rename state
@@ -144,14 +164,20 @@ public class ActionListPanel {
 	private ActionPath dragSourcePath = null;
 	private String dragSourceSection = null;
 	private double dragStartX, dragStartY;
+	private int dragSourceIndent = 0;
 	private static final int DRAG_THRESHOLD = 4;
+	private static final int DRAG_INDENT_THRESHOLD = 12;
 	private boolean dragThresholdMet = false;
+	private List<ActionPath> dragSourceRoots = List.of();
+	@Nullable
+	private ActionPath pendingSingleSelection = null;
 
 	// Scrollbar drag state
 	private boolean scrollbarDragging = false;
 
 	// Drop target: either a gap between top-level rows or an AddTarget (branch insert)
 	private int dragIndicatorY = -1;       // Y for the indicator line (reorder mode)
+	private int dragIndicatorIndent = -1;  // actual tree level of the reorder target
 	private int dragInsertIndex = -1;      // index for reorder within container
 	private String dragInsertSection = null;
 	// null = top-level section list; otherwise parent path entries (last entry carries the branch)
@@ -168,36 +194,48 @@ public class ActionListPanel {
 	private final Runnable onMoved;
 	private final UndoManager undoManager = new UndoManager();
 
-	public ActionListPanel(BiConsumer<SpellAction, ActionPath> onSelect, Consumer<AddTarget> onRequestAdd, Runnable onMoved) {
+	public ActionListPanel(BiConsumer<SpellAction, ActionPath> onSelect, Consumer<AddTarget> onRequestAdd,
+			Runnable onMoved, java.util.function.Supplier<SpellDefinition> definitionSupplier) {
 		this.onSelect = onSelect;
 		this.onRequestAdd = onRequestAdd;
 		this.onMoved = onMoved;
+		this.definitionSupplier = definitionSupplier;
 	}
 
 	/** Save current state before a mutation. */
 	private void pushUndo() {
-		if (phase != null) undoManager.pushUndo(phase);
+		if (phase != null) {
+			syncCustomNamesFromActions();
+			undoManager.pushUndo(phase, customNames);
+		}
 	}
 
 	/** Undo last change, returning true if state was restored. */
 	public boolean undo() {
 		if (phase == null) return false;
-		var restored = undoManager.undo(phase);
+		syncCustomNamesFromActions();
+		var restored = undoManager.undo(phase, customNames);
 		if (restored == null) return false;
-		applyRestoredPhase(restored);
+		applyRestoredPhase(restored.phase(), restored.customNames());
 		return true;
 	}
 
 	/** Redo last undone change, returning true if state was restored. */
 	public boolean redo() {
 		if (phase == null) return false;
-		var restored = undoManager.redo(phase);
+		syncCustomNamesFromActions();
+		var restored = undoManager.redo(phase, customNames);
 		if (restored == null) return false;
-		applyRestoredPhase(restored);
+		applyRestoredPhase(restored.phase(), restored.customNames());
 		return true;
 	}
 
 	private void applyRestoredPhase(PhaseDefinition restored) {
+		applyRestoredPhase(restored, null);
+	}
+
+	private void applyRestoredPhase(PhaseDefinition restored,
+			@Nullable java.util.Map<String, String> restoredCustomNames) {
 		// Replace the contents of the current phase with restored data
 		phase.onEnter.clear(); phase.onEnter.addAll(restored.onEnter);
 		phase.onTick.clear(); phase.onTick.addAll(restored.onTick);
@@ -207,7 +245,12 @@ public class ActionListPanel {
 		selectedPath = null;
 		selectedPaths.clear();
 		selectedAddTarget = null;
+		if (restoredCustomNames != null) {
+			customNames.clear();
+			customNames.putAll(restoredCustomNames);
+		}
 		dirty = true;
+		bindCustomNamesToActions();
 	}
 
 	public void setBounds(int x, int y, int w, int h) {
@@ -219,22 +262,28 @@ public class ActionListPanel {
 	}
 
 	public void setPhase(PhaseDefinition phase) {
+		boolean phaseChanged = this.phase != phase;
+		if (this.phase != null && phaseChanged) syncCustomNamesFromActions();
 		this.phase = phase;
+		if (phaseChanged) undoManager.clear();
 		this.selectedPath = null;
 		this.selectedPaths.clear();
 		this.selectedAddTarget = null;
 		this.scrollOffset = 0;
 		this.dirty = true;
+		bindCustomNamesToActions();
 	}
 
 	/** Load custom names from spell definition (called on editor open). */
 	public void loadCustomNames(java.util.Map<String, String> names) {
 		customNames.clear();
 		customNames.putAll(names);
+		bindCustomNamesToActions();
 	}
 
 	/** Save custom names back to spell definition (called on editor close/save). */
 	public java.util.Map<String, String> getCustomNames() {
+		syncCustomNamesFromActions();
 		return new java.util.HashMap<>(customNames);
 	}
 
@@ -243,6 +292,131 @@ public class ActionListPanel {
 			customNames.remove(key);
 		} else {
 			customNames.put(key, value);
+		}
+		bindCustomNamesToActions();
+	}
+
+	private void bindCustomNamesToActions() {
+		nodeCustomNames.clear();
+		nodeCustomNameScoped.clear();
+		customNameOwners.clear();
+		if (phase == null) return;
+		buildRowsIfDirty();
+		for (Row row : rows) {
+			if (row.kind != RowKind.ACTION || row.action == null || row.path == null) continue;
+			String scopedKey = scopedCollapseKey(row.path);
+			String legacyKey = collapseKey(row.path);
+			boolean scoped = customNames.containsKey(scopedKey);
+			String key = scoped ? scopedKey : legacyKey;
+			String name = customNames.get(key);
+			if (name != null && !name.isBlank()) {
+				nodeCustomNames.put(row.action, name);
+				nodeCustomNameScoped.put(row.action, scoped);
+				customNameOwners.put(key, row.action);
+			}
+		}
+	}
+
+	private void syncCustomNamesFromActions() {
+		if (phase == null) return;
+		buildRowsIfDirty();
+		java.util.Map<SpellAction, String> currentKeys = new java.util.IdentityHashMap<>();
+		for (Row row : rows) {
+			if (row.kind != RowKind.ACTION || row.action == null || row.path == null) continue;
+			String name = nodeCustomNames.get(row.action);
+			if (name == null || name.isBlank()) continue;
+			String key = keyFor(row.path, nodeCustomNameScoped.getOrDefault(
+					row.action, preferScopedCustomNames()));
+			currentKeys.put(row.action, key);
+		}
+		// Remove serialized keys that belonged to moved/deleted nodes. Keep a
+		// key when another node now owns it, so an unrelated node is not renamed.
+		for (var entry : new ArrayList<>(customNameOwners.entrySet())) {
+			SpellAction owner = entry.getValue();
+			String currentKey = currentKeys.get(owner);
+			if (!java.util.Objects.equals(entry.getKey(), currentKey)
+					&& java.util.Objects.equals(customNames.get(entry.getKey()), nodeCustomNames.get(owner))) {
+				customNames.remove(entry.getKey());
+			}
+		}
+		customNameOwners.clear();
+		for (var entry : currentKeys.entrySet()) {
+			String key = entry.getValue();
+			String name = nodeCustomNames.get(entry.getKey());
+			if (name != null && !name.isBlank()) {
+				customNames.put(key, name);
+				customNameOwners.put(key, entry.getKey());
+			}
+		}
+	}
+
+	@Nullable
+	private String customNameFor(@Nullable SpellAction action, @Nullable ActionPath path) {
+		if (action != null) {
+			String name = nodeCustomNames.get(action);
+			if (name != null && !name.isBlank()) return name;
+		}
+		if (path == null) return null;
+		String scoped = customNames.get(scopedCollapseKey(path));
+		return scoped != null && !scoped.isBlank() ? scoped : customNames.get(collapseKey(path));
+	}
+
+	private void setNodeCustomName(@Nullable SpellAction action, ActionPath path, @Nullable String value) {
+		boolean scoped = action == null ? preferScopedCustomNames()
+				: nodeCustomNameScoped.getOrDefault(action, preferScopedCustomNames());
+		String key = keyFor(path, scoped);
+		if (action != null) {
+			for (var entry : new ArrayList<>(customNameOwners.entrySet())) {
+				if (entry.getValue() == action && !entry.getKey().equals(key)) {
+					customNames.remove(entry.getKey());
+					customNameOwners.remove(entry.getKey());
+				}
+			}
+		}
+		if (value == null || value.isBlank()) {
+			if (action != null) {
+				nodeCustomNames.remove(action);
+				nodeCustomNameScoped.remove(action);
+			}
+			customNames.remove(key);
+			customNameOwners.remove(key);
+		} else {
+			if (action != null) {
+				nodeCustomNames.put(action, value);
+				nodeCustomNameScoped.put(action, scoped);
+			}
+			customNames.put(key, value);
+			if (action != null) customNameOwners.put(key, action);
+		}
+	}
+
+	private String scopedCollapseKey(ActionPath path) {
+		return phaseScope() + "/" + collapseKey(path);
+	}
+
+	private String keyFor(ActionPath path, boolean scoped) {
+		return scoped ? scopedCollapseKey(path) : collapseKey(path);
+	}
+
+	private String phaseScope() {
+		if (phase == null || phase.id == null) return "main";
+		String path = phase.id.getPath();
+		int split = path.lastIndexOf('/');
+		return split < 0 ? path : path.substring(split + 1);
+	}
+
+	private boolean preferScopedCustomNames() {
+		return !"main".equals(phaseScope());
+	}
+
+	private void transferNodeCustomName(SpellAction oldAction, SpellAction newAction) {
+		if (oldAction == newAction) return;
+		String name = nodeCustomNames.remove(oldAction);
+		Boolean scoped = nodeCustomNameScoped.remove(oldAction);
+		if (name != null && !name.isBlank()) nodeCustomNames.put(newAction, name);
+		if (scoped != null) nodeCustomNameScoped.put(newAction, scoped);
+		for (var entry : customNameOwners.entrySet()) {
+			if (entry.getValue() == oldAction) entry.setValue(newAction);
 		}
 	}
 
@@ -258,6 +432,61 @@ public class ActionListPanel {
 	@Nullable
 	public SpellAction getActionAtPath(ActionPath path) {
 		return path == null ? null : getActionAt(path);
+	}
+
+	public List<ActionEntry> getActionEntries() {
+		List<ActionEntry> result = new ArrayList<>();
+		if (phase == null) return List.of();
+		collectActionEntries(result, "enter", phase.onEnter);
+		collectActionEntries(result, "tick", phase.onTick);
+		collectActionEntries(result, "exit", phase.onExit);
+		collectActionEntries(result, "damage", phase.onDamage);
+		return List.copyOf(result);
+	}
+
+	private static void collectActionEntries(List<ActionEntry> output, String section,
+			List<SpellAction> actions) {
+		for (int i = 0; i < actions.size(); i++) {
+			collectActionEntry(output, ActionPath.topLevel(section, i), actions.get(i));
+		}
+	}
+
+	private static void collectActionEntry(List<ActionEntry> output, ActionPath path, SpellAction action) {
+		output.add(new ActionEntry(path, action));
+		SpellAction inner = action instanceof SpellActions.DisabledAction disabled ? disabled.inner() : action;
+		if (inner instanceof SpellActions.ConditionalAction conditional) {
+			collectActionBranch(output, path, "true", conditional.ifTrue());
+			collectActionBranch(output, path, "false", conditional.ifFalse());
+		} else if (inner instanceof SpellActions.RepeatAction repeat) {
+			collectActionBranch(output, path, "body", repeat.body());
+		} else if (inner instanceof SpellActions.SequenceAction sequence) {
+			collectActionBranch(output, path, "actions", sequence.actions());
+		} else if (inner instanceof DelayAction delay) {
+			collectActionBranch(output, path, "body", delay.body());
+		} else if (inner instanceof HoldSourceAction hold) {
+			collectActionBranch(output, path, "onRelease", hold.onRelease());
+		} else if (inner instanceof BurstAction burst) {
+			collectActionBranch(output, path, "body", burst.body());
+		} else if (inner instanceof FireDanmakuAction fire) {
+			collectActionBranch(output, path, "onExpiry", fire.onExpiry().orElse(List.of()));
+			collectActionBranch(output, path, "onTrail", fire.onTrail().orElse(List.of()));
+			collectActionBranch(output, path, "onHitEntity", fire.onHitEntity().orElse(List.of()));
+			collectActionBranch(output, path, "onHitBlock", fire.onHitBlock().orElse(List.of()));
+		} else if (inner instanceof FireLaserAction laser) {
+			collectActionBranch(output, path, "onExpiry", laser.onExpiry().orElse(List.of()));
+			collectActionBranch(output, path, "onTrail", laser.onTrail().orElse(List.of()));
+			collectActionBranch(output, path, "onHitEntity", laser.onHitEntity().orElse(List.of()));
+			collectActionBranch(output, path, "onHitBlock", laser.onHitBlock().orElse(List.of()));
+		} else if (inner instanceof SpawnShooterAction shooter) {
+			collectActionBranch(output, path, "body", shooter.body());
+		}
+	}
+
+	private static void collectActionBranch(List<ActionEntry> output, ActionPath parent,
+			String branch, List<SpellAction> children) {
+		for (int i = 0; i < children.size(); i++) {
+			collectActionEntry(output, parent.child(branch, i), children.get(i));
+		}
 	}
 
 	public boolean selectPath(ActionPath path) {
@@ -315,6 +544,34 @@ public class ActionListPanel {
 		dirty = true;
 	}
 
+	public boolean hasLinkedSpellTitle(@Nullable ActionPath path) {
+		if (path == null || path.isNested()) return false;
+		List<SpellAction> list = getSectionList(path.section());
+		int index = path.leafIndex();
+		return list != null && index >= 0 && index + 1 < list.size()
+				&& list.get(index) instanceof SetSpellHealthAction
+				&& list.get(index + 1) instanceof ShowSpellTitleAction;
+	}
+
+	public boolean setLinkedSpellTitle(@Nullable ActionPath path, boolean enabled) {
+		if (path == null || path.isNested()) return false;
+		List<SpellAction> list = getSectionList(path.section());
+		int index = path.leafIndex();
+		if (list == null || index < 0 || index >= list.size()
+				|| !(list.get(index) instanceof SetSpellHealthAction)) return false;
+		boolean linked = index + 1 < list.size() && list.get(index + 1) instanceof ShowSpellTitleAction;
+		if (linked == enabled) return false;
+		pushUndo();
+		if (enabled) {
+			list.add(index + 1, new ShowSpellTitleAction("", "", 100, 64.0));
+		} else {
+			list.remove(index + 1);
+		}
+		dirty = true;
+		onMoved.run();
+		return true;
+	}
+
 	// --- Row building ---
 
 	private void buildRowsIfDirty() {
@@ -328,10 +585,37 @@ public class ActionListPanel {
 		rows.clear();
 		if (phase == null) return;
 		int cy = y + PADDING - scrollOffset;
+		SpellDefinition definition = definitionSupplier == null ? null : definitionSupplier.get();
+		rows.add(Row.summary(spellHeader(definition), cy));
+		cy += ROW_HEIGHT;
 		cy = buildSection("onEnter", phase.onEnter, cy, "enter");
 		cy = buildSection("onTick", phase.onTick, cy, "tick");
 		cy = buildSection("onExit", phase.onExit, cy, "exit");
 		buildSection("onDamage", phase.onDamage, cy, "damage");
+	}
+
+	private static String spellHeader(@Nullable SpellDefinition definition) {
+		if (definition == null) return SpellEditorLocalization.t("Spell Card");
+		SpellCardType type = definition.itemForm.cardType() == null
+				? SpellCardType.NORMAL : definition.itemForm.cardType();
+		String name = definition.display.displayName().getString().trim();
+		if (name.isEmpty()) name = definition.id.getPath();
+		if (SpellEditorLocalization.isChinese()) {
+			String prefix = switch (type) {
+				case NORMAL -> "符卡";
+				case TIMEOUT_SPELL -> "时符";
+				case LAST_SPELL -> "终符";
+				case NON_SPELL -> "非符";
+			};
+			return prefix + "「" + name + "」";
+		}
+		String prefix = switch (type) {
+			case NORMAL -> "Spell Card";
+			case TIMEOUT_SPELL -> "Timeout Spell";
+			case LAST_SPELL -> "Last Spell";
+			case NON_SPELL -> "Non-Spell";
+		};
+		return prefix + " \"" + name + "\"";
 	}
 
 	private int buildSection(String title, List<SpellAction> actions, int startY, String section) {
@@ -352,6 +636,7 @@ public class ActionListPanel {
 		if (inner instanceof SpellActions.RepeatAction) return true;
 		if (inner instanceof SpellActions.SequenceAction) return true;
 		if (inner instanceof DelayAction) return true;
+		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction) return true;
 		if (inner instanceof BurstAction) return true;
 		if (inner instanceof FireDanmakuAction fda)
 			return fda.onExpiry().isPresent() || fda.onTrail().isPresent()
@@ -372,6 +657,30 @@ public class ActionListPanel {
 		return sb.toString();
 	}
 
+	private String branchCollapseKey(AddTarget target) {
+		return collapseKey(target.parentPath()) + "/@" + target.branch();
+	}
+
+	private boolean isBranchCollapsed(AddTarget target) {
+		return collapsedBranchPaths.contains(branchCollapseKey(target));
+	}
+
+	private int buildBranch(List<SpellAction> actions, String branch, String label,
+			ActionPath parentPath, int indent, int startY, String section,
+			boolean parentDisabled, boolean alwaysShow, boolean showAdd) {
+		if (!alwaysShow && actions.isEmpty() && !showAdd) return startY;
+		int cy = startY;
+		AddTarget target = AddTarget.branch(section, parentPath, branch);
+		rows.add(Row.branch(target, label + " (" + actions.size() + ")", indent, cy));
+		cy += ROW_HEIGHT;
+		if (isBranchCollapsed(target)) return cy;
+		for (int j = 0; j < actions.size(); j++) {
+			ActionPath childPath = parentPath.child(branch, j);
+			cy = buildActionTree(actions.get(j), childPath, indent + 1, cy, section, parentDisabled);
+		}
+		return cy;
+	}
+
 	/**
 	 * Recursively build tree rows for an action. If the action is a ConditionalAction,
 	 * its if_true/if_false branches are rendered as indented sub-trees.
@@ -383,6 +692,11 @@ public class ActionListPanel {
 		if (isDragging && dragExpandedPaths.contains(collapseKey(parentPath))) return true;
 		// Only show add-buttons for the currently selected node
 		return selectedPath != null && collapseKey(selectedPath).equals(collapseKey(parentPath));
+	}
+
+	private boolean canAcceptBranchChildren(SpellAction action) {
+		SpellAction inner = action instanceof SpellActions.DisabledAction da ? da.inner() : action;
+		return hasChildren(inner) || inner instanceof FireDanmakuAction || inner instanceof FireLaserAction;
 	}
 
 	private int buildActionTree(SpellAction action, ActionPath actionPath, int indent, int startY, String section) {
@@ -399,170 +713,89 @@ public class ActionListPanel {
 		// Unwrap DisabledAction for child rendering
 		SpellAction inner = selfDisabled ? ((SpellActions.DisabledAction) action).inner() : action;
 
-		// If this node is collapsed, skip all children
-		if (hasChildren(inner) && collapsedPaths.contains(collapseKey(actionPath))) {
+		// Dragged roots are visually collapsed without changing the saved collapse state.
+		if (hasChildren(inner) && (collapsedPaths.contains(collapseKey(actionPath))
+				|| isDragSourceRoot(actionPath))) {
 			return cy;
 		}
 
 		boolean showAdd = shouldShowAddButtons(actionPath);
 
 		if (inner instanceof SpellActions.ConditionalAction cond) {
-			for (int j = 0; j < cond.ifTrue().size(); j++) {
-				ActionPath childPath = actionPath.child("true", j);
-				cy = buildActionTree(cond.ifTrue().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "true"), "+ if_true", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			for (int j = 0; j < cond.ifFalse().size(); j++) {
-				ActionPath childPath = actionPath.child("false", j);
-				cy = buildActionTree(cond.ifFalse().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "false"), "+ if_false", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(cond.ifTrue(), "true", "if_true", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
+			cy = buildBranch(cond.ifFalse(), "false", "if_false", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof SpellActions.RepeatAction repeat) {
-			for (int j = 0; j < repeat.body().size(); j++) {
-				ActionPath childPath = actionPath.child("body", j);
-				cy = buildActionTree(repeat.body().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(repeat.body(), "body", "body", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof DelayAction delay) {
-			for (int j = 0; j < delay.body().size(); j++) {
-				ActionPath childPath = actionPath.child("body", j);
-				cy = buildActionTree(delay.body().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(delay.body(), "body", "body", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
+		}
+
+		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold) {
+			cy = buildBranch(hold.onRelease(), "onRelease", "onRelease", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof BurstAction burst) {
-			for (int j = 0; j < burst.body().size(); j++) {
-				ActionPath childPath = actionPath.child("body", j);
-				cy = buildActionTree(burst.body().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(burst.body(), "body", "body", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof FireDanmakuAction fda) {
-			List<SpellAction> expiryActions = fda.onExpiry().orElse(List.of());
-			for (int j = 0; j < expiryActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onExpiry", j);
-				cy = buildActionTree(expiryActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onExpiry"), "+ onExpiry", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(fda.onExpiry().orElse(List.of()), "onExpiry", "onExpiry", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			cy = buildBranch(fda.onTrail().orElse(List.of()), "onTrail", "onTrail", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			boolean entityDiscard = fda.hitBehaviorEntity() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.DISCARD;
+			boolean blockDiscard = fda.hitBehaviorBlock() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.DISCARD;
+			boolean entityHasNodes = fda.onHitEntity().isPresent() && !fda.onHitEntity().get().isEmpty();
+			boolean blockHasNodes = fda.onHitBlock().isPresent() && !fda.onHitBlock().get().isEmpty();
 
-			List<SpellAction> trailActions = fda.onTrail().orElse(List.of());
-			for (int j = 0; j < trailActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onTrail", j);
-				cy = buildActionTree(trailActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
+			if (!entityDiscard || entityHasNodes) {
+				cy = buildBranch(fda.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
+						indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onTrail"), "+ onTrail", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> hitEntityActions = fda.onHitEntity().orElse(List.of());
-			for (int j = 0; j < hitEntityActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onHitEntity", j);
-				cy = buildActionTree(hitEntityActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitEntity"), "+ onHitEntity", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> hitBlockActions = fda.onHitBlock().orElse(List.of());
-			for (int j = 0; j < hitBlockActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onHitBlock", j);
-				cy = buildActionTree(hitBlockActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitBlock"), "+ onHitBlock", indent + 1, cy));
-				cy += ROW_HEIGHT;
+			if (!blockDiscard || blockHasNodes) {
+				cy = buildBranch(fda.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
+						indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			}
 		}
 
 		if (inner instanceof FireLaserAction fla) {
-			List<SpellAction> expiryActions = fla.onExpiry().orElse(List.of());
-			for (int j = 0; j < expiryActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onExpiry", j);
-				cy = buildActionTree(expiryActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onExpiry"), "+ onExpiry", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(fla.onExpiry().orElse(List.of()), "onExpiry", "onExpiry", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			cy = buildBranch(fla.onTrail().orElse(List.of()), "onTrail", "onTrail", actionPath,
+					indent + 1, cy, section, effectiveDisabled, false, showAdd);
+			boolean entityDiscard = fla.hitBehaviorEntity() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.DISCARD;
+			boolean blockDiscard = fla.hitBehaviorBlock() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.DISCARD;
+			boolean entityHasNodes = fla.onHitEntity().isPresent() && !fla.onHitEntity().get().isEmpty();
+			boolean blockHasNodes = fla.onHitBlock().isPresent() && !fla.onHitBlock().get().isEmpty();
 
-			List<SpellAction> trailActions = fla.onTrail().orElse(List.of());
-			for (int j = 0; j < trailActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onTrail", j);
-				cy = buildActionTree(trailActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
+			if (!entityDiscard || entityHasNodes) {
+				cy = buildBranch(fla.onHitEntity().orElse(List.of()), "onHitEntity", "onHitEntity", actionPath,
+						indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onTrail"), "+ onTrail", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> hitEntityActions = fla.onHitEntity().orElse(List.of());
-			for (int j = 0; j < hitEntityActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onHitEntity", j);
-				cy = buildActionTree(hitEntityActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitEntity"), "+ onHitEntity", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
-
-			List<SpellAction> hitBlockActions = fla.onHitBlock().orElse(List.of());
-			for (int j = 0; j < hitBlockActions.size(); j++) {
-				ActionPath childPath = actionPath.child("onHitBlock", j);
-				cy = buildActionTree(hitBlockActions.get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "onHitBlock"), "+ onHitBlock", indent + 1, cy));
-				cy += ROW_HEIGHT;
+			if (!blockDiscard || blockHasNodes) {
+				cy = buildBranch(fla.onHitBlock().orElse(List.of()), "onHitBlock", "onHitBlock", actionPath,
+						indent + 1, cy, section, effectiveDisabled, false, showAdd);
 			}
 		}
 
 		if (inner instanceof SpawnShooterAction ssa) {
-			for (int j = 0; j < ssa.body().size(); j++) {
-				ActionPath childPath = actionPath.child("body", j);
-				cy = buildActionTree(ssa.body().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "body"), "+ body", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(ssa.body(), "body", "body", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 
 		if (inner instanceof SpellActions.SequenceAction seq) {
-			for (int j = 0; j < seq.actions().size(); j++) {
-				ActionPath childPath = actionPath.child("actions", j);
-				cy = buildActionTree(seq.actions().get(j), childPath, indent + 1, cy, section, effectiveDisabled);
-			}
-			if (showAdd) {
-				rows.add(Row.addButton(AddTarget.branch(section, actionPath, "actions"), "+ actions", indent + 1, cy));
-				cy += ROW_HEIGHT;
-			}
+			cy = buildBranch(seq.actions(), "actions", "actions", actionPath,
+					indent + 1, cy, section, effectiveDisabled, true, showAdd);
 		}
 		return cy;
 	}
@@ -587,8 +820,12 @@ public class ActionListPanel {
 		for (Row row : rows) {
 			if (row.y + ROW_HEIGHT < y || row.y > y + h) continue;
 
-			if (row.kind == RowKind.SECTION) {
-				g.drawString(font, SpellEditorLocalization.t(row.sectionTitle), x + PADDING, row.y + 2, 0xFF88AACC, false);
+			if (row.kind == RowKind.SUMMARY) {
+				g.drawString(font, row.sectionTitle, x + PADDING, row.y + 2, 0xFFE2E8F0, false);
+			} else if (row.kind == RowKind.SECTION) {
+				String sectionLabel = SpellEditorNodeLabels.sectionMarker(row.section)
+						+ SpellEditorLocalization.t(row.sectionTitle);
+				g.drawString(font, sectionLabel, x + PADDING, row.y + 2, 0xFF88AACC, false);
 				String plus = "[+]";
 				int plusX = x + w - font.width(plus) - PADDING;
 				boolean plusHovered = mouseX >= plusX && mouseX < x + w
@@ -615,7 +852,8 @@ public class ActionListPanel {
 				// Collapse/expand indicator for nodes with children
 				SpellAction checkAction = displayAction;
 				if (checkAction != null && row.path != null && hasChildren(checkAction)) {
-					boolean collapsed = collapsedPaths.contains(collapseKey(row.path));
+					boolean collapsed = collapsedPaths.contains(collapseKey(row.path))
+							|| isDragSourceRoot(row.path);
 					String indicator = collapsed ? "\u25B6" : "\u25BC"; // ▶ or ▼
 					boolean indicatorHovered = mouseX >= ix && mouseX < ix + font.width(indicator) + 2
 							&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT;
@@ -628,7 +866,8 @@ public class ActionListPanel {
 				if (renamingPath != null && row.path != null && row.path.equals(renamingPath)) {
 					g.drawString(font, "> " + renamingText + "_", ix, row.y + 2, 0xFFFFFF44, false);
 				} else {
-					String label = SpellEditorLocalization.t(getDisplayLabel(displayAction, row.path));
+					String label = SpellEditorNodeLabels.actionMarker(displayAction)
+							+ SpellEditorLocalization.t(getDisplayLabel(displayAction, row.path));
 					int textColor;
 					if (isDisabled) {
 						textColor = 0xFF666666; // Gray for disabled
@@ -641,29 +880,45 @@ public class ActionListPanel {
 					}
 					g.drawString(font, label, ix, row.y + 2, textColor, false);
 				}
-			} else if (row.kind == RowKind.ADD_BUTTON) {
+			} else if (row.kind == RowKind.BRANCH) {
 				int ix = x + PADDING + row.indent * INDENT_PX;
 				boolean hovered = mouseX >= x && mouseX < x + w
 						&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT;
 				boolean selected = row.addTarget != null && row.addTarget.equals(selectedAddTarget);
-				if (selected) {
-					g.fill(x + 1, row.y, x + w, row.y + ROW_HEIGHT, 0xFF2a4a2e);
-					g.fill(x + 1, row.y, x + 3, row.y + ROW_HEIGHT, 0xFF66FF66);
+				if (hovered || selected) {
+					g.fill(x + 1, row.y, x + w, row.y + ROW_HEIGHT,
+							selected ? 0xFF34402e : 0xFF292d3d);
 				}
-				g.drawString(font, SpellEditorLocalization.t(row.addLabel), ix, row.y + 2, selected ? 0xFFFFFF88 : (hovered ? 0xFFFFFF44 : 0xFF448844), false);
+				boolean collapsed = row.addTarget != null && isBranchCollapsed(row.addTarget);
+				String indicator = collapsed ? "\u25B6" : "\u25BC";
+				g.drawString(font, indicator, ix, row.y + 2,
+						hovered ? 0xFFFFFF66 : 0xFFB8A85C, false);
+				ix += font.width(indicator) + 2;
+				String branchLabel = SpellEditorNodeLabels.branchMarker(row.addTarget.branch())
+						+ SpellEditorLocalization.t(row.addLabel);
+				g.drawString(font, branchLabel, ix, row.y + 2,
+						selected ? 0xFFFFFF88 : 0xFFD8CA88, false);
+				String plus = "[+]";
+				int plusX = x + w - font.width(plus) - PADDING;
+				boolean plusHovered = mouseX >= plusX && mouseX < x + w
+						&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT;
+				g.drawString(font, plus, plusX, row.y + 2,
+						plusHovered ? 0xFFFFFF44 : 0xFF66AA66, false);
 			}
 		}
 
 		// Drag indicator: yellow line for reorder, green highlight for branch insert
 		if (isDragging) {
 			if (dragBranchTarget != null && dragBranchHighlightY >= y && dragBranchHighlightY <= y + h) {
-				// Green highlight on the branch add-button row
+				// Green highlight on the branch folder row
 				g.fill(x + 1, dragBranchHighlightY, x + w, dragBranchHighlightY + ROW_HEIGHT, 0x6644AA44);
 				g.fill(x + 1, dragBranchHighlightY, x + 3, dragBranchHighlightY + ROW_HEIGHT, 0xFF44FF44);
 			} else if (dragIndicatorY >= y && dragIndicatorY <= y + h) {
-				g.fill(x + 2, dragIndicatorY - 1, x + w - 2, dragIndicatorY + 1, 0xFFFFFF44);
-				// Small markers at edges
-				g.fill(x + 2, dragIndicatorY - 3, x + 6, dragIndicatorY + 3, 0xFFFFFF44);
+				int indicatorX = Math.min(x + w - 8,
+						Math.max(x + 2, x + PADDING + Math.max(0, dragIndicatorIndent) * INDENT_PX));
+				g.fill(indicatorX, dragIndicatorY - 1, x + w - 2, dragIndicatorY + 1, 0xFFFFFF44);
+				// The left marker moves with the target indentation to expose the insertion level.
+				g.fill(indicatorX, dragIndicatorY - 4, indicatorX + 4, dragIndicatorY + 4, 0xFFFFFF44);
 				g.fill(x + w - 6, dragIndicatorY - 3, x + w - 2, dragIndicatorY + 3, 0xFFFFFF44);
 			}
 		}
@@ -763,6 +1018,7 @@ public class ActionListPanel {
 				boolean shiftDown = net.minecraft.client.gui.screens.Screen.hasShiftDown();
 
 				if (ctrlDown) {
+					pendingSingleSelection = null;
 					// Ctrl+click: toggle individual selection
 					if (selectedPaths.contains(row.path)) {
 						selectedPaths.remove(row.path);
@@ -774,6 +1030,7 @@ public class ActionListPanel {
 						if (selectedPath == null) selectedPath = row.path;
 					}
 				} else if (shiftDown && selectedPath != null) {
+					pendingSingleSelection = null;
 					// Shift+click: range select between selectedPath and clicked row
 					selectedPaths.clear();
 					boolean inRange = false;
@@ -792,8 +1049,13 @@ public class ActionListPanel {
 					// Ensure both endpoints are included
 					selectedPaths.add(selectedPath);
 					selectedPaths.add(row.path);
+				} else if (selectedPaths.size() > 1 && selectedPaths.contains(row.path)) {
+					// Preserve the group until release so this gesture can still turn
+					// into a multi-node drag. A plain click collapses it on release.
+					selectedPath = row.path;
+					pendingSingleSelection = row.path;
 				} else {
-					// Normal click: single select, clear multi-selection
+					pendingSingleSelection = null;
 					selectedPaths.clear();
 					selectedPaths.add(row.path);
 					selectedPath = row.path;
@@ -802,20 +1064,34 @@ public class ActionListPanel {
 				selectedAddTarget = null;
 				dirty = true; // rebuild to show/hide add-buttons for newly selected node
 				onSelect.accept(row.action, row.path);
-				// Start potential drag for any action (only for single selection)
+				// Start a potential single- or multi-node drag.
 				if (!ctrlDown && !shiftDown) {
 					dragSourcePath = row.path;
 					dragSourceSection = row.path.section;
 					dragStartX = mouseX;
 					dragStartY = mouseY;
+					dragSourceIndent = row.indent;
 					dragThresholdMet = false;
 				}
 				return true;
-			} else if (row.kind == RowKind.ADD_BUTTON) {
-				selectedAddTarget = row.addTarget;
-				selectedPath = row.addTarget.parentPath();
+			} else if (row.kind == RowKind.BRANCH) {
+				if (row.addTarget == null) return true;
+				String plus = "[+]";
+				int plusX = x + w - font.width(plus) - PADDING;
+				if (mouseX >= plusX) {
+					selectedAddTarget = row.addTarget;
+					selectedPath = row.addTarget.parentPath();
+					onRequestAdd.accept(row.addTarget);
+					return true;
+				}
+				selectedAddTarget = null;
+				String key = branchCollapseKey(row.addTarget);
+				if (collapsedBranchPaths.contains(key)) {
+					collapsedBranchPaths.remove(key);
+				} else {
+					collapsedBranchPaths.add(key);
+				}
 				dirty = true;
-				onRequestAdd.accept(row.addTarget);
 				return true;
 			}
 		}
@@ -835,13 +1111,16 @@ public class ActionListPanel {
 			double dx = mouseX - dragStartX;
 			double dy = mouseY - dragStartY;
 			if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return false;
+			dragSourceRoots = getDragSourcePaths();
 			dragThresholdMet = true;
 			isDragging = true;
+			pendingSingleSelection = null;
+			dirty = true;
 		}
 
 		// Find the insertion point closest to mouse Y
 		buildRowsIfDirty();
-		updateDragInsertPoint(mouseY);
+		updateDragInsertPoint(mouseX, mouseY);
 		return true;
 	}
 
@@ -854,6 +1133,8 @@ public class ActionListPanel {
 		boolean wasDragging = isDragging;
 		if (isDragging && dragSourcePath != null) {
 			performDrop();
+		} else if (pendingSingleSelection != null) {
+			collapseSelectionTo(pendingSingleSelection);
 		}
 		cancelDrag();
 		return wasDragging;
@@ -864,45 +1145,51 @@ public class ActionListPanel {
 		dragSourcePath = null;
 		dragSourceSection = null;
 		dragIndicatorY = -1;
+		dragIndicatorIndent = -1;
 		dragInsertIndex = -1;
 		dragInsertSection = null;
 		dragInsertContainerPrefix = null;
 		dragBranchTarget = null;
 		dragBranchHighlightY = -1;
 		dragThresholdMet = false;
-		if (!dragExpandedPaths.isEmpty()) {
+		pendingSingleSelection = null;
+		if (!dragSourceRoots.isEmpty() || !dragExpandedPaths.isEmpty()) {
+			dragSourceRoots = List.of();
 			dragExpandedPaths.clear();
 			dirty = true;
 		}
 	}
 
 	/**
-	 * Update the drag insertion indicator based on mouse Y.
+	 * Update the drag insertion indicator based on mouse position.
 	 * Checks two kinds of drop targets:
 	 * 1. Gaps between top-level action rows in the same section (reorder)
-	 * 2. ADD_BUTTON rows (insert into branch of Conditional/Repeat)
+	 * 2. Branch folder rows (insert into a nested action list)
 	 */
-	private void updateDragInsertPoint(double mouseY) {
+	private void updateDragInsertPoint(double mouseX, double mouseY) {
 		dragIndicatorY = -1;
+		dragIndicatorIndent = -1;
 		dragInsertIndex = -1;
 		dragInsertSection = null;
 		dragBranchTarget = null;
 		dragBranchHighlightY = -1;
 
-		String sourceSection = dragSourcePath.section;
+		List<ActionPath> sourcePaths = getDragSourcePaths();
+		int intentIndent = getDragIntentIndent(mouseX);
 		double bestDist = Double.MAX_VALUE;
 
-		// === Check ACTION rows that have children (auto-expand for drag) ===
+		// Expand a potential parent only after the cursor explicitly enters its
+		// child lane. Vertical dragging in the sibling lane must never open it.
 		boolean expandedAny = false;
 		for (Row row : rows) {
 			if (row.kind == RowKind.ACTION && row.path != null && row.action != null) {
 				SpellAction inner = row.action instanceof SpellActions.DisabledAction da ? da.inner() : row.action;
-				if (hasChildren(inner) && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
-					// Auto-expand this node during drag so its add-buttons become visible
+				if (canAcceptBranchChildren(inner) && intentIndent > row.indent
+						&& mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 					String key = collapseKey(row.path);
-					collapsedPaths.remove(key);
-					dragExpandedPaths.add(key);
-					expandedAny = true;
+					if (collapsedPaths.remove(key) | dragExpandedPaths.add(key)) {
+						expandedAny = true;
+					}
 				}
 			}
 		}
@@ -911,41 +1198,58 @@ public class ActionListPanel {
 			buildRowsIfDirty();
 		}
 
-		// === Check ADD_BUTTON rows (branch insert targets) ===
+		// A section header is an explicit top-level drop target. This also makes
+		// empty onEnter/onTick/onExit/onDamage lists usable without a placeholder.
 		for (Row row : rows) {
-			if (row.kind != RowKind.ADD_BUTTON || row.addTarget == null) continue;
-			// Only allow dropping into branches within the same section
-			if (!sourceSection.equals(row.addTarget.section)) continue;
-			// Skip add-buttons that belong to the dragged action's own subtree.
-			// Dropping into self would delete the action then fail to insert (swallowing bug).
-			if (dragSourcePath != null && row.addTarget.parentPath() != null) {
-				var srcEntries = dragSourcePath.path();
-				var targetEntries = row.addTarget.parentPath().path();
-				if (targetEntries.size() >= srcEntries.size()) {
-					boolean isDescendant = true;
-					for (int k = 0; k < srcEntries.size(); k++) {
-						if (srcEntries.get(k).index() != targetEntries.get(k).index()) {
-							isDescendant = false;
-							break;
-						}
-					}
-					if (isDescendant) continue;
-				}
+			if (row.kind != RowKind.SECTION) continue;
+			if (intentIndent == 0 && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
+				dragIndicatorY = row.y + ROW_HEIGHT;
+				dragIndicatorIndent = 1;
+				dragInsertIndex = 0;
+				dragInsertSection = row.section;
+				dragInsertContainerPrefix = null;
+				return;
 			}
-			// Check if mouse is directly over this add-button row
-			if (mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
+		}
+
+		// Directly hovering an action in the same indentation lane means sibling
+		// reorder. Its lower half targets the gap after the entire subtree.
+		for (Row row : rows) {
+			if (row.kind != RowKind.ACTION || row.path == null || row.indent != intentIndent) continue;
+			if (mouseY < row.y || mouseY >= row.y + ROW_HEIGHT) continue;
+			List<PathEntry> prefix = row.path.path().subList(0, row.path.path().size() - 1);
+			boolean after = mouseY >= row.y + ROW_HEIGHT / 2.0;
+			dragIndicatorY = after ? findBottomOfRowSubtree(row) : row.y;
+			dragIndicatorIndent = row.indent;
+			dragInsertIndex = row.path.leafIndex() + (after ? 1 : 0);
+			dragInsertSection = row.path.section();
+			dragInsertContainerPrefix = prefix.isEmpty() ? null : new ArrayList<>(prefix);
+			return;
+		}
+
+		// === Check branch folder rows (branch insert targets) ===
+		for (Row row : rows) {
+			if (row.kind != RowKind.BRANCH || row.addTarget == null) continue;
+			// Skip folders that belong to the dragged action's own subtree.
+			// Dropping into self would delete the action then fail to insert (swallowing bug).
+			if (row.addTarget.parentPath() != null && isInsideAnySource(row.addTarget.parentPath(), sourcePaths)) {
+				continue;
+			}
+			// Check if mouse is directly over this branch folder row.
+			if (row.indent == intentIndent && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 				double dist = Math.abs(mouseY - (row.y + ROW_HEIGHT / 2.0));
 				if (dist < bestDist) {
 					bestDist = dist;
 					// Clear reorder target
 					dragIndicatorY = -1;
+					dragIndicatorIndent = -1;
 					dragInsertIndex = -1;
 					dragInsertSection = null;
 					// Set branch target
 					dragBranchTarget = row.addTarget;
 					dragBranchHighlightY = row.y;
 				}
-				return; // If mouse is directly on an add-button, prefer it
+				return; // If mouse is directly on a folder, prefer it.
 			}
 		}
 
@@ -953,7 +1257,8 @@ public class ActionListPanel {
 		// A container is either the top-level section list, or a branch list
 		// (if_true/if_false/body/onExpiry/...) of a parent action. Rows are grouped
 		// by their container prefix path (all entries except the leaf).
-		java.util.Map<List<PathEntry>, List<Row>> containers = new java.util.LinkedHashMap<>();
+		record ContainerKey(String section, List<PathEntry> prefix) {}
+		java.util.Map<ContainerKey, List<Row>> containers = new java.util.LinkedHashMap<>();
 		String currentSection = null;
 		for (Row row : rows) {
 			if (row.kind == RowKind.SECTION) {
@@ -961,21 +1266,19 @@ public class ActionListPanel {
 				continue;
 			}
 			if (row.kind != RowKind.ACTION || row.path == null) continue;
-			if (!sourceSection.equals(currentSection)) continue;
 			int n = row.path.path().size();
 			List<PathEntry> prefix = row.path.path().subList(0, n - 1);
-			containers.computeIfAbsent(prefix, k -> new ArrayList<>()).add(row);
+			containers.computeIfAbsent(new ContainerKey(currentSection, List.copyOf(prefix)), k -> new ArrayList<>()).add(row);
 		}
 		for (var entry : containers.entrySet()) {
 			List<Row> group = entry.getValue();
-			List<PathEntry> prefix = entry.getKey();
+			if (group.isEmpty() || group.get(0).indent != intentIndent) continue;
+			String section = entry.getKey().section();
+			List<PathEntry> prefix = entry.getKey().prefix();
 			if (!prefix.isEmpty()) {
-				// Top-level sources keep the old top-level-only gap behavior;
-				// branch insertion from top level is done via add-button drop targets.
-				if (!dragSourcePath.isNested()) continue;
 				// Skip containers inside the dragged action's own subtree (self-drop)
-				ActionPath containerPath = new ActionPath(sourceSection, prefix);
-				if (isSameActionOrDescendant(containerPath, dragSourcePath)) continue;
+				ActionPath containerPath = new ActionPath(section, prefix);
+				if (isInsideAnySource(containerPath, sourcePaths)) continue;
 			}
 			for (int i = 0; i <= group.size(); i++) {
 				int gapY;
@@ -988,8 +1291,9 @@ public class ActionListPanel {
 				if (dist < bestDist) {
 					bestDist = dist;
 					dragIndicatorY = gapY;
+					dragIndicatorIndent = group.get(0).indent;
 					dragInsertIndex = i;
-					dragInsertSection = sourceSection;
+					dragInsertSection = section;
 					dragInsertContainerPrefix = prefix.isEmpty() ? null : new ArrayList<>(prefix);
 					// Clear branch target
 					dragBranchTarget = null;
@@ -997,6 +1301,77 @@ public class ActionListPanel {
 				}
 			}
 		}
+
+		// Empty sections have no action container in the map. Offer the gap just
+		// below their header when it is the nearest target.
+		for (Row row : rows) {
+			if (intentIndent != 0 || row.kind != RowKind.SECTION || getSectionList(row.section) == null
+					|| !getSectionList(row.section).isEmpty()) continue;
+			int gapY = row.y + ROW_HEIGHT;
+			double dist = Math.abs(mouseY - gapY);
+			if (dist < bestDist) {
+				bestDist = dist;
+				dragIndicatorY = gapY;
+				dragIndicatorIndent = 1;
+				dragInsertIndex = 0;
+				dragInsertSection = row.section;
+				dragInsertContainerPrefix = null;
+				dragBranchTarget = null;
+				dragBranchHighlightY = -1;
+			}
+		}
+	}
+
+	private int getDragIntentIndent(double mouseX) {
+		double delta = mouseX - dragStartX;
+		double distance = Math.abs(delta);
+		if (distance < DRAG_INDENT_THRESHOLD) return dragSourceIndent;
+		int levels = 1 + (int) ((distance - DRAG_INDENT_THRESHOLD) / INDENT_PX);
+		return Math.max(0, dragSourceIndent + (delta < 0 ? -levels : levels));
+	}
+
+	private void collapseSelectionTo(ActionPath path) {
+		SpellAction action = getActionAt(path);
+		selectedPaths.clear();
+		selectedPaths.add(path);
+		selectedPath = path;
+		selectedAddTarget = null;
+		dirty = true;
+		if (action != null) onSelect.accept(action, path);
+	}
+
+	private boolean isInsideAnySource(ActionPath path, List<ActionPath> sourcePaths) {
+		for (ActionPath source : sourcePaths) {
+			if (isSameActionOrDescendant(path, source)) return true;
+		}
+		return false;
+	}
+
+	private boolean isDragSourceRoot(ActionPath path) {
+		return isDragging && dragSourceRoots.contains(path);
+	}
+
+	/** Selected roots in visual order; descendants of another selected node are implicit. */
+	private List<ActionPath> getDragSourcePaths() {
+		if (isDragging && !dragSourceRoots.isEmpty()) return dragSourceRoots;
+		List<ActionPath> selected = getSelectedPathsInTreeOrder();
+		if (!selected.contains(dragSourcePath)) selected = List.of(dragSourcePath);
+		return selectedRootPaths(selected);
+	}
+
+	private List<ActionPath> selectedRootPaths(List<ActionPath> selected) {
+		List<ActionPath> roots = new ArrayList<>();
+		for (ActionPath path : selected) {
+			boolean covered = false;
+			for (ActionPath root : roots) {
+				if (isSameActionOrDescendant(path, root)) {
+					covered = true;
+					break;
+				}
+			}
+			if (!covered) roots.add(path);
+		}
+		return roots;
 	}
 
 	/**
@@ -1018,7 +1393,7 @@ public class ActionListPanel {
 			if (row.kind == RowKind.ACTION) {
 				if (!isSameActionOrDescendant(row.path, actionRow.path)) break;
 				bottomY = row.y + ROW_HEIGHT;
-			} else if (row.kind == RowKind.ADD_BUTTON) {
+			} else if (row.kind == RowKind.BRANCH) {
 				if (row.addTarget != null && row.addTarget.parentPath() != null
 						&& isSameActionOrDescendant(row.addTarget.parentPath(), actionRow.path)) {
 					bottomY = row.y + ROW_HEIGHT;
@@ -1036,139 +1411,131 @@ public class ActionListPanel {
 	 */
 	private void performDrop() {
 		if (phase == null || dragSourcePath == null) return;
+		List<ActionPath> sourcePaths = getDragSourcePaths();
+		if (sourcePaths.isEmpty()) return;
+		List<SpellAction> actions = new ArrayList<>();
+		for (ActionPath path : sourcePaths) {
+			SpellAction action = getActionAt(path);
+			if (action == null) return;
+			actions.add(action);
+		}
 
-		// Get the source action before removing it
-		SpellAction action = getActionAt(dragSourcePath);
-		if (action == null) return;
-
+		PhaseDefinition beforeDrop = copyPhase(phase);
+		if (beforeDrop == null) return;
+		pushUndo();
+		List<ActionPath> insertedPaths;
 		if (dragBranchTarget != null) {
-			// === Branch insert mode ===
-			AddTarget adjustedTarget = adjustAddTargetAfterDelete(dragBranchTarget, dragSourcePath);
-			if (adjustedTarget == null) return;
-
-			PhaseDefinition beforeDrop = copyPhase(phase);
-			pushUndo();
-
-			// Remove from source
-			boolean removed = doDeleteAt(dragSourcePath);
-			if (!removed) {
-				restoreDropSnapshot(beforeDrop);
-				return;
-			}
-			dirty = true;
-
-			// Insert into the branch target
-			if (!insertActionInternal(adjustedTarget, action)) {
-				restoreDropSnapshot(beforeDrop);
-				return;
-			}
-			selectedAddTarget = null;
-			dirty = true;
-			onSelect.accept(action, selectedPath);
-			onMoved.run();
-
+			insertedPaths = moveIntoBranch(sourcePaths, actions, dragBranchTarget, beforeDrop);
 		} else if (dragInsertIndex >= 0 && dragInsertSection != null) {
-			// === Reorder mode (gap within a container) ===
-			if (!dragSourcePath.section.equals(dragInsertSection)) return;
+			insertedPaths = moveIntoGap(sourcePaths, actions, beforeDrop);
+		} else {
+			return;
+		}
+		if (insertedPaths == null || insertedPaths.isEmpty()) return;
 
-			if (dragInsertContainerPrefix == null) {
-				// === Top-level container ===
-				if (dragSourcePath.isNested()) {
-					// Source is nested: remove from branch, insert at top level
-					PhaseDefinition beforeDrop = copyPhase(phase);
-					pushUndo();
-					boolean removed = doDeleteAt(dragSourcePath);
-					if (!removed) {
-						restoreDropSnapshot(beforeDrop);
-						return;
-					}
-					dirty = true;
+		selectedPaths.clear();
+		selectedPaths.addAll(insertedPaths);
+		selectedPath = insertedPaths.get(0);
+		selectedAddTarget = null;
+		dirty = true;
+		syncCustomNamesFromActions();
+		SpellAction selected = getActionAt(selectedPath);
+		if (selected != null) onSelect.accept(selected, selectedPath);
+		onMoved.run();
+	}
 
-					List<SpellAction> list = getSectionList(dragInsertSection);
-					if (list == null) {
-						restoreDropSnapshot(beforeDrop);
-						return;
-					}
-					int actualDst = Math.max(0, Math.min(dragInsertIndex, list.size()));
-					list.add(actualDst, action);
-					selectedPath = ActionPath.topLevel(dragInsertSection, actualDst);
-					onSelect.accept(action, selectedPath);
-					onMoved.run();
-				} else {
-					// Source is top-level: simple swap
-					List<SpellAction> list = getSectionList(dragSourcePath.section);
-					if (list == null) return;
-
-					int srcIdx = dragSourcePath.leafIndex();
-					int dstIdx = dragInsertIndex;
-					if (srcIdx < 0 || srcIdx >= list.size()) return;
-					if (dstIdx == srcIdx || dstIdx == srcIdx + 1) return; // no-op
-
-					pushUndo();
-					list.remove(srcIdx);
-					int actualDst = dstIdx > srcIdx ? dstIdx - 1 : dstIdx;
-					actualDst = Math.max(0, Math.min(actualDst, list.size()));
-					list.add(actualDst, action);
-
-					selectedPath = ActionPath.topLevel(dragSourcePath.section, actualDst);
-					dirty = true;
-					onSelect.accept(action, selectedPath);
-					onMoved.run();
-				}
-			} else {
-				// === Nested container (branch list) ===
-				boolean sameContainer = dragSourcePath.path
-						.subList(0, dragSourcePath.path.size() - 1)
-						.equals(dragInsertContainerPrefix);
-				if (sameContainer) {
-					int srcIdx = dragSourcePath.leafIndex();
-					int dstIdx = dragInsertIndex;
-					if (dstIdx == srcIdx || dstIdx == srcIdx + 1) return; // no-op
-				}
-
-				PhaseDefinition beforeDrop = copyPhase(phase);
-				pushUndo();
-
-				// Remove from source
-				boolean removed = doDeleteAt(dragSourcePath);
-				if (!removed) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				dirty = true;
-
-				// Adjust the target container path for the delete
-				ActionPath adjustedContainer = adjustPathAfterDelete(
-						new ActionPath(dragInsertSection, dragInsertContainerPrefix), dragSourcePath);
-				if (adjustedContainer == null) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				List<PathEntry> adjustedPrefix = adjustedContainer.path();
-				if (adjustedPrefix.isEmpty()) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				String branch = adjustedPrefix.get(adjustedPrefix.size() - 1).branch();
-				if (branch == null) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				ActionPath parentPath = new ActionPath(dragInsertSection, adjustedPrefix);
-				int insertIndex = dragInsertIndex;
-				if (sameContainer && dragSourcePath.leafIndex() < insertIndex) insertIndex--;
-
-				List<SpellAction> list = getSectionList(dragInsertSection);
-				if (list == null || !doInsert(list, parentPath.path(), 0, branch, action, parentPath, insertIndex)) {
-					restoreDropSnapshot(beforeDrop);
-					return;
-				}
-				selectedAddTarget = null;
-				dirty = true;
-				onSelect.accept(action, selectedPath);
-				onMoved.run();
+	@Nullable
+	private List<ActionPath> moveIntoBranch(List<ActionPath> sourcePaths, List<SpellAction> actions,
+			AddTarget target, PhaseDefinition beforeDrop) {
+		if (target.parentPath() != null && isInsideAnySource(target.parentPath(), sourcePaths)) return null;
+		AddTarget adjustedTarget = target;
+		for (int i = sourcePaths.size() - 1; i >= 0; i--) {
+			adjustedTarget = adjustAddTargetAfterDelete(adjustedTarget, sourcePaths.get(i));
+			if (adjustedTarget == null || !doDeleteAt(sourcePaths.get(i))) {
+				restoreDropSnapshot(beforeDrop);
+				return null;
 			}
 		}
+		List<ActionPath> inserted = new ArrayList<>();
+		for (SpellAction action : actions) {
+			if (!insertActionInternal(adjustedTarget, action) || selectedPath == null) {
+				restoreDropSnapshot(beforeDrop);
+				return null;
+			}
+			inserted.add(selectedPath);
+		}
+		return inserted;
+	}
+
+	@Nullable
+	private List<ActionPath> moveIntoGap(List<ActionPath> sourcePaths, List<SpellAction> actions,
+			PhaseDefinition beforeDrop) {
+		String targetSection = dragInsertSection;
+		List<PathEntry> targetPrefix = dragInsertContainerPrefix == null
+				? new ArrayList<>() : new ArrayList<>(dragInsertContainerPrefix);
+		ActionPath targetContainer = new ActionPath(targetSection, List.copyOf(targetPrefix));
+		if (!targetPrefix.isEmpty() && isInsideAnySource(targetContainer, sourcePaths)) return null;
+		int targetIndex = dragInsertIndex;
+
+		for (int i = sourcePaths.size() - 1; i >= 0; i--) {
+			ActionPath source = sourcePaths.get(i);
+			if (isDirectChildOf(source, targetSection, targetPrefix) && source.leafIndex() < targetIndex) {
+				targetIndex--;
+			}
+			if (!targetPrefix.isEmpty()) {
+				ActionPath adjusted = adjustPathAfterDelete(
+						new ActionPath(targetSection, List.copyOf(targetPrefix)), source);
+				if (adjusted == null) {
+					restoreDropSnapshot(beforeDrop);
+					return null;
+				}
+				targetPrefix = new ArrayList<>(adjusted.path());
+			}
+			if (!doDeleteAt(source)) {
+				restoreDropSnapshot(beforeDrop);
+				return null;
+			}
+		}
+
+		List<SpellAction> targetList = getSectionList(targetSection);
+		if (targetList == null) {
+			restoreDropSnapshot(beforeDrop);
+			return null;
+		}
+		List<ActionPath> inserted = new ArrayList<>();
+		if (targetPrefix.isEmpty()) {
+			int index = Math.max(0, Math.min(targetIndex, targetList.size()));
+			for (int i = 0; i < actions.size(); i++) {
+				targetList.add(index + i, actions.get(i));
+				inserted.add(ActionPath.topLevel(targetSection, index + i));
+			}
+			return inserted;
+		}
+
+		String branch = targetPrefix.get(targetPrefix.size() - 1).branch();
+		if (branch == null) {
+			restoreDropSnapshot(beforeDrop);
+			return null;
+		}
+		ActionPath parentPath = new ActionPath(targetSection, List.copyOf(targetPrefix));
+		int index = Math.max(0, targetIndex);
+		for (int i = 0; i < actions.size(); i++) {
+			if (!doInsert(targetList, parentPath.path(), 0, branch, actions.get(i), parentPath, index + i)
+					|| selectedPath == null) {
+				restoreDropSnapshot(beforeDrop);
+				return null;
+			}
+			inserted.add(selectedPath);
+		}
+		return inserted;
+	}
+
+	private boolean isDirectChildOf(ActionPath path, String section, List<PathEntry> prefix) {
+		if (!path.section().equals(section) || path.path().size() != prefix.size() + 1) return false;
+		for (int i = 0; i < prefix.size(); i++) {
+			if (!samePathEntry(path.path().get(i), prefix.get(i), true)) return false;
+		}
+		return true;
 	}
 
 	/**
@@ -1338,21 +1705,79 @@ public class ActionListPanel {
 
 	// --- Action manipulation (recursive tree traversal) ---
 
-	public void replaceSelectedAction(SpellAction newAction) {
-		if (selectedPath == null) return;
+	public boolean replaceSelectedAction(SpellAction newAction) {
+		if (newAction == null || !selectedActionsDifferFrom(newAction)) return false;
 		pushUndo();
-		replaceAction(selectedPath, newAction);
+		return replaceSelectedActions(newAction);
 	}
 
 	/** Replace the selected action without pushing an undo snapshot (for transient drag edits). */
-	public void replaceSelectedActionWithoutUndo(SpellAction newAction) {
-		if (selectedPath == null) return;
-		replaceAction(selectedPath, newAction);
+	public boolean replaceSelectedActionWithoutUndo(SpellAction newAction) {
+		if (newAction == null || !selectedActionsDifferFrom(newAction)) return false;
+		return replaceSelectedActions(newAction);
+	}
+
+	private boolean selectedActionsDifferFrom(SpellAction newAction) {
+		List<ActionPath> paths = selectedReplacementPaths();
+		for (ActionPath path : paths) {
+			if (!java.util.Objects.equals(getActionAt(path), newAction)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private List<ActionPath> selectedReplacementPaths() {
+		if (selectedPaths.size() <= 1) {
+			return selectedPath == null ? List.of() : List.of(selectedPath);
+		}
+		return selectedRootPaths(getSelectedPathsInTreeOrder());
+	}
+
+	/**
+	 * Replace every selected root with the edited action. A multi-selection may
+	 * include descendants of a selected parent; those descendants are implicit and
+	 * are intentionally skipped so one replacement cannot be applied twice.
+	 */
+	private boolean replaceSelectedActions(SpellAction newAction) {
+		List<ActionPath> paths = selectedReplacementPaths();
+		if (paths.isEmpty()) return false;
+
+		boolean replaced = false;
+		for (int i = 0; i < paths.size(); i++) {
+			ActionPath path = paths.get(i);
+			List<SpellAction> list = getSectionList(path.section());
+			if (list == null) continue;
+			if (java.util.Objects.equals(getActionAt(path), newAction)) continue;
+			// Keep the editor's primary action instance for the first path. Other
+			// paths receive codec-copied instances so future mutable list fields do
+			// not accidentally alias one another.
+			SpellAction replacement = i == 0 ? newAction : deepCopy(newAction);
+			if (doReplace(list, path.path(), 0, replacement)) {
+				replaced = true;
+			}
+		}
+		if (replaced) {
+			dirty = true;
+		}
+		return replaced;
 	}
 
 	/** Explicitly push an undo snapshot (e.g. at the start of a drag gesture). */
 	public void pushUndoSnapshot() {
 		pushUndo();
+	}
+
+	/** Captures the pre-edit phase without changing undo/redo history. */
+	public UndoManager.Snapshot captureUndoSnapshot() {
+		if (phase == null) return null;
+		syncCustomNamesFromActions();
+		return undoManager.capture(phase, customNames);
+	}
+
+	/** Commits a captured pre-edit phase as one undoable gesture. */
+	public void commitUndoSnapshot(UndoManager.Snapshot snapshot) {
+		undoManager.pushUndo(snapshot);
 	}
 
 	public void replaceAction(ActionPath path, SpellAction newAction) {
@@ -1364,6 +1789,16 @@ public class ActionListPanel {
 	}
 
 	private boolean doReplace(List<SpellAction> list, List<PathEntry> path, int depth, SpellAction newAction) {
+		if (depth >= path.size()) return false;
+		int index = path.get(depth).index();
+		if (index < 0 || index >= list.size()) return false;
+		SpellAction oldAction = list.get(index);
+		boolean replaced = doReplaceImpl(list, path, depth, newAction);
+		if (replaced && index < list.size()) transferNodeCustomName(oldAction, list.get(index));
+		return replaced;
+	}
+
+	private boolean doReplaceImpl(List<SpellAction> list, List<PathEntry> path, int depth, SpellAction newAction) {
 		PathEntry entry = path.get(depth);
 		if (entry.index >= list.size()) return false;
 
@@ -1394,6 +1829,12 @@ public class ActionListPanel {
 			List<SpellAction> body = new ArrayList<>(delay.body());
 			if (!doReplace(body, path, depth + 1, newAction)) return false;
 			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
+			return true;
+		}
+		if (parent instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(hold.onRelease());
+			if (!doReplace(body, path, depth + 1, newAction)) return false;
+			list.set(entry.index, new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body));
 			return true;
 		}
 		if (parent instanceof BurstAction burst && "body".equals(entry.branch)) {
@@ -1486,7 +1927,9 @@ public class ActionListPanel {
 			selectedPath = ActionPath.topLevel(target.section, list.size() - 1);
 			return true;
 		} else {
-			return doInsert(list, target.parentPath.path, 0, target.branch, action, target.parentPath);
+			boolean inserted = doInsert(list, target.parentPath.path, 0, target.branch, action, target.parentPath);
+			if (inserted) collapsedBranchPaths.remove(branchCollapseKey(target));
+			return inserted;
 		}
 	}
 
@@ -1496,6 +1939,17 @@ public class ActionListPanel {
 	}
 
 	private boolean doInsert(List<SpellAction> list, List<PathEntry> path, int depth,
+							 String targetBranch, SpellAction newAction, ActionPath parentPath, int insertIndex) {
+		if (depth >= path.size()) return false;
+		int index = path.get(depth).index();
+		if (index < 0 || index >= list.size()) return false;
+		SpellAction oldAction = list.get(index);
+		boolean inserted = doInsertImpl(list, path, depth, targetBranch, newAction, parentPath, insertIndex);
+		if (inserted && index < list.size()) transferNodeCustomName(oldAction, list.get(index));
+		return inserted;
+	}
+
+	private boolean doInsertImpl(List<SpellAction> list, List<PathEntry> path, int depth,
 							 String targetBranch, SpellAction newAction, ActionPath parentPath, int insertIndex) {
 		PathEntry entry = path.get(depth);
 		if (entry.index >= list.size()) return false;
@@ -1531,6 +1985,14 @@ public class ActionListPanel {
 				int pos = insertIndex < 0 ? body.size() : Math.min(insertIndex, body.size());
 				body.add(pos, newAction);
 				list.set(entry.index, new DelayAction(delay.delayTicks(), body));
+				selectedPath = parentPath.child(targetBranch, pos);
+				return true;
+			}
+			if (current instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(targetBranch)) {
+				List<SpellAction> body = new ArrayList<>(hold.onRelease());
+				int pos = insertIndex < 0 ? body.size() : Math.min(insertIndex, body.size());
+				body.add(pos, newAction);
+				list.set(entry.index, new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body));
 				selectedPath = parentPath.child(targetBranch, pos);
 				return true;
 			}
@@ -1649,6 +2111,12 @@ public class ActionListPanel {
 			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
 			return true;
 		}
+		if (current instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(hold.onRelease());
+			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
+			list.set(entry.index, new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body));
+			return true;
+		}
 		if (current instanceof BurstAction burst && "body".equals(entry.branch)) {
 			List<SpellAction> body = new ArrayList<>(burst.body());
 			if (!doInsert(body, path, depth + 1, targetBranch, newAction, parentPath, insertIndex)) return false;
@@ -1736,6 +2204,19 @@ public class ActionListPanel {
 	}
 
 	private boolean doDelete(List<SpellAction> list, List<PathEntry> path, int depth) {
+		if (depth >= path.size()) return false;
+		int index = path.get(depth).index();
+		if (index < 0 || index >= list.size()) return false;
+		int oldSize = list.size();
+		SpellAction oldAction = list.get(index);
+		boolean deleted = doDeleteImpl(list, path, depth);
+		if (deleted && list.size() == oldSize && index < list.size()) {
+			transferNodeCustomName(oldAction, list.get(index));
+		}
+		return deleted;
+	}
+
+	private boolean doDeleteImpl(List<SpellAction> list, List<PathEntry> path, int depth) {
 		PathEntry entry = path.get(depth);
 		if (entry.index >= list.size()) return false;
 
@@ -1766,6 +2247,12 @@ public class ActionListPanel {
 			List<SpellAction> body = new ArrayList<>(delay.body());
 			if (!doDelete(body, path, depth + 1)) return false;
 			list.set(entry.index, new DelayAction(delay.delayTicks(), body));
+			return true;
+		}
+		if (parent instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(hold.onRelease());
+			if (!doDelete(body, path, depth + 1)) return false;
+			list.set(entry.index, new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body));
 			return true;
 		}
 		if (parent instanceof BurstAction burst && "body".equals(entry.branch)) {
@@ -1839,7 +2326,9 @@ public class ActionListPanel {
 
 	// --- Clipboard ---
 
-	private static List<SpellAction> clipboard = null;
+	private record ClipboardItem(SpellAction action, @Nullable String customName) {}
+
+	private static List<ClipboardItem> clipboard = null;
 
 	/** Deep-copy an action via Codec round-trip, falling back to the original. */
 	private static SpellAction deepCopy(SpellAction action) {
@@ -1874,13 +2363,13 @@ public class ActionListPanel {
 	 */
 	public boolean copySelected() {
 		if (phase == null) return false;
-		List<ActionPath> paths = getSelectedPathsInTreeOrder();
+		List<ActionPath> paths = selectedRootPaths(getSelectedPathsInTreeOrder());
 		if (paths.isEmpty()) return false;
-		List<SpellAction> copied = new ArrayList<>();
+		List<ClipboardItem> copied = new ArrayList<>();
 		for (ActionPath path : paths) {
 			SpellAction action = getActionAt(path);
 			if (action != null) {
-				copied.add(deepCopy(action));
+				copied.add(new ClipboardItem(deepCopy(action), customNameFor(action, path)));
 			}
 		}
 		if (copied.isEmpty()) return false;
@@ -1906,14 +2395,10 @@ public class ActionListPanel {
 	public boolean deleteMultipleSelected() {
 		if (phase == null || selectedPaths.size() <= 1) return deleteSelected();
 		pushUndo();
-		// Collect and sort paths: delete deepest/largest-index first to avoid shifting
-		var paths = new ArrayList<>(selectedPaths);
-		paths.sort((a, b) -> {
-			int sc = a.section().compareTo(b.section());
-			if (sc != 0) return sc;
-			// Compare by leaf index descending
-			return Integer.compare(b.leafIndex(), a.leafIndex());
-		});
+		// Descendants of a selected parent are implicit. Reverse visual order keeps
+		// all remaining paths valid while siblings and sections shrink.
+		var paths = selectedRootPaths(getSelectedPathsInTreeOrder());
+		java.util.Collections.reverse(paths);
 		boolean anyDeleted = false;
 		for (ActionPath path : paths) {
 			if (doDeleteAt(path)) {
@@ -1940,13 +2425,13 @@ public class ActionListPanel {
 		return deleteMultipleSelected();
 	}
 
-	/** Find the add-button row under the mouse (hover-based paste target). */
+	/** Find the branch folder under the mouse (hover-based paste target). */
 	@Nullable
 	private AddTarget findAddButtonAt(double mouseX, double mouseY) {
 		if (phase == null) return null;
 		buildRowsIfDirty();
 		for (Row row : rows) {
-			if (row.kind != RowKind.ADD_BUTTON || row.addTarget == null) continue;
+			if (row.kind != RowKind.BRANCH || row.addTarget == null) continue;
 			if (mouseX >= x && mouseX < x + w && mouseY >= row.y && mouseY < row.y + ROW_HEIGHT) {
 				return row.addTarget;
 			}
@@ -1971,9 +2456,9 @@ public class ActionListPanel {
 	public boolean pasteAfterSelected() {
 		if (clipboard == null || clipboard.isEmpty() || phase == null) return false;
 		// Deep copy clipboard for paste
-		List<SpellAction> toPaste = new ArrayList<>();
-		for (SpellAction a : clipboard) {
-			toPaste.add(deepCopy(a));
+		List<ClipboardItem> toPaste = new ArrayList<>();
+		for (ClipboardItem item : clipboard) {
+			toPaste.add(new ClipboardItem(deepCopy(item.action()), item.customName()));
 		}
 		if (toPaste.isEmpty()) return false;
 
@@ -1981,8 +2466,9 @@ public class ActionListPanel {
 		AddTarget hovered = findAddButtonAt(lastMouseX, lastMouseY);
 		if (hovered != null && hovered.isBranch()) {
 			pushUndo();
-			for (SpellAction a : toPaste) {
-				if (!insertActionInternal(hovered, a)) break;
+			for (ClipboardItem item : toPaste) {
+				if (!insertActionInternal(hovered, item.action())) break;
+				rememberClipboardName(selectedPath, item);
 			}
 			selectedAddTarget = null;
 			dirty = true;
@@ -1994,8 +2480,9 @@ public class ActionListPanel {
 		// If an add-button is selected, paste into that branch/section
 		if (selectedAddTarget != null) {
 			pushUndo();
-			for (SpellAction a : toPaste) {
-				if (!insertActionInternal(selectedAddTarget, a)) break;
+			for (ClipboardItem item : toPaste) {
+				if (!insertActionInternal(selectedAddTarget, item.action())) break;
+				rememberClipboardName(selectedPath, item);
 			}
 			selectedAddTarget = null;
 			dirty = true;
@@ -2011,14 +2498,23 @@ public class ActionListPanel {
 				if (!selectedPath.isNested()) {
 					// Insert after selected action in the same top-level list
 					int idx = selectedPath.leafIndex();
-					list.addAll(idx + 1, toPaste);
+					List<SpellAction> actions = toPaste.stream().map(ClipboardItem::action).toList();
+					list.addAll(idx + 1, actions);
+					for (int i = 0; i < toPaste.size(); i++) {
+						rememberClipboardName(ActionPath.topLevel(selectedPath.section, idx + 1 + i), toPaste.get(i));
+					}
 					selectedPath = ActionPath.topLevel(selectedPath.section, idx + toPaste.size());
 				} else {
 					// Insert after selected action within its own branch
 					int idx = selectedPath.leafIndex();
 					List<PathEntry> parentEntries = selectedPath.path.subList(0, selectedPath.path.size() - 1);
 					String branch = selectedPath.path.get(selectedPath.path.size() - 2).branch();
-					insertManyIntoBranch(selectedPath.section, parentEntries, branch, idx + 1, toPaste);
+					List<SpellAction> actions = toPaste.stream().map(ClipboardItem::action).toList();
+					insertManyIntoBranch(selectedPath.section, parentEntries, branch, idx + 1, actions);
+					ActionPath parentPath = new ActionPath(selectedPath.section, parentEntries);
+					for (int i = 0; i < toPaste.size(); i++) {
+						rememberClipboardName(parentPath.child(branch, idx + 1 + i), toPaste.get(i));
+					}
 				}
 				dirty = true;
 				SpellAction last = getSelectedAction();
@@ -2030,7 +2526,11 @@ public class ActionListPanel {
 		var tickList = getSectionList("tick");
 		if (tickList != null) {
 			pushUndo();
-			tickList.addAll(toPaste);
+			int start = tickList.size();
+			tickList.addAll(toPaste.stream().map(ClipboardItem::action).toList());
+			for (int i = 0; i < toPaste.size(); i++) {
+				rememberClipboardName(ActionPath.topLevel("tick", start + i), toPaste.get(i));
+			}
 			selectedPath = ActionPath.topLevel("tick", tickList.size() - 1);
 			dirty = true;
 			SpellAction last = getSelectedAction();
@@ -2038,6 +2538,12 @@ public class ActionListPanel {
 			return true;
 		}
 		return false;
+	}
+
+	private void rememberClipboardName(@Nullable ActionPath path, ClipboardItem item) {
+		if (path != null && item.customName() != null && !item.customName().isBlank()) {
+			setNodeCustomName(item.action(), path, item.customName());
+		}
 	}
 
 	/**
@@ -2094,6 +2600,9 @@ public class ActionListPanel {
 		}
 		if (action instanceof DelayAction delay && "body".equals(entry.branch)) {
 			return getActionRecursive(delay.body(), path, depth + 1);
+		}
+		if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			return getActionRecursive(hold.onRelease(), path, depth + 1);
 		}
 		if (action instanceof BurstAction burst && "body".equals(entry.branch)) {
 			return getActionRecursive(burst.body(), path, depth + 1);
@@ -2163,6 +2672,7 @@ public class ActionListPanel {
 	/** Collapse all nodes that have children. */
 	public void collapseAll() {
 		collapsedPaths.clear();
+		collapsedBranchPaths.clear();
 		// Walk all actions and add collapse keys for those with children
 		if (phase == null) return;
 		collapseAllIn(phase.onEnter, "enter");
@@ -2185,24 +2695,38 @@ public class ActionListPanel {
 		}
 		// Recurse into children so they'll be collapsed when expanded later
 		if (inner instanceof SpellActions.ConditionalAction cond) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "true")));
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "false")));
 			for (int j = 0; j < cond.ifTrue().size(); j++)
 				collapseAllRecursive(cond.ifTrue().get(j), path.child("true", j));
 			for (int j = 0; j < cond.ifFalse().size(); j++)
 				collapseAllRecursive(cond.ifFalse().get(j), path.child("false", j));
 		}
 		if (inner instanceof SpellActions.RepeatAction r) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));
 			for (int j = 0; j < r.body().size(); j++)
 				collapseAllRecursive(r.body().get(j), path.child("body", j));
 		}
 		if (inner instanceof DelayAction d) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));
 			for (int j = 0; j < d.body().size(); j++)
 				collapseAllRecursive(d.body().get(j), path.child("body", j));
 		}
+		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onRelease")));
+			for (int j = 0; j < hold.onRelease().size(); j++)
+				collapseAllRecursive(hold.onRelease().get(j), path.child("onRelease", j));
+		}
 		if (inner instanceof BurstAction b) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));
 			for (int j = 0; j < b.body().size(); j++)
 				collapseAllRecursive(b.body().get(j), path.child("body", j));
 		}
 		if (inner instanceof FireDanmakuAction fda) {
+			if (fda.onExpiry().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onExpiry")));
+			if (fda.onTrail().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onTrail")));
+			if (fda.onHitEntity().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onHitEntity")));
+			if (fda.onHitBlock().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onHitBlock")));
 			for (int j = 0; j < fda.onExpiry().orElse(List.of()).size(); j++)
 				collapseAllRecursive(fda.onExpiry().get().get(j), path.child("onExpiry", j));
 			for (int j = 0; j < fda.onTrail().orElse(List.of()).size(); j++)
@@ -2213,6 +2737,10 @@ public class ActionListPanel {
 				collapseAllRecursive(fda.onHitBlock().get().get(j), path.child("onHitBlock", j));
 		}
 		if (inner instanceof FireLaserAction fla) {
+			if (fla.onExpiry().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onExpiry")));
+			if (fla.onTrail().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onTrail")));
+			if (fla.onHitEntity().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onHitEntity")));
+			if (fla.onHitBlock().isPresent()) collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "onHitBlock")));
 			for (int j = 0; j < fla.onExpiry().orElse(List.of()).size(); j++)
 				collapseAllRecursive(fla.onExpiry().get().get(j), path.child("onExpiry", j));
 			for (int j = 0; j < fla.onTrail().orElse(List.of()).size(); j++)
@@ -2223,10 +2751,12 @@ public class ActionListPanel {
 				collapseAllRecursive(fla.onHitBlock().get().get(j), path.child("onHitBlock", j));
 		}
 		if (inner instanceof SpawnShooterAction ssa) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "body")));
 			for (int j = 0; j < ssa.body().size(); j++)
 				collapseAllRecursive(ssa.body().get(j), path.child("body", j));
 		}
 		if (inner instanceof SpellActions.SequenceAction seq) {
+			collapsedBranchPaths.add(branchCollapseKey(AddTarget.branch(path.section(), path, "actions")));
 			for (int j = 0; j < seq.actions().size(); j++)
 				collapseAllRecursive(seq.actions().get(j), path.child("actions", j));
 		}
@@ -2235,6 +2765,7 @@ public class ActionListPanel {
 	/** Expand all nodes. */
 	public void expandAll() {
 		collapsedPaths.clear();
+		collapsedBranchPaths.clear();
 		dirty = true;
 	}
 
@@ -2252,19 +2783,14 @@ public class ActionListPanel {
 
 	private void startRename(ActionPath path, SpellAction action) {
 		renamingPath = path;
-		String key = collapseKey(path);
-		String existing = customNames.get(key);
+		String existing = customNameFor(action, path);
 		renamingText = existing != null ? existing : "";
 	}
 
 	private void finishRename() {
 		if (renamingPath != null) {
-			String key = collapseKey(renamingPath);
-			if (renamingText.isEmpty()) {
-				customNames.remove(key);
-			} else {
-				customNames.put(key, renamingText);
-			}
+			setNodeCustomName(getActionAt(renamingPath), renamingPath,
+					renamingText.isEmpty() ? null : renamingText);
 			renamingPath = null;
 			renamingText = "";
 			dirty = true;
@@ -2328,6 +2854,14 @@ public class ActionListPanel {
 		if (depth >= path.size()) return false;
 		PathEntry entry = path.get(depth);
 		if (entry.index < 0 || entry.index >= list.size()) return false;
+		SpellAction oldAction = list.get(entry.index);
+		boolean toggled = doToggleDisabledImpl(list, path, depth);
+		if (toggled && entry.index < list.size()) transferNodeCustomName(oldAction, list.get(entry.index));
+		return toggled;
+	}
+
+	private boolean doToggleDisabledImpl(List<SpellAction> list, List<PathEntry> path, int depth) {
+		PathEntry entry = path.get(depth);
 		SpellAction current = list.get(entry.index);
 
 		if (depth == path.size() - 1) {
@@ -2363,6 +2897,13 @@ public class ActionListPanel {
 			List<SpellAction> body = new ArrayList<>(delay.body());
 			if (!doToggleDisabled(body, path, depth + 1)) return false;
 			var rebuilt = new DelayAction(delay.delayTicks(), body);
+			list.set(entry.index, current instanceof SpellActions.DisabledAction ? new SpellActions.DisabledAction(rebuilt) : rebuilt);
+			return true;
+		}
+		if (parent instanceof dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction hold && "onRelease".equals(entry.branch)) {
+			List<SpellAction> body = new ArrayList<>(hold.onRelease());
+			if (!doToggleDisabled(body, path, depth + 1)) return false;
+			var rebuilt = new dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction(hold.duration(), body);
 			list.set(entry.index, current instanceof SpellActions.DisabledAction ? new SpellActions.DisabledAction(rebuilt) : rebuilt);
 			return true;
 		}
@@ -2452,8 +2993,7 @@ public class ActionListPanel {
 		if (path == null || path.path.isEmpty()) return "?";
 		// Check custom name first
 		if (showCustomNames) {
-			String key = collapseKey(path);
-			String custom = customNames.get(key);
+			String custom = customNameFor(action, path);
 			if (custom != null && !custom.isEmpty()) {
 				return localizeCustomName(custom);
 			}
@@ -2502,6 +3042,14 @@ public class ActionListPanel {
 				case OFF -> index + ": spell circle off";
 				case CLEAR -> index + ": spell circle clear";
 			};
+		}
+		if (action instanceof SetSpellHealthAction sha) {
+			return sha.mode() == SetSpellHealthAction.Mode.CLEAR
+					? index + ": spell initialization clear"
+					: index + ": spell initialization hp=" + formatNumberProvider(sha.health())
+					+ " duration=" + formatNumberProvider(sha.duration())
+					+ describeSpellHealthTarget(" timeout", sha.onTimeout())
+					+ describeSpellHealthTarget(" break", sha.onBreak());
 		}
 		if (action instanceof SpellActions.SetVariable sv) return index + ": set " + sv.key();
 		if (action instanceof SpellActions.AddVariable av) return index + ": add " + av.key();
@@ -2559,6 +3107,16 @@ public class ActionListPanel {
 		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";
 		return index + ": " + action.getClass().getSimpleName();
+	}
+
+	private String describeSpellHealthTarget(String label, Optional<SpellAction> target) {
+		if (target.orElse(null) instanceof SpellActions.ForcePhase phase) {
+			return label + "->phase:" + describePhaseTarget(phase.phaseId());
+		}
+		if (target.orElse(null) instanceof SpellActions.ForceSpell spell) {
+			return label + "->spell:" + formatResourceId(spell.spellId());
+		}
+		return "";
 	}
 
 	private String describePhaseTarget(net.minecraft.resources.ResourceLocation phaseId) {

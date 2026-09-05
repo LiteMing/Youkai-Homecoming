@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
@@ -40,7 +41,8 @@ import java.util.UUID;
  * <ul>
  *   <li>Follows any entity's position (or stays fixed for block traps)</li>
  *   <li>Sends danmaku packets to players tracking the <em>host</em> entity</li>
- *   <li>Selects targets automatically (nearest hostile player) or from a fixed reference</li>
+ *   <li>Selects targets automatically (nearest hostile player for non-player hosts)
+ *       or follows a player host's look ray</li>
  * </ul>
  */
 public class EntitySpellProxyEntity extends PathfinderMob
@@ -189,15 +191,22 @@ public class EntitySpellProxyEntity extends PathfinderMob
 
 		// Drive the spell runtime
 		if (runtime != null) {
-			runtime.tick(this);
+			// Stop ordinary phase actions at the fixed duration while retaining the
+			// proxy for persistent hold-release callbacks.
+			if (SpellProxyLifecycle.castLoopActive(maxDuration, spellTickCount, runtime.isFinished())) {
+				runtime.tick(this);
+			} else {
+				runtime.tickDelayed(this);
+			}
+			applySpellMovement();
 			tickDanmaku();
 		}
 
 		// Check for completion
 		spellTickCount++;
-		boolean naturalEnd = maxDuration < 0 && runtime != null && runtime.isFinished();
-		boolean timedOut = maxDuration >= 0 && spellTickCount >= maxDuration;
-		if (naturalEnd || timedOut) {
+		boolean runtimeFinished = runtime != null && runtime.isFinished();
+		boolean pendingHold = runtime != null && runtime.hasPendingHoldActions();
+		if (SpellProxyLifecycle.shouldCleanup(maxDuration, spellTickCount, runtimeFinished, pendingHold)) {
 			cleanup();
 		}
 	}
@@ -247,6 +256,10 @@ public class EntitySpellProxyEntity extends PathfinderMob
 
 	private void autoSelectTarget() {
 		if (!(level() instanceof ServerLevel)) return;
+		// A player-hosted proxy follows the player's current look ray. Selecting the
+		// nearest player here would make target-dependent aim differ between /proxy
+		// casts and ordinary player casts.
+		if (hostEntity instanceof Player) return;
 		Vec3 searchCenter = hostEntity != null ? hostEntity.position() : position();
 		AABB searchBox = AABB.ofSize(searchCenter, 64, 64, 64);
 		List<Player> players = level().getEntitiesOfClass(Player.class, searchBox,
@@ -284,7 +297,8 @@ public class EntitySpellProxyEntity extends PathfinderMob
 			}
 		}
 		if (targetId == null) {
-			targetPos = null;
+			targetPos = hostEntity instanceof Player player
+				? GrazeHelper.getAimTarget(player, center()) : null;
 			return;
 		}
 		if (!(level() instanceof ServerLevel sl)) return;
@@ -335,7 +349,7 @@ public class EntitySpellProxyEntity extends PathfinderMob
 	}
 
 	public void countDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit, dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result) {
-		danmakuHolder.countDanmakuInFrustum(frustum, limit, result);
+		danmakuHolder.countDanmakuInFrustum(trackingHost(), frustum, limit, result, getSpellDefinitionId());
 	}
 
 	public void eraseDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, @Nullable Player player, int limit) {
@@ -344,6 +358,11 @@ public class EntitySpellProxyEntity extends PathfinderMob
 
 	private LivingEntity trackingHost() {
 		return hostEntity instanceof LivingEntity le && !le.isRemoved() ? le : this;
+	}
+
+	@Override
+	public int activeDanmakuCount() {
+		return danmakuHolder.activeProjectileCount();
 	}
 
 	// ==================== LivingCardHolder implementation ====================
@@ -356,6 +375,12 @@ public class EntitySpellProxyEntity extends PathfinderMob
 	@Override
 	public LivingEntity shooter() {
 		return trackingHost();
+	}
+
+	@Override
+	public double casterPower() {
+		Entity host = attachedHost();
+		return host instanceof Player player ? GrazeHelper.getEffectivePowerLevel(player) : 0;
 	}
 
 	@Nullable
@@ -418,6 +443,7 @@ public class EntitySpellProxyEntity extends PathfinderMob
 
 	@Override
 	public void remove(RemovalReason reason) {
+		clearTemporarySpellCircle();
 		if (!danmakuHolder.isEmpty()) {
 			eraseAllDanmaku(null);
 		}
@@ -425,7 +451,11 @@ public class EntitySpellProxyEntity extends PathfinderMob
 	}
 
 	public boolean isFinished() {
-		return isRemoved() || (spellTickCount >= maxDuration && danmakuHolder.isEmpty());
+		if (isRemoved()) return true;
+		boolean runtimeFinished = runtime != null && runtime.isFinished();
+		boolean pendingHold = runtime != null && runtime.hasPendingHoldActions();
+		return SpellProxyLifecycle.isFinished(maxDuration, spellTickCount,
+				runtimeFinished, pendingHold, danmakuHolder.isEmpty());
 	}
 
 	// ==================== Entity properties ====================

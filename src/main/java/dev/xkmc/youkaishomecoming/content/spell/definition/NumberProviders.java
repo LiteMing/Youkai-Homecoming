@@ -53,13 +53,19 @@ public class NumberProviders {
 		register("caster_x", CasterX.CODEC, CasterX.class);
 		register("caster_y", CasterY.CODEC, CasterY.class);
 		register("caster_z", CasterZ.CODEC, CasterZ.class);
+		register("caster_max_health", CasterMaxHealth.CODEC, CasterMaxHealth.class);
+		register("caster_power", CasterPower.CODEC, CasterPower.class);
 		register("target_x", TargetX.CODEC, TargetX.class);
 		register("target_y", TargetY.CODEC, TargetY.class);
 		register("target_z", TargetZ.CODEC, TargetZ.class);
+		register("target_facing_x", TargetFacingX.CODEC, TargetFacingX.class);
+		register("target_facing_y", TargetFacingY.CODEC, TargetFacingY.class);
+		register("target_facing_z", TargetFacingZ.CODEC, TargetFacingZ.class);
 		register("target_height", TargetHeight.CODEC, TargetHeight.class);
 		register("game_difficulty", GameDifficulty.CODEC, GameDifficulty.class);
 		register("target_fly_time", TargetFlyTime.CODEC, TargetFlyTime.class);
 		register("target_speed", TargetSpeed.CODEC, TargetSpeed.class);
+		register("callback_value", CallbackValue.CODEC, CallbackValue.class);
 	}
 
 	public static void register(String id, Codec<? extends NumberProvider> codec, Class<? extends NumberProvider> clazz) {
@@ -608,6 +614,26 @@ public class NumberProviders {
 		@Override public double get(SpellContext ctx) { return ctx.holder().center().z; }
 	}
 
+	/**
+	 * Returns the maximum health of the entity that owns the spell runtime.
+	 * JSON: {"type": "caster_max_health"}
+	 * Expression keyword: caster_max_health
+	 */
+	public record CasterMaxHealth() implements NumberProvider {
+		public static final Codec<CasterMaxHealth> CODEC = Codec.unit(CasterMaxHealth::new);
+		@Override public double get(SpellContext ctx) { return ctx.self().getMaxHealth(); }
+	}
+
+	/**
+	 * Returns the root player's current STG power level (for example 3.25).
+	 * Non-player casters return 0. JSON: {"type": "caster_power"}
+	 * Expression keyword: caster_power
+	 */
+	public record CasterPower() implements NumberProvider {
+		public static final Codec<CasterPower> CODEC = Codec.unit(CasterPower::new);
+		@Override public double get(SpellContext ctx) { return ctx.holder().casterPower(); }
+	}
+
 	/** Target's X position (or caster X if no target). JSON: {"type": "target_x"} */
 	public record TargetX() implements NumberProvider {
 		public static final Codec<TargetX> CODEC = Codec.unit(TargetX::new);
@@ -687,6 +713,40 @@ public class NumberProviders {
 		public static final Codec<TargetSpeed> CODEC = Codec.unit(TargetSpeed::new);
 		@Override public double get(SpellContext ctx) {
 			return ctx.targetSpeed();
+		}
+	}
+
+	public record TargetFacingX() implements NumberProvider {
+		public static final Codec<TargetFacingX> CODEC = Codec.unit(TargetFacingX::new);
+		@Override public double get(SpellContext ctx) { return ctx.targetFacing().x; }
+	}
+
+	public record TargetFacingY() implements NumberProvider {
+		public static final Codec<TargetFacingY> CODEC = Codec.unit(TargetFacingY::new);
+		@Override public double get(SpellContext ctx) { return ctx.targetFacing().y; }
+	}
+
+	public record TargetFacingZ() implements NumberProvider {
+		public static final Codec<TargetFacingZ> CODEC = Codec.unit(TargetFacingZ::new);
+		@Override public double get(SpellContext ctx) { return ctx.targetFacing().z; }
+	}
+
+	/**
+	 * Reads a scalar from the immutable projectile callback snapshot. This is
+	 * intentionally a single provider with a named key rather than one class per
+	 * coordinate, so new callback fields remain codec-compatible and editor
+	 * tooling can expose one searchable group.
+	 *
+	 * JSON: {"type":"callback_value", "key":"source_speed"}
+	 */
+	public record CallbackValue(String key) implements NumberProvider {
+		public static final Codec<CallbackValue> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.STRING.fieldOf("key").forGetter(CallbackValue::key)
+		).apply(i, CallbackValue::new));
+
+		@Override
+		public double get(SpellContext ctx) {
+			return ctx.callbackValue(key);
 		}
 	}
 

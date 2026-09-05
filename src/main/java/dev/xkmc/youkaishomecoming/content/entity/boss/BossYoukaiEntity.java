@@ -5,10 +5,12 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.movement.*;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.spell.SpellProgressColor;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
+import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -16,6 +18,7 @@ import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.util.Mth;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
@@ -488,7 +491,7 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 	@Override
 	protected void customServerAiStep() {
 		if (isBeaten()) {
-			bossEvent.setProgress(getCombatProgress() / getMaxHealth());
+			bossEvent.setVisible(false);
 			return;
 		}
 		super.customServerAiStep();
@@ -496,7 +499,7 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 			bossEvent.setProgress(random().nextFloat());
 			return;
 		}
-		bossEvent.setProgress(getCombatProgress() / getMaxHealth());
+		updateBossBarProjection();
 		if (getTarget() == null || !getTarget().isAlive()) {
 			chaotic = false;
 			noTargetTime++;
@@ -525,6 +528,42 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 		if (noTargetTime > 40) {
 			bossEvent.setVisible(false);
 		}
+	}
+
+	private void updateBossBarProjection() {
+		float progress = getCombatProgress();
+		float maximum = combatProgress == null ? getMaxHealth()
+				: combatProgress.getMaxProgress(getMaxHealth());
+		Component name = getDisplayName();
+		if (spellRuntime != null && spellRuntime.getSpellHealthTotal() > 0) {
+			int total = spellRuntime.getSpellHealthTotal();
+			int completed = Math.min(total, spellRuntime.getSpellHealthCompleted());
+			int segmentMaximum = spellRuntime.getSpellMaxHealth();
+			double remaining = total - completed;
+			if (segmentMaximum > 0) {
+				remaining = Math.max(0, remaining - segmentMaximum)
+						+ Mth.clamp(progress, 0, segmentMaximum);
+			}
+			progress = (float) remaining;
+			maximum = total;
+
+			int duration = spellRuntime.getSpellDurationTicks();
+			if (duration > 0) {
+				int remainingTicks = Math.max(0, duration - spellRuntime.getSpellElapsedTicks());
+				int remainingSeconds = (remainingTicks + 19) / 20;
+				name = Component.empty().append(name).append(Component.literal(
+						"  " + remainingSeconds + "s").withStyle(ChatFormatting.AQUA));
+			}
+		}
+		bossEvent.setProgress(maximum <= 0 ? 0 : Mth.clamp(progress / maximum, 0, 1));
+		bossEvent.setName(name);
+		bossEvent.setColor(SpellProgressColor.bossBarColor(this, BossEvent.BossBarColor.RED));
+	}
+
+	@Override
+	public void beginDanmakuDefeat() {
+		super.beginDanmakuDefeat();
+		bossEvent.setVisible(false);
 	}
 
 	public boolean isChaotic() {

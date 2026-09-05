@@ -16,10 +16,14 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -49,7 +53,8 @@ public class ControlsDockPanel implements DockPanel {
 	private final Runnable deleteSpellCallback;
 	private final Supplier<Boolean> canDeleteSpellSupplier;
 	private final Supplier<Boolean> spellDraftModeSupplier;
-	private final Consumer<String> renameSpellCallback;
+	private final Supplier<String> defaultSpellNamespaceSupplier;
+	private final Function<String, @Nullable Component> createSpellCallback;
 	private final Consumer<Integer> cyclePhaseCallback;
 	private final Supplier<String> currentPhaseNameSupplier;
 	private final Consumer<String> renamePhaseCallback;
@@ -64,6 +69,9 @@ public class ControlsDockPanel implements DockPanel {
 	private Button spellDropdownButton;
 	private Button spellNewButton;
 	private Button spellDeleteButton;
+	private EditBox newSpellIdBox;
+	@Nullable private Component newSpellCreationError;
+	private int newSpellCreationMessageY;
 	private DropdownOverlay spellDropdown;
 	private int spellDropdownHoverIndex = -1;
 	private int spellDropdownScrollOffset = 0;
@@ -76,9 +84,19 @@ public class ControlsDockPanel implements DockPanel {
 	private Consumer<GuiEventListener> removeWidgetCallback;
 	private boolean active;
 
+	private static final Set<String> COLLAPSED_SPELL_FOLDERS = new HashSet<>();
+
+	private record DropdownItem(
+			@Nullable ResourceLocation value,
+			String label,
+			boolean isFolder,
+			String folderKey,
+			int depth,
+			boolean isSelected
+	) {}
+
 	private record DropdownOverlay(
-			List<ResourceLocation> values,
-			String[] options,
+			List<DropdownItem> items,
 			int selectedIndex
 	) {}
 
@@ -103,7 +121,8 @@ public class ControlsDockPanel implements DockPanel {
 							 Runnable deleteSpellCallback,
 							 Supplier<Boolean> canDeleteSpellSupplier,
 							 Supplier<Boolean> spellDraftModeSupplier,
-							 Consumer<String> renameSpellCallback,
+							 Supplier<String> defaultSpellNamespaceSupplier,
+							 Function<String, @Nullable Component> createSpellCallback,
 							 Consumer<Integer> cyclePhaseCallback,
 							 Supplier<String> currentPhaseNameSupplier,
 							 Consumer<String> renamePhaseCallback,
@@ -123,7 +142,8 @@ public class ControlsDockPanel implements DockPanel {
 		this.deleteSpellCallback = deleteSpellCallback;
 		this.canDeleteSpellSupplier = canDeleteSpellSupplier;
 		this.spellDraftModeSupplier = spellDraftModeSupplier;
-		this.renameSpellCallback = renameSpellCallback;
+		this.defaultSpellNamespaceSupplier = defaultSpellNamespaceSupplier;
+		this.createSpellCallback = createSpellCallback;
 		this.cyclePhaseCallback = cyclePhaseCallback;
 		this.currentPhaseNameSupplier = currentPhaseNameSupplier;
 		this.renamePhaseCallback = renamePhaseCallback;
@@ -159,6 +179,7 @@ public class ControlsDockPanel implements DockPanel {
 		bx = x + 4;
 		if (draftMode) {
 			addSpellControls(bx, row1Y, true);
+			addNewSpellControls(x + 4, row2Y);
 			applyWidgetVisibility();
 			return;
 		}
@@ -193,6 +214,11 @@ public class ControlsDockPanel implements DockPanel {
 				float v = Float.parseFloat(s);
 				if (v > 1) v = v / 100f;
 				scene.setHealthRatio(v);
+			} catch (NumberFormatException ignored) {}
+		});
+		bx = addEditBox(bx, row3Y, 56, "Power:" + formatDimension(scene.getCasterPower()), val -> {
+			try {
+				scene.setCasterPower(Double.parseDouble(val.trim()));
 			} catch (NumberFormatException ignored) {}
 		});
 		bx = addMenuButton(bx, row3Y, 48, "Range", this::openRangeMenu);
@@ -239,6 +265,11 @@ public class ControlsDockPanel implements DockPanel {
 			try {
 				scene.setTargetHeight(Double.parseDouble(val));
 				rebuildCallback.run();
+			} catch (NumberFormatException ignored) {}
+		});
+		bx = addEditBox(bx, row4Y, 72, "DmgInt:" + scene.getDamageInterval() + "t", val -> {
+			try {
+				scene.setDamageInterval(Integer.parseInt(val.trim()));
 			} catch (NumberFormatException ignored) {}
 		});
 
@@ -310,9 +341,9 @@ public class ControlsDockPanel implements DockPanel {
 			rebuildCallback.run();
 		}, true));
 		String[] labels = {
-				"I  Rescue (amp 0)",
-				"II Assist (amp 1)",
-				"III Takeover (amp 2)"
+				"I Basic",
+				"II Enhanced",
+				"III Advanced"
 		};
 		for (int t = 0; t <= 2; t++) {
 			final int tier = t;
@@ -414,6 +445,9 @@ public class ControlsDockPanel implements DockPanel {
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(btn);
 		}
+		if (draftMode) {
+			return;
+		}
 		int newX = nextX + dropdownW + BUTTON_SPACING;
 		Button newBtn = Button.builder(Component.literal("+"), b -> newSpellCallback.run())
 				.bounds(newX, by, 20, BUTTON_HEIGHT).build();
@@ -432,18 +466,49 @@ public class ControlsDockPanel implements DockPanel {
 		if (addWidgetCallback != null) {
 			addWidgetCallback.accept(deleteBtn);
 		}
-		if (draftMode) {
-			int inputX = deleteX + 20 + 8;
-			int inputW = Math.max(120, Math.min(220, w / 3));
-			addTextEditBox(inputX, by, inputW,
-					"", "New Spell ID", 96,
-					s -> !s.contains("\n") && !s.contains("\r") && s.indexOf(' ') < 0,
-					renameSpellCallback);
+	}
+
+	private void addNewSpellControls(int bx, int by) {
+		String label = SpellEditorLocalization.t("New Spell ID");
+		Component buttonText = Component.translatable("youkaishomecoming.spell_editor.create.button");
+		int buttonW = Math.max(68, Minecraft.getInstance().font.width(buttonText) + 12);
+		int right = x + w - 4;
+		int innerW = Math.max(20, right - bx);
+		int labelW = Math.max(72, Minecraft.getInstance().font.width(label) + 8);
+		int inputX = bx;
+		int minimumInputW = 80;
+		boolean stacked = innerW < minimumInputW + BUTTON_SPACING + buttonW;
+		if (!stacked && innerW >= labelW + BUTTON_SPACING + minimumInputW + BUTTON_SPACING + buttonW) {
+			labels.add(new ControlLabel(bx + 2, by + 4, label));
+			inputX += labelW + BUTTON_SPACING;
 		}
+		int inputW = stacked ? innerW : Math.min(260,
+				right - inputX - buttonW - BUTTON_SPACING);
+		int buttonX = stacked ? bx : inputX + inputW + BUTTON_SPACING;
+		int buttonY = stacked ? by + BUTTON_HEIGHT + BUTTON_SPACING : by;
+		int fittedButtonW = stacked ? Math.min(buttonW, innerW) : buttonW;
+		addTextEditBox(inputX, by, inputW, "",
+				defaultSpellNamespaceSupplier.get() + ":spell_name", 96,
+				s -> !s.contains("\n") && !s.contains("\r") && s.indexOf(' ') < 0,
+				this::submitNewSpell);
+		newSpellIdBox = editBoxes.get(editBoxes.size() - 1);
+		newSpellIdBox.setResponder(value -> newSpellCreationError = null);
+		Button create = Button.builder(buttonText, button -> submitNewSpell(newSpellIdBox.getValue()))
+				.bounds(buttonX, buttonY, fittedButtonW, BUTTON_HEIGHT).build();
+		buttons.add(create);
+		if (addWidgetCallback != null) addWidgetCallback.accept(create);
+		newSpellCreationMessageY = buttonY + BUTTON_HEIGHT + BUTTON_SPACING + 4;
+	}
+
+	private void submitNewSpell(String rawId) {
+		newSpellCreationError = createSpellCallback.apply(rawId);
 	}
 
 	private int addEditBox(int bx, int by, int bw, String hint, java.util.function.Consumer<String> onSubmit) {
-		return addTextEditBox(bx, by, bw, "", hint, 16, s -> s.matches("[0-9.%\\-]*"), onSubmit);
+		// Preview controls are transient state rather than serialized editor data.
+		// Apply valid numeric input as it is typed so a focus change cannot silently
+		// discard the value (the Enter handler remains as an explicit confirmation).
+		return addTextEditBox(bx, by, bw, "", hint, 16, s -> s.matches("[0-9.%\\-]*"), onSubmit, true);
 	}
 
 	private static String formatDimension(double value) {
@@ -476,12 +541,20 @@ public class ControlsDockPanel implements DockPanel {
 	private int addTextEditBox(int bx, int by, int bw, String value, String hint, int maxLength,
 							   java.util.function.Predicate<String> filter,
 							   java.util.function.Consumer<String> onSubmit) {
-		EditBox box = new EditBox(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
-		EditorTextBoxes.configure(box);
+		return addTextEditBox(bx, by, bw, value, hint, maxLength, filter, onSubmit, false);
+	}
+
+	private int addTextEditBox(int bx, int by, int bw, String value, String hint, int maxLength,
+							   java.util.function.Predicate<String> filter,
+							   java.util.function.Consumer<String> onSubmit,
+							   boolean submitOnChange) {
+		EditBox box = EditorTextBoxes.create(Minecraft.getInstance().font, bx, by, bw, BUTTON_HEIGHT, Component.empty());
 		box.setMaxLength(maxLength);
 		box.setValue(value);
 		box.setHint(Component.literal(SpellEditorLocalization.t(hint)).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
-		box.setResponder(val -> {}); // no live response
+		box.setResponder(submitOnChange ? val -> {
+			if (!val.isBlank()) onSubmit.accept(val);
+		} : val -> {}); // non-control fields commit explicitly on Enter
 		box.setFilter(filter::test);
 		editBoxes.add(box);
 		if (addWidgetCallback != null) {
@@ -513,6 +586,9 @@ public class ControlsDockPanel implements DockPanel {
 		spellDropdownButton = null;
 		spellNewButton = null;
 		spellDeleteButton = null;
+		newSpellIdBox = null;
+		newSpellCreationError = null;
+		newSpellCreationMessageY = 0;
 	}
 
 	// ---- DockPanel 基础实现 ----
@@ -559,11 +635,13 @@ public class ControlsDockPanel implements DockPanel {
 		for (ControlLabel label : labels) {
 			graphics.drawString(font, label.text(), label.x(), label.y(), 0xFF8CC6FF, false);
 		}
-		int row1Y = y + 4;
 		if (isDraftMode()) {
-			graphics.drawString(font,
-					SpellEditorLocalization.t("Select an existing spell or enter a new spell id and press Enter."),
-					x + 4, row1Y + BUTTON_HEIGHT + BUTTON_SPACING + 4, 0xFFCCCCCC, false);
+			Component message = newSpellCreationError != null ? newSpellCreationError
+					: Component.translatable("youkaishomecoming.spell_editor.create.help",
+					defaultSpellNamespaceSupplier.get());
+			int color = newSpellCreationError == null ? 0xFFAAAAAA : 0xFFFF7777;
+			graphics.drawString(font, fitToWidth(message.getString(), w - 8), x + 4,
+					newSpellCreationMessageY, color, false);
 		}
 	}
 
@@ -641,13 +719,13 @@ public class ControlsDockPanel implements DockPanel {
 		if (spellDropdown == null) {
 			return false;
 		}
-		String[] options = spellDropdown.options();
-		if (options == null || options.length == 0) {
+		List<DropdownItem> items = spellDropdown.items();
+		if (items == null || items.isEmpty()) {
 			return true;
 		}
 		int[] bounds = computeSpellDropdownBounds();
 		int visibleItems = Math.max(1, bounds[4]);
-		int maxScroll = Math.max(0, options.length - visibleItems);
+		int maxScroll = Math.max(0, items.size() - visibleItems);
 		spellDropdownScrollOffset = Math.max(0, Math.min(maxScroll,
 				spellDropdownScrollOffset - (int) (delta * 3)));
 		return true;
@@ -699,26 +777,64 @@ public class ControlsDockPanel implements DockPanel {
 		}
 		closeSpellDeleteConfirm();
 		closeActionMenu();
-		String[] options = new String[values.size()];
+
 		ResourceLocation current = currentSpellIdSupplier.get();
+		List<DropdownItem> items = buildFolderTree(values, current);
+
 		int selectedIndex = -1;
-		for (int i = 0; i < values.size(); i++) {
-			ResourceLocation value = values.get(i);
-			options[i] = formatSpellOption(value);
-			if (selectedIndex < 0 && java.util.Objects.equals(value, current)) {
+		for (int i = 0; i < items.size(); i++) {
+			if (items.get(i).isSelected()) {
 				selectedIndex = i;
+				break;
 			}
 		}
-		spellDropdown = new DropdownOverlay(List.copyOf(values), options, selectedIndex);
+
+		spellDropdown = new DropdownOverlay(items, selectedIndex);
 		spellDropdownHoverIndex = -1;
-		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
-		int maxScroll = Math.max(0, options.length - visibleItems);
+		int visibleItems = Math.min(items.size(), DROPDOWN_MAX_VISIBLE);
+		int maxScroll = Math.max(0, items.size() - visibleItems);
 		if (selectedIndex >= visibleItems) {
 			spellDropdownScrollOffset = selectedIndex - visibleItems + 1;
 		} else {
 			spellDropdownScrollOffset = 0;
 		}
 		spellDropdownScrollOffset = Math.max(0, Math.min(maxScroll, spellDropdownScrollOffset));
+	}
+
+	private List<DropdownItem> buildFolderTree(List<ResourceLocation> values, @Nullable ResourceLocation current) {
+		// 按 namespace/prefix 分组
+		Map<String, List<ResourceLocation>> grouped = new java.util.TreeMap<>();
+		for (ResourceLocation rl : values) {
+			String prefix;
+			String path = rl.getPath();
+			if (path.contains("/")) {
+				prefix = rl.getNamespace() + ":" + path.substring(0, path.lastIndexOf('/'));
+			} else {
+				prefix = rl.getNamespace();
+			}
+			grouped.computeIfAbsent(prefix, k -> new ArrayList<>()).add(rl);
+		}
+
+		List<DropdownItem> items = new ArrayList<>();
+		for (Map.Entry<String, List<ResourceLocation>> entry : grouped.entrySet()) {
+			String folder = entry.getKey();
+			List<ResourceLocation> list = entry.getValue();
+			boolean isCollapsed = COLLAPSED_SPELL_FOLDERS.contains(folder);
+			String icon = isCollapsed ? "\u25B6 " : "\u25BC ";
+			items.add(new DropdownItem(null, icon + folder + " (" + list.size() + ")", true, folder, 0, false));
+
+			if (!isCollapsed) {
+				for (ResourceLocation rl : list) {
+					boolean selected = java.util.Objects.equals(rl, current);
+					String leafName = rl.getPath();
+					if (leafName.contains("/")) {
+						leafName = leafName.substring(leafName.lastIndexOf('/') + 1);
+					}
+					items.add(new DropdownItem(rl, "  " + formatSpellOption(rl), false, folder, 1, selected));
+				}
+			}
+		}
+		return items;
 	}
 
 	private void closeSpellDropdown() {
@@ -775,11 +891,11 @@ public class ControlsDockPanel implements DockPanel {
 		if (spellDropdown == null || spellDropdownButton == null) {
 			return new int[]{0, 0, 0, 0, 0};
 		}
-		String[] options = spellDropdown.options();
-		if (options == null || options.length == 0) {
+		List<DropdownItem> items = spellDropdown.items();
+		if (items == null || items.isEmpty()) {
 			return new int[]{0, 0, 0, 0, 0};
 		}
-		int visibleItems = Math.min(options.length, DROPDOWN_MAX_VISIBLE);
+		int visibleItems = Math.min(items.size(), DROPDOWN_MAX_VISIBLE);
 		int totalH = visibleItems * DROPDOWN_ITEM_H;
 		int dropdownX = spellDropdownButton.getX();
 		int dropdownY = spellDropdownButton.getY() + spellDropdownButton.getHeight();
@@ -881,12 +997,12 @@ public class ControlsDockPanel implements DockPanel {
 		int[] bounds = computeSpellDropdownBounds();
 		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
 		int visibleItems = bounds[4];
-		String[] options = spellDropdown.options();
-		if (options == null || options.length == 0) {
+		List<DropdownItem> items = spellDropdown.items();
+		if (items == null || items.isEmpty()) {
 			return;
 		}
 
-		boolean needsScroll = options.length > visibleItems;
+		boolean needsScroll = items.size() > visibleItems;
 		int scrollbarW = needsScroll ? 6 : 0;
 
 		graphics.pose().pushPose();
@@ -902,38 +1018,41 @@ public class ControlsDockPanel implements DockPanel {
 		int contentW = dw - scrollbarW;
 		if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
 			int rawIdx = (mouseY - dy) / DROPDOWN_ITEM_H + spellDropdownScrollOffset;
-			if (rawIdx >= 0 && rawIdx < options.length) {
+			if (rawIdx >= 0 && rawIdx < items.size()) {
 				spellDropdownHoverIndex = rawIdx;
 			}
 		}
 
-		int visCount = Math.min(options.length, dh / DROPDOWN_ITEM_H);
+		int visCount = Math.min(items.size(), dh / DROPDOWN_ITEM_H);
 		for (int i = 0; i < visCount; i++) {
 			int optIdx = i + spellDropdownScrollOffset;
-			if (optIdx >= options.length) {
+			if (optIdx >= items.size()) {
 				break;
 			}
+			DropdownItem item = items.get(optIdx);
 			int itemY = dy + i * DROPDOWN_ITEM_H;
 			boolean isHovered = optIdx == spellDropdownHoverIndex;
-			boolean isSelected = optIdx == spellDropdown.selectedIndex();
+			boolean isSelected = item.isSelected();
 			if (isHovered) {
 				graphics.fill(dx + 1, itemY, dx + contentW - 1, itemY + DROPDOWN_ITEM_H, 0x44FFFFFF);
 			}
-			int textX = dx + 4;
+			int textX = dx + 4 + item.depth() * 8;
 			if (isSelected) {
 				graphics.drawString(font, "\u25B6", dx + 3, itemY + 4, 0xFFFFCC44, false);
-				textX = dx + 14;
+				textX = dx + 14 + item.depth() * 8;
 			}
-			int textColor = isHovered ? 0xFFFFDD66 : (isSelected ? 0xFFFFCC88 : 0xFFDDDDDD);
-			graphics.drawString(font, options[optIdx], textX, itemY + 4, textColor, false);
+			int textColor = item.isFolder()
+					? (isHovered ? 0xFFFFFFFF : 0xFFB0C4DE)
+					: (isHovered ? 0xFFFFDD66 : (isSelected ? 0xFFFFCC88 : 0xFFDDDDDD));
+			graphics.drawString(font, item.label(), textX, itemY + 4, textColor, false);
 		}
 
 		if (needsScroll) {
 			int sbX = dx + dw - scrollbarW;
 			graphics.fill(sbX, dy, sbX + scrollbarW, dy + dh, 0x33FFFFFF);
 			int trackH = dh - 2;
-			int thumbH = Math.max(10, trackH * visibleItems / options.length);
-			int maxScroll = Math.max(1, options.length - visibleItems);
+			int thumbH = Math.max(10, trackH * visibleItems / items.size());
+			int maxScroll = Math.max(1, items.size() - visibleItems);
 			int thumbTravel = trackH - thumbH;
 			if (thumbTravel > 0) {
 				int thumbY = dy + 1 + thumbTravel * spellDropdownScrollOffset / maxScroll;
@@ -1033,16 +1152,28 @@ public class ControlsDockPanel implements DockPanel {
 		int[] bounds = computeSpellDropdownBounds();
 		int dx = bounds[0], dy = bounds[1], dw = bounds[2], dh = bounds[3];
 		int visibleItems = bounds[4];
-		boolean needsScroll = spellDropdown.options().length > visibleItems;
+		List<DropdownItem> items = spellDropdown.items();
+		boolean needsScroll = items.size() > visibleItems;
 		int scrollbarW = needsScroll ? 6 : 0;
 		int contentW = dw - scrollbarW;
 		if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
 			int visIdx = (int) ((mouseY - dy) / DROPDOWN_ITEM_H);
 			int optIdx = visIdx + spellDropdownScrollOffset;
-			if (optIdx >= 0 && optIdx < spellDropdown.values().size()) {
-				ResourceLocation selected = spellDropdown.values().get(optIdx);
-				closeSpellDropdown();
-				switchSpellCallback.accept(selected);
+			if (optIdx >= 0 && optIdx < items.size()) {
+				DropdownItem clicked = items.get(optIdx);
+				if (clicked.isFolder()) {
+					String key = clicked.folderKey();
+					if (COLLAPSED_SPELL_FOLDERS.contains(key)) {
+						COLLAPSED_SPELL_FOLDERS.remove(key);
+					} else {
+						COLLAPSED_SPELL_FOLDERS.add(key);
+					}
+					openSpellDropdown(); // 重新按折叠状态刷新菜单树
+				} else if (clicked.value() != null) {
+					ResourceLocation selected = clicked.value();
+					closeSpellDropdown();
+					switchSpellCallback.accept(selected);
+				}
 				return true;
 			}
 		}

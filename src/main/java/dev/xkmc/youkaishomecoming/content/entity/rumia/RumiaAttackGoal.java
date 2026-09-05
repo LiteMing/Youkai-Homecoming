@@ -64,11 +64,17 @@ public class RumiaAttackGoal extends YoukaiAttackGoal<RumiaEntity> {
 	protected int shoot(LivingEntity target, List<LivingEntity> all) {
 		if (youkai.isCharged()) return 10;
 		int round = youkai.isEx() ? 5 : 3;
-		shoot(target, round);
-		double range = getShootRange();
-		for (var e : all) {
-			if (e != target && e.distanceToSqr(youkai) < range * range) {
-				shoot(e, round - 2);
+		// The primary volley is now emitted by the data-driven SpellRuntime. Keep
+		// this goal responsible for nearby secondary targets so Rumia's multi-target
+		// behavior remains unchanged without duplicating the primary pattern.
+		if (youkai.getSpellRuntime() == null) {
+			shoot(target, round);
+		} else {
+			double range = getShootRange();
+			for (var e : all) {
+				if (e != target && e.distanceToSqr(youkai) < range * range) {
+					shoot(e, round - 2);
+				}
 			}
 		}
 		int ans = SHOOT_FREQUENCY;

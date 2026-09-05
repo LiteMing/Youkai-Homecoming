@@ -39,7 +39,7 @@
 		"confident": "从容",
 		"confident.description": "延长受到伤害后的免疫时间",
 		"auto_dodge": "自动闪避",
-		"auto_dodge.description": "自动规避弹幕与投射物。等级I仅救场，II辅助微修正，III接管移动",
+		"auto_dodge.description": "自动规避弹幕与投射物。初阶、进阶和高阶使用相同算法，速度与搜索能力逐级提升",
 		"earthy": "醇厚",
 		"earthy.description": "玩家吃饱时消耗饱食度回血",
 		"enjoyable": "清亮",

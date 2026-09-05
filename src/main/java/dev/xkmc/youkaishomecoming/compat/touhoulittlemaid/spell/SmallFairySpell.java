@@ -8,19 +8,34 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.world.item.DyeColor;
 
+/**
+ * @deprecated Migrated to data-driven definition. See {@link dev.xkmc.youkaishomecoming.content.spell.game.MigratedSpellCards#smallFairy(int, DyeColor)}.
+ */
+@Deprecated
 @SerialClass
 public class SmallFairySpell extends ActualSpellCard {
 
 	@SerialClass.SerialField
 	protected DyeColor color = DyeColor.RED;
+	@SerialClass.SerialField
+	protected boolean randomColor;
 
 	public SmallFairySpell init(DyeColor col) {
 		this.color = col;
+		this.randomColor = false;
+		return this;
+	}
+
+	public SmallFairySpell initRandomized() {
+		this.randomColor = true;
 		return this;
 	}
 
 	@Override
 	public void tick(CardHolder holder) {
+		if (randomColor && tick == 0) {
+			color = DyeColor.values()[holder.random().nextInt(DyeColor.values().length)];
+		}
 		if (tick % 20 == 0) {
 			int step = tick / 20;
 			if (step % 5 < 3) {
@@ -35,6 +50,7 @@ public class SmallFairySpell extends ActualSpellCard {
 						int life = (int) (40 / v * (1 + r.nextDouble() * 0.5));
 						var e = holder.prepareDanmaku(life, vel,
 								YHDanmaku.Bullet.BALL, color);
+						e.setBypassWall(false);
 						holder.shoot(e);
 					}
 				}

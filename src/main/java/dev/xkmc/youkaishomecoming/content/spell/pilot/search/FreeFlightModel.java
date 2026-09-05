@@ -67,4 +67,9 @@ public final class FreeFlightModel implements ActionModel {
 	public static int directionCount() {
 		return DIRS.length;
 	}
+
+	@Override
+	public List<Vec3> directionSeeds() {
+		return List.of(DIRS);
+	}
 }

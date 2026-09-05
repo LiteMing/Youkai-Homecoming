@@ -129,7 +129,7 @@ public class StatusDockPanel implements DockPanel {
 			appendWrapped(lines, font, width, "阶段: " + phaseText, 0xFFB9C8DA);
 			appendWrapped(lines, font, width,
 					"实体: " + scene.getEntityCount() +
-							"  命中: " + scene.getHitCount() +
+							"  命中: " + scene.getTargetHitCount() +
 							"  安全: " + (scene.isSafetyTripped() ? "触发" : "正常"),
 					scene.isSafetyTripped() ? 0xFFFFAA55 : 0xFFAED8AE);
 			appendWrapped(lines, font, width, "视图: " + SpellEditorLocalization.t(viewport.getViewLabel()), 0xFF8CC6FF);
@@ -141,6 +141,7 @@ public class StatusDockPanel implements DockPanel {
 			appendWrapped(lines, font, width,
 					"距离: " + formatDecimal(scene.getTargetDistance()) +
 							"  施法者HP: " + Math.round(scene.getHealthRatio() * 100) + "%" +
+							"  P点: " + formatDecimal(scene.getCasterPower()) +
 							"  目标HP: " + Math.round(scene.getTargetHealthRatio() * 100) + "%",
 					0xFFD6D3F0);
 			appendWrapped(lines, font, width,
@@ -158,7 +159,7 @@ public class StatusDockPanel implements DockPanel {
 			appendWrapped(lines, font, width, "phase: " + phaseText, 0xFFB9C8DA);
 			appendWrapped(lines, font, width,
 					"entities: " + scene.getEntityCount() +
-							"  hits: " + scene.getHitCount() +
+							"  hits: " + scene.getTargetHitCount() +
 							"  safety: " + (scene.isSafetyTripped() ? "TRIPPED" : "OK"),
 					scene.isSafetyTripped() ? 0xFFFFAA55 : 0xFFAED8AE);
 			appendWrapped(lines, font, width, "view: " + viewport.getViewLabel(), 0xFF8CC6FF);
@@ -170,6 +171,7 @@ public class StatusDockPanel implements DockPanel {
 			appendWrapped(lines, font, width,
 					"dist: " + formatDecimal(scene.getTargetDistance()) +
 							"  casterHP: " + Math.round(scene.getHealthRatio() * 100) + "%" +
+							"  power: " + formatDecimal(scene.getCasterPower()) +
 							"  targetHP: " + Math.round(scene.getTargetHealthRatio() * 100) + "%",
 					0xFFD6D3F0);
 			appendWrapped(lines, font, width,

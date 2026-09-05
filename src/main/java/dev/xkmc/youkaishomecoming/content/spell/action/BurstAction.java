@@ -28,8 +28,8 @@ import java.util.List;
 public record BurstAction(int waves, int interval, String waveVariable, List<SpellAction> body) implements SpellAction {
 
 	public static final Codec<BurstAction> CODEC = RecordCodecBuilder.create(i -> i.group(
-			Codec.INT.fieldOf("waves").forGetter(BurstAction::waves),
-			Codec.INT.optionalFieldOf("interval", 1).forGetter(BurstAction::interval),
+			Codec.intRange(1, Integer.MAX_VALUE).fieldOf("waves").forGetter(BurstAction::waves),
+			Codec.intRange(0, Integer.MAX_VALUE).optionalFieldOf("interval", 1).forGetter(BurstAction::interval),
 			Codec.STRING.optionalFieldOf("wave_variable", "").forGetter(BurstAction::waveVariable),
 			SpellAction.CODEC.listOf().fieldOf("body").forGetter(BurstAction::body)
 	).apply(i, BurstAction::new));
@@ -41,15 +41,21 @@ public record BurstAction(int waves, int interval, String waveVariable, List<Spe
 
 	@Override
 	public void execute(SpellContext ctx) {
-		int actualInterval = Math.max(1, interval);
 		boolean hasVar = waveVariable != null && !waveVariable.isEmpty();
+		if (interval == 0) {
+			for (int w = 0; w < waves; w++) {
+				if (ctx.shouldAbortActionList()) break;
+				if (hasVar) ctx.setVariable(waveVariable, w);
+				ctx.executeList(body);
+			}
+			return;
+		}
 		for (int w = 0; w < waves; w++) {
+			if (ctx.shouldAbortActionList()) break;
 			if (w == 0) {
 				// First wave: execute immediately
 				if (hasVar) ctx.setVariable(waveVariable, w);
-				for (var action : body) {
-					action.execute(ctx);
-				}
+				ctx.executeList(body);
 			} else {
 				// Subsequent waves: wrap body with variable-set prefix
 				final int waveIdx = w;
@@ -62,7 +68,8 @@ public record BurstAction(int waves, int interval, String waveVariable, List<Spe
 				} else {
 					scheduled = body;
 				}
-				ctx.runtime().scheduleDelayed(ctx.totalTick() + actualInterval * waveIdx, scheduled);
+				ctx.runtime().scheduleDelayed(ctx.totalTick() + interval * waveIdx, scheduled,
+						ctx.holder(), ctx.callbackContext().orElse(null));
 			}
 		}
 	}

@@ -152,6 +152,10 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 		@Nullable
 		public ProjectileMovement plannedMovement;
 		@Nullable
+		public Vec3 plannedMovementVec;
+		@Nullable
+		public Vec3 untrimmedMoveDst;
+		@Nullable
 		public Vec3 moveDst;
 		@Nullable
 		public BlockHitResult blockHit;
@@ -169,6 +173,8 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 			moveSrc = null;
 			inputVelocity = null;
 			plannedMovement = null;
+			plannedMovementVec = null;
+			untrimmedMoveDst = null;
 			moveDst = null;
 			blockHit = null;
 			ownerInfo = null;
@@ -178,6 +184,31 @@ public abstract class AsyncProjectile extends SimplifiedProjectile {
 			grazeCount = 0;
 			removed = false;
 			stopTick = false;
+		}
+
+		/**
+		 * The destination the projectile would have reached without collision trimming.
+		 * {@code untrimmedMoveDst} is set by {@code planMove} and never overwritten by
+		 * {@code trimMove} (which only modifies {@code moveDst}), so hit actions that
+		 * CONTINUE past a face can advance to the original planned endpoint.
+		 */
+		public Vec3 movementEndOr(Vec3 fallback) {
+			if (untrimmedMoveDst != null) return untrimmedMoveDst;
+			if (moveDst != null) return moveDst;
+			return fallback;
+		}
+
+		/**
+		 * The untrimmed planned movement vector for this tick. {@code plannedMovementVec}
+		 * is set by {@code planMove} and never overwritten by {@code trimMove} (which only
+		 * modifies {@code plannedMovement}), so hit actions that need the pre-collision
+		 * velocity can recover it even after {@code applyMove} has overwritten
+		 * {@code getDeltaMovement()} with the trimmed step.
+		 */
+		public Vec3 incomingMovementOr(Vec3 fallback) {
+			if (plannedMovementVec != null) return plannedMovementVec;
+			if (inputVelocity != null) return inputVelocity;
+			return fallback;
 		}
 
 	}

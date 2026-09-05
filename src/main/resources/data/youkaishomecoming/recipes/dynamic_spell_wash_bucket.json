@@ -1,0 +1,15 @@
+{
+  "type": "youkaishomecoming:spell_draft",
+  "category": "equipment",
+  "ingredients": [
+    {
+      "item": "youkaishomecoming:dynamic_spell"
+    },
+    {
+      "item": "minecraft:water_bucket"
+    }
+  ],
+  "result": {
+    "item": "youkaishomecoming:dynamic_spell"
+  }
+}

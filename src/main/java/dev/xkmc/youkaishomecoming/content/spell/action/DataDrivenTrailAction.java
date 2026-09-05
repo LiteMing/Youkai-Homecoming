@@ -5,12 +5,15 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A TrailAction that executes data-driven SpellActions when a danmaku expires.
@@ -23,7 +26,6 @@ import java.util.Map;
  */
 @SerialClass
 public class DataDrivenTrailAction extends TrailAction {
-
 	private List<SpellAction> actions;
 	private SpellRuntime runtime;
 	private SpellDefinition definition;
@@ -48,34 +50,128 @@ public class DataDrivenTrailAction extends TrailAction {
 		this.variableSnapshot = Map.copyOf(runtime.getVariables());
 	}
 
+	/** False for a no-arg deserialized stub, which cannot execute server callbacks. */
+	public boolean hasRuntimeContext() {
+		return runtime != null && definition != null;
+	}
+
+	public boolean isDeserializedStub() {
+		return !hasRuntimeContext();
+	}
+
 	@Override
 	public void execute(CardHolder holder, Vec3 pos, Vec3 dir) {
-		if (runtime == null || definition == null) return; // Deserialized stub — no-op
+		execute(holder, pos, dir, TrailCardHolder.HitType.NONE, null, null,
+				ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.EXPIRY, null, pos, dir, pos, pos, null, null, null));
+	}
+
+	@Override
+	public void execute(CardHolder holder, ProjectileCallbackContext callback) {
+		execute(holder, callback.position(), callback.sourceDirection(), hitType(callback.kind()),
+				callback.hitEntity(), null, callback);
+	}
+
+	@Override
+	public void executeEntityHit(CardHolder holder, Vec3 pos, Vec3 dir, Entity hitEntity) {
+		execute(holder, pos, dir, TrailCardHolder.HitType.ENTITY, hitEntity, null,
+				ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.HIT_ENTITY, null, pos, dir, pos, pos, pos, null, hitEntity));
+	}
+
+	@Override
+	public void executeEntityHit(CardHolder holder, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		execute(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), TrailCardHolder.HitType.ENTITY,
+				hitContext.hitEntity(), hitContext,
+				hitContext.callbackContext().orElseGet(() ->
+						ProjectileCallbackContext.fromHit(hitContext, ProjectileCallbackContext.Kind.HIT_ENTITY, null)));
+	}
+
+	@Override
+	public void executeEntityHit(CardHolder holder, ProjectileCallbackContext callback) {
+		execute(holder, callback.position(), callback.sourceDirection(), TrailCardHolder.HitType.ENTITY,
+				callback.hitEntity(), null, callback);
+	}
+
+	@Override
+	public void executeEntityHit(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		executeEntityHit(cachedHolder(), hitContext);
+	}
+
+	@Override
+	public void executeBlockHit(CardHolder holder, Vec3 pos, Vec3 dir) {
+		execute(holder, pos, dir, TrailCardHolder.HitType.BLOCK, null, null,
+				ProjectileCallbackContext.point(ProjectileCallbackContext.Kind.HIT_BLOCK, null, pos, dir, pos, pos, pos, null, null));
+	}
+
+	@Override
+	public void executeBlockHit(CardHolder holder, dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		execute(holder, hitContext.hitPosition(), hitContext.incomingVelocity(), TrailCardHolder.HitType.BLOCK, null, hitContext,
+				hitContext.callbackContext().orElseGet(() ->
+						ProjectileCallbackContext.fromHit(hitContext, ProjectileCallbackContext.Kind.HIT_BLOCK, null)));
+	}
+
+	@Override
+	public void executeBlockHit(CardHolder holder, ProjectileCallbackContext callback) {
+		execute(holder, callback.position(), callback.sourceDirection(), TrailCardHolder.HitType.BLOCK,
+				null, null, callback);
+	}
+
+	@Override
+	public void executeBlockHit(dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext) {
+		executeBlockHit(cachedHolder(), hitContext);
+	}
+
+	private void execute(CardHolder holder, Vec3 pos, Vec3 dir,
+			TrailCardHolder.HitType hitType, Entity hitEntity,
+			@org.jetbrains.annotations.Nullable dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext hitContext,
+			@org.jetbrains.annotations.Nullable ProjectileCallbackContext callback) {
+		if (!hasRuntimeContext()) {
+			return;
+		}
 
 		// Temporarily restore snapshotted variables so child actions see creation-time values
 		Map<String, Double> savedVars = null;
 		if (variableSnapshot != null) {
 			savedVars = Map.copyOf(runtime.getVariables());
+			// Snapshot-fill itself does not count as a callback write.
+			runtime.endTrackWrites();
 			for (var entry : variableSnapshot.entrySet()) {
 				runtime.setVariable(entry.getKey(), entry.getValue());
 			}
 		}
 
-		var trailHolder = new TrailCardHolder(holder, pos, dir);
-		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT);
-		for (var action : actions) {
-			action.execute(ctx);
-		}
-
-		// Restore original variables
-		if (savedVars != null) {
-			// Clear any vars that were only in snapshot, restore originals
-			for (var entry : variableSnapshot.entrySet()) {
-				if (savedVars.containsKey(entry.getKey())) {
-					runtime.setVariable(entry.getKey(), savedVars.get(entry.getKey()));
+		// A callback can be invoked through the hit-context-only overload when the
+		// projectile owner is an ordinary entity (or unavailable in a test). Keep
+		// the authoritative hit context usable without manufacturing a holder that
+		// would fail on self()/target access.
+		CardHolder trailHolder = holder == null ? null : new TrailCardHolder(holder, pos, dir, hitType, hitEntity);
+		var ctx = new SpellContext(trailHolder, definition, runtime, DifficultyModifiers.DEFAULT, hitContext, callback);
+		// Capture which variables the callback actually writes (setVariable calls).
+		Set<String> written = variableSnapshot != null ? runtime.beginTrackWrites() : null;
+		try {
+			ctx.executeList(actions);
+		} finally {
+			runtime.endTrackWrites();
+			// Restore original variables
+			if (savedVars != null) {
+				// Revert the temporary snapshot fill for everything the callback did NOT
+				// explicitly write. Keys the callback wrote (via setVariable) stay, so a
+				// hit-driven counter reaches the main loop even if its new value equals
+				// the snapshot value.
+				for (var entry : variableSnapshot.entrySet()) {
+					if (savedVars.containsKey(entry.getKey()) && (written == null || !written.contains(entry.getKey()))) {
+						runtime.setVariable(entry.getKey(), savedVars.get(entry.getKey()));
+					}
 				}
 			}
 		}
+	}
+
+	private static TrailCardHolder.HitType hitType(ProjectileCallbackContext.Kind kind) {
+		return switch (kind) {
+			case HIT_ENTITY -> TrailCardHolder.HitType.ENTITY;
+			case HIT_BLOCK -> TrailCardHolder.HitType.BLOCK;
+			default -> TrailCardHolder.HitType.NONE;
+		};
 	}
 
 	@Override

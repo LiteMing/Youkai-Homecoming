@@ -56,6 +56,12 @@ public class VirtualDanmakuHolder {
 		return false;
 	}
 
+	/** Number of virtual projectiles currently tracked by this holder (certification
+	 * active-threat accounting, design doc D6). */
+	public int activeProjectileCount() {
+		return allDanmakus.size();
+	}
+
 	// ==================== Tick ====================
 
 	/**
@@ -136,13 +142,16 @@ public class VirtualDanmakuHolder {
 
 	// ==================== Exposure compat ====================
 
-	public void countDanmakuInFrustum(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit, dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result) {
+	public void countDanmakuInFrustum(LivingEntity trackingHost,
+			dev.xkmc.youkaishomecoming.compat.exposure.DanmakuFrustum frustum, int limit,
+			dev.xkmc.youkaishomecoming.compat.exposure.EraseResult result,
+			@Nullable net.minecraft.resources.ResourceLocation source) {
 		int counted = 0;
 		for (var e : allDanmakus) {
 			if (counted >= limit) break;
 			if (frustum.contains(e.position())) {
-				String[] info = dev.xkmc.youkaishomecoming.compat.exposure.ExposureCompat.getDanmakuTypeAndColor(e);
-				result.record(info[0], info[1]);
+				String[] info = dev.xkmc.youkaishomecoming.compat.exposure.DanmakuCaptureService.getDanmakuTypeAndColor(e);
+				result.record(info[0], info[1], source, trackingHost, e);
 				counted++;
 			}
 		}

@@ -1,0 +1,41 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_preset_spell": {
+      "conditions": {
+        "items": [
+          {
+            "tag": "youkaishomecoming:preset_spell"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "youkaishomecoming:spell_draft_spell_reimu"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    }
+  },
+  "requirements": [
+    [
+      "has_preset_spell",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "youkaishomecoming:spell_draft_spell_reimu",
+      "youkaishomecoming:spell_draft_spell_marisa",
+      "youkaishomecoming:spell_draft_spell_sanae",
+      "youkaishomecoming:spell_draft_spell_mystia",
+      "youkaishomecoming:spell_draft_spell_koishi",
+      "youkaishomecoming:spell_draft_spell_remilia",
+      "youkaishomecoming:spell_draft_spell_yukari_laser",
+      "youkaishomecoming:spell_draft_spell_yukari_butterfly",
+      "youkaishomecoming:spell_draft_spell_clownpiece"
+    ]
+  },
+  "sends_telemetry_event": false
+}

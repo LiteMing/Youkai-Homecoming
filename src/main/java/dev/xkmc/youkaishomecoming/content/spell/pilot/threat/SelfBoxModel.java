@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.pilot.threat;
 
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHitBox;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ThreatSemantic;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -104,21 +105,29 @@ public final class SelfBoxModel {
 	}
 
 	/**
-	 * Player: DANMAKU = asymmetric HITBOX shrink; VANILLA = full 0.6×1.8×0.6.
-	 * {@code hitBoxDelta} from {@code GrazeHelper.getHitBoxDelta} (live each tick).
+	 * Player: DANMAKU = scaled around the eye anchor; VANILLA = the live pose box.
+	 * {@code hitBoxScale} from the live danmaku hit-box attribute.
 	 */
-	public static SelfBoxModel playerDanmaku(float hitBoxDelta) {
-		double shrink = -hitBoxDelta;
-		double dMinX = -0.3 + shrink;
-		double dMaxX = 0.3 - shrink;
-		double dMinY = 0 + shrink * 2;
-		double dMaxY = 1.8;
-		double dMinZ = -0.3 + shrink;
-		double dMaxZ = 0.3 - shrink;
-		// Vanilla full player box
-		double vMinX = -0.3, vMaxX = 0.3;
-		double vMinY = 0, vMaxY = 1.8;
-		double vMinZ = -0.3, vMaxZ = 0.3;
+	public static SelfBoxModel playerDanmaku(float hitBoxScale) {
+		return playerDanmaku(
+				new AABB(-0.3, 0, -0.3, 0.3, 1.8, 0.3),
+				Vec3.ZERO, new Vec3(0, 1.62, 0), hitBoxScale);
+	}
+
+	/** Player model from the live world box and eye position. */
+	public static SelfBoxModel playerDanmaku(AABB worldBox, Vec3 feet, Vec3 eye, float hitBoxScale) {
+		AABB local = worldBox.move(-feet.x, -feet.y, -feet.z);
+		AABB scaled = DanmakuHitBox.scaled(local, eye.subtract(feet), hitBoxScale);
+		double dMinX = scaled.minX;
+		double dMaxX = scaled.maxX;
+		double dMinY = scaled.minY;
+		double dMaxY = scaled.maxY;
+		double dMinZ = scaled.minZ;
+		double dMaxZ = scaled.maxZ;
+		// Vanilla semantics must retain the live pose-dependent world box.
+		double vMinX = local.minX, vMaxX = local.maxX;
+		double vMinY = local.minY, vMaxY = local.maxY;
+		double vMinZ = local.minZ, vMaxZ = local.maxZ;
 		return new SelfBoxModel(
 				dMinX, dMinY, dMinZ, dMaxX, dMaxY, dMaxZ,
 				vMinX, vMinY, vMinZ, vMaxX, vMaxY, vMaxZ,
@@ -133,10 +142,18 @@ public final class SelfBoxModel {
 
 	/** Youkai/Boss: DANMAKU = inflate(GRAZE_RANGE); VANILLA = raw width×height. */
 	public static SelfBoxModel youkaiDanmaku(double width, double height) {
+		return youkaiDanmaku(width, height, height * 0.85, 1);
+	}
+
+	/** Youkai/Boss model using the same scale and eye anchor as server collision. */
+	public static SelfBoxModel youkaiDanmaku(double width, double height, double eyeHeight, double hitBoxScale) {
 		double hw = width * 0.5;
-		double dHw = hw + GRAZE_RANGE;
+		AABB scaled = DanmakuHitBox.scaled(
+				new AABB(-hw, 0, -hw, hw, height, hw),
+				new Vec3(0, eyeHeight, 0), hitBoxScale);
 		return new SelfBoxModel(
-				-dHw, -GRAZE_RANGE, -dHw, dHw, height + GRAZE_RANGE, dHw,
+				scaled.minX - GRAZE_RANGE, scaled.minY - GRAZE_RANGE, scaled.minZ - GRAZE_RANGE,
+				scaled.maxX + GRAZE_RANGE, scaled.maxY + GRAZE_RANGE, scaled.maxZ + GRAZE_RANGE,
 				-hw, 0, -hw, hw, height, hw,
 				GRAZE_RANGE
 		);

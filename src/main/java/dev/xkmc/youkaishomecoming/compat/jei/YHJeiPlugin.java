@@ -15,17 +15,24 @@ import dev.xkmc.youkaishomecoming.content.pot.table.recipe.CuisineRecipe;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHBlocks;
 import dev.xkmc.youkaishomecoming.init.registrate.YHItems;
+import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellAuraItem;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.ingredients.subtypes.UidContext;
 import mezz.jei.api.recipe.RecipeType;
+import mezz.jei.api.recipe.vanilla.IJeiAnvilRecipe;
+import mezz.jei.api.constants.RecipeTypes;
 import mezz.jei.api.registration.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import vectorwing.farmersdelight.common.registry.ModBlocks;
 
 import java.util.Objects;
+import java.util.List;
 
 @JeiPlugin
 public class YHJeiPlugin implements IModPlugin {
@@ -42,6 +49,7 @@ public class YHJeiPlugin implements IModPlugin {
 	public static final RecipeType<PotCookingRecipe<?>> BOWL_COOKING = RecipeType.create(YoukaisHomecoming.MODID, "bowl_cooking", Wrappers.cast(PotCookingRecipe.class));
 	public static final RecipeType<PotCookingRecipe<?>> POT_COOKING = RecipeType.create(YoukaisHomecoming.MODID, "pot_cooking", Wrappers.cast(PotCookingRecipe.class));
 	public static final RecipeType<PotCookingRecipe<?>> STOCK_COOKING = RecipeType.create(YoukaisHomecoming.MODID, "stock_cooking", Wrappers.cast(PotCookingRecipe.class));
+	public static final RecipeType<IJeiAnvilRecipe> SPELL_AURA_ANVIL = RecipeTypes.ANVIL;
 
 	@Override
 	public ResourceLocation getPluginUid() {
@@ -90,6 +98,39 @@ public class YHJeiPlugin implements IModPlugin {
 				.stream().filter(e -> e.matchContainer(YHBlocks.IRON_POT.asItem())).toList());
 		registration.addRecipes(STOCK_COOKING, m.getAllRecipesFor(YHBlocks.COOKING_RT.get())
 				.stream().filter(e -> e.matchContainer(YHBlocks.STOCKPOT.asItem())).toList());
+		var anvil = registration.getVanillaRecipeFactory();
+		// JEI derives the displayed level cost by running these inputs through an
+		// AnvilMenu. The real aura handler accepts bound unfinished drafts, so the
+		// representative input must carry a spell id as well.
+		ItemStack auraInput = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(),
+				new ResourceLocation("fairy", "generic"));
+		registration.addRecipes(SPELL_AURA_ANVIL, List.of(
+				anvil.createAnvilRecipe(auraInput,
+						List.of(YHDanmaku.NON_SPELL_AURA.asStack()),
+						List.of(auraOutput(auraInput, YHDanmaku.NON_SPELL_AURA.get())),
+						YoukaisHomecoming.loc("spell_aura_non_spell")),
+				anvil.createAnvilRecipe(auraInput,
+						List.of(YHDanmaku.TIMEOUT_SPELL_AURA.asStack()),
+						List.of(auraOutput(auraInput, YHDanmaku.TIMEOUT_SPELL_AURA.get())),
+						YoukaisHomecoming.loc("spell_aura_timeout")),
+				anvil.createAnvilRecipe(auraInput,
+						List.of(YHDanmaku.LAST_SPELL_AURA.asStack()),
+						List.of(auraOutput(auraInput, YHDanmaku.LAST_SPELL_AURA.get())),
+						YoukaisHomecoming.loc("spell_aura_last")),
+				anvil.createAnvilRecipe(auraInput,
+						List.of(YHDanmaku.EX_SPELL_AURA.asStack()),
+						List.of(auraOutput(auraInput, YHDanmaku.EX_SPELL_AURA.get())),
+						YoukaisHomecoming.loc("spell_aura_ex"))));
+	}
+
+	private static ItemStack auraOutput(ItemStack input, SpellAuraItem aura) {
+		ItemStack output = input.copy();
+		if (aura.isEx()) {
+			DynamicSpellItem.setExSpell(output, true);
+		} else {
+			DynamicSpellItem.setCardType(output, aura.type());
+		}
+		return output;
 	}
 
 	public void registerRecipeCatalysts(IRecipeCatalystRegistration registration) {
@@ -105,6 +146,7 @@ public class YHJeiPlugin implements IModPlugin {
 		registration.addRecipeCatalyst(YHBlocks.IRON_BOWL.asStack(), BOWL_COOKING);
 		registration.addRecipeCatalyst(YHBlocks.IRON_POT.asStack(), POT_COOKING);
 		registration.addRecipeCatalyst(YHBlocks.STOCKPOT.asStack(), STOCK_COOKING);
+		registration.addRecipeCatalyst(Items.ANVIL.getDefaultInstance(), SPELL_AURA_ANVIL);
 		registration.addRecipeCatalyst(ModBlocks.STOVE.get().asItem().getDefaultInstance(), MOKA, KETTLE, STEAM, BOWL_COOKING, POT_COOKING, STOCK_COOKING);
 	}
 

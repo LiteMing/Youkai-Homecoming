@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.mover;
 
 import dev.xkmc.l2serial.serialization.SerialClass;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHelper;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -9,7 +10,9 @@ import net.minecraft.world.phys.Vec3;
  * Two modes of operation:
  * <ol>
  *   <li><b>Formula mode</b> (aim="none"): x/y/z formula expressions define the offset.
- *       Supports extended variables (targetX/Y/Z, casterX/Y/Z, originX/Y/Z, tick).</li>
+ *       By default the expressions are world-coordinate offsets. With {@code space="local"}
+ *       they use the launch frame (forward/right/up). Supports extended variables
+ *       (targetX/Y/Z, casterX/Y/Z, originX/Y/Z, tick).</li>
  *   <li><b>Aim mode</b> (aim="target"/"forward"): pre-computed direction + speed.
  *       Only stores a Vec3 direction and a double speed — minimal network footprint.
  *       Position = origin + direction * speed * tick.</li>
@@ -34,6 +37,17 @@ public final class TranslateMover extends TargetPosMover {
 	private String formulaY = "0";
 	@SerialClass.SerialField
 	private String formulaZ = "0";
+
+	/** Whether formula offsets use the launch frame instead of world axes. */
+	@SerialClass.SerialField
+	private boolean localSpace = false;
+	/** Launch-frame basis, persisted so a saved projectile keeps deterministic motion. */
+	@SerialClass.SerialField
+	private Vec3 localForward = new Vec3(0, 0, 1);
+	@SerialClass.SerialField
+	private Vec3 localRight = new Vec3(1, 0, 0);
+	@SerialClass.SerialField
+	private Vec3 localUp = new Vec3(0, 1, 0);
 
 	// Pre-computed aim mode fields (no formula strings needed — saves network bandwidth)
 	@SerialClass.SerialField
@@ -81,6 +95,25 @@ public final class TranslateMover extends TargetPosMover {
 		}
 	}
 
+	/**
+	 * Formula mode with an optional launch-local frame. The frame is captured once
+	 * when the projectile is emitted, so changing group yaw/pitch affects this
+	 * projectile's plane but never causes a per-flight-tick angle update.
+	 */
+	public TranslateMover(Vec3 origin, String formulaX, String formulaY, String formulaZ,
+						  Vec3 targetPos, Vec3 casterPos, Vec3 launchDirection, boolean localSpace) {
+		this(origin, formulaX, formulaY, formulaZ, targetPos, casterPos);
+		if (localSpace) {
+			Vec3 direction = launchDirection != null && launchDirection.lengthSqr() > 1e-8
+					? launchDirection.normalize() : new Vec3(0, 0, 1);
+			var orientation = DanmakuHelper.getOrientation(direction);
+			this.localSpace = true;
+			this.localForward = orientation.forward();
+			this.localRight = orientation.side();
+			this.localUp = orientation.normal();
+		}
+	}
+
 	/** Aim mode constructor — no formula strings, minimal serialization. */
 	public TranslateMover(Vec3 origin, Vec3 aimDir, double aimSpeed) {
 		this.origin = origin;
@@ -122,7 +155,12 @@ public final class TranslateMover extends TargetPosMover {
 		double x = exprX.eval(tick, tx, ty, tz, cx, cy, cz, ox, oy, oz);
 		double y = exprY.eval(tick, tx, ty, tz, cx, cy, cz, ox, oy, oz);
 		double z = exprZ.eval(tick, tx, ty, tz, cx, cy, cz, ox, oy, oz);
-		return origin.add(x, y, z);
+		if (!localSpace) {
+			return origin.add(x, y, z);
+		}
+		return origin.add(localForward.scale(x))
+				.add(localRight.scale(y))
+				.add(localUp.scale(z));
 	}
 
 	private void ensureCompiled() {

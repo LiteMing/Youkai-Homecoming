@@ -62,14 +62,20 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
+		if (player.isShiftKeyDown() && GrazeHelper.isPlayerSpellBeingCast(player)) {
+			if (!level.isClientSide && player instanceof ServerPlayer sp) {
+				GrazeHelper.tryForceCloseSpell(sp, stack);
+			}
+			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+		}
+		if (GrazeHelper.forbidSpellCardWithMessage(player))
+			return InteractionResultHolder.fail(stack);
 		if (player.isShiftKeyDown() && GrazeHelper.isManualCombatMode()) {
 			if (!level.isClientSide) {
 				GrazeHelper.tryToggleManualCombat(player);
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
-		if (GrazeHelper.forbidDanmaku(player))
-			return InteractionResultHolder.fail(stack);
 		boolean consume = !player.getAbilities().instabuild && !(player instanceof FakePlayer);
 		if (!castSpell(stack, player, consume, true)) {
 			return InteractionResultHolder.fail(stack);
@@ -79,12 +85,14 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 
 	@Override
 	public boolean castSpell(ItemStack stack, Player player, boolean consume, boolean cooldown) {
+		if (GrazeHelper.forbidSpellCardWithMessage(player)) return false;
 		LivingEntity target = GrazeHelper.resolveSpellTarget(player);
 		if (player instanceof ServerPlayer sp) {
-			if (consume && !SpellItemCost.tryPay(sp)) {
+			if (consume && !SpellItemCost.tryPay(sp, 0)) {
 				return false;
 			}
-			SpellContainer.castSpell(sp, spell, target);
+			SpellContainer.castSpell(sp, spell, target, GrazeHelper.spellCardKey(stack));
+			GrazeHelper.onPlayerSpellCast(sp);
 			if (cooldown) {
 				int cd = YHModConfig.COMMON.playerSpellCooldown.get();
 				sp.getCooldowns().addCooldown(this, cd);
@@ -101,7 +109,7 @@ public class SpellItem extends ProjectileWeaponItem implements IGlowingTarget, I
 		if (GrazeHelper.isManualCombatMode()) {
 			list.add(YHLangData.STG_TOGGLE_TIP.get());
 		}
-		SpellItemCost.appendCostTooltip(list);
+		SpellItemCost.appendCostTooltip(list, 0);
 		if (isSingleUse(stack)) {
 			list.add(YHLangData.SPELL_SINGLE_USE.get());
 		}

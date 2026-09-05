@@ -16,12 +16,13 @@ public class PatternEmitter {
 	public record Settings(NumberProvider count, NumberProvider speed, NumberProvider angleOffset,
 						   NumberProvider spread, NumberProvider elevation, PatternType pattern,
 						   AimMode aimMode, NumberProvider originRotation, Optional<NumberProvider> outerCount,
-						   Optional<NumberProvider> tiltAngle, Optional<GroupRotation> groupRotation) {
+						   Optional<NumberProvider> tiltAngle, Optional<GroupRotation> groupRotation,
+						   boolean randomAxis) {
 	}
 
 	@FunctionalInterface
 	public interface Sink {
-		void emit(Vec3 velocity, Vec3 baseDirection, int spawnIndex);
+		void emit(Vec3 velocity, Vec3 baseDirection, int spawnIndex, double resolvedSpread);
 	}
 
 	public static void emit(SpellContext ctx, Vec3 originPos, Settings settings, Sink sink) {
@@ -57,14 +58,8 @@ public class PatternEmitter {
 		}
 
 		if (settings.groupRotation().isPresent()) {
-			var gr = settings.groupRotation().get();
-			Vec3 forward = ori.forward();
-			Vec3 rotatedNormal = gr.apply(ori.normal(), ctx);
-			double dot = rotatedNormal.dot(forward);
-			Vec3 projNormal = rotatedNormal.subtract(forward.scale(dot));
-			if (projNormal.lengthSqr() > 1e-8) {
-				ori = DanmakuHelper.getOrientation(forward, projNormal.normalize());
-			}
+			ori = settings.groupRotation().get().apply(ori, ctx);
+			baseDir = ori.forward();
 		}
 
 		if (settings.pattern() == PatternType.NESTED_RING && settings.outerCount().isPresent()) {
@@ -92,7 +87,7 @@ public class PatternEmitter {
 				for (int j = 0; j < n; j++) {
 					double innerAngle = innerClosed ? (360.0 / Math.max(n, 1)) * j :
 							n > 1 ? -innerSpread / 2.0 + innerSpread * j / (n - 1) : 0;
-					sink.emit(innerOri.rotateDegrees(0, innerAngle).scale(spd), baseDir, index++);
+					sink.emit(innerOri.rotateDegrees(0, innerAngle).scale(spd), baseDir, index++, spreadDeg);
 				}
 			}
 			return;
@@ -107,7 +102,7 @@ public class PatternEmitter {
 				double rowAngle = rows > 1 ? rowSpread * (r - (rows - 1) / 2.0) / (rows - 1) : 0;
 				for (int c = 0; c < cols; c++) {
 					double colAngle = cols > 1 ? rowSpread * (c - (cols - 1) / 2.0) / (cols - 1) : 0;
-					sink.emit(ori.rotateDegrees(angle + colAngle, rowAngle).scale(spd), baseDir, index++);
+					sink.emit(ori.rotateDegrees(angle + colAngle, rowAngle).scale(spd), baseDir, index++, spreadDeg);
 				}
 			}
 			return;
@@ -119,25 +114,27 @@ public class PatternEmitter {
 			double goldenAngle = 360.0 / ((1 + Math.sqrt(5)) / 2);
 			double sinLatMin = Math.sin(Math.toRadians(-latRange / 2.0));
 			double sinLatMax = Math.sin(Math.toRadians(latRange / 2.0));
-			var rand = holder.random();
 			boolean fullSphere = latRange >= 180.0 - 1e-3 && lonRange >= 360.0 - 1e-3;
-			if (fullSphere) {
-				double alpha = rand.nextDouble() * 2 * Math.PI;
-				double cosTheta = 2 * rand.nextDouble() - 1;
-				double thetaRad = Math.acos(cosTheta);
-				double gamma = rand.nextDouble() * 2 * Math.PI;
-				Vec3 n1 = ori.normal().scale(Math.cos(alpha)).add(ori.side().scale(Math.sin(alpha)));
-				Vec3 s1 = ori.normal().scale(-Math.sin(alpha)).add(ori.side().scale(Math.cos(alpha)));
-				Vec3 f2 = ori.forward().scale(Math.cos(thetaRad)).add(n1.scale(Math.sin(thetaRad)));
-				Vec3 n2 = ori.forward().scale(-Math.sin(thetaRad)).add(n1.scale(Math.cos(thetaRad)));
-				Vec3 n3 = n2.scale(Math.cos(gamma)).add(s1.scale(Math.sin(gamma)));
-				Vec3 s3 = n2.scale(-Math.sin(gamma)).add(s1.scale(Math.cos(gamma)));
-				ori = new DanmakuHelper.Orientation(f2, n3, s3);
-			} else {
-				double spin = rand.nextDouble() * 2 * Math.PI;
-				Vec3 rn = ori.normal().scale(Math.cos(spin)).add(ori.side().scale(Math.sin(spin)));
-				Vec3 rs = ori.normal().scale(-Math.sin(spin)).add(ori.side().scale(Math.cos(spin)));
-				ori = new DanmakuHelper.Orientation(ori.forward(), rn, rs);
+			if (settings.randomAxis()) {
+				var rand = holder.random();
+				if (fullSphere) {
+					double alpha = rand.nextDouble() * 2 * Math.PI;
+					double cosTheta = 2 * rand.nextDouble() - 1;
+					double thetaRad = Math.acos(cosTheta);
+					double gamma = rand.nextDouble() * 2 * Math.PI;
+					Vec3 n1 = ori.normal().scale(Math.cos(alpha)).add(ori.side().scale(Math.sin(alpha)));
+					Vec3 s1 = ori.normal().scale(-Math.sin(alpha)).add(ori.side().scale(Math.cos(alpha)));
+					Vec3 f2 = ori.forward().scale(Math.cos(thetaRad)).add(n1.scale(Math.sin(thetaRad)));
+					Vec3 n2 = ori.forward().scale(-Math.sin(thetaRad)).add(n1.scale(Math.cos(thetaRad)));
+					Vec3 n3 = n2.scale(Math.cos(gamma)).add(s1.scale(Math.sin(gamma)));
+					Vec3 s3 = n2.scale(-Math.sin(gamma)).add(s1.scale(Math.cos(gamma)));
+					ori = new DanmakuHelper.Orientation(f2, n3, s3);
+				} else {
+					double spin = rand.nextDouble() * 2 * Math.PI;
+					Vec3 rn = ori.normal().scale(Math.cos(spin)).add(ori.side().scale(Math.sin(spin)));
+					Vec3 rs = ori.normal().scale(-Math.sin(spin)).add(ori.side().scale(Math.cos(spin)));
+					ori = new DanmakuHelper.Orientation(ori.forward(), rn, rs);
+				}
 			}
 			for (int i = 0; i < n; i++) {
 				double t = n > 1 ? (double) i / (n - 1) : 0.5;
@@ -147,7 +144,7 @@ public class PatternEmitter {
 				if (lonRange < 360.0) {
 					theta = angle - lonRange / 2.0 + (goldenAngle * i) % lonRange;
 				}
-				sink.emit(ori.rotateDegrees(theta, phi).scale(spd), baseDir, i);
+				sink.emit(ori.rotateDegrees(theta, phi).scale(spd), baseDir, i, spreadDeg);
 			}
 			return;
 		}
@@ -162,7 +159,7 @@ public class PatternEmitter {
 				double sinPhi = sinLatMin + (sinLatMax - sinLatMin) * rand.nextDouble();
 				double phi = Math.toDegrees(Math.asin(Math.max(-1, Math.min(1, sinPhi))));
 				double theta = angle - lonRange / 2.0 + lonRange * rand.nextDouble();
-				sink.emit(ori.rotateDegrees(theta, phi).scale(spd), baseDir, i);
+				sink.emit(ori.rotateDegrees(theta, phi).scale(spd), baseDir, i, spreadDeg);
 			}
 			return;
 		}
@@ -171,7 +168,7 @@ public class PatternEmitter {
 			for (int i = 0; i < n; i++) {
 				double t = n > 1 ? (double) i / (n - 1) : 0;
 				double a = angle + spreadDeg * t;
-				sink.emit(ori.rotateDegrees(a).scale(spd * (0.3 + 0.7 * t)), baseDir, i);
+				sink.emit(ori.rotateDegrees(a).scale(spd * (0.3 + 0.7 * t)), baseDir, i, spreadDeg);
 			}
 			return;
 		}
@@ -183,7 +180,7 @@ public class PatternEmitter {
 			for (int i = 0; i < n; i++) {
 				double a = Math.toRadians(angle + (360.0 / n) * i);
 				Vec3 radial = ori.normal().scale(Math.cos(a)).add(ori.side().scale(Math.sin(a)));
-				sink.emit(ori.forward().scale(sinCone).add(radial.scale(cosCone)).scale(spd), baseDir, i);
+				sink.emit(ori.forward().scale(sinCone).add(radial.scale(cosCone)).scale(spd), baseDir, i, spreadDeg);
 			}
 			return;
 		}
@@ -192,7 +189,16 @@ public class PatternEmitter {
 			double a = angle;
 			double v = elevDeg;
 			switch (settings.pattern()) {
-				case RING -> a += (360.0 / n) * i;
+				case RING -> {
+					// A full-width ring keeps the legacy closed-loop distribution.  A
+					// narrower spread is an open arc centred on angle_offset, with the
+					// endpoints included so the configured span is visible at any count.
+					if (Math.abs(spreadDeg) >= 360.0 - 1e-3) {
+						a += (360.0 / n) * i;
+					} else if (n > 1) {
+						a += spreadDeg * (i - (n - 1) / 2.0) / (n - 1);
+					}
+				}
 				case LINE -> {
 					if (n > 1) {
 						a += spreadDeg * (i - (n - 1) / 2.0) / (n - 1);
@@ -209,7 +215,7 @@ public class PatternEmitter {
 				default -> {
 				}
 			}
-			sink.emit(ori.rotateDegrees(a, v).scale(spd), baseDir, i);
+			sink.emit(ori.rotateDegrees(a, v).scale(spd), baseDir, i, spreadDeg);
 		}
 	}
 

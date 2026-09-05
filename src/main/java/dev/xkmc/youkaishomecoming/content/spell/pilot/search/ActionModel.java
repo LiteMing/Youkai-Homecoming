@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * Discrete action vocabulary for spatiotemporal search.
  * FreeFlightModel: 14 dirs × high/low + stay = 29.
- * GroundedModel reserved for Phase 7.
+ * GroundedModel supplies the equivalent terrain-aware player action set.
  */
 public interface ActionModel {
 
@@ -18,6 +18,15 @@ public interface ActionModel {
 	}
 
 	List<Action> actions(PilotSearchNode parent, double highSpeed, double lowSpeed);
+
+	/** Unique low-cost directions used by the first search pass. */
+	default List<Vec3> directionSeeds() {
+		return List.of();
+	}
+
+	default boolean supportsVerticalMovement() {
+		return true;
+	}
 
 	/** Pose-dependent self box height factor (prone etc.). Default 1. */
 	default double boxHeightScale(PilotSearchNode node) {

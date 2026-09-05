@@ -1,5 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
+import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
@@ -9,8 +11,10 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +40,7 @@ public class SpellEditorController {
 	private SpellDefinition definition;
 	private boolean draftMode;
 	private boolean skipSaveOnNextDefinitionSwitch;
+	private ResourceLocation baselineDefinitionId;
 
 	public SpellEditorController(SpellDefinition definition, boolean draftMode,
 								 VirtualSpellScene scene, Runnable rebuildCallback) {
@@ -43,6 +48,7 @@ public class SpellEditorController {
 		this.draftMode = draftMode;
 		this.scene = scene;
 		this.rebuildCallback = rebuildCallback;
+		this.baselineDefinitionId = draftMode || definition == null ? null : definition.id;
 		if (!draftMode) {
 			rememberOpenSnapshot(definition);
 		}
@@ -110,8 +116,8 @@ public class SpellEditorController {
 		if (target == null) {
 			return;
 		}
-		saveCurrentDefinition();
 		skipSaveOnNextDefinitionSwitch = true;
+		baselineDefinitionId = target.id;
 		boolean wasPlaying = scene.isPlaying();
 		scene.pause();
 		scene.switchSpellDefinition(target, true);
@@ -127,33 +133,71 @@ public class SpellEditorController {
 	}
 
 	public void enterDraftSpellEditor() {
-		saveCurrentDefinition();
 		skipSaveOnNextDefinitionSwitch = true;
+		baselineDefinitionId = null;
 		draftMode = true;
 		scene.pause();
 		scene.switchSpellDefinition(createDraftDefinition(), true);
 	}
 
-	public void nameCurrentDraftSpell(String name) {
+	@Nullable
+	public Component nameCurrentDraftSpell(String name) {
 		if (!isDraftMode()) {
-			return;
+			return Component.translatable("youkaishomecoming.spell_editor.create.error.not_draft");
+		}
+		if (name == null || name.trim().isEmpty()) {
+			return Component.translatable("youkaishomecoming.spell_editor.create.error.missing_id");
 		}
 		ResourceLocation spellId = parseDraftSpellId(name);
 		if (spellId == null) {
-			displayEditorMessage("[YH] Invalid spell id");
-			return;
+			return Component.translatable("youkaishomecoming.spell_editor.create.error.invalid_id");
 		}
 		if (SpellRegistry.contains(spellId)) {
-			displayEditorMessage("[YH] Spell already exists: " + formatResourceId(spellId));
-			return;
+			return Component.translatable("youkaishomecoming.spell_editor.create.error.exists", spellId);
 		}
 		SpellDefinition created = createEmptySpellDefinition(spellId);
+		if (!SpellEditorNetworkClient.save(created)) {
+			return Component.translatable("youkaishomecoming.spell_editor.error.encode_failed");
+		}
 		SpellRegistry.register(created);
-		SpellEditorNetworkClient.save(created);
+		// Bind the blank card the player is holding the moment the id is created —
+		// the card and the spell id become one from here on (server re-binds on
+		// save as authority, so OP saves get the card too).
+		bindHeldBlankCard(spellId);
 		skipSaveOnNextDefinitionSwitch = true;
 		scene.pause();
 		scene.switchSpellDefinition(created, true);
 		displayEditorMessage("[YH] Created spell " + formatResourceId(spellId));
+		return null;
+	}
+
+	/**
+	 * Apply the newly created spell id to the blank DynamicSpellItem the player is
+	 * holding (main hand, then offhand, then first blank card in the inventory).
+	 * Blank cards are bound normally; missing legacy {@code minecraft:path}
+	 * bindings may be upgraded to the new player namespace.
+	 */
+	private void bindHeldBlankCard(ResourceLocation spellId) {
+		var player = Minecraft.getInstance().player;
+		if (player == null) {
+			return;
+		}
+		for (ItemStack stack : new ItemStack[]{player.getMainHandItem(), player.getOffhandItem()}) {
+			if (tryBind(stack, spellId)) {
+				return;
+			}
+		}
+		for (ItemStack stack : player.getInventory().items) {
+			if (tryBind(stack, spellId)) {
+				return;
+			}
+		}
+	}
+
+	private static boolean tryBind(ItemStack stack, ResourceLocation spellId) {
+		return stack.getItem() instanceof dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+				&& dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+				.bindCreatedSpellId(stack, spellId);
 	}
 
 	public void deleteSelectedSpell() {
@@ -171,18 +215,46 @@ public class SpellEditorController {
 		displayEditorMessage("[YH] Deleted spell " + formatResourceId(spellId));
 	}
 
-	// --- Save / Reset / Export ---
+// --- Save / Reset ---
 
-	public void saveCurrentDefinition() {
+	/**
+	 * Restore the definition that was visible when this editor session last saved
+	 * it. This is deliberately client-side: abandoning edits must never send a
+	 * compensating write to the server.
+	 */
+	public void discardCurrentDefinitionChanges() {
 		if (isDraftMode()) {
+			definition = createDraftDefinition();
 			return;
 		}
-		// legacy_ticker factory cannot survive JSON encode — skip remote save
-		if (definition.hasLegacyTicker()) {
+		SpellDefinition restored = null;
+		ResourceLocation baselineId = baselineDefinitionId == null ? definition.id : baselineDefinitionId;
+		var snapshot = openSnapshots.get(baselineId);
+		if (snapshot != null) {
+			restored = SpellDefinition.CODEC.parse(
+					com.mojang.serialization.JsonOps.INSTANCE, snapshot).result().orElse(null);
+		}
+		if (restored == null) {
+			restored = SpellRegistry.getDefault(baselineId);
+		}
+		if (restored != null) {
+			definition = restored;
+			SpellRegistry.register(restored);
+			baselineDefinitionId = restored.id;
+		}
+	}
+
+	/** Refresh the client-side saved baseline after an explicit server save. */
+	public void markDefinitionSaved() {
+		if (isDraftMode() || definition == null || definition.hasLegacyTicker()) {
 			return;
 		}
-		SpellRegistry.register(definition);
-		SpellEditorNetworkClient.save(definition);
+		SpellDefinition.CODEC.encodeStart(
+				com.mojang.serialization.JsonOps.INSTANCE, definition)
+				.result().ifPresent(json -> {
+					openSnapshots.put(definition.id, json);
+					baselineDefinitionId = definition.id;
+				});
 	}
 
 	public void resetToDefault() {
@@ -212,25 +284,6 @@ public class SpellEditorController {
 		definition.customNames.putAll(restored.customNames);
 
 		displayEditorMessage("[YH] Spell reset to default");
-	}
-
-	public void exportToDatapack() {
-		if (isDraftMode()) {
-			return;
-		}
-		if (definition.hasLegacyTicker()) {
-			displayEditorMessage("[YH] Cannot export legacy_ticker spell (Java factory is not serializable)");
-			return;
-		}
-		try {
-			var localCopy = SpellEditorNetworkClient.exportGlobal(definition);
-			displayEditorMessage("[YH] Exporting global spell " + formatResourceId(definition.id) +
-					" (local copy: " + localCopy + ")");
-		} catch (Exception e) {
-			String msg = e.getMessage();
-			displayEditorMessage("[YH] Export requested, but failed to save local copy: " +
-					(msg == null ? e.getClass().getSimpleName() : msg));
-		}
 	}
 
 	// --- Snapshot management ---
@@ -264,7 +317,8 @@ public class SpellEditorController {
 		ResourceLocation phaseId = new ResourceLocation(spellId.getNamespace(), spellId.getPath() + "/main");
 		PhaseDefinition phase = new PhaseDefinition(
 				phaseId,
-				List.of(),
+				List.of(new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
+						NumberProvider.constant(50), NumberProvider.constant(100))),
 				List.of(),
 				List.of(),
 				List.of(),
@@ -289,17 +343,29 @@ public class SpellEditorController {
 		if (trimmed.isEmpty()) {
 			return null;
 		}
-		ResourceLocation id = ResourceLocation.tryParse(trimmed.contains(":") ? trimmed : "minecraft:" + trimmed);
+		ResourceLocation id = ResourceLocation.tryParse(trimmed.contains(":")
+				? trimmed : getDefaultSpellNamespace() + ":" + trimmed);
 		if (id == null || DRAFT_SPELL_ID.equals(id)) {
 			return null;
 		}
 		return id;
 	}
 
+	public String getDefaultSpellNamespace() {
+		var player = Minecraft.getInstance().player;
+		if (player == null) return "player";
+		return dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem
+				.playerSpellNamespace(player);
+	}
+
 	private void displayEditorMessage(String message) {
+		displayEditorMessage(Component.literal(message));
+	}
+
+	private void displayEditorMessage(Component message) {
 		var mc = Minecraft.getInstance();
 		if (mc.player != null) {
-			mc.player.displayClientMessage(Component.literal(message), true);
+			mc.player.displayClientMessage(message, true);
 		}
 	}
 }

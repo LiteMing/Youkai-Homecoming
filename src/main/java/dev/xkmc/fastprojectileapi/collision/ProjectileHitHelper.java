@@ -1,6 +1,7 @@
 package dev.xkmc.fastprojectileapi.collision;
 
 import dev.xkmc.fastprojectileapi.entity.BaseProjectile;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
@@ -44,6 +45,7 @@ public class ProjectileHitHelper {
 		EntityInfo entity = null;
 		for (EntityInfo x : list) {
 			if (x.entity() == e || e.ignoresEntity(x.entity())) continue;
+			if (e instanceof IYHDanmaku danmaku && !danmaku.canHitDanmakuTarget(x)) continue;
 			var hpos = checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
 			if (hpos != null) {
 				double d1 = src.distanceToSqr(hpos);

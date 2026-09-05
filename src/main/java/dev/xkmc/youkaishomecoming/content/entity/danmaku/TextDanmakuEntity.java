@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuDamageType;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverOwner;
+import dev.xkmc.youkaishomecoming.util.GlyphRuns;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.EntityType;
@@ -67,10 +68,11 @@ public class TextDanmakuEntity extends YHBaseLaserEntity implements MoverOwner {
 	}
 
 	public static float computeAutoLength(String text, float size) {
-		if (text == null || text.isEmpty()) {
+		// Count decoded code points: "\\uE001" is one glyph slot, not six.
+		int count = GlyphRuns.count(text);
+		if (count <= 0) {
 			return clampSize(size);
 		}
-		int count = Math.max(1, text.codePointCount(0, text.length()));
 		return count * clampSize(size);
 	}
 

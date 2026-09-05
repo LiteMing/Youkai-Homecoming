@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.init.data;
 
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
@@ -24,6 +25,24 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue powerInfoXOffset;
 		public final ForgeConfigSpec.IntValue powerInfoYAnchor;
 		public final ForgeConfigSpec.IntValue powerInfoYOffset;
+		public final ForgeConfigSpec.BooleanValue spellCardTotemAnimation;
+		public final ForgeConfigSpec.BooleanValue feedbackCameraShakeEnabled;
+		public final ForgeConfigSpec.DoubleValue feedbackCameraShakeScale;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlForwardKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlBackwardKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlLeftKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlRightKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlFocusKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlToggleKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlNonSpellKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlNextSpellKey;
+		public final ForgeConfigSpec.DoubleValue classicControlLowSpeedMultiplier;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetX;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetY;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetZ;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetWidth;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetHeight;
+		public final ForgeConfigSpec.DoubleValue previewBlockTargetDepth;
 
 		// Exposure compat: photo overlay display
 		public final ForgeConfigSpec.DoubleValue photoOverlayAlpha;
@@ -77,6 +96,65 @@ public class YHModConfig {
 			powerInfoYOffset = builder.comment("Vertical offset of the power info overlay.")
 					.translation("config.youkaishomecoming.client.powerInfoYOffset")
 					.defineInRange("powerInfoYOffset", 0, -1000, 1000);
+			spellCardTotemAnimation = builder.comment("Play totem of undying activation animation when casting a spell card.")
+					.translation("config.youkaishomecoming.client.spellCardTotemAnimation")
+					.define("spellCardTotemAnimation", true);
+			feedbackCameraShakeEnabled = builder.comment("Enable client-side camera shake for spell feedback and defeat visuals.")
+					.translation("config.youkaishomecoming.client.feedbackCameraShakeEnabled")
+					.define("feedbackCameraShakeEnabled", true);
+			feedbackCameraShakeScale = builder.comment("Client multiplier for all camera shake (0 disables it).")
+					.translation("config.youkaishomecoming.client.feedbackCameraShakeScale")
+					.defineInRange("feedbackCameraShakeScale", 1.0, 0.0, 1.0);
+			classicControlForwardKey = builder.comment("Serialized Minecraft keyboard key used to move forward in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlForwardKey")
+					.define("classicControlForwardKey", "key.keyboard.up");
+			classicControlBackwardKey = builder.comment("Serialized Minecraft keyboard key used to move backward in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlBackwardKey")
+					.define("classicControlBackwardKey", "key.keyboard.down");
+			classicControlLeftKey = builder.comment("Serialized Minecraft keyboard key used to move left in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlLeftKey")
+					.define("classicControlLeftKey", "key.keyboard.left");
+			classicControlRightKey = builder.comment("Serialized Minecraft keyboard key used to move right in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlRightKey")
+					.define("classicControlRightKey", "key.keyboard.right");
+			classicControlFocusKey = builder.comment("Serialized Minecraft keyboard key used for focus and low-speed movement.")
+					.translation("config.youkaishomecoming.client.classicControlFocusKey")
+					.define("classicControlFocusKey", "key.keyboard.left.shift");
+			classicControlToggleKey = builder.comment("Serialized Minecraft keyboard key combined with the focus key to toggle classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlToggleKey")
+					.define("classicControlToggleKey", "key.keyboard.space");
+			classicControlNonSpellKey = builder.comment("Serialized Minecraft keyboard key used to hold-fire a non-spell in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlNonSpellKey")
+					.define("classicControlNonSpellKey", "key.keyboard.z");
+			classicControlNextSpellKey = builder.comment("Serialized Minecraft keyboard key used to cast the next spell in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlNextSpellKey")
+					.define("classicControlNextSpellKey", "key.keyboard.x");
+			classicControlLowSpeedMultiplier = builder.comment("Fraction of vanilla sprint speed while holding the focus key in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlLowSpeedMultiplier")
+					.defineInRange("classicControlLowSpeedMultiplier", 0.5, 0.0, 1.0);
+
+			builder.translation("config.youkaishomecoming.client.preview").push("preview");
+			{
+				previewBlockTargetX = builder.comment("Default preview block target bottom-center X position")
+						.translation("config.youkaishomecoming.client.preview.blockTargetX")
+						.defineInRange("blockTargetX", 0.0, -128.0, 128.0);
+				previewBlockTargetY = builder.comment("Default preview block target bottom-center Y position")
+						.translation("config.youkaishomecoming.client.preview.blockTargetY")
+						.defineInRange("blockTargetY", -25.0, -128.0, 128.0);
+				previewBlockTargetZ = builder.comment("Default preview block target bottom-center Z position")
+						.translation("config.youkaishomecoming.client.preview.blockTargetZ")
+						.defineInRange("blockTargetZ", -16.0, -128.0, 128.0);
+				previewBlockTargetWidth = builder.comment("Default preview block target width")
+						.translation("config.youkaishomecoming.client.preview.blockTargetWidth")
+						.defineInRange("blockTargetWidth", 50.0, 0.05, 128.0);
+				previewBlockTargetHeight = builder.comment("Default preview block target height")
+						.translation("config.youkaishomecoming.client.preview.blockTargetHeight")
+						.defineInRange("blockTargetHeight", 50.0, 0.05, 128.0);
+				previewBlockTargetDepth = builder.comment("Default preview block target depth")
+						.translation("config.youkaishomecoming.client.preview.blockTargetDepth")
+						.defineInRange("blockTargetDepth", 64.0, 0.05, 128.0);
+			}
+			builder.pop();
 
 			builder.translation("config.youkaishomecoming.client.exposure_compat").push("exposure_compat");
 			{
@@ -105,6 +183,45 @@ public class YHModConfig {
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellMarketAutoSyncTags;
 		public final ForgeConfigSpec.IntValue spellMarketPollMinutes;
 		public final ForgeConfigSpec.IntValue spellMarketMaxSpellsPerTag;
+		public final ForgeConfigSpec.DoubleValue feedbackMaxCameraIntensity;
+		public final ForgeConfigSpec.IntValue feedbackMaxCameraDurationTicks;
+		public final ForgeConfigSpec.DoubleValue feedbackMaxRadius;
+		public final ForgeConfigSpec.IntValue feedbackMaxCuesPerContext;
+		public final ForgeConfigSpec.IntValue feedbackMaxCuesPerObserverTick;
+
+		// Certification analysis hard limits (SpellAnalyzer CERTIFICATION profile, Phase 0)
+		public final ForgeConfigSpec.DoubleValue certificationBudgetMultiplier;
+		public final ForgeConfigSpec.IntValue spellDraftFreeNodeCount;
+		public final ForgeConfigSpec.DoubleValue spellDraftBudgetMultiplier;
+		public final ForgeConfigSpec.LongValue spellDraftExcessNodeCostUnits;
+		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellCapabilityPolicies;
+		public final ForgeConfigSpec.IntValue nonSpellMaxLifetimeTicks;
+		public final ForgeConfigSpec.DoubleValue nonSpellMaxInitialSpeed;
+		public final ForgeConfigSpec.DoubleValue nonSpellMaxOriginOffset;
+		public final ForgeConfigSpec.IntValue lastSpellCooldownTicks;
+		public final ForgeConfigSpec.DoubleValue timeoutSpellBombCostMultiplier;
+		public final ForgeConfigSpec.DoubleValue timeoutSpellXpCostMultiplier;
+
+		// Certification gameplay (Phase 2)
+		public final ForgeConfigSpec.BooleanValue certificationEnabled;
+		public final ForgeConfigSpec.IntValue certificationCountdownTicks;
+		public final ForgeConfigSpec.DoubleValue certificationMaxDisplacementPerTick;
+		public final ForgeConfigSpec.BooleanValue certificationEnemyRandomMovementEnabled;
+		public final ForgeConfigSpec.IntValue certificationEnemyWaypointMinTicks;
+		public final ForgeConfigSpec.IntValue certificationEnemyWaypointMaxTicks;
+		public final ForgeConfigSpec.DoubleValue certificationEnemyMaxSpeed;
+		public final ForgeConfigSpec.DoubleValue certificationEnemyAcceleration;
+		public final ForgeConfigSpec.DoubleValue certificationEnemyBoundaryMargin;
+		public final ForgeConfigSpec.DoubleValue certificationEnemyMinimumTravelDistance;
+		public final ForgeConfigSpec.IntValue certificationMaxConcurrentTrials;
+		public final ForgeConfigSpec.LongValue certificationStartCostUnits;
+		public final ForgeConfigSpec.DoubleValue certificationRefundOnFailure;
+		public final ForgeConfigSpec.ConfigValue<String> certificationStartPaymentProvider;
+		public final ForgeConfigSpec.BooleanValue certificationIssueFeeEnabled;
+		public final ForgeConfigSpec.BooleanValue certificationPublicRendering;
+		public final ForgeConfigSpec.IntValue certificationRewardOwnerLockTicks;
+		public final ForgeConfigSpec.BooleanValue certificationRewardNeverDespawn;
+		public final ForgeConfigSpec.DoubleValue certificationFixedArenaHalfSize;
 
 		public final ForgeConfigSpec.IntValue youkaifyingTime;
 		public final ForgeConfigSpec.DoubleValue youkaifyingChance;
@@ -133,12 +250,14 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue danmakuMinPHPDamage;
 		public final ForgeConfigSpec.DoubleValue danmakuPlayerPHPDamage;
 		public final ForgeConfigSpec.DoubleValue danmakuHealOnHitTarget;
+		public final ForgeConfigSpec.BooleanValue bossDanmakuDefeatOutsideCombat;
 		public final ForgeConfigSpec.IntValue playerDanmakuCooldown;
 		public final ForgeConfigSpec.IntValue playerLaserCooldown;
 		public final ForgeConfigSpec.IntValue playerSpellCooldown;
 		public final ForgeConfigSpec.IntValue playerLaserDuration;
 		public final ForgeConfigSpec.IntValue spellBombCost;
 		public final ForgeConfigSpec.IntValue spellXpCost;
+		public final ForgeConfigSpec.BooleanValue lifePaymentEnabled;
 		public final ForgeConfigSpec.BooleanValue invulFrameForDanmaku;
 		public final ForgeConfigSpec.IntValue danmakuBuffCostTicks;
 
@@ -162,10 +281,6 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue fairyAttackYoukaified;
 		public final ForgeConfigSpec.DoubleValue fairySummonReinforcement;
 
-		public final ForgeConfigSpec.IntValue customSpellMaxDuration;
-		public final ForgeConfigSpec.IntValue ringSpellDanmakuPerItemCost;
-		public final ForgeConfigSpec.IntValue homingSpellDanmakuPerItemCost;
-
 		public final ForgeConfigSpec.BooleanValue useLegacySpellCards;
 
 		public final ForgeConfigSpec.BooleanValue smallFairyReplacement;
@@ -179,43 +294,29 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue danmakuPowerBonus;
 		public final ForgeConfigSpec.DoubleValue grazeEffectiveness;
 		public final ForgeConfigSpec.IntValue missInvulTime;
-		public final ForgeConfigSpec.IntValue bombInvulTime;
+		public final ForgeConfigSpec.IntValue spellHealthInvulTime;
 		public final ForgeConfigSpec.DoubleValue maxPowerLossOnMiss;
 		public final ForgeConfigSpec.IntValue initialResource;
 		public final ForgeConfigSpec.IntValue initialPower;
-		public final ForgeConfigSpec.BooleanValue applyBeatenOnDefeat;
 		public final ForgeConfigSpec.IntValue beatenDurationTicks;
 		public final ForgeConfigSpec.BooleanValue manualDanmakuCombat;
+		public final ForgeConfigSpec.DoubleValue spellCirclePlayerFadeStartLife;
+		public final ForgeConfigSpec.DoubleValue spellCirclePlayerFadeEndLife;
+		public final ForgeConfigSpec.DoubleValue spellCirclePlayerMinAlpha;
+		public final ForgeConfigSpec.DoubleValue spellCirclePlayerRenderAlphaCutoff;
+		public final ForgeConfigSpec.IntValue spellCircleMaxResourceSubCircles;
 
 		// Exposure compat
 		public final ForgeConfigSpec.IntValue exposureCameraCooldown;
 		public final ForgeConfigSpec.BooleanValue exposureDeactivateAfterShot;
+		public final ForgeConfigSpec.IntValue spellReplicaRequiredDanmaku;
 
 		// Shared autonomous dodge — COMMON / youkaishomecoming-common.toml
 		public final ForgeConfigSpec.BooleanValue autoDodgeEnabled;
-		public final ForgeConfigSpec.DoubleValue autoDodgeScanRadius;
-		public final ForgeConfigSpec.IntValue autoDodgeEmergencyCooldown;
-		public final ForgeConfigSpec.DoubleValue autoDodgeRescueClearance;
-		public final ForgeConfigSpec.DoubleValue autoDodgeInputPriority;
-		public final ForgeConfigSpec.DoubleValue autoDodgeAssistPilotWeight;
-		public final ForgeConfigSpec.DoubleValue autoDodgeAssistCurrentWeight;
-		public final ForgeConfigSpec.DoubleValue autoDodgeAssistSpeedCap;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTakeoverMinSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeRescuePulseSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeRescueJump;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIHighSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierILowSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIHighSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIILowSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIIHighSpeed;
-		public final ForgeConfigSpec.DoubleValue autoDodgeTierIIILowSpeed;
-		public final ForgeConfigSpec.IntValue autoDodgeThreatTopK;
-		public final ForgeConfigSpec.IntValue autoDodgePredictHorizon;
-		public final ForgeConfigSpec.IntValue autoDodgeDebugLogInterval;
-		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceRadius;
-		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceGain;
-		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceDangerDist;
-		public final ForgeConfigSpec.DoubleValue autoDodgeWallClearanceSafeDist;
+		public final ForgeConfigSpec.DoubleValue autoDodgeBaseSpeed;
+		public final ForgeConfigSpec.DoubleValue autoDodgeSpeedPerTier;
+		public final ForgeConfigSpec.DoubleValue autoDodgeBaseScanRadius;
+		public final ForgeConfigSpec.DoubleValue autoDodgeScanRadiusPerTier;
 		public final ForgeConfigSpec.DoubleValue previewPilotArenaHalf;
 		public final ForgeConfigSpec.BooleanValue youkaiAutoDodgeEnabled;
 		public final ForgeConfigSpec.IntValue youkaiAutoDodgeTickInterval;
@@ -251,6 +352,123 @@ public class YHModConfig {
 				spellMarketMaxSpellsPerTag = builder.comment("Maximum number of managed spells imported for one tag")
 						.translation("config.youkaishomecoming.common.spell_market.max_spells_per_tag")
 						.defineInRange("max_spells_per_tag", 64, 1, 256);
+			}
+			builder.pop();
+			builder.translation("config.youkaishomecoming.common.feedback").push("feedback");
+			{
+				feedbackMaxCameraIntensity = builder.comment("Server cap for one camera shake cue intensity")
+						.translation("config.youkaishomecoming.common.feedback.maxCameraIntensity")
+						.defineInRange("maxCameraIntensity", 2.0, 0.0, 10.0);
+				feedbackMaxCameraDurationTicks = builder.comment("Server cap for one camera shake cue duration")
+						.translation("config.youkaishomecoming.common.feedback.maxCameraDurationTicks")
+						.defineInRange("maxCameraDurationTicks", 40, 1, 100);
+				feedbackMaxRadius = builder.comment("Server cap for feedback cue radius in blocks")
+						.translation("config.youkaishomecoming.common.feedback.maxRadius")
+						.defineInRange("maxRadius", 32.0, 1.0, 128.0);
+				feedbackMaxCuesPerContext = builder.comment("Maximum feedback cues emitted by one action context")
+						.translation("config.youkaishomecoming.common.feedback.maxCuesPerContext")
+						.defineInRange("maxCuesPerContext", 32, 1, 256);
+				feedbackMaxCuesPerObserverTick = builder.comment("Maximum merged feedback cues sent to one observer per server tick")
+						.translation("config.youkaishomecoming.common.feedback.maxCuesPerObserverTick")
+						.defineInRange("maxCuesPerObserverTick", 64, 1, 256);
+			}
+			builder.pop();
+			builder.translation("config.youkaishomecoming.common.certification").push("certification");
+			{
+				certificationBudgetMultiplier = builder.comment(
+						"Multiplier for all certification performance budgets (1.0 = spawn 100000/tick, peak 1000000, projectile-ticks 10000000000, hooks 10000000)")
+						.translation("config.youkaishomecoming.common.certification.budgetMultiplier")
+						.defineInRange("budgetMultiplier", 1.0, 0.05, 100.0);
+				spellDraftFreeNodeCount = builder.comment("Ordinary action and hook nodes included without additional cast cost")
+						.translation("config.youkaishomecoming.common.certification.draftFreeNodeCount")
+						.defineInRange("draftFreeNodeCount", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_FREE_NODE_COUNT, 0, 4096);
+				spellDraftBudgetMultiplier = builder.comment(
+						"Multiplier for all new blank-card performance budgets (spawn/tick uses the tier and caster-power formula; 1.0 keeps peak 10000, projectile-ticks 100000000, hooks 1000000)")
+						.translation("config.youkaishomecoming.common.certification.draftBudgetMultiplier")
+						.defineInRange("draftBudgetMultiplier", 1.0, 0.05, 100.0);
+				spellDraftExcessNodeCostUnits = builder.comment("Additional cast-cost units per ordinary node above the card's free allowance")
+						.translation("config.youkaishomecoming.common.certification.draftExcessNodeCostUnits")
+						.defineInRange("draftExcessNodeCostUnits", dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget.DEFAULT_EXCESS_NODE_COST_UNITS, 0L, 1_000_000L);
+				spellCapabilityPolicies = builder.comment(
+						"Capability policy overrides, one entry per line as capability_id=allow|experimental|op_only|deny")
+						.translation("config.youkaishomecoming.common.certification.capabilityPolicies")
+						.defineListAllowEmpty("capabilityPolicies", java.util.List.of(), value -> value instanceof String s
+								&& s.length() <= 128 && s.contains("="));
+				nonSpellMaxLifetimeTicks = builder.comment("Maximum projectile lifetime allowed in non-spells, in ticks")
+						.translation("config.youkaishomecoming.common.certification.nonSpellMaxLifetimeTicks")
+						.defineInRange("nonSpellMaxLifetimeTicks", 200, 1, 1200);
+				nonSpellMaxInitialSpeed = builder.comment("Maximum statically bounded initial danmaku speed in non-spells")
+						.translation("config.youkaishomecoming.common.certification.nonSpellMaxInitialSpeed")
+						.defineInRange("nonSpellMaxInitialSpeed", 2.0, 0.0, 32.0);
+				nonSpellMaxOriginOffset = builder.comment("Maximum absolute projectile or shooter origin offset in non-spells")
+						.translation("config.youkaishomecoming.common.certification.nonSpellMaxOriginOffset")
+						.defineInRange("nonSpellMaxOriginOffset", 8.0, 0.0, 128.0);
+				lastSpellCooldownTicks = builder.comment("Player-shared Last Spell cooldown in ticks")
+						.translation("config.youkaishomecoming.common.certification.lastSpellCooldownTicks")
+						.defineInRange("lastSpellCooldownTicks", 3600, 0, 72000);
+				timeoutSpellBombCostMultiplier = builder.comment("Timeout Spell Bomb-cost multiplier")
+						.translation("config.youkaishomecoming.common.certification.timeoutSpellBombCostMultiplier")
+						.defineInRange("timeoutSpellBombCostMultiplier", 0.25, 0.01, 100.0);
+				timeoutSpellXpCostMultiplier = builder.comment("Timeout Spell XP-cost multiplier")
+						.translation("config.youkaishomecoming.common.certification.timeoutSpellXpCostMultiplier")
+						.defineInRange("timeoutSpellXpCostMultiplier", 1.0, 0.01, 100.0);
+				certificationEnabled = builder.comment("Master switch for the survival spell certification system")
+						.translation("config.youkaishomecoming.common.certification.enabled")
+						.define("enabled", true);
+				certificationCountdownTicks = builder.comment("PREPARE countdown ticks before ACTIVE begins")
+						.translation("config.youkaishomecoming.common.certification.countdownTicks")
+						.defineInRange("countdownTicks", 100, 20, 600);
+				certificationMaxDisplacementPerTick = builder.comment("Max allowed player displacement per tick in blocks (illegal move / teleport protection)")
+						.translation("config.youkaishomecoming.common.certification.maxDisplacementPerTick")
+						.defineInRange("maxDisplacementPerTick", 8.0, 1.0, 64.0);
+				certificationEnemyRandomMovementEnabled = builder.comment("Enable server-authoritative bounded random waypoint movement for the certification enemy")
+						.translation("config.youkaishomecoming.common.certification.enemyRandomMovementEnabled")
+						.define("enemyRandomMovementEnabled", true);
+				certificationEnemyWaypointMinTicks = builder.comment("Minimum dwell ticks per waypoint")
+						.translation("config.youkaishomecoming.common.certification.enemyWaypointMinTicks")
+						.defineInRange("enemyWaypointMinTicks", 40, 5, 600);
+				certificationEnemyWaypointMaxTicks = builder.comment("Maximum dwell ticks per waypoint")
+						.translation("config.youkaishomecoming.common.certification.enemyWaypointMaxTicks")
+						.defineInRange("enemyWaypointMaxTicks", 120, 10, 1200);
+				certificationEnemyMaxSpeed = builder.comment("Certification enemy max speed in blocks/tick")
+						.translation("config.youkaishomecoming.common.certification.enemyMaxSpeed")
+						.defineInRange("enemyMaxSpeed", 0.5, 0.05, 4.0);
+				certificationEnemyAcceleration = builder.comment("Certification enemy acceleration lerp factor (0..1 per tick)")
+						.translation("config.youkaishomecoming.common.certification.enemyAcceleration")
+						.defineInRange("enemyAcceleration", 0.05, 0.01, 1.0);
+				certificationEnemyBoundaryMargin = builder.comment("Waypoint safety margin from the arena walls in blocks")
+						.translation("config.youkaishomecoming.common.certification.enemyBoundaryMargin")
+						.defineInRange("enemyBoundaryMargin", 2.0, 0.0, 16.0);
+				certificationEnemyMinimumTravelDistance = builder.comment("Minimum distance between consecutive waypoints in blocks")
+						.translation("config.youkaishomecoming.common.certification.enemyMinimumTravelDistance")
+						.defineInRange("enemyMinimumTravelDistance", 6.0, 0.0, 32.0);
+				certificationMaxConcurrentTrials = builder.comment("Server-wide maximum concurrent certification trials")
+						.translation("config.youkaishomecoming.common.certification.maxConcurrentTrials")
+						.defineInRange("maxConcurrentTrials", 3, 1, 64);
+				certificationStartCostUnits = builder.comment("Base certification start fee in abstract cost units")
+						.translation("config.youkaishomecoming.common.certification.startCostUnits")
+						.defineInRange("startCostUnits", 100L, 0L, 1_000_000L);
+				certificationRefundOnFailure = builder.comment("Refund ratio of the start fee for normal No-Hit failure and manual abort (SYSTEM_ERROR always refunds in full)")
+						.translation("config.youkaishomecoming.common.certification.refundOnFailure")
+						.defineInRange("refundOnFailure", 0.5, 0.0, 1.0);
+				certificationStartPaymentProvider = builder.comment("Payment provider id for the certification start fee")
+						.translation("config.youkaishomecoming.common.certification.startPaymentProvider")
+						.define("startPaymentProvider", "youkaishomecoming:experience");
+				certificationIssueFeeEnabled = builder.comment("Whether the certified spell issuance fee is deducted on success (otherwise free)")
+						.translation("config.youkaishomecoming.common.certification.issueFeeEnabled")
+						.define("issueFeeEnabled", false);
+				certificationPublicRendering = builder.comment("Whether other players can spectate certification trials")
+						.translation("config.youkaishomecoming.common.certification.publicRendering")
+						.define("publicRendering", true);
+				certificationRewardOwnerLockTicks = builder.comment("Ticks the reward item stays locked to the creator")
+						.translation("config.youkaishomecoming.common.certification.rewardOwnerLockTicks")
+						.defineInRange("rewardOwnerLockTicks", 600, 0, 12000);
+				certificationRewardNeverDespawn = builder.comment("Certified spell reward items never despawn naturally")
+						.translation("config.youkaishomecoming.common.certification.rewardNeverDespawn")
+						.define("rewardNeverDespawn", true);
+				certificationFixedArenaHalfSize = builder.comment("Fixed certification arena half size in blocks (always used, UI selection ignored)")
+						.translation("config.youkaishomecoming.common.certification.fixedArenaHalfSize")
+						.defineInRange("fixedArenaHalfSize", 64.0, 8.0, 256.0);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.youkaifying_effect").push("youkaifying_effect");
@@ -347,21 +565,27 @@ public class YHModConfig {
 				danmakuHealOnHitTarget = builder.comment("When danmaku hits target, heal youkai health by percentage of max health")
 						.translation("config.youkaishomecoming.common.danmaku_battle.danmakuHealOnHitTarget")
 						.defineInRange("danmakuHealOnHitTarget", 0.2, 0, 1);
+				bossDanmakuDefeatOutsideCombat = builder.comment("When a player outside danmaku combat is hit by boss danmaku, apply the Beaten effect")
+						.translation("config.youkaishomecoming.common.danmaku_battle.bossDanmakuDefeatOutsideCombat")
+						.define("bossDanmakuDefeatOutsideCombat", true);
 				playerDanmakuCooldown = builder.comment("Player item cooldown for using danmaku")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerDanmakuCooldown")
 						.defineInRange("playerDanmakuCooldown", 20, 5, 1000);
 				playerLaserCooldown = builder.comment("Player item cooldown for using laser")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerLaserCooldown")
 						.defineInRange("playerLaserCooldown", 80, 5, 1000);
-				playerSpellCooldown = builder.comment("Player item cooldown for using spellcard")
+				playerSpellCooldown = builder.comment("Player item cooldown for using spellcard; advances after danmaku combat")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerSpellCooldown")
-						.defineInRange("playerSpellCooldown", 40, 5, 1000);
+						.defineInRange("playerSpellCooldown", 60, 5, 1000);
 				spellBombCost = builder.comment("Bomb cost to cast a spellcard inside STG danmaku combat")
 						.translation("config.youkaishomecoming.common.danmaku_battle.spellBombCost")
 						.defineInRange("spellBombCost", 1, 0, 20);
 				spellXpCost = builder.comment("XP levels cost to cast a spellcard outside STG danmaku combat")
 						.translation("config.youkaishomecoming.common.danmaku_battle.spellXpCost")
 						.defineInRange("spellXpCost", 5, 0, 100);
+				lifePaymentEnabled = builder.comment("Allow the life payment provider (high-cost overload casting). Never deducted silently by default")
+						.translation("config.youkaishomecoming.common.danmaku_battle.lifePaymentEnabled")
+						.define("lifePaymentEnabled", false);
 				playerLaserDuration = builder.comment("Player laser duration")
 						.translation("config.youkaishomecoming.common.danmaku_battle.playerLaserDuration")
 						.defineInRange("playerLaserDuration", 100, 5, 1000);
@@ -388,9 +612,9 @@ public class YHModConfig {
 				missInvulTime = builder.comment("Danmaku invulnerability and disabled time when you take a hit")
 						.translation("config.youkaishomecoming.common.danmaku_battle.missInvulTime")
 						.defineInRange("missInvulTime", 60, 10, 100);
-				bombInvulTime = builder.comment("Danmaku invulnerability and disabled time when you use a bomb")
-						.translation("config.youkaishomecoming.common.danmaku_battle.bombInvulTime")
-						.defineInRange("bombInvulTime", 30, 10, 100);
+				spellHealthInvulTime = builder.comment("Hit interval while an active spell health bar absorbs danmaku")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellHealthInvulTime")
+						.defineInRange("spellHealthInvulTime", 5, 1, 100);
 				maxPowerLossOnMiss = builder.comment("Maximum loss of power when you take a hit")
 						.translation("config.youkaishomecoming.common.danmaku_battle.maxPowerLossOnMiss")
 						.defineInRange("maxPowerLossOnMiss", 1d, 0, 10);
@@ -401,18 +625,29 @@ public class YHModConfig {
 				initialPower = builder.comment("Initial power when you initiate a danmaku battle")
 						.translation("config.youkaishomecoming.common.danmaku_battle.initialPower")
 						.defineInRange("initialPower", 1, 0, 10);
-				applyBeatenOnDefeat = builder.comment("Apply the Beaten effect when the player loses the last life in danmaku combat")
-						.comment("Disabled by default; enable for pack-style defeat penalty")
-						.translation("config.youkaishomecoming.common.danmaku_battle.applyBeatenOnDefeat")
-						.define("applyBeatenOnDefeat", false);
 				beatenDurationTicks = builder.comment("Duration in ticks of the Beaten effect applied on danmaku defeat")
-						.comment("Only used when applyBeatenOnDefeat is true. 1500 ticks = 75 seconds")
+						.comment("1500 ticks = 75 seconds")
 						.translation("config.youkaishomecoming.common.danmaku_battle.beatenDurationTicks")
 						.defineInRange("beatenDurationTicks", 1500, 1, 1000000);
 				manualDanmakuCombat = builder.comment("When true (default), players must enable STG combat manually (Shift+RMB spell card)")
 						.comment("and are not auto-entered by enemy danmaku. When false, restores legacy auto-entry behavior.")
 						.translation("config.youkaishomecoming.common.danmaku_battle.manualDanmakuCombat")
 						.define("manualDanmakuCombat", true);
+				spellCirclePlayerFadeStartLife = builder.comment("Player STG spell circle starts fading below this life (2.8 default; disabled during certification)")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerFadeStartLife")
+						.defineInRange("spellCirclePlayerFadeStartLife", 2.8, 0.5, 20.0);
+				spellCirclePlayerFadeEndLife = builder.comment("Player STG spell circle fade reaches its minimum alpha at this life")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerFadeEndLife")
+						.defineInRange("spellCirclePlayerFadeEndLife", 0.0, 0.0, 20.0);
+				spellCirclePlayerMinAlpha = builder.comment("Player STG spell circle global alpha floor when life is at 0")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerMinAlpha")
+						.defineInRange("spellCirclePlayerMinAlpha", 0.15, 0.0, 1.0);
+				spellCirclePlayerRenderAlphaCutoff = builder.comment("Do not render the player STG spell circle below this global alpha")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCirclePlayerRenderAlphaCutoff")
+						.defineInRange("spellCirclePlayerRenderAlphaCutoff", 0.01, 0.0, 1.0);
+				spellCircleMaxResourceSubCircles = builder.comment("Max resource sub-circle slots rendered on the player STG spell circle")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellCircleMaxResourceSubCircles")
+						.defineInRange("spellCircleMaxResourceSubCircles", 8, 1, 32);
 			}
 			builder.pop();
 
@@ -482,20 +717,6 @@ public class YHModConfig {
 			}
 			builder.pop();
 
-			builder.translation("config.youkaishomecoming.common.custom_spell").push("custom_spell");
-			{
-				customSpellMaxDuration = builder.comment("Max duration of custom spell allowed")
-						.translation("config.youkaishomecoming.common.custom_spell.customSpellMaxDuration")
-						.defineInRange("customSpellMaxDuration", 60, 60, 1000);
-				ringSpellDanmakuPerItemCost = builder.comment("Ring Spell: Max number of bullet allowed per item cost")
-						.translation("config.youkaishomecoming.common.custom_spell.ringSpellDanmakuPerItemCost")
-						.defineInRange("ringSpellDanmakuPerItemCost", 32, 1, 1024);
-				homingSpellDanmakuPerItemCost = builder.comment("Homing Spell: Max number of bullet allowed per item cost")
-						.translation("config.youkaishomecoming.common.custom_spell.homingSpellDanmakuPerItemCost")
-						.defineInRange("homingSpellDanmakuPerItemCost", 8, 1, 1024);
-			}
-			builder.pop();
-
 			builder.translation("config.youkaishomecoming.common.spell_migration").push("spell_migration");
 			{
 				useLegacySpellCards = builder.comment("Fallback to legacy Java SpellCard classes instead of data-driven migrated versions.")
@@ -533,6 +754,9 @@ public class YHModConfig {
 				exposureDeactivateAfterShot = builder.comment("Whether to exit viewfinder after photographing danmaku")
 						.translation("config.youkaishomecoming.common.exposure_compat.exposureDeactivateAfterShot")
 						.define("exposureDeactivateAfterShot", true);
+				spellReplicaRequiredDanmaku = builder.comment("Captured danmaku needed to complete one replica film")
+						.translation("config.youkaishomecoming.common.exposure_compat.spellReplicaRequiredDanmaku")
+						.defineInRange("spellReplicaRequiredDanmaku", 500, 1, 100000);
 			}
 			builder.pop();
 
@@ -543,82 +767,18 @@ public class YHModConfig {
 				autoDodgeEnabled = builder.comment("Master switch for player auto-dodge buff logic")
 						.translation("config.youkaishomecoming.common.auto_dodge.enabled")
 						.define("enabled", true);
-				autoDodgeScanRadius = builder.comment("Threat scan radius in blocks (world projectiles + client danmaku cache)")
-						.translation("config.youkaishomecoming.common.auto_dodge.scanRadius")
-						.defineInRange("scanRadius", 16.0, 4.0, 48.0);
-				autoDodgeEmergencyCooldown = builder.comment("Cooldown ticks after a rescue (tier I) pulse")
-						.translation("config.youkaishomecoming.common.auto_dodge.emergencyCooldown")
-						.defineInRange("emergencyCooldown", 4, 0, 40);
-				autoDodgeRescueClearance = builder.comment("Tier I: only act when min clearance is at or below this")
-						.translation("config.youkaishomecoming.common.auto_dodge.rescueClearance")
-						.defineInRange("rescueClearance", 1.25, 0.1, 8.0);
-				autoDodgeInputPriority = builder.comment("Tier II: player input length above this prefers steering over pilot")
-						.translation("config.youkaishomecoming.common.auto_dodge.inputPriority")
-						.defineInRange("inputPriority", 0.25, 0.0, 2.0);
-				autoDodgeAssistPilotWeight = builder.comment("Tier II: blend weight of pilot velocity when idle (0-1)")
-						.translation("config.youkaishomecoming.common.auto_dodge.assistPilotWeight")
-						.defineInRange("assistPilotWeight", 0.65, 0.0, 1.0);
-				autoDodgeAssistCurrentWeight = builder.comment("Tier II: blend weight of current velocity when idle (0-1)")
-						.translation("config.youkaishomecoming.common.auto_dodge.assistCurrentWeight")
-						.defineInRange("assistCurrentWeight", 0.35, 0.0, 1.0);
-				autoDodgeAssistSpeedCap = builder.comment("Tier II: max horizontal speed while assisting")
-						.translation("config.youkaishomecoming.common.auto_dodge.assistSpeedCap")
-						.defineInRange("assistSpeedCap", 0.28, 0.05, 1.5);
-				autoDodgeTakeoverMinSpeed = builder.comment("Tier III: boost horizontal speed up to at least this when non-zero")
-						.translation("config.youkaishomecoming.common.auto_dodge.takeoverMinSpeed")
-						.defineInRange("takeoverMinSpeed", 0.35, 0.05, 1.5);
-				autoDodgeRescuePulseSpeed = builder.comment("Tier I fallback horizontal kick speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.rescuePulseSpeed")
-						.defineInRange("rescuePulseSpeed", 0.4, 0.05, 1.5);
-				autoDodgeRescueJump = builder.comment("Tier I fallback upward impulse")
-						.translation("config.youkaishomecoming.common.auto_dodge.rescueJump")
-						.defineInRange("rescueJump", 0.2, 0.0, 1.0);
-				autoDodgeTierIHighSpeed = builder.comment("Tier I pilot profile high speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIHighSpeed")
-						.defineInRange("tierIHighSpeed", 0.25, 0.05, 2.0);
-				autoDodgeTierILowSpeed = builder.comment("Tier I pilot profile low speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierILowSpeed")
-						.defineInRange("tierILowSpeed", 0.12, 0.02, 1.0);
-				autoDodgeTierIIHighSpeed = builder.comment("Tier II pilot profile high speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIIHighSpeed")
-						.defineInRange("tierIIHighSpeed", 0.35, 0.05, 2.0);
-				autoDodgeTierIILowSpeed = builder.comment("Tier II pilot profile low speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIILowSpeed")
-						.defineInRange("tierIILowSpeed", 0.16, 0.02, 1.0);
-				autoDodgeTierIIIHighSpeed = builder.comment("Tier III pilot profile high speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIIIHighSpeed")
-						.defineInRange("tierIIIHighSpeed", 0.45, 0.05, 2.0);
-				autoDodgeTierIIILowSpeed = builder.comment("Tier III pilot profile low speed")
-						.translation("config.youkaishomecoming.common.auto_dodge.tierIIILowSpeed")
-						.defineInRange("tierIIILowSpeed", 0.2, 0.02, 1.0);
-				autoDodgeThreatTopK = builder.comment("Max threats kept per tick after nearest-sort (Top-K)")
-						.translation("config.youkaishomecoming.common.auto_dodge.threatTopK")
-						.defineInRange("threatTopK", 80, 8, 256);
-				autoDodgePredictHorizon = builder.comment("Prediction horizon in ticks")
-						.translation("config.youkaishomecoming.common.auto_dodge.predictHorizon")
-						.defineInRange("predictHorizon", 16, 4, 40);
-				autoDodgeDebugLogInterval = builder.comment("Log [AutoDodge] every N ticks (0 = off; rescue/takeover still log)")
-						.translation("config.youkaishomecoming.common.auto_dodge.debugLogInterval")
-						.defineInRange("debugLogInterval", 40, 0, 200);
-				autoDodgeWallClearanceRadius = builder.comment(
-								"Soft wall clearance probe radius in blocks (0 = off).",
-								"When safe from bullets, pilot prefers staying this far from solids to keep escape room.")
-						.translation("config.youkaishomecoming.common.auto_dodge.wallClearanceRadius")
-						.defineInRange("wallClearanceRadius", 1.5, 0.0, 8.0);
-				autoDodgeWallClearanceGain = builder.comment(
-								"Max soft wall repulsion when fully safe (threat clearance >= wallClearanceSafeDist).",
-								"Does not override necessary bullet dodge; hard collisions still blocked.")
-						.translation("config.youkaishomecoming.common.auto_dodge.wallClearanceGain")
-						.defineInRange("wallClearanceGain", 0.75, 0.0, 10.0);
-				autoDodgeWallClearanceDangerDist = builder.comment(
-								"Threat clearance at or below this → wall force fully off (dodge bullets first).")
-						.translation("config.youkaishomecoming.common.auto_dodge.wallClearanceDangerDist")
-						.defineInRange("wallClearanceDangerDist", 0.85, 0.05, 8.0);
-				autoDodgeWallClearanceSafeDist = builder.comment(
-								"Threat clearance at or above this → full wall force (claim free space).",
-								"Between danger and safe: linear ramp.")
-						.translation("config.youkaishomecoming.common.auto_dodge.wallClearanceSafeDist")
-						.defineInRange("wallClearanceSafeDist", 2.5, 0.1, 16.0);
+				autoDodgeBaseSpeed = builder.comment("Maximum movement speed of Auto Dodge I")
+						.translation("config.youkaishomecoming.common.auto_dodge.baseSpeed")
+						.defineInRange("baseSpeed", 0.30, 0.05, 2.0);
+				autoDodgeSpeedPerTier = builder.comment("Movement speed added by each Auto Dodge level")
+						.translation("config.youkaishomecoming.common.auto_dodge.speedPerTier")
+						.defineInRange("speedPerTier", 0.10, 0.0, 1.0);
+				autoDodgeBaseScanRadius = builder.comment("Threat scan radius of Auto Dodge I")
+						.translation("config.youkaishomecoming.common.auto_dodge.baseScanRadius")
+						.defineInRange("baseScanRadius", 12.0, 4.0, 48.0);
+				autoDodgeScanRadiusPerTier = builder.comment("Threat scan radius added by each Auto Dodge level")
+						.translation("config.youkaishomecoming.common.auto_dodge.scanRadiusPerTier")
+						.defineInRange("scanRadiusPerTier", 4.0, 0.0, 24.0);
 				previewPilotArenaHalf = builder.comment("Preview pilot arena half-size in blocks")
 						.translation("config.youkaishomecoming.common.auto_dodge.previewArenaHalfSize")
 						.defineInRange("previewArenaHalfSize", 12.0, 2.0, 64.0);

@@ -22,7 +22,6 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 
 	public enum Action {
 		SAVE,
-		EXPORT_GLOBAL,
 		DELETE
 	}
 
@@ -37,15 +36,15 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 	public SpellCircleEditorSyncToServer() {
 	}
 
-	public SpellCircleEditorSyncToServer(ResourceLocation id, SpellComponent component, boolean exportGlobal) {
-		this.action = exportGlobal ? Action.EXPORT_GLOBAL : Action.SAVE;
+	public SpellCircleEditorSyncToServer(ResourceLocation id, SpellComponent component) {
+		this.action = Action.SAVE;
 		this.circleId = id.toString();
 		component.invalidateCache();
 		this.componentJson = GSON.toJson(component);
 	}
 
-	public SpellCircleEditorSyncToServer(ResourceLocation id, Map<ResourceLocation, SpellComponent> components, boolean exportGlobal) {
-		this.action = exportGlobal ? Action.EXPORT_GLOBAL : Action.SAVE;
+	public SpellCircleEditorSyncToServer(ResourceLocation id, Map<ResourceLocation, SpellComponent> components) {
+		this.action = Action.SAVE;
 		this.circleId = id.toString();
 		JsonObject map = new JsonObject();
 		for (var entry : components.entrySet()) {
@@ -91,13 +90,8 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 				entry.getValue().invalidateCache();
 				YoukaisHomecoming.SPELL.getMerged().map.put(entry.getKey().toString(), entry.getValue());
 			}
-			if (op == Action.EXPORT_GLOBAL) {
-				var file = CustomSpellCircleStorage.saveGlobalCircles(id, components);
-				sender.sendSystemMessage(Component.literal("[YH] Exported global spell circle " + id + " to " + file.getPath()));
-			} else {
-				CustomSpellCircleStorage.saveCircles(sender.server, id, components);
-				sender.sendSystemMessage(Component.literal("[YH] Saved spell circle " + id));
-			}
+			CustomSpellCircleStorage.saveCircles(sender.server, id, components);
+			sender.sendSystemMessage(Component.literal("[YH] Saved spell circle " + id));
 			for (ServerPlayer player : sender.server.getPlayerList().getPlayers()) {
 				for (var entry : components.entrySet()) {
 					YoukaisHomecoming.HANDLER.toClientPlayer(
@@ -112,6 +106,9 @@ public class SpellCircleEditorSyncToServer extends SerialPacketBase {
 	}
 
 	private void deleteCircle(ServerPlayer sender, ResourceLocation id) {
+		if (SpellCircleConfig.isBuiltin(id)) {
+			throw new IllegalArgumentException("Cannot delete built-in spell circle: " + id);
+		}
 		YoukaisHomecoming.SPELL.getMerged().map.remove(id.toString());
 		CustomSpellCircleStorage.deleteCircle(sender.server, id);
 		sender.sendSystemMessage(Component.literal("[YH] Deleted spell circle " + id));

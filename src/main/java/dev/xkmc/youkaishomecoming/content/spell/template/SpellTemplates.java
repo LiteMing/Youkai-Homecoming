@@ -252,6 +252,93 @@ public final class SpellTemplates {
 				  }
 				}
 				""");
+		TEMPLATES.put("boss", """
+				{
+				  "id": "%1$s",
+				  "display": {
+				    "name": "youkaishomecoming.spell_template.boss.name",
+				    "description": "youkaishomecoming.spell_template.boss.desc"
+				  },
+				  "entry_phase": "%2$s/intro",
+				  "phases": {
+				    "%2$s/intro": {
+				      "id": "%2$s/intro",
+				      "on_enter": [
+				        {
+				          "type": "set_spell_health",
+				          "health": 500,
+				          "duration": 400,
+				          "on_timeout": {
+				            "type": "force_phase",
+				            "phase_id": "%2$s/final",
+				            "clear_screen": true
+				          },
+				          "on_break": {
+				            "type": "force_phase",
+				            "phase_id": "%2$s/final",
+				            "clear_screen": true
+				          }
+				        }
+				      ],
+				      "on_tick": [
+				        {
+				          "type": "conditional",
+				          "condition": { "type": "tick_interval", "interval": 20 },
+				          "if_true": [
+				            {
+				              "type": "fire_danmaku",
+				              "bullet": "ball",
+				              "color": "red",
+				              "count": 16,
+				              "speed": 0.4,
+				              "lifetime": 80,
+				              "pattern": "ring",
+				              "aim_mode": "direction_to_target"
+				            }
+				          ]
+				        }
+				      ]
+				    },
+				    "%2$s/final": {
+				      "id": "%2$s/final",
+				      "on_enter": [
+				        {
+				          "type": "set_spell_health",
+				          "health": 800,
+				          "duration": 800
+				        }
+				      ],
+				      "on_tick": [
+				        {
+				          "type": "conditional",
+				          "condition": { "type": "tick_interval", "interval": 10 },
+				          "if_true": [
+				            {
+				              "type": "fire_danmaku",
+				              "bullet": "spark",
+				              "color": "yellow",
+				              "count": 24,
+				              "speed": 0.5,
+				              "lifetime": 90,
+				              "angle_offset": "tick * 5",
+				              "pattern": "ring",
+				              "aim_mode": "direction_to_target"
+				            }
+				          ]
+				        }
+				      ]
+				    }
+				  },
+				  "custom_names": {
+				    "intro/enter/0": "youkaishomecoming.spell_template.boss.node.intro_health",
+				    "intro/tick/0": "youkaishomecoming.spell_template.boss.node.intro_interval",
+				    "intro/enter/0:timeout": "youkaishomecoming.spell_template.boss.node.timeout_phase",
+				    "intro/enter/0:break": "youkaishomecoming.spell_template.boss.node.break_phase",
+				    "final/enter/0": "youkaishomecoming.spell_template.boss.node.final_health",
+				    "final/tick/0": "youkaishomecoming.spell_template.boss.node.final_interval"
+				  }
+				}
+				""");
 	}
 
 	private SpellTemplates() {

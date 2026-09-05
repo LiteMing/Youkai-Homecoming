@@ -31,8 +31,10 @@ public class SpellDefinition {
 	).apply(i, SpellDefinition::new));
 
 	public final ResourceLocation id;
-	public final SpellDisplay display;
-	public final SpellItemForm itemForm;
+	/** Mutable so the editor can update display metadata in place. */
+	public SpellDisplay display;
+	/** Mutable so the editor can update duration/HP in place (kept as one object). */
+	public SpellItemForm itemForm;
 	public final ResourceLocation entryPhase;
 	public final Map<ResourceLocation, PhaseDefinition> phases;
 	public final DifficultyProfile difficulty;
@@ -73,6 +75,11 @@ public class SpellDefinition {
 	@Nullable
 	public String getModelId() {
 		return display.modelIdOrNull() != null ? display.modelIdOrNull().toString() : null;
+	}
+
+	public void setDisplayName(String name) {
+		display = new SpellDisplay(name == null ? "" : name, display.description(),
+				display.icon(), display.modelId());
 	}
 
 	/**

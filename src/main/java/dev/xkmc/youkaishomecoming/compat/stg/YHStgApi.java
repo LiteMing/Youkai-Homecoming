@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.compat.stg.event.StgBombEvent;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgPowerHudEvent;
 import dev.xkmc.youkaishomecoming.compat.stg.event.StgResourceEvent;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
@@ -133,16 +134,38 @@ public final class YHStgApi {
 
 	public static boolean tryManualBomb(ServerPlayer player) {
 		var cap = cap(player);
-		if (!cap.useBomb()) {
+		if (!cap.isInDanmakuCombat()) {
 			return false;
 		}
+		// No-bomb rule: using a bomb during a certification trial fails it.
+		var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE.getActiveTrial(player);
+		if (trial != null && trial.isActive()) {
+			trial.onPlayerBomb();
+			// A failed certification must not also consume the player's bomb.
+			return false;
+		}
+		if (!GrazeHelper.tryCastBombSpell(player)) return false;
 		int erased = cap.eraseActiveDanmaku(0, true);
 		cap.sync();
 		MinecraftForge.EVENT_BUS.post(new StgBombEvent.Manual(player, erased));
 		return true;
 	}
 
+	/** Cast a script-supplied card using its normal payment and cooldown rules. */
+	public static boolean castSpell(ServerPlayer player, ItemStack stack) {
+		return GrazeHelper.castSpell(player, stack);
+	}
+
+	/** Cast the first available card (offhand, main hand, inventory, then Curios). */
+	public static boolean castSpell(ServerPlayer player) {
+		return GrazeHelper.castSpell(player);
+	}
+
 	public static int eraseActiveDanmaku(ServerPlayer player, double radius, boolean sessionsOnly) {
+		var trial = dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManager.INSTANCE.getActiveTrial(player);
+		if (trial != null && trial.isActive()) {
+			return 0;
+		}
 		return cap(player).eraseActiveDanmaku(Math.max(0, radius), sessionsOnly);
 	}
 
@@ -184,6 +207,16 @@ public final class YHStgApi {
 		}
 		cap.setForcedDanmakuCombat(true, true);
 		cap.sync();
+	}
+
+	/**
+	 * Full danmaku battle defeat flow: clear sessions, reset life/bomb/power to
+	 * defaults, apply weak/beaten and fire {@code StgCombatEvent.Defeat}. Used by
+	 * the certification No-Hit failure so a failed attempt behaves like a lost
+	 * battle.
+	 */
+	public static void defeat(ServerPlayer player) {
+		cap(player).defeat(null);
 	}
 
 	public static boolean isWeak(ServerPlayer player) {

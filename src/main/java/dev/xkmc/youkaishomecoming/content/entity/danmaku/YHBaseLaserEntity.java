@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 import dev.xkmc.fastprojectileapi.entity.BaseLaser;
 import dev.xkmc.fastprojectileapi.entity.ProjectileMovement;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
+import dev.xkmc.fastprojectileapi.collision.EntityInfo;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.l2serial.serialization.codec.PacketCodec;
 import dev.xkmc.l2serial.serialization.codec.TagCodec;
@@ -11,6 +12,9 @@ import dev.xkmc.youkaishomecoming.content.spell.mover.CompositeMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.RectMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.ZeroMover;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.util.Mth;
@@ -23,20 +27,38 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.entity.IEntityAdditionalSpawnData;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.LinkedHashSet;
+import java.util.UUID;
 
 @SerialClass
 public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpawnData, IYHDanmaku {
+	/** Transient editor-only source action marker; never serialised to gameplay state. */
+	public transient int sourceActionIndex = -1;
 
 	@SerialClass.SerialField
 	protected int life = 0, prepare, start, end;
 	@SerialClass.SerialField
 	private boolean bypassWall = false;
 	@SerialClass.SerialField
+	private boolean playerSpellDamageRestricted = false;
+	@Nullable
+	@SerialClass.SerialField
+	private UUID playerSpellTargetId = null;
+	@SerialClass.SerialField
+	private boolean harmfulPlayerSnapshotPresent = false;
+	@SerialClass.SerialField
+	private final LinkedHashSet<UUID> harmfulPlayerIds = new LinkedHashSet<>();
+	@SerialClass.SerialField
 	public float damage = 0, length = 0;
 	@SerialClass.SerialField
 	public boolean setupLength;
+	@SerialClass.SerialField
+	private double callbackSourceSize = 1.0, callbackSourceSpread = 0.0, callbackSourceLifetime = 0.0;
+	@SerialClass.SerialField
+	private int callbackSourceColor = 0xffffffff;
 
 	@SerialClass.SerialField
 	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry = null;
@@ -45,9 +67,9 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction onTrail = null;
 	public int trailInterval = 1;
 
-	/** Action executed when this laser hits a living entity. */
+	/** Action executed once, on the first entity/block hit reported by this laser. */
 	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction onHitEntityAction = null;
-	/** Action executed when this laser hits a block. */
+	/** Action executed once, on the first entity/block hit reported by this laser. */
 	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction onHitBlockAction = null;
 	/**
 	 * Behavior after hitting an entity:
@@ -56,11 +78,52 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	public HitBehavior hitBehaviorEntity = HitBehavior.CONTINUE;
 	/**
 	 * Behavior after hitting a block:
-	 * DISCARD = remove immediately, EXPIRE = trigger expiry immediately, CONTINUE = keep flying.
+	 * CONTINUE passes through, DISCARD keeps the clipped prefix and suppresses expiry,
+	 * and EXPIRE keeps the clipped prefix and triggers expiry once.
 	 */
 	public HitBehavior hitBehaviorBlock = HitBehavior.CONTINUE;
 
 	public double earlyTerminate = -1;
+	private boolean expiryActionConsumed = false;
+	private BlockPos activeBlockHit = null;
+	/** on-hit hooks are one-shot per laser; onTrail remains per-tick by design. */
+	private final LaserHitCallbackGate hitCallbackGate = new LaserHitCallbackGate();
+	/** A one-shot CONTINUE callback must keep suppressing the fallback on later overlap ticks. */
+	private LaserHitDispositionEffect hitCallbackDisposition = LaserHitDispositionEffect.UNRESOLVED;
+	/** Hit kind that produced the remembered disposition (needed when a tick has both hits). */
+	@Nullable
+	private SpellHitContext.HitType hitCallbackHitType = null;
+
+	/**
+	 * Claims the single on-hit callback slot for this laser instance.  Preview
+	 * uses the same entity class as live simulation, so both paths share the
+	 * one-shot contract instead of maintaining separate collision counters.
+	 */
+	public boolean tryConsumeHitCallback() {
+		return hitCallbackGate.tryConsume();
+	}
+
+	public LaserHitDispositionEffect hitCallbackDisposition() {
+		return hitCallbackDisposition;
+	}
+
+	/** Remembers a resolved callback disposition for subsequent overlap ticks. */
+	public void rememberHitCallbackDisposition(LaserHitDispositionEffect effect) {
+		rememberHitCallbackDisposition(effect, null);
+	}
+
+	public void rememberHitCallbackDisposition(LaserHitDispositionEffect effect,
+			@Nullable SpellHitContext.HitType hitType) {
+		if (effect != LaserHitDispositionEffect.UNRESOLVED) {
+			hitCallbackDisposition = effect;
+			hitCallbackHitType = hitType;
+		}
+	}
+
+	@Nullable
+	public SpellHitContext.HitType hitCallbackHitType() {
+		return hitCallbackHitType;
+	}
 
 	protected YHBaseLaserEntity(EntityType<? extends YHBaseLaserEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
@@ -81,6 +144,20 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		setup(damage, life, length, bypassWall,
 				(float) (-Mth.atan2(vec3.x, vec3.z) * Mth.RAD_TO_DEG),
 				(float) (-Mth.atan2(vec3.y, d0) * Mth.RAD_TO_DEG));
+	}
+
+	/** Logical laser origin used by spell actions, movers, rendering, and hit callbacks. */
+	public Vec3 beamStart() {
+		return beamStartAt(position());
+	}
+
+	/** Converts a logical beam origin to Minecraft's bottom-center entity position. */
+	public void setBeamStart(Vec3 start) {
+		setPos(start.x, start.y - getBbHeight() * 0.5, start.z);
+	}
+
+	public Vec3 beamStartAt(Vec3 entityPosition) {
+		return entityPosition.add(0, getBbHeight() * 0.5, 0);
 	}
 
 
@@ -109,6 +186,54 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		return this;
 	}
 
+	public void setCallbackSourceMetadata(double size, double spread, double lifetime,
+			dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor color) {
+		callbackSourceSize = Double.isFinite(size) ? size : 1.0;
+		callbackSourceSpread = Double.isFinite(spread) ? spread : 0.0;
+		callbackSourceLifetime = Double.isFinite(lifetime) ? lifetime : 0.0;
+		callbackSourceColor = color == null ? 0xffffffff : color.argb();
+	}
+
+	@Override public double callbackSourceSize() { return callbackSourceSize; }
+	@Override public double callbackSourceSpread() { return callbackSourceSpread; }
+	@Override public double callbackSourceLifetime() { return callbackSourceLifetime; }
+	@Override public dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor callbackSourceColor() {
+		return new dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor(callbackSourceColor);
+	}
+
+	@Override
+	public void restrictPlayerSpellDamage(@Nullable LivingEntity target) {
+		playerSpellDamageRestricted = true;
+		playerSpellTargetId = target == null ? null : target.getUUID();
+	}
+
+	@Override
+	public boolean isPlayerSpellProjectile() {
+		return playerSpellDamageRestricted;
+	}
+
+	@Override
+	public boolean canHitDanmakuTarget(EntityInfo target) {
+		return IYHDanmaku.canPlayerSpellHit(this, target, playerSpellDamageRestricted, playerSpellTargetId);
+	}
+
+	@Override
+	public void setHarmfulPlayerSnapshot(java.util.Collection<UUID> playerIds) {
+		harmfulPlayerSnapshotPresent = true;
+		harmfulPlayerIds.clear();
+		harmfulPlayerIds.addAll(playerIds);
+	}
+
+	@Override
+	public boolean hasHarmfulPlayerSnapshot() {
+		return harmfulPlayerSnapshotPresent;
+	}
+
+	@Override
+	public boolean isHarmfulToPlayer(UUID playerId) {
+		return !harmfulPlayerSnapshotPresent || harmfulPlayerIds.contains(playerId);
+	}
+
 	@Override
 	public double getLength() {
 		return length;
@@ -116,7 +241,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	@Override
 	public boolean checkBlockHit() {
-		return !bypassWall;
+		return !bypassWall && !passesThroughBlocks();
 	}
 
 	public void setBypassWall(boolean bypassWall) {
@@ -169,12 +294,29 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	}
 
 	public float effectiveLength(float pTick) {
-		if (setupLength) {
-			return percentLoad(pTick) * length;
+		float visualLength = setupLength ? percentLoad(pTick) * length : length;
+		return effectiveBlockHitEffect().visibleLength(visualLength, earlyTerminate);
+	}
+
+	public boolean passesThroughBlocks() {
+		return effectiveBlockHitEffect() == LaserBlockHitEffect.PASS_THROUGH;
+	}
+
+	private LaserBlockHitEffect effectiveBlockHitEffect() {
+		if (hitCallbackHitType == SpellHitContext.HitType.BLOCK) {
+			return switch (hitCallbackDisposition) {
+				case KEEP -> LaserBlockHitEffect.PASS_THROUGH;
+				case DISCARD -> LaserBlockHitEffect.CLIP_AND_SUPPRESS_EXPIRY;
+				case EXPIRE -> LaserBlockHitEffect.CLIP_AND_RUN_EXPIRY;
+				case UNRESOLVED -> LaserBlockHitEffect.from(hitBehaviorBlock);
+			};
 		}
-		if (earlyTerminate >= 0)
-			return (float) earlyTerminate;
-		return length;
+		// The first wall must remain detectable until its one-shot callback decides
+		// whether CONTINUE overrides the configured fallback behavior.
+		if (onHitBlockAction != null && !hitCallbackGate.consumed()) {
+			return LaserBlockHitEffect.CLIP_ONLY;
+		}
+		return LaserBlockHitEffect.from(hitBehaviorBlock);
 	}
 
 	@Override
@@ -182,7 +324,9 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		data.moveSrc = position();
 		data.inputVelocity = getDeltaMovement();
 		data.plannedMovement = computeMove(data.inputVelocity, data.moveSrc);
-		data.moveDst = data.moveSrc.add(data.plannedMovement.vec());
+		data.plannedMovementVec = data.plannedMovement.vec();
+		data.untrimmedMoveDst = data.moveSrc.add(data.plannedMovementVec);
+		data.moveDst = data.untrimmedMoveDst;
 	}
 
 	@Override
@@ -195,22 +339,31 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	@Override
 	protected void finishTick(TickData data) {
 		super.finishTick(data);
+		if (level().isClientSide()) {
+			Vec3 src = beamStartAt(data.moveDst == null ? position() : data.moveDst);
+			earlyTerminate = data.blockHit == null ? -1 : src.distanceTo(data.blockHit.getLocation());
+		} else if (data.blockHit == null) {
+			activeBlockHit = null;
+		}
 		// Per-tick trail action (mirror ItemDanmakuEntity.commitPreMoveEffects).
 		// Like danmaku, the hook is transient (server-only); the client copy has no onTrail.
 		if (onTrail != null && tickCount > 0 && tickCount % trailInterval == 0) {
 			CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-			Vec3 pos = data.moveSrc == null ? position() : data.moveSrc;
+			Vec3 entityMoveStart = data.moveSrc == null ? position() : data.moveSrc;
+			Vec3 pos = beamStartAt(entityMoveStart);
 			Vec3 vec = data.inputVelocity == null ? getDeltaMovement() : data.inputVelocity;
-			if (holder != null) onTrail.execute(holder, pos, vec);
-			else onTrail.execute(pos, vec);
+			Vec3 direction = getForward();
+			Vec3 start = pos;
+			Vec3 end = start.add(direction.scale(length));
+			Vec3 clipped = data.blockHit == null ? end : data.blockHit.getLocation();
+			var callback = ProjectileCallbackContext.laser(ProjectileCallbackContext.Kind.TRAIL, this,
+					pos, vec, pos, beamStartAt(data.movementEndOr(entityMoveStart.add(vec))), direction, vec.length(),
+					start, end, clipped, null, null, null);
+			if (holder != null) onTrail.execute(holder, callback);
+			else onTrail.execute(callback);
 		}
 		if (!level().isClientSide() && tickCount > life) {
-			// On-expiry action before removal (mirror ItemDanmakuEntity.terminate)
-			if (afterExpiry != null) {
-				CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-				if (holder != null) afterExpiry.execute(holder, position(), getDeltaMovement());
-				else afterExpiry.execute(position(), getDeltaMovement());
-			}
+			runExpiryActionOnce(null, beamStart(), getDeltaMovement());
 			markErased(false);
 		}
 	}
@@ -262,24 +415,35 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	@Override
 	protected void onHit(BlockHitResult blockHit, Iterable<Entity> hitEntities) {
-		if (level().isClientSide()) {
-			Vec3 src = (tickData.moveDst == null ? position() : tickData.moveDst).add(0, getBbHeight() / 2f, 0);
-			earlyTerminate = blockHit == null ? -1 : src.distanceTo(blockHit.getLocation());
-		}
 		boolean hitEntity = false;
+		boolean entityDispositionResolved = hitCallbackDisposition == LaserHitDispositionEffect.KEEP;
+		SpellHitContext firstEntityHitContext = null;
+		LaserGeometry geometry = laserGeometry(blockHit);
 		for (var e : hitEntities) {
 			hurtTarget(new EntityHitResult(e));
 			hitEntity = true;
+			if (!level().isClientSide()) {
+				SpellHitContext hitContext = createEntityHitContext(e, geometry);
+				if (firstEntityHitContext == null) firstEntityHitContext = hitContext;
+				if (onHitEntityAction != null && tryConsumeHitCallback()) {
+					executeEntityHitAction(onHitEntityAction, hitContext);
+					LaserHitDispositionEffect effect = LaserHitDispositionEffect.from(hitContext.disposition());
+					if (effect != LaserHitDispositionEffect.UNRESOLVED) {
+						rememberHitCallbackDisposition(effect, hitContext.hitType());
+						entityDispositionResolved = true;
+						if (applyLaserHitDisposition(effect, hitContext)) return;
+					}
+				}
+			}
 		}
 		if (level().isClientSide()) return;
-		if (hitEntity) {
-			// Execute onHitEntity callback before potential discard
-			if (onHitEntityAction != null) executeHitAction(onHitEntityAction);
+		if (hitEntity && !entityDispositionResolved) {
 			switch (hitBehaviorEntity) {
 				case CONTINUE -> {
 				}
 				case EXPIRE -> {
-					expireLaserNow();
+					if (firstEntityHitContext != null) expireLaserNow(firstEntityHitContext);
+					else expireLaserNow();
 					return;
 				}
 				case DISCARD -> {
@@ -289,48 +453,168 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 			}
 		}
 		if (blockHit != null) {
-			// Execute onHitBlock callback before potential discard
-			if (onHitBlockAction != null) executeHitAction(onHitBlockAction);
-			switch (hitBehaviorBlock) {
-				case CONTINUE -> {
-				}
-				case EXPIRE -> {
-					expireLaserNow();
+			Vec3 hitPos = blockHit.getLocation();
+			BlockPos blockPos = blockHit.getBlockPos();
+			SpellHitContext hitContext = createBlockHitContext(blockHit, geometry);
+			if (hitCallbackDisposition == LaserHitDispositionEffect.KEEP
+					&& hitCallbackHitType == SpellHitContext.HitType.BLOCK) {
+				activeBlockHit = blockPos;
+				return;
+			}
+			if (!blockPos.equals(activeBlockHit) && onHitBlockAction != null && tryConsumeHitCallback()) {
+				executeBlockHitAction(onHitBlockAction, hitContext);
+				LaserHitDispositionEffect effect = LaserHitDispositionEffect.from(hitContext.disposition());
+				if (effect != LaserHitDispositionEffect.UNRESOLVED) {
+					rememberHitCallbackDisposition(effect, hitContext.hitType());
+					if (applyLaserHitDisposition(effect, hitContext)) return;
+					activeBlockHit = blockPos;
 					return;
 				}
-				case DISCARD -> {
-					markErased(false);
-					return;
+			}
+			activeBlockHit = blockPos;
+			switch (LaserBlockHitEffect.from(hitBehaviorBlock)) {
+				case PASS_THROUGH -> {
 				}
+				case CLIP_ONLY -> {
+				}
+				case CLIP_AND_RUN_EXPIRY -> runExpiryActionOnce(null,
+						hitContext.callbackContext().orElseThrow().asExpiry(hitPos, getDeltaMovement()));
+				case CLIP_AND_SUPPRESS_EXPIRY -> suppressExpiryAction();
 			}
 		}
 	}
 
 	private void expireLaserNow() {
-		if (afterExpiry != null) {
-			CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-			if (holder != null) afterExpiry.execute(holder, position(), getDeltaMovement());
-			else afterExpiry.execute(position(), getDeltaMovement());
-		}
+		expireLaserNow(beamStart(), getDeltaMovement());
+	}
+
+	private void expireLaserNow(Vec3 pos, Vec3 velocity) {
+		runExpiryActionOnce(null, createExpiryContext(pos, velocity));
 		markErased(false);
 	}
 
-	/** Helper: execute a TrailAction at the current laser position/direction. */
-	private void executeHitAction(dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action) {
+	private void expireLaserNow(SpellHitContext hitContext) {
+		ProjectileCallbackContext callback = hitContext.callbackContext()
+				.orElseGet(() -> ProjectileCallbackContext.fromHit(hitContext,
+						hitContext.hitType() == SpellHitContext.HitType.BLOCK
+								? ProjectileCallbackContext.Kind.HIT_BLOCK
+								: ProjectileCallbackContext.Kind.HIT_ENTITY, getForward()));
+		runExpiryActionOnce(null, callback.asExpiry(hitContext.hitPosition(), hitContext.incomingVelocity()));
+		markErased(false);
+	}
+
+	/** Runs the expiry hook at most once, using an explicit holder for local preview entities. */
+	public void runExpiryActionOnce(CardHolder fallbackHolder, Vec3 pos, Vec3 velocity) {
+		runExpiryActionOnce(fallbackHolder, createExpiryContext(pos, velocity));
+	}
+
+	public void runExpiryActionOnce(CardHolder fallbackHolder, ProjectileCallbackContext callback) {
+		if (expiryActionConsumed) return;
+		expiryActionConsumed = true;
+		if (afterExpiry == null) return;
+		CardHolder holder = getOwner() instanceof CardHolder h ? h : fallbackHolder;
+		if (holder != null) afterExpiry.execute(holder, callback);
+		else afterExpiry.execute(callback);
+	}
+
+	private ProjectileCallbackContext createExpiryContext(Vec3 pos, Vec3 velocity) {
+		LaserGeometry geometry = laserGeometry(tickData().blockHit);
+		var callback = ProjectileCallbackContext.laser(ProjectileCallbackContext.Kind.EXPIRY, this,
+				beamStart(), velocity, geometry.movementStart(), geometry.movementEnd(),
+				geometry.direction(), velocity.length(), geometry.start(), geometry.end(),
+				geometry.clippedEnd(), null, null, null);
+		return callback.asExpiry(pos, velocity);
+	}
+
+	/** DISCARD at a wall removes only the blocked suffix and must not trigger on_expiry later. */
+	public void suppressExpiryAction() {
+		expiryActionConsumed = true;
+	}
+
+	private void executeEntityHitAction(
+			dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action,
+			SpellHitContext hitContext) {
 		CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
-		if (holder != null) action.execute(holder, position(), getDeltaMovement());
-		else action.execute(position(), getDeltaMovement());
+		if (holder != null) action.executeEntityHit(holder, hitContext);
+		else action.executeEntityHit(hitContext);
+	}
+
+	private void executeBlockHitAction(
+			dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction action,
+			SpellHitContext hitContext) {
+		CardHolder holder = getOwner() instanceof CardHolder h ? h : null;
+		if (holder != null) action.executeBlockHit(holder, hitContext);
+		else action.executeBlockHit(hitContext);
+	}
+
+	private SpellHitContext createBlockHitContext(BlockHitResult hit, LaserGeometry geometry) {
+		Vec3 normal = new Vec3(hit.getDirection().getStepX(), hit.getDirection().getStepY(), hit.getDirection().getStepZ());
+		Vec3 incoming = tickData().incomingMovementOr(getDeltaMovement());
+		return SpellHitContext.laserHit(this, SpellHitContext.HitType.BLOCK,
+				beamStart(), incoming, geometry.movementStart(), geometry.movementEnd(),
+				geometry.direction(), geometry.start(), geometry.end(), geometry.clippedEnd(),
+				hit.getLocation(), normal, null);
+	}
+
+	private SpellHitContext createEntityHitContext(Entity entity, LaserGeometry geometry) {
+		Vec3 hitPos = closestPointOnSegment(entity.getBoundingBox().getCenter(), geometry.start(), geometry.clippedEnd());
+		Vec3 incoming = tickData().incomingMovementOr(getDeltaMovement());
+		return SpellHitContext.laserHit(this, SpellHitContext.HitType.ENTITY,
+				beamStart(), incoming, geometry.movementStart(), geometry.movementEnd(),
+				geometry.direction(), geometry.start(), geometry.end(), geometry.clippedEnd(),
+				hitPos, Vec3.ZERO, entity);
+	}
+
+	/** @return true when the laser was removed and collision processing must stop. */
+	private boolean applyLaserHitDisposition(LaserHitDispositionEffect effect, SpellHitContext hitContext) {
+		return switch (effect) {
+			case KEEP, UNRESOLVED -> false;
+			case DISCARD -> {
+				suppressExpiryAction();
+				tickData().removed = true;
+				markErased(false);
+				yield true;
+			}
+			case EXPIRE -> {
+				tickData().removed = true;
+				expireLaserNow(hitContext);
+				yield true;
+			}
+		};
+	}
+
+	private LaserGeometry laserGeometry(@Nullable BlockHitResult blockHit) {
+		Vec3 direction = getForward();
+		Vec3 start = beamStart();
+		Vec3 end = start.add(direction.scale(length));
+		Vec3 clippedEnd = blockHit == null ? end : blockHit.getLocation();
+		Vec3 movementStart = beamStartAt(tickData().moveSrc == null ? position() : tickData().moveSrc);
+		Vec3 movementEnd = beamStartAt(tickData().movementEndOr(position()));
+		return new LaserGeometry(direction, start, end, clippedEnd, movementStart, movementEnd);
+	}
+
+	private static Vec3 closestPointOnSegment(Vec3 point, Vec3 start, Vec3 end) {
+		Vec3 segment = end.subtract(start);
+		double lengthSqr = segment.lengthSqr();
+		if (lengthSqr < 1.0e-12) return start;
+		double t = Math.max(0, Math.min(1, point.subtract(start).dot(segment) / lengthSqr));
+		return start.add(segment.scale(t));
+	}
+
+	private record LaserGeometry(Vec3 direction, Vec3 start, Vec3 end, Vec3 clippedEnd,
+			Vec3 movementStart, Vec3 movementEnd) {
 	}
 
 	@Override
 	public AABB getBoundingBoxForCulling() {
-		var src = position().add(0, getBbHeight() / 2f, 0);
+		var src = beamStart();
 		return new AABB(src, src.add(getForward().scale(length))).inflate(getBbWidth() / 2f);
 	}
 
 	public void addAdditionalSaveData(CompoundTag nbt) {
 		super.addAdditionalSaveData(nbt);
 		nbt.put("auto-serial", Objects.requireNonNull(TagCodec.toTag(new CompoundTag(), this)));
+		nbt.putBoolean("ExpiryActionConsumed", expiryActionConsumed);
 	}
 
 	public void readAdditionalSaveData(CompoundTag nbt) {
@@ -338,6 +622,7 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		if (nbt.contains("auto-serial")) {
 			Wrappers.run(() -> TagCodec.fromTag(nbt.getCompound("auto-serial"), getClass(), this, (f) -> true));
 		}
+		expiryActionConsumed = nbt.getBoolean("ExpiryActionConsumed");
 	}
 
 	@Override

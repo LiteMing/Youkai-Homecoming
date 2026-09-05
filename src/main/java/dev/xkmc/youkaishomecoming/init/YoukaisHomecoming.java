@@ -5,7 +5,6 @@ import com.mojang.logging.LogUtils;
 import com.tterrag.registrate.providers.ProviderType;
 import com.tterrag.registrate.util.entry.RegistryEntry;
 import dev.ghen.thirst.Thirst;
-import dev.shadowsoffire.gateways.Gateways;
 import dev.xkmc.fastprojectileapi.collision.FastMapInit;
 import dev.xkmc.fastprojectileapi.render.virtual.BatchEraseDanmakuToClient;
 import dev.xkmc.fastprojectileapi.render.virtual.DanmakuToClientPacket;
@@ -36,7 +35,6 @@ import dev.xkmc.youkaishomecoming.content.item.fluid.YHFluidHandler;
 import dev.xkmc.youkaishomecoming.content.pot.table.food.YHSushi;
 import dev.xkmc.youkaishomecoming.content.pot.table.item.ModelIngredientData;
 import dev.xkmc.youkaishomecoming.content.pot.table.item.TableItemManager;
-import dev.xkmc.youkaishomecoming.content.spell.custom.screen.SpellSetToServer;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellTitleToClient;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
 import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
@@ -98,14 +96,16 @@ public class YoukaisHomecoming {
 			loc("main"), 2,
 			e -> e.create(FrogSyncPacket.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(KoishiStartPacket.class, NetworkDirection.PLAY_TO_CLIENT),
-			e -> e.create(SpellSetToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellEditorSyncToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(SpellCircleEditorSyncToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(CombatToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(GrazeHelper.GrazeToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(DanmakuToClientPacket.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(EraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
-		e -> e.create(BatchEraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(BatchEraseDanmakuToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.fastprojectileapi.render.virtual.DanmakuBounceSyncPacket.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellStateToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellCircleStateToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellCircleDefinitionToClient.class, NetworkDirection.PLAY_TO_CLIENT),
@@ -116,7 +116,17 @@ public class YoukaisHomecoming {
 			e -> e.create(OpenSpellMarketToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
-			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT));
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationQuoteRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationQuoteToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStartRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStateToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationAbortRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellRewardToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellSnapshotRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellSnapshotToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.client.SpellCardActivationToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.feedback.SpellFeedbackPacket.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",
 			SpellCircleConfig.class);
@@ -168,7 +178,7 @@ public class YoukaisHomecoming {
 			TLMRegistries.init();
 			MinecraftForge.EVENT_BUS.register(TLMCompat.class);
 		}
-		if (ModList.get().isLoaded(Gateways.MODID)) {
+		if (ModList.get().isLoaded("gateways")) {
 			MinecraftForge.EVENT_BUS.register(GatewayEventHandlers.class);
 		}
 		if (ModList.get().isLoaded("exposure")) {
@@ -182,6 +192,9 @@ public class YoukaisHomecoming {
 	public static void registerRecipeSerializers(RegisterEvent event) {
 		if (event.getRegistryKey().equals(ForgeRegistries.Keys.RECIPE_SERIALIZERS)) {
 			CraftingHelper.register(SlipBottleIngredient.INSTANCE.id(), SlipBottleIngredient.INSTANCE);
+			event.register(ForgeRegistries.Keys.RECIPE_SERIALIZERS,
+					dev.xkmc.youkaishomecoming.content.spell.item.SpellDraftRecipe.SERIALIZER_ID,
+					() -> dev.xkmc.youkaishomecoming.content.spell.item.SpellDraftRecipe.Serializer.INSTANCE);
 		}
 	}
 
@@ -192,7 +205,11 @@ public class YoukaisHomecoming {
 		event.add(EntityType.PLAYER, YHAttributes.MAX_POWER.get());
 		event.add(EntityType.PLAYER, YHAttributes.MAX_RESOURCE.get());
 		event.add(EntityType.PLAYER, YHAttributes.GRAZE_EFFECTIVENESS.get());
-		event.add(EntityType.PLAYER, YHAttributes.HITBOX.get());
+		for (var type : event.getTypes()) {
+			if (!event.has(type, YHAttributes.HITBOX.get())) {
+				event.add(type, YHAttributes.HITBOX.get());
+			}
+		}
 	}
 
 	@SubscribeEvent

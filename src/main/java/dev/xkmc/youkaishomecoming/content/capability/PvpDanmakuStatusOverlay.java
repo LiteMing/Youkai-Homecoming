@@ -34,8 +34,39 @@ public class PvpDanmakuStatusOverlay implements IGuiOverlay {
 				Math.max(0, packet.bomb),
 				Math.max(0, packet.maxLife),
 				Math.max(0, packet.maxBomb),
+				new SpellProgress(Math.max(0, packet.spellHealth), Math.max(0, packet.spellMaxHealth),
+						Math.max(0, packet.spellElapsedTicks), Math.max(0, packet.spellDurationTicks),
+						Math.max(0, packet.spellCompletedHealth), packet.spellHealthSegments,
+						clientTick()),
 				Util.getMillis()
 		));
+	}
+
+	public record SpellProgress(int health, int maxHealth, int elapsedTicks, int durationTicks,
+			int completedHealth, int[] healthSegments, int receivedTick) {
+		public SpellProgress {
+			healthSegments = healthSegments == null ? new int[0] : healthSegments.clone();
+		}
+
+		@Override
+		public int[] healthSegments() {
+			return healthSegments.clone();
+		}
+
+		public boolean active() {
+			return healthSegments.length > 0 || maxHealth > 0 || durationTicks > 0;
+		}
+	}
+
+	private static int clientTick() {
+		var player = Minecraft.getInstance().player;
+		return player == null ? 0 : player.tickCount;
+	}
+
+	@org.jetbrains.annotations.Nullable
+	public static SpellProgress spellProgress(int entityId) {
+		Status status = STATUS.get(entityId);
+		return status == null || !status.spell().active() ? null : status.spell();
 	}
 
 	@Override
@@ -56,7 +87,7 @@ public class PvpDanmakuStatusOverlay implements IGuiOverlay {
 			int lifeWidth = PowerInfoOverlay.ICON_SIZE + ICON_TEXT_GAP + font.width(life);
 			int rowWidth = bombWidth + RESOURCE_GAP + lifeWidth;
 			int entryWidth = Math.max(MIN_ENTRY_WIDTH, Math.max(rowWidth, font.width(name)));
-			int x = (width - entryWidth) / 2;
+			int x = 12;
 			if (!name.isEmpty()) {
 				int nameX = x + (entryWidth - font.width(name)) / 2;
 				g.drawString(font, name, nameX, y, 0xFFFFFFFF, true);
@@ -76,7 +107,8 @@ public class PvpDanmakuStatusOverlay implements IGuiOverlay {
 		return Math.max(0, value / SHARD);
 	}
 
-	private record Status(String name, int life, int bomb, int maxLife, int maxBomb, long time) {
+	private record Status(String name, int life, int bomb, int maxLife, int maxBomb,
+						  SpellProgress spell, long time) {
 	}
 
 }

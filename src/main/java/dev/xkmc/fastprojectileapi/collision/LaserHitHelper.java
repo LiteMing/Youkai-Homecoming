@@ -1,6 +1,7 @@
 package dev.xkmc.fastprojectileapi.collision;
 
 import dev.xkmc.fastprojectileapi.entity.BaseLaser;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -45,6 +46,7 @@ public class LaserHitHelper {
 		e.tickData().candidateCount += list.size();
 		for (EntityInfo x : list) {
 			if (x.entity() == e || e.ignoresEntity(x.entity())) continue;
+			if (e instanceof IYHDanmaku danmaku && !danmaku.canHitDanmakuTarget(x)) continue;
 			Vec3 hit = ProjectileHitHelper.checkHit(x, e.alterHitBox(x, radius, 0), src, dst);
 			if (hit != null) hitEntities.add(x.entity());
 			if (graze > 0 && x.entity() instanceof Player pl) {

@@ -32,13 +32,12 @@ public record DelayAction(NumberProvider delayTicks, List<SpellAction> body) imp
 	public void execute(SpellContext ctx) {
 		int delay = (int) delayTicks.get(ctx);
 		if (delay <= 0) {
-			// Immediate execution if delay is zero or negative
-			for (var action : body) {
-				action.execute(ctx);
-			}
+			// Immediate execution if delay is zero or negative with terminal propagation
+			ctx.executeList(body);
 		} else {
-			// Schedule for future execution
-			ctx.runtime().scheduleDelayed(ctx.totalTick() + delay, body);
+			// Schedule for future execution (pure temporal delay)
+			ctx.runtime().scheduleDelayed(ctx.totalTick() + delay, body, ctx.holder(),
+					ctx.callbackContext().orElse(null));
 		}
 	}
 }

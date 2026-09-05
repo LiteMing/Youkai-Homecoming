@@ -8,17 +8,23 @@ package dev.xkmc.youkaishomecoming.content.spell.pilot.threat;
  * @param grazeCount     threats inside graze band but not hard-hit
  * @param hardHit        true if any hard collision on this node
  * @param nearestThreatId entity id of closest threat, or -1
+ * @param hitTime         swept collision time inside this step, or positive infinity
  */
-public record ScoreResult(double score, double minClearance, int grazeCount, boolean hardHit, int nearestThreatId) {
+public record ScoreResult(double score, double minClearance, int grazeCount, boolean hardHit,
+		int nearestThreatId, double hitTime) {
 
 	public static final double DEAD = Double.NEGATIVE_INFINITY;
 
 	public static ScoreResult dead(int threatId) {
-		return new ScoreResult(DEAD, -1, 0, true, threatId);
+		return dead(threatId, 0);
+	}
+
+	public static ScoreResult dead(int threatId, double hitTime) {
+		return new ScoreResult(DEAD, -1, 0, true, threatId, hitTime);
 	}
 
 	public static ScoreResult safe(double score, double minClearance, int graze, int nearestId) {
-		return new ScoreResult(score, minClearance, graze, false, nearestId);
+		return new ScoreResult(score, minClearance, graze, false, nearestId, Double.POSITIVE_INFINITY);
 	}
 
 	public boolean isAlive() {

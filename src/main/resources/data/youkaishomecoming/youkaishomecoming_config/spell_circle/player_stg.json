@@ -1,0 +1,109 @@
+{
+  "map": {
+	"youkaishomecoming:player_stg": {
+	  "strokes": [
+		{
+		  "vertex": 64,
+		  "cycle": 1,
+		  "rune": 1,
+		  "color": "0xFF4FC3F7",
+		  "width": 2,
+		  "radius": 32,
+		  "z": 0,
+		  "angle": 0
+		},
+		{
+		  "vertex": 32,
+		  "cycle": 2,
+		  "rune": 0,
+		  "color": "0xFF4FC3F7",
+		  "width": 1,
+		  "radius": 24,
+		  "z": 0,
+		  "angle": 0
+		},
+		{
+		  "vertex": 8,
+		  "cycle": 1,
+		  "rune": 0,
+		  "color": "0xFF29B6F6",
+		  "width": 2,
+		  "radius": 36,
+		  "z": 0,
+		  "angle": 22.5
+		}
+	  ],
+	  "items": [],
+	  "layers": []
+	},
+	"youkaishomecoming:player_stg_bomb": {
+	  "resource_layout": {
+		"plane": "xz",
+		"radius": { "value": 44.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"angle": { "value": 0.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"arc": 360.0,
+		"counter_rotate": true
+	  },
+	  "strokes": [
+		{
+		  "vertex": 24,
+		  "cycle": 1,
+		  "rune": 0,
+		  "color": "0x99FFFFFF",
+		  "width": 1.5,
+		  "radius": 5,
+		  "z": 0.02,
+		  "angle": 0
+		}
+	  ],
+	  "items": [],
+	  "layers": []
+	},
+	"youkaishomecoming:player_stg_power": {
+	  "resource_layout": {
+		"plane": "xy",
+		"radius": { "value": 60.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"angle": { "value": 180.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"arc": 360.0,
+		"counter_rotate": true
+	  },
+	  "strokes": [
+		{
+		  "vertex": 8,
+		  "cycle": 1,
+		  "rune": 0,
+		  "color": "0xFFFFD54F",
+		  "width": 1.5,
+		  "radius": 5,
+		  "z": 0.025,
+		  "angle": 22.5
+		}
+	  ],
+	  "items": [],
+	  "layers": []
+	},
+	"youkaishomecoming:player_stg_points": {
+	  "resource_layout": {
+		"plane": "xy",
+		"radius": { "value": 68.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"angle": { "value": 0.0, "delta": 0.0, "amplitude": 0.0, "period": 0.0, "dt": 0.0 },
+		"arc": 360.0,
+		"counter_rotate": true
+	  },
+	  "strokes": [
+		{
+		  "vertex": 16,
+		  "cycle": 1,
+		  "rune": 0,
+		  "color": "0xFFB39DDB",
+		  "width": 1.25,
+		  "radius": 4,
+		  "z": 0.03,
+		  "angle": 0
+		}
+	  ],
+	  "items": [],
+	  "layers": []
+	}
+  }
+}

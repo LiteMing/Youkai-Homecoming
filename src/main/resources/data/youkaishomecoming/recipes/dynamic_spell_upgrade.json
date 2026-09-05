@@ -1,0 +1,15 @@
+{
+  "type": "youkaishomecoming:spell_draft",
+  "category": "equipment",
+  "ingredients": [
+    {
+      "item": "youkaishomecoming:dynamic_spell"
+    },
+    {
+      "tag": "youkaishomecoming:preset_spell"
+    }
+  ],
+  "result": {
+    "item": "youkaishomecoming:dynamic_spell"
+  }
+}

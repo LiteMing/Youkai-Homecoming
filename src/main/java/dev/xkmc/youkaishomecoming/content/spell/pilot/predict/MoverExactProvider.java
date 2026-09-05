@@ -39,6 +39,7 @@ public class MoverExactProvider implements ThreatProvider {
 	 */
 	private static final Set<Class<?>> WHITELISTED_TARGET_POS = Set.of(
 			RectMover.class,
+			dev.xkmc.youkaishomecoming.content.spell.mover.BoundedAccelerationMover.class,
 			PolarMover.class,
 			BezierMover.class,
 			MultiBezierMover.class,
@@ -78,9 +79,8 @@ public class MoverExactProvider implements ThreatProvider {
 				: danmakuHitRadius(entity);
 		float laserLength = isLaser ? (float) ((YHBaseLaserEntity) entity).getLength() : 0f;
 
-		// Laser ray anchor = pos + BbHeight/2 (BaseLaser.java:31)
 		Vec3 anchorPos = isLaser
-				? entity.position().add(0, entity.getBbHeight() / 2, 0)
+				? ((YHBaseLaserEntity) entity).beamStart()
 				: entity.position();
 
 		MoverInfo.OwnerInfo ownerInfo = snapshotOwnerInfo(entity);
@@ -94,20 +94,13 @@ public class MoverExactProvider implements ThreatProvider {
 		int currentTick = entity.tickCount;
 		ThreatFrame[] frames = new ThreatFrame[horizon];
 
-		// Laser ray origin is always entity feet + BbHeight/2 (same offset every tick)
-		double laserYOff = isLaser ? entity.getBbHeight() / 2.0 : 0;
-
 		if (mover instanceof TargetPosMover tpm) {
 			Vec3 orient0 = isLaser ? unitDirection(entity) : null;
 			frames[0] = frame(anchorPos, orient0, hitRadius, laserLength, isLaser, currentTick, entity);
 			for (int i = 1; i < horizon; i++) {
 				MoverInfo futureInfo = baseInfo.offsetTime(i);
 				// C2: direct pos() — never move() (avoids info.self().rot() fallback)
-				// TargetPosMover.pos is entity-path position; lift lasers to ray anchor every frame
 				Vec3 futurePos = tpm.pos(futureInfo);
-				if (isLaser) {
-					futurePos = futurePos.add(0, laserYOff, 0);
-				}
 				Vec3 orient = null;
 				if (isLaser) {
 					Vec3 prev = frames[i - 1].position();
@@ -137,7 +130,7 @@ public class MoverExactProvider implements ThreatProvider {
 
 	/** Laser with null/unpredictable mover: freeze pose, keep segment length + hit window. */
 	private static Threat captureStaticLaser(YHBaseLaserEntity laser, int horizon) {
-		Vec3 anchor = laser.position().add(0, laser.getBbHeight() / 2, 0);
+		Vec3 anchor = laser.beamStart();
 		Vec3 orient = unitDirection(laser);
 		float hitRadius = laser.getEffectiveHitRadius();
 		float fullLen = (float) laser.getLength();

@@ -1,11 +1,14 @@
 package dev.xkmc.fastprojectileapi.spellcircle;
 
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.util.GlyphRuns;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
@@ -38,7 +41,15 @@ public class SpellComponent {
 	public ArrayList<ItemLayer> items = new ArrayList<>();
 
 	@SerialClass.SerialField
+	public ArrayList<TextLayer> texts = new ArrayList<>();
+
+	@SerialClass.SerialField
 	public ArrayList<Layer> layers = new ArrayList<>();
+
+	/** Optional live-resource slot layout used by the player STG circle renderer. */
+	@Nullable
+	@SerialClass.SerialField
+	public ResourceLayout resource_layout;
 
 	@OnlyIn(Dist.CLIENT)
 	public void render(RenderHandle handle) {
@@ -46,8 +57,20 @@ public class SpellComponent {
 		for (Stroke stroke : strokes) {
 			stroke.render(handle);
 		}
-		for (ItemLayer item : items) {
-			item.render(handle);
+		// Item sprites and text glyphs draw with their own render types, which ends the
+		// batch holding the circle's vertex consumer. Re-acquire before any further
+		// stroke drawing (nested layers, child components, the progress ring).
+		if (!items.isEmpty()) {
+			for (ItemLayer item : items) {
+				item.render(handle);
+			}
+			handle.reacquireBuilder();
+		}
+		if (!texts.isEmpty()) {
+			for (TextLayer text : texts) {
+				text.render(handle);
+			}
+			handle.reacquireBuilder();
 		}
 		for (Layer layer : layers) {
 			layer.render(handle);
@@ -62,6 +85,10 @@ public class SpellComponent {
 		if (items == null) {
 			items = new ArrayList<>();
 		}
+		// Circles authored before text layers existed have no "texts" key at all.
+		if (texts == null) {
+			texts = new ArrayList<>();
+		}
 		if (layers == null) {
 			layers = new ArrayList<>();
 		}
@@ -71,6 +98,39 @@ public class SpellComponent {
 		for (ItemLayer item : items) {
 			item.invalidateCache();
 		}
+	}
+
+	/**
+	 * Shared colour-string parser for strokes and text layers.
+	 * Accepts {@code #RRGGBB}, {@code 0xAARRGGBB} and bare hex; falls back to
+	 * opaque white on malformed input rather than throwing inside the render loop.
+	 */
+	@OnlyIn(Dist.CLIENT)
+	static int parseColor(@Nullable String color) {
+		if (color == null) return -1;
+		String str = color.trim();
+		if (str.startsWith("#")) {
+			str = str.substring(1);
+		}
+		if (str.startsWith("0x") || str.startsWith("0X")) {
+			str = str.substring(2);
+		}
+		if (str.isEmpty()) return -1;
+		try {
+			if (str.length() <= 6) {
+				return 0xff000000 | Integer.parseUnsignedInt(str, 16);
+			}
+			return Integer.parseUnsignedInt(str, 16);
+		} catch (NumberFormatException e) {
+			return -1;
+		}
+	}
+
+	/** Scale a packed ARGB colour's alpha channel by {@code alpha}. */
+	@OnlyIn(Dist.CLIENT)
+	private static int withAlpha(int color, float alpha) {
+		int a = (int) ((color >>> 24) * Math.max(0, Math.min(1, alpha)));
+		return a << 24 | color & 0x00ffffff;
 	}
 
 	@SerialClass
@@ -86,6 +146,37 @@ public class SpellComponent {
 			return ans;
 		}
 
+	}
+
+	@SerialClass
+	public static class ResourceLayout {
+
+		/** Slot plane: {@code xy} for the circle plane, {@code xz} for the legacy Bomb orbit. */
+		@SerialClass.SerialField
+		public String plane = "xy";
+
+		/** Animated orbit radius and group angle, in pixels and degrees respectively. */
+		@Nullable
+		@SerialClass.SerialField
+		public Value radius, angle;
+
+		/** Angular span occupied by the slots. 360 distributes them over a closed ring. */
+		@SerialClass.SerialField
+		public float arc = 360;
+
+		/** Keep child circles facing the parent instead of rotating with their orbit. */
+		@SerialClass.SerialField
+		public boolean counter_rotate = true;
+
+		@OnlyIn(Dist.CLIENT)
+		public float radius(float tick, float fallback) {
+			return radius == null ? fallback : radius.get(tick);
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		public float angle(float tick, float fallback) {
+			return angle == null ? fallback : angle.get(tick);
+		}
 	}
 
 	@SerialClass
@@ -114,20 +205,49 @@ public class SpellComponent {
 
 		}
 
+		/** Render only the leading fraction of this circular stroke. */
+		@OnlyIn(Dist.CLIENT)
+		public void renderProgress(RenderHandle handle, float progress) {
+			if (vertex <= 0 || progress <= 0 || width <= 0 || radius <= 0) return;
+			float da = (float) Math.PI * 2 * cycle / vertex;
+			float a = angle;
+			float w = width / (float) Math.cos(da / 2);
+			int count = Math.min(vertex, Math.max(1, (int) Math.ceil(vertex * Math.min(1, progress))));
+			int col = getColor();
+			float dv = (rune > 0 ? 8 : 1) / 128f;
+			float du = (int) (Math.PI * 2 * radius * cycle / width * 8) / 8f / vertex * dv;
+			for (int i = 0; i < count; i++) {
+				rect(handle, a + da * i, da, radius, w, z, col, i * du, rune == 0 ? 0 : (rune - 1) * dv, du, dv);
+			}
+		}
+
+		/** Render a progress arc between normalized angles, without closing the ring. */
+		@OnlyIn(Dist.CLIENT)
+		public void renderProgressRange(RenderHandle handle, float start, float end) {
+			if (vertex <= 0 || end <= start || width <= 0 || radius <= 0) return;
+			start = Math.max(0, Math.min(1, start));
+			end = Math.max(start, Math.min(1, end));
+			int first = Math.max(0, (int) Math.floor(vertex * start));
+			int last = Math.min(vertex, Math.max(first + 1, (int) Math.ceil(vertex * end)));
+			int col = getColor();
+			float dv = (rune > 0 ? 8 : 1) / 128f;
+			float du = (int) (Math.PI * 2 * radius * cycle / width * 8) / 8f / vertex * dv;
+			float direction = cycle < 0 ? -1 : 1;
+			for (int i = first; i < last; i++) {
+				float left = Math.max(start, i / (float) vertex);
+				float right = Math.min(end, (i + 1) / (float) vertex);
+				if (right <= left) continue;
+				float a = angle + (float) (Math.PI * 2) * direction * left;
+				float segmentDa = (float) (Math.PI * 2) * direction * (right - left);
+				float segmentWidth = width / (float) Math.cos(segmentDa / 2);
+				rect(handle, a, segmentDa, radius, segmentWidth, z, col, i * du,
+						rune == 0 ? 0 : (rune - 1) * dv, du, dv);
+			}
+		}
+
 		@OnlyIn(Dist.CLIENT)
 		private int getColor() {
-			if (color == null) return -1;
-			String str = color.trim();
-			if (str.startsWith("#")) {
-				str = str.substring(1);
-			}
-			if (str.startsWith("0x") || str.startsWith("0X")) {
-				str = str.substring(2);
-			}
-			if (str.length() <= 6) {
-				return 0xff000000 | Integer.parseUnsignedInt(str, 16);
-			}
-			return Integer.parseUnsignedInt(str, 16);
+			return parseColor(color);
 		}
 
 		@OnlyIn(Dist.CLIENT)
@@ -311,23 +431,197 @@ public class SpellComponent {
 	}
 
 
+	/**
+	 * A run of text drawn into the circle, either straight along local +X or
+	 * wrapped onto a ring. Mirrors {@link ItemLayer}'s animated {@link Value}
+	 * fields so text can drift, spin and fade like every other element.
+	 *
+	 * <p>Glyphs are placed one slot at a time (same approach as the text danmaku
+	 * renderer) so per-character spacing and arc placement stay under our control.
+	 */
+	@SerialClass
+	public static class TextLayer {
+
+		@SerialClass.SerialField
+		public String text = "";
+
+		@SerialClass.SerialField
+		public String color;
+
+		/** Extra advance inserted after every glyph, in circle units. */
+		@SerialClass.SerialField
+		public float char_spacing;
+
+		/** 0 = straight run; greater than 0 = wrap the run onto a ring of this radius. */
+		@SerialClass.SerialField
+		public float radius;
+
+		/** Ring mode only: total sweep in degrees. 0 = derive it from the run's own width. */
+		@SerialClass.SerialField
+		public float arc_span;
+
+		/**
+		 * Ring mode only. Default reads clockwise with glyph tops pointing outward
+		 * (readable from outside the circle); flipped reads counter-clockwise with
+		 * tops pointing inward.
+		 */
+		@SerialClass.SerialField
+		public boolean flip;
+
+		@Nullable
+		@SerialClass.SerialField
+		public Value x_offset, y_offset, z_offset, scale, rotation, alpha;
+
+		@OnlyIn(Dist.CLIENT)
+		public void render(RenderHandle handle) {
+			if (text == null || text.isEmpty()) {
+				return;
+			}
+			float s = get(scale, handle, 1);
+			if (s <= 0) {
+				return;
+			}
+			float a = handle.alpha * get(alpha, handle, 1);
+			int col = withAlpha(parseColor(color), a);
+			if ((col >>> 24) == 0) {
+				return;
+			}
+			Font font = Minecraft.getInstance().font;
+			String[] glyphs = GlyphRuns.split(text);
+			if (glyphs.length == 0) {
+				return;
+			}
+			handle.matrix.pushPose();
+			handle.matrix.translate(get(x_offset, handle, 0), get(y_offset, handle, 0), get(z_offset, handle, 0));
+			handle.matrix.mulPose(Axis.ZP.rotationDegrees(get(rotation, handle, 0)));
+			if (radius > 0) {
+				renderArc(handle, font, glyphs, s, col);
+			} else {
+				renderStraight(handle, font, glyphs, s, col);
+			}
+			handle.matrix.popPose();
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private void renderStraight(RenderHandle handle, Font font, String[] glyphs, float s, int col) {
+			float total = totalAdvance(font, glyphs, s);
+			float x = -total / 2;
+			for (String glyph : glyphs) {
+				float advance = advance(font, glyph, s);
+				handle.matrix.pushPose();
+				handle.matrix.translate(x + advance / 2, 0, 0);
+				drawGlyph(handle, font, glyph, s, col);
+				handle.matrix.popPose();
+				x += advance;
+			}
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private void renderArc(RenderHandle handle, Font font, String[] glyphs, float s, int col) {
+			float total = totalAdvance(font, glyphs, s);
+			if (total <= 0) {
+				return;
+			}
+			// Auto span keeps the arc length equal to the straight run's width.
+			float span = arc_span > 0 ? (float) Math.toRadians(arc_span) : total / radius;
+			// Glyph "right" points clockwise in the unflipped frame, so angles must decrease.
+			float direction = flip ? 1 : -1;
+			float start = -direction * span / 2;
+			float quarter = flip ? 90 : -90;
+			float travelled = 0;
+			for (String glyph : glyphs) {
+				float advance = advance(font, glyph, s);
+				float centre = (travelled + advance / 2) / total;
+				handle.matrix.pushPose();
+				handle.matrix.mulPose(Axis.ZP.rotation(start + direction * span * centre));
+				handle.matrix.translate(radius, 0, 0);
+				handle.matrix.mulPose(Axis.ZP.rotationDegrees(quarter));
+				drawGlyph(handle, font, glyph, s, col);
+				handle.matrix.popPose();
+				travelled += advance;
+			}
+		}
+
+		/**
+		 * Draw one glyph centred on the current origin, front and back.
+		 *
+		 * <p>The negative Y scale converts the font's downward Y into the circle's upward
+		 * Y; X keeps its sign, so the glyph is flipped, not mirrored.
+		 *
+		 * <p>Unlike the circle's own render type, {@code RenderType.text} has back-face
+		 * culling enabled, so a single quad vanishes as soon as the circle is seen from
+		 * behind. Draw the mirrored back face too — the same thing the text danmaku
+		 * renderer does for its sign faces.
+		 */
+		@OnlyIn(Dist.CLIENT)
+		private static void drawGlyph(RenderHandle handle, Font font, String glyph, float s, int col) {
+			handle.matrix.pushPose();
+			handle.matrix.scale(s, -s, s);
+			font.drawInBatch(glyph, -font.width(glyph) / 2f, -font.lineHeight / 2f, col, false,
+					handle.matrix.last().pose(), handle.buffer, Font.DisplayMode.NORMAL, 0, handle.light);
+			handle.matrix.mulPose(Axis.YP.rotationDegrees(180));
+			font.drawInBatch(glyph, -font.width(glyph) / 2f, -font.lineHeight / 2f, col, false,
+					handle.matrix.last().pose(), handle.buffer, Font.DisplayMode.NORMAL, 0, handle.light);
+			handle.matrix.popPose();
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private float totalAdvance(Font font, String[] glyphs, float s) {
+			float total = 0;
+			for (String glyph : glyphs) {
+				total += advance(font, glyph, s);
+			}
+			return total;
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private float advance(Font font, String glyph, float s) {
+			return font.width(glyph) * s + char_spacing;
+		}
+
+		@OnlyIn(Dist.CLIENT)
+		private float get(@Nullable Value val, RenderHandle handle, float def) {
+			return val == null ? def : val.get(handle.tick);
+		}
+
+	}
+
 	@OnlyIn(Dist.CLIENT)
 	public static class RenderHandle {
 
 		public final PoseStack matrix;
 		public final MultiBufferSource buffer;
-		public final VertexConsumer builder;
+		private final RenderType type;
+		/**
+		 * The circle's own vertex consumer. Not final: it must be re-acquired after
+		 * anything draws with a different render type — see {@link #reacquireBuilder()}.
+		 */
+		public VertexConsumer builder;
 		public final float tick;
 		public final int light;
 
 		public float alpha = 1;
 
-		public RenderHandle(PoseStack matrix, MultiBufferSource buffer, VertexConsumer builder, float tick, int light) {
+		public RenderHandle(PoseStack matrix, MultiBufferSource buffer, RenderType type, float tick, int light) {
 			this.matrix = matrix;
 			this.buffer = buffer;
-			this.builder = builder;
+			this.type = type;
+			this.builder = buffer.getBuffer(type);
 			this.tick = tick;
 			this.light = light;
+		}
+
+		/**
+		 * Re-acquire the circle's vertex consumer.
+		 *
+		 * <p>{@link MultiBufferSource.BufferSource#getBuffer} ends the current batch when
+		 * the render type changes. So as soon as an item sprite or a text glyph draws,
+		 * the consumer held here has been flushed and is no longer building; writing to
+		 * it again corrupts or kills the rest of the circle — nested layers, child
+		 * component strokes, the progress ring. Call this after any such element.
+		 */
+		public void reacquireBuilder() {
+			this.builder = buffer.getBuffer(type);
 		}
 	}
 

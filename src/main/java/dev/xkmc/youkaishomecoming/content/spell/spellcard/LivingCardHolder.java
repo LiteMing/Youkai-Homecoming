@@ -1,9 +1,11 @@
 package dev.xkmc.youkaishomecoming.content.spell.spellcard;
 
 import dev.xkmc.fastprojectileapi.collision.EntityStorageHelper;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
@@ -60,6 +62,12 @@ public interface LivingCardHolder extends CardHolder {
 	@Override
 	default ItemDanmakuEntity prepareDanmaku(int life, Vec3 vec, YHDanmaku.Bullet type, DanmakuColor color) {
 		ItemDanmakuEntity danmaku = new ItemDanmakuEntity(YHEntities.ITEM_DANMAKU.get(), shooter(), self().level());
+		LivingEntity target = targetEntity();
+		danmaku.setRetargetTarget(target);
+		configureHarmfulPlayerSnapshot(danmaku);
+		if (shooter() instanceof net.minecraft.world.entity.player.Player) {
+			danmaku.restrictPlayerSpellDamage(target);
+		}
 		danmaku.setPos(center());
 		// For DYE_TEXTURES mode: use the specific colored item (has correct texture baked in)
 		// For TINTED/FIXED modes: use BASE_DANMAKU with NBT color and runtime tint
@@ -78,22 +86,59 @@ public interface LivingCardHolder extends CardHolder {
 	@Override
 	default ItemLaserEntity prepareLaser(int life, Vec3 pos, Vec3 vec, float len, YHDanmaku.Laser type, DyeColor color) {
 		ItemLaserEntity danmaku = new ItemLaserEntity(YHEntities.ITEM_LASER.get(), shooter(), self().level());
+		configureHarmfulPlayerSnapshot(danmaku);
+		if (shooter() instanceof net.minecraft.world.entity.player.Player) {
+			danmaku.restrictPlayerSpellDamage(targetEntity());
+		}
 		danmaku.setItem(type.get(color).asStack());
 		danmaku.setup(getDamage(type),
 				life, len, true, vec);
-		danmaku.setPos(pos);
+		danmaku.setBeamStart(pos);
 		danmaku.setupLength = type.setupLength();
 		return danmaku;
 	}
 
 	default TextDanmakuEntity prepareTextDanmaku(int life, Vec3 pos, Vec3 dir, float size, String text, int textColor) {
 		TextDanmakuEntity danmaku = new TextDanmakuEntity(YHEntities.TEXT_DANMAKU.get(), shooter(), self().level());
+		configureHarmfulPlayerSnapshot(danmaku);
+		if (shooter() instanceof net.minecraft.world.entity.player.Player) {
+			danmaku.restrictPlayerSpellDamage(targetEntity());
+		}
 		danmaku.setPos(pos);
 		danmaku.configureText(text, size, textColor);
 		// Use PENCIL laser damage type as default for text danmaku
 		danmaku.setup(getDamage(YHDanmaku.Laser.PENCIL), life, danmaku.length, true, dir);
 		danmaku.setupLength = YHDanmaku.Laser.PENCIL.setupLength();
 		return danmaku;
+	}
+
+	private void configureHarmfulPlayerSnapshot(IYHDanmaku danmaku) {
+		LivingEntity source = shooter();
+		if (source instanceof dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity youkai) {
+			danmaku.setHarmfulPlayerSnapshot(youkai.targets.snapshotIds());
+			return;
+		}
+		LivingEntity target = targetEntity();
+		if (source instanceof net.minecraft.world.entity.player.Player caster) {
+			java.util.Set<java.util.UUID> harmfulPlayers = new java.util.LinkedHashSet<>();
+			// An explicitly selected player remains a valid target even when neither
+			// player has joined a team.
+			if (target instanceof net.minecraft.world.entity.player.Player selected
+					&& selected != caster && !caster.isAlliedTo(selected)) {
+				harmfulPlayers.add(selected.getUUID());
+			}
+			// A player assigned to any team is a default combat target. Vanilla
+			// alliance checks above still protect members of the caster's own team.
+			for (net.minecraft.world.entity.player.Player candidate : caster.level().players()) {
+				if (candidate != caster && GrazeHelper.isUntargetedPlayerSpellTarget(caster, candidate)) {
+					harmfulPlayers.add(candidate.getUUID());
+				}
+			}
+			danmaku.setHarmfulPlayerSnapshot(harmfulPlayers);
+		} else if (target instanceof net.minecraft.world.entity.player.Player player
+				&& !source.isAlliedTo(player)) {
+			danmaku.setHarmfulPlayerSnapshot(java.util.List.of(player.getUUID()));
+		}
 	}
 
 

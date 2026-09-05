@@ -173,7 +173,7 @@ public class PilotThreatTest {
 	private static void testSelfBoxPlayerShrinkVsVanilla() {
 		System.out.println("[SelfBoxModel shrink + per-semantic box]");
 		SelfBoxModel full = SelfBoxModel.vanillaPlayer();
-		SelfBoxModel player = SelfBoxModel.playerDanmaku(-0.2f); // Fairy-like
+		SelfBoxModel player = SelfBoxModel.playerDanmaku(0.8f); // Fairy-like 20% reduction
 		Vec3 feet = Vec3.ZERO;
 		AABB a = full.hardAt(feet);
 		AABB danmakuBox = player.hitBoxAt(feet, ThreatSemantic.DANMAKU);
@@ -181,7 +181,7 @@ public class PilotThreatTest {
 		check("danmaku box narrower X than vanilla", (danmakuBox.maxX - danmakuBox.minX) < (vanillaBox.maxX - vanillaBox.minX));
 		check("vanilla box matches full player width", Math.abs((vanillaBox.maxX - vanillaBox.minX) - 0.6) < 1e-6);
 		check("danmaku bottom lifted", danmakuBox.minY > vanillaBox.minY);
-		approx("danmaku top unshrunk", danmakuBox.maxY, 1.8, 1e-6);
+		approx("danmaku top follows eye anchor", danmakuBox.maxY, 1.764, 1e-6);
 		// Edge bullet hits full/vanilla but may miss shrunk danmaku box
 		AABB bullet = new AABB(0.28, 0.1, -0.05, 0.35, 0.2, 0.05);
 		boolean hitVanilla = SweptCollision.clearance(vanillaBox, bullet) <= 0;
@@ -253,6 +253,7 @@ public class PilotThreatTest {
 		check("broadphase present", snap.broadphase() != null);
 		System.out.println();
 	}
+
 
 	private static void testPilotPathOracleRejectsWallCrossing() {
 		System.out.println("[pilot path collision gate]");

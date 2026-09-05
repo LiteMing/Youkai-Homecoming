@@ -494,8 +494,8 @@ public class GrazeHelper {
 				(int) player.getAttributeValue(YHAttributes.MAX_RESOURCE.get());
 	}
 
-	public static float getHitBoxDelta(Player player) {
-		return (float) player.getAttributeValue(YHAttributes.HITBOX.get());
+	public static float getHitBoxScale(Player player) {
+		return (float) Math.max(0, player.getAttributeValue(YHAttributes.HITBOX.get()));
 	}
 
 	@SerialClass

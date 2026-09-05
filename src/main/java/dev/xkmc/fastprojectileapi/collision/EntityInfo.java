@@ -17,7 +17,6 @@ public class EntityInfo {
 	private final Entity entity;
 	private final AABB boundingBox;
 	private final Vec3 deltaMovement;
-	private final float hitBoxDelta;
 	private final boolean ownerTrackedByYoukai;
 	private final UUID rootUuid;
 	private final boolean untargetedPlayerSpellTarget;
@@ -28,7 +27,6 @@ public class EntityInfo {
 		this.entity = entity;
 		this.boundingBox = entity.getBoundingBox();
 		this.deltaMovement = entity.getDeltaMovement();
-		this.hitBoxDelta = entity instanceof Player player ? GrazeHelper.getHitBoxDelta(player) : 0;
 		this.ownerTrackedByYoukai = owner instanceof Player player && entity instanceof YoukaiEntity youkai && youkai.targets.contains(player);
 		Entity root = entity;
 		while (root instanceof PartEntity<?> part) root = part.getParent();
@@ -52,10 +50,6 @@ public class EntityInfo {
 
 	public Vec3 deltaMovement() {
 		return deltaMovement;
-	}
-
-	public float hitBoxDelta() {
-		return hitBoxDelta;
 	}
 
 	public boolean ownerTrackedByYoukai() {

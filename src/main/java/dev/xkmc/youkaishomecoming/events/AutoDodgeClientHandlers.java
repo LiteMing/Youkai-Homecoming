@@ -183,8 +183,9 @@ public class AutoDodgeClientHandlers {
 		boolean freeFlight = canVerticalFlight(player);
 		DodgePilot pilot = pilotFor(amplifier, freeFlight);
 		Vec3 feet = player.position();
-		float hitDelta = GrazeHelper.getHitBoxDelta(player);
-		SelfBoxModel box = SelfBoxModel.playerDanmaku(hitDelta);
+		float hitScale = GrazeHelper.getHitBoxScale(player);
+		Vec3 eye = new Vec3(player.getX(), player.getEyeY(), player.getZ());
+		SelfBoxModel box = SelfBoxModel.playerDanmaku(player.getBoundingBox(), feet, eye, hitScale);
 		ThreatSnapshot snapshot = ThreatSnapshot.capture(threats, REGISTRY,
 				pilot.profile().predictHorizon(), pilot.profile().threatTopK(), feet);
 		if (snapshot.size() == 0) {
@@ -199,7 +200,7 @@ public class AutoDodgeClientHandlers {
 		state.anchor = playerAnchor;
 		state.inputPreference = inputPreference;
 		state.grounded = !freeFlight;
-		state.hitBoxDelta = hitDelta;
+		state.hitBoxScale = hitScale;
 		state.tick = player.tickCount;
 		state.deadlineNanos = System.nanoTime() + pilot.profile().timeBudgetNanos();
 		applyNavigationDefaults(state, pilot.profile());

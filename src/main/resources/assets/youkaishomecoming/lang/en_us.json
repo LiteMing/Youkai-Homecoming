@@ -102,7 +102,7 @@
   "advancements.youkaishomecoming.advancements.main.welcome_to_youkais_homecoming.description": "Welcome To Youkai's Homecoming",
   "advancements.youkaishomecoming.advancements.main.welcome_to_youkais_homecoming.title": "Youkai's Homecoming",
   "attribute.youkaishomecoming.graze_effectiveness": "Graze Multiplier",
-  "attribute.youkaishomecoming.hit_box": "Hit Box Modification",
+  "attribute.youkaishomecoming.hit_box": "Danmaku Hit Box Scale",
   "attribute.youkaishomecoming.initial_power": "Additional Initial Power",
   "attribute.youkaishomecoming.initial_resource": "Additional Initial Resource",
   "attribute.youkaishomecoming.max_power": "Additional Max Power",

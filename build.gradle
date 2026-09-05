@@ -117,6 +117,14 @@ tasks.register('runPilotThreatTest', JavaExec) {
     dependsOn tasks.named('testClasses')
 }
 
+tasks.register('runPilotHitBoxTest', JavaExec) {
+    group = 'verification'
+    description = 'Run focused danmaku hit-box scaling and live-pose self-box tests.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'gen.PilotHitBoxTest'
+    dependsOn tasks.named('testClasses')
+}
+
 tasks.register('runSpellCallbackContractTest', JavaExec) {
     group = 'verification'
     description = 'Run narrow spell callback and viewport-math contracts (gen.SpellCallbackContextTest).'

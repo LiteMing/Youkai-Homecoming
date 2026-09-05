@@ -86,10 +86,12 @@ Pilot 是分层混合控制器,每 tick 输出一个期望速度向量:
    评分函数按 (自机盒 ⊕ 弹幕盒) 的 Minkowski 展开逐轴算穿透/间隙。
 5b. **自机有效判定盒 ≠ 原版碰撞箱(关键正确性点)**:自机被判中用的盒子取决于
    "谁在打谁",评分/搜索必须用与游戏实际命中逻辑一致的盒子,否则测评统计失真:
-   - **玩家 vs 本模组弹幕**:`IYHDanmaku.alterEntityHitBox`(`IYHDanmaku.java:116-124`)——
-     原版碰撞箱 X/Z 两侧内缩 `GrazeHelper.getHitBoxDelta(player)`、**底部抬高 2 倍缩减量、
-     顶部不缩**,再向外 Minkowski 加弹幕半宽。缩减量来自 `YHAttributes.HITBOX` 属性,
-     **可被装备/效果动态改变,必须每 tick 活取进 PilotState**,不可缓存为常量。
+   - **玩家/普通实体 vs 本模组弹幕**:`IYHDanmaku.alterEntityHitBox` 使用
+      `YHAttributes.HITBOX` 的统一倍率语义：默认 `1` 保持实体原始碰撞箱；`0~1` 从实体
+      视点锚点向内收缩，`0` 仍保留每轴 1 像素的命中体积；`>1` 从同一锚点向外扩张。
+      该属性挂载到所有 LivingEntity（含 Boss/多部件实体根实体），属性动态同步，Pilot 必须
+      每 tick 活取，不能缓存为常量。擦弹带仍在硬命中盒之外单独
+      `inflate(弹幕半宽 + GRAZE_RANGE)`，不随硬命中倍率误合并。
    - **妖怪/Boss vs 被妖怪追踪的弹幕**:`alterHitBox` 走 `boundingBox().inflate(GRAZE_RANGE)`
      (`IYHDanmaku.java:36-41`)——Boss 的有效受击盒被**放大** 1.5 格,Phase 6 的 Boss
      闪避必须按这个更大的盒子评分,否则会以为擦着过去了实际已判中。

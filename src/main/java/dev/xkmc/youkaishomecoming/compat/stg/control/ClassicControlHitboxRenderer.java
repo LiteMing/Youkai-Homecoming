@@ -6,7 +6,6 @@ import dev.xkmc.fastprojectileapi.render.virtual.ClientDanmakuCache;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
@@ -28,9 +27,10 @@ public final class ClassicControlHitboxRenderer {
 		if (minecraft.player == null) return;
 		Vec3 camera = event.getCamera().getPosition();
 		PoseStack pose = event.getPoseStack();
-		var buffers = MultiBufferSource.immediate(new BufferBuilder(RenderType.lines().bufferSize()));
-		ClientDanmakuCache.renderPlayerDanmakuHitbox(pose, buffers.getBuffer(RenderType.lines()),
+		var hitboxType = ClientDanmakuCache.danmakuHitboxRenderType();
+		var buffers = MultiBufferSource.immediate(new BufferBuilder(hitboxType.bufferSize()));
+		ClientDanmakuCache.renderPlayerDanmakuHitbox(pose, buffers.getBuffer(hitboxType),
 				minecraft.player, camera.x, camera.y, camera.z, event.getPartialTick());
-		buffers.endBatch(RenderType.lines());
+		buffers.endBatch(hitboxType);
 	}
 }

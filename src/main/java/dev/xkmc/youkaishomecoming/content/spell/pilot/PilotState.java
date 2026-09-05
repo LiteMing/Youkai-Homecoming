@@ -24,8 +24,8 @@ public final class PilotState {
 	public boolean grounded;
 	/** Arena clamp for preview target (nullable = unbounded). */
 	public net.minecraft.world.phys.AABB arena;
-	/** Live HITBOX delta for player models (informational). */
-	public float hitBoxDelta;
+	/** Live danmaku hit-box scale for player models (informational). */
+	public float hitBoxScale;
 	public int tick;
 	/** Deadline in System.nanoTime(); 0 = no deadline. */
 	public long deadlineNanos;
@@ -52,7 +52,7 @@ public final class PilotState {
 		this.continuityPreference = velocity;
 		this.grounded = false;
 		this.arena = null;
-		this.hitBoxDelta = 0;
+		this.hitBoxScale = 1;
 		this.tick = 0;
 		this.deadlineNanos = 0;
 		this.wallClearanceRadius = 0;

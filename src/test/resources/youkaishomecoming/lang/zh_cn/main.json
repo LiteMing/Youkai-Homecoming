@@ -16,7 +16,7 @@
   },
   "attribute.youkaishomecoming": {
     "graze_effectiveness": "擦弹倍率",
-    "hit_box": "弹幕判定",
+    "hit_box": "弹幕判定范围",
     "initial_power": "初始火力",
     "initial_resource": "初始资源",
     "max_power": "最大火力",

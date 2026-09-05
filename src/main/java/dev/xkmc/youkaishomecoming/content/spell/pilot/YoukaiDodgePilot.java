@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.pilot;
 
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuHitBox;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.BallisticProvider;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.MoverExactProvider;
@@ -70,7 +71,8 @@ public final class YoukaiDodgePilot {
 		}
 
 		PilotState state = new PilotState(feet, entity.getDeltaMovement(),
-				SelfBoxModel.youkaiDanmaku(entity.getBbWidth(), entity.getBbHeight()));
+				SelfBoxModel.youkaiDanmaku(entity.getBbWidth(), entity.getBbHeight(),
+						entity.getEyeY() - entity.getY(), DanmakuHitBox.scale(entity)));
 		state.oracle = new LevelCollisionOracle(entity.level(), entity);
 		state.anchor = anchor;
 		state.arena = new AABB(anchor.x - 10, anchor.y - 5, anchor.z - 10,

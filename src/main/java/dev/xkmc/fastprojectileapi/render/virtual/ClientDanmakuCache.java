@@ -50,6 +50,13 @@ public class ClientDanmakuCache {
 
 	private static final Logger LOGGER = LogUtils.getLogger();
 
+	/** Debug hit boxes are client overlays and must remain visible through models. */
+	private static final RenderType DANMAKU_HITBOX_LINES = DanmakuHitboxRenderStates.LINES;
+
+	public static RenderType danmakuHitboxRenderType() {
+		return DANMAKU_HITBOX_LINES;
+	}
+
 	/**
 	 * Minimum entity count to justify parallel tick.
 	 * Below this, single-threaded is faster due to thread scheduling overhead.
@@ -281,9 +288,9 @@ public class ClientDanmakuCache {
 		}
 		if (renderHitBoxes && cam.getEntity() instanceof Player pl && !all.isEmpty() &&
 				!Minecraft.getInstance().options.getCameraType().isFirstPerson()) {
-			var lineBuffers = MultiBufferSource.immediate(new BufferBuilder(RenderType.lines().bufferSize()));
-			renderPlayerHitbox(pose, lineBuffers.getBuffer(RenderType.lines()), pl, camx, camy, camz, pTick);
-			lineBuffers.endBatch(RenderType.lines());
+			var lineBuffers = MultiBufferSource.immediate(new BufferBuilder(DANMAKU_HITBOX_LINES.bufferSize()));
+			renderPlayerHitbox(pose, lineBuffers.getBuffer(DANMAKU_HITBOX_LINES), pl, camx, camy, camz, pTick);
+			lineBuffers.endBatch(DANMAKU_HITBOX_LINES);
 		}
 	}
 
@@ -334,9 +341,9 @@ public class ClientDanmakuCache {
 		}
 		if (renderHitBoxes) {
 			pose.translate(-vec3.x(), -vec3.y(), -vec3.z());
-			var lineBuffers = MultiBufferSource.immediate(new BufferBuilder(RenderType.lines().bufferSize()));
-			renderHitbox(pose, lineBuffers.getBuffer(RenderType.lines()), e, pTick);
-			lineBuffers.endBatch(RenderType.lines());
+			var lineBuffers = MultiBufferSource.immediate(new BufferBuilder(DANMAKU_HITBOX_LINES.bufferSize()));
+			renderHitbox(pose, lineBuffers.getBuffer(DANMAKU_HITBOX_LINES), e, pTick);
+			lineBuffers.endBatch(DANMAKU_HITBOX_LINES);
 		}
 		pose.popPose();
 	}

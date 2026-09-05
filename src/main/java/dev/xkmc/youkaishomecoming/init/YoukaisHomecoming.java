@@ -205,7 +205,11 @@ public class YoukaisHomecoming {
 		event.add(EntityType.PLAYER, YHAttributes.MAX_POWER.get());
 		event.add(EntityType.PLAYER, YHAttributes.MAX_RESOURCE.get());
 		event.add(EntityType.PLAYER, YHAttributes.GRAZE_EFFECTIVENESS.get());
-		event.add(EntityType.PLAYER, YHAttributes.HITBOX.get());
+		for (var type : event.getTypes()) {
+			if (!event.has(type, YHAttributes.HITBOX.get())) {
+				event.add(type, YHAttributes.HITBOX.get());
+			}
+		}
 	}
 
 	@SubscribeEvent

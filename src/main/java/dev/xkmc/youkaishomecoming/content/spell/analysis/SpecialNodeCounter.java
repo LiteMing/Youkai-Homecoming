@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetEntityFlagAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellCircleAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellTitleAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellCardAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
@@ -370,6 +371,7 @@ public final class SpecialNodeCounter {
 		if (action instanceof RunCommandAction) return SpellCapability.RUN_COMMAND;
 		if (action instanceof SetSpellCircleAction) return SpellCapability.SET_SPELL_CIRCLE;
 		if (action instanceof ShowSpellTitleAction) return SpellCapability.SHOW_SPELL_TITLE;
+		if (action instanceof ShowSpellCardAction) return SpellCapability.SHOW_SPELL_CARD;
 		if (action instanceof YsmRenderAction) return SpellCapability.YSM_RENDER;
 		if (action instanceof LegacyTickerAction) return SpellCapability.LEGACY_TICKER;
 		return null;

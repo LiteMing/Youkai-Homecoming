@@ -55,6 +55,7 @@ public final class SpellCapabilityPolicies {
 		put(SpellCapability.RUN_COMMAND, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.SET_SPELL_CIRCLE, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.SHOW_SPELL_TITLE, SpellCapabilityPolicy.ALLOW);
+		put(SpellCapability.SHOW_SPELL_CARD, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.YSM_RENDER, SpellCapabilityPolicy.ALLOW);
 		// Undecodable salvaged fragments. Denied unconditionally — see setPolicy.
 		put(SpellCapability.BROKEN_NODE, SpellCapabilityPolicy.DENY);

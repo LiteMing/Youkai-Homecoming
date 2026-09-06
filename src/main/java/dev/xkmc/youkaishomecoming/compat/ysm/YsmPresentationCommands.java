@@ -33,6 +33,12 @@ public final class YsmPresentationCommands {
 								.then(Commands.argument("clip", StringArgumentType.string()).suggests(YsmCommandSuggestions.CLIPS)
 										.executes(ctx -> play(ctx, YHModel.defaultDuration()))
 										.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
+										.executes(ctx -> play(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))
+						// "set" is an explicit alias for play, matching param/preset set syntax.
+						.then(Commands.literal("set").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
+								.then(Commands.argument("clip", StringArgumentType.string()).suggests(YsmCommandSuggestions.CLIPS)
+										.executes(ctx -> play(ctx, YHModel.defaultDuration()))
+										.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
 												.executes(ctx -> play(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))
 						.then(Commands.literal("stop").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
 								.executes(ctx -> mutate(ctx, target -> YHModel.currentForMutation(target).stop())))))
@@ -60,7 +66,15 @@ public final class YsmPresentationCommands {
 										.then(Commands.argument("preset", StringArgumentType.string()).suggests(YsmCommandSuggestions.PRESETS)
 												.executes(ctx -> applyPreset(ctx, -1))
 												.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
-														.executes(ctx -> applyPreset(ctx, IntegerArgumentType.getInteger(ctx, "ticks"))))))))));
+														.executes(ctx -> applyPreset(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))))
+						// Keep apply for backwards compatibility; set is the concise form used by
+						// editor-generated commands and accepts UUIDs/selectors identically.
+						.then(Commands.literal("set").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
+								.then(Commands.argument("model", StringArgumentType.string()).suggests(YsmCommandSuggestions.MODELS)
+										.then(Commands.argument("preset", StringArgumentType.string()).suggests(YsmCommandSuggestions.PRESETS)
+												.executes(ctx -> applyPreset(ctx, -1))
+												.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
+														.executes(ctx -> applyPreset(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))));
 	}
 
 	private static int listPresets(CommandContext<CommandSourceStack> ctx) {

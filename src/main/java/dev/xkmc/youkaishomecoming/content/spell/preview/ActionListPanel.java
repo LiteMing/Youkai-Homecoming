@@ -3036,6 +3036,9 @@ public class ActionListPanel {
 		if (action instanceof ShowSpellTitleAction sta) {
 			return index + ": show title " + sta.duration() + "t r=" + sta.radius();
 		}
+		if (action instanceof ShowSpellCardAction sca) {
+			return index + ": show card " + sca.duration() + "t r=" + sca.radius();
+		}
 		if (action instanceof SetSpellCircleAction sca) {
 			return switch (sca.mode()) {
 				case SET -> index + ": spell circle " + formatResourceId(sca.circle()) + " size=" + sca.size();

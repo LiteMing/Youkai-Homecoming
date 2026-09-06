@@ -1,8 +1,18 @@
-# YHModel — 0.28.0 模型表现接口
+# YHModel — 0.28.1 模型表现接口
 
-状态：控制接口、预设查询与应用已接入源码；不是 0.28.0 发布声明，画面和联机验收尚未完成。
+状态：控制接口、预设查询与应用已接入源码；不是实机验收声明，画面和联机验收尚未完成。
 第三种 YSM Editor、服务端共享预设和状态映射已接入。用户操作见 `docs/ysm-editor-user-checklist.md`；
 供应商边界及迁移官方 YSM 的说明见 `docs-dev/ysm-official-migration.md`。
+
+符卡动作节点提供 `show_spell_card`：在施法者身前短暂展示当前 `spellId` 对应的
+`DynamicSpellItem` 卡片。节点可选择 `hand=random|left|right`，默认随机从一只手出现；
+`offset_right`、`offset_up`、`offset_forward` 是相对所选手部原点的实体局部坐标偏移。
+`hold_ticks`、`throw_ticks`、`float_ticks` 分别控制手持、旋转抛出和漂浮淡出阶段，默认 10/8/22；
+旧节点的 `duration` 继续按 10:8:22 比例换算。服务端同步 spellId、手、偏移、各阶段时长与序号，
+客户端复用 `SpellCardItemRenderer`；不生成掉落物、不改装备，观察半径由节点参数控制。
+动作通过 runtime host 解析实际表现实体：玩家符卡使用 player proxy 驱动时仍绑定到真实玩家的手部原点，
+附着式 proxy 绑定到宿主，Boss 绑定到自身；不可见 proxy 本身不作为卡片位置来源。
+当前第一人称相机所附着实体的世界卡片会隐藏，第三人称和其他观察者仍正常渲染。
 
 ## 公共契约登记
 
@@ -84,7 +94,8 @@ YHModel.clearParameter(entity, 'v.roaming.mouth')
 - 底层 raw 请求跟随实体当前有效模型；切换模型会重新验证新模型的控件约束。
   `applyPreset` 的身体/参数带 model scope，不能把 raw 请求当成已有的逐模型适配规则。
 - 动画、参数相互独立；战败三相位的身体动画始终优先于手动动画。
-  状态映射按身体和逐参数分别合成：战败 > 显式 > 受伤 > 近战命中 > 换卡 > 弹幕战开启 > 日常。
+  状态映射按身体和逐参数分别合成：战败 > Boss 战胜 > 显式 > 受伤 > 近战命中 > 换卡 > 弹幕战开启 > 战斗条件 > 日常。
+  `stg_combat` 与 `normal_combat` 是和 idle/walk/fly 并行的条件，可分别映射到任意预设；它们不占用移动状态。
   发射器等既有身体 hint 在显式请求之下、自动事件/日常之上；新符卡节点直接使用显式请求。
   战败时未被战败预设同名覆盖的显式参数仍可应用；无战败映射继续既有模型无关回退链。
 - 客户端目录按已加载模型 assembly 的身份缓存，资源替换后重建；实体缓存不强持有外部 animatable。
@@ -96,6 +107,7 @@ YHModel.clearParameter(entity, 'v.roaming.mouth')
 
 ```text
 /yhysm anim play <targets> <clip> [ticks]
+/yhysm anim set <targets> <clip> [ticks]
 /yhysm anim stop <targets>
 /yhysm param set <targets> <parameter> <number> [ticks]
 /yhysm param clear <targets> [parameter]
@@ -103,6 +115,7 @@ YHModel.clearParameter(entity, 'v.roaming.mouth')
 /yhysm state <targets>
 /yhysm preset list <model>
 /yhysm preset apply <targets> <model> <preset> [ticks]
+/yhysm preset set <targets> <model> <preset> [ticks]
 ```
 
 客户端只读目录（省略目标时使用指向／已选调试目标）：
@@ -115,10 +128,11 @@ YHModel.clearParameter(entity, 'v.roaming.mouth')
 /yhysm param get <entities> <parameter>
 ```
 
-列表中的蓝色条目只会**填入**命令，用户确认提交后仍由服务端权限与选择器校验。
+列表中的蓝色条目只会**填入**命令，用户确认提交后仍由服务端权限与选择器校验。`anim set` 是 `anim play` 的同义写法，
+`preset set` 是 `preset apply` 的同义写法；两者都接受 UUID 或服务端实体选择器。
 客户端目标解析沿用旧 `/yhysm` 工具，支持可见 UUID、名称和 `@e` 的 type/sort/limit 等有限选项；
 它不是完整的服务端选择器解析器。跨范围／复杂筛选的修改应使用服务端命令。
-Editor 输入框的 Tab 补全复用真实目录。type 使用原生命令/注册表补全，UUID 附类型和距离。
+Editor 输入框的 Tab 补全复用真实目录。type 使用原生命令/注册表补全，UUID 候选按玩家距离排序并附类型和距离。
 原生查询的客户端选择器仍只支持上述有限子集。
 `anim play`、`param set/get/clear`、数值选项及 `preset list/apply` 都提供候选。
 候选优先来自可见目标的实际模型；不能在客户端解析目标时回退到本地目录/共享定义合集。

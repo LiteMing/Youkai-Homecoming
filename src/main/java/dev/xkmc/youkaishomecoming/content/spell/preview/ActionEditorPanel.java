@@ -322,6 +322,8 @@ public class ActionEditorPanel {
 			buildRunCommandRows(rc);
 		} else if (action instanceof ShowSpellTitleAction sta) {
 			buildShowSpellTitleRows(sta);
+		} else if (action instanceof ShowSpellCardAction sca) {
+			buildShowSpellCardRows(sca);
 		} else if (action instanceof SetSpellCircleAction sca) {
 			buildSetSpellCircleRows(sca);
 		} else if (action instanceof SetSpellHealthAction sha) {
@@ -404,6 +406,7 @@ public class ActionEditorPanel {
 					"play_sound", "Play Sound",
 					"camera_shake", "Camera Shake",
 					"show_spell_title", "Show Spell Title",
+					"show_spell_card", "Show Spell Card",
 					"set_spell_circle", "Custom Magic Circle",
 					"ysm_render", "YSM Render"),
 			group("Spell Flow",
@@ -503,7 +506,8 @@ public class ActionEditorPanel {
 		case "camera_shake" -> new dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction();
 			case "run_command" -> new RunCommandAction(RunCommandAction.Mode.AS_CASTER,
 					RunCommandAction.HitContext.DEFAULT, "yhspell stop @s 32");
-			case "show_spell_title" -> new ShowSpellTitleAction("", "", 100, 64.0);
+		case "show_spell_title" -> new ShowSpellTitleAction("", "", 100, 64.0);
+		case "show_spell_card" -> ShowSpellCardAction.defaults();
 			case "set_spell_circle" -> new SetSpellCircleAction(SetSpellCircleAction.Mode.SET,
 					new ResourceLocation("youkaishomecoming", "test_spell"), 1.0f);
 			case "set_spell_health" -> new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
@@ -2095,6 +2099,34 @@ public class ActionEditorPanel {
 		}
 		addIntRow(ysmLabel(yra.operation() == YsmRenderAction.Operation.MODEL ? "action.model_duration" : "action.duration"),
 				yra.duration(), v -> notifySimple(old -> ((YsmRenderAction) old).withDuration(v)));
+	}
+
+	private void buildShowSpellCardRows(ShowSpellCardAction action) {
+		addStringOptionRow("Hand Origin", new String[]{"random", "left", "right"},
+				new String[]{"Random Hand", "Left Hand", "Right Hand"}, action.hand().getSerializedName(), v ->
+					notifySimple(old -> ((ShowSpellCardAction) old).withHand(
+							ShowSpellCardAction.Hand.valueOf(v.toUpperCase(java.util.Locale.ROOT)))));
+		addDoubleRow("Offset Right", action.offsetRight(), v -> notifySimple(old -> {
+			var current = (ShowSpellCardAction) old;
+			return current.withOffsets(v, current.offsetUp(), current.offsetForward());
+		}));
+		addDoubleRow("Offset Up", action.offsetUp(), v -> notifySimple(old -> {
+			var current = (ShowSpellCardAction) old;
+			return current.withOffsets(current.offsetRight(), v, current.offsetForward());
+		}));
+		addDoubleRow("Offset Forward", action.offsetForward(), v -> notifySimple(old -> {
+			var current = (ShowSpellCardAction) old;
+			return current.withOffsets(current.offsetRight(), current.offsetUp(), v);
+		}));
+		var timeline = action.timeline();
+		addIntRow("Hold Ticks", timeline.holdTicks(), v ->
+				notifySimple(old -> ((ShowSpellCardAction) old).withTimeline(v, null, null)));
+		addIntRow("Throw Ticks", timeline.throwTicks(), v ->
+				notifySimple(old -> ((ShowSpellCardAction) old).withTimeline(null, v, null)));
+		addIntRow("Float Ticks", timeline.floatTicks(), v ->
+				notifySimple(old -> ((ShowSpellCardAction) old).withTimeline(null, null, v)));
+		addDoubleRow("Radius", action.radius(), v ->
+				notifySimple(old -> ((ShowSpellCardAction) old).withRadius(v)));
 	}
 
 	private static String ysmLabel(String key) { return YsmEditorController.text(key).getString(); }

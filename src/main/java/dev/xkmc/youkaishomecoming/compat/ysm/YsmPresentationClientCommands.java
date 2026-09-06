@@ -6,6 +6,8 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.context.StringRange;
+import com.mojang.brigadier.suggestion.Suggestion;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
@@ -60,16 +62,40 @@ final class YsmPresentationClientCommands {
 			YsmCommandSuggestions.Kind kind, CommandContext<S> ctx, SuggestionsBuilder builder) {
 		var mc = Minecraft.getInstance();
 		if (kind == YsmCommandSuggestions.Kind.TARGETS) {
-			var vanilla = EntityArgument.entities().listSuggestions(ctx, builder);
-			var extra = new SuggestionsBuilder(builder.getInput(), builder.getStart());
-			if (mc.level != null) for (var entity : mc.level.entitiesForRendering()) {
-				String uuid = entity.getUUID().toString();
-				if (entity instanceof YsmRenderOverrideTarget && uuid.startsWith(extra.getRemainingLowerCase()))
-					extra.suggest(uuid, Component.translatable("commands.youkaishomecoming.model.entity_candidate",
-							net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()),
-							mc.player == null ? "?" : String.format(java.util.Locale.ROOT, "%.1f", entity.distanceTo(mc.player))));
+			// Suggestions.merge sorts lexicographically, which made UUID candidates appear
+			// in 1-9/a-z order. Build the client candidates directly in distance order so
+			// the nearest entity is offered first, matching the editor's entity picker.
+			String remaining = builder.getRemainingLowerCase();
+			if (remaining.startsWith("@")) {
+				return EntityArgument.entities().listSuggestions(ctx, builder);
 			}
-			return vanilla.thenApply(result -> Suggestions.merge(builder.getInput(), List.of(result, extra.build())));
+			List<Entity> entities = new ArrayList<>();
+			if (mc.level != null) {
+				for (Entity entity : mc.level.entitiesForRendering())
+					if (entity instanceof YsmRenderOverrideTarget) entities.add(entity);
+				if (mc.player != null && mc.player instanceof YsmRenderOverrideTarget && !entities.contains(mc.player))
+					entities.add(mc.player);
+			}
+			if (mc.player != null) entities.sort(java.util.Comparator.comparingDouble(entity -> entity.distanceToSqr(mc.player)));
+			StringRange range = StringRange.between(builder.getStart(), builder.getInput().length());
+			List<Suggestion> ordered = new ArrayList<>();
+			for (Entity entity : entities) {
+				String uuid = entity.getUUID().toString();
+				if (!uuid.startsWith(remaining)) continue;
+				String distance = mc.player == null ? "?" : String.format(java.util.Locale.ROOT, "%.1f", entity.distanceTo(mc.player));
+				ordered.add(new Suggestion(range, uuid,
+						Component.translatable("commands.youkaishomecoming.model.entity_candidate",
+								net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()), distance)));
+			}
+			if (!remaining.isEmpty()) return CompletableFuture.completedFuture(new Suggestions(range, ordered));
+			return EntityArgument.entities().listSuggestions(ctx, new SuggestionsBuilder(builder.getInput(), builder.getStart()))
+					.thenApply(vanilla -> {
+						var seen = new java.util.HashSet<String>();
+						ordered.forEach(suggestion -> seen.add(suggestion.getText()));
+						for (Suggestion suggestion : vanilla.getList())
+							if (seen.add(suggestion.getText())) ordered.add(suggestion);
+						return new Suggestions(range, ordered);
+					});
 		}
 		String targetText = ctx.getNodes().stream().filter(node -> node.getNode().getName().equals("targets") || node.getNode().getName().equals("entities"))
 				.map(node -> node.getRange().get(ctx.getInput())).findFirst().orElse("");

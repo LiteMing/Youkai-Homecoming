@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SetEntityFlagAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellCircleAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellTitleAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellCardAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
@@ -675,6 +676,8 @@ public final class SpellAnalyzer {
 			addCap(SpellCapability.SET_SPELL_CIRCLE);
 		} else if (action instanceof ShowSpellTitleAction) {
 			addCap(SpellCapability.SHOW_SPELL_TITLE);
+		} else if (action instanceof ShowSpellCardAction) {
+			addCap(SpellCapability.SHOW_SPELL_CARD);
 		} else if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction) {
 			// Camera shake is a presentation cue; server-side sink still enforces runtime limits.
 			handled = true;

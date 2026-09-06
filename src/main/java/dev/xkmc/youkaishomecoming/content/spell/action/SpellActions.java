@@ -36,6 +36,7 @@ public class SpellActions {
 		register("camera_shake", CameraShakeAction.CODEC, CameraShakeAction.class);
 		register("run_command", RunCommandAction.CODEC, RunCommandAction.class);
 		register("show_spell_title", ShowSpellTitleAction.CODEC, ShowSpellTitleAction.class);
+		register("show_spell_card", ShowSpellCardAction.CODEC, ShowSpellCardAction.class);
 		register("set_spell_circle", SetSpellCircleAction.CODEC, SetSpellCircleAction.class);
 		register("set_spell_health", SetSpellHealthAction.CODEC, SetSpellHealthAction.class);
 		register("conditional", ConditionalAction.CODEC, ConditionalAction.class);

@@ -16,6 +16,8 @@
   "config.youkaishomecoming.common.model_presentation.maxParameters.tooltip": "每个实体允许同时覆盖的数值模型参数数量",
   "config.youkaishomecoming.common.model_presentation.maxParameterValue": "参数绝对值上限",
   "config.youkaishomecoming.common.model_presentation.maxParameterValue.tooltip": "命令与脚本接受的数值参数最大绝对值；模型声明的控件选项会进一步限制实际应用",
+  "config.youkaishomecoming.common.model_presentation.spellCardPresentationTicks": "符卡展示持续时间",
+  "config.youkaishomecoming.common.model_presentation.spellCardPresentationTicks.tooltip": "符卡动作未指定 duration 时，符卡物品在 Boss 身边展示的默认 tick 数",
   "commands.youkaishomecoming.model.invalid": "[YH/YSM] 请求无效：%s",
   "commands.youkaishomecoming.model.no_targets": "[YH/YSM] 没有支持模型表现控制的目标，请选择 YH 妖怪或发射器。",
   "commands.youkaishomecoming.model.accepted": "[YH/YSM] 已更新 %s 个目标的表现请求，跳过 %s 个不支持的实体。资源是否可用请用 /yhysm inspect 检查。",

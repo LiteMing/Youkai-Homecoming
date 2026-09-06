@@ -1,11 +1,16 @@
 package dev.xkmc.youkaishomecoming.compat.ysm;
 
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellCardAction;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
+import dev.xkmc.youkaishomecoming.compat.stg.event.StgCombatEvent;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -43,8 +48,26 @@ public final class YsmPresentationRuntime {
 		boolean combat = current.combat() && !beaten && (!(entity instanceof YoukaiEntity youkai)
 				|| youkai.shouldTickSpell() && (youkai.getSpellRuntime() != null && !youkai.getSpellRuntime().isFinished()
 				|| youkai.getSpellRuntime() == null && youkai.spellCard != null && youkai.spellCard.card != null));
-		var next = current.advance(state, combat, target.getYsmPresentationTime());
+		var combatMode = YsmPresentationSignals.CombatMode.NONE;
+		if (!beaten) {
+			if (entity instanceof YoukaiEntity youkai && hasStgSession(youkai))
+				combatMode = YsmPresentationSignals.CombatMode.STG;
+			else if (entity instanceof Mob mob && validTarget(mob.getTarget()))
+				combatMode = YsmPresentationSignals.CombatMode.NORMAL;
+		}
+		long now = target.getYsmPresentationTime();
+		if (beaten && !current.state().beaten()) ShowSpellCardAction.clear(entity);
+		var next = current.advance(state, combat, now).withCombatMode(combatMode, now);
 		if (next != current) target.setYsmSignals(next);
+	}
+
+	private static boolean validTarget(LivingEntity target) {
+		return target != null && target.isAlive() && !target.isRemoved();
+	}
+
+	private static boolean hasStgSession(YoukaiEntity youkai) {
+		if (!(youkai.level() instanceof ServerLevel level)) return false;
+		return level.players().stream().anyMatch(player -> GrazeCapability.HOLDER.get(player).isInSession(youkai.getUUID()));
 	}
 
 	@SubscribeEvent(priority = EventPriority.LOWEST)
@@ -65,5 +88,17 @@ public final class YsmPresentationRuntime {
 	public static void meleeHit(YsmRenderOverrideTarget target) {
 		if (target.canMutateYsmPresentation())
 			target.setYsmSignals(target.getYsmSignals().fire(Trigger.MELEE_ATTACK, target.getYsmPresentationTime()));
+	}
+
+	@SubscribeEvent
+	public static void bossVictory(StgCombatEvent.Defeat event) {
+		for (LivingEntity opponent : event.getOpponents()) {
+			if (!(opponent instanceof YoukaiEntity youkai) || !(opponent instanceof YsmRenderOverrideTarget target)
+					|| !opponent.isAlive() || opponent.isRemoved() || hasStgSession(youkai)) continue;
+			ShowSpellCardAction.clear(opponent);
+			long now = target.getYsmPresentationTime();
+			target.setYsmSignals(target.getYsmSignals().withCombatMode(YsmPresentationSignals.CombatMode.NONE, now)
+					.fire(Trigger.BOSS_VICTORY, now));
+		}
 	}
 }

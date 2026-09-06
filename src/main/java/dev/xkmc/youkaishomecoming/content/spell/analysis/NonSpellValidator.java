@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellTitleAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellCardAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellCircleAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
@@ -84,6 +85,8 @@ public final class NonSpellValidator {
 			throw new PresentationNodeException("spell-circle presentation nodes");
 		if (inner instanceof ShowSpellTitleAction)
 			throw new PresentationNodeException("spell-title presentation nodes");
+		if (inner instanceof ShowSpellCardAction)
+			throw new PresentationNodeException("spell-card presentation nodes");
 		if (inner instanceof FireDanmakuAction danmaku) {
 			if (has(danmaku.onHitEntity()) || has(danmaku.onHitBlock()) || has(danmaku.onExpiry())
 					|| has(danmaku.onTrail())) {

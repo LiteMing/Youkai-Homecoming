@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellTitleAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellCardAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
@@ -40,7 +41,8 @@ public final class CertificationActionPlacement {
 
 	private static void validateAction(SpellAction action, boolean initializationContext, String path) {
 		if (action instanceof SpellActions.DisabledAction) return;
-		if ((action instanceof SetSpellHealthAction || action instanceof ShowSpellTitleAction)
+		if ((action instanceof SetSpellHealthAction || action instanceof ShowSpellTitleAction
+				|| action instanceof ShowSpellCardAction)
 				&& !initializationContext) {
 			throw new PlacementException(path);
 		}
@@ -88,7 +90,7 @@ public final class CertificationActionPlacement {
 
 	public static final class PlacementException extends IllegalArgumentException {
 		public PlacementException(String path) {
-			super("set_spell_health and show_spell_title may only execute during on_enter: " + path);
+			super("spell initialization and presentation actions may only execute during on_enter: " + path);
 		}
 	}
 }

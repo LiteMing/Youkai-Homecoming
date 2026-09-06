@@ -36,6 +36,7 @@ public enum SpellCapability {
 	RUN_COMMAND("run_command"),
 	SET_SPELL_CIRCLE("set_spell_circle"),
 	SHOW_SPELL_TITLE("show_spell_title"),
+	SHOW_SPELL_CARD("show_spell_card"),
 	YSM_RENDER("ysm_render"),
 	/** A JSON fragment the editor salvaged but could not decode. Always denied. */
 	BROKEN_NODE("broken_node");

@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -35,6 +36,16 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 	public void renderByItem(ItemStack stack, ItemDisplayContext transformType,
 							 PoseStack poseStack, MultiBufferSource buffer,
 							 int packedLight, int packedOverlay) {
+		renderCard(stack, transformType, poseStack, buffer, true, 1.0f);
+	}
+
+	/** Draws the existing spell-card face at the caller's world-space origin. */
+	public void renderPresentation(ItemStack stack, PoseStack poseStack, MultiBufferSource buffer, float alpha) {
+		renderCard(stack, ItemDisplayContext.NONE, poseStack, buffer, false, Mth.clamp(alpha, 0.0f, 1.0f));
+	}
+
+	private void renderCard(ItemStack stack, ItemDisplayContext transformType,
+			PoseStack poseStack, MultiBufferSource buffer, boolean applyItemTransform, float alpha) {
 		String hash = CertifiedSpellValidator.getCertifiedHash(stack);
 		ResourceLocation textureLoc = hash != null && !hash.isBlank()
 				? SpellCardTextureCache.getOrRequestCertified(hash)
@@ -64,7 +75,9 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 		float thickness = 0.005f;
 
 		// 视角与手持位置变换：统一采用规范的 84x128 卡牌斜持与展示变换
-		if (transformType == ItemDisplayContext.GUI) {
+		if (!applyItemTransform) {
+			// World presentation already supplies a centered origin and scale.
+		} else if (transformType == ItemDisplayContext.GUI) {
 			poseStack.translate(0.5, 0.5, 0.0);
 			poseStack.scale(0.95f, 0.95f, 0.95f);
 		} else if (transformType == ItemDisplayContext.FIRST_PERSON_RIGHT_HAND) {
@@ -108,7 +121,7 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 
 		// 正面（弹幕快照或默认 84x128 底纹）
 		int color = (textureLoc == null) ? DynamicSpellItem.getColor(stack).argb() : 0xFFFFFFFF;
-		int a = (color >>> 24) & 0xFF;
+		int a = Math.round(((color >>> 24) & 0xFF) * alpha);
 		int r = (color >>> 16) & 0xFF;
 		int g = (color >>> 8) & 0xFF;
 		int b = color & 0xFF;
@@ -124,10 +137,11 @@ public class SpellCardItemRenderer extends BlockEntityWithoutLevelRenderer {
 			RenderType frameRenderType = ForgeRenderTypes.getUnlitTranslucent(frameTexture, false);
 			VertexConsumer frameBuilder = buffer.getBuffer(frameRenderType);
 			float frameOffset = 0.0005f;
+			int frameAlpha = Math.round(255 * alpha);
 			quadColor(frameBuilder, mat, -w, w, -h, h, thickness + frameOffset,
-					0, 1, 0, 1, LightTexture.FULL_BRIGHT, 255, 255, 255, 255);
+					0, 1, 0, 1, LightTexture.FULL_BRIGHT, 255, 255, 255, frameAlpha);
 			quadColor(frameBuilder, mat, w, -w, -h, h, -thickness - frameOffset,
-					0, 1, 0, 1, LightTexture.FULL_BRIGHT, 255, 255, 255, 255);
+					0, 1, 0, 1, LightTexture.FULL_BRIGHT, 255, 255, 255, frameAlpha);
 		}
 
 		poseStack.popPose();

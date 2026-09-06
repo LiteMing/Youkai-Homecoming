@@ -458,7 +458,7 @@ public class YSMClientCompat {
 				hints.add("calm");
 			}
 		}
-		if (angry && !overridesPassiveExpression(overrideHint)) {
+		if (angry && !presentation.combatExpressionRouted() && !overridesPassiveExpression(overrideHint)) {
 			hints.add(YSMCompatConfig.expressionToken(modelId, "angry"));
 		}
 		if (!actionHint.isBlank()) {

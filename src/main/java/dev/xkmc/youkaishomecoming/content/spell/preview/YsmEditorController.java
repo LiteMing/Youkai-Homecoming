@@ -545,12 +545,23 @@ public final class YsmEditorController {
 		long now = holder.getYsmPresentationTime();
 		var signal = holder.getYsmSignals();
 		if (trigger.event() && previewState.beaten()) { previewState = YsmModelProfile.Trigger.IDLE; signal = signal.advance(previewState, false, now); }
-		if (trigger == YsmModelProfile.Trigger.ENTER_COMBAT) signal = signal.advance(previewState, false, now).advance(previewState, true, now);
+		if (trigger == YsmModelProfile.Trigger.ENTER_COMBAT)
+			signal = signal.advance(previewState, false, now).withCombatMode(YsmPresentationSignals.CombatMode.STG, now).advance(previewState, true, now);
 		else if (trigger.event()) {
-			if (trigger == YsmModelProfile.Trigger.SPELL_SWITCH) signal = signal.advance(previewState, true, now);
+			if (trigger == YsmModelProfile.Trigger.SPELL_SWITCH)
+				signal = signal.withCombatMode(YsmPresentationSignals.CombatMode.STG, now).advance(previewState, true, now);
+			else if (trigger == YsmModelProfile.Trigger.BOSS_VICTORY)
+				signal = signal.withCombatMode(YsmPresentationSignals.CombatMode.NONE, now).advance(previewState, false, now);
 			signal = signal.fire(trigger, now);
 		}
-		else { previewState = trigger; signal = signal.advance(trigger, false, now); }
+		else if (trigger.combatCondition()) {
+			signal = signal.withCombatMode(trigger == YsmModelProfile.Trigger.STG_COMBAT
+					? YsmPresentationSignals.CombatMode.STG : YsmPresentationSignals.CombatMode.NORMAL, now);
+		}
+		else {
+			previewState = trigger;
+			signal = signal.withCombatMode(YsmPresentationSignals.CombatMode.NONE, now).advance(trigger, false, now);
+		}
 		holder.setYsmSignals(signal);
 		paused = false;
 		status = text("preview_only");

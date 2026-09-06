@@ -75,7 +75,7 @@ public final class YsmClientProfiles {
 			profile = entry == null ? null : entry.profile();
 		}
 		if (!(entity instanceof YsmRenderOverrideTarget target))
-			return new YsmPresentationResolver.Resolved(null, Map.of(), false);
+			return new YsmPresentationResolver.Resolved(null, Map.of(), false, false);
 		var signals = target.getYsmSignals();
 		// Existing beaten EntityData can arrive one tick before the general signals. Project that
 		// authoritative phase immediately, never a stale prone clip over a newly started defeat.
@@ -92,7 +92,8 @@ public final class YsmClientProfiles {
 		var resolved = YsmPresentationResolver.resolve(model, profile, signals, target.getYsmPresentation(), target.getYsmPresentationTime(), bindingParameters);
 		// Legacy spell hints retain their existing semantics and precedence over automatic actions.
 		if (!resolved.beaten() && resolved.body() != null && !resolved.body().explicit() && !target.getYsmAnimationOverride().isEmpty())
-			return new YsmPresentationResolver.Resolved(null, resolved.parameters(), false);
+			return new YsmPresentationResolver.Resolved(null, resolved.parameters(), false,
+					resolved.combatExpressionRouted());
 		return resolved;
 	}
 }

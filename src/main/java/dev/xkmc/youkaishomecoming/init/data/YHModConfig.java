@@ -295,6 +295,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue modelPresentationMaxParameters;
 		public final ForgeConfigSpec.DoubleValue modelPresentationMaxParameterValue;
 		public final ForgeConfigSpec.DoubleValue modelPresentationWalkSpeed;
+		public final ForgeConfigSpec.IntValue spellCardPresentationTicks;
 		public final ForgeConfigSpec.IntValue modelPresentationMaxProfiles;
 		public final ForgeConfigSpec.IntValue modelPresentationMaxPresets;
 
@@ -752,6 +753,9 @@ public class YHModConfig {
 				modelPresentationWalkSpeed = builder.comment("Minimum horizontal blocks per tick for the model WALK signal; presentation only.")
 						.translation("config.youkaishomecoming.common.model_presentation.walkSpeed")
 						.defineInRange("walkSpeed", 0.05, 0.0, 1.0);
+				spellCardPresentationTicks = builder.comment("Default duration of the floating spell-card presentation, in ticks.")
+						.translation("config.youkaishomecoming.common.model_presentation.spellCardPresentationTicks")
+						.defineInRange("spellCardPresentationTicks", 40, 1, 1200);
 				modelPresentationMaxProfiles = builder.comment("Maximum server-saved model profiles per world.")
 						.translation("config.youkaishomecoming.common.model_presentation.maxProfiles")
 						.defineInRange("maxProfiles", 256, 1, 4096);

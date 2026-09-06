@@ -149,9 +149,14 @@ public final class ModelPresentationTest {
 				"combat", new YsmModelProfile.Preset("Combat", "extra5", 40, Map.of("v.face", 3f)),
 				"hurt", new YsmModelProfile.Preset("Hurt", "attacked", 10, Map.of("v.face", 4f)),
 				"down", new YsmModelProfile.Preset("Down", "beaten_prone", 5, Map.of("v.face", 5f)),
-				"face", new YsmModelProfile.Preset("Face only", "", 10, Map.of("v.face", 6f))),
+				"face", new YsmModelProfile.Preset("Face only", "", 10, Map.of("v.face", 6f)),
+				"angry", new YsmModelProfile.Preset("Angry", "", 20, Map.of("v.face", 7f)),
+				"focused", new YsmModelProfile.Preset("Focused", "", 20, Map.of("v.face", 8f)),
+				"victory", new YsmModelProfile.Preset("Victory", "victory", 20, Map.of("v.face", 9f))),
 				Map.of(YsmModelProfile.Trigger.IDLE, "idle", YsmModelProfile.Trigger.WALK, "walk", YsmModelProfile.Trigger.ENTER_COMBAT, "combat",
-						YsmModelProfile.Trigger.HURT, "hurt", YsmModelProfile.Trigger.PRONE, "down"));
+						YsmModelProfile.Trigger.HURT, "hurt", YsmModelProfile.Trigger.PRONE, "down",
+						YsmModelProfile.Trigger.NORMAL_COMBAT, "angry", YsmModelProfile.Trigger.STG_COMBAT, "focused",
+						YsmModelProfile.Trigger.BOSS_VICTORY, "victory"));
 	}
 
 	private static void profileContracts() {
@@ -263,6 +268,12 @@ public final class ModelPresentationTest {
 		var hurt = again.hurt(141).hurt(141);
 		equal("same-tick hits each have a sequence", hurt.event(YsmModelProfile.Trigger.HURT).sequence(), 2L);
 		equal("signal serialization", YsmPresentationSignals.fromTag(hurt.toTag()), hurt);
+		var legacyTag = hurt.toTag();
+		legacyTag.remove("combatMode");
+		legacyTag.remove("combatModeAt");
+		legacyTag.remove("combatModeSequence");
+		equal("old signal NBT has no inferred combat condition",
+				YsmPresentationSignals.fromTag(legacyTag).combatMode(), YsmPresentationSignals.CombatMode.NONE);
 		equal("missing signals degrade to idle", YsmPresentationSignals.fromTag(new CompoundTag()), empty);
 		reject("event cannot be persistent state", () -> empty.advance(YsmModelProfile.Trigger.HURT, false, 100));
 		var cache = new YsmPresentationSignals.Cache();
@@ -331,6 +342,20 @@ public final class ModelPresentationTest {
 		equal("event expression-only preset retains daily body", result.body().clip(), "idle");
 		equal("event expression-only preset overrides parameter", result.parameters().get("v.face"), 6f);
 		check("rewind does not replay a future event", !YsmPresentationResolver.resolve(profile.model(), profile, hurt, empty, 99).body().clip().equals("attacked"));
+		var normal = idle.withCombatMode(YsmPresentationSignals.CombatMode.NORMAL, 200);
+		result = YsmPresentationResolver.resolve(profile.model(), profile, normal, empty, 201);
+		equal("normal combat condition overlays movement parameters", result.parameters().get("v.face"), 7f);
+		check("normal combat route suppresses legacy angry expression", result.combatExpressionRouted());
+		var stg = normal.withCombatMode(YsmPresentationSignals.CombatMode.STG, 210);
+		equal("STG combat condition is independent from movement",
+				YsmPresentationResolver.resolve(profile.model(), profile, stg, empty, 211).parameters().get("v.face"), 8f);
+		var victory = stg.withCombatMode(YsmPresentationSignals.CombatMode.NONE, 220)
+				.fire(YsmModelProfile.Trigger.BOSS_VICTORY, 220);
+		equal("boss victory event overrides an explicit body",
+				YsmPresentationResolver.resolve(profile.model(), profile, victory,
+						empty.play("manual", 220, 50, SOURCE), 221).body().clip(), "victory");
+		equal("boss victory event ends at its finite deadline",
+				YsmPresentationResolver.resolve(profile.model(), profile, victory, empty, 240).body().clip(), "idle");
 	}
 
 	private static void overlayContracts() throws Exception {

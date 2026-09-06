@@ -1,10 +1,10 @@
-# YSM Editor 操作与验收 checklist（0.28.0）
+# YSM Editor 操作与验收 checklist（0.28.1）
 
 实现入口：`/yhysm editor`，或现有 Editor 顶栏模式按钮依次切换“符卡 → 魔法阵 → YSM”。
 本页不是正式发布声明；文末未勾选项必须在游戏内验证，编译通过不能替代它们。
 
-当前包：`build/libs/youkaishomecoming-2.7.0+HCDRS_0.28.0.jar`。
-按维护者要求在功能提交后 bump 0.28.0；版本号不是实机验收通过的证明。
+当前包：`build/libs/youkaishomecoming-2.7.0+HCDRS_0.28.1.jar`。
+按维护者要求在功能提交后 bump 0.28.1；版本号不是实机验收通过的证明。
 只生成本地包，未替换现有整合包 JAR 或玩家存档。
 
 ## 先按使用场景操作
@@ -22,6 +22,7 @@
 - [ ] 先保存符卡草稿，从“更多 → 选择符卡预览模型”进入 YSM 工作区。明确选择模型后点“更多 → 用于符卡预览”；只绑定本地假施法者，不替真实实体换模型。预设草稿需先“仅保存预设”。
 - [ ] 未选择预览模型、也未执行设置模型节点时，不渲染 YSM 施法者，保留原标记和法阵。正交、透视与截图应一致。
 - [ ] 新增 `ysm_render` 节点，按操作下拉选择设置模型、应用已保存预设、播放原生动画、调整表情参数、停止手动动作和表情或恢复原有模型。只显示相应字段。
+- [ ] 在符卡 `on_enter` 新增 `show_spell_card`，选择左手、右手或随机手部原点，设置局部位置偏移、手持/抛出/漂浮三段 tick 和观察半径；播放时应看到当前 `spellId` 对应物品从所选手部以普通物品大小出现，在旋转抛出阶段放大，再到身前漂浮淡出。
 - [ ] 播放时间线，核对模型设置后才出现；预设、表情参数、到期和清除均可见。重置时间线后不能残留上次播放的动作/表情。
 - [ ] 普通 phase 切换不自动算“切换符卡”；该 phase 特定表现可在进入动作放“应用已保存预设”节点。真正换符卡由自动场景触发。
 - [ ] “更多 → 移除符卡预览模型”移除本地模型选择；后续设置模型节点仍可按时间线重新显示模型。
@@ -115,10 +116,13 @@ UUID set/off 需要服务端当前加载了该实体；已知但卸载的 UUID �
 | 触发 | 行为 |
 | --- | --- |
 | idle / walk / fly | 服务端采样持续状态；只在状态变化时更新同步。映射持续到退出，不用预设 ticks 提前结束 |
+| normal_combat | 妖怪具有存活且未移除的 AI target、同时不在该 Boss 的弹幕 session 中；与 idle / walk / fly 并行，脱战后退出 |
+| stg_combat | 至少一名服务端玩家处于该 Boss 的弹幕 session；优先于 normal_combat，并与 idle / walk / fly 并行 |
 | enter_combat | 服务端真正开始 tick 符卡时；单纯锁定近战目标不触发，持续弹幕战不重播 |
 | spell_switch | 弹幕战中开始另一张符卡的第一次 tick；普通 phase 和并行子图不冒充换卡 |
 | melee_attack | 妖怪 `doHurtTarget` 返回成功后；挥空不触发，连续命中重播 |
 | hurt | 服务端未取消且有效伤害量大于 0 的伤害事件；连续命中采用“最新命中重播并重新计时” |
+| boss_victory | 玩家耗尽残机并退出弹幕 session 后，对仍存活且已加载的 YH Boss 播放一次；按预设 ticks 到期 |
 | defeat / falling / prone | 既有 beaten 三相位的投影。prone 保持到权威状态结束；动画结束不解除战败，不改变 AI/重力/碰撞箱 |
 
 事件映射必须使用 `ticks > 0` 的预设。状态映射忽略 preset ticks，跟随状态寿命。
@@ -128,6 +132,35 @@ UUID set/off 需要服务端当前加载了该实体；已知但卸载的 UUID �
 身体优先级：战败 > 显式命令/脚本/节点/Editor > 旧发射器动画提示 > 受伤 > 近战命中 > 换卡 > 弹幕战开启 > 日常。
 表情逐参数按相同优先级合成，绑定默认外观作为最低层；未冲突的参数继续生效，临时覆盖结束后恢复默认外观。
 战败期间不叠加日常/受伤层。战败没有映射、或映射片段缺失时，继续原 `special=...` 回退链。
+
+## 4.1 0.28.1 战斗表现专项实测
+
+准备一只已绑定蕾米莉亚模型的 YH Boss，并在“动作与表情预设”保存三个容易区分的预设：
+`focus`（严肃）、`angry`（愤怒）和 `victory`（胜利动作）。参数以模型素材工具实际列出的控件为准，
+不要把 `extraN` 或某个 `v.*` 名称当作其他模型的通用语义。
+
+- [ ] 在“自动触发”把 `stg_combat → focus`、`normal_combat → angry`、`boss_victory → victory`，再“保存并绑定”。关闭并重开 Editor，三条映射仍存在。
+- [ ] 不开启弹幕 session，让 Boss 获得一个有效 AI target。实体应进入 `angry`，同时继续播放当下 idle / walk / fly 身体状态；`/yhysm inspect` 的 signals 中应出现 `combatMode:"NORMAL"`。
+- [ ] 让 Boss 失去或清除 AI target。`angry` 参数应恢复到绑定默认外观，signals 回到 `combatMode:"NONE"`，不能依靠预设 ticks 自行提前退出。
+- [ ] 开启该 Boss 的弹幕 session。实体应切到 `focus`，即使仍持有 AI target 也不能叠加 `normal_combat`；signals 应为 `combatMode:"STG"`。
+- [ ] 给 `enter_combat` 另绑一个短动作。开战时它只播放一次；动作到期后恢复持续的 `focus`，持续 session 中不能反复触发。
+- [ ] 切换符卡并触发受伤，确认短事件到期后仍回到 `focus`；走路或飞行时严肃表情保持，而身体动画继续按移动状态变化。
+- [ ] 让玩家耗尽残机而 Boss 保持存活。session 清除后 Boss 播放一次 `victory`；`/yhysm inspect` 应出现 `boss_victory` 事件，预设 ticks 到期后恢复当前日常或普通战斗状态。
+- [ ] 反过来击败 Boss。既有 defeat → falling → prone 必须覆盖胜利、战斗条件和手动身体动作，不能误播 `victory`。
+
+符卡物品展示：
+
+- [ ] 在一张数据符卡的 `on_enter` 放置 `show_spell_card`，先用 `hand=random`、零偏移、`hold_ticks=10`、`throw_ticks=8`、`float_ticks=22`、`radius=64`。重复开卡应随机从 Boss 左右手原点出现，手持阶段保持普通物品大小，旋转抛出阶段逐渐放大，最后在身前漂浮淡出。
+- [ ] 确认展示的是当前 `spellId` 的 `DynamicSpellItem`；切换到另一张符卡时应更新。展示期间 Boss 主手/副手装备不变，地上没有生成可拾取物品实体。
+- [ ] 玩家使用带相同节点的符卡时，卡片应从真实玩家的左/右手部原点出现并跟随玩家位置、朝向；不能绑定到不可见施法 proxy 而从脚下出现。
+- [ ] 玩家第一人称施法时不渲染这张世界卡片，不能遮挡视野；切换第三人称后应可见，另一名玩家观察施法者时也应可见。
+- [ ] 两名观察者分别站在半径内外：半径内玩家和本次战斗目标可见，无关且在半径外的玩家不可见；断线重进后不残留旧卡片。
+- [ ] 将同一节点放进 `on_tick` 并执行认证检查，应报告只能用于 `on_enter`；移回 `on_enter` 后通过。普通非符卡也应拒绝该表现节点。
+
+命令和补全：
+
+- [ ] 在玩家附近和远处各放一只可绑定实体，输入 `/yhysm param set `、`/yhysm anim set ` 或 `/yhysm preset set ` 后按 Tab。UUID 应按距离由近到远，不能按 `1~9/a~z` 排列；UUID 行同时显示类型和距离。
+- [ ] 目标位置输入 `@` 时仍显示原生命令选择器。分别用完整 UUID 和 `@e[type=...,sort=nearest,limit=1]` 执行 `anim set`、`param set`、`preset set`，确认与旧 `play` / `apply` 行为一致。
 
 ## 5. Raw JSON 与备份
 
@@ -146,15 +179,17 @@ UUID set/off 需要服务端当前加载了该实体；已知但卸载的 UUID �
 - [ ] 点击“在选定实体上播放”；它只播放已保存预设，不替实体更换模型，需要 OP，拒绝使用未保存草稿。
 - [ ] 关闭界面，用 `/yhysm inspect` 和 `/yhysm state <UUID>` 查看请求、服务端信号、实际 OYSM 选中项及跳过原因。
 - [ ] “停止实体的手动动作和表情”只清显式请求，自动规则及旧符卡提示恢复，不删除绑定。
-- [ ] 聊天框输入 `/yhysm anim play <UUID> ` 后按 Tab，应出现该实体模型的真实动画；`param set <UUID> ` 补全参数，参数后补全原生开关/数值选项，`param get/clear` 也补全参数。
-- [ ] `preset list`/`preset apply` 补全模型及该模型已保存预设；确认完整命令仍由服务端执行，OP 与选择器规则不变。
+- [ ] 聊天框输入 `/yhysm anim play <UUID> ` 后按 Tab，应出现该实体模型的真实动画；`anim set` 可作同义写法；`param set <UUID> ` 补全参数，参数后补全原生开关/数值选项，`param get/clear` 也补全参数。
+- [ ] `preset list`/`preset apply` 补全模型及该模型已保存预设；`preset set` 可作同义写法；确认完整命令仍由服务端执行，OP 与选择器规则不变。
 
 命令（含 Unicode、空格或 `/` 的模型 ID 请加双引号）：
 
 ```text
 /yhysm preset list "实际模型ID"
 /yhysm preset apply <UUID或服务端选择器> "实际模型ID" happy [ticks]
+/yhysm preset set <UUID或服务端选择器> "实际模型ID" happy [ticks]
 /yhysm anim play <targets> extra5 100
+/yhysm anim set <targets> extra5 100
 /yhysm param set <targets> v.roaming.mouth 2 100
 /yhysm clear <targets>
 ```
@@ -210,6 +245,7 @@ if (YHModel.supports(entity)) {
 - [ ] 仅装 OYSM、仅装 TLM 的组合分别启动，确认目录/预览按实际能力工作，既有委托回退不受阻。
 - [ ] 蕾米莉亚真实战败 → 坠落 → 倒地保持；治疗恢复、无自转、无碰撞箱压扁、无悬空。
 - [ ] 第二份不同原生控件结构的模型，核对动作/控件缺失时回退，不把 extraN 当通用语义。
+- [ ] 完成“4.1 0.28.1 战斗表现专项实测”，保留普通战斗、弹幕战、Boss 战胜、符卡物品及距离补全的截图或 inspect 快照。
 - [ ] 完整弹幕战：擦弹、miss、无敌帧、弹幕虚化、掉落、退出战斗不回归。
 
 请保存截图或 `/yhysm inspect`、`/yhysm debug inspect` 快照，并记录双方 JAR 版本。
@@ -243,4 +279,4 @@ if (YHModel.supports(entity)) {
   其中“不暂停”及旧成功文本断言已经失效，不得原样重跑旧脚本来验收本轮修订。
 
 这些记录证明无供应商界面降级与集成服务器保存链路，不证明 OYSM 原生动画/表情效果、
-完整手工表单流程、双客户端或战败画面。当前是可供安装验证的开发构建，不是正式 0.28.0 发布。
+完整手工表单流程、双客户端或战败画面。当前是可供安装验证的开发构建，不是正式 0.28.1 发布。

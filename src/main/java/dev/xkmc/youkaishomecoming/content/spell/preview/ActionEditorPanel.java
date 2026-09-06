@@ -2118,6 +2118,14 @@ public class ActionEditorPanel {
 			var current = (ShowSpellCardAction) old;
 			return current.withOffsets(current.offsetRight(), current.offsetUp(), v);
 		}));
+		addDoubleRow("Held Scale", action.heldScale(), v -> notifySimple(old -> {
+			var current = (ShowSpellCardAction) old;
+			return current.withScales(v, current.displayScale());
+		}));
+		addDoubleRow("Display Scale", action.displayScale(), v -> notifySimple(old -> {
+			var current = (ShowSpellCardAction) old;
+			return current.withScales(current.heldScale(), v);
+		}));
 		var timeline = action.timeline();
 		addIntRow("Hold Ticks", timeline.holdTicks(), v ->
 				notifySimple(old -> ((ShowSpellCardAction) old).withTimeline(v, null, null)));

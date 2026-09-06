@@ -3,9 +3,11 @@ package dev.xkmc.youkaishomecoming.compat.stg.control;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.InputEvent;
@@ -47,13 +49,30 @@ public final class ClassicControlClient {
 		event.register(CAST_NEXT_SPELL);
 	}
 
-	public static void setEnabled(boolean value) {
+	public static void setEnabled(boolean value, int notice) {
 		if (enabled && !value) {
 			Minecraft minecraft = Minecraft.getInstance();
 			if (minecraft.player != null) minecraft.player.setSprinting(false);
 		}
 		enabled = value;
 		if (!value) nonSpellHeldSent = false;
+		showNotice(notice);
+	}
+
+	private static void showNotice(int notice) {
+		Minecraft minecraft = Minecraft.getInstance();
+		if (minecraft.player == null) return;
+		Component message = switch (notice) {
+			case ClassicControlSyncToClient.NOTICE_ENABLED -> YHLangData.CLASSIC_CONTROL_ENABLED.get(
+					ControlKey.FORWARD.displayName(), ControlKey.BACKWARD.displayName(),
+					ControlKey.LEFT.displayName(), ControlKey.RIGHT.displayName());
+			case ClassicControlSyncToClient.NOTICE_DISABLED -> YHLangData.CLASSIC_CONTROL_DISABLED.get(
+					ControlKey.FOCUS.displayName(), ControlKey.TOGGLE.displayName());
+			case ClassicControlSyncToClient.NOTICE_AVAILABLE -> YHLangData.CLASSIC_CONTROL_AVAILABLE.get(
+					ControlKey.FOCUS.displayName(), ControlKey.TOGGLE.displayName());
+			default -> null;
+		};
+		if (message != null) minecraft.player.displayClientMessage(message, true);
 	}
 
 	public static void handleKey(InputEvent.Key event) {
@@ -167,6 +186,10 @@ public final class ClassicControlClient {
 			} catch (IllegalArgumentException ignored) {
 				return fallback;
 			}
+		}
+
+		private Component displayName() {
+			return key().getDisplayName();
 		}
 
 		private boolean isDown(Minecraft minecraft) {

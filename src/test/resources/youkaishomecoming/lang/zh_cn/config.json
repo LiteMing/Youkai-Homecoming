@@ -284,6 +284,8 @@
 	"config.youkaishomecoming.common.auto_dodge.baseScanRadius.tooltip": "自动闪避 I 的威胁扫描半径（格）",
 	"config.youkaishomecoming.common.auto_dodge.scanRadiusPerTier": "每级扫描范围增量",
 	"config.youkaishomecoming.common.auto_dodge.scanRadiusPerTier.tooltip": "自动闪避每提升一级增加的扫描半径（格）",
+	"config.youkaishomecoming.common.auto_dodge.controlWeight": "Ctrl 半接管权重",
+	"config.youkaishomecoming.common.auto_dodge.controlWeight.tooltip": "按住 Ctrl 移动时，玩家指示方向相对于自动导航和归位的权重",
 	"config.youkaishomecoming.common.auto_dodge.previewArenaHalfSize": "预览场地半宽",
 	"config.youkaishomecoming.common.auto_dodge.previewArenaHalfSize.tooltip": "预览飞行员场地的一半边长（格）",
 	"config.youkaishomecoming.common.auto_dodge.youkaiEnabled": "妖怪自动闪避",

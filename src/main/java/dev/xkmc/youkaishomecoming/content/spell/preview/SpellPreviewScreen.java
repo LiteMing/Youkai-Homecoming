@@ -879,7 +879,6 @@ public class SpellPreviewScreen extends Screen {
 			}
 			markChanged();
 			refreshPreviewActionIds();
-			invalidateCurrentSnapshot();
 			if (autoReplay) replaySelectedPhase();
 		}
 	}
@@ -889,23 +888,7 @@ public class SpellPreviewScreen extends Screen {
 		definition.setDisplayName(value);
 		if (actionListPanel != null) actionListPanel.markDirty();
 		markChanged();
-		invalidateCurrentSnapshot();
 		if (autoReplay) replaySelectedPhase();
-	}
-
-	private void invalidateCurrentSnapshot() {
-		if (definition == null) return;
-		try {
-			// 修改符卡内容时，清理原先快照，使其失效需重新拍照
-			String defHash = dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHash.canonicalHash(definition);
-			String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.toStorageKey(definition.id.toString());
-			java.nio.file.Path outDir = Minecraft.getInstance().gameDirectory.toPath().resolve("spell_snapshots");
-			java.nio.file.Files.deleteIfExists(outDir.resolve(safeId + ".png"));
-			java.nio.file.Files.deleteIfExists(outDir.resolve(defHash + ".png"));
-			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.invalidate(definition.id.toString());
-			dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.invalidate(defHash);
-		} catch (Exception ignored) {
-		}
 	}
 
 	private SpellDefinition currentDefinitionForRawJson() {
@@ -918,7 +901,6 @@ public class SpellPreviewScreen extends Screen {
 		ActionListPanel.ActionPath selectedPath = actionListPanel == null ? null : actionListPanel.getSelectedPath();
 		boolean wasPlaying = scene.isPlaying();
 
-		invalidateCurrentSnapshot();
 		this.definition = newDefinition;
 		spellController.setDefinition(newDefinition);
 		spellController.setDraftMode(SpellEditorController.isDraftDefinition(newDefinition));
@@ -1030,7 +1012,6 @@ public class SpellPreviewScreen extends Screen {
 		if (originEditWorldOffset.lengthSqr() > 1.0e-12 && actionListPanel != null) {
 			actionListPanel.commitUndoSnapshot(originEditUndoSnapshot);
 			markChanged();
-			invalidateCurrentSnapshot();
 		}
 		clearOriginEditSession();
 	}
@@ -1105,7 +1086,6 @@ public class SpellPreviewScreen extends Screen {
 				Optional.of(new GroupRotation(newX, newY, newZ)));
 		onActionEditedTransient(newAction);
 		markChanged();
-		invalidateCurrentSnapshot();
 		setActionEditorAction(newAction, actionEditorPanel.getActionIndex());
 	}
 
@@ -1436,7 +1416,6 @@ public class SpellPreviewScreen extends Screen {
 	private void onActionListReordered() {
 		if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 		refreshPreviewActionIds();
-		invalidateCurrentSnapshot();
 		markChanged();
 		replaySelectedPhase();
 	}

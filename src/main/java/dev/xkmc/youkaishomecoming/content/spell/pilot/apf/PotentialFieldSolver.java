@@ -108,14 +108,15 @@ public final class PotentialFieldSolver {
 		// Attraction to anchor
 		Vec3 toAnchor = state.anchor.subtract(state.feet);
 		double ad = toAnchor.length();
+		double inputWeight = state.effectiveInputPreferenceWeight();
 		if (ad > 1e-4) {
-			force = force.add(toAnchor.scale(profile.attractGain() / Math.max(1.0, ad)));
+			force = force.add(toAnchor.scale(profile.attractGain() / Math.max(1.0, ad) / inputWeight));
 		}
 		if (state.gapPreference.lengthSqr() > 1e-10) {
 			force = force.add(state.gapPreference.normalize().scale(profile.maxForce() * 0.24));
 		}
 		if (state.inputPreference.lengthSqr() > 1e-10) {
-			force = force.add(state.inputPreference.normalize().scale(profile.maxForce() * 0.5));
+			force = force.add(state.inputPreference.normalize().scale(profile.maxForce() * 0.5 * inputWeight));
 		}
 
 		// Soft wall clearance only when relatively safe — never steal necessary dodge

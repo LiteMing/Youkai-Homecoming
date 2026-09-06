@@ -327,6 +327,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue autoDodgeSpeedPerTier;
 		public final ForgeConfigSpec.DoubleValue autoDodgeBaseScanRadius;
 		public final ForgeConfigSpec.DoubleValue autoDodgeScanRadiusPerTier;
+		public final ForgeConfigSpec.DoubleValue autoDodgeControlWeight;
 		public final ForgeConfigSpec.DoubleValue previewPilotArenaHalf;
 		public final ForgeConfigSpec.BooleanValue youkaiAutoDodgeEnabled;
 		public final ForgeConfigSpec.IntValue youkaiAutoDodgeTickInterval;
@@ -818,6 +819,9 @@ public class YHModConfig {
 				autoDodgeScanRadiusPerTier = builder.comment("Threat scan radius added by each Auto Dodge level")
 						.translation("config.youkaishomecoming.common.auto_dodge.scanRadiusPerTier")
 						.defineInRange("scanRadiusPerTier", 4.0, 0.0, 24.0);
+				autoDodgeControlWeight = builder.comment("Weight of Control-assisted movement relative to automatic navigation and anchor return")
+						.translation("config.youkaishomecoming.common.auto_dodge.controlWeight")
+						.defineInRange("controlWeight", 2.5, 1.0, 5.0);
 				previewPilotArenaHalf = builder.comment("Preview pilot arena half-size in blocks")
 						.translation("config.youkaishomecoming.common.auto_dodge.previewArenaHalfSize")
 						.defineInRange("previewArenaHalfSize", 12.0, 2.0, 64.0);

@@ -29,7 +29,7 @@ public final class ClassicControlService {
 
 	public static boolean setEnabled(ServerPlayer player, boolean enabled) {
 		if (enabled && !YHStgApi.isInDanmakuSession(player)) {
-			sync(player, false);
+			sync(player, false, ClassicControlSyncToClient.NOTICE_NONE);
 			player.displayClientMessage(YHLangData.CLASSIC_CONTROL_COMBAT_ONLY.get(), true);
 			return false;
 		}
@@ -41,10 +41,9 @@ public final class ClassicControlService {
 			if (YHStgApi.isInDanmakuSession(player)) HINTED.add(player.getUUID());
 			else HINTED.remove(player.getUUID());
 		}
-		sync(player, enabled);
-		player.displayClientMessage((enabled
-				? YHLangData.CLASSIC_CONTROL_ENABLED
-				: YHLangData.CLASSIC_CONTROL_DISABLED).get(), true);
+		sync(player, enabled, enabled
+				? ClassicControlSyncToClient.NOTICE_ENABLED
+				: ClassicControlSyncToClient.NOTICE_DISABLED);
 		return true;
 	}
 
@@ -57,7 +56,7 @@ public final class ClassicControlService {
 		if (!inCombat) {
 			HINTED.remove(player.getUUID());
 		} else if (!isEnabled(player) && HINTED.add(player.getUUID())) {
-			player.displayClientMessage(YHLangData.CLASSIC_CONTROL_AVAILABLE.get(), true);
+			sync(player, false, ClassicControlSyncToClient.NOTICE_AVAILABLE);
 		}
 	}
 
@@ -68,7 +67,7 @@ public final class ClassicControlService {
 		if (removed || GrazeCapability.HOLDER.get(player).getActiveNonSpellCardKey() != null) {
 			SpellContainer.clearActiveNonSpell(player);
 		}
-		sync(player, false);
+		sync(player, false, ClassicControlSyncToClient.NOTICE_NONE);
 	}
 
 	public static void clearAll() {
@@ -109,7 +108,7 @@ public final class ClassicControlService {
 		spell.castSpell(stack, player, !player.getAbilities().instabuild, false);
 	}
 
-	private static void sync(ServerPlayer player, boolean enabled) {
-		YoukaisHomecoming.HANDLER.toClientPlayer(new ClassicControlSyncToClient(enabled), player);
+	private static void sync(ServerPlayer player, boolean enabled, int notice) {
+		YoukaisHomecoming.HANDLER.toClientPlayer(new ClassicControlSyncToClient(enabled, notice), player);
 	}
 }

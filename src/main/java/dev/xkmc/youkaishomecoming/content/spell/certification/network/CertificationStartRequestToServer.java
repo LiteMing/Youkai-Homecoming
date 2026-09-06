@@ -6,6 +6,7 @@ import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationManag
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationQuote;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertificationService;
 import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellStorage;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
@@ -24,6 +25,9 @@ public class CertificationStartRequestToServer extends SerialPacketBase {
 	@SerialClass.SerialField
 	public byte[] snapshotPng = new byte[0];
 
+	@SerialClass.SerialField
+	public boolean freshSnapshot;
+
 	public CertificationStartRequestToServer() {
 	}
 
@@ -32,8 +36,13 @@ public class CertificationStartRequestToServer extends SerialPacketBase {
 	}
 
 	public CertificationStartRequestToServer(String quoteId, byte[] snapshotPng) {
+		this(quoteId, snapshotPng, false);
+	}
+
+	public CertificationStartRequestToServer(String quoteId, byte[] snapshotPng, boolean freshSnapshot) {
 		this.quoteId = quoteId;
 		this.snapshotPng = snapshotPng == null ? new byte[0] : snapshotPng;
+		this.freshSnapshot = freshSnapshot;
 	}
 
 	@Override
@@ -46,6 +55,10 @@ public class CertificationStartRequestToServer extends SerialPacketBase {
 				player.displayClientMessage(YHLangData.CERT_START_FAIL.get(
 						YHLangData.CERT_START_QUOTE_EXPIRED.get()), false);
 				return;
+			}
+			if (freshSnapshot && snapshotPng != null && snapshotPng.length > 0) {
+				DynamicSpellItem.setCardFaceRefreshRequired(CertificationService.findUnfinishedDraft(
+						player, quote.healthPlan().rootDefinition().id), false);
 			}
 			if (!CertificationService.start(player, quote)) {
 				player.displayClientMessage(YHLangData.CERT_START_FAIL.get(

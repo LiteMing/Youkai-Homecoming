@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /** Shows the current spell as a floating DynamicSpellItem card in front of the caster. */
 public record ShowSpellCardAction(int duration, double radius, Hand hand,
 		double offsetRight, double offsetUp, double offsetForward,
+		double heldScale, double displayScale,
 		int holdTicks, int throwTicks, int floatTicks) implements SpellAction {
 
 	private static final AtomicLong SEQUENCE = new AtomicLong();
@@ -27,6 +28,10 @@ public record ShowSpellCardAction(int duration, double radius, Hand hand,
 	private static final int DEFAULT_HOLD_TICKS = 10;
 	private static final int DEFAULT_THROW_TICKS = 8;
 	private static final int DEFAULT_FLOAT_TICKS = 22;
+	private static final double DEFAULT_HELD_SCALE = 0.55;
+	private static final double DEFAULT_DISPLAY_SCALE = 0.92;
+	private static final double MIN_SCALE = 0.05;
+	private static final double MAX_SCALE = 4.0;
 
 	public static final Codec<ShowSpellCardAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 			Codec.INT.optionalFieldOf("duration", -1).forGetter(ShowSpellCardAction::duration),
@@ -35,17 +40,21 @@ public record ShowSpellCardAction(int duration, double radius, Hand hand,
 			Codec.DOUBLE.optionalFieldOf("offset_right", 0.0).forGetter(ShowSpellCardAction::offsetRight),
 			Codec.DOUBLE.optionalFieldOf("offset_up", 0.0).forGetter(ShowSpellCardAction::offsetUp),
 			Codec.DOUBLE.optionalFieldOf("offset_forward", 0.0).forGetter(ShowSpellCardAction::offsetForward),
+			Codec.DOUBLE.optionalFieldOf("held_scale", DEFAULT_HELD_SCALE).forGetter(ShowSpellCardAction::heldScale),
+			Codec.DOUBLE.optionalFieldOf("display_scale", DEFAULT_DISPLAY_SCALE).forGetter(ShowSpellCardAction::displayScale),
 			Codec.INT.optionalFieldOf("hold_ticks", -1).forGetter(ShowSpellCardAction::holdTicks),
 			Codec.INT.optionalFieldOf("throw_ticks", -1).forGetter(ShowSpellCardAction::throwTicks),
 			Codec.INT.optionalFieldOf("float_ticks", -1).forGetter(ShowSpellCardAction::floatTicks)
 	).apply(i, ShowSpellCardAction::new));
 
 	public ShowSpellCardAction(int duration, double radius) {
-		this(duration, radius, Hand.RANDOM, 0, 0, 0, -1, -1, -1);
+		this(duration, radius, Hand.RANDOM, 0, 0, 0,
+				DEFAULT_HELD_SCALE, DEFAULT_DISPLAY_SCALE, -1, -1, -1);
 	}
 
 	public static ShowSpellCardAction defaults() {
 		return new ShowSpellCardAction(-1, 64.0, Hand.RANDOM, 0, 0, 0,
+				DEFAULT_HELD_SCALE, DEFAULT_DISPLAY_SCALE,
 				DEFAULT_HOLD_TICKS, DEFAULT_THROW_TICKS, DEFAULT_FLOAT_TICKS);
 	}
 
@@ -63,7 +72,9 @@ public record ShowSpellCardAction(int duration, double radius, Hand hand,
 		};
 		var packet = new SpellCardPresentationToClient(presenter.getId(), spellId.toString(),
 				level.getGameTime(), timeline.holdTicks(), timeline.throwTicks(), timeline.floatTicks(),
-				rightHand, offsetRight, offsetUp, offsetForward, SEQUENCE.incrementAndGet());
+				rightHand, offsetRight, offsetUp, offsetForward,
+				resolvedScale(heldScale, DEFAULT_HELD_SCALE), resolvedScale(displayScale, DEFAULT_DISPLAY_SCALE),
+				SEQUENCE.incrementAndGet());
 		Set<UUID> sent = new HashSet<>();
 		double maxDistance = Math.max(0, radius);
 		double maxDistanceSqr = maxDistance * maxDistance;
@@ -107,25 +118,36 @@ public record ShowSpellCardAction(int duration, double radius, Hand hand,
 
 	public ShowSpellCardAction withHand(Hand value) {
 		return new ShowSpellCardAction(duration, radius, value, offsetRight, offsetUp, offsetForward,
-				holdTicks, throwTicks, floatTicks);
+				heldScale, displayScale, holdTicks, throwTicks, floatTicks);
 	}
 
 	public ShowSpellCardAction withRadius(double value) {
 		return new ShowSpellCardAction(duration, value, hand, offsetRight, offsetUp, offsetForward,
-				holdTicks, throwTicks, floatTicks);
+				heldScale, displayScale, holdTicks, throwTicks, floatTicks);
 	}
 
 	public ShowSpellCardAction withOffsets(double right, double up, double forward) {
 		return new ShowSpellCardAction(duration, radius, hand, right, up, forward,
-				holdTicks, throwTicks, floatTicks);
+				heldScale, displayScale, holdTicks, throwTicks, floatTicks);
+	}
+
+	public ShowSpellCardAction withScales(double held, double display) {
+		return new ShowSpellCardAction(duration, radius, hand, offsetRight, offsetUp, offsetForward,
+				held, display, holdTicks, throwTicks, floatTicks);
 	}
 
 	public ShowSpellCardAction withTimeline(Integer hold, Integer throwing, Integer floating) {
 		Timeline current = timeline();
 		return new ShowSpellCardAction(-1, radius, hand, offsetRight, offsetUp, offsetForward,
+				heldScale, displayScale,
 				hold == null ? current.holdTicks() : Math.max(0, hold),
 				throwing == null ? current.throwTicks() : Math.max(0, throwing),
 				floating == null ? current.floatTicks() : Math.max(0, floating));
+	}
+
+	private static double resolvedScale(double value, double fallback) {
+		if (!Double.isFinite(value)) return fallback;
+		return Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
 	}
 
 	private static void send(SpellCardPresentationToClient packet, ServerPlayer player, Set<UUID> sent) {

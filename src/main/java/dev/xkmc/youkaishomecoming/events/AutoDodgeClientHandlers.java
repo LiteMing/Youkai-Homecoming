@@ -41,6 +41,30 @@ import java.util.List;
 public class AutoDodgeClientHandlers {
 
 	private static final double DEFAULT_ANCHOR_RADIUS = 10.0;
+	private static final double INPUT_EPSILON = 1e-8;
+
+	public enum HudMode {
+		HIDDEN, IDLE, AUTO, MANUAL, GUIDED
+	}
+
+	public enum GuidanceDirection {
+		UP, DOWN, LEFT, RIGHT, FORWARD, BACKWARD
+	}
+
+	public record HudState(HudMode mode, List<GuidanceDirection> directions) {
+		private static final HudState HIDDEN = new HudState(HudMode.HIDDEN, List.of());
+		private static final HudState IDLE = new HudState(HudMode.IDLE, List.of());
+		private static final HudState AUTO = new HudState(HudMode.AUTO, List.of());
+		private static final HudState MANUAL = new HudState(HudMode.MANUAL, List.of());
+
+		public HudState {
+			directions = List.copyOf(directions);
+		}
+
+		private static HudState guided(List<GuidanceDirection> directions) {
+			return new HudState(HudMode.GUIDED, directions);
+		}
+	}
 
 	private static final ThreatProviderRegistry REGISTRY = new ThreatProviderRegistry();
 	private static final ObservedMotionProvider OBSERVED = new ObservedMotionProvider();
@@ -58,6 +82,11 @@ public class AutoDodgeClientHandlers {
 	private static boolean manualOverride;
 	private static LocalPlayer trackedPlayer;
 	private static boolean pilotAppliedVelocity;
+	private static HudState hudState = HudState.HIDDEN;
+
+	public static HudState hudState() {
+		return hudState;
+	}
 
 	private static DodgePilot[] createPilots(boolean grounded, double baseSpeed, double speedStep) {
 		DodgePilot[] result = new DodgePilot[3];
@@ -123,12 +152,14 @@ public class AutoDodgeClientHandlers {
 		}
 
 		Vec3 input = readInputWish(player);
+		List<GuidanceDirection> directions = readInputDirections(player);
 		boolean controlBias = Screen.hasControlDown();
-		if (!controlBias && input.lengthSqr() > 1e-8) {
+		if (!controlBias && input.lengthSqr() > INPUT_EPSILON) {
 			if (!manualOverride) resetControllers();
 			manualOverride = true;
 			pilotAppliedVelocity = false;
 			playerAnchor = player.position();
+			hudState = HudState.MANUAL;
 			return;
 		}
 		if (manualOverride) {
@@ -140,7 +171,10 @@ public class AutoDodgeClientHandlers {
 
 		Entity extra = joinScanTicks > 0 && joinedEntity != null && joinedEntity.isAlive()
 				? joinedEntity : null;
-		tryDodge(player, amplifier, extra, controlBias ? input : Vec3.ZERO);
+		boolean active = tryDodge(player, amplifier, extra, controlBias ? input : Vec3.ZERO);
+		hudState = controlBias && !directions.isEmpty()
+				? HudState.guided(directions)
+				: active ? HudState.AUTO : HudState.IDLE;
 		if (joinScanTicks > 0) joinScanTicks--;
 	}
 
@@ -158,18 +192,22 @@ public class AutoDodgeClientHandlers {
 		joinedEntity = entity;
 		joinScanTicks = 3;
 		Vec3 input = readInputWish(player);
+		List<GuidanceDirection> directions = readInputDirections(player);
 		boolean controlBias = Screen.hasControlDown();
-		if (!controlBias && input.lengthSqr() > 1e-8) return;
+		if (!controlBias && input.lengthSqr() > INPUT_EPSILON) return;
 		ensureProviders();
 		refreshProfilesIfNeeded();
 		MobEffectInstance effect = player.getEffect(YHEffects.AUTO_DODGE.get());
 		if (effect != null) {
-			tryDodge(player, Math.min(2, effect.getAmplifier()), entity,
+			boolean active = tryDodge(player, Math.min(2, effect.getAmplifier()), entity,
 					controlBias ? input : Vec3.ZERO);
+			hudState = controlBias && !directions.isEmpty()
+					? HudState.guided(directions)
+					: active ? HudState.AUTO : HudState.IDLE;
 		}
 	}
 
-	private static void tryDodge(LocalPlayer player, int amplifier, Entity extra, Vec3 inputPreference) {
+	private static boolean tryDodge(LocalPlayer player, int amplifier, Entity extra, Vec3 inputPreference) {
 		var config = YHModConfig.COMMON;
 		double scanRadius = config.autoDodgeBaseScanRadius.get()
 				+ amplifier * config.autoDodgeScanRadiusPerTier.get();
@@ -177,7 +215,7 @@ public class AutoDodgeClientHandlers {
 		if (threats.isEmpty()) {
 			releasePilotMotion(player);
 			resetControllers();
-			return;
+			return false;
 		}
 
 		boolean freeFlight = canVerticalFlight(player);
@@ -191,7 +229,7 @@ public class AutoDodgeClientHandlers {
 		if (snapshot.size() == 0) {
 			releasePilotMotion(player);
 			resetControllers();
-			return;
+			return false;
 		}
 
 		if (playerAnchor == null) playerAnchor = feet;
@@ -199,6 +237,7 @@ public class AutoDodgeClientHandlers {
 		state.oracle = new LevelCollisionOracle(player.level(), player);
 		state.anchor = playerAnchor;
 		state.inputPreference = inputPreference;
+		state.inputPreferenceWeight = config.autoDodgeControlWeight.get();
 		state.grounded = !freeFlight;
 		state.hitBoxScale = hitScale;
 		state.tick = player.tickCount;
@@ -213,6 +252,7 @@ public class AutoDodgeClientHandlers {
 		Vec3 desired = pilot.tick(snapshot, state);
 		if (!freeFlight && desired.y < 0) desired = new Vec3(desired.x, 0, desired.z);
 		applyVelocity(player, desired, true);
+		return true;
 	}
 
 	private static void applyNavigationDefaults(PilotState state, PilotProfile profile) {
@@ -266,6 +306,17 @@ public class AutoDodgeClientHandlers {
 		flat = flat.normalize();
 		Vec3 left = new Vec3(flat.z, 0, -flat.x);
 		return flat.scale(forward).add(left.scale(strafe)).add(0, vertical, 0);
+	}
+
+	private static List<GuidanceDirection> readInputDirections(LocalPlayer player) {
+		List<GuidanceDirection> result = new ArrayList<>(3);
+		if (player.input.jumping) result.add(GuidanceDirection.UP);
+		if (player.input.shiftKeyDown) result.add(GuidanceDirection.DOWN);
+		if (player.input.leftImpulse > 0) result.add(GuidanceDirection.LEFT);
+		if (player.input.leftImpulse < 0) result.add(GuidanceDirection.RIGHT);
+		if (player.input.forwardImpulse > 0) result.add(GuidanceDirection.FORWARD);
+		if (player.input.forwardImpulse < 0) result.add(GuidanceDirection.BACKWARD);
+		return result;
 	}
 
 	private static List<Entity> collectThreats(LocalPlayer player, Entity extra, double scanRadius) {
@@ -333,6 +384,7 @@ public class AutoDodgeClientHandlers {
 		joinScanTicks = 0;
 		joinedEntity = null;
 		trackedPlayer = player;
+		hudState = HudState.HIDDEN;
 	}
 
 	private static void releasePilotMotion(LocalPlayer player) {
@@ -347,6 +399,7 @@ public class AutoDodgeClientHandlers {
 
 	private static void deactivate(LocalPlayer player) {
 		releasePilotMotion(player);
+		hudState = HudState.HIDDEN;
 		if (lastAmp < 0) return;
 		resetControllers();
 		OBSERVED.clear();

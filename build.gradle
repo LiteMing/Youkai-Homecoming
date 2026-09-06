@@ -174,6 +174,13 @@ mixin {
     config "${modid}.mixins.json"
 }
 
+// MixinGradle writes the final refmap into compileJava's temporary directory,
+// but does not declare it as a cacheable output. Without this declaration a
+// FROM-CACHE compile restores classes only and JarJar silently loses the map.
+tasks.named('compileJava', JavaCompile).configure {
+    outputs.file(provider { new File(temporaryDir, "${modid}.refmap.json") })
+}
+
 repositories {
     flatDir {
         dirs 'libs'
@@ -384,6 +391,43 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.jarJar.configure {
     archiveClassifier.set('')
+
+    // MixinGradle wires refmaps into ordinary Jar tasks, but ForgeGradle's
+    // JarJar task does not reliably copy that generated resource. A missing
+    // refmap leaves development method names such as Player.travel unresolved
+    // in production and crashes during mixin application.
+    def mainRefmap = tasks.named('compileJava', JavaCompile).map {
+        new File(it.temporaryDir, "${modid}.refmap.json")
+    }
+    dependsOn tasks.named('compileJava')
+    from(mainRefmap) {
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
+    doFirst {
+        if (!mainRefmap.get().isFile()) {
+            throw new GradleException("Missing generated mixin refmap: ${mainRefmap.get()}")
+        }
+    }
+}
+
+def verifyJarJarRefmap = tasks.register('verifyJarJarRefmap') {
+    group = 'verification'
+    description = 'Fail when the distributable JarJar artifact omits the production mixin refmap.'
+    doLast {
+        def archive = tasks.jarJar.archiveFile.get().asFile
+        def zip = new java.util.zip.ZipFile(archive)
+        try {
+            if (zip.getEntry("${modid}.refmap.json") == null) {
+                throw new GradleException("Distributable jar is missing ${modid}.refmap.json: ${archive}")
+            }
+        } finally {
+            zip.close()
+        }
+    }
+}
+
+tasks.named('reobfJarJar').configure {
+    finalizedBy verifyJarJarRefmap
 }
 
 tasks.register('publishCurseForge', TaskPublishCurseForge) {

@@ -31,6 +31,9 @@ public final class SpellTemplates {
 				  "phases": {
 				    "%2$s": {
 				      "id": "%2$s",
+				      "on_enter": [
+				        { "type": "show_spell_card" }
+				      ],
 				      "on_tick": [
 				        {
 				          "type": "conditional",
@@ -52,6 +55,7 @@ public final class SpellTemplates {
 				    }
 				  },
 				  "custom_names": {
+				    "enter/0": "youkaishomecoming.spell_template.common.node.show_card",
 				    "tick/0": "youkaishomecoming.spell_template.basic.node.interval",
 				    "tick/0:true/0": "youkaishomecoming.spell_template.basic.node.fire_ring"
 				  }
@@ -68,6 +72,9 @@ public final class SpellTemplates {
 				  "phases": {
 				    "%2$s": {
 				      "id": "%2$s",
+				      "on_enter": [
+				        { "type": "show_spell_card" }
+				      ],
 				      "on_tick": [
 				        {
 				          "type": "conditional",
@@ -92,6 +99,7 @@ public final class SpellTemplates {
 				    }
 				  },
 				  "custom_names": {
+				    "enter/0": "youkaishomecoming.spell_template.common.node.show_card",
 				    "tick/0": "youkaishomecoming.spell_template.ring.node.interval",
 				    "tick/0:true/0": "youkaishomecoming.spell_template.ring.node.rotating_ring"
 				  }
@@ -108,6 +116,9 @@ public final class SpellTemplates {
 				  "phases": {
 				    "%2$s": {
 				      "id": "%2$s",
+				      "on_enter": [
+				        { "type": "show_spell_card" }
+				      ],
 				      "on_tick": [
 				        {
 				          "type": "conditional",
@@ -138,6 +149,7 @@ public final class SpellTemplates {
 				    }
 				  },
 				  "custom_names": {
+				    "enter/0": "youkaishomecoming.spell_template.common.node.show_card",
 				    "tick/0": "youkaishomecoming.spell_template.mover.node.interval",
 				    "tick/0:true/0": "youkaishomecoming.spell_template.mover.node.sine_wave"
 				  }
@@ -154,6 +166,9 @@ public final class SpellTemplates {
 				  "phases": {
 				    "%2$s": {
 				      "id": "%2$s",
+				      "on_enter": [
+				        { "type": "show_spell_card" }
+				      ],
 				      "on_tick": [
 				        {
 				          "type": "conditional",
@@ -200,6 +215,7 @@ public final class SpellTemplates {
 				    }
 				  },
 				  "custom_names": {
+				    "enter/0": "youkaishomecoming.spell_template.common.node.show_card",
 				    "tick/0": "youkaishomecoming.spell_template.shooter.node.interval",
 				    "tick/0:true/0": "youkaishomecoming.spell_template.shooter.node.spawn_shooter",
 				    "tick/0:true/0:body/0": "youkaishomecoming.spell_template.shooter.node.shooter_tick",
@@ -223,6 +239,9 @@ public final class SpellTemplates {
 				          "type": "run_command",
 				          "mode": "as_caster",
 				          "command": "particle minecraft:end_rod ~ ~1 ~ 0.2 0.2 0.2 0.01 16"
+				        },
+				        {
+				          "type": "show_spell_card"
 				        }
 				      ],
 				      "on_tick": [
@@ -247,6 +266,7 @@ public final class SpellTemplates {
 				  },
 				  "custom_names": {
 				    "enter/0": "youkaishomecoming.spell_template.command.node.run_command",
+				    "enter/1": "youkaishomecoming.spell_template.common.node.show_card",
 				    "tick/0": "youkaishomecoming.spell_template.command.node.interval",
 				    "tick/0:true/0": "youkaishomecoming.spell_template.command.node.fire_ring"
 				  }
@@ -278,6 +298,9 @@ public final class SpellTemplates {
 				            "phase_id": "%2$s/final",
 				            "clear_screen": true
 				          }
+				        },
+				        {
+				          "type": "show_spell_card"
 				        }
 				      ],
 				      "on_tick": [
@@ -306,6 +329,9 @@ public final class SpellTemplates {
 				          "type": "set_spell_health",
 				          "health": 800,
 				          "duration": 800
+				        },
+				        {
+				          "type": "show_spell_card"
 				        }
 				      ],
 				      "on_tick": [
@@ -331,10 +357,12 @@ public final class SpellTemplates {
 				  },
 				  "custom_names": {
 				    "intro/enter/0": "youkaishomecoming.spell_template.boss.node.intro_health",
+				    "intro/enter/1": "youkaishomecoming.spell_template.common.node.show_card",
 				    "intro/tick/0": "youkaishomecoming.spell_template.boss.node.intro_interval",
 				    "intro/enter/0:timeout": "youkaishomecoming.spell_template.boss.node.timeout_phase",
 				    "intro/enter/0:break": "youkaishomecoming.spell_template.boss.node.break_phase",
 				    "final/enter/0": "youkaishomecoming.spell_template.boss.node.final_health",
+				    "final/enter/1": "youkaishomecoming.spell_template.common.node.show_card",
 				    "final/tick/0": "youkaishomecoming.spell_template.boss.node.final_interval"
 				  }
 				}

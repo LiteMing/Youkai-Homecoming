@@ -5,6 +5,8 @@ import dev.xkmc.youkaishomecoming.content.spell.certification.network.Certificat
 import dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStartRequestToServer;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.Minecraft;
@@ -78,11 +80,12 @@ public class CertificationScreen extends Screen {
 			return;
 		}
 
-		// 检查本地是否已有既有快照，若有则直接提交开始认证
+		boolean freshSnapshotRequired = requiresFreshSnapshot();
+		// Reuse the decorative card face across definition edits unless a washed draft requires a new photo.
 		String safeId = dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.toStorageKey(definition.id.toString());
 		java.nio.file.Path file = Minecraft.getInstance().gameDirectory.toPath()
 				.resolve("spell_snapshots").resolve(safeId + ".png");
-		if (java.nio.file.Files.isRegularFile(file)) {
+		if (!freshSnapshotRequired && java.nio.file.Files.isRegularFile(file)) {
 			try {
 				byte[] snap = java.nio.file.Files.readAllBytes(file);
 				dev.xkmc.youkaishomecoming.client.render.SpellCardTextureCache.saveLocalSnapshot(
@@ -105,7 +108,8 @@ public class CertificationScreen extends Screen {
 						new SpellCardSnapshotConfirmScreen(previewScreen, snap, () -> {
 							previewScreen.getViewport().setCardFrameGuideActive(false);
 							saveConfirmedSnapshot(snap, quote.definitionHash);
-							YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId, snap));
+							YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(
+									quote.quoteId, snap, freshSnapshotRequired));
 							CertificationClientHandler.clearPendingQuote();
 						}));
 				return;
@@ -116,6 +120,21 @@ public class CertificationScreen extends Screen {
 		YoukaisHomecoming.HANDLER.toServer(new CertificationStartRequestToServer(quote.quoteId, new byte[0]));
 		CertificationClientHandler.clearPendingQuote();
 		onClose();
+	}
+
+	private boolean requiresFreshSnapshot() {
+		var player = Minecraft.getInstance().player;
+		if (player == null || definition == null || player.isCreative() || player.hasPermissions(2)) return false;
+		for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+			var stack = player.getInventory().getItem(slot);
+			if (stack.getItem() instanceof DynamicSpellItem
+					&& !DynamicSpellItem.isComplete(stack)
+					&& !CertifiedSpellValidator.isCertified(stack)
+					&& definition.id.equals(DynamicSpellItem.getSpellId(stack))) {
+				return DynamicSpellItem.requiresCardFaceRefresh(stack);
+			}
+		}
+		return false;
 	}
 
 	private void saveConfirmedSnapshot(byte[] snapBytes, String definitionHash) {

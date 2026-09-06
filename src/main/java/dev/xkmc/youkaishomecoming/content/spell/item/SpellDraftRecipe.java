@@ -18,6 +18,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.GsonHelper;
 import net.minecraft.world.inventory.CraftingContainer;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CraftingBookCategory;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeSerializer;
@@ -50,8 +51,10 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 		ItemStack existingCard = ItemStack.EMPTY;
 		SpellCardType auraType = null;
 		boolean exAura = false;
+		boolean waterWash = false;
 		for (int i = 0; i < container.getContainerSize(); i++) {
 			ItemStack item = container.getItem(i);
+			waterWash |= item.is(Items.WATER_BUCKET);
 			if (item.getItem() instanceof DynamicSpellItem) {
 				baseTier = Math.max(baseTier, DynamicSpellItem.getRank(item).tierNumber());
 				existingCard = item;
@@ -87,6 +90,7 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 		}
 		DynamicSpellItem.setRank(stack, rank);
 		if (!auraConversion) DynamicSpellItem.setDraftBudget(stack, rank.createBudget());
+		if (waterWash && !existingCard.isEmpty()) DynamicSpellItem.setCardFaceRefreshRequired(stack, true);
 		if (auraType != null) DynamicSpellItem.setCardType(stack, auraType);
 		if (exAura) DynamicSpellItem.setExSpell(stack, true);
 		if (DynamicSpellItem.getCardType(stack) == SpellCardType.NON_SPELL

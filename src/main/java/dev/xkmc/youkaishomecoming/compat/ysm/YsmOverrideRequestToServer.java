@@ -35,11 +35,15 @@ public class YsmOverrideRequestToServer extends SerialPacketBase {
 	}
 
 	public YsmOverrideRequestToServer(String action, String entityType, String modelId, String textureName, String uuidList) {
-		this.action = action;
-		this.entityType = entityType;
-		this.modelId = modelId;
-		this.textureName = textureName;
-		this.uuidList = uuidList;
+		this.action = valueOrEmpty(action);
+		this.entityType = valueOrEmpty(entityType);
+		this.modelId = valueOrEmpty(modelId);
+		this.textureName = valueOrEmpty(textureName);
+		this.uuidList = valueOrEmpty(uuidList);
+	}
+
+	private static String valueOrEmpty(String value) {
+		return value == null ? "" : value;
 	}
 
 	@Override

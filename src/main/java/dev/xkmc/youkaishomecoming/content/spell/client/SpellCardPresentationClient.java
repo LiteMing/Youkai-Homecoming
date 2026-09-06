@@ -30,15 +30,14 @@ import java.util.Map;
 public final class SpellCardPresentationClient {
 	private static final Map<Integer, Entry> ACTIVE = new HashMap<>();
 	private static final Map<Integer, Long> LAST_SEQUENCE = new HashMap<>();
-	private static final float HELD_SCALE = 0.55f;
-	private static final float DISPLAY_SCALE = 0.92f;
 
 	private SpellCardPresentationClient() {
 	}
 
 	public static void accept(int entityId, String spellIdText, long startedAt,
 			int holdTicks, int throwTicks, int floatTicks, boolean rightHand,
-			double offsetRight, double offsetUp, double offsetForward, long sequence) {
+			double offsetRight, double offsetUp, double offsetForward,
+			double heldScale, double displayScale, long sequence) {
 		Long last = LAST_SEQUENCE.get(entityId);
 		if (last != null && sequence <= last) return;
 		LAST_SEQUENCE.put(entityId, sequence);
@@ -52,7 +51,8 @@ public final class SpellCardPresentationClient {
 		if (ACTIVE.size() >= 256) ACTIVE.clear();
 		ACTIVE.put(entityId, new Entry(createStack(spellId), startedAt,
 				Math.max(0, holdTicks), Math.max(0, throwTicks), Math.max(0, floatTicks),
-				rightHand, offsetRight, offsetUp, offsetForward, sequence));
+				rightHand, offsetRight, offsetUp, offsetForward,
+				sanitizeScale(heldScale, 0.55f), sanitizeScale(displayScale, 0.92f), sequence));
 	}
 
 	private static ItemStack createStack(ResourceLocation spellId) {
@@ -120,21 +120,21 @@ public final class SpellCardPresentationClient {
 			forward = 0.10f;
 			height = 0.66f + Mth.sin(age * 0.35f) * 0.01f;
 			rotation = Mth.lerp(p, -28.0f, -16.0f);
-			scale = HELD_SCALE;
+			scale = entry.heldScale();
 		} else if (age < throwEnd) {
 			float p = smooth((age - heldEnd) / entry.throwTicks());
 			side = Mth.lerp(p, 0.32f * handSide, 0.0f);
 			forward = Mth.lerp(p, 0.10f, 0.72f);
 			height = Mth.lerp(p, 0.66f, 0.82f) + Mth.sin(p * Mth.PI) * 0.08f;
 			rotation = Mth.lerp(p, -16.0f, 344.0f);
-			scale = Mth.lerp(p, HELD_SCALE, DISPLAY_SCALE);
+			scale = Mth.lerp(p, entry.heldScale(), entry.displayScale());
 		} else {
 			float p = (age - throwEnd) / entry.floatTicks();
 			side = 0.0f;
 			forward = 0.72f + Mth.sin(p * Mth.TWO_PI) * 0.025f;
 			height = 0.82f + Mth.sin(p * Mth.TWO_PI * 2.0f) * 0.035f;
 			rotation = Mth.sin(p * Mth.TWO_PI) * 4.0f;
-			scale = DISPLAY_SCALE;
+			scale = entry.displayScale();
 		}
 
 		float reveal = smooth(Mth.clamp(age / Math.min(4.0f, entry.duration()), 0.0f, 1.0f));
@@ -167,13 +167,19 @@ public final class SpellCardPresentationClient {
 		return value * value * (3.0f - 2.0f * value);
 	}
 
+	private static float sanitizeScale(double value, float fallback) {
+		if (!Double.isFinite(value)) return fallback;
+		return Mth.clamp((float) value, 0.05f, 4.0f);
+	}
+
 	private static boolean isFirstPersonCameraEntity(Minecraft mc, Entity entity) {
 		return mc.options.getCameraType().isFirstPerson() && entity == mc.getCameraEntity();
 	}
 
 	private record Entry(ItemStack stack, long startedAt,
 			int holdTicks, int throwTicks, int floatTicks, boolean rightHand,
-			double offsetRight, double offsetUp, double offsetForward, long sequence) {
+			double offsetRight, double offsetUp, double offsetForward,
+			float heldScale, float displayScale, long sequence) {
 		private int duration() {
 			return holdTicks + throwTicks + floatTicks;
 		}

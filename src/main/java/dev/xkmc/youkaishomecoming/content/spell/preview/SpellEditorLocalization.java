@@ -323,6 +323,8 @@ public final class SpellEditorLocalization {
 			Map.entry("Offset Right", "向右偏移"),
 			Map.entry("Offset Up", "向上偏移"),
 			Map.entry("Offset Forward", "向前偏移"),
+			Map.entry("Held Scale", "手持大小"),
+			Map.entry("Display Scale", "展示大小"),
 			Map.entry("Hold Ticks", "手持 tick"),
 			Map.entry("Throw Ticks", "抛出 tick"),
 			Map.entry("Float Ticks", "漂浮 tick"),

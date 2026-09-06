@@ -57,6 +57,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	private static final String TAG_RANK = "yh_spell_rank";
 	private static final String TAG_CARD_TYPE = "yh_spell_card_type";
 	private static final String TAG_EX_SPELL = "yh_ex_spell";
+	private static final String TAG_CARD_FACE_REFRESH_REQUIRED = "yh_card_face_refresh_required";
 	/** Mark on OP-given cards: a complete spell card that casts directly (no editor). */
 	private static final String TAG_COMPLETE = "complete";
 	/**
@@ -205,6 +206,18 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			stack.getOrCreateTag().putBoolean(TAG_COMPLETE, true);
 		} else if (stack.hasTag()) {
 			stack.getTag().remove(TAG_COMPLETE);
+		}
+	}
+
+	public static boolean requiresCardFaceRefresh(ItemStack stack) {
+		return stack.hasTag() && stack.getTag().getBoolean(TAG_CARD_FACE_REFRESH_REQUIRED);
+	}
+
+	public static void setCardFaceRefreshRequired(ItemStack stack, boolean required) {
+		if (required) {
+			stack.getOrCreateTag().putBoolean(TAG_CARD_FACE_REFRESH_REQUIRED, true);
+		} else if (stack.hasTag()) {
+			stack.getTag().remove(TAG_CARD_FACE_REFRESH_REQUIRED);
 		}
 	}
 

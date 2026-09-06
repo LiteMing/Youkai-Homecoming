@@ -153,7 +153,8 @@ public final class DodgePilot {
 			double currentScore = currentCourse.score();
 			boolean playerPrefersCandidate = state.inputPreference.lengthSqr() > 1e-10
 					&& alignment(candidate, state.inputPreference)
-					> alignment(committedVelocity, state.inputPreference) + 0.2;
+					> alignment(committedVelocity, state.inputPreference)
+					+ 0.2 / state.effectiveInputPreferenceWeight();
 			if (!playerPrefersCandidate && candidateScore < currentScore + PLAN_REPLACE_MARGIN) {
 				commitTicksLeft--;
 				return committedVelocity;

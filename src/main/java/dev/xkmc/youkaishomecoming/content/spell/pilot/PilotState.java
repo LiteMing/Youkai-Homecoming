@@ -16,6 +16,8 @@ public final class PilotState {
 	public Vec3 anchor;
 	/** Direction requested through Control + movement input. */
 	public Vec3 inputPreference;
+	/** Relative strength of Control-assisted input; 1 preserves the base pilot behavior. */
+	public double inputPreferenceWeight;
 	/** Cached low-frequency open-space direction. */
 	public Vec3 gapPreference;
 	/** Previous committed route, used only to break otherwise similar scores. */
@@ -48,6 +50,7 @@ public final class PilotState {
 		this.oracle = CollisionOracle.ALWAYS_FREE;
 		this.anchor = feet;
 		this.inputPreference = Vec3.ZERO;
+		this.inputPreferenceWeight = 1;
 		this.gapPreference = Vec3.ZERO;
 		this.continuityPreference = velocity;
 		this.grounded = false;
@@ -74,10 +77,11 @@ public final class PilotState {
 	/** Navigation terms are deliberately smaller than collision safety terms. */
 	public double navigationScore(Vec3 position, Vec3 velocity) {
 		double score = 0;
+		double inputWeight = effectiveInputPreferenceWeight();
 		if (velocity.lengthSqr() > 1e-10) {
 			Vec3 dir = velocity.normalize();
 			if (inputPreference.lengthSqr() > 1e-10) {
-				score += dir.dot(inputPreference.normalize()) * 0.9;
+				score += dir.dot(inputPreference.normalize()) * 0.9 * inputWeight;
 			}
 			if (gapPreference.lengthSqr() > 1e-10) {
 				score += dir.dot(gapPreference.normalize()) * 0.28;
@@ -88,9 +92,13 @@ public final class PilotState {
 		}
 		double away = position.distanceTo(anchor);
 		if (away > 4.0) {
-			score -= Math.min(1.5, (away - 4.0) * 0.08);
+			score -= Math.min(1.5, (away - 4.0) * 0.08) / inputWeight;
 		}
 		return score;
+	}
+
+	public double effectiveInputPreferenceWeight() {
+		return inputPreference.lengthSqr() > 1e-10 ? Math.max(1, inputPreferenceWeight) : 1;
 	}
 
 	/**

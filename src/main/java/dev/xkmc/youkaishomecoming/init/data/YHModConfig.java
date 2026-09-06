@@ -32,6 +32,8 @@ public class YHModConfig {
 		public final ForgeConfigSpec.ConfigValue<String> classicControlBackwardKey;
 		public final ForgeConfigSpec.ConfigValue<String> classicControlLeftKey;
 		public final ForgeConfigSpec.ConfigValue<String> classicControlRightKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlAscendKey;
+		public final ForgeConfigSpec.ConfigValue<String> classicControlDescendKey;
 		public final ForgeConfigSpec.ConfigValue<String> classicControlFocusKey;
 		public final ForgeConfigSpec.ConfigValue<String> classicControlToggleKey;
 		public final ForgeConfigSpec.ConfigValue<String> classicControlNonSpellKey;
@@ -117,6 +119,12 @@ public class YHModConfig {
 			classicControlRightKey = builder.comment("Serialized Minecraft keyboard key used to move right in classic controls.")
 					.translation("config.youkaishomecoming.client.classicControlRightKey")
 					.define("classicControlRightKey", "key.keyboard.right");
+			classicControlAscendKey = builder.comment("Serialized Minecraft keyboard key used to jump or ascend in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlAscendKey")
+					.define("classicControlAscendKey", "key.keyboard.right.control");
+			classicControlDescendKey = builder.comment("Serialized Minecraft keyboard key used to sneak or descend in classic controls.")
+					.translation("config.youkaishomecoming.client.classicControlDescendKey")
+					.define("classicControlDescendKey", "key.keyboard.right.shift");
 			classicControlFocusKey = builder.comment("Serialized Minecraft keyboard key used for focus and low-speed movement.")
 					.translation("config.youkaishomecoming.client.classicControlFocusKey")
 					.define("classicControlFocusKey", "key.keyboard.left.shift");

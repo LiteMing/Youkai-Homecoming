@@ -65,7 +65,8 @@ public final class ClassicControlClient {
 		Component message = switch (notice) {
 			case ClassicControlSyncToClient.NOTICE_ENABLED -> YHLangData.CLASSIC_CONTROL_ENABLED.get(
 					ControlKey.FORWARD.displayName(), ControlKey.BACKWARD.displayName(),
-					ControlKey.LEFT.displayName(), ControlKey.RIGHT.displayName());
+					ControlKey.LEFT.displayName(), ControlKey.RIGHT.displayName(),
+					ControlKey.ASCEND.displayName(), ControlKey.DESCEND.displayName());
 			case ClassicControlSyncToClient.NOTICE_DISABLED -> YHLangData.CLASSIC_CONTROL_DISABLED.get(
 					ControlKey.FOCUS.displayName(), ControlKey.TOGGLE.displayName());
 			case ClassicControlSyncToClient.NOTICE_AVAILABLE -> YHLangData.CLASSIC_CONTROL_AVAILABLE.get(
@@ -134,10 +135,11 @@ public final class ClassicControlClient {
 				: 1;
 		event.getInput().forwardImpulse = forward * speedScale;
 		event.getInput().leftImpulse = left * speedScale;
-		event.getInput().shiftKeyDown = false;
+		event.getInput().shiftKeyDown = ControlKey.DESCEND.isDown(minecraft);
 		if (toggleDown && focusDown && ControlKey.TOGGLE.matches(minecraft.options.keyJump.getKey())) {
 			event.getInput().jumping = false;
 		}
+		event.getInput().jumping |= ControlKey.ASCEND.isDown(minecraft);
 		event.getEntity().setSprinting(!focused && Math.abs(forward) + Math.abs(left) > 0.01f);
 	}
 
@@ -165,6 +167,8 @@ public final class ClassicControlClient {
 		BACKWARD(GLFW.GLFW_KEY_DOWN, () -> YHModConfig.CLIENT.classicControlBackwardKey.get()),
 		LEFT(GLFW.GLFW_KEY_LEFT, () -> YHModConfig.CLIENT.classicControlLeftKey.get()),
 		RIGHT(GLFW.GLFW_KEY_RIGHT, () -> YHModConfig.CLIENT.classicControlRightKey.get()),
+		ASCEND(GLFW.GLFW_KEY_RIGHT_CONTROL, () -> YHModConfig.CLIENT.classicControlAscendKey.get()),
+		DESCEND(GLFW.GLFW_KEY_RIGHT_SHIFT, () -> YHModConfig.CLIENT.classicControlDescendKey.get()),
 		FOCUS(GLFW.GLFW_KEY_LEFT_SHIFT, () -> YHModConfig.CLIENT.classicControlFocusKey.get()),
 		TOGGLE(GLFW.GLFW_KEY_SPACE, () -> YHModConfig.CLIENT.classicControlToggleKey.get()),
 		CLASSIC_NON_SPELL(GLFW.GLFW_KEY_Z, () -> YHModConfig.CLIENT.classicControlNonSpellKey.get()),

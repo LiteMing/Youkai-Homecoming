@@ -311,8 +311,9 @@ public class ClientDanmakuCache {
 			renderHitbox(pose, lines, e, pTick);
 			pose.popPose();
 		}
-		if (cam.getEntity() instanceof Player player && !all.isEmpty()
-				&& !minecraft.options.getCameraType().isFirstPerson()) {
+		// Detached camera mods can use a non-player camera entity; render the real player's box.
+		Player player = cam.getEntity() instanceof Player cameraPlayer ? cameraPlayer : minecraft.player;
+		if (player != null && !all.isEmpty() && cam.isDetached()) {
 			renderPlayerHitbox(pose, lines, player, camx, camy, camz, pTick);
 		}
 		endHitboxBatch(lineBuffers);

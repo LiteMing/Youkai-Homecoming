@@ -13,7 +13,8 @@ final class DanmakuHitboxRenderStates extends RenderStateShard {
 
 	static final RenderType LINES = RenderType.create(
 			"youkaishomecoming_danmaku_hitbox_lines",
-			DefaultVertexFormat.POSITION_COLOR,
+			// The vanilla line shader uses normals to expand each line to its screen-space width.
+			DefaultVertexFormat.POSITION_COLOR_NORMAL,
 			VertexFormat.Mode.LINES,
 			256,
 			false,

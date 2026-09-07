@@ -150,8 +150,9 @@ public final class ClassicControlClient {
 
 	public static boolean shouldRenderFocusHitbox() {
 		Minecraft minecraft = Minecraft.getInstance();
+		// Camera mods can detach the actual view while leaving CameraType at first person.
 		return enabled && minecraft.player != null && minecraft.screen == null
-				&& !minecraft.options.getCameraType().isFirstPerson()
+				&& minecraft.gameRenderer.getMainCamera().isDetached()
 				&& ControlKey.FOCUS.isDown(minecraft) && !ControlKey.TOGGLE.isDown(minecraft);
 	}
 

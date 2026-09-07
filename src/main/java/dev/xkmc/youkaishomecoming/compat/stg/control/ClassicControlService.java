@@ -76,6 +76,14 @@ public final class ClassicControlService {
 	}
 
 	public static void handleInput(ServerPlayer player, int action) {
+		if (action == ClassicControlRequestToServer.TOGGLE_COMBAT) {
+			if (!player.isAlive() || player.isSpectator()) return;
+			if (GrazeHelper.tryToggleManualCombat(player) && !YHStgApi.isInDanmakuSession(player)) {
+				// Clear classic input immediately without replacing the combat-exit notice.
+				reset(player);
+			}
+			return;
+		}
 		if (action == ClassicControlRequestToServer.TOGGLE_MODE) {
 			setEnabled(player, !isEnabled(player));
 			return;

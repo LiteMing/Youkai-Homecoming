@@ -149,7 +149,8 @@ public class GrazeHelper {
 	}
 
 	/**
-	 * Shift+RMB toggle for players. Requires a spell card when entering in manual mode.
+	 * Manual combat toggle shared by spell-card interaction and the client shortcut.
+	 * Requires a cast-ready spell card when entering in manual mode.
 	 * Exit clears combat state without wiping life/bomb/power.
 	 */
 	public static boolean tryToggleManualCombat(Player player) {
@@ -165,7 +166,7 @@ public class GrazeHelper {
 			return false;
 		}
 		var cap = GrazeCapability.HOLDER.get(sp);
-		if (cap.isForcedDanmakuCombat()) {
+		if (cap.isInDanmakuCombat()) {
 			cap.clearCombatState(true);
 			sp.displayClientMessage(YHLangData.STG_EXIT.get(), true);
 			return true;

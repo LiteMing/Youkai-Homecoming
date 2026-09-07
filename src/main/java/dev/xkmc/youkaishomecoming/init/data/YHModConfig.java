@@ -50,6 +50,8 @@ public class YHModConfig {
 		public final ForgeConfigSpec.ConfigValue<String> classicControlToggleKey;
 		public final ForgeConfigSpec.ConfigValue<String> classicControlNonSpellKey;
 		public final ForgeConfigSpec.ConfigValue<String> classicControlNextSpellKey;
+		public final ForgeConfigSpec.ConfigValue<String> danmakuCombatModifierKey;
+		public final ForgeConfigSpec.ConfigValue<String> danmakuCombatToggleKey;
 		public final ForgeConfigSpec.ConfigValue<String> autoDodgePilotControlKey;
 		public final ForgeConfigSpec.DoubleValue classicControlLowSpeedMultiplier;
 		public final ForgeConfigSpec.DoubleValue previewBlockTargetX;
@@ -173,6 +175,12 @@ public class YHModConfig {
 					.defineInRange("feedbackCameraShakeScale", 1.0, 0.0, 1.0);
 			builder.translation("config.youkaishomecoming.client.keys").push("keys");
 			{
+				danmakuCombatModifierKey = builder.comment("Serialized Minecraft keyboard key held with the combat toggle key to enter or leave manual danmaku combat.")
+						.translation("config.youkaishomecoming.client.danmakuCombatModifierKey")
+						.define("danmakuCombatModifierKey", "key.keyboard.left.shift");
+				danmakuCombatToggleKey = builder.comment("Serialized Minecraft keyboard key pressed with the combat modifier key. Entering requires a cast-ready spell card in the hands, inventory, or Curios.")
+						.translation("config.youkaishomecoming.client.danmakuCombatToggleKey")
+						.define("danmakuCombatToggleKey", "key.keyboard.f");
 				autoDodgePilotControlKey = builder.comment("Serialized Minecraft keyboard key used for assisted Auto Dodge pilot control.")
 						.translation("config.youkaishomecoming.client.autoDodgePilotControlKey")
 						.define("autoDodgePilotControlKey", "key.keyboard.left.control");

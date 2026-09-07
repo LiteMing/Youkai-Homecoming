@@ -5,7 +5,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
-/** Client input request for the temporary, server-authoritative classic controls mode. */
+/** Client requests for server-authoritative STG combat and classic controls. */
 @SerialClass
 public class ClassicControlRequestToServer extends SerialPacketBase {
 
@@ -13,6 +13,7 @@ public class ClassicControlRequestToServer extends SerialPacketBase {
 	public static final int NON_SPELL_ON = 1;
 	public static final int NON_SPELL_OFF = 2;
 	public static final int CAST_NEXT_SPELL = 3;
+	public static final int TOGGLE_COMBAT = 4;
 
 	@SerialClass.SerialField
 	public int action;

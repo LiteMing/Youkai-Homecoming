@@ -1,0 +1,7 @@
+{
+  "config.youkaishomecoming.client.danmakuCombatModifierKey": "弹幕战切换组合键",
+  "config.youkaishomecoming.client.danmakuCombatModifierKey.tooltip": "按住此键并按下弹幕战切换键，可进入或退出手动弹幕战。默认：key.keyboard.left.shift",
+  "config.youkaishomecoming.client.danmakuCombatToggleKey": "弹幕战切换键",
+  "config.youkaishomecoming.client.danmakuCombatToggleKey.tooltip": "与弹幕战切换组合键搭配使用；进入时需要主副手、背包或饰品栏中有符合条件的符卡。默认：key.keyboard.f",
+  "youkaishomecoming.tooltip.stg_toggle_key": "%s + %s：进入或退出弹幕战"
+}

@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.xkmc.l2damagetracker.contents.curios.AttrTooltip;
 import dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlClient;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.CombatProgress;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
@@ -77,6 +78,9 @@ public class ClientEventHandlers {
 
 	@SubscribeEvent
 	public static void onTooltip(ItemTooltipEvent event) {
+		if (GrazeHelper.isManualCombatMode() && GrazeHelper.isSpellStack(event.getItemStack())) {
+			event.getToolTip().add(ClassicControlClient.combatToggleHint());
+		}
 		if (event.getItemStack().getItem() instanceof TouhouHatItem hat) {
 			AttrTooltip.modifyTooltip(event.getToolTip(), hat.getAttributeModifiersForDisplay(), false);
 		}

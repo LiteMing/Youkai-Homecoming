@@ -15,6 +15,7 @@ import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.MovementInputUpdateEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.settings.KeyConflictContext;
+import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.common.MinecraftForge;
 import org.lwjgl.glfw.GLFW;
 
@@ -42,6 +43,7 @@ public final class ClassicControlClient {
 	);
 	private static boolean enabled;
 	private static boolean nonSpellHeldSent;
+	private static final ToggleKeyChord COMBAT_TOGGLE = new ToggleKeyChord();
 
 	private ClassicControlClient() {
 	}
@@ -84,7 +86,19 @@ public final class ClassicControlClient {
 
 	public static void handleKey(InputEvent.Key event) {
 		Minecraft minecraft = Minecraft.getInstance();
-		if (minecraft.player == null || minecraft.screen != null || event.getAction() != GLFW.GLFW_PRESS) return;
+		if (minecraft.player == null || minecraft.screen != null || !minecraft.isWindowActive()) {
+			COMBAT_TOGGLE.reset();
+			return;
+		}
+		ToggleKeyChord.Result combatToggle = COMBAT_TOGGLE.handle(event.getKey(), event.getAction(),
+				ControlKey.COMBAT_TOGGLE.key().getValue(), ControlKey.COMBAT_MODIFIER.isDown(minecraft));
+		if (combatToggle != ToggleKeyChord.Result.IGNORED) {
+			ToggleKeyChord.consumeMappings(InputConstants.getKey(event.getKey(), event.getScanCode()),
+					minecraft.options.keyMappings);
+			if (combatToggle == ToggleKeyChord.Result.TRIGGERED) send(ClassicControlRequestToServer.TOGGLE_COMBAT);
+			return;
+		}
+		if (event.getAction() != GLFW.GLFW_PRESS) return;
 		if (ControlKey.TOGGLE.matches(event) && ControlKey.FOCUS.isDown(minecraft)) {
 			send(ClassicControlRequestToServer.TOGGLE_MODE);
 			return;
@@ -102,9 +116,12 @@ public final class ClassicControlClient {
 	public static void tick() {
 		Minecraft minecraft = Minecraft.getInstance();
 		if (minecraft.player == null || minecraft.level == null) {
+			COMBAT_TOGGLE.reset();
 			setEnabled(false, ClassicControlSyncToClient.NOTICE_NONE);
 			return;
 		}
+		if (minecraft.screen != null || !minecraft.isWindowActive()) COMBAT_TOGGLE.reset();
+		else COMBAT_TOGGLE.releaseIfUp(key -> InputConstants.isKeyDown(minecraft.getWindow().getWindow(), key));
 		boolean held = minecraft.screen == null
 				&& GrazeCapability.HOLDER.get(minecraft.player).isInDanmakuCombat()
 				&& (FIRE_NON_SPELL.isDown()
@@ -160,6 +177,11 @@ public final class ClassicControlClient {
 		return enabled;
 	}
 
+	public static Component combatToggleHint() {
+		return YHLangData.STG_TOGGLE_KEY_TIP.get(
+				ControlKey.COMBAT_MODIFIER.displayName(), ControlKey.COMBAT_TOGGLE.displayName());
+	}
+
 	private static float axis(Minecraft minecraft, ControlKey positiveKey, ControlKey negativeKey) {
 		return (positiveKey.isDown(minecraft) ? 1 : 0) - (negativeKey.isDown(minecraft) ? 1 : 0);
 	}
@@ -173,33 +195,33 @@ public final class ClassicControlClient {
 	}
 
 	private enum ControlKey {
-		FORWARD(GLFW.GLFW_KEY_UP, () -> YHModConfig.CLIENT.classicControlForwardKey.get()),
-		BACKWARD(GLFW.GLFW_KEY_DOWN, () -> YHModConfig.CLIENT.classicControlBackwardKey.get()),
-		LEFT(GLFW.GLFW_KEY_LEFT, () -> YHModConfig.CLIENT.classicControlLeftKey.get()),
-		RIGHT(GLFW.GLFW_KEY_RIGHT, () -> YHModConfig.CLIENT.classicControlRightKey.get()),
-		ASCEND(GLFW.GLFW_KEY_RIGHT_SHIFT, () -> YHModConfig.CLIENT.classicControlAscendKey.get()),
-		DESCEND(GLFW.GLFW_KEY_RIGHT_CONTROL, () -> YHModConfig.CLIENT.classicControlDescendKey.get()),
-		FOCUS(GLFW.GLFW_KEY_LEFT_SHIFT, () -> YHModConfig.CLIENT.classicControlFocusKey.get()),
-		TOGGLE(GLFW.GLFW_KEY_SPACE, () -> YHModConfig.CLIENT.classicControlToggleKey.get()),
-		CLASSIC_NON_SPELL(GLFW.GLFW_KEY_Z, () -> YHModConfig.CLIENT.classicControlNonSpellKey.get()),
-		CLASSIC_NEXT_SPELL(GLFW.GLFW_KEY_X, () -> YHModConfig.CLIENT.classicControlNextSpellKey.get());
+		FORWARD(() -> YHModConfig.CLIENT.classicControlForwardKey),
+		BACKWARD(() -> YHModConfig.CLIENT.classicControlBackwardKey),
+		LEFT(() -> YHModConfig.CLIENT.classicControlLeftKey),
+		RIGHT(() -> YHModConfig.CLIENT.classicControlRightKey),
+		ASCEND(() -> YHModConfig.CLIENT.classicControlAscendKey),
+		DESCEND(() -> YHModConfig.CLIENT.classicControlDescendKey),
+		FOCUS(() -> YHModConfig.CLIENT.classicControlFocusKey),
+		TOGGLE(() -> YHModConfig.CLIENT.classicControlToggleKey),
+		CLASSIC_NON_SPELL(() -> YHModConfig.CLIENT.classicControlNonSpellKey),
+		CLASSIC_NEXT_SPELL(() -> YHModConfig.CLIENT.classicControlNextSpellKey),
+		COMBAT_MODIFIER(() -> YHModConfig.CLIENT.danmakuCombatModifierKey),
+		COMBAT_TOGGLE(() -> YHModConfig.CLIENT.danmakuCombatToggleKey);
 
-		private final InputConstants.Key fallback;
-		private final Supplier<String> configuredName;
+		private final Supplier<ForgeConfigSpec.ConfigValue<String>> configuredKey;
 
-		ControlKey(int fallback, Supplier<String> configuredName) {
-			this.fallback = InputConstants.Type.KEYSYM.getOrCreate(fallback);
-			this.configuredName = configuredName;
+		ControlKey(Supplier<ForgeConfigSpec.ConfigValue<String>> configuredKey) {
+			this.configuredKey = configuredKey;
 		}
 
 		private InputConstants.Key key() {
+			var config = configuredKey.get();
 			try {
-				InputConstants.Key key = InputConstants.getKey(configuredName.get());
-				return key.getType() == InputConstants.Type.KEYSYM && key.getValue() != GLFW.GLFW_KEY_UNKNOWN
-						? key : fallback;
+				InputConstants.Key key = InputConstants.getKey(config.get());
+				if (key.getType() == InputConstants.Type.KEYSYM && key.getValue() != GLFW.GLFW_KEY_UNKNOWN) return key;
 			} catch (IllegalArgumentException ignored) {
-				return fallback;
 			}
+			return InputConstants.getKey(config.getDefault());
 		}
 
 		private Component displayName() {

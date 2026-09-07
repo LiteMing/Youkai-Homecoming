@@ -49,3 +49,34 @@ Available fields:
 
 Listeners should treat the entity references as server-side objects and avoid
 using this event to infer client rendering state.
+
+## Classic control client hook (0.28.5)
+
+The classic planar-control toggle is server-authoritative but projected to the
+local client. Client scripts can read the accepted state through
+`YHStgClient.isClassicControlEnabled()` or `YHStgClient.getControlMode()`.
+`getControlMode()` returns `"classic"` or `"modern"`; this is separate from
+the server-side novice/classic Bomb setting exposed by `YHStg.getMode(player)`.
+
+`YHStgEvents.classicControlChanged` fires in `kubejs/client_scripts` only when
+the accepted client state actually changes. It also fires with modern mode when
+classic controls are cleared by combat exit or disconnect.
+
+```js
+YHStgEvents.classicControlChanged(event => {
+  if (event.classic) {
+    // Ask the installed camera mod to enter its third-person top-down preset.
+  } else {
+    // Restore the desired modern-mode camera, such as first person.
+  }
+})
+```
+
+The event exposes `classic`, `modern`, `mode`, `previousMode`, and
+`wasClassic()`. A client script reloaded while combat is already active should
+use `YHStgClient.getControlMode()` to obtain the initial state.
+
+Client-side Java integrations may instead listen for
+`dev.xkmc.youkaishomecoming.compat.stg.event.ClassicControlModeEvent` on the
+Forge event bus. Camera ownership and restoration remain with the camera mod or
+script; YH only publishes the accepted control-mode transition.

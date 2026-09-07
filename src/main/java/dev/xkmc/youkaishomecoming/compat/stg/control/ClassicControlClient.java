@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.compat.stg.control;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.compat.stg.event.ClassicControlModeEvent;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
@@ -14,6 +15,7 @@ import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.MovementInputUpdateEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.settings.KeyConflictContext;
+import net.minecraftforge.common.MinecraftForge;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.function.Supplier;
@@ -50,12 +52,16 @@ public final class ClassicControlClient {
 	}
 
 	public static void setEnabled(boolean value, int notice) {
+		boolean previous = enabled;
 		if (enabled && !value) {
 			Minecraft minecraft = Minecraft.getInstance();
 			if (minecraft.player != null) minecraft.player.setSprinting(false);
 		}
 		enabled = value;
 		if (!value) nonSpellHeldSent = false;
+		if (previous != value) {
+			MinecraftForge.EVENT_BUS.post(new ClassicControlModeEvent(previous, value));
+		}
 		showNotice(notice);
 	}
 
@@ -96,8 +102,7 @@ public final class ClassicControlClient {
 	public static void tick() {
 		Minecraft minecraft = Minecraft.getInstance();
 		if (minecraft.player == null || minecraft.level == null) {
-			enabled = false;
-			nonSpellHeldSent = false;
+			setEnabled(false, ClassicControlSyncToClient.NOTICE_NONE);
 			return;
 		}
 		boolean held = minecraft.screen == null

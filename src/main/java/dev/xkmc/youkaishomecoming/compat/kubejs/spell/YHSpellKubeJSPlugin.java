@@ -4,7 +4,10 @@ import dev.latvian.mods.kubejs.KubeJSPlugin;
 import dev.latvian.mods.kubejs.script.BindingsEvent;
 import dev.latvian.mods.kubejs.script.ScriptType;
 import dev.latvian.mods.kubejs.util.ClassFilter;
+import dev.xkmc.youkaishomecoming.compat.kubejs.stg.YHStgKubeJSClientBridge;
+import dev.xkmc.youkaishomecoming.compat.kubejs.stg.YHStgKubeJSEvents;
 import dev.xkmc.youkaishomecoming.compat.stg.YHStg;
+import dev.xkmc.youkaishomecoming.compat.stg.YHStgClient;
 import dev.xkmc.youkaishomecoming.compat.ysm.YHModel;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellConditions;
@@ -17,6 +20,7 @@ public class YHSpellKubeJSPlugin extends KubeJSPlugin {
 	@Override
 	public void registerEvents() {
 		YHSpellKubeJSEvents.GROUP.register();
+		YHStgKubeJSEvents.GROUP.register();
 	}
 
 	@Override
@@ -29,6 +33,9 @@ public class YHSpellKubeJSPlugin extends KubeJSPlugin {
 		event.add("YHModel", YHModel.class);
 		event.add("SpellConditions", SpellConditions.class);
 		event.add("SpellActions", SpellActions.class);
+		if (event.getType() == ScriptType.CLIENT) {
+			event.add("YHStgClient", YHStgClient.class);
+		}
 	}
 
 	@Override
@@ -43,5 +50,10 @@ public class YHSpellKubeJSPlugin extends KubeJSPlugin {
 		KubeJSSpellActions.register();
 		KubeJSSpellConditions.register();
 		RegisterSpellsEventJS.fireAndRegister();
+	}
+
+	@Override
+	public void clientInit() {
+		YHStgKubeJSClientBridge.register();
 	}
 }

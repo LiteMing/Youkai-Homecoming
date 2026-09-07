@@ -1,19 +1,17 @@
 package dev.xkmc.fastprojectileapi.spellcircle;
 
-import com.mojang.blaze3d.vertex.PoseStack;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
-import org.jetbrains.annotations.Nullable;
-import org.joml.Quaternionf;
+
+import java.util.List;
 
 /**
- * Player STG battle spell circle (design doc §17.2-17.3, D4).
+ * Editable player STG resource projection shared by automatic circles, overrides and preview.
  * <ul>
  *   <li>main ring from the {@code youkaishomecoming:player_stg} circle definition;</li>
+ *   <li>resource sub-circles are opt-in via {@link SpellComponent#player_stg_resources};</li>
  *   <li>bomb sub-circles rendered dynamically around the ring from the editable
  *   {@code player_stg_bomb} component: one full sub-circle per whole bomb
  *   (RESOURCE_UNIT = 5 raw units), a partial sub-circle for the fractional
@@ -31,14 +29,15 @@ import org.joml.Quaternionf;
 @OnlyIn(Dist.CLIENT)
 public final class PlayerStgSpellCircle {
 
-	private static final ResourceLocation PLAYER_STG = new ResourceLocation("youkaishomecoming", "player_stg");
-	private static final ResourceLocation PLAYER_STG_BOMB = new ResourceLocation("youkaishomecoming", "player_stg_bomb");
-	private static final ResourceLocation PLAYER_STG_POWER = new ResourceLocation("youkaishomecoming", "player_stg_power");
-	private static final ResourceLocation PLAYER_STG_POINTS = new ResourceLocation("youkaishomecoming", "player_stg_points");
-	private static final ResourceLocation SPELL_TEX = new ResourceLocation("youkaishomecoming", "textures/entities/spell_circle.png");
-	private static final int RESOURCE_UNIT = 5;
-	private static final int POWER_UNIT = 100;
-	private static final int POINTS_UNIT = 100;
+	public static final ResourceLocation PLAYER_STG = new ResourceLocation("youkaishomecoming", "player_stg");
+	public static final ResourceLocation PLAYER_STG_BOMB = new ResourceLocation("youkaishomecoming", "player_stg_bomb");
+	public static final ResourceLocation PLAYER_STG_POWER = new ResourceLocation("youkaishomecoming", "player_stg_power");
+	public static final ResourceLocation PLAYER_STG_POINTS = new ResourceLocation("youkaishomecoming", "player_stg_points");
+	public static final List<ResourceLocation> COMPONENT_IDS = List.of(
+			PLAYER_STG, PLAYER_STG_BOMB, PLAYER_STG_POWER, PLAYER_STG_POINTS);
+	public static final int RESOURCE_UNIT = 5;
+	public static final int POWER_UNIT = 100;
+	public static final int POINTS_UNIT = 100;
 	private static final float BOMB_RADIUS = 44;
 	// Keep resource rings outside the HP/time progress rings (HP is centered at 52).
 	private static final float POWER_RADIUS = 60;
@@ -47,39 +46,15 @@ public final class PlayerStgSpellCircle {
 	private PlayerStgSpellCircle() {
 	}
 
-	public static void render(PoseStack pose, MultiBufferSource buffer, int light,
-							  Player player, float pTick, @Nullable Quaternionf front) {
-		GrazeCapability cap = GrazeCapability.HOLDER.get(player);
-		if (cap == null || !cap.shouldRenderPlayerStgCircle()) return;
-		SpellComponent component = SpellComponent.getFromConfig(PLAYER_STG.toString());
-		if (component == null) return;
-
-		float alpha = computeAlpha(cap);
-		if (!SpellCircleLifeAlpha.shouldRender(alpha)) return;
-
-		pose.pushPose();
-		pose.translate(0, player.getBbHeight() * 0.5f, 0);
-		pose.scale(1 / 16f, 1 / 16f, 1 / 16f);
-		if (front != null) {
-			pose.mulPose(front);
-			pose.mulPose(new Quaternionf().rotationY((float) Math.PI));
-		}
-		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(
-				pose, buffer, SpellRenderState.getSpell(SPELL_TEX), player.tickCount + pTick, light);
-		handle.alpha = alpha;
-		component.render(handle);
-		SpellProgressCircleRenderer.render(pose, buffer, light, player, pTick, alpha);
-		SpellCircleResourceRenderer.render(pose, buffer, light, player, pTick, alpha,
-				cap.getBomb(), RESOURCE_UNIT, PLAYER_STG_BOMB, BOMB_RADIUS, 0);
-		SpellCircleResourceRenderer.render(pose, buffer, light, player, pTick, alpha,
-				cap.getPower(), POWER_UNIT, PLAYER_STG_POWER, POWER_RADIUS, 180);
-		SpellCircleResourceRenderer.render(pose, buffer, light, player, pTick, alpha,
-				cap.getPoints(), POINTS_UNIT, PLAYER_STG_POINTS, POINTS_RADIUS, 0);
-		pose.popPose();
+	public static void renderResources(SpellComponent.RenderHandle handle, GrazeCapability cap) {
+		renderResources(handle, cap.getBomb(), cap.getPower(), cap.getPoints());
 	}
 
-	private static float computeAlpha(GrazeCapability cap) {
-		return SpellCircleLifeAlpha.compute(cap);
+	/** Raw resource values; preview supplies samples without changing the player's capability. */
+	public static void renderResources(SpellComponent.RenderHandle handle, int bomb, int power, int points) {
+		SpellCircleResourceRenderer.render(handle, bomb, RESOURCE_UNIT, PLAYER_STG_BOMB, BOMB_RADIUS, 0);
+		SpellCircleResourceRenderer.render(handle, power, POWER_UNIT, PLAYER_STG_POWER, POWER_RADIUS, 180);
+		SpellCircleResourceRenderer.render(handle, points, POINTS_UNIT, PLAYER_STG_POINTS, POINTS_RADIUS, 0);
 	}
 
 }

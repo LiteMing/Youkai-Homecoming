@@ -819,6 +819,7 @@ public final class SpellAnalyzerSelfCheck {
 		}
 
 		private void specialCardAndReplicaContracts() {
+			nonSpellPowerCounts();
 			var tier1 = SpellCardRank.LESSER_WISDOM;
 			check("non-spell accepts bounded discard projectile", !rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_SAFE), tier1)));
@@ -865,6 +866,59 @@ public final class SpellAnalyzerSelfCheck {
 							&& !copy.itemForm.exSpell());
 			check("replica deep copy keeps source identity unchanged",
 					source.id.equals(new ResourceLocation("youkaishomecoming", "analyzer_test")));
+		}
+
+		private void nonSpellPowerCounts() {
+			var tier1 = SpellCardRank.LESSER_WISDOM;
+			SpellDefinition adaptive = nonSpellCount("caster_power + 1");
+			for (double power : new double[]{0, 0.25, 0.99, 1, 2.75, 4, 8.5}) {
+				check("non-spell adaptive count fits current Power " + power, !rejects(() ->
+						NonSpellValidator.validate(adaptive, tier1, power)));
+				check("non-spell preview truncates count at Power " + power,
+						SpellAnalyzer.analyzeNonSpellPreview(adaptive, CERT, power).maxSpawnPerTick()
+								== tier1.danmakuPerTick(power));
+			}
+			check("ordinary certification retains the full caster-power bound",
+					SpellAnalyzer.analyzePreview(adaptive, CERT).maxSpawnPerTick()
+							== (long) Math.ceil(dev.xkmc.youkaishomecoming.content.capability.GrazeHelper
+							.getMaximumPowerLevel() + 1));
+			check("non-spell nested floor and clamp retain current Power", !rejects(() ->
+					NonSpellValidator.validate(nonSpellCount("clamp(floor(caster_power) + 1, 1, 10)"), tier1, 2.75)));
+			check("non-spell rejects a count above the current Power budget", rejects(() ->
+					NonSpellValidator.validate(nonSpellCount("caster_power + 2"), tier1, 2.75)));
+			SpellDefinition nonlinear = nonSpellCount("caster_power * caster_power + 1");
+			check("nonlinear count fits at zero Power", !rejects(() ->
+					NonSpellValidator.validate(nonlinear, tier1, 0)));
+			check("nonlinear count is rejected after Power grows beyond its budget", rejects(() ->
+					NonSpellValidator.validate(nonlinear, tier1, 2)));
+			check("non-spell unknown count remains unbounded", rejects(() ->
+					NonSpellValidator.validate(nonSpellCount("$count"), tier1, 2.75)));
+			SpellDefinition repeat = parse(spell("{\"type\": \"repeat\", \"count\": \"caster_power + 1\","
+					+ "\"body\": [" + NON_SPELL_SAFE_ACTION + "]}"));
+			check("repeat counts use the same Power and integer conversion", !rejects(() ->
+					NonSpellValidator.validate(repeat, tier1, 2.75)));
+			SpellDefinition grid = parse(NON_SPELL_SAFE.replace("\"count\": 1",
+					"\"count\": \"caster_power + 1\", \"pattern\": \"grid\""));
+			check("grid counts both default dimensions at current Power",
+					SpellAnalyzer.analyzeNonSpellPreview(grid, CERT, 2.75).maxSpawnPerTick() == 9);
+			check("non-spell grid cannot hide its second dimension", rejects(() ->
+					NonSpellValidator.validate(grid, tier1, 2.75)));
+			SpellDefinition nested = parse(NON_SPELL_SAFE.replace("\"count\": 1",
+					"\"count\": 2, \"pattern\": \"nested_ring\", \"outer_count\": \"caster_power + 1\""));
+			check("nested ring outer_count uses current Power",
+					SpellAnalyzer.analyzeNonSpellPreview(nested, CERT, 2.75).maxSpawnPerTick() == 6);
+			SpellDefinition zero = parse(spell(NON_SPELL_SAFE_ACTION.replace("\"count\": 1", "\"count\": 0")
+					+ "," + NON_SPELL_SAFE_ACTION.replace("\"count\": 1", "\"count\": 0")));
+			check("emitter minimum of one projectile is included in the budget", rejects(() ->
+					NonSpellValidator.validate(zero, tier1, 0)));
+		}
+
+		private SpellDefinition nonSpellCount(String expression) {
+			SpellDefinition definition = parse(NON_SPELL_SAFE.replace("\"count\": 1",
+					"\"count\": \"" + expression + "\""));
+			definition.itemForm = definition.itemForm.withCardType(
+					dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType.NON_SPELL);
+			return definition;
 		}
 
 		private void projectionModel() {

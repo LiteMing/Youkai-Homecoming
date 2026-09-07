@@ -34,12 +34,9 @@ public final class EditorTextBoxes {
 		return configure(new SelectableEditBox(font, x, y, width, height, message));
 	}
 
-	/** Shows the short-lived in-game overlay used for editor clipboard feedback. */
+	/** Show clipboard feedback above the editor instead of behind it in the HUD. */
 	public static void notifyCopied() {
-		Minecraft minecraft = Minecraft.getInstance();
-		if (minecraft.player != null) {
-			minecraft.player.displayClientMessage(Component.translatable(COPIED_KEY), true);
-		}
+		EditorNotifications.show(Component.translatable(COPIED_KEY));
 	}
 
 	/** Collapse the last editor selection before another text widget receives focus. */

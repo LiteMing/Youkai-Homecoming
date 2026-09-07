@@ -31,6 +31,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.Transition;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -67,6 +68,9 @@ public final class SpellAnalyzer {
 	private final SpellDefinition definition;
 	private final SpellAnalysisProfile profile;
 	private final SpellAnalysisLimits limits;
+	/** Only non-spell counts share the current power with their dynamic budget. */
+	@Nullable
+	private final NumberBounds countCasterPower;
 
 	// semantic counters
 	private final EnumSet<SpellCapability> capabilities = EnumSet.noneOf(SpellCapability.class);
@@ -137,11 +141,18 @@ public final class SpellAnalyzer {
 
 	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits,
 						  java.util.Set<SpellCapability> extraAllowed, boolean operatorTest) {
+		this(definition, profile, limits, extraAllowed, operatorTest, null);
+	}
+
+	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits,
+			java.util.Set<SpellCapability> extraAllowed, boolean operatorTest,
+			@Nullable NumberBounds countCasterPower) {
 		this.definition = definition;
 		this.profile = profile;
 		this.limits = limits;
 		this.extraAllowed = extraAllowed;
 		this.operatorTest = operatorTest;
+		this.countCasterPower = countCasterPower;
 	}
 
 	public static SpellAnalysis analyze(SpellDefinition definition) {
@@ -173,6 +184,12 @@ public final class SpellAnalyzer {
 				java.util.Set.of(), true).run();
 	}
 
+	/** Count bounds and the caller's non-spell ceiling must use the same power. */
+	public static SpellAnalysis analyzeNonSpell(SpellDefinition definition, SpellAnalysisLimits limits, double power) {
+		return new SpellAnalyzer(definition, SpellAnalysisProfile.CERTIFICATION, limits,
+				java.util.Set.of(), false, NumberBounds.of(power)).run();
+	}
+
 	/**
 	 * Certification projection for editor feedback. Structural and bounded-value
 	 * checks remain active, while the four configurable performance ceilings and
@@ -180,6 +197,16 @@ public final class SpellAnalyzer {
 	 * of losing the projection at the point where it matters most.
 	 */
 	public static SpellAnalysis analyzePreview(SpellDefinition definition, SpellAnalysisLimits configuredLimits) {
+		return analyzePreview(definition, configuredLimits, null);
+	}
+
+	public static SpellAnalysis analyzeNonSpellPreview(SpellDefinition definition,
+			SpellAnalysisLimits configuredLimits, double power) {
+		return analyzePreview(definition, configuredLimits, NumberBounds.of(power));
+	}
+
+	private static SpellAnalysis analyzePreview(SpellDefinition definition, SpellAnalysisLimits configuredLimits,
+			@Nullable NumberBounds countCasterPower) {
 		SpellAnalysisLimits previewLimits = new SpellAnalysisLimits(
 				configuredLimits.maxPhases(), configuredLimits.maxActions(), configuredLimits.maxDepth(),
 				configuredLimits.maxRepeat(), Long.MAX_VALUE, Integer.MAX_VALUE,
@@ -187,7 +214,7 @@ public final class SpellAnalyzer {
 				Integer.MAX_VALUE, Integer.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE,
 				configuredLimits.maxHitsPerProjectile(), configuredLimits.certificationWindowTicks());
 		return new SpellAnalyzer(definition, SpellAnalysisProfile.CERTIFICATION, previewLimits,
-				java.util.Set.of(), true).run();
+				java.util.Set.of(), true, countCasterPower).run();
 	}
 
 	// ------------------------------------------------------------------ pipeline
@@ -780,9 +807,24 @@ public final class SpellAnalyzer {
 	private void handleFire(FireDanmakuAction a, TickProjection projection, long mult) {
 		SpecialNodeCounter.capabilities(a).forEach(this::addCap);
 		checkOrigin(a.origin());
-		long count = boundCount(a.count(), "fire_danmaku count");
-		long outer = profile == SpellAnalysisProfile.CERTIFICATION
-				? boundOptionalCount(a.outerCount(), "outer_count") : 1;
+		long count;
+		long outer;
+		if (countCasterPower != null) {
+			// Match PatternEmitter's truncation, difficulty scaling and pattern
+			// dimensions. Repeat counts, unlike emitter counts, may be zero.
+			count = boundEmitterCount(a.count(), "fire_danmaku count");
+			outer = switch (a.pattern()) {
+				case NESTED_RING -> a.outerCount().isPresent()
+						? boundEmitterCount(a.outerCount().get(), "outer_count") : 1;
+				case GRID -> a.outerCount().isPresent()
+						? boundCount(a.outerCount().get(), "outer_count") : count;
+				default -> 1;
+			};
+		} else {
+			count = boundCount(a.count(), "fire_danmaku count");
+			outer = profile == SpellAnalysisProfile.CERTIFICATION
+					? boundOptionalCount(a.outerCount(), "outer_count") : 1;
+		}
 		long contrib = satMul(satMul(mult, outer), count);
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
 		bucketSpawns(contrib, projection, lifetimeUpper);
@@ -1126,11 +1168,27 @@ public final class SpellAnalyzer {
 			}
 			throw new SpellAnalysisException(label + " must be a bounded numeric literal");
 		}
-		NumberBounds bounds = NumberBounds.resolve(provider);
+		NumberBounds bounds = countBounds(provider, label);
+		return countCasterPower == null ? Math.max(0, (long) Math.ceil(bounds.max()))
+				: Math.max(0, (int) bounds.max());
+	}
+
+	private NumberBounds countBounds(NumberProvider provider, String label) {
+		NumberBounds bounds = NumberBounds.resolve(provider, countCasterPower);
 		if (!bounds.bounded()) {
 			throw rejected("unbounded_value", label + " cannot be bounded statically");
 		}
-		return Math.max(0, (long) Math.ceil(bounds.max()));
+		return bounds;
+	}
+
+	private long boundEmitterCount(NumberProvider provider, String label) {
+		NumberBounds bounds = countBounds(provider, label);
+		var fullHealth = definition.difficulty.resolve(1);
+		var emptyHealth = definition.difficulty.resolve(0);
+		int lo = (int) bounds.min();
+		int hi = (int) bounds.max();
+		return Math.max(Math.max(fullHealth.adjustCount(lo), fullHealth.adjustCount(hi)),
+				Math.max(emptyHealth.adjustCount(lo), emptyHealth.adjustCount(hi)));
 	}
 
 	private long boundOptionalCount(Optional<NumberProvider> provider, String label) {

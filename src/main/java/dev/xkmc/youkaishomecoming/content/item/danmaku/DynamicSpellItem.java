@@ -499,25 +499,15 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		} else if (GrazeHelper.forbidSpellCardWithMessage(player)) {
 			return false;
 		}
-		if (nonSpell && def != null) {
+		if (nonSpell && def != null && player instanceof ServerPlayer sp) {
 			try {
-				NonSpellValidator.validate(def, getRank(stack),
-						player instanceof ServerPlayer sp ? GrazeHelper.getEffectivePowerLevel(sp) : 0);
-			} catch (NonSpellValidator.PresentationNodeException rejected) {
-				if (player instanceof ServerPlayer sp) {
-					sp.displayClientMessage(nonSpellRejectedMessage(rejected), false);
-				}
-				return false;
+				NonSpellValidator.validate(def, getRank(stack), GrazeHelper.getEffectivePowerLevel(sp));
 			} catch (SpellAnalysisException rejected) {
-				if (player instanceof ServerPlayer sp) {
-					sp.displayClientMessage(nonSpellRejectedMessage(rejected), false);
-				}
+				sp.displayClientMessage(nonSpellRejectedMessage(rejected), false);
 				return false;
 			} catch (RuntimeException unexpected) {
 				YoukaisHomecoming.LOGGER.warn("Unexpected non-spell validation failure for {}", def.id, unexpected);
-				if (player instanceof ServerPlayer sp) {
-					sp.displayClientMessage(YHLangData.NON_SPELL_REJECTED_UNKNOWN.get(), false);
-				}
+				sp.displayClientMessage(YHLangData.NON_SPELL_REJECTED_UNKNOWN.get(), false);
 				return false;
 			}
 		}
@@ -583,6 +573,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			Integer durationOverride = !certifiedStack && hasDurationOverride && duration >= 0
 					? duration : null;
 			proxy.init(sp, def, duration, target, certifiedPlan, durationOverride, certifiedStack);
+			if (nonSpell) proxy.bindNonSpellBudget(getRank(stack));
 			sp.serverLevel().addFreshEntity(proxy);
 			SpellContainer.trackProxy(sp, proxy, cardKey);
 			if (lastSpell) {
@@ -619,7 +610,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		return true;
 	}
 
-	private static Component nonSpellRejectedMessage(SpellAnalysisException rejected) {
+	/** Shared with live Power revalidation so cast and runtime failures use the same feedback. */
+	public static Component nonSpellRejectedMessage(SpellAnalysisException rejected) {
 		String message = rejected.getMessage() == null ? "" : rejected.getMessage().toLowerCase(Locale.ROOT);
 		YHLangData reason = message.contains("definition is missing")
 				? YHLangData.NON_SPELL_REASON_DEFINITION

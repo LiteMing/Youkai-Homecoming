@@ -1214,7 +1214,7 @@ public class RawJsonDockPanel implements DockPanel {
 				return true;
 			}
 			// MultiLineEditBox handles the actual clipboard operation. Mirror the
-			// right-click path with an actionbar notification after it succeeds.
+			// right-click path with a floating notification after it succeeds.
 			if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C) {
 				MultilineTextField textField = textField();
 				boolean hasSelection = textField != null && !textField.getSelectedText().isEmpty();

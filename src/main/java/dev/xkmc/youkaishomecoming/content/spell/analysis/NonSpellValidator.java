@@ -36,7 +36,7 @@ public final class NonSpellValidator {
 		validate(definition, rank, 0);
 	}
 
-	/** Validate using the caster's current power for the non-spell per-tick ceiling. */
+	/** Use the same current power for count expressions and the per-tick ceiling. */
 	public static void validate(SpellDefinition definition, SpellCardRank rank, double power) {
 		if (definition == null) throw new SpellAnalysisException("Non-spell definition is missing");
 		if (rank == null) rank = SpellCardRank.LESSER_WISDOM;
@@ -59,7 +59,7 @@ public final class NonSpellValidator {
 				base.maxExpressionLength(), Math.max(1, rank.danmakuPerTick(power)),
 				base.maxPeakAlive(), base.maxProjectileTicks(), 0, 1,
 				base.certificationWindowTicks());
-		SpellAnalyzer.analyze(definition, SpellAnalysisProfile.CERTIFICATION, limits, java.util.Set.of());
+		SpellAnalyzer.analyzeNonSpell(definition, limits, power);
 	}
 
 	private static void checkList(List<SpellAction> actions) {

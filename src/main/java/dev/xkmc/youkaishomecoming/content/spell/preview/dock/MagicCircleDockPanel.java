@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
+import dev.xkmc.fastprojectileapi.spellcircle.PlayerStgSpellCircle;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleConfig;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellComponent;
 import dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes;
@@ -55,6 +56,7 @@ public class MagicCircleDockPanel implements DockPanel {
 	private static final String SECTION_TEXTS = "texts";
 	private static final String SECTION_LAYERS = "layers";
 	private static final String SECTION_RESOURCE = "resource_layout";
+	private static final String SECTION_STG = "player_stg_resources";
 
 	/** 会话级：跨面板重建保留的选中魔法阵 ID。见 {@link #loadInitialSelection()}。 */
 	@Nullable
@@ -707,6 +709,7 @@ public class MagicCircleDockPanel implements DockPanel {
 
 		// --- 可滚动正文：每个分区只展开选中元素的字段 ---
 		rowY = contentTop();
+		buildStgSection(font);
 		buildResourceSection(font);
 		buildStrokeSection(font);
 		buildItemSection(font);
@@ -717,6 +720,46 @@ public class MagicCircleDockPanel implements DockPanel {
 		clampScrollOffset();
 		updateWidgetScroll();
 		refreshWidgetValues();
+	}
+
+	private void buildStgSection(Font font) {
+		boolean builtInStg = PlayerStgSpellCircle.COMPONENT_IDS.contains(selectedId);
+		boolean resourceChannel = builtInStg && !PlayerStgSpellCircle.PLAYER_STG.equals(selectedId);
+		if (!sectionRow(SECTION_STG, circleText("resources"), component.player_stg_resources ? 1 : 0, 0)) return;
+		if (!resourceChannel) {
+			buttonRow(new ButtonSpec(circleText(component.player_stg_resources ? "resources_on" : "resources_off"),
+					100, () -> {
+						component.player_stg_resources = !component.player_stg_resources;
+						onComponentEdited(circleText("resources_changed"));
+						rebuildWidgets();
+					}));
+		}
+		if (!builtInStg && !component.player_stg_resources) return;
+		buttonRow(new ButtonSpec(circleText("main"), 46, () -> selectCircle(PlayerStgSpellCircle.PLAYER_STG)),
+				new ButtonSpec("Bomb", 46, () -> selectCircle(PlayerStgSpellCircle.PLAYER_STG_BOMB)),
+				new ButtonSpec("Power", 46, () -> selectCircle(PlayerStgSpellCircle.PLAYER_STG_POWER)),
+				new ButtonSpec(circleText("points"), 46, () -> selectCircle(PlayerStgSpellCircle.PLAYER_STG_POINTS)));
+		if (resourceChannel) {
+			emptyRow(circleText("edit_main"));
+			return;
+		}
+		if (!component.player_stg_resources) return;
+		emptyRow(circleText("preview_only"));
+		fieldRow(font, "Bomb", fmt(viewport.getCirclePreviewBomb() / (float) PlayerStgSpellCircle.RESOURCE_UNIT),
+				text -> setPreviewResource(text, PlayerStgSpellCircle.RESOURCE_UNIT, viewport::setCirclePreviewBomb));
+		fieldRow(font, "Power", fmt(viewport.getCirclePreviewPower() / (float) PlayerStgSpellCircle.POWER_UNIT),
+				text -> setPreviewResource(text, PlayerStgSpellCircle.POWER_UNIT, viewport::setCirclePreviewPower));
+		fieldRow(font, circleText("preview_points"), fmt(viewport.getCirclePreviewPoints() / (float) PlayerStgSpellCircle.POINTS_UNIT),
+				text -> setPreviewResource(text, PlayerStgSpellCircle.POINTS_UNIT, viewport::setCirclePreviewPoints));
+	}
+
+	private static void setPreviewResource(String text, int unit, java.util.function.IntConsumer setter) {
+		float value = parseFloat(text, Float.NaN);
+		if (Float.isFinite(value) && value >= 0) setter.accept(Math.round(value * unit));
+	}
+
+	private static String circleText(String key) {
+		return Component.translatable("youkaishomecoming.spell_circle.editor." + key).getString();
 	}
 
 	private void buildResourceSection(Font font) {
@@ -1047,7 +1090,8 @@ public class MagicCircleDockPanel implements DockPanel {
 		int selectedIndex = -1;
 		for (int i = 0; i < values.size(); i++) {
 			ResourceLocation value = values.get(i);
-			options[i] = value.toString();
+			options[i] = PlayerStgSpellCircle.COMPONENT_IDS.contains(value)
+					? circleText("builtin") + " " + value.getPath() : value.toString();
 			if (selectedIndex < 0 && value.equals(selectedId)) {
 				selectedIndex = i;
 			}
@@ -1194,6 +1238,10 @@ public class MagicCircleDockPanel implements DockPanel {
 		lastSelectedId = selectedId;
 		component.invalidateCache();
 		YoukaisHomecoming.SPELL.getMerged().map.put(selectedId.toString(), component);
+		if (component.player_stg_resources || PlayerStgSpellCircle.COMPONENT_IDS.contains(selectedId)) {
+			linkedComponents.put(selectedId, cloneComponent(component));
+			collectReferencedComponents(linkedComponents);
+		}
 		if (!linkedComponents.isEmpty()) {
 			linkedComponents.put(selectedId, cloneComponent(component));
 			for (var entry : linkedComponents.entrySet()) {
@@ -1236,6 +1284,8 @@ public class MagicCircleDockPanel implements DockPanel {
 		int itemsBefore = getItemCount();
 		int textsBefore = getTextCount();
 		int layersBefore = component.layers.size();
+		boolean resourcesBefore = component.player_stg_resources;
+		boolean resourceLayoutBefore = component.resource_layout != null;
 		component = cloneComponent(parsed.component());
 		component.invalidateCache();
 		clampSelection();
@@ -1244,7 +1294,9 @@ public class MagicCircleDockPanel implements DockPanel {
 		boolean structureChanged = strokesBefore != component.strokes.size()
 				|| itemsBefore != getItemCount()
 				|| textsBefore != getTextCount()
-				|| layersBefore != component.layers.size();
+				|| layersBefore != component.layers.size()
+				|| resourcesBefore != component.player_stg_resources
+				|| resourceLayoutBefore != (component.resource_layout != null);
 		if (structureChanged) {
 			rebuildWidgets();
 		} else if (active) {
@@ -1326,6 +1378,9 @@ public class MagicCircleDockPanel implements DockPanel {
 
 	private void selectCircle(ResourceLocation id) {
 		selectedId = id;
+		if (PlayerStgSpellCircle.COMPONENT_IDS.contains(id) && !PlayerStgSpellCircle.PLAYER_STG.equals(id)) {
+			collapsedSections.remove(SECTION_RESOURCE);
+		}
 		loadSelectedComponent();
 		rebuildWidgets();
 		setStatus("Magic Circle loaded", 0xFF88AACC);
@@ -2066,6 +2121,7 @@ public class MagicCircleDockPanel implements DockPanel {
 		SpellComponent existing = linkedComponents.get(selectedId);
 		if (existing == null) {
 			existing = YoukaisHomecoming.SPELL.getMerged().map.get(selectedId.toString());
+			if (existing == null) existing = SpellCircleConfig.builtinComponent(selectedId);
 			linkedComponents.clear();
 			if (existing != null) {
 				linkedComponents.put(selectedId, cloneComponent(existing));
@@ -2104,6 +2160,20 @@ public class MagicCircleDockPanel implements DockPanel {
 		List<ResourceLocation> queue = new ArrayList<>(components.keySet());
 		for (int i = 0; i < queue.size(); i++) {
 			SpellComponent source = components.get(queue.get(i));
+			if (source != null && (source.player_stg_resources
+					|| PlayerStgSpellCircle.COMPONENT_IDS.contains(queue.get(i)))) {
+				// Keep the main circle and its editable resource channels together when
+				// navigating, exporting or saving the built-in player STG composition.
+				for (ResourceLocation resourceId : PlayerStgSpellCircle.COMPONENT_IDS) {
+					if (seen.contains(resourceId)) continue;
+					SpellComponent resource = SpellCircleConfig.getFromConfig(resourceId);
+					if (resource == null) resource = SpellCircleConfig.builtinComponent(resourceId);
+					if (resource == null) continue;
+					seen.add(resourceId);
+					components.put(resourceId, cloneComponent(resource));
+					queue.add(resourceId);
+				}
+			}
 			if (source == null || source.layers == null) {
 				continue;
 			}
@@ -2243,12 +2313,16 @@ public class MagicCircleDockPanel implements DockPanel {
 	}
 
 	private static List<ResourceLocation> circleIds() {
-		List<ResourceLocation> ids = new ArrayList<>();
+		Set<ResourceLocation> available = new HashSet<>(SpellCircleConfig.builtinIds());
 		for (String key : YoukaisHomecoming.SPELL.getMerged().map.keySet()) {
 			ResourceLocation id = ResourceLocation.tryParse(key);
-			if (id != null) ids.add(id);
+			if (id != null) available.add(id);
 		}
-		ids.sort(java.util.Comparator.comparing(ResourceLocation::toString));
+		List<ResourceLocation> ids = new ArrayList<>(available);
+		ids.sort(java.util.Comparator.<ResourceLocation>comparingInt(id -> {
+			int index = PlayerStgSpellCircle.COMPONENT_IDS.indexOf(id);
+			return index < 0 ? PlayerStgSpellCircle.COMPONENT_IDS.size() : index;
+		}).thenComparing(ResourceLocation::toString));
 		return ids;
 	}
 

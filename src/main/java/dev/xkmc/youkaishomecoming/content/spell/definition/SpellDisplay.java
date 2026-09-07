@@ -23,11 +23,17 @@ public record SpellDisplay(
 	).apply(i, SpellDisplay::new));
 
 	public Component displayName() {
-		return Component.translatableWithFallback(name, name);
+		return displayText(name);
 	}
 
 	public Component displayDesc() {
-		return Component.translatableWithFallback(description, description);
+		return displayText(description);
+	}
+
+	public static Component displayText(String keyOrText) {
+		// Keep localization deferred to the client, but never use user text as a
+		// format pattern: Forge can crash on unfinished braces while editing.
+		return Component.translatableWithFallback(keyOrText, "%s", Component.literal(keyOrText));
 	}
 
 	@Nullable

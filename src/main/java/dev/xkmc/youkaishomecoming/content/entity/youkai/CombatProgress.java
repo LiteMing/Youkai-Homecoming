@@ -13,6 +13,7 @@ public class CombatProgress {
 	public float progress;
 	@SerialClass.SerialField
 	public float oldProgress;
+	private float syncedMaxProgress;
 
 	public void init(YoukaiEntity e) {
 		if (maxProgress <= 0) maxProgress = e.getMaxHealth();
@@ -27,16 +28,23 @@ public class CombatProgress {
 		return progress;
 	}
 
-	public void set(LivingEntity e, float amount) {
-		progress = amount;
-		if (progress != oldProgress && !e.level().isClientSide()) {
-			oldProgress = progress;
-			YoukaisHomecoming.HANDLER.toTrackingPlayers(new CombatToClient(e.getId(), this), e);
-		}
+	/** Spell health has its own maximum; it may exceed the entity's base health. */
+	public float clampToMaximum(float amount, float defaultMax) {
+		return Math.max(0, Math.min(amount, getMaxProgress(defaultMax)));
 	}
 
-	public void setMax() {
-		progress = maxProgress;
+	/** Vanilla DATA_HEALTH_ID is a bounded projection, not the authoritative spell HP. */
+	public static float vanillaHealth(float progress, float vanillaMaxHealth) {
+		return Math.max(0, Math.min(progress, vanillaMaxHealth));
+	}
+
+	public void set(LivingEntity e, float amount) {
+		progress = amount;
+		if (!e.level().isClientSide() && (progress != oldProgress || maxProgress != syncedMaxProgress)) {
+			oldProgress = progress;
+			syncedMaxProgress = maxProgress;
+			YoukaisHomecoming.HANDLER.toTrackingPlayers(new CombatToClient(e.getId(), this), e);
+		}
 	}
 
 	public void loadFrom(CombatProgress progress) {

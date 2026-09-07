@@ -1,0 +1,12 @@
+{
+	"youkaishomecoming.spell_editor.favorite": "收藏",
+	"youkaishomecoming.spell_editor.favorites": "已收藏",
+	"youkaishomecoming.spell_editor.favorite.hint": "点击添加动作；右键移除收藏",
+	"youkaishomecoming.spell_editor.favorite.saved": "已收藏：%s",
+	"youkaishomecoming.spell_editor.favorite.removed": "已移除收藏：%s",
+	"youkaishomecoming.spell_editor.favorite.save_failed": "无法保存收藏，请查看日志",
+	"youkaishomecoming.spell_editor.favorite.load_failed": "无法读取收藏，请查看日志",
+	"youkaishomecoming.spell_editor.favorite.insert_failed": "无法添加此收藏，动作内容可能已不兼容",
+	"youkaishomecoming.spell_editor.favorite.remove_failed": "无法移除收藏，请查看日志",
+	"youkaishomecoming.spell_editor.save_invalid_json": "无法保存：请先修复 JSON 面板中的错误"
+}

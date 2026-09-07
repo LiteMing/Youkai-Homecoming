@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.entity.boss;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.movement.*;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.CombatProgress;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.SpellProgressColor;
@@ -424,8 +425,11 @@ public class BossYoukaiEntity extends GeneralYoukaiEntity implements MovementCon
 	public void setCombatProgress(float amount) {
 		if (combatProgress != null) {
 			float health = combatProgress.progress;
-			if (health > getVanillaProgress()) {
-				notifyIllegalDamage(health - getVanillaProgress(), null);
+			// A 600 HP spell on a 200 HP entity legitimately projects to 200 in
+			// vanilla data. Only an unexpected loss in that projection is illegal.
+			float expectedVanilla = CombatProgress.vanillaHealth(health, getMaxHealth());
+			if (expectedVanilla > getVanillaProgress()) {
+				notifyIllegalDamage(expectedVanilla - getVanillaProgress(), null);
 			}
 			if (health > getCombatProgress()) {
 				notifyIllegalDamage(health - getCombatProgress(), null);

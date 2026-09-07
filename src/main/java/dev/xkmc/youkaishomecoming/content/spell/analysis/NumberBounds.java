@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.analysis;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -46,6 +47,15 @@ public record NumberBounds(double min, double max) {
 	 * Resolve conservative bounds for a provider, or UNBOUNDED.
 	 */
 	public static NumberBounds resolve(NumberProvider provider) {
+		return resolve(provider, null);
+	}
+
+	/**
+	 * Resolve with an explicit caster-power interval. Non-spell count projections
+	 * use the current power; ordinary certification retains the full player cap.
+	 * Keep that config lookup lazy so constant-only analysis needs no game state.
+	 */
+	public static NumberBounds resolve(NumberProvider provider, @Nullable NumberBounds casterPower) {
 		if (provider instanceof NumberProviders.Constant c) return of(c.value());
 		if (provider instanceof NumberProviders.RandomRange r) return of(Math.min(r.min(), r.max()), Math.max(r.min(), r.max()));
 		if (provider instanceof NumberProviders.LerpOverTime l) return of(Math.min(l.start(), l.end()), Math.max(l.start(), l.end()));
@@ -54,52 +64,54 @@ public record NumberBounds(double min, double max) {
 		if (provider instanceof NumberProviders.RandomChoice choice) return boundsOfList(choice.values());
 		if (provider instanceof NumberProviders.Indexed idx) return boundsOfList(idx.values());
 		if (provider instanceof NumberProviders.GameDifficulty) return of(0, 3);
-		if (provider instanceof NumberProviders.CasterPower) return of(0, GrazeHelper.getMaximumPowerLevel());
+		if (provider instanceof NumberProviders.CasterPower)
+			return casterPower == null ? of(0, GrazeHelper.getMaximumPowerLevel()) : casterPower;
 		if (provider instanceof NumberProviders.SinDeg s) return of(-Math.abs(s.amplitude()), Math.abs(s.amplitude()));
 		if (provider instanceof NumberProviders.CosDeg c) return of(-Math.abs(c.amplitude()), Math.abs(c.amplitude()));
 		if (provider instanceof NumberProviders.SinRad s) return of(-Math.abs(s.amplitude()), Math.abs(s.amplitude()));
 		if (provider instanceof NumberProviders.CosRad c) return of(-Math.abs(c.amplitude()), Math.abs(c.amplitude()));
-		if (provider instanceof NumberProviders.Add a) return combine(resolve(a.a()), resolve(a.b()), (x, y) -> x + y);
-		if (provider instanceof NumberProviders.Mul m) return combine(resolve(m.a()), resolve(m.b()), (x, y) -> x * y);
+		if (provider instanceof NumberProviders.Add a) return combine(resolve(a.a(), casterPower), resolve(a.b(), casterPower), (x, y) -> x + y);
+		if (provider instanceof NumberProviders.Mul m) return combine(resolve(m.a(), casterPower), resolve(m.b(), casterPower), (x, y) -> x * y);
 		if (provider instanceof NumberProviders.Div d) {
-			NumberBounds b = resolve(d.b());
+			NumberBounds b = resolve(d.b(), casterPower);
 			if (!b.bounded() || b.min() <= 0 && b.max() >= 0) return UNBOUNDED;
-			NumberBounds a = resolve(d.a());
+			NumberBounds a = resolve(d.a(), casterPower);
 			if (!a.bounded()) return UNBOUNDED;
 			return combine(a, b, (x, y) -> x / y);
 		}
 		if (provider instanceof NumberProviders.Mod m) {
-			NumberBounds a = resolve(m.a());
-			NumberBounds b = resolve(m.b());
+			NumberBounds a = resolve(m.a(), casterPower);
+			NumberBounds b = resolve(m.b(), casterPower);
 			if (!a.bounded() || !b.bounded() || b.min() <= 0 && b.max() >= 0) return UNBOUNDED;
 			double abs = Math.max(Math.abs(b.min()), Math.abs(b.max()));
 			return of(-abs, abs);
 		}
 		if (provider instanceof NumberProviders.Sqrt s) {
-			NumberBounds a = resolve(s.input());
+			NumberBounds a = resolve(s.input(), casterPower);
 			if (!a.bounded()) return UNBOUNDED;
 			double hi = Math.sqrt(Math.max(0, a.max()));
 			return of(0, hi);
 		}
 		if (provider instanceof NumberProviders.Abs a) {
-			NumberBounds i = resolve(a.input());
+			NumberBounds i = resolve(a.input(), casterPower);
 			if (!i.bounded()) return UNBOUNDED;
 			double abs = Math.max(Math.abs(i.min()), Math.abs(i.max()));
 			return of(0, abs);
 		}
-		if (provider instanceof NumberProviders.Floor f) return monotone(f.input(), Math::floor);
-		if (provider instanceof NumberProviders.Ceil c) return monotone(c.input(), Math::ceil);
-		if (provider instanceof NumberProviders.Round r) return monotone(r.input(), Math::rint);
+		if (provider instanceof NumberProviders.Floor f) return monotone(f.input(), Math::floor, casterPower);
+		if (provider instanceof NumberProviders.Ceil c) return monotone(c.input(), Math::ceil, casterPower);
+		if (provider instanceof NumberProviders.Round r) return monotone(r.input(), Math::rint, casterPower);
 		if (provider instanceof NumberProviders.Log l) {
-			NumberBounds i = resolve(l.input());
+			NumberBounds i = resolve(l.input(), casterPower);
 			if (!i.bounded()) return UNBOUNDED;
 			if (i.max() <= 0) return of(0);
-			double hi = Math.log(i.max());
-			double lo = i.min() > 0 ? Math.min(0, Math.log(i.min())) : 0;
-			return of(Math.min(0, lo), Math.max(0, hi));
+			// Positive values arbitrarily close to zero have no finite log lower
+			// bound, even though the runtime maps non-positive inputs to zero.
+			if (i.min() <= 0) return UNBOUNDED;
+			return of(Math.log(i.min()), Math.log(i.max()));
 		}
 		if (provider instanceof NumberProviders.Exp e) {
-			NumberBounds i = resolve(e.input());
+			NumberBounds i = resolve(e.input(), casterPower);
 			if (!i.bounded()) return UNBOUNDED;
 			double lo = Math.exp(Math.min(0, i.min()));
 			double hi = Math.exp(Math.max(0, i.max()));
@@ -111,26 +123,31 @@ public record NumberBounds(double min, double max) {
 		if (provider instanceof NumberProviders.Pow) return UNBOUNDED;
 		if (provider instanceof NumberProviders.Root) return UNBOUNDED;
 		if (provider instanceof NumberProviders.Max m) {
-			NumberBounds a = resolve(m.a());
-			NumberBounds b = resolve(m.b());
+			NumberBounds a = resolve(m.a(), casterPower);
+			NumberBounds b = resolve(m.b(), casterPower);
 			if (!a.bounded() || !b.bounded()) return UNBOUNDED;
 			return of(Math.max(a.min(), b.min()), Math.max(a.max(), b.max()));
 		}
 		if (provider instanceof NumberProviders.Min m) {
-			NumberBounds a = resolve(m.a());
-			NumberBounds b = resolve(m.b());
+			NumberBounds a = resolve(m.a(), casterPower);
+			NumberBounds b = resolve(m.b(), casterPower);
 			if (!a.bounded() || !b.bounded()) return UNBOUNDED;
 			return of(Math.min(a.min(), b.min()), Math.min(a.max(), b.max()));
 		}
 		if (provider instanceof NumberProviders.Clamp c) {
-			NumberBounds lo = resolve(c.min());
-			NumberBounds hi = resolve(c.max());
+			NumberBounds lo = resolve(c.min(), casterPower);
+			NumberBounds hi = resolve(c.max(), casterPower);
 			if (!lo.bounded() || !hi.bounded() || lo.max() > hi.min()) return UNBOUNDED;
+			NumberBounds value = resolve(c.value(), casterPower);
+			if (value.bounded()) {
+				return of(Math.max(lo.min(), Math.min(value.min(), hi.min())),
+						Math.max(lo.max(), Math.min(value.max(), hi.max())));
+			}
 			return of(lo.min(), hi.max());
 		}
 		if (provider instanceof NumberProviders.Conditional cond) {
-			NumberBounds a = resolve(cond.ifTrue());
-			NumberBounds b = resolve(cond.ifFalse());
+			NumberBounds a = resolve(cond.ifTrue(), casterPower);
+			NumberBounds b = resolve(cond.ifFalse(), casterPower);
 			if (!a.bounded() || !b.bounded()) return UNBOUNDED;
 			return of(Math.min(a.min(), b.min()), Math.max(a.max(), b.max()));
 		}
@@ -158,8 +175,9 @@ public record NumberBounds(double min, double max) {
 		return of(lo, hi);
 	}
 
-	private static NumberBounds monotone(NumberProvider input, java.util.function.DoubleUnaryOperator fn) {
-		NumberBounds i = resolve(input);
+	private static NumberBounds monotone(NumberProvider input, java.util.function.DoubleUnaryOperator fn,
+			@Nullable NumberBounds casterPower) {
+		NumberBounds i = resolve(input, casterPower);
 		if (!i.bounded()) return UNBOUNDED;
 		double lo = fn.applyAsDouble(i.min());
 		double hi = fn.applyAsDouble(i.max());

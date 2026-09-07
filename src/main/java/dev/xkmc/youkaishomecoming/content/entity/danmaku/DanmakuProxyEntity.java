@@ -4,12 +4,18 @@ import dev.xkmc.fastprojectileapi.collision.UserCacheHolder;
 import dev.xkmc.fastprojectileapi.entity.EntityCachingUser;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellValidator;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.nbt.CompoundTag;
@@ -74,6 +80,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private boolean ending;
 	/** True after a non-spell is toggled off; existing danmaku still drain. */
 	private boolean generationStopped;
+	/** Bound only by normal item casts; /yhspell proxy keeps its force-test behavior. */
+	@Nullable
+	private SpellCardRank nonSpellRank;
+	private double validatedNonSpellPower = Double.NaN;
+	private int remainingNonSpellSpawns;
 	@Nullable
 	private String cardKey;
 
@@ -136,11 +147,14 @@ public class DanmakuProxyEntity extends PathfinderMob
 		this.certifiedCard = certifiedCard;
 		this.ending = false;
 		this.generationStopped = false;
+		this.nonSpellRank = null;
+		this.validatedNonSpellPower = Double.NaN;
+		this.remainingNonSpellSpawns = 0;
 
 		if (target != null) {
 			this.targetId = target.getUUID();
 			this.targetCache = target;
-			this.targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
+			this.targetPos = target.getEyePosition();
 		}
 
 		// Position at the player
@@ -183,7 +197,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		// Drive the spell runtime while generation is enabled.  A stopped non-spell
 		// keeps its runtime available to callbacks owned by already emitted
 		// projectiles, but must not execute its cast loop or create new output.
-		if (runtime != null && !generationStopped) {
+		if (runtime != null && !generationStopped && refreshNonSpellBudget()) {
 			// A fixed player-card duration ends the normal on_tick cast loop, but
 			// held projectiles may still own persistent release callbacks. Keep the
 			// proxy alive and advance only that callback queue until it drains.
@@ -231,7 +245,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private void refreshTarget() {
 		if (targetCache != null) {
 			if (targetCache.isAlive()) {
-				targetPos = targetCache.position().add(0, targetCache.getBbHeight() / 2, 0);
+				targetPos = targetCache.getEyePosition();
 				return;
 			} else {
 				targetId = null;
@@ -246,7 +260,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		var entity = sl.getEntity(targetId);
 		if (entity instanceof LivingEntity le && le.isAlive()) {
 			targetCache = le;
-			targetPos = le.position().add(0, le.getBbHeight() / 2, 0);
+			targetPos = le.getEyePosition();
 		} else {
 			targetId = null;
 			updateAimTarget(ownerPlayer);
@@ -257,15 +271,49 @@ public class DanmakuProxyEntity extends PathfinderMob
 		targetPos = GrazeHelper.getAimTarget(player, center());
 	}
 
+	/** Bind the rank at the authoritative item boundary, before adding the proxy. */
+	public void bindNonSpellBudget(SpellCardRank rank) {
+		nonSpellRank = rank;
+		validatedNonSpellPower = Double.NaN;
+	}
+
+	private boolean refreshNonSpellBudget() {
+		if (nonSpellRank == null) return true;
+		if (runtime == null || ownerPlayer == null) return false;
+		double power = GrazeHelper.getEffectivePowerLevel(ownerPlayer);
+		if (Double.compare(power, validatedNonSpellPower) != 0) {
+			try {
+				// Recheck before executing count-dependent loops at the new Power.
+				NonSpellValidator.validate(runtime.getDefinition(), nonSpellRank, power);
+				validatedNonSpellPower = power;
+			} catch (SpellAnalysisException rejected) {
+				ownerPlayer.displayClientMessage(DynamicSpellItem.nonSpellRejectedMessage(rejected), false);
+				SpellContainer.clearActiveNonSpell(ownerPlayer);
+				return false;
+			} catch (RuntimeException unexpected) {
+				YoukaisHomecoming.LOGGER.warn("Unexpected live non-spell validation failure for {}",
+						runtime.getDefinition().id, unexpected);
+				ownerPlayer.displayClientMessage(YHLangData.NON_SPELL_REJECTED_UNKNOWN.get(), false);
+				SpellContainer.clearActiveNonSpell(ownerPlayer);
+				return false;
+			}
+		}
+		remainingNonSpellSpawns = nonSpellRank.danmakuPerTick(power);
+		return true;
+	}
+
 	// ==================== Virtual danmaku methods (from YoukaiEntity) ====================
 
 	@Override
 	public void shoot(Entity danmaku) {
-		if (generationStopped && danmaku instanceof SimplifiedProjectile projectile) {
-			// A callback from an already emitted projectile may still execute, but
-			// closing the non-spell must not allow that callback to create new output.
-			projectile.markErased(true);
-			return;
+		if (danmaku instanceof SimplifiedProjectile projectile) {
+			if (generationStopped || nonSpellRank != null && remainingNonSpellSpawns <= 0) {
+				// Delayed batches scheduled at a higher Power share the current tick's
+				// budget. Stopped non-spells must not create callback output either.
+				projectile.markErased(true);
+				return;
+			}
+			if (nonSpellRank != null) remainingNonSpellSpawns--;
 		}
 		if (danmaku instanceof ItemDanmakuEntity e) {
 			if (e.afterExpiry != null) {
@@ -337,6 +385,15 @@ public class DanmakuProxyEntity extends PathfinderMob
 	}
 
 	@Override
+	public Vec3 center() {
+		// The tiny proxy follows the player's feet. Fire along the player's sightline
+		// instead, matching the eye anchor used by DanmakuHitBox for living targets.
+		// Explicit offsets still apply relative to this pose-dependent firing origin.
+		return ownerPlayer == null ? SpellRuntimeHost.super.center()
+				: ownerPlayer.getEyePosition();
+	}
+
+	@Override
 	public LivingEntity shooter() {
 		return ownerPlayer != null ? ownerPlayer : this;
 	}
@@ -363,6 +420,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	@Override
 	public void setSpellRuntime(@Nullable SpellRuntime runtime) {
 		this.runtime = runtime;
+		validatedNonSpellPower = Double.NaN;
 	}
 
 	@Override

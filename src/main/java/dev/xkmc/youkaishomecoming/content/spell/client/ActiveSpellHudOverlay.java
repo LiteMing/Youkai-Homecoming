@@ -1,10 +1,10 @@
 package dev.xkmc.youkaishomecoming.content.spell.client;
 
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.network.chat.Component;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
@@ -100,7 +100,7 @@ public final class ActiveSpellHudOverlay implements IGuiOverlay {
 		String id = entry.spellId == null ? "" : entry.spellId.trim();
 		String rawName = entry.displayName == null ? "" : entry.displayName.trim();
 		String name = rawName.isEmpty() ? id
-				: Component.translatableWithFallback(rawName, rawName).getString();
+				: SpellDisplay.displayText(rawName).getString();
 		if (name.isBlank()) name = id;
 		if (font.width(name) <= maxWidth) return name;
 		if (!id.isBlank() && !id.equals(name)) {

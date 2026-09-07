@@ -62,7 +62,7 @@
   "youkaishomecoming.message.stg_need_spell": "需要持有可用符卡才能进入弹幕模式",
   "youkaishomecoming.message.classic_control.enabled": "经典模式  ↑%s ↓%s ←%s →%s  升%s 降%s（可于 Mod Menu 配置）",
   "youkaishomecoming.message.classic_control.disabled": "经典模式关闭  %s+%s（可于 Mod Menu 配置）",
-  "youkaishomecoming.message.classic_control.available": "经典模式  %s+%s（可于 Mod Menu 配置）",
+  "youkaishomecoming.message.classic_control.available": "%s+%s 可切换经典/现代模式（可于 Mod Menu 配置）",
   "youkaishomecoming.message.classic_control.combat_only": "经典平面操作只能在弹幕战中开启",
   "youkaishomecoming.message.classic_control.no_non_spell": "没有可用的非符",
   "youkaishomecoming.message.classic_control.no_spell": "没有可释放的符卡，或资源不足",

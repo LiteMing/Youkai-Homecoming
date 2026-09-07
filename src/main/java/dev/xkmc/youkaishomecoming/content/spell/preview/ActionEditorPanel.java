@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
@@ -16,6 +17,7 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.resources.ResourceLocation;
@@ -127,6 +129,8 @@ public class ActionEditorPanel {
 	private DropdownOverlay dropdown = null;
 	private int dropdownHoverIndex = -1;
 	private int dropdownScrollOffset = 0;
+	private boolean dropdownKeyboardNavigation;
+	private int dropdownMouseX, dropdownMouseY;
 
 	public ActionEditorPanel(Consumer<AbstractWidget> addWidget,
 							 Consumer<AbstractWidget> removeWidget,
@@ -445,6 +449,14 @@ public class ActionEditorPanel {
 	private void buildTypeSelectorRows() {
 		applyTypeGroupDefaults();
 		currentDepth = 0;
+		List<ActionFavoriteStore.Favorite> favorites = favoritesSupplier.get();
+		if (!favorites.isEmpty()) {
+			String folder = Component.translatable("youkaishomecoming.spell_editor.favorites").getString();
+			addSectionHeader(folder);
+			if (!isSectionCollapsed(folder)) {
+				for (var favorite : favorites) addFavoriteButton(favorite);
+			}
+		}
 		for (TypeGroup group : TYPE_GROUPS) {
 			addSectionHeader(group.label());
 			if (isSectionCollapsed(group.label())) {
@@ -454,6 +466,31 @@ public class ActionEditorPanel {
 				addTypeButton(entry.type(), entry.label());
 			}
 		}
+	}
+
+	private void addFavoriteButton(ActionFavoriteStore.Favorite favorite) {
+		String marker;
+		try {
+			SpellAction action = SpellAction.CODEC.parse(JsonOps.INSTANCE, favorite.action())
+					.getOrThrow(false, ignored -> {});
+			marker = SpellEditorNodeLabels.actionMarker(action);
+		} catch (RuntimeException ignored) {
+			// Keep obsolete or damaged presets visible so the user can remove them.
+			marker = "[X] ";
+		}
+		var button = new Button(0, 0, w - PADDING * 2, ROW_HEIGHT - 2,
+				Component.literal(marker + favorite.name()), ignored -> onFavoriteSelected.accept(favorite), Supplier::get) {
+			@Override
+			public boolean mouseClicked(double mouseX, double mouseY, int mouseButton) {
+				if (mouseButton == 1 && active && visible && isMouseOver(mouseX, mouseY)) {
+					onFavoriteRemoved.accept(favorite);
+					return true;
+				}
+				return super.mouseClicked(mouseX, mouseY, mouseButton);
+			}
+		};
+		button.setTooltip(Tooltip.create(Component.translatable("youkaishomecoming.spell_editor.favorite.hint")));
+		rows.add(new EditorRow("", button, true));
 	}
 
 	private void addTypeButton(String type, String label) {
@@ -4383,9 +4420,11 @@ public class ActionEditorPanel {
 	}
 
 	private void openDropdown(String[] options, int selected, Consumer<Integer> onSelect, int triggerRowIndex) {
+		if (options.length == 0) return;
 		flushActiveEditBoxes();
 		dropdown = new DropdownOverlay(options, selected, onSelect, triggerRowIndex);
 		dropdownHoverIndex = -1;
+		dropdownKeyboardNavigation = false;
 		// Auto-scroll to make selected item visible
 		int visibleItems = computeDropdownBounds()[4];
 		int maxScroll = Math.max(0, options.length - visibleItems);
@@ -4404,6 +4443,17 @@ public class ActionEditorPanel {
 		dropdown = null;
 		dropdownHoverIndex = -1;
 		for (var row : rows) row.widget().active = true;
+	}
+
+	private void selectDropdownOption(int index) {
+		DropdownOverlay selected = dropdown;
+		if (selected == null || index < 0 || index >= selected.options().length) return;
+		// Callbacks may rebuild the widgets and close the overlay themselves.
+		// Release it first, then rebuild from the latest action even for callbacks
+		// that normally avoid rebuilding while a text field is being edited.
+		closeDropdown();
+		selected.onSelect().accept(index);
+		refreshCurrentView();
 	}
 
 	private int[] computeDropdownBounds() {
@@ -4453,15 +4503,18 @@ public class ActionEditorPanel {
 		guiGraphics.fill(dx, dy, dx + 1, dy + dh, 0xFF666688);
 		guiGraphics.fill(dx + dw - 1, dy, dx + dw, dy + dh, 0xFF666688);
 
-		// Compute hover (in visible area, mapped to scrolled index)
-		dropdownHoverIndex = -1;
+		// Keep keyboard selection until the mouse actually moves.
 		int contentW = dw - scrollbarW;
-		if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
-			int rawIdx = (mouseY - dy) / DROPDOWN_ITEM_H + dropdownScrollOffset;
-			if (rawIdx >= 0 && rawIdx < options.length) {
-				dropdownHoverIndex = rawIdx;
+		if (!dropdownKeyboardNavigation || mouseX != dropdownMouseX || mouseY != dropdownMouseY) {
+			dropdownKeyboardNavigation = false;
+			dropdownHoverIndex = -1;
+			if (mouseX >= dx && mouseX < dx + contentW && mouseY >= dy && mouseY < dy + dh) {
+				int rawIdx = (mouseY - dy) / DROPDOWN_ITEM_H + dropdownScrollOffset;
+				if (rawIdx >= 0 && rawIdx < options.length) dropdownHoverIndex = rawIdx;
 			}
 		}
+		dropdownMouseX = mouseX;
+		dropdownMouseY = mouseY;
 
 		// Render visible items (manually clip to dropdown bounds)
 		int visCount = Math.min(options.length, dh / DROPDOWN_ITEM_H);
@@ -4522,7 +4575,7 @@ public class ActionEditorPanel {
 			int visIdx = (int)((mouseY - dy) / DROPDOWN_ITEM_H);
 			int optIdx = visIdx + dropdownScrollOffset;
 			if (optIdx >= 0 && optIdx < options.length) {
-				dropdown.onSelect().accept(optIdx);
+				selectDropdownOption(optIdx);
 				return true;
 			}
 		}
@@ -4602,21 +4655,31 @@ public class ActionEditorPanel {
 
 		// Title
 		String title = currentAction == null ? SpellEditorLocalization.t("Select an action") : actionTypeName(currentAction);
-		guiGraphics.drawString(font, title, x + PADDING, y + PADDING + 2, 0xFFFFCC44, false);
 
 		if (currentAction == null) {
+			guiGraphics.drawString(font, title, x + PADDING, y + PADDING + 2, 0xFFFFCC44, false);
 			guiGraphics.drawString(font, SpellEditorLocalization.t("Click an action in"), x + PADDING, y + 30, 0xFF888888, false);
 			guiGraphics.drawString(font, SpellEditorLocalization.t("the list below to"), x + PADDING, y + 42, 0xFF888888, false);
 			guiGraphics.drawString(font, SpellEditorLocalization.t("edit its properties"), x + PADDING, y + 54, 0xFF888888, false);
 			return;
 		}
 
-		// Disable/Enable + Delete buttons (top right)
+		// Favorite + Disable/Enable + Delete buttons (top right)
 		boolean isDisabled = currentAction instanceof SpellActions.DisabledAction;
+		String favoriteText = "[" + Component.translatable("youkaishomecoming.spell_editor.favorite").getString() + "]";
 		String toggleText = SpellEditorLocalization.t(isDisabled ? "[Enable]" : "[Disable]");
 		String deleteText = SpellEditorLocalization.t("[Delete]");
 		int deleteX = x + w - font.width(deleteText) - PADDING;
 		int toggleX = deleteX - font.width(toggleText) - 6;
+		int favoriteX = toggleX - font.width(favoriteText) - 6;
+		guiGraphics.enableScissor(x, y, x + w, y + ROW_HEIGHT);
+		guiGraphics.drawString(font, font.plainSubstrByWidth(title, Math.max(0, favoriteX - x - PADDING * 2)),
+				x + PADDING, y + PADDING + 2, 0xFFFFCC44, false);
+
+		boolean favoriteHovered = mouseX >= favoriteX && mouseX < favoriteX + font.width(favoriteText)
+				&& mouseY >= y + PADDING && mouseY < y + PADDING + 12;
+		guiGraphics.drawString(font, favoriteText, favoriteX, y + PADDING + 2,
+				favoriteHovered ? 0xFFFFCC44 : 0xFF88CCFF, false);
 
 		boolean toggleHovered = mouseX >= toggleX && mouseX < toggleX + font.width(toggleText)
 				&& mouseY >= y + PADDING && mouseY < y + PADDING + 12;
@@ -4627,6 +4690,7 @@ public class ActionEditorPanel {
 				&& mouseY >= y + PADDING && mouseY < y + PADDING + 12;
 		guiGraphics.drawString(font, deleteText, deleteX, y + PADDING + 2,
 				deleteHovered ? 0xFFFF4444 : 0xFFAA4444, false);
+		guiGraphics.disableScissor();
 
 		if (rows.isEmpty()) {
 			guiGraphics.drawString(font, SpellEditorLocalization.t("Read-only action"), x + PADDING, y + 30, 0xFF888888, false);
@@ -4745,6 +4809,19 @@ public class ActionEditorPanel {
 	private java.util.function.Consumer<String> onVariableJump;
 	/** Optional callback for toggle disable. */
 	private Runnable onToggleDisable;
+	private Runnable onFavoriteAction;
+	private Supplier<List<ActionFavoriteStore.Favorite>> favoritesSupplier = List::of;
+	private Consumer<ActionFavoriteStore.Favorite> onFavoriteSelected = ignored -> {};
+	private Consumer<ActionFavoriteStore.Favorite> onFavoriteRemoved = ignored -> {};
+
+	public void setFavoriteCallbacks(Runnable onFavoriteAction,
+			Supplier<List<ActionFavoriteStore.Favorite>> favoritesSupplier,
+			Consumer<ActionFavoriteStore.Favorite> onSelected, Consumer<ActionFavoriteStore.Favorite> onRemoved) {
+		this.onFavoriteAction = onFavoriteAction;
+		this.favoritesSupplier = favoritesSupplier;
+		this.onFavoriteSelected = onSelected;
+		this.onFavoriteRemoved = onRemoved;
+	}
 
 	public void setVariableJumpCallback(java.util.function.Consumer<String> callback) {
 		this.onVariableJump = callback;
@@ -4945,11 +5022,7 @@ public class ActionEditorPanel {
 		// Handle dropdown overlay first
 		if (dropdown != null) {
 			if (button == 0) {
-				if (handleDropdownClick(mouseX, mouseY)) {
-					closeDropdown();
-					return true;
-				}
-				closeDropdown();
+				if (!handleDropdownClick(mouseX, mouseY)) closeDropdown();
 				return true;
 			}
 			return true; // block all clicks while dropdown is open
@@ -4974,7 +5047,7 @@ public class ActionEditorPanel {
 			return true;
 		}
 
-		if (button != 0 || currentAction == null) return false;
+		if (button != 0 || currentAction == null || !isMouseOver(mouseX, mouseY)) return false;
 
 		// Scrollbar click detection
 		int maxScroll = getContentMaxScroll();
@@ -4997,10 +5070,17 @@ public class ActionEditorPanel {
 
 		// Handle [Disable]/[Enable] button
 		boolean isDisabled = currentAction instanceof SpellActions.DisabledAction;
+		String favoriteText = "[" + Component.translatable("youkaishomecoming.spell_editor.favorite").getString() + "]";
 		String toggleText = SpellEditorLocalization.t(isDisabled ? "[Enable]" : "[Disable]");
 		String deleteText = SpellEditorLocalization.t("[Delete]");
 		int deleteX = x + w - font.width(deleteText) - PADDING;
 		int toggleX = deleteX - font.width(toggleText) - 6;
+		int favoriteX = toggleX - font.width(favoriteText) - 6;
+		if (mouseX >= favoriteX && mouseX < favoriteX + font.width(favoriteText)
+				&& mouseY >= y + PADDING && mouseY < y + PADDING + 12) {
+			if (onFavoriteAction != null) onFavoriteAction.run();
+			return true;
+		}
 		if (mouseX >= toggleX && mouseX < toggleX + font.width(toggleText)
 				&& mouseY >= y + PADDING && mouseY < y + PADDING + 12) {
 			if (onToggleDisable != null) onToggleDisable.run();
@@ -5057,6 +5137,7 @@ public class ActionEditorPanel {
 			return true;
 		}
 		if (dropdown != null) {
+			dropdownKeyboardNavigation = false;
 			String[] options = dropdown.options();
 			if (options == null) return true;
 			int[] bounds = computeDropdownBounds();
@@ -5119,6 +5200,19 @@ public class ActionEditorPanel {
 			if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
 				closeDropdown();
 				return true;
+			}
+			int index = dropdownHoverIndex >= 0 ? dropdownHoverIndex : dropdown.selectedIndex();
+			if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+				selectDropdownOption(index);
+			} else if (keyCode == GLFW.GLFW_KEY_UP || keyCode == GLFW.GLFW_KEY_DOWN) {
+				dropdownKeyboardNavigation = true;
+				int step = keyCode == GLFW.GLFW_KEY_UP ? -1 : 1;
+				dropdownHoverIndex = Math.max(0, Math.min(dropdown.options().length - 1, index + step));
+				int visible = computeDropdownBounds()[4];
+				if (dropdownHoverIndex < dropdownScrollOffset) dropdownScrollOffset = dropdownHoverIndex;
+				if (dropdownHoverIndex >= dropdownScrollOffset + visible) {
+					dropdownScrollOffset = dropdownHoverIndex - visible + 1;
+				}
 			}
 			return true;
 		}
@@ -5363,7 +5457,7 @@ public class ActionEditorPanel {
 		};
 	}
 
-	private static String actionTypeName(SpellAction action) {
+	static String actionTypeName(SpellAction action) {
 		String id = SpellActions.getTypeId(action);
 		if (id != null) {
 			String name = ACTION_TYPE_NAMES.get(id);

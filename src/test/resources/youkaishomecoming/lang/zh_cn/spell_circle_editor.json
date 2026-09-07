@@ -1,0 +1,12 @@
+{
+  "youkaishomecoming.spell_circle.editor.resources": "STG 资源指示",
+  "youkaishomecoming.spell_circle.editor.resources_on": "资源指示：开",
+  "youkaishomecoming.spell_circle.editor.resources_off": "资源指示：关",
+  "youkaishomecoming.spell_circle.editor.resources_changed": "资源指示已修改",
+  "youkaishomecoming.spell_circle.editor.main": "主阵",
+  "youkaishomecoming.spell_circle.editor.points": "点数",
+  "youkaishomecoming.spell_circle.editor.preview_only": "预览数量（不影响玩家资源）",
+  "youkaishomecoming.spell_circle.editor.preview_points": "点数（百）",
+  "youkaishomecoming.spell_circle.editor.edit_main": "在主阵中开关和预览资源指示",
+  "youkaishomecoming.spell_circle.editor.builtin": "[内置]"
+}

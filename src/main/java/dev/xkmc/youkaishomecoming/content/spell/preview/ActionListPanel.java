@@ -283,6 +283,7 @@ public class ActionListPanel {
 
 	/** Save custom names back to spell definition (called on editor close/save). */
 	public java.util.Map<String, String> getCustomNames() {
+		finishRename();
 		syncCustomNamesFromActions();
 		return new java.util.HashMap<>(customNames);
 	}
@@ -301,33 +302,30 @@ public class ActionListPanel {
 		nodeCustomNameScoped.clear();
 		customNameOwners.clear();
 		if (phase == null) return;
-		buildRowsIfDirty();
-		for (Row row : rows) {
-			if (row.kind != RowKind.ACTION || row.action == null || row.path == null) continue;
-			String scopedKey = scopedCollapseKey(row.path);
-			String legacyKey = collapseKey(row.path);
+		for (ActionEntry entry : getActionEntries()) {
+			String scopedKey = scopedCollapseKey(entry.path());
+			String legacyKey = collapseKey(entry.path());
 			boolean scoped = customNames.containsKey(scopedKey);
 			String key = scoped ? scopedKey : legacyKey;
 			String name = customNames.get(key);
 			if (name != null && !name.isBlank()) {
-				nodeCustomNames.put(row.action, name);
-				nodeCustomNameScoped.put(row.action, scoped);
-				customNameOwners.put(key, row.action);
+				nodeCustomNames.put(entry.action(), name);
+				nodeCustomNameScoped.put(entry.action(), scoped);
+				customNameOwners.put(key, entry.action());
 			}
 		}
 	}
 
 	private void syncCustomNamesFromActions() {
 		if (phase == null) return;
-		buildRowsIfDirty();
 		java.util.Map<SpellAction, String> currentKeys = new java.util.IdentityHashMap<>();
-		for (Row row : rows) {
-			if (row.kind != RowKind.ACTION || row.action == null || row.path == null) continue;
-			String name = nodeCustomNames.get(row.action);
+		// Names belong to the full tree, including children in collapsed folders.
+		for (ActionEntry entry : getActionEntries()) {
+			String name = nodeCustomNames.get(entry.action());
 			if (name == null || name.isBlank()) continue;
-			String key = keyFor(row.path, nodeCustomNameScoped.getOrDefault(
-					row.action, preferScopedCustomNames()));
-			currentKeys.put(row.action, key);
+			String key = keyFor(entry.path(), nodeCustomNameScoped.getOrDefault(
+					entry.action(), preferScopedCustomNames()));
+			currentKeys.put(entry.action(), key);
 		}
 		// Remove serialized keys that belonged to moved/deleted nodes. Keep a
 		// key when another node now owns it, so an unrelated node is not renamed.
@@ -427,6 +425,23 @@ public class ActionListPanel {
 	@Nullable
 	public SpellAction getSelectedAction() {
 		return selectedPath == null ? null : getActionAt(selectedPath);
+	}
+
+	/** Snapshot names relative to the selected action so favorites can be inserted anywhere. */
+	public java.util.Map<String, String> getSelectedActionNames() {
+		if (selectedPath == null) return java.util.Map.of();
+		finishRename();
+		syncCustomNamesFromActions();
+		String rootKey = collapseKey(selectedPath);
+		java.util.Map<String, String> names = new java.util.TreeMap<>();
+		for (ActionEntry entry : getActionEntries()) {
+			if (!isSameActionOrDescendant(entry.path(), selectedPath)) continue;
+			String name = customNameFor(entry.action(), entry.path());
+			if (name != null && !name.isBlank()) {
+				names.put(collapseKey(entry.path()).substring(rootKey.length()), name);
+			}
+		}
+		return java.util.Map.copyOf(names);
 	}
 
 	@Nullable
@@ -1907,10 +1922,21 @@ public class ActionListPanel {
 	}
 
 	public void insertAction(AddTarget target, SpellAction action) {
+		insertAction(target, action, java.util.Map.of());
+	}
+
+	public void insertAction(AddTarget target, SpellAction action, java.util.Map<String, String> relativeNames) {
 		if (phase == null) return;
 		pushUndo();
 		if (!insertActionInternal(target, action)) {
 			return;
+		}
+		String rootKey = collapseKey(selectedPath);
+		List<ActionEntry> subtree = new ArrayList<>();
+		collectActionEntry(subtree, selectedPath, action);
+		for (ActionEntry entry : subtree) {
+			String name = relativeNames.get(collapseKey(entry.path()).substring(rootKey.length()));
+			if (name != null && !name.isBlank()) setNodeCustomName(entry.action(), entry.path(), name);
 		}
 		selectedAddTarget = null;
 		dirty = true;

@@ -139,7 +139,7 @@ public enum YHLangData {
 	STG_NEED_SPELL("message.stg_need_spell", "Need a spell card in inventory or curios to enter danmaku combat", 0, ChatFormatting.RED),
 	CLASSIC_CONTROL_ENABLED("message.classic_control.enabled", "Classic controls  ↑%s ↓%s ←%s →%s  Ascend %s Descend %s (configurable in Mod Menu)", 6, ChatFormatting.AQUA),
 	CLASSIC_CONTROL_DISABLED("message.classic_control.disabled", "Classic controls off  %s+%s (configurable in Mod Menu)", 2, ChatFormatting.YELLOW),
-	CLASSIC_CONTROL_AVAILABLE("message.classic_control.available", "Classic controls  %s+%s (configurable in Mod Menu)", 2, ChatFormatting.AQUA),
+	CLASSIC_CONTROL_AVAILABLE("message.classic_control.available", "%s+%s to switch between Classic / Modern controls (configurable in Mod Menu)", 2, ChatFormatting.AQUA),
 	CLASSIC_CONTROL_COMBAT_ONLY("message.classic_control.combat_only", "Classic controls require active danmaku combat", 0, ChatFormatting.RED),
 	CLASSIC_CONTROL_NO_NON_SPELL("message.classic_control.no_non_spell", "No usable non-spell is available", 0, ChatFormatting.RED),
 	CLASSIC_CONTROL_NO_SPELL("message.classic_control.no_spell", "No usable spell card or payment is available", 0, ChatFormatting.RED),

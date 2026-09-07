@@ -152,6 +152,8 @@ public class VariablesDockPanel implements DockPanel {
 
 	private void appendBudgetProjection(List<Line> lines, Font font, int width, boolean zh) {
 		SpellDraftBudget budget = findActiveBudget();
+		boolean nonSpell = scene.getDefinition() != null && scene.getDefinition().itemForm.cardType().isNonSpell();
+		double power = scene.getCasterPower();
 		SpecialNodeCounter.Summary nodes;
 		SpellAnalysis analysis;
 		try {
@@ -166,7 +168,10 @@ public class VariablesDockPanel implements DockPanel {
 					? Math.min(limits.certificationWindowTicks(), plan.get().totalDurationTicks())
 					: limits.certificationWindowTicks();
 			limits = limits.withCertificationWindow(projectionWindow);
-			for (var definition : definitions) analyses.add(SpellAnalyzer.analyzePreview(definition, limits));
+			for (var definition : definitions) {
+				analyses.add(nonSpell ? SpellAnalyzer.analyzeNonSpellPreview(definition, limits, power)
+						: SpellAnalyzer.analyzePreview(definition, limits));
+			}
 			analysis = SpellAnalysis.combine(analyses);
 		} catch (IllegalArgumentException e) {
 			String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
@@ -183,11 +188,9 @@ public class VariablesDockPanel implements DockPanel {
 						: "Nodes: ordinary " + nodes.ordinaryNodes() + "/free " + budget.freeNodeCount()
 						+ "  excess " + excess + "  advanced hooks " + nodes.advancedHookNodes(),
 				excess > 0 ? 0xFFFFD36B : 0xFFAED8AE);
-		boolean nonSpell = scene.getDefinition() != null
-				&& scene.getDefinition().itemForm.cardType() == dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType.NON_SPELL;
 		int powerScaledSpawnLimit = budget.maxSpawnPerTickForPower(
 				dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.fromBudget(budget),
-				scene.getCasterPower(), nonSpell);
+				power, nonSpell);
 		appendMetric(lines, font, width, zh ? "每tick生成" : "Spawn/tick",
 				analysis.maxSpawnPerTick(), powerScaledSpawnLimit);
 		appendMetric(lines, font, width, zh ? "峰值存活" : "Peak alive",

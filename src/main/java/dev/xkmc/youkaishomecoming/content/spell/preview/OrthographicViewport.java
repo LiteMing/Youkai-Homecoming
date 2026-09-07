@@ -10,12 +10,14 @@ import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
+import dev.xkmc.fastprojectileapi.spellcircle.PlayerStgSpellCircle;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellCircleLayer;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellComponent;
 import dev.xkmc.fastprojectileapi.spellcircle.SpellRenderState;
 import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -109,6 +111,16 @@ public class OrthographicViewport {
 	@Nullable
 	private SpellComponent magicCirclePreviewComponent = null;
 	private float magicCirclePreviewSize = 1.0f;
+	private int circlePreviewBomb = YHModConfig.COMMON.initialResource.get() * PlayerStgSpellCircle.RESOURCE_UNIT;
+	private int circlePreviewPower = YHModConfig.COMMON.initialPower.get() * PlayerStgSpellCircle.POWER_UNIT;
+	private int circlePreviewPoints = PlayerStgSpellCircle.POINTS_UNIT;
+
+	public int getCirclePreviewBomb() { return circlePreviewBomb; }
+	public int getCirclePreviewPower() { return circlePreviewPower; }
+	public int getCirclePreviewPoints() { return circlePreviewPoints; }
+	public void setCirclePreviewBomb(int value) { circlePreviewBomb = Math.max(0, value); }
+	public void setCirclePreviewPower(int value) { circlePreviewPower = Math.max(0, value); }
+	public void setCirclePreviewPoints(int value) { circlePreviewPoints = Math.max(0, value); }
 
 	public void setBounds(int x, int y, int width, int height) {
 		this.x = x;
@@ -674,6 +686,9 @@ public class OrthographicViewport {
 			poseStack.mulPose(Axis.YP.rotationDegrees(-yRot));
 			poseStack.mulPose(Axis.XP.rotationDegrees(-xRot));
 			magicCirclePreviewComponent.render(handle);
+			if (magicCirclePreviewComponent.player_stg_resources) {
+				PlayerStgSpellCircle.renderResources(handle, circlePreviewBomb, circlePreviewPower, circlePreviewPoints);
+			}
 			poseStack.popPose();
 		}
 		buffer.endBatch();

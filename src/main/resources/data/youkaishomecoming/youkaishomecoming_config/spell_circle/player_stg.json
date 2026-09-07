@@ -1,6 +1,7 @@
 {
   "map": {
 	"youkaishomecoming:player_stg": {
+	  "player_stg_resources": false,
 	  "strokes": [
 		{
 		  "vertex": 64,

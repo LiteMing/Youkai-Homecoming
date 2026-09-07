@@ -1,11 +1,11 @@
 package dev.xkmc.youkaishomecoming.content.spell.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 import net.minecraftforge.client.gui.overlay.IGuiOverlay;
@@ -73,7 +73,7 @@ public class SpellTitleOverlay implements IGuiOverlay {
 		if (keyOrText == null || keyOrText.isBlank()) {
 			return "";
 		}
-		return Component.translatableWithFallback(keyOrText, keyOrText).getString();
+		return SpellDisplay.displayText(keyOrText).getString();
 	}
 
 	private static void drawScaled(GuiGraphics g, Font font, String text, int x, int y,

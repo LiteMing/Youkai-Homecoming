@@ -533,13 +533,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 	}
 
 	public void setCombatProgress(float amount) {
-		super.setHealth(amount);
-		if (combatProgress == null) return;
-		if (amount > getMaxHealth()) {
-			combatProgress.setMax();
-		} else {
-			combatProgress.set(this, amount);
-		}
+		if (!Float.isFinite(amount)) return;
+		float progress = combatProgress == null ? amount : combatProgress.clampToMaximum(amount, getMaxHealth());
+		super.setHealth(CombatProgress.vanillaHealth(progress, getMaxHealth()));
+		if (combatProgress != null) combatProgress.set(this, progress);
 	}
 
 	public float getCombatProgress() {

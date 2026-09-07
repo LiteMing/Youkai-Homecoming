@@ -2,9 +2,7 @@ package dev.xkmc.fastprojectileapi.spellcircle;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.Entity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Quaternionf;
@@ -16,14 +14,10 @@ import org.joml.Quaternionf;
  */
 @OnlyIn(Dist.CLIENT)
 public final class SpellCircleResourceRenderer {
-	private static final ResourceLocation SPELL_TEXTURE =
-			new ResourceLocation("youkaishomecoming", "textures/entities/spell_circle.png");
-
 	private SpellCircleResourceRenderer() {
 	}
 
-	public static void render(PoseStack pose, MultiBufferSource buffer, int light,
-			Entity entity, float pTick, float globalAlpha, int raw, int resourceUnit,
+	public static void render(SpellComponent.RenderHandle handle, int raw, int resourceUnit,
 			ResourceLocation componentId, float radius, float angleOffset) {
 		if (raw <= 0 || resourceUnit <= 0) {
 			return;
@@ -39,10 +33,9 @@ public final class SpellCircleResourceRenderer {
 		if (slots <= 0) {
 			return;
 		}
-		SpellComponent.RenderHandle handle = new SpellComponent.RenderHandle(
-				pose, buffer, SpellRenderState.getSpell(SPELL_TEXTURE),
-				entity.tickCount + pTick, light);
-		float tick = entity.tickCount + pTick;
+		PoseStack pose = handle.matrix;
+		float globalAlpha = handle.alpha;
+		float tick = handle.tick;
 		SpellComponent.ResourceLayout layout = component.resource_layout;
 		float orbitRadius = layout == null ? radius : layout.radius(tick, radius);
 		float groupAngle = layout == null ? angleOffset : layout.angle(tick, angleOffset);
@@ -68,6 +61,7 @@ public final class SpellCircleResourceRenderer {
 			component.render(handle);
 			pose.popPose();
 		}
+		handle.alpha = globalAlpha;
 	}
 
 	private static void rotate(PoseStack pose, boolean xz, float degrees) {

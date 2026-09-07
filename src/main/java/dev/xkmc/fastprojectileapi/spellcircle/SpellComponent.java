@@ -46,6 +46,10 @@ public class SpellComponent {
 	@SerialClass.SerialField
 	public ArrayList<Layer> layers = new ArrayList<>();
 
+	/** Opt-in player Bomb/Power/Points projection, shared by live circles and the editor. */
+	@SerialClass.SerialField
+	public boolean player_stg_resources;
+
 	/** Optional live-resource slot layout used by the player STG circle renderer. */
 	@Nullable
 	@SerialClass.SerialField

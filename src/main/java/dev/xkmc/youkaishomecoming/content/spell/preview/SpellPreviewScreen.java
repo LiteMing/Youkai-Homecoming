@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireTextDanmakuAction;
@@ -11,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -24,10 +26,13 @@ import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketScreen;
 import dev.xkmc.youkaishomecoming.content.spell.preview.dock.*;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.fml.loading.FMLPaths;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -86,6 +91,8 @@ public class SpellPreviewScreen extends Screen {
 	// Editor panels (direct references for hotkey access)
 	private ActionListPanel actionListPanel;
 	private ActionEditorPanel actionEditorPanel;
+	private final ActionFavoriteStore actionFavorites = new ActionFavoriteStore(
+			FMLPaths.CONFIGDIR.get().resolve("youkaishomecoming_action_favorites.json"));
 	private boolean editorVisible = true;
 	private ActionListPanel.AddTarget pendingAddTarget;
 	private int topBarLeftEnd = TOP_BAR_MARGIN;
@@ -299,6 +306,8 @@ public class SpellPreviewScreen extends Screen {
 				this::onDeleteAction
 		);
 		actionEditorPanel.setActionPathSupplier(actionListPanel::getSelectedPath);
+		actionEditorPanel.setFavoriteCallbacks(this::favoriteSelectedAction, this::loadActionFavorites,
+				this::insertActionFavorite, this::removeActionFavorite);
 		actionEditorPanel.setYsmPreviewModel(() -> scene.getHolder().getYsmModelOverride());
 		actionEditorPanel.setSpellInitializationAccess(
 				() -> definition == null ? "" : definition.display.name(),
@@ -1200,13 +1209,68 @@ public class SpellPreviewScreen extends Screen {
 	}
 
 	private void onTypeSelected(SpellAction action) {
+		onTypeSelected(action, Map.of());
+	}
+
+	private void onTypeSelected(SpellAction action, Map<String, String> names) {
 		if (actionListPanel != null && pendingAddTarget != null) {
-			actionListPanel.insertAction(pendingAddTarget, action);
+			actionListPanel.insertAction(pendingAddTarget, action, names);
 			markChanged();
 			pendingAddTarget = null;
 			if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
 			if (autoReplay) replaySelectedPhase();
 		}
+	}
+
+	private void favoriteSelectedAction() {
+		if (actionListPanel == null) return;
+		SpellAction action = actionListPanel.getSelectedAction();
+		if (action == null) return;
+		try {
+			var names = actionListPanel.getSelectedActionNames();
+			String name = names.getOrDefault("", ActionEditorPanel.actionTypeName(action));
+			var json = SpellAction.CODEC.encodeStart(JsonOps.INSTANCE, action).getOrThrow(false, ignored -> {});
+			actionFavorites.save(new ActionFavoriteStore.Favorite(name, json.getAsJsonObject(), names));
+			EditorNotifications.show(Component.translatable("youkaishomecoming.spell_editor.favorite.saved", name));
+		} catch (IOException | RuntimeException e) {
+			reportFavoriteError("youkaishomecoming.spell_editor.favorite.save_failed", e);
+		}
+	}
+
+	private List<ActionFavoriteStore.Favorite> loadActionFavorites() {
+		try {
+			return actionFavorites.list();
+		} catch (IOException | RuntimeException e) {
+			reportFavoriteError("youkaishomecoming.spell_editor.favorite.load_failed", e);
+			return List.of();
+		}
+	}
+
+	private void insertActionFavorite(ActionFavoriteStore.Favorite favorite) {
+		try {
+			// Decode on every insertion. Editing an instance must never mutate a
+			// favorite or another instance's child lists.
+			SpellAction action = SpellAction.CODEC.parse(JsonOps.INSTANCE, favorite.action())
+					.getOrThrow(false, ignored -> {});
+			onTypeSelected(action, favorite.customNames());
+		} catch (RuntimeException e) {
+			reportFavoriteError("youkaishomecoming.spell_editor.favorite.insert_failed", e);
+		}
+	}
+
+	private void removeActionFavorite(ActionFavoriteStore.Favorite favorite) {
+		try {
+			actionFavorites.remove(favorite);
+			actionEditorPanel.refreshCurrentView();
+			EditorNotifications.show(Component.translatable("youkaishomecoming.spell_editor.favorite.removed", favorite.name()));
+		} catch (IOException | RuntimeException e) {
+			reportFavoriteError("youkaishomecoming.spell_editor.favorite.remove_failed", e);
+		}
+	}
+
+	private void reportFavoriteError(String key, Exception error) {
+		YoukaisHomecoming.LOGGER.warn("Action favorites: {}", key, error);
+		EditorNotifications.show(Component.translatable(key));
 	}
 
 	private void onDeleteAction() {
@@ -1227,7 +1291,7 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		if (rawJsonDockPanel != null && rawJsonDockPanel.hasDirtyDraft()) {
-			refuseIfBroken();
+			EditorNotifications.show(Component.translatable("youkaishomecoming.spell_editor.save_invalid_json"));
 			return;
 		}
 		syncCustomNamesToDefinition();
@@ -1235,10 +1299,7 @@ public class SpellPreviewScreen extends Screen {
 			SpellRegistry.register(definition);
 			spellController.markDefinitionSaved();
 			changed = false;
-			if (minecraft != null && minecraft.player != null) {
-				minecraft.player.displayClientMessage(
-						Component.translatable("youkaishomecoming.spell_editor.saved_refresh"), true);
-			}
+			EditorNotifications.show(Component.translatable("youkaishomecoming.spell_editor.saved_refresh"));
 		}
 	}
 
@@ -1252,10 +1313,7 @@ public class SpellPreviewScreen extends Screen {
 		if (!SpellJsonSalvage.containsBrokenNodes(definition)) {
 			return false;
 		}
-		if (minecraft != null && minecraft.player != null) {
-			minecraft.player.displayClientMessage(
-					Component.literal("[YH] " + SpellEditorLocalization.t("Fix broken nodes first")), true);
-		}
+		EditorNotifications.show(Component.literal("[YH] " + SpellEditorLocalization.t("Fix broken nodes first")));
 		return true;
 	}
 
@@ -1921,12 +1979,21 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		// Saving belongs to the document, before any panel, text field, dropdown
+		// or captured viewport can consume the key.
+		if (hasControlDown() && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) {
+			switch (editorMode) {
+				case YSM -> { if (ysmEditor != null) ysmEditor.saveProfile(); }
+				case MAGIC_CIRCLE -> { if (magicCircleDockPanel != null) magicCircleDockPanel.saveCircleFromTopBar(); }
+				case SPELL -> applyToEntities();
+			}
+			return true;
+		}
 		if (topBarMoreOpen && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
 			topBarMoreOpen = false;
 			return true;
 		}
 		if (editorMode == EditorMode.YSM) {
-			if (hasControlDown() && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) { ysmEditor.saveProfile(); return true; }
 			if (dockLayout != null && dockLayout.keyPressed(keyCode, scanCode, modifiers)) return true;
 			return super.keyPressed(keyCode, scanCode, modifiers);
 		}
@@ -1970,7 +2037,7 @@ public class SpellPreviewScreen extends Screen {
 		}
 
 		// === EditBox focus gate ===
-		// When an EditBox is focused, ALL custom hotkeys are blocked.
+		// Text focus blocks action/playback hotkeys; document saving was handled above.
 		// Only Tab (for completion) is handled specially, everything else goes to super
 		// which routes to the focused EditBox for normal text editing.
 		if (isAnyEditBoxFocused()) {
@@ -2000,15 +2067,6 @@ public class SpellPreviewScreen extends Screen {
 		}
 
 		// === Below: no EditBox is focused, custom hotkeys active ===
-
-		// Ctrl+S = save and refresh, using the same guarded path as the toolbar.
-		// Keep this outside the EditBox and perspective-viewport gates so text input
-		// and viewport playback retain their own keyboard semantics.
-		if (net.minecraft.client.gui.screens.Screen.hasControlDown()
-				&& keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) {
-			applyToEntities();
-			return true;
-		}
 
 		// Ctrl+Z/Y for undo/redo
 		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {

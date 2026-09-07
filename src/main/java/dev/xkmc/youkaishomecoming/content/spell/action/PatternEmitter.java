@@ -29,6 +29,7 @@ public class PatternEmitter {
 		CardHolder holder = ctx.holder();
 		var diff = ctx.difficulty();
 		int n = diff.adjustCount((int) settings.count().get(ctx));
+		if (n == 0) return;
 		double spd = diff.adjustSpeed(settings.speed().get(ctx));
 		double angle = settings.angleOffset().get(ctx);
 		double spreadDeg = settings.spread().get(ctx);
@@ -64,6 +65,7 @@ public class PatternEmitter {
 
 		if (settings.pattern() == PatternType.NESTED_RING && settings.outerCount().isPresent()) {
 			int outer = diff.adjustCount((int) settings.outerCount().get().get(ctx));
+			if (outer == 0) return;
 			double innerSpread = elevDeg != 0 ? elevDeg : 360.0;
 			boolean innerClosed = Math.abs(innerSpread) >= 360.0;
 			double tilt = settings.tiltAngle().isPresent() ? settings.tiltAngle().get().get(ctx) : 0;

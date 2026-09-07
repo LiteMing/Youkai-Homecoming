@@ -27,6 +27,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.MoverConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
+import dev.xkmc.youkaishomecoming.content.spell.definition.PatternType;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.Transition;
@@ -808,24 +809,15 @@ public final class SpellAnalyzer {
 		SpecialNodeCounter.capabilities(a).forEach(this::addCap);
 		checkOrigin(a.origin());
 		long count;
-		long outer;
 		if (countCasterPower != null) {
-			// Match PatternEmitter's truncation, difficulty scaling and pattern
-			// dimensions. Repeat counts, unlike emitter counts, may be zero.
-			count = boundEmitterCount(a.count(), "fire_danmaku count");
-			outer = switch (a.pattern()) {
-				case NESTED_RING -> a.outerCount().isPresent()
-						? boundEmitterCount(a.outerCount().get(), "outer_count") : 1;
-				case GRID -> a.outerCount().isPresent()
-						? boundCount(a.outerCount().get(), "outer_count") : count;
-				default -> 1;
-			};
+			count = boundNonSpellPatternCount(a.count(), a.pattern(), a.outerCount(), "fire_danmaku count");
 		} else {
 			count = boundCount(a.count(), "fire_danmaku count");
-			outer = profile == SpellAnalysisProfile.CERTIFICATION
+			long outer = profile == SpellAnalysisProfile.CERTIFICATION
 					? boundOptionalCount(a.outerCount(), "outer_count") : 1;
+			count = satMul(count, outer);
 		}
-		long contrib = satMul(satMul(mult, outer), count);
+		long contrib = satMul(mult, count);
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
 		bucketSpawns(contrib, projection, lifetimeUpper);
 		walkHooks(a.onExpiry(), a.onTrail(), a.trailInterval(),
@@ -1018,7 +1010,8 @@ public final class SpellAnalyzer {
 
 	private void handleShooter(SpawnShooterAction a, TickProjection projection, long mult) {
 		SpecialNodeCounter.capabilities(a).forEach(this::addCap);
-		long count = boundCount(a.count(), "shooter count");
+		long count = countCasterPower == null ? boundCount(a.count(), "shooter count")
+				: boundNonSpellPatternCount(a.count(), a.pattern(), a.outerCount(), "shooter count");
 		long shooterCount = satMul(mult, count);
 		if (profile == SpellAnalysisProfile.MARKET) {
 			marketShooters = satAdd(marketShooters, shooterCount);
@@ -1179,6 +1172,20 @@ public final class SpellAnalyzer {
 			throw rejected("unbounded_value", label + " cannot be bounded statically");
 		}
 		return bounds;
+	}
+
+	/** Match both PatternEmitter consumers, including empty inner/outer dimensions. */
+	private long boundNonSpellPatternCount(NumberProvider provider, PatternType pattern,
+			Optional<NumberProvider> outerCount, String label) {
+		long count = boundEmitterCount(provider, label);
+		long outer = switch (pattern) {
+			case NESTED_RING -> outerCount.isPresent()
+					? boundEmitterCount(outerCount.get(), "outer_count") : 1;
+			case GRID -> outerCount.isPresent()
+					? boundCount(outerCount.get(), "outer_count") : count;
+			default -> 1;
+		};
+		return satMul(count, outer);
 	}
 
 	private long boundEmitterCount(NumberProvider provider, String label) {

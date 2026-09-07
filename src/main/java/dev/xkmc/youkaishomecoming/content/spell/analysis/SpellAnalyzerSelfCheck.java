@@ -909,8 +909,40 @@ public final class SpellAnalyzerSelfCheck {
 					SpellAnalyzer.analyzeNonSpellPreview(nested, CERT, 2.75).maxSpawnPerTick() == 6);
 			SpellDefinition zero = parse(spell(NON_SPELL_SAFE_ACTION.replace("\"count\": 1", "\"count\": 0")
 					+ "," + NON_SPELL_SAFE_ACTION.replace("\"count\": 1", "\"count\": 0")));
-			check("emitter minimum of one projectile is included in the budget", rejects(() ->
+			check("zero-count emitters fit the lowest Power budget", !rejects(() ->
 					NonSpellValidator.validate(zero, tier1, 0)));
+			check("zero-count emitters consume no spawn budget",
+					SpellAnalyzer.analyzeNonSpellPreview(zero, CERT, 0).maxSpawnPerTick() == 0);
+			SpellDefinition zeroAndOne = parse(spell(
+					NON_SPELL_SAFE_ACTION.replace("\"count\": 1", "\"count\": 0") + "," + NON_SPELL_SAFE_ACTION));
+			for (double power : new double[]{0, 0.25, 0.99}) {
+				check("zero plus one emits within the one-per-tick budget at Power " + power, !rejects(() ->
+						NonSpellValidator.validate(zeroAndOne, tier1, power)));
+				check("zero plus one projects exactly one spawn at Power " + power,
+						SpellAnalyzer.analyzeNonSpellPreview(zeroAndOne, CERT, power).maxSpawnPerTick() == 1);
+			}
+			check("ordinary spell zero plus one also projects one spawn",
+					SpellAnalyzer.analyzePreview(zeroAndOne, CERT).maxSpawnPerTick() == 1);
+			check("fractional emitter count below one truncates to zero",
+					SpellAnalyzer.analyzeNonSpellPreview(nonSpellCount("caster_power"), CERT, 0.99)
+							.maxSpawnPerTick() == 0);
+			SpellDefinition emptyOuter = parse(NON_SPELL_SAFE.replace("\"count\": 1",
+					"\"count\": 3, \"pattern\": \"nested_ring\", \"outer_count\": 0"));
+			check("zero outer_count suppresses the nested ring budget",
+					SpellAnalyzer.analyzeNonSpellPreview(emptyOuter, CERT, 0).maxSpawnPerTick() == 0);
+			SpellDefinition emptyGrid = parse(NON_SPELL_SAFE.replace("\"count\": 1",
+					"\"count\": 0, \"pattern\": \"grid\""));
+			check("zero grid dimension suppresses the grid budget",
+					SpellAnalyzer.analyzeNonSpellPreview(emptyGrid, CERT, 0).maxSpawnPerTick() == 0);
+			SpellDefinition emptyShooter = parse(spell("{\"type\": \"spawn_shooter\", \"count\": 3,"
+					+ "\"pattern\": \"nested_ring\", \"outer_count\": 0, \"lifetime\": 60,"
+					+ "\"body\": [" + NON_SPELL_SAFE_ACTION + "]}"));
+			check("zero shooter dimension suppresses shooter and body spawns",
+					SpellAnalyzer.analyzeNonSpellPreview(emptyShooter, CERT, 0).maxSpawnPerTick() == 0);
+			SpellDefinition invalidZero = parse(NON_SPELL_SAFE.replace("\"count\": 1", "\"count\": 0")
+					.replace("\"lifetime\": 60", "\"lifetime\": 12001"));
+			check("zero count cannot bypass lifetime validation", rejects(() ->
+					NonSpellValidator.validate(invalidZero, tier1, 0)));
 		}
 
 		private SpellDefinition nonSpellCount(String expression) {

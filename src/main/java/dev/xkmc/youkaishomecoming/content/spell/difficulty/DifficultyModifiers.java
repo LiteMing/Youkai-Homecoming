@@ -9,6 +9,8 @@ public record DifficultyModifiers(
 	public static final DifficultyModifiers DEFAULT = new DifficultyModifiers(1.0f, 1.0f, 1.0f);
 
 	public int adjustCount(int base) {
+		// An empty emission stays empty, including fractional counts truncated to zero.
+		if (base <= 0) return 0;
 		return Math.max(1, Math.round(base * countMultiplier));
 	}
 

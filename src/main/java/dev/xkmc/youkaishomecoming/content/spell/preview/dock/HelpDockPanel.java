@@ -5,39 +5,60 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.locale.Language;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @OnlyIn(Dist.CLIENT)
 public class HelpDockPanel implements DockPanel {
 
 	private static final String KEY_PREFIX = YoukaisHomecoming.MODID + ".spell_editor.help.";
 	private static final int SURVIVAL_LINE_COUNT = 9;
+	private static final int BUDGET_LINE_COUNT = 27;
 	private static final int LINE_COUNT = 110;
+	private static final int LINE_HEIGHT = 10;
 
 	private int x, y, w, h;
 	private int scrollOffset = 0;
 	private boolean scrollbarDragging = false;
 
-	private String[] cachedLines = null;
-	private String cachedLang = null;
+	private List<FormattedCharSequence> cachedLines;
+	private Language cachedLanguage;
+	private int cachedWidth = -1;
 
-	private String[] getLines() {
-		String lang = Minecraft.getInstance().getLanguageManager().getSelected();
-		if (cachedLines != null && lang.equals(cachedLang)) return cachedLines;
-		cachedLang = lang;
-		cachedLines = new String[SURVIVAL_LINE_COUNT + LINE_COUNT];
-		for (int i = 0; i < SURVIVAL_LINE_COUNT; i++) {
-			String key = KEY_PREFIX + "survival." + i;
-			String val = I18n.get(key);
-			cachedLines[i] = val.equals(key) ? "" : val;
+	private List<FormattedCharSequence> getLines() {
+		Language language = Language.getInstance();
+		int width = Math.max(1, w - 16);
+		if (cachedLines != null && language == cachedLanguage && width == cachedWidth) return cachedLines;
+		cachedLanguage = language;
+		cachedWidth = width;
+		List<String> paragraphs = new ArrayList<>();
+		appendSection(paragraphs, "survival.", SURVIVAL_LINE_COUNT);
+		appendSection(paragraphs, "budget.", BUDGET_LINE_COUNT);
+		appendSection(paragraphs, "line.", LINE_COUNT);
+		while (!paragraphs.isEmpty() && paragraphs.get(paragraphs.size() - 1).isEmpty()) {
+			paragraphs.remove(paragraphs.size() - 1);
 		}
-		for (int i = 0; i < LINE_COUNT; i++) {
-			String key = KEY_PREFIX + "line." + i;
-			String val = I18n.get(key);
-			cachedLines[SURVIVAL_LINE_COUNT + i] = val.equals(key) ? "" : val;
+		Font font = Minecraft.getInstance().font;
+		cachedLines = new ArrayList<>();
+		for (String paragraph : paragraphs) {
+			if (paragraph.isEmpty()) cachedLines.add(FormattedCharSequence.EMPTY);
+			else cachedLines.addAll(font.split(Component.literal(paragraph), width));
 		}
 		return cachedLines;
+	}
+
+	private static void appendSection(List<String> lines, String section, int count) {
+		for (int i = 0; i < count; i++) {
+			String key = KEY_PREFIX + section + i;
+			String value = I18n.get(key);
+			lines.add(value.equals(key) ? "" : value);
+		}
 	}
 
 	@Override
@@ -63,7 +84,7 @@ public class HelpDockPanel implements DockPanel {
 	@Override
 	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		Font font = Minecraft.getInstance().font;
-		String[] lines = getLines();
+		List<FormattedCharSequence> lines = getLines();
 
 		graphics.fill(x, y, x + w, y + h, 0xEE111122);
 		graphics.fill(x, y, x + w, y + 1, 0xFF444488);
@@ -78,9 +99,8 @@ public class HelpDockPanel implements DockPanel {
 		int contentH = h - 22;
 		graphics.enableScissor(x + 4, contentY, x + w - 8, contentY + contentH);
 
-		int lineH = 10;
-		int actualLines = lines.length;
-		while (actualLines > 0 && lines[actualLines - 1].isEmpty()) actualLines--;
+		int lineH = LINE_HEIGHT;
+		int actualLines = lines.size();
 
 		int maxScroll = Math.max(0, actualLines * lineH - contentH);
 		scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset));
@@ -88,7 +108,7 @@ public class HelpDockPanel implements DockPanel {
 		for (int i = 0; i < actualLines; i++) {
 			int ly = contentY + i * lineH - scrollOffset;
 			if (ly + lineH < contentY || ly > contentY + contentH) continue;
-			graphics.drawString(font, lines[i], x + 8, ly, 0xFFCCCCCC, false);
+			graphics.drawString(font, lines.get(i), x + 8, ly, 0xFFCCCCCC, false);
 		}
 		graphics.disableScissor();
 
@@ -105,12 +125,10 @@ public class HelpDockPanel implements DockPanel {
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
 		if (button != 0 || !isMouseOver(mouseX, mouseY)) return false;
-		String[] lines = getLines();
-		int actualLines = lines.length;
-		while (actualLines > 0 && lines[actualLines - 1].isEmpty()) actualLines--;
+		int actualLines = getLines().size();
 		int contentY = y + 18;
 		int contentH = h - 22;
-		int maxScroll = Math.max(0, actualLines * 10 - contentH);
+		int maxScroll = Math.max(0, actualLines * LINE_HEIGHT - contentH);
 		if (maxScroll > 0) {
 			int sbX = x + w - 6;
 			if (mouseX >= sbX && mouseX < sbX + 4) {
@@ -125,12 +143,10 @@ public class HelpDockPanel implements DockPanel {
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
 		if (scrollbarDragging && button == 0) {
-			String[] lines = getLines();
-			int actualLines = lines.length;
-			while (actualLines > 0 && lines[actualLines - 1].isEmpty()) actualLines--;
+			int actualLines = getLines().size();
 			int contentY = y + 18;
 			int contentH = h - 22;
-			int maxScroll = Math.max(0, actualLines * 10 - contentH);
+			int maxScroll = Math.max(0, actualLines * LINE_HEIGHT - contentH);
 			updateScrollbarDrag(mouseY, maxScroll, contentY, contentH, actualLines);
 			return true;
 		}
@@ -156,7 +172,7 @@ public class HelpDockPanel implements DockPanel {
 	private void updateScrollbarDrag(double mouseY, int maxScroll, int contentY, int contentH, int lineCount) {
 		if (maxScroll <= 0) return;
 		int trackH = contentH - 2;
-		int lineH = 10;
+		int lineH = LINE_HEIGHT;
 		int thumbH = Math.max(10, trackH * contentH / (lineCount * lineH));
 		int thumbTravel = trackH - thumbH;
 		if (thumbTravel <= 0) return;

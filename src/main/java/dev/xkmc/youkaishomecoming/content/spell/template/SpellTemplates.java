@@ -285,7 +285,7 @@ public final class SpellTemplates {
 				      "id": "%2$s/intro",
 				      "on_enter": [
 				        {
-				          "type": "set_spell_health",
+				          "type": "spellcard_init",
 				          "health": 500,
 				          "duration": 400,
 				          "on_timeout": {
@@ -326,7 +326,7 @@ public final class SpellTemplates {
 				      "id": "%2$s/final",
 				      "on_enter": [
 				        {
-				          "type": "set_spell_health",
+				          "type": "spellcard_init",
 				          "health": 800,
 				          "duration": 800
 				        },

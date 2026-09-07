@@ -11,8 +11,8 @@ import java.util.Optional;
 
 /**
  * Declares one boss spell-card health segment and its optional countdown.
- * Market imports reject this declaration. Survival certification accepts it only
- * after the complete phase/spell graph passes SpellHealthPlan validation.
+ * Survival certification accepts it only after the complete phase/spell graph
+ * passes SpellHealthPlan validation.
  */
 public record SetSpellHealthAction(Mode mode, NumberProvider health,
 									NumberProvider duration,
@@ -81,7 +81,7 @@ public record SetSpellHealthAction(Mode mode, NumberProvider health,
 		if (action instanceof SpellActions.ForcePhase || action instanceof SpellActions.ForceSpell) {
 			return Optional.of(action);
 		}
-		throw new IllegalArgumentException("set_spell_health target must be force_phase or force_spell");
+		throw new IllegalArgumentException("spellcard_init target must be force_phase or force_spell");
 	}
 
 	private static int clamp(double value, int min, int max) {

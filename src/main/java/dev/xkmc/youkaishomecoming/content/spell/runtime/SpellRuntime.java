@@ -47,6 +47,7 @@ public class SpellRuntime {
 	private int hitCount;
 	private boolean enteredCurrentPhase;
 	private boolean presentationStarted;
+	private boolean spellTitleShown;
 	private final Map<String, Double> variables = new HashMap<>();
 	@Nullable
 	private Set<String> trackWritesTo = null;
@@ -60,7 +61,7 @@ public class SpellRuntime {
 	private int spellDurationTicks;
 	/**
 	 * Optional fixed duration supplied by an item/command.  When present it is
-	 * authoritative over durations declared by set_spell_health, while the
+	 * authoritative over durations declared by spellcard_init, while the
 	 * health plan itself remains unchanged.
 	 */
 	@Nullable
@@ -164,6 +165,14 @@ public class SpellRuntime {
 		return spellMaxHealth;
 	}
 
+	public boolean isSpellHudVisible() {
+		return spellMaxHealth > 0 && spellTitleShown;
+	}
+
+	public void markSpellTitleShown() {
+		spellTitleShown = true;
+	}
+
 	public int getSpellDurationTicks() {
 		return durationOverrideTicks == null
 				? Math.max(0, spellDurationTicks)
@@ -234,6 +243,7 @@ public class SpellRuntime {
 
 	public void setSpellHealth(int maxHealth, int durationTicks,
 			@Nullable SpellAction onTimeout, @Nullable SpellAction onBreak) {
+		spellTitleShown = false;
 		boolean hadCurrentSegment = spellMaxHealth > 0;
 		spellMaxHealth = Math.max(1, maxHealth);
 		spellDurationTicks = Math.max(0, durationTicks);
@@ -286,6 +296,7 @@ public class SpellRuntime {
 	}
 
 	private void clearCurrentSpellHealth() {
+		spellTitleShown = false;
 		spellMaxHealth = 0;
 		spellDurationTicks = 0;
 		spellStartTick = totalTick;
@@ -592,6 +603,7 @@ public class SpellRuntime {
 
 	public void reset() {
 		presentationStarted = false;
+		spellTitleShown = false;
 		currentPhaseId = definition.entryPhase;
 		phaseTick = 0;
 		totalTick = 0;
@@ -663,7 +675,7 @@ public class SpellRuntime {
 		enteredCurrentPhase = false;
 		scheduledActions.clear();
 		// Ordinary attack-pattern phases may share one spell-health segment. A
-		// phase starts a new segment only when it declares set_spell_health itself.
+		// phase starts a new segment only when it declares spellcard_init itself.
 		if (newPhase != null && findStaticHealthAction(newPhase.onEnter) != null) {
 			completeCurrentSpellHealth();
 		}
@@ -891,6 +903,7 @@ public class SpellRuntime {
 		writeAction(tag, "SpellTimeoutAction", spellTimeoutAction);
 		writeAction(tag, "SpellBreakAction", spellBreakAction);
 		tag.putBoolean("EnteredCurrentPhase", enteredCurrentPhase);
+		tag.putBoolean("SpellTitleShown", spellTitleShown);
 		if (!variables.isEmpty()) {
 			var varsTag = new net.minecraft.nbt.CompoundTag();
 			for (var entry : variables.entrySet()) {
@@ -975,6 +988,7 @@ public class SpellRuntime {
 			this.spellBreakAction = readAction(tag, "SpellBreakAction");
 			this.enteredCurrentPhase = tag.contains("EnteredCurrentPhase") ?
 					tag.getBoolean("EnteredCurrentPhase") : true;
+			this.spellTitleShown = tag.getBoolean("SpellTitleShown");
 			if (tag.contains("Variables")) {
 				var varsTag = tag.getCompound("Variables");
 				for (String key : varsTag.getAllKeys()) {

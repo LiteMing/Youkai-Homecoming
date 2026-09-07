@@ -28,7 +28,7 @@ public record SpellCertificate(
 		SpellDraftBudget draftBudget,
 		/** True only for rewards issued by the OP-only /yhdev certification path. */
 		boolean operatorTest,
-		/** 1 = definitionHash covers the frozen set_spell_health dependency closure. */
+		/** 1 = definitionHash covers the frozen spellcard_init dependency closure. */
 		int healthPlanVersion,
 		int analysisVersion,
 		int certificationRulesVersion,

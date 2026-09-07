@@ -67,7 +67,7 @@ public record SpellHealthPlan(List<Segment> breakChain, int totalHealth, int tot
 	private static final int MAX_DEFINITIONS = 64;
 	private static final int MAX_VALUE = 1_000_000;
 
-	/** Returns empty when the definition does not use set_spell_health. */
+	/** Returns empty when the definition does not use spellcard_init. */
 	public static java.util.Optional<SpellHealthPlan> analyzeIfPresent(
 			SpellDefinition root, Function<ResourceLocation, SpellDefinition> resolver) {
 		if (!containsHealth(root)) return java.util.Optional.empty();
@@ -185,7 +185,7 @@ public record SpellHealthPlan(List<Segment> breakChain, int totalHealth, int tot
 				"phase " + node.spellId() + ":" + node.phaseId());
 		if (containsHealth(phase.onTick) || containsHealth(phase.onExit)
 				|| containsHealth(phase.onDamage)) {
-			throw invalid("set_spell_health may only run from on_enter: "
+			throw invalid("spellcard_init may only run from on_enter: "
 					+ node.spellId() + ":" + node.phaseId());
 		}
 		if (health == null || health.mode() != SetSpellHealthAction.Mode.SET) {
@@ -255,16 +255,16 @@ public record SpellHealthPlan(List<Segment> breakChain, int totalHealth, int tot
 		SetSpellHealthAction found = null;
 		for (SpellAction action : actions) {
 			if (action instanceof SetSpellHealthAction health) {
-				if (found != null) throw invalid("multiple set_spell_health nodes in " + path);
+				if (found != null) throw invalid("multiple spellcard_init nodes in " + path);
 				found = health;
 			} else if (action instanceof SpellActions.SequenceAction sequence) {
 				SetSpellHealthAction nested = findHealthAction(sequence.actions(), path + "/sequence");
 				if (nested != null) {
-					if (found != null) throw invalid("multiple set_spell_health nodes in " + path);
+					if (found != null) throw invalid("multiple spellcard_init nodes in " + path);
 					found = nested;
 				}
 			} else if (containsHealth(action)) {
-				throw invalid("set_spell_health must be a direct on_enter node or sequence: " + path);
+				throw invalid("spellcard_init must be a direct on_enter node or sequence: " + path);
 			}
 		}
 		return found;
@@ -303,7 +303,7 @@ public record SpellHealthPlan(List<Segment> breakChain, int totalHealth, int tot
 
 	private static boolean containsFreeSwitch(SpellAction action) {
 		if (action instanceof SpellActions.ForcePhase || action instanceof SpellActions.ForceSpell) return true;
-		// Completion targets stored inside set_spell_health are the only allowed switches.
+		// Completion targets stored inside spellcard_init are the only allowed switches.
 		if (action instanceof SetSpellHealthAction || action instanceof SpellActions.DisabledAction) return false;
 		if (action instanceof SpellActions.ConditionalAction conditional) {
 			return containsFreeSwitch(conditional.ifTrue()) || containsFreeSwitch(conditional.ifFalse());

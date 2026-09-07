@@ -46,8 +46,30 @@ public final class SpellHash {
 		if (!first.equals(second)) {
 			throw new SpellAnalysisException("Definition JSON is not stable across encode/decode");
 		}
-		String canonical = GSON.toJson(sortKeys(second));
+		String canonical = GSON.toJson(sortKeys(normalizeHashAliases(second)));
 		return sha256Hex(canonical.getBytes(StandardCharsets.UTF_8));
+	}
+
+	/** Keep hashes issued before the spellcard_init rename valid. */
+	private static JsonElement normalizeHashAliases(JsonElement element) {
+		if (element instanceof JsonObject obj) {
+			JsonObject normalized = new JsonObject();
+			for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
+				JsonElement value = normalizeHashAliases(entry.getValue());
+				if (entry.getKey().equals("type") && value.isJsonPrimitive()
+						&& value.getAsString().equals("spellcard_init")) {
+					value = new com.google.gson.JsonPrimitive("set_spell_health");
+				}
+				normalized.add(entry.getKey(), value);
+			}
+			return normalized;
+		}
+		if (element instanceof JsonArray array) {
+			JsonArray normalized = new JsonArray();
+			for (JsonElement child : array) normalized.add(normalizeHashAliases(child));
+			return normalized;
+		}
+		return element;
 	}
 
 	/** Hashes the complete frozen force_spell dependency closure. */

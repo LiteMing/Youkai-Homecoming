@@ -38,7 +38,8 @@ public class SpellActions {
 		register("show_spell_title", ShowSpellTitleAction.CODEC, ShowSpellTitleAction.class);
 		register("show_spell_card", ShowSpellCardAction.CODEC, ShowSpellCardAction.class);
 		register("set_spell_circle", SetSpellCircleAction.CODEC, SetSpellCircleAction.class);
-		register("set_spell_health", SetSpellHealthAction.CODEC, SetSpellHealthAction.class);
+		register("spellcard_init", SetSpellHealthAction.CODEC, SetSpellHealthAction.class);
+		register("set_spell_health", SetSpellHealthAction.CODEC);
 		register("conditional", ConditionalAction.CODEC, ConditionalAction.class);
 		register("sequence", SequenceAction.CODEC, SequenceAction.class);
 		register("legacy_ticker", LegacyTickerAction.CODEC, LegacyTickerAction.class);

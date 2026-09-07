@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.events;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.virtual.ClientDanmakuCache;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
@@ -20,7 +21,6 @@ import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
@@ -32,6 +32,7 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -153,7 +154,7 @@ public class AutoDodgeClientHandlers {
 
 		Vec3 input = readInputWish(player);
 		List<GuidanceDirection> directions = readInputDirections(player);
-		boolean controlBias = Screen.hasControlDown();
+		boolean controlBias = isPilotControlDown(minecraft);
 		if (!controlBias && input.lengthSqr() > INPUT_EPSILON) {
 			if (!manualOverride) resetControllers();
 			manualOverride = true;
@@ -193,7 +194,7 @@ public class AutoDodgeClientHandlers {
 		joinScanTicks = 3;
 		Vec3 input = readInputWish(player);
 		List<GuidanceDirection> directions = readInputDirections(player);
-		boolean controlBias = Screen.hasControlDown();
+		boolean controlBias = isPilotControlDown(minecraft);
 		if (!controlBias && input.lengthSqr() > INPUT_EPSILON) return;
 		ensureProviders();
 		refreshProfilesIfNeeded();
@@ -306,6 +307,19 @@ public class AutoDodgeClientHandlers {
 		flat = flat.normalize();
 		Vec3 left = new Vec3(flat.z, 0, -flat.x);
 		return flat.scale(forward).add(left.scale(strafe)).add(0, vertical, 0);
+	}
+
+	private static boolean isPilotControlDown(Minecraft minecraft) {
+		InputConstants.Key key;
+		try {
+			key = InputConstants.getKey(YHModConfig.CLIENT.autoDodgePilotControlKey.get());
+			if (key.getType() != InputConstants.Type.KEYSYM || key.getValue() == GLFW.GLFW_KEY_UNKNOWN) {
+				key = InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_LEFT_CONTROL);
+			}
+		} catch (IllegalArgumentException ignored) {
+			key = InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_LEFT_CONTROL);
+		}
+		return InputConstants.isKeyDown(minecraft.getWindow().getWindow(), key.getValue());
 	}
 
 	private static List<GuidanceDirection> readInputDirections(LocalPlayer player) {

@@ -37,6 +37,7 @@ public record ShowSpellTitleAction(String name, String description, int duration
 		if (!(self.level() instanceof ServerLevel level)) {
 			return;
 		}
+		ctx.runtime().markSpellTitleShown();
 		String title = ctx.definition().display.name();
 		String desc = description == null || description.isBlank() ? ctx.definition().display.description() : SpellTextResolver.resolve(description, ctx);
 		var packet = new SpellTitleToClient(title, desc, Math.max(20, duration));

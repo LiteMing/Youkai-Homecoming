@@ -25,6 +25,18 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue powerInfoXOffset;
 		public final ForgeConfigSpec.IntValue powerInfoYAnchor;
 		public final ForgeConfigSpec.IntValue powerInfoYOffset;
+		public final ForgeConfigSpec.BooleanValue activeSpellHudEnabled;
+		public final ForgeConfigSpec.IntValue activeSpellHudXAnchor;
+		public final ForgeConfigSpec.IntValue activeSpellHudXOffset;
+		public final ForgeConfigSpec.IntValue activeSpellHudYAnchor;
+		public final ForgeConfigSpec.IntValue activeSpellHudYOffset;
+		public final ForgeConfigSpec.DoubleValue activeSpellHudScale;
+		public final ForgeConfigSpec.BooleanValue combatStatusHudEnabled;
+		public final ForgeConfigSpec.IntValue combatStatusHudXAnchor;
+		public final ForgeConfigSpec.IntValue combatStatusHudXOffset;
+		public final ForgeConfigSpec.IntValue combatStatusHudYAnchor;
+		public final ForgeConfigSpec.IntValue combatStatusHudYOffset;
+		public final ForgeConfigSpec.DoubleValue combatStatusHudScale;
 		public final ForgeConfigSpec.BooleanValue spellCardTotemAnimation;
 		public final ForgeConfigSpec.BooleanValue feedbackCameraShakeEnabled;
 		public final ForgeConfigSpec.DoubleValue feedbackCameraShakeScale;
@@ -38,6 +50,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.ConfigValue<String> classicControlToggleKey;
 		public final ForgeConfigSpec.ConfigValue<String> classicControlNonSpellKey;
 		public final ForgeConfigSpec.ConfigValue<String> classicControlNextSpellKey;
+		public final ForgeConfigSpec.ConfigValue<String> autoDodgePilotControlKey;
 		public final ForgeConfigSpec.DoubleValue classicControlLowSpeedMultiplier;
 		public final ForgeConfigSpec.DoubleValue previewBlockTargetX;
 		public final ForgeConfigSpec.DoubleValue previewBlockTargetY;
@@ -98,6 +111,57 @@ public class YHModConfig {
 			powerInfoYOffset = builder.comment("Vertical offset of the power info overlay.")
 					.translation("config.youkaishomecoming.client.powerInfoYOffset")
 					.defineInRange("powerInfoYOffset", 0, -1000, 1000);
+
+			builder.translation("config.youkaishomecoming.client.hud").push("hud");
+			{
+				builder.translation("config.youkaishomecoming.client.hud.active_spell").push("active_spell");
+				{
+					activeSpellHudEnabled = builder.comment("Show active spell card names on the HUD.")
+							.translation("config.youkaishomecoming.client.hud.active_spell.enabled")
+							.define("enabled", true);
+					activeSpellHudXAnchor = builder.comment("Horizontal anchor: -1 left, 0 center, 1 right.")
+							.translation("config.youkaishomecoming.client.hud.active_spell.xAnchor")
+							.defineInRange("xAnchor", 1, -1, 1);
+					activeSpellHudXOffset = builder.comment("Horizontal pixel offset from the anchor.")
+							.translation("config.youkaishomecoming.client.hud.active_spell.xOffset")
+							.defineInRange("xOffset", -8, -2000, 2000);
+					activeSpellHudYAnchor = builder.comment("Vertical anchor: -1 top, 0 center, 1 bottom.")
+							.translation("config.youkaishomecoming.client.hud.active_spell.yAnchor")
+							.defineInRange("yAnchor", -1, -1, 1);
+					activeSpellHudYOffset = builder.comment("Vertical pixel offset from the anchor.")
+							.translation("config.youkaishomecoming.client.hud.active_spell.yOffset")
+							.defineInRange("yOffset", 8, -2000, 2000);
+					activeSpellHudScale = builder.comment("Font and panel scale.")
+							.translation("config.youkaishomecoming.client.hud.active_spell.scale")
+							.defineInRange("scale", 1.0, 0.5, 3.0);
+				}
+				builder.pop();
+
+				builder.translation("config.youkaishomecoming.client.hud.combat_status").push("combat_status");
+				{
+					combatStatusHudEnabled = builder.comment("Show Auto Dodge and control mode status on the HUD.")
+							.translation("config.youkaishomecoming.client.hud.combat_status.enabled")
+							.define("enabled", true);
+					combatStatusHudXAnchor = builder.comment("Horizontal anchor: -1 left, 0 center, 1 right.")
+							.translation("config.youkaishomecoming.client.hud.combat_status.xAnchor")
+							.defineInRange("xAnchor", -1, -1, 1);
+					combatStatusHudXOffset = builder.comment("Horizontal pixel offset from the anchor.")
+							.translation("config.youkaishomecoming.client.hud.combat_status.xOffset")
+							.defineInRange("xOffset", 8, -2000, 2000);
+					combatStatusHudYAnchor = builder.comment("Vertical anchor: -1 top, 0 center, 1 bottom.")
+							.translation("config.youkaishomecoming.client.hud.combat_status.yAnchor")
+							.defineInRange("yAnchor", 1, -1, 1);
+					combatStatusHudYOffset = builder.comment("Vertical pixel offset from the anchor.")
+							.translation("config.youkaishomecoming.client.hud.combat_status.yOffset")
+							.defineInRange("yOffset", -37, -2000, 2000);
+					combatStatusHudScale = builder.comment("Font and panel scale.")
+							.translation("config.youkaishomecoming.client.hud.combat_status.scale")
+							.defineInRange("scale", 1.0, 0.5, 3.0);
+				}
+				builder.pop();
+			}
+			builder.pop();
+
 			spellCardTotemAnimation = builder.comment("Play totem of undying activation animation when casting a spell card.")
 					.translation("config.youkaishomecoming.client.spellCardTotemAnimation")
 					.define("spellCardTotemAnimation", true);
@@ -107,36 +171,43 @@ public class YHModConfig {
 			feedbackCameraShakeScale = builder.comment("Client multiplier for all camera shake (0 disables it).")
 					.translation("config.youkaishomecoming.client.feedbackCameraShakeScale")
 					.defineInRange("feedbackCameraShakeScale", 1.0, 0.0, 1.0);
-			classicControlForwardKey = builder.comment("Serialized Minecraft keyboard key used to move forward in classic controls.")
-					.translation("config.youkaishomecoming.client.classicControlForwardKey")
-					.define("classicControlForwardKey", "key.keyboard.up");
-			classicControlBackwardKey = builder.comment("Serialized Minecraft keyboard key used to move backward in classic controls.")
-					.translation("config.youkaishomecoming.client.classicControlBackwardKey")
-					.define("classicControlBackwardKey", "key.keyboard.down");
-			classicControlLeftKey = builder.comment("Serialized Minecraft keyboard key used to move left in classic controls.")
-					.translation("config.youkaishomecoming.client.classicControlLeftKey")
-					.define("classicControlLeftKey", "key.keyboard.left");
-			classicControlRightKey = builder.comment("Serialized Minecraft keyboard key used to move right in classic controls.")
-					.translation("config.youkaishomecoming.client.classicControlRightKey")
-					.define("classicControlRightKey", "key.keyboard.right");
-			classicControlAscendKey = builder.comment("Serialized Minecraft keyboard key used to jump or ascend in classic controls.")
-					.translation("config.youkaishomecoming.client.classicControlAscendKey")
-					.define("classicControlAscendKey", "key.keyboard.right.control");
-			classicControlDescendKey = builder.comment("Serialized Minecraft keyboard key used to sneak or descend in classic controls.")
-					.translation("config.youkaishomecoming.client.classicControlDescendKey")
-					.define("classicControlDescendKey", "key.keyboard.right.shift");
-			classicControlFocusKey = builder.comment("Serialized Minecraft keyboard key used for focus and low-speed movement.")
-					.translation("config.youkaishomecoming.client.classicControlFocusKey")
-					.define("classicControlFocusKey", "key.keyboard.left.shift");
-			classicControlToggleKey = builder.comment("Serialized Minecraft keyboard key combined with the focus key to toggle classic controls.")
-					.translation("config.youkaishomecoming.client.classicControlToggleKey")
-					.define("classicControlToggleKey", "key.keyboard.space");
-			classicControlNonSpellKey = builder.comment("Serialized Minecraft keyboard key used to hold-fire a non-spell in classic controls.")
-					.translation("config.youkaishomecoming.client.classicControlNonSpellKey")
-					.define("classicControlNonSpellKey", "key.keyboard.z");
-			classicControlNextSpellKey = builder.comment("Serialized Minecraft keyboard key used to cast the next spell in classic controls.")
-					.translation("config.youkaishomecoming.client.classicControlNextSpellKey")
-					.define("classicControlNextSpellKey", "key.keyboard.x");
+			builder.translation("config.youkaishomecoming.client.keys").push("keys");
+			{
+				autoDodgePilotControlKey = builder.comment("Serialized Minecraft keyboard key used for assisted Auto Dodge pilot control.")
+						.translation("config.youkaishomecoming.client.autoDodgePilotControlKey")
+						.define("autoDodgePilotControlKey", "key.keyboard.left.control");
+				classicControlForwardKey = builder.comment("Serialized Minecraft keyboard key used to move forward in classic controls.")
+						.translation("config.youkaishomecoming.client.classicControlForwardKey")
+						.define("classicControlForwardKey", "key.keyboard.up");
+				classicControlBackwardKey = builder.comment("Serialized Minecraft keyboard key used to move backward in classic controls.")
+						.translation("config.youkaishomecoming.client.classicControlBackwardKey")
+						.define("classicControlBackwardKey", "key.keyboard.down");
+				classicControlLeftKey = builder.comment("Serialized Minecraft keyboard key used to move left in classic controls.")
+						.translation("config.youkaishomecoming.client.classicControlLeftKey")
+						.define("classicControlLeftKey", "key.keyboard.left");
+				classicControlRightKey = builder.comment("Serialized Minecraft keyboard key used to move right in classic controls.")
+						.translation("config.youkaishomecoming.client.classicControlRightKey")
+						.define("classicControlRightKey", "key.keyboard.right");
+				classicControlAscendKey = builder.comment("Serialized Minecraft keyboard key used to jump or ascend in classic controls.")
+						.translation("config.youkaishomecoming.client.classicControlAscendKey")
+						.define("classicControlAscendKey", "key.keyboard.right.shift");
+				classicControlDescendKey = builder.comment("Serialized Minecraft keyboard key used to sneak or descend in classic controls.")
+						.translation("config.youkaishomecoming.client.classicControlDescendKey")
+						.define("classicControlDescendKey", "key.keyboard.right.control");
+				classicControlFocusKey = builder.comment("Serialized Minecraft keyboard key used for focus and low-speed movement.")
+						.translation("config.youkaishomecoming.client.classicControlFocusKey")
+						.define("classicControlFocusKey", "key.keyboard.left.shift");
+				classicControlToggleKey = builder.comment("Serialized Minecraft keyboard key combined with the focus key to toggle classic controls.")
+						.translation("config.youkaishomecoming.client.classicControlToggleKey")
+						.define("classicControlToggleKey", "key.keyboard.space");
+				classicControlNonSpellKey = builder.comment("Serialized Minecraft keyboard key used to hold-fire a non-spell in classic controls.")
+						.translation("config.youkaishomecoming.client.classicControlNonSpellKey")
+						.define("classicControlNonSpellKey", "key.keyboard.z");
+				classicControlNextSpellKey = builder.comment("Serialized Minecraft keyboard key used to cast the next spell in classic controls.")
+						.translation("config.youkaishomecoming.client.classicControlNextSpellKey")
+						.define("classicControlNextSpellKey", "key.keyboard.x");
+			}
+			builder.pop();
 			classicControlLowSpeedMultiplier = builder.comment("Fraction of vanilla sprint speed while holding the focus key in classic controls.")
 					.translation("config.youkaishomecoming.client.classicControlLowSpeedMultiplier")
 					.defineInRange("classicControlLowSpeedMultiplier", 0.5, 0.0, 1.0);

@@ -150,6 +150,10 @@ public final class ClassicControlClient {
 				&& ControlKey.FOCUS.isDown(minecraft) && !ControlKey.TOGGLE.isDown(minecraft);
 	}
 
+	public static boolean isEnabled() {
+		return enabled;
+	}
+
 	private static float axis(Minecraft minecraft, ControlKey positiveKey, ControlKey negativeKey) {
 		return (positiveKey.isDown(minecraft) ? 1 : 0) - (negativeKey.isDown(minecraft) ? 1 : 0);
 	}
@@ -167,8 +171,8 @@ public final class ClassicControlClient {
 		BACKWARD(GLFW.GLFW_KEY_DOWN, () -> YHModConfig.CLIENT.classicControlBackwardKey.get()),
 		LEFT(GLFW.GLFW_KEY_LEFT, () -> YHModConfig.CLIENT.classicControlLeftKey.get()),
 		RIGHT(GLFW.GLFW_KEY_RIGHT, () -> YHModConfig.CLIENT.classicControlRightKey.get()),
-		ASCEND(GLFW.GLFW_KEY_RIGHT_CONTROL, () -> YHModConfig.CLIENT.classicControlAscendKey.get()),
-		DESCEND(GLFW.GLFW_KEY_RIGHT_SHIFT, () -> YHModConfig.CLIENT.classicControlDescendKey.get()),
+		ASCEND(GLFW.GLFW_KEY_RIGHT_SHIFT, () -> YHModConfig.CLIENT.classicControlAscendKey.get()),
+		DESCEND(GLFW.GLFW_KEY_RIGHT_CONTROL, () -> YHModConfig.CLIENT.classicControlDescendKey.get()),
 		FOCUS(GLFW.GLFW_KEY_LEFT_SHIFT, () -> YHModConfig.CLIENT.classicControlFocusKey.get()),
 		TOGGLE(GLFW.GLFW_KEY_SPACE, () -> YHModConfig.CLIENT.classicControlToggleKey.get()),
 		CLASSIC_NON_SPELL(GLFW.GLFW_KEY_Z, () -> YHModConfig.CLIENT.classicControlNonSpellKey.get()),

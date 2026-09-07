@@ -17,6 +17,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.rumia.RestrictData;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.YoukaiDodgePilot;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
@@ -825,6 +826,16 @@ public abstract class YoukaiEntity extends PathfinderMob
 						spellMaxHealth, spellElapsedTicks, spellDurationTicks,
 						spellHealthTotal, spellHealthCompleted, spellHealthSegmentCount,
 						spellHealthSegments), this);
+	}
+
+	@Nullable
+	public ResourceLocation activeSpellCardId() {
+		if (spellRuntime != null && !spellRuntime.isFinished()
+				&& spellRuntime.getDefinition().itemForm.cardType() != SpellCardType.NON_SPELL) {
+			return spellRuntime.getDefinition().id;
+		}
+		return spellCard != null && spellCard.spellId != null && getTarget() != null
+				? spellCard.spellId : null;
 	}
 
 	public void setSpellRuntime(@Nullable SpellRuntime runtime) {

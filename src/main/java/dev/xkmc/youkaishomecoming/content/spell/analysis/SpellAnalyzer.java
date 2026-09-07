@@ -665,9 +665,6 @@ public final class SpellAnalyzer {
 			checkMarketBanned(action);
 			addCap(SpellCapability.RUN_COMMAND);
 		} else if (action instanceof SetSpellHealthAction) {
-			if (profile == SpellAnalysisProfile.MARKET) {
-				throw banned("set_spell_health");
-			}
 			// CertificationService validates the complete health graph before this
 			// analyzer runs. Completion targets stored inside this declaration are
 			// plan data, not free-form force_phase/force_spell capabilities.
@@ -1093,7 +1090,6 @@ public final class SpellAnalyzer {
 				|| action instanceof SpellActions.ForcePhase
 				|| action instanceof SpellActions.ForceSpell
 				|| action instanceof SpellActions.FireSpell
-				|| action instanceof SetSpellHealthAction
 				// Salvaged placeholders must never be published — sharing a spell
 				// with an undecodable fragment just spreads the breakage.
 				|| action instanceof SpellActions.BrokenAction;
@@ -1104,7 +1100,6 @@ public final class SpellAnalyzer {
 		if (action instanceof SpellActions.ForcePhase) return "force_phase";
 		if (action instanceof SpellActions.ForceSpell) return "force_spell";
 		if (action instanceof SpellActions.FireSpell) return "fire_spell";
-		if (action instanceof SetSpellHealthAction) return "set_spell_health";
 		if (action instanceof SpellActions.BrokenAction) return "broken";
 		return "unknown";
 	}

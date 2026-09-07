@@ -1069,7 +1069,7 @@ public class YHCommands {
 			healthPlan = SpellHealthPlan.analyzeIfPresent(def, SpellRegistry::get).orElse(null);
 		} catch (IllegalArgumentException ignored) {
 			// Legacy and entity-scaled boss definitions remain giveable. Their runtime
-			// set_spell_health values are evaluated when the card is cast.
+			// spellcard_init values are evaluated when the card is cast.
 		}
 		int resolvedDuration = duration;
 		if (resolvedDuration == DynamicSpellItem.DURATION_NATURAL && healthPlan != null) {

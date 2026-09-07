@@ -37,6 +37,7 @@ import dev.xkmc.youkaishomecoming.content.pot.table.item.ModelIngredientData;
 import dev.xkmc.youkaishomecoming.content.pot.table.item.TableItemManager;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellTitleToClient;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellCardPresentationToClient;
+import dev.xkmc.youkaishomecoming.content.spell.client.ActiveSpellHudToClient;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
 import dev.xkmc.youkaishomecoming.content.spell.market.OpenSpellMarketToClient;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorSyncToServer;
@@ -113,6 +114,7 @@ public class YoukaisHomecoming {
 			e -> e.create(SpellTitleToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellCardPresentationToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(PvpDanmakuStatusToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(ActiveSpellHudToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(OpenSpellPreviewToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellPreviewChunkToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(OpenSpellMarketToClient.class, NetworkDirection.PLAY_TO_CLIENT),

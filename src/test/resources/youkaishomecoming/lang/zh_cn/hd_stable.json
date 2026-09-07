@@ -66,6 +66,8 @@
   "youkaishomecoming.message.classic_control.combat_only": "经典平面操作只能在弹幕战中开启",
   "youkaishomecoming.message.classic_control.no_non_spell": "没有可用的非符",
   "youkaishomecoming.message.classic_control.no_spell": "没有可释放的符卡，或资源不足",
+  "youkaishomecoming.message.classic_control.status.classic": "经典操作模式",
+  "youkaishomecoming.message.classic_control.status.spell": "符卡释放模式",
   "youkaishomecoming.message.auto_dodge.status.auto": "自动闪避接管中",
   "youkaishomecoming.message.auto_dodge.status.idle": "空闲",
   "youkaishomecoming.message.auto_dodge.status.manual": "手动接管中",

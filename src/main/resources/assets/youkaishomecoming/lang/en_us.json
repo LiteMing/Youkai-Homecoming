@@ -1668,6 +1668,8 @@
   "youkaishomecoming.message.classic_control.combat_only": "Classic controls require active danmaku combat",
   "youkaishomecoming.message.classic_control.no_non_spell": "No usable non-spell is available",
   "youkaishomecoming.message.classic_control.no_spell": "No usable spell card or payment is available",
+  "youkaishomecoming.message.classic_control.status.classic": "Classic control mode",
+  "youkaishomecoming.message.classic_control.status.spell": "Spell card release mode",
   "youkaishomecoming.message.auto_dodge.status.auto": "Auto dodge in control",
   "youkaishomecoming.message.auto_dodge.status.idle": "Auto dodge idle",
   "youkaishomecoming.message.auto_dodge.status.manual": "Manual control",

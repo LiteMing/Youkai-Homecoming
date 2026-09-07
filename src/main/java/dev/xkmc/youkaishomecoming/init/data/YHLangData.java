@@ -143,6 +143,8 @@ public enum YHLangData {
 	CLASSIC_CONTROL_COMBAT_ONLY("message.classic_control.combat_only", "Classic controls require active danmaku combat", 0, ChatFormatting.RED),
 	CLASSIC_CONTROL_NO_NON_SPELL("message.classic_control.no_non_spell", "No usable non-spell is available", 0, ChatFormatting.RED),
 	CLASSIC_CONTROL_NO_SPELL("message.classic_control.no_spell", "No usable spell card or payment is available", 0, ChatFormatting.RED),
+	CLASSIC_CONTROL_STATUS_CLASSIC("message.classic_control.status.classic", "Classic control mode", 0, ChatFormatting.AQUA),
+	CLASSIC_CONTROL_STATUS_SPELL("message.classic_control.status.spell", "Spell card release mode", 0, ChatFormatting.GOLD),
 	AUTO_DODGE_STATUS_AUTO("message.auto_dodge.status.auto", "Auto dodge in control", 0, ChatFormatting.GREEN),
 	AUTO_DODGE_STATUS_IDLE("message.auto_dodge.status.idle", "Auto dodge idle", 0, ChatFormatting.GRAY),
 	AUTO_DODGE_STATUS_MANUAL("message.auto_dodge.status.manual", "Manual control", 0, ChatFormatting.GOLD),

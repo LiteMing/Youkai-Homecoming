@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
+import dev.xkmc.youkaishomecoming.content.spell.client.ActiveSpellHudService;
 import dev.xkmc.youkaishomecoming.events.DanmakuLastHitEvent;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
@@ -116,6 +117,7 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	private int lastGraze = 0;
 	private int pvpStatusSyncCooldown = 0;
 	private boolean pvpStatusVisible = false;
+	private int spellHudSyncCooldown = 0;
 
 	public record SpellProgressStatus(int health, int maxHealth, int elapsedTicks, int durationTicks,
 			int completedHealth, int[] healthSegments) {
@@ -296,6 +298,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 			if (dirty)
 				sync();
 			syncPvpOpponentStatus(sl);
+			if (player instanceof ServerPlayer sp && --spellHudSyncCooldown <= 0) {
+				spellHudSyncCooldown = 5;
+				ActiveSpellHudService.sync(sp);
+			}
 		}
 		dirty = false;
 	}

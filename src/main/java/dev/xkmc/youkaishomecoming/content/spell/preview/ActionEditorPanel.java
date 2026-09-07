@@ -1660,21 +1660,27 @@ public class ActionEditorPanel {
 		addButtonRow("Delete preset", () -> CommandPresetStore.remove(commandEditBox == null ? rc.command() : commandEditBox.getValue()));
 	}
 
-	/** Uses the same Brigadier-backed component as the vanilla chat screen. */
+	/** Uses the same Brigadier-backed component as the vanilla command block screen. */
 	private boolean requestVanillaCommandSuggestions(@Nullable EditBox editBox) {
+		if (!ensureVanillaCommandSuggestions(editBox)) return false;
+		commandSuggestions.setAllowSuggestions(true);
+		closeStringCompletion();
+		commandSuggestions.updateCommandInfo();
+		commandSuggestions.showSuggestions(true);
+		return true;
+	}
+
+	private boolean ensureVanillaCommandSuggestions(@Nullable EditBox editBox) {
 		if (editBox == null || editBox != commandEditBox) return false;
 		var mc = Minecraft.getInstance();
 		var connection = mc.getConnection();
 		if (connection == null || connection.getCommands() == null || mc.screen == null) return false;
-		var screen = mc.screen;
 		if (commandSuggestions == null) {
-			commandSuggestions = new CommandSuggestions(mc, screen, editBox, mc.font,
-					true, false, 0, 10, false, 0xF000F0);
-			commandSuggestions.setAllowSuggestions(true);
+			commandSuggestions = new CommandSuggestions(mc, mc.screen, editBox, mc.font,
+					true, true, 0, 10, false, Integer.MIN_VALUE);
+			commandSuggestions.setAllowSuggestions(false);
+			commandSuggestions.updateCommandInfo();
 		}
-		closeStringCompletion();
-		commandSuggestions.updateCommandInfo();
-		commandSuggestions.showSuggestions(true);
 		return true;
 	}
 
@@ -4213,7 +4219,7 @@ public class ActionEditorPanel {
 	private void addSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = newEditorEditBox(label, widgetW);
-		editBox.setMaxLength(256);
+		editBox.setMaxLength("Command".equals(label) ? 32500 : 256);
 		editBox.setValue(value);
 		if ("Command".equals(label)) {
 			commandEditBox = editBox;
@@ -4552,6 +4558,7 @@ public class ActionEditorPanel {
 			}
 		}
 		widgetsRegistered = true;
+		ensureVanillaCommandSuggestions(commandEditBox);
 	}
 
 	// --- Rendering ---
@@ -4753,7 +4760,7 @@ public class ActionEditorPanel {
 			int offsetY = commandSuggestionOffsetY();
 			guiGraphics.pose().pushPose();
 			guiGraphics.pose().translate(0, offsetY, 250);
-			commandSuggestions.renderSuggestions(guiGraphics, mouseX, mouseY - offsetY);
+			commandSuggestions.render(guiGraphics, mouseX, mouseY - offsetY);
 			guiGraphics.pose().popPose();
 		}
 		// Red underline for invalid expressions, blue underline for $variables

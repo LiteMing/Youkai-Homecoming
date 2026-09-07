@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.SpellProgressColor;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellProgressSnapshot;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.ChatFormatting;
@@ -121,6 +122,20 @@ public class SpellContainer extends ConditionalToken {
 		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
 		return !data.spells.isEmpty() || data.proxies.stream().anyMatch(proxy ->
 				!proxy.isRemoved() && proxy.cardType() != SpellCardType.NON_SPELL);
+	}
+
+	/** Small identity snapshot for the card currently released by a player. */
+	public record ActiveSpellInfo(net.minecraft.resources.ResourceLocation id, String displayName) {
+	}
+
+	@Nullable
+	public static ActiveSpellInfo activeSpellInfo(Player player) {
+		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);
+		DanmakuProxyEntity proxy = data.proxies.stream()
+				.filter(SpellContainer::isActiveSpellCardProxy).findFirst().orElse(null);
+		if (proxy == null || proxy.getSpellRuntime() == null) return null;
+		SpellDefinition definition = proxy.getSpellRuntime().getDefinition();
+		return new ActiveSpellInfo(definition.id, definition.display.name());
 	}
 
 	/** Clear all player-owned spell output when a beaten state starts. */

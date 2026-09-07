@@ -150,6 +150,10 @@ public final class ClassicControlClient {
 				&& ControlKey.FOCUS.isDown(minecraft) && !ControlKey.TOGGLE.isDown(minecraft);
 	}
 
+	public static boolean isEnabled() {
+		return enabled;
+	}
+
 	private static float axis(Minecraft minecraft, ControlKey positiveKey, ControlKey negativeKey) {
 		return (positiveKey.isDown(minecraft) ? 1 : 0) - (negativeKey.isDown(minecraft) ? 1 : 0);
 	}

@@ -6,12 +6,15 @@ import dev.xkmc.fastprojectileapi.render.virtual.ClientDanmakuCache;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.DodgePilot;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotFlightState;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotMotion;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotProfile;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.PilotState;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.BallisticProvider;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.MoverExactProvider;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ObservedMotionProvider;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.predict.ThreatProviderRegistry;
+import dev.xkmc.youkaishomecoming.content.spell.pilot.search.CorridorEvaluator;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.search.GroundedModel;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.LevelCollisionOracle;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.threat.SelfBoxModel;
@@ -22,8 +25,11 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -69,6 +75,7 @@ public class AutoDodgeClientHandlers {
 
 	private static final ThreatProviderRegistry REGISTRY = new ThreatProviderRegistry();
 	private static final ObservedMotionProvider OBSERVED = new ObservedMotionProvider();
+	private static final PilotFlightState FLIGHT = new PilotFlightState();
 	private static DodgePilot[] flightPilots = createPilots(false,
 			PilotProfile.DEFAULT_PLAYER_BASE_SPEED, PilotProfile.DEFAULT_PLAYER_SPEED_STEP);
 	private static DodgePilot[] groundPilots = createPilots(true,
@@ -83,6 +90,7 @@ public class AutoDodgeClientHandlers {
 	private static boolean manualOverride;
 	private static LocalPlayer trackedPlayer;
 	private static boolean pilotAppliedVelocity;
+	private static boolean lastFreeFlight;
 	private static HudState hudState = HudState.HIDDEN;
 
 	public static HudState hudState() {
@@ -128,7 +136,7 @@ public class AutoDodgeClientHandlers {
 		LocalPlayer player = minecraft.player;
 		if (!player.isLocalPlayer()) return;
 		trackPlayer(player);
-		if (player.isSpectator()) {
+		if (!canControl(player)) {
 			deactivate(player);
 			return;
 		}
@@ -159,6 +167,7 @@ public class AutoDodgeClientHandlers {
 			if (!manualOverride) resetControllers();
 			manualOverride = true;
 			pilotAppliedVelocity = false;
+			FLIGHT.reset();
 			playerAnchor = player.position();
 			hudState = HudState.MANUAL;
 			return;
@@ -187,6 +196,7 @@ public class AutoDodgeClientHandlers {
 		if (player == null || player.level() != event.getLevel()
 				|| !player.hasEffect(YHEffects.AUTO_DODGE.get())) return;
 		trackPlayer(player);
+		if (!canControl(player)) return;
 		Entity entity = event.getEntity();
 		if (!isThreatCandidate(entity) || !ThreatFilters.isHostileTo(player, entity)) return;
 
@@ -219,7 +229,11 @@ public class AutoDodgeClientHandlers {
 			return false;
 		}
 
-		boolean freeFlight = canVerticalFlight(player);
+		var oracle = new LevelCollisionOracle(player.level(), player);
+		boolean supported = oracle.isSupported(player.getBoundingBox());
+		boolean flightAvailable = canUseFlight(player);
+		boolean freeFlight = FLIGHT.update(player.tickCount, flightAvailable,
+				canVerticalFlight(player), supported);
 		DodgePilot pilot = pilotFor(amplifier, freeFlight);
 		Vec3 feet = player.position();
 		float hitScale = GrazeHelper.getHitBoxScale(player);
@@ -233,9 +247,14 @@ public class AutoDodgeClientHandlers {
 			return false;
 		}
 
-		if (playerAnchor == null) playerAnchor = feet;
+		if (playerAnchor == null || !pilotAppliedVelocity || lastFreeFlight != freeFlight) {
+			// Resume where the player actually is after idle travel, a fall or landing.
+			playerAnchor = feet;
+			resetControllers();
+		}
+		lastFreeFlight = freeFlight;
 		PilotState state = new PilotState(feet, player.getDeltaMovement(), box);
-		state.oracle = new LevelCollisionOracle(player.level(), player);
+		state.oracle = oracle;
 		state.anchor = playerAnchor;
 		state.inputPreference = inputPreference;
 		state.inputPreferenceWeight = config.autoDodgeControlWeight.get();
@@ -251,8 +270,60 @@ public class AutoDodgeClientHandlers {
 				playerAnchor.z + DEFAULT_ANCHOR_RADIUS);
 
 		Vec3 desired = pilot.tick(snapshot, state);
-		if (!freeFlight && desired.y < 0) desired = new Vec3(desired.x, 0, desired.z);
-		applyVelocity(player, desired, true);
+		if (!freeFlight && flightAvailable) {
+			if (desired.y > INPUT_EPSILON) {
+				// A normal ground jump may become a takeoff; it is never injected in midair.
+				FLIGHT.takeOff();
+				freeFlight = true;
+			} else {
+				var groundScore = pilot.scorer().score(snapshot, box, feet, desired, 0, state);
+				boolean guidedUp = inputPreference.y > INPUT_EPSILON;
+				boolean blocked = desired.lengthSqr() < INPUT_EPSILON
+						&& groundScore.minClearance() < pilot.profile().searchEnterClearance();
+				if (guidedUp || blocked || !groundScore.isAlive()) {
+					// Reuse this tick's deadline; a second route search gets no extra budget.
+					state.grounded = false;
+					state.velocity = player.getDeltaMovement();
+					DodgePilot flightPilot = pilotFor(amplifier, true);
+					Vec3 candidate = flightPilot.tick(snapshot, state);
+					var flightScore = flightPilot.scorer().score(snapshot, box, feet, candidate, 0, state);
+					boolean canLaunch = player.getAbilities().mayfly || !player.onGround()
+							|| candidate.y > INPUT_EPSILON && oracle.isSupportedPath(player.getBoundingBox(), candidate);
+					if (canLaunch && candidate.lengthSqr() > INPUT_EPSILON && flightScore.isAlive()
+							&& (guidedUp && candidate.y > INPUT_EPSILON || !groundScore.isAlive()
+							|| flightScore.minClearance() > groundScore.minClearance())) {
+						desired = candidate;
+						pilot = flightPilot;
+						FLIGHT.takeOff();
+						freeFlight = true;
+					}
+				}
+			}
+		}
+
+		if (freeFlight) {
+			Vec3 walking = new Vec3(desired.x, 0, desired.z);
+			boolean wantsLift = desired.y > INPUT_EPSILON;
+			state.grounded = true;
+			boolean safeGroundCourse = supported && !wantsLift
+					&& CorridorEvaluator.evaluate(snapshot, state, pilot.scorer(), walking,
+					Math.min(pilot.profile().searchDepth(), snapshot.horizon())).collisionFree();
+			if (FLIGHT.landIfReady(player.tickCount, pilot.profile().planCommitTicks(), wantsLift, safeGroundCourse)) {
+				desired = walking;
+				if (player.getAbilities().flying) {
+					player.getAbilities().flying = false;
+					player.onUpdateAbilities();
+				}
+				if (player.onGround() && player.isFallFlying()) player.stopFallFlying();
+			} else if (!supported || wantsLift || !oracle.isSupportedPath(player.getBoundingBox(), desired)) {
+				startFlight(player);
+			}
+		}
+
+		boolean activeFlight = canVerticalFlight(player);
+		if (activeFlight) desired = PilotMotion.limitSpeed(desired, pilot.profile().highSpeed());
+		else if (desired.y < 0) desired = new Vec3(desired.x, 0, desired.z);
+		applyVelocity(player, desired, activeFlight);
 		return true;
 	}
 
@@ -263,31 +334,16 @@ public class AutoDodgeClientHandlers {
 		state.wallClearanceSafeDist = profile.wallClearanceSafeDist();
 	}
 
-	private static void applyVelocity(LocalPlayer player, Vec3 desired, boolean replace) {
-		if (!canVerticalFlight(player) && !player.onGround() && desired.y > 0) {
-			desired = new Vec3(desired.x, 0, desired.z);
-		}
+	private static void applyVelocity(LocalPlayer player, Vec3 desired, boolean freeFlight) {
+		Vec3 requested = PilotMotion.playerVelocity(desired, player.getDeltaMovement(), freeFlight, player.onGround());
 		var oracle = new LevelCollisionOracle(player.level(), player);
-		AABB next = player.getBoundingBox().move(desired);
-		if (desired.lengthSqr() > 1e-10
-				&& (!oracle.isPathFree(player.getBoundingBox(), desired) || !oracle.isFree(next))) {
-			Vec3 horizontal = new Vec3(desired.x, 0, desired.z);
-			next = player.getBoundingBox().move(horizontal);
-			if (!oracle.isPathFree(player.getBoundingBox(), horizontal) || !oracle.isFree(next)) {
-				desired = Vec3.ZERO;
-			} else {
-				desired = horizontal;
-			}
+		AABB body = player.getBoundingBox();
+		Vec3 resolved = oracle.resolveMovement(body, requested);
+		if (!freeFlight && oracle.isSupported(body) && !oracle.isSupportedPath(body, resolved)) {
+			// Collision clipping can change a planned diagonal; check its footing too.
+			resolved = oracle.resolveMovement(body, new Vec3(0, resolved.y, 0));
 		}
-
-		Vec3 current = player.getDeltaMovement();
-		if (replace) {
-			double y = desired.y != 0 ? desired.y : current.y;
-			if (!canVerticalFlight(player) && !player.onGround()) y = current.y;
-			player.setDeltaMovement(desired.x, y, desired.z);
-		} else {
-			player.setDeltaMovement(desired);
-		}
+		player.setDeltaMovement(PilotMotion.afterCollision(requested, resolved, freeFlight));
 		player.hurtMarked = true;
 		player.hasImpulse = true;
 		pilotAppliedVelocity = true;
@@ -295,6 +351,29 @@ public class AutoDodgeClientHandlers {
 
 	private static boolean canVerticalFlight(LocalPlayer player) {
 		return player.getAbilities().flying || player.isFallFlying();
+	}
+
+	private static boolean canControl(LocalPlayer player) {
+		return player.isAlive() && !player.isSpectator() && !player.isPassenger()
+				&& !player.isSleeping() && !player.hasEffect(YHEffects.BEATEN.get());
+	}
+
+	private static boolean canUseFlight(LocalPlayer player) {
+		return player.getAbilities().mayfly || player.isFallFlying()
+				|| !player.isInWater() && !player.onClimbable() && !player.hasEffect(MobEffects.LEVITATION)
+				&& player.getItemBySlot(EquipmentSlot.CHEST).canElytraFly(player);
+	}
+
+	private static void startFlight(LocalPlayer player) {
+		if (canVerticalFlight(player)) return;
+		if (player.getAbilities().mayfly) {
+			player.getAbilities().flying = true;
+			player.onUpdateAbilities();
+		} else if (!player.onClimbable() && player.tryToStartFallFlying()) {
+			// Keep Forge/item flight checks and the ordinary server request in the loop.
+			player.connection.send(new ServerboundPlayerCommandPacket(player,
+					ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
+		}
 	}
 
 	private static Vec3 readInputWish(LocalPlayer player) {
@@ -395,6 +474,7 @@ public class AutoDodgeClientHandlers {
 		lastAmp = -1;
 		playerAnchor = null;
 		manualOverride = false;
+		FLIGHT.reset();
 		joinScanTicks = 0;
 		joinedEntity = null;
 		trackedPlayer = player;
@@ -402,6 +482,7 @@ public class AutoDodgeClientHandlers {
 	}
 
 	private static void releasePilotMotion(LocalPlayer player) {
+		FLIGHT.reset();
 		if (!pilotAppliedVelocity) return;
 		Vec3 current = player.getDeltaMovement();
 		double y = canVerticalFlight(player) ? 0 : current.y;

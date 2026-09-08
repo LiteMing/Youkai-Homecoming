@@ -102,6 +102,26 @@ public final class PilotState {
 	}
 
 	/**
+	 * A boundary may shorten a command, never turn the distance from an old arena
+	 * into velocity. Outside positions can stay or move inward at their chosen speed.
+	 */
+	public Vec3 clampToArena(Vec3 position, Vec3 desired) {
+		if (arena == null) return desired;
+		Vec3 next = position.add(desired);
+		return new Vec3(
+				Math.max(Math.min(position.x, arena.minX), Math.min(Math.max(position.x, arena.maxX), next.x)),
+				Math.max(Math.min(position.y, arena.minY), Math.min(Math.max(position.y, arena.maxY), next.y)),
+				Math.max(Math.min(position.z, arena.minZ), Math.min(Math.max(position.z, arena.maxZ), next.z)))
+				.subtract(position);
+	}
+
+	/** Same body, arena and footing rules for every route-producing layer. */
+	public boolean terrainAllows(Vec3 position, Vec3 velocity) {
+		if (clampToArena(position, velocity).distanceToSqr(velocity) > 1.0e-10) return false;
+		return oracle.isMovementSafe(selfBox.bodyAt(position), velocity, grounded);
+	}
+
+	/**
 	 * Smooth inward force for the optional arena boundary. The arena is stored
 	 * as a range of valid feet positions, so this deliberately does not inspect
 	 * the body box again (the range was already derived with {@code safeFeetBounds}).

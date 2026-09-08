@@ -57,7 +57,7 @@ public final class SpatioTemporalSearch {
 					profile.highSpeed(), profile.lowSpeed());
 			for (ActionModel.Action action : actions) {
 				Vec3 nextFeet = current.feet.add(action.velocity());
-				if (!terrainAllows(state, current.feet, nextFeet, action.velocity())) continue;
+				if (!state.terrainAllows(current.feet, action.velocity())) continue;
 
 				int tick = Math.min(current.depth, snapshot.horizon() - 1);
 				ScoreResult score = scorer.score(snapshot, state.selfBox, current.feet,
@@ -129,17 +129,6 @@ public final class SpatioTemporalSearch {
 				&& bestRefined.betterEscapeThan(bestBase) ? bestRefined : bestBase;
 		return new Result(chosen.velocity(), chosen.score(), expanded,
 				chosen.collisionFree(), bestRefined == chosen);
-	}
-
-	private static boolean terrainAllows(PilotState state, Vec3 current, Vec3 next, Vec3 velocity) {
-		if (state.arena != null && !state.arena.contains(next)) return false;
-		var currentBody = state.selfBox.bodyAt(current);
-		var nextBody = state.selfBox.bodyAt(next);
-		if (!state.oracle.isPathFree(currentBody, velocity) || !state.oracle.isFree(nextBody)) return false;
-		if (!state.grounded) return true;
-		boolean supported = state.oracle.isSupported(currentBody);
-		if (velocity.y > 1.0e-8) return supported;
-		return !supported || state.oracle.isSupported(nextBody);
 	}
 
 	private static boolean betterComplete(PilotSearchNode candidate, PilotSearchNode current,

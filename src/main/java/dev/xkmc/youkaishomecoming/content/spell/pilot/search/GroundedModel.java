@@ -29,6 +29,11 @@ public final class GroundedModel implements ActionModel {
 	}
 
 	@Override
+	public double maxSpeed(double highSpeed, double lowSpeed) {
+		return Math.max(jumpSpeed, ActionModel.super.maxSpeed(highSpeed, lowSpeed));
+	}
+
+	@Override
 	public List<Action> actions(PilotSearchNode parent, double highSpeed, double lowSpeed) {
 		List<Action> out = new ArrayList<>(20);
 		out.add(Action.stay());

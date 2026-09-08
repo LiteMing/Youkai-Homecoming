@@ -19,6 +19,11 @@ public interface ActionModel {
 
 	List<Action> actions(PilotSearchNode parent, double highSpeed, double lowSpeed);
 
+	/** Hard command limit, including any explicit model-specific movement such as jumping. */
+	default double maxSpeed(double highSpeed, double lowSpeed) {
+		return Math.max(highSpeed, lowSpeed);
+	}
+
 	/** Unique low-cost directions used by the first search pass. */
 	default List<Vec3> directionSeeds() {
 		return List.of();

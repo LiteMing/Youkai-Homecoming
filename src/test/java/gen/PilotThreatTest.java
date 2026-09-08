@@ -35,7 +35,7 @@ public class PilotThreatTest {
 		testFastDiagonalSweepCatchesDiscreteMiss();
 		testStaticOverlap();
 		testLaserSweep();
-		testSelfBoxPlayerShrinkVsVanilla();
+		testSelfBoxPlayerScaleVsVanilla();
 		testNodeScorerGrazeVsDead();
 		testArenaClearanceForce();
 		testPilotPathOracleRejectsWallCrossing();
@@ -45,6 +45,7 @@ public class PilotThreatTest {
 		testEmergencyRefinementBudget();
 		testGroundedTerrainRules();
 		testSnapshotPerf();
+		PilotMotionSafetyTest.main(args);
 
 		System.out.println("\n=== Results: " + passed + " passed, " + failed + " failed ===");
 		if (failed > 0) throw new RuntimeException(failed + " tests failed!");
@@ -170,25 +171,25 @@ public class PilotThreatTest {
 		System.out.println();
 	}
 
-	private static void testSelfBoxPlayerShrinkVsVanilla() {
-		System.out.println("[SelfBoxModel shrink + per-semantic box]");
-		SelfBoxModel full = SelfBoxModel.vanillaPlayer();
+	private static void testSelfBoxPlayerScaleVsVanilla() {
+		System.out.println("[SelfBoxModel scale + per-semantic box]");
 		SelfBoxModel player = SelfBoxModel.playerDanmaku(0.8f); // Fairy-like 20% reduction
 		Vec3 feet = Vec3.ZERO;
-		AABB a = full.hardAt(feet);
 		AABB danmakuBox = player.hitBoxAt(feet, ThreatSemantic.DANMAKU);
 		AABB vanillaBox = player.hitBoxAt(feet, ThreatSemantic.VANILLA);
-		check("danmaku box narrower X than vanilla", (danmakuBox.maxX - danmakuBox.minX) < (vanillaBox.maxX - vanillaBox.minX));
+		approx("scaled cubic danmaku edge", danmakuBox.getXsize(), 0.8, 1e-6);
+		approx("danmaku remains cubic", danmakuBox.getYsize(), danmakuBox.getXsize(), 1e-6);
 		check("vanilla box matches full player width", Math.abs((vanillaBox.maxX - vanillaBox.minX) - 0.6) < 1e-6);
+		approx("vanilla terrain body keeps full player height", vanillaBox.getYsize(), 1.8, 1e-6);
 		check("danmaku bottom lifted", danmakuBox.minY > vanillaBox.minY);
-		approx("danmaku top follows eye anchor", danmakuBox.maxY, 1.764, 1e-6);
+		approx("danmaku top follows eye anchor", danmakuBox.maxY, 2.02, 1e-6);
 		// Edge bullet hits full/vanilla but may miss shrunk danmaku box
 		AABB bullet = new AABB(0.28, 0.1, -0.05, 0.35, 0.2, 0.05);
 		boolean hitVanilla = SweptCollision.clearance(vanillaBox, bullet) <= 0;
 		boolean hitDanmaku = SweptCollision.clearance(danmakuBox, bullet) <= 0;
 		check("vanilla may hit edge bullet", hitVanilla);
 		check("danmaku box may miss same edge bullet", !hitDanmaku);
-		check("results differ (semantic wired)", hitVanilla != hitDanmaku || (danmakuBox.maxX - danmakuBox.minX) < 0.6);
+		check("results differ (semantic wired)", hitVanilla != hitDanmaku);
 		System.out.println();
 	}
 

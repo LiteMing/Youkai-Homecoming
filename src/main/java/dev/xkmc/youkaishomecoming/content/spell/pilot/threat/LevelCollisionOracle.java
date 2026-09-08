@@ -29,16 +29,21 @@ public final class LevelCollisionOracle implements CollisionOracle {
 		// Use Minecraft's swept collision resolver instead of sampling.  If the
 		// resolved displacement is shorter than requested, a solid boundary was
 		// crossed (or the world border blocked the step), so reject the pilot step.
-		AABB swept = from.expandTowards(delta);
-		Vec3 resolved = Entity.collideBoundingBox(entity, delta, from, level,
-				level.getEntityCollisions(entity, swept));
+		Vec3 resolved = resolveMovement(from, delta);
 		return resolved.distanceToSqr(delta) < 1.0e-10;
+	}
+
+	/** Clip the actual command on all axes, including inherited ground gravity. */
+	@Override
+	public Vec3 resolveMovement(AABB from, Vec3 delta) {
+		return Entity.collideBoundingBox(entity, delta, from, level,
+				level.getEntityCollisions(entity, from.expandTowards(delta)));
 	}
 
 	@Override
 	public boolean isSupported(AABB box) {
 		// Footing: block below feet
 		AABB feet = new AABB(box.minX, box.minY - 0.05, box.minZ, box.maxX, box.minY, box.maxZ);
-		return !level.noCollision(entity, feet);
+		return level.getBlockCollisions(entity, feet).iterator().hasNext();
 	}
 }

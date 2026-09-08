@@ -128,9 +128,11 @@ public final class DodgePilot {
 			committedVelocity = Vec3.ZERO;
 		}
 
-		desired = clampToArena(state, desired);
-		if (!pathIsFree(state, desired)) {
-			desired = Vec3.ZERO;
+		desired = PilotMotion.limitSpeed(desired, actionModel.maxSpeed(profile.highSpeed(), profile.lowSpeed()));
+		desired = state.clampToArena(state.feet, desired);
+		if (!state.terrainAllows(state.feet, desired)) {
+			desired = state.oracle.resolveMovement(state.selfBox.bodyAt(state.feet), desired);
+			if (!state.terrainAllows(state.feet, desired)) desired = Vec3.ZERO;
 			commitTicksLeft = 0;
 			committedVelocity = Vec3.ZERO;
 		}
@@ -168,23 +170,6 @@ public final class DodgePilot {
 			commitTicksLeft = 0;
 		}
 		return candidate;
-	}
-
-	private static Vec3 clampToArena(PilotState state, Vec3 desired) {
-		if (state.arena == null || desired.lengthSqr() <= 1e-10) return desired;
-		Vec3 next = state.feet.add(desired);
-		if (state.arena.contains(next)) return desired;
-		Vec3 clamped = new Vec3(
-				Math.max(state.arena.minX, Math.min(state.arena.maxX, next.x)),
-				Math.max(state.arena.minY, Math.min(state.arena.maxY, next.y)),
-				Math.max(state.arena.minZ, Math.min(state.arena.maxZ, next.z)));
-		return clamped.subtract(state.feet);
-	}
-
-	private static boolean pathIsFree(PilotState state, Vec3 desired) {
-		if (desired.lengthSqr() <= 1e-10) return true;
-		return state.oracle.isPathFree(state.selfBox.bodyAt(state.feet), desired)
-				&& state.oracle.isFree(state.selfBox.bodyAt(state.feet.add(desired)));
 	}
 
 	private void recordMetrics(Vec3 desired) {

@@ -38,9 +38,7 @@ public final class CorridorEvaluator {
 		for (int tick = 0; tick < ticks; tick++) {
 			if (state.timedOut()) break;
 			Vec3 next = position.add(velocity);
-			if (state.arena != null && !state.arena.contains(next)) break;
-			if (!state.oracle.isPathFree(state.selfBox.bodyAt(position), velocity)
-					|| !state.oracle.isFree(state.selfBox.bodyAt(next))) break;
+			if (!state.terrainAllows(position, velocity)) break;
 
 			ScoreResult score = scorer.score(snapshot, state.selfBox, position, velocity, tick, state);
 			if (score.hardHit() || !score.isAlive()) {

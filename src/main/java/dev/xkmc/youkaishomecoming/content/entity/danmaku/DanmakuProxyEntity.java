@@ -6,6 +6,7 @@ import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellValidator;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellLimiterBypass;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -85,6 +86,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private SpellCardRank nonSpellRank;
 	private double validatedNonSpellPower = Double.NaN;
 	private int remainingNonSpellSpawns;
+	private boolean nonSpellLimiterBypassActive;
 	@Nullable
 	private String cardKey;
 
@@ -150,6 +152,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		this.nonSpellRank = null;
 		this.validatedNonSpellPower = Double.NaN;
 		this.remainingNonSpellSpawns = 0;
+		this.nonSpellLimiterBypassActive = false;
 
 		if (target != null) {
 			this.targetId = target.getUUID();
@@ -275,12 +278,23 @@ public class DanmakuProxyEntity extends PathfinderMob
 	public void bindNonSpellBudget(SpellCardRank rank) {
 		nonSpellRank = rank;
 		validatedNonSpellPower = Double.NaN;
+		nonSpellLimiterBypassActive = NonSpellLimiterBypass.isEnabled(ownerPlayer);
 	}
 
 	private boolean refreshNonSpellBudget() {
 		if (nonSpellRank == null) return true;
 		if (runtime == null || ownerPlayer == null) return false;
+		boolean bypass = NonSpellLimiterBypass.isEnabled(ownerPlayer);
+		if (bypass != nonSpellLimiterBypassActive) {
+			nonSpellLimiterBypassActive = bypass;
+			// Force a fresh validation when an administrator turns the switch off.
+			validatedNonSpellPower = Double.NaN;
+		}
 		double power = GrazeHelper.getEffectivePowerLevel(ownerPlayer);
+		if (bypass) {
+			remainingNonSpellSpawns = Integer.MAX_VALUE;
+			return true;
+		}
 		if (Double.compare(power, validatedNonSpellPower) != 0) {
 			try {
 				// Recheck before executing count-dependent loops at the new Power.
@@ -307,13 +321,14 @@ public class DanmakuProxyEntity extends PathfinderMob
 	@Override
 	public void shoot(Entity danmaku) {
 		if (danmaku instanceof SimplifiedProjectile projectile) {
-			if (generationStopped || nonSpellRank != null && remainingNonSpellSpawns <= 0) {
+			if (generationStopped || nonSpellRank != null
+					&& !nonSpellLimiterBypassActive && remainingNonSpellSpawns <= 0) {
 				// Delayed batches scheduled at a higher Power share the current tick's
 				// budget. Stopped non-spells must not create callback output either.
 				projectile.markErased(true);
 				return;
 			}
-			if (nonSpellRank != null) remainingNonSpellSpawns--;
+			if (nonSpellRank != null && !nonSpellLimiterBypassActive) remainingNonSpellSpawns--;
 		}
 		if (danmaku instanceof ItemDanmakuEntity e) {
 			if (e.afterExpiry != null) {
@@ -421,6 +436,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	public void setSpellRuntime(@Nullable SpellRuntime runtime) {
 		this.runtime = runtime;
 		validatedNonSpellPower = Double.NaN;
+		nonSpellLimiterBypassActive = false;
 	}
 
 	@Override

@@ -202,6 +202,8 @@ public class YHClient {
 	@SubscribeEvent
 	public static void registerReloadListener(RegisterClientReloadListenersEvent event) {
 		event.registerReloadListener((ResourceManagerReloadListener) YSMCompatConfig::reload);
+		event.registerReloadListener((ResourceManagerReloadListener) resourceManager ->
+				Minecraft.getInstance().execute(dev.xkmc.youkaishomecoming.compat.ysm.YsmProjectileRenderBridge::clear));
 		event.registerReloadListener((ResourceManagerReloadListener) resourceManager -> registerWingsLayer());
 	}
 

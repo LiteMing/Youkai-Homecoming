@@ -96,6 +96,43 @@ public final class YsmClientPresentationBridge {
 		}
 	}
 
+	/**
+	 * Return the projectile entity slots actually exposed by one loaded YSM
+	 * model. The names are the entity ids used by YSM's {@code projectiles}
+	 * section (the vanilla namespace is shortened for editor readability).
+	 */
+	public static List<String> projectileSlots(String model) {
+		if (!YSMClientCompat.isLoaded() || model == null || model.isBlank()) return List.of();
+		try {
+			CatalogAccess access = catalogAccess();
+			if (access == null || access.projectiles == null) return List.of();
+			Object assembly = access.assembly(model);
+			if (assembly == null) return List.of();
+			Object value = access.projectiles.invoke(assembly);
+			if (!(value instanceof Map<?, ?> map)) return List.of();
+			return map.keySet().stream()
+					.map(YsmClientPresentationBridge::projectileSlotName)
+					.filter(name -> !name.isBlank())
+					.distinct().sorted().toList();
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
+			return List.of();
+		}
+	}
+
+	private static String projectileSlotName(Object value) {
+		if (value instanceof net.minecraft.resources.ResourceLocation id) {
+			return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
+		}
+		String raw = String.valueOf(value);
+		if (raw.isBlank() || "null".equals(raw)) return "";
+		try {
+			net.minecraft.resources.ResourceLocation id = net.minecraft.resources.ResourceLocation.tryParse(raw);
+			return id == null ? raw : "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
+		} catch (RuntimeException ignored) {
+			return raw;
+		}
+	}
+
 	/** Called immediately before ExternalLivingRenderAPI.render. Parameter leases span the next async evaluation. */
 	public static Frame beforeRender(LivingEntity entity, String model, YsmPresentationResolver.Resolved state) {
 		if (!(entity instanceof YsmRenderOverrideTarget target)) return Frame.EMPTY;
@@ -397,11 +434,25 @@ public final class YsmClientPresentationBridge {
 	private static String string(Object value) { return value == null ? "" : value.toString(); }
 
 	private static final class CatalogAccess {
-		private final Method context = method("client.ClientModelManager", "getModelContext", String.class);
-		private final Method knownModels = method("client.ClientModelManager", "getModelAssemblyMap");
-		private final Method bundle = method("client.model.ModelAssembly", "getAnimationBundle");
-		private final Method animations = method("client.model.PlayerModelBundle", "getMainAnimations");
-		private CatalogAccess() throws ReflectiveOperationException { }
+		private final Method context;
+		private final Method knownModels;
+		private final Method bundle;
+		private final Method projectiles;
+		private final Method animations;
+		private CatalogAccess() throws ReflectiveOperationException {
+			context = method("client.ClientModelManager", "getModelContext", String.class);
+			knownModels = method("client.ClientModelManager", "getModelAssemblyMap");
+			bundle = method("client.model.ModelAssembly", "getAnimationBundle");
+			animations = method("client.model.PlayerModelBundle", "getMainAnimations");
+			Method projectileMethod;
+			try {
+				projectileMethod = method("client.model.ModelAssembly", "getProjectileModels");
+			} catch (ReflectiveOperationException | LinkageError ignored) {
+				// Older OYSM builds may expose living-model catalogs without projectile maps.
+				projectileMethod = null;
+			}
+			projectiles = projectileMethod;
+		}
 		private boolean known(String model) throws ReflectiveOperationException {
 			return knownModels.invoke(null) instanceof Map<?, ?> map && map.containsKey(model);
 		}

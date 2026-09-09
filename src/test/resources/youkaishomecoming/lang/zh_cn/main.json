@@ -115,10 +115,7 @@
         "spark": "小星弹",
         "star": "大星弹",
         "yinyang_2d": "阴阳玉",
-        "talisman": "灵符",
-        "kunai": "苦无",
-        "scale": "鳞弹",
-        "knife": "小刀",
+		"custom": "十字类",
         "moon": "月弹",
         "giant_yinyang": "巨大阴阳玉"
       },

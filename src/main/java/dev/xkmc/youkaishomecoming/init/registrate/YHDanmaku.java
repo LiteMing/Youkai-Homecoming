@@ -46,13 +46,7 @@ public class YHDanmaku {
 		STAR(2, 6, DisplayType.TRANSPARENT),
 		YINYANG_2D("yinyang-2d", 2, 6, DisplayType.TRANSPARENT, BulletCategory.NORMAL,
 				BulletColorMode.TINTED_WITH_WHITE, "tint", "giant_yinyang"),
-		TALISMAN(1.5f, 5, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.TINTED_WITH_WHITE,
-				"tint"),
-		KUNAI(1, 4, DisplayType.SOLID, BulletCategory.NORMAL, BulletColorMode.TINTED_WITH_WHITE,
-				"tint"),
-		SCALE(1, 4, DisplayType.TRANSPARENT, BulletCategory.NORMAL, BulletColorMode.TINTED, "white"),
-		KNIFE(1.5f, 5, DisplayType.SOLID, BulletCategory.NORMAL, BulletColorMode.TINTED_WITH_WHITE,
-				"tint"),
+		CUSTOM("custom", 1, 4, DisplayType.SOLID, BulletCategory.NORMAL, BulletColorMode.TINTED, "white", "circle"),
 		MOON(8, 16, DisplayType.ADDITIVE, BulletCategory.GIANT, BulletColorMode.TINTED, "moon"),
 		GIANT_YINYANG(8, 14, DisplayType.TRANSPARENT, BulletCategory.GIANT, BulletColorMode.TINTED, "white"),
 		;
@@ -114,7 +108,7 @@ public class YHDanmaku {
 		 */
 		public boolean isBillboard() {
 			return switch (this) {
-				case BUTTERFLY, TALISMAN, SCALE, KUNAI, KNIFE, MOON, GIANT_YINYANG -> false;
+				case BUTTERFLY, CUSTOM, MOON, GIANT_YINYANG -> false;
 				default -> true;
 			};
 		}

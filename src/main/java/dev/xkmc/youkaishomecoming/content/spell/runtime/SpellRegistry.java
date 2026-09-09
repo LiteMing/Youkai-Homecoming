@@ -146,6 +146,26 @@ public class SpellRegistry {
 		// DEFAULTS / LEGACY_DEFAULTS intentionally retained across reloads of custom content
 	}
 
+	/**
+	 * Rebuilds the live registry from its code/KubeJS defaults before a server
+	 * loads instance-global and world-local definitions. This prevents custom
+	 * spells from the previous integrated-server world leaking into the next one.
+	 */
+	public static void resetToDefaults() {
+		clear();
+		LEGACY_DEFAULTS.forEach((id, definition) -> {
+			REGISTRY.put(id, definition);
+			ORIGINS.put(id, Origin.BUILTIN);
+		});
+		DEFAULTS.forEach((id, json) -> SpellDefinition.CODEC
+				.parse(com.mojang.serialization.JsonOps.INSTANCE, json)
+				.result()
+				.ifPresent(definition -> {
+					REGISTRY.put(id, definition);
+					ORIGINS.put(id, Origin.BUILTIN);
+				}));
+	}
+
 	public static int size() {
 		return REGISTRY.size();
 	}

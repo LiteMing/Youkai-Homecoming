@@ -4,10 +4,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellTitleAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpawnShooterAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.YsmRenderAction;
+import dev.xkmc.youkaishomecoming.content.spell.definition.BulletProvider;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -17,6 +21,7 @@ import dev.xkmc.youkaishomecoming.content.spell.market.SpellMarketValidator;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.template.SpellTemplates;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.capability.PlayerDanmakuPolicy;
 import dev.xkmc.youkaishomecoming.content.entity.fairy.SmallFairyEntity;
@@ -25,6 +30,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.ZombifiedPiglin;
 import net.minecraft.world.entity.player.Player;
+import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -186,7 +192,7 @@ public final class SpellAnalyzerSelfCheck {
 				+ "  \"trail_interval\": 5, \"on_trail\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
 		private static final String ON_HIT = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 24, \"speed\": 0.5, \"lifetime\": 60,\n"
 				+ "  \"hit_behavior_entity\": \"continue\", \"on_hit_entity\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
-		private static final String NON_SPELL_SAFE_ACTION = "{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60, \"hit_behavior_block\": \"discard\"}";
+		private static final String NON_SPELL_SAFE_ACTION = "{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"red\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 60, \"hit_behavior_entity\": \"discard\", \"hit_behavior_block\": \"discard\"}";
 		private static final String NON_SPELL_SAFE = spell(NON_SPELL_SAFE_ACTION);
 		private static final String NON_SPELL_CONTINUE = NON_SPELL_SAFE.replace("\"hit_behavior_block\": \"discard\"", "\"hit_behavior_block\": \"continue\"");
 		private static final String NON_SPELL_HOOK = NON_SPELL_SAFE.replace("\"hit_behavior_block\": \"discard\"}", "\"hit_behavior_block\": \"discard\", \"on_hit_entity\": [{\"type\": \"set_variable\", \"key\": \"x\", \"value\": 1}]}");
@@ -222,6 +228,8 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String RUNCMD = spell("{\"type\": \"run_command\", \"command\": \"say hi\"}");
 		private static final String RUNCMD_HIT = spell("{\"type\": \"run_command\","
 				+ " \"hit_context\": \"at_entity_pos\", \"command\": \"say hit\"}");
+		private static final String YSM_PROJECTILE = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"circle\", \"color\": \"white\", \"count\": 2, \"speed\": 0.5, \"lifetime\": 60,"
+				+ " \"size\": 2, \"base_scale\": 1.5, \"ysm_projectile\": {\"model\": \"youmu\", \"slot\": \"arrow\", \"model_scale\": 0.75, \"max_instances\": 4, \"acknowledge_cost\": true, \"offset_forward\": 0.25, \"offset_right\": -0.5, \"offset_up\": 0.75}}");
 		private static final String RUNCMD_DISABLED = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"run_command\", \"command\": \"say hi\"}}");
 		private static final String SPELL_HEALTH = spell("{\"type\": \"set_spell_health\", \"health\": 100, \"duration\": 120}");
 		private static final String SPELL_HEALTH_DEFAULTS = spell("{\"type\": \"set_spell_health\"}");
@@ -263,7 +271,7 @@ public final class SpellAnalyzerSelfCheck {
 				"        \"origin\": {\"mode\": \"target\"}},\n" +
 				"        {\"type\": \"teleport\", \"destination\": {\"mode\": \"caster\"}},\n" +
 				"        {\"type\": \"set_entity_flag\", \"flag\": 1},\n" +
-				"        {\"type\": \"ysm_render\", \"operation\": \"model\", \"model\": \"x\"},\n" +
+				"        {\"type\": \"ysm_render\", \"hint\": \"cast\", \"duration\": 40},\n" +
 				"        {\"type\": \"erase_enemy_danmaku\"},\n" +
 				"        {\"type\": \"clear_screen\"},\n" +
 				"        {\"type\": \"confine_target\", \"max_distance\": 10},\n" +
@@ -699,6 +707,47 @@ public final class SpellAnalyzerSelfCheck {
 			RunCommandAction hitCommand = (RunCommandAction) firstTickAction(parse(RUNCMD_HIT));
 			check("run_command hit context codec round-trip",
 					hitCommand.hitContext() == RunCommandAction.HitContext.AT_ENTITY_POS);
+			FireDanmakuAction fireDefaults = (FireDanmakuAction) firstTickAction(parse(FIRE24));
+			check("fire_danmaku default hit behavior remains continue",
+					fireDefaults.hitBehaviorEntity() == HitBehavior.CONTINUE
+							&& fireDefaults.hitBehaviorBlock() == HitBehavior.CONTINUE);
+			FireDanmakuAction baseScale = (FireDanmakuAction) firstTickAction(parse(
+					FIRE24.replace("\"lifetime\": 60}", "\"lifetime\": 60, \"size\": 2, \"base_scale\": 3}")));
+			check("base_scale overrides legacy size",
+					baseScale.size() instanceof NumberProviders.Constant value && value.value() == 3);
+			FireDanmakuAction legacySize = (FireDanmakuAction) firstTickAction(parse(
+					FIRE24.replace("\"lifetime\": 60}", "\"lifetime\": 60, \"size\": 2}")));
+			check("legacy size remains readable as base scale",
+					legacySize.size() instanceof NumberProviders.Constant value && value.value() == 2);
+			String canonicalFireJson = FireDanmakuAction.CODEC
+					.encodeStart(JsonOps.INSTANCE, legacySize)
+					.result().orElseThrow().toString();
+			check("fire_danmaku emits canonical base_scale",
+					canonicalFireJson.contains("\"base_scale\"") && !canonicalFireJson.contains("\"size\""));
+			FireDanmakuAction ysm = (FireDanmakuAction) firstTickAction(parse(YSM_PROJECTILE));
+			check("any bullet YSM projectile codec round-trip",
+					ysm.bulletType() instanceof BulletProvider.Constant bullet && bullet.bullet() == YHDanmaku.Bullet.CIRCLE
+						&& ysm.ysmProjectile().isPresent()
+						&& ysm.ysmProjectile().get().model().equals("youmu")
+						&& ysm.ysmProjectile().get().modelScale() == 0.75f
+						&& ysm.ysmProjectile().get().maxInstances() == 4
+						&& ysm.ysmProjectile().get().acknowledgeCost()
+						&& ysm.ysmProjectile().get().offsetForward() == 0.25f
+						&& ysm.ysmProjectile().get().offsetRight() == -0.5f
+						&& ysm.ysmProjectile().get().offsetUp() == 0.75f);
+			YsmRenderAction hint = (YsmRenderAction) firstTickAction(parse(
+				spell("{\"type\": \"ysm_render\", \"hint\": \"cast\", \"duration\": 40}")));
+			check("ysm_render keeps only context hint", hint.hint().equals("cast") && hint.duration() == 40);
+			SpawnShooterAction shooter = (SpawnShooterAction) firstTickAction(parse(spell(
+				"{\"type\": \"spawn_shooter\", \"count\": 1, \"speed\": 0, \"lifetime\": 1, "
+						+ "\"ysm\": {\"model\": \"youmu\", \"texture\": \"default\", \"hint\": \"cast\", \"duration\": 20}, \"body\": []}")));
+			check("shooter uses shared YSM override config",
+					shooter.ysm().model().equals("youmu") && shooter.ysm().hint().equals("cast")
+							&& shooter.ysm().duration() == 20);
+			String shooterJson = SpawnShooterAction.CODEC.encodeStart(JsonOps.INSTANCE, shooter)
+					.result().orElseThrow().toString();
+			check("shooter emits nested YSM config", shooterJson.contains("\"ysm\"")
+					&& !shooterJson.contains("\"ysm_model\""));
 		}
 
 		private void migratedBossHealth() {
@@ -820,6 +869,10 @@ public final class SpellAnalyzerSelfCheck {
 
 		private void specialCardAndReplicaContracts() {
 			nonSpellPowerCounts();
+			FireDanmakuAction fireDefaults = (FireDanmakuAction) firstTickAction(parse(FIRE24));
+			check("fire danmaku defaults both hit behaviors to continue",
+					fireDefaults.hitBehaviorEntity() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.CONTINUE
+							&& fireDefaults.hitBehaviorBlock() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.CONTINUE);
 			var tier1 = SpellCardRank.LESSER_WISDOM;
 			check("non-spell accepts bounded discard projectile", !rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_SAFE), tier1)));

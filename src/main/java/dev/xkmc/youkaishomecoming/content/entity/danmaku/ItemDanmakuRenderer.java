@@ -105,7 +105,7 @@ public class ItemDanmakuRenderer<T extends ItemDanmakuEntity> extends EntityRend
 		pose.pushPose();
 		float scale = e.scale();
 		pose.scale(scale, scale, scale);
-		danmaku.getTypeForRender().create(this, e, pose, pTick);
+		danmaku.getTypeForRender(e.getItem()).create(this, e, pose, pTick);
 		pose.popPose();
 	}
 

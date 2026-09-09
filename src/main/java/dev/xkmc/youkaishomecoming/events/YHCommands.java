@@ -26,6 +26,7 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellLimiterBypass;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicy;
@@ -110,6 +111,7 @@ public class YHCommands {
 	@SubscribeEvent
 	public static void onServerStarted(ServerStartedEvent event) {
 		CertificationManager.INSTANCE.reset();
+		SpellRegistry.resetToDefaults();
 		CustomSpellStorage.loadAllIntoRegistry(event.getServer());
 		CustomSpellCircleStorage.loadAllIntoConfig(event.getServer());
 		SpellMarketServerManager.start(event.getServer());
@@ -138,6 +140,7 @@ public class YHCommands {
 	@SubscribeEvent
 	public static void onServerStopping(ServerStoppingEvent event) {
 		ClassicControlService.clearAll();
+		NonSpellLimiterBypass.clear();
 		SpellMarketServerManager.stop();
 	}
 
@@ -675,6 +678,13 @@ public class YHCommands {
 
 		// /yhdev developer commands
 		event.getDispatcher().register(literal("yhdev")				.requires(e -> e.hasPermission(2))
+				.then(literal("bypass_spell_limiter")
+						.executes(ctx -> reportNonSpellLimiterBypass(ctx.getSource()))
+						.then(argument("enabled", BoolArgumentType.bool())
+								.executes(ctx -> setSelfNonSpellLimiterBypass(ctx)))
+						.then(argument("targets", EntityArgument.players())
+								.then(argument("enabled", BoolArgumentType.bool())
+										.executes(ctx -> setNonSpellLimiterBypass(ctx)))))
 				.then(literal("spell_analyzer_self_test")
 						.executes(ctx -> runAnalyzerSelfTest(ctx.getSource())))
 				.then(literal("certification")
@@ -710,6 +720,47 @@ public class YHCommands {
 												.suggests((ctx2, builder) -> SharedSuggestionProvider.suggest(
 														new String[]{"allow", "experimental", "deny", "op_only"}, builder))
 												.executes(ctx -> capabilitySet(ctx)))))));
+	}
+
+	private static int reportNonSpellLimiterBypass(CommandSourceStack source) {
+		ServerPlayer player = source.getPlayer();
+		if (player == null) {
+			source.sendSystemMessage(Component.literal(
+					"Usage: /yhdev bypass_spell_limiter [true|false] or <targets> <true|false>"));
+			return 0;
+		}
+		source.sendSystemMessage(Component.literal("[YH] non-spell limiter bypass is "
+				+ (NonSpellLimiterBypass.isEnabled(player) ? "enabled" : "disabled")
+				+ " for " + player.getGameProfile().getName()));
+		return 1;
+	}
+
+	private static int setSelfNonSpellLimiterBypass(
+			com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		ServerPlayer player = ctx.getSource().getPlayer();
+		if (player == null) {
+			ctx.getSource().sendFailure(Component.literal(
+					"A player source is required; specify targets when running from console."));
+			return 0;
+		}
+		boolean enabled = BoolArgumentType.getBool(ctx, "enabled");
+		NonSpellLimiterBypass.set(player, enabled);
+		ctx.getSource().sendSuccess(() -> Component.literal("[YH] non-spell limiter bypass "
+				+ (enabled ? "enabled" : "disabled") + " for " + player.getGameProfile().getName()), true);
+		return 1;
+	}
+
+	private static int setNonSpellLimiterBypass(
+			com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		boolean enabled = BoolArgumentType.getBool(ctx, "enabled");
+		var targets = EntityArgument.getPlayers(ctx, "targets");
+		for (ServerPlayer player : targets) {
+			NonSpellLimiterBypass.set(player, enabled);
+		}
+		ctx.getSource().sendSuccess(() -> Component.literal("[YH] non-spell limiter bypass "
+				+ (enabled ? "enabled" : "disabled") + " for " + targets.size() + " player(s)"), true);
+		return targets.size();
 	}
 
 	private static int capabilityGet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {

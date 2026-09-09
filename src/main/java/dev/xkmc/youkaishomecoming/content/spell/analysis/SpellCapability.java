@@ -38,6 +38,8 @@ public enum SpellCapability {
 	SHOW_SPELL_TITLE("show_spell_title"),
 	SHOW_SPELL_CARD("show_spell_card"),
 	YSM_RENDER("ysm_render"),
+	/** Per-instance YSM projectile presentation; creator acknowledgement required. */
+	YSM_PROJECTILE("ysm_projectile"),
 	/** A JSON fragment the editor salvaged but could not decode. Always denied. */
 	BROKEN_NODE("broken_node");
 

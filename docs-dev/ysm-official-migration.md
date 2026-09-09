@@ -49,9 +49,10 @@
 运行时 preset ticks。新增场景仍只使用 `YsmModelProfile.Trigger` 和普通事件时间/序号，
 没有在预设或信号包中引入 OYSM 类名、回调或播放器控制器。
 
-`ysm_render` 有意替换为必填 operation 的节点设计（完整字段见脚本契约文档），无旧设计兼容层。
-它与脚本共用 `YHModel`；`YsmRenderOverrideTarget.ysmProfile` 的真实实体实现读取服务端 SavedData，
-隔离预览实现读取同步 DTO，不将 Minecraft client 类引用引入 common 接口。
+0.29.0 已将 `ysm_render` 收窄为 `hint`/`duration` 节点；模型、预设、原生片段、参数和
+清理操作由 `/yhysm editor` 负责。hint 仍走 `YsmRenderOverrideTarget` 的 legacy
+animation hint 路径，供现有 YSM 上下文选择器使用。Shooter 的初始覆盖与该路径共享
+`YsmRenderConfig`；隔离预览实现读取同步 DTO，不将 Minecraft client 类引用引入 common 接口。
 同名预设不用于猜模型；服务器不知道客户端资源默认绑定时，节点显式指定预设所属模型。
 
 符卡正交、透视和截图共用 `OrthographicViewport.renderPreviewCaster`，只在假施法者

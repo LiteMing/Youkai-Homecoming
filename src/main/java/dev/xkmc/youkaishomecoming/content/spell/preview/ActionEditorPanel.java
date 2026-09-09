@@ -3,6 +3,8 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderConfig;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
@@ -412,7 +414,7 @@ public class ActionEditorPanel {
 					"show_spell_title", "Show Spell Title",
 					"show_spell_card", "Show Spell Card",
 					"set_spell_circle", "Custom Magic Circle",
-					"ysm_render", "YSM Render"),
+					"ysm_render", "YSM Hint"),
 			group("Spell Flow",
 					"force_phase", "Force Phase",
 					"force_spell", "Force Spell",
@@ -732,8 +734,10 @@ public class ActionEditorPanel {
 		addNumberRow("Lifetime", a.lifetime(), v ->
 				notifyDanmaku(old -> old.withLifetime(v), false), EvaluationTiming.SNAPSHOT);
 
-		addNumberRow("Size", a.size(), v ->
+		addNumberRow("Base Scale", a.size(), v ->
 				notifyDanmaku(old -> old.withSize(v), false), EvaluationTiming.PROJECTILE_TICK);
+
+		buildYsmProjectileRows(a);
 
 		// === Pattern group ===
 		addSectionHeader("Pattern");
@@ -873,6 +877,69 @@ public class ActionEditorPanel {
 			}
 			currentDepth--;
 		}
+	}
+
+	/** Action-scoped YSM projectile presentation controls. */
+	private void buildYsmProjectileRows(FireDanmakuAction action) {
+		// Any YH bullet may opt into the YSM projectile renderer. The selected
+		// bullet's normal renderer remains the automatic fallback.
+		if (action.ysmProjectile().isEmpty()) {
+			addSectionHeader("YSM Projectile");
+			if (isSectionCollapsed("YSM Projectile")) return;
+			currentDepth++;
+			addButtonRow("+ Enable YSM Projectile", () -> {
+				String model = ysmPreviewModel.get();
+				if (model.isBlank()) model = YSMClientCompat.loadedModelIds().stream().findFirst().orElse("");
+				String selectedModel = model;
+				notifyDanmaku(old -> old.withYsmProjectile(Optional.of(new YsmProjectileConfig(
+						YsmProjectileConfig.ModelSource.FIXED, selectedModel, "arrow", 1.0f, 8,
+						YsmProjectileConfig.Fallback.YH, false))));
+			});
+			currentDepth--;
+			return;
+		}
+		addSectionHeader("YSM Projectile");
+		if (isSectionCollapsed("YSM Projectile")) return;
+		currentDepth++;
+		YsmProjectileConfig config = action.ysmProjectile().get();
+		// The supplier is evaluated when the arrow is opened, so a resource-pack
+		// reload immediately changes the available model choices.
+		addSuggestStringRow("Model ID", config.model(), () -> new java.util.TreeSet<>(YSMClientCompat.loadedModelIds()).stream().toList(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withModel(value))), false));
+		addDynamicStringOptionRow("Projectile Slot", config.slot(),
+				() -> {
+					String model = config.model();
+					if (currentAction instanceof FireDanmakuAction latest) {
+						model = latest.ysmProjectile().map(YsmProjectileConfig::model).orElse(model);
+					}
+					return YsmClientPresentationBridge.projectileSlots(model);
+				}, value ->
+					notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withSlot(value)))));
+		addFloatRow("Model Scale", config.modelScale(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withModelScale(value))), false));
+		addFloatRow("Offset Forward", config.offsetForward(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withOffsets(value, current.offsetRight(), current.offsetUp()))), false));
+		addFloatRow("Offset Right", config.offsetRight(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withOffsets(current.offsetForward(), value, current.offsetUp()))), false));
+		addFloatRow("Offset Up", config.offsetUp(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withOffsets(current.offsetForward(), current.offsetRight(), value))), false));
+		addIntRow("Max Instances", config.maxInstances(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withMaxInstances(value))), false));
+		addBoolRow("Acknowledge Cost", config.acknowledgeCost(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withAcknowledgeCost(value)))));
+		addTextDisplayRow("Fallback", config.fallback().getSerializedName());
+		addTextDisplayRow("Model Source", config.modelSource().getSerializedName());
+		addButtonRow("- Remove YSM Projectile", () ->
+				notifyDanmaku(old -> old.withYsmProjectile(Optional.empty())));
+		currentDepth--;
 	}
 
 	private void addColorAnimationRows(FireDanmakuAction a) {
@@ -2103,45 +2170,14 @@ public class ActionEditorPanel {
 				notifySimple(old -> new SetEntityFlagAction(((SetEntityFlagAction) old).flag(), v.equals("true"))));
 	}
 
-	// --- YSM Render rows ---
+	// --- YSM Hint rows ---
 
 	private void buildYsmRenderRows(YsmRenderAction yra) {
-		var operations = YsmRenderAction.Operation.values();
-		addStringOptionRow(ysmLabel("action.operation"),
-				java.util.Arrays.stream(operations).map(YsmRenderAction.Operation::getSerializedName).toArray(String[]::new),
-				java.util.Arrays.stream(operations).map(op -> ysmLabel("action." + op.getSerializedName())).toArray(String[]::new),
-				yra.operation().getSerializedName(), v -> notifySimple(old -> ((YsmRenderAction) old).withOperation(
-						YsmRenderAction.Operation.valueOf(v.toUpperCase(java.util.Locale.ROOT))), true));
-		if (yra.operation() == YsmRenderAction.Operation.CLEAR || yra.operation() == YsmRenderAction.Operation.RESET_MODEL) return;
-		if (yra.operation() == YsmRenderAction.Operation.MODEL || yra.operation() == YsmRenderAction.Operation.PRESET) {
-			addSuggestStringRow(ysmLabel(yra.operation() == YsmRenderAction.Operation.MODEL ? "action.model_id" : "action.preset_model"),
-					yra.model(), () -> {
-						var models = new java.util.TreeSet<>(YSMClientCompat.loadedModelIds());
-						models.addAll(dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.models());
-						return List.copyOf(models);
-					}, v -> notifySimple(old -> ((YsmRenderAction) old).withModel(v), true));
-		}
-		switch (yra.operation()) {
-			case MODEL -> addSuggestStringRow(ysmLabel("texture"), yra.texture(),
-					() -> YSMClientCompat.loadedTextureNames(currentYsmModel(yra)),
-					v -> notifySimple(old -> ((YsmRenderAction) old).withTexture(v)));
-			case PRESET -> addSuggestStringRow(ysmLabel("trigger_preset"), yra.preset(),
-					() -> currentYsmModel(yra).isEmpty() ? List.of() : dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.entry(currentYsmModel(yra))
-							.profile().presets().keySet().stream().sorted().toList(), v -> notifySimple(old -> ((YsmRenderAction) old).withPreset(v)));
-			case ANIMATION -> addSuggestStringRow(ysmLabel("clip"), yra.clip(),
-					() -> dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge.catalog(currentYsmModel(yra)).animations(),
-					v -> notifySimple(old -> ((YsmRenderAction) old).withClip(v)));
-			case PARAMETER -> {
-				addSuggestStringRow(ysmLabel("parameter_name"), yra.parameter(),
-						() -> dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge.catalog(currentYsmModel(yra)).controls().stream()
-								.map(dev.xkmc.youkaishomecoming.compat.ysm.YsmModelCatalog.Control::parameter).filter(v -> !v.isEmpty()).distinct().toList(),
-						v -> notifySimple(old -> ((YsmRenderAction) old).withParameter(v)));
-				addFloatRow(ysmLabel("parameter_value"), yra.value(), v -> notifySimple(old -> ((YsmRenderAction) old).withValue(v)));
-			}
-			default -> { }
-		}
-		addIntRow(ysmLabel(yra.operation() == YsmRenderAction.Operation.MODEL ? "action.model_duration" : "action.duration"),
-				yra.duration(), v -> notifySimple(old -> ((YsmRenderAction) old).withDuration(v)));
+		addSuggestStringRow("Anim Hint", yra.hint(),
+				() -> YSMClientCompat.loadedAnimationNames(ysmPreviewModel.get()),
+				v -> notifySimple(old -> ((YsmRenderAction) old).withHint(v), true));
+		addIntRow("Duration", yra.duration(), v ->
+				notifySimple(old -> ((YsmRenderAction) old).withDuration(v)));
 	}
 
 	private void buildShowSpellCardRows(ShowSpellCardAction action) {
@@ -2181,11 +2217,6 @@ public class ActionEditorPanel {
 	}
 
 	private static String ysmLabel(String key) { return YsmEditorController.text(key).getString(); }
-
-	private String currentYsmModel(YsmRenderAction action) {
-		return action.model().isBlank() || action.operation() == YsmRenderAction.Operation.ANIMATION
-				|| action.operation() == YsmRenderAction.Operation.PARAMETER ? ysmPreviewModel.get() : action.model();
-	}
 
 	private static String currentYsmModel(SpawnShooterAction action) {
 		return action.ysmModel().isBlank() ? "" : action.ysmModel();
@@ -2375,16 +2406,17 @@ public class ActionEditorPanel {
 		addSectionHeader("Advanced");
 		if (!isSectionCollapsed("Advanced")) {
 			currentDepth++;
-			addSuggestStringRow("Model ID", ssa.ysmModel(), YSMClientCompat::loadedModelIds, v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmModel(v), true));
-			addSuggestStringRow("Texture", ssa.ysmTexture(), () -> YSMClientCompat.loadedTextureNames(currentYsmModel(ssa)), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmTexture(v)));
-			addSuggestStringRow("Anim Hint", ssa.ysmAnimation(), () -> YSMClientCompat.loadedAnimationNames(currentYsmModel(ssa)), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmAnimation(v)));
-			addIntRow("Duration", ssa.ysmDuration(), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmDuration(v)));
-			addStringOptionRow("Expire Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(ssa.ysmClearTarget(), "changed"), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsmClearTarget(v)));
+			YsmRenderConfig ysm = ssa.ysm();
+			addSuggestStringRow("Model ID", ysm.model(), YSMClientCompat::loadedModelIds, v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withModel(v)), true));
+			addSuggestStringRow("Texture", ysm.texture(), () -> YSMClientCompat.loadedTextureNames(ysm.model()), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withTexture(v))));
+			addSuggestStringRow("Anim Hint", ysm.hint(), () -> YSMClientCompat.loadedAnimationNames(ysm.model()), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withHint(v))));
+			addIntRow("Duration", ysm.duration(), v ->
+				notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withDuration(v))));
+			addStringOptionRow("Expire Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(ysm.clearTarget(), "changed"), v ->
+					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withClearTarget(v))));
 			currentDepth--;
 		}
 	}
@@ -3867,6 +3899,29 @@ public class ActionEditorPanel {
 		int rowIndex = rows.size();
 		var btn = Button.builder(Component.literal(display + " \u25BC"), b -> {
 			openDropdown(localizedDisplayNames, selectedIndex, idx -> onChange.accept(values[idx]), rowIndex);
+		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
+		rows.add(new EditorRow(label, btn, false));
+	}
+
+	/** A string option whose values are read when the dropdown is opened. */
+	private void addDynamicStringOptionRow(String label, String current,
+			Supplier<List<String>> valuesSupplier, Consumer<String> onChange) {
+		int widgetW = w - LABEL_WIDTH - PADDING * 3;
+		int rowIndex = rows.size();
+		String shown = current == null ? "" : current;
+		var btn = Button.builder(Component.literal(shown + " \u25BC"), ignored -> {
+			List<String> values = new ArrayList<>();
+			if (valuesSupplier != null) {
+				List<String> supplied = valuesSupplier.get();
+				if (supplied != null) values.addAll(supplied);
+			}
+			values.removeIf(value -> value == null || value.isBlank());
+			if (!shown.isBlank() && !values.contains(shown)) values.add(shown);
+			List<String> choices = values.stream().distinct().sorted().toList();
+			if (choices.isEmpty()) return;
+			String[] options = choices.toArray(String[]::new);
+			int selected = choices.indexOf(shown);
+			openDropdown(options, selected, idx -> onChange.accept(choices.get(idx)), rowIndex);
 		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, false));
 	}
@@ -5430,7 +5485,7 @@ public class ActionEditorPanel {
 			Map.entry("sequence", "Sequence"),
 			Map.entry("confine_target", "Confine Target"),
 			Map.entry("set_entity_flag", "Set Entity Flag"),
-			Map.entry("ysm_render", "YSM Render"),
+			Map.entry("ysm_render", "YSM Hint"),
 			Map.entry("caster_moves", "Caster Moves"),
 			Map.entry("spellcard_init", "Spell Card Initialization"),
 			Map.entry("noop", "Noop"),

@@ -36,12 +36,16 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.spell.pilot.debug.PilotDebugView;
 import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmProjectileRenderBridge;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Renders the spell preview in an orthographic or perspective viewport within a Screen.
@@ -764,6 +768,8 @@ public class OrthographicViewport {
 		float viewScale = (float) Math.cbrt(Math.abs(viewMat.determinant3x3()));
 
 		ItemDanmakuRenderer<?> cachedDanmakuRenderer = null;
+		Map<String, Integer> ysmInstances = new HashMap<>();
+		YsmProjectileRenderBridge.beginFrame(mc.level);
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
 			if (entity instanceof ItemDanmakuEntity danmaku) {
 				// Fast path: skip dispatcher.getRenderer() for danmaku (all same EntityType)
@@ -772,12 +778,26 @@ public class OrthographicViewport {
 					if (r instanceof ItemDanmakuRenderer<?> dr) cachedDanmakuRenderer = dr;
 				}
 				if (cachedDanmakuRenderer != null) {
+					if (danmaku.tickCount > 0 && danmaku.hasYsmProjectile()) {
+						String key = danmaku.ysmProjectileModel() + "|" + danmaku.ysmProjectileSlot()
+								+ "|" + danmaku.ysmProjectileMaxInstances();
+						int ordinal = ysmInstances.getOrDefault(key, 0);
+						ysmInstances.put(key, ordinal + 1);
+						double ex = Mth.lerp(partialTick, danmaku.xOld, danmaku.getX());
+						double ey = Mth.lerp(partialTick, danmaku.yOld, danmaku.getY()) + danmaku.getBbHeight() / 2.0;
+						double ez = Mth.lerp(partialTick, danmaku.zOld, danmaku.getZ());
+						int ysmTint = DanmakuRenderStates.fading(dev.xkmc.fastprojectileapi.render.core.DisplayType.TRANSPARENT,
+								cachedDanmakuRenderer.color(danmaku, partialTick), cachedDanmakuRenderer, danmaku);
+						if (YsmProjectileRenderBridge.render(danmaku, poseStack, buffer, LightTexture.FULL_BRIGHT,
+								partialTick, (float) ex, (float) ey, (float) ez, ordinal, ysmTint)) continue;
+					}
 					renderDanmakuDirect(cachedDanmakuRenderer, danmaku, viewMat, viewScale, poseStack, partialTick);
 					continue;
 				}
 			}
 			renderEntity(dispatcher, entity, poseStack, buffer, partialTick);
 		}
+		YsmProjectileRenderBridge.endFrame();
 
 		// 10. Flush the deferred danmaku render queue and all remaining buffers
 		ProjectileRenderHelper.flushPreviewQueue(buffer);
@@ -893,6 +913,8 @@ public class OrthographicViewport {
 		float viewScaleP = (float) Math.cbrt(Math.abs(viewMatP.determinant3x3()));
 
 		ItemDanmakuRenderer<?> cachedDanmakuRendererP = null;
+		Map<String, Integer> ysmInstancesP = new HashMap<>();
+		YsmProjectileRenderBridge.beginFrame(mc.level);
 		for (Entity entity : scene.getHolder().getLocalEntities()) {
 			if (entity instanceof ItemDanmakuEntity danmaku) {
 				if (cachedDanmakuRendererP == null) {
@@ -900,12 +922,26 @@ public class OrthographicViewport {
 					if (r instanceof ItemDanmakuRenderer<?> dr) cachedDanmakuRendererP = dr;
 				}
 				if (cachedDanmakuRendererP != null) {
+					if (danmaku.tickCount > 0 && danmaku.hasYsmProjectile()) {
+						String key = danmaku.ysmProjectileModel() + "|" + danmaku.ysmProjectileSlot()
+								+ "|" + danmaku.ysmProjectileMaxInstances();
+						int ordinal = ysmInstancesP.getOrDefault(key, 0);
+						ysmInstancesP.put(key, ordinal + 1);
+						double ex = Mth.lerp(partialTick, danmaku.xOld, danmaku.getX());
+						double ey = Mth.lerp(partialTick, danmaku.yOld, danmaku.getY()) + danmaku.getBbHeight() / 2.0;
+						double ez = Mth.lerp(partialTick, danmaku.zOld, danmaku.getZ());
+						int ysmTint = DanmakuRenderStates.fading(dev.xkmc.fastprojectileapi.render.core.DisplayType.TRANSPARENT,
+								cachedDanmakuRendererP.color(danmaku, partialTick), cachedDanmakuRendererP, danmaku);
+						if (YsmProjectileRenderBridge.render(danmaku, poseStack, buffer, LightTexture.FULL_BRIGHT,
+								partialTick, (float) ex, (float) ey, (float) ez, ordinal, ysmTint)) continue;
+					}
 					renderDanmakuDirect(cachedDanmakuRendererP, danmaku, viewMatP, viewScaleP, poseStack, partialTick);
 					continue;
 				}
 			}
 			renderEntity(dispatcher, entity, poseStack, buffer, partialTick);
 		}
+		YsmProjectileRenderBridge.endFrame();
 
 		// 14. Flush
 		ProjectileRenderHelper.flushPreviewQueue(buffer);

@@ -331,7 +331,10 @@ public class YSMClientCompat {
 		if (isCacheFresh(loadedModelIdsCacheAt, now)) {
 			return new ArrayList<>(loadedModelIdsCache);
 		}
-		List<String> result = new ArrayList<>(List.of(MODEL_REMILIA));
+		// Do not advertise the YH built-in model when OpenYSM is absent. Callers
+		// use this list for live editor/command choices and an unavailable ID would
+		// only create a guaranteed fallback path.
+		List<String> result = LOADED ? new ArrayList<>(List.of(MODEL_REMILIA)) : new ArrayList<>();
 		if (!LOADED) {
 			loadedModelIdsCache = List.copyOf(result);
 			loadedModelIdsCacheAt = now;

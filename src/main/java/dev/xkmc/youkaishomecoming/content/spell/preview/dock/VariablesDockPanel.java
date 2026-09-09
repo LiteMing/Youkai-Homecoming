@@ -216,6 +216,12 @@ public class VariablesDockPanel implements DockPanel {
 						+ policyLabel(SpellCapability.TARGET_COORDINATE, zh ? "目标坐标" : "target xyz") + "  "
 						+ policyLabel(SpellCapability.TRACKING_MOVER, zh ? "追踪Mover" : "tracking mover"),
 				0xFFB7C9D6);
+		for (var diagnostic : analysis.diagnostics()) {
+			if (diagnostic.severity() == dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDiagnostic.Severity.WARNING) {
+				appendWrapped(lines, font, width,
+						(zh ? "性能告警: " : "Performance warning: ") + diagnostic.message(), 0xFFFFD36B);
+			}
+		}
 		if (nodes.operatorOnlyNodes() > 0 || nodes.deniedNodes() > 0) {
 			appendWrapped(lines, font, width,
 					(zh ? "不可认证: OP " : "Not certifiable: OP ") + nodes.operatorOnlyNodes()

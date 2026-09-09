@@ -3098,27 +3098,21 @@ public class ActionListPanel {
 		if (action instanceof SpawnShooterAction ssa) {
 			String pattern = " " + formatNumberProvider(ssa.count()) + "x" + ssa.pattern().name().toLowerCase();
 			String ysm = "";
-			if (!ssa.ysmModel().isBlank() || !ssa.ysmTexture().isBlank() || !ssa.ysmAnimation().isBlank()) {
+			if (ssa.ysm().enabled()) {
 				StringBuilder builder = new StringBuilder(" ysm");
-				if (!ssa.ysmModel().isBlank()) {
-					builder.append("=").append(ssa.ysmModel());
+				if (!ssa.ysm().model().isBlank()) {
+					builder.append("=").append(ssa.ysm().model());
 				}
-				if (!ssa.ysmAnimation().isBlank()) {
-					builder.append("@").append(ssa.ysmAnimation());
+				if (!ssa.ysm().hint().isBlank()) {
+					builder.append("@").append(ssa.ysm().hint());
 				}
 				ysm = builder.toString();
 			}
 			return index + ": shooter" + pattern + "(hp=" + ssa.health() + ")" + ysm;
 		}
 		if (action instanceof YsmRenderAction yra) {
-			String value = switch (yra.operation()) {
-				case MODEL -> yra.model();
-				case PRESET -> yra.preset();
-				case ANIMATION -> yra.clip();
-				case PARAMETER -> yra.parameter() + " = " + yra.value();
-				default -> "";
-			};
-			return index + ": YSM " + YsmEditorController.text("action." + yra.operation().getSerializedName()).getString() + " " + value;
+			return index + ": YSM hint " + (yra.hint().isBlank() ? "(clear)" : yra.hint())
+					+ " (" + yra.duration() + "t)";
 		}
 		if (action instanceof TeleportAction) return index + ": teleport";
 		if (action instanceof SpellActions.NoopAction) return index + ": noop";

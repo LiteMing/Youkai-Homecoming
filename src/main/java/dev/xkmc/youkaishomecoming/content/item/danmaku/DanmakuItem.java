@@ -5,13 +5,10 @@ import dev.xkmc.fastprojectileapi.render.type.ButterflyProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.CrossProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.GiantSphereProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.GiantYinYangSphereProjectileType;
-import dev.xkmc.fastprojectileapi.render.type.LayeredCrossProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.LayeredRotatingProjectileType;
-import dev.xkmc.fastprojectileapi.render.type.LayeredSwingingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RenderableProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.RotatingProjectileType;
 import dev.xkmc.fastprojectileapi.render.type.SimpleProjectileType;
-import dev.xkmc.fastprojectileapi.render.type.SwingingProjectileType;
 import dev.xkmc.l2library.util.raytrace.RayTraceUtil;
 import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
@@ -160,39 +157,34 @@ public class DanmakuItem extends Item {
 	private ProjTypeHolder<? extends RenderableProjectileType<?, ?>, ?> render;
 
 	public ProjTypeHolder<? extends RenderableProjectileType<?, ?>, ?> getTypeForRender() {
-		if (render == null) {
-			var loc = YoukaisHomecoming
-					.loc("textures/entities/bullet/" + type.texturePath(color) + ".png");
-			var white = YoukaisHomecoming
-					.loc("textures/entities/bullet/" + type.whiteOverlayTexturePath() + ".png");
-			RenderableProjectileType<?, ?> r = switch (type) {
-				case BUTTERFLY -> new ButterflyProjectileType(loc, type.display(), 20);
-				case SPARK -> new RotatingProjectileType(loc, type.display(), 20);
-				case STAR -> new RotatingProjectileType(loc, type.display(), 40);
-				case YINYANG_2D -> type.usesWhiteOverlayTint() ?
-						new LayeredRotatingProjectileType(loc, white, type.display(), 80) :
-						new RotatingProjectileType(loc, type.display(), 80);
-				// Swinging 3D bullets (rotations per block, tilt angle in degrees, size in blocks)
-				case TALISMAN -> type.usesWhiteOverlayTint() ?
-						new LayeredSwingingProjectileType(loc, white, type.display(), 0.05f, 0f, 0.7f) :
-						new SwingingProjectileType(loc, type.display(), 0.05f, 0f, 0.7f);
-				case SCALE -> new SwingingProjectileType(loc, type.display(), 0.02f, 30f, 0.5f);
-				// Cross-shaped bullets (like Minecraft saplings)
-				case KUNAI -> type.usesWhiteOverlayTint() ?
-						new LayeredCrossProjectileType(loc, white, type.display()) :
-						new CrossProjectileType(loc, type.display());
-				case KNIFE -> type.usesWhiteOverlayTint() ?
-						new LayeredCrossProjectileType(loc, white, type.display()) :
-						new CrossProjectileType(loc, type.display());
-				// Moon uses the textured sphere; giant yinyang uses a no-UV 3D material split.
-				case MOON -> new GiantSphereProjectileType(loc, type.display(), 32, 16, 120);
-				case GIANT_YINYANG -> new GiantYinYangSphereProjectileType(
-						YoukaisHomecoming.loc("textures/entities/bullet/moon/moon.png"), type.display(), 32, 16, 80);
-				default -> new SimpleProjectileType(loc, type.display());
-			};
-			render = ProjTypeHolder.wrap(Wrappers.cast(r));
-		}
+		if (render == null) render = createRender();
 		return render;
+	}
+
+	public ProjTypeHolder<? extends RenderableProjectileType<?, ?>, ?> getTypeForRender(ItemStack stack) {
+		return getTypeForRender();
+	}
+
+	private ProjTypeHolder<? extends RenderableProjectileType<?, ?>, ?> createRender() {
+		var loc = YoukaisHomecoming.loc("textures/entities/bullet/" + type.texturePath(color) + ".png");
+		var white = YoukaisHomecoming.loc("textures/entities/bullet/" + type.whiteOverlayTexturePath() + ".png");
+		RenderableProjectileType<?, ?> r = switch (type) {
+			case BUTTERFLY -> new ButterflyProjectileType(loc, type.display(), 20);
+			case SPARK -> new RotatingProjectileType(loc, type.display(), 20);
+			case STAR -> new RotatingProjectileType(loc, type.display(), 40);
+			case YINYANG_2D -> type.usesWhiteOverlayTint() ?
+					new LayeredRotatingProjectileType(loc, white, type.display(), 80) :
+					new RotatingProjectileType(loc, type.display(), 80);
+			case CUSTOM -> new CrossProjectileType(loc, type.display());
+			// CUSTOM is the single experimental non-billboard entry point. Its YH
+			// fallback stays deliberately simple until the optional YSM bridge is active.
+			// Moon uses the textured sphere; giant yinyang uses a no-UV 3D material split.
+			case MOON -> new GiantSphereProjectileType(loc, type.display(), 32, 16, 120);
+			case GIANT_YINYANG -> new GiantYinYangSphereProjectileType(
+					YoukaisHomecoming.loc("textures/entities/bullet/moon/moon.png"), type.display(), 32, 16, 80);
+			default -> new SimpleProjectileType(loc, type.display());
+		};
+		return ProjTypeHolder.wrap(Wrappers.cast(r));
 	}
 
 }

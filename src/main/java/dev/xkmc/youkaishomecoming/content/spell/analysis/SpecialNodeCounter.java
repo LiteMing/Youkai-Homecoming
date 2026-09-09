@@ -218,6 +218,9 @@ public final class SpecialNodeCounter {
 					danmaku.size(), 1.0, danmaku.count(), danmaku.speed(), danmaku.angleOffset(),
 					danmaku.spread(), danmaku.elevation(), danmaku.outerCount().orElse(null),
 					danmaku.tiltAngle().orElse(null));
+			if (danmaku.ysmProjectile().filter(config -> config.enabled()).isPresent()) {
+				result.add(SpellCapability.YSM_PROJECTILE);
+			}
 		} else if (inner instanceof FireLaserAction laser) {
 			addEmitterCapabilities(result, laser.origin(), laser.mover(), laser.lifetime(),
 					laser.thickness(), 1.0, laser.length(), laser.angleOffset(), laser.elevation());

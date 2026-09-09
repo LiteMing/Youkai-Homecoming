@@ -44,7 +44,8 @@ public record FireDanmakuAction(
 		Optional<GroupRotation> groupRotation,
 		Optional<DanmakuColorAnimation> colorAnimation,
 		NumberProvider size,
-		boolean randomAxis
+		boolean randomAxis,
+		Optional<YsmProjectileConfig> ysmProjectile
 ) implements SpellAction {
 
 	/** Backwards-compatible constructor without tiltAngle/onHit/damageType/bounce fields (16 args). */
@@ -58,8 +59,8 @@ public record FireDanmakuAction(
 			int trailInterval) {
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
-				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD,
-				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1), true);
+				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.CONTINUE, HitBehavior.CONTINUE,
+				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1), true, Optional.empty());
 	}
 
 	/** Backwards-compatible constructor with tiltAngle but without onHit/damageType fields (17 args). */
@@ -73,8 +74,8 @@ public record FireDanmakuAction(
 			int trailInterval, Optional<NumberProvider> tiltAngle) {
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
-				tiltAngle, Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD,
-				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1), true);
+				tiltAngle, Optional.empty(), Optional.empty(), HitBehavior.CONTINUE, HitBehavior.CONTINUE,
+				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1), true, Optional.empty());
 	}
 
 	public FireDanmakuAction(
@@ -91,7 +92,7 @@ public record FireDanmakuAction(
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
 				tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock,
-				damageType, groupRotation, Optional.empty(), NumberProvider.constant(1), true);
+				damageType, groupRotation, Optional.empty(), NumberProvider.constant(1), true, Optional.empty());
 	}
 
 	public FireDanmakuAction(
@@ -109,7 +110,7 @@ public record FireDanmakuAction(
 		this(BulletProvider.constant(bulletType), color, count, speed, lifetime, angleOffset, spread, elevation,
 				pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval,
 				tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock,
-				damageType, groupRotation, Optional.empty(), size, true);
+				damageType, groupRotation, Optional.empty(), size, true, Optional.empty());
 	}
 
 	// 16-field group (DFU RecordCodecBuilder limit)
@@ -132,30 +133,37 @@ public record FireDanmakuAction(
 			Codec.INT.optionalFieldOf("trail_interval", 1).forGetter(FireDanmakuAction::trailInterval)
 	).apply(i, (bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti) ->
 			new FireDanmakuAction(bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti,
-				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.DISCARD, HitBehavior.DISCARD,
-				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1), true)));
+				Optional.empty(), Optional.empty(), Optional.empty(), HitBehavior.CONTINUE, HitBehavior.CONTINUE,
+				Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1), true, Optional.empty())));
 
 	public static final Codec<FireDanmakuAction> CODEC = RecordCodecBuilder.create(i -> i.group(
 			BASE_MAP.forGetter(fda -> fda),
 			NumberProvider.CODEC.optionalFieldOf("tilt_angle").forGetter(FireDanmakuAction::tiltAngle),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_entity").forGetter(FireDanmakuAction::onHitEntity),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_block").forGetter(FireDanmakuAction::onHitBlock),
-			HitBehavior.CODEC.optionalFieldOf("hit_behavior_entity", HitBehavior.DISCARD).forGetter(FireDanmakuAction::hitBehaviorEntity),
-			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.DISCARD).forGetter(FireDanmakuAction::hitBehaviorBlock),
+			HitBehavior.CODEC.optionalFieldOf("hit_behavior_entity", HitBehavior.CONTINUE).forGetter(FireDanmakuAction::hitBehaviorEntity),
+			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.CONTINUE).forGetter(FireDanmakuAction::hitBehaviorBlock),
 			DanmakuDamageType.CODEC.optionalFieldOf("damage_type").forGetter(FireDanmakuAction::damageType),
 			GroupRotation.CODEC.optionalFieldOf("group_rotation").forGetter(FireDanmakuAction::groupRotation),
 			DanmakuColorAnimation.CODEC.optionalFieldOf("color_animation").forGetter(FireDanmakuAction::colorAnimation),
-			NumberProvider.CODEC.optionalFieldOf("size", NumberProvider.constant(1)).forGetter(FireDanmakuAction::size),
-			Codec.BOOL.optionalFieldOf("random_axis", true).forGetter(FireDanmakuAction::randomAxis)
-	).apply(i, (base, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim, size, randomAxis) -> new FireDanmakuAction(
+			// Legacy wire name. Keep it readable for pre-0.29 definitions, but do not
+			// emit it from new saves; base_scale is the canonical field below.
+			NumberProvider.CODEC.optionalFieldOf("size").forGetter(f -> Optional.empty()),
+			// New schema name. Encoding always writes the record's effective base scale;
+			// decoding prefers this field when a legacy size is also present.
+			NumberProvider.CODEC.optionalFieldOf("base_scale").forGetter(f -> Optional.of(f.size())),
+			Codec.BOOL.optionalFieldOf("random_axis", true).forGetter(FireDanmakuAction::randomAxis),
+			YsmProjectileConfig.CODEC.optionalFieldOf("ysm_projectile").forGetter(FireDanmakuAction::ysmProjectile)
+	).apply(i, (base, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim, legacySize, baseScale, randomAxis, ysm) -> new FireDanmakuAction(
 			base.bulletType, base.color, base.count, base.speed, base.lifetime,
 			base.angleOffset, base.spread, base.elevation, base.pattern, base.origin,
 			base.aimMode, base.mover, base.outerCount, base.onExpiry, base.onTrail,
-			base.trailInterval, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim, size, randomAxis
+			base.trailInterval, tilt, hitEnt, hitBlk, hitEntBhv, hitBlkBhv, dmgType, grpRot, colorAnim,
+			baseScale.orElse(legacySize.orElse(NumberProvider.constant(1))), randomAxis, ysm
 	)));
 
 	// withXxx helper methods for editor use (preserve all fields)
-	private FireDanmakuAction all(BulletProvider bt, ColorProvider c, NumberProvider cnt, NumberProvider spd, NumberProvider lt, NumberProvider ao, NumberProvider sp, NumberProvider el, PatternType pt, OriginConfig o, AimMode am, Optional<MoverConfig> m, Optional<NumberProvider> oc, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<NumberProvider> ta, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hbe, HitBehavior hbb, Optional<DanmakuDamageType> ddt, Optional<GroupRotation> gr, Optional<DanmakuColorAnimation> ca, NumberProvider sz) { return new FireDanmakuAction(bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti, ta, ohe, ohb, hbe, hbb, ddt, gr, ca, sz, randomAxis); }
+	private FireDanmakuAction all(BulletProvider bt, ColorProvider c, NumberProvider cnt, NumberProvider spd, NumberProvider lt, NumberProvider ao, NumberProvider sp, NumberProvider el, PatternType pt, OriginConfig o, AimMode am, Optional<MoverConfig> m, Optional<NumberProvider> oc, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<NumberProvider> ta, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hbe, HitBehavior hbb, Optional<DanmakuDamageType> ddt, Optional<GroupRotation> gr, Optional<DanmakuColorAnimation> ca, NumberProvider sz) { return new FireDanmakuAction(bt, c, cnt, spd, lt, ao, sp, el, pt, o, am, m, oc, oe, ot, ti, ta, ohe, ohb, hbe, hbb, ddt, gr, ca, sz, randomAxis, ysmProjectile); }
 	public FireDanmakuAction withBulletType(YHDanmaku.Bullet v) { return withBulletProvider(BulletProvider.constant(v)); }
 	public FireDanmakuAction withBulletProvider(BulletProvider v) { return all(v, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
 	public FireDanmakuAction withColor(ColorProvider v) { return all(bulletType, v, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size); }
@@ -182,7 +190,8 @@ public record FireDanmakuAction(
 	public FireDanmakuAction withGroupRotation(Optional<GroupRotation> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, v, colorAnimation, size); }
 	public FireDanmakuAction withColorAnimation(Optional<DanmakuColorAnimation> v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, v, size); }
 	public FireDanmakuAction withSize(NumberProvider v) { return all(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, v); }
-	public FireDanmakuAction withRandomAxis(boolean v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, v); }
+	public FireDanmakuAction withRandomAxis(boolean v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, v, ysmProjectile); }
+	public FireDanmakuAction withYsmProjectile(Optional<YsmProjectileConfig> v) { return new FireDanmakuAction(bulletType, color, count, speed, lifetime, angleOffset, spread, elevation, pattern, origin, aimMode, mover, outerCount, onExpiry, onTrail, trailInterval, tiltAngle, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, damageType, groupRotation, colorAnimation, size, randomAxis, v); }
 
 	@Override
 	public void execute(SpellContext ctx) {
@@ -204,6 +213,10 @@ public record FireDanmakuAction(
 		double resolvedSize = size.get(ctx);
 		NumberProvider scaleFunction = size instanceof NumberProviders.Constant ? null : size;
 		danmaku.configureVisualScale((float) resolvedSize, scaleFunction);
+		// YSM is an optional presentation override for every danmaku class. The
+		// selected YH bullet remains the fallback when the model is unavailable,
+		// regardless of whether the bullet is the Cross/"custom" class.
+		ysmProjectile.filter(YsmProjectileConfig::enabled).ifPresent(danmaku::configureYsmProjectile);
 		danmaku.setCallbackSourceMetadata(resolvedSize, resolvedSpread, life, resolvedColor);
 		danmaku.setPos(originPos);
 		// Apply per-action damage type override

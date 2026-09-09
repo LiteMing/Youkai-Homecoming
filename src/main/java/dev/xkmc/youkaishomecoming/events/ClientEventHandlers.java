@@ -19,8 +19,10 @@ import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.MovementInputUpdateEvent;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.ItemTooltipEvent;
+import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.ModList;
@@ -44,6 +46,18 @@ public class ClientEventHandlers {
 			if (ModList.get().isLoaded("exposure")) {
 				dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoOverlay.tick();
 			}
+		}
+	}
+
+	@SubscribeEvent
+	public static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+		dev.xkmc.youkaishomecoming.compat.ysm.YsmProjectileRenderBridge.clear();
+	}
+
+	@SubscribeEvent
+	public static void onClientLevelUnload(LevelEvent.Unload event) {
+		if (event.getLevel().isClientSide()) {
+			dev.xkmc.youkaishomecoming.compat.ysm.YsmProjectileRenderBridge.clear();
 		}
 	}
 

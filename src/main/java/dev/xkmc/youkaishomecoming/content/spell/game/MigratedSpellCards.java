@@ -79,7 +79,8 @@ public class MigratedSpellCards {
 				new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				Optional.empty(), 1
-		).withHitBehaviorBlock(HitBehavior.DISCARD);
+		).withHitBehaviorEntity(HitBehavior.DISCARD)
+				.withHitBehaviorBlock(HitBehavior.DISCARD);
 
 		var cluster = new SpellActions.RepeatAction(NumberProvider.constant(5), "fi", List.of(
 				new SpellActions.RepeatAction(NumberProvider.constant(3), "fj", List.of(danmaku))
@@ -130,7 +131,8 @@ public class MigratedSpellCards {
 				new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				Optional.empty(), 1
-		).withHitBehaviorBlock(HitBehavior.DISCARD);
+		).withHitBehaviorEntity(HitBehavior.DISCARD)
+				.withHitBehaviorBlock(HitBehavior.DISCARD);
 		var round0Burst = new BurstAction(20, 1, "rw0", List.of(round0Bullet));
 
 		// === Round 3: 逆时针旋转弹幕 (w = -9°/tick, dur=20, speed=0.5, life≈80) ===
@@ -147,7 +149,8 @@ public class MigratedSpellCards {
 				new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				Optional.empty(), 1
-		).withHitBehaviorBlock(HitBehavior.DISCARD);
+		).withHitBehaviorEntity(HitBehavior.DISCARD)
+				.withHitBehaviorBlock(HitBehavior.DISCARD);
 		var round3Burst = new BurstAction(20, 1, "rw3", List.of(round3Bullet));
 
 		// === Round 1 / 4: 扇形弹幕 (5 角度 × 3 速度, CIRCLE secondary) ===
@@ -169,7 +172,8 @@ public class MigratedSpellCards {
 				new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(),
 				Optional.empty(), 1
-		).withHitBehaviorBlock(HitBehavior.DISCARD);
+		).withHitBehaviorEntity(HitBehavior.DISCARD)
+				.withHitBehaviorBlock(HitBehavior.DISCARD);
 		var fanCluster = new SpellActions.RepeatAction(NumberProvider.constant(5), "mfi", List.of(
 				new SpellActions.RepeatAction(NumberProvider.constant(3), "mfj", List.of(fanDanmaku))
 		));
@@ -1310,7 +1314,7 @@ public class MigratedSpellCards {
 		SpellAction rotIncrement = new SpellActions.AddVariable("rot", 3);
 
 		// === KnifeRing: 多层旋转飞刀环 ===
-		// 3层: GRAY/KNIFE(1.0x), LIGHT_GRAY/KUNAI(0.75x), WHITE/KNIFE(0.5x)
+		// 3层: GRAY/CUSTOM(1.0x), LIGHT_GRAY/CUSTOM(0.75x), WHITE/CUSTOM(0.5x)
 		// 每波: count发, 角度 = 360/count*i + rot + tick*4 + layerOffset
 		// speed = clamp(dist/25, 0.8, 2.5), life = dist*1.5+25
 		// 5波, 间隔4tick
@@ -1322,17 +1326,17 @@ public class MigratedSpellCards {
 		var ringAngle = new NumberProviders.Add(new NumberProviders.Variable("rot"),
 				new NumberProviders.Mul(new NumberProviders.PhaseTick(), NumberProvider.constant(4)));
 
-		// 层0: GRAY KNIFE, speedMod=1.0
+		// 层0: GRAY CUSTOM, speedMod=1.0
 		var ringLayer0 = new FireDanmakuAction(
-				YHDanmaku.Bullet.KNIFE, ColorProvider.constant(DyeColor.GRAY),
+				YHDanmaku.Bullet.CUSTOM, ColorProvider.constant(DyeColor.GRAY),
 				NumberProvider.constant(24), ringSpeed, ringLife,
 				ringAngle, NumberProvider.constant(360),
 				NumberProvider.constant(0), PatternType.RING,
 				OriginConfig.caster(), new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		// 层1: LIGHT_GRAY KUNAI, speedMod=0.75, offset=5°
+		// 层1: LIGHT_GRAY CUSTOM, speedMod=0.75, offset=5°
 		var ringLayer1 = new FireDanmakuAction(
-				YHDanmaku.Bullet.KUNAI, ColorProvider.constant(DyeColor.LIGHT_GRAY),
+				YHDanmaku.Bullet.CUSTOM, ColorProvider.constant(DyeColor.LIGHT_GRAY),
 				NumberProvider.constant(24),
 				new NumberProviders.Mul(ringSpeed, NumberProvider.constant(0.75)),
 				new NumberProviders.Div(ringLife, NumberProvider.constant(0.75)),
@@ -1340,9 +1344,9 @@ public class MigratedSpellCards {
 				NumberProvider.constant(360), NumberProvider.constant(0), PatternType.RING,
 				OriginConfig.caster(), new AimMode.AimModes.Target(),
 				Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1);
-		// 层2: WHITE KNIFE, speedMod=0.5, offset=10°
+		// 层2: WHITE CUSTOM, speedMod=0.5, offset=10°
 		var ringLayer2 = new FireDanmakuAction(
-				YHDanmaku.Bullet.KNIFE, ColorProvider.constant(DyeColor.WHITE),
+				YHDanmaku.Bullet.CUSTOM, ColorProvider.constant(DyeColor.WHITE),
 				NumberProvider.constant(24),
 				new NumberProviders.Mul(ringSpeed, NumberProvider.constant(0.5)),
 				new NumberProviders.Div(ringLife, NumberProvider.constant(0.5)),
@@ -1357,7 +1361,7 @@ public class MigratedSpellCards {
 		// Normal: expandTime=15, dist=6, 2层, homing speed=1.6/life=60
 		// Intense: expandTime=12, dist=10, 3层, homing speed=2.2/life=50
 		// 弹幕以expandSpeed飞出, 减速停住, freezeTime后追踪弹朝玩家
-		// onExpiry chain: KNIFE扩张 → 静止CIRCLE标记(freezeTime) → 追踪MENTOS
+		// onExpiry chain: CUSTOM扩张 → 静止CIRCLE标记(freezeTime) → 追踪MENTOS
 
 		// 追踪弹 (HomingKnife equivalent): 从弹幕死亡位置指向目标
 		var homingNormal = new FireDanmakuAction(
@@ -1382,7 +1386,7 @@ public class MigratedSpellCards {
 		// decel factor = 0.9/expandTime = 0.06
 		var timeStopNormal = new SpellActions.RepeatAction(NumberProvider.constant(2), "tsl", List.of(
 				new FireDanmakuAction(
-						YHDanmaku.Bullet.KNIFE,
+						YHDanmaku.Bullet.CUSTOM,
 						new ColorProvider.ByVariable("tsl", colors(DyeColor.RED, DyeColor.GRAY)),
 						NumberProvider.constant(24), NumberProvider.constant(0.4), NumberProvider.constant(15),
 						new NumberProviders.Add(new NumberProviders.Variable("rot"),
@@ -1413,7 +1417,7 @@ public class MigratedSpellCards {
 				Optional.empty(), 1);
 		var timeStopIntense = new SpellActions.RepeatAction(NumberProvider.constant(3), "tsl", List.of(
 				new FireDanmakuAction(
-						YHDanmaku.Bullet.KNIFE,
+						YHDanmaku.Bullet.CUSTOM,
 						new ColorProvider.ByVariable("tsl", colors(DyeColor.RED, DyeColor.GRAY, DyeColor.LIGHT_GRAY)),
 						NumberProvider.constant(36), NumberProvider.constant(0.83), NumberProvider.constant(12),
 						new NumberProviders.Add(new NumberProviders.Variable("rot"),
@@ -1522,7 +1526,7 @@ public class MigratedSpellCards {
 				new NumberProviders.Add(NumberProvider.constant(30), new NumberProviders.RandomRange(0, 20)));
 		var knifeStorm = new BurstAction(10, 1, "stm", List.of(
 				new FireDanmakuAction(
-						YHDanmaku.Bullet.KNIFE,
+						YHDanmaku.Bullet.CUSTOM,
 						new ColorProvider.RandomChoice(colors(DyeColor.RED, DyeColor.GRAY, DyeColor.LIGHT_GRAY)),
 						NumberProvider.constant(10), stormSpeed, stormLife,
 						NumberProvider.constant(0), NumberProvider.constant(45), NumberProvider.constant(30),

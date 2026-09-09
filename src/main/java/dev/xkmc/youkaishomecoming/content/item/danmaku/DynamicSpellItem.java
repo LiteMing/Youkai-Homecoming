@@ -13,6 +13,7 @@ import dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellVali
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellValidator;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellLimiterBypass;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
@@ -499,7 +500,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		} else if (GrazeHelper.forbidSpellCardWithMessage(player)) {
 			return false;
 		}
-		if (nonSpell && def != null && player instanceof ServerPlayer sp) {
+		if (nonSpell && def != null && player instanceof ServerPlayer sp
+				&& !NonSpellLimiterBypass.isEnabled(sp)) {
 			try {
 				NonSpellValidator.validate(def, getRank(stack), GrazeHelper.getEffectivePowerLevel(sp));
 			} catch (SpellAnalysisException rejected) {

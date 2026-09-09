@@ -1,4 +1,4 @@
-# YHModel — 0.28.1 模型表现接口
+# YHModel — 0.29.0 模型表现接口
 
 状态：控制接口、预设查询与应用已接入源码；不是实机验收声明，画面和联机验收尚未完成。
 第三种 YSM Editor、服务端共享预设和状态映射已接入。用户操作见 `docs/ysm-editor-user-checklist.md`；
@@ -64,6 +64,24 @@ if (YHModel.supports(entity)) {
 绝对截止时间保存和同步，区块重载或重启世界不会重新计时；服务器关闭期间不消耗 tick。
 模型晚载入时只应用剩余有效期；动画帧相位目前仍从客户端控制器起播，**不承诺晚加入者逐帧相位锁定**。
 PLAY_ONCE、HOLD_ON_LAST_FRAME 尚未开放；不使用循环加计时冒充这两种语义。
+
+## 符卡侧 YSM hint 节点
+
+`/yhysm editor` 负责模型绑定、预设、原生片段和参数。符卡 Editor 不再重复暴露这些
+模型表现操作；`ysm_render` 节点保留为一个窄的上下文 hint 入口：
+
+```json
+{"type": "ysm_render", "hint": "cast", "duration": 40}
+```
+
+`hint` 交给现有 YSM 客户端上下文映射（例如 `cast`、`charge` 或模型自定义的
+`special=...` token），不解析成预设或参数。`duration=0` 保持到下一次清除；空 hint
+会清除当前 legacy animation hint。模型、纹理、预设、精确片段和表情参数请在
+`/yhysm editor` 的场景／触发规则中配置。
+
+Shooter 的初始表现配置与该 hint 共享同一个 `YsmRenderConfig` 覆盖对象。其 JSON
+位于 `spawn_shooter.ysm`，字段为 `model`、`texture`、`hint`、`duration` 和
+`clear_target`；旧的 `ysm_model` 等扁平字段仍可读取但不会由新 Editor 写出。
 
 例子（服务端 KubeJS 回调中已取得 `entity`；变量名只适用于实际核对过的那份模型）：
 
@@ -163,28 +181,14 @@ YH 实体的 presentation 快照开始写实体 NBT，旧实体缺省为空；
 radio 标签中的复杂表达式仅保留在指令诊断目录；普通 Editor 隐藏不能直接操作的条目，不执行或猜测其含义。
 `param get` 展示帧间基础输入及 YH 请求；实际播放仍用 `/yhysm debug inspect` 核对。
 
-## 0.28.0 场景与符卡节点（破坏性调整）
+## 0.28.0 场景与符卡节点（历史说明）
 
 `enter_combat` 改为真实符卡第一次 tick 的进入边沿，不再把 `getTarget()!=null` 当作弹幕战开始。
 `spell_switch` 在已有弹幕战中开始另一张符卡时发出；普通 phase 与并行子图不发换卡事件。
 `melee_attack` 由妖怪成功的 `doHurtTarget` 发出。三个事件都使用有限时长预设，不反向改变战斗判定。
 
-`ysm_render` 保留节点类型名，但要求 `operation` 字段；旧 animation/clear/clear_target 不兼容。
-
-| operation | 字段 | 行为 |
-| --- | --- | --- |
-| model | model、texture、duration | 临时设置模型与纹理，不写永久绑定 |
-| preset | model（可空）、preset、duration | 应用共享预设，不替换模型 |
-| animation | clip、duration | 一个真实片段，不解析旧语义 hint |
-| parameter | parameter、value、duration | 单个数值参数；组合表情用 preset |
-| clear | 无 | 清除手动动画/参数和旧动画 hint，不改模型绑定 |
-| reset_model | 无 | 清除临时模型/纹理，恢复原绑定或本地预览选择 |
-
-duration=-1：预设使用定义时长，片段/参数使用配置默认时长，模型保持；0：保持；正数：tick。
-preset 的 model 留空时使用当前临时模型或服务端保存的 UUID/type 绑定。
-客户端资源包默认绑定不在服务器可知范围，此时请填写预设所属模型；不根据预设名称猜模型。
-新节点通过 `YHModel` 共用显式请求与限制；预设缺失/尚未同步时跳过该表现操作，不中断弹幕。
-旧底层 hint 字段仍供发射器等消费者使用。
+0.29.0 将其中与 YSM Editor 重叠的模型、预设、精确片段、参数和清理操作移除；
+当前 `ysm_render` 的 hint 语义见上节。旧的 operation 形式不再作为当前 Codec 契约。
 符卡预览只有明确的本地模型选择或 model 节点生效后才委托渲染；法阵先渲染。
 正交、透视和截图共用同一入口；预览选择及请求只修改假实体。
 

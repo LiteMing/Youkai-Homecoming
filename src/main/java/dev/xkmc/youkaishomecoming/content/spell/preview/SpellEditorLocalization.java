@@ -153,13 +153,13 @@ public final class SpellEditorLocalization {
 		if (!isChinese()) {
 			return id;
 		}
-		if (id.equals("scale")) return "鳞弹";
+		if (id.equals("custom")) return "自定义弹幕";
 		if (id.equals("giant_yinyang")) return "巨大阴阳玉";
 		if (id.equals("moon")) return "月球弹";
 		String itemKey = switch (id) {
 			case "moon" -> "item.youkaishomecoming.moon_danmaku";
 			case "giant_yinyang" -> "item.youkaishomecoming.giant_yinyang_danmaku";
-			case "scale" -> "item.youkaishomecoming.scale_danmaku";
+			case "custom" -> "item.youkaishomecoming.custom_danmaku";
 			default -> "item.youkaishomecoming.white_" + id + "_danmaku";
 		};
 		if (I18n.exists(itemKey)) {
@@ -334,7 +334,7 @@ public final class SpellEditorLocalization {
 			Map.entry("Fire Spell", "发射符卡"),
 			Map.entry("Confine Target", "限制目标"),
 			Map.entry("Set Entity Flag", "设置实体标志"),
-			Map.entry("YSM Render", "YSM 渲染"),
+			Map.entry("YSM Hint", "YSM 提示"),
 			Map.entry("Teleport Random", "随机传送"),
 			Map.entry("Caster Moves", "施法者移动"),
 			Map.entry("Spell Initialization", "符卡初始化"),

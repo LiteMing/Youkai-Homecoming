@@ -126,7 +126,7 @@ public final class SpellTemplates {
 				          "if_true": [
 				            {
 				              "type": "fire_danmaku",
-				              "bullet": "talisman",
+				              "bullet": "custom",
 				              "color": "magenta",
 				              "count": 10,
 				              "speed": 0.25,

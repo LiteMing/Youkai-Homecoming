@@ -57,6 +57,9 @@ public final class SpellCapabilityPolicies {
 		put(SpellCapability.SHOW_SPELL_TITLE, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.SHOW_SPELL_CARD, SpellCapabilityPolicy.ALLOW);
 		put(SpellCapability.YSM_RENDER, SpellCapabilityPolicy.ALLOW);
+		// The explicit action acknowledgement is the opt-in gate; do not consume
+		// the ordinary experimental node quota a second time.
+		put(SpellCapability.YSM_PROJECTILE, SpellCapabilityPolicy.ALLOW);
 		// Undecodable salvaged fragments. Denied unconditionally — see setPolicy.
 		put(SpellCapability.BROKEN_NODE, SpellCapabilityPolicy.DENY);
 	}

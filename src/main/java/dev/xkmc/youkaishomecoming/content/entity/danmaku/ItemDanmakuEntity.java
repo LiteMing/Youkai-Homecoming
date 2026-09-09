@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColorAnimation;
 import dev.xkmc.youkaishomecoming.content.spell.definition.EntityNumberProviderEvaluator;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
+import dev.xkmc.youkaishomecoming.content.spell.definition.YsmProjectileConfig;
 import dev.xkmc.youkaishomecoming.content.spell.mover.DanmakuMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverInfo;
 import dev.xkmc.youkaishomecoming.content.spell.mover.MoverOwner;
@@ -80,6 +81,25 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public ItemStack stack = ItemStack.EMPTY;
 	@SerialClass.SerialField
 	public float visualScale = 1;
+	/** Optional client-only YSM presentation snapshot; never affects physics. */
+	@SerialClass.SerialField
+	private boolean ysmProjectileEnabled = false;
+	@SerialClass.SerialField
+	private String ysmProjectileModel = "";
+	@SerialClass.SerialField
+	private String ysmProjectileSlot = "arrow";
+	@SerialClass.SerialField
+	private float ysmProjectileModelScale = 1;
+	@SerialClass.SerialField
+	private int ysmProjectileMaxInstances = 0;
+	@SerialClass.SerialField
+	private boolean ysmProjectileAcknowledgeCost = false;
+	@SerialClass.SerialField
+	private float ysmProjectileOffsetForward = 0;
+	@SerialClass.SerialField
+	private float ysmProjectileOffsetRight = 0;
+	@SerialClass.SerialField
+	private float ysmProjectileOffsetUp = 0;
 	@SerialClass.SerialField
 	private int tint = 0xffffffff;
 	@SerialClass.SerialField
@@ -159,6 +179,40 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		visualScaleFunction = function;
 		updateVisualScaleDimensions(true);
 	}
+
+	public void configureYsmProjectile(YsmProjectileConfig config) {
+		if (config == null || !config.enabled()) {
+			ysmProjectileEnabled = false;
+			ysmProjectileModel = "";
+			ysmProjectileSlot = "arrow";
+			ysmProjectileModelScale = 1;
+			ysmProjectileMaxInstances = 0;
+			ysmProjectileAcknowledgeCost = false;
+			ysmProjectileOffsetForward = 0;
+			ysmProjectileOffsetRight = 0;
+			ysmProjectileOffsetUp = 0;
+			return;
+		}
+		ysmProjectileEnabled = true;
+		ysmProjectileModel = config.model();
+		ysmProjectileSlot = config.slot();
+		ysmProjectileModelScale = config.modelScale();
+		ysmProjectileMaxInstances = config.maxInstances();
+		ysmProjectileAcknowledgeCost = config.acknowledgeCost();
+		ysmProjectileOffsetForward = config.offsetForward();
+		ysmProjectileOffsetRight = config.offsetRight();
+		ysmProjectileOffsetUp = config.offsetUp();
+	}
+
+	public boolean hasYsmProjectile() { return ysmProjectileEnabled && !ysmProjectileModel.isBlank() && ysmProjectileMaxInstances > 0; }
+	public String ysmProjectileModel() { return ysmProjectileModel; }
+	public String ysmProjectileSlot() { return ysmProjectileSlot; }
+	public float ysmProjectileModelScale() { return ysmProjectileModelScale; }
+	public int ysmProjectileMaxInstances() { return ysmProjectileMaxInstances; }
+	public boolean ysmProjectileAcknowledgeCost() { return ysmProjectileAcknowledgeCost; }
+	public float ysmProjectileOffsetForward() { return ysmProjectileOffsetForward; }
+	public float ysmProjectileOffsetRight() { return ysmProjectileOffsetRight; }
+	public float ysmProjectileOffsetUp() { return ysmProjectileOffsetUp; }
 
 	public void enterHoldState(Vec3 holdPos, Vec3 incomingVel) {
 		if (this.mover != null && !(this.mover instanceof dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover)) {

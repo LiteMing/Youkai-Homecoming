@@ -56,8 +56,9 @@ public class CustomSpellStorage {
 	}
 
 	/**
-	 * Get the JSON file path for a specific spell ID.
-	 * e.g. {@code youkaishomecoming_spells/youkaishomecoming/my_spell.json}
+	 * Get the JSON file path for a specific spell ID. ResourceLocation path
+	 * separators are kept as directories, e.g.
+	 * {@code youkaishomecoming_spells/youkaishomecoming/cards/my_spell.json}.
 	 */
 	public static File getSpellFile(MinecraftServer server, ResourceLocation id) {
 		return getSpellFile(getWorldStorageDir(server), id);
@@ -68,10 +69,22 @@ public class CustomSpellStorage {
 	}
 
 	private static File getSpellFile(File root, ResourceLocation id) {
-		File nsDir = new File(root, id.getNamespace());
-		nsDir.mkdirs();
-		String fileName = id.getPath().replace('/', '_') + ".json";
-		return new File(nsDir, fileName);
+		File file = new File(new File(root, id.getNamespace()), id.getPath() + ".json");
+		File parent = file.getParentFile();
+		if (parent != null) parent.mkdirs();
+		return file;
+	}
+
+	/** Pre-0.29 storage flattened path separators into a single filename. */
+	private static File getLegacySpellFile(File root, ResourceLocation id) {
+		return new File(new File(root, id.getNamespace()), id.getPath().replace('/', '_') + ".json");
+	}
+
+	private static File findExistingSpellFile(File root, ResourceLocation id) {
+		File canonical = getSpellFile(root, id);
+		if (canonical.exists()) return canonical;
+		File legacy = getLegacySpellFile(root, id);
+		return legacy.exists() ? legacy : canonical;
 	}
 
 	/**
@@ -94,7 +107,7 @@ public class CustomSpellStorage {
 
 	@Nullable
 	public static UUID loadOwner(MinecraftServer server, ResourceLocation id) {
-		File file = getOwnerFile(getSpellFile(server, id));
+		File file = getOwnerFile(findExistingSpellFile(getWorldStorageDir(server), id));
 		if (!file.exists()) {
 			return null;
 		}
@@ -182,7 +195,9 @@ public class CustomSpellStorage {
 	 */
 	public static void deleteSpell(MinecraftServer server, ResourceLocation id) {
 		deleteSpellFile(getSpellFile(server, id));
+		deleteSpellFile(getLegacySpellFile(getWorldStorageDir(server), id));
 		deleteSpellFile(getGlobalSpellFile(id));
+		deleteSpellFile(getLegacySpellFile(getGlobalStorageDir(), id));
 	}
 
 	private static void deleteSpellFile(File file) {
@@ -193,10 +208,13 @@ public class CustomSpellStorage {
 		if (ownerFile.exists()) {
 			ownerFile.delete();
 		}
-		// Clean up empty namespace directory
-		File nsDir = file.getParentFile();
-		if (nsDir != null && nsDir.isDirectory() && nsDir.list().length == 0) {
-			nsDir.delete();
+		// Clean up empty path/namespace directories, but keep the storage root.
+		File parent = file.getParentFile();
+		while (parent != null && parent.isDirectory() && !DIR_NAME.equals(parent.getName())) {
+			String[] entries = parent.list();
+			if (entries == null || entries.length != 0) break;
+			if (!parent.delete()) break;
+			parent = parent.getParentFile();
 		}
 	}
 
@@ -215,28 +233,37 @@ public class CustomSpellStorage {
 			LOGGER.info("No {} custom spell directory found at {}", label, dir.getPath());
 			return;
 		}
-		loadRecursive(dir, allowDefaultOverrides);
+		loadRecursive(dir, dir, allowDefaultOverrides);
 	}
 
-	private static void loadRecursive(File dir, boolean allowDefaultOverrides) {
+	private static void loadRecursive(File dir, File storageRoot, boolean allowDefaultOverrides) {
 		File[] files = dir.listFiles();
 		if (files == null) return;
 		for (File file : files) {
 			if (file.isDirectory()) {
-				loadRecursive(file, allowDefaultOverrides);
+				loadRecursive(file, storageRoot, allowDefaultOverrides);
 			} else if (file.getName().endsWith(".json")) {
-				loadSpellFile(file, allowDefaultOverrides);
+				loadSpellFile(file, storageRoot, allowDefaultOverrides);
 			}
 		}
 	}
 
-	private static void loadSpellFile(File file, boolean allowDefaultOverrides) {
+	private static void loadSpellFile(File file, File storageRoot, boolean allowDefaultOverrides) {
 		try {
 			DecodedText decoded = readTextWithLegacyFallback(file);
 			var json = com.google.gson.JsonParser.parseString(decoded.content());
 			SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
 					.resultOrPartial(err -> LOGGER.warn("Failed to parse spell file {}: {}", file.getPath(), err))
 					.ifPresent(def -> {
+						File canonical = getSpellFile(storageRoot, def.id);
+						boolean legacyPath = !file.toPath().toAbsolutePath().normalize()
+								.equals(canonical.toPath().toAbsolutePath().normalize());
+						// If both layouts exist, the canonical path wins regardless of
+						// filesystem enumeration order.
+						if (legacyPath && canonical.exists()) {
+							LOGGER.info("Skipping legacy duplicate {} because {} exists", file.getPath(), canonical.getPath());
+							return;
+						}
 						// Skip disk-cached versions of built-in spells — Java code is always authoritative.
 						// This prevents stale auto-saved JSONs from overriding updated Java definitions.
 						if (!allowDefaultOverrides && SpellRegistry.hasDefault(def.id)) {
@@ -246,11 +273,20 @@ public class CustomSpellStorage {
 						}
 						SpellRegistry.register(def);
 						LOGGER.info("Loaded custom spell {} from {}", def.id, file.getPath());
-						if (decoded.legacy()) {
+						if (decoded.legacy() || legacyPath) {
 							// Older Windows builds wrote JSON using the host code page.  Rewrite
 							// after a successful parse so the next restart is unambiguous UTF-8.
-							if (saveSpell(file, def)) {
-								LOGGER.info("Migrated legacy-encoded spell {} to UTF-8", def.id);
+							if (saveSpell(canonical, def)) {
+								if (legacyPath) {
+									File oldOwner = getOwnerFile(file);
+									File newOwner = getOwnerFile(canonical);
+									if (oldOwner.exists() && !newOwner.exists()) {
+										try { Files.move(oldOwner.toPath(), newOwner.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
+										catch (IOException ignored) { /* owner metadata is optional */ }
+									}
+									deleteSpellFile(file);
+								}
+								LOGGER.info("Migrated spell {} to canonical UTF-8 path {}", def.id, canonical.getPath());
 							}
 						}
 					});

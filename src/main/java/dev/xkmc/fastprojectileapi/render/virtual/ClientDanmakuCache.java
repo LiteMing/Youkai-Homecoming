@@ -18,6 +18,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuRenderer;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuRenderer;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmProjectileRenderBridge;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.client.Camera;
@@ -42,8 +43,10 @@ import org.joml.Matrix4f;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 
@@ -208,6 +211,7 @@ public class ClientDanmakuCache {
 
 	@SuppressWarnings({"unchecked", "rawtypes"})
 	public void renderAll(Camera cam, Frustum frustum, PoseStack pose, float pTick, MultiBufferSource.BufferSource buffer) {
+		YsmProjectileRenderBridge.beginFrame(Minecraft.getInstance().level);
 		Vec3 vec3 = cam.getPosition();
 		double camx = vec3.x();
 		double camy = vec3.y();
@@ -225,6 +229,7 @@ public class ClientDanmakuCache {
 
 		// Cache danmaku renderer (all ItemDanmakuEntity share the same EntityType → same renderer)
 		ItemDanmakuRenderer<?> cachedRenderer = null;
+		Map<String, Integer> ysmInstances = new HashMap<>();
 
 		for (var e : all) {
 			// Billboard fast path for ItemDanmakuEntity
@@ -241,7 +246,7 @@ public class ClientDanmakuCache {
 					if (!((EntityRenderer) cachedRenderer).shouldRender(danmaku, frustum, camx, camy, camz)) continue;
 					if (item == null) continue;
 
-					var typeHolder = item.getTypeForRender();
+					var typeHolder = item.getTypeForRender(danmaku.getItem());
 					var type = typeHolder.getType();
 
 					// Camera-relative world position + render offset (bbHeight/2)
@@ -249,6 +254,15 @@ public class ClientDanmakuCache {
 					float wy = (float) (Mth.lerp(pTick, danmaku.yOld, danmaku.getY()) - camy + danmaku.getBbHeight() / 2.0);
 					float wz = (float) (Mth.lerp(pTick, danmaku.zOld, danmaku.getZ()) - camz);
 					int renderColor = cachedRenderer.color(danmaku, pTick);
+					if (danmaku.hasYsmProjectile()) {
+						String key = danmaku.ysmProjectileModel() + "|" + danmaku.ysmProjectileSlot()
+								+ "|" + danmaku.ysmProjectileMaxInstances();
+						int ordinal = ysmInstances.getOrDefault(key, 0);
+						ysmInstances.put(key, ordinal + 1);
+						int ysmTint = DanmakuRenderStates.fading(item.type.display(), renderColor, cachedRenderer, danmaku);
+						if (YsmProjectileRenderBridge.render(danmaku, pose, buffer, LightTexture.FULL_BRIGHT,
+								pTick, wx, wy, wz, ordinal, ysmTint)) continue;
+					}
 
 					if (type instanceof SimpleProjectileType st) {
 						float vx = viewMat.m00() * wx + viewMat.m10() * wy + viewMat.m20() * wz + viewMat.m30();
@@ -286,6 +300,7 @@ public class ClientDanmakuCache {
 			// Standard path: PoseStack-based rendering for non-billboard types and non-danmaku entities
 			this.maybeRenderEntity(disp, frustum, e, camx, camy, camz, pTick, pose, buffer, false);
 		}
+		YsmProjectileRenderBridge.endFrame();
 	}
 
 	/** Render debug hit boxes after the complete world pass, above all entity models. */

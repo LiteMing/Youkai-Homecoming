@@ -157,8 +157,7 @@ public class SakuyaSpell extends ActualSpellCard {
                     double speedMod = 1.0 - layer * 0.25;
                     double layerOffset = layer * (360.0 / knifeCount / layers);
                     DyeColor color = layer == 0 ? DyeColor.GRAY : (layer == 1 ? DyeColor.LIGHT_GRAY : DyeColor.WHITE);
-                    YHDanmaku.Bullet type = layer == 0 ? YHDanmaku.Bullet.KNIFE
-                            : (layer == 1 ? YHDanmaku.Bullet.KUNAI : YHDanmaku.Bullet.KNIFE);
+					YHDanmaku.Bullet type = YHDanmaku.Bullet.CUSTOM;
 
                     for (int i = 0; i < knifeCount; i++) {
                         double angle = 360.0 / knifeCount * i + angleOffset + layerOffset;
@@ -260,7 +259,7 @@ public class SakuyaSpell extends ActualSpellCard {
                     double expandSpeed = layerDist / expandTime;
 
                     var e = holder.prepareDanmaku(expandTime, expandDir.scale(expandSpeed),
-                            YHDanmaku.Bullet.KNIFE, color);
+							YHDanmaku.Bullet.CUSTOM, color);
 
                     // 急停减速
                     var acc = expandDir.scale(-expandSpeed / expandTime * 0.9);
@@ -466,8 +465,8 @@ public class SakuyaSpell extends ActualSpellCard {
 
                 DyeColor color = rand.nextDouble() < 0.3 ? DyeColor.RED
                         : (rand.nextDouble() < 0.5 ? DyeColor.GRAY : DyeColor.LIGHT_GRAY);
-                YHDanmaku.Bullet type = rand.nextDouble() < 0.4 ? YHDanmaku.Bullet.KNIFE
-                        : (rand.nextDouble() < 0.5 ? YHDanmaku.Bullet.BALL : YHDanmaku.Bullet.KNIFE);
+				YHDanmaku.Bullet type = rand.nextDouble() < 0.4 ? YHDanmaku.Bullet.CUSTOM
+						: YHDanmaku.Bullet.BALL;
 
                 var e = holder.prepareDanmaku(life, knifeDir.scale(speed), type, color);
 

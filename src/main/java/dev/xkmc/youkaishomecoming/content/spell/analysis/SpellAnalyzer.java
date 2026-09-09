@@ -808,6 +808,14 @@ public final class SpellAnalyzer {
 	private void handleFire(FireDanmakuAction a, TickProjection projection, long mult) {
 		SpecialNodeCounter.capabilities(a).forEach(this::addCap);
 		checkOrigin(a.origin());
+		a.ysmProjectile().filter(config -> config.enabled()).ifPresent(config -> {
+			if (!config.acknowledgeCost() && profile == SpellAnalysisProfile.CERTIFICATION && !operatorTest) {
+				throw rejected("ysm_projectile_unacknowledged", "YSM projectile rendering requires creator acknowledgement");
+			}
+			diagnostics.add(SpellDiagnostic.warning("ysm_projectile_cost", path(),
+					"YSM projectile path: model=" + config.model() + ", slot=" + config.slot()
+							+ ", max_instances=" + config.maxInstances() + ", fallback=yh(selected bullet)"));
+		});
 		long count;
 		if (countCasterPower != null) {
 			count = boundNonSpellPatternCount(a.count(), a.pattern(), a.outerCount(), "fire_danmaku count");

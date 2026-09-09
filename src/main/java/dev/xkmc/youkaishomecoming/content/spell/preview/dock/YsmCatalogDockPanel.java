@@ -32,9 +32,7 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 	@Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		var catalog = editor.catalog();
 		if (page == 0) {
-			var ids = new TreeSet<>(YSMClientCompat.loadedModelIds());
-			ids.addAll(YsmClientProfiles.models());
-			var next = List.copyOf(ids);
+			var next = YsmEditorCatalog.modelIds();
 			if (!previousModels.equals(next)) { previousModels = next; changed(); }
 		}
 		if (!editor.model().equals(previousModel)) {
@@ -63,22 +61,21 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 		if (page == 1) animations(catalog); else if (page == 2) wheel(catalog); else controls(catalog);
 	}
 	private void models() {
-		var models = new TreeSet<>(YSMClientCompat.loadedModelIds());
-		models.addAll(YsmClientProfiles.models());
-		folders("model_folder", modelFolder, models.stream().map(YsmCatalogDockPanel::parent).toList(),
+		var models = new TreeSet<>(YsmEditorCatalog.modelIds());
+		folders("model_folder", modelFolder, models.stream().map(YsmEditorCatalog::parent).toList(),
 				YsmClientPresentationBridge.modelFolderNames(), folder -> { modelFolder = folder; modelQuery = ""; changed(); });
 		editOptions("model_picker", text("model"), modelQuery, 256, value -> modelQuery = value,
-				localOptions(() -> models.stream().filter(id -> inside(id, modelFolder))
-						.map(id -> new Option(id, Component.literal(leaf(id)), Component.literal(id))).toList()),
+				localOptions(() -> models.stream().filter(id -> YsmEditorCatalog.inside(id, modelFolder))
+						.map(id -> new Option(id, Component.literal(YsmEditorCatalog.leaf(id)), Component.literal(id))).toList()),
 				option -> { editor.selectModel(option.value()); modelQuery = editor.model(); changed(); });
 		if (!YSMClientCompat.isLoaded()) label(Component.translatable("commands.youkaishomecoming.model.catalog.not_installed"));
 	}
 	private void animations(YsmModelCatalog catalog) {
-		folders("animation_folder", animationFolder, catalog.animations().stream().map(YsmCatalogDockPanel::animationGroup).toList(),
+		folders("animation_folder", animationFolder, catalog.animations().stream().map(YsmEditorCatalog::animationGroup).toList(),
 				Map.of(), folder -> { animationFolder = folder; animationQuery = ""; changed(); });
 		editOptions("animation_picker", text("animation_picker"), animationQuery, 128, value -> animationQuery = value,
 				localOptions(() -> catalog.animations().stream()
-						.filter(clip -> animationFolder.isEmpty() || animationGroup(clip).equals(animationFolder) || inside(animationGroup(clip), animationFolder))
+						.filter(clip -> animationFolder.isEmpty() || YsmEditorCatalog.animationGroup(clip).equals(animationFolder) || YsmEditorCatalog.inside(YsmEditorCatalog.animationGroup(clip), animationFolder))
 						.map(clip -> {
 					String title = catalog.wheel().stream().filter(entry -> entry.id().equals(clip) && !entry.label().isBlank())
 							.map(YsmModelCatalog.WheelEntry::label).findFirst().orElse(clip);
@@ -90,12 +87,6 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 	private static String parent(String path) { int slash = path.lastIndexOf('/'); return slash < 0 ? "" : path.substring(0, slash); }
 	private static String leaf(String path) { return path.substring(path.lastIndexOf('/') + 1); }
 	private static boolean inside(String path, String folder) { return folder.isEmpty() || path.startsWith(folder + "/"); }
-	private static String animationGroup(String clip) {
-		String path = clip.replace('.', '/').replace('_', '/');
-		if (path.contains("/")) return parent(path);
-		// OYSM's extra1/extra2/... are a naming family, not separate guessed JSON files.
-		return clip.replaceFirst("[0-9]+$", "").equals(clip) ? "" : clip.replaceFirst("[0-9]+$", "");
-	}
 	private void folders(String id, String current, List<String> paths, Map<String, String> labels,
 			java.util.function.Consumer<String> selected) {
 		var options = new LinkedHashMap<String, Option>();

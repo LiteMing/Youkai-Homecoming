@@ -183,6 +183,11 @@ public class ItemLaserEntity extends YHBaseLaserEntity implements ItemSupplier, 
 		return (sizeCache == null ? 1 : sizeCache) * currentVisualScale;
 	}
 
+	@Override
+	public float ysmProjectileBaseScale() {
+		return scale();
+	}
+
 	private void updateVisualScaleDimensions(boolean force, boolean preserveBeamStart) {
 		float next = visualScaleFunction == null ? visualScale : evaluateVisualScaleFunction();
 		if (force || Math.abs(next - currentVisualScale) > VISUAL_SCALE_EPSILON) {

@@ -224,6 +224,9 @@ public final class SpecialNodeCounter {
 		} else if (inner instanceof FireLaserAction laser) {
 			addEmitterCapabilities(result, laser.origin(), laser.mover(), laser.lifetime(),
 					laser.thickness(), 1.0, laser.length(), laser.angleOffset(), laser.elevation());
+			if (laser.ysmProjectile().filter(config -> config.enabled()).isPresent()) {
+				result.add(SpellCapability.YSM_PROJECTILE);
+			}
 		} else if (inner instanceof FireTextDanmakuAction text) {
 			addEmitterCapabilities(result, text.origin(), text.mover(), text.lifetime(),
 					text.size(), TextDanmakuEntity.DEFAULT_SIZE, text.angleOffset(), text.elevation(), text.roll());

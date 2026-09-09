@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
@@ -230,6 +231,7 @@ public final class SpellAnalyzerSelfCheck {
 				+ " \"hit_context\": \"at_entity_pos\", \"command\": \"say hit\"}");
 		private static final String YSM_PROJECTILE = spell("{\"type\": \"fire_danmaku\", \"bullet\": \"circle\", \"color\": \"white\", \"count\": 2, \"speed\": 0.5, \"lifetime\": 60,"
 				+ " \"size\": 2, \"base_scale\": 1.5, \"ysm_projectile\": {\"model\": \"youmu\", \"slot\": \"arrow\", \"model_scale\": 0.75, \"max_instances\": 4, \"acknowledge_cost\": true, \"offset_forward\": 0.25, \"offset_right\": -0.5, \"offset_up\": 0.75}}");
+		private static final String YSM_PROJECTILE_LASER = spell("{\"type\": \"fire_laser\", \"color\": \"white\", \"lifetime\": 20, \"length\": 8, \"ysm_projectile\": {\"model\": \"youmu\", \"slot\": \"minecraft:trident\", \"pitch_offset\": 12, \"yaw_offset\": -8, \"tilt_offset\": 90, \"acknowledge_cost\": true}}");
 		private static final String RUNCMD_DISABLED = spell("{\"type\": \"disabled\", \"inner\": {\"type\": \"run_command\", \"command\": \"say hi\"}}");
 		private static final String SPELL_HEALTH = spell("{\"type\": \"set_spell_health\", \"health\": 100, \"duration\": 120}");
 		private static final String SPELL_HEALTH_DEFAULTS = spell("{\"type\": \"set_spell_health\"}");
@@ -735,6 +737,12 @@ public final class SpellAnalyzerSelfCheck {
 						&& ysm.ysmProjectile().get().offsetForward() == 0.25f
 						&& ysm.ysmProjectile().get().offsetRight() == -0.5f
 						&& ysm.ysmProjectile().get().offsetUp() == 0.75f);
+			FireLaserAction ysmLaser = (FireLaserAction) firstTickAction(parse(YSM_PROJECTILE_LASER));
+			check("laser YSM projectile orientation offsets codec round-trip",
+					ysmLaser.ysmProjectile().isPresent()
+							&& ysmLaser.ysmProjectile().get().pitchOffset() == 12
+							&& ysmLaser.ysmProjectile().get().yawOffset() == -8
+							&& ysmLaser.ysmProjectile().get().tiltOffset() == 90);
 			YsmRenderAction hint = (YsmRenderAction) firstTickAction(parse(
 				spell("{\"type\": \"ysm_render\", \"hint\": \"cast\", \"duration\": 40}")));
 			check("ysm_render keeps only context hint", hint.hint().equals("cast") && hint.duration() == 40);

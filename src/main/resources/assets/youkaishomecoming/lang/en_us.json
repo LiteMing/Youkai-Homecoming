@@ -13,6 +13,7 @@
   "youkaishomecoming.ysm_editor.use_in_spell": "Use in spell preview",
   "youkaishomecoming.ysm_editor.choose_preview_model": "Choose spell preview model",
   "youkaishomecoming.ysm_editor.clear_preview_model": "Remove spell preview model",
+  "youkaishomecoming.ysm_editor.action.model": "Model",
   "youkaishomecoming.ysm_editor.action.hint": "Animation hint",
   "youkaishomecoming.ysm_editor.action.duration": "Duration ticks (0 = hold)",
   "config.youkaishomecoming.common.model_presentation.walkSpeed": "Walking Presentation Speed Threshold",

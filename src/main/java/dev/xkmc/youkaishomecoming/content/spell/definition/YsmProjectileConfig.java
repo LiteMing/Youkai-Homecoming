@@ -20,14 +20,25 @@ public record YsmProjectileConfig(
 		boolean acknowledgeCost,
 		float offsetForward,
 		float offsetRight,
-		float offsetUp
+		float offsetUp,
+		float pitchOffset,
+		float yawOffset,
+		float tiltOffset
 ) {
 
 	/** Compatibility constructor for definitions written before local offsets. */
 	public YsmProjectileConfig(ModelSource modelSource, String model, String slot,
 			float modelScale, int maxInstances, Fallback fallback, boolean acknowledgeCost) {
 		this(modelSource, model, slot, modelScale, maxInstances, fallback,
-				acknowledgeCost, 0, 0, 0);
+				acknowledgeCost, 0, 0, 0, 0, 0, 0);
+	}
+
+	/** Compatibility constructor for definitions written before orientation offsets. */
+	public YsmProjectileConfig(ModelSource modelSource, String model, String slot,
+			float modelScale, int maxInstances, Fallback fallback, boolean acknowledgeCost,
+			float offsetForward, float offsetRight, float offsetUp) {
+		this(modelSource, model, slot, modelScale, maxInstances, fallback, acknowledgeCost,
+				offsetForward, offsetRight, offsetUp, 0, 0, 0);
 	}
 
 	public enum ModelSource implements StringRepresentable {
@@ -58,7 +69,10 @@ public record YsmProjectileConfig(
 			Codec.BOOL.optionalFieldOf("acknowledge_cost", false).forGetter(YsmProjectileConfig::acknowledgeCost),
 			Codec.FLOAT.optionalFieldOf("offset_forward", 0.0f).forGetter(YsmProjectileConfig::offsetForward),
 			Codec.FLOAT.optionalFieldOf("offset_right", 0.0f).forGetter(YsmProjectileConfig::offsetRight),
-			Codec.FLOAT.optionalFieldOf("offset_up", 0.0f).forGetter(YsmProjectileConfig::offsetUp)
+			Codec.FLOAT.optionalFieldOf("offset_up", 0.0f).forGetter(YsmProjectileConfig::offsetUp),
+			Codec.FLOAT.optionalFieldOf("pitch_offset", 0.0f).forGetter(YsmProjectileConfig::pitchOffset),
+			Codec.FLOAT.optionalFieldOf("yaw_offset", 0.0f).forGetter(YsmProjectileConfig::yawOffset),
+			Codec.FLOAT.optionalFieldOf("tilt_offset", 0.0f).forGetter(YsmProjectileConfig::tiltOffset)
 	).apply(i, YsmProjectileConfig::new));
 
 	public YsmProjectileConfig {
@@ -71,6 +85,9 @@ public record YsmProjectileConfig(
 		offsetForward = finiteOffset(offsetForward);
 		offsetRight = finiteOffset(offsetRight);
 		offsetUp = finiteOffset(offsetUp);
+		pitchOffset = finiteAngle(pitchOffset);
+		yawOffset = finiteAngle(yawOffset);
+		tiltOffset = finiteAngle(tiltOffset);
 	}
 
 	public boolean enabled() {
@@ -78,37 +95,68 @@ public record YsmProjectileConfig(
 	}
 
 	public YsmProjectileConfig withModel(String value) {
-		return copy(value, slot, modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight, offsetUp);
+		return copy(value, slot, modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight, offsetUp,
+				pitchOffset, yawOffset, tiltOffset);
 	}
 
 	public YsmProjectileConfig withSlot(String value) {
-		return copy(model, value, modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight, offsetUp);
+		return copy(model, value, modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight, offsetUp,
+				pitchOffset, yawOffset, tiltOffset);
 	}
 
 	public YsmProjectileConfig withModelScale(float value) {
-		return copy(model, slot, value, maxInstances, acknowledgeCost, offsetForward, offsetRight, offsetUp);
+		return copy(model, slot, value, maxInstances, acknowledgeCost, offsetForward, offsetRight, offsetUp,
+				pitchOffset, yawOffset, tiltOffset);
 	}
 
 	public YsmProjectileConfig withMaxInstances(int value) {
-		return copy(model, slot, modelScale, value, acknowledgeCost, offsetForward, offsetRight, offsetUp);
+		return copy(model, slot, modelScale, value, acknowledgeCost, offsetForward, offsetRight, offsetUp,
+				pitchOffset, yawOffset, tiltOffset);
 	}
 
 	public YsmProjectileConfig withAcknowledgeCost(boolean value) {
-		return copy(model, slot, modelScale, maxInstances, value, offsetForward, offsetRight, offsetUp);
+		return copy(model, slot, modelScale, maxInstances, value, offsetForward, offsetRight, offsetUp,
+				pitchOffset, yawOffset, tiltOffset);
 	}
 
 	public YsmProjectileConfig withOffsets(float forward, float right, float up) {
-		return copy(model, slot, modelScale, maxInstances, acknowledgeCost, forward, right, up);
+		return copy(model, slot, modelScale, maxInstances, acknowledgeCost, forward, right, up,
+				pitchOffset, yawOffset, tiltOffset);
+	}
+
+	public YsmProjectileConfig withPitchOffset(float value) {
+		return copy(model, slot, modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight,
+				offsetUp, value, yawOffset, tiltOffset);
+	}
+
+	public YsmProjectileConfig withYawOffset(float value) {
+		return copy(model, slot, modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight,
+				offsetUp, pitchOffset, value, tiltOffset);
+	}
+
+	public YsmProjectileConfig withTiltOffset(float value) {
+		return copy(model, slot, modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight,
+				offsetUp, pitchOffset, yawOffset, value);
+	}
+
+	public YsmProjectileConfig withOrientationOffsets(float pitch, float yaw, float tilt) {
+		return copy(model, slot, modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight,
+				offsetUp, pitch, yaw, tilt);
 	}
 
 	private YsmProjectileConfig copy(String model, String slot, float modelScale, int maxInstances,
-			boolean acknowledgeCost, float offsetForward, float offsetRight, float offsetUp) {
+			boolean acknowledgeCost, float offsetForward, float offsetRight, float offsetUp,
+			float pitchOffset, float yawOffset, float tiltOffset) {
 		return new YsmProjectileConfig(modelSource, model, slot, modelScale, maxInstances, fallback,
-				acknowledgeCost, offsetForward, offsetRight, offsetUp);
+				acknowledgeCost, offsetForward, offsetRight, offsetUp, pitchOffset, yawOffset, tiltOffset);
 	}
 
 	private static float finiteOffset(float value) {
 		return Float.isFinite(value) ? Math.max(-64.0f, Math.min(64.0f, value)) : 0.0f;
+	}
+
+	private static float finiteAngle(float value) {
+		return Float.isFinite(value) ? Math.max(-180.0f, Math.min(180.0f, value)) : 0.0f;
 	}
 
 	private static ModelSource sourceOf(String value) {

@@ -51,7 +51,8 @@ public record FireLaserAction(
 		Optional<List<SpellAction>> onHitEntity,
 		Optional<List<SpellAction>> onHitBlock,
 		HitBehavior hitBehaviorEntity,
-		HitBehavior hitBehaviorBlock
+		HitBehavior hitBehaviorBlock,
+		Optional<YsmProjectileConfig> ysmProjectile
 ) implements SpellAction {
 
 	/** Backwards-compatible constructor without elevation, delayed mover, and damage type fields. */
@@ -63,7 +64,7 @@ public record FireLaserAction(
 				setupPrepare, setupStart, setupEnd, Optional.empty(), Optional.empty(), Optional.empty(), NumberProvider.constant(1),
 				Optional.empty(),
 				Optional.empty(), Optional.empty(), 1, Optional.empty(), Optional.empty(),
-				HitBehavior.CONTINUE, HitBehavior.CONTINUE);
+				HitBehavior.CONTINUE, HitBehavior.CONTINUE, Optional.empty());
 	}
 
 	/** Constructor with delayed mover but no elevation or damage type. */
@@ -76,7 +77,7 @@ public record FireLaserAction(
 				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, Optional.empty(), NumberProvider.constant(1),
 				Optional.empty(),
 				Optional.empty(), Optional.empty(), 1, Optional.empty(), Optional.empty(),
-				HitBehavior.CONTINUE, HitBehavior.CONTINUE);
+				HitBehavior.CONTINUE, HitBehavior.CONTINUE, Optional.empty());
 	}
 
 	/** Constructor with all fields except damage type (14 args). */
@@ -89,7 +90,7 @@ public record FireLaserAction(
 				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, Optional.empty(), NumberProvider.constant(1),
 				Optional.empty(),
 				Optional.empty(), Optional.empty(), 1, Optional.empty(), Optional.empty(),
-				HitBehavior.CONTINUE, HitBehavior.CONTINUE);
+				HitBehavior.CONTINUE, HitBehavior.CONTINUE, Optional.empty());
 	}
 
 	public FireLaserAction(YHDanmaku.Laser laserType, DyeColor color,
@@ -102,7 +103,7 @@ public record FireLaserAction(
 				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, NumberProvider.constant(1),
 				Optional.empty(),
 				Optional.empty(), Optional.empty(), 1, Optional.empty(), Optional.empty(),
-				HitBehavior.CONTINUE, HitBehavior.CONTINUE);
+				HitBehavior.CONTINUE, HitBehavior.CONTINUE, Optional.empty());
 	}
 
 	/** Full constructor with all fields including hooks. */
@@ -115,8 +116,27 @@ public record FireLaserAction(
 						   Optional<GroupRotation> groupRotation,
 						   Optional<List<SpellAction>> onExpiry, Optional<List<SpellAction>> onTrail,
 						   int trailInterval, Optional<List<SpellAction>> onHitEntity,
+				Optional<List<SpellAction>> onHitBlock,
+				HitBehavior hitBehaviorEntity, HitBehavior hitBehaviorBlock) {
+		this(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover,
+				setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness,
+				groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock,
+				hitBehaviorEntity, hitBehaviorBlock, Optional.empty());
+	}
+
+	/** Full constructor including optional YSM projectile presentation. */
+	public FireLaserAction(YHDanmaku.Laser laserType, DyeColor color,
+						   NumberProvider lifetime, NumberProvider length, NumberProvider angleOffset,
+						   NumberProvider elevation, AimMode aimMode, OriginConfig origin,
+						   Optional<MoverConfig> mover, int setupPrepare, int setupStart, int setupEnd,
+						   Optional<Double> delayedV0, Optional<Double> delayedV1,
+						   Optional<DanmakuDamageType> damageType, NumberProvider thickness,
+						   Optional<GroupRotation> groupRotation,
+						   Optional<List<SpellAction>> onExpiry, Optional<List<SpellAction>> onTrail,
+						   int trailInterval, Optional<List<SpellAction>> onHitEntity,
 						   Optional<List<SpellAction>> onHitBlock,
-						   HitBehavior hitBehaviorEntity, HitBehavior hitBehaviorBlock) {
+						   HitBehavior hitBehaviorEntity, HitBehavior hitBehaviorBlock,
+						   Optional<YsmProjectileConfig> ysmProjectile) {
 		this.laserType = laserType;
 		this.color = color;
 		this.lifetime = lifetime;
@@ -141,6 +161,7 @@ public record FireLaserAction(
 		this.onHitBlock = onHitBlock;
 		this.hitBehaviorEntity = hitBehaviorEntity;
 		this.hitBehaviorBlock = hitBehaviorBlock;
+		this.ysmProjectile = ysmProjectile == null ? Optional.empty() : ysmProjectile;
 	}
 
 	public static final com.mojang.serialization.MapCodec<FireLaserAction> BASE_MAP = RecordCodecBuilder.mapCodec(i -> i.group(
@@ -176,16 +197,18 @@ public record FireLaserAction(
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_entity").forGetter(FireLaserAction::onHitEntity),
 			SpellAction.CODEC.listOf().optionalFieldOf("on_hit_block").forGetter(FireLaserAction::onHitBlock),
 			HitBehavior.CODEC.optionalFieldOf("hit_behavior_entity", HitBehavior.CONTINUE).forGetter(FireLaserAction::hitBehaviorEntity),
-			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.CONTINUE).forGetter(FireLaserAction::hitBehaviorBlock)
-	).apply(i, (base, gr, oe, ot, ti, ohe, ohb, hbe, hbb) -> new FireLaserAction(
+			HitBehavior.CODEC.optionalFieldOf("hit_behavior_block", HitBehavior.CONTINUE).forGetter(FireLaserAction::hitBehaviorBlock),
+			YsmProjectileConfig.CODEC.optionalFieldOf("ysm_projectile").forGetter(FireLaserAction::ysmProjectile)
+	).apply(i, (base, gr, oe, ot, ti, ohe, ohb, hbe, hbb, ysm) -> new FireLaserAction(
 			base.laserType, base.color, base.lifetime, base.length, base.angleOffset, base.elevation,
 			base.aimMode, base.origin, base.mover, base.setupPrepare, base.setupStart, base.setupEnd,
 			base.delayedV0, base.delayedV1, base.damageType, base.thickness,
 			gr,
-			oe, ot, ti, ohe, ohb, hbe, hbb)));
+			oe, ot, ti, ohe, ohb, hbe, hbb, ysm)));
 
 	// withXxx helper methods for editor use (preserve all fields)
-	private FireLaserAction all(YHDanmaku.Laser lt, DyeColor c, NumberProvider lf, NumberProvider ln, NumberProvider ao, NumberProvider el, AimMode am, OriginConfig o, Optional<MoverConfig> m, int sp, int ss, int se, Optional<Double> dv0, Optional<Double> dv1, Optional<DanmakuDamageType> ddt, NumberProvider th, Optional<GroupRotation> gr, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hbe, HitBehavior hbb) { return new FireLaserAction(lt, c, lf, ln, ao, el, am, o, m, sp, ss, se, dv0, dv1, ddt, th, gr, oe, ot, ti, ohe, ohb, hbe, hbb); }
+	private FireLaserAction all(YHDanmaku.Laser lt, DyeColor c, NumberProvider lf, NumberProvider ln, NumberProvider ao, NumberProvider el, AimMode am, OriginConfig o, Optional<MoverConfig> m, int sp, int ss, int se, Optional<Double> dv0, Optional<Double> dv1, Optional<DanmakuDamageType> ddt, NumberProvider th, Optional<GroupRotation> gr, Optional<List<SpellAction>> oe, Optional<List<SpellAction>> ot, int ti, Optional<List<SpellAction>> ohe, Optional<List<SpellAction>> ohb, HitBehavior hbe, HitBehavior hbb) { return new FireLaserAction(lt, c, lf, ln, ao, el, am, o, m, sp, ss, se, dv0, dv1, ddt, th, gr, oe, ot, ti, ohe, ohb, hbe, hbb, ysmProjectile); }
+	public FireLaserAction withYsmProjectile(Optional<YsmProjectileConfig> v) { return new FireLaserAction(laserType, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock, v); }
 	public FireLaserAction withLaserType(YHDanmaku.Laser v) { return all(v, color, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
 	public FireLaserAction withColor(DyeColor v) { return all(laserType, v, lifetime, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
 	public FireLaserAction withLifetime(NumberProvider v) { return all(laserType, color, v, length, angleOffset, elevation, aimMode, origin, mover, setupPrepare, setupStart, setupEnd, delayedV0, delayedV1, damageType, thickness, groupRotation, onExpiry, onTrail, trailInterval, onHitEntity, onHitBlock, hitBehaviorEntity, hitBehaviorBlock); }
@@ -253,6 +276,8 @@ public record FireLaserAction(
 		NumberProvider scaleFunction = thickness instanceof NumberProviders.Constant ? null : thickness;
 		laser.configureVisualScale((float) resolvedThickness, scaleFunction);
 		laser.setCallbackSourceMetadata(resolvedThickness, 0.0, life, DanmakuColor.of(color));
+		ysmProjectile.filter(YsmProjectileConfig::enabled)
+				.ifPresent(config -> laser.configureYsmProjectile(config, 0xff000000 | color.getFireworkColor()));
 		// Apply per-action damage type override
 		if (damageType.isPresent()) {
 			laser.damageTypeOverride = damageType.get();

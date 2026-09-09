@@ -2017,6 +2017,7 @@
   "youkaishomecoming.ysm_editor.use_in_spell": "用于符卡预览",
   "youkaishomecoming.ysm_editor.choose_preview_model": "选择符卡预览模型",
   "youkaishomecoming.ysm_editor.clear_preview_model": "移除符卡预览模型",
+  "youkaishomecoming.ysm_editor.action.model": "模型",
   "youkaishomecoming.ysm_editor.action.hint": "动画提示",
   "youkaishomecoming.ysm_editor.action.duration": "持续 tick（0＝保持）",
   "youkaishomecoming.ysm_editor.mode": "模式：YSM",

@@ -101,6 +101,12 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	@SerialClass.SerialField
 	private float ysmProjectileOffsetUp = 0;
 	@SerialClass.SerialField
+	private float ysmProjectilePitchOffset = 0;
+	@SerialClass.SerialField
+	private float ysmProjectileYawOffset = 0;
+	@SerialClass.SerialField
+	private float ysmProjectileTiltOffset = 0;
+	@SerialClass.SerialField
 	private int tint = 0xffffffff;
 	@SerialClass.SerialField
 	private int colorAnimationMode = DanmakuColorAnimation.Resolved.NONE;
@@ -191,6 +197,9 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 			ysmProjectileOffsetForward = 0;
 			ysmProjectileOffsetRight = 0;
 			ysmProjectileOffsetUp = 0;
+			ysmProjectilePitchOffset = 0;
+			ysmProjectileYawOffset = 0;
+			ysmProjectileTiltOffset = 0;
 			return;
 		}
 		ysmProjectileEnabled = true;
@@ -202,6 +211,9 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 		ysmProjectileOffsetForward = config.offsetForward();
 		ysmProjectileOffsetRight = config.offsetRight();
 		ysmProjectileOffsetUp = config.offsetUp();
+		ysmProjectilePitchOffset = config.pitchOffset();
+		ysmProjectileYawOffset = config.yawOffset();
+		ysmProjectileTiltOffset = config.tiltOffset();
 	}
 
 	public boolean hasYsmProjectile() { return ysmProjectileEnabled && !ysmProjectileModel.isBlank() && ysmProjectileMaxInstances > 0; }
@@ -213,6 +225,9 @@ public class ItemDanmakuEntity extends YHBaseDanmakuEntity implements ItemSuppli
 	public float ysmProjectileOffsetForward() { return ysmProjectileOffsetForward; }
 	public float ysmProjectileOffsetRight() { return ysmProjectileOffsetRight; }
 	public float ysmProjectileOffsetUp() { return ysmProjectileOffsetUp; }
+	public float ysmProjectilePitchOffset() { return ysmProjectilePitchOffset; }
+	public float ysmProjectileYawOffset() { return ysmProjectileYawOffset; }
+	public float ysmProjectileTiltOffset() { return ysmProjectileTiltOffset; }
 
 	public void enterHoldState(Vec3 holdPos, Vec3 incomingVel) {
 		if (this.mover != null && !(this.mover instanceof dev.xkmc.youkaishomecoming.content.spell.physics.HitHoldMover)) {

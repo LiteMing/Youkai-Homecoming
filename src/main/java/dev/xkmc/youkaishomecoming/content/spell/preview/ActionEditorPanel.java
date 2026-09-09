@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmEditorCatalog;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderConfig;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
@@ -94,6 +95,8 @@ public class ActionEditorPanel {
 	private java.util.function.Function<ResourceLocation, String> phaseDisplayFormatter = ResourceLocation::toString;
 	private java.util.function.Supplier<List<ResourceLocation>> spellOptionsSupplier = List::of;
 	private java.util.function.Supplier<String> ysmPreviewModel = () -> "";
+	/** UI-only model context for the hint picker on a ysm_render action. */
+	private String ysmHintCatalogModel = "";
 	public void setYsmPreviewModel(java.util.function.Supplier<String> supplier) { ysmPreviewModel = supplier; }
 	private java.util.function.Function<ResourceLocation, String> spellDisplayFormatter = ResourceLocation::toString;
 	private java.util.function.Supplier<ActionListPanel.ActionPath> actionPathSupplier = () -> null;
@@ -159,6 +162,7 @@ public class ActionEditorPanel {
 		ActionListPanel.ActionPath path = actionPathSupplier.get();
 		if (action == currentAction && index == actionIndex
 				&& java.util.Objects.equals(path, currentActionPath)) return;
+		ysmHintCatalogModel = "";
 		// Save current scroll state before switching
 		if (currentActionPath != null) {
 			scrollStateMap.put(currentActionPath, scrollOffset);
@@ -269,6 +273,11 @@ public class ActionEditorPanel {
 		exprEditBoxes.clear();
 		stringCompletionSuppliers.clear();
 		listCompletionTargets.clear();
+		folderCompletionTargets.clear();
+		completionFolderFunctions.clear();
+		completionLabelFunctions.clear();
+		expandedCompletionFolders.clear();
+		manualCompletionFolders.clear();
 		widgetsRegistered = false;
 	}
 
@@ -889,7 +898,7 @@ public class ActionEditorPanel {
 			currentDepth++;
 			addButtonRow("+ Enable YSM Projectile", () -> {
 				String model = ysmPreviewModel.get();
-				if (model.isBlank()) model = YSMClientCompat.loadedModelIds().stream().findFirst().orElse("");
+				if (model.isBlank()) model = YsmEditorCatalog.modelIds().stream().findFirst().orElse("");
 				String selectedModel = model;
 				notifyDanmaku(old -> old.withYsmProjectile(Optional.of(new YsmProjectileConfig(
 						YsmProjectileConfig.ModelSource.FIXED, selectedModel, "arrow", 1.0f, 8,
@@ -904,7 +913,7 @@ public class ActionEditorPanel {
 		YsmProjectileConfig config = action.ysmProjectile().get();
 		// The supplier is evaluated when the arrow is opened, so a resource-pack
 		// reload immediately changes the available model choices.
-		addSuggestStringRow("Model ID", config.model(), () -> new java.util.TreeSet<>(YSMClientCompat.loadedModelIds()).stream().toList(), value ->
+		addYsmProjectileModelRow(config.model(), value ->
 				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
 					.map(current -> current.withModel(value))), false));
 		addDynamicStringOptionRow("Projectile Slot", config.slot(),
@@ -929,6 +938,15 @@ public class ActionEditorPanel {
 		addFloatRow("Offset Up", config.offsetUp(), value ->
 				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
 					.map(current -> current.withOffsets(current.offsetForward(), current.offsetRight(), value))), false));
+		addFloatRow("Pitch Offset", config.pitchOffset(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withPitchOffset(value))), false));
+		addFloatRow("Yaw Offset", config.yawOffset(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withYawOffset(value))), false));
+		addFloatRow("Tilt Offset", config.tiltOffset(), value ->
+				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
+					.map(current -> current.withTiltOffset(value))), false));
 		addIntRow("Max Instances", config.maxInstances(), value ->
 				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
 					.map(current -> current.withMaxInstances(value))), false));
@@ -939,6 +957,70 @@ public class ActionEditorPanel {
 		addTextDisplayRow("Model Source", config.modelSource().getSerializedName());
 		addButtonRow("- Remove YSM Projectile", () ->
 				notifyDanmaku(old -> old.withYsmProjectile(Optional.empty())));
+		currentDepth--;
+	}
+
+	/** Action-scoped YSM projectile controls for lasers. A laser keeps its YH
+	 * continuous beam and renders this optional model at the beam origin. */
+	private void buildYsmProjectileRows(FireLaserAction action) {
+		addSectionHeader("YSM Projectile");
+		if (isSectionCollapsed("YSM Projectile")) return;
+		currentDepth++;
+		if (action.ysmProjectile().isEmpty()) {
+			addButtonRow("+ Enable YSM Projectile", () -> {
+				String model = ysmPreviewModel.get();
+				if (model.isBlank()) model = YsmEditorCatalog.modelIds().stream().findFirst().orElse("");
+				String selectedModel = model;
+				notifyLaser(old -> old.withYsmProjectile(Optional.of(new YsmProjectileConfig(
+						YsmProjectileConfig.ModelSource.FIXED, selectedModel, "arrow", 1.0f, 8,
+						YsmProjectileConfig.Fallback.YH, false))));
+			});
+			currentDepth--;
+			return;
+		}
+		YsmProjectileConfig config = action.ysmProjectile().get();
+		addYsmProjectileModelRow(config.model(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withModel(value))), false));
+		addDynamicStringOptionRow("Projectile Slot", config.slot(),
+				() -> {
+					String model = config.model();
+					if (currentAction instanceof FireLaserAction latest) {
+						model = latest.ysmProjectile().map(YsmProjectileConfig::model).orElse(model);
+					}
+					return YsmClientPresentationBridge.projectileSlots(model);
+				}, value -> notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withSlot(value)))));
+		addFloatRow("Model Scale", config.modelScale(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withModelScale(value))), false));
+		addFloatRow("Offset Forward", config.offsetForward(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withOffsets(value, current.offsetRight(), current.offsetUp()))), false));
+		addFloatRow("Offset Right", config.offsetRight(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withOffsets(current.offsetForward(), value, current.offsetUp()))), false));
+		addFloatRow("Offset Up", config.offsetUp(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withOffsets(current.offsetForward(), current.offsetRight(), value))), false));
+		addFloatRow("Pitch Offset", config.pitchOffset(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withPitchOffset(value))), false));
+		addFloatRow("Yaw Offset", config.yawOffset(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withYawOffset(value))), false));
+		addFloatRow("Tilt Offset", config.tiltOffset(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withTiltOffset(value))), false));
+		addIntRow("Max Instances", config.maxInstances(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withMaxInstances(value))), false));
+		addBoolRow("Acknowledge Cost", config.acknowledgeCost(), value ->
+				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
+						.map(current -> current.withAcknowledgeCost(value)))));
+		addTextDisplayRow("Fallback", config.fallback().getSerializedName());
+		addTextDisplayRow("Model Source", config.modelSource().getSerializedName());
+		addButtonRow("- Remove YSM Projectile", () -> notifyLaser(old -> old.withYsmProjectile(Optional.empty())));
 		currentDepth--;
 	}
 
@@ -1248,6 +1330,8 @@ public class ActionEditorPanel {
 
 		addNumberRow("Thickness", a.thickness(), v ->
 				notifyLaser(old -> old.withThickness(v), false), EvaluationTiming.SNAPSHOT);
+
+		buildYsmProjectileRows(a);
 
 		addNumberRow("Angle", a.angleOffset(), v ->
 				notifyLaser(old -> old.withAngleOffset(v), false), EvaluationTiming.SNAPSHOT);
@@ -2173,11 +2257,51 @@ public class ActionEditorPanel {
 	// --- YSM Hint rows ---
 
 	private void buildYsmRenderRows(YsmRenderAction yra) {
-		addSuggestStringRow(ysmLabel("action.hint"), yra.hint(),
-				() -> YSMClientCompat.loadedAnimationNames(ysmPreviewModel.get()),
-				v -> notifySimple(old -> ((YsmRenderAction) old).withHint(v), true));
+		String model = ysmHintCatalogModel;
+		if (model.isBlank()) {
+			model = ysmPreviewModel.get();
+			if (model.isBlank()) model = YsmEditorCatalog.modelIds().stream().findFirst().orElse("");
+			ysmHintCatalogModel = model;
+		}
+		addYsmModelRow(model, value -> ysmHintCatalogModel = value);
+		addYsmHintRow(() -> ysmHintCatalogModel, yra.hint(),
+				v -> notifySimple(old -> ((YsmRenderAction) old).withHint(v), false));
 		addIntRow(ysmLabel("action.duration"), yra.duration(), v ->
 				notifySimple(old -> ((YsmRenderAction) old).withDuration(v)));
+	}
+
+	private void addYsmModelRow(String current, Consumer<String> onChange) {
+		EditBox editBox = addSuggestStringRow(ysmLabel("action.model"), current,
+				YsmEditorCatalog::modelIds, onChange);
+		folderCompletionTargets.add(editBox);
+		completionFolderFunctions.put(editBox, YsmEditorCatalog::parent);
+		completionLabelFunctions.put(editBox, Function.identity());
+	}
+
+	/** Model selector shared by projectile presentation rows. */
+	private void addYsmProjectileModelRow(String current, Consumer<String> onChange) {
+		EditBox editBox = addSuggestStringRow("Model ID", current,
+				YsmEditorCatalog::modelIds, onChange);
+		folderCompletionTargets.add(editBox);
+		completionFolderFunctions.put(editBox, YsmEditorCatalog::parent);
+		completionLabelFunctions.put(editBox, Function.identity());
+	}
+
+	private void addYsmHintRow(Supplier<String> modelSupplier, String current, Consumer<String> onChange) {
+		EditBox editBox = addSuggestStringRow(ysmLabel("action.hint"), current,
+				() -> ysmHintOptions(modelSupplier.get()), onChange);
+		folderCompletionTargets.add(editBox);
+		completionFolderFunctions.put(editBox, YsmEditorCatalog::animationGroup);
+		completionLabelFunctions.put(editBox, Function.identity());
+	}
+
+	private static List<String> ysmHintOptions(String model) {
+		Set<String> options = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+		if (model == null || model.isBlank()) return List.of();
+		for (String hint : YSMClientCompat.loadedAnimationNames(model)) {
+			if (hint != null && !hint.isBlank()) options.add(hint);
+		}
+		return List.copyOf(options);
 	}
 
 	private void buildShowSpellCardRows(ShowSpellCardAction action) {
@@ -2407,12 +2531,18 @@ public class ActionEditorPanel {
 		if (!isSectionCollapsed("Advanced")) {
 			currentDepth++;
 			YsmRenderConfig ysm = ssa.ysm();
-			addSuggestStringRow("Model ID", ysm.model(), YSMClientCompat::loadedModelIds, v ->
+			addYsmModelRow(ysm.model(), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withModel(v)), true));
 			addSuggestStringRow("Texture", ysm.texture(), () -> YSMClientCompat.loadedTextureNames(ysm.model()), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withTexture(v))));
-			addSuggestStringRow(ysmLabel("action.hint"), ysm.hint(), () -> YSMClientCompat.loadedAnimationNames(ysm.model()), v ->
-					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withHint(v))));
+			addYsmHintRow(() -> {
+				if (currentAction instanceof SpawnShooterAction latest) {
+					return latest.ysm().model();
+				}
+				return ysm.model();
+			}, ysm.hint(),
+				v -> notifySimple(old -> ((SpawnShooterAction) old).withYsm(
+						((SpawnShooterAction) old).ysm().withHint(v)), false));
 			addIntRow(ysmLabel("action.duration"), ysm.duration(), v ->
 				notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withDuration(v))));
 			addStringOptionRow("Expire Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(ysm.clearTarget(), "changed"), v ->
@@ -4099,6 +4229,9 @@ public class ActionEditorPanel {
 	private final List<EditBox> exprEditBoxes = new ArrayList<>();
 	private final Map<EditBox, java.util.function.Supplier<List<String>>> stringCompletionSuppliers = new HashMap<>();
 	private final Set<EditBox> listCompletionTargets = new HashSet<>();
+	private final Set<EditBox> folderCompletionTargets = new HashSet<>();
+	private final Map<EditBox, Function<String, String>> completionFolderFunctions = new HashMap<>();
+	private final Map<EditBox, Function<String, String>> completionLabelFunctions = new HashMap<>();
 	private EditBox commandEditBox;
 	private EditBox soundEditBox;
 	private CommandSuggestions commandSuggestions;
@@ -4118,7 +4251,12 @@ public class ActionEditorPanel {
 	private int exprCompletionScrollOffset = 0;
 
 	// Plain string field completion overlay
-	private String[] stringCompletionItems = null;
+	private record StringCompletionItem(String value, String label, boolean folder, String folderKey, int depth) {
+	}
+
+	private final Map<EditBox, Set<String>> expandedCompletionFolders = new HashMap<>();
+	private final Map<EditBox, Set<String>> manualCompletionFolders = new HashMap<>();
+	private List<StringCompletionItem> stringCompletionItems = null;
 	private int stringCompletionHoverIndex = -1;
 	private EditBox stringCompletionTarget = null;
 	private int stringCompletionInsertStart = -1;
@@ -4308,7 +4446,7 @@ public class ActionEditorPanel {
 		rows.add(new EditorRow(label, editBox, false, -1, currentDepth, false, false, timing));
 	}
 
-	private void addSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
+	private EditBox addSuggestStringRow(String label, String value, java.util.function.Supplier<List<String>> suggestions, Consumer<String> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var editBox = newEditorEditBox(label, widgetW);
 		editBox.setMaxLength("Command".equals(label) ? 32500 : 256);
@@ -4321,10 +4459,17 @@ public class ActionEditorPanel {
 			});
 		} else {
 			if ("Sound".equals(label)) soundEditBox = editBox;
-			editBox.setResponder(onChange::accept);
+			editBox.setResponder(text -> {
+				onChange.accept(text);
+				// Keep an open catalog synchronized with the query as the user types.
+				if (stringCompletionTarget == editBox && !openStringOptions(editBox, true)) {
+					closeStringCompletion();
+				}
+			});
 		}
 		if (!"Command".equals(label)) stringCompletionSuppliers.put(editBox, suggestions);
 		rows.add(new EditorRow(label, editBox, false));
+		return editBox;
 	}
 
 	private void addButtonRow(String label, Runnable action) {
@@ -5021,10 +5166,10 @@ public class ActionEditorPanel {
 				return true;
 			}
 			if (button == 0) {
-				int[] bounds = computeCompletionBounds(stringCompletionTarget, stringCompletionItems.length);
+				int[] bounds = computeCompletionBounds(stringCompletionTarget, stringCompletionItems.size());
 				int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
 				int itemH = DROPDOWN_ITEM_H;
-				int itemCount = stringCompletionItems.length;
+				int itemCount = stringCompletionItems.size();
 				int visibleItems = bounds[4];
 				int scrollbarW = itemCount > visibleItems ? 6 : 0;
 				int contentW = cw - scrollbarW;
@@ -5033,7 +5178,11 @@ public class ActionEditorPanel {
 					int idx = (int) ((mouseY - cy) / itemH) + stringCompletionScrollOffset;
 					if (idx >= 0 && idx < itemCount) {
 						stringCompletionHoverIndex = idx;
-						applyStringCompletion();
+						if (stringCompletionItems.get(idx).folder()) {
+							toggleCompletionFolder(stringCompletionTarget, stringCompletionItems.get(idx).folderKey());
+						} else {
+							applyStringCompletion();
+						}
 						return true;
 					}
 				}
@@ -5179,7 +5328,7 @@ public class ActionEditorPanel {
 		}
 		if (stringCompletionItems != null) {
 			int visible = getStringCompletionVisibleItems();
-			int maxScroll = Math.max(0, stringCompletionItems.length - visible);
+			int maxScroll = Math.max(0, stringCompletionItems.size() - visible);
 			stringCompletionScrollOffset = Math.max(0, Math.min(maxScroll,
 					stringCompletionScrollOffset - (int) (delta * 3)));
 			return true;
@@ -5287,7 +5436,7 @@ public class ActionEditorPanel {
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_DOWN) {
-				if (stringCompletionHoverIndex < stringCompletionItems.length - 1) stringCompletionHoverIndex++;
+				if (stringCompletionHoverIndex < stringCompletionItems.size() - 1) stringCompletionHoverIndex++;
 				ensureStringCompletionHoverVisible();
 				return true;
 			}
@@ -5640,13 +5789,71 @@ public class ActionEditorPanel {
 		if (matches.isEmpty()) {
 			return false;
 		}
-		stringCompletionItems = matches.toArray(new String[0]);
+		if (folderCompletionTargets.contains(editBox)) {
+			stringCompletionItems = buildFolderCompletionItems(editBox, matches);
+		} else {
+			stringCompletionItems = matches.stream()
+					.map(value -> new StringCompletionItem(value, value, false, "", 0))
+					.toList();
+		}
 		stringCompletionHoverIndex = 0;
 		stringCompletionTarget = editBox;
 		stringCompletionInsertStart = tokenStart;
 		stringCompletionInsertEnd = tokenEnd;
 		stringCompletionScrollOffset = 0;
 		return true;
+	}
+
+	private List<StringCompletionItem> buildFolderCompletionItems(EditBox target, Set<String> matches) {
+		Function<String, String> folderFunction = completionFolderFunctions.get(target);
+		Function<String, String> labelFunction = completionLabelFunctions.getOrDefault(target, Function.identity());
+		if (folderFunction == null) {
+			return matches.stream().map(value -> new StringCompletionItem(value, labelFunction.apply(value), false, "", 0)).toList();
+		}
+		Map<String, List<String>> grouped = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+		List<String> rootValues = new ArrayList<>();
+		for (String value : matches) {
+			String folder = folderFunction.apply(value);
+			if (folder == null || folder.isBlank()) rootValues.add(value);
+			else grouped.computeIfAbsent(folder, ignored -> new ArrayList<>()).add(value);
+		}
+		// A unique filtered folder is useful as an implicit drill-down. Multiple
+		// folders remain collapsed so a large catalog stays compact.
+		Set<String> expandedFolders = expandedCompletionFolders.computeIfAbsent(target, ignored -> new HashSet<>());
+		Set<String> manualFolders = manualCompletionFolders.computeIfAbsent(target, ignored -> new HashSet<>());
+		if (grouped.size() == 1) {
+			String onlyFolder = grouped.keySet().iterator().next();
+			if (!manualFolders.contains(onlyFolder)) expandedFolders.add(onlyFolder);
+		}
+		List<StringCompletionItem> items = new ArrayList<>();
+		rootValues.sort(String.CASE_INSENSITIVE_ORDER);
+		for (String value : rootValues) {
+			items.add(new StringCompletionItem(value, labelFunction.apply(value), false, "", 0));
+		}
+		for (var entry : grouped.entrySet()) {
+			String folder = entry.getKey();
+			List<String> values = entry.getValue();
+			values.sort(String.CASE_INSENSITIVE_ORDER);
+			boolean expanded = expandedFolders.contains(folder);
+			String icon = expanded ? "\u25BC " : "\u25B6 ";
+			items.add(new StringCompletionItem(null, icon + folder + " (" + values.size() + ")", true, folder, 0));
+			if (expanded) {
+				for (String value : values) {
+					items.add(new StringCompletionItem(value, labelFunction.apply(value), false, folder, 1));
+				}
+			}
+		}
+		return items;
+	}
+
+	private void toggleCompletionFolder(EditBox target, String folder) {
+		if (folder == null || folder.isBlank()) return;
+		manualCompletionFolders.computeIfAbsent(target, ignored -> new HashSet<>()).add(folder);
+		Set<String> expanded = expandedCompletionFolders.computeIfAbsent(target, ignored -> new HashSet<>());
+		if (!expanded.remove(folder)) expanded.add(folder);
+		if (target != null) {
+			openStringOptions(target, true);
+		}
 	}
 
 	private static int stringTokenStart(String text, int cursor) {
@@ -5663,13 +5870,18 @@ public class ActionEditorPanel {
 
 	private void applyStringCompletion() {
 		EditBox target = stringCompletionTarget;
-		String[] items = stringCompletionItems;
+		List<StringCompletionItem> items = stringCompletionItems;
 		int hoverIndex = stringCompletionHoverIndex;
 		int insertStart = stringCompletionInsertStart;
 		int insertEnd = stringCompletionInsertEnd;
 		if (items == null || target == null) return;
-		if (hoverIndex < 0 || hoverIndex >= items.length) return;
-		String chosen = items[hoverIndex];
+		if (hoverIndex < 0 || hoverIndex >= items.size()) return;
+		StringCompletionItem item = items.get(hoverIndex);
+		if (item.folder()) {
+			toggleCompletionFolder(target, item.folderKey());
+			return;
+		}
+		String chosen = item.value();
 		String text = target.getValue();
 		if (listCompletionTargets.contains(target)) {
 			String newText = appendListCompletion(text, chosen);
@@ -5722,7 +5934,7 @@ public class ActionEditorPanel {
 		if (stringCompletionItems == null || stringCompletionTarget == null) {
 			return 1;
 		}
-		return computeCompletionBounds(stringCompletionTarget, stringCompletionItems.length)[4];
+		return computeCompletionBounds(stringCompletionTarget, stringCompletionItems.size())[4];
 	}
 
 	private void ensureStringCompletionHoverVisible() {
@@ -5735,14 +5947,14 @@ public class ActionEditorPanel {
 		} else if (stringCompletionHoverIndex >= stringCompletionScrollOffset + visible) {
 			stringCompletionScrollOffset = stringCompletionHoverIndex - visible + 1;
 		}
-		int maxScroll = Math.max(0, stringCompletionItems.length - visible);
+		int maxScroll = Math.max(0, stringCompletionItems.size() - visible);
 		stringCompletionScrollOffset = Math.max(0, Math.min(maxScroll, stringCompletionScrollOffset));
 	}
 
 	private void doRenderStringCompletion(GuiGraphics guiGraphics, int mouseX, int mouseY) {
 		if (stringCompletionItems == null || stringCompletionTarget == null) return;
 		Font font = Minecraft.getInstance().font;
-		int itemCount = stringCompletionItems.length;
+		int itemCount = stringCompletionItems.size();
 		int itemH = DROPDOWN_ITEM_H;
 		int[] bounds = computeCompletionBounds(stringCompletionTarget, itemCount);
 		int cx = bounds[0], cy = bounds[1], cw = bounds[2], totalH = bounds[3];
@@ -5776,8 +5988,14 @@ public class ActionEditorPanel {
 			if (iy + itemH > cy + totalH) break;
 			boolean hovered = optIdx == stringCompletionHoverIndex;
 			if (hovered) guiGraphics.fill(cx + 1, iy, cx + contentW - 1, iy + itemH, 0x44FFFFFF);
-			String option = stringCompletionItems[optIdx];
-			int textX = cx + 4;
+			StringCompletionItem item = stringCompletionItems.get(optIdx);
+			int textX = cx + 4 + item.depth() * 10;
+			if (item.folder()) {
+				guiGraphics.drawString(font, item.label(), textX, iy + 4,
+						hovered ? 0xFFFFDD66 : 0xFFFFCC88, false);
+				continue;
+			}
+			String option = item.value();
 			int selectedCount = selectedCounts.getOrDefault(option.toLowerCase(java.util.Locale.ROOT), 0);
 			if (listMode) {
 				String marker = selectedCount <= 0 ? "" : selectedCount == 1 ? "\u2713" : "x" + selectedCount;
@@ -5787,7 +6005,7 @@ public class ActionEditorPanel {
 				}
 				textX = cx + 24;
 			}
-			String display = listMode ? listCompletionDisplayName(option) : option;
+			String display = listMode ? listCompletionDisplayName(option) : item.label();
 			guiGraphics.drawString(font, display, textX, iy + 4,
 					hovered ? 0xFFFFDD66 : 0xFFDDDDDD, false);
 		}

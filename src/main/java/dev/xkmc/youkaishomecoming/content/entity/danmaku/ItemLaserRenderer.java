@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.entity.danmaku;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmProjectileRenderBridge;
 import dev.xkmc.fastprojectileapi.entity.SimplifiedProjectile;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderHelper;
 import dev.xkmc.fastprojectileapi.render.core.ProjectileRenderer;
@@ -9,6 +10,8 @@ import dev.xkmc.fastprojectileapi.render.core.DanmakuRenderStates;
 import dev.xkmc.youkaishomecoming.content.client.DanmakuClientState;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.LaserItem;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -61,14 +64,25 @@ public class ItemLaserRenderer<T extends ItemLaserEntity> extends EntityRenderer
 	}
 
 	public void render(T e, float yaw, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
-		render(e, pTick, pose);
+		renderLaser(e, pTick, pose, buffer, light);
 	}
 
 	@Override
 	public void render(T e, float pTick, PoseStack pose) {
+		renderLaser(e, pTick, pose, Minecraft.getInstance().renderBuffers().bufferSource(),
+			LightTexture.FULL_BRIGHT);
+	}
+
+	private void renderLaser(T e, float pTick, PoseStack pose, MultiBufferSource buffer, int light) {
 		if (!(e.getItem().getItem() instanceof LaserItem danmaku)) return;
 		if (e.tickCount < 2) return;
 		pose.pushPose();
+		// The optional YSM projectile is an action-scoped model at the beam origin;
+		// keep the continuous YH laser mesh below it for length and collision clarity.
+		if (e.hasYsmProjectile()) {
+			YsmProjectileRenderBridge.render(e, pose, buffer, light, pTick,
+					YsmProjectileRenderBridge.nextLaserOrdinal(e));
+		}
 		float scale = e.percentOpen(pTick);
 		// Interpolate the physical direction vector instead of the Euler angles:
 		// near the vertical pole, yaw/pitch can flip ~180° between ticks while the

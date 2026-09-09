@@ -857,6 +857,14 @@ public final class SpellAnalyzer {
 	private void handleLaser(FireLaserAction a, TickProjection projection, long mult) {
 		SpecialNodeCounter.capabilities(a).forEach(this::addCap);
 		checkOrigin(a.origin());
+		a.ysmProjectile().filter(config -> config.enabled()).ifPresent(config -> {
+			if (!config.acknowledgeCost() && profile == SpellAnalysisProfile.CERTIFICATION && !operatorTest) {
+				throw rejected("ysm_projectile_unacknowledged", "YSM projectile rendering requires creator acknowledgement");
+			}
+			diagnostics.add(SpellDiagnostic.warning("ysm_projectile_cost", path(),
+					"YSM projectile path on laser: model=" + config.model() + ", slot=" + config.slot()
+							+ ", max_instances=" + config.maxInstances() + ", fallback=yh laser"));
+		});
 		long contrib = mult;
 		long lifetimeUpper = boundLifetimeUpper(a.lifetime());
 		bucketSpawns(contrib, projection, lifetimeUpper);

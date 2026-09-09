@@ -11,6 +11,7 @@ import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.spell.mover.CompositeMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.RectMover;
 import dev.xkmc.youkaishomecoming.content.spell.mover.ZeroMover;
+import dev.xkmc.youkaishomecoming.content.spell.definition.YsmProjectileConfig;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.CardHolder;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
@@ -59,6 +60,34 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	private double callbackSourceSize = 1.0, callbackSourceSpread = 0.0, callbackSourceLifetime = 0.0;
 	@SerialClass.SerialField
 	private int callbackSourceColor = 0xffffffff;
+
+	/** Optional client-side YSM presentation snapshot; physics remains laser-owned. */
+	@SerialClass.SerialField
+	private boolean ysmProjectileEnabled = false;
+	@SerialClass.SerialField
+	private String ysmProjectileModel = "";
+	@SerialClass.SerialField
+	private String ysmProjectileSlot = "arrow";
+	@SerialClass.SerialField
+	private float ysmProjectileModelScale = 1;
+	@SerialClass.SerialField
+	private int ysmProjectileMaxInstances = 0;
+	@SerialClass.SerialField
+	private boolean ysmProjectileAcknowledgeCost = false;
+	@SerialClass.SerialField
+	private float ysmProjectileOffsetForward = 0;
+	@SerialClass.SerialField
+	private float ysmProjectileOffsetRight = 0;
+	@SerialClass.SerialField
+	private float ysmProjectileOffsetUp = 0;
+	@SerialClass.SerialField
+	private float ysmProjectilePitchOffset = 0;
+	@SerialClass.SerialField
+	private float ysmProjectileYawOffset = 0;
+	@SerialClass.SerialField
+	private float ysmProjectileTiltOffset = 0;
+	@SerialClass.SerialField
+	private int ysmProjectileTint = 0xffffffff;
 
 	@SerialClass.SerialField
 	public dev.xkmc.youkaishomecoming.content.spell.spellcard.TrailAction afterExpiry = null;
@@ -193,6 +222,59 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		callbackSourceLifetime = Double.isFinite(lifetime) ? lifetime : 0.0;
 		callbackSourceColor = color == null ? 0xffffffff : color.argb();
 	}
+
+	public void configureYsmProjectile(YsmProjectileConfig config) {
+		configureYsmProjectile(config, ysmProjectileTint);
+	}
+
+	public void configureYsmProjectile(YsmProjectileConfig config, int tint) {
+		if (config == null || !config.enabled()) {
+			ysmProjectileEnabled = false;
+			ysmProjectileModel = "";
+			ysmProjectileSlot = "arrow";
+			ysmProjectileModelScale = 1;
+			ysmProjectileMaxInstances = 0;
+			ysmProjectileAcknowledgeCost = false;
+			ysmProjectileOffsetForward = 0;
+			ysmProjectileOffsetRight = 0;
+			ysmProjectileOffsetUp = 0;
+			ysmProjectilePitchOffset = 0;
+			ysmProjectileYawOffset = 0;
+			ysmProjectileTiltOffset = 0;
+			ysmProjectileTint = tint;
+			return;
+		}
+		ysmProjectileEnabled = true;
+		ysmProjectileModel = config.model();
+		ysmProjectileSlot = config.slot();
+		ysmProjectileModelScale = config.modelScale();
+		ysmProjectileMaxInstances = config.maxInstances();
+		ysmProjectileAcknowledgeCost = config.acknowledgeCost();
+		ysmProjectileOffsetForward = config.offsetForward();
+		ysmProjectileOffsetRight = config.offsetRight();
+		ysmProjectileOffsetUp = config.offsetUp();
+		ysmProjectilePitchOffset = config.pitchOffset();
+		ysmProjectileYawOffset = config.yawOffset();
+		ysmProjectileTiltOffset = config.tiltOffset();
+		ysmProjectileTint = tint;
+	}
+
+	public boolean hasYsmProjectile() { return ysmProjectileEnabled && !ysmProjectileModel.isBlank() && ysmProjectileMaxInstances > 0; }
+	public String ysmProjectileModel() { return ysmProjectileModel; }
+	public String ysmProjectileSlot() { return ysmProjectileSlot; }
+	public float ysmProjectileModelScale() { return ysmProjectileModelScale; }
+	public int ysmProjectileMaxInstances() { return ysmProjectileMaxInstances; }
+	public boolean ysmProjectileAcknowledgeCost() { return ysmProjectileAcknowledgeCost; }
+	public float ysmProjectileOffsetForward() { return ysmProjectileOffsetForward; }
+	public float ysmProjectileOffsetRight() { return ysmProjectileOffsetRight; }
+	public float ysmProjectileOffsetUp() { return ysmProjectileOffsetUp; }
+	public float ysmProjectilePitchOffset() { return ysmProjectilePitchOffset; }
+	public float ysmProjectileYawOffset() { return ysmProjectileYawOffset; }
+	public float ysmProjectileTiltOffset() { return ysmProjectileTiltOffset; }
+	public int ysmProjectileTint() { return ysmProjectileTint; }
+
+	/** Base visual scale used by the YSM bridge; lasers override this with thickness. */
+	public float ysmProjectileBaseScale() { return 1; }
 
 	@Override public double callbackSourceSize() { return callbackSourceSize; }
 	@Override public double callbackSourceSpread() { return callbackSourceSpread; }

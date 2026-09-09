@@ -2173,10 +2173,10 @@ public class ActionEditorPanel {
 	// --- YSM Hint rows ---
 
 	private void buildYsmRenderRows(YsmRenderAction yra) {
-		addSuggestStringRow("Anim Hint", yra.hint(),
+		addSuggestStringRow(ysmLabel("action.hint"), yra.hint(),
 				() -> YSMClientCompat.loadedAnimationNames(ysmPreviewModel.get()),
 				v -> notifySimple(old -> ((YsmRenderAction) old).withHint(v), true));
-		addIntRow("Duration", yra.duration(), v ->
+		addIntRow(ysmLabel("action.duration"), yra.duration(), v ->
 				notifySimple(old -> ((YsmRenderAction) old).withDuration(v)));
 	}
 
@@ -2411,9 +2411,9 @@ public class ActionEditorPanel {
 					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withModel(v)), true));
 			addSuggestStringRow("Texture", ysm.texture(), () -> YSMClientCompat.loadedTextureNames(ysm.model()), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withTexture(v))));
-			addSuggestStringRow("Anim Hint", ysm.hint(), () -> YSMClientCompat.loadedAnimationNames(ysm.model()), v ->
+			addSuggestStringRow(ysmLabel("action.hint"), ysm.hint(), () -> YSMClientCompat.loadedAnimationNames(ysm.model()), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withHint(v))));
-			addIntRow("Duration", ysm.duration(), v ->
+			addIntRow(ysmLabel("action.duration"), ysm.duration(), v ->
 				notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withDuration(v))));
 			addStringOptionRow("Expire Fields", ysmClearTargets(), ysmClearTargetLabels(), normalizeYsmClearTarget(ysm.clearTarget(), "changed"), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withClearTarget(v))));

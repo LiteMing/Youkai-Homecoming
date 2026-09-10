@@ -2146,7 +2146,7 @@
   "config.youkaishomecoming.client.hud.spell_title.gradientEnd": "Default Gradient Right Color",
   "config.youkaishomecoming.client.hud.spell_title.gradientEnd.tooltip": "Right ARGB color of the title background, transparent by default; the gradient remains on the active spell HUD.",
   "youkaishomecoming.spell_editor.title.presentation": "Title Presentation",
-  "youkaishomecoming.spell_editor.title.background": "Background Image",
+  "youkaishomecoming.spell_editor.title.background": "Background Texture ID",
   "youkaishomecoming.spell_editor.title.background_scale": "Image Scale",
   "youkaishomecoming.spell_editor.title.background_x": "Image X Offset",
   "youkaishomecoming.spell_editor.title.background_y": "Image Y Offset",

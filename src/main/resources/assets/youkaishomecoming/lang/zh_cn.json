@@ -1992,7 +1992,7 @@
   "config.youkaishomecoming.client.hud.spell_title.gradientEnd": "默认渐变右侧颜色",
   "config.youkaishomecoming.client.hud.spell_title.gradientEnd.tooltip": "标题底色的右端 ARGB 颜色，默认透明；移入活动符卡栏后保留渐变。",
   "youkaishomecoming.spell_editor.title.presentation": "标题演出",
-  "youkaishomecoming.spell_editor.title.background": "背景图片",
+  "youkaishomecoming.spell_editor.title.background": "背景图资源 ID",
   "youkaishomecoming.spell_editor.title.background_scale": "图片缩放",
   "youkaishomecoming.spell_editor.title.background_x": "图片水平偏移",
   "youkaishomecoming.spell_editor.title.background_y": "图片垂直偏移",

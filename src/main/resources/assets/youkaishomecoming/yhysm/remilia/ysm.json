@@ -25,7 +25,7 @@
     "height_scale": 0.7,
     "width_scale": 0.7,
     "extra_animation": {
-     "extra0": "#extra_config",
+      "extra0": "#extra_config",
       "#extra1": "自定义轮盘表情配置",
       "extra2": "打招呼",
       "extra3": "鼓掌",
@@ -41,15 +41,15 @@
       "extra13": "人妖名鉴站街"
     },
     "extra_animation_classify": [
-        {
-            "id": "extra1",
-            "extra_animation": {
-                "custom_anim1_basic_config": "#custom_anim1_basic_config",
-                "custom_anim1_detail_config": "#custom_anim1_detail_config",
-                "custom_anim2_basic_config": "#custom_anim2_basic_config",
-                "custom_anim2_detail_config": "#custom_anim2_detail_config"
-            }
+      {
+        "id": "extra1",
+        "extra_animation": {
+          "custom_anim1_basic_config": "#custom_anim1_basic_config",
+          "custom_anim1_detail_config": "#custom_anim1_detail_config",
+          "custom_anim2_basic_config": "#custom_anim2_basic_config",
+          "custom_anim2_detail_config": "#custom_anim2_detail_config"
         }
+      }
     ],
     "extra_animation_buttons": [
       {
@@ -232,7 +232,7 @@
             "max": 65
           }
         ]
-      }, 
+      },
       {
         "id": "custom_anim2_basic_config",
         "name": "自定义表情2基础配置",
@@ -387,6 +387,29 @@
       "texture": [
         "textures/default.png"
       ]
-    }
+    },
+    "projectiles": [
+      {
+        "model": "models/gungnir_projectile.json",
+        "texture": {
+          "uv": "textures/default.png"
+        },
+        "match": [
+          "minecraft:trident"
+        ]
+      },
+      {
+        "model": "models/magic_ball_projectile.json",
+        "texture": {
+          "uv": "textures/default.png"
+        },
+        "match": [
+          "minecraft:small_fireball",
+          "minecraft:fireball",
+          "minecraft:ender_pearl"
+        ],
+        "animation": "animations/magic_ball_projectile.animation.json"
+      }
+    ]
   }
 }

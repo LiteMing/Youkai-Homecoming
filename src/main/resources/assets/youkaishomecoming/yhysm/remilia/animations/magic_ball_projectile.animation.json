@@ -1,0 +1,94 @@
+{
+	"format_version": "1.8.0",
+	"animations": {
+		"parallel0": {
+			"loop": true,
+			"bones": {
+				"ysmGlowmagic_ball1_core1": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"2.0": [
+							360,
+							0,
+							0
+						]
+					}
+				},
+				"ysmGlowmagic_ball1_core2": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"2.0": [
+							-360,
+							0,
+							0
+						]
+					}
+				},
+				"ysmGlowmagic_ball1_particle1": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"2.0": [
+							0,
+							0,
+							360
+						]
+					}
+				},
+				"ysmGlowmagic_ball1_particle2": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"2.0": [
+							0,
+							0,
+							360
+						]
+					}
+				},
+				"ysmGlowmagic_ball1_particle3": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"2.0": [
+							0,
+							0,
+							360
+						]
+					}
+				},
+				"ysmGlowmagic_ball1_particle4": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"2.0": [
+							0,
+							0,
+							360
+						]
+					}
+				}
+			}
+		}
+	}
+}

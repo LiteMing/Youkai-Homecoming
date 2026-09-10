@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -59,7 +60,7 @@ public final class ActiveSpellHudService {
 			boolean own = owner == viewer;
 			boolean hostile = !own && isHostile(viewer, capability, owner, proxy);
 			if (!own && !hostile) continue;
-			add(entries, hosts, proxy.getId(), id, definition, hostile, own);
+			add(entries, hosts, proxy.getId(), proxy.getSpellRuntime(), hostile, own);
 		}
 
 		YoukaisHomecoming.HANDLER.toClientPlayer(new ActiveSpellHudToClient(entries), viewer);
@@ -69,7 +70,10 @@ public final class ActiveSpellHudService {
 			ServerPlayer player, boolean hostile, boolean own) {
 		SpellContainer.ActiveSpellInfo info = SpellContainer.activeSpellInfo(player);
 		if (info == null) return;
-		add(entries, hosts, player.getId(), info.id(), info.displayName(), hostile, own);
+		if (hosts.add(player.getId())) {
+			entries.add(new ActiveSpellHudToClient.Entry(player.getId(), info.id().toString(),
+					info.displayName(), hostile, own, info.titleId(), info.presentation()));
+		}
 	}
 
 	private static void addYoukaiSpell(List<ActiveSpellHudToClient.Entry> entries, Set<Integer> hosts,
@@ -77,8 +81,7 @@ public final class ActiveSpellHudService {
 		var runtime = youkai.getSpellRuntime();
 		if (runtime == null || !runtime.isSpellHudVisible()
 				|| runtime.getDefinition().itemForm.cardType() == SpellCardType.NON_SPELL) return;
-		add(entries, hosts, youkai.getId(), runtime.getDefinition().id,
-				runtime.getDefinition().display.name(), hostile, false);
+		add(entries, hosts, youkai.getId(), runtime, hostile, false);
 	}
 
 	private static boolean isHostile(ServerPlayer viewer, GrazeCapability capability,
@@ -94,14 +97,10 @@ public final class ActiveSpellHudService {
 	}
 
 	private static void add(List<ActiveSpellHudToClient.Entry> entries, Set<Integer> hosts,
-			int hostId, ResourceLocation id, SpellDefinition definition, boolean hostile, boolean own) {
-		if (definition == null) return;
-		add(entries, hosts, hostId, id, definition.display.name(), hostile, own);
-	}
-
-	private static void add(List<ActiveSpellHudToClient.Entry> entries, Set<Integer> hosts,
-			int hostId, ResourceLocation id, String displayName, boolean hostile, boolean own) {
-		if (id == null || !hosts.add(hostId)) return;
-		entries.add(new ActiveSpellHudToClient.Entry(hostId, id.toString(), displayName, hostile, own));
+			int hostId, SpellRuntime runtime, boolean hostile, boolean own) {
+		if (runtime == null || !hosts.add(hostId)) return;
+		var definition = runtime.getDefinition();
+		entries.add(new ActiveSpellHudToClient.Entry(hostId, definition.id.toString(), definition.display.name(),
+				hostile, own, runtime.getSpellTitleId(), runtime.getSpellTitlePresentation()));
 	}
 }

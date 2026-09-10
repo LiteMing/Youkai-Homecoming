@@ -125,7 +125,8 @@ public class SpellContainer extends ConditionalToken {
 	}
 
 	/** Small identity snapshot for the card currently released by a player. */
-	public record ActiveSpellInfo(net.minecraft.resources.ResourceLocation id, String displayName) {
+	public record ActiveSpellInfo(net.minecraft.resources.ResourceLocation id, String displayName,
+			String titleId, net.minecraft.nbt.CompoundTag presentation) {
 	}
 
 	@Nullable
@@ -136,7 +137,8 @@ public class SpellContainer extends ConditionalToken {
 		if (proxy == null || proxy.getSpellRuntime() == null
 				|| !proxy.getSpellRuntime().isSpellHudVisible()) return null;
 		SpellDefinition definition = proxy.getSpellRuntime().getDefinition();
-		return new ActiveSpellInfo(definition.id, definition.display.name());
+		return new ActiveSpellInfo(definition.id, definition.display.name(),
+				proxy.getSpellRuntime().getSpellTitleId(), proxy.getSpellRuntime().getSpellTitlePresentation());
 	}
 
 	/** Clear all player-owned spell output when a beaten state starts. */

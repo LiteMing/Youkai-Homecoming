@@ -66,6 +66,7 @@ public class SpellPreviewScreen extends Screen {
 	// Dock layout system
 	private DockLayout dockLayout;
 	private ViewportDockPanel viewportPanel;
+	private final SpellTitlePreviewDockPanel titlePreviewPanel;
 	private ActionListDockPanel actionListDockPanel;
 	private EditorDockPanel editorDockPanel;
 	private ControlsDockPanel controlsDockPanel;
@@ -146,6 +147,9 @@ public class SpellPreviewScreen extends Screen {
 		}
 		// Create persistent dock panels
 		this.viewportPanel = new ViewportDockPanel(viewport, scene);
+		this.titlePreviewPanel = new SpellTitlePreviewDockPanel(
+				() -> actionEditorPanel == null ? null : actionEditorPanel.getCurrentAction(),
+				() -> this.definition, scene::previewContext);
 		this.viewportPanel.setGroupTransformCallbacks(
 				this::onGroupOffsetDragged,
 				this::onGroupAngleDragged,
@@ -381,6 +385,7 @@ public class SpellPreviewScreen extends Screen {
 		if (circleLayout) {
 			panelMap.put(magicCircleDockPanel.dockId(), magicCircleDockPanel);
 		} else {
+			panelMap.put(titlePreviewPanel.dockId(), titlePreviewPanel);
 			panelMap.put(actionListDockPanel.dockId(), actionListDockPanel);
 			panelMap.put(editorDockPanel.dockId(), editorDockPanel);
 		}
@@ -407,6 +412,7 @@ public class SpellPreviewScreen extends Screen {
 			boolean savedLayoutHasStatusPanel = DockSerializer.savedLayoutContainsPanel(modeKey, statusDockPanel.dockId());
 			boolean savedLayoutHasVariablesPanel = DockSerializer.savedLayoutContainsPanel(modeKey, variablesDockPanel.dockId());
 			boolean savedLayoutHasRawJsonPanel = DockSerializer.savedLayoutContainsPanel(modeKey, rawJsonDockPanel.dockId());
+			boolean savedLayoutHasTitlePreview = DockSerializer.savedLayoutContainsPanel(modeKey, titlePreviewPanel.dockId());
 			DockNode root = DockSerializer.loadLayout(modeKey, panelMap, defaultLayout);
 			dockLayout = new DockLayout(root);
 			if (hadSavedLayout && !savedLayoutHasStatusPanel) {
@@ -417,6 +423,9 @@ public class SpellPreviewScreen extends Screen {
 			}
 			if (hadSavedLayout && (!savedLayoutHasRawJsonPanel || rawJsonSharesEditorGroup())) {
 				relocateMissingRawJsonPanel();
+			}
+			if (hadSavedLayout && !savedLayoutHasTitlePreview) {
+				moveDockPanelBeside(titlePreviewPanel, viewportPanel);
 			}
 		}
 		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT);
@@ -693,6 +702,7 @@ public class SpellPreviewScreen extends Screen {
 		DockPanel help = panelMap.get("help");
 
 		DockGroup viewportGroup = new DockGroup(viewport, help);
+		if (panelMap.containsKey("spell_title_preview")) viewportGroup.addPanel(1, panelMap.get("spell_title_preview"));
 		DockGroup actionListGroup = new DockGroup(actions);
 		DockGroup editorGroup = new DockGroup(properties);
 		DockGroup controlsGroup = new DockGroup(controls, perf);
@@ -888,7 +898,7 @@ public class SpellPreviewScreen extends Screen {
 			}
 			markChanged();
 			refreshPreviewActionIds();
-			if (autoReplay) replaySelectedPhase();
+			if (autoReplay && SpellTitlePreviewDockPanel.titleAction(newAction) == null) replaySelectedPhase();
 		}
 	}
 
@@ -897,7 +907,8 @@ public class SpellPreviewScreen extends Screen {
 		definition.setDisplayName(value);
 		if (actionListPanel != null) actionListPanel.markDirty();
 		markChanged();
-		if (autoReplay) replaySelectedPhase();
+		if (autoReplay && (actionEditorPanel == null
+				|| SpellTitlePreviewDockPanel.titleAction(actionEditorPanel.getCurrentAction()) == null)) replaySelectedPhase();
 	}
 
 	private SpellDefinition currentDefinitionForRawJson() {
@@ -947,6 +958,18 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		actionEditorPanel.setAction(action, index);
+		if (editorMode == EditorMode.SPELL && SpellTitlePreviewDockPanel.titleAction(action) != null) {
+			if (viewport.isPerspectiveCaptured()) releasePerspectiveViewportFocus();
+			scene.pause();
+			titlePreviewPanel.select(definition.id, phaseController.getSelectedPhaseId(), actionListPanel.getSelectedPath());
+			activateDockPanel(titlePreviewPanel);
+		} else {
+			titlePreviewPanel.clear();
+			DockGroup group = dockLayout == null ? null : dockLayout.findGroupContaining(titlePreviewPanel);
+			if (group != null && group.getActivePanel() == titlePreviewPanel && group.getPanels().contains(viewportPanel)) {
+				activateDockPanel(viewportPanel);
+			}
+		}
 		syncEditorDockWidgetVisibility();
 	}
 
@@ -1732,6 +1755,8 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		scene.tick();
+		DockGroup titleGroup = dockLayout == null ? null : dockLayout.findGroupContaining(titlePreviewPanel);
+		titlePreviewPanel.tick(titleGroup != null && titleGroup.getActivePanel() == titlePreviewPanel);
 
 		// Perspective camera movement (delegated to ViewportDockPanel)
 		if (viewportPanel != null) {
@@ -2067,6 +2092,8 @@ public class SpellPreviewScreen extends Screen {
 		}
 
 		// === Below: no EditBox is focused, custom hotkeys active ===
+		if (dockLayout != null && dockLayout.getFocusedPanel() == titlePreviewPanel
+				&& titlePreviewPanel.keyPressed(keyCode, scanCode, modifiers)) return true;
 
 		// Ctrl+Z/Y for undo/redo
 		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {

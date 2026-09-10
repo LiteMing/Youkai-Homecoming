@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.client;
 
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraftforge.network.NetworkEvent;
 
 /** Server-authoritative snapshot of spell cards currently visible to one player. */
@@ -20,16 +21,27 @@ public class ActiveSpellHudToClient extends SerialPacketBase {
 		public boolean hostile;
 		@SerialClass.SerialField
 		public boolean own;
+		@SerialClass.SerialField
+		public String titleId = "";
+		@SerialClass.SerialField
+		public CompoundTag presentation = new CompoundTag();
 
 		public Entry() {
 		}
 
 		public Entry(int hostId, String spellId, String displayName, boolean hostile, boolean own) {
+			this(hostId, spellId, displayName, hostile, own, "", new CompoundTag());
+		}
+
+		public Entry(int hostId, String spellId, String displayName, boolean hostile, boolean own,
+				String titleId, CompoundTag presentation) {
 			this.hostId = hostId;
 			this.spellId = spellId == null ? "" : spellId;
 			this.displayName = displayName == null ? "" : displayName;
 			this.hostile = hostile;
 			this.own = own;
+			this.titleId = titleId == null ? "" : titleId;
+			this.presentation = presentation == null ? new CompoundTag() : presentation.copy();
 		}
 	}
 

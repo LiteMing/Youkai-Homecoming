@@ -28,8 +28,8 @@ import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItem;
 import dev.xkmc.youkaishomecoming.content.item.fluid.BottleTexture;
 import dev.xkmc.youkaishomecoming.content.item.fluid.BottledDrinkSet;
 import dev.xkmc.youkaishomecoming.content.item.fluid.SlipBottleItem;
-import dev.xkmc.youkaishomecoming.content.spell.client.SpellTitleOverlay;
 import dev.xkmc.youkaishomecoming.content.spell.client.ActiveSpellHudOverlay;
+import dev.xkmc.youkaishomecoming.content.spell.client.SpellTitleRenderer;
 import dev.xkmc.youkaishomecoming.content.pot.overlay.HintOverlay;
 import dev.xkmc.youkaishomecoming.content.pot.overlay.TileClientTooltip;
 import dev.xkmc.youkaishomecoming.content.pot.overlay.TileInfoDisplay;
@@ -143,7 +143,6 @@ public class YHClient {
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "power_info", new PowerInfoOverlay());
 		event.registerAbove(VanillaGuiOverlay.HOTBAR.id(), "auto_dodge_status", new AutoDodgeStatusOverlay());
 		event.registerAbove(VanillaGuiOverlay.BOSS_EVENT_PROGRESS.id(), "pvp_danmaku_status", new PvpDanmakuStatusOverlay());
-		event.registerAbove(VanillaGuiOverlay.BOSS_EVENT_PROGRESS.id(), "spell_title", new SpellTitleOverlay());
 		event.registerAbove(VanillaGuiOverlay.POTION_ICONS.id(), "active_spell_hud", new ActiveSpellHudOverlay());
 		event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "ysm_debug", YSMClientCompat::renderDebugOverlay);
 	}
@@ -201,6 +200,7 @@ public class YHClient {
 
 	@SubscribeEvent
 	public static void registerReloadListener(RegisterClientReloadListenersEvent event) {
+		event.registerReloadListener((ResourceManagerReloadListener) SpellTitleRenderer::onResourceReload);
 		event.registerReloadListener((ResourceManagerReloadListener) YSMCompatConfig::reload);
 		event.registerReloadListener((ResourceManagerReloadListener) resourceManager ->
 				Minecraft.getInstance().execute(dev.xkmc.youkaishomecoming.compat.ysm.YsmProjectileRenderBridge::clear));

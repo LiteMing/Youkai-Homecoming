@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.*;
 import dev.xkmc.youkaishomecoming.content.spell.mover.FormulaExpr;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellMovementDirective;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -1905,15 +1906,55 @@ public class ActionEditorPanel {
 	}
 
 	private void buildShowSpellTitleRows(ShowSpellTitleAction sta) {
+		addStringRow("Display Name", spellDisplayNameSupplier.get(), spellDisplayNameUpdater);
 		addStringRow("Description", sta.description(), v ->
 				notifySimple(old -> new ShowSpellTitleAction("", v,
-						((ShowSpellTitleAction) old).duration(), ((ShowSpellTitleAction) old).radius())));
+						((ShowSpellTitleAction) old).duration(), ((ShowSpellTitleAction) old).radius(),
+						((ShowSpellTitleAction) old).presentation())));
 		addIntRow("Duration", sta.duration(), v ->
 				notifySimple(old -> new ShowSpellTitleAction("",
-						((ShowSpellTitleAction) old).description(), v, ((ShowSpellTitleAction) old).radius())));
+						((ShowSpellTitleAction) old).description(), v, ((ShowSpellTitleAction) old).radius(),
+						((ShowSpellTitleAction) old).presentation())));
 		addDoubleRow("Radius", sta.radius(), v ->
 				notifySimple(old -> new ShowSpellTitleAction("",
-						((ShowSpellTitleAction) old).description(), ((ShowSpellTitleAction) old).duration(), v)));
+						((ShowSpellTitleAction) old).description(), ((ShowSpellTitleAction) old).duration(), v,
+						((ShowSpellTitleAction) old).presentation())));
+		SpellTitleStyle style = sta.presentation();
+		addSectionHeader(spellTitleLabel("presentation"));
+		addStringRow(spellTitleLabel("background"), style.background().map(ResourceLocation::toString).orElse(""), v -> {
+			ResourceLocation texture = ResourceLocation.tryParse(v.trim());
+			if (v.isBlank() || texture != null) {
+				updateSpellTitleStyle(s -> s.withBackground(v.isBlank() ? Optional.empty() : Optional.of(texture)), false);
+			}
+		});
+		addFloatRow(spellTitleLabel("background_scale"), style.backgroundScale().orElseGet(
+				() -> YHModConfig.CLIENT.spellTitleBackgroundScale.get().floatValue()), v -> {
+			if (Float.isFinite(v) && v >= 0.05f && v <= 8) updateSpellTitleStyle(s -> s.withBackgroundScale(v), false);
+		});
+		addFloatRow(spellTitleLabel("background_x"), style.backgroundX().orElseGet(
+				() -> YHModConfig.CLIENT.spellTitleBackgroundX.get().floatValue()), v -> {
+			if (Float.isFinite(v) && Math.abs(v) <= 4096) updateSpellTitleStyle(s -> s.withBackgroundX(v), false);
+		});
+		addFloatRow(spellTitleLabel("background_y"), style.backgroundY().orElseGet(
+				() -> YHModConfig.CLIENT.spellTitleBackgroundY.get().floatValue()), v -> {
+			if (Float.isFinite(v) && Math.abs(v) <= 4096) updateSpellTitleStyle(s -> s.withBackgroundY(v), false);
+		});
+		addColorRow(spellTitleLabel("gradient_start"), style.gradientStart().orElseGet(
+				() -> YHModConfig.CLIENT.spellTitleGradientStart.get()), v -> updateSpellTitleStyle(s -> s.withGradientStart(v), false));
+		addColorRow(spellTitleLabel("gradient_end"), style.gradientEnd().orElseGet(
+				() -> YHModConfig.CLIENT.spellTitleGradientEnd.get()), v -> updateSpellTitleStyle(s -> s.withGradientEnd(v), false));
+		addButtonRow(spellTitleLabel("reset"), () -> updateSpellTitleStyle(s -> SpellTitleStyle.DEFAULT, true));
+	}
+
+	private static String spellTitleLabel(String key) {
+		return Component.translatable("youkaishomecoming.spell_editor.title." + key).getString();
+	}
+
+	private void updateSpellTitleStyle(Function<SpellTitleStyle, SpellTitleStyle> update, boolean refresh) {
+		notifySimple(old -> {
+			var title = (ShowSpellTitleAction) old;
+			return new ShowSpellTitleAction("", title.description(), title.duration(), title.radius(), update.apply(title.presentation()));
+		}, refresh);
 	}
 
 	private void buildSetSpellCircleRows(SetSpellCircleAction sca) {

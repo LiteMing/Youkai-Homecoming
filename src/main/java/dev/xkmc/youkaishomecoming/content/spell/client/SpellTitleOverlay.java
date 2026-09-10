@@ -1,116 +1,116 @@
 package dev.xkmc.youkaishomecoming.content.spell.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
-import net.minecraft.Util;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellTitleStyle;
+import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.Mth;
-import net.minecraftforge.client.gui.overlay.ForgeGui;
-import net.minecraftforge.client.gui.overlay.IGuiOverlay;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.level.LevelEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
 
-public class SpellTitleOverlay implements IGuiOverlay {
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
-	private static Entry current;
+/** Transient introduction cues; only an authoritative HUD row can keep a title visible. */
+@Mod.EventBusSubscriber(value = Dist.CLIENT, modid = YoukaisHomecoming.MODID)
+public final class SpellTitleOverlay {
 
-	public static void show(String name, String description, int duration) {
-		String title = localize(name);
-		String desc = description == null || description.isBlank() ? "" : localize(description);
-		current = new Entry(title, desc, Util.getMillis(), Math.max(20, duration) * 50L);
+	private static final Map<String, Entry> ACTIVE = new LinkedHashMap<>();
+
+	private SpellTitleOverlay() {}
+
+	public static void show(String titleId, String name, String description, int duration, CompoundTag presentation) {
+		if (titleId == null || titleId.isBlank() || ACTIVE.containsKey(titleId)) return;
+		SpellTitleStyle style = SpellTitleStyle.fromTag(presentation);
+		ACTIVE.put(titleId, new Entry(localize(name), localize(description), Math.max(20, duration), style));
 	}
 
-	@Override
-	public void render(ForgeGui gui, GuiGraphics g, float pTick, int width, int height) {
+	static boolean isAnimating(String titleId) {
+		return ACTIVE.containsKey(titleId);
+	}
+
+	static void synchronize(List<String> activeIds) {
+		ACTIVE.entrySet().removeIf(cue -> {
+			if (activeIds.contains(cue.getKey())) {
+				cue.getValue().seenActive = true;
+				return false;
+			}
+			// Allow the first snapshot to arrive after the cue, but cancel an ended card.
+			return cue.getValue().seenActive;
+		});
+	}
+
+	static void clear() {
+		ACTIVE.clear();
+	}
+
+	static void advance() {
+		ACTIVE.values().removeIf(entry -> ++entry.age >= entry.duration);
+	}
+
+	@SubscribeEvent
+	public static void tick(TickEvent.ClientTickEvent event) {
+		if (event.phase != TickEvent.Phase.END) return;
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.player == null || mc.screen != null || current == null) {
-			return;
+		if (mc.level == null) {
+			clear();
+			ActiveSpellHudOverlay.clear();
+		} else if (!mc.isPaused()) {
+			advance();
 		}
-		long elapsed = Util.getMillis() - current.startedAt();
-		if (elapsed >= current.durationMs()) {
-			current = null;
-			return;
+	}
+
+	@SubscribeEvent
+	public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+		clear();
+		ActiveSpellHudOverlay.clear();
+	}
+
+	@SubscribeEvent
+	public static void unload(LevelEvent.Unload event) {
+		if (event.getLevel().isClientSide()) {
+			clear();
+			ActiveSpellHudOverlay.clear();
 		}
-		float progress = Mth.clamp(elapsed / (float) current.durationMs(), 0.0f, 1.0f);
-		float alpha = Math.min(smooth(progress / 0.16f), 1.0f - smooth((progress - 0.82f) / 0.18f));
-		if (alpha <= 0) {
-			return;
+	}
+
+	static void renderIntroductions(GuiGraphics g, Font font, float partialTick, int width, int height,
+			List<ActiveSpellHudOverlay.Row> rows) {
+		int index = 0;
+		for (var cue : ACTIVE.entrySet()) {
+			Entry entry = cue.getValue();
+			var destination = rows.stream().filter(row -> row.titleId().equals(cue.getKey())).findFirst().orElse(null);
+			float progress = Mth.clamp((entry.age + partialTick) / entry.duration, 0, 1);
+			entry.renderer.render(g, font, entry.title, entry.description, entry.style,
+					progress, width, height, index++, destination);
 		}
-		float enter = easeOut(Mth.clamp(progress / 0.28f, 0.0f, 1.0f));
-		float exit = easeIn(Mth.clamp((progress - 0.86f) / 0.14f, 0.0f, 1.0f));
-		int panelW = Math.min(width - 28, 430);
-		int panelH = current.description().isBlank() ? 32 : 46;
-		int x = Math.round((width - panelW) / 2.0f + (1.0f - enter) * 90.0f - exit * 140.0f);
-		int y = Math.max(22, Math.round(height * 0.18f));
-		int revealW = Math.round(panelW * Mth.clamp(enter * 1.1f, 0.0f, 1.0f));
-		if (revealW <= 0) {
-			return;
+	}
+
+	private static String localize(String value) {
+		return value == null || value.isBlank() ? "" : SpellDisplay.displayText(value).getString();
+	}
+
+	private static final class Entry {
+		final String title, description;
+		final int duration;
+		final SpellTitleStyle style;
+		int age;
+		boolean seenActive;
+		final SpellTitleRenderer renderer = new SpellTitleRenderer();
+
+		Entry(String title, String description, int duration, SpellTitleStyle style) {
+			this.title = title;
+			this.description = description;
+			this.duration = duration;
+			this.style = style;
 		}
-
-		RenderSystem.enableBlend();
-		int bg = argb(alpha * 0.48f, 0x08080C);
-		int line = argb(alpha * 0.9f, 0xFFE080);
-		int red = argb(alpha * 0.85f, 0xB92834);
-		g.fill(x, y, x + revealW, y + panelH, bg);
-		g.fill(x, y, x + revealW, y + 1, line);
-		g.fill(x, y + panelH - 1, x + revealW, y + panelH, line);
-		g.fill(x + 3, y + 3, x + 6, y + panelH - 3, red);
-		g.fill(x + revealW - 40, y + 2, x + revealW - 38, y + panelH - 2, argb(alpha * 0.35f, 0xFFFFFF));
-
-		Font font = gui.getFont();
-		int textX = x + 16 + Math.round((1.0f - enter) * 18.0f);
-		int titleY = y + (current.description().isBlank() ? 12 : 9);
-		drawScaled(g, font, fit(font, current.title(), panelW - 34, 1.25f), textX, titleY,
-				1.25f, argb(alpha, 0xFFFFFF), true);
-		if (!current.description().isBlank()) {
-			g.drawString(font, fit(font, current.description(), panelW - 38, 1.0f), textX + 2, y + 29,
-					argb(alpha * 0.86f, 0xD8E6FF), true);
-		}
-		RenderSystem.disableBlend();
-	}
-
-	private static String localize(String keyOrText) {
-		if (keyOrText == null || keyOrText.isBlank()) {
-			return "";
-		}
-		return SpellDisplay.displayText(keyOrText).getString();
-	}
-
-	private static void drawScaled(GuiGraphics g, Font font, String text, int x, int y,
-								   float scale, int color, boolean shadow) {
-		g.pose().pushPose();
-		g.pose().translate(x, y, 0);
-		g.pose().scale(scale, scale, scale);
-		g.drawString(font, text, 0, 0, color, shadow);
-		g.pose().popPose();
-	}
-
-	private static String fit(Font font, String text, int maxWidth, float scale) {
-		int limit = Math.max(8, Math.round(maxWidth / scale));
-		if (font.width(text) <= limit) {
-			return text;
-		}
-		return font.plainSubstrByWidth(text, Math.max(0, limit - font.width("..."))) + "...";
-	}
-
-	private static float smooth(float t) {
-		t = Mth.clamp(t, 0.0f, 1.0f);
-		return t * t * (3.0f - 2.0f * t);
-	}
-
-	private static float easeOut(float t) {
-		return 1.0f - (float) Math.pow(1.0f - t, 3.0);
-	}
-
-	private static float easeIn(float t) {
-		return t * t * t;
-	}
-
-	private static int argb(float alpha, int rgb) {
-		int a = Math.round(Mth.clamp(alpha, 0.0f, 1.0f) * 255.0f);
-		return a << 24 | rgb & 0xFFFFFF;
-	}
-
-	private record Entry(String title, String description, long startedAt, long durationMs) {
 	}
 }

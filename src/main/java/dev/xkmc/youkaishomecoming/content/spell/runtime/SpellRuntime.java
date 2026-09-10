@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellTitleStyle;
 import dev.xkmc.youkaishomecoming.content.spell.definition.Transition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.TransitionMode;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
@@ -48,6 +49,8 @@ public class SpellRuntime {
 	private boolean enteredCurrentPhase;
 	private boolean presentationStarted;
 	private boolean spellTitleShown;
+	private String spellTitleId = "";
+	private net.minecraft.nbt.CompoundTag spellTitlePresentation = new net.minecraft.nbt.CompoundTag();
 	private final Map<String, Double> variables = new HashMap<>();
 	@Nullable
 	private Set<String> trackWritesTo = null;
@@ -170,7 +173,22 @@ public class SpellRuntime {
 	}
 
 	public void markSpellTitleShown() {
+		markSpellTitleShown(SpellTitleStyle.DEFAULT);
+	}
+
+	public void markSpellTitleShown(SpellTitleStyle presentation) {
 		spellTitleShown = true;
+		// A title cue identifies this execution, including repeated phases and proxy casters.
+		spellTitleId = java.util.UUID.randomUUID().toString();
+		spellTitlePresentation = presentation.toTag();
+	}
+
+	public String getSpellTitleId() {
+		return spellTitleId;
+	}
+
+	public net.minecraft.nbt.CompoundTag getSpellTitlePresentation() {
+		return spellTitlePresentation.copy();
 	}
 
 	public int getSpellDurationTicks() {
@@ -904,6 +922,8 @@ public class SpellRuntime {
 		writeAction(tag, "SpellBreakAction", spellBreakAction);
 		tag.putBoolean("EnteredCurrentPhase", enteredCurrentPhase);
 		tag.putBoolean("SpellTitleShown", spellTitleShown);
+		tag.putString("SpellTitleId", spellTitleId);
+		tag.put("SpellTitlePresentation", spellTitlePresentation.copy());
 		if (!variables.isEmpty()) {
 			var varsTag = new net.minecraft.nbt.CompoundTag();
 			for (var entry : variables.entrySet()) {
@@ -989,6 +1009,11 @@ public class SpellRuntime {
 			this.enteredCurrentPhase = tag.contains("EnteredCurrentPhase") ?
 					tag.getBoolean("EnteredCurrentPhase") : true;
 			this.spellTitleShown = tag.getBoolean("SpellTitleShown");
+			this.spellTitleId = tag.getString("SpellTitleId");
+			this.spellTitlePresentation = tag.getCompound("SpellTitlePresentation").copy();
+			if (spellTitleShown && spellTitleId.isEmpty()) {
+				spellTitleId = java.util.UUID.randomUUID().toString();
+			}
 			if (tag.contains("Variables")) {
 				var varsTag = tag.getCompound("Variables");
 				for (String key : varsTag.getAllKeys()) {

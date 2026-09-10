@@ -31,6 +31,13 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue activeSpellHudYAnchor;
 		public final ForgeConfigSpec.IntValue activeSpellHudYOffset;
 		public final ForgeConfigSpec.DoubleValue activeSpellHudScale;
+		public final ForgeConfigSpec.DoubleValue spellTitleScale;
+		public final ForgeConfigSpec.DoubleValue spellTitleDockStart;
+		public final ForgeConfigSpec.DoubleValue spellTitleBackgroundScale;
+		public final ForgeConfigSpec.DoubleValue spellTitleBackgroundX;
+		public final ForgeConfigSpec.DoubleValue spellTitleBackgroundY;
+		public final ForgeConfigSpec.IntValue spellTitleGradientStart;
+		public final ForgeConfigSpec.IntValue spellTitleGradientEnd;
 		public final ForgeConfigSpec.BooleanValue combatStatusHudEnabled;
 		public final ForgeConfigSpec.IntValue combatStatusHudXAnchor;
 		public final ForgeConfigSpec.IntValue combatStatusHudXOffset;
@@ -136,6 +143,30 @@ public class YHModConfig {
 					activeSpellHudScale = builder.comment("Font and panel scale.")
 							.translation("config.youkaishomecoming.client.hud.active_spell.scale")
 							.defineInRange("scale", 1.0, 0.5, 3.0);
+				}
+				builder.pop();
+
+				builder.translation("config.youkaishomecoming.client.hud.spell_title").push("spell_title");
+				{
+					spellTitleScale = builder.comment("Spell title font scale during its introduction.")
+							.translation("config.youkaishomecoming.client.hud.spell_title.scale")
+							.defineInRange("scale", 1.6, 0.5, 3.0);
+					spellTitleDockStart = builder.comment("Fraction of show_spell_title duration when movement into the active spell HUD begins.")
+							.translation("config.youkaishomecoming.client.hud.spell_title.dockStart")
+							.defineInRange("dockStart", 0.68, 0.2, 0.9);
+					spellTitleBackgroundScale = builder.comment("Default background image scale; spell presentation fields can override it.")
+							.translation("config.youkaishomecoming.client.hud.spell_title.backgroundScale")
+							.defineInRange("backgroundScale", 1.0, 0.05, 8.0);
+					spellTitleBackgroundX = builder.comment("Default background image horizontal offset in GUI pixels.")
+							.translation("config.youkaishomecoming.client.hud.spell_title.backgroundX")
+							.defineInRange("backgroundX", 0.0, -4096, 4096);
+					spellTitleBackgroundY = builder.comment("Default background image vertical offset in GUI pixels.")
+							.translation("config.youkaishomecoming.client.hud.spell_title.backgroundY")
+							.defineInRange("backgroundY", 0.0, -4096, 4096);
+					spellTitleGradientStart = builder.comment("Default left end of the title background gradient (ARGB).").translation("config.youkaishomecoming.client.hud.spell_title.gradientStart")
+							.defineInRange("gradientStart", 0xC0224F96, Integer.MIN_VALUE, Integer.MAX_VALUE);
+					spellTitleGradientEnd = builder.comment("Default right end of the title background gradient (ARGB).").translation("config.youkaishomecoming.client.hud.spell_title.gradientEnd")
+							.defineInRange("gradientEnd", 0x00224F96, Integer.MIN_VALUE, Integer.MAX_VALUE);
 				}
 				builder.pop();
 

@@ -1801,43 +1801,17 @@ public class MigratedSpellCards {
 						new SpellConditions.CompareNumbers(stepVar, "<", NumberProvider.constant(3)))),
 				List.of(sweepInit), List.of());
 
-		// === Lasers (step == 3): 80组预生成树状激光 (20tick × 4组/tick) ===
-		// 每组: 1主(random sphere) + 3分叉(endpoint, 120°@45°) = 4条
-		// 方向在Java中预计算, 避免NumberProvider无法做相对方向旋转的限制
-		var laserGroups = new ArrayList<SpellAction>();
-		for (int g = 0; g < 80; g++) {
-			laserGroups.add(buildRemiliaLaserGroup());
-		}
-		// 每tick发射4组 (laserGroups按顺序消耗, 通过变量$lt索引)
-		var laserBurst = new BurstAction(20, 1, "lt", List.<SpellAction>of(
-				new SpellActions.SequenceAction(List.of(
-						laserGroups.get(0), laserGroups.get(1), laserGroups.get(2), laserGroups.get(3)
-				))));
-		// 上面只用了4个, 改为: 用BurstAction变量$lt来索引, 但SequenceAction不支持动态索引
-		// 简化: 直接把80组打平成20-tick burst, 每tick body含4个SequenceAction
-		var perTickActions = new ArrayList<SpellAction>();
-		for (int t = 0; t < 20; t++) {
-			var tickGroup = new ArrayList<SpellAction>();
-			for (int i = 0; i < 4; i++) {
-				tickGroup.add(laserGroups.get(t * 4 + i));
-			}
-			perTickActions.add(new SpellActions.SequenceAction(tickGroup));
-		}
-		// 用DelayAction逐tick触发
-		var laserAllActions = new ArrayList<SpellAction>();
-		for (int t = 0; t < 20; t++) {
-			if (t == 0) {
-				laserAllActions.add(perTickActions.get(0));
-			} else {
-				laserAllActions.add(new DelayAction(NumberProvider.constant(t), List.of(perTickActions.get(t))));
-			}
-		}
+		// 20 ticks × 4 groups × (1 trunk + 3 branches). Keep one editable group,
+		// sampling its frame at emission time instead of baking 320 random nodes.
+		var laserBurst = new BurstAction(20, 1, "lt", List.of(
+				new SpellActions.RepeatAction(NumberProvider.constant(4), "lg",
+						List.of(buildRemiliaLaserGroup()))));
 		var laserAction = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.TickInterval(20, 0),
 						new SpellConditions.CompareNumbers(stepVar, "==", NumberProvider.constant(3)),
 						new SpellConditions.TargetIsFallFlying())),
-				List.of(new SpellActions.SequenceAction(laserAllActions)), List.of());
+				List.of(laserBurst), List.of());
 
 		// === 冈格尼尔 (Gungnir) 蓄力系统 ===
 		// 每tick: dist>=40 → gung+1, dist<40 → gung-2, clamp 0~100
@@ -1893,8 +1867,10 @@ public class MigratedSpellCards {
 								Optional.empty(), Optional.empty(), Optional.empty(), 1)
 				))), List.of());
 
-		// 阶段B (gung 90~99): 快速转向target, MAGENTA, CASTER_FACING延伸
-		// 从头顶2格处沿forward方向延伸, 颜色品红
+		// 阶段B (gung 90~99): 沿施法者到目标的连线延伸，不依赖实体视线。
+		var gungAimFraction = new NumberProviders.Div(
+				new NumberProviders.Mul(new NumberProviders.Div(new NumberProviders.Variable("gi"), gungCount), gungLen),
+				new NumberProviders.Max(NumberProvider.constant(1), new NumberProviders.Distance()));
 		var gungVisualAim = new SpellActions.ConditionalAction(
 				new SpellConditions.AndCondition(List.of(
 						new SpellConditions.TickInterval(4, 0),
@@ -1905,13 +1881,8 @@ public class MigratedSpellCards {
 								NumberProvider.constant(1), NumberProvider.constant(0), NumberProvider.constant(8),
 								NumberProvider.constant(0), NumberProvider.constant(0), NumberProvider.constant(0),
 								PatternType.AIMED,
-								new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-										new NumberProviders.Mul(shuttleWidth, new NumberProviders.GaussianRandom(0, 1)),
-										NumberProvider.constant(2),
-										new NumberProviders.Mul(
-												new NumberProviders.Div(new NumberProviders.Variable("gi"), gungCount),
-												gungLen),
-										NumberProvider.constant(0)),
+								RemiliaSpellGeometry.towardTarget(gungAimFraction,
+										new NumberProviders.Mul(shuttleWidth, new NumberProviders.GaussianRandom(0, 1))),
 								new AimMode.AimModes.DirectionToTarget(),
 								Optional.of(new MoverConfigs.ZeroMoverConfig()),
 								Optional.empty(), Optional.empty(), Optional.empty(), 1)
@@ -1923,25 +1894,16 @@ public class MigratedSpellCards {
 						NumberProvider.constant(1), NumberProvider.constant(3), NumberProvider.constant(30),
 						new NumberProviders.GaussianRandom(0, 1), NumberProvider.constant(0),
 						new NumberProviders.GaussianRandom(0, 1), PatternType.AIMED,
-						new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-								new NumberProviders.GaussianRandom(0, 0.15),
-								new NumberProviders.GaussianRandom(0, 0.15),
-								new NumberProviders.Mul(
-										new NumberProviders.Div(new NumberProviders.Variable("si"), NumberProvider.constant(80)),
-										new NumberProviders.Distance()),
-								NumberProvider.constant(0)),
+						RemiliaSpellGeometry.towardTarget(
+								new NumberProviders.Div(new NumberProviders.Variable("si"), NumberProvider.constant(80)),
+								new NumberProviders.GaussianRandom(0, 0.15)),
 						new AimMode.AimModes.DirectionToTarget(),
 						Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), 1)
 		));
 		var spearFire = new SpellActions.ConditionalAction(
 				new SpellConditions.CompareNumbers(new NumberProviders.Variable("gung"), ">=", NumberProvider.constant(100)),
 				List.of(new SpellActions.SequenceAction(List.of(
-						new TeleportAction(
-								new OriginConfig(OriginConfig.OriginMode.CASTER_FACING,
-										NumberProvider.constant(0), NumberProvider.constant(0),
-										new NumberProviders.Div(new NumberProviders.Distance(), NumberProvider.constant(2)),
-										NumberProvider.constant(0)),
-								true),
+						new TeleportAction(RemiliaSpellGeometry.midpoint(), true),
 						spearTrail,
 						new SpellActions.SetVariable("gung", new NumberProviders.Constant(0))))),
 				List.of());
@@ -2240,47 +2202,35 @@ public class MigratedSpellCards {
 		return buildDefinition(id, mainPhase, phase, "touhou_little_maid:komeiji_koishi");
 	}
 
-	/**
-	 * Remilia: 构建单组激光 (1主 + 3一级分叉 = 4条/组)
-	 * 方向在Java中用随机数直接计算, 传入FixedDirection, 避免NumberProvider无法做相对方向旋转的限制
-	 * Legacy: dir = Gaussian(3).normalize(), len=rand(25,40), 3 branches at endpoint via asNormal().rotateDegrees
-	 */
+	/** One runtime-sampled trunk and three branches sharing its exact endpoint/frame. */
 	private static SpellAction buildRemiliaLaserGroup() {
-		var rand = new java.util.Random();
-		// Primary direction: uniform sphere via Gaussian normalization
-		Vec3 dir = new Vec3(rand.nextGaussian(), rand.nextGaussian(), rand.nextGaussian()).normalize();
-		if (dir.lengthSqr() < 0.5) dir = new Vec3(0, 1, 0); // fallback
-		int len = 25 + rand.nextInt(16); // 25-40
-
-		// Primary laser
-		var primary = new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
-				NumberProvider.constant(140), NumberProvider.constant(len),
-				NumberProvider.constant(0), NumberProvider.constant(0),
-				new AimMode.AimModes.FixedDirection(dir), OriginConfig.caster(),
-				Optional.empty(), 10, 10, 10, Optional.empty(), Optional.empty(), Optional.empty());
-
-		// Endpoint
-		Vec3 endpoint = dir.scale(len); // relative to caster center
-		var endOrigin = new OriginConfig(OriginConfig.OriginMode.CASTER,
-				NumberProvider.constant(endpoint.x), NumberProvider.constant(endpoint.y),
-				NumberProvider.constant(endpoint.z), NumberProvider.constant(0));
-
-		// 3 branches: perpendicular to primary, 120° apart, 45° cone angle
-		DanmakuHelper.Orientation ori = DanmakuHelper.getOrientation(dir).asNormal();
-		double baseAngle = rand.nextDouble() * 360;
-		var actions = new ArrayList<SpellAction>();
-		actions.add(primary);
-		for (int j = 0; j < 3; j++) {
-			double angle = (baseAngle + j * 120) / 180.0 * Math.PI;
-			double ver = 45.0 / 180.0 * Math.PI;
-			Vec3 branchDir = ori.rotate(angle, ver);
-			actions.add(new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
-					NumberProvider.constant(140), NumberProvider.constant(80),
-					NumberProvider.constant(0), NumberProvider.constant(0),
-					new AimMode.AimModes.FixedDirection(branchDir), endOrigin,
-					Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty()));
+		// Equal-area latitude samples keep the old spherical distribution without
+		// adding a new expression/aim mode solely for this built-in spell.
+		var latitudes = new ArrayList<Double>();
+		for (int i = 0; i < 64; i++) {
+			latitudes.add(Math.toDegrees(Math.asin((i + 0.5) / 32 - 1)));
 		}
-		return new SpellActions.SequenceAction(actions);
+		var forward = new AimMode.AimModes.FixedDirection(new Vec3(0, 0, 1));
+		var trunkOrigin = RemiliaSpellGeometry.laserOrigin(false);
+		var primary = new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+				NumberProvider.constant(140), RemiliaSpellGeometry.number("$laser_length"),
+				NumberProvider.constant(0), NumberProvider.constant(0),
+				forward, trunkOrigin, Optional.empty(), 10, 10, 10,
+				Optional.empty(), Optional.empty(), Optional.empty())
+				.withGroupRotation(Optional.of(RemiliaSpellGeometry.laserRotation(false)));
+		// origin.rotation applies the same world yaw to this offset and the firing frame.
+		var endOrigin = RemiliaSpellGeometry.laserOrigin(true);
+		var branch = new FireLaserAction(YHDanmaku.Laser.LASER, DyeColor.LIGHT_BLUE,
+				NumberProvider.constant(140), NumberProvider.constant(80),
+				RemiliaSpellGeometry.number("$laser_spin + $lb * 120"), NumberProvider.constant(-45),
+				forward, endOrigin, Optional.empty(), 20, 10, 10, Optional.empty(), Optional.empty())
+				.withGroupRotation(Optional.of(RemiliaSpellGeometry.laserRotation(true)));
+		return new SpellActions.SequenceAction(List.of(
+				new SpellActions.SetVariable("laser_yaw", new NumberProviders.RandomRange(0, 360)),
+				new SpellActions.SetVariable("laser_pitch", new NumberProviders.RandomChoice(latitudes)),
+				new SpellActions.SetVariable("laser_length", new NumberProviders.RandomRange(25, 40)),
+				new SpellActions.SetVariable("laser_spin", new NumberProviders.RandomRange(0, 360)),
+				primary, new SpellActions.RepeatAction(NumberProvider.constant(3), "lb", List.of(branch))));
 	}
 
 	// ============================

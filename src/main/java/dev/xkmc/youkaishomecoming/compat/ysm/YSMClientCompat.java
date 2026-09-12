@@ -443,7 +443,7 @@ public class YSMClientCompat {
 			}
 		}
 		boolean angry = isAngryExpression(e);
-		String overrideHint = e instanceof YsmRenderOverrideTarget target ? target.getYsmAnimationOverride() : "";
+		String overrideHint = YsmSpellHintClient.animationOverride(e);
 		if (presentation.body() != null) {
 			// Exact native clip; declared absence falls back to the ordinary movement/legacy hints.
 			var catalog = YsmClientPresentationBridge.catalog(modelId);
@@ -461,7 +461,7 @@ public class YSMClientCompat {
 				hints.add("calm");
 			}
 		}
-		if (angry && !presentation.combatExpressionRouted() && !overridesPassiveExpression(overrideHint)) {
+		if (angry && !presentation.combatExpressionRouted() && !YsmAnimationHints.overridesPassiveExpression(overrideHint)) {
 			hints.add(YSMCompatConfig.expressionToken(modelId, "angry"));
 		}
 		if (!actionHint.isBlank()) {
@@ -475,39 +475,7 @@ public class YSMClientCompat {
 	}
 
 	private static String actionAnimationHint(String modelId, String animation) {
-		if (animation.isBlank()) {
-			return "";
-		}
-		List<String> tokens = new ArrayList<>();
-		for (String token : splitAnimationHint(animation)) {
-			tokens.add(actionAnimationToken(modelId, token));
-		}
-		return String.join(" ", tokens);
-	}
-
-	private static String actionAnimationToken(String modelId, String token) {
-		String key = hintKey(token);
-		if (key.isBlank() || token.contains("=") || "fly".equals(key) || "walk".equals(key) ||
-				"calm".equals(key) || "climb".equals(key) || "climbing".equals(key)) {
-			return token;
-		}
-		String semantic = YSMCompatConfig.expressionToken(modelId, key);
-		int equals = semantic.indexOf('=');
-		if ("angry".equals(key) || "cast".equals(key) || "charge".equals(key) || "special".equals(key)) {
-			return semantic;
-		}
-		String candidates = equals >= 0 ? semantic.substring(equals + 1) : key;
-		return "special=" + candidates;
-	}
-
-	private static boolean overridesPassiveExpression(String animation) {
-		for (String token : splitAnimationHint(animation)) {
-			String key = hintKey(token);
-			if (!key.isBlank() && !"fly".equals(key) && !"walk".equals(key) && !"calm".equals(key)) {
-				return true;
-			}
-		}
-		return false;
+		return YsmAnimationHints.normalize(animation, key -> YSMCompatConfig.expressionToken(modelId, key));
 	}
 
 	private static List<String> splitAnimationHint(String animation) {
@@ -863,6 +831,7 @@ public class YSMClientCompat {
 			}
 		}
 		if (entity instanceof LivingEntity living) {
+			lines.add(new DebugLine("yh.spellHint", YsmSpellHintClient.animationOverride(living)));
 			if (living instanceof YsmRenderOverrideTarget target) {
 				lines.add(new DebugLine("yh.presentation", target.getYsmPresentation().expire(target.getYsmPresentationTime()).toTag().toString()));
 			}

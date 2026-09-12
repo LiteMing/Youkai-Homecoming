@@ -91,7 +91,7 @@ public final class YsmClientProfiles {
 		}
 		var resolved = YsmPresentationResolver.resolve(model, profile, signals, target.getYsmPresentation(), target.getYsmPresentationTime(), bindingParameters);
 		// Legacy spell hints retain their existing semantics and precedence over automatic actions.
-		if (!resolved.beaten() && resolved.body() != null && !resolved.body().explicit() && !target.getYsmAnimationOverride().isEmpty())
+		if (!resolved.beaten() && resolved.body() != null && !resolved.body().explicit() && !YsmSpellHintClient.animationOverride(entity).isEmpty())
 			return new YsmPresentationResolver.Resolved(null, resolved.parameters(), false,
 					resolved.combatExpressionRouted());
 		return resolved;

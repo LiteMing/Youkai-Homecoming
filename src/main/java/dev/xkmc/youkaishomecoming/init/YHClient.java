@@ -200,6 +200,8 @@ public class YHClient {
 
 	@SubscribeEvent
 	public static void registerReloadListener(RegisterClientReloadListenersEvent event) {
+		event.registerReloadListener((ResourceManagerReloadListener)
+				dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization::onResourceReload);
 		event.registerReloadListener((ResourceManagerReloadListener) SpellTitleRenderer::onResourceReload);
 		event.registerReloadListener((ResourceManagerReloadListener) YSMCompatConfig::reload);
 		event.registerReloadListener((ResourceManagerReloadListener) resourceManager ->

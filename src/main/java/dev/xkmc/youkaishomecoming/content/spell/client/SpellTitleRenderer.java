@@ -27,6 +27,9 @@ public final class SpellTitleRenderer {
 		resourceVersion++;
 	}
 
+	/** Also invalidates the editor's resource-pack image catalog. */
+	public static int resourceVersion() { return resourceVersion; }
+
 	/** A fully entered frame before docking, useful when arranging a portrait. */
 	public static float layoutProgress() {
 		return Math.max(0.2f, YHModConfig.CLIENT.spellTitleDockStart.get().floatValue() * 0.6f);
@@ -73,21 +76,43 @@ public final class SpellTitleRenderer {
 		if (alpha <= 0.02f) return;
 		int start = withAlpha(style.gradientStart().orElseGet(() -> YHModConfig.CLIENT.spellTitleGradientStart.get()), alpha);
 		int end = withAlpha(style.gradientEnd().orElseGet(() -> YHModConfig.CLIENT.spellTitleGradientEnd.get()), alpha);
+		var direction = style.gradientDirection().orElseGet(() -> YHModConfig.CLIENT.spellTitleGradientDirection.get());
+		if (direction.reversed()) {
+			int swap = start;
+			start = end;
+			end = swap;
+		}
 		g.pose().pushPose();
 		g.pose().translate(x, y, 0);
 		g.pose().scale(scale, scale, 1);
-		// Rotate the built-in vertical gradient into a horizontal one.
-		g.pose().pushPose();
-		g.pose().translate(-4, font.lineHeight + 2, 0);
-		g.pose().mulPose(Axis.ZP.rotationDegrees(-90));
-		g.fillGradient(0, 0, font.lineHeight + 4, font.width(text) + 7, start, end);
-		g.pose().popPose();
+		if (direction.vertical()) {
+			g.fillGradient(-4, -2, font.width(text) + 3, font.lineHeight + 2, start, end);
+		} else {
+			// Rotate the built-in vertical gradient into a horizontal one.
+			g.pose().pushPose();
+			g.pose().translate(-4, font.lineHeight + 2, 0);
+			g.pose().mulPose(Axis.ZP.rotationDegrees(-90));
+			g.fillGradient(0, 0, font.lineHeight + 4, font.width(text) + 7, start, end);
+			g.pose().popPose();
+		}
 		g.drawString(font, text, 0, 0, withAlpha(color, alpha), true);
 		g.pose().popPose();
 	}
 
 	public boolean isBackgroundMissing(SpellTitleStyle style) {
 		return style.background().isPresent() && background(style.background().get()) == null;
+	}
+
+	/** Fit a catalog candidate into a thumbnail without applying it to the title. */
+	public boolean renderImagePreview(GuiGraphics g, ResourceLocation texture, int x, int y, int width, int height) {
+		BackgroundImage background = background(texture);
+		if (background == null || width <= 0 || height <= 0) return false;
+		float fit = Math.min(width / (float) background.width, height / (float) background.height);
+		int imageWidth = Math.max(1, Math.round(background.width * fit));
+		int imageHeight = Math.max(1, Math.round(background.height * fit));
+		blitImage(g, background, x + (width - imageWidth) / 2, y + (height - imageHeight) / 2,
+				imageWidth, imageHeight, 1);
+		return true;
 	}
 
 	private void drawBackground(GuiGraphics g, SpellTitleStyle style, float x, float y, int panelWidth,
@@ -100,12 +125,15 @@ public final class SpellTitleRenderer {
 		y += style.backgroundY().orElseGet(() -> YHModConfig.CLIENT.spellTitleBackgroundY.get().floatValue());
 		int imageWidth = Math.max(1, Math.round(panelWidth * size * Mth.lerp(enter, 1.08f, 1)));
 		int imageHeight = Math.max(1, Math.round(imageWidth * background.height / (float) background.width));
+		blitImage(g, background, Math.round(x - imageWidth / 2f), Math.round(y - imageHeight / 2f), imageWidth, imageHeight, alpha);
+	}
+
+	private static void blitImage(GuiGraphics g, BackgroundImage background, int x, int y, int width, int height, float alpha) {
 		RenderSystem.enableBlend();
 		RenderSystem.defaultBlendFunc();
 		g.setColor(1, 1, 1, alpha);
 		try {
-			g.blit(background.texture, Math.round(x - imageWidth / 2f), Math.round(y - imageHeight / 2f),
-					imageWidth, imageHeight, 0, 0, background.width, background.height, background.width, background.height);
+			g.blit(background.texture, x, y, width, height, 0, 0, background.width, background.height, background.width, background.height);
 		} finally {
 			g.setColor(1, 1, 1, 1);
 			RenderSystem.disableBlend();

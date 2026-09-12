@@ -2,8 +2,8 @@ package dev.xkmc.youkaishomecoming.content.spell.action;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderConfig;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmSpellHints;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 
 /**
@@ -33,21 +33,10 @@ public record YsmRenderAction(String hint, int duration) implements SpellAction 
 
 	@Override
 	public void execute(SpellContext ctx) {
-		YsmRenderOverrideTarget target = null;
-		if (ctx.self() instanceof YsmRenderOverrideTarget selfTarget) {
-			target = selfTarget;
-		} else if (ctx.holder() instanceof YsmRenderOverrideTarget holderTarget) {
-			target = holderTarget;
-		}
-		if (target == null || !target.canMutateYsmPresentation()) return;
 		if (duration > dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.modelPresentationMaxTicks.get()) {
 			throw new IllegalArgumentException("YSM hint duration exceeds configured maximum");
 		}
-		if (hint.isBlank()) {
-			target.clearYsmRenderOverride("animation");
-		} else {
-			YsmRenderConfig.hint(hint, duration).apply(target);
-		}
+		YsmSpellHints.apply(ctx, hint, duration);
 	}
 
 	public YsmRenderAction withHint(String value) { return new YsmRenderAction(value, duration); }

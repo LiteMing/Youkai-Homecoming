@@ -46,7 +46,15 @@ public class SpellRuntime {
 	private int phaseTick;
 	private int totalTick;
 	private int hitCount;
+	/** Server game time, independent of phase ticks and delayed-action queues. */
+	private long casterInvulnerableUntil;
+	/** Server game time; independent from caster protection and the paused action clock. */
+	private long onTickFrozenUntil;
+	/** Paused time belongs only to on_tick and the delay/burst work it schedules. */
+	private int frozenOnTickTicks;
+	private boolean executingOnTick;
 	private boolean enteredCurrentPhase;
+	private int phaseRevision;
 	private boolean presentationStarted;
 	private boolean spellTitleShown;
 	private String spellTitleId = "";
@@ -115,6 +123,7 @@ public class SpellRuntime {
 		next.durationOverrideTicks = durationOverrideTicks;
 		if (declaredHealthPlan != null) {
 			next.totalTick = totalTick;
+			next.frozenOnTickTicks = frozenOnTickTicks;
 			next.hitCount = hitCount;
 			next.spellHealthCompleted = Math.min(next.getSpellHealthTotal(), spellHealthCompleted);
 		}
@@ -156,8 +165,32 @@ public class SpellRuntime {
 		return totalTick;
 	}
 
+	int getActionTick() {
+		return executingOnTick ? totalTick - frozenOnTickTicks : totalTick;
+	}
+
 	public int getHitCount() {
 		return hitCount;
+	}
+
+	/** Replaces the current window; zero explicitly releases it. */
+	public void setCasterInvulnerability(long gameTime, int duration) {
+		casterInvulnerableUntil = duration <= 0 ? 0
+				: gameTime > Long.MAX_VALUE - duration ? Long.MAX_VALUE : gameTime + duration;
+	}
+
+	/** Replaces the current onTick pause window; zero explicitly releases it. */
+	public void setOnTickFreeze(long gameTime, int duration) {
+		onTickFrozenUntil = duration <= 0 ? 0
+				: gameTime > Long.MAX_VALUE - duration ? Long.MAX_VALUE : gameTime + duration;
+	}
+
+	public boolean isCasterInvulnerable(long gameTime) {
+		return casterInvulnerableUntil > gameTime && !isFinished();
+	}
+
+	public boolean isOnTickFrozen(long gameTime) {
+		return onTickFrozenUntil > gameTime && !isFinished();
 	}
 
 	public int getTargetFlyTime() {
@@ -541,7 +574,7 @@ public class SpellRuntime {
 		float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 		SpellContext ctx = new SpellContext(holder, definition, this,
 				definition.difficulty.resolve(healthRatio));
-		ctx.executeList(phase.onEnter);
+		executeActions(ctx, phase.onEnter, false);
 	}
 
 	public void tick(CardHolder holder) {
@@ -577,23 +610,54 @@ public class SpellRuntime {
 			if (phase == null) return;
 		}
 
-		ctx.executeList(phase.onTick);
+		long gameTime = holder instanceof dev.xkmc.youkaishomecoming.content.spell.preview.PreviewCardHolder preview
+				? preview.getYsmPresentationTime() : holder.self().level().getGameTime();
+		tickCurrentPhase(ctx, gameTime);
+	}
 
-		// Execute scheduled delayed actions
-		executeScheduledActions(ctx);
-		tickChildRuntimes(holder);
+	/** Separate action time from the real cast age used by health, HUD and hold releases. */
+	void tickCurrentPhase(SpellContext ctx, long gameTime) {
+		PhaseDefinition phase = definition.getPhase(currentPhaseId);
+		if (phase == null) return;
+		int revision = phaseRevision;
+		boolean frozen = isOnTickFrozen(gameTime);
+		if (!frozen) executeActions(ctx, phase.onTick, true);
+
+		// on_enter/on_damage delays and projectile hold releases keep their real-time clock.
+		executeScheduledActions(scheduledActions, ctx, frozen);
+		executeScheduledActions(persistentScheduledActions, ctx, false);
+		if (!frozen) tickChildRuntimes(ctx.holder());
 
 		// Evaluate transitions (priority order)
-		for (Transition trans : phase.transitions) {
-			if (!trans.condition().test(ctx)) continue;
-			if (isPhaseLocked(trans.targetPhase())) continue;
-			executeTransition(ctx, trans);
-			break;
+		if (!frozen && phaseRevision == revision) {
+			boolean previous = executingOnTick;
+			executingOnTick = true;
+			try {
+				for (Transition trans : phase.transitions) {
+					if (!trans.condition().test(ctx)) continue;
+					if (isPhaseLocked(trans.targetPhase())) continue;
+					executeTransition(ctx, trans);
+					break;
+				}
+			} finally {
+				executingOnTick = previous;
+			}
+			if (phaseRevision == revision) phaseTick++;
 		}
+		if (frozen) frozenOnTickTicks++;
 
-		phaseTick++;
 		totalTick++;
-		triggerSpellHealthTimeout(holder);
+		triggerSpellHealthTimeout(ctx.holder());
+	}
+
+	private void executeActions(SpellContext ctx, List<SpellAction> actions, boolean onTick) {
+		boolean previous = executingOnTick;
+		executingOnTick = onTick;
+		try {
+			ctx.executeList(actions);
+		} finally {
+			executingOnTick = previous;
+		}
 	}
 
 	public void tick(SpellRuntimeHost host) {
@@ -610,7 +674,7 @@ public class SpellRuntime {
 				float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 				DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 				SpellContext ctx = new SpellContext(holder, definition, this, diff);
-				ctx.executeList(phase.onDamage);
+				executeActions(ctx, phase.onDamage, false);
 			}
 		}
 	}
@@ -620,6 +684,11 @@ public class SpellRuntime {
 	}
 
 	public void reset() {
+		dev.xkmc.youkaishomecoming.compat.ysm.YsmSpellHints.clearRuntime(this);
+		phaseRevision++;
+		casterInvulnerableUntil = 0;
+		onTickFrozenUntil = 0;
+		frozenOnTickTicks = 0;
 		presentationStarted = false;
 		spellTitleShown = false;
 		currentPhaseId = definition.entryPhase;
@@ -677,7 +746,7 @@ public class SpellRuntime {
 	private void doTransition(SpellContext ctx, ResourceLocation targetPhase, boolean clearScreen, boolean resetVars) {
 		PhaseDefinition oldPhase = definition.getPhase(currentPhaseId);
 		if (oldPhase != null) {
-			ctx.executeList(oldPhase.onExit);
+			executeActions(ctx, oldPhase.onExit, false);
 		}
 
 		if (clearScreen) {
@@ -688,6 +757,7 @@ public class SpellRuntime {
 		}
 
 		PhaseDefinition newPhase = definition.getPhase(targetPhase);
+		phaseRevision++;
 		currentPhaseId = targetPhase;
 		phaseTick = 0;
 		enteredCurrentPhase = false;
@@ -699,7 +769,7 @@ public class SpellRuntime {
 		}
 
 		if (newPhase != null) {
-			ctx.executeList(newPhase.onEnter);
+			executeActions(ctx, newPhase.onEnter, false);
 			enteredCurrentPhase = true;
 		}
 		notifyPhaseChange();
@@ -710,6 +780,11 @@ public class SpellRuntime {
 		if (phase == null) {
 			return;
 		}
+		dev.xkmc.youkaishomecoming.compat.ysm.YsmSpellHints.clearRuntime(this);
+		phaseRevision++;
+		casterInvulnerableUntil = 0;
+		onTickFrozenUntil = 0;
+		frozenOnTickTicks = 0;
 		currentPhaseId = targetPhase;
 		phaseTick = 0;
 		totalTick = 0;
@@ -723,7 +798,7 @@ public class SpellRuntime {
 		clearSpellHealth();
 		initializeStaticSpellHealthPlan(targetPhase);
 		resetLegacyActions(phase);
-		ctx.executeList(phase.onEnter);
+		executeActions(ctx, phase.onEnter, false);
 		enteredCurrentPhase = true;
 		notifyPhaseChange();
 	}
@@ -745,7 +820,7 @@ public class SpellRuntime {
 	public void scheduleDelayed(int executeAtTick, List<SpellAction> actions,
 			@Nullable CardHolder callbackHolder,
 			@Nullable ProjectileCallbackContext callbackContext) {
-		scheduledActions.add(new ScheduledAction(executeAtTick, actions, callbackHolder, callbackContext));
+		scheduledActions.add(new ScheduledAction(executeAtTick, actions, callbackHolder, callbackContext, executingOnTick));
 	}
 
 	/** Schedule a hold release that must survive phase transitions and cast-loop end. */
@@ -761,7 +836,7 @@ public class SpellRuntime {
 	public void schedulePersistentDelayed(int executeAtTick, List<SpellAction> actions,
 			@Nullable CardHolder callbackHolder,
 			@Nullable ProjectileCallbackContext callbackContext) {
-		persistentScheduledActions.add(new ScheduledAction(executeAtTick, actions, callbackHolder, callbackContext));
+		persistentScheduledActions.add(new ScheduledAction(executeAtTick, actions, callbackHolder, callbackContext, false));
 	}
 
 	public void startChildRuntime(CardHolder holder, SpellDefinition definition, @Nullable ResourceLocation phaseId, int duration) {
@@ -833,18 +908,14 @@ public class SpellRuntime {
 	 * Snapshot the list first to avoid ConcurrentModificationException,
 	 * since executed actions may schedule new delayed actions.
 	 */
-	private void executeScheduledActions(SpellContext ctx) {
-		executeScheduledActions(scheduledActions, ctx);
-		executeScheduledActions(persistentScheduledActions, ctx);
-	}
-
-	private void executeScheduledActions(List<ScheduledAction> queue, SpellContext ctx) {
+	private void executeScheduledActions(List<ScheduledAction> queue, SpellContext ctx, boolean frozen) {
 		// Snapshot: collect ready actions and remove them before executing
 		var ready = new java.util.ArrayList<ScheduledAction>();
 		var iter = queue.iterator();
 		while (iter.hasNext()) {
 			var scheduled = iter.next();
-			if (totalTick >= scheduled.executeAtTick()) {
+			int clock = scheduled.onTick() ? totalTick - frozenOnTickTicks : totalTick;
+			if ((!frozen || !scheduled.onTick()) && clock >= scheduled.executeAtTick()) {
 				ready.add(scheduled);
 				iter.remove();
 			}
@@ -857,7 +928,7 @@ public class SpellRuntime {
 					&& scheduled.callbackHolder() == null ? ctx
 					: new SpellContext(scheduledHolder, ctx.definition(), this, ctx.difficulty(),
 					ctx.hitContext().orElse(null), scheduled.callbackContext(), ctx.feedback());
-			scheduledContext.executeList(scheduled.actions());
+			executeActions(scheduledContext, scheduled.actions(), scheduled.onTick());
 		}
 	}
 
@@ -866,7 +937,7 @@ public class SpellRuntime {
 	 */
 	private record ScheduledAction(int executeAtTick, List<SpellAction> actions,
 			@Nullable CardHolder callbackHolder,
-			@Nullable ProjectileCallbackContext callbackContext) {
+			@Nullable ProjectileCallbackContext callbackContext, boolean onTick) {
 	}
 
 	private record ChildRuntime(SpellRuntime runtime, int remainingTicks) {
@@ -899,7 +970,10 @@ public class SpellRuntime {
 		tag.putString("PhaseId", currentPhaseId.toString());
 		tag.putInt("PhaseTick", phaseTick);
 		tag.putInt("TotalTick", totalTick);
+		tag.putInt("FrozenOnTickTicks", frozenOnTickTicks);
 		tag.putInt("HitCount", hitCount);
+		if (casterInvulnerableUntil > 0) tag.putLong("CasterInvulnerableUntil", casterInvulnerableUntil);
+		if (onTickFrozenUntil > 0) tag.putLong("OnTickFrozenUntil", onTickFrozenUntil);
 		tag.putInt("SpellMaxHealth", spellMaxHealth);
 		tag.putInt("SpellDurationTicks", spellDurationTicks);
 		if (durationOverrideTicks != null) {
@@ -939,12 +1013,18 @@ public class SpellRuntime {
 	 * Only restores if the phase ID is still valid in the current definition.
 	 */
 	public void loadFromTag(net.minecraft.nbt.CompoundTag tag) {
+		casterInvulnerableUntil = 0;
+		onTickFrozenUntil = 0;
+		frozenOnTickTicks = 0;
 		var phaseId = ResourceLocation.tryParse(tag.getString("PhaseId"));
 		if (phaseId != null && definition.getPhase(phaseId) != null) {
 			this.currentPhaseId = phaseId;
 			this.phaseTick = tag.getInt("PhaseTick");
 			this.totalTick = tag.getInt("TotalTick");
+			this.frozenOnTickTicks = Math.max(0, Math.min(totalTick, tag.getInt("FrozenOnTickTicks")));
 			this.hitCount = tag.getInt("HitCount");
+			this.casterInvulnerableUntil = Math.max(0, tag.getLong("CasterInvulnerableUntil"));
+			this.onTickFrozenUntil = Math.max(0, tag.getLong("OnTickFrozenUntil"));
 			this.spellMaxHealth = Math.max(0, tag.getInt("SpellMaxHealth"));
 			this.spellDurationTicks = Math.max(0, tag.getInt("SpellDurationTicks"));
 			this.durationOverrideTicks = tag.contains("DurationOverrideTicks")
@@ -1040,12 +1120,13 @@ public class SpellRuntime {
 	 * advancing phase transitions.
 	 */
 	public void tickDelayed(@Nullable CardHolder holder) {
+		dev.xkmc.youkaishomecoming.compat.ysm.YsmSpellHints.clearRuntime(this);
 		if (persistentScheduledActions.isEmpty()) return;
 		float healthRatio = holder == null || holder.self() == null
 				? 1.0f : holder.self().getHealth() / holder.self().getMaxHealth();
 		DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 		SpellContext ctx = new SpellContext(holder, definition, this, diff);
-		executeScheduledActions(persistentScheduledActions, ctx);
+		executeScheduledActions(persistentScheduledActions, ctx, false);
 		// Delayed execution uses the runtime clock for schedule comparisons, but
 		// does not advance phaseTick or execute the phase's regular actions.
 		totalTick++;

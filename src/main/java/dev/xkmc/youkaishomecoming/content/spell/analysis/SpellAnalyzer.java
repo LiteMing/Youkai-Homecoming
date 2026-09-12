@@ -8,9 +8,11 @@ import dev.xkmc.youkaishomecoming.content.spell.action.EraseEnemyDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireTextDanmakuAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.FreezeOnTickAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.LegacyTickerAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetEntityFlagAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SetInvulnerableAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellCircleAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellTitleAction;
@@ -680,6 +682,10 @@ public final class SpellAnalyzer {
 			addCap(SpellCapability.CLEAR_SCREEN);
 		} else if (action instanceof SetEntityFlagAction) {
 			addCap(SpellCapability.SET_ENTITY_FLAG);
+		} else if (action instanceof SetInvulnerableAction) {
+			addCap(SpellCapability.SET_INVULNERABLE);
+		} else if (action instanceof FreezeOnTickAction) {
+			addCap(SpellCapability.FREEZE_ON_TICK);
 		} else if (action instanceof SpellActions.ForcePhase) {
 			checkMarketBanned(action);
 			addCap(SpellCapability.FORCE_PHASE);

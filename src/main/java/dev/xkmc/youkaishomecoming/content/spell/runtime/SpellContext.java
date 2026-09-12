@@ -241,7 +241,7 @@ public class SpellContext {
 	}
 
 	public int totalTick() {
-		return runtime.getTotalTick();
+		return runtime.getActionTick();
 	}
 
 	public ResourceLocation currentPhaseId() {

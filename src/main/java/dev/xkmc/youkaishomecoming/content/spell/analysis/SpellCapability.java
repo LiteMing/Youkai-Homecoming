@@ -29,6 +29,8 @@ public enum SpellCapability {
 	ERASE_ENEMY_DANMAKU("erase_enemy_danmaku"),
 	CLEAR_SCREEN("clear_screen"),
 	SET_ENTITY_FLAG("set_entity_flag"),
+	SET_INVULNERABLE("set_invulnerable"),
+	FREEZE_ON_TICK("freeze_on_tick"),
 	FORCE_PHASE("force_phase"),
 	FORCE_SPELL("force_spell"),
 	FIRE_SPELL("fire_spell"),

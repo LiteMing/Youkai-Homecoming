@@ -1,6 +1,7 @@
 package dev.xkmc.youkaishomecoming.init.data;
 
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellTitleStyle.GradientDirection;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
@@ -38,6 +39,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue spellTitleBackgroundY;
 		public final ForgeConfigSpec.IntValue spellTitleGradientStart;
 		public final ForgeConfigSpec.IntValue spellTitleGradientEnd;
+		public final ForgeConfigSpec.EnumValue<GradientDirection> spellTitleGradientDirection;
 		public final ForgeConfigSpec.BooleanValue combatStatusHudEnabled;
 		public final ForgeConfigSpec.IntValue combatStatusHudXAnchor;
 		public final ForgeConfigSpec.IntValue combatStatusHudXOffset;
@@ -163,10 +165,13 @@ public class YHModConfig {
 					spellTitleBackgroundY = builder.comment("Default background image vertical offset in GUI pixels.")
 							.translation("config.youkaishomecoming.client.hud.spell_title.backgroundY")
 							.defineInRange("backgroundY", 0.0, -4096, 4096);
-					spellTitleGradientStart = builder.comment("Default left end of the title background gradient (ARGB).").translation("config.youkaishomecoming.client.hud.spell_title.gradientStart")
+					spellTitleGradientStart = builder.comment("Default start color of the title background gradient (ARGB).").translation("config.youkaishomecoming.client.hud.spell_title.gradientStart")
 							.defineInRange("gradientStart", 0xC0224F96, Integer.MIN_VALUE, Integer.MAX_VALUE);
-					spellTitleGradientEnd = builder.comment("Default right end of the title background gradient (ARGB).").translation("config.youkaishomecoming.client.hud.spell_title.gradientEnd")
+					spellTitleGradientEnd = builder.comment("Default end color of the title background gradient (ARGB).").translation("config.youkaishomecoming.client.hud.spell_title.gradientEnd")
 							.defineInRange("gradientEnd", 0x00224F96, Integer.MIN_VALUE, Integer.MAX_VALUE);
+					spellTitleGradientDirection = builder.comment("Direction from the start color to the end color; spell presentation fields can override it.")
+							.translation("config.youkaishomecoming.client.hud.spell_title.gradientDirection")
+							.defineEnum("gradientDirection", GradientDirection.LEFT_TO_RIGHT);
 				}
 				builder.pop();
 
@@ -296,6 +301,8 @@ public class YHModConfig {
 
 	public static class Common {
 		public final ForgeConfigSpec.BooleanValue spellMarketEnabled;
+		public final ForgeConfigSpec.BooleanValue spellAiGenerationEnabled;
+		public final ForgeConfigSpec.ConfigValue<String> spellAiHeaderPrompt;
 		public final ForgeConfigSpec.ConfigValue<String> spellMarketUrl;
 		public final ForgeConfigSpec.BooleanValue spellMarketAutoSyncEnabled;
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellMarketAutoSyncTags;
@@ -423,6 +430,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue grazeEffectiveness;
 		public final ForgeConfigSpec.IntValue missInvulTime;
 		public final ForgeConfigSpec.IntValue spellHealthInvulTime;
+		public final ForgeConfigSpec.IntValue spellDeclarationInvulnerabilityTicks;
 		public final ForgeConfigSpec.DoubleValue maxPowerLossOnMiss;
 		public final ForgeConfigSpec.IntValue initialResource;
 		public final ForgeConfigSpec.IntValue initialPower;
@@ -461,6 +469,16 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeWallClearanceSafeDist;
 
 		Common(ForgeConfigSpec.Builder builder) {
+			builder.translation("config.youkaishomecoming.common.spell_ai").push("spell_ai");
+			{
+				spellAiGenerationEnabled = builder.comment("Enable the editor AI spell generation button and server requests")
+						.translation("config.youkaishomecoming.common.spell_ai.enabled")
+						.define("enabled", false);
+				spellAiHeaderPrompt = builder.comment("Optional administrator header/system prompt prepended to YH spell generation requests")
+						.translation("config.youkaishomecoming.common.spell_ai.headerPrompt")
+						.define("headerPrompt", "");
+			}
+			builder.pop();
 			builder.translation("config.youkaishomecoming.common.spell_market").push("spell_market");
 			{
 				spellMarketEnabled = builder.comment("Enable spell market browsing and server synchronization")
@@ -744,6 +762,9 @@ public class YHModConfig {
 				spellHealthInvulTime = builder.comment("Hit interval while an active spell health bar absorbs danmaku")
 						.translation("config.youkaishomecoming.common.danmaku_battle.spellHealthInvulTime")
 						.defineInRange("spellHealthInvulTime", 5, 1, 100);
+				spellDeclarationInvulnerabilityTicks = builder.comment("Default duration when adding a boss invulnerability action in the spell editor. Existing nodes keep their explicit duration.")
+						.translation("config.youkaishomecoming.common.danmaku_battle.spellDeclarationInvulnerabilityTicks")
+						.defineInRange("spellDeclarationInvulnerabilityTicks", 100, 0, Integer.MAX_VALUE);
 				maxPowerLossOnMiss = builder.comment("Maximum loss of power when you take a hit")
 						.translation("config.youkaishomecoming.common.danmaku_battle.maxPowerLossOnMiss")
 						.defineInRange("maxPowerLossOnMiss", 1d, 0, 10);

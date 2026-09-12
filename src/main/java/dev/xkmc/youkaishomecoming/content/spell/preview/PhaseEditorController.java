@@ -94,9 +94,11 @@ public class PhaseEditorController {
 
 		var mc = Minecraft.getInstance();
 		if (mc.player != null) {
-			String msg = "[YH] Deleted phase " + formatPhaseId(removedPhaseId) +
-					(removedTransitions > 0 ? " and removed " + removedTransitions + " transitions" : "");
-			mc.player.displayClientMessage(Component.literal(msg), true);
+			Component transitions = removedTransitions > 0
+					? Component.translatable("youkaishomecoming.spell_editor.message.transitions_removed", removedTransitions)
+					: Component.empty();
+			mc.player.displayClientMessage(Component.translatable(
+					"youkaishomecoming.spell_editor.message.phase_deleted", formatPhaseId(removedPhaseId), transitions), true);
 		}
 		return removedPhaseId;
 	}

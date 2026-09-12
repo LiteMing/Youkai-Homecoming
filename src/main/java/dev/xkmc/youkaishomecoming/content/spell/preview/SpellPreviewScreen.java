@@ -11,6 +11,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.OriginConfig;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
@@ -148,7 +149,7 @@ public class SpellPreviewScreen extends Screen {
 		// Create persistent dock panels
 		this.viewportPanel = new ViewportDockPanel(viewport, scene);
 		this.titlePreviewPanel = new SpellTitlePreviewDockPanel(
-				() -> actionEditorPanel == null ? null : actionEditorPanel.getCurrentAction(),
+				this::selectedTitlePreviewAction,
 				() -> this.definition, scene::previewContext);
 		this.viewportPanel.setGroupTransformCallbacks(
 				this::onGroupOffsetDragged,
@@ -298,14 +299,17 @@ public class SpellPreviewScreen extends Screen {
 					updateRotationGizmoForAction(action);
 				},
 				this::onRequestAddAction,
-				this::onActionListReordered,
+				this::onActionTreeEdited,
 				() -> definition
 		);
 		actionListPanel.loadCustomNames(definition.customNames);
 
 		actionEditorPanel = new ActionEditorPanel(
 				this::addRenderableWidget,
-				this::removeWidget,
+				widget -> {
+					if (getFocused() == widget) setFocused(null);
+					removeWidget(widget);
+				},
 				this::onActionEdited,
 				this::onDeleteAction
 		);
@@ -316,22 +320,18 @@ public class SpellPreviewScreen extends Screen {
 		actionEditorPanel.setSpellInitializationAccess(
 				() -> definition == null ? "" : definition.display.name(),
 				this::onSpellDisplayNameEdited,
-				() -> actionListPanel != null
-						&& actionListPanel.hasLinkedSpellTitle(actionListPanel.getSelectedPath()),
-				value -> {
-					if (actionListPanel != null) {
-						actionListPanel.setLinkedSpellTitle(actionListPanel.getSelectedPath(), value);
-					}
-				}
+				kind -> actionListPanel.linkedInitializationAction(actionListPanel.getSelectedPath(), kind),
+				this::onSpellInitializationLinkEdited,
+				kind -> actionListPanel.selectPath(actionListPanel.linkedInitializationPath(actionListPanel.getSelectedPath(), kind))
+		);
+		actionEditorPanel.setInvulnerabilityFreezeAccess(
+				() -> actionListPanel.linkedInvulnerabilityFreezeAction(actionListPanel.getSelectedPath()),
+				this::onInvulnerabilityFreezeLinkEdited
 		);
 		actionEditorPanel.setPhaseOptions(() -> List.copyOf(phaseController.getPhaseList()), phaseController::getPhaseOptionLabel);
 		actionEditorPanel.setSpellOptions(spellController::getSpellOptions, spellController::getSpellOptionLabel);
 		actionEditorPanel.setToggleDisableCallback(() -> {
-			if (actionListPanel != null && actionListPanel.toggleSelectedDisabled()) {
-				markChanged();
-				actionEditorPanel.clearAction();
-				if (autoReplay) replaySelectedPhase();
-			}
+			if (actionListPanel != null) actionListPanel.toggleSelectedDisabled();
 		});
 		actionEditorPanel.setVariableJumpCallback(varName -> {
 			if (actionListPanel != null) {
@@ -554,6 +554,11 @@ public class SpellPreviewScreen extends Screen {
 
 	/** 符卡模式专属顶栏按钮。魔法阵模式下这些操作没有意义，一律不创建。 */
 	private int addSpellTopBarButtons(int bx, int by, int rightLimit, boolean fullEdit) {
+		if (aiEnabled()) {
+			// AI generation is also useful in a blank draft editor; the generated
+			// definition still goes through the normal draft/certification gates.
+			bx = addTopBarButtonIfFits(bx, by, SpellEditorLocalization.t("AI Spell"), 58, btn -> openAiPrompt(), aiEnabled(), rightLimit);
+		}
 		// Perspective / Orthographic toggle
 		String perspLabel = SpellEditorLocalization.t(viewport.isPerspectiveMode() ? "Ortho" : "Persp");
 		bx = addTopBarButtonIfFits(bx, by, perspLabel, 40, btn -> {
@@ -896,19 +901,79 @@ public class SpellPreviewScreen extends Screen {
 			if (!actionListPanel.replaceSelectedAction(newAction)) {
 				return;
 			}
-			markChanged();
-			refreshPreviewActionIds();
-			if (autoReplay && SpellTitlePreviewDockPanel.titleAction(newAction) == null) replaySelectedPhase();
+			onActionDataEdited();
 		}
+	}
+
+	private boolean aiEnabled() {
+		try {
+			return dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.spellAiGenerationEnabled.get();
+		} catch (RuntimeException ignored) {
+			return false;
+		}
+	}
+
+	private void openAiPrompt() {
+		if (aiEnabled() && minecraft != null) minecraft.setScreen(new SpellAiPromptScreen(this));
+	}
+
+	SpellCardType currentCardType() {
+		return definition == null || definition.itemForm == null ? SpellCardType.NORMAL : definition.itemForm.cardType();
+	}
+
+	String currentJsonForAi() {
+		try {
+			var json = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, definition).getOrThrow(false, s -> {});
+			return new com.google.gson.Gson().toJson(json);
+		} catch (RuntimeException e) {
+			return "";
+		}
+	}
+
+	boolean applyAiGenerationResult(String rawJson) {
+		try {
+			var parsed = SpellDefinition.CODEC.parse(JsonOps.INSTANCE,
+				com.google.gson.JsonParser.parseString(rawJson)).result().orElse(null);
+			if (parsed == null) return false;
+			onRawJsonDefinitionEdited(parsed);
+			return true;
+		} catch (RuntimeException e) {
+			return false;
+		}
+	}
+
+	private void onSpellInitializationLinkEdited(SpellInitializationLinks.Kind kind, SpellAction action) {
+		if (actionListPanel == null) return;
+		boolean structureChanged = (actionListPanel.linkedInitializationAction(actionListPanel.getSelectedPath(), kind) == null) != (action == null);
+		if (!actionListPanel.setLinkedInitializationAction(actionListPanel.getSelectedPath(), kind, action)) return;
+		if (structureChanged && actionEditorPanel != null) actionEditorPanel.clearScrollState();
+		onActionDataEdited();
+	}
+
+	private void onInvulnerabilityFreezeLinkEdited(SpellAction action) {
+		if (actionListPanel == null) return;
+		boolean structureChanged = (actionListPanel.linkedInvulnerabilityFreezeAction(
+				actionListPanel.getSelectedPath()) == null) != (action == null);
+		if (!actionListPanel.setLinkedInvulnerabilityFreezeAction(actionListPanel.getSelectedPath(), action)) return;
+		if (structureChanged && actionEditorPanel != null) actionEditorPanel.clearScrollState();
+		onActionDataEdited();
+	}
+
+	/** Common projection update after action data changes; keeps active text widgets intact. */
+	private void onActionDataEdited() {
+		markChanged();
+		refreshPreviewActionIds();
+		var path = actionListPanel == null ? null : actionListPanel.getSelectedPath();
+		scene.getHolder().setHighlightedActionIndex(path == null ? -1 : previewPathIds.getOrDefault(path, -1));
+		refreshTitlePreviewSelection();
+		if (autoReplay && SpellTitlePreviewDockPanel.titleAction(selectedTitlePreviewAction()) == null) replaySelectedPhase();
 	}
 
 	private void onSpellDisplayNameEdited(String value) {
 		if (definition == null || java.util.Objects.equals(definition.display.name(), value)) return;
 		definition.setDisplayName(value);
 		if (actionListPanel != null) actionListPanel.markDirty();
-		markChanged();
-		if (autoReplay && (actionEditorPanel == null
-				|| SpellTitlePreviewDockPanel.titleAction(actionEditorPanel.getCurrentAction()) == null)) replaySelectedPhase();
+		onActionDataEdited();
 	}
 
 	private SpellDefinition currentDefinitionForRawJson() {
@@ -958,11 +1023,25 @@ public class SpellPreviewScreen extends Screen {
 			return;
 		}
 		actionEditorPanel.setAction(action, index);
-		if (editorMode == EditorMode.SPELL && SpellTitlePreviewDockPanel.titleAction(action) != null) {
+		refreshTitlePreviewSelection();
+	}
+
+	private SpellAction selectedTitlePreviewAction() {
+		SpellAction action = actionEditorPanel == null ? null : actionEditorPanel.getCurrentAction();
+		if (SpellInitializationLinks.isInitializer(action) && actionListPanel != null) {
+			SpellAction linked = actionListPanel.linkedInitializationAction(actionListPanel.getSelectedPath(), SpellInitializationLinks.Kind.TITLE);
+			return SpellInitializationLinks.isEnabled(linked) ? linked : null;
+		}
+		return action;
+	}
+
+	private void refreshTitlePreviewSelection() {
+		if (editorMode == EditorMode.SPELL && SpellTitlePreviewDockPanel.titleAction(selectedTitlePreviewAction()) != null) {
 			if (viewport.isPerspectiveCaptured()) releasePerspectiveViewportFocus();
 			scene.pause();
 			titlePreviewPanel.select(definition.id, phaseController.getSelectedPhaseId(), actionListPanel.getSelectedPath());
-			activateDockPanel(titlePreviewPanel);
+			DockGroup group = dockLayout == null ? null : dockLayout.findGroupContaining(titlePreviewPanel);
+			if (group != null && group.getActivePanel() != titlePreviewPanel) activateDockPanel(titlePreviewPanel);
 		} else {
 			titlePreviewPanel.clear();
 			DockGroup group = dockLayout == null ? null : dockLayout.findGroupContaining(titlePreviewPanel);
@@ -1238,10 +1317,8 @@ public class SpellPreviewScreen extends Screen {
 	private void onTypeSelected(SpellAction action, Map<String, String> names) {
 		if (actionListPanel != null && pendingAddTarget != null) {
 			actionListPanel.insertAction(pendingAddTarget, action, names);
-			markChanged();
 			pendingAddTarget = null;
-			if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
-			if (autoReplay) replaySelectedPhase();
+			onActionTreeEdited();
 		}
 	}
 
@@ -1298,10 +1375,7 @@ public class SpellPreviewScreen extends Screen {
 
 	private void onDeleteAction() {
 		if (actionListPanel != null && actionListPanel.deleteSelected()) {
-			markChanged();
-			if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
-			clearActionSelection();
-			if (autoReplay) replaySelectedPhase();
+			onActionTreeEdited();
 		}
 	}
 
@@ -1336,7 +1410,7 @@ public class SpellPreviewScreen extends Screen {
 		if (!SpellJsonSalvage.containsBrokenNodes(definition)) {
 			return false;
 		}
-		EditorNotifications.show(Component.literal("[YH] " + SpellEditorLocalization.t("Fix broken nodes first")));
+		EditorNotifications.show(Component.translatable("youkaishomecoming.spell_editor.message.fix_broken"));
 		return true;
 	}
 
@@ -1350,16 +1424,16 @@ public class SpellPreviewScreen extends Screen {
 				java.nio.file.Path file = outDir.resolve(name);
 				java.nio.file.Files.write(file, pngBytes);
 				if (minecraft != null && minecraft.player != null) {
-					minecraft.player.displayClientMessage(
-							net.minecraft.network.chat.Component.literal("[YH] Saved snapshot (" + pngBytes.length + " bytes) to: " + file.getFileName()), false);
+					minecraft.player.displayClientMessage(Component.translatable(
+							"youkaishomecoming.spell_editor.message.snapshot_saved", pngBytes.length, file.getFileName()), false);
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
 		} else {
 			if (minecraft != null && minecraft.player != null) {
-				minecraft.player.displayClientMessage(
-						net.minecraft.network.chat.Component.literal("[YH] Failed to capture snapshot"), false);
+				minecraft.player.displayClientMessage(Component.translatable(
+						"youkaishomecoming.spell_editor.message.snapshot_failed"), false);
 			}
 		}
 	}
@@ -1490,15 +1564,25 @@ public class SpellPreviewScreen extends Screen {
 		resetSelectedPhasePreview(true);
 	}
 
-	/**
-	 * Called when the action list is reordered (drag-drop or move up/down from ActionListPanel).
-	 * Clears scroll state since action indices have shifted, then replays.
-	 */
-	private void onActionListReordered() {
-		if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
-		refreshPreviewActionIds();
-		markChanged();
-		replaySelectedPhase();
+	/** Buttons, tree drag operations and keyboard edits synchronize selection through the same path. */
+	private void onActionTreeEdited() {
+		SpellAction selected = actionListPanel == null ? null : actionListPanel.getSelectedAction();
+		if (actionEditorPanel != null) {
+			actionEditorPanel.clearScrollState();
+			if (selected == null) actionEditorPanel.clearAction();
+			else actionEditorPanel.setAction(selected, actionListPanel.getSelectedPath().leafIndex());
+		}
+		updateRotationGizmoForAction(selected);
+		onActionDataEdited();
+	}
+
+	private boolean restoreActionHistory(boolean redo) {
+		if (actionListPanel == null) return false;
+		var path = actionListPanel.getSelectedPath();
+		if (!(redo ? actionListPanel.redo() : actionListPanel.undo())) return false;
+		if (path != null) actionListPanel.selectPath(path);
+		onActionTreeEdited();
+		return true;
 	}
 
 	private void cyclePhase(int delta) {
@@ -1768,6 +1852,7 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+		if (actionEditorPanel != null) actionEditorPanel.flushPendingView();
 		renderBackground(guiGraphics);
 
 		// Dock layout renders all panels
@@ -1888,6 +1973,7 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (actionEditorPanel != null) actionEditorPanel.flushPendingView();
 		if (editorMode == EditorMode.YSM) {
 			if (ysmProperties != null && ysmProperties.overlayMouseClicked(mouseX, mouseY, button)) return true;
 			if (ysmPresets != null && ysmPresets.overlayMouseClicked(mouseX, mouseY, button)) return true;
@@ -2004,6 +2090,7 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (actionEditorPanel != null) actionEditorPanel.flushPendingView();
 		// Saving belongs to the document, before any panel, text field, dropdown
 		// or captured viewport can consume the key.
 		if (hasControlDown() && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) {
@@ -2097,30 +2184,14 @@ public class SpellPreviewScreen extends Screen {
 
 		// Ctrl+Z/Y for undo/redo
 		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
-			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && actionListPanel != null) {
-				if (actionListPanel.undo()) {
-					markChanged();
-					if (actionEditorPanel != null) actionEditorPanel.clearAction();
-					if (autoReplay) replaySelectedPhase();
-					return true;
-				}
-			}
-			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y && actionListPanel != null) {
-				if (actionListPanel.redo()) {
-					markChanged();
-					if (actionEditorPanel != null) actionEditorPanel.clearAction();
-					if (autoReplay) replaySelectedPhase();
-					return true;
-				}
-			}
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && restoreActionHistory(false)) return true;
+			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y && restoreActionHistory(true)) return true;
 		}
 
 		// Ctrl+D = toggle disable, Ctrl+N = toggle custom names, Ctrl+E = collapse/expand
 		if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_D && actionListPanel != null) {
 				if (actionListPanel.toggleSelectedDisabled()) {
-					if (actionEditorPanel != null) actionEditorPanel.clearAction();
-					if (autoReplay) replaySelectedPhase();
 					return true;
 				}
 			}
@@ -2163,29 +2234,25 @@ public class SpellPreviewScreen extends Screen {
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_X) {
 				if (actionListPanel.cutSelected()) {
-					if (actionEditorPanel != null) actionEditorPanel.clearAction();
-					resetSelectedPhasePreview(false);
+					onActionTreeEdited();
 					return true;
 				}
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_V) {
 				if (actionListPanel.pasteAfterSelected()) {
-					if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
-					resetSelectedPhasePreview(false);
+					onActionTreeEdited();
 					return true;
 				}
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_UP) {
 				if (actionListPanel.moveSelectedUp()) {
-					if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
-					resetSelectedPhasePreview(false);
+					onActionTreeEdited();
 					return true;
 				}
 			}
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN) {
 				if (actionListPanel.moveSelectedDown()) {
-					if (actionEditorPanel != null) actionEditorPanel.clearScrollState();
-					resetSelectedPhasePreview(false);
+					onActionTreeEdited();
 					return true;
 				}
 			}
@@ -2200,11 +2267,7 @@ public class SpellPreviewScreen extends Screen {
 		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE
 				|| keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE) {
 			if (actionListPanel != null && actionListPanel.deleteSelected()) {
-				if (actionEditorPanel != null) {
-					actionEditorPanel.clearScrollState();
-					actionEditorPanel.clearAction();
-				}
-				if (autoReplay) replaySelectedPhase();
+				onActionTreeEdited();
 				return true;
 			}
 		}
@@ -2240,6 +2303,7 @@ public class SpellPreviewScreen extends Screen {
 
 	@Override
 	public boolean charTyped(char codePoint, int modifiers) {
+		if (actionEditorPanel != null) actionEditorPanel.flushPendingView();
 		if (editorMode == EditorMode.YSM) return dockLayout != null && dockLayout.charTyped(codePoint, modifiers);
 		if (viewport.isPerspectiveCaptured()) {
 			return true;

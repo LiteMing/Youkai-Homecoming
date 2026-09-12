@@ -14,6 +14,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
@@ -68,6 +69,12 @@ public class ActionListPanel {
 
 		public int leafIndex() {
 			return path.get(path.size() - 1).index;
+		}
+
+		public ActionPath sibling(int index) {
+			var entries = new ArrayList<>(path);
+			entries.set(entries.size() - 1, new PathEntry(index, null));
+			return new ActionPath(section, List.copyOf(entries));
 		}
 	}
 
@@ -304,9 +311,11 @@ public class ActionListPanel {
 		if (phase == null) return;
 		for (ActionEntry entry : getActionEntries()) {
 			String scopedKey = scopedCollapseKey(entry.path());
+			String legacyScopedKey = legacyScopedCollapseKey(entry.path());
 			String legacyKey = collapseKey(entry.path());
-			boolean scoped = customNames.containsKey(scopedKey);
-			String key = scoped ? scopedKey : legacyKey;
+			boolean scoped = customNames.containsKey(scopedKey) || customNames.containsKey(legacyScopedKey);
+			String key = customNames.containsKey(scopedKey) ? scopedKey
+					: customNames.containsKey(legacyScopedKey) ? legacyScopedKey : legacyKey;
 			String name = customNames.get(key);
 			if (name != null && !name.isBlank()) {
 				nodeCustomNames.put(entry.action(), name);
@@ -319,8 +328,10 @@ public class ActionListPanel {
 	private void syncCustomNamesFromActions() {
 		if (phase == null) return;
 		java.util.Map<SpellAction, String> currentKeys = new java.util.IdentityHashMap<>();
+		java.util.IdentityHashMap<SpellAction, Boolean> liveActions = new java.util.IdentityHashMap<>();
 		// Names belong to the full tree, including children in collapsed folders.
 		for (ActionEntry entry : getActionEntries()) {
+			liveActions.put(entry.action(), Boolean.TRUE);
 			String name = nodeCustomNames.get(entry.action());
 			if (name == null || name.isBlank()) continue;
 			String key = keyFor(entry.path(), nodeCustomNameScoped.getOrDefault(
@@ -337,6 +348,11 @@ public class ActionListPanel {
 				customNames.remove(entry.getKey());
 			}
 		}
+		// A codec replacement or an undo snapshot can discard an action instance
+		// without going through doReplace/doDelete. Drop those stale identity
+		// bindings so a later node cannot inherit a name by object reuse.
+		nodeCustomNames.keySet().removeIf(action -> !liveActions.containsKey(action));
+		nodeCustomNameScoped.keySet().removeIf(action -> !liveActions.containsKey(action));
 		customNameOwners.clear();
 		for (var entry : currentKeys.entrySet()) {
 			String key = entry.getValue();
@@ -356,6 +372,7 @@ public class ActionListPanel {
 		}
 		if (path == null) return null;
 		String scoped = customNames.get(scopedCollapseKey(path));
+		if (scoped == null || scoped.isBlank()) scoped = customNames.get(legacyScopedCollapseKey(path));
 		return scoped != null && !scoped.isBlank() ? scoped : customNames.get(collapseKey(path));
 	}
 
@@ -392,11 +409,26 @@ public class ActionListPanel {
 		return phaseScope() + "/" + collapseKey(path);
 	}
 
+	/**
+	 * Key format used before 0.30.0. It only used the final phase path segment,
+	 * so two phases such as {@code first/bonus} and {@code second/bonus} could
+	 * accidentally share node names. Keep it as a read/migration fallback.
+	 */
+	private String legacyScopedCollapseKey(ActionPath path) {
+		return legacyPhaseScope() + "/" + collapseKey(path);
+	}
+
 	private String keyFor(ActionPath path, boolean scoped) {
 		return scoped ? scopedCollapseKey(path) : collapseKey(path);
 	}
 
 	private String phaseScope() {
+		if (phase == null || phase.id == null) return "main";
+		if ("main".equals(phase.id.getPath())) return "main";
+		return phase.id.toString();
+	}
+
+	private String legacyPhaseScope() {
 		if (phase == null || phase.id == null) return "main";
 		String path = phase.id.getPath();
 		int split = path.lastIndexOf('/');
@@ -404,7 +436,7 @@ public class ActionListPanel {
 	}
 
 	private boolean preferScopedCustomNames() {
-		return !"main".equals(phaseScope());
+		return phase != null && phase.id != null && !"main".equals(phase.id.getPath());
 	}
 
 	private void transferNodeCustomName(SpellAction oldAction, SpellAction newAction) {
@@ -559,32 +591,103 @@ public class ActionListPanel {
 		dirty = true;
 	}
 
-	public boolean hasLinkedSpellTitle(@Nullable ActionPath path) {
-		if (path == null || path.isNested()) return false;
-		List<SpellAction> list = getSectionList(path.section());
-		int index = path.leafIndex();
-		return list != null && index >= 0 && index + 1 < list.size()
-				&& list.get(index) instanceof SetSpellHealthAction
-				&& list.get(index + 1) instanceof ShowSpellTitleAction;
+	@Nullable
+	ActionPath linkedInitializationPath(@Nullable ActionPath path, SpellInitializationLinks.Kind kind) {
+		if (path == null || path.path().isEmpty() || path.leafIndex() < 0) return null;
+		int index = SpellInitializationLinks.findIndex(i -> getActionAt(path.sibling(i)), path.leafIndex(), kind);
+		return index < 0 ? null : path.sibling(index);
 	}
 
-	public boolean setLinkedSpellTitle(@Nullable ActionPath path, boolean enabled) {
-		if (path == null || path.isNested()) return false;
+	@Nullable
+	SpellAction linkedInitializationAction(@Nullable ActionPath path, SpellInitializationLinks.Kind kind) {
+		ActionPath linked = linkedInitializationPath(path, kind);
+		return linked == null ? null : getActionAt(linked);
+	}
+
+	@Nullable
+	ActionPath linkedInvulnerabilityFreezePath(@Nullable ActionPath path) {
+		if (path == null || path.path().isEmpty() || path.leafIndex() < 0) return null;
+		int index = InvulnerabilityFreezeLinks.findIndex(i -> getActionAt(path.sibling(i)), path.leafIndex());
+		return index < 0 ? null : path.sibling(index);
+	}
+
+	@Nullable
+	SpellAction linkedInvulnerabilityFreezeAction(@Nullable ActionPath path) {
+		ActionPath linked = linkedInvulnerabilityFreezePath(path);
+		return linked == null ? null : getActionAt(linked);
+	}
+
+	/** Update the optional adjacent freeze while keeping the invulnerability node selected. */
+	boolean setLinkedInvulnerabilityFreezeAction(@Nullable ActionPath path, @Nullable SpellAction action) {
+		if (path == null || path.path().isEmpty() || path.leafIndex() < 0
+				|| !InvulnerabilityFreezeLinks.isOwner(getActionAt(path))) return false;
+		if (action != null && !InvulnerabilityFreezeLinks.isFreeze(action)) return false;
 		List<SpellAction> list = getSectionList(path.section());
-		int index = path.leafIndex();
-		if (list == null || index < 0 || index >= list.size()
-				|| !(list.get(index) instanceof SetSpellHealthAction)) return false;
-		boolean linked = index + 1 < list.size() && list.get(index + 1) instanceof ShowSpellTitleAction;
-		if (linked == enabled) return false;
+		if (list == null) return false;
+		ActionPath linked = linkedInvulnerabilityFreezePath(path);
+		SpellAction previous = linked == null ? null : getActionAt(linked);
+		if (java.util.Objects.equals(previous, action)) return false;
 		pushUndo();
-		if (enabled) {
-			list.add(index + 1, new ShowSpellTitleAction("", "", 100, 64.0));
+		boolean changed;
+		if (linked != null) {
+			changed = action == null ? doDeleteAt(linked) : doReplace(list, linked.path(), 0, action);
+		} else if (path.isNested()) {
+			var parentEntries = path.path().subList(0, path.path().size() - 1);
+			var parent = new ActionPath(path.section(), parentEntries);
+			String branch = parentEntries.get(parentEntries.size() - 1).branch();
+			changed = doInsert(list, parentEntries, 0, branch, action, parent, path.leafIndex() + 1);
 		} else {
-			list.remove(index + 1);
+			list.add(path.leafIndex() + 1, action);
+			changed = true;
 		}
-		dirty = true;
-		onMoved.run();
-		return true;
+		selectedPath = path;
+		selectedPaths.clear();
+		selectedPaths.add(path);
+		selectedAddTarget = null;
+		if (changed) {
+			syncCustomNamesFromActions();
+			dirty = true;
+		}
+		return changed;
+	}
+
+	/** Update one optional declaration without changing the initializer or the other links. */
+	boolean setLinkedInitializationAction(@Nullable ActionPath path, SpellInitializationLinks.Kind kind,
+			@Nullable SpellAction action) {
+		if (path == null || path.path().isEmpty() || path.leafIndex() < 0
+				|| !SpellInitializationLinks.isInitializer(getActionAt(path))) return false;
+		if (action != null && SpellInitializationLinks.kindOf(action) != kind) return false;
+		List<SpellAction> list = getSectionList(path.section());
+		if (list == null) return false;
+		ActionPath linked = linkedInitializationPath(path, kind);
+		SpellAction previous = linked == null ? null : getActionAt(linked);
+		if (java.util.Objects.equals(previous, action)) return false;
+		pushUndo();
+		boolean changed;
+		if (linked != null) {
+			changed = action == null ? doDeleteAt(linked) : doReplace(list, linked.path(), 0, action);
+		} else {
+			int index = SpellInitializationLinks.insertionIndex(i -> getActionAt(path.sibling(i)), path.leafIndex(), kind);
+			if (path.isNested()) {
+				var parentEntries = path.path().subList(0, path.path().size() - 1);
+				var parent = new ActionPath(path.section(), parentEntries);
+				String branch = parentEntries.get(parentEntries.size() - 1).branch();
+				changed = doInsert(list, parentEntries, 0, branch, action, parent, index);
+			} else {
+				list.add(index, action);
+				changed = true;
+			}
+		}
+		// doInsert selects the new child; keep the initialization form open instead.
+		selectedPath = path;
+		selectedPaths.clear();
+		selectedPaths.add(path);
+		selectedAddTarget = null;
+		if (changed) {
+			syncCustomNamesFromActions();
+			dirty = true;
+		}
+		return changed;
 	}
 
 	// --- Row building ---
@@ -882,7 +985,7 @@ public class ActionListPanel {
 					g.drawString(font, "> " + renamingText + "_", ix, row.y + 2, 0xFFFFFF44, false);
 				} else {
 					String label = SpellEditorNodeLabels.actionMarker(displayAction)
-							+ SpellEditorLocalization.t(getDisplayLabel(displayAction, row.path));
+							+ getDisplayLabel(displayAction, row.path);
 					int textColor;
 					if (isDisabled) {
 						textColor = 0xFF666666; // Gray for disabled
@@ -3039,62 +3142,68 @@ public class ActionListPanel {
 	}
 
 	private String getActionLabel(SpellAction action, int index) {
+		String label = index + ": " + SpellEditorLocalization.actionName(action);
 		if (action instanceof FireDanmakuAction fda) {
-			String colorLabel = fda.color() instanceof ColorProvider.Constant cc ? cc.color().format() : "dynamic";
+			String colorLabel = SpellEditorLocalization.t(fda.color() instanceof ColorProvider.Constant cc ? cc.color().format() : "dynamic");
 			if (fda.colorAnimation().isPresent()) colorLabel += "+anim";
 			String bulletLabel = fda.bulletType() instanceof BulletProvider.Constant bc ? bc.bullet().name().toLowerCase() : "dynamic";
-			return index + ": fire " + bulletLabel + " " + colorLabel;
+			return label + " " + SpellEditorLocalization.danmakuBulletShapeName(bulletLabel) + " " + colorLabel;
 		}
 		if (action instanceof FireLaserAction fla) {
-			return index + ": laser " + fla.laserType().name().toLowerCase() + " " + fla.color().name().toLowerCase();
+			return label + " " + SpellEditorLocalization.t(fla.laserType().name().toLowerCase())
+					+ " " + SpellEditorLocalization.t(fla.color().name().toLowerCase());
 		}
 		if (action instanceof SpellActions.ConditionalAction ca) {
-			return index + ": if " + getConditionBrief(ca.condition());
+			return label + " " + getConditionBrief(ca.condition());
 		}
 		if (action instanceof SpellActions.SequenceAction sa) {
-			return index + ": sequence(" + sa.actions().size() + ")";
+			return label + " (" + sa.actions().size() + ")";
 		}
-		if (action instanceof SpellActions.ClearScreen) return index + ": clear_screen";
 		if (action instanceof EraseEnemyDanmakuAction ee) {
-			return index + ": erase enemy r=" + formatNumberProvider(ee.radius());
+			return label + " r=" + formatNumberProvider(ee.radius());
 		}
-		if (action instanceof SpellActions.PlaySoundAction) return index + ": play_sound";
 		if (action instanceof ShowSpellTitleAction sta) {
-			return index + ": show title " + sta.duration() + "t r=" + sta.radius();
+			return label + " " + sta.duration() + "t r=" + sta.radius();
+		}
+		if (action instanceof SetInvulnerableAction invulnerable) {
+			return label + " " + formatNumberProvider(invulnerable.duration()) + "t";
+		}
+		if (action instanceof FreezeOnTickAction freeze) {
+			return label + " " + formatNumberProvider(freeze.duration()) + "t";
 		}
 		if (action instanceof ShowSpellCardAction sca) {
-			return index + ": show card " + sca.duration() + "t r=" + sca.radius();
+			return label + " " + sca.duration() + "t r=" + sca.radius();
 		}
 		if (action instanceof SetSpellCircleAction sca) {
 			return switch (sca.mode()) {
-				case SET -> index + ": spell circle " + formatResourceId(sca.circle()) + " size=" + sca.size();
-				case OFF -> index + ": spell circle off";
-				case CLEAR -> index + ": spell circle clear";
+				case SET -> label + " " + formatResourceId(sca.circle()) + " " + SpellEditorLocalization.t("Size") + "=" + sca.size();
+				case OFF -> label + " " + SpellEditorLocalization.t("OFF");
+				case CLEAR -> label + " " + actionDetail("clear");
 			};
 		}
 		if (action instanceof SetSpellHealthAction sha) {
 			return sha.mode() == SetSpellHealthAction.Mode.CLEAR
-					? index + ": spell initialization clear"
-					: index + ": spell initialization hp=" + formatNumberProvider(sha.health())
-					+ " duration=" + formatNumberProvider(sha.duration())
-					+ describeSpellHealthTarget(" timeout", sha.onTimeout())
-					+ describeSpellHealthTarget(" break", sha.onBreak());
+					? label + " " + actionDetail("clear")
+					: label + " hp=" + formatNumberProvider(sha.health())
+					+ " " + SpellEditorLocalization.t("Duration") + "=" + formatNumberProvider(sha.duration())
+					+ describeSpellHealthTarget(" " + SpellEditorLocalization.t("Timeout"), sha.onTimeout())
+					+ describeSpellHealthTarget(" " + SpellEditorLocalization.t("Break"), sha.onBreak());
 		}
-		if (action instanceof SpellActions.SetVariable sv) return index + ": set " + sv.key();
-		if (action instanceof SpellActions.AddVariable av) return index + ": add " + av.key();
+		if (action instanceof SpellActions.SetVariable sv) return label + " " + sv.key();
+		if (action instanceof SpellActions.AddVariable av) return label + " " + av.key();
 		if (action instanceof SpellActions.ForcePhase fp) {
-			return index + ": force " + describePhaseTarget(fp.phaseId()) + (fp.clearScreen() ? " [clear]" : " [keep]");
+			return label + " " + describePhaseTarget(fp.phaseId()) + " [" + actionDetail(fp.clearScreen() ? "clear_screen" : "keep") + "]";
 		}
 		if (action instanceof SpellActions.ForceSpell fs) {
-			return index + ": spell " + formatResourceId(fs.spellId()) + (fs.clearScreen() ? " [clear]" : " [keep]");
+			return label + " " + formatResourceId(fs.spellId()) + " [" + actionDetail(fs.clearScreen() ? "clear_screen" : "keep") + "]";
 		}
 		if (action instanceof SpellActions.FireSpell fs) {
 			String phase = fs.phaseId().map(id -> "@" + formatPhaseId(id)).orElse("");
-			return index + ": fire spell " + formatResourceId(fs.spellId()) + phase;
+			return label + " " + formatResourceId(fs.spellId()) + phase;
 		}
-		if (action instanceof SpellActions.RepeatAction ra) return index + ": repeat(" + (int) (ra.count() instanceof NumberProviders.Constant c ? c.value() : 0) + ")";
-		if (action instanceof DelayAction da) return index + ": delay(" + da.delayTicks() + "t)";
-		if (action instanceof BurstAction ba) return index + ": burst(" + ba.waves() + "x" + ba.interval() + "t)";
+		if (action instanceof SpellActions.RepeatAction ra) return label + " (" + formatNumberProvider(ra.count()) + ")";
+		if (action instanceof DelayAction da) return label + " (" + formatNumberProvider(da.delayTicks()) + "t)";
+		if (action instanceof BurstAction ba) return label + " (" + ba.waves() + "x" + ba.interval() + "t)";
 		if (action instanceof SpawnShooterAction ssa) {
 			String pattern = " " + formatNumberProvider(ssa.count()) + "x" + ssa.pattern().name().toLowerCase();
 			String ysm = "";
@@ -3108,15 +3217,17 @@ public class ActionListPanel {
 				}
 				ysm = builder.toString();
 			}
-			return index + ": shooter" + pattern + "(hp=" + ssa.health() + ")" + ysm;
+			return label + pattern + "(hp=" + ssa.health() + ")" + ysm;
 		}
 		if (action instanceof YsmRenderAction yra) {
-			return index + ": YSM hint " + (yra.hint().isBlank() ? "(clear)" : yra.hint())
+			return label + " " + (yra.hint().isBlank() ? "(" + actionDetail("clear") + ")" : yra.hint())
 					+ " (" + yra.duration() + "t)";
 		}
-		if (action instanceof TeleportAction) return index + ": teleport";
-		if (action instanceof SpellActions.NoopAction) return index + ": noop";
-		return index + ": " + action.getClass().getSimpleName();
+		return label;
+	}
+
+	private static String actionDetail(String key) {
+		return SpellEditorLocalization.text("youkaishomecoming.spell_editor.action_detail." + key);
 	}
 
 	private String describeSpellHealthTarget(String label, Optional<SpellAction> target) {
@@ -3143,8 +3254,8 @@ public class ActionListPanel {
 	}
 
 	private static String localizeCustomName(String value) {
-		if (value.startsWith("youkaishomecoming.spell_template.") && I18n.exists(value)) {
-			return I18n.get(value);
+		if (value.startsWith("youkaishomecoming.spell_template.")) {
+			return SpellEditorLocalization.text(value);
 		}
 		return value;
 	}
@@ -3186,6 +3297,7 @@ public class ActionListPanel {
 		if (cond instanceof SpellConditions.DistanceAbove da) return "dist>" + (int) da.distance();
 		if (cond instanceof SpellConditions.DistanceBelow db) return "dist<" + (int) db.distance();
 		if (cond instanceof SpellConditions.HitCountCondition hc) return "hits>=" + hc.count();
+		if (cond instanceof SpellConditions.HitEntityIsPlayer) return SpellEditorLocalization.t("hit:player");
 		if (cond instanceof SpellConditions.AlwaysCondition ac) return ac.value() ? "always" : "never";
 		if (cond instanceof SpellConditions.VariableCheck vc) return vc.key() + vc.op() + (int) vc.value();
 		if (cond instanceof SpellConditions.NotCondition nc) return "!" + getConditionBrief(nc.condition());

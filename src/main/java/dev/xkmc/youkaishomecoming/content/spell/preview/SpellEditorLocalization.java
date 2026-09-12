@@ -1,8 +1,15 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.locale.Language;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.ResourceManager;
 
+import java.io.IOException;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -16,11 +23,11 @@ public final class SpellEditorLocalization {
 
 	private static final Pattern COUNT_SECTION = Pattern.compile("^(onEnter|onTick|onExit|onDamage) \\((\\d+)\\)$");
 	private static final Pattern COUNT_BRANCH = Pattern.compile("^(if_true|if_false|body|actions|onExpiry|onTrail|onHitEntity|onHitBlock) \\((\\d+)\\)$");
-	private static final Pattern ACTION_ROW = Pattern.compile("^([TFBEH]?)(\\d+: )(.*)$");
 	private static final Pattern NUMBER_PREFIX = Pattern.compile("^(\\d+:)(.+)$");
 	private static final String[] POLICY_MARKERS = {"[EXP] ", "[OP] ", "[Q] ", "[X] "};
 
 	private static Boolean chineseOverride;
+	private static Map<String, Map<String, String>> editorLanguages = Map.of();
 
 	private SpellEditorLocalization() {
 	}
@@ -43,6 +50,54 @@ public final class SpellEditorLocalization {
 
 	public static String modeButtonLabel() {
 		return isChinese() ? "中文" : "EN";
+	}
+
+	/** Load both editor languages so its language switch does not depend on the game's current locale. */
+	public static void onResourceReload(ResourceManager resources) {
+		editorLanguages = Map.of("en_us", loadEditorLanguage(resources, "en_us"),
+				"zh_cn", loadEditorLanguage(resources, "zh_cn"));
+	}
+
+	private static Map<String, String> loadEditorLanguage(ResourceManager resources, String language) {
+		Map<String, String> strings = new HashMap<>();
+		for (var resource : resources.getResourceStack(new ResourceLocation("youkaishomecoming", "lang/" + language + ".json"))) {
+			try (var input = resource.open()) {
+				Language.loadFromJson(input, (key, value) -> {
+					if (key.startsWith("youkaishomecoming.spell_editor.") || key.startsWith("youkaishomecoming.spell_template."))
+						strings.put(key, value);
+				});
+			} catch (IOException | com.google.gson.JsonParseException ignored) {
+				// A broken resource-pack override leaves the lower-priority language available.
+			}
+		}
+		return Map.copyOf(strings);
+	}
+
+	public static String text(String key) {
+		String value = editorLanguages.getOrDefault(isChinese() ? "zh_cn" : "en_us", Map.of()).get(key);
+		if (value == null) value = editorLanguages.getOrDefault("en_us", Map.of()).get(key);
+		return value == null ? I18n.get(key) : value;
+	}
+
+	static String actionNameKey(String type) {
+		String canonical = switch (type) {
+			case "set_spell_health" -> "spellcard_init";
+			case "bounce" -> "bounce_source";
+			default -> type;
+		};
+		return "youkaishomecoming.spell_editor.action." + canonical;
+	}
+
+	public static String actionName(String type) {
+		String key = actionNameKey(type);
+		String name = text(key);
+		return key.equals(name) ? type.replace('_', ' ') : name;
+	}
+
+	public static String actionName(SpellAction action) {
+		while (action instanceof SpellActions.DisabledAction disabled) action = disabled.inner();
+		String type = SpellActions.getTypeId(action);
+		return type == null ? action.getClass().getSimpleName() : actionName(type);
 	}
 
 	public static String t(String text) {
@@ -80,10 +135,6 @@ public final class SpellEditorLocalization {
 		Matcher branch = COUNT_BRANCH.matcher(text);
 		if (branch.matches()) {
 			return italic + prefix + exact(branch.group(1)) + " (" + branch.group(2) + ")";
-		}
-		Matcher action = ACTION_ROW.matcher(text);
-		if (action.matches()) {
-			return italic + prefix + action.group(1) + action.group(2) + actionRest(action.group(3));
 		}
 		Matcher numbered = NUMBER_PREFIX.matcher(text);
 		if (numbered.matches()) {
@@ -186,60 +237,29 @@ public final class SpellEditorLocalization {
 		return ans;
 	}
 
-	private static String actionRest(String text) {
-		if (text.startsWith("fire spell ")) {
-			return "发射符卡 " + text.substring("fire spell ".length());
-		}
-		if (text.startsWith("fire ")) {
-			String[] parts = text.split(" ");
-			if (parts.length >= 3) {
-				return "发射 " + danmakuBulletShapeName(parts[1]) + " " + t(parts[2]);
-			}
-			return "发射 " + text.substring(5);
-		}
-		if (text.startsWith("laser ")) {
-			String[] parts = text.split(" ");
-			if (parts.length >= 3) {
-				return "激光 " + t(parts[1]) + " " + t(parts[2]);
-			}
-			return "激光 " + text.substring(6);
-		}
-		if (text.startsWith("if ")) return "如果 " + text.substring(3);
-		if (text.startsWith("sequence")) return text.replace("sequence", "序列");
-		if (text.equals("clear_screen")) return "清屏";
-		if (text.startsWith("erase enemy r=")) return "擦除敌弹 r=" + text.substring("erase enemy r=".length());
-		if (text.equals("play_sound")) return "播放声音";
-		if (text.equals("camera_shake")) return "镜头抖动";
-		if (text.startsWith("show title ")) return text.replace("show title", "显示符卡标题");
-		if (text.startsWith("spell circle ")) return text.replace("spell circle", "魔法阵")
-				.replace(" size=", " 大小=");
-		if (text.startsWith("spell initialization ")) {
-			return text.replace("spell initialization", "符卡初始化")
-					.replace(" clear", " 清除").replace(" duration=", " 时长=");
-		}
-		if (text.startsWith("set ")) return "设置 " + text.substring(4);
-		if (text.startsWith("add ")) return "增加 " + text.substring(4);
-		if (text.startsWith("force ")) return "切换阶段 " + text.substring(6).replace("[clear]", "[清屏]").replace("[keep]", "[保留]");
-		if (text.startsWith("spell ")) return "切换符卡 " + text.substring(6).replace("[clear]", "[清屏]").replace("[keep]", "[保留]");
-		if (text.startsWith("repeat")) return text.replace("repeat", "重复");
-		if (text.startsWith("delay")) return text.replace("delay", "延迟");
-		if (text.startsWith("burst")) return text.replace("burst", "爆发");
-		if (text.startsWith("shooter")) return text.replace("shooter", "发射器");
-		if (text.startsWith("ysm clear")) return text.replace("ysm clear", "YSM 清除");
-		if (text.startsWith("ysm set")) return text.replace("ysm set", "YSM 设置")
-				.replace(" model=", " 模型=").replace(" tex=", " 贴图=").replace(" anim=", " 动画=")
-				.replace(" expire=", " 到期清除=");
-		if (text.equals("teleport")) return "传送";
-		if (text.equals("noop")) return "空操作";
-		return t(text);
-	}
-
 	private static String exact(String text) {
+		if ("Boss Invulnerability".equals(text)) return actionName("set_invulnerable");
 		return ZH.getOrDefault(text, text);
 	}
 
 	private static final Map<String, String> ZH = Map.ofEntries(
 			Map.entry("Spell Editor", "符卡编辑器"),
+			Map.entry("AI Spell", "AI 符卡"),
+			Map.entry("Modify current", "修改当前符卡"),
+			Map.entry("Create new", "新建符卡"),
+			Map.entry("Generate draft", "生成草稿"),
+			Map.entry("Cancel", "取消"),
+			Map.entry("Custom requirement", "自定义要求"),
+			Map.entry("Describe the spell or requested changes:", "描述要创建的符卡或要修改的内容："),
+			Map.entry("Server certification and OP/EXP policy still apply.", "服务器认证和 OP/EXP 策略仍然有效。"),
+			Map.entry("Configured server header prompt is active.", "服务器自定义头部提示词已启用。"),
+			Map.entry("Sending request...", "正在发送请求……"),
+			Map.entry("Server returned invalid spell JSON", "服务器返回的符卡 JSON 无效"),
+			Map.entry("LLM request failed", "LLM 请求失败"),
+			Map.entry("Type: normal", "类型：普通符卡"),
+			Map.entry("Type: non_spell", "类型：非符"),
+			Map.entry("Type: timeout_spell", "类型：时符"),
+			Map.entry("Type: last_spell", "类型：终符"),
 			Map.entry("Spell Preview", "符卡预览"),
 			Map.entry("New Spell", "新符卡"),
 			Map.entry("Ortho", "正交"),
@@ -258,6 +278,9 @@ public final class SpellEditorLocalization {
 			Map.entry("Delete", "删除"),
 			Map.entry("Built-in magic circles cannot be deleted", "内置魔法阵不可删除"),
 			Map.entry("Magic Circle id already exists", "魔法阵 ID 已存在"),
+			Map.entry("Magic Circle renamed", "魔法阵已重命名"),
+			Map.entry("Magic Circle delete sent", "魔法阵删除请求已发送"),
+			Map.entry("Invalid circle id", "魔法阵 ID 无效"),
 			Map.entry("Magic Circle reset", "魔法阵已重置"),
 			Map.entry("No snapshot to reset to", "没有可还原的快照"),
 			Map.entry("Mode: Spell", "模式: 符卡"),
@@ -625,6 +648,8 @@ public final class SpellEditorLocalization {
 			Map.entry("target_health_above", "目标生命高于"),
 			Map.entry("target_is_flying", "目标飞行"),
 			Map.entry("target_is_fallflying", "目标鞘翅飞行"),
+			Map.entry("hit_entity_is_player", "命中玩家"),
+			Map.entry("hit:player", "命中玩家"),
 			Map.entry("dynamic_tick_interval", "动态 tick 间隔"),
 			Map.entry("entity_trait", "实体特性"),
 			Map.entry("entity_flag", "实体标志"),
@@ -772,7 +797,6 @@ public final class SpellEditorLocalization {
 			Map.entry("Display Name", "显示名"),
 			Map.entry("New Spell ID", "新符卡 ID"),
 			Map.entry("Apply", "应用"),
-			Map.entry("Cancel", "取消"),
 			Map.entry("Done", "完成"),
 			Map.entry("Move Origin", "移动原点"),
 			Map.entry("Rotate Group", "旋转弹幕组"),

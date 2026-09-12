@@ -88,6 +88,7 @@ public class RuntimeItemSpell extends ItemSpell {
 	}
 
 	public void switchSpell(SpellDefinition definition, SpellRuntime nextRuntime, boolean clearScreen) {
+		dev.xkmc.youkaishomecoming.compat.ysm.YsmSpellHints.clearRuntime(runtime);
 		retainDelayedRuntime(runtime);
 		this.definition = definition;
 		if (clearScreen) {

@@ -247,6 +247,10 @@ public abstract class YoukaiEntity extends PathfinderMob
 
 	@Override
 	public boolean isInvulnerableTo(DamageSource pSource) {
+		if (!pSource.is(DamageTypeTags.BYPASSES_INVULNERABILITY) && spellRuntime != null
+				&& spellRuntime.isCasterInvulnerable(level().getGameTime())) {
+			return true;
+		}
 		if (hasEffect(YHEffects.BEATEN.get())) {
 			return true;
 		}

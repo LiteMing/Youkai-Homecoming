@@ -2,7 +2,9 @@ package dev.xkmc.youkaishomecoming.content.spell.analysis;
 
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.FreezeOnTickAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SetInvulnerableAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellTitleAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.ShowSpellCardAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellCircleAction;
@@ -81,6 +83,10 @@ public final class NonSpellValidator {
 		}
 		if (inner instanceof SetSpellHealthAction)
 			throw new PresentationNodeException("spell initialization / health nodes");
+		if (inner instanceof SetInvulnerableAction)
+			throw new SpellAnalysisException("Non-spells cannot use boss invulnerability");
+		if (inner instanceof FreezeOnTickAction)
+			throw new SpellAnalysisException("Non-spells cannot freeze the onTick clock");
 		if (inner instanceof SetSpellCircleAction)
 			throw new PresentationNodeException("spell-circle presentation nodes");
 		if (inner instanceof ShowSpellTitleAction)

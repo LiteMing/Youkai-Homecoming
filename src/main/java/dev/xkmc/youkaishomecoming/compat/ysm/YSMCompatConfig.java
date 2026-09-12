@@ -22,7 +22,8 @@ public final class YSMCompatConfig {
 
 	private static final String RESOURCE_DIR = "yhysm";
 	private static final String DEFAULT_TEXTURE = "default";
-	private static final Map<String, ModelRule> MODEL_RULES = new LinkedHashMap<>();
+	/** Native player predicates also read model rules from OpenYSM's animation worker. */
+	private static final Map<String, ModelRule> MODEL_RULES = new java.util.concurrent.ConcurrentHashMap<>();
 	private static final Map<ResourceLocation, RenderBinding> DEFAULT_BINDINGS = new LinkedHashMap<>();
 	private static final Map<String, List<String>> DEFAULT_EXPRESSIONS = Map.of(
 			"angry", List.of("angry", "combat", "extra10", "attack", "attacked", "idle"),

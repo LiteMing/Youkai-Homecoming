@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 
 import java.util.function.Supplier;
 
@@ -39,6 +40,26 @@ public class SpellEditorNetworkClient {
 
 	public static void delete(ResourceLocation spellId) {
 		YoukaisHomecoming.HANDLER.toServer(SpellEditorSyncToServer.delete(spellId));
+	}
+
+	public static void requestAi(SpellPreviewScreen parent, String prompt, String operation,
+			SpellCardType cardType) {
+		String json = parent.currentJsonForAi();
+		SpellAiGenerateRequestToServer base = new SpellAiGenerateRequestToServer(prompt, operation,
+				cardType == null ? "normal" : cardType.getSerializedName(), json);
+		if (json.length() <= SpellAiGenerateRequestToServer.MAX_CHUNK_CHARS) {
+			YoukaisHomecoming.HANDLER.toServer(base);
+			return;
+		}
+		int transferId = (json.hashCode() ^ (int) System.nanoTime()) & 0x7fff_ffff;
+		int total = (json.length() + SpellAiGenerateRequestToServer.MAX_CHUNK_CHARS - 1)
+				/ SpellAiGenerateRequestToServer.MAX_CHUNK_CHARS;
+		for (int i = 0; i < total; i++) {
+			int from = i * SpellAiGenerateRequestToServer.MAX_CHUNK_CHARS;
+			int to = Math.min(json.length(), from + SpellAiGenerateRequestToServer.MAX_CHUNK_CHARS);
+			YoukaisHomecoming.HANDLER.toServer(SpellAiGenerateRequestToServer.chunk(base, transferId,
+					i, total, json.substring(from, to)));
+		}
 	}
 
 	/**

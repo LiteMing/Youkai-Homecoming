@@ -117,6 +117,11 @@ public class SpellContainer extends ConditionalToken {
 				data.proxies.stream().anyMatch(DanmakuProxyEntity::isGenerating);
 	}
 
+	/** Exact ownership check for presentation attached to a legacy player spell. */
+	public static boolean isActiveItemSpell(Player player, ItemSpell spell) {
+		return ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD).spells.contains(spell);
+	}
+
 	/** True only for a real spell card; an enabled non-spell remains an ordinary attack. */
 	public static boolean hasActiveSpellCard(Player player) {
 		var data = ConditionalData.HOLDER.get(player).getOrCreateData(PVD, PVD);

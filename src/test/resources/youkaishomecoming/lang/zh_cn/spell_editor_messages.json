@@ -1,0 +1,19 @@
+{
+  "youkaishomecoming.spell_editor.message.sync_failed": "符卡编辑器同步失败：%s",
+  "youkaishomecoming.spell_editor.message.no_permission": "没有在此服务器编辑符卡的权限。",
+  "youkaishomecoming.spell_editor.message.saved_bound": "已保存符卡 %s，并绑定了手中的符卡。",
+  "youkaishomecoming.spell_editor.message.saved": "已保存符卡 %s。",
+  "youkaishomecoming.spell_editor.message.created": "已创建符卡 %s。",
+  "youkaishomecoming.spell_editor.message.deleted": "已删除符卡 %s。",
+  "youkaishomecoming.spell_editor.message.reset": "符卡已重置为默认状态。",
+  "youkaishomecoming.spell_editor.message.applied_saved": "已保存符卡，并应用到 %s 个实体。",
+  "youkaishomecoming.spell_editor.message.imported": "已导入市场符卡 %s。",
+  "youkaishomecoming.spell_editor.message.unknown_spell": "未知符卡：%s",
+  "youkaishomecoming.spell_editor.message.decode_failed": "符卡解码失败：%s",
+  "youkaishomecoming.spell_editor.message.ai_result": "%s",
+  "youkaishomecoming.spell_editor.message.fix_broken": "请先修复损坏节点",
+  "youkaishomecoming.spell_editor.message.snapshot_saved": "已保存截图（%s 字节）到：%s",
+  "youkaishomecoming.spell_editor.message.snapshot_failed": "截图捕获失败",
+  "youkaishomecoming.spell_editor.message.phase_deleted": "已删除阶段 %s%s",
+  "youkaishomecoming.spell_editor.message.transitions_removed": "，并移除了 %s 个阶段转换"
+}

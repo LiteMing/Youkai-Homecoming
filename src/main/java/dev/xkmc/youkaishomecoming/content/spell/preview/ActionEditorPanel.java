@@ -7,6 +7,7 @@ import dev.xkmc.youkaishomecoming.compat.ysm.YsmEditorCatalog;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderConfig;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
+import dev.xkmc.youkaishomecoming.content.spell.client.SpellTitleRenderer;
 import dev.xkmc.youkaishomecoming.content.spell.condition.*;
 import dev.xkmc.youkaishomecoming.content.spell.definition.*;
 import dev.xkmc.youkaishomecoming.content.spell.mover.FormulaExpr;
@@ -67,6 +68,7 @@ public class ActionEditorPanel {
 			"target_on_ground", "target_speed", "random_chance",
 			"target_health_below", "target_health_above",
 			"target_is_flying", "target_is_fallflying",
+			"hit_entity_is_player",
 			"dynamic_tick_interval", "entity_trait", "entity_flag", "compare",
 			"difficulty_equals", "difficulty_above",
 			"always", "not", "and", "or"
@@ -78,6 +80,7 @@ public class ActionEditorPanel {
 			"target_on_ground", "target_speed", "random_chance",
 			"target_health_below", "target_health_above",
 			"target_is_flying", "target_is_fallflying",
+			"hit_entity_is_player",
 			"dynamic_tick_interval", "entity_trait", "entity_flag", "compare",
 			"difficulty_equals", "difficulty_above",
 			"always"
@@ -98,22 +101,32 @@ public class ActionEditorPanel {
 	private java.util.function.Supplier<String> ysmPreviewModel = () -> "";
 	/** UI-only model context for the hint picker on a ysm_render action. */
 	private String ysmHintCatalogModel = "";
+	private String spellTitleImageNamespace = "";
+	private EditBox spellTitleImageEditBox;
+	private int spellTitleImageCatalogVersion = -1;
+	private List<String> spellTitleImageCatalog = List.of();
+	private final SpellTitleRenderer spellTitleImagePreview = new SpellTitleRenderer();
 	public void setYsmPreviewModel(java.util.function.Supplier<String> supplier) { ysmPreviewModel = supplier; }
 	private java.util.function.Function<ResourceLocation, String> spellDisplayFormatter = ResourceLocation::toString;
 	private java.util.function.Supplier<ActionListPanel.ActionPath> actionPathSupplier = () -> null;
 	private java.util.function.Supplier<String> spellDisplayNameSupplier = () -> "";
 	private Consumer<String> spellDisplayNameUpdater = value -> {};
-	private java.util.function.Supplier<Boolean> linkedSpellTitleSupplier = () -> false;
-	private Consumer<Boolean> linkedSpellTitleUpdater = value -> {};
+	private Function<SpellInitializationLinks.Kind, SpellAction> initializationLinkSupplier = kind -> null;
+	private java.util.function.BiConsumer<SpellInitializationLinks.Kind, SpellAction> initializationLinkUpdater = (kind, action) -> {};
+	private Consumer<SpellInitializationLinks.Kind> initializationLinkSelector = kind -> {};
+	private Supplier<SpellAction> invulnerabilityFreezeSupplier = () -> null;
+	private Consumer<SpellAction> invulnerabilityFreezeUpdater = action -> {};
 
 	private int x, y, w, h;
 	private SpellAction currentAction;
 	private ActionListPanel.ActionPath currentActionPath;
 	private int actionIndex = -1;
 	private final List<EditorRow> rows = new ArrayList<>();
+	private final EditorViewRefresh viewRefresh = new EditorViewRefresh(this::rebuildCurrentView);
 	private int scrollOffset = 0;
 	private final Map<ActionListPanel.ActionPath, Integer> scrollStateMap = new HashMap<>();
 	private boolean widgetsRegistered = false;
+	private boolean widgetsVisible = true;
 	private boolean scrollbarDragging = false;
 
 	// Depth tracking for nested mover editors
@@ -164,33 +177,28 @@ public class ActionEditorPanel {
 		if (action == currentAction && index == actionIndex
 				&& java.util.Objects.equals(path, currentActionPath)) return;
 		ysmHintCatalogModel = "";
+		spellTitleImageNamespace = SpellInitializationLinks.unwrap(action) instanceof ShowSpellTitleAction title
+				? title.presentation().background().map(ResourceLocation::getNamespace).orElse("") : "";
 		// Save current scroll state before switching
 		if (currentActionPath != null) {
 			scrollStateMap.put(currentActionPath, scrollOffset);
 		}
-		clearWidgets();
 		editingFixedDirInner = false;
 		this.currentAction = action;
 		this.currentActionPath = path;
 		this.actionIndex = index;
 		this.scrollOffset = path == null ? 0 : scrollStateMap.getOrDefault(path, 0);
 		this.typeSelectorMode = false;
-		buildActionRows(action);
-		layoutWidgets();
-		// Clamp restored offset to valid range after layout
-		int maxScroll = getContentMaxScroll();
-		if (scrollOffset > maxScroll) {
-			scrollOffset = Math.max(0, maxScroll);
-		}
+		refreshCurrentView();
 	}
 
 	public void clearAction() {
-		clearWidgets();
 		editingFixedDirInner = false;
 		currentAction = null;
 		currentActionPath = null;
 		actionIndex = -1;
 		typeSelectorMode = false;
+		refreshCurrentView();
 	}
 
 	/**
@@ -203,15 +211,13 @@ public class ActionEditorPanel {
 	}
 
 	public void showTypeSelector(Consumer<SpellAction> onCreated) {
-		clearWidgets();
 		editingFixedDirInner = false;
 		currentAction = null;
 		currentActionPath = null;
 		actionIndex = -1;
 		typeSelectorMode = true;
 		typeSelectorCallback = onCreated;
-		buildTypeSelectorRows();
-		layoutWidgets();
+		refreshCurrentView();
 	}
 
 	public void setPhaseOptions(java.util.function.Supplier<List<ResourceLocation>> supplier,
@@ -232,31 +238,41 @@ public class ActionEditorPanel {
 
 	public void setSpellInitializationAccess(java.util.function.Supplier<String> displayNameSupplier,
 			Consumer<String> displayNameUpdater,
-			java.util.function.Supplier<Boolean> linkedTitleSupplier,
-			Consumer<Boolean> linkedTitleUpdater) {
+			Function<SpellInitializationLinks.Kind, SpellAction> linkSupplier,
+			java.util.function.BiConsumer<SpellInitializationLinks.Kind, SpellAction> linkUpdater,
+			Consumer<SpellInitializationLinks.Kind> linkSelector) {
 		this.spellDisplayNameSupplier = displayNameSupplier != null ? displayNameSupplier : () -> "";
 		this.spellDisplayNameUpdater = displayNameUpdater != null ? displayNameUpdater : value -> {};
-		this.linkedSpellTitleSupplier = linkedTitleSupplier != null ? linkedTitleSupplier : () -> false;
-		this.linkedSpellTitleUpdater = linkedTitleUpdater != null ? linkedTitleUpdater : value -> {};
+		this.initializationLinkSupplier = linkSupplier != null ? linkSupplier : kind -> null;
+		this.initializationLinkUpdater = linkUpdater != null ? linkUpdater : (kind, action) -> {};
+		this.initializationLinkSelector = linkSelector != null ? linkSelector : kind -> {};
+	}
+
+	public void setInvulnerabilityFreezeAccess(Supplier<SpellAction> linkSupplier,
+			Consumer<SpellAction> linkUpdater) {
+		this.invulnerabilityFreezeSupplier = linkSupplier != null ? linkSupplier : () -> null;
+		this.invulnerabilityFreezeUpdater = linkUpdater != null ? linkUpdater : action -> {};
 	}
 
 	public void refreshCurrentView() {
+		viewRefresh.request();
+	}
+
+	/** The owning screen calls this before rendering or dispatching the next input event. */
+	public void flushPendingView() {
+		viewRefresh.flush();
+	}
+
+	private void rebuildCurrentView() {
+		clearWidgets();
+		editingFixedDirInner = false;
 		if (typeSelectorMode) {
-			clearWidgets();
 			buildTypeSelectorRows();
-			layoutWidgets();
-			return;
+		} else if (currentAction != null) {
+			buildActionRows(currentAction);
 		}
-		if (currentAction != null) {
-			var action = currentAction;
-			int index = actionIndex;
-			clearWidgets();
-			editingFixedDirInner = false;
-			this.currentAction = action;
-			this.actionIndex = index;
-			buildActionRows(action);
-			layoutWidgets();
-		}
+		scrollOffset = Math.max(0, Math.min(scrollOffset, getContentMaxScroll()));
+		layoutWidgets();
 	}
 
 	private void clearWidgets() {
@@ -264,6 +280,7 @@ public class ActionEditorPanel {
 		commandSuggestions = null;
 		commandEditBox = null;
 		soundEditBox = null;
+		spellTitleImageEditBox = null;
 		closeDropdown();
 		closeExprCompletion();
 		closeStringCompletion();
@@ -299,8 +316,9 @@ public class ActionEditorPanel {
 	 * 设置所有已注册 widget 的可见性。用于 Dock Tab 切换时隐藏/显示。
 	 */
 	public void setAllWidgetsVisible(boolean visible) {
+		widgetsVisible = visible;
 		for (var row : rows) {
-			row.widget().visible = visible;
+			row.widget().visible = visible && !row.sectionHeader();
 		}
 	}
 
@@ -366,6 +384,17 @@ public class ActionEditorPanel {
 			buildConfineTargetRows(cta);
 		} else if (action instanceof SetEntityFlagAction sefa) {
 			buildSetEntityFlagRows(sefa);
+		} else if (action instanceof SetInvulnerableAction invulnerable) {
+			addNumberRow(spellInvulnerabilityLabel("duration"), invulnerable.duration(), value ->
+					notifySimple(old -> new SetInvulnerableAction(value)));
+			rows.get(rows.size() - 1).widget().setTooltip(Tooltip.create(Component.translatable(
+					"youkaishomecoming.spell_editor.invulnerable.help")));
+			if (InvulnerabilityFreezeLinks.isOwner(currentAction)) buildInvulnerabilityFreezeRows(invulnerable);
+		} else if (action instanceof FreezeOnTickAction freeze) {
+			addNumberRow(spellFreezeLabel("duration"), freeze.duration(), value ->
+					notifySimple(old -> new FreezeOnTickAction(value)));
+			rows.get(rows.size() - 1).widget().setTooltip(Tooltip.create(Component.translatable(
+					"youkaishomecoming.spell_editor.freeze_on_tick.help")));
 		} else if (action instanceof YsmRenderAction yra) {
 			buildYsmRenderRows(yra);
 		} else if (action instanceof TeleportRandomAction tra) {
@@ -386,64 +415,23 @@ public class ActionEditorPanel {
 	 * <p>分组顺序即显示顺序；组名同时是 {@link #collapsedSections} 的键，
 	 * 因此不能与属性面板里的分区标题重名（Pattern / Mover / Origin / Advanced / Group Rotation）。
 	 */
-	private record TypeEntry(String type, String label) {
+	private record TypeGroup(String label, List<String> types) {
 	}
 
-	private record TypeGroup(String label, List<TypeEntry> entries) {
-	}
-
-	private static TypeGroup group(String label, String... typeAndLabel) {
-		List<TypeEntry> entries = new ArrayList<>();
-		for (int i = 0; i + 1 < typeAndLabel.length; i += 2) {
-			entries.add(new TypeEntry(typeAndLabel[i], typeAndLabel[i + 1]));
-		}
-		return new TypeGroup(label, List.copyOf(entries));
+	private static TypeGroup group(String label, String... types) {
+		return new TypeGroup(label, List.of(types));
 	}
 
 	private static final List<TypeGroup> TYPE_GROUPS = List.of(
-			group("Fire",
-					"fire_danmaku", "Fire Danmaku",
-					"fire_laser", "Fire Laser",
-					"fire_text_danmaku", "Fire Text Danmaku",
-					"spawn_shooter", "Spawn Shooter"),
-			group("Flow",
-					"conditional", "Conditional",
-					"repeat", "Repeat",
-					"delay", "Delay",
-					"sequence", "Sequence",
-					"burst", "Burst"),
-			group("Variables",
-					"set_variable", "Set Variable",
-					"add_variable", "Add Variable"),
-			group("Field",
-					"clear_screen", "Clear Screen",
-					"erase_enemy_danmaku", "Erase Enemy Danmaku"),
-			group("Presentation",
-					"play_sound", "Play Sound",
-					"camera_shake", "Camera Shake",
-					"show_spell_title", "Show Spell Title",
-					"show_spell_card", "Show Spell Card",
-					"set_spell_circle", "Custom Magic Circle",
-					"ysm_render", "YSM Hint"),
-			group("Spell Flow",
-					"force_phase", "Force Phase",
-					"force_spell", "Force Spell",
-					"fire_spell", "Fire Spell",
-					"spellcard_init", "Spell Card Initialization"),
-			group("Movement",
-					"teleport", "Teleport",
-					"teleport_random", "Teleport Random",
-					"caster_moves", "Caster Moves",
-					"confine_target", "Confine Target"),
-			group("Hit Control",
-					"bounce_source", "Bounce Source",
-					"continue_source", "Continue Source",
-					"expire_source", "Expire Source",
-					"discard_source", "Discard Source",
-					"hold_source", "Hold Source"),
-			group("Privileged",
-					"run_command", "Run Command",
-					"set_entity_flag", "Set Entity Flag"));
+			group("Fire", "fire_danmaku", "fire_laser", "fire_text_danmaku", "spawn_shooter"),
+			group("Flow", "conditional", "repeat", "delay", "sequence", "burst"),
+			group("Variables", "set_variable", "add_variable"),
+			group("Field", "clear_screen", "erase_enemy_danmaku"),
+			group("Presentation", "play_sound", "camera_shake", "show_spell_title", "show_spell_card", "set_spell_circle", "ysm_render"),
+			group("Spell Flow", "force_phase", "force_spell", "fire_spell", "spellcard_init", "set_invulnerable", "freeze_on_tick"),
+			group("Movement", "teleport", "teleport_random", "caster_moves", "confine_target"),
+			group("Hit Control", "bounce_source", "continue_source", "expire_source", "discard_source", "hold_source"),
+			group("Privileged", "run_command", "set_entity_flag"));
 
 	/** 只有前两组默认展开。 */
 	private static boolean typeGroupDefaultsApplied = false;
@@ -474,8 +462,8 @@ public class ActionEditorPanel {
 			if (isSectionCollapsed(group.label())) {
 				continue;
 			}
-			for (TypeEntry entry : group.entries()) {
-				addTypeButton(entry.type(), entry.label());
+			for (String type : group.types()) {
+				addTypeButton(type);
 			}
 		}
 	}
@@ -491,11 +479,11 @@ public class ActionEditorPanel {
 			marker = "[X] ";
 		}
 		var button = new Button(0, 0, w - PADDING * 2, ROW_HEIGHT - 2,
-				Component.literal(marker + favorite.name()), ignored -> onFavoriteSelected.accept(favorite), Supplier::get) {
+				Component.literal(marker + favorite.name()), ignored -> viewRefresh.interact(() -> onFavoriteSelected.accept(favorite)), Supplier::get) {
 			@Override
 			public boolean mouseClicked(double mouseX, double mouseY, int mouseButton) {
 				if (mouseButton == 1 && active && visible && isMouseOver(mouseX, mouseY)) {
-					onFavoriteRemoved.accept(favorite);
+					viewRefresh.interact(() -> onFavoriteRemoved.accept(favorite));
 					return true;
 				}
 				return super.mouseClicked(mouseX, mouseY, mouseButton);
@@ -505,9 +493,9 @@ public class ActionEditorPanel {
 		rows.add(new EditorRow("", button, true));
 	}
 
-	private void addTypeButton(String type, String label) {
+	private void addTypeButton(String type) {
 		String marker = SpellEditorNodeLabels.actionMarker(createDefaultAction(type));
-		addFullWidthButton(marker + label, () -> selectType(type));
+		addFullWidthButton(marker + SpellEditorLocalization.actionName(type), () -> selectType(type));
 	}
 
 	private void selectType(String type) {
@@ -580,6 +568,10 @@ public class ActionEditorPanel {
 		case "sequence" -> new SpellActions.SequenceAction(new ArrayList<>());
 		case "confine_target" -> new ConfineTargetAction(32, 1.0);
 		case "set_entity_flag" -> new SetEntityFlagAction(4, true);
+		case "set_invulnerable" -> new SetInvulnerableAction(NumberProvider.constant(
+				YHModConfig.COMMON.spellDeclarationInvulnerabilityTicks.get()));
+		case "freeze_on_tick" -> new FreezeOnTickAction(NumberProvider.constant(
+				YHModConfig.COMMON.spellDeclarationInvulnerabilityTicks.get()));
 		case "ysm_render" -> YsmRenderAction.empty();
 		case "teleport_random" -> new TeleportRandomAction(32, 0.8, 0.4, 16, true, true);
 		case "caster_moves" -> new CasterMovesAction(SpellMovementDirective.Mode.RANDOM);
@@ -707,15 +699,11 @@ public class ActionEditorPanel {
 		addTextDisplayRow("Error", action.error());
 		addTextDisplayRow("Raw", action.rawJson());
 		addFullWidthButton("[Replace with another type]", () -> {
-			// 直接选中坏节点时没有插入回调，改为用新动作原地替换当前节点。
-			Consumer<SpellAction> callback = typeSelectorCallback != null ? typeSelectorCallback
-					: replacement -> {
-						typeSelectorMode = false;
-						currentAction = replacement;
-						onActionChanged.accept(replacement);
-						setAction(replacement, actionIndex);
-					};
-			showTypeSelector(callback);
+			int index = actionIndex;
+			showTypeSelector(replacement -> {
+				onActionChanged.accept(replacement);
+				setAction(replacement, index);
+			});
 		});
 	}
 
@@ -920,7 +908,7 @@ public class ActionEditorPanel {
 		addDynamicStringOptionRow("Projectile Slot", config.slot(),
 				() -> {
 					String model = config.model();
-					if (currentAction instanceof FireDanmakuAction latest) {
+					if (SpellInitializationLinks.unwrap(currentAction) instanceof FireDanmakuAction latest) {
 						model = latest.ysmProjectile().map(YsmProjectileConfig::model).orElse(model);
 					}
 					return YsmClientPresentationBridge.projectileSlots(model);
@@ -986,7 +974,7 @@ public class ActionEditorPanel {
 		addDynamicStringOptionRow("Projectile Slot", config.slot(),
 				() -> {
 					String model = config.model();
-					if (currentAction instanceof FireLaserAction latest) {
+					if (SpellInitializationLinks.unwrap(currentAction) instanceof FireLaserAction latest) {
 						model = latest.ysmProjectile().map(YsmProjectileConfig::model).orElse(model);
 					}
 					return YsmClientPresentationBridge.projectileSlots(model);
@@ -1652,6 +1640,8 @@ public class ActionEditorPanel {
 			// No parameters
 		} else if (cond instanceof SpellConditions.TargetIsFallFlying) {
 			// No parameters
+		} else if (cond instanceof SpellConditions.HitEntityIsPlayer) {
+			// No parameters
 		} else if (cond instanceof SpellConditions.AlwaysCondition ac) {
 			addStringCycleRow(prefix + "Value", new String[]{"true", "false"},
 					ac.value() ? "true" : "false", v ->
@@ -1921,12 +1911,26 @@ public class ActionEditorPanel {
 						((ShowSpellTitleAction) old).presentation())));
 		SpellTitleStyle style = sta.presentation();
 		addSectionHeader(spellTitleLabel("presentation"));
-		addStringRow(spellTitleLabel("background"), style.background().map(ResourceLocation::toString).orElse(""), v -> {
+		addSuggestStringRow(spellTitleLabel("image_namespace"), spellTitleImageNamespace,
+				() -> spellTitleImageOptions().stream().map(id -> id.substring(0, id.indexOf(':'))).distinct().toList(),
+				value -> spellTitleImageNamespace = value.trim())
+				.setTooltip(Tooltip.create(Component.translatable("youkaishomecoming.spell_editor.title.image_namespace_help")));
+		spellTitleImageEditBox = addSuggestStringRow(spellTitleLabel("background"),
+				style.background().map(ResourceLocation::toString).orElse(""),
+				() -> spellTitleImageOptions().stream().filter(id -> spellTitleImageNamespace.isBlank()
+						|| id.startsWith(spellTitleImageNamespace + ":")).toList(), v -> {
 			ResourceLocation texture = ResourceLocation.tryParse(v.trim());
 			if (v.isBlank() || texture != null) {
 				updateSpellTitleStyle(s -> s.withBackground(v.isBlank() ? Optional.empty() : Optional.of(texture)), false);
 			}
 		});
+		folderCompletionTargets.add(spellTitleImageEditBox);
+		completionFolderFunctions.put(spellTitleImageEditBox, value -> {
+			int slash = value.lastIndexOf('/');
+			return slash < 0 ? value.substring(0, value.indexOf(':')) : value.substring(0, slash);
+		});
+		completionLabelFunctions.put(spellTitleImageEditBox, value -> value.substring(value.lastIndexOf('/') + 1));
+		spellTitleImageEditBox.setTooltip(Tooltip.create(Component.translatable("youkaishomecoming.spell_editor.title.image_picker_help")));
 		addFloatRow(spellTitleLabel("background_scale"), style.backgroundScale().orElseGet(
 				() -> YHModConfig.CLIENT.spellTitleBackgroundScale.get().floatValue()), v -> {
 			if (Float.isFinite(v) && v >= 0.05f && v <= 8) updateSpellTitleStyle(s -> s.withBackgroundScale(v), false);
@@ -1939,6 +1943,13 @@ public class ActionEditorPanel {
 				() -> YHModConfig.CLIENT.spellTitleBackgroundY.get().floatValue()), v -> {
 			if (Float.isFinite(v) && Math.abs(v) <= 4096) updateSpellTitleStyle(s -> s.withBackgroundY(v), false);
 		});
+		var directions = SpellTitleStyle.GradientDirection.values();
+		addStringOptionRow(spellTitleLabel("gradient_direction"),
+				java.util.Arrays.stream(directions).map(SpellTitleStyle.GradientDirection::getSerializedName).toArray(String[]::new),
+				java.util.Arrays.stream(directions).map(value -> spellTitleLabel(value.getSerializedName())).toArray(String[]::new),
+				style.gradientDirection().orElseGet(() -> YHModConfig.CLIENT.spellTitleGradientDirection.get()).getSerializedName(),
+				value -> updateSpellTitleStyle(s -> s.withGradientDirection(
+						SpellTitleStyle.GradientDirection.valueOf(value.toUpperCase(java.util.Locale.ROOT))), false));
 		addColorRow(spellTitleLabel("gradient_start"), style.gradientStart().orElseGet(
 				() -> YHModConfig.CLIENT.spellTitleGradientStart.get()), v -> updateSpellTitleStyle(s -> s.withGradientStart(v), false));
 		addColorRow(spellTitleLabel("gradient_end"), style.gradientEnd().orElseGet(
@@ -1946,8 +1957,24 @@ public class ActionEditorPanel {
 		addButtonRow(spellTitleLabel("reset"), () -> updateSpellTitleStyle(s -> SpellTitleStyle.DEFAULT, true));
 	}
 
+	private List<String> spellTitleImageOptions() {
+		int version = SpellTitleRenderer.resourceVersion();
+		if (spellTitleImageCatalogVersion != version) {
+			// Only enumerate resource IDs here. Decode the single hovered image on demand.
+			spellTitleImageCatalog = Minecraft.getInstance().getResourceManager()
+					.listResources("textures", id -> id.getPath().endsWith(".png")).keySet().stream()
+					.map(ResourceLocation::toString).sorted().toList();
+			spellTitleImageCatalogVersion = version;
+		}
+		return spellTitleImageCatalog;
+	}
+
 	private static String spellTitleLabel(String key) {
-		return Component.translatable("youkaishomecoming.spell_editor.title." + key).getString();
+		return SpellEditorLocalization.text("youkaishomecoming.spell_editor.title." + key);
+	}
+
+	private static String spellInvulnerabilityLabel(String key) {
+		return SpellEditorLocalization.text("youkaishomecoming.spell_editor.invulnerable." + key);
 	}
 
 	private void updateSpellTitleStyle(Function<SpellTitleStyle, SpellTitleStyle> update, boolean refresh) {
@@ -1986,18 +2013,74 @@ public class ActionEditorPanel {
 					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(), v,
 							((SetSpellHealthAction) old).duration(), ((SetSpellHealthAction) old).onTimeout(),
 							((SetSpellHealthAction) old).onBreak())));
-			addNumberRow("Duration", action.duration(), v -> notifySimple(old ->
+			addNumberRow(spellInitializationLabel("battle_duration"), action.duration(), v -> notifySimple(old ->
 					new SetSpellHealthAction(((SetSpellHealthAction) old).mode(),
 							((SetSpellHealthAction) old).health(), v, ((SetSpellHealthAction) old).onTimeout(),
 							((SetSpellHealthAction) old).onBreak())));
-			if (currentActionPath != null && !currentActionPath.isNested()) {
-				addBoolRow("Link Spell Title", linkedSpellTitleSupplier.get(), value -> {
-					linkedSpellTitleUpdater.accept(value);
-					refreshCurrentView();
-				});
-			}
 			buildSpellHealthTargetRows("Timeout", true, action.onTimeout());
 			buildSpellHealthTargetRows("Break", false, action.onBreak());
+			if (currentActionPath != null && SpellInitializationLinks.isInitializer(currentAction)) {
+				addSectionHeader(spellInitializationLabel("declaration"));
+				buildSpellInitializationLinkRows(SpellInitializationLinks.Kind.TITLE);
+				buildSpellInitializationLinkRows(SpellInitializationLinks.Kind.CARD);
+				buildSpellInitializationLinkRows(SpellInitializationLinks.Kind.INVULNERABILITY);
+			}
+		}
+	}
+
+	private static String spellInitializationLabel(String key) {
+		return SpellEditorLocalization.text("youkaishomecoming.spell_editor.init." + key);
+	}
+
+	private static String spellFreezeLabel(String key) {
+		return SpellEditorLocalization.text("youkaishomecoming.spell_editor.freeze_on_tick." + key);
+	}
+
+	private void buildInvulnerabilityFreezeRows(SetInvulnerableAction owner) {
+		SpellAction linked = invulnerabilityFreezeSupplier.get();
+		boolean enabled = InvulnerabilityFreezeLinks.isEnabled(linked);
+		addBoolRow(spellInvulnerabilityLabel("freeze_on_tick"), enabled, value -> {
+			SpellAction next = InvulnerabilityFreezeLinks.withEnabled(invulnerabilityFreezeSupplier.get(), value,
+					() -> {
+						SpellAction selected = SpellInitializationLinks.unwrap(currentAction);
+						NumberProvider duration = selected instanceof SetInvulnerableAction latest
+								? latest.duration() : owner.duration();
+						return new FreezeOnTickAction(duration);
+					});
+			invulnerabilityFreezeUpdater.accept(next);
+		});
+		rows.get(rows.size() - 1).widget().setTooltip(Tooltip.create(Component.translatable(
+				"youkaishomecoming.spell_editor.invulnerable.freeze_on_tick_help")));
+		if (!enabled || !(InvulnerabilityFreezeLinks.unwrap(linked) instanceof FreezeOnTickAction freeze)) return;
+		addNumberRow(spellFreezeLabel("duration"), freeze.duration(), value -> {
+			if (InvulnerabilityFreezeLinks.unwrap(invulnerabilityFreezeSupplier.get()) instanceof FreezeOnTickAction) {
+				invulnerabilityFreezeUpdater.accept(new FreezeOnTickAction(value));
+			}
+		});
+	}
+
+	private void buildSpellInitializationLinkRows(SpellInitializationLinks.Kind kind) {
+		SpellAction linked = initializationLinkSupplier.apply(kind);
+		boolean enabled = SpellInitializationLinks.isEnabled(linked);
+		addBoolRow(spellInitializationLabel(kind.labelKey), enabled, value -> {
+			SpellAction next = SpellInitializationLinks.withEnabled(initializationLinkSupplier.apply(kind), value,
+					() -> createDefaultAction(kind.actionType));
+			initializationLinkUpdater.accept(kind, next);
+		});
+		rows.get(rows.size() - 1).widget().setTooltip(Tooltip.create(Component.translatable(
+				"youkaishomecoming.spell_editor.init.declaration_help")));
+		if (!enabled) return;
+		if (linked instanceof SetInvulnerableAction protection) {
+			addNumberRow(spellInvulnerabilityLabel("duration"), protection.duration(), value -> {
+				if (initializationLinkSupplier.apply(kind) instanceof SetInvulnerableAction current) {
+					initializationLinkUpdater.accept(kind, new SetInvulnerableAction(value));
+				}
+			});
+			rows.get(rows.size() - 1).widget().setTooltip(Tooltip.create(Component.translatable(
+					"youkaishomecoming.spell_editor.invulnerable.help")));
+			addButtonRow(spellInitializationLabel("edit_invulnerable"), () -> initializationLinkSelector.accept(kind));
+		} else {
+			addButtonRow(spellInitializationLabel("edit_" + kind.labelKey), () -> initializationLinkSelector.accept(kind));
 		}
 	}
 
@@ -2309,6 +2392,8 @@ public class ActionEditorPanel {
 				v -> notifySimple(old -> ((YsmRenderAction) old).withHint(v), false));
 		addIntRow(ysmLabel("action.duration"), yra.duration(), v ->
 				notifySimple(old -> ((YsmRenderAction) old).withDuration(v)));
+		rows.get(rows.size() - 1).widget().setTooltip(Tooltip.create(Component.translatable(
+				"youkaishomecoming.spell_editor.ysm_hint.help")));
 	}
 
 	private void addYsmModelRow(String current, Consumer<String> onChange) {
@@ -2577,7 +2662,7 @@ public class ActionEditorPanel {
 			addSuggestStringRow("Texture", ysm.texture(), () -> YSMClientCompat.loadedTextureNames(ysm.model()), v ->
 					notifySimple(old -> ((SpawnShooterAction) old).withYsm(((SpawnShooterAction) old).ysm().withTexture(v))));
 			addYsmHintRow(() -> {
-				if (currentAction instanceof SpawnShooterAction latest) {
+				if (SpellInitializationLinks.unwrap(currentAction) instanceof SpawnShooterAction latest) {
 					return latest.ysm().model();
 				}
 				return ysm.model();
@@ -2611,11 +2696,12 @@ public class ActionEditorPanel {
 	 * Read the current mover config from currentAction (not from a stale build-time snapshot).
 	 */
 	private Optional<MoverConfig> getCurrentMover() {
+		SpellAction action = SpellInitializationLinks.unwrap(currentAction);
 		Optional<MoverConfig> mover;
-		if (currentAction instanceof FireDanmakuAction fda) mover = fda.mover();
-		else if (currentAction instanceof FireLaserAction fla) mover = fla.mover();
-		else if (currentAction instanceof FireTextDanmakuAction ftda) mover = ftda.mover();
-		else if (currentAction instanceof SpawnShooterAction ssa) mover = ssa.mover();
+		if (action instanceof FireDanmakuAction fda) mover = fda.mover();
+		else if (action instanceof FireLaserAction fla) mover = fla.mover();
+		else if (action instanceof FireTextDanmakuAction ftda) mover = ftda.mover();
+		else if (action instanceof SpawnShooterAction ssa) mover = ssa.mover();
 		else mover = Optional.empty();
 		if (editingFixedDirInner && mover.isPresent()
 				&& mover.get() instanceof MoverConfigs.FixedDirMoverConfig fixed) {
@@ -2628,11 +2714,12 @@ public class ActionEditorPanel {
 	 * Read the current origin config from currentAction (not from a stale build-time snapshot).
 	 */
 	private OriginConfig getCurrentOrigin() {
-		if (currentAction instanceof FireDanmakuAction fda) return fda.origin();
-		if (currentAction instanceof FireLaserAction fla) return fla.origin();
-		if (currentAction instanceof FireTextDanmakuAction ftda) return ftda.origin();
-		if (currentAction instanceof SpawnShooterAction ssa) return ssa.origin();
-		if (currentAction instanceof TeleportAction teleport) return teleport.destination();
+		SpellAction action = SpellInitializationLinks.unwrap(currentAction);
+		if (action instanceof FireDanmakuAction fda) return fda.origin();
+		if (action instanceof FireLaserAction fla) return fla.origin();
+		if (action instanceof FireTextDanmakuAction ftda) return ftda.origin();
+		if (action instanceof SpawnShooterAction ssa) return ssa.origin();
+		if (action instanceof TeleportAction teleport) return teleport.destination();
 		return OriginConfig.caster();
 	}
 
@@ -3890,87 +3977,39 @@ public class ActionEditorPanel {
 	// --- Notification helpers ---
 
 	private void notifyDanmaku(Function<FireDanmakuAction, SpellAction> modifier) {
-		notifyDanmaku(modifier, true);
+		notifyDanmaku(modifier, false);
 	}
 
 	private void notifyDanmaku(Function<FireDanmakuAction, SpellAction> modifier, boolean rebuild) {
-		if (currentAction instanceof FireDanmakuAction fda) {
-			var newAction = modifier.apply(fda);
-			currentAction = newAction;
-			onActionChanged.accept(newAction);
-			if (rebuild) {
-				int idx = actionIndex;
-				clearWidgets();
-				if (newAction instanceof FireDanmakuAction nfda) {
-					buildFireDanmakuRows(nfda);
-				}
-				actionIndex = idx;
-				layoutWidgets();
-			}
-		}
+		notifyAction(FireDanmakuAction.class, modifier, rebuild);
 	}
 
 	private void notifyLaser(Function<FireLaserAction, SpellAction> modifier) {
-		notifyLaser(modifier, true);
+		notifyLaser(modifier, false);
 	}
 
 	private void notifyLaser(Function<FireLaserAction, SpellAction> modifier, boolean rebuild) {
-		if (currentAction instanceof FireLaserAction fla) {
-			var newAction = modifier.apply(fla);
-			currentAction = newAction;
-			onActionChanged.accept(newAction);
-			if (rebuild) {
-				int idx = actionIndex;
-				clearWidgets();
-				if (newAction instanceof FireLaserAction nfla) {
-					buildFireLaserRows(nfla);
-				}
-				actionIndex = idx;
-				layoutWidgets();
-			}
-		}
+		notifyAction(FireLaserAction.class, modifier, rebuild);
 	}
 
 	private void notifyTextDanmaku(Function<FireTextDanmakuAction, SpellAction> modifier) {
-		notifyTextDanmaku(modifier, true);
+		notifyTextDanmaku(modifier, false);
 	}
 
 	private void notifyTextDanmaku(Function<FireTextDanmakuAction, SpellAction> modifier, boolean rebuild) {
-		if (currentAction instanceof FireTextDanmakuAction ftda) {
-			var newAction = modifier.apply(ftda);
-			currentAction = newAction;
-			onActionChanged.accept(newAction);
-			if (rebuild) {
-				int idx = actionIndex;
-				clearWidgets();
-				if (newAction instanceof FireTextDanmakuAction nftda) {
-					buildFireTextDanmakuRows(nftda);
-				}
-				actionIndex = idx;
-				layoutWidgets();
-			}
-		}
+		notifyAction(FireTextDanmakuAction.class, modifier, rebuild);
 	}
 
 	private void notifyConditional(Function<SpellActions.ConditionalAction, SpellAction> modifier) {
-		notifyConditional(modifier, true);
+		notifyConditional(modifier, false);
 	}
 
 	private void notifyConditional(Function<SpellActions.ConditionalAction, SpellAction> modifier, boolean rebuild) {
-		if (currentAction instanceof SpellActions.ConditionalAction ca) {
-			var newAction = modifier.apply(ca);
-			currentAction = newAction;
-			onActionChanged.accept(newAction);
-			if (rebuild) {
-				int idx = actionIndex;
-				clearWidgets();
-				if (newAction instanceof SpellActions.ConditionalAction nca) {
-					buildConditionalRows(nca);
-				}
-				actionIndex = idx;
-				layoutWidgets();
-			}
-		}
+		notifyAction(SpellActions.ConditionalAction.class, modifier, rebuild);
+	}
+
+	private <A extends SpellAction> void notifyAction(Class<A> type, Function<A, SpellAction> modifier, boolean rebuild) {
+		notifySimple(old -> type.isInstance(old) ? modifier.apply(type.cast(old)) : old, rebuild);
 	}
 
 	private void notifySimple(Function<SpellAction, SpellAction> modifier) {
@@ -3987,15 +4026,12 @@ public class ActionEditorPanel {
 		} else {
 			newAction = modifier.apply(currentAction);
 		}
-		currentAction = newAction;
-		onActionChanged.accept(newAction);
-		if (rebuild) {
-			int idx = actionIndex;
-			clearWidgets();
-			buildActionRows(newAction);
-			actionIndex = idx;
-			layoutWidgets();
+		if (!java.util.Objects.equals(currentAction, newAction)) {
+			currentAction = newAction;
+			onActionChanged.accept(newAction);
 		}
+		// Value edits retain their text widgets; discrete controls request their own refresh.
+		if (rebuild) refreshCurrentView();
 	}
 
 	// --- Row builders ---
@@ -4303,6 +4339,9 @@ public class ActionEditorPanel {
 	private int stringCompletionInsertStart = -1;
 	private int stringCompletionInsertEnd = -1;
 	private int stringCompletionScrollOffset = 0;
+	private boolean stringCompletionFilterByPrefix;
+	private boolean stringCompletionKeyboardNavigation;
+	private int stringCompletionMouseX, stringCompletionMouseY;
 
 	private int[] computeCompletionBounds(EditBox target, int itemCount) {
 		int cx = Math.max(x, Math.min(x + w - 20, target.getX()));
@@ -4385,7 +4424,7 @@ public class ActionEditorPanel {
 	private void addBoolRow(String label, boolean value, Consumer<Boolean> onChange) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
 		var btn = Button.builder(Component.literal(SpellEditorLocalization.t(value ? "ON" : "OFF")), b -> {
-			onChange.accept(!value);
+			viewRefresh.interact(() -> onChange.accept(!value));
 		}).bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, btn, false));
 	}
@@ -4515,7 +4554,7 @@ public class ActionEditorPanel {
 
 	private void addButtonRow(String label, Runnable action) {
 		int widgetW = w - LABEL_WIDTH - PADDING * 3;
-		var button = Button.builder(Component.literal(SpellEditorLocalization.t(label)), ignored -> action.run())
+		var button = Button.builder(Component.literal(SpellEditorLocalization.t(label)), ignored -> viewRefresh.interact(action))
 				.bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow(label, button, false));
 	}
@@ -4564,7 +4603,7 @@ public class ActionEditorPanel {
 
 	private void addFullWidthButton(String text, Runnable onClick) {
 		int widgetW = w - PADDING * 2;
-		var btn = Button.builder(Component.literal(SpellEditorLocalization.t(text)), b -> onClick.run())
+		var btn = Button.builder(Component.literal(SpellEditorLocalization.t(text)), b -> viewRefresh.interact(onClick))
 				.bounds(0, 0, widgetW, ROW_HEIGHT - 2).build();
 		rows.add(new EditorRow("", btn, true));
 	}
@@ -4603,11 +4642,9 @@ public class ActionEditorPanel {
 				// Strip the collapse indicator prefix (▶ or ▼ + space) to get the section key
 				String fullLabel = row.label();
 				String sectionLabel = fullLabel.length() > 2 ? fullLabel.substring(2) : fullLabel;
-				if (!collapsedSections.remove(sectionLabel)) {
-					collapsedSections.add(sectionLabel);
-				}
-				// Rebuild panel to reflect new collapsed/expanded state
-				refreshCurrentView();
+				viewRefresh.interact(() -> {
+					if (!collapsedSections.remove(sectionLabel)) collapsedSections.add(sectionLabel);
+				});
 				return true;
 			}
 		}
@@ -4632,7 +4669,7 @@ public class ActionEditorPanel {
 
 	private void addInlineRow(String text, Runnable onDelete) {
 		int deleteW = 20;
-		var btn = Button.builder(Component.literal(SpellEditorLocalization.t("[x]")), b -> onDelete.run())
+		var btn = Button.builder(Component.literal(SpellEditorLocalization.t("[x]")), b -> viewRefresh.interact(onDelete))
 				.bounds(0, 0, deleteW, ROW_HEIGHT - 2).build();
 		// customWidgetW > 0 means the widget should be right-aligned with this exact width
 		// The label text fills the remaining space on the left
@@ -4693,8 +4730,7 @@ public class ActionEditorPanel {
 		// Release it first, then rebuild from the latest action even for callbacks
 		// that normally avoid rebuilding while a text field is being edited.
 		closeDropdown();
-		selected.onSelect().accept(index);
-		refreshCurrentView();
+		viewRefresh.interact(() -> selected.onSelect().accept(index));
 	}
 
 	private int[] computeDropdownBounds() {
@@ -4847,6 +4883,8 @@ public class ActionEditorPanel {
 				row.widget().setWidth(widgetW);
 			}
 			row.widget().setY(rowY);
+			row.widget().visible = widgetsVisible && !row.sectionHeader()
+					&& rowY >= y && rowY + getRowHeight(i) <= y + h;
 			if (!widgetsRegistered) {
 				addWidget.accept(row.widget());
 			}
@@ -5473,11 +5511,13 @@ public class ActionEditorPanel {
 			}
 			if (keyCode == GLFW.GLFW_KEY_UP) {
 				if (stringCompletionHoverIndex > 0) stringCompletionHoverIndex--;
+				stringCompletionKeyboardNavigation = true;
 				ensureStringCompletionHoverVisible();
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_DOWN) {
 				if (stringCompletionHoverIndex < stringCompletionItems.size() - 1) stringCompletionHoverIndex++;
+				stringCompletionKeyboardNavigation = true;
 				ensureStringCompletionHoverVisible();
 				return true;
 			}
@@ -5633,6 +5673,7 @@ public class ActionEditorPanel {
 			case "target_health_above" -> new SpellConditions.TargetHealthAbove(0.5f);
 			case "target_is_flying" -> new SpellConditions.TargetIsFlying();
 			case "target_is_fallflying" -> new SpellConditions.TargetIsFallFlying();
+			case "hit_entity_is_player" -> new SpellConditions.HitEntityIsPlayer();
 			case "dynamic_tick_interval" -> new SpellConditions.DynamicTickInterval(
 					NumberProvider.constant(60), NumberProvider.constant(0));
 			case "entity_trait" -> new SpellConditions.EntityTrait("is_lunatic");
@@ -5655,33 +5696,6 @@ public class ActionEditorPanel {
 
 	// --- Utility ---
 
-	private static final Map<String, String> ACTION_TYPE_NAMES = Map.ofEntries(
-			Map.entry("fire_danmaku", "Fire Danmaku"),
-			Map.entry("fire_laser", "Fire Laser"),
-			Map.entry("conditional", "Conditional"),
-			Map.entry("repeat", "Repeat"),
-			Map.entry("delay", "Delay"),
-			Map.entry("teleport", "Teleport"),
-			Map.entry("spawn_shooter", "Spawn Shooter"),
-			Map.entry("burst", "Burst"),
-			Map.entry("set_variable", "Set Variable"),
-			Map.entry("add_variable", "Add Variable"),
-			Map.entry("clear_screen", "Clear Screen"),
-			Map.entry("erase_enemy_danmaku", "Erase Enemy Danmaku"),
-			Map.entry("play_sound", "Play Sound"),
-			Map.entry("run_command", "Run Command"),
-			Map.entry("force_phase", "Force Phase"),
-			Map.entry("force_spell", "Force Spell"),
-			Map.entry("sequence", "Sequence"),
-			Map.entry("confine_target", "Confine Target"),
-			Map.entry("set_entity_flag", "Set Entity Flag"),
-			Map.entry("ysm_render", "YSM Hint"),
-			Map.entry("caster_moves", "Caster Moves"),
-			Map.entry("spellcard_init", "Spell Card Initialization"),
-			Map.entry("noop", "Noop"),
-			Map.entry("legacy_ticker", "Legacy Ticker")
-	);
-
 	private static String difficultyName(int id) {
 		return switch (id) {
 			case 0 -> "PEACEFUL";
@@ -5703,13 +5717,7 @@ public class ActionEditorPanel {
 	}
 
 	static String actionTypeName(SpellAction action) {
-		String id = SpellActions.getTypeId(action);
-		if (id != null) {
-			String name = ACTION_TYPE_NAMES.get(id);
-			if (name != null) return SpellEditorLocalization.t(name);
-			return SpellEditorLocalization.t(id);
-		}
-		return action.getClass().getSimpleName();
+		return SpellEditorLocalization.actionName(action);
 	}
 
 	private static String formatNumber(double value) {
@@ -5809,8 +5817,9 @@ public class ActionEditorPanel {
 		}
 		String text = editBox.getValue();
 		int cursor = editBox.getCursorPosition();
-		int tokenStart = filterByPrefix ? stringTokenStart(text, cursor) : 0;
-		int tokenEnd = filterByPrefix ? cursor : text.length();
+		boolean wholeField = folderCompletionTargets.contains(editBox);
+		int tokenStart = filterByPrefix && !wholeField ? stringTokenStart(text, cursor) : 0;
+		int tokenEnd = filterByPrefix && !wholeField ? cursor : text.length();
 		String prefix = filterByPrefix ? text.substring(tokenStart, cursor).toLowerCase(java.util.Locale.ROOT) : "";
 		java.util.LinkedHashSet<String> matches = new java.util.LinkedHashSet<>();
 		List<String> options = supplier.get();
@@ -5839,6 +5848,7 @@ public class ActionEditorPanel {
 		}
 		stringCompletionHoverIndex = 0;
 		stringCompletionTarget = editBox;
+		stringCompletionFilterByPrefix = filterByPrefix;
 		stringCompletionInsertStart = tokenStart;
 		stringCompletionInsertEnd = tokenEnd;
 		stringCompletionScrollOffset = 0;
@@ -5893,7 +5903,7 @@ public class ActionEditorPanel {
 		Set<String> expanded = expandedCompletionFolders.computeIfAbsent(target, ignored -> new HashSet<>());
 		if (!expanded.remove(folder)) expanded.add(folder);
 		if (target != null) {
-			openStringOptions(target, true);
+			openStringOptions(target, stringCompletionFilterByPrefix);
 		}
 	}
 
@@ -5969,6 +5979,7 @@ public class ActionEditorPanel {
 		stringCompletionInsertStart = -1;
 		stringCompletionInsertEnd = -1;
 		stringCompletionScrollOffset = 0;
+		stringCompletionKeyboardNavigation = false;
 	}
 
 	private int getStringCompletionVisibleItems() {
@@ -6016,10 +6027,15 @@ public class ActionEditorPanel {
 		guiGraphics.fill(cx, cy, cx + 1, cy + totalH, 0xFF666688);
 		guiGraphics.fill(cx + cw - 1, cy, cx + cw, cy + totalH, 0xFF666688);
 
-		if (mouseX >= cx && mouseX < cx + contentW && mouseY >= cy && mouseY < cy + totalH) {
-			int rawIdx = (mouseY - cy) / itemH + stringCompletionScrollOffset;
-			if (rawIdx >= 0 && rawIdx < itemCount) stringCompletionHoverIndex = rawIdx;
+		if (!stringCompletionKeyboardNavigation || mouseX != stringCompletionMouseX || mouseY != stringCompletionMouseY) {
+			stringCompletionKeyboardNavigation = false;
+			if (mouseX >= cx && mouseX < cx + contentW && mouseY >= cy && mouseY < cy + totalH) {
+				int rawIdx = (mouseY - cy) / itemH + stringCompletionScrollOffset;
+				if (rawIdx >= 0 && rawIdx < itemCount) stringCompletionHoverIndex = rawIdx;
+			}
 		}
+		stringCompletionMouseX = mouseX;
+		stringCompletionMouseY = mouseY;
 
 		int visCount = Math.min(itemCount - stringCompletionScrollOffset, visibleItems);
 		for (int i = 0; i < visCount; i++) {
@@ -6061,7 +6077,42 @@ public class ActionEditorPanel {
 				guiGraphics.fill(sbX + 1, thumbY, sbX + scrollbarW - 1, thumbY + thumbH, 0xAAAAAACC);
 			}
 		}
+		if (stringCompletionTarget == spellTitleImageEditBox) {
+			renderSpellTitleImageCandidate(guiGraphics, font, cx, cy, cw);
+		}
 		guiGraphics.pose().popPose();
+	}
+
+	private void renderSpellTitleImageCandidate(GuiGraphics g, Font font, int menuX, int menuY, int menuWidth) {
+		var screen = Minecraft.getInstance().screen;
+		if (screen == null) return;
+		String selected = spellTitleImageEditBox.getValue().trim();
+		if (stringCompletionHoverIndex >= 0 && stringCompletionHoverIndex < stringCompletionItems.size()) {
+			var candidate = stringCompletionItems.get(stringCompletionHoverIndex);
+			if (!candidate.folder()) selected = candidate.value();
+		}
+		ResourceLocation texture = ResourceLocation.tryParse(selected);
+		int spaceRight = screen.width - menuX - menuWidth - 8;
+		int spaceLeft = menuX - 8;
+		int previewWidth = Math.min(160, Math.max(spaceLeft, spaceRight));
+		if (previewWidth < 80 || screen.height < 80) return;
+		int previewHeight = Math.min(136, screen.height - 8);
+		int px = spaceRight >= previewWidth ? menuX + menuWidth + 4 : menuX - previewWidth - 4;
+		int py = Math.max(4, Math.min(screen.height - previewHeight - 4, menuY));
+		g.fill(px, py, px + previewWidth, py + previewHeight, 0xFF1A1A30);
+		g.renderOutline(px, py, previewWidth, previewHeight, 0xFF666688);
+		g.drawString(font, spellTitleLabel("image_preview"), px + 5, py + 5, 0xFFFFCC88, false);
+		int imageX = px + 5, imageY = py + 18, imageWidth = previewWidth - 10, imageHeight = previewHeight - 36;
+		for (int dy = 0; dy < imageHeight; dy += 8) {
+			for (int dx = 0; dx < imageWidth; dx += 8) {
+				int color = ((dx / 8 + dy / 8) & 1) == 0 ? 0xFF303747 : 0xFF424B5D;
+				g.fill(imageX + dx, imageY + dy, imageX + Math.min(imageWidth, dx + 8), imageY + Math.min(imageHeight, dy + 8), color);
+			}
+		}
+		boolean shown = texture != null && spellTitleImagePreview.renderImagePreview(g, texture, imageX, imageY, imageWidth, imageHeight);
+		String status = shown ? selected : spellTitleLabel(selected.isBlank() ? "image_preview_empty" : "image_preview_missing");
+		g.drawString(font, font.plainSubstrByWidth(status, previewWidth - 10), px + 5, py + previewHeight - 12,
+				shown ? 0xFFBBC7D9 : 0xFFFFB487, false);
 	}
 
 	private Map<String, Integer> listTokenCounts(String text) {

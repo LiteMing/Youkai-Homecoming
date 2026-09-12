@@ -121,6 +121,48 @@ public final class EditorFavoritesTest {
 		panel.selectPath(ActionListPanel.ActionPath.topLevel("tick", 1));
 		check("relative favorite names survive relocation", panel.getSelectedActionNames().equals(
 				Map.of("", "组合", ":body/0", "延迟", ":body/0:body/0", "子动作")));
+
+		// Phase scopes use the complete ResourceLocation. Two phases with the same
+		// final path segment must never borrow each other's node names.
+		var first = new PhaseDefinition(new ResourceLocation("dev", "first/bonus"),
+				List.of(), List.of(new ContinueSourceAction()), List.of(), List.of(), List.of());
+		var second = new PhaseDefinition(new ResourceLocation("dev", "second/bonus"),
+				List.of(), List.of(new ContinueSourceAction()), List.of(), List.of(), List.of());
+		var scopedPanel = new ActionListPanel((action, path) -> {}, target -> {}, () -> {}, () -> null);
+		scopedPanel.setPhase(first);
+		scopedPanel.loadCustomNames(Map.of("dev:first/bonus/tick/0", "第一阶段节点",
+				"dev:second/bonus/tick/0", "第二阶段节点"));
+		scopedPanel.selectPath(ActionListPanel.ActionPath.topLevel("tick", 0));
+		check("full phase scope keeps first name", scopedPanel.getSelectedActionNames()
+				.equals(Map.of("", "第一阶段节点")));
+		scopedPanel.setPhase(second);
+		scopedPanel.selectPath(ActionListPanel.ActionPath.topLevel("tick", 0));
+		check("full phase scope keeps second name", scopedPanel.getSelectedActionNames()
+				.equals(Map.of("", "第二阶段节点")));
+
+		// Old 0.29.2 suffix-only keys are read once and migrated on save.
+		var legacyPanel = new ActionListPanel((action, path) -> {}, target -> {}, () -> {}, () -> null);
+		legacyPanel.setPhase(first);
+		legacyPanel.loadCustomNames(Map.of("bonus/tick/0", "旧格式节点"));
+		legacyPanel.selectPath(ActionListPanel.ActionPath.topLevel("tick", 0));
+		check("legacy scoped name remains visible", legacyPanel.getSelectedActionNames()
+				.equals(Map.of("", "旧格式节点")));
+		Map<String, String> migrated = legacyPanel.getCustomNames();
+		check("legacy scoped name migrates to full phase key",
+				"旧格式节点".equals(migrated.get("dev:first/bonus/tick/0"))
+						&& !migrated.containsKey("bonus/tick/0"));
+
+		// Replacing the phase contents outside the panel must prune old identity
+		// bindings instead of letting a later refresh reuse the deleted name.
+		var replacedPhase = new PhaseDefinition(new ResourceLocation("dev", "replace"),
+				List.of(), List.of(new ContinueSourceAction()), List.of(), List.of(), List.of());
+		var replacedPanel = new ActionListPanel((action, path) -> {}, target -> {}, () -> {}, () -> null);
+		replacedPanel.setPhase(replacedPhase);
+		replacedPanel.loadCustomNames(Map.of("tick/0", "旧节点"));
+		replacedPhase.onTick.set(0, new DelayAction(NumberProvider.constant(1), List.of()));
+		replacedPanel.markDirty();
+		check("replaced action does not retain stale custom name",
+				!replacedPanel.getCustomNames().containsKey("tick/0"));
 	}
 
 	private static void check(String label, boolean condition) {

@@ -48,6 +48,8 @@ public final class SpellCapabilityPolicies {
 		put(SpellCapability.TARGET_COORDINATE, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.TRACKING_MOVER, SpellCapabilityPolicy.EXPERIMENTAL);
 		put(SpellCapability.SET_ENTITY_FLAG, SpellCapabilityPolicy.OP_ONLY);
+		put(SpellCapability.SET_INVULNERABLE, SpellCapabilityPolicy.OP_ONLY);
+		put(SpellCapability.FREEZE_ON_TICK, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.FORCE_PHASE, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.FORCE_SPELL, SpellCapabilityPolicy.OP_ONLY);
 		put(SpellCapability.FIRE_SPELL, SpellCapabilityPolicy.OP_ONLY);

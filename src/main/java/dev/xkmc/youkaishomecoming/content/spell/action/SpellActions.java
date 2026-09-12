@@ -18,6 +18,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 
 public class SpellActions {
 
@@ -56,6 +58,8 @@ public class SpellActions {
 		register("broken", BrokenAction.CODEC, BrokenAction.class);
 		register("confine_target", ConfineTargetAction.CODEC, ConfineTargetAction.class);
 		register("set_entity_flag", SetEntityFlagAction.CODEC, SetEntityFlagAction.class);
+		register("set_invulnerable", SetInvulnerableAction.CODEC, SetInvulnerableAction.class);
+		register("freeze_on_tick", FreezeOnTickAction.CODEC, FreezeOnTickAction.class);
 		register("teleport_random", TeleportRandomAction.CODEC, TeleportRandomAction.class);
 		register("ysm_render", YsmRenderAction.CODEC, YsmRenderAction.class);
 		register("caster_moves", CasterMovesAction.CODEC, CasterMovesAction.class);
@@ -87,6 +91,15 @@ public class SpellActions {
 	 */
 	public static String getTypeId(SpellAction action) {
 		return CLASS_TO_TYPE.get(action.getClass());
+	}
+
+	/**
+	 * Snapshot of the action discriminator IDs understood by the current Codec.
+	 * This is intentionally exposed for generated prompts and compatibility
+	 * adapters; the Codec registry remains the runtime authority.
+	 */
+	public static Set<String> typeIds() {
+		return Set.copyOf(new TreeSet<>(REGISTRY.keySet()));
 	}
 
 	@SuppressWarnings("unchecked")

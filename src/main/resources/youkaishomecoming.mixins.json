@@ -24,6 +24,7 @@
 		"effect.VillagerMixin"
 	],
 	"client": [
+		"compat.YsmPlayerHintMixin",
 		"CriterionGridMixin",
 		"effect.GameRendererMixin",
 		"effect.HumanoidModelMixin",

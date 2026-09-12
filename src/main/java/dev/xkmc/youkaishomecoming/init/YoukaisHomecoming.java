@@ -101,6 +101,7 @@ public class YoukaisHomecoming {
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.stg.control.ClassicControlSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellEditorSyncToServer.class, NetworkDirection.PLAY_TO_SERVER),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.preview.SpellAiGenerateRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(SpellCircleEditorSyncToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(CombatToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(GrazeHelper.GrazeToClient.class, NetworkDirection.PLAY_TO_CLIENT),
@@ -117,6 +118,7 @@ public class YoukaisHomecoming {
 			e -> e.create(ActiveSpellHudToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(OpenSpellPreviewToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(SpellPreviewChunkToClient.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.preview.SpellAiGenerateResultToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(OpenSpellMarketToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
@@ -132,7 +134,8 @@ public class YoukaisHomecoming {
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellSnapshotRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertifiedSpellSnapshotToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.client.SpellCardActivationToClient.class, NetworkDirection.PLAY_TO_CLIENT),
-			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.feedback.SpellFeedbackPacket.class, NetworkDirection.PLAY_TO_CLIENT));
+			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.feedback.SpellFeedbackPacket.class, NetworkDirection.PLAY_TO_CLIENT),
+			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmSpellHintToClient.class, NetworkDirection.PLAY_TO_CLIENT));
 
 	public static final ConfigTypeEntry<SpellCircleConfig> SPELL = new ConfigTypeEntry<>(HANDLER, "spell_circle",
 			SpellCircleConfig.class);

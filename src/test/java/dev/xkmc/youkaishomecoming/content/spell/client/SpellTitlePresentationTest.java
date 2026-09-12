@@ -25,6 +25,7 @@ public final class SpellTitlePresentationTest {
 				SpellTitleStyle.CODEC.encodeStart(JsonOps.INSTANCE, style).getOrThrow(false, s -> {}).equals(json));
 		check("alpha survives style NBT", SpellTitleStyle.fromTag(style.toTag()).equals(style));
 		check("transparent gradient survives decoding", style.gradientEnd().orElseThrow() == 0x00123456);
+		checkGradientDirections(style);
 		var copy = new ActiveSpellHudToClient.Entry(4, "yh_test:card", "same name", true, false, "a", style.toTag());
 		check("HUD snapshot retains introduction style", SpellTitleStyle.fromTag(copy.presentation).equals(style));
 
@@ -45,6 +46,20 @@ public final class SpellTitlePresentationTest {
 		check("world cleanup releases introductions", !SpellTitleOverlay.isAnimating("c"));
 		checkPreviewPlayback();
 		System.out.println("SpellTitlePresentationTest: all " + checks + " checks passed");
+	}
+
+	private static void checkGradientDirections(SpellTitleStyle base) {
+		check("legacy style leaves gradient direction at viewer default", base.gradientDirection().isEmpty());
+		for (var direction : SpellTitleStyle.GradientDirection.values()) {
+			var changed = base.withGradientDirection(direction).withBackgroundX(12).withBackgroundScale(0.8f)
+					.withGradientStart(0x80123456).withGradientEnd(0x00123456);
+			var json = SpellTitleStyle.CODEC.encodeStart(JsonOps.INSTANCE, changed).getOrThrow(false, s -> {}).getAsJsonObject();
+			check("direction uses its resource spelling: " + direction,
+					json.get("gradient_direction").getAsString().equals(direction.getSerializedName()));
+			check("direction and other edits survive JSON: " + direction,
+					SpellTitleStyle.CODEC.parse(JsonOps.INSTANCE, json).getOrThrow(false, s -> {}).equals(changed));
+			check("HUD NBT keeps direction and colors: " + direction, SpellTitleStyle.fromTag(changed.toTag()).equals(changed));
+		}
 	}
 
 	private static void checkPreviewPlayback() {

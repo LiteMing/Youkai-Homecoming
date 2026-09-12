@@ -167,7 +167,8 @@ public class SpellEditorController {
 		skipSaveOnNextDefinitionSwitch = true;
 		scene.pause();
 		scene.switchSpellDefinition(created, true);
-		displayEditorMessage("[YH] Created spell " + formatResourceId(spellId));
+		displayEditorMessage(Component.translatable("youkaishomecoming.spell_editor.message.created",
+				formatResourceId(spellId)));
 		return null;
 	}
 
@@ -212,7 +213,8 @@ public class SpellEditorController {
 		draftMode = true;
 		scene.pause();
 		scene.switchSpellDefinition(createDraftDefinition(), true);
-		displayEditorMessage("[YH] Deleted spell " + formatResourceId(spellId));
+		displayEditorMessage(Component.translatable("youkaishomecoming.spell_editor.message.deleted",
+				formatResourceId(spellId)));
 	}
 
 // --- Save / Reset ---
@@ -274,7 +276,7 @@ public class SpellEditorController {
 			skipSaveOnNextDefinitionSwitch = true;
 			scene.pause();
 			scene.switchSpellDefinition(restored, true);
-			displayEditorMessage("[YH] Spell reset to default");
+			displayEditorMessage(Component.translatable("youkaishomecoming.spell_editor.message.reset"));
 			return;
 		}
 
@@ -283,7 +285,7 @@ public class SpellEditorController {
 		definition.customNames.clear();
 		definition.customNames.putAll(restored.customNames);
 
-		displayEditorMessage("[YH] Spell reset to default");
+		displayEditorMessage(Component.translatable("youkaishomecoming.spell_editor.message.reset"));
 	}
 
 	// --- Snapshot management ---

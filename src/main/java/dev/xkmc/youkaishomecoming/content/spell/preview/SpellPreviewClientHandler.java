@@ -24,6 +24,17 @@ public class SpellPreviewClientHandler {
 		Minecraft.getInstance().execute(() -> handleChunk(packet));
 	}
 
+	public static void onAiResult(SpellAiGenerateResultToClient packet) {
+		Minecraft.getInstance().execute(() -> {
+			if (Minecraft.getInstance().screen instanceof SpellAiPromptScreen prompt) {
+				prompt.complete(packet);
+			} else if (Minecraft.getInstance().player != null) {
+				Minecraft.getInstance().player.displayClientMessage(Component.translatable(
+						"youkaishomecoming.spell_editor.message.ai_result", packet.message), false);
+			}
+		});
+	}
+
 	private static void openOnClient(OpenSpellPreviewToClient packet) {
 		Minecraft mc = Minecraft.getInstance();
 		if (packet.draft) {
@@ -50,7 +61,8 @@ public class SpellPreviewClientHandler {
 			}
 		}
 		if (mc.player != null) {
-			mc.player.displayClientMessage(Component.literal("[YH] Unknown spell: " + packet.spellId), false);
+			mc.player.displayClientMessage(Component.translatable(
+					"youkaishomecoming.spell_editor.message.unknown_spell", packet.spellId), false);
 		}
 	}
 
@@ -85,8 +97,8 @@ public class SpellPreviewClientHandler {
 		if (def == null) {
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.player != null) {
-				mc.player.displayClientMessage(
-						Component.literal("[YH] Failed to decode spell: " + ass.spellId), false);
+				mc.player.displayClientMessage(Component.translatable(
+						"youkaishomecoming.spell_editor.message.decode_failed", ass.spellId), false);
 			}
 			return;
 		}

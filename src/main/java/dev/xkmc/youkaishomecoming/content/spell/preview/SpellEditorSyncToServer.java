@@ -132,8 +132,8 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 			execute(sender);
 		} catch (Exception e) {
 			String msg = e.getMessage();
-			sender.sendSystemMessage(Component.literal("[YH] Spell editor sync failed: " +
-					(msg == null ? e.getClass().getSimpleName() : msg)));
+			sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.sync_failed",
+				msg == null ? e.getClass().getSimpleName() : msg));
 		}
 	}
 
@@ -195,7 +195,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 					deleteOwnSpell(sender);
 					return;
 				}
-				sender.sendSystemMessage(Component.literal("[YH] No permission to edit spells on this server."));
+				sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.no_permission"));
 				return;
 			}
 			if (action == Action.IMPORT_MARKET) {
@@ -209,8 +209,8 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 			}
 		} catch (Exception e) {
 			String msg = e.getMessage();
-			sender.sendSystemMessage(Component.literal("[YH] Spell editor sync failed: " +
-					(msg == null ? e.getClass().getSimpleName() : msg)));
+			sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.sync_failed",
+				msg == null ? e.getClass().getSimpleName() : msg));
 		}
 	}
 
@@ -243,9 +243,9 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (origin == null) {
 			// Brand-new spell: record a deletion owner without restricting edits.
 			CustomSpellStorage.saveOwner(sender.server, id, sender.getUUID());
-			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id + " and bound your spell card"));
+			sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.saved_bound", id));
 		} else {
-			sender.sendSystemMessage(Component.literal("[YH] Saved spell " + id));
+			sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.saved", id));
 		}
 	}
 
@@ -291,7 +291,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		}
 		SpellRegistry.remove(id);
 		CustomSpellStorage.deleteSpell(sender.server, id);
-		sender.sendSystemMessage(Component.literal("[YH] Deleted spell " + id));
+		sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.deleted", id));
 	}
 
 	private void saveSpell(ServerPlayer sender, boolean reapply) {
@@ -307,7 +307,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		bindBlankCardInHand(sender, definition.id);
 		int count = reapply ? SpellRuntimeAccess.reapply(sender.server, definition.id, true) : 0;
 		if (reapply) {
-			sender.sendSystemMessage(Component.literal("[YH] Applied & saved spell to " + count + " entities"));
+			sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.applied_saved", count));
 		}
 	}
 
@@ -366,7 +366,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		if (!CustomSpellStorage.saveSpell(sender.server, definition, definitionJson)) {
 			throw new IllegalStateException("Failed to save downloaded spell to world storage: " + definition.id);
 		}
-		sender.sendSystemMessage(Component.literal("[YH] Imported market spell " + definition.id));
+		sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.imported", definition.id));
 	}
 
 	private void validateMarketImport(SpellDefinition definition) {
@@ -396,7 +396,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		}
 		SpellRegistry.remove(id);
 		CustomSpellStorage.deleteSpell(sender.server, id);
-		sender.sendSystemMessage(Component.literal("[YH] Deleted spell " + id));
+		sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.deleted", id));
 	}
 
 	private SpellDefinition parseDefinition() {

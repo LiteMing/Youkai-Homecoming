@@ -7,10 +7,14 @@ import dev.xkmc.youkaishomecoming.content.entity.fairy.ClownEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellHitContext;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 public class SpellConditions {
 
@@ -43,6 +47,7 @@ public class SpellConditions {
 		register("difficulty_equals", DifficultyEquals.CODEC, DifficultyEquals.class);
 		register("difficulty_above", DifficultyAbove.CODEC, DifficultyAbove.class);
 		register("entity_flag", EntityFlagCondition.CODEC, EntityFlagCondition.class);
+		register("hit_entity_is_player", HitEntityIsPlayer.CODEC, HitEntityIsPlayer.class);
 	}
 
 	public static void register(String id, Codec<? extends SpellCondition> codec) {
@@ -65,6 +70,11 @@ public class SpellConditions {
 	 */
 	public static String getTypeId(SpellCondition condition) {
 		return CLASS_TO_TYPE.get(condition.getClass());
+	}
+
+	/** Snapshot of condition discriminator IDs understood by the current Codec. */
+	public static Set<String> typeIds() {
+		return Set.copyOf(new TreeSet<>(REGISTRY.keySet()));
 	}
 
 	@SuppressWarnings("unchecked")
@@ -143,6 +153,24 @@ public class SpellConditions {
 		@Override
 		public boolean test(SpellContext ctx) {
 			return ctx.hitCount() >= count;
+		}
+	}
+
+	/**
+	 * True only while an entity-hit callback is evaluating an actual player hit.
+	 * This deliberately reads the transient {@link SpellHitContext}, rather than
+	 * the spell's locked target, so a callback cannot fire for a non-player target
+	 * or for a block hit.
+	 */
+	public record HitEntityIsPlayer() implements SpellCondition {
+		public static final Codec<HitEntityIsPlayer> CODEC = Codec.unit(HitEntityIsPlayer::new);
+
+		@Override
+		public boolean test(SpellContext ctx) {
+			return ctx.hitContext()
+					.filter(hit -> hit.hitType() == SpellHitContext.HitType.ENTITY)
+					.map(hit -> hit.hitEntity() instanceof Player)
+					.orElse(false);
 		}
 	}
 

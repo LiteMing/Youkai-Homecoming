@@ -10,6 +10,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import java.util.function.Supplier;
 
 public class SpellEditorNetworkClient {
+	private static final java.util.concurrent.atomic.AtomicInteger AI_REQUEST_IDS = new java.util.concurrent.atomic.AtomicInteger();
 
 	public static boolean save(SpellDefinition definition) {
 		return trySend(definition, () -> SpellEditorSyncToServer.save(definition, false));
@@ -47,11 +48,13 @@ public class SpellEditorNetworkClient {
 		String json = parent.currentJsonForAi();
 		SpellAiGenerateRequestToServer base = new SpellAiGenerateRequestToServer(prompt, operation,
 				cardType == null ? "normal" : cardType.getSerializedName(), json);
+		int transferId = AI_REQUEST_IDS.incrementAndGet();
+		base.transferId = transferId;
+		SpellPreviewClientHandler.rememberAiRequest(transferId, operation, json);
 		if (json.length() <= SpellAiGenerateRequestToServer.MAX_CHUNK_CHARS) {
 			YoukaisHomecoming.HANDLER.toServer(base);
 			return;
 		}
-		int transferId = (json.hashCode() ^ (int) System.nanoTime()) & 0x7fff_ffff;
 		int total = (json.length() + SpellAiGenerateRequestToServer.MAX_CHUNK_CHARS - 1)
 				/ SpellAiGenerateRequestToServer.MAX_CHUNK_CHARS;
 		for (int i = 0; i < total; i++) {

@@ -3,9 +3,6 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.llmcore.YhLlmCoreBridge;
-import dev.xkmc.youkaishomecoming.compat.llmcore.YhSpellDraftValidator;
-import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
-import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
@@ -61,35 +58,29 @@ public class SpellAiGenerateRequestToServer extends SerialPacketBase {
 				ASSEMBLIES.remove(key);
 				StringBuilder json = new StringBuilder();
 				for (String part : assembly.parts) json.append(part == null ? "" : part);
-				executeRequest(player, assembly.prompt, assembly.operation, assembly.cardType, json.toString());
+				executeRequest(player, transferId, assembly.prompt, assembly.operation, assembly.cardType, json.toString());
 				return;
 			}
-			executeRequest(player, prompt, operation, cardType, currentJson);
+			executeRequest(player, transferId, prompt, operation, cardType, currentJson);
 		});
 	}
 
-	private static void executeRequest(ServerPlayer player, String prompt, String operation,
+	private static void executeRequest(ServerPlayer player, int transferId, String prompt, String operation,
 			String cardType, String currentJson) {
 			if (prompt == null || prompt.isBlank() || prompt.length() > 4000) {
-				YoukaisHomecoming.HANDLER.toClientPlayer(new SpellAiGenerateResultToClient(false, "", "Prompt is empty or too long"), player);
+				new SpellAiGenerateResultToClient(transferId, false, "", "Prompt is empty or too long").sendTo(player);
 				return;
 			}
 			YhLlmCoreBridge.generate(player, prompt, operation, cardType, currentJson)
 					.whenComplete((result, error) -> player.server.execute(() -> {
+						if (player.hasDisconnected()) return;
 						if (error != null) {
-							YoukaisHomecoming.HANDLER.toClientPlayer(new SpellAiGenerateResultToClient(false, "", error.getMessage()), player);
+							new SpellAiGenerateResultToClient(transferId, false, "", error.getMessage()).sendTo(player);
 						} else if (result == null || !result.success()) {
-							YoukaisHomecoming.HANDLER.toClientPlayer(new SpellAiGenerateResultToClient(false, "", result == null ? "LLM request failed" : result.error()), player);
+							new SpellAiGenerateResultToClient(transferId, false, "", result == null ? "LLM request failed" : result.error()).sendTo(player);
 						} else {
-							YhSpellDraftValidator.Result checked = YhSpellDraftValidator.validate(result.content());
-							if (!checked.acceptedForPreview()) {
-								String detail = checked.diagnostics().isEmpty() ? checked.status().name() : checked.diagnostics().get(0);
-								YoukaisHomecoming.HANDLER.toClientPlayer(new SpellAiGenerateResultToClient(false, "", "AI draft rejected: " + detail), player);
-							} else if (checked.definition().itemForm.cardType() != SpellCardType.byName(cardType)) {
-								YoukaisHomecoming.HANDLER.toClientPlayer(new SpellAiGenerateResultToClient(false, "", "AI draft card type does not match the selected editor type"), player);
-							} else {
-								YoukaisHomecoming.HANDLER.toClientPlayer(new SpellAiGenerateResultToClient(true, checked.normalizedJson(), "Draft analyzed; review and save manually"), player);
-							}
+							// Import and node recovery belong to the existing editor, not the generation request.
+							new SpellAiGenerateResultToClient(transferId, true, result.content(), "").sendTo(player);
 						}
 					}));
 	}

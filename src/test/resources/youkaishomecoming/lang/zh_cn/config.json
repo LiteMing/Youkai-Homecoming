@@ -5,6 +5,8 @@
 	"config.youkaishomecoming.common.spell_ai.enabled.tooltip": "显示编辑器 AI 符卡按钮并允许服务器请求 LLM",
 	"config.youkaishomecoming.common.spell_ai.headerPrompt": "符卡 AI 头部提示词",
 	"config.youkaishomecoming.common.spell_ai.headerPrompt.tooltip": "追加到符卡生成请求 system prompt 的管理员自定义要求",
+	"config.youkaishomecoming.common.spell_ai.maxOutputTokens": "符卡 AI 默认输出 Token 上限",
+	"config.youkaishomecoming.common.spell_ai.maxOutputTokens.tooltip": "生成符卡时采用的输出 Token 上限基准；较低的用途设置会提升到此值，较高的用途设置会保留",
 
 	"config.youkaishomecoming.client.laserRenderAdditive": "激光叠加渲染",
 	"config.youkaishomecoming.client.laserRenderAdditive.tooltip": "激光渲染是否使用加法混合模式（更亮）",

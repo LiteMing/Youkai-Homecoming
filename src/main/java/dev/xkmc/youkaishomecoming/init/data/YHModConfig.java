@@ -303,6 +303,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue spellMarketEnabled;
 		public final ForgeConfigSpec.BooleanValue spellAiGenerationEnabled;
 		public final ForgeConfigSpec.ConfigValue<String> spellAiHeaderPrompt;
+		public final ForgeConfigSpec.IntValue spellAiMaxOutputTokens;
 		public final ForgeConfigSpec.ConfigValue<String> spellMarketUrl;
 		public final ForgeConfigSpec.BooleanValue spellMarketAutoSyncEnabled;
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellMarketAutoSyncTags;
@@ -477,6 +478,9 @@ public class YHModConfig {
 				spellAiHeaderPrompt = builder.comment("Optional administrator header/system prompt prepended to YH spell generation requests")
 						.translation("config.youkaishomecoming.common.spell_ai.headerPrompt")
 						.define("headerPrompt", "");
+				spellAiMaxOutputTokens = builder.comment("AI spell output token baseline; lower purpose limits are raised to this value, higher explicit LLM Core purpose limits are retained")
+						.translation("config.youkaishomecoming.common.spell_ai.maxOutputTokens")
+						.defineInRange("maxOutputTokens", 10_000, 1, 1_000_000);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.spell_market").push("spell_market");

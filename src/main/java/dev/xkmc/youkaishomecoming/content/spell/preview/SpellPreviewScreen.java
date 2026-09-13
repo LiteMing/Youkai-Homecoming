@@ -930,18 +930,6 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
-	boolean applyAiGenerationResult(String rawJson) {
-		try {
-			var parsed = SpellDefinition.CODEC.parse(JsonOps.INSTANCE,
-				com.google.gson.JsonParser.parseString(rawJson)).result().orElse(null);
-			if (parsed == null) return false;
-			onRawJsonDefinitionEdited(parsed);
-			return true;
-		} catch (RuntimeException e) {
-			return false;
-		}
-	}
-
 	private void onSpellInitializationLinkEdited(SpellInitializationLinks.Kind kind, SpellAction action) {
 		if (actionListPanel == null) return;
 		boolean structureChanged = (actionListPanel.linkedInitializationAction(actionListPanel.getSelectedPath(), kind) == null) != (action == null);

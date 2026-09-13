@@ -90,12 +90,14 @@ public final class YhLlmCoreBridgeTest {
 	private static void testRoutedBudget() throws Exception {
 		Object runtime = runtime("http://127.0.0.1:1");
 		String system = "Runtime capability report: ".repeat(3000);
-		Object request = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", system, "modify current spell");
+		Object request = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", system, "modify current spell", 10_000);
 		Object context = call(request, "context");
 		Object billing = call(request, "billingContext");
 		check("purpose routes through the configured chain", call(runtime, "resolveChain", request).equals(List.of("primary", "fallback")));
 		check("request does not override the console provider chain", ((List<?>) call(request, "providerChain")).isEmpty());
-		check("request does not override output or timeout settings", call(request, "maxTokens") == null && call(request, "timeoutSeconds").equals(0));
+		check("spell output defaults to 10000 instead of the provider's chat limit", call(request, "maxTokens").equals(10_000));
+		check("timeout remains inherited from the console", call(request, "timeoutSeconds").equals(0));
+		check("core resolves the spell output limit before billing", call(call(runtime, "resolveParameters", request, "primary"), "maxOutputTokens").equals(10_000));
 		check("structured generation context is retained", call(context, "structured").equals(true) && call(context, "purpose").equals(PURPOSE));
 		check("billing belongs to the requesting player", call(billing, "principalKind").toString().equals("PLAYER") && call(billing, "principalId").equals(PLAYER));
 		check("request and causal chain share one id", call(context, "requestId").equals(call(billing, "causalRootRequestId")));
@@ -106,16 +108,34 @@ public final class YhLlmCoreBridgeTest {
 		check("token ceiling comes from core's final-request estimate", call(billing, "maxTokens").equals(call(expected, "maxTokens")));
 		List<?> messages = (List<?>) call(request, "messages");
 		check("full capability report reaches the request", call(messages.get(0), "content").equals(system));
-		Object second = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "create spell");
+		Object second = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "create spell", 10_000);
 		check("independent requests have independent causal budgets", !call(call(second, "context"), "requestId").equals(call(context, "requestId")));
 		Object defaultRoute = core("PriorityRoutingConfig").getConstructor(Map.class, List.class)
 				.newInstance(Map.of(), List.of("fallback"));
 		call(runtime, "setRoutingConfig", defaultRoute);
-		Object rerouted = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "create spell");
+		Object rerouted = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "create spell", 10_000);
 		check("new request follows changed console/default routing", call(runtime, "resolveChain", rerouted).equals(List.of("fallback")));
 		check("budget is recomputed for the changed route", call(call(rerouted, "billingContext"), "maxCalls").equals(1));
+		Object configured = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "create spell", 16_000);
+		check("server can raise the default spell output", call(call(runtime, "resolveParameters", configured, "fallback"), "maxOutputTokens").equals(16_000));
+		Object purposeOptions = core("LlmRouteOptions").getConstructor(Double.class, Integer.class, Integer.class, Integer.class, Integer.class)
+				.newInstance(null, 24_000, null, null, null);
+		Object explicitRoute = call(defaultRoute, "withPurposeOptions", PURPOSE, purposeOptions);
+		call(runtime, "setRoutingConfig", explicitRoute);
+		Object explicit = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "create spell", 10_000);
+		check("explicit purpose output setting takes precedence", call(explicit, "maxTokens") == null
+				&& call(call(runtime, "resolveParameters", explicit, "fallback"), "maxOutputTokens").equals(24_000));
+		check("explicit purpose output remains fully budgeted", call(call(explicit, "billingContext"), "maxTokens")
+				.equals(call(call(runtime, "estimateWorstCaseBudget", explicit), "maxTokens")));
+		Object lowPurpose = core("LlmRouteOptions").getConstructor(Double.class, Integer.class, Integer.class, Integer.class, Integer.class)
+				.newInstance(null, 1000, null, null, null);
+		call(runtime, "setRoutingConfig", call(defaultRoute, "withPurposeOptions", PURPOSE, lowPurpose));
+		Object raised = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "create spell", 10_000);
+		check("previously saved low purpose limits are raised to the spell baseline", call(call(runtime, "resolveParameters", raised, "fallback"), "maxOutputTokens").equals(10_000));
+		check("raising a purpose limit happens before causal-budget estimation", call(call(raised, "billingContext"), "maxTokens")
+				.equals(call(call(runtime, "estimateWorstCaseBudget", raised), "maxTokens")));
 		try {
-			YhLlmCoreBridge.createRequest(new Object(), PLAYER, "Little_Ming", "system", "user");
+			YhLlmCoreBridge.createRequest(new Object(), PLAYER, "Little_Ming", "system", "user", 10_000);
 			throw new AssertionError("missing budget API was silently ignored");
 		} catch (NoSuchMethodException expectedFailure) {
 			checks++;
@@ -124,10 +144,12 @@ public final class YhLlmCoreBridgeTest {
 
 	private static void testProviderFallback() throws Exception {
 		AtomicInteger providerCalls = new AtomicInteger();
+		AtomicInteger outputLimit = new AtomicInteger();
 		HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		server.createContext("/", exchange -> {
 			providerCalls.incrementAndGet();
-			exchange.getRequestBody().readAllBytes();
+			String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+			outputLimit.set(com.google.gson.JsonParser.parseString(requestBody).getAsJsonObject().get("max_tokens").getAsInt());
 			boolean primary = exchange.getRequestURI().getPath().startsWith("/primary");
 			byte[] body = (primary ? "{\"error\":{\"message\":\"fixture unavailable\"}}"
 					: "{\"choices\":[{\"message\":{\"content\":\"draft\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}")
@@ -156,7 +178,7 @@ public final class YhLlmCoreBridgeTest {
 		try {
 			String url = "http://127.0.0.1:" + server.getAddress().getPort();
 			Object runtime = runtime(url);
-			Object request = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "user");
+			Object request = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "user", 10_000);
 			call(core("LlmRequestAccounting"), "clear");
 			Object rejected = send(runtime, request);
 			check("player billing still requires the host accounting policy", !((boolean) call(rejected, "success")) && providerCalls.get() == 0);
@@ -169,11 +191,12 @@ public final class YhLlmCoreBridgeTest {
 			tokens.set(0);
 			providerCalls.set(0);
 			runtime = runtime(url);
-			request = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "user");
+			request = YhLlmCoreBridge.createRequest(runtime, PLAYER, "Little_Ming", "system", "user", 10_000);
 			Object response = send(runtime, request);
 			check("derived budget reaches the fallback provider", call(response, "success").equals(true) && call(response, "content").equals("draft"));
 			check("fallback attempts pass through accounting", calls.get() > 1 && calls.get() == providerCalls.get());
 			check("provider attempts stay within core's derived ceiling", calls.get() <= (int) call(call(request, "billingContext"), "maxCalls"));
+			check("actual HTTP request asks for 10000 output tokens", outputLimit.get() == 10_000);
 		} finally {
 			call(core("LlmRequestAccounting"), "clear");
 			server.stop(0);

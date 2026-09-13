@@ -67,7 +67,8 @@ public final class YhLlmCoreBridge {
 					+ "\ncard_type=" + cardType
 					+ "\ncustom_request=" + prompt + "\ncurrent_json=" + (currentJson == null ? "" : currentJson);
 
-			Object request = createRequest(orchestrator, player.getUUID().toString(), player.getName().getString(), system, user);
+			Object request = createRequest(orchestrator, player.getUUID().toString(), player.getName().getString(), system, user,
+					YHModConfig.COMMON.spellAiMaxOutputTokens.get());
 			CompletableFuture<?> future = (CompletableFuture<?>) orchestrator.getClass()
 					.getMethod("send", request.getClass()).invoke(orchestrator, request);
 			return future.thenApply(response -> {
@@ -87,7 +88,7 @@ public final class YhLlmCoreBridge {
 	}
 
 	/** Build the final routed request before asking its runtime for a billing ceiling. */
-	static Object createRequest(Object orchestrator, String playerId, String playerName, String system, String user)
+	static Object createRequest(Object orchestrator, String playerId, String playerName, String system, String user, int defaultOutputTokens)
 			throws ReflectiveOperationException {
 		Class<?> messageType = Class.forName("vibe.liteming.llmcore.LlmMessage");
 		Object systemMessage = messageType.getConstructor(String.class, String.class).newInstance("system", system);
@@ -100,6 +101,15 @@ public final class YhLlmCoreBridge {
 		Class<?> requestType = Class.forName("vibe.liteming.llmcore.LlmRequest");
 		Object request = requestType.getMethod("routed", List.class, contextType)
 				.invoke(null, List.of(systemMessage, userMessage), context);
+		Object routing = orchestrator.getClass().getMethod("getRoutingConfig").invoke(orchestrator);
+		Object purposeOptions = routing.getClass().getMethod("resolveOptions", String.class).invoke(routing, PURPOSE);
+		Integer purposeOutput = (Integer) purposeOptions.getClass().getMethod("maxOutputTokens").invoke(purposeOptions);
+		if (purposeOutput == null || purposeOutput < defaultOutputTokens) {
+			Class<?> optionsType = Class.forName("vibe.liteming.llmcore.LlmRouteOptions");
+			request = requestType.getConstructor(List.class, List.class, Double.class, Integer.class, int.class, contextType, optionsType)
+					.newInstance(List.of(systemMessage, userMessage), List.of(), null, defaultOutputTokens, 0, context,
+							optionsType.getMethod("empty").invoke(null));
+		}
 		// Count the configured provider/credential fallback chain and its actual
 		// input/output reservation. Never silently send an unbilled request if the
 		// installed billing API is incompatible or estimation fails.
@@ -124,7 +134,7 @@ public final class YhLlmCoreBridge {
 			if (stream != null) return new String(stream.readAllBytes(), StandardCharsets.UTF_8).trim();
 		} catch (Exception ignored) {
 		}
-		return "Return one JSON spell object only. The server validates the draft before use.";
+		return "Return one JSON spell object only.";
 	}
 
 	public record Result(boolean success, String content, String error) {

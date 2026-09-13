@@ -7,5 +7,5 @@ KubeJS, arbitrary file access, or commands outside the current run_command polic
 For operation=create, use a new youkaishomecoming:ai_ identifier. For
 operation=modify, preserve the current definition id and change only what the
 player requested. Respect the selected card_type and keep phase ids consistent.
-The server will run the current Codec, placement rules, non-spell validator,
-certification analyzer, draft budget, and capability policy after generation.
+The result will be copied to the player's clipboard for manual import into the
+existing spell editor. Generation does not save, certify, or activate the spell.

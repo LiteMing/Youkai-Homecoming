@@ -88,7 +88,9 @@ public final class SpellJsonChecker {
 							&& outObj.has("base_scale") && NumberProvider.CODEC.parse(JsonOps.INSTANCE, entry.getValue()).result().isPresent()) {
 						continue; // Read-compatible name; the Codec exports the effective base_scale.
 					}
-					if (isActionDefaultOmitted(inObj, key, entry.getValue()) || isCodecDefaultOmitted(childPath, entry.getValue())) {
+					if (isActionDefaultOmitted(inObj, key, entry.getValue())
+							|| isConditionDefaultOmitted(outObj, key, entry.getValue())
+							|| isCodecDefaultOmitted(childPath, entry.getValue())) {
 						continue;
 					}
 					DroppedField parseError = diagnoseDroppedActionList(entry.getValue(), childPath);
@@ -274,6 +276,28 @@ public final class SpellJsonChecker {
 		return false;
 	}
 
+	private static boolean isConditionDefaultOmitted(JsonObject encoded, String key, JsonElement value) {
+		// The same condition can appear under .condition or any depth of .conditions[index].
+		return switch (getStringField(encoded, "type")) {
+			case "tick_interval" -> "offset".equals(key) && isNumber(value, 0);
+			case "dynamic_tick_interval" -> "offset".equals(key) && isZeroNumberProvider(value);
+			case "always" -> "value".equals(key) && isBoolean(value, true);
+			// A fieldless NumberProvider shares this type ID; only the condition has a threshold.
+			case "target_speed" -> encoded.has("threshold") && "op".equals(key) && isString(value, ">");
+			default -> false;
+		};
+	}
+
+	private static boolean isZeroNumberProvider(JsonElement value) {
+		if (value.isJsonObject()) {
+			JsonObject object = value.getAsJsonObject();
+			// A typed constant also encodes to a bare number; don't hide extra fields inside it.
+			if (object.size() != 2 || !"constant".equals(getStringField(object, "type")) || !object.has("value")) return false;
+		}
+		return NumberProvider.CODEC.parse(JsonOps.INSTANCE, value).result()
+				.filter(NumberProvider.constant(0)::equals).isPresent();
+	}
+
 	private static boolean isCodecDefaultOmitted(String path, JsonElement value) {
 		if (value == null || value.isJsonNull()) {
 			return false;
@@ -297,7 +321,7 @@ public final class SpellJsonChecker {
 				".difficulty.count_per_health_lost")) {
 			return isNumber(value, 0);
 		}
-		if (endsWithAny(path, ".condition.offset", ".origin.offset_x", ".origin.offset_y", ".origin.offset_z",
+		if (endsWithAny(path, ".origin.offset_x", ".origin.offset_y", ".origin.offset_z",
 				".origin.rotation", ".destination.offset_x", ".destination.offset_y", ".destination.offset_z",
 				".destination.rotation", ".angle_offset", ".elevation", ".group_rotation.rot_x",
 				".group_rotation.rot_y", ".group_rotation.rot_z")) {
@@ -335,12 +359,6 @@ public final class SpellJsonChecker {
 		}
 		if (path.endsWith(".if_false")) {
 			return isNumberOrNumericString(value, 0);
-		}
-		if (path.endsWith(".condition.value")) {
-			return isBoolean(value, true);
-		}
-		if (path.endsWith(".condition.op")) {
-			return isString(value, ">");
 		}
 		if (endsWithAny(path, ".item_form.generate", ".item_form.requires_target", ".item_form.caster_moves", ".item_form.ex_spell")) {
 			return isBoolean(value, false);

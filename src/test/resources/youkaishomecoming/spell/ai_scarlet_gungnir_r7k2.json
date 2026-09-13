@@ -1,0 +1,232 @@
+{
+  "id": "youkaishomecoming:ai_scarlet_gungnir_r7k2",
+  "display": {
+    "name": "Scarlet Sign: Gungnir of the Crimson Moon",
+    "description": "Rotating scarlet rings bloom beneath a crimson moon while spears of light answer the player's position."
+  },
+  "entry_phase": "youkaishomecoming:ai_scarlet_gungnir_r7k2/main",
+  "phases": {
+    "youkaishomecoming:ai_scarlet_gungnir_r7k2/main": {
+      "id": "youkaishomecoming:ai_scarlet_gungnir_r7k2/main",
+      "on_enter": [
+        {
+          "type": "spellcard_init",
+          "health": 260,
+          "duration": 1500
+        },
+        {
+          "type": "show_spell_title",
+          "description": "Scarlet orbs bloom beneath a crimson moon; spears of light answer.",
+          "duration": 60,
+          "radius": 1.6
+        }
+      ],
+      "on_tick": [
+        {
+          "type": "conditional",
+          "condition": {
+            "type": "tick_interval",
+            "interval": 14,
+            "offset": 0
+          },
+          "if_true": [
+            {
+              "type": "fire_danmaku",
+              "bullet": "ball",
+              "color": "red",
+              "count": 12,
+              "speed": 0.35,
+              "lifetime": 72,
+              "angle_offset": "tick * 3",
+              "spread": 360,
+              "elevation": 0,
+              "pattern": "ring",
+              "aim_mode": "direction_to_target",
+              "origin": {
+                "mode": "caster",
+                "offset_x": 0,
+                "offset_y": 1.0,
+                "offset_z": 0
+              },
+              "mover": {
+                "type": "acceleration",
+                "x": 0.012,
+                "y": 0,
+                "z": 0,
+                "space": "local",
+                "terminal_vx": 1.0
+              }
+            }
+          ]
+        },
+        {
+          "type": "conditional",
+          "condition": {
+            "type": "tick_interval",
+            "interval": 30,
+            "offset": 8
+          },
+          "if_true": [
+            {
+              "type": "fire_danmaku",
+              "bullet": "ball",
+              "color": {
+                "type": "cycle",
+                "palette": [
+                  "red",
+                  "orange",
+                  "magenta"
+                ],
+                "interval": 20
+              },
+              "count": 18,
+              "speed": 0.42,
+              "lifetime": 90,
+              "pattern": "sphere",
+              "aim_mode": "direction_to_target",
+              "origin": {
+                "mode": "caster",
+                "offset_x": 0,
+                "offset_y": 1.6,
+                "offset_z": 0
+              },
+              "group_rotation": {
+                "rot_x": 15,
+                "rot_y": "tick * 1.5",
+                "rot_z": 0
+              },
+              "mover": {
+                "type": "acceleration",
+                "x": 0,
+                "y": -0.012,
+                "z": 0
+              }
+            }
+          ]
+        },
+        {
+          "type": "conditional",
+          "condition": {
+            "type": "tick_interval",
+            "interval": 45,
+            "offset": 20
+          },
+          "if_true": [
+            {
+              "type": "fire_danmaku",
+              "bullet": "spark",
+              "color": "orange",
+              "count": 5,
+              "speed": 1.45,
+              "lifetime": 55,
+              "angle_offset": "sin_deg(tick * 1.7) * 10",
+              "spread": 12,
+              "pattern": "line",
+              "aim_mode": "direction_to_target",
+              "origin": {
+                "mode": "caster",
+                "offset_x": 0,
+                "offset_y": 1.2,
+                "offset_z": 0
+              },
+              "hit_behavior_entity": "discard",
+              "hit_behavior_block": "discard"
+            },
+            {
+              "type": "camera_shake",
+              "intensity": 0.25,
+              "duration": 6,
+              "frequency": 10,
+              "radius": 12
+            }
+          ]
+        },
+        {
+          "type": "conditional",
+          "condition": {
+            "type": "and",
+            "conditions": [
+              {
+                "type": "tick_elapsed",
+                "ticks": 900
+              },
+              {
+                "type": "tick_interval",
+                "interval": 90,
+                "offset": 0
+              }
+            ]
+          },
+          "if_true": [
+            {
+              "type": "fire_danmaku",
+              "bullet": "ball",
+              "color": {
+                "type": "cycle",
+                "palette": [
+                  "magenta",
+                  "red"
+                ],
+                "interval": 90
+              },
+              "count": 4,
+              "outer_count": 6,
+              "speed": 0.5,
+              "lifetime": 100,
+              "angle_offset": "tick * -1.5",
+              "elevation": 40,
+              "tilt_angle": 30,
+              "pattern": "nested_ring",
+              "aim_mode": "direction_to_target",
+              "origin": {
+                "mode": "caster",
+                "offset_x": 0,
+                "offset_y": 2.4,
+                "offset_z": 0
+              },
+              "mover": {
+                "type": "acceleration",
+                "x": 0.008,
+                "y": 0,
+                "z": 0,
+                "space": "local",
+                "terminal_vx": 0.9
+              }
+            }
+          ]
+        }
+      ],
+      "on_exit": [],
+      "on_damage": [],
+      "transitions": []
+    }
+  },
+  "item_form": {
+    "generate": true,
+    "cooldown": 100,
+    "requires_target": false,
+    "caster_moves": false,
+    "duration": 1500,
+    "hp": 260,
+    "card_type": "normal",
+    "ex_spell": false
+  },
+  "difficulty": {
+    "speed_base": 1,
+    "speed_per_health_lost": 0.15,
+    "frequency_base": 1,
+    "frequency_per_health_lost": 0.1,
+    "count_base": 1,
+    "count_per_health_lost": 0
+  },
+  "custom_names": {
+    "tick/0": "Scarlet Ring Cadence",
+    "tick/0:true/0": "Rotating Scarlet Ring",
+    "tick/1": "Crimson Moon Cadence",
+    "tick/1:true/0": "Crimson Moon Sphere",
+    "tick/2": "Gungnir Cadence",
+    "tick/2:true/0": "Spear of Scarlet Light",
+    "tick/3": "Scarlet Devil Wings",
+    "tick/3:true/0": "Wing Nested Ring"
+  }
+}

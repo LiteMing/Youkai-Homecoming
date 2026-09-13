@@ -32,6 +32,11 @@ public final class YhSpellGenerationAgentTest {
 		var first = run(2, drafts, feedback, YhLlmCoreBridge.Result.success(VALID));
 		check("valid first draft ends the loop and keeps exact text", drafts.size() == 1 && first.success() && first.content().equals(VALID) && first.error().isEmpty());
 		drafts.clear(); feedback.clear();
+		String scarlet = SpellJsonCheckerTest.scarletGungnirDraft();
+		var reportedDraft = run(2, drafts, feedback, YhLlmCoreBridge.Result.success(scarlet));
+		check("reported nested-condition draft is delivered unchanged without a wasted repair", drafts.size() == 1
+				&& reportedDraft.success() && reportedDraft.content().equals(scarlet) && reportedDraft.error().isEmpty());
+		drafts.clear(); feedback.clear();
 		var repaired = run(2, drafts, feedback, YhLlmCoreBridge.Result.success(INVALID), YhLlmCoreBridge.Result.success(VALID));
 		check("checker feedback triggers one revision", drafts.size() == 2 && repaired.content().equals(VALID) && repaired.error().isEmpty());
 		check("revision receives previous full draft and real node diagnostics", drafts.get(1).equals(INVALID)

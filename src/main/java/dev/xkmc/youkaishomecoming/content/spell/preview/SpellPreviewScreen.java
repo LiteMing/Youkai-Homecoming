@@ -907,7 +907,7 @@ public class SpellPreviewScreen extends Screen {
 		}
 	}
 
-	private boolean aiEnabled() {
+	static boolean aiEnabled() {
 		try {
 			return dev.xkmc.youkaishomecoming.init.data.YHModConfig.COMMON.spellAiGenerationEnabled.get();
 		} catch (RuntimeException ignored) {

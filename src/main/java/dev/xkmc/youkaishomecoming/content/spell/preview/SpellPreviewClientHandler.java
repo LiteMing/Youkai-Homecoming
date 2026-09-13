@@ -9,6 +9,7 @@ import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -31,7 +32,8 @@ public class SpellPreviewClientHandler {
 	private static final SpellAiGenerateResultToClient.Collector AI_RESULTS = new SpellAiGenerateResultToClient.Collector();
 	private static final Map<Integer, String> AI_ORIGINALS = new java.util.HashMap<>();
 	private static final Map<Integer, SpellAiComparison> AI_COMPARISONS = new java.util.HashMap<>();
-	private static Integer pendingComparison;
+	private static Integer latestComparison;
+	private static Runnable pendingAiScreen;
 
 	public static void open(OpenSpellPreviewToClient packet) {
 		Minecraft.getInstance().execute(() -> openOnClient(packet));
@@ -51,7 +53,7 @@ public class SpellPreviewClientHandler {
 			deliverAiResult(result, mc.keyboardHandler::setClipboard, message -> {
 				if (comparison != null) message = message.copy().append(" ").append(Component.translatable(
 						"youkaishomecoming.spell_editor.ai.view_changes").withStyle(style -> style.withColor(ChatFormatting.AQUA)
-						.withUnderlined(true).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/yhspellai diff " + result.transferId))));
+						.withUnderlined(true).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/yhspell ai diff " + result.transferId))));
 				mc.player.displayClientMessage(message, false);
 			});
 		});
@@ -66,27 +68,43 @@ public class SpellPreviewClientHandler {
 		if (!result.success || original == null) return null;
 		var comparison = new SpellAiComparison(original, result.json);
 		AI_COMPARISONS.put(result.transferId, comparison);
+		latestComparison = result.transferId;
 		return comparison;
 	}
 
 	@SubscribeEvent
 	public static void registerAiCommands(RegisterClientCommandsEvent event) {
-		event.getDispatcher().register(Commands.literal("yhspellai").then(Commands.literal("diff")
-				.then(Commands.argument("request", IntegerArgumentType.integer()).executes(context -> {
-					pendingComparison = IntegerArgumentType.getInteger(context, "request");
-					return 1;
-				}))));
+		event.getDispatcher().register(Commands.literal("yhspell").then(Commands.literal("ai")
+				.then(Commands.literal("create").requires(source -> SpellPreviewScreen.aiEnabled())
+						.executes(context -> {
+							pendingAiScreen = () -> Minecraft.getInstance().setScreen(
+									new SpellAiPromptScreen(SpellPreviewScreen.createDraftEditor(), "create"));
+							return 1;
+						}))
+				.then(Commands.literal("diff").executes(context -> queueAiComparison(latestComparison))
+						.then(Commands.argument("request", IntegerArgumentType.integer())
+								.suggests((context, builder) -> SharedSuggestionProvider.suggest(
+										AI_COMPARISONS.keySet().stream().map(String::valueOf), builder))
+								.executes(context -> queueAiComparison(IntegerArgumentType.getInteger(context, "request")))))));
+	}
+
+	private static int queueAiComparison(Integer request) {
+		pendingAiScreen = () -> {
+			var comparison = AI_COMPARISONS.get(request);
+			var mc = Minecraft.getInstance();
+			if (comparison != null) mc.setScreen(new SpellAiDiffScreen(mc.screen, comparison));
+			else mc.player.displayClientMessage(Component.translatable("youkaishomecoming.spell_editor.ai.diff_unavailable"), false);
+		};
+		return 1;
 	}
 
 	@SubscribeEvent
-	public static void openAiComparison(TickEvent.ClientTickEvent event) {
-		if (event.phase != TickEvent.Phase.END || pendingComparison == null) return;
-		var comparison = AI_COMPARISONS.get(pendingComparison);
-		pendingComparison = null;
-		var mc = Minecraft.getInstance();
-		if (mc.player == null) return;
-		if (comparison != null) mc.setScreen(new SpellAiDiffScreen(mc.screen, comparison));
-		else mc.player.displayClientMessage(Component.translatable("youkaishomecoming.spell_editor.ai.diff_unavailable"), false);
+	public static void openAiScreen(TickEvent.ClientTickEvent event) {
+		if (event.phase != TickEvent.Phase.END || pendingAiScreen == null) return;
+		// ChatScreen closes after dispatch; open the requested screen on the next tick.
+		var open = pendingAiScreen;
+		pendingAiScreen = null;
+		if (Minecraft.getInstance().player != null) open.run();
 	}
 
 	static void deliverAiResult(SpellAiGenerateResultToClient result, Consumer<String> clipboard, Consumer<Component> chat) {
@@ -110,7 +128,8 @@ public class SpellPreviewClientHandler {
 		AI_RESULTS.clear();
 		AI_ORIGINALS.clear();
 		AI_COMPARISONS.clear();
-		pendingComparison = null;
+		latestComparison = null;
+		pendingAiScreen = null;
 		ASSEMBLIES.clear();
 	}
 

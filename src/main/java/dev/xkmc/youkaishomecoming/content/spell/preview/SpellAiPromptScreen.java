@@ -15,12 +15,17 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 public final class SpellAiPromptScreen extends Screen {
 	private final SpellPreviewScreen parent;
 	private final EditBox prompt;
-	private String operation = "modify";
+	private String operation;
 	private SpellCardType cardType;
 
 	public SpellAiPromptScreen(SpellPreviewScreen parent) {
+		this(parent, "modify");
+	}
+
+	SpellAiPromptScreen(SpellPreviewScreen parent, String operation) {
 		super(Component.literal(SpellEditorLocalization.t("AI Spell")));
 		this.parent = parent;
+		this.operation = operation;
 		this.cardType = parent.currentCardType();
 		this.prompt = new EditBox(Minecraft.getInstance().font, 0, 0, 300, 20,
 				Component.literal(SpellEditorLocalization.t("Custom requirement")));

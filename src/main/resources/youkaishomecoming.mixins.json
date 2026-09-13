@@ -24,6 +24,7 @@
 		"effect.VillagerMixin"
 	],
 	"client": [
+		"SpellAiClientCommandMixin",
 		"compat.YsmPlayerHintMixin",
 		"CriterionGridMixin",
 		"effect.GameRendererMixin",

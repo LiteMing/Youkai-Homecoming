@@ -291,7 +291,24 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		}
 		SpellRegistry.remove(id);
 		CustomSpellStorage.deleteSpell(sender.server, id);
+		clearDeletedDraftBindings(sender, id);
 		sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.deleted", id));
+	}
+
+	/** Let the current editor immediately reuse bases whose definition was deleted. */
+	private static void clearDeletedDraftBindings(ServerPlayer player, ResourceLocation id) {
+		boolean changed = false;
+		var inventory = player.getInventory();
+		for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+			ItemStack stack = inventory.getItem(slot);
+			if (id.equals(DynamicSpellItem.getSpellId(stack))) {
+				changed |= DynamicSpellItem.clearMissingDraftBinding(stack);
+			}
+		}
+		if (changed) {
+			inventory.setChanged();
+			player.containerMenu.broadcastChanges();
+		}
 	}
 
 	private void saveSpell(ServerPlayer sender, boolean reapply) {
@@ -396,6 +413,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 		}
 		SpellRegistry.remove(id);
 		CustomSpellStorage.deleteSpell(sender.server, id);
+		clearDeletedDraftBindings(sender, id);
 		sender.sendSystemMessage(Component.translatable("youkaishomecoming.spell_editor.message.deleted", id));
 	}
 

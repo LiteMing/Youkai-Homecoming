@@ -264,6 +264,17 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (getSpellId(stack) == null) setSpellId(stack, spellId);
 	}
 
+	/** Recover an orphaned draft without changing its base, traits or certificate-backed cards. */
+	public static boolean clearMissingDraftBinding(ItemStack stack) {
+		if (!(stack.getItem() instanceof DynamicSpellItem) || !stack.hasTag()
+				|| !stack.getTag().contains(TAG_SPELL_ID) || isComplete(stack)
+				|| CertifiedSpellValidator.isCertified(stack)) return false;
+		ResourceLocation id = getSpellId(stack);
+		if (id != null && SpellRegistry.contains(id)) return false;
+		stack.getTag().remove(TAG_SPELL_ID);
+		return true;
+	}
+
 	/** Budget frozen on this draft base. Missing data uses config defaults; the
 	 * old aggregate quota remains readable for pre-0.22.9 cards. */
 	public static SpellDraftBudget getDraftBudget(ItemStack stack) {
@@ -350,8 +361,6 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	@Override
 	public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
 		ItemStack stack = player.getItemInHand(hand);
-		boolean editableDraft = getSpellId(stack) == null
-				|| (!isNonSpell(stack) && !CertifiedSpellValidator.isCertified(stack) && !isComplete(stack));
 		// Shift+right-click is the universal close action while a spell runtime is
 		// active.  Keep this ahead of the draft editor branch so a non-spell can
 		// always be used to leave combat without accidentally reopening its editor.
@@ -361,6 +370,17 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 			}
 			return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
 		}
+		if (!level.isClientSide && player instanceof ServerPlayer sp
+				&& !isComplete(stack) && !CertifiedSpellValidator.isCertified(stack)) {
+			// Try the existing legacy namespace repair before releasing a missing id.
+			resolveEditableDefinition(stack, sp);
+			if (clearMissingDraftBinding(stack)) {
+				sp.getInventory().setChanged();
+				sp.containerMenu.broadcastChanges();
+			}
+		}
+		boolean editableDraft = getSpellId(stack) == null
+				|| (!isNonSpell(stack) && !CertifiedSpellValidator.isCertified(stack) && !isComplete(stack));
 		// Drafts cannot enter combat, but a draft held during an already active
 		// duel must still be able to leave it. This is distinct from closing an
 		// active spell runtime above.

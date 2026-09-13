@@ -89,7 +89,10 @@ public class SpellDraftRecipe extends ShapelessRecipe {
 			}
 		}
 		DynamicSpellItem.setRank(stack, rank);
-		if (!auraConversion) DynamicSpellItem.setDraftBudget(stack, rank.createBudget());
+		if (!auraConversion) {
+			DynamicSpellItem.setDraftBudget(stack, rank.createBudget());
+			DynamicSpellItem.clearMissingDraftBinding(stack);
+		}
 		if (waterWash && !existingCard.isEmpty()) DynamicSpellItem.setCardFaceRefreshRequired(stack, true);
 		if (auraType != null) DynamicSpellItem.setCardType(stack, auraType);
 		if (exAura) DynamicSpellItem.setExSpell(stack, true);

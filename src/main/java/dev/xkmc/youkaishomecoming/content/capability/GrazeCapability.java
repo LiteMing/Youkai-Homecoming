@@ -221,9 +221,10 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (player.level() instanceof ServerLevel && GrazeHelper.isManualCombatMode()
 				&& forcedDanmakuCombat && !combatAdminBypass
 				&& sessions.isEmpty() && playerOpponents.isEmpty()
-				&& !SpellContainer.hasActiveSpell(player) && !GrazeHelper.hasSpellCard(player)) {
+				&& !SpellContainer.hasActiveSpellCard(player) && !GrazeHelper.hasSpellCard(player)) {
 			// Do not strand a manual-mode player after their last card ends. Active
-			// boss/PvP opponents keep combat alive so a cardless hit still costs life.
+			// boss/PvP opponents keep combat alive so a cardless hit still costs life;
+			// an enabled non-spell alone does not qualify as an active spell card.
 			clearCombatState(true);
 		}
 		if (player.level() instanceof ServerLevel) {

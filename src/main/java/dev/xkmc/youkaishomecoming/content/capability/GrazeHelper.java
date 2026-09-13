@@ -36,6 +36,8 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.network.NetworkEvent;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.function.Predicate;
+
 public class GrazeHelper {
 
 	public static final int SPELL_TARGET_RANGE = 64;
@@ -137,11 +139,7 @@ public class GrazeHelper {
 	}
 
 	public static boolean hasSpellCard(Player player) {
-		if (isSpellStack(player.getMainHandItem()) || isSpellStack(player.getOffhandItem())) return true;
-		for (ItemStack stack : player.getInventory().items) {
-			if (isSpellStack(stack)) return true;
-		}
-		return CuriosManager.hasAnySpellItem(player);
+		return !findSpellItem(player, stack -> isAvailableSpellStack(player, stack, true)).isEmpty();
 	}
 
 	public static boolean isSpellStack(ItemStack stack) {
@@ -150,7 +148,7 @@ public class GrazeHelper {
 
 	/**
 	 * Manual combat toggle shared by spell-card interaction and the client shortcut.
-	 * Requires a cast-ready spell card when entering in manual mode.
+	 * Requires a usable real spell card when entering in manual mode.
 	 * Exit clears combat state without wiping life/bomb/power.
 	 */
 	public static boolean tryToggleManualCombat(Player player) {
@@ -265,17 +263,21 @@ public class GrazeHelper {
 	 * explicit fallback for script-driven and accessory-held cards.
 	 */
 	public static ItemStack findSpellCard(Player player) {
+		return findSpellItem(player, stack -> isAvailableSpellStack(player, stack, false));
+	}
+
+	/** Shared hand/inventory/Curios order for entry, Bomb and non-spell selection. */
+	private static ItemStack findSpellItem(Player player, Predicate<ItemStack> predicate) {
 		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
-		if (isAvailableSpellStack(player, mainhand)) return mainhand;
+		if (predicate.test(mainhand)) return mainhand;
 		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
-		if (isAvailableSpellStack(player, offhand)) return offhand;
+		if (predicate.test(offhand)) return offhand;
 		var inventory = player.getInventory();
 		for (int i = 0; i < inventory.items.size(); i++) {
 			ItemStack stack = inventory.getItem(i);
-			if (isAvailableSpellStack(player, stack)) return stack;
+			if (predicate.test(stack)) return stack;
 		}
-		return CuriosManager.findFirstSpellItem(player,
-				stack -> isAvailableSpellStack(player, stack));
+		return CuriosManager.findFirstSpellItem(player, predicate);
 	}
 
 	/**
@@ -292,16 +294,7 @@ public class GrazeHelper {
 
 	/** Selects the first usable non-spell in the same hand/inventory/Curios order as spell cards. */
 	public static ItemStack findNonSpell(Player player) {
-		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
-		if (isAvailableNonSpell(mainhand)) return mainhand;
-		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
-		if (isAvailableNonSpell(offhand)) return offhand;
-		var inventory = player.getInventory();
-		for (int i = 0; i < inventory.items.size(); i++) {
-			ItemStack stack = inventory.getItem(i);
-			if (isAvailableNonSpell(stack)) return stack;
-		}
-		return CuriosManager.findFirstSpellItem(player, GrazeHelper::isAvailableNonSpell);
+		return findSpellItem(player, GrazeHelper::isAvailableNonSpell);
 	}
 
 	private static boolean isAvailableNonSpell(ItemStack stack) {
@@ -310,38 +303,25 @@ public class GrazeHelper {
 	}
 
 	private static ItemStack findSpellCard(Player player, boolean excludeLast, boolean onlyLast) {
-		ItemStack mainhand = player.getItemInHand(InteractionHand.MAIN_HAND);
-		if (isAvailableSpellStack(player, mainhand, excludeLast, onlyLast)) return mainhand;
-		ItemStack offhand = player.getItemInHand(InteractionHand.OFF_HAND);
-		if (isAvailableSpellStack(player, offhand, excludeLast, onlyLast)) return offhand;
-		var inventory = player.getInventory();
-		for (int i = 0; i < inventory.items.size(); i++) {
-			ItemStack stack = inventory.getItem(i);
-			if (isAvailableSpellStack(player, stack, excludeLast, onlyLast)) return stack;
-		}
-		return CuriosManager.findFirstSpellItem(player,
-				stack -> isAvailableSpellStack(player, stack, excludeLast, onlyLast));
-	}
-
-	private static boolean isAvailableSpellStack(Player player, ItemStack stack) {
-		return isAvailableSpellStack(player, stack, false, false);
+		return findSpellItem(player, stack -> {
+			boolean last = stack.getItem() instanceof DynamicSpellItem
+					&& DynamicSpellItem.getCardType(stack) == dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType.LAST_SPELL;
+			return !(excludeLast && last || onlyLast && !last) && isAvailableSpellStack(player, stack, false);
+		});
 	}
 
 	private static boolean isAvailableSpellStack(Player player, ItemStack stack,
-			boolean excludeLast, boolean onlyLast) {
+			boolean forCombatEntry) {
 		if (!isSpellStack(stack)) return false;
 		if (stack.getItem() instanceof DynamicSpellItem && DynamicSpellItem.isNonSpell(stack)) return false;
-		if (stack.getItem() instanceof DynamicSpellItem) {
-			boolean last = DynamicSpellItem.getCardType(stack) == dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType.LAST_SPELL;
-			if (excludeLast && last || onlyLast && !last) return false;
-		}
 		String cardKey = spellCardKey(stack);
 		if (GrazeCapability.HOLDER.get(player).isSpellCardUnavailable(cardKey)) return false;
 		// Automatic/passive casts must skip cards that cannot pay their current
 		// resource cost, otherwise an earlier red card blocks a later usable card.
 		// Client-side rendering performs the same preflight from the synced state;
 		// the server remains authoritative for the actual payment and KJS overrides.
-		return !(player instanceof ServerPlayer sp) || SpellItemCost.canAfford(sp, stack);
+		return !(player instanceof ServerPlayer sp) || (forCombatEntry
+				? SpellItemCost.canAffordCombatEntry(sp, stack) : SpellItemCost.canAfford(sp, stack));
 	}
 
 	public static String spellCardKey(ItemStack stack) {

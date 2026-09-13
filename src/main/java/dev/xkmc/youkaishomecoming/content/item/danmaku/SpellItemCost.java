@@ -118,13 +118,25 @@ public final class SpellItemCost {
 
 	/** Server-side preflight for automatic card selection. */
 	public static boolean canAfford(ServerPlayer player, ItemStack stack) {
+		return canAfford(player, stack, false);
+	}
+
+	/** Entry shares cast affordability, but a Last Spell must be able to start a new combat. */
+	public static boolean canAffordCombatEntry(ServerPlayer player, ItemStack stack) {
+		return canAfford(player, stack, true);
+	}
+
+	private static boolean canAfford(ServerPlayer player, ItemStack stack, boolean forCombatEntry) {
 		if (player.getAbilities().instabuild) return true;
 		SpellCardType type = stack.getItem() instanceof DynamicSpellItem
 				? DynamicSpellItem.getCardType(stack) : SpellCardType.NORMAL;
 		if (type == SpellCardType.NON_SPELL) return true;
 		if (type == SpellCardType.LAST_SPELL) {
-			return dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(player)
-					.canActivateLastSpell()
+			var cap = dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(player);
+			// New combat resets the per-combat use flag, but never its cooldown.
+			// Actual casting still requires an active combat through canActivateLastSpell().
+			return (forCombatEntry && !cap.isInDanmakuCombat()
+					? cap.getLastSpellCooldownTicks() <= 0 : cap.canActivateLastSpell())
 					&& !dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveSpellCard(player);
 		}
 		boolean inCombat = YHStgApi.isInDanmakuSession(player);

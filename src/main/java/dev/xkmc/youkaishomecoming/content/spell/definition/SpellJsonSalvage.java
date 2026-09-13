@@ -1,4 +1,4 @@
-package dev.xkmc.youkaishomecoming.content.spell.preview;
+package dev.xkmc.youkaishomecoming.content.spell.definition;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -8,16 +8,13 @@ import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
-import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 编辑器专用的抢救式解析。
+ * 编辑器与 AI 草稿修订共用的抢救式解析。
  *
  * <p>严格解析下，符卡定义里任何一个动作片段坏掉都会让整份 JSON 被拒绝，节点面板完全
  * 建不起来 —— 用户只能对着一行错误信息在文本里猜是哪个节点出了问题。本类改为逐个
@@ -29,11 +26,10 @@ import java.util.List;
  * {@code entry_phase} / {@code phases} 这层骨架本身不可用，就没有树可建，
  * 调用方应回退到原本的硬错误路径。
  *
- * <p><b>边界</b>：本类只用于编辑器的 raw json 面板。数据包加载、
- * {@link SpellEditorSyncToServer} 的服务端解析与认证一律保持严格 —— 服务端权威
+ * <p><b>边界</b>：本类只用于草稿诊断与节点恢复。数据包加载、
+ * {@code SpellEditorSyncToServer} 的服务端解析与认证一律保持严格 —— 服务端权威
  * 不允许静默接受半解析的内容。
  */
-@OnlyIn(Dist.CLIENT)
 public final class SpellJsonSalvage {
 
 	private static final Gson GSON = new Gson();
@@ -41,7 +37,7 @@ public final class SpellJsonSalvage {
 	/** 容器动作里承载子动作列表的字段名。 */
 	private static final String[] CHILD_LISTS = {
 			"if_true", "if_false", "body", "actions",
-			"on_expiry", "on_trail", "on_hit_entity", "on_hit_block",
+			"on_expiry", "on_trail", "on_hit_entity", "on_hit_block", "on_release",
 	};
 
 	private static final String[] PHASE_SECTIONS = {"on_enter", "on_tick", "on_exit", "on_damage"};
@@ -126,6 +122,11 @@ public final class SpellJsonSalvage {
 			return broken(element, path, "not a JSON object", messages, rawText);
 		}
 		JsonObject action = element.getAsJsonObject();
+		if (action.has("type") && action.get("type").isJsonPrimitive()
+				&& "broken".equals(action.get("type").getAsString())) {
+			messages.add(path + ": unrepaired broken node; repair its saved raw content");
+			return action;
+		}
 		for (String childList : CHILD_LISTS) {
 			JsonElement child = action.get(childList);
 			if (child != null && child.isJsonArray()) {
@@ -133,11 +134,14 @@ public final class SpellJsonSalvage {
 			}
 		}
 		String[] error = new String[1];
-		boolean parsed = SpellAction.CODEC.parse(JsonOps.INSTANCE, action)
-				.resultOrPartial(msg -> error[0] = msg)
-				.isPresent();
-		if (parsed) {
-			return action;
+		try {
+			boolean parsed = SpellAction.CODEC.parse(JsonOps.INSTANCE, action)
+					.resultOrPartial(msg -> error[0] = msg)
+					.isPresent();
+			if (parsed) return action;
+		} catch (RuntimeException exception) {
+			// Unknown registered types can throw instead of returning a DataResult error.
+			error[0] = exception.getMessage();
 		}
 		return broken(action, path, error[0], messages, rawText);
 	}

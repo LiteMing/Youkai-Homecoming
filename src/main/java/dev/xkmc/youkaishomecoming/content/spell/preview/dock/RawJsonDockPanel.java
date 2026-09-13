@@ -5,17 +5,15 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSyntaxException;
 import com.mojang.serialization.JsonOps;
-import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
-import dev.xkmc.youkaishomecoming.content.spell.condition.SpellCondition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.preview.ActionListPanel;
 import dev.xkmc.youkaishomecoming.content.spell.preview.EditorTextBoxes;
 import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorLocalization;
-import dev.xkmc.youkaishomecoming.content.spell.preview.SpellJsonSalvage;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellJsonSalvage;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellJsonChecker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -54,7 +52,6 @@ public class RawJsonDockPanel implements DockPanel {
 	private static final int PADDING = 4;
 	private static final int STATUS_HEIGHT = 18;
 	private static final int LINE_NUMBER_WIDTH = 32;
-	private static final int MAX_JSON_LENGTH = 1_048_576;
 	private static final String DRAFT_DIR = "youkaishomecoming_spells/raw_json_drafts";
 	private static final Pattern ERROR_LINE = Pattern.compile("(?i)\\bline\\s+(\\d+)");
 
@@ -249,7 +246,7 @@ public class RawJsonDockPanel implements DockPanel {
 		Font font = Minecraft.getInstance().font;
 		editor = new RawJsonEditBox(font, editorX(), editorY(), editorWidth(), editorHeight(),
 				Component.literal("raw_json"), Component.empty());
-		editor.setCharacterLimit(MAX_JSON_LENGTH);
+		editor.setCharacterLimit(SpellJsonChecker.MAX_JSON_LENGTH);
 		editor.setValueListener(text -> {
 			if (!suppressChange) {
 				editor.recordUserChange(text);
@@ -392,69 +389,32 @@ public class RawJsonDockPanel implements DockPanel {
 			onMagicCircleJsonChanged(text);
 			return;
 		}
-		try {
-			JsonElement json = JsonParser.parseString(text);
-			String[] parseError = new String[1];
-			Optional<SpellDefinition> parsed = SpellDefinition.CODEC.parse(JsonOps.INSTANCE, json)
-					.resultOrPartial(msg -> parseError[0] = msg);
-			if (parsed.isEmpty()) {
-				applySalvageOrDraft(text, json, errorStatus("Invalid spell JSON", parseError[0]));
-				return;
-			}
-			String[] encodeError = new String[1];
-			Optional<JsonElement> encoded = SpellDefinition.CODEC.encodeStart(JsonOps.INSTANCE, parsed.get())
-					.resultOrPartial(msg -> encodeError[0] = msg);
-			if (encoded.isEmpty()) {
-				markDraft(text, errorStatus("Invalid spell JSON", encodeError[0]));
-				return;
-			}
-			DroppedField droppedField = findDroppedField(json, encoded.get(), "$");
-			if (droppedField != null) {
-				String key = droppedField.parseError ? "Invalid spell JSON" : "Raw JSON has unsupported field";
-				applySalvageOrDraft(text, json, errorStatus(key, droppedField.message()));
-				return;
-			}
-			applyWithConfirmation(text, parsed.get(), () -> {
-				dirtyInvalidDraft = false;
-				dirtyDraftMessage = "";
-				dirtyDraftPath = null;
-				highlightedPath = null;
-				SpellDefinition currentDefinition = definitionSupplier.get();
-				if (currentDefinition != null) clearDraftFile(currentDefinition.id);
-				clearDraftFile(parsed.get().id);
-				applyDefinition.accept(parsed.get());
-				setStatus("Raw JSON applied", 0xFF88FF88);
-			});
-		} catch (JsonSyntaxException e) {
-			markDraft(text, errorStatus("Invalid JSON", e.getMessage()));
-		} catch (RuntimeException e) {
-			markDraft(text, errorStatus("Invalid spell JSON", e.getMessage()));
+		var checked = SpellJsonChecker.check(text);
+		if (!checked.clean()) {
+			applySalvageOrDraft(text, checked.salvage(), errorStatus(checked.errorKey(), checked.detail()));
+			return;
 		}
+		SpellDefinition parsed = checked.definition();
+		applyWithConfirmation(text, parsed, () -> {
+			dirtyInvalidDraft = false;
+			dirtyDraftMessage = "";
+			dirtyDraftPath = null;
+			highlightedPath = null;
+			SpellDefinition currentDefinition = definitionSupplier.get();
+			if (currentDefinition != null) clearDraftFile(currentDefinition.id);
+			clearDraftFile(parsed.id);
+			applyDefinition.accept(parsed);
+			setStatus("Raw JSON applied", 0xFF88FF88);
+		});
 	}
 
-	/**
-	 * 严格解析失败后的抢救回退。
-	 *
-	 * <p>逐个动作重解析，把解析不了的片段降级成惰性占位节点，让节点树照常建立，
-	 * 用户可以直接定位、替换或删除坏节点，而不是只看到一行错误信息。
-	 * 抢救不了（骨架本身坏了）时仍走原本的硬错误路径。
-	 *
-	 * <p>草稿文件照常写入，原文永远不会因为抢救而丢失。
-	 */
-	private void applySalvageOrDraft(String text, JsonElement json, String strictError) {
-		SpellJsonSalvage.Result salvaged;
-		try {
-			salvaged = SpellJsonSalvage.salvage(json, text);
-		} catch (RuntimeException e) {
-			salvaged = null;
-		}
-		if (salvaged == null || salvaged.brokenCount() == 0) {
+	/** Keep the original draft while showing any nodes recovered by the shared checker. */
+	private void applySalvageOrDraft(String text, SpellJsonSalvage.Result recovered, String strictError) {
+		if (recovered == null) {
 			markDraft(text, strictError);
 			return;
 		}
-		var recovered = salvaged;
 		applyWithConfirmation(text, recovered.definition(), () -> {
-			// 抢救过的定义必须留下草稿：它含有占位节点，不能被当成一份干净的存档。
 			dirtyInvalidDraft = true;
 			dirtyDraftMessage = strictError;
 			dirtyDraftPath = saveDraftFile(text);
@@ -581,353 +541,6 @@ public class RawJsonDockPanel implements DockPanel {
 			return "untitled";
 		}
 		return raw.replaceAll("[^a-zA-Z0-9._-]+", "_");
-	}
-
-	private static DroppedField findDroppedField(JsonElement input, JsonElement encoded, String path) {
-		if (input == null || encoded == null) {
-			return null;
-		}
-		if (input.isJsonObject() && encoded.isJsonObject()) {
-			JsonObject inObj = input.getAsJsonObject();
-			JsonObject outObj = encoded.getAsJsonObject();
-			for (Map.Entry<String, JsonElement> entry : inObj.entrySet()) {
-				String key = entry.getKey();
-				String childPath = path + "." + key;
-				if (!outObj.has(key)) {
-					if (isCodecDefaultOmitted(childPath, entry.getValue())) {
-						continue;
-					}
-					DroppedField parseError = diagnoseDroppedActionList(entry.getValue(), childPath);
-					return parseError != null ? parseError : DroppedField.unsupported(childPath);
-				}
-				DroppedField child = findDroppedField(entry.getValue(), outObj.get(key), childPath);
-				if (child != null) {
-					return child;
-				}
-			}
-		} else if (input.isJsonArray() && encoded.isJsonArray()) {
-			JsonArray inArray = input.getAsJsonArray();
-			JsonArray outArray = encoded.getAsJsonArray();
-			for (int i = 0; i < inArray.size(); i++) {
-				String childPath = path + "[" + i + "]";
-				if (i >= outArray.size()) {
-					if (isCodecDefaultOmitted(childPath, inArray.get(i))) {
-						continue;
-					}
-					return DroppedField.unsupported(childPath);
-				}
-				DroppedField child = findDroppedField(inArray.get(i), outArray.get(i), childPath);
-				if (child != null) {
-					return child;
-				}
-			}
-		}
-		return null;
-	}
-
-	private static DroppedField diagnoseDroppedActionList(JsonElement input, String path) {
-		if (!isActionListPath(path) || !input.isJsonArray()) {
-			return null;
-		}
-		JsonArray actions = input.getAsJsonArray();
-		for (int i = 0; i < actions.size(); i++) {
-			String actionPath = path + "[" + i + "]";
-			DroppedField child = diagnoseAction(actions.get(i), actionPath);
-			if (child != null) {
-				return child;
-			}
-		}
-		return null;
-	}
-
-	private static DroppedField diagnoseAction(JsonElement action, String path) {
-		String[] error = new String[1];
-		Optional<SpellAction> parsed = SpellAction.CODEC.parse(JsonOps.INSTANCE, action)
-				.resultOrPartial(msg -> error[0] = msg);
-		if (parsed.isEmpty()) {
-			DroppedField child = diagnoseActionChildren(action, path);
-			if (child != null) {
-				return child;
-			}
-			String detail = path;
-			if (error[0] != null && !error[0].isBlank()) {
-				detail += ": " + error[0];
-			}
-			return DroppedField.parseError(detail);
-		}
-		return diagnoseActionChildren(action, path);
-	}
-
-	private static DroppedField diagnoseActionChildren(JsonElement action, String path) {
-		if (!action.isJsonObject()) {
-			return null;
-		}
-		JsonObject object = action.getAsJsonObject();
-		String type = getStringField(object, "type");
-		if ("conditional".equals(type)) {
-			if (object.has("condition")) {
-				DroppedField condition = diagnoseCondition(object.get("condition"), path + ".condition");
-				if (condition != null) {
-					return condition;
-				}
-			}
-			DroppedField ifTrue = diagnoseActionListField(object, "if_true", path + ".if_true");
-			if (ifTrue != null) {
-				return ifTrue;
-			}
-			return diagnoseActionListField(object, "if_false", path + ".if_false");
-		}
-		if ("sequence".equals(type)) {
-			return diagnoseActionListField(object, "actions", path + ".actions");
-		}
-		if ("repeat".equals(type) || "delay".equals(type) || "burst".equals(type) || "spawn_shooter".equals(type)) {
-			return diagnoseActionListField(object, "body", path + ".body");
-		}
-		if ("fire_danmaku".equals(type)) {
-			for (String key : new String[]{"on_expiry", "on_trail", "on_hit_entity", "on_hit_block"}) {
-				DroppedField child = diagnoseActionListField(object, key, path + "." + key);
-				if (child != null) {
-					return child;
-				}
-			}
-		}
-		if ("disabled".equals(type) && object.has("inner")) {
-			return diagnoseAction(object.get("inner"), path + ".inner");
-		}
-		return null;
-	}
-
-	private static DroppedField diagnoseActionListField(JsonObject object, String key, String path) {
-		if (!object.has(key)) {
-			return null;
-		}
-		JsonElement value = object.get(key);
-		if (!value.isJsonArray()) {
-			return DroppedField.parseError(path + ": expected JSON array");
-		}
-		return diagnoseDroppedActionList(value, path);
-	}
-
-	private static DroppedField diagnoseCondition(JsonElement condition, String path) {
-		String[] error = new String[1];
-		Optional<SpellCondition> parsed = SpellCondition.CODEC.parse(JsonOps.INSTANCE, condition)
-				.resultOrPartial(msg -> error[0] = msg);
-		if (condition.isJsonObject()) {
-			JsonObject object = condition.getAsJsonObject();
-			String type = getStringField(object, "type");
-			if (("and".equals(type) || "or".equals(type)) && object.has("conditions")) {
-				JsonElement conditions = object.get("conditions");
-				if (!conditions.isJsonArray()) {
-					return DroppedField.parseError(path + ".conditions: expected JSON array");
-				}
-				JsonArray array = conditions.getAsJsonArray();
-				for (int i = 0; i < array.size(); i++) {
-					DroppedField child = diagnoseCondition(array.get(i), path + ".conditions[" + i + "]");
-					if (child != null) {
-						return child;
-					}
-				}
-			}
-			if ("not".equals(type) && object.has("condition")) {
-				DroppedField child = diagnoseCondition(object.get("condition"), path + ".condition");
-				if (child != null) {
-					return child;
-				}
-			}
-		}
-		if (parsed.isEmpty()) {
-			String detail = path;
-			if (error[0] != null && !error[0].isBlank()) {
-				detail += ": " + error[0];
-			}
-			return DroppedField.parseError(detail);
-		}
-		return null;
-	}
-
-	private static String getStringField(JsonObject object, String key) {
-		JsonElement value = object.get(key);
-		return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()
-				? value.getAsString() : "";
-	}
-
-	private static boolean isActionListPath(String path) {
-		return path.endsWith(".on_enter") || path.endsWith(".on_tick") ||
-				path.endsWith(".on_exit") || path.endsWith(".on_damage") ||
-				path.endsWith(".if_true") || path.endsWith(".if_false") ||
-				path.endsWith(".actions") || path.endsWith(".body") ||
-				path.endsWith(".on_expiry") || path.endsWith(".on_trail") ||
-				path.endsWith(".on_hit_entity") || path.endsWith(".on_hit_block");
-	}
-
-	private static boolean isCodecDefaultOmitted(String path, JsonElement value) {
-		if (value == null || value.isJsonNull()) {
-			return false;
-		}
-		if (value.isJsonArray() && value.getAsJsonArray().isEmpty() && isActionListPath(path)) {
-			return true;
-		}
-		if (path.endsWith(".transitions") && value.isJsonArray() && value.getAsJsonArray().isEmpty()) {
-			return true;
-		}
-		if (path.endsWith(".difficulty") && isDefaultDifficulty(value)) {
-			return true;
-		}
-		if (path.endsWith(".item_form") && isDefaultItemForm(value)) {
-			return true;
-		}
-		if (endsWithAny(path, ".difficulty.speed_base", ".difficulty.frequency_base", ".difficulty.count_base")) {
-			return isNumber(value, 1);
-		}
-		if (endsWithAny(path, ".difficulty.speed_per_health_lost", ".difficulty.frequency_per_health_lost",
-				".difficulty.count_per_health_lost")) {
-			return isNumber(value, 0);
-		}
-		if (endsWithAny(path, ".condition.offset", ".origin.offset_x", ".origin.offset_y", ".origin.offset_z",
-				".origin.rotation", ".destination.offset_x", ".destination.offset_y", ".destination.offset_z",
-				".destination.rotation", ".angle_offset", ".elevation", ".group_rotation.rot_x",
-				".group_rotation.rot_y", ".group_rotation.rot_z")) {
-			return isNumberOrNumericString(value, 0);
-		}
-		if (endsWithAny(path, ".mover.x", ".mover.y", ".mover.z", ".mover.speed")) {
-			return isNumberOrNumericString(value, 0) || isString(value, "0");
-		}
-		if (path.endsWith(".spread")) {
-			return isNumberOrNumericString(value, 360);
-		}
-		if (path.endsWith(".length")) {
-			return isNumberOrNumericString(value, 80);
-		}
-		if (path.endsWith(".pattern")) {
-			return isString(value, "ring");
-		}
-		if (path.endsWith(".aim_mode")) {
-			return isString(value, "target");
-		}
-		if (endsWithAny(path, ".origin.mode", ".destination.mode")) {
-			return isString(value, "caster");
-		}
-		if (endsWithAny(path, ".trail_interval", ".color.interval", ".volume", ".pitch", ".size")) {
-			return isNumberOrNumericString(value, 1);
-		}
-		if (path.endsWith(".hit_behavior_entity")) {
-			return isString(value, "discard");
-		}
-		if (path.endsWith(".hit_behavior_block")) {
-			return isString(value, "continue");
-		}
-		if (path.endsWith(".laser")) {
-			return isString(value, "laser");
-		}
-		if (path.endsWith(".index_variable")) {
-			return isString(value, "i");
-		}
-		if (path.endsWith(".if_false")) {
-			return isNumberOrNumericString(value, 0);
-		}
-		if (path.endsWith(".condition.value")) {
-			return isBoolean(value, true);
-		}
-		if (path.endsWith(".condition.op")) {
-			return isString(value, ">");
-		}
-		if (endsWithAny(path, ".item_form.generate", ".item_form.requires_target")) {
-			return isBoolean(value, false);
-		}
-		if (path.endsWith(".item_form.cooldown")) {
-			return isNumber(value, 100);
-		}
-		if (path.endsWith(".mover.aim")) {
-			return isString(value, "none");
-		}
-		return false;
-	}
-
-	private static boolean endsWithAny(String path, String... suffixes) {
-		for (String suffix : suffixes) {
-			if (path.endsWith(suffix)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private static boolean isDefaultDifficulty(JsonElement value) {
-		if (!value.isJsonObject()) {
-			return false;
-		}
-		JsonObject obj = value.getAsJsonObject();
-		for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
-			String key = entry.getKey();
-			boolean ok = switch (key) {
-				case "speed_base", "frequency_base", "count_base" -> isNumber(entry.getValue(), 1);
-				case "speed_per_health_lost", "frequency_per_health_lost", "count_per_health_lost" ->
-						isNumber(entry.getValue(), 0);
-				default -> false;
-			};
-			if (!ok) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	private static boolean isDefaultItemForm(JsonElement value) {
-		if (!value.isJsonObject()) {
-			return false;
-		}
-		JsonObject obj = value.getAsJsonObject();
-		for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
-			String key = entry.getKey();
-			boolean ok = switch (key) {
-				case "generate", "requires_target" -> isBoolean(entry.getValue(), false);
-				case "cooldown" -> isNumber(entry.getValue(), 0) || isNumber(entry.getValue(), 100);
-				default -> false;
-			};
-			if (!ok) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	private static boolean isString(JsonElement value, String expected) {
-		return value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() &&
-				expected.equals(value.getAsString());
-	}
-
-	private static boolean isBoolean(JsonElement value, boolean expected) {
-		return value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean() &&
-				value.getAsBoolean() == expected;
-	}
-
-	private static boolean isNumber(JsonElement value, double expected) {
-		return value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber() &&
-				Double.compare(value.getAsDouble(), expected) == 0;
-	}
-
-	private static boolean isNumberOrNumericString(JsonElement value, double expected) {
-		if (isNumber(value, expected)) {
-			return true;
-		}
-		if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
-			return false;
-		}
-		try {
-			return Double.compare(Double.parseDouble(value.getAsString().trim()), expected) == 0;
-		} catch (NumberFormatException ignored) {
-			return false;
-		}
-	}
-
-	private record DroppedField(String message, boolean parseError) {
-		private static DroppedField unsupported(String path) {
-			return new DroppedField(path, false);
-		}
-
-		private static DroppedField parseError(String message) {
-			return new DroppedField(message, true);
-		}
 	}
 
 	private FormattedJson encodeDefinition(SpellDefinition definition, ResourceLocation phaseId,

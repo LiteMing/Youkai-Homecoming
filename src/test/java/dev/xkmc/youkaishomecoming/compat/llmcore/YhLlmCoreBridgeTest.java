@@ -40,6 +40,7 @@ public final class YhLlmCoreBridgeTest {
 		} else {
 			testPurposeRegistration();
 			testRoutedBudget();
+			testGenerationBudget();
 			testProviderFallback();
 		}
 		System.out.println("YhLlmCoreBridgeTest: " + checks + " checks passed");
@@ -142,6 +143,37 @@ public final class YhLlmCoreBridgeTest {
 		}
 	}
 
+	private static void testGenerationBudget() throws Exception {
+		Object runtime = runtime("http://127.0.0.1:1");
+		var session = new YhLlmCoreBridge.GenerationSession(runtime, PLAYER, "Little_Ming", "system", "original request", 10_000, 2);
+		Object first = session.request("", "");
+		Object billing = call(first, "billingContext");
+		Object firstEstimate = call(runtime, "estimateWorstCaseBudget", first);
+		check("entire three-round provider fallback chain is budgeted before the first call", call(billing, "maxCalls").equals(9));
+		Object second = session.request("{broken JSON", "Invalid JSON: field at line 2");
+		check("each revision has a distinct request identity", !call(call(first, "context"), "requestId").equals(call(call(second, "context"), "requestId")));
+		check("all revisions keep the same player and causal ceiling", billing.equals(call(second, "billingContext")));
+		check("first request anchors the operation's causal root", call(call(first, "context"), "requestId").equals(call(billing, "causalRootRequestId")));
+		var messages = (List<?>) call(second, "messages");
+		check("repair retains original request and previous assistant draft", messages.size() == 4
+				&& call(messages.get(1), "content").equals("original request")
+				&& call(messages.get(2), "role").equals("assistant") && call(messages.get(2), "content").equals("{broken JSON"));
+		check("repair sends actual checker feedback", ((String) call(messages.get(3), "content")).contains("Invalid JSON: field at line 2"));
+		check("estimation padding never enters actual messages", messages.stream().noneMatch(message -> {
+			try { return ((String) call(message, "content")).contains("\uffff"); }
+			catch (Exception error) { throw new AssertionError(error); }
+		}));
+		String maximum = "符".repeat(dev.xkmc.youkaishomecoming.content.spell.definition.SpellJsonChecker.MAX_JSON_LENGTH);
+		Object largest = session.request(maximum, maximum);
+		Object repairEstimate = call(runtime, "estimateWorstCaseBudget", largest);
+		check("shared token ceiling covers UTF-8 draft and feedback at editor capacity",
+				(long) call(billing, "maxTokens") == (long) call(firstEstimate, "maxTokens") + 2L * (long) call(repairEstimate, "maxTokens"));
+		var noRepairs = new YhLlmCoreBridge.GenerationSession(runtime, PLAYER, "Little_Ming", "system", "user", 10_000, 0);
+		Object single = noRepairs.request("", "");
+		check("zero revisions reserves only one routed call budget", call(call(single, "billingContext"), "maxCalls").equals(3));
+		check("separate operations do not share causal roots", !call(call(single, "billingContext"), "causalRootRequestId").equals(call(billing, "causalRootRequestId")));
+	}
+
 	private static void testProviderFallback() throws Exception {
 		AtomicInteger providerCalls = new AtomicInteger();
 		AtomicInteger outputLimit = new AtomicInteger();
@@ -197,6 +229,15 @@ public final class YhLlmCoreBridgeTest {
 			check("fallback attempts pass through accounting", calls.get() > 1 && calls.get() == providerCalls.get());
 			check("provider attempts stay within core's derived ceiling", calls.get() <= (int) call(call(request, "billingContext"), "maxCalls"));
 			check("actual HTTP request asks for 10000 output tokens", outputLimit.get() == 10_000);
+			calls.set(0);
+			tokens.set(0);
+			providerCalls.set(0);
+			var session = new YhLlmCoreBridge.GenerationSession(runtime(url), PLAYER, "Little_Ming", "system", "user", 10_000, 2);
+			for (int round = 0; round < 3; round++) {
+				var reply = session.send(round == 0 ? "" : "draft", round == 0 ? "" : "Invalid spell JSON").get(10, TimeUnit.SECONDS);
+				check("routed generation round " + (round + 1) + " survives the shared causal budget", reply.success() && reply.content().equals("draft"));
+			}
+			check("all revision provider attempts stay billed", calls.get() == providerCalls.get() && calls.get() > 3 && calls.get() <= 9);
 		} finally {
 			call(core("LlmRequestAccounting"), "clear");
 			server.stop(0);

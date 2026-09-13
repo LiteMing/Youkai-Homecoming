@@ -33,22 +33,32 @@ public class SpellAiGenerateResultToClient extends SerialPacketBase {
 		for (var packet : split()) YoukaisHomecoming.HANDLER.toClientPlayer(packet, player);
 	}
 
-	/** Transport text unchanged; the editor owns JSON parsing and node recovery on import. */
+	/** Deliver both original draft text and any repair diagnostics without truncation. */
 	List<SpellAiGenerateResultToClient> split() {
-		String body = success ? json : message;
-		if (body.length() <= SpellPreviewChunkToClient.MAX_CHUNK_CHARS) return List.of(this);
+		var jsonParts = splitText(json);
+		var messageParts = splitText(message);
+		int count = Math.max(jsonParts.size(), messageParts.size());
+		if (count <= 1) return List.of(this);
 		var packets = new ArrayList<SpellAiGenerateResultToClient>();
+		for (int i = 0; i < count; i++) {
+			var packet = new SpellAiGenerateResultToClient(transferId, success,
+					i < jsonParts.size() ? jsonParts.get(i) : "", i < messageParts.size() ? messageParts.get(i) : "");
+			packet.chunkIndex = i;
+			packet.totalChunks = count;
+			packets.add(packet);
+		}
+		return packets;
+	}
+
+	private static List<String> splitText(String body) {
+		var parts = new ArrayList<String>();
 		for (int from = 0; from < body.length();) {
 			int to = Math.min(body.length(), from + SpellPreviewChunkToClient.MAX_CHUNK_CHARS);
 			if (to < body.length() && Character.isHighSurrogate(body.charAt(to - 1)) && Character.isLowSurrogate(body.charAt(to))) to--;
-			String part = body.substring(from, to);
-			var packet = new SpellAiGenerateResultToClient(transferId, success, success ? part : "", success ? "" : part);
-			packet.chunkIndex = packets.size();
-			packets.add(packet);
+			parts.add(body.substring(from, to));
 			from = to;
 		}
-		for (var packet : packets) packet.totalChunks = packets.size();
-		return packets;
+		return parts;
 	}
 
 	/** Network packets arrive in order, but separate completed requests can interleave. */
@@ -63,18 +73,19 @@ public class SpellAiGenerateResultToClient extends SerialPacketBase {
 				pending.remove(packet.transferId);
 				return null;
 			}
-			assembly.body.append(packet.success ? packet.json : packet.message);
+			assembly.json.append(packet.json);
+			assembly.message.append(packet.message);
 			if (++assembly.next < assembly.total) return null;
 			pending.remove(packet.transferId);
-			String body = assembly.body.toString();
-			return new SpellAiGenerateResultToClient(packet.transferId, packet.success, packet.success ? body : "", packet.success ? "" : body);
+			return new SpellAiGenerateResultToClient(packet.transferId, packet.success, assembly.json.toString(), assembly.message.toString());
 		}
 		void clear() { pending.clear(); }
 	}
 
 	private static final class Assembly {
 		final int total;
-		final StringBuilder body = new StringBuilder();
+		final StringBuilder json = new StringBuilder();
+		final StringBuilder message = new StringBuilder();
 		int next;
 		Assembly(int total) { this.total = total; }
 	}

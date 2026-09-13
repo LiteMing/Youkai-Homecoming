@@ -304,6 +304,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.BooleanValue spellAiGenerationEnabled;
 		public final ForgeConfigSpec.ConfigValue<String> spellAiHeaderPrompt;
 		public final ForgeConfigSpec.IntValue spellAiMaxOutputTokens;
+		public final ForgeConfigSpec.IntValue spellAiMaxRevisions;
 		public final ForgeConfigSpec.ConfigValue<String> spellMarketUrl;
 		public final ForgeConfigSpec.BooleanValue spellMarketAutoSyncEnabled;
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellMarketAutoSyncTags;
@@ -481,6 +482,9 @@ public class YHModConfig {
 				spellAiMaxOutputTokens = builder.comment("AI spell output token baseline; lower purpose limits are raised to this value, higher explicit LLM Core purpose limits are retained")
 						.translation("config.youkaishomecoming.common.spell_ai.maxOutputTokens")
 						.defineInRange("maxOutputTokens", 10_000, 1, 1_000_000);
+				spellAiMaxRevisions = builder.comment("Maximum automatic JSON repair requests after the first draft; 0 delivers the first draft with checker feedback")
+						.translation("config.youkaishomecoming.common.spell_ai.maxRevisions")
+						.defineInRange("maxRevisions", 2, 0, 5);
 			}
 			builder.pop();
 			builder.translation("config.youkaishomecoming.common.spell_market").push("spell_market");

@@ -79,8 +79,8 @@ public class SpellAiGenerateRequestToServer extends SerialPacketBase {
 						} else if (result == null || !result.success()) {
 							new SpellAiGenerateResultToClient(transferId, false, "", result == null ? "LLM request failed" : result.error()).sendTo(player);
 						} else {
-							// Import and node recovery belong to the existing editor, not the generation request.
-							new SpellAiGenerateResultToClient(transferId, true, result.content(), "").sendTo(player);
+							// An unfinished repair still delivers the draft and its diagnostics for manual editing.
+							new SpellAiGenerateResultToClient(transferId, true, result.content(), result.error()).sendTo(player);
 						}
 					}));
 	}

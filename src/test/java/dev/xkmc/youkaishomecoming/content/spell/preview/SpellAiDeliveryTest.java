@@ -6,6 +6,7 @@ import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.contents.TranslatableContents;
 
 import java.util.ArrayList;
@@ -27,6 +28,7 @@ public final class SpellAiDeliveryTest {
 		chunkedResults();
 		interleavedResults();
 		failedRequest();
+		unfinishedRepair();
 		requestSnapshots();
 		comparison();
 		System.out.println("SpellAiDeliveryTest: " + checks + " checks passed");
@@ -107,6 +109,29 @@ public final class SpellAiDeliveryTest {
 		SpellPreviewClientHandler.rememberAiRequest(14, "modify", "original");
 		SpellPreviewClientHandler.onLogout(null);
 		check("logout releases request snapshots", SpellPreviewClientHandler.completeAiRequest(new SpellAiGenerateResultToClient(14, true, "late", "")) == null);
+	}
+
+	private static void unfinishedRepair() {
+		String draft = "{\"draft\":\"" + "符🌙".repeat(18_000) + "\"}";
+		String diagnostics = "$.phases.main.on_tick[0]: unreadable node. ".repeat(2200);
+		var collector = new SpellAiGenerateResultToClient.Collector();
+		SpellAiGenerateResultToClient completed = null;
+		for (var packet : new SpellAiGenerateResultToClient(20, true, draft, diagnostics).split()) {
+			var result = collector.accept(roundTrip(packet));
+			if (result != null) completed = result;
+		}
+		check("draft and long repair feedback both survive chunking", completed != null && completed.json.equals(draft) && completed.message.equals(diagnostics));
+		var clipboard = new AtomicReference<>("old clipboard");
+		var chat = new ArrayList<Component>();
+		SpellPreviewClientHandler.deliverAiResult(completed, clipboard::set, chat::add);
+		check("unfinished repair still delivers only the draft to the clipboard", clipboard.get().equals(draft));
+		check("unfinished repair has a distinct notification", chat.size() == 1 && key(chat.get(0)).endsWith(".ai_needs_repair"));
+		var siblings = chat.get(0).getSiblings();
+		var hover = siblings.get(siblings.size() - 1).getStyle().getHoverEvent();
+		check("complete diagnostics are available on hover", hover != null && hover.getValue(HoverEvent.Action.SHOW_TEXT).getString().equals(diagnostics));
+		SpellPreviewClientHandler.rememberAiRequest(20, "modify", "original");
+		var comparison = SpellPreviewClientHandler.completeAiRequest(completed);
+		check("unfinished repair retains the request-time comparison", comparison.before().equals("original") && comparison.after().equals(draft));
 	}
 
 	private static void comparison() {

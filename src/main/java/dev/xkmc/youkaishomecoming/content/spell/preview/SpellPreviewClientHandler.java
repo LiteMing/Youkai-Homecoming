@@ -11,6 +11,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
@@ -91,7 +92,12 @@ public class SpellPreviewClientHandler {
 	static void deliverAiResult(SpellAiGenerateResultToClient result, Consumer<String> clipboard, Consumer<Component> chat) {
 		if (result.success) {
 			clipboard.accept(result.json);
-			chat.accept(Component.translatable("youkaishomecoming.spell_editor.message.ai_copied"));
+			chat.accept(result.message.isBlank()
+					? Component.translatable("youkaishomecoming.spell_editor.message.ai_copied")
+					: Component.translatable("youkaishomecoming.spell_editor.message.ai_needs_repair")
+							.append(" ").append(Component.translatable("youkaishomecoming.spell_editor.ai.repair_feedback")
+									.withStyle(style -> style.withColor(ChatFormatting.YELLOW).withUnderlined(true)
+											.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(result.message))))));
 		} else {
 			chat.accept(result.message.isBlank()
 					? Component.translatable("youkaishomecoming.spell_editor.message.ai_failed_generic")

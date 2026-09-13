@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -61,6 +62,7 @@ public class RawJsonDockPanel implements DockPanel {
 	private final Supplier<ResourceLocation> phaseSupplier;
 	private final Supplier<ActionListPanel.ActionPath> selectedPathSupplier;
 	private final Consumer<SpellDefinition> applyDefinition;
+	private BiConsumer<SpellDefinition, Consumer<Boolean>> confirmOverwrite = (definition, answer) -> answer.accept(true);
 	private BooleanSupplier magicCircleModeSupplier = () -> false;
 	private Supplier<String> magicCircleJsonSupplier = () -> "";
 	private Consumer<String> applyMagicCircleJson = ignored -> {};
@@ -92,6 +94,10 @@ public class RawJsonDockPanel implements DockPanel {
 		this.phaseSupplier = phaseSupplier;
 		this.selectedPathSupplier = selectedPathSupplier;
 		this.applyDefinition = applyDefinition;
+	}
+
+	public void setOverwriteConfirmation(BiConsumer<SpellDefinition, Consumer<Boolean>> confirmation) {
+		this.confirmOverwrite = confirmation;
 	}
 
 	public void setMagicCircleContext(BooleanSupplier magicCircleModeSupplier,
@@ -408,17 +414,17 @@ public class RawJsonDockPanel implements DockPanel {
 				applySalvageOrDraft(text, json, errorStatus(key, droppedField.message()));
 				return;
 			}
-			dirtyInvalidDraft = false;
-			dirtyDraftMessage = "";
-			dirtyDraftPath = null;
-			highlightedPath = null;
-			SpellDefinition currentDefinition = definitionSupplier.get();
-			if (currentDefinition != null) {
-				clearDraftFile(currentDefinition.id);
-			}
-			clearDraftFile(parsed.get().id);
-			applyDefinition.accept(parsed.get());
-			setStatus("Raw JSON applied", 0xFF88FF88);
+			applyWithConfirmation(text, parsed.get(), () -> {
+				dirtyInvalidDraft = false;
+				dirtyDraftMessage = "";
+				dirtyDraftPath = null;
+				highlightedPath = null;
+				SpellDefinition currentDefinition = definitionSupplier.get();
+				if (currentDefinition != null) clearDraftFile(currentDefinition.id);
+				clearDraftFile(parsed.get().id);
+				applyDefinition.accept(parsed.get());
+				setStatus("Raw JSON applied", 0xFF88FF88);
+			});
 		} catch (JsonSyntaxException e) {
 			markDraft(text, errorStatus("Invalid JSON", e.getMessage()));
 		} catch (RuntimeException e) {
@@ -446,15 +452,29 @@ public class RawJsonDockPanel implements DockPanel {
 			markDraft(text, strictError);
 			return;
 		}
-		// 抢救过的定义必须留下草稿：它含有占位节点，不能被当成一份干净的存档。
-		dirtyInvalidDraft = true;
-		dirtyDraftMessage = strictError;
-		dirtyDraftPath = saveDraftFile(text);
-		highlightedPath = null;
-		applyDefinition.accept(salvaged.definition());
-		String detail = salvaged.messages().isEmpty() ? "" : "  " + salvaged.messages().get(0);
-		setStatus(SpellEditorLocalization.t("Salvaged broken nodes") + ": "
-				+ salvaged.brokenCount() + detail, 0xFFFFCC66);
+		var recovered = salvaged;
+		applyWithConfirmation(text, recovered.definition(), () -> {
+			// 抢救过的定义必须留下草稿：它含有占位节点，不能被当成一份干净的存档。
+			dirtyInvalidDraft = true;
+			dirtyDraftMessage = strictError;
+			dirtyDraftPath = saveDraftFile(text);
+			highlightedPath = null;
+			applyDefinition.accept(recovered.definition());
+			String detail = recovered.messages().isEmpty() ? "" : "  " + recovered.messages().get(0);
+			setStatus(SpellEditorLocalization.t("Salvaged broken nodes") + ": "
+					+ recovered.brokenCount() + detail, 0xFFFFCC66);
+		});
+	}
+
+	private void applyWithConfirmation(String text, SpellDefinition incoming, Runnable apply) {
+		confirmOverwrite.accept(incoming, accepted -> {
+			try {
+				if (accepted) apply.run();
+				else markDraft(text, Component.translatable("youkaishomecoming.spell_editor.overwrite.cancelled").getString());
+			} catch (RuntimeException e) {
+				markDraft(text, errorStatus("Invalid spell JSON", e.getMessage()));
+			}
+		});
 	}
 
 	private void onMagicCircleJsonChanged(String text) {

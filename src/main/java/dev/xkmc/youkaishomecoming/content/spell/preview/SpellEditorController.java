@@ -108,6 +108,16 @@ public class SpellEditorController {
 		return isDraftMode() ? null : definition.id;
 	}
 
+	/** Editing the selected ID is ordinary work; importing changes to another registered ID needs consent. */
+	public boolean needsJsonOverwriteConfirmation(SpellDefinition incoming) {
+		if (incoming.id.equals(getCurrentSpellSelectionId())) return false;
+		var existing = SpellRegistry.get(incoming.id);
+		if (existing == null) return false;
+		var before = SpellDefinition.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, existing).result();
+		var after = SpellDefinition.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, incoming).result();
+		return before.isEmpty() || after.isEmpty() || !before.get().equals(after.get());
+	}
+
 	public void switchSelectedSpell(ResourceLocation spellId) {
 		if (spellId == null || (!isDraftMode() && spellId.equals(definition.id))) {
 			return;

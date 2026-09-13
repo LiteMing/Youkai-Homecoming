@@ -342,12 +342,13 @@ public class SpellPreviewScreen extends Screen {
 		// --- Wrap in dock panel adapters ---
 		actionListDockPanel = new ActionListDockPanel(actionListPanel);
 		editorDockPanel = new EditorDockPanel(actionEditorPanel);
-		rawJsonDockPanel = new RawJsonDockPanel(
+		if (rawJsonDockPanel == null) rawJsonDockPanel = new RawJsonDockPanel(
 				this::currentDefinitionForRawJson,
 				phaseController::getSelectedPhaseId,
 				() -> actionListPanel == null ? null : actionListPanel.getSelectedPath(),
 				this::onRawJsonDefinitionEdited
 		);
+		rawJsonDockPanel.setOverwriteConfirmation(this::confirmJsonOverwrite);
 		rawJsonDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
 		magicCircleDockPanel = new MagicCircleDockPanel(viewport);
 		magicCircleDockPanel.setWidgetCallbacks(this::addRenderableWidget, this::removeWidget);
@@ -967,6 +968,19 @@ public class SpellPreviewScreen extends Screen {
 	private SpellDefinition currentDefinitionForRawJson() {
 		syncCustomNamesToDefinition();
 		return definition;
+	}
+
+	private void confirmJsonOverwrite(SpellDefinition incoming, java.util.function.Consumer<Boolean> answer) {
+		if (!spellController.needsJsonOverwriteConfirmation(incoming)) {
+			answer.accept(true);
+			return;
+		}
+		var client = Minecraft.getInstance();
+		client.setScreen(new ConfirmScreen(accepted -> {
+			answer.accept(accepted);
+			client.setScreen(this);
+		}, Component.translatable("youkaishomecoming.spell_editor.overwrite.title"),
+				Component.translatable("youkaishomecoming.spell_editor.overwrite.message", incoming.id.toString())));
 	}
 
 	private void onRawJsonDefinitionEdited(SpellDefinition newDefinition) {

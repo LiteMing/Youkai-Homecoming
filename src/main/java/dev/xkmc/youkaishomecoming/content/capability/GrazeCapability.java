@@ -228,6 +228,11 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (player.level() instanceof ServerLevel) {
 			int effectivePermission = SpellPermissionService.effectiveLevel(player);
 			if (spellPermissionLevel != effectivePermission) {
+				if (spellPermissionOverride < 0 && effectivePermission > spellPermissionLevel && effectivePermission < 4) {
+					player.displayClientMessage(YHLangData.SPELL_PERMISSION_UNLOCKED.get(
+							dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPermission
+									.byLevel(effectivePermission).displayName()), false);
+				}
 				spellPermissionLevel = effectivePermission;
 				dirty = true;
 			}
@@ -930,6 +935,9 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		if (level < 0 || level > 4) throw new IllegalArgumentException("spell permission must be between 0 and 4");
 		spellPermissionOverride = level;
 		spellPermissionLevel = level;
+		if (level == 0 && player instanceof ServerPlayer serverPlayer) {
+			SpellContainer.clearSpellCasts(serverPlayer);
+		}
 		dirty = true;
 		sync();
 	}

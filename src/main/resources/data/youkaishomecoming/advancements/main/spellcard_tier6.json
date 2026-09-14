@@ -3,24 +3,126 @@
   "criteria": {
     "has_tier6": {
       "conditions": {
-        "items": [{
-          "items": ["youkaishomecoming:dynamic_spell"],
-          "nbt": "{yh_spell_rank:\"greater_faith\"}"
-        }]
+        "items": [
+          {
+            "items": [
+              "youkaishomecoming:dynamic_spell"
+            ],
+            "nbt": "{yh_spell_rank:\"greater_faith\"}"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_tier7": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "youkaishomecoming:dynamic_spell"
+            ],
+            "nbt": "{yh_spell_rank:\"lesser_propriety\"}"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_tier8": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "youkaishomecoming:dynamic_spell"
+            ],
+            "nbt": "{yh_spell_rank:\"greater_propriety\"}"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_tier9": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "youkaishomecoming:dynamic_spell"
+            ],
+            "nbt": "{yh_spell_rank:\"lesser_benevolence\"}"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_tier10": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "youkaishomecoming:dynamic_spell"
+            ],
+            "nbt": "{yh_spell_rank:\"greater_benevolence\"}"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_tier11": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "youkaishomecoming:dynamic_spell"
+            ],
+            "nbt": "{yh_spell_rank:\"lesser_virtue\"}"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_tier12": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "youkaishomecoming:dynamic_spell"
+            ],
+            "nbt": "{yh_spell_rank:\"greater_virtue\"}"
+          }
+        ]
       },
       "trigger": "minecraft:inventory_changed"
     }
   },
   "display": {
     "announce_to_chat": true,
-    "description": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_tier6.description" },
+    "description": {
+      "translate": "advancements.youkaishomecoming.advancements.main.spellcard_tier6.description"
+    },
     "frame": "goal",
     "hidden": false,
-    "icon": { "item": "youkaishomecoming:timeout_spell_aura" },
+    "icon": {
+      "item": "youkaishomecoming:timeout_spell_aura"
+    },
     "show_toast": true,
-    "title": { "translate": "advancements.youkaishomecoming.advancements.main.spellcard_tier6.title" }
+    "title": {
+      "translate": "advancements.youkaishomecoming.advancements.main.spellcard_tier6.title"
+    }
   },
-  "requirements": [["has_tier6"]],
-  "rewards": { "loot": ["youkaishomecoming:timeout_spell_aura_reward"] },
+  "requirements": [
+    [
+      "has_tier6",
+      "has_tier7",
+      "has_tier8",
+      "has_tier9",
+      "has_tier10",
+      "has_tier11",
+      "has_tier12"
+    ]
+  ],
+  "rewards": {
+    "loot": [
+      "youkaishomecoming:timeout_spell_aura_reward"
+    ]
+  },
   "sends_telemetry_event": true
 }

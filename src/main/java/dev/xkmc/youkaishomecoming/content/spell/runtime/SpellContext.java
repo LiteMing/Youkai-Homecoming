@@ -5,6 +5,8 @@ import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
 import dev.xkmc.youkaishomecoming.content.spell.item.PlayerHolder;
 import dev.xkmc.youkaishomecoming.content.spell.item.RuntimeItemSpell;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService;
 import dev.xkmc.youkaishomecoming.content.spell.feedback.NoopFeedbackSink;
 import dev.xkmc.youkaishomecoming.content.spell.feedback.PreviewFeedbackSink;
 import dev.xkmc.youkaishomecoming.content.spell.feedback.ServerFeedbackSink;
@@ -180,8 +182,8 @@ public class SpellContext {
 	}
 
 	public void executeList(java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> actions) {
-		if (callbackContext != null && !SpellCapabilityPolicies.allowsForPlayer(
-				callbackCapability(callbackContext.kind()), permissionLevel())) {
+		if (hasPlayerPermissions() && permissionLevel() == 0) return;
+		if (callbackContext != null && !allowsCapability(callbackCapability(callbackContext.kind()))) {
 			return;
 		}
 		var preview = previewHolder();
@@ -211,14 +213,30 @@ public class SpellContext {
 	}
 
 	private boolean canExecute(dev.xkmc.youkaishomecoming.content.spell.action.SpellAction action) {
-		for (var capability : dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter.capabilities(action)) {
-			if (!dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies
-					.allowsForPlayer(capability, permissionLevel())) return false;
-		}
-		return true;
+		return !hasPlayerPermissions() || SpellCapabilityPolicies.allowsAction(action, permissionLevel());
+	}
+
+	public boolean allowsCapability(SpellCapability capability) {
+		return !hasPlayerPermissions() || SpellCapabilityPolicies.allowsForPlayer(capability, permissionLevel());
+	}
+
+	private boolean hasPlayerPermissions() {
+		return runtime != null && runtime.hasPlayerPermissions();
 	}
 
 	private int permissionLevel() {
+		// Callbacks and child runtimes must observe grants/revocations made after casting.
+		if (hasPlayerPermissions()) {
+			CardHolder current = holder;
+			while (current instanceof dev.xkmc.youkaishomecoming.content.spell.action.TrailCardHolder trail) {
+				current = trail.delegate();
+			}
+			LivingEntity caster = current instanceof dev.xkmc.youkaishomecoming.content.spell.spellcard.LivingCardHolder living
+					? living.shooter() : current == null ? null : current.self();
+			if (caster instanceof net.minecraft.world.entity.player.Player player) {
+				return SpellPermissionService.effectiveLevel(player);
+			}
+		}
 		return runtime == null ? 4 : runtime.permissionLevel();
 	}
 

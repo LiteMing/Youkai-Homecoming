@@ -132,6 +132,10 @@ public final class SpellAnalyzer {
 	private final java.util.Set<SpellCapability> extraAllowed;
 	/** Explicitly authorized /yhdev path; certification limits still apply. */
 	private final boolean operatorTest;
+	/** Player casts filter capabilities at execution time, after shared structural/performance checks. */
+	private final boolean runtimePermissionGate;
+	@Nullable
+	private Integer playerPermissionLevel;
 
 	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits) {
 		this(definition, profile, limits, java.util.Set.of());
@@ -150,12 +154,19 @@ public final class SpellAnalyzer {
 	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits,
 			java.util.Set<SpellCapability> extraAllowed, boolean operatorTest,
 			@Nullable NumberBounds countCasterPower) {
+		this(definition, profile, limits, extraAllowed, operatorTest, countCasterPower, false);
+	}
+
+	private SpellAnalyzer(SpellDefinition definition, SpellAnalysisProfile profile, SpellAnalysisLimits limits,
+			java.util.Set<SpellCapability> extraAllowed, boolean operatorTest,
+			@Nullable NumberBounds countCasterPower, boolean runtimePermissionGate) {
 		this.definition = definition;
 		this.profile = profile;
 		this.limits = limits;
 		this.extraAllowed = extraAllowed;
 		this.operatorTest = operatorTest;
 		this.countCasterPower = countCasterPower;
+		this.runtimePermissionGate = runtimePermissionGate;
 	}
 
 	public static SpellAnalysis analyze(SpellDefinition definition) {
@@ -205,6 +216,26 @@ public final class SpellAnalyzer {
 	}
 
 	/**
+	 * Shared cast analysis: use the same structure and performance rules as ordinary
+	 * certification, with capabilities enforced by the player's runtime. A current
+	 * Power is supplied only when the caller's per-tick budget depends on it.
+	 */
+	public static SpellAnalysis analyzePlayerCast(SpellDefinition definition, SpellAnalysisLimits limits,
+			@Nullable Double power) {
+		return new SpellAnalyzer(definition, SpellAnalysisProfile.CERTIFICATION, limits,
+				Set.of(), false, power == null ? null : NumberBounds.of(power), true).run();
+	}
+
+	/** Project only output that the player can execute, using the same gate as SpellContext. */
+	public static SpellAnalysis analyzePlayerCast(SpellDefinition definition, SpellAnalysisLimits limits,
+			double power, int permissionLevel) {
+		SpellAnalyzer analyzer = new SpellAnalyzer(definition, SpellAnalysisProfile.CERTIFICATION, limits,
+				Set.of(), false, NumberBounds.of(power), true);
+		analyzer.playerPermissionLevel = SpellPermissionService.clamp(permissionLevel);
+		return analyzer.run();
+	}
+
+	/**
 	 * Certification projection for editor feedback. Structural and bounded-value
 	 * checks remain active, while the four configurable performance ceilings and
 	 * shooter count are relaxed so the UI can display an over-budget value instead
@@ -248,7 +279,9 @@ public final class SpellAnalyzer {
 			if (!phase.onDamage.isEmpty()) {
 				addCap(SpellCapability.BOSS_ON_DAMAGE);
 			}
-			walkList("on_damage", phase.onDamage, false, 1, GroupKind.ROOT);
+			if (allowsPlayerCapability(SpellCapability.BOSS_ON_DAMAGE)) {
+				walkList("on_damage", phase.onDamage, false, 1, GroupKind.ROOT);
+			}
 			checkTransitions(phase);
 			pop();
 		}
@@ -608,6 +641,13 @@ public final class SpellAnalyzer {
 			}
 			return;
 		}
+		if (playerPermissionLevel != null && !(action instanceof SpellActions.BrokenAction)
+				&& !SpellCapabilityPolicies.allowsAction(action, playerPermissionLevel)) {
+			if (action instanceof SpellActions.ConditionalAction conditional && playerPermissionLevel > 0) {
+				walkList("if_false", conditional.ifFalse(), projection, mult, GroupKind.NONE);
+			}
+			return;
+		}
 		if (insideDisabled) {
 			if (isMarketBanned(action)) {
 				throw banned(bannedTypeName(action));
@@ -904,18 +944,18 @@ public final class SpellAnalyzer {
 						   Optional<List<SpellAction>> onHitBlock,
 						   HitBehavior hitBehaviorEntity, HitBehavior hitBehaviorBlock,
 						   long contrib, long lifetimeUpper, TickProjection projection, long mult) {
-		if (onExpiry.isPresent()) {
+		if (onExpiry.isPresent() && allowsPlayerCapability(SpellCapability.HOOK_ON_EXPIRY)) {
 			addCap(SpellCapability.HOOK_ON_EXPIRY);
 			walkHook("on_expiry", onExpiry.get(), contrib, projection, mult);
 		}
-		if (onTrail.isPresent()) {
+		if (onTrail.isPresent() && allowsPlayerCapability(SpellCapability.HOOK_ON_TRAIL)) {
 			addCap(SpellCapability.HOOK_ON_TRAIL);
 			long perProjectile = ceilDiv(lifetimeUpper, Math.max(1, trailInterval));
 			walkHook("on_trail", onTrail.get(), satMul(contrib, perProjectile), projection, mult);
 		}
 		boolean hasEntityHook = onHitEntity.filter(actions -> !actions.isEmpty()).isPresent();
 		boolean hasBlockHook = onHitBlock.filter(actions -> !actions.isEmpty()).isPresent();
-		if (hasEntityHook || hasBlockHook) {
+		if ((hasEntityHook || hasBlockHook) && allowsPlayerCapability(SpellCapability.HOOK_ON_HIT)) {
 			addCap(SpellCapability.HOOK_ON_HIT);
 			// CONTINUE may hit repeatedly up to the server hard cap (design §10).
 			// Entity and block behaviors are independent: a spell with only an
@@ -1352,7 +1392,7 @@ public final class SpellAnalyzer {
 				throw new SpellAnalysisException("Certification rejected: hookExecutions " + hookExecutionUpperBound
 						+ " exceeds limit " + limits.maxHookExecutions());
 			}
-			if (!operatorTest) {
+			if (!operatorTest && !runtimePermissionGate) {
 				for (SpellCapability cap : capabilities) {
 					SpellCapabilityPolicy policy = SpellCapabilityPolicies.currentPolicy(cap);
 					boolean grantedExperimental = policy == SpellCapabilityPolicy.EXPERIMENTAL
@@ -1375,6 +1415,10 @@ public final class SpellAnalyzer {
 
 	private void addCap(SpellCapability cap) {
 		capabilities.add(cap);
+	}
+
+	private boolean allowsPlayerCapability(SpellCapability capability) {
+		return playerPermissionLevel == null || SpellCapabilityPolicies.allowsForPlayer(capability, playerPermissionLevel);
 	}
 
 	private SpellAnalysisException rejected(String code, String message) {

@@ -108,17 +108,6 @@ public final class SpellAnalyzerSelfCheck {
 			}
 		}
 
-		private boolean rejectsAsPresentationNode(ThrowingRunnable r) {
-			try {
-				r.run();
-				return false;
-			} catch (NonSpellValidator.PresentationNodeException e) {
-				return true;
-			} catch (Exception e) {
-				return false;
-			}
-		}
-
 		private String rejectMessage(ThrowingRunnable r) {
 			try {
 				r.run();
@@ -212,7 +201,7 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String NON_SPELL_TEXT = spell("{\"type\": \"fire_text_danmaku\", \"text\": \"x\", \"lifetime\": 20}");
 		private static final String NON_SPELL_SHOOTER = spell("{\"type\": \"spawn_shooter\", \"count\": 1, \"speed\": 0, \"lifetime\": 1, \"body\": []}");
 		private static final String NON_SPELL_NON_BILLBOARD = NON_SPELL_SAFE.replace("\"bullet\": \"ball\"", "\"bullet\": \"butterfly\"");
-		private static final String NON_SPELL_PRESENTATION = spell("{\"type\": \"show_spell_title\", \"name\": \"Not allowed\"}");
+		private static final String NON_SPELL_PRESENTATION = spell("{\"type\": \"show_spell_title\", \"name\": \"Presentation\"}");
 		private static final String NON_SPELL_TIER1_OVERLAP = spell(
 				"{\"type\": \"conditional\", \"condition\": {\"type\": \"tick_interval\", \"interval\": 2}, \"if_true\": [" + NON_SPELL_SAFE_ACTION + "]},"
 						+ "{\"type\": \"conditional\", \"condition\": {\"type\": \"compare\", \"left\": {\"type\": \"caster_power\"}, \"op\": \">\", \"right\": 2}, \"if_true\": ["
@@ -889,46 +878,26 @@ public final class SpellAnalyzerSelfCheck {
 					fireDefaults.hitBehaviorEntity() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.CONTINUE
 							&& fireDefaults.hitBehaviorBlock() == dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior.CONTINUE);
 			var tier1 = SpellCardRank.LESSER_WISDOM;
-			check("non-spell accepts bounded discard projectile", !rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_SAFE), tier1)));
-			check("non-spell rejects continuing block collision", rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_CONTINUE), tier1)));
-			check("non-spell accepts bounded collision feedback", !rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_FEEDBACK), tier1)));
+			for (String fixture : new String[]{NON_SPELL_SAFE, NON_SPELL_CONTINUE, NON_SPELL_FEEDBACK,
+					NON_SPELL_HOOK, NON_SPELL_FAST, NON_SPELL_HOMING, NON_SPELL_UNBOUNDED_ACCELERATION,
+					NON_SPELL_BOUNDED_ACCELERATION, NON_SPELL_LASER, NON_SPELL_TEXT,
+					NON_SPELL_NON_BILLBOARD, NON_SPELL_PRESENTATION}) {
+				check("non-spell uses ordinary checks: " + fixture, !rejects(() ->
+						NonSpellValidator.validate(parse(fixture), tier1)));
+			}
+			check("default continue collisions work in a basic non-spell", !rejects(() ->
+					NonSpellValidator.validate(parse(spell("{\"type\":\"fire_danmaku\",\"bullet\":\"ball\",\"color\":\"red\",\"count\":1,\"speed\":0.5,\"lifetime\":60}")), tier1)));
 			SpellAnalysis feedbackAnalysis = SpellAnalyzer.analyzeNonSpell(parse(NON_SPELL_FEEDBACK), CERT, 1);
 			check("non-spell collision feedback is included in hook budget",
 					feedbackAnalysis.hookExecutionUpperBound() > 0);
-			check("non-spell rejects stateful collision hooks", rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_HOOK), tier1)));
-			check("non-spell rejects emitter collision hooks", rejects(() ->
+			check("non-spell emitter hooks share the spawn-per-tick ceiling", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_HOOK_EMITTER), tier1)));
-			check("non-spell rejects excessive initial speed", rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_FAST), tier1)));
-			check("non-spell rejects tracking homing mover", rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_HOMING), tier1)));
-			check("non-spell rejects acceleration without terminal speed", rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_UNBOUNDED_ACCELERATION), tier1)));
-			check("non-spell accepts acceleration with bounded terminal speed", !rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_BOUNDED_ACCELERATION), tier1)));
-			check("non-spell rejects laser nodes", rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_LASER), tier1)));
-			check("non-spell rejects text nodes", rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_TEXT), tier1)));
-			check("non-spell rejects shooter nodes", rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_SHOOTER), tier1)));
-			check("non-spell rejects non-billboard projectiles", rejects(() ->
-					NonSpellValidator.validate(parse(NON_SPELL_NON_BILLBOARD), tier1)));
-			if (SpellCapabilityPolicies.currentPolicy(SpellCapability.EXPERIMENTAL_FIRE)
-					== SpellCapabilityPolicy.EXPERIMENTAL) {
-				check("permission-aware non-spell permits policy-gated projectile", !rejects(() ->
-						NonSpellValidator.validateForPlayer(parse(NON_SPELL_NON_BILLBOARD), tier1)));
-			}
-			check("permission-aware non-spell keeps terminal collision boundary", rejects(() ->
-					NonSpellValidator.validateForPlayer(parse(NON_SPELL_CONTINUE), tier1)));
-			check("permission-aware non-spell keeps feedback-only hit boundary", rejects(() ->
-					NonSpellValidator.validateForPlayer(parse(NON_SPELL_HOOK_EMITTER), tier1)));
-			check("non-spell presentation nodes use the dedicated rejection type",
-					rejectsAsPresentationNode(() -> NonSpellValidator.validate(parse(NON_SPELL_PRESENTATION), tier1)));
+			check("non-spell emitter hooks work when the current Power covers their output", !rejects(() ->
+					NonSpellValidator.validateForPlayer(parse(NON_SPELL_HOOK_EMITTER), tier1, 4)));
+			check("non-spell shooter obeys the shared shooter budget", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_SHOOTER), tier1))
+					== rejects(() -> SpellAnalyzer.analyzePlayerCast(parse(NON_SPELL_SHOOTER),
+							SpellAnalysisLimits.certification().withMaxSpawnPerTick(1), 0.0)));
 			String overlap = rejectMessage(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_TIER1_OVERLAP), tier1));
 			check("tier-1 overlapping fire and shooter reports the spawn budget",

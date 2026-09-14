@@ -394,6 +394,9 @@ public class GrazeHelper {
 	 * break the certification target; bombs and other spell cards do not.
 	 */
 	public static boolean forbidSpellCardWithMessage(Player player) {
+		if (!dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService.canCastWithMessage(player)) {
+			return true;
+		}
 		if (forbidDanmaku(player)) {
 			return true;
 		}

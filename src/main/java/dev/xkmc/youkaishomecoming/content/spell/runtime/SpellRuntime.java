@@ -5,6 +5,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProviders;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
@@ -43,8 +44,9 @@ public class SpellRuntime {
 	private final SpellHealthPlan declaredHealthPlan;
 
 	private ResourceLocation currentPhaseId;
-	/** Effective player capability level for this runtime; non-player hosts use 4. */
-	private int permissionLevel = 4;
+	/** Only player casts opt into permissions; server-authored boss/preview runtimes stay trusted. */
+	@Nullable
+	private Integer permissionLevel;
 	private int phaseTick;
 	private int totalTick;
 	private int hitCount;
@@ -169,7 +171,11 @@ public class SpellRuntime {
 	}
 
 	public int permissionLevel() {
-		return permissionLevel;
+		return permissionLevel == null ? 4 : permissionLevel;
+	}
+
+	public boolean hasPlayerPermissions() {
+		return permissionLevel != null;
 	}
 
 	public void setPermissionLevel(int level) {
@@ -685,7 +691,9 @@ public class SpellRuntime {
 				float healthRatio = holder.self().getHealth() / holder.self().getMaxHealth();
 				DifficultyModifiers diff = definition.difficulty.resolve(healthRatio);
 				SpellContext ctx = new SpellContext(holder, definition, this, diff);
-				executeActions(ctx, phase.onDamage, false);
+				if (ctx.allowsCapability(SpellCapability.BOSS_ON_DAMAGE)) {
+					executeActions(ctx, phase.onDamage, false);
+				}
 			}
 		}
 	}

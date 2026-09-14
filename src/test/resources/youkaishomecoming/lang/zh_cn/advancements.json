@@ -104,9 +104,9 @@
 		"breed_boar.title": "短鼻子象",
 		"spellcard_maker.description": "制作一张符卡草稿，获得非符灵气",
 		"spellcard_maker.title": "符卡制作者",
-		"spellcard_tier6.description": "获得 Tier 6 符卡基底，解锁时符灵气",
+		"spellcard_tier6.description": "获得 Tier 6 或以上符卡基底，奖励时符灵气并自动解锁权限 2（hook）",
 		"spellcard_tier6.title": "时符资格",
-		"spellcard_tier12.description": "获得 Tier 12 符卡基底，解锁终符灵气",
+		"spellcard_tier12.description": "获得 Tier 12 符卡基底，奖励终符灵气并自动解锁权限 3（EXP）",
 		"spellcard_tier12.title": "终符资格",
 		"spellcard_collection.description": "收集所有默认预设符卡，获得 EX 灵气",
 		"spellcard_collection.title": "符卡收藏家"

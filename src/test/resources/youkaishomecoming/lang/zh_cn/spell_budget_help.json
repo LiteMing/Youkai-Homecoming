@@ -24,6 +24,6 @@
   "youkaishomecoming.spell_editor.help.budget.22": "§7合成“自定义符卡 + 预设符卡”升 1 阶，最高 12 阶；升级按当时的阶级配置刷新预算。",
   "youkaishomecoming.spell_editor.help.budget.23": "§7升级保留已绑定的符卡内容，并清除认证/完成状态；普通符卡需要重新认证。",
   "youkaishomecoming.spell_editor.help.budget.24": "§7非符升级仍使用上面的 Power 公式；跨过 4、8、12 阶时基础系数才增加。",
-  "youkaishomecoming.spell_editor.help.budget.25": "§7“变量”面板可查看用量/上限；峰值存活、总弹幕 tick、Hook 和非符自身限制仍需分别通过。",
+  "youkaishomecoming.spell_editor.help.budget.25": "§7非符与普通符卡共用节点权限和检查；非符仅额外收紧按当前 Power 计算的每 tick 发射额度。",
   "youkaishomecoming.spell_editor.help.budget.26": ""
 }

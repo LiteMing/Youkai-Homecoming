@@ -36,6 +36,10 @@ public enum SpellCapabilityPermission {
 		return id;
 	}
 
+	public net.minecraft.network.chat.Component displayName() {
+		return net.minecraft.network.chat.Component.translatable("youkaishomecoming.spell.permission.level." + level);
+	}
+
 	public SpellCapabilityPolicy policy() {
 		return policy;
 	}

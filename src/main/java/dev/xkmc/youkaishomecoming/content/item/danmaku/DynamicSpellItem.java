@@ -470,6 +470,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		// Bomb and integration APIs call this method directly, bypassing use().
 		// Keep draft validation at the authoritative cast boundary.
 		if (!isCastReady(stack)) return false;
+		if (!SpellPermissionService.canCastWithMessage(player)) return false;
 		SpellDefinition def = getSpellDefinition(stack);
 		boolean certifiedStack = CertifiedSpellValidator.isCertified(stack);
 		SpellHealthPlan certifiedPlan = null;
@@ -524,7 +525,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (nonSpell && def != null && player instanceof ServerPlayer sp
 				&& !NonSpellLimiterBypass.isEnabled(sp)) {
 			try {
-				NonSpellValidator.validateForPlayer(def, getRank(stack), GrazeHelper.getEffectivePowerLevel(sp));
+				NonSpellValidator.validateForPlayer(def, getRank(stack), GrazeHelper.getEffectivePowerLevel(sp),
+						SpellPermissionService.effectiveLevel(sp));
 			} catch (SpellAnalysisException rejected) {
 				sp.displayClientMessage(nonSpellRejectedMessage(rejected), false);
 				return false;
@@ -639,29 +641,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		String message = rejected.getMessage() == null ? "" : rejected.getMessage().toLowerCase(Locale.ROOT);
 		YHLangData reason = message.contains("definition is missing")
 				? YHLangData.NON_SPELL_REASON_DEFINITION
-				: message.contains("spell health") || message.contains("spell initialization")
-				? YHLangData.NON_SPELL_REASON_HEALTH
-				: message.contains("presentation") || message.contains("spell-title") || message.contains("spell-circle")
-				? YHLangData.NON_SPELL_REASON_PRESENTATION
-				: message.contains("restrict caster movement")
-				? YHLangData.NON_SPELL_REASON_MOVEMENT
-				: message.contains("projectile hooks")
-				? YHLangData.NON_SPELL_REASON_HOOKS
-				: message.contains("discard on every collision")
-				? YHLangData.NON_SPELL_REASON_COLLISION
-				: message.contains("experimental nodes")
-				? YHLangData.NON_SPELL_REASON_EXPERIMENTAL
-				: message.contains("use laser nodes")
-				? YHLangData.NON_SPELL_REASON_LASER
 				: message.contains("lifetime")
 				? YHLangData.NON_SPELL_REASON_LIFETIME
-				: message.contains("origin")
-				? YHLangData.NON_SPELL_REASON_ORIGIN
-				: message.contains("speed") || message.contains("terminal velocity")
-				? YHLangData.NON_SPELL_REASON_SPEED
-				: message.contains("mover") || message.contains("acceleration")
-						|| message.contains("turn rate") || message.contains("deceleration")
-				? YHLangData.NON_SPELL_REASON_MOVER
 				: message.contains("shooter")
 				? YHLangData.NON_SPELL_REASON_SHOOTER
 				: message.contains("maxspawnpertick") || message.contains("peakalive")
@@ -669,7 +650,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 						|| message.contains("projectile budget") || message.contains("too many actions")
 				? YHLangData.NON_SPELL_REASON_BUDGET
 				: message.contains("phase") || message.contains("nesting")
-						|| message.contains("repeat") || message.contains("expression")
+						|| message.contains("repeat") || message.contains("expression") || message.contains("unbounded")
 				? YHLangData.NON_SPELL_REASON_STRUCTURE
 				: YHLangData.NON_SPELL_REASON_GENERIC;
 		return YHLangData.NON_SPELL_REJECTED.get(reason.get());

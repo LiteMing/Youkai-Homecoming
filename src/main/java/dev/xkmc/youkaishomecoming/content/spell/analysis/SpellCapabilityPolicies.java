@@ -117,8 +117,18 @@ public final class SpellCapabilityPolicies {
 		return playerLevel >= currentPermission(cap).level();
 	}
 
+	/** Only the current node is gated; containers and projectile callbacks check their children separately. */
+	public static boolean allowsAction(dev.xkmc.youkaishomecoming.content.spell.action.SpellAction action, int playerLevel) {
+		if (playerLevel <= 0) return false;
+		for (SpellCapability capability : SpecialNodeCounter.capabilities(action)) {
+			if (!allowsForPlayer(capability, playerLevel)) return false;
+		}
+		return true;
+	}
+
 	public static boolean hasUnavailableCapabilities(SpellDefinition definition, int playerLevel) {
 		if (definition == null) return false;
+		if (playerLevel <= 0) return true;
 		for (SpellCapability capability : SpecialNodeCounter.capabilities(definition)) {
 			if (!allowsForPlayer(capability, playerLevel)) return true;
 		}

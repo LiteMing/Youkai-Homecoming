@@ -47,6 +47,7 @@ public class DataDrivenShooterSpell extends SpellCard {
 				SHOOTER_PHASE, Map.of(SHOOTER_PHASE, phase),
 				dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile.DEFAULT);
 		this.runtime = new SpellRuntime(definition);
+		inheritPlayerPermissions();
 	}
 
 	public DataDrivenShooterSpell(List<SpellAction> tickActions) {
@@ -60,6 +61,7 @@ public class DataDrivenShooterSpell extends SpellCard {
 
 	@Override
 	public void tick(CardHolder holder) {
+		inheritPlayerPermissions();
 		if (parentRuntime != null) {
 			// 实时同步/共享父级符卡的最新变量（如跳动的 $x）
 			for (var entry : parentRuntime.getVariables().entrySet()) {
@@ -70,6 +72,12 @@ public class DataDrivenShooterSpell extends SpellCard {
 		// and executes the onTick actions from the single-phase definition
 		runtime.tick(holder);
 		tick++;
+	}
+
+	private void inheritPlayerPermissions() {
+		if (parentRuntime != null && parentRuntime.hasPlayerPermissions()) {
+			runtime.setPermissionLevel(parentRuntime.permissionLevel());
+		}
 	}
 
 	@Override

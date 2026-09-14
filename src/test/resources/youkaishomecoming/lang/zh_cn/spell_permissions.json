@@ -1,0 +1,16 @@
+{
+  "youkaishomecoming.tooltip.spell_permission_limited": "你的符卡权限不足：未解锁的节点和回调将被跳过",
+  "youkaishomecoming.tooltip.spell_permission_forbidden": "符卡权限为 0（forbid）：禁止使用符卡和非符",
+  "youkaishomecoming.message.spell_permission_unlocked": "已解锁符卡权限：%s",
+  "youkaishomecoming.spell.permission.usage": "用法：/yhspell permission <玩家> <0..4>。省略等级可查询；<玩家> reset 恢复自动权限。",
+  "youkaishomecoming.spell.permission.query": "%s 的符卡权限：%s（%s）",
+  "youkaishomecoming.spell.permission.set": "已将 %s 的符卡权限设为 %s",
+  "youkaishomecoming.spell.permission.reset": "已恢复 %s 的自动符卡权限：%s",
+  "youkaishomecoming.spell.permission.manual": "手动设置",
+  "youkaishomecoming.spell.permission.automatic": "OP／成就默认等级",
+  "youkaishomecoming.spell.permission.level.0": "0 forbid · 禁止符卡和非符",
+  "youkaishomecoming.spell.permission.level.1": "1 base · 基础节点",
+  "youkaishomecoming.spell.permission.level.2": "2 hook · 基础节点与弹幕回调",
+  "youkaishomecoming.spell.permission.level.3": "3 EXP · 回调与实验性节点",
+  "youkaishomecoming.spell.permission.level.4": "4 OP · 全部可用节点"
+}

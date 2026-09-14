@@ -7,6 +7,7 @@ import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.spell.SpellProgressColor;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellProgressSnapshot;
@@ -39,6 +40,14 @@ public class SpellContainer extends ConditionalToken {
 		data.clearSpellState(sp, DanmakuProxyEntity.EndReason.EXTERNAL_ABORT);
 		erase(data.combatItemCache);
 		erase(data.ambientItemCache);
+		DanmakuManager.flushErases();
+	}
+
+	/** Revoke spell/non-spell casts without touching ordinary item projectiles or combat resources. */
+	public static void clearSpellCasts(ServerPlayer sp) {
+		var data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
+		data.clearSpellState(sp, DanmakuProxyEntity.EndReason.EXTERNAL_ABORT);
+		GrazeCapability.HOLDER.get(sp).clearActiveNonSpellCard();
 		DanmakuManager.flushErases();
 	}
 
@@ -470,6 +479,7 @@ public class SpellContainer extends ConditionalToken {
 
 	public static void castSpell(ServerPlayer sp, Supplier<? extends ItemSpell> sup,
 			@Nullable LivingEntity target, @Nullable String cardKey) {
+		if (!SpellPermissionService.canCast(sp)) return;
 		ItemSpell spell = sup.get();
 		spell.start(sp, target);
 		SpellContainer data = ConditionalData.HOLDER.get(sp).getOrCreateData(PVD, PVD);
@@ -525,6 +535,10 @@ public class SpellContainer extends ConditionalToken {
 
 	@Override
 	public boolean tick(Player player) {
+		if (player instanceof ServerPlayer sp && !SpellPermissionService.canCast(sp)
+				&& (!spells.isEmpty() || !proxies.isEmpty())) {
+			clearSpellState(sp, DanmakuProxyEntity.EndReason.EXTERNAL_ABORT);
+		}
 		var itr = spells.iterator();
 		while (itr.hasNext()) {
 			var spell = itr.next();

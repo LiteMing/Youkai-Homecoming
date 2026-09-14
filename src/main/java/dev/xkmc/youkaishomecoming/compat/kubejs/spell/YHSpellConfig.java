@@ -59,7 +59,7 @@ public final class YHSpellConfig {
 
 	public static int getPlayerPermission(Player player) {
 		if (player == null) throw new IllegalArgumentException("player is missing");
-		return GrazeCapability.HOLDER.get(player).getSpellPermissionLevel();
+		return dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService.effectiveLevel(player);
 	}
 
 	public static void resetPlayerPermission(Player player) {

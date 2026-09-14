@@ -10,6 +10,7 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.ISpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
@@ -96,13 +97,17 @@ public class ClientEventHandlers {
 
 	@SubscribeEvent
 	public static void onTooltip(ItemTooltipEvent event) {
-		if (event.getItemStack().getItem() instanceof DynamicSpellItem
+		if (event.getItemStack().getItem() instanceof ISpellItem
 				&& Minecraft.getInstance().player != null) {
 			var stack = event.getItemStack();
-			var definition = DynamicSpellItem.getSpellDefinition(stack);
 			int level = GrazeCapability.HOLDER.get(Minecraft.getInstance().player).getSpellPermissionLevel();
-			if (definition != null && SpellPermissionService.hasUnavailableCapabilities(definition, level)) {
-				event.getToolTip().add(YHLangData.SPELL_PERMISSION_LIMITED.get());
+			if (level == 0) {
+				event.getToolTip().add(YHLangData.SPELL_PERMISSION_FORBIDDEN.get());
+			} else if (stack.getItem() instanceof DynamicSpellItem) {
+				var definition = DynamicSpellItem.getSpellDefinition(stack);
+				if (definition != null && SpellPermissionService.hasUnavailableCapabilities(definition, level)) {
+					event.getToolTip().add(YHLangData.SPELL_PERMISSION_LIMITED.get());
+				}
 			}
 		}
 		if (GrazeHelper.isManualCombatMode() && GrazeHelper.isSpellStack(event.getItemStack())) {

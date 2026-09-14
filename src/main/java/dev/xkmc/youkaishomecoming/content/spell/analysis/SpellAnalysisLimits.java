@@ -45,6 +45,14 @@ public record SpellAnalysisLimits(
 		long certificationWindowTicks
 ) {
 
+	/** Non-spells share the ordinary limits and only narrow the per-tick spawn allowance. */
+	public SpellAnalysisLimits withMaxSpawnPerTick(int spawnLimit) {
+		return new SpellAnalysisLimits(maxPhases, maxActions, maxDepth, maxRepeat,
+				maxTotalProjectiles, maxShooters, maxLifetime, maxExpressionLength,
+				Math.min(maxSpawnPerTick, Math.max(1, spawnLimit)), maxPeakAlive,
+				maxProjectileTicks, maxHookExecutions, maxHitsPerProjectile, certificationWindowTicks);
+	}
+
 	/**
 	 * Returns the same limits with a narrower finite projection window.  Health-plan
 	 * certification uses this to project work over the segment's real duration

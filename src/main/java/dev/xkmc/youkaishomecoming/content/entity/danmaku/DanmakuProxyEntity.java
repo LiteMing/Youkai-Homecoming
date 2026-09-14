@@ -9,12 +9,16 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellLimiterBypass;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
+import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterData;
+import dev.xkmc.youkaishomecoming.content.spell.shooter.ShooterEntity;
+import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCard;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
@@ -85,7 +89,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 	@Nullable
 	private SpellCardRank nonSpellRank;
 	private double validatedNonSpellPower = Double.NaN;
-	private int remainingNonSpellSpawns;
+	private int validatedNonSpellPermission = -1;
+	private int nonSpellSpawnLimit;
+	private long nonSpellSpawnTick = Long.MIN_VALUE;
+	private int nonSpellSpawnsThisTick;
 	private boolean nonSpellLimiterBypassActive;
 	@Nullable
 	private String cardKey;
@@ -158,7 +165,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 		this.generationStopped = false;
 		this.nonSpellRank = null;
 		this.validatedNonSpellPower = Double.NaN;
-		this.remainingNonSpellSpawns = 0;
+		this.validatedNonSpellPermission = -1;
+		this.nonSpellSpawnLimit = 0;
+		this.nonSpellSpawnTick = Long.MIN_VALUE;
+		this.nonSpellSpawnsThisTick = 0;
 		this.nonSpellLimiterBypassActive = false;
 
 		if (target != null) {
@@ -285,6 +295,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 	public void bindNonSpellBudget(SpellCardRank rank) {
 		nonSpellRank = rank;
 		validatedNonSpellPower = Double.NaN;
+		validatedNonSpellPermission = -1;
 		nonSpellLimiterBypassActive = NonSpellLimiterBypass.isEnabled(ownerPlayer);
 	}
 
@@ -299,14 +310,16 @@ public class DanmakuProxyEntity extends PathfinderMob
 		}
 		double power = GrazeHelper.getEffectivePowerLevel(ownerPlayer);
 		if (bypass) {
-			remainingNonSpellSpawns = Integer.MAX_VALUE;
+			nonSpellSpawnLimit = Integer.MAX_VALUE;
 			return true;
 		}
-		if (Double.compare(power, validatedNonSpellPower) != 0) {
+		int permission = SpellPermissionService.effectiveLevel(ownerPlayer);
+		if (Double.compare(power, validatedNonSpellPower) != 0 || permission != validatedNonSpellPermission) {
 			try {
 				// Recheck before executing count-dependent loops at the new Power.
-				NonSpellValidator.validateForPlayer(runtime.getDefinition(), nonSpellRank, power);
+				NonSpellValidator.validateForPlayer(runtime.getDefinition(), nonSpellRank, power, permission);
 				validatedNonSpellPower = power;
+				validatedNonSpellPermission = permission;
 			} catch (SpellAnalysisException rejected) {
 				ownerPlayer.displayClientMessage(DynamicSpellItem.nonSpellRejectedMessage(rejected), false);
 				SpellContainer.clearActiveNonSpell(ownerPlayer);
@@ -319,23 +332,41 @@ public class DanmakuProxyEntity extends PathfinderMob
 				return false;
 			}
 		}
-		remainingNonSpellSpawns = nonSpellRank.danmakuPerTick(power);
+		nonSpellSpawnLimit = nonSpellRank.danmakuPerTick(power);
 		return true;
+	}
+
+	/** Root actions, delayed callbacks and child shooters share one world-tick allowance. */
+	boolean reserveNonSpellSpawn(long gameTime, int limit) {
+		if (nonSpellSpawnTick != gameTime) {
+			nonSpellSpawnTick = gameTime;
+			nonSpellSpawnsThisTick = 0;
+		}
+		if (nonSpellSpawnsThisTick >= limit) return false;
+		nonSpellSpawnsThisTick++;
+		return true;
+	}
+
+	@Override
+	public ShooterEntity prepareShooter(ShooterData data, SpellCard spell) {
+		ShooterEntity shooter = SpellRuntimeHost.super.prepareShooter(data, spell);
+		if (nonSpellRank != null) shooter.bindNonSpellHost(this);
+		return shooter;
 	}
 
 	// ==================== Virtual danmaku methods (from YoukaiEntity) ====================
 
 	@Override
 	public void shoot(Entity danmaku) {
-		if (danmaku instanceof SimplifiedProjectile projectile) {
-			if (generationStopped || nonSpellRank != null
-					&& !nonSpellLimiterBypassActive && remainingNonSpellSpawns <= 0) {
-				// Delayed batches scheduled at a higher Power share the current tick's
-				// budget. Stopped non-spells must not create callback output either.
+		if (isRemoved() || generationStopped || nonSpellRank != null
+				&& (!refreshNonSpellBudget() || !nonSpellLimiterBypassActive
+				&& !reserveNonSpellSpawn(level().getGameTime(), nonSpellSpawnLimit))) {
+			if (danmaku instanceof SimplifiedProjectile projectile) {
 				projectile.markErased(true);
-				return;
+			} else {
+				danmaku.discard();
 			}
-			if (nonSpellRank != null && !nonSpellLimiterBypassActive) remainingNonSpellSpawns--;
+			return;
 		}
 		if (danmaku instanceof ItemDanmakuEntity e) {
 			if (e.afterExpiry != null) {
@@ -386,10 +417,6 @@ public class DanmakuProxyEntity extends PathfinderMob
 			eraseAllDanmaku(null);
 		}
 		setSpellRuntime(new SpellRuntime(definition));
-		if (runtime != null && ownerPlayer != null) {
-			runtime.setPermissionLevel(dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService
-					.effectiveLevel(ownerPlayer));
-		}
 	}
 
 	@Nullable
@@ -446,7 +473,11 @@ public class DanmakuProxyEntity extends PathfinderMob
 	@Override
 	public void setSpellRuntime(@Nullable SpellRuntime runtime) {
 		this.runtime = runtime;
+		if (runtime != null && ownerPlayer != null) {
+			runtime.setPermissionLevel(SpellPermissionService.effectiveLevel(ownerPlayer));
+		}
 		validatedNonSpellPower = Double.NaN;
+		validatedNonSpellPermission = -1;
 		nonSpellLimiterBypassActive = false;
 	}
 

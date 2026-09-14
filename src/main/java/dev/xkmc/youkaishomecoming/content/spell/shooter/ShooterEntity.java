@@ -9,6 +9,7 @@ import dev.xkmc.l2serial.serialization.codec.TagCodec;
 import dev.xkmc.l2serial.util.Wrappers;
 import dev.xkmc.youkaishomecoming.content.capability.GrazeHelper;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
+import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemLaserEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.TextDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.spell.definition.DanmakuColor;
@@ -60,6 +61,9 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 	private final float[] inheritedBulletDamage = new float[YHDanmaku.Bullet.values().length];
 	private final float[] inheritedLaserDamage = new float[YHDanmaku.Laser.values().length];
 	private boolean hasInheritedDamage;
+	/** Runtime-only link to the non-spell's shared spawn budget and virtual output. */
+	@Nullable
+	private DanmakuProxyEntity nonSpellHost;
 
 	@Nullable
 	@SerialClass.SerialField
@@ -127,6 +131,10 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 
 	@Override
 	public void tick() {
+		if (!level().isClientSide() && nonSpellHost != null && !nonSpellHost.isGenerating()) {
+			discard();
+			return;
+		}
 		super.tick();
 		if (!level().isClientSide()) {
 			expireYsmRenderOverride();
@@ -232,6 +240,23 @@ public class ShooterEntity extends ProjectileHealthEntity implements LivingCardH
 		for (YHDanmaku.Laser type : YHDanmaku.Laser.values()) {
 			inheritedLaserDamage[type.ordinal()] = holder.getDamage(type);
 		}
+	}
+
+	public void bindNonSpellHost(DanmakuProxyEntity host) {
+		nonSpellHost = host;
+	}
+
+	@Override
+	public ShooterEntity prepareShooter(ShooterData data, SpellCard spell) {
+		ShooterEntity child = LivingCardHolder.super.prepareShooter(data, spell);
+		child.nonSpellHost = nonSpellHost;
+		return child;
+	}
+
+	@Override
+	public void shoot(Entity danmaku) {
+		if (nonSpellHost != null) nonSpellHost.shoot(danmaku);
+		else LivingCardHolder.super.shoot(danmaku);
 	}
 
 	@Override

@@ -108,6 +108,7 @@ public final class SpecialNodeCounter {
 			collectCapabilities(result, phase.onEnter);
 			collectCapabilities(result, phase.onTick);
 			collectCapabilities(result, phase.onExit);
+			if (!phase.onDamage.isEmpty()) result.add(SpellCapability.BOSS_ON_DAMAGE);
 			collectCapabilities(result, phase.onDamage);
 		}
 		return Set.copyOf(result);
@@ -115,6 +116,7 @@ public final class SpecialNodeCounter {
 
 	private static void collectCapabilities(Set<SpellCapability> result, List<SpellAction> actions) {
 		for (SpellAction action : actions) {
+			if (action instanceof SpellActions.DisabledAction) continue;
 			result.addAll(capabilities(action));
 			SpellAction inner = unwrap(action);
 			if (inner instanceof SpellActions.ConditionalAction conditional) {
@@ -134,8 +136,8 @@ public final class SpecialNodeCounter {
 				collectCapabilities(result, hold.onRelease());
 			}
 			if (inner instanceof FireDanmakuAction danmaku) {
-				if (danmaku.onExpiry().isPresent()) result.add(SpellCapability.HOOK_ON_EXPIRY);
-				if (danmaku.onTrail().isPresent()) result.add(SpellCapability.HOOK_ON_TRAIL);
+				if (danmaku.onExpiry().filter(list -> !list.isEmpty()).isPresent()) result.add(SpellCapability.HOOK_ON_EXPIRY);
+				if (danmaku.onTrail().filter(list -> !list.isEmpty()).isPresent()) result.add(SpellCapability.HOOK_ON_TRAIL);
 				if (danmaku.onHitEntity().filter(list -> !list.isEmpty()).isPresent()
 						|| danmaku.onHitBlock().filter(list -> !list.isEmpty()).isPresent()) {
 					result.add(SpellCapability.HOOK_ON_HIT);
@@ -145,8 +147,8 @@ public final class SpecialNodeCounter {
 				danmaku.onHitEntity().ifPresent(callback -> collectCapabilities(result, callback));
 				danmaku.onHitBlock().ifPresent(callback -> collectCapabilities(result, callback));
 			} else if (inner instanceof FireLaserAction laser) {
-				if (laser.onExpiry().isPresent()) result.add(SpellCapability.HOOK_ON_EXPIRY);
-				if (laser.onTrail().isPresent()) result.add(SpellCapability.HOOK_ON_TRAIL);
+				if (laser.onExpiry().filter(list -> !list.isEmpty()).isPresent()) result.add(SpellCapability.HOOK_ON_EXPIRY);
+				if (laser.onTrail().filter(list -> !list.isEmpty()).isPresent()) result.add(SpellCapability.HOOK_ON_TRAIL);
 				if (laser.onHitEntity().filter(list -> !list.isEmpty()).isPresent()
 						|| laser.onHitBlock().filter(list -> !list.isEmpty()).isPresent()) {
 					result.add(SpellCapability.HOOK_ON_HIT);

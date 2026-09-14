@@ -12,6 +12,7 @@ import dev.xkmc.youkaishomecoming.content.pot.steamer.SteamTrigger;
 import dev.xkmc.youkaishomecoming.content.pot.table.food.YHRolls;
 import dev.xkmc.youkaishomecoming.content.pot.table.food.YHSushi;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank;
 import dev.xkmc.youkaishomecoming.init.food.*;
 import dev.xkmc.youkaishomecoming.init.registrate.*;
 import net.minecraft.Util;
@@ -291,17 +292,15 @@ public class YHAdvGen {
 						() -> LootTable.lootTable().withPool(LootPool.lootPool().add(
 								LootTableTemplate.getItem(YHDanmaku.NON_SPELL_AURA.get(), 1, 1)))));
 		root.create("spellcard_tier6", YHDanmaku.DYNAMIC_SPELL.asStack(),
-				CriterionBuilder.one(InventoryChangeTrigger.TriggerInstance.hasItems(
-						rankedDraftPredicate(dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.GREATER_FAITH))),
-				"时符资格", "获得 Tier 6 符卡基底")
+				rankedDraftAtLeast(SpellCardRank.GREATER_FAITH),
+				"Timeout Qualification", "Obtain a Tier 6 or higher spell base to earn a Timeout Spell Aura and unlock permission 2 (hook)")
 				.add(new RewardBuilder(YoukaisHomecoming.REGISTRATE, 0,
 						YoukaisHomecoming.loc("timeout_spell_aura_reward"),
 						() -> LootTable.lootTable().withPool(LootPool.lootPool().add(
 								LootTableTemplate.getItem(YHDanmaku.TIMEOUT_SPELL_AURA.get(), 1, 1)))));
 		root.create("spellcard_tier12", YHDanmaku.DYNAMIC_SPELL.asStack(),
-				CriterionBuilder.one(InventoryChangeTrigger.TriggerInstance.hasItems(
-						rankedDraftPredicate(dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCardRank.GREATER_VIRTUE))),
-				"终符资格", "获得 Tier 12 符卡基底")
+				rankedDraftAtLeast(SpellCardRank.GREATER_VIRTUE),
+				"Last Spell Qualification", "Obtain a Tier 12 spell base to earn a Last Spell Aura and unlock permission 3 (EXP)")
 				.add(new RewardBuilder(YoukaisHomecoming.REGISTRATE, 0,
 						YoukaisHomecoming.loc("last_spell_aura_reward"),
 						() -> LootTable.lootTable().withPool(LootPool.lootPool().add(
@@ -341,6 +340,16 @@ public class YHAdvGen {
 								LootTableTemplate.getItem(YHItems.REIMU_HAIRBAND.get(), 1, 1)))));
 
 		root.finish();
+	}
+
+	private static CriterionBuilder rankedDraftAtLeast(SpellCardRank minimum) {
+		var criteria = CriterionBuilder.or();
+		for (SpellCardRank rank : SpellCardRank.values()) {
+			if (rank.tierNumber() < minimum.tierNumber()) continue;
+			criteria.add("has_tier" + rank.tierNumber(),
+					InventoryChangeTrigger.TriggerInstance.hasItems(rankedDraftPredicate(rank)));
+		}
+		return criteria;
 	}
 
 	private static ItemPredicate rankedDraftPredicate(

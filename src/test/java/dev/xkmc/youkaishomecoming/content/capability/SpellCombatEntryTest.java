@@ -4,11 +4,20 @@ import com.electronwill.nightconfig.core.CommentedConfig;
 import dev.xkmc.l2library.capability.conditionals.ConditionalData;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.SpellItemCost;
+import dev.xkmc.youkaishomecoming.content.spell.action.DataDrivenTrailAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile;
+import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
+import dev.xkmc.youkaishomecoming.content.spell.feedback.NoopFeedbackSink;
+import dev.xkmc.youkaishomecoming.content.spell.item.PlayerHolder;
+import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
+import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.SharedConstants;
@@ -16,6 +25,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.server.level.ServerLevel;
@@ -27,6 +37,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.CapabilityManager;
 import net.minecraftforge.common.capabilities.CapabilityToken;
@@ -81,6 +92,7 @@ public final class SpellCombatEntryTest {
 		testInventoryEligibility();
 		testPaymentAndBrokenCards();
 		testLastSpellEntry();
+		testPermissionCastBoundary();
 		System.out.println("SpellCombatEntryTest: " + checks + " checks passed");
 	}
 
@@ -156,6 +168,46 @@ public final class SpellCombatEntryTest {
 		check("previous combat use does not block the next combat", GrazeHelper.hasSpellCard(player));
 	}
 
+	private static void testPermissionCastBoundary() throws Exception {
+		TestPlayer player = player();
+		player.operator = true;
+		player.graze.setSpellPermissionOverride(0);
+		check("manual forbid overrides operator status", !SpellPermissionService.canCast(player));
+		for (SpellCardType type : List.of(SpellCardType.NORMAL, SpellCardType.NON_SPELL,
+				SpellCardType.TIMEOUT_SPELL, SpellCardType.LAST_SPELL)) {
+			ItemStack stack = card(type, true);
+			int experience = player.experienceLevel;
+			int count = stack.getCount();
+			check("forbidden " + type + " cast returns before payment and entity creation", !item.castSpell(stack, player, true, true));
+			check("forbidden cast preserves resources", player.experienceLevel == experience && stack.getCount() == count);
+			check("forbidden cast explains the permission", player.lastMessage.getContents() instanceof TranslatableContents message
+					&& message.getKey().equals("youkaishomecoming.tooltip.spell_permission_forbidden"));
+		}
+		check("built-in spell gate also forbids casting", GrazeHelper.forbidSpellCardWithMessage(player));
+		SpellContainer.castSpell(player, () -> { throw new AssertionError("forbidden direct cast constructed a spell"); }, null, null);
+		check("forbidden direct supplier cast has no active spell", !SpellContainer.hasActiveSpell(player));
+		player.graze.setSpellPermissionOverride(2);
+		SpellDefinition definition = DynamicSpellItem.getSpellDefinition(card(SpellCardType.NON_SPELL, true));
+		var runtime = new SpellRuntime(definition);
+		runtime.setPermissionLevel(2);
+		var holder = new PlayerHolder(player, Vec3.ZERO, null, null);
+		var ctx = new SpellContext(holder, definition, runtime, DifficultyModifiers.DEFAULT, null, NoopFeedbackSink.INSTANCE);
+		var actions = List.of(new SpellActions.SetVariable("fired", 1));
+		ctx.executeList(List.copyOf(actions));
+		check("player grant applies to an existing context", runtime.getVariable("fired") == 1);
+		var callback = new DataDrivenTrailAction(List.of(new SpellActions.SetVariable("hook", 1)), runtime, definition);
+		player.graze.setSpellPermissionOverride(1);
+		callback.execute(holder, Vec3.ZERO, new Vec3(0, 0, 1));
+		check("already emitted callback observes hook revocation", runtime.getVariable("hook") == 0);
+		player.graze.setSpellPermissionOverride(2);
+		callback.execute(holder, Vec3.ZERO, new Vec3(0, 0, 1));
+		check("already emitted callback observes hook grant", runtime.getVariable("hook") == 1);
+		player.graze.setSpellPermissionOverride(0);
+		runtime.setVariable("fired", 0);
+		ctx.executeList(List.copyOf(actions));
+		check("old runtime cannot keep its captured permission after forbid", runtime.getVariable("fired") == 0);
+	}
+
 	private static ItemStack card(SpellCardType type, boolean complete) {
 		ResourceLocation id = new ResourceLocation("yh_test", type.getSerializedName() + (complete ? "_complete" : "_draft"));
 		SpellDefinition definition = new SpellDefinition(id,
@@ -186,6 +238,8 @@ public final class SpellCombatEntryTest {
 		ServerLevel testLevel;
 		TestGraze graze;
 		ConditionalData conditional;
+		boolean operator;
+		Component lastMessage;
 		private TestPlayer() { super(null, null, null); }
 		@Override public Inventory getInventory() { return inventory; }
 		@Override public Abilities getAbilities() { return abilities; }
@@ -193,7 +247,8 @@ public final class SpellCombatEntryTest {
 		@Override public ItemStack getItemInHand(InteractionHand hand) {
 			return hand == InteractionHand.MAIN_HAND ? inventory.items.get(0) : inventory.offhand.get(0);
 		}
-		@Override public void displayClientMessage(Component text, boolean actionBar) {}
+		@Override public void displayClientMessage(Component text, boolean actionBar) { lastMessage = text; }
+		@Override public boolean hasPermissions(int level) { return operator; }
 		@Override public <T> LazyOptional<T> getCapability(Capability<T> capability, Direction side) {
 			if (capability == GrazeCapability.CAPABILITY) return LazyOptional.of(() -> graze).cast();
 			if (capability == ConditionalData.CAPABILITY) return LazyOptional.of(() -> conditional).cast();

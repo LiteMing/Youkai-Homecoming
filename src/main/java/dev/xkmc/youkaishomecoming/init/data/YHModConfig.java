@@ -324,10 +324,6 @@ public class YHModConfig {
 		public final ForgeConfigSpec.LongValue spellDraftExcessNodeCostUnits;
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellCapabilityPolicies;
 		public final ForgeConfigSpec.BooleanValue spellPermissionCardProgression;
-		public final ForgeConfigSpec.IntValue nonSpellMaxLifetimeTicks;
-		public final ForgeConfigSpec.DoubleValue nonSpellMaxInitialSpeed;
-		public final ForgeConfigSpec.DoubleValue nonSpellMaxOriginOffset;
-		public final ForgeConfigSpec.IntValue nonSpellMaxHookExecutions;
 		public final ForgeConfigSpec.IntValue lastSpellCooldownTicks;
 		public final ForgeConfigSpec.DoubleValue timeoutSpellBombCostMultiplier;
 		public final ForgeConfigSpec.DoubleValue timeoutSpellXpCostMultiplier;
@@ -556,21 +552,9 @@ public class YHModConfig {
 						.defineListAllowEmpty("capabilityPolicies", java.util.List.of(), value -> value instanceof String s
 								&& s.length() <= 128 && s.contains("="));
 				spellPermissionCardProgression = builder.comment(
-						"Automatically raise a player's spell capability level from Tier 6 and Tier 12 advancements (1=base, 2=hook, 3=experimental); operators remain level 4")
+						"Default spell permissions: 1=base, Tier 6 or higher unlocks 2=hook, Tier 12 unlocks 3=experimental, operators default to 4; manual player overrides always take precedence")
 						.translation("config.youkaishomecoming.common.certification.spellPermissionCardProgression")
 						.define("spellPermissionCardProgression", true);
-				nonSpellMaxLifetimeTicks = builder.comment("Maximum projectile lifetime allowed in non-spells, in ticks")
-						.translation("config.youkaishomecoming.common.certification.nonSpellMaxLifetimeTicks")
-						.defineInRange("nonSpellMaxLifetimeTicks", 200, 1, 1200);
-				nonSpellMaxInitialSpeed = builder.comment("Maximum statically bounded initial danmaku speed in non-spells")
-						.translation("config.youkaishomecoming.common.certification.nonSpellMaxInitialSpeed")
-						.defineInRange("nonSpellMaxInitialSpeed", 2.0, 0.0, 32.0);
-				nonSpellMaxOriginOffset = builder.comment("Maximum absolute projectile or shooter origin offset in non-spells")
-						.translation("config.youkaishomecoming.common.certification.nonSpellMaxOriginOffset")
-						.defineInRange("nonSpellMaxOriginOffset", 8.0, 0.0, 128.0);
-				nonSpellMaxHookExecutions = builder.comment("Maximum projected feedback callback executions in one non-spell")
-						.translation("config.youkaishomecoming.common.certification.nonSpellMaxHookExecutions")
-						.defineInRange("nonSpellMaxHookExecutions", 100_000, 1, 10_000_000);
 				lastSpellCooldownTicks = builder.comment("Player-shared Last Spell cooldown in ticks")
 						.translation("config.youkaishomecoming.common.certification.lastSpellCooldownTicks")
 						.defineInRange("lastSpellCooldownTicks", 3600, 0, 72000);

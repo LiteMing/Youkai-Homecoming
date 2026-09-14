@@ -8,6 +8,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireLaserAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireTextDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FreezeOnTickAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.HoldSourceAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.LegacyTickerAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.RunCommandAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SetEntityFlagAction;
@@ -97,6 +98,65 @@ public final class SpecialNodeCounter {
 		MutableSummary summary = new MutableSummary();
 		accumulate(summary, phase);
 		return summary.freeze();
+	}
+
+	/** All capability markers present anywhere in a definition, including nested callbacks. */
+	public static Set<SpellCapability> capabilities(SpellDefinition definition) {
+		EnumSet<SpellCapability> result = EnumSet.noneOf(SpellCapability.class);
+		if (definition == null) return Set.of();
+		for (PhaseDefinition phase : definition.phases.values()) {
+			collectCapabilities(result, phase.onEnter);
+			collectCapabilities(result, phase.onTick);
+			collectCapabilities(result, phase.onExit);
+			collectCapabilities(result, phase.onDamage);
+		}
+		return Set.copyOf(result);
+	}
+
+	private static void collectCapabilities(Set<SpellCapability> result, List<SpellAction> actions) {
+		for (SpellAction action : actions) {
+			result.addAll(capabilities(action));
+			SpellAction inner = unwrap(action);
+			if (inner instanceof SpellActions.ConditionalAction conditional) {
+				collectCapabilities(result, conditional.ifTrue());
+				collectCapabilities(result, conditional.ifFalse());
+			} else if (inner instanceof SpellActions.SequenceAction sequence) {
+				collectCapabilities(result, sequence.actions());
+			} else if (inner instanceof SpellActions.RepeatAction repeat) {
+				collectCapabilities(result, repeat.body());
+			} else if (inner instanceof DelayAction delay) {
+				collectCapabilities(result, delay.body());
+			} else if (inner instanceof BurstAction burst) {
+				collectCapabilities(result, burst.body());
+			} else if (inner instanceof SpawnShooterAction shooter) {
+				collectCapabilities(result, shooter.body());
+			} else if (inner instanceof HoldSourceAction hold) {
+				collectCapabilities(result, hold.onRelease());
+			}
+			if (inner instanceof FireDanmakuAction danmaku) {
+				if (danmaku.onExpiry().isPresent()) result.add(SpellCapability.HOOK_ON_EXPIRY);
+				if (danmaku.onTrail().isPresent()) result.add(SpellCapability.HOOK_ON_TRAIL);
+				if (danmaku.onHitEntity().filter(list -> !list.isEmpty()).isPresent()
+						|| danmaku.onHitBlock().filter(list -> !list.isEmpty()).isPresent()) {
+					result.add(SpellCapability.HOOK_ON_HIT);
+				}
+				danmaku.onExpiry().ifPresent(callback -> collectCapabilities(result, callback));
+				danmaku.onTrail().ifPresent(callback -> collectCapabilities(result, callback));
+				danmaku.onHitEntity().ifPresent(callback -> collectCapabilities(result, callback));
+				danmaku.onHitBlock().ifPresent(callback -> collectCapabilities(result, callback));
+			} else if (inner instanceof FireLaserAction laser) {
+				if (laser.onExpiry().isPresent()) result.add(SpellCapability.HOOK_ON_EXPIRY);
+				if (laser.onTrail().isPresent()) result.add(SpellCapability.HOOK_ON_TRAIL);
+				if (laser.onHitEntity().filter(list -> !list.isEmpty()).isPresent()
+						|| laser.onHitBlock().filter(list -> !list.isEmpty()).isPresent()) {
+					result.add(SpellCapability.HOOK_ON_HIT);
+				}
+				laser.onExpiry().ifPresent(callback -> collectCapabilities(result, callback));
+				laser.onTrail().ifPresent(callback -> collectCapabilities(result, callback));
+				laser.onHitEntity().ifPresent(callback -> collectCapabilities(result, callback));
+				laser.onHitBlock().ifPresent(callback -> collectCapabilities(result, callback));
+			}
+		}
 	}
 
 	/** Policy of the action node itself. Nested branches are classified separately. */
@@ -196,7 +256,7 @@ public final class SpecialNodeCounter {
 	}
 
 	/** All capability markers contributed by one action, including data-shape rules. */
-	static Set<SpellCapability> capabilities(SpellAction action) {
+	public static Set<SpellCapability> capabilities(SpellAction action) {
 		SpellAction inner = unwrap(action);
 		EnumSet<SpellCapability> result = EnumSet.noneOf(SpellCapability.class);
 		SpellCapability direct = directCapability(inner);

@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.content.spell.item;
 
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
@@ -31,6 +32,7 @@ public class RuntimeItemSpell extends ItemSpell {
 	public void start(Player player, @Nullable LivingEntity target) {
 		super.start(player, target);
 		runtime = new SpellRuntime(definition);
+		runtime.setPermissionLevel(SpellPermissionService.effectiveLevel(player));
 		runtime.reset();
 		if (maxDuration >= 0) {
 			runtime.setDurationOverride(maxDuration);
@@ -84,7 +86,11 @@ public class RuntimeItemSpell extends ItemSpell {
 	}
 
 	public void switchSpell(SpellDefinition definition, boolean clearScreen) {
-		switchSpell(definition, new SpellRuntime(definition), clearScreen);
+		SpellRuntime next = new SpellRuntime(definition);
+		if (holder != null && holder.self() instanceof Player player) {
+			next.setPermissionLevel(SpellPermissionService.effectiveLevel(player));
+		}
+		switchSpell(definition, next, clearScreen);
 	}
 
 	public void switchSpell(SpellDefinition definition, SpellRuntime nextRuntime, boolean clearScreen) {

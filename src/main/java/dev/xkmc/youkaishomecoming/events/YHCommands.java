@@ -22,6 +22,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.DanmakuProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.IYHDanmaku;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DanmakuItem;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.SpellCardBlockHelper;
@@ -29,6 +30,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalyzerSelfCheck;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellLimiterBypass;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPermission;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicy;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellSelfTestFlags;
@@ -92,6 +94,13 @@ public class YHCommands {
 					builder);
 	private static final SuggestionProvider<CommandSourceStack> SPELL_TEMPLATE_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(SpellTemplates.names(), builder);
+	private static final SuggestionProvider<CommandSourceStack> SPELL_CAPABILITY_SUGGESTIONS = (ctx, builder) ->
+			SharedSuggestionProvider.suggest(java.util.Arrays.stream(SpellCapability.values())
+					.map(SpellCapability::id), builder);
+	private static final SuggestionProvider<CommandSourceStack> SPELL_PERMISSION_GROUP_SUGGESTIONS = (ctx, builder) ->
+			SharedSuggestionProvider.suggest(new String[]{"base", "hook", "experimental", "op", "forbid"}, builder);
+	private static final SuggestionProvider<CommandSourceStack> SPELL_PERMISSION_LEVEL_SUGGESTIONS = (ctx, builder) ->
+			SharedSuggestionProvider.suggest(new String[]{"0", "1", "2", "3", "4"}, builder);
 	private static final SuggestionProvider<CommandSourceStack> SPELL_CIRCLE_SUGGESTIONS = (ctx, builder) -> {
 		java.util.List<ResourceLocation> ids = new java.util.ArrayList<>();
 		for (String key : YoukaisHomecoming.SPELL.getMerged().map.keySet()) {
@@ -710,6 +719,48 @@ public class YHCommands {
 
 		// /yhspell capability commands (Phase 6)
 		event.getDispatcher().register(literal("yhspell")
+				.then(opLiteral("permission")
+						.then(literal("list")
+								.executes(ctx -> permissionList(ctx.getSource())))
+						.then(literal("get")
+								.then(argument("id", StringArgumentType.word())
+										.suggests(SPELL_CAPABILITY_SUGGESTIONS)
+										.executes(ctx -> permissionGet(ctx))))
+						.then(literal("set")
+								.then(argument("id", StringArgumentType.word())
+										.suggests(SPELL_CAPABILITY_SUGGESTIONS)
+										.then(argument("level", IntegerArgumentType.integer(0, 4))
+												.suggests(SPELL_PERMISSION_LEVEL_SUGGESTIONS)
+												.executes(ctx -> permissionSet(ctx)))))
+						.then(literal("group")
+								.then(literal("list")
+										.executes(ctx -> permissionGroupList(ctx.getSource())))
+								.then(argument("group", StringArgumentType.word())
+										.suggests(SPELL_PERMISSION_GROUP_SUGGESTIONS)
+										.then(argument("level", IntegerArgumentType.integer(0, 4))
+												.suggests(SPELL_PERMISSION_LEVEL_SUGGESTIONS)
+												.executes(ctx -> permissionGroupSet(ctx)))))
+						.then(literal("reset")
+								.then(argument("id", StringArgumentType.word())
+										.suggests(SPELL_CAPABILITY_SUGGESTIONS)
+										.executes(ctx -> permissionReset(ctx))))
+						.then(literal("player")
+								.then(literal("get")
+										.then(argument("targets", EntityArgument.players())
+												.executes(ctx -> playerPermissionGet(ctx))))
+								.then(literal("set")
+										.then(argument("targets", EntityArgument.players())
+												.then(argument("level", IntegerArgumentType.integer(0, 4))
+														.suggests(SPELL_PERMISSION_LEVEL_SUGGESTIONS)
+														.executes(ctx -> playerPermissionSet(ctx)))))
+								.then(literal("reset")
+										.then(argument("targets", EntityArgument.players())
+												.executes(ctx -> playerPermissionReset(ctx)))))
+						.then(argument("id", StringArgumentType.word())
+								.suggests(SPELL_CAPABILITY_SUGGESTIONS)
+								.then(argument("level", IntegerArgumentType.integer(0, 4))
+										.suggests(SPELL_PERMISSION_LEVEL_SUGGESTIONS)
+										.executes(ctx -> permissionSet(ctx)))))
 				.then(opLiteral("capability")
 						.then(literal("get")
 								.then(argument("id", StringArgumentType.string())
@@ -720,6 +771,128 @@ public class YHCommands {
 												.suggests((ctx2, builder) -> SharedSuggestionProvider.suggest(
 														new String[]{"allow", "experimental", "deny", "op_only"}, builder))
 												.executes(ctx -> capabilitySet(ctx)))))));
+	}
+
+	private static int permissionList(CommandSourceStack source) {
+		for (SpellCapability capability : SpellCapability.values()) {
+			SpellCapabilityPermission permission = SpellCapabilityPolicies.currentPermission(capability);
+			source.sendSystemMessage(Component.literal("[YH] " + capability.id() + " = "
+					+ permission.level() + " (" + permission.id() + ", group "
+					+ SpellCapabilityPolicies.defaultPermissionGroup(capability) + ")"));
+		}
+		return SpellCapability.values().length;
+	}
+
+	private static int permissionGet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		try {
+			SpellCapability capability = commandCapability(ctx, "id");
+			SpellCapabilityPermission permission = SpellCapabilityPolicies.currentPermission(capability);
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] " + capability.id() + " permission: "
+					+ permission.level() + " (" + permission.id() + "), policy: "
+					+ SpellCapabilityPolicies.currentPolicy(capability)));
+			return 1;
+		} catch (IllegalArgumentException e) {
+			ctx.getSource().sendFailure(Component.literal("[YH] " + e.getMessage()));
+			return 0;
+		}
+	}
+
+	private static int permissionSet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		try {
+			SpellCapability capability = commandCapability(ctx, "id");
+			int level = IntegerArgumentType.getInteger(ctx, "level");
+			SpellCapabilityPolicies.setPermission(capability, level);
+			SpellCapabilityPermission permission = SpellCapabilityPolicies.currentPermission(capability);
+			ctx.getSource().sendSuccess(() -> Component.literal("[YH] " + capability.id()
+					+ " permission set to " + permission.level() + " (" + permission.id() + ")"), true);
+			return 1;
+		} catch (IllegalArgumentException e) {
+			ctx.getSource().sendFailure(Component.literal("[YH] " + e.getMessage()));
+			return 0;
+		}
+	}
+
+	private static int permissionGroupList(CommandSourceStack source) {
+		for (String group : new String[]{"base", "hook", "experimental", "op", "forbid"}) {
+			source.sendSystemMessage(Component.literal("[YH] group " + group + ": "
+					+ SpellCapabilityPolicies.capabilitiesInGroup(group).stream()
+							.map(SpellCapability::id).sorted().toList()));
+		}
+		return 5;
+	}
+
+	private static int permissionGroupSet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		try {
+			String group = StringArgumentType.getString(ctx, "group");
+			int level = IntegerArgumentType.getInteger(ctx, "level");
+			var capabilities = SpellCapabilityPolicies.capabilitiesInGroup(group);
+			// Validate the complete operation before changing any entry.
+			SpellCapabilityPermission permission = SpellCapabilityPermission.byLevel(level);
+			for (SpellCapability capability : capabilities) {
+				if (permission == SpellCapabilityPermission.HOOK && !SpellCapabilityPolicies.isHookCapability(capability))
+					throw new IllegalArgumentException("permission level 2 (hook) only applies to the hook group");
+				if (permission == SpellCapabilityPermission.BASE && SpellCapabilityPolicies.isHookCapability(capability))
+					throw new IllegalArgumentException("permission level 1 (base) cannot be assigned to the hook group");
+			}
+			for (SpellCapability capability : capabilities) SpellCapabilityPolicies.setPermission(capability, level);
+			ctx.getSource().sendSuccess(() -> Component.literal("[YH] group " + group + " permission set to "
+					+ level + " (" + SpellCapabilityPermission.byLevel(level).id() + ") for "
+					+ capabilities.size() + " capabilities"), true);
+			return capabilities.size();
+		} catch (IllegalArgumentException e) {
+			ctx.getSource().sendFailure(Component.literal("[YH] " + e.getMessage()));
+			return 0;
+		}
+	}
+
+	private static int permissionReset(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
+		try {
+			SpellCapability capability = commandCapability(ctx, "id");
+			SpellCapabilityPolicies.resetPolicy(capability);
+			ctx.getSource().sendSuccess(() -> Component.literal("[YH] " + capability.id()
+					+ " permission reset to " + SpellCapabilityPolicies.currentPermission(capability).id()), true);
+			return 1;
+		} catch (IllegalArgumentException e) {
+			ctx.getSource().sendFailure(Component.literal("[YH] " + e.getMessage()));
+			return 0;
+		}
+	}
+
+	private static int playerPermissionGet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var targets = EntityArgument.getPlayers(ctx, "targets");
+		for (var target : targets) {
+			var capability = GrazeCapability.HOLDER.get(target);
+			ctx.getSource().sendSystemMessage(Component.literal("[YH] " + target.getGameProfile().getName()
+					+ " spell permission: " + capability.getSpellPermissionLevel()
+					+ (capability.getSpellPermissionOverride() >= 0
+					? " (manual)" : " (automatic/default)")));
+		}
+		return targets.size();
+	}
+
+	private static int playerPermissionSet(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var targets = EntityArgument.getPlayers(ctx, "targets");
+		int level = IntegerArgumentType.getInteger(ctx, "level");
+		for (var target : targets) GrazeCapability.HOLDER.get(target).setSpellPermissionOverride(level);
+		ctx.getSource().sendSuccess(() -> Component.literal("[YH] spell permission " + level
+				+ " granted to " + targets.size() + " player(s)"), true);
+		return targets.size();
+	}
+
+	private static int playerPermissionReset(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx)
+			throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var targets = EntityArgument.getPlayers(ctx, "targets");
+		for (var target : targets) GrazeCapability.HOLDER.get(target).clearSpellPermissionOverride();
+		ctx.getSource().sendSuccess(() -> Component.literal("[YH] spell permission overrides reset for "
+				+ targets.size() + " player(s)"), true);
+		return targets.size();
+	}
+
+	private static SpellCapability commandCapability(
+			com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, String name) {
+		return SpellCapability.byId(SpellCapability.normalize(StringArgumentType.getString(ctx, name)));
 	}
 
 	private static int reportNonSpellLimiterBypass(CommandSourceStack source) {

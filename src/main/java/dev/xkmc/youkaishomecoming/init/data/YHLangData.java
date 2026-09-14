@@ -161,6 +161,7 @@ public enum YHLangData {
 	SPELL_CREATE("tooltip.spell_create", "Right-click to open the spell creation screen", 0, ChatFormatting.DARK_GRAY),
 	SPELL_SINGLE_USE("tooltip.spell_single_use", "Single-use: consumed after casting", 0, ChatFormatting.GOLD),
 	SPELL_UNFINISHED("tooltip.spell_unfinished", "Unfinished spell card: right-click to edit again; certification turns it into a complete spell card", 0, ChatFormatting.DARK_GRAY),
+	SPELL_PERMISSION_LIMITED("tooltip.spell_permission_limited", "Your spell capability is insufficient to use this card at full performance", 0, ChatFormatting.YELLOW),
 	SPELL_OP_QUOTA("tooltip.spell_op_quota", "Experimental nodes available: %s (teleport / erase enemy danmaku / clear screen / on-damage / danmaku hooks)", 1, ChatFormatting.LIGHT_PURPLE),
 	SPELL_UNFINISHED_NO_COMBAT("tooltip.spell_unfinished_no_combat", "Unfinished spell card: cannot declare danmaku combat mode", 0, ChatFormatting.RED),
 	NON_SPELL_INVALID("tooltip.non_spell_invalid", "Non-spells cannot use spell health or presentation nodes", 0, ChatFormatting.RED),

@@ -4,6 +4,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
 import dev.xkmc.youkaishomecoming.content.spell.item.PlayerHolder;
 import dev.xkmc.youkaishomecoming.content.spell.item.RuntimeItemSpell;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies;
 import dev.xkmc.youkaishomecoming.content.spell.feedback.NoopFeedbackSink;
 import dev.xkmc.youkaishomecoming.content.spell.feedback.PreviewFeedbackSink;
 import dev.xkmc.youkaishomecoming.content.spell.feedback.ServerFeedbackSink;
@@ -179,10 +180,22 @@ public class SpellContext {
 	}
 
 	public void executeList(java.util.List<dev.xkmc.youkaishomecoming.content.spell.action.SpellAction> actions) {
+		if (callbackContext != null && !SpellCapabilityPolicies.allowsForPlayer(
+				callbackCapability(callbackContext.kind()), permissionLevel())) {
+			return;
+		}
 		var preview = previewHolder();
 		for (var action : actions) {
 			if (shouldAbortActionList()) {
 				break;
+			}
+			if (!canExecute(action)) {
+				// A denied conditional cannot be evaluated safely. Its false branch is
+				// the explicit author-provided safe fallback.
+				if (action instanceof dev.xkmc.youkaishomecoming.content.spell.action.SpellActions.ConditionalAction conditional) {
+					executeList(conditional.ifFalse());
+				}
+				continue;
 			}
 			if (preview != null) {
 				int previous = preview.beginPreviewAction(action);
@@ -195,6 +208,27 @@ public class SpellContext {
 				action.execute(this);
 			}
 		}
+	}
+
+	private boolean canExecute(dev.xkmc.youkaishomecoming.content.spell.action.SpellAction action) {
+		for (var capability : dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter.capabilities(action)) {
+			if (!dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapabilityPolicies
+					.allowsForPlayer(capability, permissionLevel())) return false;
+		}
+		return true;
+	}
+
+	private int permissionLevel() {
+		return runtime == null ? 4 : runtime.permissionLevel();
+	}
+
+	private static dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability callbackCapability(
+			dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext.Kind kind) {
+		return switch (kind) {
+			case EXPIRY -> dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability.HOOK_ON_EXPIRY;
+			case TRAIL -> dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability.HOOK_ON_TRAIL;
+			case HIT_ENTITY, HIT_BLOCK -> dev.xkmc.youkaishomecoming.content.spell.analysis.SpellCapability.HOOK_ON_HIT;
+		};
 	}
 
 	@Nullable

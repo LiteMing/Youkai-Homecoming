@@ -43,6 +43,8 @@ public class SpellRuntime {
 	private final SpellHealthPlan declaredHealthPlan;
 
 	private ResourceLocation currentPhaseId;
+	/** Effective player capability level for this runtime; non-player hosts use 4. */
+	private int permissionLevel = 4;
 	private int phaseTick;
 	private int totalTick;
 	private int hitCount;
@@ -120,6 +122,7 @@ public class SpellRuntime {
 
 	public SpellRuntime continueWith(SpellDefinition nextDefinition) {
 		SpellRuntime next = new SpellRuntime(nextDefinition, definitionResolver, declaredHealthPlan);
+		next.permissionLevel = permissionLevel;
 		next.durationOverrideTicks = durationOverrideTicks;
 		if (declaredHealthPlan != null) {
 			next.totalTick = totalTick;
@@ -163,6 +166,14 @@ public class SpellRuntime {
 
 	public int getTotalTick() {
 		return totalTick;
+	}
+
+	public int permissionLevel() {
+		return permissionLevel;
+	}
+
+	public void setPermissionLevel(int level) {
+		permissionLevel = Math.max(0, Math.min(4, level));
 	}
 
 	int getActionTick() {
@@ -848,6 +859,7 @@ public class SpellRuntime {
 			return;
 		}
 		SpellRuntime runtime = new SpellRuntime(definition);
+		runtime.permissionLevel = permissionLevel;
 		PhaseDefinition phase = definition.getPhase(targetPhase);
 		if (phase == null) {
 			return;

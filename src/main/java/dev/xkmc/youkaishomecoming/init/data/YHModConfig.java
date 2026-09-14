@@ -323,6 +323,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue spellDraftBudgetMultiplier;
 		public final ForgeConfigSpec.LongValue spellDraftExcessNodeCostUnits;
 		public final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> spellCapabilityPolicies;
+		public final ForgeConfigSpec.BooleanValue spellPermissionCardProgression;
 		public final ForgeConfigSpec.IntValue nonSpellMaxLifetimeTicks;
 		public final ForgeConfigSpec.DoubleValue nonSpellMaxInitialSpeed;
 		public final ForgeConfigSpec.DoubleValue nonSpellMaxOriginOffset;
@@ -554,6 +555,10 @@ public class YHModConfig {
 						.translation("config.youkaishomecoming.common.certification.capabilityPolicies")
 						.defineListAllowEmpty("capabilityPolicies", java.util.List.of(), value -> value instanceof String s
 								&& s.length() <= 128 && s.contains("="));
+				spellPermissionCardProgression = builder.comment(
+						"Automatically raise a player's spell capability level from Tier 6 and Tier 12 advancements (1=base, 2=hook, 3=experimental); operators remain level 4")
+						.translation("config.youkaishomecoming.common.certification.spellPermissionCardProgression")
+						.define("spellPermissionCardProgression", true);
 				nonSpellMaxLifetimeTicks = builder.comment("Maximum projectile lifetime allowed in non-spells, in ticks")
 						.translation("config.youkaishomecoming.common.certification.nonSpellMaxLifetimeTicks")
 						.defineInRange("nonSpellMaxLifetimeTicks", 200, 1, 1200);

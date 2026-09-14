@@ -137,11 +137,18 @@ public class DanmakuProxyEntity extends PathfinderMob
 	public void init(ServerPlayer player, SpellDefinition definition, int duration,
 						 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan,
 						 @Nullable Integer durationOverride, boolean certifiedCard) {
+		init(player, definition, duration, target, healthPlan, durationOverride, certifiedCard, 4);
+	}
+
+	public void init(ServerPlayer player, SpellDefinition definition, int duration,
+						 @Nullable LivingEntity target, @Nullable SpellHealthPlan healthPlan,
+						 @Nullable Integer durationOverride, boolean certifiedCard, int permissionLevel) {
 		this.ownerPlayerId = player.getUUID();
 		this.ownerPlayer = player;
 		this.maxDuration = duration;
 		this.runtime = healthPlan == null ? new SpellRuntime(definition)
 				: new SpellRuntime(definition, healthPlan::resolve, healthPlan);
+		this.runtime.setPermissionLevel(permissionLevel);
 		this.runtime.reset();
 		this.runtime.setDurationOverride(durationOverride);
 		this.spellTickCount = 0;
@@ -379,6 +386,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 			eraseAllDanmaku(null);
 		}
 		setSpellRuntime(new SpellRuntime(definition));
+		if (runtime != null && ownerPlayer != null) {
+			runtime.setPermissionLevel(dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService
+					.effectiveLevel(ownerPlayer));
+		}
 	}
 
 	@Nullable

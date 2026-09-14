@@ -1,5 +1,7 @@
 package dev.xkmc.youkaishomecoming.content.spell.analysis;
 
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
+
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Map;
@@ -23,6 +25,10 @@ public final class SpellCapabilityPolicies {
 	/** Runtime overrides (Phase 6 commands / scripts); queried on every certification
 	 * start and cast so policy changes apply immediately. */
 	private static final Map<SpellCapability, SpellCapabilityPolicy> OVERRIDES = new EnumMap<>(SpellCapability.class);
+	private static final Set<SpellCapability> HOOK_CAPABILITIES = Set.of(
+			SpellCapability.HOOK_ON_EXPIRY,
+			SpellCapability.HOOK_ON_TRAIL,
+			SpellCapability.HOOK_ON_HIT);
 
 	static {
 		put(SpellCapability.BASE_FIRE, SpellCapabilityPolicy.ALLOW);
@@ -89,6 +95,88 @@ public final class SpellCapabilityPolicies {
 		return configured == null ? defaultPolicy(cap) : configured;
 	}
 
+	/**
+	 * Returns the administrator-facing level for a capability. The level is
+	 * derived from the effective policy, while ALLOW is split into base and hook
+	 * for the command/script API.
+	 */
+	public static SpellCapabilityPermission currentPermission(SpellCapability cap) {
+		if (cap == null) return SpellCapabilityPermission.FORBID;
+		return permissionFor(cap, currentPolicy(cap));
+	}
+
+	/** Default level before config or runtime overrides are applied. */
+	public static SpellCapabilityPermission defaultPermission(SpellCapability cap) {
+		if (cap == null) return SpellCapabilityPermission.FORBID;
+		return permissionFor(cap, defaultPolicy(cap));
+	}
+
+	/** Server-side player gate. DENY remains denied even for operators. */
+	public static boolean allowsForPlayer(SpellCapability cap, int playerLevel) {
+		if (cap == null || currentPolicy(cap) == SpellCapabilityPolicy.DENY) return false;
+		return playerLevel >= currentPermission(cap).level();
+	}
+
+	public static boolean hasUnavailableCapabilities(SpellDefinition definition, int playerLevel) {
+		if (definition == null) return false;
+		for (SpellCapability capability : SpecialNodeCounter.capabilities(definition)) {
+			if (!allowsForPlayer(capability, playerLevel)) return true;
+		}
+		return false;
+	}
+
+	public static boolean isHookCapability(SpellCapability cap) {
+		return HOOK_CAPABILITIES.contains(cap);
+	}
+
+	/** Stable group names used by administrator commands and scripts. */
+	public static String defaultPermissionGroup(SpellCapability cap) {
+		if (cap == null) return "forbid";
+		if (cap == SpellCapability.BROKEN_NODE || defaultPolicy(cap) == SpellCapabilityPolicy.DENY) return "forbid";
+		if (isHookCapability(cap)) return "hook";
+		return switch (defaultPolicy(cap)) {
+			case ALLOW -> "base";
+			case EXPERIMENTAL -> "experimental";
+			case OP_ONLY -> "op";
+			case DENY -> "forbid";
+		};
+	}
+
+	/** Returns capabilities in a stable default group. */
+	public static Set<SpellCapability> capabilitiesInGroup(String group) {
+		if (group == null || group.isBlank()) throw new IllegalArgumentException("permission group is missing");
+		String normalized = SpellCapability.normalize(group);
+		Set<SpellCapability> result = EnumSet.noneOf(SpellCapability.class);
+		for (SpellCapability cap : SpellCapability.values()) {
+			if (defaultPermissionGroup(cap).equals(normalized)) result.add(cap);
+		}
+		if (result.isEmpty()) throw new IllegalArgumentException("unknown or empty permission group: " + group);
+		return Set.copyOf(result);
+	}
+
+	/** Applies a numeric level to one capability through the canonical policy map. */
+	public static void setPermission(SpellCapability cap, int level) {
+		if (cap == null) throw new IllegalArgumentException("capability is missing");
+		SpellCapabilityPermission permission = SpellCapabilityPermission.byLevel(level);
+		validatePermissionLevel(cap, permission);
+		setPolicy(cap, permission.policy());
+	}
+
+	private static void validatePermissionLevel(SpellCapability cap, SpellCapabilityPermission permission) {
+		if (permission == SpellCapabilityPermission.HOOK && !isHookCapability(cap)) {
+			throw new IllegalArgumentException("permission level 2 (hook) only applies to hook capabilities");
+		}
+		if (permission == SpellCapabilityPermission.BASE && isHookCapability(cap)) {
+			throw new IllegalArgumentException("permission level 1 (base) cannot be assigned to hook capabilities");
+		}
+	}
+
+	/** Restores one capability to its default policy. */
+	public static void resetPolicy(SpellCapability cap) {
+		if (cap == null) return;
+		setPolicy(cap, defaultPolicy(cap));
+	}
+
 	/** Reads persisted Forge config overrides without making config construction depend on this class. */
 	private static SpellCapabilityPolicy configuredPolicy(SpellCapability capability) {
 		try {
@@ -137,6 +225,10 @@ public final class SpellCapabilityPolicies {
 		setPolicy(SpellCapability.byId(SpellCapability.normalize(capabilityId)), parsePolicy(policyName));
 	}
 
+	public static void setPermission(String capabilityId, int level) {
+		setPermission(SpellCapability.byId(SpellCapability.normalize(capabilityId)), level);
+	}
+
 	public static void setPolicy(SpellCapability cap, SpellCapabilityPolicy policy) {
 		// A node we could not decode has no defined behaviour, so no script or
 		// command may promote it out of DENY.
@@ -152,5 +244,15 @@ public final class SpellCapabilityPolicies {
 
 	public static void clearOverrides() {
 		OVERRIDES.clear();
+	}
+
+	private static SpellCapabilityPermission permissionFor(SpellCapability cap, SpellCapabilityPolicy policy) {
+		return switch (policy) {
+			case DENY -> SpellCapabilityPermission.FORBID;
+			case EXPERIMENTAL -> SpellCapabilityPermission.EXPERIMENTAL;
+			case OP_ONLY -> SpellCapabilityPermission.OP;
+			case ALLOW -> isHookCapability(cap)
+					? SpellCapabilityPermission.HOOK : SpellCapabilityPermission.BASE;
+		};
 	}
 }

@@ -17,6 +17,7 @@ import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellLimiterBypass;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisException;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
 import dev.xkmc.youkaishomecoming.content.spell.preview.OpenSpellPreviewToClient;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
@@ -594,7 +595,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 					YHEntities.DANMAKU_PROXY.get(), sp.serverLevel());
 			Integer durationOverride = !certifiedStack && hasDurationOverride && duration >= 0
 					? duration : null;
-			proxy.init(sp, def, duration, target, certifiedPlan, durationOverride, certifiedStack);
+			proxy.init(sp, def, duration, target, certifiedPlan, durationOverride, certifiedStack,
+					SpellPermissionService.effectiveLevel(sp));
 			if (nonSpell) proxy.bindNonSpellBudget(getRank(stack));
 			sp.serverLevel().addFreshEntity(proxy);
 			SpellContainer.trackProxy(sp, proxy, cardKey);

@@ -9,6 +9,10 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.CombatProgress;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.effect.BeatenEffect;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService;
+import dev.xkmc.youkaishomecoming.content.capability.GrazeCapability;
+import dev.xkmc.youkaishomecoming.init.data.YHLangData;
 import dev.xkmc.youkaishomecoming.content.spell.client.CameraShakeManager;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
@@ -92,6 +96,15 @@ public class ClientEventHandlers {
 
 	@SubscribeEvent
 	public static void onTooltip(ItemTooltipEvent event) {
+		if (event.getItemStack().getItem() instanceof DynamicSpellItem
+				&& Minecraft.getInstance().player != null) {
+			var stack = event.getItemStack();
+			var definition = DynamicSpellItem.getSpellDefinition(stack);
+			int level = GrazeCapability.HOLDER.get(Minecraft.getInstance().player).getSpellPermissionLevel();
+			if (definition != null && SpellPermissionService.hasUnavailableCapabilities(definition, level)) {
+				event.getToolTip().add(YHLangData.SPELL_PERMISSION_LIMITED.get());
+			}
+		}
 		if (GrazeHelper.isManualCombatMode() && GrazeHelper.isSpellStack(event.getItemStack())) {
 			event.getToolTip().add(ClassicControlClient.combatToggleHint());
 		}

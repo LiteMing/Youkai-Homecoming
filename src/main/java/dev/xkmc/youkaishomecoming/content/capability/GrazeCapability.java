@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.entity.danmaku.EntitySpellProxyEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.SpellCertificationEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellPermissionService;
 import dev.xkmc.youkaishomecoming.content.spell.client.ActiveSpellHudService;
 import dev.xkmc.youkaishomecoming.events.DanmakuLastHitEvent;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
@@ -59,6 +60,12 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 	/** Power and point progress are rendered on tracked players' STG circles. */
 	@SerialClass.SerialField(toTracking = true)
 	private int power;
+	/** -1 means no explicit server grant; ordinary players then start at level 1. */
+	@SerialClass.SerialField(toTracking = true)
+	private int spellPermissionOverride = -1;
+	/** Client projection of the effective level (operator/advancement/grant aware). */
+	@SerialClass.SerialField(toTracking = true)
+	private int spellPermissionLevel = 1;
 	@SerialClass.SerialField(toTracking = true)
 	private int hidden;
 	@SerialClass.SerialField
@@ -218,6 +225,13 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	@Override
 	public void tick() {
+		if (player.level() instanceof ServerLevel) {
+			int effectivePermission = SpellPermissionService.effectiveLevel(player);
+			if (spellPermissionLevel != effectivePermission) {
+				spellPermissionLevel = effectivePermission;
+				dirty = true;
+			}
+		}
 		if (player.level() instanceof ServerLevel && GrazeHelper.isManualCombatMode()
 				&& forcedDanmakuCombat && !combatAdminBypass
 				&& sessions.isEmpty() && playerOpponents.isEmpty()
@@ -902,6 +916,29 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public int getPower() {
 		return power;
+	}
+
+	public int getSpellPermissionOverride() {
+		return spellPermissionOverride;
+	}
+
+	public int getSpellPermissionLevel() {
+		return Math.max(0, Math.min(4, spellPermissionLevel));
+	}
+
+	public void setSpellPermissionOverride(int level) {
+		if (level < 0 || level > 4) throw new IllegalArgumentException("spell permission must be between 0 and 4");
+		spellPermissionOverride = level;
+		spellPermissionLevel = level;
+		dirty = true;
+		sync();
+	}
+
+	public void clearSpellPermissionOverride() {
+		spellPermissionOverride = -1;
+		spellPermissionLevel = SpellPermissionService.effectiveLevel(player);
+		dirty = true;
+		sync();
 	}
 
 	/** Player-facing power level. Internally power is stored in hundredths. */

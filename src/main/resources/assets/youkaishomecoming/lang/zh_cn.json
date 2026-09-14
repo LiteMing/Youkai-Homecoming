@@ -424,6 +424,8 @@
   "config.youkaishomecoming.common.certification.draftBudgetMultiplier.tooltip": "按倍率统一调整新空白符卡的性能预算；单刻生成上限按符卡阶级与施法者 P 点计算，其余默认峰值存活 10000、弹幕 tick 100000000、钩子执行 1000000。实际换算值会写入新符卡基底。",
   "config.youkaishomecoming.common.certification.capabilityPolicies": "符卡能力策略覆盖",
   "config.youkaishomecoming.common.certification.capabilityPolicies.tooltip": "每行填写 capability_id\u003dallow|experimental|op_only|deny，用于调整认证节点的默认权限策略。",
+  "config.youkaishomecoming.common.certification.spellPermissionCardProgression": "符卡能力培养",
+  "config.youkaishomecoming.common.certification.spellPermissionCardProgression.tooltip": "开启后，完成 Tier 6 与 Tier 12 符卡成就会自动解锁 hook 与实验能力等级；关闭后必须由脚本或管理员授予。",
   "config.youkaishomecoming.common.certification.draftExcessNodeCostUnits": "超额节点使用费用",
   "config.youkaishomecoming.common.certification.draftExcessNodeCostUnits.tooltip": "每个超出符卡基底免费额度的普通节点所增加的使用费用单位",
   "config.youkaishomecoming.common.certification.nonSpellMaxLifetimeTicks": "非符弹幕寿命上限",

@@ -59,7 +59,8 @@ public final class NonSpellValidator {
 		SpellAnalysisLimits limits = new SpellAnalysisLimits(base.maxPhases(), base.maxActions(), base.maxDepth(),
 				base.maxRepeat(), base.maxTotalProjectiles(), base.maxShooters(), lifetime,
 				base.maxExpressionLength(), Math.max(1, rank.danmakuPerTick(power)),
-				base.maxPeakAlive(), base.maxProjectileTicks(), 0, 1,
+				base.maxPeakAlive(), base.maxProjectileTicks(),
+				Math.max(1, YHModConfig.COMMON.nonSpellMaxHookExecutions.get()), 1,
 				base.certificationWindowTicks());
 		SpellAnalyzer.analyzeNonSpell(definition, limits, power);
 	}
@@ -94,13 +95,14 @@ public final class NonSpellValidator {
 		if (inner instanceof ShowSpellCardAction)
 			throw new PresentationNodeException("spell-card presentation nodes");
 		if (inner instanceof FireDanmakuAction danmaku) {
-			if (has(danmaku.onHitEntity()) || has(danmaku.onHitBlock()) || has(danmaku.onExpiry())
-					|| has(danmaku.onTrail())) {
-				throw new SpellAnalysisException("Non-spell projectile hooks are disabled");
+			if (has(danmaku.onExpiry()) || has(danmaku.onTrail())) {
+				throw new SpellAnalysisException("Non-spells cannot use expiry or trail callbacks");
 			}
-			if (danmaku.hitBehaviorEntity() != HitBehavior.DISCARD
-					|| danmaku.hitBehaviorBlock() != HitBehavior.DISCARD) {
-				throw new SpellAnalysisException("Non-spell projectiles must discard on every collision");
+			checkFeedbackHook(danmaku.onHitEntity(), "on_hit_entity");
+			checkFeedbackHook(danmaku.onHitBlock(), "on_hit_block");
+			if (!terminalCollision(danmaku.hitBehaviorEntity())
+					|| !terminalCollision(danmaku.hitBehaviorBlock())) {
+				throw new SpellAnalysisException("Non-spell projectiles must discard or expire on every collision");
 			}
 			checkBounded(danmaku.speed(), YHModConfig.COMMON.nonSpellMaxInitialSpeed.get(), "initial speed");
 			checkBounded(danmaku.lifetime(), YHModConfig.COMMON.nonSpellMaxLifetimeTicks.get(), "lifetime");
@@ -128,6 +130,48 @@ public final class NonSpellValidator {
 		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.DelayAction delay) checkList(delay.body());
 		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.BurstAction burst) checkList(burst.body());
 		if (inner instanceof SpawnShooterAction shooter) checkList(shooter.body());
+	}
+
+	/**
+	 * Collision callbacks are deliberately feedback-only. They may acknowledge a
+	 * hit, but must not turn an ordinary projectile into a second emitter or alter
+	 * spell/runtime state. Sequence and conditional are structural wrappers only.
+	 */
+	private static void checkFeedbackHook(Optional<List<SpellAction>> actions, String hook) {
+		if (actions.isPresent()) {
+			for (SpellAction action : actions.get()) checkFeedbackAction(action, hook);
+		}
+	}
+
+	private static void checkFeedbackAction(SpellAction action, String hook) {
+		if (action instanceof SpellActions.DisabledAction disabled) {
+			checkFeedbackAction(disabled.inner(), hook);
+			return;
+		}
+		if (action instanceof SpellActions.PlaySoundAction
+				|| action instanceof dev.xkmc.youkaishomecoming.content.spell.action.CameraShakeAction
+				|| action instanceof SpellActions.NoopAction) {
+			return;
+		}
+		if (action instanceof SpellActions.ConditionalAction conditional) {
+			checkFeedbackList(conditional.ifTrue(), hook);
+			checkFeedbackList(conditional.ifFalse(), hook);
+			return;
+		}
+		if (action instanceof SpellActions.SequenceAction sequence) {
+			checkFeedbackList(sequence.actions(), hook);
+			return;
+		}
+		throw new SpellAnalysisException("Non-spell " + hook
+				+ " callbacks only allow feedback actions (play_sound, camera_shake, noop)");
+	}
+
+	private static void checkFeedbackList(List<SpellAction> actions, String hook) {
+		for (SpellAction action : actions) checkFeedbackAction(action, hook);
+	}
+
+	private static boolean terminalCollision(HitBehavior behavior) {
+		return behavior == HitBehavior.DISCARD || behavior == HitBehavior.EXPIRE;
 	}
 
 	private static void checkMover(MoverConfig mover, int lifetime, double initialSpeed) {

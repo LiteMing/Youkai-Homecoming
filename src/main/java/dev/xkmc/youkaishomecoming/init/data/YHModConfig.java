@@ -312,6 +312,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue spellMarketMaxSpellsPerTag;
 		public final ForgeConfigSpec.DoubleValue feedbackMaxCameraIntensity;
 		public final ForgeConfigSpec.IntValue feedbackMaxCameraDurationTicks;
+		public final ForgeConfigSpec.DoubleValue feedbackMaxSoundVolume;
 		public final ForgeConfigSpec.DoubleValue feedbackMaxRadius;
 		public final ForgeConfigSpec.IntValue feedbackMaxCuesPerContext;
 		public final ForgeConfigSpec.IntValue feedbackMaxCuesPerObserverTick;
@@ -325,6 +326,7 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue nonSpellMaxLifetimeTicks;
 		public final ForgeConfigSpec.DoubleValue nonSpellMaxInitialSpeed;
 		public final ForgeConfigSpec.DoubleValue nonSpellMaxOriginOffset;
+		public final ForgeConfigSpec.IntValue nonSpellMaxHookExecutions;
 		public final ForgeConfigSpec.IntValue lastSpellCooldownTicks;
 		public final ForgeConfigSpec.DoubleValue timeoutSpellBombCostMultiplier;
 		public final ForgeConfigSpec.DoubleValue timeoutSpellXpCostMultiplier;
@@ -517,6 +519,9 @@ public class YHModConfig {
 				feedbackMaxCameraDurationTicks = builder.comment("Server cap for one camera shake cue duration")
 						.translation("config.youkaishomecoming.common.feedback.maxCameraDurationTicks")
 						.defineInRange("maxCameraDurationTicks", 40, 1, 100);
+				feedbackMaxSoundVolume = builder.comment("Server cap for one spell sound cue volume")
+						.translation("config.youkaishomecoming.common.feedback.maxSoundVolume")
+						.defineInRange("maxSoundVolume", 4.0, 0.0, 32.0);
 				feedbackMaxRadius = builder.comment("Server cap for feedback cue radius in blocks")
 						.translation("config.youkaishomecoming.common.feedback.maxRadius")
 						.defineInRange("maxRadius", 32.0, 1.0, 128.0);
@@ -558,6 +563,9 @@ public class YHModConfig {
 				nonSpellMaxOriginOffset = builder.comment("Maximum absolute projectile or shooter origin offset in non-spells")
 						.translation("config.youkaishomecoming.common.certification.nonSpellMaxOriginOffset")
 						.defineInRange("nonSpellMaxOriginOffset", 8.0, 0.0, 128.0);
+				nonSpellMaxHookExecutions = builder.comment("Maximum projected feedback callback executions in one non-spell")
+						.translation("config.youkaishomecoming.common.certification.nonSpellMaxHookExecutions")
+						.defineInRange("nonSpellMaxHookExecutions", 100_000, 1, 10_000_000);
 				lastSpellCooldownTicks = builder.comment("Player-shared Last Spell cooldown in ticks")
 						.translation("config.youkaishomecoming.common.certification.lastSpellCooldownTicks")
 						.defineInRange("lastSpellCooldownTicks", 3600, 0, 72000);

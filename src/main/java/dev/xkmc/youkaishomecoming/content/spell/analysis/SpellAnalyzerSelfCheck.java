@@ -197,6 +197,13 @@ public final class SpellAnalyzerSelfCheck {
 		private static final String NON_SPELL_SAFE = spell(NON_SPELL_SAFE_ACTION);
 		private static final String NON_SPELL_CONTINUE = NON_SPELL_SAFE.replace("\"hit_behavior_block\": \"discard\"", "\"hit_behavior_block\": \"continue\"");
 		private static final String NON_SPELL_HOOK = NON_SPELL_SAFE.replace("\"hit_behavior_block\": \"discard\"}", "\"hit_behavior_block\": \"discard\", \"on_hit_entity\": [{\"type\": \"set_variable\", \"key\": \"x\", \"value\": 1}]}");
+		private static final String NON_SPELL_FEEDBACK = NON_SPELL_SAFE
+				.replace("\"hit_behavior_entity\": \"discard\"",
+						"\"hit_behavior_entity\": \"expire\", \"on_hit_entity\": [{\"type\": \"play_sound\", \"sound\": \"minecraft:block.note_block.pling\", \"volume\": 30.0}]")
+				.replace("\"hit_behavior_block\": \"discard\"",
+						"\"hit_behavior_block\": \"expire\", \"on_hit_block\": [{\"type\": \"camera_shake\", \"intensity\": 0.25, \"duration\": 6}]");
+		private static final String NON_SPELL_HOOK_EMITTER = NON_SPELL_SAFE.replace("\"hit_behavior_block\": \"discard\"}",
+				"\"hit_behavior_block\": \"discard\", \"on_hit_entity\": [{\"type\": \"fire_danmaku\", \"bullet\": \"ball\", \"color\": \"blue\", \"count\": 1, \"speed\": 0.5, \"lifetime\": 30}]}");
 		private static final String NON_SPELL_FAST = NON_SPELL_SAFE.replace("\"speed\": 0.5", "\"speed\": 200");
 		private static final String NON_SPELL_HOMING = NON_SPELL_SAFE.replace("\"lifetime\": 60", "\"lifetime\": 60, \"mover\": {\"type\": \"homing\", \"speed\": 0.45, \"delay\": 8}");
 		private static final String NON_SPELL_UNBOUNDED_ACCELERATION = NON_SPELL_SAFE.replace("\"speed\": 0.5", "\"speed\": 0").replace("\"lifetime\": 60", "\"lifetime\": 60, \"mover\": {\"type\": \"acceleration\", \"y\": -0.05}");
@@ -886,8 +893,15 @@ public final class SpellAnalyzerSelfCheck {
 					NonSpellValidator.validate(parse(NON_SPELL_SAFE), tier1)));
 			check("non-spell rejects continuing block collision", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_CONTINUE), tier1)));
-			check("non-spell rejects projectile hooks", rejects(() ->
+			check("non-spell accepts bounded collision feedback", !rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_FEEDBACK), tier1)));
+			SpellAnalysis feedbackAnalysis = SpellAnalyzer.analyzeNonSpell(parse(NON_SPELL_FEEDBACK), CERT, 1);
+			check("non-spell collision feedback is included in hook budget",
+					feedbackAnalysis.hookExecutionUpperBound() > 0);
+			check("non-spell rejects stateful collision hooks", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_HOOK), tier1)));
+			check("non-spell rejects emitter collision hooks", rejects(() ->
+					NonSpellValidator.validate(parse(NON_SPELL_HOOK_EMITTER), tier1)));
 			check("non-spell rejects excessive initial speed", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_FAST), tier1)));
 			check("non-spell rejects tracking homing mover", rejects(() ->

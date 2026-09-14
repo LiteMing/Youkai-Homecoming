@@ -107,7 +107,12 @@ normal | last_spell | timeout_spell | non_spell
 - 不提供符卡无敌或符卡血量功能；包含 `set_spell_health` 等符卡展示/生命专用节点时必须由
   服务端拒绝或在保存前给出明确错误。
 - 禁止符卡展示相关节点，至少包括 `show_spell_title`、`set_spell_circle` 及同类认证/展示
-  能力。最终白名单以非符示范 JSON 和 KJS 策略确定。
+  能力。弹幕的 `on_expiry`、`on_trail` 回调也禁止。
+- `on_hit_entity` 与 `on_hit_block` 只允许反馈动作：`play_sound`、`camera_shake`、`noop`，
+  以及只包含这些动作的 `conditional`/`sequence` 包装。回调不能发射弹幕、修改变量、执行
+  命令、传送、切换阶段或改变其他战斗状态。
+- 有碰撞回调的非符只能使用 `discard` 或 `expire`；`continue` 和反弹路径保留给普通符卡，
+  以免通过持续碰撞放大回调次数。
 - 不消耗 B 或经验。
 - 非符虽然使用符卡基底承载，但类型语义上不是“符卡/Bomb”。在认证战斗中启用、关闭或持续
   运行非符，不得触发 No-Bomb/No-Hit（NBNH）失败；非符发射的玩家侧弹幕仍作为普通攻击
@@ -131,7 +136,9 @@ normal | last_spell | timeout_spell | non_spell
 ### 4.3 性能与能力
 
 非符使用独立的 analyzer profile：可用节点范围更窄、节点数量和认证上限更低，并且 Tier 对
-预算的缩放比普通符卡更严格。所有预算和能力许可由 KJS 配置，未知节点继续 fail-closed。
+预算的缩放比普通符卡更严格，并使用独立的 `nonSpellMaxHookExecutions` 碰撞反馈预算（默认
+100000 次分析窗口内执行）。主体弹幕仍受非符的单刻数量、寿命、速度、原点和总性能预算限制；
+未知节点继续 fail-closed。声音音量、镜头强度、时长和半径由服务端反馈汇聚器再次限幅。
 
 ## 5. EX 灵气与 EX 特性
 

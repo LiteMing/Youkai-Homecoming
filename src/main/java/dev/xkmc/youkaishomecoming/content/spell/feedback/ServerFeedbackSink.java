@@ -24,10 +24,12 @@ public final class ServerFeedbackSink implements SpellFeedbackSink {
 		if (cue == null || !allow() || !(holder.self().level() instanceof ServerLevel level)) return;
 		Vec3 pos = resolvePosition(cue.origin(), cue.position());
 		if (pos == null) return;
-		double radius = cue.radius() > 0 ? Math.min(cue.radius(), YHModConfig.COMMON.feedbackMaxRadius.get())
-				: YHModConfig.COMMON.feedbackMaxRadius.get();
+		var common = YHModConfig.COMMON;
+		double radius = cue.radius() > 0 ? Math.min(cue.radius(), common.feedbackMaxRadius.get())
+				: common.feedbackMaxRadius.get();
+		float volume = (float) Math.min(cue.volume(), common.feedbackMaxSoundVolume.get());
 		SoundCue resolved = new SoundCue(cue.soundId(), cue.source(), cue.origin(), pos,
-				cue.volume(), cue.pitch(), radius, cue.attenuation());
+				volume, cue.pitch(), radius, cue.attenuation());
 		for (var player : level.players()) if (player.distanceToSqr(pos) <= radius * radius)
 			ServerFeedbackDispatcher.enqueue(level, player, resolved);
 	}

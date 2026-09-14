@@ -666,6 +666,8 @@
   "config.youkaishomecoming.common.feedback.maxCameraIntensity.tooltip": "Server cap for one camera shake cue intensity (default 2.0; higher is more visible)",
   "config.youkaishomecoming.common.feedback.maxCameraDurationTicks": "Camera Shake Duration Cap",
   "config.youkaishomecoming.common.feedback.maxCameraDurationTicks.tooltip": "Server cap for one camera shake cue duration in ticks",
+  "config.youkaishomecoming.common.feedback.maxSoundVolume": "Sound Volume Cap",
+  "config.youkaishomecoming.common.feedback.maxSoundVolume.tooltip": "Server cap for one spell sound cue volume (default 4.0)",
   "config.youkaishomecoming.common.feedback.maxRadius": "Feedback Radius Cap",
   "config.youkaishomecoming.common.feedback.maxRadius.tooltip": "Maximum broadcast radius for feedback cues in blocks",
   "config.youkaishomecoming.common.feedback.maxCuesPerContext": "Feedback Cues per Context",

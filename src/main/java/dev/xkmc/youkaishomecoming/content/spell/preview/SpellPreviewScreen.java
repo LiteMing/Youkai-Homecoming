@@ -329,6 +329,7 @@ public class SpellPreviewScreen extends Screen {
 				() -> actionListPanel.linkedInvulnerabilityFreezeAction(actionListPanel.getSelectedPath()),
 				this::onInvulnerabilityFreezeLinkEdited
 		);
+		actionEditorPanel.setCardTypeSupplier(this::currentCardType);
 		actionEditorPanel.setPhaseOptions(() -> List.copyOf(phaseController.getPhaseList()), phaseController::getPhaseOptionLabel);
 		actionEditorPanel.setSpellOptions(spellController::getSpellOptions, spellController::getSpellOptionLabel);
 		actionEditorPanel.setToggleDisableCallback(() -> {

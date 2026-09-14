@@ -116,6 +116,7 @@ public class ActionEditorPanel {
 	private Consumer<SpellInitializationLinks.Kind> initializationLinkSelector = kind -> {};
 	private Supplier<SpellAction> invulnerabilityFreezeSupplier = () -> null;
 	private Consumer<SpellAction> invulnerabilityFreezeUpdater = action -> {};
+	private Supplier<SpellCardType> cardTypeSupplier = () -> SpellCardType.NORMAL;
 
 	private int x, y, w, h;
 	private SpellAction currentAction;
@@ -252,6 +253,11 @@ public class ActionEditorPanel {
 			Consumer<SpellAction> linkUpdater) {
 		this.invulnerabilityFreezeSupplier = linkSupplier != null ? linkSupplier : () -> null;
 		this.invulnerabilityFreezeUpdater = linkUpdater != null ? linkUpdater : action -> {};
+	}
+
+	/** Supplies the owning definition type so new nodes can use type-specific safe defaults. */
+	public void setCardTypeSupplier(Supplier<SpellCardType> supplier) {
+		this.cardTypeSupplier = supplier != null ? supplier : () -> SpellCardType.NORMAL;
 	}
 
 	public void refreshCurrentView() {
@@ -494,15 +500,33 @@ public class ActionEditorPanel {
 	}
 
 	private void addTypeButton(String type) {
-		String marker = SpellEditorNodeLabels.actionMarker(createDefaultAction(type));
+		String marker = SpellEditorNodeLabels.actionMarker(createDefaultEditorAction(type));
 		addFullWidthButton(marker + SpellEditorLocalization.actionName(type), () -> selectType(type));
 	}
 
 	private void selectType(String type) {
-		SpellAction action = createDefaultAction(type);
+		SpellAction action = createDefaultEditorAction(type);
 		typeSelectorMode = false;
 		if (typeSelectorCallback != null) {
 			typeSelectorCallback.accept(action);
+		}
+	}
+
+	private SpellAction createDefaultEditorAction(String type) {
+		SpellAction action = createDefaultAction(type);
+		if (action instanceof FireDanmakuAction danmaku && currentEditorCardType().isNonSpell()) {
+			return danmaku.withHitBehaviorEntity(HitBehavior.DISCARD)
+					.withHitBehaviorBlock(HitBehavior.DISCARD);
+		}
+		return action;
+	}
+
+	private SpellCardType currentEditorCardType() {
+		try {
+			SpellCardType type = cardTypeSupplier.get();
+			return type == null ? SpellCardType.NORMAL : type;
+		} catch (RuntimeException ignored) {
+			return SpellCardType.NORMAL;
 		}
 	}
 

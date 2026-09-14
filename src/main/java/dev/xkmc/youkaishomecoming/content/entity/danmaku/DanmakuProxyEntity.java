@@ -305,7 +305,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		if (Double.compare(power, validatedNonSpellPower) != 0) {
 			try {
 				// Recheck before executing count-dependent loops at the new Power.
-				NonSpellValidator.validate(runtime.getDefinition(), nonSpellRank, power);
+				NonSpellValidator.validateForPlayer(runtime.getDefinition(), nonSpellRank, power);
 				validatedNonSpellPower = power;
 			} catch (SpellAnalysisException rejected) {
 				ownerPlayer.displayClientMessage(DynamicSpellItem.nonSpellRejectedMessage(rejected), false);

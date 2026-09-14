@@ -918,6 +918,15 @@ public final class SpellAnalyzerSelfCheck {
 					NonSpellValidator.validate(parse(NON_SPELL_SHOOTER), tier1)));
 			check("non-spell rejects non-billboard projectiles", rejects(() ->
 					NonSpellValidator.validate(parse(NON_SPELL_NON_BILLBOARD), tier1)));
+			if (SpellCapabilityPolicies.currentPolicy(SpellCapability.EXPERIMENTAL_FIRE)
+					== SpellCapabilityPolicy.EXPERIMENTAL) {
+				check("permission-aware non-spell permits policy-gated projectile", !rejects(() ->
+						NonSpellValidator.validateForPlayer(parse(NON_SPELL_NON_BILLBOARD), tier1)));
+			}
+			check("permission-aware non-spell keeps terminal collision boundary", rejects(() ->
+					NonSpellValidator.validateForPlayer(parse(NON_SPELL_CONTINUE), tier1)));
+			check("permission-aware non-spell keeps feedback-only hit boundary", rejects(() ->
+					NonSpellValidator.validateForPlayer(parse(NON_SPELL_HOOK_EMITTER), tier1)));
 			check("non-spell presentation nodes use the dedicated rejection type",
 					rejectsAsPresentationNode(() -> NonSpellValidator.validate(parse(NON_SPELL_PRESENTATION), tier1)));
 			String overlap = rejectMessage(() ->

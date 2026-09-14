@@ -189,8 +189,19 @@ public final class SpellAnalyzer {
 
 	/** Count bounds and the caller's non-spell ceiling must use the same power. */
 	public static SpellAnalysis analyzeNonSpell(SpellDefinition definition, SpellAnalysisLimits limits, double power) {
+		return analyzeNonSpell(definition, limits, power, java.util.Set.of());
+	}
+
+	/**
+	 * Non-spell analysis with capability policy exceptions supplied by the cast
+	 * boundary. Structural and performance limits remain unchanged; the runtime
+	 * still filters capabilities the current player cannot execute.
+	 */
+	public static SpellAnalysis analyzeNonSpell(SpellDefinition definition, SpellAnalysisLimits limits, double power,
+			java.util.Set<SpellCapability> allowedCapabilities) {
 		return new SpellAnalyzer(definition, SpellAnalysisProfile.CERTIFICATION, limits,
-				java.util.Set.of(), false, NumberBounds.of(power)).run();
+				allowedCapabilities == null ? java.util.Set.of() : java.util.Set.copyOf(allowedCapabilities),
+				false, NumberBounds.of(power)).run();
 	}
 
 	/**

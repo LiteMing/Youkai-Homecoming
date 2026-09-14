@@ -524,7 +524,7 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		if (nonSpell && def != null && player instanceof ServerPlayer sp
 				&& !NonSpellLimiterBypass.isEnabled(sp)) {
 			try {
-				NonSpellValidator.validate(def, getRank(stack), GrazeHelper.getEffectivePowerLevel(sp));
+				NonSpellValidator.validateForPlayer(def, getRank(stack), GrazeHelper.getEffectivePowerLevel(sp));
 			} catch (SpellAnalysisException rejected) {
 				sp.displayClientMessage(nonSpellRejectedMessage(rejected), false);
 				return false;

@@ -20,6 +20,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +41,24 @@ public final class NonSpellValidator {
 
 	/** Use the same current power for count expressions and the per-tick ceiling. */
 	public static void validate(SpellDefinition definition, SpellCardRank rank, double power) {
+		validateInternal(definition, rank, power, false);
+	}
+
+	/**
+	 * Player cast path: capability policy is enforced by the shared runtime gate.
+	 * Non-spell-specific safety rules below still reject structures that cannot be
+	 * made safe by skipping an individual node.
+	 */
+	public static void validateForPlayer(SpellDefinition definition, SpellCardRank rank) {
+		validateForPlayer(definition, rank, 0);
+	}
+
+	public static void validateForPlayer(SpellDefinition definition, SpellCardRank rank, double power) {
+		validateInternal(definition, rank, power, true);
+	}
+
+	private static void validateInternal(SpellDefinition definition, SpellCardRank rank, double power,
+			boolean permissionAware) {
 		if (definition == null) throw new SpellAnalysisException("Non-spell definition is missing");
 		if (rank == null) rank = SpellCardRank.LESSER_WISDOM;
 		if (definition.itemForm.casterMoves()) {
@@ -49,10 +68,10 @@ public final class NonSpellValidator {
 			throw new SpellAnalysisException("Non-spells cannot declare spell health");
 		}
 		for (PhaseDefinition phase : definition.phases.values()) {
-			checkList(phase.onEnter);
-			checkList(phase.onTick);
-			checkList(phase.onExit);
-			checkList(phase.onDamage);
+			checkList(phase.onEnter, permissionAware);
+			checkList(phase.onTick, permissionAware);
+			checkList(phase.onExit, permissionAware);
+			checkList(phase.onDamage, permissionAware);
 		}
 		SpellAnalysisLimits base = SpellAnalysisLimits.certification();
 		int lifetime = Math.max(1, YHModConfig.COMMON.nonSpellMaxLifetimeTicks.get());
@@ -62,24 +81,35 @@ public final class NonSpellValidator {
 				base.maxPeakAlive(), base.maxProjectileTicks(),
 				Math.max(1, YHModConfig.COMMON.nonSpellMaxHookExecutions.get()), 1,
 				base.certificationWindowTicks());
-		SpellAnalyzer.analyzeNonSpell(definition, limits, power);
+		var allowedCapabilities = permissionAware ? experimentalCapabilities(definition) : java.util.Set.<SpellCapability>of();
+		SpellAnalyzer.analyzeNonSpell(definition, limits, power, allowedCapabilities);
 	}
 
-	private static void checkList(List<SpellAction> actions) {
-		for (SpellAction action : actions) check(action);
+	private static java.util.Set<SpellCapability> experimentalCapabilities(SpellDefinition definition) {
+		EnumSet<SpellCapability> result = EnumSet.noneOf(SpellCapability.class);
+		for (SpellCapability capability : SpecialNodeCounter.capabilities(definition)) {
+			if (SpellCapabilityPolicies.currentPolicy(capability) == SpellCapabilityPolicy.EXPERIMENTAL) {
+				result.add(capability);
+			}
+		}
+		return result;
 	}
 
-	private static void check(SpellAction action) {
+	private static void checkList(List<SpellAction> actions, boolean permissionAware) {
+		for (SpellAction action : actions) check(action, permissionAware);
+	}
+
+	private static void check(SpellAction action, boolean permissionAware) {
 		SpellAction inner = action;
 		if (inner instanceof SpellActions.DisabledAction disabled) {
 			inner = disabled.inner();
 		}
 		SpellCapability capability = SpecialNodeCounter.capability(inner);
-		// Advanced emitters are structurally incompatible with non-spells. Keep this
-		// gate closed even if an administrator relaxes the general capability policy;
-		// /yhspell proxy remains the explicit force-test route.
-		if (capability == SpellCapability.EXPERIMENTAL_FIRE
-				|| SpecialNodeCounter.policy(inner) == SpellCapabilityPolicy.EXPERIMENTAL) {
+		// The strict analysis entrypoint retains the historical non-spell capability
+		// ceiling. The player path below this branch uses the shared runtime gate so
+		// experimental nodes can be skipped for players who have not unlocked them.
+		if (!permissionAware && (capability == SpellCapability.EXPERIMENTAL_FIRE
+				|| SpecialNodeCounter.policy(inner) == SpellCapabilityPolicy.EXPERIMENTAL)) {
 			throw new SpellAnalysisException("Non-spells cannot use experimental nodes");
 		}
 		if (inner instanceof SetSpellHealthAction)
@@ -122,14 +152,14 @@ public final class NonSpellValidator {
 			shooter.mover().ifPresent(mover -> checkMover(mover, shooter.lifetime(), maxAbs(shooter.speed())));
 		}
 		if (inner instanceof SpellActions.ConditionalAction conditional) {
-			checkList(conditional.ifTrue());
-			checkList(conditional.ifFalse());
+			checkList(conditional.ifTrue(), permissionAware);
+			checkList(conditional.ifFalse(), permissionAware);
 		}
-		if (inner instanceof SpellActions.SequenceAction sequence) checkList(sequence.actions());
-		if (inner instanceof SpellActions.RepeatAction repeat) checkList(repeat.body());
-		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.DelayAction delay) checkList(delay.body());
-		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.BurstAction burst) checkList(burst.body());
-		if (inner instanceof SpawnShooterAction shooter) checkList(shooter.body());
+		if (inner instanceof SpellActions.SequenceAction sequence) checkList(sequence.actions(), permissionAware);
+		if (inner instanceof SpellActions.RepeatAction repeat) checkList(repeat.body(), permissionAware);
+		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.DelayAction delay) checkList(delay.body(), permissionAware);
+		if (inner instanceof dev.xkmc.youkaishomecoming.content.spell.action.BurstAction burst) checkList(burst.body(), permissionAware);
+		if (inner instanceof SpawnShooterAction shooter) checkList(shooter.body(), permissionAware);
 	}
 
 	/**

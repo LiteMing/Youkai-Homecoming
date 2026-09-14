@@ -8,7 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-/** Portable YH data, not an OYSM model file. Shared by SavedData, scripts and the editor. */
+/** Portable YH data, not an OYSM model file. Shared by the global JSON library, scripts and the editor. */
 public record YsmModelProfile(String model, Map<String, Preset> presets, Map<Trigger, String> triggers) {
 
 	public static final int FORMAT = 1;

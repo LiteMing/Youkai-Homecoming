@@ -21,6 +21,8 @@ public final class YsmPreviewDockPanel implements DockPanel {
 	private final YsmEditorController editor;
 	private int x, y, w, h;
 	private float yaw = 180, pitch, zoom = 1;
+	private float panX, panY;
+	private boolean faceView;
 	private boolean dragging;
 	private final List<Button> buttons = new ArrayList<>();
 	public YsmPreviewDockPanel(YsmEditorController editor) { this.editor = editor; }
@@ -37,6 +39,8 @@ public final class YsmPreviewDockPanel implements DockPanel {
 		add("preview_stop", editor::stopPreview);
 		add("preview_pause", editor::togglePause);
 		add("preview_reset", editor::resetPreview);
+		add("preview_face", () -> { faceView = !faceView; zoom = 1; panX = panY = pitch = 0; yaw = 180; });
+		add("save_preview", editor::savePreview);
 	}
 	private void add(String key, Runnable action) {
 		int index = buttons.size(), width = Math.max(18, (w - 16) / 2);
@@ -47,14 +51,17 @@ public final class YsmPreviewDockPanel implements DockPanel {
 		graphics.fill(x, y, x + w, y + h, 0xff121b23);
 		if (w < 30 || h < 80) return;
 		graphics.enableScissor(x, y, x + w, y + h);
+		buttons.get(4).setMessage(text(faceView ? "preview_full" : "preview_face"));
+		buttons.get(5).active = editor.profile() != null && editor.mayWriteWorld() && !editor.waiting();
 		buttons.forEach(button -> button.render(graphics, mouseX, mouseY, partialTick));
 		var font = Minecraft.getInstance().font;
-		int footer = Math.max(y + 56, y + h - 70);
-		int size = Math.max(0, footer - y - 58);
+		int footer = Math.max(y + 78, y + h - 70);
+		int size = Math.max(0, footer - y - 80);
 		var holder = editor.preview();
 		if (holder != null && !editor.model().isEmpty() && size > 30) {
-			int scale = Math.max(1, (int) (Math.min(w * .36, size * .43) * zoom));
-			renderModel(graphics, holder.getFakeCaster(), x + 1, y + 52, w - 2, footer - y - 52, scale, yaw, pitch);
+			int scale = Math.max(1, (int) (Math.min(w * .36, size * .43) * zoom * (faceView ? 2 : 1)));
+			renderModel(graphics, holder.getFakeCaster(), x + 1, y + 74, w - 2, footer - y - 74, scale, yaw, pitch,
+					faceView, panX, panY);
 		}
 		int lineY = footer + 3;
 		for (Component line : List.of(text("preview_state", text("trigger." + editor.previewState().id()), editor.paused() ? "||" : ">"), text("preview_gestures"), editor.status())) {
@@ -69,6 +76,10 @@ public final class YsmPreviewDockPanel implements DockPanel {
 	/** Shared by the main viewport and the model picker's isolated hover preview. */
 	static void renderModel(GuiGraphics graphics, LivingEntity entity, int left, int top, int width, int height,
 			int scale, float yaw, float pitch) {
+		renderModel(graphics, entity, left, top, width, height, scale, yaw, pitch, false, 0, 0);
+	}
+	private static void renderModel(GuiGraphics graphics, LivingEntity entity, int left, int top, int width, int height,
+			int scale, float yaw, float pitch, boolean face, float panX, float panY) {
 		entity.yBodyRotO = entity.yBodyRot = yaw;
 		entity.yHeadRotO = entity.yHeadRot = yaw;
 		entity.setYRot(yaw);
@@ -85,7 +96,9 @@ public final class YsmPreviewDockPanel implements DockPanel {
 		try {
 			RenderSystem.depthMask(true);
 			RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
-			InventoryScreen.renderEntityInInventory(graphics, left + width / 2, top + height - 8, scale,
+			int centerX = left + width / 2 + Math.round(panX);
+			int originY = top + (face ? height / 2 + Math.round(entity.getEyeHeight() * scale) : height - 8) + Math.round(panY);
+			InventoryScreen.renderEntityInInventory(graphics, centerX, originY, scale,
 					new Quaternionf().rotationZ((float) Math.PI).mul(tilt), tilt, entity);
 		} finally {
 			graphics.flush();
@@ -105,7 +118,9 @@ public final class YsmPreviewDockPanel implements DockPanel {
 	}
 	@Override public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
 		if (!dragging) return false;
-		yaw += (float) dx; pitch = Mth.clamp(pitch + (float) dy, -60, 60); return true;
+		if (button == 1) { panX += (float) dx; panY += (float) dy; }
+		else { yaw += (float) dx; pitch = Mth.clamp(pitch + (float) dy, -60, 60); }
+		return true;
 	}
 	@Override public boolean mouseReleased(double mx, double my, int button) { boolean wasDragging = dragging; dragging = false; return wasDragging; }
 	@Override public boolean mouseScrolled(double mx, double my, double amount) {

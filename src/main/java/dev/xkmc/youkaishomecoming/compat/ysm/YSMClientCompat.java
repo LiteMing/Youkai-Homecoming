@@ -122,6 +122,7 @@ public class YSMClientCompat {
 		if (delegatedRenderDepth > 0) {
 			return false;
 		}
+		YsmClientPresentationBridge.renderOutcome(e, false);
 		RenderRequest request = resolveRenderRequest(e);
 		if (!LOADED || unavailable || request == null) {
 			return false;
@@ -133,7 +134,9 @@ public class YSMClientCompat {
 		delegatedRenderDepth++;
 		try (var frame = YsmClientPresentationBridge.beforeRender(e, request.modelId(), request.presentation())) {
 			Object result = method.invoke(null, e, request.modelId(), request.textureName(), request.animationHint(), yaw, pTick, pose, buffer, light);
-			return result instanceof Boolean value && value;
+			boolean rendered = result instanceof Boolean value && value;
+			YsmClientPresentationBridge.renderOutcome(e, rendered);
+			return rendered;
 		} catch (IllegalAccessException | InvocationTargetException ex) {
 			unavailable = true;
 			YoukaisHomecoming.LOGGER.warn("Failed to delegate youkai rendering to Yes Steve Model", ex);

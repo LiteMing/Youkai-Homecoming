@@ -2,6 +2,7 @@ package dev.xkmc.youkaishomecoming.compat.ysm;
 
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
@@ -13,13 +14,14 @@ public final class YsmProfileServerHandler {
 	public static void handle(@Nullable ServerPlayer player, YsmProfileRequestToServer request) {
 		if (player == null || player.getServer() == null) return;
 		var server = player.getServer();
-		var data = YsmProfileData.get(server);
 		YsmProfileData.Entry entry = null;
 		String id = request.requestId != null && request.requestId.length() <= 64 ? request.requestId : "";
 		try {
 			if (request.action == null || request.action.length() > 32 || request.target == null || request.target.length() > 64
 					|| request.preset == null || request.preset.length() > 128)
 				throw new IllegalArgumentException("Invalid profile request fields");
+			var data = YsmProfileData.get(server);
+			if (("get".equals(request.action) || "save".equals(request.action)) && data.reload()) syncToAll(server);
 			entry = data.entry(request.model);
 			if ("get".equals(request.action)) {
 				reply(player, entry, id, true, "loaded");
@@ -57,9 +59,28 @@ public final class YsmProfileServerHandler {
 
 	public static void syncToPlayer(ServerPlayer player) {
 		if (player.getServer() == null) return;
+		var data = YsmProfileData.get(player.getServer());
+		try {
+			if (data.reload()) {
+				syncToAll(player.getServer());
+				return;
+			}
+		} catch (IllegalArgumentException ex) {
+			YoukaisHomecoming.LOGGER.warn("Keeping last valid YSM preset snapshot on player login: {}", ex.getMessage());
+		}
+		syncSnapshot(player, data);
+	}
+
+	public static void syncToAll(MinecraftServer server) {
+		var data = YsmProfileData.get(server);
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) syncSnapshot(player, data);
+	}
+
+	private static void syncSnapshot(ServerPlayer player, YsmProfileData data) {
+		// Reset first: models removed from the server JSON must also disappear on every client.
 		YsmProfileSyncToClient reset = new YsmProfileSyncToClient();
 		reset.reset = true;
 		YoukaisHomecoming.HANDLER.toClientPlayer(reset, player);
-		YsmProfileData.get(player.getServer()).entries().values().forEach(entry -> reply(player, entry, "", true, ""));
+		data.entries().values().forEach(entry -> reply(player, entry, "", true, ""));
 	}
 }

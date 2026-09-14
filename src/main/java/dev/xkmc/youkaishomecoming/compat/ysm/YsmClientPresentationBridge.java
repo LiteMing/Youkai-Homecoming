@@ -138,13 +138,15 @@ public final class YsmClientPresentationBridge {
 		if (!(entity instanceof YsmRenderOverrideTarget target)) return Frame.EMPTY;
 		long now = target.getYsmPresentationTime();
 		ClientState client = ENTITIES.get(entity);
+		boolean preview = YsmClientProfiles.isPreview(entity);
 		if (state.body() == null && state.parameters().isEmpty()) {
-			if (client == null) return Frame.EMPTY;
+			if (client == null && !preview) return Frame.EMPTY;
 		}
 		if (client == null) {
 			client = new ClientState();
 			ENTITIES.put(entity, client);
 		}
+		client.rendered = null;
 		YsmParameterOverlay overlay = new YsmParameterOverlay();
 		boolean applyingParameters = client.parameterOverlay != null;
 		try {
@@ -156,7 +158,7 @@ public final class YsmClientPresentationBridge {
 			if (animatable != null) access.await.invoke(animatable);
 			closeParameterOverlay(client);
 			client.animatable = new WeakReference<>(animatable);
-			if (state.body() == null && state.parameters().isEmpty()) {
+			if (state.body() == null && state.parameters().isEmpty() && !preview) {
 				client.replayKey = "";
 				client.clipStatus = "";
 				client.suppressed = false;
@@ -176,6 +178,8 @@ public final class YsmClientPresentationBridge {
 			updatePlayback(client, state, entity, animatable, catalog);
 			client.applied = "";
 			client.skipped = "";
+			client.renderedModel = model;
+			client.rendered = state;
 			if (state.parameters().isEmpty()) {
 				client.parameterBases.clear();
 				return Frame.EMPTY;
@@ -215,6 +219,7 @@ public final class YsmClientPresentationBridge {
 			}
 			return Frame.EMPTY;
 		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
+			client.rendered = null;
 			if (applyingParameters) {
 				parameterFailure = failure(ex);
 				parameters = null;
@@ -284,6 +289,57 @@ public final class YsmClientPresentationBridge {
 		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
 			return null;
 		}
+	}
+
+	/** One async join for a whole form; read the preview's real inputs, including model-initialized defaults. */
+	@Nullable
+	public static Map<String, Float> previewInputs(LivingEntity entity, String model, List<String> names) {
+		if (!YsmClientProfiles.isPreview(entity) || !YSMClientCompat.isLoaded()) return null;
+		try {
+			RuntimeAccess access = runtimeAccess();
+			ParameterAccess values = parameterAccess();
+			CatalogAccess models = catalogAccess();
+			if (access == null || values == null || models == null) return null;
+			Object animatable = access.animatable(entity);
+			if (animatable == null) return null;
+			access.await.invoke(animatable);
+			if (!Boolean.TRUE.equals(access.ready.invoke(animatable)) || !model.equals(access.modelId.invoke(animatable))
+					|| access.assembly.invoke(animatable) != models.assembly(model)) return null;
+			Object storage = values.storage.invoke(access.processor.invoke(animatable));
+			var inputs = new LinkedHashMap<String, Float>();
+			for (String name : names) {
+				var slot = values.slot(storage, name);
+				Object value = slot == null ? null : slot.get();
+				if (value instanceof Number number && Float.isFinite(number.floatValue())) inputs.put(name, number.floatValue());
+			}
+			return inputs;
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
+			return null;
+		}
+	}
+
+	public static YsmModelProfile.Preset capturePreview(LivingEntity entity, String model, String description, int ticks) {
+		if (!YsmClientProfiles.isPreview(entity)) throw new IllegalArgumentException("preview_capture_unavailable");
+		var catalog = catalog(model);
+		if (catalog.status() != YsmModelCatalog.Status.READY) throw new IllegalArgumentException("preview_capture_unavailable");
+		var resolved = YsmClientProfiles.resolve(entity, model);
+		ClientState client = ENTITIES.get(entity);
+		if (client == null || !client.renderSuccessful || !model.equals(client.renderedModel) || !resolved.equals(client.rendered))
+			throw new IllegalArgumentException("preview_capture_wait");
+		if (client.suppressed || !client.skipped.isEmpty()) throw new IllegalArgumentException("preview_capture_unapplied");
+		if (resolved.body() == null && entity instanceof YsmRenderOverrideTarget target
+				&& (target.getYsmSignals().state() != YsmModelProfile.Trigger.IDLE
+				|| target.getYsmSignals().combatMode() != YsmPresentationSignals.CombatMode.NONE))
+			throw new IllegalArgumentException("preview_capture_state");
+		var inputs = previewInputs(entity, model, YsmPresetCapture.parameterNames(catalog, resolved));
+		if (inputs == null) throw new IllegalArgumentException("preview_capture_wait");
+		return YsmPresetCapture.capture(catalog, resolved, inputs, description, ticks);
+	}
+
+	/** A failed provider render must never authorize capture of the vanilla fallback as a YSM preset. */
+	static void renderOutcome(LivingEntity entity, boolean rendered) {
+		var client = ENTITIES.get(entity);
+		if (client != null) client.renderSuccessful = rendered;
 	}
 
 	public static Map<String, String> diagnostics(LivingEntity entity) {
@@ -374,6 +430,9 @@ public final class YsmClientPresentationBridge {
 		private String replayKey = "";
 		private boolean suppressed;
 		private String clipStatus = "", applied = "", skipped = "";
+		private String renderedModel = "";
+		private YsmPresentationResolver.Resolved rendered;
+		private boolean renderSuccessful;
 	}
 
 	private static CatalogAccess catalogAccess() {

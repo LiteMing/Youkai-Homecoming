@@ -23,6 +23,8 @@ public final class ModelPresentationTest {
 		compositionContracts();
 		acknowledgementContracts();
 		catalogContracts();
+		captureContracts();
+		remiliaAuthoringContracts();
 		overlayContracts();
 		if (Boolean.getBoolean("yh.test.oysm")) installedOysmContracts();
 		else {
@@ -140,6 +142,100 @@ public final class ModelPresentationTest {
 		var catalog = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra5"), List.of(menu), List.of(radio));
 		check("known parameter validated", !catalog.accepts(variable, 3));
 		check("raw numeric variables remain usable", catalog.accepts("v.ysmemoji", 1));
+		var child = YsmModelCatalog.wheelEntry("Actions", "extra5", "Smile", List.of("extra5"), Map.of());
+		var hierarchy = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra5"), List.of(menu, submenu, child), List.of(radio));
+		equal("root wheel never flattens author submenus", hierarchy.wheelEntries(""), List.of(menu, submenu));
+		equal("submenu contains only its authored entries", hierarchy.wheelEntries("Actions"), List.of(child));
+		var decimal = new YsmModelCatalog.Control("face", "Face", "Eyes", "", "range", "v.eyes", "v.eyes", -0.3, 0.3, 0.05, List.of());
+		check("float wire endpoints remain valid for decimal ranges", decimal.accepts(-0.3f) && decimal.accepts(0.3f));
+		equal("slider snaps to author step", decimal.sliderValue(0.61), 0.05f);
+		equal("slider clamps after quantization", decimal.sliderValue(5), 0.3f);
+	}
+
+	private static void captureContracts() {
+		var face = new YsmModelCatalog.Control("face", "Face", "Mouth", "", "range", "v.face", "v.face", 0, 10, 1, List.of());
+		var hat = new YsmModelCatalog.Control("look", "Look", "Hat", "", "checkbox", "v.hat", "v.hat", 0, 1, 1, List.of());
+		var catalog = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra6", "extra7"), List.of(), List.of(face, hat));
+		var rendered = new YsmPresentationResolver.Resolved(new YsmPresentationResolver.Body("extra7", "current", "PREVIEW", true),
+				Map.of("v.face", 2f, "v.bound", 4f), false, false);
+		var actual = Map.of("v.face", 3f, "v.hat", 0f, "v.bound", 4f, "v.animation_output", 500f);
+		var preset = YsmPresetCapture.capture(catalog, rendered, actual, "Visible face", 30);
+		equal("capture uses visible body", preset.clip(), "extra7");
+		equal("capture uses evaluated input, not requested draft value", preset.parameters().get("v.face"), 3f);
+		equal("untouched zero is saved explicitly", preset.parameters().get("v.hat"), 0f);
+		equal("binding input is part of the snapshot", preset.parameters().get("v.bound"), 4f);
+		check("arbitrary animation outputs are not captured", !preset.parameters().containsKey("v.animation_output"));
+		var profile = new YsmModelProfile("test/capture", Map.of("face", preset), Map.of());
+		equal("capture survives global JSON round trip", YsmModelProfile.fromJson(profile.toJson()), profile);
+		var replay = YsmPresentationState.EMPTY.applyPreset(profile.model(), preset, 100, 0, SOURCE, 32);
+		var reapplied = YsmPresentationResolver.resolve(profile.model(), profile, YsmPresentationSignals.EMPTY, replay, 101,
+				Map.of("v.face", 9f, "v.hat", 1f, "v.bound", 8f));
+		equal("snapshot reproduces appearance on a differently bound entity", reapplied.parameters(), preset.parameters());
+		equal("live adjustment preserves animation replay sequence", replay.setParameter("v.face", 1, 101, 0, SOURCE, 32).sequence(), replay.sequence());
+		reject("missing defaults are never silently dropped or zeroed", () -> YsmPresetCapture.capture(catalog, rendered, Map.of("v.face", 1f), "", 20));
+		reject("invalid native input prevents a misleading snapshot", () -> YsmPresetCapture.capture(catalog, rendered,
+				Map.of("v.face", 1f, "v.hat", 3f, "v.bound", 4f), "", 20));
+		reject("nonfinite native input is rejected", () -> YsmPresetCapture.capture(catalog, rendered,
+				Map.of("v.face", Float.NaN, "v.hat", 0f, "v.bound", 4f), "", 20));
+		reject("missing model cannot create a snapshot", () -> YsmPresetCapture.capture(
+				YsmModelCatalog.unavailable(YsmModelCatalog.Status.MODEL_NOT_READY, "loading"), rendered, actual, "", 20));
+		reject("partial metadata cannot claim a complete snapshot", () -> YsmPresetCapture.capture(
+				new YsmModelCatalog(YsmModelCatalog.Status.READY, "form API failed", catalog.animations(), List.of(), List.of()), rendered, actual, "", 20));
+		var missingClip = new YsmPresentationResolver.Resolved(new YsmPresentationResolver.Body("not_a_clip", "", "PREVIEW", true), Map.of(), false, false);
+		reject("unavailable clip is not saved as the visible body", () -> YsmPresetCapture.capture(catalog, missingClip, actual, "", 20));
+		var noBody = new YsmPresentationResolver.Resolved(null, Map.of(), false, false);
+		equal("default body remains expression-only", YsmPresetCapture.capture(catalog, noBody, actual, "", 20).clip(), "");
+		var excessive = new java.util.LinkedHashMap<String, Float>();
+		for (int i = 0; i <= YsmPresentationState.WIRE_MAX_PARAMETERS; i++) excessive.put("v.input_" + i, 0f);
+		reject("oversize snapshot is not truncated", () -> YsmPresetCapture.parameterNames(catalog,
+				new YsmPresentationResolver.Resolved(null, excessive, false, false)));
+	}
+
+	/** Fixture uses the shipped author's real wheel/forms, not a hard-coded extraN-to-form heuristic. */
+	private static void remiliaAuthoringContracts() throws Exception {
+		var root = com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(java.nio.file.Path.of(
+				"src/main/resources/assets/youkaishomecoming/yhysm/remilia/ysm.json"))).getAsJsonObject();
+		var props = root.getAsJsonObject("properties");
+		var controls = new java.util.ArrayList<YsmModelCatalog.Control>();
+		var groups = new java.util.LinkedHashMap<String, Object>();
+		for (var element : props.getAsJsonArray("extra_animation_buttons")) {
+			var group = element.getAsJsonObject();
+			String id = group.get("id").getAsString();
+			groups.put(id, group);
+			for (var form : group.getAsJsonArray("config_forms")) {
+				var entry = form.getAsJsonObject();
+				String type = entry.get("type").getAsString(), parameter = entry.get("value").getAsString();
+				var choices = new java.util.ArrayList<YsmModelCatalog.Choice>();
+				if (type.equals("radio")) for (var choice : entry.getAsJsonObject("labels").entrySet())
+					choices.add(YsmModelCatalog.choice(parameter, choice.getKey(), choice.getValue().getAsString()));
+				controls.add(new YsmModelCatalog.Control(id, group.get("name").getAsString(), entry.get("title").getAsString(), "", type,
+						parameter, parameter, type.equals("range") ? entry.get("min").getAsDouble() : 0,
+						type.equals("range") ? entry.get("max").getAsDouble() : 1,
+						type.equals("range") ? entry.get("step").getAsDouble() : 1, choices));
+			}
+		}
+		var wheel = new java.util.ArrayList<YsmModelCatalog.WheelEntry>();
+		List<String> clips = List.of("extra6", "extra7");
+		props.getAsJsonObject("extra_animation").entrySet().forEach(entry ->
+				wheel.add(YsmModelCatalog.wheelEntry("", entry.getKey(), entry.getValue().getAsString(), clips, groups)));
+		for (var element : props.getAsJsonArray("extra_animation_classify")) {
+			var group = element.getAsJsonObject();
+			group.getAsJsonObject("extra_animation").entrySet().forEach(entry -> wheel.add(YsmModelCatalog.wheelEntry(
+					group.get("id").getAsString(), entry.getKey(), entry.getValue().getAsString(), clips, groups)));
+		}
+		var catalog = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", clips, wheel, controls);
+		equal("all shipped Remilia native controls are editable", controls.stream().filter(YsmModelCatalog.Control::editable).count(), 31L);
+		equal("author expression submenu exposes four complete forms", catalog.wheelEntries("extra1").size(), 4);
+		equal("custom expression 1 has twelve author controls", controls.stream().filter(control -> control.group().startsWith("custom_anim1_")).count(), 12L);
+		check("root keeps author config first", catalog.wheelEntries("").get(0).configGroup().equals("extra_config"));
+		var inputs = new java.util.LinkedHashMap<String, Float>();
+		for (var control : controls) inputs.put(control.parameter(), control.type().equals("radio")
+				? control.choices().get(0).numericValue() : control.accepts(0) ? 0f : (float) control.min());
+		var visible = new YsmPresentationResolver.Resolved(new YsmPresentationResolver.Body("extra6", "", "PREVIEW", true), Map.of(), false, false);
+		var captured = YsmPresetCapture.capture(catalog, visible, inputs, "蕾米莉亚表情", 20);
+		equal("Remilia snapshot keeps all inputs and fits default 32-parameter cap", captured.parameters().size(), 31);
+		equal("Remilia author expression clip is preserved", captured.clip(), "extra6");
+		equal("unmodified custom expression defaults remain in snapshot", captured.parameters().get("v.roaming.custom_anim2_mouth_type"), 0f);
 	}
 
 	private static YsmModelProfile exampleProfile() {
@@ -159,7 +255,7 @@ public final class ModelPresentationTest {
 						YsmModelProfile.Trigger.BOSS_VICTORY, "victory"));
 	}
 
-	private static void profileContracts() {
+	private static void profileContracts() throws java.io.IOException {
 		var profile = exampleProfile();
 		equal("profile JSON round trip", YsmModelProfile.fromJson(profile.toJson()), profile);
 		equal("empty profile round trip", YsmModelProfile.fromJson(YsmModelProfile.empty("YH内置/remilia").toJson()), YsmModelProfile.empty("YH内置/remilia"));
@@ -175,7 +271,10 @@ public final class ModelPresentationTest {
 		reject("non-finite preset rejected", () -> new YsmModelProfile.Preset("", "", 20, Map.of("v.x", Float.NaN)));
 		reject("duplicate normalized parameter rejected", () -> new YsmModelProfile.Preset("", "", 20, Map.of("v.x", 1f, "variable.x", 2f)));
 		reject("oversized JSON rejected", () -> YsmModelProfile.fromJson(" ".repeat(YsmModelProfile.MAX_JSON_LENGTH + 1)));
-		var data = new YsmProfileData();
+		var directory = java.nio.file.Files.createTempDirectory("yh-model-profiles-");
+		var file = directory.resolve("presets.json");
+		var data = new YsmProfileData(file);
+		data.reload();
 		equal("unregistered profile revision", data.entry(profile.model()).revision(), 0L);
 		data.replace(profile, 0, 2);
 		equal("saved revision increments", data.entry(profile.model()).revision(), 1L);
@@ -187,8 +286,12 @@ public final class ModelPresentationTest {
 		reject("profile capacity enforced", () -> data.replace(YsmModelProfile.empty("third/model"), 0, 2));
 		data.replace(profile, 1, 1);
 		equal("lower capacity still allows existing profile update", data.entry(profile.model()).revision(), 2L);
-		var loaded = YsmProfileData.load(data.save(new CompoundTag()));
-		equal("SavedData round trip with revisions", loaded.entries(), data.entries());
+		var loaded = new YsmProfileData(file);
+		loaded.reload();
+		equal("global JSON retains model profiles", loaded.entry(profile.model()).profile(), profile);
+		equal("global JSON retains independent models", loaded.entry(other.model()).profile(), other);
+		java.nio.file.Files.delete(file);
+		java.nio.file.Files.delete(directory);
 		var bindings = new YsmOverrideData();
 		bindings.setEntity(new java.util.UUID(0, 1), YSMCompatConfig.RenderBinding.enabled("test/model", "default"));
 		equal("binding revision increments", bindings.revision(), 1L);
@@ -295,6 +398,15 @@ public final class ModelPresentationTest {
 		YsmClientProfiles.response("bind-b", true, "saved", 4, "");
 		equal("binding acknowledgements stay correlated", YsmClientProfiles.takeResponse("bind-a").revision(), 3L);
 		check("acknowledgement consumed once", YsmClientProfiles.takeResponse("save-a") == null);
+		var reset = new YsmProfileSyncToClient();
+		reset.reset = true;
+		YsmClientProfiles.receive(reset);
+		check("full server reload removes deleted profiles", YsmClientProfiles.models().isEmpty());
+		YsmClientProfiles.receive(new YsmProfileSyncToClient(first, "", true, ""));
+		equal("new server snapshot accepts its own revisions after reset", YsmClientProfiles.entry(first.profile().model()), first);
+		YsmClientProfiles.receive(new YsmProfileSyncToClient(later, "", true, ""));
+		YsmClientProfiles.receive(new YsmProfileSyncToClient(first, "", true, ""));
+		equal("stale model packet cannot overwrite server revision", YsmClientProfiles.entry(first.profile().model()), later);
 		YsmClientProfiles.clear();
 	}
 
@@ -416,6 +528,8 @@ public final class ModelPresentationTest {
 		var mouth = access.slot(storage, "v.roaming.mouth");
 		var emoji = access.slot(storage, "v.ysmemoji");
 		check("actual OYSM slots found", mouth != null && emoji != null);
+		equal("native roaming default is an actual numeric zero", mouth.get(), 0f);
+		check("missing scoped value is not invented as zero", emoji.get() == null);
 		mouth.set(4f);
 		emoji.set(7f);
 		var lease = new YsmParameterOverlay();

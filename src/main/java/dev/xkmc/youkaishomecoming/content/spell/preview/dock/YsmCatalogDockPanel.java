@@ -148,9 +148,7 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 	@Override public void closeOverlay() { super.closeOverlay(); closeCandidatePreview(); }
 	private String wheelKey(YsmModelCatalog.WheelEntry entry) { return entry.group() + "\n" + entry.id(); }
 	private void wheel(YsmModelCatalog catalog) {
-		var entries = catalog.wheel().stream()
-				.filter(entry -> wheelGroup.isEmpty() || entry.group().equals(wheelGroup))
-				.filter(entry -> entry.clipAvailable() || !entry.configGroup().isEmpty() || !entry.submenu().isEmpty()).toList();
+		var entries = catalog.wheelEntries(wheelGroup);
 		if (!wheelGroup.isEmpty()) button(text("wheel_back"), () -> { wheelGroup = wheelQuery = selectedWheel = ""; toTop(); }, true);
 		editOptions("wheel_picker", text("wheel_picker"), wheelQuery, 256, value -> {
 			wheelQuery = value;
@@ -171,13 +169,7 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 		}, true);
 	}
 	private boolean editable(YsmModelCatalog.Control control) {
-		if (control.parameter().isEmpty()) return false;
-		return switch (control.type()) {
-			case "checkbox" -> true;
-			case "radio" -> control.choices().stream().anyMatch(choice -> choice.numericValue() != null);
-			case "range" -> Double.isFinite(control.min()) && Double.isFinite(control.max()) && control.min() <= control.max();
-			default -> false;
-		};
+		return control.editable();
 	}
 	private String controlKey(YsmModelCatalog.Control control) { return control.group() + "\n" + control.parameter() + "\n" + control.title(); }
 	private String controlTitle(YsmModelCatalog.Control control) { return control.title().isBlank() ? control.parameter() : control.title(); }

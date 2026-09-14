@@ -458,7 +458,7 @@ public class SpellPreviewScreen extends Screen {
 			ysmPresets = new YsmPresetsDockPanel(ysmEditor, () -> {
 				ysmProperties.showScenarios();
 				activateDockPanel(ysmProperties);
-			});
+			}, () -> activateDockPanel(ysmCatalog));
 			ysmCatalog = new YsmCatalogDockPanel(ysmEditor);
 			ysmPreview = new YsmPreviewDockPanel(ysmEditor);
 			ysmHelp = new YsmHelpDockPanel(ysmEditor);
@@ -469,11 +469,14 @@ public class SpellPreviewScreen extends Screen {
 		int limit = Math.max(TOP_BAR_MARGIN, width - TOP_BAR_MORE_WIDTH - TOP_BAR_MARGIN - BUTTON_SPACING);
 		int bx = addTopBarButtonIfFits(TOP_BAR_MARGIN, 2, YsmEditorController.text("mode").getString(), 82,
 				btn -> switchMode(editorMode.next()), true, limit);
-		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("save_and_bind").getString(), 76,
-				btn -> ysmEditor.saveAndBind(), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("save_changes").getString(), 76,
+				btn -> saveYsmEditor(), true, limit);
+		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("presets").getString(), 100,
+				btn -> activateDockPanel(ysmPresets), true, limit);
 		bx = addTopBarButtonIfFits(bx, 2, YsmEditorController.text("scenarios").getString(), 60,
 				btn -> { ysmProperties.showScenarios(); activateDockPanel(ysmProperties); }, true, limit);
 		addTopBarOverflowEntry(YsmEditorController.text("save_profile").getString(), btn -> ysmEditor.saveProfile(), true);
+		addTopBarOverflowEntry(YsmEditorController.text("save_and_bind").getString(), btn -> ysmEditor.saveAndBind(), true);
 		addTopBarOverflowEntry(YsmEditorController.text("save_binding_only").getString(), btn -> ysmEditor.saveBinding("set"), true);
 		addTopBarOverflowEntry(YsmEditorController.text("use_in_spell").getString(), btn -> useYsmInSpellPreview(), true);
 		addTopBarOverflowEntry(YsmEditorController.text("reload_profile").getString(), btn -> ysmEditor.requestReload(), true);
@@ -490,7 +493,7 @@ public class SpellPreviewScreen extends Screen {
 		for (DockPanel panel : List.of(ysmPreview, ysmCatalog, ysmProperties, ysmPresets, ysmHelp, ysmRawJson)) panels.put(panel.dockId(), panel);
 		java.util.function.Function<java.util.Map<String, DockPanel>, DockNode> defaults = map ->
 				new DockSplit(true, .44f, new DockGroup(map.get("ysm_preview"), map.get("ysm_raw_json"), map.get("ysm_help")),
-						new DockGroup(map.get("ysm_properties"), map.get("ysm_presets"), map.get("ysm_catalog")));
+						new DockGroup(map.get("ysm_presets"), map.get("ysm_properties"), map.get("ysm_catalog")));
 		var snapshot = pendingDockLayout; pendingDockLayout = null;
 		boolean placeNewPresetTab = snapshot == null && DockSerializer.hasSavedLayout(editorMode.key())
 				&& !DockSerializer.savedLayoutContainsPanel(editorMode.key(), ysmPresets.dockId());
@@ -498,7 +501,11 @@ public class SpellPreviewScreen extends Screen {
 				: DockSerializer.loadLayout(snapshot, panels, defaults));
 		if (placeNewPresetTab) moveDockPanelBeside(ysmPresets, ysmProperties);
 		dockLayout.layout(0, TOP_BAR_HEIGHT, width, height - TOP_BAR_HEIGHT - 18);
-		dockLayout.setActiveGroup(dockLayout.findGroupContaining(ysmProperties));
+		dockLayout.setActiveGroup(dockLayout.findGroupContaining(ysmPresets));
+	}
+
+	private void saveYsmEditor() {
+		if (ysmEditor != null) ysmEditor.saveChanges();
 	}
 
 	private void confirmYsmDiscard(Runnable action) {
@@ -1953,7 +1960,8 @@ public class SpellPreviewScreen extends Screen {
 		String spellName = editorMode == EditorMode.YSM && ysmEditor != null ? ysmEditor.model()
 				: isDraftMode() ? SpellEditorLocalization.t("New Spell") : definition.id.toString();
 		if (hasUnsavedChanges()) {
-			spellName += " *";
+			spellName = editorMode == EditorMode.YSM && ysmEditor != null
+					? "* " + ysmEditor.dirtyDescription().getString() + " · " + spellName : spellName + " *";
 		}
 		String display = fitTopBarText(spellName, textRight - textLeft);
 		if (display.isEmpty()) {
@@ -2099,7 +2107,7 @@ public class SpellPreviewScreen extends Screen {
 		// or captured viewport can consume the key.
 		if (hasControlDown() && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_S) {
 			switch (editorMode) {
-				case YSM -> { if (ysmEditor != null) ysmEditor.saveProfile(); }
+				case YSM -> saveYsmEditor();
 				case MAGIC_CIRCLE -> { if (magicCircleDockPanel != null) magicCircleDockPanel.saveCircleFromTopBar(); }
 				case SPELL -> applyToEntities();
 			}

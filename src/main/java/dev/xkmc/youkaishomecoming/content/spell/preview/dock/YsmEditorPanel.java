@@ -1,9 +1,12 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview.dock;
 
 import dev.xkmc.youkaishomecoming.content.spell.preview.YsmEditorController;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmModelCatalog;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -30,11 +33,15 @@ abstract class YsmEditorPanel implements DockPanel {
 	private final Map<String, AbstractWidget> anchors = new LinkedHashMap<>();
 	private final Map<String, Picker> pickers = new LinkedHashMap<>();
 	private EditBox focused;
+	private AbstractWidget keyboardFocused, dragging;
 	private Popup popup;
 	private long completionRequest;
 	private record Row(int top, int left, Component label, AbstractWidget widget) { }
 	protected record Option(String value, Component label, Component detail) {
 		public Option(String value, Component label) { this(value, label, Component.empty()); }
+	}
+	protected record Action(Component label, Runnable run, boolean enabled, Component tooltip) {
+		public Action(Component label, Runnable run, boolean enabled) { this(label, run, enabled, label); }
 	}
 	@FunctionalInterface
 	protected interface Completion {
@@ -83,6 +90,92 @@ abstract class YsmEditorPanel implements DockPanel {
 		rows.add(new Row(cursor, 0, null, button));
 		cursor += 23;
 		return button;
+	}
+	protected void buttonRow(Action... actions) {
+		int width = Math.max(20, (w - 20 - (actions.length - 1) * 3) / actions.length);
+		for (int i = 0; i < actions.length; i++) {
+			var action = actions[i];
+			var widget = Button.builder(action.label(), ignored -> editor.attempt(action.run())).bounds(0, 0, width, 20).build();
+			widget.active = action.enabled() && !editor.waiting();
+			widget.setTooltip(Tooltip.create(action.tooltip()));
+			rows.add(new Row(cursor, i * (width + 3), null, widget));
+		}
+		cursor += 23;
+	}
+	/** Direct choices keep authored labels visible, avoiding an extra dropdown for each adjustment. */
+	protected void choiceGrid(String id, List<Option> options, String selected, int columns, Consumer<String> change) {
+		int width = Math.max(20, (w - 20 - (columns - 1) * 3) / columns);
+		for (int i = 0; i < options.size(); i++) {
+			var option = options.get(i);
+			Component title = option.value().equals(selected) ? Component.literal("\u25cf ").append(option.label()).withStyle(ChatFormatting.GREEN) : option.label();
+			var widget = Button.builder(title, ignored -> editor.attempt(() -> change.accept(option.value())))
+					.bounds(0, 0, width, 20).build();
+			widget.active = !editor.waiting();
+			widget.setTooltip(Tooltip.create(option.detail().getString().isEmpty() ? option.label() : option.label().copy().append("\n").append(option.detail())));
+			rows.add(new Row(cursor + i / columns * 23, i % columns * (width + 3), null, widget));
+			anchors.put(id + ":" + option.value(), widget);
+		}
+		cursor += (options.size() + columns - 1) / columns * 23;
+	}
+	protected void nativeControl(YsmModelCatalog.Control control, Float current, Consumer<Float> change) {
+		Component title = Component.literal(control.title().isBlank() ? control.parameter() : control.title());
+		String id = "native:" + control.group() + ":" + control.parameter();
+		if (control.type().equals("checkbox")) {
+			var widget = button(Component.literal(current == null ? "[?] " : current == 0 ? "[ ] " : "[x] ").append(title),
+					() -> change.accept(current != null && current != 0 ? 0f : 1f), current != null);
+			anchors.put(id, widget);
+			if (!control.description().isBlank()) widget.setTooltip(Tooltip.create(Component.literal(control.description())));
+		} else if (control.type().equals("range")) {
+			label(title);
+			var slider = new NativeSlider(control, current, change);
+			slider.active = current != null && control.min() < control.max() && !editor.waiting();
+			if (!control.description().isBlank()) slider.setTooltip(Tooltip.create(Component.literal(control.description())));
+			rows.add(new Row(cursor, 0, null, slider));
+			anchors.put(id, slider);
+			cursor += 24;
+		} else if (control.type().equals("radio")) {
+			label(title);
+			var options = control.choices().stream().filter(choice -> choice.numericValue() != null).map(choice -> {
+				String value = Float.toString(choice.numericValue());
+				return new Option(value, Component.literal(choice.label().isBlank() ? value : choice.label()), Component.literal(control.description()));
+			}).toList();
+			choiceGrid(id, options, current == null ? "" : Float.toString(current), w >= 320 ? 3 : 2,
+					value -> change.accept(Float.parseFloat(value)));
+		}
+	}
+
+	private final class NativeSlider extends AbstractSliderButton {
+		private final YsmModelCatalog.Control control;
+		private final Consumer<Float> change;
+		private Float displayed;
+		private NativeSlider(YsmModelCatalog.Control control, Float current, Consumer<Float> change) {
+			super(0, 0, Math.max(20, w - 20), 20, Component.empty(), current == null || control.max() == control.min() ? 0 :
+					Math.max(0, Math.min(1, (current - control.min()) / (control.max() - control.min()))));
+			this.control = control;
+			this.change = change;
+			displayed = current;
+			updateMessage();
+		}
+		@Override protected void updateMessage() {
+			setMessage(displayed == null ? YsmEditorController.text("control_waiting") : Component.literal(
+					new java.math.BigDecimal(Float.toString(displayed)).stripTrailingZeros().toPlainString()));
+		}
+		@Override protected void applyValue() {
+			float next = control.sliderValue(value);
+			value = control.max() == control.min() ? 0 : (next - control.min()) / (control.max() - control.min());
+			if (displayed == null || Float.compare(displayed, next) != 0) {
+				displayed = next;
+				editor.attempt(() -> change.accept(next));
+			}
+		}
+		@Override public boolean keyPressed(int key, int scan, int modifiers) {
+			if (active && (key == GLFW.GLFW_KEY_LEFT || key == GLFW.GLFW_KEY_RIGHT)) {
+				double step = Double.isFinite(control.step()) && control.step() > 0 ? control.step() : (control.max() - control.min()) / 100;
+				value += (key == GLFW.GLFW_KEY_LEFT ? -step : step) / (control.max() - control.min());
+				applyValue(); updateMessage(); return true;
+			}
+			return super.keyPressed(key, scan, modifiers);
+		}
 	}
 	protected void select(String id, Component label, String selected, List<Option> options, Consumer<String> change) {
 		label(label);
@@ -142,10 +235,11 @@ abstract class YsmEditorPanel implements DockPanel {
 
 	private void rebuild() {
 		String focusId = fieldId(focused);
+		String widgetId = anchors.entrySet().stream().filter(entry -> entry.getValue() == keyboardFocused).map(Map.Entry::getKey).findFirst().orElse("");
 		int caret = focused == null ? 0 : focused.getCursorPosition();
 		Popup previous = popup;
 		closeOverlay();
-		rows.clear(); fields.clear(); anchors.clear(); pickers.clear(); focused = null;
+		rows.clear(); fields.clear(); anchors.clear(); pickers.clear(); focused = null; keyboardFocused = null;
 		cursor = 6;
 		build();
 		contentHeight = cursor + 6;
@@ -154,7 +248,7 @@ abstract class YsmEditorPanel implements DockPanel {
 		if (fields.containsKey(focusId)) {
 			focus(fields.get(focusId));
 			focused.moveCursorTo(Math.min(caret, focused.getValue().length()));
-		}
+		} else if (anchors.containsKey(widgetId)) focusWidget(anchors.get(widgetId));
 		position();
 		if (previous != null && anchors.containsKey(previous.anchor)) open(previous.anchor, previous.all);
 	}
@@ -162,9 +256,13 @@ abstract class YsmEditorPanel implements DockPanel {
 		return fields.entrySet().stream().filter(entry -> entry.getValue() == box).map(Map.Entry::getKey).findFirst().orElse("");
 	}
 	private void focus(EditBox box) {
-		if (focused != null) focused.setFocused(false);
-		focused = box;
-		if (focused != null) focused.setFocused(true);
+		focusWidget(box);
+	}
+	private void focusWidget(AbstractWidget widget) {
+		if (keyboardFocused != null) keyboardFocused.setFocused(false);
+		keyboardFocused = widget;
+		focused = widget instanceof EditBox box ? box : null;
+		if (widget != null) widget.setFocused(true);
 	}
 	private void position() {
 		scroll = Math.max(0, Math.min(scroll, Math.max(0, contentHeight - h)));
@@ -175,7 +273,8 @@ abstract class YsmEditorPanel implements DockPanel {
 	}
 	public void tick() { fields.values().forEach(EditBox::tick); }
 	@Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-		if (dirty || builtVersion != editor.viewVersion()) rebuild();
+		// Parameter edits refresh other panels immediately; keep this slider alive until release.
+		if (dragging == null && (dirty || builtVersion != editor.viewVersion())) rebuild();
 		graphics.fill(x, y, x + w, y + h, 0xff1c2027);
 		graphics.enableScissor(x, y, x + w, y + h);
 		for (Row row : rows) {
@@ -308,16 +407,26 @@ abstract class YsmEditorPanel implements DockPanel {
 		if (dirty || builtVersion != editor.viewVersion()) rebuild();
 		focus(null);
 		for (Row row : rows) if (row.widget != null && row.widget.visible && row.widget.mouseClicked(mx, my, button)) {
-			if (row.widget instanceof EditBox box) focus(box);
+			// Completion arrows intentionally focus their EditBox inside the click callback.
+			if (keyboardFocused == null) focusWidget(row.widget);
+			if (row.widget instanceof AbstractSliderButton || row.widget instanceof EditBox) dragging = row.widget;
 			return true;
 		}
 		return true;
 	}
 	@Override public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
-		return focused != null && focused.mouseDragged(mx, my, button, dx, dy);
+		return dragging != null && dragging.mouseDragged(mx, my, button, dx, dy);
+	}
+	@Override public boolean mouseReleased(double mx, double my, int button) {
+		if (dragging == null) return false;
+		var released = dragging;
+		dragging = null;
+		released.mouseReleased(mx, my, button);
+		return true;
 	}
 	@Override public boolean mouseScrolled(double mx, double my, double amount) {
 		if (!isMouseOver(mx, my)) return false;
+		if (dragging != null) return true;
 		closeOverlay();
 		scroll -= (int) (amount * 30); position(); return true;
 	}
@@ -332,7 +441,7 @@ abstract class YsmEditorPanel implements DockPanel {
 				return true;
 			}
 		}
-		if (focused == null || !focused.visible) return false;
+		if (focused == null || !focused.visible) return keyboardFocused != null && keyboardFocused.visible && keyboardFocused.keyPressed(key, scan, modifiers);
 		if (key == GLFW.GLFW_KEY_TAB || key == GLFW.GLFW_KEY_DOWN) {
 			String id = fieldId(focused);
 			if (pickers.containsKey(id)) { open(id, false); return true; }
@@ -342,5 +451,5 @@ abstract class YsmEditorPanel implements DockPanel {
 	@Override public boolean charTyped(char value, int modifiers) {
 		return focused != null && focused.visible && focused.charTyped(value, modifiers);
 	}
-	@Override public void onDeactivated() { focus(null); closeOverlay(); }
+	@Override public void onDeactivated() { dragging = null; focus(null); closeOverlay(); }
 }

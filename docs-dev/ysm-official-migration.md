@@ -26,7 +26,8 @@
 | 层 | 文件 | 迁移时保留的契约 |
 | --- | --- | --- |
 | 可携带定义 | `YsmModelProfile` | `format=1`、模型 ID、命名预设、真实 clip、数值参数、trigger ID；无 provider 类名、控制器 ID、反射方法名 |
-| 世界共享数据 | `YsmProfileData`、`YsmOverrideData` | 预设按模型 revision、绑定独立 revision；服务端持久化、权限与冲突校验 |
+| 全局预设 | `YsmProfileData` | 0.30.2 起保存为游戏／服务器实例共用的 JSON；逐模型 revision、服务端权限与冲突校验、旧世界 DAT 迁移 |
+| 世界绑定 | `YsmOverrideData` | UUID/type 绑定仍属于世界，使用独立 revision |
 | 显式请求 | `YsmPresentationState`、`YHModel` | 服务端绝对时钟、到期、重播序号、模型 scope；Java/KubeJS 同一入口 |
 | 权威信号 | `YsmPresentationSignals`、`YsmPresentationRuntime` | 服务端移动/战斗边沿/受伤/beaten 状态；无客户端资产读取、不更改物理或战斗 |
 | 优先级合成 | `YsmPresentationResolver` | 身体与逐参数分层；无 Minecraft client / OYSM 类引用，契约测试可独立执行 |
@@ -41,6 +42,14 @@
 共享 profile 仍使用同一 `format=1` 契约。Editor Raw JSON 可附带 `binding`（scope/target/model/texture/parameters），
 解析后分别走既有 profile/绑定请求。绑定外观是供应商无关的数值默认值，随 UUID/type 持久化；
 旧绑定无 parameters 时为空。不把 Editor 导出扩展传给共享 profile API，不新增供应商存档格式。
+
+0.30.2 的预设主页直接使用作者轮盘层级和完整配置组，完整动画列表留在高级目录。
+`YsmPresetCapture` 只保存已成功显示的 clip、原生数值控件及生效参数；桥接层等待模型异步求值后
+批量读取输入，包括默认值，拒绝不完整快照。原始 JSON 保存保持独立，不被 UI 快照覆盖。
+滑条更新参数不改变动画重播序号；脸部视角与平移只修改隔离预览视窗。无 OYSM 时保留 JSON 编辑路径。
+Ctrl+S／顶栏保存统一提交实际修改的预设与绑定，后者仅在前者确认后发送；重试部分失败时
+只提交未保存范围。目录浏览不标记绑定修改，服务端成功回执分别清除预设／绑定星号。
+没有修改 OYSM Screen、源代码或公开反射签名；未来供应商适配仍沿现有目录和数值存储接缝处理。
 
 ## 0.28.0 场景化与符卡预览
 
@@ -101,7 +110,7 @@ animation hint 路径，供现有 YSM 上下文选择器使用。Shooter 的初�
 
 ## 数据与公开 API 的迁移策略
 
-1. **保留 YH 预设 schema 与 `YHModel` 脚本契约。** 原生模型包格式变化不直接渗入 SavedData。
+1. **保留 YH 预设 schema 与 `YHModel` 脚本契约。** 原生模型包格式变化不直接渗入 YH 的 JSON 预设库或绑定 SavedData。
 2. 模型/clip/变量 ID 若可保持原值，则预设无需转换。若官方确实改名，做显式、可审阅的导出 JSON 迁移；
    不根据 `extraN` 序号、文件夹路径或中文显示名自动猜映射。
 3. raw `play/setParameter` 故意跟随当前模型；`applyPreset` 带模型 scope。scope 不一致时暂停该覆盖，
@@ -137,6 +146,11 @@ animation hint 路径，供现有 YSM 上下文选择器使用。Shooter 的初�
 不把它作为每个 UI 提交的前置步骤，更不是实机渲染/交互/联机矩阵的替代品。
 
 ## 上游合并复核登记
+
+0.30.2 增量复核：存储、命令与快照逻辑限于 `compat/ysm`，表单限于 YSM Dock 与
+`SpellPreviewScreen` 的 YSM 分支。`YSMClientCompat` 只记录既有委托调用是否成功，未更改调用顺序、
+反射签名或重入保护。`YHModConfig` 仅更新 maxProfiles 注释，默认值不变；生成器、构建脚手架、
+上游注册及实体战斗逻辑没有新增改动。版本只提升正式 HCDRS 后缀，中文分片仍由 organizeLang 生成。
 
 - `YoukaisHomecoming.java`：增加两种 profile 包注册及命名补全 provider 初始化，保留全部上游注册/监听器。
 - `GeneralEventHandlers.java`：登录时多发送共享 profile 快照，保留其他登录处理。

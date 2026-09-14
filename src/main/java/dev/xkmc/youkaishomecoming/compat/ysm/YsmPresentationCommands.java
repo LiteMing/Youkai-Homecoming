@@ -28,6 +28,7 @@ public final class YsmPresentationCommands {
 	@SubscribeEvent
 	public static void register(RegisterCommandsEvent event) {
 		event.getDispatcher().register(Commands.literal("yhysm").requires(source -> source.hasPermission(2))
+				.then(Commands.literal("reload").executes(YsmPresentationCommands::reloadPresets))
 				.then(Commands.literal("anim")
 						.then(Commands.literal("play").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
 								.then(Commands.argument("clip", StringArgumentType.string()).suggests(YsmCommandSuggestions.CLIPS)
@@ -59,6 +60,7 @@ public final class YsmPresentationCommands {
 				.then(Commands.literal("state").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
 						.executes(YsmPresentationCommands::state)))
 				.then(Commands.literal("preset")
+						.then(Commands.literal("reload").executes(YsmPresentationCommands::reloadPresets))
 						.then(Commands.literal("list").then(Commands.argument("model", StringArgumentType.string()).suggests(YsmCommandSuggestions.MODELS)
 								.executes(YsmPresentationCommands::listPresets)))
 						.then(Commands.literal("apply").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
@@ -75,6 +77,20 @@ public final class YsmPresentationCommands {
 												.executes(ctx -> applyPreset(ctx, -1))
 												.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
 														.executes(ctx -> applyPreset(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))));
+	}
+
+	private static int reloadPresets(CommandContext<CommandSourceStack> ctx) {
+		try {
+			var server = ctx.getSource().getServer();
+			var data = YsmProfileData.get(server);
+			data.reload();
+			YsmProfileServerHandler.syncToAll(server);
+			ctx.getSource().sendSuccess(() -> Component.translatable("commands.youkaishomecoming.model.profiles_reloaded", data.entries().size()), true);
+			return 1;
+		} catch (IllegalArgumentException ex) {
+			ctx.getSource().sendFailure(Component.translatable("commands.youkaishomecoming.model.profiles_reload_failed", ex.getMessage()));
+			return 0;
+		}
 	}
 
 	private static int listPresets(CommandContext<CommandSourceStack> ctx) {

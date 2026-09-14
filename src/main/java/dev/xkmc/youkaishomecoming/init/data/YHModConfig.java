@@ -917,7 +917,7 @@ public class YHModConfig {
 				spellCardPresentationTicks = builder.comment("Default duration of the floating spell-card presentation, in ticks.")
 						.translation("config.youkaishomecoming.common.model_presentation.spellCardPresentationTicks")
 						.defineInRange("spellCardPresentationTicks", 40, 1, 1200);
-				modelPresentationMaxProfiles = builder.comment("Maximum server-saved model profiles per world.")
+				modelPresentationMaxProfiles = builder.comment("Maximum model profiles in the global game/server preset library.")
 						.translation("config.youkaishomecoming.common.model_presentation.maxProfiles")
 						.defineInRange("maxProfiles", 256, 1, 4096);
 				modelPresentationMaxPresets = builder.comment("Maximum named presets per model profile.")

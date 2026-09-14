@@ -29,6 +29,12 @@ public record YsmModelCatalog(Status status, String detail, List<String> animati
 	/** A wheel entry may expose BOTH a clip and a configuration group; a submenu is not a clip. */
 	public record WheelEntry(String group, String id, String label, boolean clipAvailable, String configGroup, String submenu) { }
 
+	/** Preserve the author's order and hierarchy, including the root menu. */
+	public List<WheelEntry> wheelEntries(String group) {
+		return wheel.stream().filter(entry -> entry.group().equals(group))
+				.filter(entry -> entry.clipAvailable() || !entry.configGroup().isEmpty() || !entry.submenu().isEmpty()).toList();
+	}
+
 	public record Choice(String label, String expression, @Nullable Float numericValue) { }
 
 	public record Control(String group, String groupLabel, String title, String description, String type, String expression,
@@ -37,11 +43,28 @@ public record YsmModelCatalog(Status status, String detail, List<String> animati
 			choices = List.copyOf(choices);
 		}
 
+		public boolean editable() {
+			if (parameter.isEmpty()) return false;
+			return switch (type) {
+				case "checkbox" -> true;
+				case "radio" -> choices.stream().anyMatch(choice -> choice.numericValue() != null);
+				case "range" -> Double.isFinite(min) && Double.isFinite(max) && min <= max;
+				default -> false;
+			};
+		}
+
+		/** Slider steps come from the model, with float endpoints matching the wire representation. */
+		public float sliderValue(double fraction) {
+			double value = min + Math.max(0, Math.min(1, fraction)) * (max - min);
+			if (Double.isFinite(step) && step > 0) value = min + Math.round((value - min) / step) * step;
+			return (float) Math.max(min, Math.min(max, value));
+		}
+
 		public boolean accepts(float value) {
 			if (parameter.isEmpty() || !Float.isFinite(value)) return false;
 			return switch (type) {
 				case "checkbox" -> value == 0 || value == 1;
-				case "range" -> Double.isFinite(min) && Double.isFinite(max) && min <= max && value >= min && value <= max;
+				case "range" -> Double.isFinite(min) && Double.isFinite(max) && min <= max && value >= (float) min && value <= (float) max;
 				case "radio" -> choices.stream().anyMatch(choice -> choice.numericValue != null && choice.numericValue == value);
 				default -> false;
 			};

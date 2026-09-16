@@ -26,6 +26,7 @@ public final class ModelPresentationTest {
 		captureContracts();
 		remiliaAuthoringContracts();
 		overlayContracts();
+		animationClockContracts();
 		if (Boolean.getBoolean("yh.test.oysm")) installedOysmContracts();
 		else {
 			try {
@@ -517,6 +518,9 @@ public final class ModelPresentationTest {
 				java.nio.file.Path.of(System.getProperty("yh.test.oysm.jar")).toAbsolutePath().normalize());
 		check("preview-cache cleanup field matches installed API", Map.class.isAssignableFrom(Class.forName(base + "client.renderer.ExternalLivingRenderer", false,
 				ModelPresentationTest.class.getClassLoader()).getDeclaredField("cache").getType()));
+		Class<?> animatableClass = Class.forName(base + "geckolib3.core.AnimatableEntity");
+		check("animation clock field matches installed API", animatableClass.getField("lastTick").getType() == float.class);
+		check("animation reset fallback matches installed API", animatableClass.getMethod("clearAnimationControllers").getReturnType() == void.class);
 		var pool = Class.forName(base + "geckolib3.core.molang.util.StringPool").getMethod("computeIfAbsent", String.class);
 		Object storage = storageClass.getConstructor().newInstance();
 		int roamingId = (Integer) pool.invoke(null, "roaming");
@@ -540,6 +544,13 @@ public final class ModelPresentationTest {
 		lease.close();
 		equal("OYSM roaming restored", mouth.get(), 4f);
 		equal("OYSM scoped restored", emoji.get(), 7f);
+	}
+
+	private static void animationClockContracts() {
+		check("animation clock advances normally", !YsmClientPresentationBridge.animationClockRewound(2154.5f, 2154));
+		check("one-tick interpolation tolerance is retained", !YsmClientPresentationBridge.animationClockRewound(2155f, 2154));
+		check("animation clock ahead of reloaded entity is repaired", YsmClientPresentationBridge.animationClockRewound(33747.98f, 2154));
+		check("invalid animation clock is left to provider recovery", !YsmClientPresentationBridge.animationClockRewound(Float.NaN, 2154));
 	}
 
 	private static final class Slot implements YsmParameterOverlay.Slot {

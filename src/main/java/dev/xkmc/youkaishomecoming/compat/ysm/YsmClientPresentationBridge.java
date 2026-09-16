@@ -29,12 +29,14 @@ public final class YsmClientPresentationBridge {
 	private static final String OYSM = "com.elfmcys.yesstevemodel.";
 	private static final Map<Object, YsmModelCatalog> CATALOGS = new WeakHashMap<>();
 	private static final Map<LivingEntity, ClientState> ENTITIES = new WeakHashMap<>();
+	private static final Map<LivingEntity, ClockRepairStats> CLOCK_REPAIRS = new WeakHashMap<>();
 	private static CatalogAccess catalogs;
 	private static FormAccess forms;
 	private static RuntimeAccess runtime;
 	private static ParameterAccess parameters;
 	private static ReplayAccess replay;
-	private static String catalogFailure, formFailure, runtimeFailure, parameterFailure, replayFailure;
+	private static AnimationClockAccess animationClocks;
+	private static String catalogFailure, formFailure, runtimeFailure, parameterFailure, replayFailure, animationClockFailure;
 	private static Field previewCache;
 	private static boolean previewCacheChecked;
 	private static FolderAccess folders;
@@ -140,7 +142,10 @@ public final class YsmClientPresentationBridge {
 		ClientState client = ENTITIES.get(entity);
 		boolean preview = YsmClientProfiles.isPreview(entity);
 		if (state.body() == null && state.parameters().isEmpty()) {
-			if (client == null && !preview) return Frame.EMPTY;
+			if (client == null && !preview) {
+				repairAnimationClock(entity, null);
+				return Frame.EMPTY;
+			}
 		}
 		if (client == null) {
 			client = new ClientState();
@@ -158,6 +163,8 @@ public final class YsmClientPresentationBridge {
 			if (animatable != null) access.await.invoke(animatable);
 			closeParameterOverlay(client);
 			client.animatable = new WeakReference<>(animatable);
+			ClockRepair repair = repairAnimationClock(entity, animatable);
+			if (repair != null) client.invalidateController();
 			if (state.body() == null && state.parameters().isEmpty() && !preview) {
 				client.replayKey = "";
 				client.clipStatus = "";
@@ -348,12 +355,18 @@ public final class YsmClientPresentationBridge {
 		result.put("presentation.runtime", runtimeAccess() != null ? "available" : String.valueOf(runtimeFailure));
 		result.put("presentation.parameters", parameterAccess() != null ? "numeric_async_lease" : String.valueOf(parameterFailure));
 		result.put("presentation.replay", replayAccess() != null ? "cap_reset" : String.valueOf(replayFailure));
+		result.put("presentation.clock", animationClockAccess() != null ? "rewind_guard" : String.valueOf(animationClockFailure));
 		ClientState state = ENTITIES.get(entity);
 		if (state != null) {
 			result.put("presentation.clip", state.clipStatus);
 			result.put("presentation.suppressed", Boolean.toString(state.suppressed));
 			result.put("presentation.applied", state.applied);
 			result.put("presentation.skipped", state.skipped);
+		}
+		ClockRepairStats repairs = CLOCK_REPAIRS.get(entity);
+		if (repairs != null) {
+			result.put("presentation.clockResets", Integer.toString(repairs.count));
+			result.put("presentation.clockLastReset", repairs.last);
 		}
 		return result;
 	}
@@ -372,6 +385,7 @@ public final class YsmClientPresentationBridge {
 	private static void clearCaches() {
 		for (ClientState state : ENTITIES.values()) releaseParameters(state);
 		ENTITIES.clear();
+		CLOCK_REPAIRS.clear();
 		CATALOGS.clear();
 	}
 
@@ -433,6 +447,11 @@ public final class YsmClientPresentationBridge {
 		private String renderedModel = "";
 		private YsmPresentationResolver.Resolved rendered;
 		private boolean renderSuccessful;
+
+		private void invalidateController() {
+			controller = new WeakReference<>(null);
+			replayKey = "";
+		}
 	}
 
 	private static CatalogAccess catalogAccess() {
@@ -473,6 +492,43 @@ public final class YsmClientPresentationBridge {
 			catch (ReflectiveOperationException | LinkageError ex) { replayFailure = failure(ex); }
 		}
 		return replay;
+	}
+
+	private static AnimationClockAccess animationClockAccess() {
+		if (animationClocks == null && animationClockFailure == null) {
+			try { animationClocks = new AnimationClockAccess(); }
+			catch (ReflectiveOperationException | LinkageError ex) { animationClockFailure = failure(ex); }
+		}
+		return animationClocks;
+	}
+
+	@Nullable
+	private static ClockRepair repairAnimationClock(LivingEntity entity, @Nullable Object cachedAnimatable) {
+		try {
+			RuntimeAccess runtimeAccess = runtimeAccess();
+			AnimationClockAccess clockAccess = animationClockAccess();
+			if (runtimeAccess == null || clockAccess == null) return null;
+			Object animatable = cachedAnimatable != null ? cachedAnimatable : runtimeAccess.animatable(entity);
+			if (animatable == null) return null;
+			float animationTick = clockAccess.lastTick(animatable);
+			if (!animationClockRewound(animationTick, entity.tickCount)) return null;
+			// The old async evaluation may still own controller state. Join only on the rare repair path.
+			runtimeAccess.await.invoke(animatable);
+			animationTick = clockAccess.lastTick(animatable);
+			if (!animationClockRewound(animationTick, entity.tickCount)) return null;
+			clockAccess.reset(animatable, entity.tickCount);
+			ClockRepair repair = new ClockRepair(animationTick, entity.tickCount);
+			CLOCK_REPAIRS.computeIfAbsent(entity, ignored -> new ClockRepairStats()).record(repair);
+			return repair;
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
+			animationClockFailure = failure(ex);
+			animationClocks = null;
+			return null;
+		}
+	}
+
+	static boolean animationClockRewound(float animationTick, int entityTick) {
+		return Float.isFinite(animationTick) && animationTick > entityTick + 1.0f;
 	}
 
 	private static Method method(String type, String name, Class<?>... parameters) throws ReflectiveOperationException {
@@ -595,6 +651,48 @@ public final class YsmClientPresentationBridge {
 		private Object animatable(LivingEntity entity) throws ReflectiveOperationException {
 			Object instance = renderer.invoke(null);
 			return instance == null ? null : cached.invoke(instance, entity);
+		}
+	}
+
+	private static final class AnimationClockAccess {
+		private final Field lastTick;
+		private final Method resetIfRewound;
+		private final Method clearControllers;
+
+		private AnimationClockAccess() throws ReflectiveOperationException {
+			Class<?> animatable = Class.forName(OYSM + "geckolib3.core.AnimatableEntity");
+			lastTick = animatable.getField("lastTick");
+			clearControllers = animatable.getMethod("clearAnimationControllers");
+			Method reset;
+			try {
+				reset = Class.forName(OYSM + "client.entity.ExternalLivingEntity")
+						.getMethod("resetAnimationClockIfEntityTickRewound");
+			} catch (NoSuchMethodException ignored) {
+				reset = null;
+			}
+			resetIfRewound = reset;
+		}
+
+		private float lastTick(Object animatable) throws ReflectiveOperationException {
+			return ((Number) lastTick.get(animatable)).floatValue();
+		}
+
+		private void reset(Object animatable, int entityTick) throws ReflectiveOperationException {
+			if (resetIfRewound != null) resetIfRewound.invoke(animatable);
+			// Also handles older OYSM builds and a stale animatable whose entity reference differs from the cache key.
+			if (animationClockRewound(lastTick(animatable), entityTick)) clearControllers.invoke(animatable);
+		}
+	}
+
+	private record ClockRepair(float animationTick, int entityTick) { }
+
+	private static final class ClockRepairStats {
+		private int count;
+		private String last = "";
+
+		private void record(ClockRepair repair) {
+			count++;
+			last = Float.toString(repair.animationTick()) + " -> " + repair.entityTick();
 		}
 	}
 

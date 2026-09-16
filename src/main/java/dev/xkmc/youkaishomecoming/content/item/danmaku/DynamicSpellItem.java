@@ -296,16 +296,18 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 	 * same path.
 	 */
 	public static boolean bindCreatedSpellId(ItemStack stack, ResourceLocation spellId) {
-		ResourceLocation existing = getSpellId(stack);
-		if (existing == null) {
-			setSpellId(stack, spellId);
-			return true;
-		}
-		if (isMissingLegacyBinding(existing, spellId)) {
+		if (canBindCreatedSpellId(stack, spellId)) {
 			setSpellId(stack, spellId);
 			return true;
 		}
 		return false;
+	}
+
+	/** Pure counterpart used by the editor to derive the new definition's card type. */
+	public static boolean canBindCreatedSpellId(ItemStack stack, ResourceLocation spellId) {
+		if (!(stack.getItem() instanceof DynamicSpellItem) || spellId == null) return false;
+		ResourceLocation existing = getSpellId(stack);
+		return existing == null || isMissingLegacyBinding(existing, spellId);
 	}
 
 	@Nullable
@@ -522,11 +524,16 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		} else if (GrazeHelper.forbidSpellCardWithMessage(player)) {
 			return false;
 		}
-		if (nonSpell && def != null && player instanceof ServerPlayer sp
-				&& !NonSpellLimiterBypass.isEnabled(sp)) {
+		if (nonSpell && def != null && player instanceof ServerPlayer sp) {
 			try {
-				NonSpellValidator.validateForPlayer(def, getRank(stack), GrazeHelper.getEffectivePowerLevel(sp),
-						SpellPermissionService.effectiveLevel(sp));
+				// spellcard_init is incompatible with the sustained non-spell proxy and
+				// remains forbidden when the developer performance bypass is enabled.
+				if (NonSpellLimiterBypass.isEnabled(sp)) {
+					NonSpellValidator.validateStructure(def);
+				} else {
+					NonSpellValidator.validateForPlayer(def, getRank(stack), GrazeHelper.getEffectivePowerLevel(sp),
+							SpellPermissionService.effectiveLevel(sp));
+				}
 			} catch (SpellAnalysisException rejected) {
 				sp.displayClientMessage(nonSpellRejectedMessage(rejected), false);
 				return false;
@@ -641,6 +648,8 @@ public class DynamicSpellItem extends Item implements IGlowingTarget, ISpellItem
 		String message = rejected.getMessage() == null ? "" : rejected.getMessage().toLowerCase(Locale.ROOT);
 		YHLangData reason = message.contains("definition is missing")
 				? YHLangData.NON_SPELL_REASON_DEFINITION
+				: message.contains("spellcard_init")
+				? YHLangData.NON_SPELL_REASON_INITIALIZATION
 				: message.contains("lifetime")
 				? YHLangData.NON_SPELL_REASON_LIFETIME
 				: message.contains("shooter")

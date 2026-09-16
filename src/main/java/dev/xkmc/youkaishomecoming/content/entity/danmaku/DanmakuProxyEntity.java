@@ -95,6 +95,8 @@ public class DanmakuProxyEntity extends PathfinderMob
 	private int nonSpellSpawnsThisTick;
 	private boolean nonSpellLimiterBypassActive;
 	@Nullable
+	private SpellDefinition structurallyValidatedNonSpellDefinition;
+	@Nullable
 	private String cardKey;
 
 	public enum EndReason {
@@ -296,6 +298,7 @@ public class DanmakuProxyEntity extends PathfinderMob
 		nonSpellRank = rank;
 		validatedNonSpellPower = Double.NaN;
 		validatedNonSpellPermission = -1;
+		structurallyValidatedNonSpellDefinition = null;
 		nonSpellLimiterBypassActive = NonSpellLimiterBypass.isEnabled(ownerPlayer);
 	}
 
@@ -309,17 +312,22 @@ public class DanmakuProxyEntity extends PathfinderMob
 			validatedNonSpellPower = Double.NaN;
 		}
 		double power = GrazeHelper.getEffectivePowerLevel(ownerPlayer);
-		if (bypass) {
-			nonSpellSpawnLimit = Integer.MAX_VALUE;
-			return true;
-		}
 		int permission = SpellPermissionService.effectiveLevel(ownerPlayer);
-		if (Double.compare(power, validatedNonSpellPower) != 0 || permission != validatedNonSpellPermission) {
+		SpellDefinition activeDefinition = runtime.getDefinition();
+		boolean definitionChanged = activeDefinition != structurallyValidatedNonSpellDefinition;
+		if (definitionChanged || !bypass && (Double.compare(power, validatedNonSpellPower) != 0
+				|| permission != validatedNonSpellPermission)) {
 			try {
-				// Recheck before executing count-dependent loops at the new Power.
-				NonSpellValidator.validateForPlayer(runtime.getDefinition(), nonSpellRank, power, permission);
-				validatedNonSpellPower = power;
-				validatedNonSpellPermission = permission;
+				// Definition switches always recheck the non-spell lifecycle invariant.
+				// The developer bypass only skips performance and spawn limits.
+				if (bypass) {
+					NonSpellValidator.validateStructure(activeDefinition);
+				} else {
+					NonSpellValidator.validateForPlayer(activeDefinition, nonSpellRank, power, permission);
+					validatedNonSpellPower = power;
+					validatedNonSpellPermission = permission;
+				}
+				structurallyValidatedNonSpellDefinition = activeDefinition;
 			} catch (SpellAnalysisException rejected) {
 				ownerPlayer.displayClientMessage(DynamicSpellItem.nonSpellRejectedMessage(rejected), false);
 				SpellContainer.clearActiveNonSpell(ownerPlayer);
@@ -331,6 +339,10 @@ public class DanmakuProxyEntity extends PathfinderMob
 				SpellContainer.clearActiveNonSpell(ownerPlayer);
 				return false;
 			}
+		}
+		if (bypass) {
+			nonSpellSpawnLimit = Integer.MAX_VALUE;
+			return true;
 		}
 		nonSpellSpawnLimit = nonSpellRank.danmakuPerTick(power);
 		return true;

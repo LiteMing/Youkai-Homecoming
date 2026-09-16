@@ -1,8 +1,11 @@
 package dev.xkmc.youkaishomecoming.content.spell.preview;
 
 import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
+import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
 import dev.xkmc.youkaishomecoming.content.spell.definition.NumberProvider;
 import dev.xkmc.youkaishomecoming.content.spell.definition.PhaseDefinition;
+import dev.xkmc.youkaishomecoming.content.spell.definition.SpellCardType;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDefinition;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellDisplay;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellItemForm;
@@ -165,7 +168,7 @@ public class SpellEditorController {
 		if (SpellRegistry.contains(spellId)) {
 			return Component.translatable("youkaishomecoming.spell_editor.create.error.exists", spellId);
 		}
-		SpellDefinition created = createEmptySpellDefinition(spellId);
+		SpellDefinition created = createEmptySpellDefinition(spellId, pendingDraftCardType(spellId));
 		if (!SpellEditorNetworkClient.save(created)) {
 			return Component.translatable("youkaishomecoming.spell_editor.error.encode_failed");
 		}
@@ -203,6 +206,22 @@ public class SpellEditorController {
 				return;
 			}
 		}
+	}
+
+	private static SpellCardType pendingDraftCardType(ResourceLocation spellId) {
+		var player = Minecraft.getInstance().player;
+		if (player == null) return SpellCardType.NORMAL;
+		for (ItemStack stack : new ItemStack[]{player.getMainHandItem(), player.getOffhandItem()}) {
+			if (DynamicSpellItem.canBindCreatedSpellId(stack, spellId)) {
+				return DynamicSpellItem.getCardType(stack);
+			}
+		}
+		for (ItemStack stack : player.getInventory().items) {
+			if (DynamicSpellItem.canBindCreatedSpellId(stack, spellId)) {
+				return DynamicSpellItem.getCardType(stack);
+			}
+		}
+		return SpellCardType.NORMAL;
 	}
 
 	private static boolean tryBind(ItemStack stack, ResourceLocation spellId) {
@@ -326,11 +345,19 @@ public class SpellEditorController {
 	}
 
 	public static SpellDefinition createEmptySpellDefinition(ResourceLocation spellId) {
+		return createEmptySpellDefinition(spellId, SpellCardType.NORMAL);
+	}
+
+	public static SpellDefinition createEmptySpellDefinition(ResourceLocation spellId, SpellCardType cardType) {
+		SpellCardType resolvedType = cardType == null ? SpellCardType.NORMAL : cardType;
 		ResourceLocation phaseId = new ResourceLocation(spellId.getNamespace(), spellId.getPath() + "/main");
+		List<SpellAction> initialization = resolvedType.isNonSpell()
+				? List.of()
+				: List.of(new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
+						NumberProvider.constant(50), NumberProvider.constant(100)));
 		PhaseDefinition phase = new PhaseDefinition(
 				phaseId,
-				List.of(new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
-						NumberProvider.constant(50), NumberProvider.constant(100))),
+				initialization,
 				List.of(),
 				List.of(),
 				List.of(),
@@ -339,7 +366,7 @@ public class SpellEditorController {
 		return new SpellDefinition(
 				spellId,
 				new SpellDisplay(spellId.getPath(), "", Optional.empty(), Optional.empty()),
-				SpellItemForm.NONE,
+				SpellItemForm.NONE.withCardType(resolvedType),
 				phaseId,
 				Map.of(phaseId, phase),
 				DifficultyProfile.DEFAULT

@@ -21,19 +21,39 @@ public final class SpellAuraAnvilHandler {
 		ItemStack left = event.getLeft();
 		ItemStack right = event.getRight();
 		if (!(left.getItem() instanceof DynamicSpellItem)
-				|| !(right.getItem() instanceof SpellAuraItem aura)
-				|| DynamicSpellItem.getSpellId(left) == null
-				|| DynamicSpellItem.isComplete(left)
-				|| CertifiedSpellValidator.isCertified(left)) {
+				|| !(right.getItem() instanceof SpellAuraItem aura)) {
 			return;
 		}
+		ItemStack output = createOutput(left, aura);
+		if (output.isEmpty()) return;
+		SpellCardType type = aura.type();
+		event.setOutput(output);
+		event.setMaterialCost(1);
+		event.setCost(aura.isEx() ? 30 : switch (type) {
+			case NON_SPELL -> 5;
+			case TIMEOUT_SPELL -> 10;
+			case LAST_SPELL -> 15;
+			default -> 0;
+		});
+	}
+
+	/** Build the conversion without mutating the input; shared by the event and tests. */
+	static ItemStack createOutput(ItemStack left, SpellAuraItem aura) {
+		if (!(left.getItem() instanceof DynamicSpellItem) || aura == null
+				|| DynamicSpellItem.isComplete(left)
+				|| CertifiedSpellValidator.isCertified(left)) return ItemStack.EMPTY;
 		SpellCardType type = aura.type();
 		if (!aura.isEx() && type != SpellCardType.NON_SPELL
 				&& type != SpellCardType.TIMEOUT_SPELL
 				&& type != SpellCardType.LAST_SPELL) {
-			return;
+			return ItemStack.EMPTY;
 		}
-		if (!aura.isEx() && type == SpellCardType.NON_SPELL && DynamicSpellItem.isExSpell(left)) return;
+		// A blank base may become a non-spell before it is named. Other special
+		// card traits still apply only to an already bound unfinished definition.
+		if (DynamicSpellItem.getSpellId(left) == null
+				&& (aura.isEx() || type != SpellCardType.NON_SPELL)) return ItemStack.EMPTY;
+		if (!aura.isEx() && type == SpellCardType.NON_SPELL
+				&& DynamicSpellItem.isExSpell(left)) return ItemStack.EMPTY;
 		ItemStack output = left.copy();
 		if (aura.isEx()) {
 			// EX is an independent health trait.  Do not reset an existing special
@@ -43,13 +63,6 @@ public final class SpellAuraAnvilHandler {
 			DynamicSpellItem.setCardType(output, type);
 			DynamicSpellItem.setExSpell(output, false);
 		}
-		event.setOutput(output);
-		event.setMaterialCost(1);
-		event.setCost(aura.isEx() ? 30 : switch (type) {
-			case NON_SPELL -> 5;
-			case TIMEOUT_SPELL -> 10;
-			case LAST_SPELL -> 15;
-			default -> 0;
-		});
+		return output;
 	}
 }

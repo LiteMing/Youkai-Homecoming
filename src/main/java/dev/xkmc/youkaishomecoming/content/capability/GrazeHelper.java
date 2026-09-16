@@ -148,7 +148,8 @@ public class GrazeHelper {
 
 	/**
 	 * Manual combat toggle shared by spell-card interaction and the client shortcut.
-	 * Requires a usable real spell card when entering in manual mode.
+	 * Requires a complete, unbroken real spell card when entering in manual mode.
+	 * Entry does not pre-charge or require the out-of-combat XP cast cost.
 	 * Exit clears combat state without wiping life/bomb/power.
 	 */
 	public static boolean tryToggleManualCombat(Player player) {

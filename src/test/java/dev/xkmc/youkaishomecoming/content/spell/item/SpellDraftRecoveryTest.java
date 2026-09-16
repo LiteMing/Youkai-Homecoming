@@ -47,6 +47,7 @@ public final class SpellDraftRecoveryTest {
 	private static final GameProfile PROFILE = new GameProfile(UUID.fromString("00000000-0000-0000-0000-000000000030"), "DraftTester");
 	private static DynamicSpellItem item;
 	private static SpellAuraItem aura;
+	private static SpellAuraItem nonSpellAura;
 	private static int checks;
 
 	public static void main(String[] args) throws Exception {
@@ -61,8 +62,10 @@ public final class SpellDraftRecoveryTest {
 		((MappedRegistry<Item>) BuiltInRegistries.ITEM).unfreeze();
 		item = new DynamicSpellItem(new Item.Properties());
 		aura = new SpellAuraItem(new Item.Properties(), SpellCardType.LAST_SPELL);
+		nonSpellAura = new SpellAuraItem(new Item.Properties(), SpellCardType.NON_SPELL);
 		items.register(id("draft_item"), item);
 		items.register(id("aura"), aura);
+		items.register(id("non_spell_aura"), nonSpellAura);
 		items.freeze();
 		BuiltInRegistries.ITEM.freeze();
 		recoverStoredDraft();
@@ -70,6 +73,7 @@ public final class SpellDraftRecoveryTest {
 		legacyBinding();
 		deleteAndReuse();
 		washAndUpgrade();
+		blankNonSpellAnvilConversion();
 		System.out.println("SpellDraftRecoveryTest: " + checks + " checks passed");
 	}
 
@@ -165,6 +169,37 @@ public final class SpellDraftRecoveryTest {
 		check("upgrade does not carry an orphan binding forward", DynamicSpellItem.getSpellId(upgraded) == null && DynamicSpellItem.getRank(upgraded).tierNumber() == 4);
 		ItemStack converted = craft(card(id("aura_missing")), aura, null);
 		check("aura conversion retains the binding for normal legacy repair on use", id("aura_missing").equals(DynamicSpellItem.getSpellId(converted)));
+	}
+
+	private static void blankNonSpellAnvilConversion() {
+		ItemStack blank = new ItemStack(item);
+		DynamicSpellItem.setRank(blank, SpellCardRank.fromTier(3));
+		DynamicSpellItem.setDraftBudget(blank, SpellDraftBudget.legacy(4));
+		blank.getOrCreateTag().putString("other_mod_data", "keep");
+		CompoundTag before = blank.getTag().copy();
+		ItemStack converted = SpellAuraAnvilHandler.createOutput(blank, nonSpellAura);
+		check("blank base accepts the non-spell aura", !converted.isEmpty());
+		check("blank non-spell stays unbound until naming", DynamicSpellItem.getSpellId(converted) == null);
+		check("blank conversion applies only the non-spell trait",
+				DynamicSpellItem.getCardType(converted) == SpellCardType.NON_SPELL
+						&& !DynamicSpellItem.isExSpell(converted));
+		check("blank conversion preserves rank, budget and unrelated NBT",
+				DynamicSpellItem.getRank(converted) == DynamicSpellItem.getRank(blank)
+						&& DynamicSpellItem.getDraftBudget(converted).equals(DynamicSpellItem.getDraftBudget(blank))
+						&& "keep".equals(converted.getTag().getString("other_mod_data")));
+		check("anvil conversion does not mutate the blank input", before.equals(blank.getTag()));
+		check("other auras still require a bound spell", SpellAuraAnvilHandler.createOutput(blank, aura).isEmpty());
+		ItemStack bound = card(id("bound_non_spell"));
+		DynamicSpellItem.setExSpell(bound, false);
+		check("bound unfinished cards still accept the non-spell aura",
+				DynamicSpellItem.getCardType(SpellAuraAnvilHandler.createOutput(bound, nonSpellAura))
+						== SpellCardType.NON_SPELL);
+		ItemStack complete = blank.copy();
+		DynamicSpellItem.setComplete(complete, true);
+		check("complete cards remain protected", SpellAuraAnvilHandler.createOutput(complete, nonSpellAura).isEmpty());
+		ItemStack certified = blank.copy();
+		certified.getOrCreateTag().putString(CertifiedSpellValidator.TAG_CERTIFIED_HASH, "snapshot-hash");
+		check("certified cards remain protected", SpellAuraAnvilHandler.createOutput(certified, nonSpellAura).isEmpty());
 	}
 
 	private static ItemStack craft(ItemStack input, Item reagent, ResourceLocation boss) {

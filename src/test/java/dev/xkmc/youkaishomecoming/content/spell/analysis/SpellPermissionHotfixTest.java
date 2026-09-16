@@ -13,6 +13,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.DataDrivenShooterSpell;
 import dev.xkmc.youkaishomecoming.content.spell.action.DataDrivenTrailAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.FireDanmakuAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.LegacyTickerAction;
+import dev.xkmc.youkaishomecoming.content.spell.action.SetSpellHealthAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellAction;
 import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.youkaishomecoming.content.spell.condition.SpellConditions;
@@ -20,6 +21,7 @@ import dev.xkmc.youkaishomecoming.content.spell.definition.*;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyModifiers;
 import dev.xkmc.youkaishomecoming.content.spell.difficulty.DifficultyProfile;
 import dev.xkmc.youkaishomecoming.content.spell.feedback.NoopFeedbackSink;
+import dev.xkmc.youkaishomecoming.content.spell.preview.SpellEditorController;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.ProjectileCallbackContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellContext;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
@@ -205,6 +207,30 @@ public final class SpellPermissionHotfixTest {
 				definition(List.of(fire.withLifetime(new NumberProviders.Variable("unknown")))), RANK, 0, 4), "lifetime");
 		rejected("broken nodes cannot pass cast validation", () -> NonSpellValidator.validateForPlayer(definition(List.of(
 				action("{\"type\":\"broken\",\"raw\":\"bad\",\"error\":\"unknown action\"}"))), RANK, 0, 1), "broken");
+		SpellAction initialization = new SetSpellHealthAction(SetSpellHealthAction.Mode.SET,
+				NumberProvider.constant(50), NumberProvider.constant(100));
+		SpellDefinition directInitialization = definition(List.of());
+		directInitialization.phases.put(ID, new PhaseDefinition(ID, List.of(initialization),
+				List.of(), List.of(), List.of(), List.of()));
+		rejected("non-spell rejects direct spellcard_init", () ->
+				NonSpellValidator.validateStructure(directInitialization), "spellcard_init");
+		rejected("non-spell rejects nested spellcard_init", () -> NonSpellValidator.validateStructure(
+				definition(List.of(new SpellActions.SequenceAction(List.of(initialization))))), "spellcard_init");
+		SpellDefinition disabledInitialization = definition(List.of(new SpellActions.DisabledAction(initialization)));
+		NonSpellValidator.validateStructure(disabledInitialization);
+		check("disabled spellcard_init is inert", !SpellHealthPlan.hasHealthDeclaration(disabledInitialization));
+		SpellDefinition normalInitialization = new SpellDefinition(ID,
+				new SpellDisplay("Normal", "", Optional.empty(), Optional.empty()), SpellItemForm.NONE, ID,
+				Map.of(ID, new PhaseDefinition(ID, List.of(initialization), List.of(), List.of(), List.of(), List.of())),
+				DifficultyProfile.DEFAULT);
+		SpellAnalyzer.analyzePlayerCast(normalInitialization, SpellAnalysisLimits.certification(), 0, 1);
+		check("ordinary spell still accepts spellcard_init", SpellHealthPlan.hasHealthDeclaration(normalInitialization));
+		SpellDefinition newNonSpell = SpellEditorController.createEmptySpellDefinition(
+				new ResourceLocation("yh_test", "new_non_spell"), SpellCardType.NON_SPELL);
+		SpellDefinition newNormal = SpellEditorController.createEmptySpellDefinition(
+				new ResourceLocation("yh_test", "new_normal"), SpellCardType.NORMAL);
+		check("new non-spell omits spellcard_init", !SpellHealthPlan.hasHealthDeclaration(newNonSpell));
+		check("new ordinary spell keeps spellcard_init", SpellHealthPlan.hasHealthDeclaration(newNormal));
 		check("limited tooltip detects nested unavailable hooks", SpellPermissionService.hasUnavailableCapabilities(hooks, 1));
 		check("base card has no false permission warning", !SpellPermissionService.hasUnavailableCapabilities(basic, 1));
 		check("empty optional hooks have no false warning", !SpellPermissionService.hasUnavailableCapabilities(

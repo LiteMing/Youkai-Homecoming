@@ -121,7 +121,11 @@ public final class SpellItemCost {
 		return canAfford(player, stack, false);
 	}
 
-	/** Entry shares cast affordability, but a Last Spell must be able to start a new combat. */
+	/**
+	 * Entry itself is free: outside combat, a complete card qualifies regardless
+	 * of the XP price of casting it. Once combat is active, affordability uses
+	 * the normal Bomb quote. A Last Spell still obeys its readiness rules.
+	 */
 	public static boolean canAffordCombatEntry(ServerPlayer player, ItemStack stack) {
 		return canAfford(player, stack, true);
 	}
@@ -139,6 +143,7 @@ public final class SpellItemCost {
 					? cap.getLastSpellCooldownTicks() <= 0 : cap.canActivateLastSpell())
 					&& !dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveSpellCard(player);
 		}
+		if (forCombatEntry && !YHStgApi.isInDanmakuSession(player)) return true;
 		boolean inCombat = YHStgApi.isInDanmakuSession(player);
 		SpellCostContext context = inCombat
 				? SpellCostContext.SPELL_CAST_STG : SpellCostContext.SPELL_CAST_NON_STG;

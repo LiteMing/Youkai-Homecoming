@@ -130,11 +130,13 @@ public final class SpellCombatEntryTest {
 		ItemStack normal = card(SpellCardType.NORMAL, true);
 		player.inventory.items.set(0, normal);
 		player.experienceLevel = 0;
-		check("unaffordable card cannot enter", !GrazeHelper.hasSpellCard(player));
+		check("zero XP does not block combat entry", GrazeHelper.hasSpellCard(player));
+		check("entry preflight ignores the out-of-combat XP price",
+				SpellItemCost.canAffordCombatEntry(player, normal));
 		check("Bomb also skips the unaffordable card", GrazeHelper.findSpellCard(player).isEmpty());
 		player.experienceLevel = 1000;
-		check("sufficient XP restores entry eligibility", GrazeHelper.hasSpellCard(player));
-		check("selection only quotes and does not spend XP", player.experienceLevel == 1000);
+		check("XP still controls an actual out-of-combat cast selection", GrazeHelper.findSpellCard(player) == normal);
+		check("entry and selection only quote and do not spend XP", player.experienceLevel == 1000);
 		set(player.graze, "forcedDanmakuCombat", true);
 		player.graze.setBomb(0);
 		check("combat qualification uses Bomb rather than XP", !GrazeHelper.hasSpellCard(player));

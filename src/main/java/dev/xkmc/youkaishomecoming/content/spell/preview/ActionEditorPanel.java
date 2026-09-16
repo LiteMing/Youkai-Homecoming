@@ -469,6 +469,7 @@ public class ActionEditorPanel {
 				continue;
 			}
 			for (String type : group.types()) {
+				if (currentEditorCardType().isNonSpell() && type.equals("spellcard_init")) continue;
 				addTypeButton(type);
 			}
 		}

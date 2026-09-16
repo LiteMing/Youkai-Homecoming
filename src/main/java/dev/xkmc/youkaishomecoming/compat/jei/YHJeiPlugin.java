@@ -99,27 +99,27 @@ public class YHJeiPlugin implements IModPlugin {
 		registration.addRecipes(STOCK_COOKING, m.getAllRecipesFor(YHBlocks.COOKING_RT.get())
 				.stream().filter(e -> e.matchContainer(YHBlocks.STOCKPOT.asItem())).toList());
 		var anvil = registration.getVanillaRecipeFactory();
-		// JEI derives the displayed level cost by running these inputs through an
-		// AnvilMenu. The real aura handler accepts bound unfinished drafts, so the
-		// representative input must carry a spell id as well.
-		ItemStack auraInput = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(),
+		// The non-spell aura can prepare a blank base before it is named. Other
+		// special traits still use a bound unfinished definition.
+		ItemStack blankAuraInput = YHDanmaku.DYNAMIC_SPELL.asStack();
+		ItemStack boundAuraInput = DynamicSpellItem.createStack(YHDanmaku.DYNAMIC_SPELL.get(),
 				new ResourceLocation("fairy", "generic"));
 		registration.addRecipes(SPELL_AURA_ANVIL, List.of(
-				anvil.createAnvilRecipe(auraInput,
+				anvil.createAnvilRecipe(blankAuraInput,
 						List.of(YHDanmaku.NON_SPELL_AURA.asStack()),
-						List.of(auraOutput(auraInput, YHDanmaku.NON_SPELL_AURA.get())),
+						List.of(auraOutput(blankAuraInput, YHDanmaku.NON_SPELL_AURA.get())),
 						YoukaisHomecoming.loc("spell_aura_non_spell")),
-				anvil.createAnvilRecipe(auraInput,
+				anvil.createAnvilRecipe(boundAuraInput,
 						List.of(YHDanmaku.TIMEOUT_SPELL_AURA.asStack()),
-						List.of(auraOutput(auraInput, YHDanmaku.TIMEOUT_SPELL_AURA.get())),
+						List.of(auraOutput(boundAuraInput, YHDanmaku.TIMEOUT_SPELL_AURA.get())),
 						YoukaisHomecoming.loc("spell_aura_timeout")),
-				anvil.createAnvilRecipe(auraInput,
+				anvil.createAnvilRecipe(boundAuraInput,
 						List.of(YHDanmaku.LAST_SPELL_AURA.asStack()),
-						List.of(auraOutput(auraInput, YHDanmaku.LAST_SPELL_AURA.get())),
+						List.of(auraOutput(boundAuraInput, YHDanmaku.LAST_SPELL_AURA.get())),
 						YoukaisHomecoming.loc("spell_aura_last")),
-				anvil.createAnvilRecipe(auraInput,
+				anvil.createAnvilRecipe(boundAuraInput,
 						List.of(YHDanmaku.EX_SPELL_AURA.asStack()),
-						List.of(auraOutput(auraInput, YHDanmaku.EX_SPELL_AURA.get())),
+						List.of(auraOutput(boundAuraInput, YHDanmaku.EX_SPELL_AURA.get())),
 						YoukaisHomecoming.loc("spell_aura_ex"))));
 	}
 

@@ -14,6 +14,7 @@ import dev.xkmc.youkaishomecoming.content.spell.action.SpellActions;
 import dev.xkmc.l2serial.network.SerialPacketBase;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.content.item.danmaku.DynamicSpellItem;
+import dev.xkmc.youkaishomecoming.content.spell.analysis.NonSpellValidator;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpecialNodeCounter;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellDraftBudget;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellHealthPlan;
@@ -362,18 +363,45 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	}
 
 	private static SpellDefinition applyHeldDraftTraits(ServerPlayer sender, SpellDefinition definition) {
-		ItemStack blank = ItemStack.EMPTY;
+		// An already bound draft is authoritative regardless of inventory order.
 		for (int slot = 0; slot < sender.getInventory().getContainerSize(); slot++) {
 			ItemStack stack = sender.getInventory().getItem(slot);
-			if (!(stack.getItem() instanceof DynamicSpellItem) || DynamicSpellItem.isComplete(stack)
-					|| dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack)) continue;
+			if (!isEditableDraft(stack)) continue;
 			ResourceLocation bound = DynamicSpellItem.getSpellId(stack);
 			if (bound != null && bound.equals(definition.id)) {
-				return DynamicSpellItem.applyDraftTraits(stack, definition);
+				SpellDefinition projected = DynamicSpellItem.applyDraftTraits(stack, definition);
+				validateNonSpellStructure(projected);
+				return projected;
 			}
-			if (bound == null && blank.isEmpty()) blank = stack;
 		}
-		return blank.isEmpty() ? definition : DynamicSpellItem.applyDraftTraits(blank, definition);
+		// For a new id, match the bind path: main hand, offhand, then inventory.
+		for (ItemStack stack : new ItemStack[]{sender.getMainHandItem(), sender.getOffhandItem()}) {
+			if (isEditableDraft(stack) && DynamicSpellItem.getSpellId(stack) == null) {
+				SpellDefinition projected = DynamicSpellItem.applyDraftTraits(stack, definition);
+				validateNonSpellStructure(projected);
+				return projected;
+			}
+		}
+		for (ItemStack stack : sender.getInventory().items) {
+			if (isEditableDraft(stack) && DynamicSpellItem.getSpellId(stack) == null) {
+				SpellDefinition projected = DynamicSpellItem.applyDraftTraits(stack, definition);
+				validateNonSpellStructure(projected);
+				return projected;
+			}
+		}
+		validateNonSpellStructure(definition);
+		return definition;
+	}
+
+	private static boolean isEditableDraft(ItemStack stack) {
+		return stack.getItem() instanceof DynamicSpellItem && !DynamicSpellItem.isComplete(stack)
+				&& !dev.xkmc.youkaishomecoming.content.spell.certification.CertifiedSpellValidator.isCertified(stack);
+	}
+
+	private static void validateNonSpellStructure(SpellDefinition definition) {
+		if (definition != null && definition.itemForm.cardType().isNonSpell()) {
+			NonSpellValidator.validateStructure(definition);
+		}
 	}
 
 	private void importMarketSpell(ServerPlayer sender) {
@@ -387,6 +415,7 @@ public class SpellEditorSyncToServer extends SerialPacketBase {
 	}
 
 	private void validateMarketImport(SpellDefinition definition) {
+		validateNonSpellStructure(definition);
 		if (SpellRegistry.hasDefault(definition.id)) {
 			throw new IllegalArgumentException("Cannot import over built-in spell: " + definition.id);
 		}

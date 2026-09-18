@@ -14,7 +14,9 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Server-side authority for the /yhysm manual model override commands.
+ * Server-side authority for UUID model override commands. Legacy type actions are
+ * retained for packet compatibility, but current rendering takes type mappings from
+ * the client-wide YSM defaults config.
  * Validates the request (permissions, entity types, targets), persists it in
  * {@link YsmOverrideData} and broadcasts the resulting table to all clients.
  */

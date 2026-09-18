@@ -1,3 +1,8 @@
+2.7.0+HCDRS 0.30.8
+- 将 YSM 跨存档默认模型绑定抽为 `yhysm/defaults.json` 资源和 `config/youkaishomecoming/ysm_defaults.json` 外部配置；Remilia 映射不再硬编码，其他模型和实体可复用同一格式。
+- YSM Editor 与客户端 `/yhysm set` 的模型输入补全现在包含默认配置中声明的 ID；模型候选统一使用运行时目录、默认映射和共享预设目录。
+- 外部默认配置在客户端资源重载时读取；类型绑定由配置页保存，UUID 绑定写入存档并覆盖类型配置；`/yhysm set <UUID> model <模型> [纹理]` 现在直接提供 UUID 模型绑定路径。
+
 2.7.0+HCDRS 0.30.7
 - 修复 OYSM 外部生物模型缺少原版手持物品层的问题。YH 在 OYSM 模型骨骼仍处于有效 PoseStack 时复用 OYSM 的 `CustomPlayerItemInHandLayer`，主手、副手物品按模型手骨与 locator 渲染；未安装 OYSM 时自动跳过兼容层。
 - 修复开发环境增量编译残留不完整类目录时 `runClient` 无法启动的问题；关键 Mixin 依赖缺失会自动触发 `compileJava` 重建。

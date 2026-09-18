@@ -21,6 +21,7 @@ public final class YsmEditorCatalog {
 	public static List<String> modelIds() {
 		TreeSet<String> ids = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 		ids.addAll(YSMClientCompat.loadedModelIds());
+		ids.addAll(YSMCompatConfig.configuredModelIds());
 		ids.addAll(YsmClientProfiles.models());
 		return List.copyOf(ids);
 	}

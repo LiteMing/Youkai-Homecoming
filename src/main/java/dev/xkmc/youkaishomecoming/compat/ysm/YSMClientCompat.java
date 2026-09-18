@@ -88,7 +88,7 @@ public class YSMClientCompat {
 	private static final int DEBUG_BG_A = 0xa0000000;
 	private static final int DEBUG_BG_B = 0x90000000;
 	private static final SuggestionProvider<CommandSourceStack> MODEL_SUGGESTIONS = (ctx, builder) ->
-			SharedSuggestionProvider.suggest(loadedModelIds(), builder);
+			SharedSuggestionProvider.suggest(YsmEditorCatalog.modelIds(), builder);
 	private static final SuggestionProvider<CommandSourceStack> TARGET_ENTITY_SUGGESTIONS = (ctx, builder) -> {
 		Entity pointed = getPointedEntity();
 		if (pointed != null) {
@@ -408,10 +408,6 @@ public class YSMClientCompat {
 		if (entityId == null) {
 			return new BindingResolution(null, "unknown type");
 		}
-		RenderBinding override = TYPE_DEBUG_OVERRIDES.get(entityId);
-		if (override != null) {
-			return new BindingResolution(override, "type override");
-		}
 		RenderBinding binding = YSMCompatConfig.defaultBinding(entityId);
 		return new BindingResolution(binding, binding == null ? "none" : "default");
 	}
@@ -726,9 +722,9 @@ public class YSMClientCompat {
 		source.sendSystemMessage(Component.literal("[YH/YSM] Default mappings:"));
 		YSMCompatConfig.defaultBindings().forEach((entityId, binding) -> source.sendSystemMessage(Component.literal(formatStatusLine(entityId, binding))));
 		if (TYPE_DEBUG_OVERRIDES.isEmpty()) {
-			source.sendSystemMessage(Component.literal("[YH/YSM] Type overrides: none"));
+			source.sendSystemMessage(Component.literal("[YH/YSM] Legacy type overrides: none (use config)"));
 		} else {
-			source.sendSystemMessage(Component.literal("[YH/YSM] Type overrides:"));
+			source.sendSystemMessage(Component.literal("[YH/YSM] Legacy type overrides (ignored; use config):"));
 			TYPE_DEBUG_OVERRIDES.forEach((entityId, binding) -> source.sendSystemMessage(Component.literal(formatStatusLine(entityId, binding))));
 		}
 		if (ENTITY_DEBUG_OVERRIDES.isEmpty()) {
@@ -952,8 +948,7 @@ public class YSMClientCompat {
 		}
 		ResourceLocation entityId = parseBindingType(ctx);
 		if (entityId != null) {
-			sendOverrideRequest(ctx, "type_set", entityId.toString(), modelId, textureName, List.of());
-			return 1;
+			return saveTypeConfig(ctx, entityId, RenderBinding.enabled(modelId, textureName));
 		}
 		if (getYsmId(ctx, "entities").contains(":")) return 0;
 		return setEntityMapping(ctx, textureName);
@@ -962,8 +957,7 @@ public class YSMClientCompat {
 	private static int disableBinding(CommandContext<CommandSourceStack> ctx) {
 		ResourceLocation entityId = parseBindingType(ctx);
 		if (entityId != null) {
-			sendOverrideRequest(ctx, "type_off", entityId.toString(), "", "", List.of());
-			return 1;
+			return saveTypeConfig(ctx, entityId, RenderBinding.disabled());
 		}
 		if (getYsmId(ctx, "entities").contains(":")) return 0;
 		return setEntityDisabled(ctx);
@@ -972,11 +966,21 @@ public class YSMClientCompat {
 	private static int unsetBinding(CommandContext<CommandSourceStack> ctx) {
 		ResourceLocation entityId = parseBindingType(ctx);
 		if (entityId != null) {
-			sendOverrideRequest(ctx, "type_unset", entityId.toString(), "", "", List.of());
-			return 1;
+			return saveTypeConfig(ctx, entityId, null);
 		}
 		if (getYsmId(ctx, "entities").contains(":")) return 0;
 		return unsetEntityMapping(ctx);
+	}
+
+	private static int saveTypeConfig(CommandContext<CommandSourceStack> ctx, ResourceLocation entityId, RenderBinding binding) {
+		try {
+			YSMCompatConfig.saveExternalBinding(entityId, binding);
+			ctx.getSource().sendSystemMessage(Component.literal("[YH/YSM] type " + entityId + " configuration updated."));
+			return 1;
+		} catch (IllegalArgumentException ex) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Could not save type configuration: " + ex.getMessage()));
+			return 0;
+		}
 	}
 
 	private static int setEntityMapping(CommandContext<CommandSourceStack> ctx, String textureName) {
@@ -1071,12 +1075,9 @@ public class YSMClientCompat {
 			return null;
 		}
 		ResourceLocation entityId = ResourceLocation.tryParse(target);
-		if (entityId == null || !ForgeRegistries.ENTITY_TYPES.containsKey(entityId)) {
+		if (entityId == null || (!ForgeRegistries.ENTITY_TYPES.containsKey(entityId)
+				&& !YSMCompatConfig.defaultBindings().containsKey(entityId))) {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Unknown entity type: " + target));
-			return null;
-		}
-		if (!Objects.equals(entityId.getNamespace(), YoukaisHomecoming.MODID)) {
-			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Entity type is not from Youkai Homecoming: " + entityId));
 			return null;
 		}
 		return entityId;
@@ -1090,8 +1091,10 @@ public class YSMClientCompat {
 		}
 		StringRange range = StringRange.between(builder.getStart(), builder.getInput().length());
 		List<Suggestion> ordered = new ArrayList<>();
-		ForgeRegistries.ENTITY_TYPES.getKeys().stream()
-				.filter(id -> Objects.equals(id.getNamespace(), YoukaisHomecoming.MODID))
+		var configured = YSMCompatConfig.defaultBindings().keySet();
+		java.util.stream.Stream.concat(ForgeRegistries.ENTITY_TYPES.getKeys().stream(), configured.stream())
+				.filter(id -> ForgeRegistries.ENTITY_TYPES.containsKey(id) || configured.contains(id))
+				.distinct()
 				.sorted()
 				.forEach(id -> {
 					String value = id.toString();

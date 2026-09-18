@@ -26,6 +26,7 @@ public final class ModelPresentationTest {
 		catalogContracts();
 		captureContracts();
 		remiliaAuthoringContracts();
+		defaultBindingContracts();
 		overlayContracts();
 		animationClockContracts();
 		if (Boolean.getBoolean("yh.test.oysm")) installedOysmContracts();
@@ -238,6 +239,19 @@ public final class ModelPresentationTest {
 		equal("Remilia snapshot keeps all inputs and fits default 32-parameter cap", captured.parameters().size(), 31);
 		equal("Remilia author expression clip is preserved", captured.clip(), "extra6");
 		equal("unmodified custom expression defaults remain in snapshot", captured.parameters().get("v.roaming.custom_anim2_mouth_type"), 0f);
+	}
+
+	private static void defaultBindingContracts() throws Exception {
+		String path = "assets/youkaishomecoming/yhysm/defaults.json";
+		try (var stream = ModelPresentationTest.class.getClassLoader().getResourceAsStream(path)) {
+			check("shipped YSM defaults resource exists", stream != null);
+			var root = com.google.gson.JsonParser.parseReader(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
+			var binding = root.getAsJsonObject("entities").getAsJsonObject("youkaishomecoming:remilia_scarlet");
+			equal("Remilia default entity mapping is resource-configured", binding.get("model").getAsString(), "YH内置/remilia");
+			equal("Remilia default texture is resource-configured", binding.get("texture").getAsString(), "default");
+			check("default resource also carries model expression rules", root.get("model").getAsString().equals("YH内置/remilia")
+					&& root.getAsJsonObject("expressions").getAsJsonArray("angry").size() > 0);
+		}
 	}
 
 	private static YsmModelProfile exampleProfile() {

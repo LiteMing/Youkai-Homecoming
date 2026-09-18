@@ -11,8 +11,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Server-side persistent storage for the /yhysm manual model overrides
- * ({@code type set/off/unset}, {@code entity set/off/unset}, {@code reset}).
+ * Server-side persistent storage for UUID model overrides and legacy type entries
+ * from older /yhysm commands. Current type defaults are client-wide config entries;
+ * UUID entries remain authoritative over those defaults.
  * Saved with the world; the server broadcasts the full table to every client
  * so all players render the same mappings.
  */

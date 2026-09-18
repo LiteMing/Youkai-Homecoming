@@ -10,13 +10,16 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 /** Server selectors and permissions remain authoritative, including when called from a client command tree. */
@@ -50,6 +53,11 @@ public final class YsmPresentationCommands {
 										.executes(ctx -> setParameter(ctx, YHModel.defaultDuration()))
 										.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
 												.executes(ctx -> setParameter(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))
+				.then(Commands.literal("model")
+					.then(Commands.argument("model", StringArgumentType.string()).suggests(YsmCommandSuggestions.MODELS)
+							.executes(ctx -> setModelBinding(ctx, "default"))
+							.then(Commands.argument("texture", StringArgumentType.string())
+									.executes(ctx -> setModelBinding(ctx, StringArgumentType.getString(ctx, "texture"))))))
 				.then(Commands.literal("preset")
 						.then(Commands.argument("model", StringArgumentType.string()).suggests(YsmCommandSuggestions.MODELS)
 								.then(Commands.argument("preset", StringArgumentType.string()).suggests(YsmCommandSuggestions.PRESETS)
@@ -60,6 +68,24 @@ public final class YsmPresentationCommands {
 						.executes(ctx -> mutate(ctx, target -> YHModel.currentForMutation(target).stop().clearParameters())))
 				.then(Commands.literal("state").executes(YsmPresentationCommands::state));
 		return Commands.literal("set").then(targets);
+	}
+
+	private static int setModelBinding(CommandContext<CommandSourceStack> ctx, String texture) throws CommandSyntaxException {
+		ServerPlayer player = ctx.getSource().getPlayerOrException();
+		String model = StringArgumentType.getString(ctx, "model");
+		if (model.isBlank() || texture.isBlank()) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Model and texture must not be blank."));
+			return 0;
+		}
+		List<UUID> uuids = EntityArgument.getEntities(ctx, "targets").stream().map(Entity::getUUID).toList();
+		if (uuids.isEmpty()) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] No entity targets."));
+			return 0;
+		}
+		var request = new YsmOverrideRequestToServer("entity_set", "", model, texture,
+				uuids.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(",")));
+		YsmOverrideServerHandler.handle(player, request);
+		return uuids.size();
 	}
 
 	private static int reloadPresets(CommandContext<CommandSourceStack> ctx) {

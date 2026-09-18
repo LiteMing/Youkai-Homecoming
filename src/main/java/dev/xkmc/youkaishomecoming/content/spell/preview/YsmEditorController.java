@@ -81,6 +81,8 @@ public final class YsmEditorController {
 	public YsmModelProfile.Trigger previewState() { return previewState; }
 	public YsmModelProfile.Trigger editingTrigger() { return editingTrigger; }
 	public boolean mayWriteWorld() { return Minecraft.getInstance().player != null && Minecraft.getInstance().player.hasPermissions(2); }
+	/** Type bindings are client-wide config; UUID bindings still require server write permission. */
+	public boolean mayWriteBinding() { return typeTarget || mayWriteWorld(); }
 	public boolean profileDirty() { return rawDraft != null || presetDirty || profile != null && !profile.toJson().equals(savedJson); }
 	public boolean bindingDirty() { return bindingDirty; }
 	public boolean isDirty() { return profileDirty() || bindingDirty; }
@@ -187,9 +189,8 @@ public final class YsmEditorController {
 			if (typeTarget) {
 				var type = ResourceLocation.tryParse(target);
 				if (type == null) throw new IllegalArgumentException("Invalid entity type");
-				binding = YSMClientCompat.typeBindings().get(type);
-				source = binding == null ? "default" : "type";
-				if (binding == null) binding = YSMCompatConfig.defaultBinding(type);
+				binding = YSMCompatConfig.defaultBinding(type);
+				source = "default";
 			} else {
 				UUID uuid = UUID.fromString(target);
 				binding = YSMClientCompat.entityBindings().get(uuid);
@@ -198,9 +199,8 @@ public final class YsmEditorController {
 				if (binding == null && level != null) {
 					for (var entity : level.entitiesForRendering()) if (entity.getUUID().equals(uuid) && entity instanceof LivingEntity living) {
 						var type = ForgeRegistries.ENTITY_TYPES.getKey(living.getType());
-						binding = YSMClientCompat.typeBindings().get(type);
-						source = binding == null ? "default" : "type";
-						if (binding == null) binding = YSMCompatConfig.defaultBinding(type);
+						binding = YSMCompatConfig.defaultBinding(type);
+						source = "default";
 						break;
 					}
 				}
@@ -241,14 +241,28 @@ public final class YsmEditorController {
 	public void saveBinding(String operation) {
 		if (waiting()) return;
 		attempt(() -> {
-			if (!mayWriteWorld()) throw new IllegalArgumentException("Requires operator permission (level 2)");
+			if (!typeTarget && !mayWriteWorld()) throw new IllegalArgumentException("Requires operator permission (level 2)");
 			if (operation.equals("set") && !applyRawDraft()) return;
-			if (typeTarget) {
-				if (ResourceLocation.tryParse(target) == null) throw new IllegalArgumentException("Invalid entity type");
-			} else UUID.fromString(target);
+			ResourceLocation type = typeTarget ? ResourceLocation.tryParse(target) : null;
+			if (typeTarget && type == null) throw new IllegalArgumentException("Invalid entity type");
+			if (!typeTarget) UUID.fromString(target);
 			if (operation.equals("set")) {
 				YsmModelProfile.modelId(modelInput);
 				if (texture.isBlank()) throw new IllegalArgumentException("Invalid binding texture");
+			}
+			if (typeTarget) {
+				YSMCompatConfig.saveExternalBinding(type, switch (operation) {
+					case "set" -> YSMCompatConfig.RenderBinding.enabled(modelInput, texture, bindingParameters);
+					case "off" -> YSMCompatConfig.RenderBinding.disabled();
+					case "unset" -> null;
+					default -> throw new IllegalArgumentException("Unknown binding operation");
+				});
+				bindingBaseline = currentBinding();
+				bindingRevision = YSMClientCompat.bindingRevision();
+				bindingDirty = false;
+				status = text("binding_saved");
+				refresh();
+				return;
 			}
 			var request = new YsmOverrideRequestToServer((typeTarget ? "type_" : "entity_") + operation,
 					typeTarget ? target : "", modelInput, texture, typeTarget ? "" : target);
@@ -338,7 +352,8 @@ public final class YsmEditorController {
 		if (waiting()) return;
 		attempt(() -> {
 			if (!isDirty()) { status = text("no_changes"); refresh(); return; }
-			if (!mayWriteWorld()) throw new IllegalArgumentException("Requires operator permission (level 2)");
+			if ((profileDirty() || !typeTarget && bindingDirty) && !mayWriteWorld())
+				throw new IllegalArgumentException("Requires operator permission (level 2)");
 			if (!applyRawDraft()) return;
 			if (profileDirty()) saveProfile(bindingDirty);
 			else if (bindingDirty) saveBinding("set");

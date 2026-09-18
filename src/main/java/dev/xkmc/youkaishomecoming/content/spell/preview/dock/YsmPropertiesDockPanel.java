@@ -49,9 +49,7 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 		button(text("pick_target"), editor::pickTarget, true);
 		button(text("read_binding"), editor::loadBinding, true);
 		edit("model", text("model"), editor.modelInput(), 256, editor::modelInput, () -> {
-			var models = new TreeSet<>(YSMClientCompat.loadedModelIds());
-			models.addAll(YsmClientProfiles.models());
-			return List.copyOf(models);
+			return YsmEditorCatalog.modelIds();
 		});
 		button(text("load_model"), () -> editor.selectModel(editor.modelInput()), true);
 	}
@@ -78,7 +76,7 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 		targetAndModel();
 		if (scenario.equals("model")) {
 			edit("texture", text("texture"), editor.texture(), 256, editor::texture, () -> YSMClientCompat.loadedTextureNames(editor.modelInput()));
-			button(text("bind_save"), () -> editor.saveBinding("set"), editor.mayWriteWorld() && !editor.modelInput().isBlank());
+			button(text("bind_save"), () -> editor.saveBinding("set"), editor.mayWriteBinding() && !editor.modelInput().isBlank());
 			return;
 		}
 		if (editor.profile() == null) { label(text("select_model_first")); return; }
@@ -104,9 +102,9 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 		targetAndModel();
 		edit("texture", text("texture"), editor.texture(), 256, editor::texture, () -> YSMClientCompat.loadedTextureNames(editor.modelInput()));
 		button(text("default_texture"), () -> { editor.texture(YSMClientCompat.defaultTextureName(editor.modelInput())); changed(); }, true);
-		button(text("bind_save"), () -> editor.saveBinding("set"), editor.mayWriteWorld());
-		button(text("bind_off"), () -> editor.saveBinding("off"), editor.mayWriteWorld());
-		button(text("bind_unset"), () -> editor.saveBinding("unset"), editor.mayWriteWorld());
+		button(text("bind_save"), () -> editor.saveBinding("set"), editor.mayWriteBinding());
+		button(text("bind_off"), () -> editor.saveBinding("off"), editor.mayWriteBinding());
+		button(text("bind_unset"), () -> editor.saveBinding("unset"), editor.mayWriteBinding());
 		label(text("binding_priority"));
 	}
 
@@ -117,13 +115,28 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 			String prefix = "summon ", command = prefix + input;
 			var dispatcher = connection.getCommands();
 			return dispatcher.getCompletionSuggestions(dispatcher.parse(command, connection.getSuggestionsProvider()),
-					prefix.length() + Math.min(caret, input.length())).thenApply(suggestions -> suggestions.getList().stream()
-					.map(suggestion -> suggestion.apply(command).substring(prefix.length()).trim())
-					.filter(value -> ResourceLocation.tryParse(value) != null).distinct().map(this::typeOption).toList());
+					prefix.length() + Math.min(caret, input.length())).thenApply(suggestions -> {
+					var values = new java.util.TreeSet<Option>(Comparator.comparing(Option::value));
+					suggestions.getList().stream().map(suggestion -> suggestion.apply(command).substring(prefix.length()).trim())
+							.filter(value -> ResourceLocation.tryParse(value) != null).map(this::typeOption).forEach(values::add);
+					return mergeConfiguredTypes(input, values);
+				});
 		}
 		// Read-only users may not receive the summon node. Use vanilla registry-ID matching, not a YH-only list.
 		return SharedSuggestionProvider.suggestResource(ForgeRegistries.ENTITY_TYPES.getKeys(), new SuggestionsBuilder(input, 0))
-				.thenApply(suggestions -> suggestions.getList().stream().map(suggestion -> typeOption(suggestion.getText())).toList());
+				.thenApply(suggestions -> {
+					var values = new java.util.TreeSet<Option>(Comparator.comparing(Option::value));
+					suggestions.getList().stream().map(suggestion -> typeOption(suggestion.getText())).forEach(values::add);
+					return mergeConfiguredTypes(input, values);
+				});
+	}
+	private List<Option> mergeConfiguredTypes(String input, java.util.Collection<Option> values) {
+		var merged = new java.util.TreeMap<String, Option>(String.CASE_INSENSITIVE_ORDER);
+		values.forEach(value -> merged.put(value.value(), value));
+		YSMCompatConfig.defaultBindings().keySet().stream().map(ResourceLocation::toString)
+				.filter(value -> value.toLowerCase(Locale.ROOT).startsWith(input.toLowerCase(Locale.ROOT)))
+				.forEach(value -> merged.putIfAbsent(value, typeOption(value)));
+		return List.copyOf(merged.values());
 	}
 	private Option typeOption(String id) {
 		var type = ForgeRegistries.ENTITY_TYPES.getValue(new ResourceLocation(id));

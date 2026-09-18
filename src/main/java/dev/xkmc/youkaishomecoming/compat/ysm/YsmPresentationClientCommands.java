@@ -109,8 +109,7 @@ final class YsmPresentationClientCommands {
 			if (!model.isEmpty()) models.add(model);
 		}
 		if (models.isEmpty() || kind == YsmCommandSuggestions.Kind.MODEL) {
-			models.addAll(YSMClientCompat.loadedModelIds());
-			models.addAll(YsmClientProfiles.models());
+			models.addAll(YsmEditorCatalog.modelIds());
 		}
 		Map<String, Component> values = new TreeMap<>();
 		String parameter = YsmCommandSuggestions.argument(ctx, "parameter");

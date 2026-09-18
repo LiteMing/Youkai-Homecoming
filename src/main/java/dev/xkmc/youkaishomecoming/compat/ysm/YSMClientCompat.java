@@ -5,9 +5,13 @@ import com.mojang.brigadier.LiteralMessage;
 import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.context.StringRange;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
+import com.mojang.brigadier.suggestion.Suggestion;
+import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMCompatConfig.RenderBinding;
 import dev.xkmc.youkaishomecoming.content.entity.boss.BossYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
@@ -21,13 +25,14 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
-import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -61,6 +66,7 @@ public class YSMClientCompat {
 	private static final String TEXTURE_DEFAULT = "default";
 	private static final ArgumentType<String> YSM_ID_ARGUMENT = new TokenArgument("Expected YSM id", List.of(MODEL_REMILIA, "namespace:path/model"));
 	private static final ArgumentType<String> ENTITY_TARGET_ARGUMENT = new TokenArgument("Expected entity target", List.of("@e[limit=1,sort=nearest]", "@a", "00000000-0000-0000-0000-000000000000"));
+	private static final ArgumentType<String> BINDING_TARGET_ARGUMENT = new TokenArgument("Expected entity type, UUID or selector", List.of("youkaishomecoming:remilia_scarlet", "@e[limit=1,sort=nearest]", "00000000-0000-0000-0000-000000000000"));
 	private static final boolean LOADED = ModList.get().isLoaded(MOD_ID);
 	private static final Map<ResourceLocation, RenderBinding> TYPE_DEBUG_OVERRIDES = new LinkedHashMap<>();
 	private static final Map<UUID, RenderBinding> ENTITY_DEBUG_OVERRIDES = new LinkedHashMap<>();
@@ -79,10 +85,6 @@ public class YSMClientCompat {
 	private static final int DEBUG_LABEL_COLOR = 0xffb8e6ff;
 	private static final int DEBUG_BG_A = 0xa0000000;
 	private static final int DEBUG_BG_B = 0x90000000;
-	private static final SuggestionProvider<CommandSourceStack> ENTITY_SUGGESTIONS = (ctx, builder) ->
-			SharedSuggestionProvider.suggest(ForgeRegistries.ENTITY_TYPES.getKeys().stream()
-					.filter(id -> Objects.equals(id.getNamespace(), YoukaisHomecoming.MODID))
-					.map(ResourceLocation::toString), builder);
 	private static final SuggestionProvider<CommandSourceStack> MODEL_SUGGESTIONS = (ctx, builder) ->
 			SharedSuggestionProvider.suggest(loadedModelIds(), builder);
 	private static final SuggestionProvider<CommandSourceStack> TARGET_ENTITY_SUGGESTIONS = (ctx, builder) -> {
@@ -92,6 +94,7 @@ public class YSMClientCompat {
 		}
 		return builder.buildFuture();
 	};
+	private static final SuggestionProvider<CommandSourceStack> BINDING_TARGET_SUGGESTIONS = YSMClientCompat::bindingTargetSuggestions;
 
 	private static Method renderMethod;
 	private static Method clearDebugMethod;
@@ -634,15 +637,6 @@ public class YSMClientCompat {
 	@SubscribeEvent
 	public static void registerClientCommands(RegisterClientCommandsEvent event) {
 		event.getDispatcher().register(Commands.literal("yhysm")
-				.then(Commands.literal("status")
-						.executes(YSMClientCompat::showStatus))
-				.then(Commands.literal("models")
-						.executes(YSMClientCompat::showLoadedModels))
-				.then(Commands.literal("reset")
-						.executes(ctx -> {
-							sendOverrideRequest(ctx, "reset", null, "", "", List.of());
-							return 1;
-						}))
 				.then(Commands.literal("debug")
 						.then(Commands.literal("on")
 								.executes(ctx -> setDebugTarget(ctx, getPointedEntity()))
@@ -653,46 +647,27 @@ public class YSMClientCompat {
 								.executes(YSMClientCompat::disableDebug))
 						.then(Commands.literal("status")
 								.executes(YSMClientCompat::showDebugStatus))
-						.then(Commands.literal("inspect")
-								.executes(ctx -> inspectDebugTarget(ctx, getPointedEntityOrSelected()))
-								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
-										.suggests(TARGET_ENTITY_SUGGESTIONS)
-										.executes(ctx -> inspectDebugTarget(ctx, getFirstResolvedEntity(ctx))))))
-				.then(Commands.literal("type")
-						.then(Commands.literal("set")
-								.then(Commands.argument("entity_type", ResourceLocationArgument.id())
-										.suggests(ENTITY_SUGGESTIONS)
-										.then(Commands.argument("model", YSM_ID_ARGUMENT)
-												.suggests(MODEL_SUGGESTIONS)
-												.executes(ctx -> setTypeMapping(ctx, TEXTURE_DEFAULT))
-												.then(Commands.argument("texture", YSM_ID_ARGUMENT)
-														.executes(ctx -> setTypeMapping(ctx, getYsmId(ctx, "texture")))))))
-						.then(Commands.literal("off")
-								.then(Commands.argument("entity_type", ResourceLocationArgument.id())
-										.suggests(ENTITY_SUGGESTIONS)
-										.executes(ctx -> setTypeDisabled(ctx))))
-						.then(Commands.literal("unset")
-								.then(Commands.argument("entity_type", ResourceLocationArgument.id())
-										.suggests(ENTITY_SUGGESTIONS)
-										.executes(ctx -> unsetTypeMapping(ctx)))))
-				.then(Commands.literal("entity")
-						.then(Commands.literal("set")
-								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
-										.suggests(TARGET_ENTITY_SUGGESTIONS)
-										.then(Commands.argument("model", YSM_ID_ARGUMENT)
-												.suggests(MODEL_SUGGESTIONS)
-												.executes(ctx -> setEntityMapping(ctx, TEXTURE_DEFAULT))
-												.then(Commands.argument("texture", YSM_ID_ARGUMENT)
-														.executes(ctx -> setEntityMapping(ctx, getYsmId(ctx, "texture")))))))
-						.then(Commands.literal("off")
-								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
-										.suggests(TARGET_ENTITY_SUGGESTIONS)
-										.executes(ctx -> setEntityDisabled(ctx))))
-						.then(Commands.literal("unset")
-								.then(Commands.argument("entities", ENTITY_TARGET_ARGUMENT)
-										.suggests(TARGET_ENTITY_SUGGESTIONS)
-										.executes(ctx -> unsetEntityMapping(ctx))))));
+						.then(Commands.literal("models")
+								.executes(YSMClientCompat::showLoadedModels))
+						.then(Commands.literal("reset")
+								.executes(ctx -> {
+									sendOverrideRequest(ctx, "reset", null, "", "", List.of());
+									return 1;
+								})))
+				.then(buildSetCommand()));
 		YsmPresentationClientCommands.register(event.getDispatcher(), ENTITY_TARGET_ARGUMENT, TARGET_ENTITY_SUGGESTIONS);
+	}
+
+	private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildSetCommand() {
+		var target = Commands.argument("entities", BINDING_TARGET_ARGUMENT).suggests(BINDING_TARGET_SUGGESTIONS)
+				.then(Commands.literal("model")
+						.then(Commands.argument("model", YSM_ID_ARGUMENT).suggests(MODEL_SUGGESTIONS)
+								.executes(ctx -> setBindingMapping(ctx, TEXTURE_DEFAULT))
+								.then(Commands.argument("texture", YSM_ID_ARGUMENT)
+										.executes(ctx -> setBindingMapping(ctx, getYsmId(ctx, "texture"))))))
+				.then(Commands.literal("off").executes(YSMClientCompat::disableBinding))
+				.then(Commands.literal("unset").executes(YSMClientCompat::unsetBinding));
+		return Commands.literal("set").then(target);
 	}
 
 	private static int showStatus(CommandContext<CommandSourceStack> ctx) {
@@ -834,6 +809,8 @@ public class YSMClientCompat {
 			}
 		}
 		if (entity instanceof LivingEntity living) {
+			lines.add(new DebugLine("held.mainhand", describeHeldItem(living.getMainHandItem())));
+			lines.add(new DebugLine("held.offhand", describeHeldItem(living.getOffhandItem())));
 			lines.add(new DebugLine("yh.spellHint", YsmSpellHintClient.animationOverride(living)));
 			if (living instanceof YsmRenderOverrideTarget target) {
 				lines.add(new DebugLine("yh.presentation", target.getYsmPresentation().expire(target.getYsmPresentationTime()).toTag().toString()));
@@ -842,6 +819,14 @@ public class YSMClientCompat {
 			lines.addAll(collectYsmDebugLines(living));
 		}
 		return lines;
+	}
+
+	private static String describeHeldItem(ItemStack stack) {
+		if (stack.isEmpty()) {
+			return "empty";
+		}
+		ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
+		return String.valueOf(id) + " x" + stack.getCount();
 	}
 
 	private static List<DebugLine> collectYsmDebugLines(LivingEntity entity) {
@@ -909,36 +894,39 @@ public class YSMClientCompat {
 		return "  " + uuid + " -> " + binding.modelId() + " / " + binding.textureName();
 	}
 
-	private static int setTypeMapping(CommandContext<CommandSourceStack> ctx, String textureName) {
-		ResourceLocation entityId = parseEntityType(ctx);
-		if (entityId == null) {
-			return 0;
-		}
+	private static int setBindingMapping(CommandContext<CommandSourceStack> ctx, String textureName) {
 		String modelId = getYsmId(ctx, "model");
 		if (modelId.isBlank() || textureName.isBlank()) {
 			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Model and texture must not be blank."));
 			return 0;
 		}
-		sendOverrideRequest(ctx, "type_set", entityId.toString(), modelId, textureName, List.of());
-		return 1;
+		ResourceLocation entityId = parseBindingType(ctx);
+		if (entityId != null) {
+			sendOverrideRequest(ctx, "type_set", entityId.toString(), modelId, textureName, List.of());
+			return 1;
+		}
+		if (getYsmId(ctx, "entities").contains(":")) return 0;
+		return setEntityMapping(ctx, textureName);
 	}
 
-	private static int setTypeDisabled(CommandContext<CommandSourceStack> ctx) {
-		ResourceLocation entityId = parseEntityType(ctx);
-		if (entityId == null) {
-			return 0;
+	private static int disableBinding(CommandContext<CommandSourceStack> ctx) {
+		ResourceLocation entityId = parseBindingType(ctx);
+		if (entityId != null) {
+			sendOverrideRequest(ctx, "type_off", entityId.toString(), "", "", List.of());
+			return 1;
 		}
-		sendOverrideRequest(ctx, "type_off", entityId.toString(), "", "", List.of());
-		return 1;
+		if (getYsmId(ctx, "entities").contains(":")) return 0;
+		return setEntityDisabled(ctx);
 	}
 
-	private static int unsetTypeMapping(CommandContext<CommandSourceStack> ctx) {
-		ResourceLocation entityId = parseEntityType(ctx);
-		if (entityId == null) {
-			return 0;
+	private static int unsetBinding(CommandContext<CommandSourceStack> ctx) {
+		ResourceLocation entityId = parseBindingType(ctx);
+		if (entityId != null) {
+			sendOverrideRequest(ctx, "type_unset", entityId.toString(), "", "", List.of());
+			return 1;
 		}
-		sendOverrideRequest(ctx, "type_unset", entityId.toString(), "", "", List.of());
-		return 1;
+		if (getYsmId(ctx, "entities").contains(":")) return 0;
+		return unsetEntityMapping(ctx);
 	}
 
 	private static int setEntityMapping(CommandContext<CommandSourceStack> ctx, String textureName) {
@@ -1019,10 +1007,22 @@ public class YSMClientCompat {
 		});
 	}
 
-	private static ResourceLocation parseEntityType(CommandContext<CommandSourceStack> ctx) {
-		ResourceLocation entityId = ResourceLocationArgument.getId(ctx, "entity_type");
-		if (!ForgeRegistries.ENTITY_TYPES.containsKey(entityId)) {
-			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Unknown entity type: " + entityId));
+	private static ResourceLocation parseBindingType(CommandContext<CommandSourceStack> ctx) {
+		String target = getYsmId(ctx, "entities");
+		if (target.startsWith("@")) {
+			return null;
+		}
+		try {
+			UUID.fromString(target);
+			return null;
+		} catch (IllegalArgumentException ignored) {
+		}
+		if (!target.contains(":")) {
+			return null;
+		}
+		ResourceLocation entityId = ResourceLocation.tryParse(target);
+		if (entityId == null || !ForgeRegistries.ENTITY_TYPES.containsKey(entityId)) {
+			ctx.getSource().sendFailure(Component.literal("[YH/YSM] Unknown entity type: " + target));
 			return null;
 		}
 		if (!Objects.equals(entityId.getNamespace(), YoukaisHomecoming.MODID)) {
@@ -1030,6 +1030,50 @@ public class YSMClientCompat {
 			return null;
 		}
 		return entityId;
+	}
+
+	private static java.util.concurrent.CompletableFuture<Suggestions> bindingTargetSuggestions(CommandContext<CommandSourceStack> ctx,
+			SuggestionsBuilder builder) {
+		String remaining = builder.getRemainingLowerCase();
+		if (remaining.startsWith("@")) {
+			return EntityArgument.entities().listSuggestions(ctx, builder);
+		}
+		StringRange range = StringRange.between(builder.getStart(), builder.getInput().length());
+		List<Suggestion> ordered = new ArrayList<>();
+		ForgeRegistries.ENTITY_TYPES.getKeys().stream()
+				.filter(id -> Objects.equals(id.getNamespace(), YoukaisHomecoming.MODID))
+				.sorted()
+				.forEach(id -> {
+					String value = id.toString();
+					if (value.startsWith(remaining)) {
+						var type = ForgeRegistries.ENTITY_TYPES.getValue(id);
+						ordered.add(new Suggestion(range, value, type == null ? Component.literal(value) : Component.translatable(type.getDescriptionId())));
+					}
+				});
+		Minecraft minecraft = Minecraft.getInstance();
+		if (minecraft.level != null) {
+			List<Entity> entities = collectClientEntities(minecraft).stream()
+					.filter(entity -> entity instanceof YsmRenderOverrideTarget)
+					.sorted(Comparator.comparingDouble(entity -> minecraft.player == null ? 0 : entity.distanceToSqr(minecraft.player)))
+					.toList();
+			for (Entity entity : entities) {
+				String uuid = entity.getUUID().toString();
+				if (!uuid.startsWith(remaining)) continue;
+				String distance = minecraft.player == null ? "?" : String.format(Locale.ROOT, "%.1f", entity.distanceTo(minecraft.player));
+				ordered.add(new Suggestion(range, uuid, Component.translatable("commands.youkaishomecoming.model.entity_candidate",
+						ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()), distance)));
+			}
+		}
+		if (!remaining.isEmpty()) {
+			return java.util.concurrent.CompletableFuture.completedFuture(new Suggestions(range, ordered));
+		}
+		SuggestionsBuilder vanillaBuilder = new SuggestionsBuilder(builder.getInput(), builder.getStart());
+		return EntityArgument.entities().listSuggestions(ctx, vanillaBuilder).thenApply(vanilla -> {
+			var seen = new java.util.HashSet<String>();
+			for (Suggestion suggestion : ordered) seen.add(suggestion.getText());
+			for (Suggestion suggestion : vanilla.getList()) if (seen.add(suggestion.getText())) ordered.add(suggestion);
+			return new Suggestions(range, ordered);
+		});
 	}
 
 	private static Entity getPointedEntity() {

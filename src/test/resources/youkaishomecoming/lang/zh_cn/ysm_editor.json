@@ -120,7 +120,7 @@
   "youkaishomecoming.ysm_editor.help.5": "5. 点“保存当前预览”记录当前动作和全部可读取的原生数值参数，包括未改动的默认值。旁边的“另存为新预设”保留原预设；“删除预设”删除所选预设及其触发规则，按 Ctrl+S 保存。",
   "youkaishomecoming.ysm_editor.help.6": "6. 在“自动触发”选择状态或事件，再选择预设；无需另点“设置”。保存后生效。倒地表现会保持到倒地状态结束。",
   "youkaishomecoming.ysm_editor.help.7": "7. 用脸部视角细调表情，左键旋转、右键平移、滚轮缩放。播放、暂停、停止和重置只影响预览；保存的动作从头播放，不保存暂停帧或视角。",
-  "youkaishomecoming.ysm_editor.help.8": "8. 预设与触发规则跨存档全局保存，联机以服务器 JSON 为准。Ctrl+S 保存所有已修改的预设和目标绑定，任意标签页均可使用；服务器确认后星号消失。仅浏览模型不会产生绑定修改。外部改文件后用 /yhysm reload。",
+  "youkaishomecoming.ysm_editor.help.8": "8. 预设与触发规则跨存档全局保存，联机以服务器 JSON 为准。Ctrl+S 保存所有已修改的预设和目标绑定，任意标签页均可使用；服务器确认后星号消失。仅浏览模型不会产生绑定修改。外部改文件后用 /yhysm debug reload。",
   "youkaishomecoming.ysm_editor.help.9": "9. Raw JSON 包含预设和 binding，支持多行选择、Ctrl+A/C/X/V、Ctrl+Z/Y。Ctrl+S 先校验 JSON，再保存修改的预设与绑定；“更多→保存预设库”只保存预设。导入导出也在“更多”中。",
   "youkaishomecoming.ysm_editor.workspace": "设置内容",
   "youkaishomecoming.ysm_editor.target_scope": "应用范围",

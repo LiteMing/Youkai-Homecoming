@@ -27,56 +27,39 @@ public final class YsmPresentationCommands {
 
 	@SubscribeEvent
 	public static void register(RegisterCommandsEvent event) {
+		registerCurrent(event);
+	}
+
+	private static void registerCurrent(RegisterCommandsEvent event) {
 		event.getDispatcher().register(Commands.literal("yhysm").requires(source -> source.hasPermission(2))
-				.then(Commands.literal("reload").executes(YsmPresentationCommands::reloadPresets))
-				.then(Commands.literal("anim")
-						.then(Commands.literal("play").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
-								.then(Commands.argument("clip", StringArgumentType.string()).suggests(YsmCommandSuggestions.CLIPS)
-										.executes(ctx -> play(ctx, YHModel.defaultDuration()))
+				.then(Commands.literal("debug")
+						.then(Commands.literal("reload").executes(YsmPresentationCommands::reloadPresets)))
+				.then(buildSetCommand()));
+	}
+
+	private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildSetCommand() {
+		var targets = Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
+				.then(Commands.literal("animation")
+						.then(Commands.argument("clip", StringArgumentType.string()).suggests(YsmCommandSuggestions.CLIPS)
+								.executes(ctx -> play(ctx, YHModel.defaultDuration()))
+								.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
+										.executes(ctx -> play(ctx, IntegerArgumentType.getInteger(ctx, "ticks"))))))
+				.then(Commands.literal("parameter")
+						.then(Commands.argument("parameter", StringArgumentType.string()).suggests(YsmCommandSuggestions.PARAMETERS)
+								.then(Commands.argument("value", DoubleArgumentType.doubleArg()).suggests(YsmCommandSuggestions.VALUES)
+										.executes(ctx -> setParameter(ctx, YHModel.defaultDuration()))
 										.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
-										.executes(ctx -> play(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))
-						// "set" is an explicit alias for play, matching param/preset set syntax.
-						.then(Commands.literal("set").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
-								.then(Commands.argument("clip", StringArgumentType.string()).suggests(YsmCommandSuggestions.CLIPS)
-										.executes(ctx -> play(ctx, YHModel.defaultDuration()))
-										.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
-												.executes(ctx -> play(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))
-						.then(Commands.literal("stop").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
-								.executes(ctx -> mutate(ctx, target -> YHModel.currentForMutation(target).stop())))))
-				.then(Commands.literal("param")
-						.then(Commands.literal("set").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
-								.then(Commands.argument("parameter", StringArgumentType.string()).suggests(YsmCommandSuggestions.PARAMETERS)
-										.then(Commands.argument("value", DoubleArgumentType.doubleArg()).suggests(YsmCommandSuggestions.VALUES)
-												.executes(ctx -> setParameter(ctx, YHModel.defaultDuration()))
-												.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
-														.executes(ctx -> setParameter(ctx, IntegerArgumentType.getInteger(ctx, "ticks"))))))))
-						.then(Commands.literal("clear").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
-								.executes(ctx -> mutate(ctx, target -> YHModel.currentForMutation(target).clearParameters()))
-								.then(Commands.argument("parameter", StringArgumentType.string()).suggests(YsmCommandSuggestions.PARAMETERS)
-										.executes(ctx -> mutate(ctx, target -> YHModel.currentForMutation(target)
-												.clearParameter(StringArgumentType.getString(ctx, "parameter"))))))))
-				.then(Commands.literal("clear").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
-						.executes(ctx -> mutate(ctx, target -> YHModel.currentForMutation(target).stop().clearParameters()))))
-				.then(Commands.literal("state").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
-						.executes(YsmPresentationCommands::state)))
+												.executes(ctx -> setParameter(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))
 				.then(Commands.literal("preset")
-						.then(Commands.literal("reload").executes(YsmPresentationCommands::reloadPresets))
-						.then(Commands.literal("list").then(Commands.argument("model", StringArgumentType.string()).suggests(YsmCommandSuggestions.MODELS)
-								.executes(YsmPresentationCommands::listPresets)))
-						.then(Commands.literal("apply").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
-								.then(Commands.argument("model", StringArgumentType.string()).suggests(YsmCommandSuggestions.MODELS)
-										.then(Commands.argument("preset", StringArgumentType.string()).suggests(YsmCommandSuggestions.PRESETS)
-												.executes(ctx -> applyPreset(ctx, -1))
-												.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
-														.executes(ctx -> applyPreset(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))))
-						// Keep apply for backwards compatibility; set is the concise form used by
-						// editor-generated commands and accepts UUIDs/selectors identically.
-						.then(Commands.literal("set").then(Commands.argument("targets", EntityArgument.entities()).suggests(YsmCommandSuggestions.TARGETS)
-								.then(Commands.argument("model", StringArgumentType.string()).suggests(YsmCommandSuggestions.MODELS)
-										.then(Commands.argument("preset", StringArgumentType.string()).suggests(YsmCommandSuggestions.PRESETS)
-												.executes(ctx -> applyPreset(ctx, -1))
-												.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
-														.executes(ctx -> applyPreset(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))));
+						.then(Commands.argument("model", StringArgumentType.string()).suggests(YsmCommandSuggestions.MODELS)
+								.then(Commands.argument("preset", StringArgumentType.string()).suggests(YsmCommandSuggestions.PRESETS)
+										.executes(ctx -> applyPreset(ctx, -1))
+										.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
+												.executes(ctx -> applyPreset(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))
+				.then(Commands.literal("clear")
+						.executes(ctx -> mutate(ctx, target -> YHModel.currentForMutation(target).stop().clearParameters())))
+				.then(Commands.literal("state").executes(YsmPresentationCommands::state));
+		return Commands.literal("set").then(targets);
 	}
 
 	private static int reloadPresets(CommandContext<CommandSourceStack> ctx) {
@@ -89,18 +72,6 @@ public final class YsmPresentationCommands {
 			return 1;
 		} catch (IllegalArgumentException ex) {
 			ctx.getSource().sendFailure(Component.translatable("commands.youkaishomecoming.model.profiles_reload_failed", ex.getMessage()));
-			return 0;
-		}
-	}
-
-	private static int listPresets(CommandContext<CommandSourceStack> ctx) {
-		try {
-			var profile = YsmProfileData.get(ctx.getSource().getServer()).entry(StringArgumentType.getString(ctx, "model")).profile();
-			ctx.getSource().sendSuccess(() -> Component.translatable("commands.youkaishomecoming.model.presets", profile.model(), profile.presets().size()), false);
-			profile.presets().forEach((id, preset) -> ctx.getSource().sendSuccess(() -> Component.literal(id + " — " + preset.description() + " [" + preset.clip() + "]"), false));
-			return profile.presets().size();
-		} catch (IllegalArgumentException ex) {
-			ctx.getSource().sendFailure(Component.translatable("commands.youkaishomecoming.model.invalid", ex.getMessage()));
 			return 0;
 		}
 	}

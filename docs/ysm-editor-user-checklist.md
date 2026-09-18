@@ -75,7 +75,7 @@ pitch/yaw/tilt 补偿、实例上限和性能确认项与普通弹幕共用；�
 
 绑定优先级：UUID > type > 资源默认。禁用 UUID 会屏蔽 type；移除 UUID 覆盖才会重新使用下层。
 `ysm_render` 不负责模型绑定；模型和纹理由 YSM Editor 的 UUID/type 绑定控制。禁用绑定时不会强行启用渲染。
-修改永久绑定不会覆盖一个仍有效的符卡临时模型，排查时用 `/yhysm inspect`。
+修改永久绑定不会覆盖一个仍有效的符卡临时模型，排查时用 `/yhysm debug inspect`。
 
 “不使用 YSM 模型”不删除模型资产；“移除自定义绑定”不删除下层绑定。
 UUID set/off 需要服务端当前加载了该实体；已知但卸载的 UUID 仍可以 unset。
@@ -167,12 +167,12 @@ UUID set/off 需要服务端当前加载了该实体；已知但卸载的 UUID �
 不要把 `extraN` 或某个 `v.*` 名称当作其他模型的通用语义。
 
 - [ ] 在“自动触发”把 `stg_combat → focus`、`normal_combat → angry`、`boss_victory → victory`，再“保存并绑定”。关闭并重开 Editor，三条映射仍存在。
-- [ ] 不开启弹幕 session，让 Boss 获得一个有效 AI target。实体应进入 `angry`，同时继续播放当下 idle / walk / fly 身体状态；`/yhysm inspect` 的 signals 中应出现 `combatMode:"NORMAL"`。
+- [ ] 不开启弹幕 session，让 Boss 获得一个有效 AI target。实体应进入 `angry`，同时继续播放当下 idle / walk / fly 身体状态；`/yhysm debug inspect` 的 signals 中应出现 `combatMode:"NORMAL"`。
 - [ ] 让 Boss 失去或清除 AI target。`angry` 参数应恢复到绑定默认外观，signals 回到 `combatMode:"NONE"`，不能依靠预设 ticks 自行提前退出。
 - [ ] 开启该 Boss 的弹幕 session。实体应切到 `focus`，即使仍持有 AI target 也不能叠加 `normal_combat`；signals 应为 `combatMode:"STG"`。
 - [ ] 给 `enter_combat` 另绑一个短动作。开战时它只播放一次；动作到期后恢复持续的 `focus`，持续 session 中不能反复触发。
 - [ ] 切换符卡并触发受伤，确认短事件到期后仍回到 `focus`；走路或飞行时严肃表情保持，而身体动画继续按移动状态变化。
-- [ ] 让玩家耗尽残机而 Boss 保持存活。session 清除后 Boss 播放一次 `victory`；`/yhysm inspect` 应出现 `boss_victory` 事件，预设 ticks 到期后恢复当前日常或普通战斗状态。
+- [ ] 让玩家耗尽残机而 Boss 保持存活。session 清除后 Boss 播放一次 `victory`；`/yhysm debug inspect` 应出现 `boss_victory` 事件，预设 ticks 到期后恢复当前日常或普通战斗状态。
 - [ ] 反过来击败 Boss。既有 defeat → falling → prone 必须覆盖胜利、战斗条件和手动身体动作，不能误播 `victory`。
 
 符卡物品展示：
@@ -186,8 +186,8 @@ UUID set/off 需要服务端当前加载了该实体；已知但卸载的 UUID �
 
 命令和补全：
 
-- [ ] 在玩家附近和远处各放一只可绑定实体，输入 `/yhysm param set `、`/yhysm anim set ` 或 `/yhysm preset set ` 后按 Tab。UUID 应按距离由近到远，不能按 `1~9/a~z` 排列；UUID 行同时显示类型和距离。
-- [ ] 目标位置输入 `@` 时仍显示原生命令选择器。分别用完整 UUID 和 `@e[type=...,sort=nearest,limit=1]` 执行 `anim set`、`param set`、`preset set`，确认与旧 `play` / `apply` 行为一致。
+- [ ] 在玩家附近和远处各放一只可绑定实体，输入 `/yhysm set ` 后按 Tab。实体类型 ID 与 UUID 共用这一目标位置；UUID 应按距离由近到远，不能按 `1~9/a~z` 排列；UUID 行同时显示类型和距离。
+- [ ] 目标位置输入 `@` 时仍显示原生命令选择器。分别用完整 UUID 和 `@e[type=...,sort=nearest,limit=1]` 执行 `/yhysm set <目标> animation|parameter|preset`，确认请求由服务端执行。
 
 ## 5. Raw JSON 与备份
 
@@ -204,21 +204,19 @@ UUID set/off 需要服务端当前加载了该实体；已知但卸载的 UUID �
 
 - [ ] 右侧绑定页选一个真实 UUID（不是 type），预设页选一个已保存预设。
 - [ ] 点击“在选定实体上播放”；它只播放已保存预设，不替实体更换模型，需要 OP，拒绝使用未保存草稿。
-- [ ] 关闭界面，用 `/yhysm inspect` 和 `/yhysm state <UUID>` 查看请求、服务端信号、实际 OYSM 选中项及跳过原因。
+- [ ] 关闭界面，用 `/yhysm debug inspect` 和 `/yhysm set <UUID> state` 查看请求、服务端信号、实际 OYSM 选中项及跳过原因。
 - [ ] “停止实体的手动动作和表情”只清显式请求，自动规则及旧符卡提示恢复，不删除绑定。
-- [ ] 聊天框输入 `/yhysm anim play <UUID> ` 后按 Tab，应出现该实体模型的真实动画；`anim set` 可作同义写法；`param set <UUID> ` 补全参数，参数后补全原生开关/数值选项，`param get/clear` 也补全参数。
-- [ ] `preset list`/`preset apply` 补全模型及该模型已保存预设；`preset set` 可作同义写法；确认完整命令仍由服务端执行，OP 与选择器规则不变。
+- [ ] 聊天框输入 `/yhysm set <UUID> animation ` 后按 Tab，应出现该实体模型的真实动画；`parameter <UUID>` 补全参数，参数后补全原生开关/数值选项。
+- [ ] `/yhysm set <目标> preset` 补全模型及该模型已保存预设；确认完整命令仍由服务端执行，OP 与选择器规则不变。
 
 命令（含 Unicode、空格或 `/` 的模型 ID 请加双引号）：
 
 ```text
-/yhysm preset list "实际模型ID"
-/yhysm preset apply <UUID或服务端选择器> "实际模型ID" happy [ticks]
-/yhysm preset set <UUID或服务端选择器> "实际模型ID" happy [ticks]
-/yhysm anim play <targets> extra5 100
-/yhysm anim set <targets> extra5 100
-/yhysm param set <targets> v.roaming.mouth 2 100
-/yhysm clear <targets>
+/yhysm debug reload
+/yhysm set <UUID或服务端选择器> preset "实际模型ID" happy [ticks]
+/yhysm set <targets> animation extra5 100
+/yhysm set <targets> parameter v.roaming.mouth 2 100
+/yhysm set <targets> clear
 ```
 
 命令补全优先使用可见目标的有效模型；无法在客户端解析目标时回退到本地模型/共享预设合集，
@@ -241,7 +239,7 @@ if (YHModel.supports(entity)) {
 
 ## 7. 协作与恢复
 
-- [ ] “重新读取”实际请求服务器文件；另一作者或 `/yhysm reload` 更新后，无修改的编辑器采用新版本，有修改的草稿保留到冲突处理。
+- [ ] “重新读取”实际请求服务器文件；另一作者或 `/yhysm debug reload` 更新后，无修改的编辑器采用新版本，有修改的草稿保留到冲突处理。
 
 - [ ] 保存时如提示版本冲突，当前草稿仍保留：先导出，再“重载草稿”取服务器新版本，合并后重试。
 - [ ] 绑定冲突使用“重读目标绑定”获取新版本；绑定版本独立于模型预设版本。
@@ -249,7 +247,7 @@ if (YHModel.supports(entity)) {
 
 0.30.2 起预设保存在 `<游戏或服务器实例>/config/youkaishomecoming/ysm_presets.json`，跨存档共用。
 联机时以服务器文件为准；本地 JSON 不会覆盖远程服务器的预设。
-游戏外可直接编辑 JSON，再运行 `/yhysm reload`（或 `/yhysm preset reload`），服务器会向所有在线玩家同步新增、修改和删除。
+游戏外可直接编辑 JSON，再运行 `/yhysm debug reload`，服务器会向所有在线玩家同步新增、修改和删除。
 首次进入旧世界时自动合并其 `data/youkaishomecoming_model_profiles.dat`，成功后保留 `.dat.migrated` 原始备份。
 同名不同内容的旧预设保留为 `_migrated_N` 后缀，已有全局触发规则优先。完整格式和迁移边界见
 `docs/0.30.2-global-ysm-presets.md`。已有绑定仍在 `<世界>/data/youkaishomecoming_ysm_overrides.dat`。
@@ -285,7 +283,7 @@ if (YHModel.supports(entity)) {
 - [ ] 完成“4.1 0.28.1 战斗表现专项实测”，保留普通战斗、弹幕战、Boss 战胜、符卡物品及距离补全的截图或 inspect 快照。
 - [ ] 完整弹幕战：擦弹、miss、无敌帧、弹幕虚化、掉落、退出战斗不回归。
 
-请保存截图或 `/yhysm inspect`、`/yhysm debug inspect` 快照，并记录双方 JAR 版本。
+请保存截图或 `/yhysm debug inspect` 快照，并记录双方 JAR 版本。
 
 ## 验证记录与证据边界
 

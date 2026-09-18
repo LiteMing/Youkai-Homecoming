@@ -43,18 +43,19 @@ final class YsmPresentationClientCommands {
 			SuggestionProvider<CommandSourceStack> suggestions) {
 		YsmCommandSuggestions.client(YsmPresentationClientCommands::nativeSuggestions);
 		dispatcher.register(Commands.literal("yhysm")
-				.then(Commands.literal("inspect")
-						.executes(ctx -> inspect(ctx, YSMClientCompat.getPointedEntityOrSelected()))
-						.then(Commands.argument("entities", targets).suggests(suggestions)
-								.executes(ctx -> inspect(ctx, YSMClientCompat.getFirstResolvedEntity(ctx)))))
-				.then(Commands.literal("anim").then(list("list", targets, suggestions, YsmPresentationClientCommands::animations)))
-				.then(list("wheel", targets, suggestions, YsmPresentationClientCommands::wheel))
-				.then(Commands.literal("param")
-						.then(list("list", targets, suggestions, YsmPresentationClientCommands::parameters))
-						.then(Commands.literal("get").then(Commands.argument("entities", targets).suggests(suggestions)
-								.then(Commands.argument("parameter", StringArgumentType.string())
-										.suggests((ctx, builder) -> nativeSuggestions(YsmCommandSuggestions.Kind.PARAMETER, ctx, builder))
-										.executes(YsmPresentationClientCommands::parameterValue))))));
+				.then(Commands.literal("debug")
+						.then(Commands.literal("inspect")
+								.executes(ctx -> inspect(ctx, YSMClientCompat.getPointedEntityOrSelected()))
+								.then(Commands.argument("entities", targets).suggests(suggestions)
+										.executes(ctx -> inspect(ctx, YSMClientCompat.getFirstResolvedEntity(ctx)))))
+						.then(Commands.literal("anim").then(list("list", targets, suggestions, YsmPresentationClientCommands::animations)))
+						.then(list("wheel", targets, suggestions, YsmPresentationClientCommands::wheel))
+						.then(Commands.literal("param")
+								.then(list("list", targets, suggestions, YsmPresentationClientCommands::parameters))
+								.then(Commands.literal("get").then(Commands.argument("entities", targets).suggests(suggestions)
+										.then(Commands.argument("parameter", StringArgumentType.string())
+												.suggests((ctx, builder) -> nativeSuggestions(YsmCommandSuggestions.Kind.PARAMETER, ctx, builder))
+												.executes(YsmPresentationClientCommands::parameterValue)))))));
 	}
 
 	/** Invoked by the named provider on the actual server command node, not a shadow client command. */
@@ -217,7 +218,7 @@ final class YsmPresentationClientCommands {
 			String labels = catalog.wheel().stream().filter(entry -> entry.id().equals(clip) && entry.configGroup().isEmpty())
 					.map(YsmModelCatalog.WheelEntry::label).distinct().reduce((a, b) -> a + " / " + b).orElse("");
 			lines.add(suggest(Component.literal(clip + (labels.isEmpty() || labels.equals(clip) ? "" : " — " + labels)),
-					"/yhysm anim play " + entity.getUUID() + " " + StringArgumentType.escapeIfRequired(clip)));
+					"/yhysm set " + entity.getUUID() + " animation " + StringArgumentType.escapeIfRequired(clip)));
 		}
 		return lines;
 	}
@@ -228,7 +229,7 @@ final class YsmPresentationClientCommands {
 			MutableComponent line = Component.literal((entry.group().isEmpty() ? "" : entry.group() + " / ") + entry.id() + " — " + entry.label());
 			if (!entry.submenu().isEmpty()) line.append(Component.translatable("commands.youkaishomecoming.model.submenu", entry.submenu()));
 			if (!entry.configGroup().isEmpty()) line.append(Component.translatable("commands.youkaishomecoming.model.config_group", entry.configGroup()));
-			if (entry.clipAvailable()) suggest(line, "/yhysm anim play " + entity.getUUID() + " " + StringArgumentType.escapeIfRequired(entry.id()));
+			if (entry.clipAvailable()) suggest(line, "/yhysm set " + entity.getUUID() + " animation " + StringArgumentType.escapeIfRequired(entry.id()));
 			else line.append(Component.translatable("commands.youkaishomecoming.model.no_clip"));
 			lines.add(line);
 		}
@@ -241,7 +242,7 @@ final class YsmPresentationClientCommands {
 			String group = control.groupLabel().isEmpty() ? control.group() : control.groupLabel();
 			MutableComponent line = Component.literal(group + " / " + control.title() + " — " + control.expression() + " [" + control.type() + "]");
 			if (!control.description().isEmpty()) line.withStyle(style -> style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(control.description()))));
-			String prefix = "/yhysm param set " + entity.getUUID() + " " + control.parameter() + " ";
+			String prefix = "/yhysm set " + entity.getUUID() + " parameter " + control.parameter() + " ";
 			if (control.type().equals("checkbox") && !control.parameter().isEmpty()) {
 				line.append(" ").append(suggest(Component.literal("0"), prefix + "0"));
 				line.append(" / ").append(suggest(Component.literal("1"), prefix + "1"));

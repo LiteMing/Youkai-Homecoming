@@ -17,7 +17,7 @@ public record YsmModelProfile(String model, Map<String, Preset> presets, Map<Tri
 	private static final Gson JSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
 	public enum Trigger {
-		IDLE, WALK, FLY, NORMAL_COMBAT, STG_COMBAT, ENTER_COMBAT, SPELL_SWITCH, MELEE_ATTACK, HURT,
+		IDLE, WALK, FLY, SIT, SWIM, NORMAL_COMBAT, STG_COMBAT, ENTER_COMBAT, SPELL_SWITCH, MELEE_ATTACK, HURT,
 		BOSS_VICTORY, DEFEAT, FALLING, PRONE;
 
 		public String id() { return name().toLowerCase(Locale.ROOT); }

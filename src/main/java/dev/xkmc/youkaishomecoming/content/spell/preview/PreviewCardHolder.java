@@ -32,6 +32,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.resources.ResourceLocation;
@@ -53,6 +54,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 
 	private final Level level;
 	private final FakeCasterEntity fakeCaster;
+	private final ArmorStand fakeVehicle;
 	private final ArmorStand fakeTarget;
 	private final List<Entity> localEntities = new ArrayList<>();
 	private final List<Entity> pendingEntities = new ArrayList<>();
@@ -120,6 +122,10 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	public PreviewCardHolder(Level level) {
 		this.level = level;
 		this.fakeCaster = new FakeCasterEntity(level, this);
+		this.fakeVehicle = new ArmorStand(EntityType.ARMOR_STAND, level);
+		this.fakeVehicle.setInvisible(true);
+		this.fakeVehicle.setNoGravity(true);
+		this.fakeVehicle.setInvulnerable(true);
 		setEntityCenter(this.fakeCaster, Vec3.ZERO);
 		this.fakeCaster.setInvisible(true);
 		this.fakeTarget = new ArmorStand(EntityType.ARMOR_STAND, level);
@@ -982,7 +988,17 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		var state = ysmSignals.state();
 		boolean walking = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.WALK;
 		boolean flying = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FLY;
-		fakeCaster.setOnGround(!flying && state != dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FALLING);
+		boolean sitting = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.SIT;
+		boolean swimming = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.SWIM;
+		if (sitting && !fakeCaster.isPassenger()) {
+			// Keep the invisible vehicle at the existing preview origin; mounting must not move the model up.
+			fakeVehicle.setPos(fakeCaster.position());
+			fakeCaster.startRiding(fakeVehicle, true);
+		}
+		else if (!sitting && fakeCaster.isPassenger()) fakeCaster.stopRiding();
+		fakeCaster.setSwimming(swimming);
+		fakeCaster.setPose(swimming ? Pose.SWIMMING : Pose.STANDING);
+		fakeCaster.setOnGround(!flying && !swimming && state != dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FALLING);
 		fakeCaster.setNoGravity(flying);
 		// The native movement controller and Molang read more than the YH trigger:
 		// provide real movement inputs on this isolated entity, without ticking AI/world physics.

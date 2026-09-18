@@ -35,6 +35,13 @@ public final class YsmPresentationRuntime {
 				case YoukaiEntity.BEATEN_FALLING -> Trigger.FALLING;
 				default -> Trigger.PRONE;
 			};
+		} else if (entity.isPassenger() && entity.getVehicle() != null && entity.getVehicle().isAlive()
+				&& entity.getVehicle().shouldRiderSit()) {
+			// OYSM's native vehicle controller uses the same real passenger relation.
+			// YH only exposes it as a preset state; it never fakes riding physics.
+			state = Trigger.SIT;
+		} else if (entity.isSwimming()) {
+			state = Trigger.SWIM;
 		} else if (entity.isNoGravity() || entity instanceof YoukaiEntity youkai && youkai.isFlying()) {
 			state = Trigger.FLY;
 		} else {

@@ -65,6 +65,7 @@ public final class YsmPropertiesDockPanel extends YsmEditorPanel {
 			options.add(new Option(event.id(), text("trigger." + event.id())));
 		options.add(new Option("preset", text("scenario.preset")));
 		for (var event : List.of(YsmModelProfile.Trigger.BOSS_VICTORY, YsmModelProfile.Trigger.IDLE, YsmModelProfile.Trigger.WALK, YsmModelProfile.Trigger.FLY,
+				YsmModelProfile.Trigger.SIT, YsmModelProfile.Trigger.SWIM,
 				YsmModelProfile.Trigger.HURT, YsmModelProfile.Trigger.DEFEAT, YsmModelProfile.Trigger.FALLING, YsmModelProfile.Trigger.PRONE))
 			options.add(new Option(event.id(), text("trigger." + event.id())));
 		select("scenario", text("scenario_choice"), scenario, options, value -> {

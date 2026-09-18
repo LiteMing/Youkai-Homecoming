@@ -2226,6 +2226,8 @@
   "youkaishomecoming.ysm_editor.trigger.idle": "待机",
   "youkaishomecoming.ysm_editor.trigger.walk": "走路",
   "youkaishomecoming.ysm_editor.trigger.fly": "飞行",
+  "youkaishomecoming.ysm_editor.trigger.sit": "坐下",
+  "youkaishomecoming.ysm_editor.trigger.swim": "游泳",
   "youkaishomecoming.ysm_editor.trigger.normal_combat": "普通战斗中",
   "youkaishomecoming.ysm_editor.trigger.stg_combat": "弹幕战斗中",
   "youkaishomecoming.ysm_editor.trigger.enter_combat": "弹幕战斗开启时",

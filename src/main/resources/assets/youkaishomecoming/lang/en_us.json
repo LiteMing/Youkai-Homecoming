@@ -2002,6 +2002,8 @@
   "youkaishomecoming.ysm_editor.trigger.idle": "Idle",
   "youkaishomecoming.ysm_editor.trigger.walk": "Walking",
   "youkaishomecoming.ysm_editor.trigger.fly": "Flying",
+  "youkaishomecoming.ysm_editor.trigger.sit": "Sitting",
+  "youkaishomecoming.ysm_editor.trigger.swim": "Swimming",
   "youkaishomecoming.ysm_editor.trigger.normal_combat": "Normal combat",
   "youkaishomecoming.ysm_editor.trigger.stg_combat": "Danmaku combat",
   "youkaishomecoming.ysm_editor.trigger.enter_combat": "When danmaku combat begins",

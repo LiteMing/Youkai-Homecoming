@@ -240,18 +240,21 @@ public final class ModelPresentationTest {
 	}
 
 	private static YsmModelProfile exampleProfile() {
-		return new YsmModelProfile("test/model", Map.of(
-				"idle", new YsmModelProfile.Preset("Daily", "idle", 20, Map.of("v.face", 1f, "v.other", 8f)),
-				"walk", new YsmModelProfile.Preset("Walk", "walk", 20, Map.of("v.face", 2f)),
-				"combat", new YsmModelProfile.Preset("Combat", "extra5", 40, Map.of("v.face", 3f)),
-				"hurt", new YsmModelProfile.Preset("Hurt", "attacked", 10, Map.of("v.face", 4f)),
-				"down", new YsmModelProfile.Preset("Down", "beaten_prone", 5, Map.of("v.face", 5f)),
-				"face", new YsmModelProfile.Preset("Face only", "", 10, Map.of("v.face", 6f)),
-				"angry", new YsmModelProfile.Preset("Angry", "", 20, Map.of("v.face", 7f)),
-				"focused", new YsmModelProfile.Preset("Focused", "", 20, Map.of("v.face", 8f)),
-				"victory", new YsmModelProfile.Preset("Victory", "victory", 20, Map.of("v.face", 9f))),
+		return new YsmModelProfile("test/model", Map.ofEntries(
+				Map.entry("idle", new YsmModelProfile.Preset("Daily", "idle", 20, Map.of("v.face", 1f, "v.other", 8f))),
+				Map.entry("walk", new YsmModelProfile.Preset("Walk", "walk", 20, Map.of("v.face", 2f))),
+				Map.entry("combat", new YsmModelProfile.Preset("Combat", "extra5", 40, Map.of("v.face", 3f))),
+				Map.entry("hurt", new YsmModelProfile.Preset("Hurt", "attacked", 10, Map.of("v.face", 4f))),
+				Map.entry("down", new YsmModelProfile.Preset("Down", "beaten_prone", 5, Map.of("v.face", 5f))),
+				Map.entry("face", new YsmModelProfile.Preset("Face only", "", 10, Map.of("v.face", 6f))),
+				Map.entry("angry", new YsmModelProfile.Preset("Angry", "", 20, Map.of("v.face", 7f))),
+				Map.entry("focused", new YsmModelProfile.Preset("Focused", "", 20, Map.of("v.face", 8f))),
+				Map.entry("victory", new YsmModelProfile.Preset("Victory", "victory", 20, Map.of("v.face", 9f))),
+				Map.entry("sit", new YsmModelProfile.Preset("Sit", "sit", 0, Map.of("v.face", 10f))),
+				Map.entry("swim", new YsmModelProfile.Preset("Swim", "swim", 0, Map.of("v.face", 11f)))),
 				Map.of(YsmModelProfile.Trigger.IDLE, "idle", YsmModelProfile.Trigger.WALK, "walk", YsmModelProfile.Trigger.ENTER_COMBAT, "combat",
-						YsmModelProfile.Trigger.HURT, "hurt", YsmModelProfile.Trigger.PRONE, "down",
+						YsmModelProfile.Trigger.HURT, "hurt", YsmModelProfile.Trigger.PRONE, "down", YsmModelProfile.Trigger.SIT, "sit",
+						YsmModelProfile.Trigger.SWIM, "swim",
 						YsmModelProfile.Trigger.NORMAL_COMBAT, "angry", YsmModelProfile.Trigger.STG_COMBAT, "focused",
 						YsmModelProfile.Trigger.BOSS_VICTORY, "victory"));
 	}
@@ -417,6 +420,10 @@ public final class ModelPresentationTest {
 		var idle = YsmPresentationSignals.EMPTY;
 		var result = YsmPresentationResolver.resolve(profile.model(), profile, idle, empty, 1000);
 		equal("idle ignores finite preset duration", result.body().clip(), "idle");
+		var sitting = idle.advance(YsmModelProfile.Trigger.SIT, false, 1000);
+		equal("passenger state selects sit preset", YsmPresentationResolver.resolve(profile.model(), profile, sitting, empty, 1001).body().clip(), "sit");
+		var swimming = sitting.advance(YsmModelProfile.Trigger.SWIM, false, 1002);
+		equal("swimming state selects swim preset", YsmPresentationResolver.resolve(profile.model(), profile, swimming, empty, 1003).body().clip(), "swim");
 		var combat = idle.advance(YsmModelProfile.Trigger.IDLE, true, 100);
 		result = YsmPresentationResolver.resolve(profile.model(), profile, combat, empty, 110);
 		equal("combat above daily", result.body().clip(), "extra5");

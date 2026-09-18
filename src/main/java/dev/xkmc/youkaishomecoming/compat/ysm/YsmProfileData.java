@@ -36,6 +36,9 @@ public final class YsmProfileData {
 	private static final int FORMAT = 1;
 	// The same hard library bound used by the legacy SavedData reader.
 	private static final int MAX_PROFILES = 4096;
+	private static final String BUILTIN_REMILIA = "YH内置/remilia";
+	private static final String BUILTIN_SIT = "sit";
+	private static final String BUILTIN_SWIM = "swim";
 	private static final Map<MinecraftServer, YsmProfileData> SERVERS = new WeakHashMap<>();
 	private final Path file;
 	private final Map<String, Entry> profiles = new LinkedHashMap<>();
@@ -75,17 +78,24 @@ public final class YsmProfileData {
 		String json = readFile();
 		if (loaded && Objects.equals(json, diskJson)) return false;
 		Map<String, YsmModelProfile> next = decode(json);
-		if (json == null) {
-			json = encode(next);
+		Map<String, YsmModelProfile> completed = completeBuiltInProfiles(next);
+		if (!completed.equals(next)) {
+			String amended = encode(completed);
+			write(amended, json);
+			json = amended;
+		}
+		else if (json == null) {
+			json = encode(completed);
 			write(json, null);
 		}
-		boolean changed = adopt(next);
+		boolean changed = adopt(completed);
 		diskJson = json;
 		loaded = true;
 		return changed;
 	}
 
 	public Entry replace(YsmModelProfile profile, long expectedRevision, int maxProfiles) {
+		profile = completeBuiltInProfile(profile);
 		Entry current = entry(profile.model());
 		if (expectedRevision != current.revision()) throw new IllegalArgumentException("revision_conflict");
 		if (!profiles.containsKey(profile.model()) && profiles.size() >= Math.min(maxProfiles, MAX_PROFILES))
@@ -129,6 +139,29 @@ public final class YsmProfileData {
 		Map<String, YsmModelProfile> values = new LinkedHashMap<>();
 		profiles.forEach((model, entry) -> values.put(model, entry.profile()));
 		return values;
+	}
+
+	private static Map<String, YsmModelProfile> completeBuiltInProfiles(Map<String, YsmModelProfile> values) {
+		Map<String, YsmModelProfile> completed = new LinkedHashMap<>(values);
+		YsmModelProfile profile = completed.get(BUILTIN_REMILIA);
+		if (profile == null) {
+			if (completed.size() >= MAX_PROFILES) throw new IllegalArgumentException("Profile count limit reached");
+			profile = new YsmModelProfile(BUILTIN_REMILIA, Map.of(), Map.of());
+		}
+		YsmModelProfile completedProfile = completeBuiltInProfile(profile);
+		if (!completedProfile.equals(profile)) completed.put(BUILTIN_REMILIA, completedProfile);
+		return completed;
+	}
+
+	private static YsmModelProfile completeBuiltInProfile(YsmModelProfile profile) {
+		if (!BUILTIN_REMILIA.equals(profile.model())) return profile;
+		Map<String, YsmModelProfile.Preset> presets = new LinkedHashMap<>(profile.presets());
+		Map<YsmModelProfile.Trigger, String> triggers = new LinkedHashMap<>(profile.triggers());
+		presets.putIfAbsent(BUILTIN_SIT, new YsmModelProfile.Preset("sit", BUILTIN_SIT, 0, Map.of()));
+		presets.putIfAbsent(BUILTIN_SWIM, new YsmModelProfile.Preset("swim", BUILTIN_SWIM, 0, Map.of()));
+		triggers.putIfAbsent(YsmModelProfile.Trigger.SIT, BUILTIN_SIT);
+		triggers.putIfAbsent(YsmModelProfile.Trigger.SWIM, BUILTIN_SWIM);
+		return new YsmModelProfile(profile.model(), presets, triggers);
 	}
 
 	private static Map<String, YsmModelProfile> decode(String json) {

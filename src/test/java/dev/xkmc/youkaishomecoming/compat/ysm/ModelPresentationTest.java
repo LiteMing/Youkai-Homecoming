@@ -21,6 +21,7 @@ public final class ModelPresentationTest {
 		bindingAppearanceContracts();
 		signalContracts();
 		compositionContracts();
+		automaticProfileContracts();
 		acknowledgementContracts();
 		catalogContracts();
 		captureContracts();
@@ -280,14 +281,14 @@ public final class ModelPresentationTest {
 		var data = new YsmProfileData(file);
 		data.reload();
 		equal("unregistered profile revision", data.entry(profile.model()).revision(), 0L);
-		data.replace(profile, 0, 2);
+		data.replace(profile, 0, 3);
 		equal("saved revision increments", data.entry(profile.model()).revision(), 1L);
-		reject("stale editor revision rejected", () -> data.replace(YsmModelProfile.empty(profile.model()), 0, 2));
+		reject("stale editor revision rejected", () -> data.replace(YsmModelProfile.empty(profile.model()), 0, 3));
 		equal("conflict preserves server data", data.entry(profile.model()).profile(), profile);
 		var other = YsmModelProfile.empty("another/model");
-		data.replace(other, 0, 2);
+		data.replace(other, 0, 3);
 		equal("independent model has independent revision", data.entry(other.model()).revision(), 1L);
-		reject("profile capacity enforced", () -> data.replace(YsmModelProfile.empty("third/model"), 0, 2));
+		reject("profile capacity enforced", () -> data.replace(YsmModelProfile.empty("third/model"), 0, 3));
 		data.replace(profile, 1, 1);
 		equal("lower capacity still allows existing profile update", data.entry(profile.model()).revision(), 2L);
 		var loaded = new YsmProfileData(file);
@@ -551,6 +552,35 @@ public final class ModelPresentationTest {
 		lease.close();
 		equal("OYSM roaming restored", mouth.get(), 4f);
 		equal("OYSM scoped restored", emoji.get(), 7f);
+	}
+
+	private static void automaticProfileContracts() {
+		var catalog = new YsmModelCatalog(YsmModelCatalog.Status.READY, "",
+				List.of("idle", "run", "elytra_fly", "ride", "swimming_up", "attacked"), List.of(), List.of());
+		var automatic = YsmAutomaticProfile.merge("test/automatic", null, catalog);
+		check("automatic profile exists for a ready arbitrary model", automatic != null);
+		equal("automatic idle uses the real idle clip", automatic.triggers().get(YsmModelProfile.Trigger.IDLE), "__yh_auto_idle");
+		equal("walk falls back to run", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.WALK)).clip(), "run");
+		equal("fly falls back to elytra_fly", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.FLY)).clip(), "elytra_fly");
+		equal("sit falls back to ride", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.SIT)).clip(), "ride");
+		equal("swim falls back to swimming_up", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.SWIM)).clip(), "swimming_up");
+		equal("hurt uses a finite generic event clip", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.HURT)).clip(), "attacked");
+		equal("hurt fallback duration", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.HURT)).ticks(), 10);
+
+		var explicit = new YsmModelProfile("test/automatic", Map.of(
+				"custom_sit", new YsmModelProfile.Preset("custom", "my_sit", 0, Map.of()),
+				"blank_idle", new YsmModelProfile.Preset("native", "", 0, Map.of("v.face", 1f))),
+				Map.of(YsmModelProfile.Trigger.SIT, "custom_sit", YsmModelProfile.Trigger.IDLE, "blank_idle"));
+		var merged = YsmAutomaticProfile.merge(explicit.model(), explicit, catalog);
+		equal("explicit sit route wins over automatic fallback", merged.triggers().get(YsmModelProfile.Trigger.SIT), "custom_sit");
+		equal("explicit blank route remains authoritative", merged.triggers().get(YsmModelProfile.Trigger.IDLE), "blank_idle");
+		check("automatic profile never mutates explicit preset map", !merged.presets().containsKey("__yh_auto_sit"));
+		check("missing catalog leaves explicit profile untouched",
+				YsmAutomaticProfile.merge(explicit.model(), explicit,
+						YsmModelCatalog.unavailable(YsmModelCatalog.Status.MODEL_NOT_READY, "waiting")) == explicit);
+		check("missing standard clips are not invented",
+				YsmAutomaticProfile.merge("test/empty", null,
+						new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("custom"), List.of(), List.of())) == null);
 	}
 
 	private static void animationClockContracts() {

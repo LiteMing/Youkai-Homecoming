@@ -59,7 +59,7 @@ public final class YsmClientProfiles {
 	public static boolean isPreview(LivingEntity entity) { return PREVIEWS.containsKey(entity); }
 	public static java.util.List<String> models() { return PROFILES.keySet().stream().sorted().toList(); }
 	public static void forgetPreview(LivingEntity entity) { PREVIEWS.remove(entity); }
-	public static void clear() { PROFILES.clear(); RESPONSES.clear(); PREVIEWS.clear(); }
+	public static void clear() { PROFILES.clear(); RESPONSES.clear(); PREVIEWS.clear(); YsmAutomaticProfile.clear(); }
 
 	public static YsmPresentationResolver.Resolved resolve(LivingEntity entity, String model) {
 		var preview = PREVIEWS.get(entity);
@@ -76,6 +76,9 @@ public final class YsmClientProfiles {
 		}
 		if (!(entity instanceof YsmRenderOverrideTarget target))
 			return new YsmPresentationResolver.Resolved(null, Map.of(), false, false);
+		// Model assets are client-owned. Fill only missing standard routes from the
+		// actual catalog; explicit server routes remain authoritative.
+		profile = YsmAutomaticProfile.merge(model, profile, YsmClientPresentationBridge.catalog(model));
 		var signals = target.getYsmSignals();
 		// Existing beaten EntityData can arrive one tick before the general signals. Project that
 		// authoritative phase immediately, never a stale prone clip over a newly started defeat.

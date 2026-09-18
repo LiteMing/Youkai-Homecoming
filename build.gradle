@@ -179,6 +179,16 @@ mixin {
 // FROM-CACHE compile restores classes only and JarJar silently loses the map.
 tasks.named('compileJava', JavaCompile).configure {
     outputs.file(provider { new File(temporaryDir, "${modid}.refmap.json") })
+
+    // A partial classes directory can otherwise satisfy Gradle's incremental
+    // state and leave Mixin unable to resolve a class that is present in source.
+    def requiredRuntimeClasses = [
+            'dev/xkmc/youkaishomecoming/content/capability/GrazeCapability.class',
+            'dev/xkmc/youkaishomecoming/mixin/PlayerMixin.class'
+    ]
+    outputs.upToDateWhen {
+        requiredRuntimeClasses.every { new File(destinationDirectory.get().asFile, it).isFile() }
+    }
 }
 
 repositories {

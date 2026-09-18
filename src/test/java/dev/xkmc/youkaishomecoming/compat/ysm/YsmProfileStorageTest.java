@@ -47,14 +47,17 @@ public final class YsmProfileStorageTest {
 
 	private static void globalAndExternalEdits(Path file) throws IOException {
 		var firstWorld = open(file);
-		check("fresh library is an editable JSON file", JsonParser.parseString(Files.readString(file)).getAsJsonObject().getAsJsonArray("profiles").isEmpty());
-		var original = profile("YH内置/remilia", "happy", 1);
+		var builtin = firstWorld.entry("YH内置/remilia").profile();
+		check("fresh library seeds the built-in Remilia profile", builtin.presets().keySet().containsAll(java.util.Set.of("sit", "swim")));
+		check("fresh library routes built-in sit and swim", builtin.triggers().get(YsmModelProfile.Trigger.SIT).equals("sit")
+				&& builtin.triggers().get(YsmModelProfile.Trigger.SWIM).equals("swim"));
+		var original = profile("test/remilia", "happy", 1);
 		var first = firstWorld.replace(original, 0, 256);
 		check("UTF-8 remains human-readable", Files.readString(file, StandardCharsets.UTF_8).contains("中文表情"));
 		var otherWorld = open(file);
 		equal("another world reads the same global preset", otherWorld.entry(original.model()).profile(), original);
 		var anotherServer = open(file.resolveSibling("another-server.json"));
-		check("another server installation has an independent library", anotherServer.entries().isEmpty());
+		check("another server installation has an independent library", !anotherServer.entries().containsKey(original.model()));
 		String originalFile = Files.readString(file);
 		reject("stale editor cannot save", () -> firstWorld.replace(YsmModelProfile.empty(original.model()), 0, 256));
 		equal("rejected revision leaves file unchanged", Files.readString(file), originalFile);

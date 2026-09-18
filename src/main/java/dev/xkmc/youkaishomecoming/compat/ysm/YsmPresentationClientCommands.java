@@ -73,7 +73,7 @@ final class YsmPresentationClientCommands {
 			List<Entity> entities = new ArrayList<>();
 			if (mc.level != null) {
 				for (Entity entity : mc.level.entitiesForRendering())
-					if (entity instanceof YsmRenderOverrideTarget) entities.add(entity);
+					if (entity instanceof YsmRenderOverrideTarget && YSMClientCompat.isWithinUuidSuggestionRange(entity, mc.player)) entities.add(entity);
 				if (mc.player != null && mc.player instanceof YsmRenderOverrideTarget && !entities.contains(mc.player))
 					entities.add(mc.player);
 			}

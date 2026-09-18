@@ -47,6 +47,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -60,6 +61,7 @@ import java.util.UUID;
 
 @Mod.EventBusSubscriber(value = Dist.CLIENT, modid = YoukaisHomecoming.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class YSMClientCompat {
+	private static final double UUID_SUGGESTION_RANGE_SQR = 16 * 16;
 
 	private static final String MOD_ID = "yes_steve_model";
 	private static final String MODEL_REMILIA = "YH内置/remilia";
@@ -104,6 +106,8 @@ public class YSMClientCompat {
 	private static Method modelAnimationNamesMethod;
 	private static Method modelDefaultTextureNameMethod;
 	private static boolean unavailable;
+	private static boolean heldItemLayerUnavailable;
+	private static HeldItemLayerAccess heldItemLayerAccess;
 	private static int delegatedRenderDepth;
 	private static boolean textureListUnavailable;
 	private static boolean animationListUnavailable;
@@ -482,6 +486,52 @@ public class YSMClientCompat {
 
 	private static String actionAnimationHint(String modelId, String animation) {
 		return YsmAnimationHints.normalize(animation, key -> YSMCompatConfig.expressionToken(modelId, key));
+	}
+
+	/**
+	 * Called from the optional OYSM renderer mixin while its model pose is still
+	 * active. The actual hand transform and item rendering stay in OYSM's native
+	 * layer; YH only supplies the external entity's current model and item state.
+	 */
+	public static void renderExternalHeldItems(Object animatable, PoseStack pose, MultiBufferSource buffer, int light) {
+		if (!LOADED || heldItemLayerUnavailable || animatable == null) {
+			return;
+		}
+		try {
+			HeldItemLayerAccess access = heldItemLayerAccess();
+			if (access == null || !access.externalAnimatable().isInstance(animatable)) {
+				return;
+			}
+			Object model = access.currentModel().invoke(animatable);
+			Object entityObject = access.entity().invoke(animatable);
+			if (!(model != null && entityObject instanceof LivingEntity entity)) {
+				return;
+			}
+			if (!entity.getMainHandItem().isEmpty() && access.hasBones(access.rightHandBones().invoke(model))) {
+				access.renderItem().invoke(access.layer(), model, entity, entity.getMainHandItem(),
+						net.minecraft.world.item.ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+						net.minecraft.world.entity.HumanoidArm.RIGHT, pose, buffer, light);
+			}
+			if (!entity.getOffhandItem().isEmpty() && access.hasBones(access.leftHandBones().invoke(model))) {
+				access.renderItem().invoke(access.layer(), model, entity, entity.getOffhandItem(),
+						net.minecraft.world.item.ItemDisplayContext.THIRD_PERSON_LEFT_HAND,
+						net.minecraft.world.entity.HumanoidArm.LEFT, pose, buffer, light);
+			}
+		} catch (ReflectiveOperationException | RuntimeException ex) {
+			heldItemLayerUnavailable = true;
+			YoukaisHomecoming.LOGGER.warn("Failed to render external YSM held items; disabling the optional bridge", ex);
+		}
+	}
+
+	private static HeldItemLayerAccess heldItemLayerAccess() throws ReflectiveOperationException {
+		if (heldItemLayerAccess != null) {
+			return heldItemLayerAccess;
+		}
+		if (heldItemLayerUnavailable) {
+			return null;
+		}
+		heldItemLayerAccess = new HeldItemLayerAccess();
+		return heldItemLayerAccess;
 	}
 
 	private static List<String> splitAnimationHint(String animation) {
@@ -1054,6 +1104,7 @@ public class YSMClientCompat {
 		if (minecraft.level != null) {
 			List<Entity> entities = collectClientEntities(minecraft).stream()
 					.filter(entity -> entity instanceof YsmRenderOverrideTarget)
+					.filter(entity -> isWithinUuidSuggestionRange(entity, minecraft.player))
 					.sorted(Comparator.comparingDouble(entity -> minecraft.player == null ? 0 : entity.distanceToSqr(minecraft.player)))
 					.toList();
 			for (Entity entity : entities) {
@@ -1074,6 +1125,10 @@ public class YSMClientCompat {
 			for (Suggestion suggestion : vanilla.getList()) if (seen.add(suggestion.getText())) ordered.add(suggestion);
 			return new Suggestions(range, ordered);
 		});
+	}
+
+	static boolean isWithinUuidSuggestionRange(Entity entity, Entity player) {
+		return player == null || entity.distanceToSqr(player) <= UUID_SUGGESTION_RANGE_SQR;
 	}
 
 	private static Entity getPointedEntity() {
@@ -1292,6 +1347,44 @@ public class YSMClientCompat {
 		public Collection<String> getExamples() {
 			return examples;
 		}
+	}
+
+	private static final class HeldItemLayerAccess {
+		private static final String OYSM = "com.elfmcys.yesstevemodel.";
+		private final Class<?> externalAnimatable;
+		private final Method entity;
+		private final Method currentModel;
+		private final Method leftHandBones;
+		private final Method rightHandBones;
+		private final Object layer;
+		private final Method renderItem;
+
+		private HeldItemLayerAccess() throws ReflectiveOperationException {
+			externalAnimatable = Class.forName(OYSM + "client.entity.ExternalLivingEntity");
+			entity = externalAnimatable.getMethod("getEntity");
+			currentModel = externalAnimatable.getMethod("getCurrentModel");
+			Class<?> model = Class.forName(OYSM + "geckolib3.geo.animated.AnimatedGeoModel");
+			leftHandBones = model.getMethod("leftHandBones");
+			rightHandBones = model.getMethod("rightHandBones");
+			Class<?> layerClass = Class.forName(OYSM + "client.renderer.layer.CustomPlayerItemInHandLayer");
+			Constructor<?> constructor = layerClass.getConstructor(net.minecraft.client.renderer.ItemInHandRenderer.class);
+			layer = constructor.newInstance(Minecraft.getInstance().getEntityRenderDispatcher().getItemInHandRenderer());
+			renderItem = layerClass.getMethod("renderItem", model, LivingEntity.class,
+				 net.minecraft.world.item.ItemStack.class, net.minecraft.world.item.ItemDisplayContext.class,
+				 net.minecraft.world.entity.HumanoidArm.class, PoseStack.class, MultiBufferSource.class, int.class);
+		}
+
+		private boolean hasBones(Object value) {
+			return value instanceof Collection<?> collection && !collection.isEmpty();
+		}
+
+		private Class<?> externalAnimatable() { return externalAnimatable; }
+		private Method entity() { return entity; }
+		private Method currentModel() { return currentModel; }
+		private Method leftHandBones() { return leftHandBones; }
+		private Method rightHandBones() { return rightHandBones; }
+		private Object layer() { return layer; }
+		private Method renderItem() { return renderItem; }
 	}
 
 	private record BindingResolution(RenderBinding binding, String source) {

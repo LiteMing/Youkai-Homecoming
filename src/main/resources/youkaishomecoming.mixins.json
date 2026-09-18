@@ -26,6 +26,7 @@
 	"client": [
 		"SpellAiClientCommandMixin",
 		"compat.YsmPlayerHintMixin",
+		"compat.YsmExternalHeldItemLayerMixin",
 		"CriterionGridMixin",
 		"effect.GameRendererMixin",
 		"effect.HumanoidModelMixin",

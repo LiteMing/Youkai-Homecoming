@@ -73,6 +73,7 @@ public class RumiaEntity extends YoukaiEntity implements IYoukaiMerchant {
 	}
 
 	protected void registerGoals() {
+		super.registerGoals();
 		goalSelector.addGoal(3, new RumiaParalyzeGoal(this));
 		goalSelector.addGoal(4, new RumiaAttackGoal(this));
 		goalSelector.addGoal(5, new RumiaTemptGoal(this, Ingredient.of(YHFood.FLESH_CHOCOLATE_MOUSSE.item.get())));

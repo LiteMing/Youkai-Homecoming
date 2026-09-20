@@ -282,6 +282,7 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 	}
 
 	protected void registerGoals() {
+		super.registerGoals();
 		goalSelector.addGoal(4, new YoukaiAttackGoal<>(this));
 		goalSelector.addGoal(6, new FloatGoal(this));
 		goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 0.8));

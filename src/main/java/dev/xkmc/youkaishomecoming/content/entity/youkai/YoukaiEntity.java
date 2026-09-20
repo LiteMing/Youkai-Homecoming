@@ -53,7 +53,9 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.control.FlyingMoveControl;
 import net.minecraft.world.entity.ai.control.MoveControl;
+import net.minecraft.world.entity.ai.goal.OpenDoorGoal;
 import net.minecraft.world.entity.ai.navigation.FlyingPathNavigation;
+import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
@@ -143,10 +145,30 @@ public abstract class YoukaiEntity extends PathfinderMob
 		super(pEntityType, pLevel);
 		this.walkCtrl = moveControl;
 		this.walkNav = navigation;
+		if (walkNav instanceof GroundPathNavigation ground) {
+			ground.setCanPassDoors(true);
+			ground.setCanOpenDoors(true);
+		}
 		this.flyCtrl = new FlyingMoveControl(this, 10, false);
 		this.fltNav = new FlyingPathNavigation(this, level());
 		this.targets = new YoukaiTargetContainer(this, maxSize);
 		combatProgress.init(this);
+	}
+
+	@Override
+	protected PathNavigation createNavigation(Level level) {
+		return new YoukaiGroundNavigation(this, level);
+	}
+
+	@Override
+	protected void registerGoals() {
+		super.registerGoals();
+		if (getNavigation() instanceof GroundPathNavigation) {
+			// Path planning through doors and actually opening them are separate.
+			// This vanilla goal has no MOVE flag, so it also works while scripts
+			// own navigation and temporarily disable the selector's MOVE goals.
+			goalSelector.addGoal(3, new OpenDoorGoal(this, true));
+		}
 	}
 
 	protected SoundEvent getAmbientSound() {

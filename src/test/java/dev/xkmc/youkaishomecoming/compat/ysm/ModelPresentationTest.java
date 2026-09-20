@@ -284,7 +284,10 @@ public final class ModelPresentationTest {
 		reject("unknown trigger rejected", () -> YsmModelProfile.fromJson(profile.toJson().replace("\"enter_combat\"", "\"combat_typo\"")));
 		reject("unknown profile field", () -> YsmModelProfile.fromJson(profile.toJson().replace("\"format\": 1", "\"format\": 1, \"provider\": \"oysm\"")));
 		reject("unknown preset target rejected", () -> new YsmModelProfile(profile.model(), profile.presets(), Map.of(YsmModelProfile.Trigger.IDLE, "absent")));
-		reject("infinite event rejected", () -> new YsmModelProfile("test/model", Map.of("never", new YsmModelProfile.Preset("", "extra1", 0, Map.of())), Map.of(YsmModelProfile.Trigger.HURT, "never")));
+		var zeroEvent = new YsmModelProfile("test/model", Map.of("never", new YsmModelProfile.Preset("", "extra1", 0, Map.of())), Map.of(YsmModelProfile.Trigger.HURT, "never"));
+		equal("zero-duration event profile saves", YsmModelProfile.fromJson(zeroEvent.toJson()), zeroEvent);
+		var zeroEventSignals = YsmPresentationSignals.EMPTY.hurt(100);
+		check("zero-duration event window is inactive", YsmPresentationResolver.resolve(zeroEvent.model(), zeroEvent, zeroEventSignals, YsmPresentationState.EMPTY, 100).body() == null);
 		reject("preset expression rejected", () -> new YsmModelProfile.Preset("", "special=extra5", 20, Map.of()));
 		reject("unsafe numeric path rejected", () -> new YsmModelProfile.Preset("", "", 20, Map.of("v.x[0]", 1f)));
 		reject("non-finite preset rejected", () -> new YsmModelProfile.Preset("", "", 20, Map.of("v.x", Float.NaN)));

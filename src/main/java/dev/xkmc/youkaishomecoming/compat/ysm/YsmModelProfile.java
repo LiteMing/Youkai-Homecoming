@@ -54,7 +54,10 @@ public record YsmModelProfile(String model, Map<String, Preset> presets, Map<Tri
 		triggers.forEach((key, id) -> {
 			Preset preset = copy.get(id);
 			if (preset == null) throw new IllegalArgumentException("Unknown preset for " + key.id() + ": " + id);
-			if (key.event() && preset.ticks() == 0) throw new IllegalArgumentException("Event presets need a finite duration: " + key.id());
+			// A zero-duration preset is valid profile data. State mappings keep it
+			// until the state changes; the resolver naturally suppresses a zero
+			// event window, so sharing a persistent preset with an event cannot
+			// make the whole library unsavable or leave an event stuck forever.
 			routes.put(key, id);
 		});
 		triggers = Collections.unmodifiableMap(routes);

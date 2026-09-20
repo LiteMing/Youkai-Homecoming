@@ -44,6 +44,11 @@ public final class YsmPresentationRuntime {
 			state = Trigger.SWIM;
 		} else if (entity.isNoGravity() || entity instanceof YoukaiEntity youkai && youkai.isFlying()) {
 			state = Trigger.FLY;
+		} else if (!entity.onGround()) {
+			// Jumping and falling are owned by OYSM's native predicates. Keeping
+			// airborne separate prevents an automatic idle preset from freezing
+			// the model in its float/idle clip while the entity is in the air.
+			state = Trigger.AIRBORNE;
 		} else {
 			double speed = YHModConfig.COMMON.modelPresentationWalkSpeed.get();
 			double dx = entity.getX() - entity.xo, dz = entity.getZ() - entity.zo;

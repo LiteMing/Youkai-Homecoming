@@ -435,6 +435,8 @@ public final class ModelPresentationTest {
 		var idle = YsmPresentationSignals.EMPTY;
 		var result = YsmPresentationResolver.resolve(profile.model(), profile, idle, empty, 1000);
 		equal("idle ignores finite preset duration", result.body().clip(), "idle");
+		var airborne = idle.advance(YsmModelProfile.Trigger.AIRBORNE, false, 1001);
+		check("airborne state leaves jump animation to OYSM", YsmPresentationResolver.resolve(profile.model(), profile, airborne, empty, 1002).body() == null);
 		var sitting = idle.advance(YsmModelProfile.Trigger.SIT, false, 1000);
 		equal("passenger state selects sit preset", YsmPresentationResolver.resolve(profile.model(), profile, sitting, empty, 1001).body().clip(), "sit");
 		var swimming = sitting.advance(YsmModelProfile.Trigger.SWIM, false, 1002);

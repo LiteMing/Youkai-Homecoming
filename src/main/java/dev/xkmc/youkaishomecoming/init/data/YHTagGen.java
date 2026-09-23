@@ -41,6 +41,7 @@ public class YHTagGen {
 									ForgeRegistries.MOB_EFFECTS.getKey(ench)),
 							e.getExistingFileHelper()));
 
+	public static final TagKey<Item> CABBAGE_ROLL_INGREDIENTS = ItemTags.create(new ResourceLocation("farmersdelight", "cabbage_roll_ingredients"));
 	public static final TagKey<Item> RAW_EEL = forgeItem("raw_fishes/eel");
 	public static final TagKey<Item> COOKED_EEL = forgeItem("cooked_fishes/eel");
 	public static final TagKey<Item> RAW_TUNA = forgeItem("raw_fishes/tuna");

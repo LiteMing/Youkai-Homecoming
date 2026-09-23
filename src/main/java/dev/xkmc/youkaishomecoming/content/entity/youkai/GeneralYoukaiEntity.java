@@ -1,5 +1,6 @@
 package dev.xkmc.youkaishomecoming.content.entity.youkai;
 
+import dev.xkmc.youkaishomecoming.content.entity.goal.YoukaiFlyCompanionGoal;
 import dev.xkmc.l2serial.serialization.SerialClass;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
@@ -244,6 +245,7 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 
 	protected void registerGoals() {
 		goalSelector.addGoal(4, new YoukaiAttackGoal<>(this));
+		goalSelector.addGoal(5, new YoukaiFlyCompanionGoal<>(this));
 		goalSelector.addGoal(6, new FloatGoal(this));
 		goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 0.8));
 		goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 24));

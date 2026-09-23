@@ -34,7 +34,7 @@ public enum YHFood implements ItemLike {
 	),
 	ROASTED_LAMPREY_FILLET(FoodType.FAST, 6, 0.8f,
 			new EffectEntry(() -> MobEffects.NIGHT_VISION, 1800, 0, 1),
-			YHTagGen.COOKED_EEL, ModTags.CABBAGE_ROLL_INGREDIENTS, DietTagGen.PROTEINS.tag
+			YHTagGen.COOKED_EEL, YHTagGen.CABBAGE_ROLL_INGREDIENTS, DietTagGen.PROTEINS.tag
 	),
 
 	RAW_TUNA(FoodType.SIMPLE, 9, 0.3f,
@@ -47,11 +47,11 @@ public enum YHFood implements ItemLike {
 	),
 	RAW_TUNA_SLICE(FoodType.FAST, 4, 0.3f,
 			new EffectEntry(() -> MobEffects.DOLPHINS_GRACE, 400, 0, 0.3f),
-			YHTagGen.RAW_TUNA, ModTags.CABBAGE_ROLL_INGREDIENTS, DietTagGen.PROTEINS.tag
+			YHTagGen.RAW_TUNA, YHTagGen.CABBAGE_ROLL_INGREDIENTS, DietTagGen.PROTEINS.tag
 	),
 	SEARED_TUNA_SLICE(FoodType.FAST, 5, 0.8f,
 			new EffectEntry(() -> MobEffects.DOLPHINS_GRACE, 400, 0, 0.4f),
-			YHTagGen.COOKED_TUNA, ModTags.CABBAGE_ROLL_INGREDIENTS, DietTagGen.PROTEINS.tag
+			YHTagGen.COOKED_TUNA, YHTagGen.CABBAGE_ROLL_INGREDIENTS, DietTagGen.PROTEINS.tag
 	),
 	OTORO(FoodType.SIMPLE, 9, 0.3f,
 			new EffectEntry(() -> MobEffects.DOLPHINS_GRACE, 800, 0, 0.5f),
@@ -83,7 +83,7 @@ public enum YHFood implements ItemLike {
 			YHTagGen.RAW_VENISON, DietTagGen.PROTEINS.tag
 	),
 	GRILLED_VENISON_SLICE(FoodType.FAST, 6, 0.8f,
-			YHTagGen.COOKED_VENISON, ModTags.CABBAGE_ROLL_INGREDIENTS, DietTagGen.PROTEINS.tag
+			YHTagGen.COOKED_VENISON, YHTagGen.CABBAGE_ROLL_INGREDIENTS, DietTagGen.PROTEINS.tag
 	),
 	COOKED_MANDRAKE_ROOT(FoodType.SIMPLE, 4, 0.6f, DietTagGen.VEGETABLES.tag),
 

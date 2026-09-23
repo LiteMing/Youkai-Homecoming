@@ -1272,7 +1272,7 @@ public class YHRecipeGen {
 			unlock(pvd, ShapelessRecipeBuilder.shapeless(RecipeCategory.FOOD, YHFood.BUN.raw.get(), 4)::unlockedBy, Items.WHEAT)
 					.requires(TagRef.DOUGH)
 					.requires(TagRef.DOUGH)
-					.requires(ModTags.CABBAGE_ROLL_INGREDIENTS)
+					.requires(YHTagGen.CABBAGE_ROLL_INGREDIENTS)
 					.requires(TagRef.FOOD_CABBAGE)
 					.requires(TagRef.VEGETABLES_ONION)
 					.requires(YHTagGen.SOYBEAN)

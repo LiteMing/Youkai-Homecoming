@@ -18,6 +18,7 @@ import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntimeHost;
 import dev.xkmc.youkaishomecoming.content.spell.spellcard.SpellCardWrapper;
 import dev.xkmc.youkaishomecoming.events.EffectEventHandlers;
+import dev.xkmc.youkaishomecoming.events.YoukaiDefeatedEvent;
 import dev.xkmc.youkaishomecoming.events.YoukaiFightEvent;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.data.YHDamageTypes;
@@ -386,9 +387,13 @@ public abstract class YoukaiEntity extends PathfinderMob
 				GrazeCapability.HOLDER.get(player).stopSession(getUUID());
 			}
 		}
-		setCombatProgress(getCombatProgress() - amount);
+		float prev = getCombatProgress();
+		setCombatProgress(prev - amount);
 		if (combatProgress.progress <= 0) {
 			eraseAllDanmaku(null);
+			if (prev > 0 && !level().isClientSide()) {
+				MinecraftForge.EVENT_BUS.post(new YoukaiDefeatedEvent(this, source, prev));
+			}
 			if (source.getEntity() instanceof Player player) {
 				GrazeHelper.onDanmakuKill(player, this);
 			}

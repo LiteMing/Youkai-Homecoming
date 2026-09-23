@@ -25,6 +25,10 @@ public class YHModConfig {
 		public final ForgeConfigSpec.IntValue powerInfoYAnchor;
 		public final ForgeConfigSpec.IntValue powerInfoYOffset;
 
+		// Touhou-style burst when a youkai is defeated in a danmaku battle
+		public final ForgeConfigSpec.BooleanValue defeatBurstEnabled;
+		public final ForgeConfigSpec.DoubleValue defeatBurstScale;
+
 		// Exposure compat: photo overlay display
 		public final ForgeConfigSpec.DoubleValue photoOverlayAlpha;
 		public final ForgeConfigSpec.DoubleValue photoOverlayScale;
@@ -55,6 +59,15 @@ public class YHModConfig {
 			powerInfoXOffset = builder.defineInRange("powerInfoXOffset", -8, -1000, 1000);
 			powerInfoYAnchor = builder.defineInRange("powerInfoYAnchor", 0, -1, 1);
 			powerInfoYOffset = builder.defineInRange("powerInfoYOffset", 0, -1000, 1000);
+
+			builder.push("defeat_burst");
+			{
+				defeatBurstEnabled = builder.comment("Show Touhou-style scatter burst when a youkai is defeated in a danmaku battle")
+						.define("enabled", true);
+				defeatBurstScale = builder.comment("Size multiplier for the defeat burst effect")
+						.defineInRange("scale", 1.0, 0.25, 4.0);
+			}
+			builder.pop();
 
 			builder.push("exposure_compat");
 			{

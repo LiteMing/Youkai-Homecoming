@@ -5,6 +5,7 @@ import com.mojang.math.Axis;
 import dev.xkmc.l2damagetracker.contents.curios.AttrTooltip;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.CombatProgress;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
+import dev.xkmc.youkaishomecoming.content.entity.youkai.burst.DefeatBurstManager;
 import dev.xkmc.youkaishomecoming.content.item.curio.hat.TouhouHatItem;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
@@ -77,7 +78,13 @@ public class ClientEventHandlers {
 		var level = Minecraft.getInstance().level;
 		if (level == null) return;
 		if (level.getEntity(id) instanceof YoukaiEntity e) {
+			// progress crossing zero is the defeat moment (满身疮痍); reuse the
+			// existing sync so the burst costs no extra packets or server work
+			boolean defeated = e.combatProgress.progress > 0 && progress.progress <= 0;
 			e.combatProgress.loadFrom(progress);
+			if (defeated) {
+				DefeatBurstManager.add(e);
+			}
 		}
 	}
 

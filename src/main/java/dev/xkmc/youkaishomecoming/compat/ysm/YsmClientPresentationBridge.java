@@ -164,7 +164,13 @@ public final class YsmClientPresentationBridge {
 			closeParameterOverlay(client);
 			client.animatable = new WeakReference<>(animatable);
 			ClockRepair repair = repairAnimationClock(entity, animatable);
-			if (repair != null) client.invalidateController();
+			if (repair != null) {
+				client.invalidateController();
+				// The repair evicts the stale OYSM object. Let the renderer create a
+				// fresh ExternalLivingEntity on the next render call instead of
+				// submitting another async evaluation from the old chunk lifetime.
+				return Frame.EMPTY;
+			}
 			if (state.body() == null && state.parameters().isEmpty() && !preview) {
 				client.replayKey = "";
 				client.clipStatus = "";
@@ -517,6 +523,9 @@ public final class YsmClientPresentationBridge {
 			animationTick = clockAccess.lastTick(animatable);
 			if (!animationClockRewound(animationTick, entity.tickCount)) return null;
 			clockAccess.reset(animatable, entity.tickCount);
+			// A stale async worker can write the old clock back after this method
+			// returns. Remove the renderer cache entry so no future frame reuses it.
+			runtimeAccess.evict(entity);
 			ClockRepair repair = new ClockRepair(animationTick, entity.tickCount);
 			CLOCK_REPAIRS.computeIfAbsent(entity, ignored -> new ClockRepairStats()).record(repair);
 			return repair;
@@ -642,15 +651,25 @@ public final class YsmClientPresentationBridge {
 	private static final class RuntimeAccess {
 		private final Method renderer = method("client.renderer.RendererManager", "getExternalLivingRenderer");
 		private final Method cached = method("client.renderer.ExternalLivingRenderer", "getCachedAnimatable", LivingEntity.class);
+		private final Field cache;
 		private final Method ready = method("client.entity.GeoEntity", "isModelReady");
 		private final Method modelId = method("client.entity.GeoEntity", "getModelId");
 		private final Method assembly = method("client.entity.GeoEntity", "getModelAssembly");
 		private final Method await = method("client.entity.GeoEntity", "awaitAsyncResult");
 		private final Method processor = method("geckolib3.core.AnimatableEntity", "getEvaluationContext");
-		private RuntimeAccess() throws ReflectiveOperationException { }
+		private RuntimeAccess() throws ReflectiveOperationException {
+			cache = Class.forName(OYSM + "client.renderer.ExternalLivingRenderer").getDeclaredField("cache");
+			if (!cache.trySetAccessible()) throw new IllegalAccessException("external renderer cache is inaccessible");
+		}
 		private Object animatable(LivingEntity entity) throws ReflectiveOperationException {
 			Object instance = renderer.invoke(null);
 			return instance == null ? null : cached.invoke(instance, entity);
+		}
+		private void evict(LivingEntity entity) throws ReflectiveOperationException {
+			Object instance = renderer.invoke(null);
+			if (instance == null) return;
+			Object value = cache.get(instance);
+			if (value instanceof Map<?, ?> map) map.remove(entity);
 		}
 	}
 

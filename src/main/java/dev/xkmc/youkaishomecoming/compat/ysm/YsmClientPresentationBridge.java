@@ -681,6 +681,11 @@ public final class YsmClientPresentationBridge {
 			if (resetIfRewound != null) resetIfRewound.invoke(animatable);
 			// Also handles older OYSM builds and a stale animatable whose entity reference differs from the cache key.
 			if (animationClockRewound(lastTick(animatable), entityTick)) clearControllers.invoke(animatable);
+			// OYSM's reset path rebuilds the controllers but leaves lastTick at -1
+			// (or, with some builds, at the old chunk lifetime). Anchor it to the
+			// reloaded entity tick so the bridge does not re-enter this repair on
+			// every render frame and continuously clear the active controller.
+			lastTick.setFloat(animatable, entityTick);
 		}
 	}
 

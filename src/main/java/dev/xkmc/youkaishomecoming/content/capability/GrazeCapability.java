@@ -328,7 +328,6 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 
 	public boolean graze() {
 		if (isInvul()) return false;
-		if (!EffectEventHandlers.canDanmakuCombat(player)) return false;
 		if (tempGraze < GRAZE_CACHE)
 			tempGraze++;
 		boolean ans = player.tickCount != lastGraze;

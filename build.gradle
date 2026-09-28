@@ -442,8 +442,8 @@ tasks.named('reobfJarJar').configure {
 
 tasks.register('publishCurseForge', TaskPublishCurseForge) {
     apiToken = secrets.get("curseforge_token")
-    def mainFile = upload(project.curseforge_project, new File("./build/libs/${modid}-${ll_version}.jar"))
-    mainFile.changelog = new File('./changelog.txt').text.split("\n\n\n")[0]
+    def mainFile = upload(project.curseforge_project, new File(projectDir, "build/libs/${modid}-${ll_version}.jar"))
+    mainFile.changelog = new File(projectDir, 'changelog.txt').text.split("\n\n\n")[0]
     mainFile.addEnvironment("Client", "Server")
     mainFile.addGameVersion("1.20.1")
     mainFile.addModLoader("Forge","NeoForge")
@@ -464,10 +464,10 @@ modrinth {
     versionName = "Youkai's Homecoming ${project.ll_version}"
     versionNumber = project.ll_version
     versionType = project.releaseType
-    uploadFile = new File("./build/libs/${modid}-${ll_version}.jar")
+    uploadFile = new File(projectDir, "build/libs/${modid}-${ll_version}.jar")
     gameVersions = ["1.20.1"]
     loaders = ["forge", "neoforge"]
-    changelog = new File('./changelog.txt').text.split("\n\n")[0]
+    changelog = new File(projectDir, 'changelog.txt').text.split("\n\n")[0]
     dependencies {
         required.project "farmers-delight"
         optional.project "diet"

@@ -420,23 +420,27 @@ public class YSMClientCompat {
 			// which model state machines can replace. The cap controller resolves special=
 			// via resolveSpecialAnimationHint with a + fallback chain, so any model works:
 			// own beaten_* animations first, then ubiquitous generic ones.
+			// The prone phase also carries the sleep token: OpenYSM reads it as the external
+			// virtual sleep state (ctrl.sleep / v.is_sleep / q.is_sleeping and the sleep base
+			// animation). Models that rotate the body inside the clip need that state; the
+			// renderer never applies a lying-down rotation on the delegated path.
 			String fallback = switch (youkai.getBeatenPhase()) {
 				case YoukaiEntity.BEATEN_DEFEAT -> "special=beaten_defeat+defeat+death+die+attacked";
 				case YoukaiEntity.BEATEN_FALLING -> "special=beaten_falling+falling+fall+jump+fly";
-				case YoukaiEntity.BEATEN_PRONE -> "special=beaten_prone+prone+climbing+climb+sleep";
+				case YoukaiEntity.BEATEN_PRONE -> "special=beaten_prone+prone+climbing+climb+sleep sleep";
 				default -> "special=beaten_defeat+defeat+death+die+attacked";
 			};
 			return "special=" + mappedBeaten + fallback.substring("special=".length());
 		}
 		if (e.hasEffect(YHEffects.BEATEN.get())) {
-			return "special=" + mappedBeaten + "beaten_prone+prone+climbing+climb+sleep";
+			return "special=" + mappedBeaten + "beaten_prone+prone+climbing+climb+sleep sleep";
 		}
 		// Isolated previews use the same signal composition without assigning effects or physical poses.
 		if (presentation.beaten() && e instanceof YsmRenderOverrideTarget target) {
 			return "special=" + mappedBeaten + switch (target.getYsmSignals().state()) {
 				case DEFEAT -> "beaten_defeat+defeat+death+die+attacked";
 				case FALLING -> "beaten_falling+falling+fall+jump+fly";
-				default -> "beaten_prone+prone+climbing+climb+sleep";
+				default -> "beaten_prone+prone+climbing+climb+sleep sleep";
 			};
 		}
 		Vec3 motion = e.getDeltaMovement();

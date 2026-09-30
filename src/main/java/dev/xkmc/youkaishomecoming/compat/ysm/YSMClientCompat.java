@@ -1347,7 +1347,36 @@ public class YSMClientCompat {
 			if (reader.getCursor() == start) {
 				throw emptyInput.createWithContext(reader);
 			}
-			return reader.getString().substring(start, reader.getCursor());
+			// Chat copy-paste delivers quoted tokens (inspect prints ids inside quotes) and
+			// older completions escaped any id containing '/' or non-ASCII. A raw token parse
+			// would keep the quotes and silently create a new id.
+			return unquoteToken(reader.getString().substring(start, reader.getCursor()));
+		}
+
+		/**
+		 * Mirrors brigadier's quotable string semantics: one matching pair of double quotes
+		 * is removed and {@code \"} / {@code \\} are unescaped. Tokens that are not fully
+		 * quoted, or with a dangling escape, stay literal so nothing is silently mangled.
+		 */
+		private static String unquoteToken(String token) {
+			if (token.length() < 2 || token.charAt(0) != '"' || token.charAt(token.length() - 1) != '"') {
+				return token;
+			}
+			StringBuilder value = new StringBuilder(token.length() - 2);
+			boolean escaped = false;
+			for (int i = 1; i < token.length() - 1; i++) {
+				char c = token.charAt(i);
+				if (escaped) {
+					if (c == '"' || c == '\\') value.append(c);
+					else value.append('\\').append(c);
+					escaped = false;
+				} else if (c == '\\') {
+					escaped = true;
+				} else {
+					value.append(c);
+				}
+			}
+			return escaped ? token : value.toString();
 		}
 
 		@Override

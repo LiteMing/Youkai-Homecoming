@@ -10,6 +10,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -141,6 +142,29 @@ public class YsmOverrideServerHandler {
 
 	private static String applyEntityOff(MinecraftServer server, YsmOverrideData data, YsmOverrideRequestToServer request) {
 		return applyToEntities(server, data, request, RenderBinding.disabled());
+	}
+
+	/**
+	 * Removes entity-level bindings for entities the server can currently resolve, without a
+	 * player context. Used by {@code /yhysm set ... clear} so entities that carry no
+	 * presentation state of their own (other mods' renderable entities) can be cleared too.
+	 * Unlike {@link #applyEntityUnset} this requires the entity to be live, because the command
+	 * path already resolved it from a selector.
+	 */
+	public static int unbindEntities(MinecraftServer server, List<UUID> uuids) {
+		if (server == null) return 0;
+		YsmOverrideData data = YsmOverrideData.get(server);
+		long previous = data.revision();
+		int applied = 0;
+		for (UUID uuid : uuids) {
+			if (findEntity(server, uuid) == null) continue;
+			data.removeEntity(uuid);
+			applied++;
+		}
+		if (applied > 0 && previous != data.revision()) {
+			broadcastResult(server, data, "");
+		}
+		return applied;
 	}
 
 	private static String applyEntityUnset(YsmOverrideData data, YsmOverrideRequestToServer request) {

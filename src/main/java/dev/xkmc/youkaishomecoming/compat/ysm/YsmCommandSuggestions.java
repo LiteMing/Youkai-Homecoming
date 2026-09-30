@@ -1,6 +1,5 @@
 package dev.xkmc.youkaishomecoming.compat.ysm;
 
-import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
@@ -68,6 +67,21 @@ public final class YsmCommandSuggestions {
 	}
 
 	static CompletableFuture<Suggestions> strings(Collection<String> values, SuggestionsBuilder builder) {
-		return SharedSuggestionProvider.suggest(values.stream().map(StringArgumentType::escapeIfRequired), builder);
+		return SharedSuggestionProvider.suggest(values.stream().map(YsmCommandSuggestions::escapeIfRequired), builder);
+	}
+
+	/**
+	 * Quotes a suggested token only when it contains whitespace. Minecraft's TAB completion
+	 * matches the suggestion text against what the player typed, so a leading quote forces the
+	 * player to type a quote before any letter can filter the list. Ids holding '/' or
+	 * non-ASCII (model paths, {@code v.roaming.*}) parse unquoted on both the
+	 * {@code StringArgumentType} and the custom token argument trees; only whitespace needs
+	 * quoting to keep the command a single argument.
+	 */
+	static String escapeIfRequired(String value) {
+		if (value.isEmpty() || value.chars().noneMatch(Character::isWhitespace)) {
+			return value;
+		}
+		return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 	}
 }

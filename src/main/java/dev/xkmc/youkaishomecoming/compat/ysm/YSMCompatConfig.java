@@ -292,10 +292,14 @@ public final class YSMCompatConfig {
 
 	public record RenderBinding(String modelId, String textureName, boolean enabled, Map<String, Float> parameters) {
 
-		public RenderBinding {
-			// Binding appearance uses the same bounded numeric literals as presets, but never expires.
-			parameters = new YsmModelProfile.Preset("", "", 0, parameters).parameters();
-		}
+	public RenderBinding {
+		// Single choke point: command text, config JSON and saved data may all carry a quoted
+		// id (chat copy-paste, StringArgumentType.escapeIfRequired). Normalize it here so the
+		// binding resolves to the real model instead of silently matching nothing.
+		modelId = YsmModelProfile.unquoteModelId(modelId);
+		// Binding appearance uses the same bounded numeric literals as presets, but never expires.
+		parameters = new YsmModelProfile.Preset("", "", 0, parameters).parameters();
+	}
 
 		public RenderBinding(String modelId, String textureName, boolean enabled) {
 			this(modelId, textureName, enabled, Map.of());

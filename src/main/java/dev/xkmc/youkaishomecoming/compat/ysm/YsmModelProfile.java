@@ -66,9 +66,21 @@ public record YsmModelProfile(String model, Map<String, Preset> presets, Map<Tri
 	public static YsmModelProfile empty(String model) { return new YsmModelProfile(model, Map.of(), Map.of()); }
 
 	public static String modelId(String value) {
-		String id = value == null ? "" : value.trim();
+		String id = unquoteModelId(value == null ? "" : value.trim());
 		if (id.isEmpty() || id.length() > 256 || id.chars().anyMatch(Character::isISOControl))
 			throw new IllegalArgumentException("Invalid model ID (1..256 characters)");
+		return id;
+	}
+
+	/**
+	 * Strips one pair of surrounding double quotes and unescapes {@code \"}. Never throws, so
+	 * stored and configured bindings can be normalized in place; ids that arrive quoted from
+	 * chat copy-paste then resolve to the real model instead of silently matching nothing.
+	 */
+	static String unquoteModelId(String id) {
+		if (id.length() > 1 && id.charAt(0) == '"' && id.charAt(id.length() - 1) == '"') {
+			return id.substring(1, id.length() - 1).replace("\\\"", "\"");
+		}
 		return id;
 	}
 

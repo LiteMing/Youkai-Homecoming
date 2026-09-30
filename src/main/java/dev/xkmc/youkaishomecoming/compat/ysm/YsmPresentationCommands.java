@@ -16,6 +16,8 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +67,7 @@ public final class YsmPresentationCommands {
 										.then(Commands.argument("ticks", IntegerArgumentType.integer(0))
 												.executes(ctx -> applyPreset(ctx, IntegerArgumentType.getInteger(ctx, "ticks")))))))
 				.then(Commands.literal("clear")
-						.executes(ctx -> mutate(ctx, target -> YHModel.currentForMutation(target).stop().clearParameters())))
+						.executes(YsmPresentationCommands::clearPresentation))
 				.then(Commands.literal("state").executes(YsmPresentationCommands::state));
 		return Commands.literal("set").then(targets);
 	}
@@ -139,6 +141,40 @@ public final class YsmPresentationCommands {
 		int ignored = skipped;
 		ctx.getSource().sendSuccess(() -> Component.translatable("commands.youkaishomecoming.model.accepted", changes.size(), ignored), true);
 		return changes.size();
+	}
+
+	/**
+	 * Clears anything the /yhysm commands applied to an entity. Presentation state only exists
+	 * on YH targets, but any entity can carry a model binding from {@code /yhysm set model}, so
+	 * those entities have their binding removed here instead of being rejected: the render
+	 * delegation itself is entity-agnostic.
+	 */
+	private static int clearPresentation(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+		Collection<? extends Entity> entities = EntityArgument.getEntities(ctx, "targets");
+		Map<YsmRenderOverrideTarget, YsmPresentationState> changes = new LinkedHashMap<>();
+		List<UUID> bindings = new ArrayList<>();
+		try {
+			for (Entity entity : entities) {
+				if (entity instanceof YsmRenderOverrideTarget target) {
+					changes.put(target, YHModel.currentForMutation(target).stop().clearParameters());
+				} else {
+					bindings.add(entity.getUUID());
+				}
+			}
+		} catch (IllegalArgumentException ex) {
+			ctx.getSource().sendFailure(Component.translatable("commands.youkaishomecoming.model.invalid", ex.getMessage()));
+			return 0;
+		}
+		if (changes.isEmpty() && bindings.isEmpty()) {
+			ctx.getSource().sendFailure(Component.translatable("commands.youkaishomecoming.model.no_targets"));
+			return 0;
+		}
+		changes.forEach(YsmRenderOverrideTarget::setYsmPresentation);
+		int unbound = bindings.isEmpty() ? 0 : YsmOverrideServerHandler.unbindEntities(ctx.getSource().getServer(), bindings);
+		int accepted = changes.size() + unbound;
+		ctx.getSource().sendSuccess(() -> Component.translatable("commands.youkaishomecoming.model.accepted",
+				accepted, entities.size() - accepted), true);
+		return accepted;
 	}
 
 	private static int state(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {

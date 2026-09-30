@@ -3,19 +3,12 @@ package dev.xkmc.youkaishomecoming.content.entity.youkai;
 import dev.xkmc.youkaishomecoming.content.entity.goal.YoukaiFlyCompanionGoal;
 
 import dev.xkmc.l2serial.serialization.SerialClass;
-import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
-import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationState;
-import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRegistry;
 import dev.xkmc.youkaishomecoming.content.spell.runtime.SpellRuntime;
 import dev.xkmc.youkaishomecoming.content.spell.game.TouhouSpellCards;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.syncher.EntityDataAccessor;
-import net.minecraft.network.syncher.EntityDataSerializer;
-import net.minecraft.network.syncher.EntityDataSerializers;
-import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EntityType;
@@ -33,255 +26,16 @@ import net.minecraft.world.level.ServerLevelAccessor;
 import org.jetbrains.annotations.Nullable;
 
 @SerialClass
-public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverrideTarget {
+public class GeneralYoukaiEntity extends YoukaiEntity {
 
 	private static final ResourceLocation SPELL = YoukaisHomecoming.loc("ex_rumia");
 
-	private static <T> EntityDataAccessor<T> defineId(EntityDataSerializer<T> ser) {
-		return SynchedEntityData.defineId(GeneralYoukaiEntity.class, ser);
-	}
-
-	protected static final SyncedData SPELL_DATA = new SyncedData(GeneralYoukaiEntity::defineId, YOUKAI_DATA);
-
-	private static final EntityDataAccessor<String> SPELL_MODEL = SPELL_DATA.define(SyncedData.STRING, "", "modelId");
-	private static final EntityDataAccessor<String> YSM_MODEL_OVERRIDE = SPELL_DATA.define(SyncedData.STRING, "", "ysmModelOverride");
-	private static final EntityDataAccessor<String> YSM_TEXTURE_OVERRIDE = SPELL_DATA.define(SyncedData.STRING, "", "ysmTextureOverride");
-	private static final EntityDataAccessor<String> YSM_ANIMATION_OVERRIDE = SPELL_DATA.define(SyncedData.STRING, "", "ysmAnimationOverride");
-	private static final EntityDataAccessor<Integer> YSM_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmOverrideUntil");
-	private static final EntityDataAccessor<Integer> YSM_MODEL_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmModelOverrideUntil");
-	private static final EntityDataAccessor<Integer> YSM_TEXTURE_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmTextureOverrideUntil");
-	private static final EntityDataAccessor<Integer> YSM_ANIMATION_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmAnimationOverrideUntil");
-	private static final EntityDataAccessor<CompoundTag> YSM_PRESENTATION = SPELL_DATA.define(
-			new SyncedData.Serializer<>(EntityDataSerializers.COMPOUND_TAG, CompoundTag::copy,
-					tag -> tag instanceof CompoundTag value ? value.copy() : new CompoundTag()), new CompoundTag(), YsmPresentationState.ENTITY_TAG);
-	private static final EntityDataAccessor<CompoundTag> YSM_SIGNALS = SPELL_DATA.define(
-			new SyncedData.Serializer<>(EntityDataSerializers.COMPOUND_TAG, CompoundTag::copy,
-					tag -> tag instanceof CompoundTag value ? value.copy() : new CompoundTag()), new CompoundTag(), null);
-	private static final int YSM_CLEAR_MODEL = 1;
-	private static final int YSM_CLEAR_TEXTURE = 2;
-	private static final int YSM_CLEAR_ANIMATION = 4;
-	private static final int YSM_CLEAR_ALL = YSM_CLEAR_MODEL | YSM_CLEAR_TEXTURE | YSM_CLEAR_ANIMATION;
-
 	private int tickAggressive;
-	private final YsmPresentationState.Cache ysmPresentationCache = new YsmPresentationState.Cache();
-	private final YsmPresentationSignals.Cache ysmSignalsCache = new YsmPresentationSignals.Cache();
 
 	public GeneralYoukaiEntity(EntityType<? extends GeneralYoukaiEntity> pEntityType, Level pLevel) {
 		super(pEntityType, pLevel);
 	}
 
-	@Override
-	protected SyncedData data() {
-		return SPELL_DATA;
-	}
-
-	public String getModelId() {
-		String ans = entityData.get(SPELL_MODEL);
-		if (ans.isEmpty()) return "";
-		return ans;
-	}
-
-	public void syncModel() {
-		String model = null;
-		if (spellCard != null) model = spellCard.getModelId();
-		if (model == null) model = "";
-		entityData.set(SPELL_MODEL, model);
-	}
-
-	@Override
-	public YsmPresentationState getYsmPresentation() {
-		return ysmPresentationCache.read(entityData.get(YSM_PRESENTATION));
-	}
-
-	@Override
-	public void setYsmPresentation(YsmPresentationState state) {
-		entityData.set(YSM_PRESENTATION, state.toTag());
-	}
-
-	@Override
-	public long getYsmPresentationTime() {
-		return level().getGameTime();
-	}
-
-	@Override
-	public YsmPresentationSignals getYsmSignals() { return ysmSignalsCache.read(entityData.get(YSM_SIGNALS)); }
-
-	@Override
-	public void setYsmSignals(YsmPresentationSignals signals) { entityData.set(YSM_SIGNALS, signals.toTag()); }
-
-	@Override
-	public boolean doHurtTarget(net.minecraft.world.entity.Entity target) {
-		boolean hit = super.doHurtTarget(target);
-		if (hit) dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationRuntime.meleeHit(this);
-		return hit;
-	}
-
-	public void setYsmRenderOverride(String modelId, String textureName, String animationHint, int duration, String clearTarget) {
-		String model = normalizeYsmOverride(modelId);
-		String texture = normalizeYsmOverride(textureName);
-		String animation = normalizeYsmOverride(animationHint);
-		if (!model.isBlank()) {
-			entityData.set(YSM_MODEL_OVERRIDE, model);
-		}
-		if (!texture.isBlank()) {
-			entityData.set(YSM_TEXTURE_OVERRIDE, texture);
-		}
-		if (!animation.isBlank()) {
-			entityData.set(YSM_ANIMATION_OVERRIDE, animation);
-		}
-		updateYsmFieldExpirations(changedMask(model, texture, animation), clearMask(clearTarget, changedMask(model, texture, animation)), duration);
-	}
-
-	public void clearYsmRenderOverride() {
-		clearYsmRenderOverride("all");
-	}
-
-	public void clearYsmRenderOverride(String target) {
-		clearYsmRenderOverride(clearMask(target, YSM_CLEAR_ALL));
-	}
-
-	private void clearYsmRenderOverride(int mask) {
-		if ((mask & YSM_CLEAR_MODEL) != 0) {
-			entityData.set(YSM_MODEL_OVERRIDE, "");
-			entityData.set(YSM_MODEL_OVERRIDE_UNTIL, 0);
-		}
-		if ((mask & YSM_CLEAR_TEXTURE) != 0) {
-			entityData.set(YSM_TEXTURE_OVERRIDE, "");
-			entityData.set(YSM_TEXTURE_OVERRIDE_UNTIL, 0);
-		}
-		if ((mask & YSM_CLEAR_ANIMATION) != 0) {
-			entityData.set(YSM_ANIMATION_OVERRIDE, "");
-			entityData.set(YSM_ANIMATION_OVERRIDE_UNTIL, 0);
-		}
-		if (!hasYsmRenderOverride()) {
-			entityData.set(YSM_OVERRIDE_UNTIL, 0);
-		} else {
-			entityData.set(YSM_OVERRIDE_UNTIL, getMaxYsmOverrideUntil());
-		}
-	}
-
-	public boolean hasYsmRenderOverride() {
-		return hasActiveYsmField(YSM_MODEL_OVERRIDE, YSM_MODEL_OVERRIDE_UNTIL) ||
-				hasActiveYsmField(YSM_TEXTURE_OVERRIDE, YSM_TEXTURE_OVERRIDE_UNTIL) ||
-				hasActiveYsmField(YSM_ANIMATION_OVERRIDE, YSM_ANIMATION_OVERRIDE_UNTIL);
-	}
-
-	public String getYsmModelOverride() {
-		return hasActiveYsmField(YSM_MODEL_OVERRIDE, YSM_MODEL_OVERRIDE_UNTIL) ? entityData.get(YSM_MODEL_OVERRIDE) : "";
-	}
-
-	public String getYsmTextureOverride() {
-		return hasActiveYsmField(YSM_TEXTURE_OVERRIDE, YSM_TEXTURE_OVERRIDE_UNTIL) ? entityData.get(YSM_TEXTURE_OVERRIDE) : "";
-	}
-
-	public String getYsmAnimationOverride() {
-		return hasActiveYsmField(YSM_ANIMATION_OVERRIDE, YSM_ANIMATION_OVERRIDE_UNTIL) ? entityData.get(YSM_ANIMATION_OVERRIDE) : "";
-	}
-
-	public int getYsmOverrideTicksRemaining() {
-		int remaining = 0;
-		remaining = mergeYsmRemaining(remaining, entityData.get(YSM_MODEL_OVERRIDE_UNTIL));
-		remaining = mergeYsmRemaining(remaining, entityData.get(YSM_TEXTURE_OVERRIDE_UNTIL));
-		remaining = mergeYsmRemaining(remaining, entityData.get(YSM_ANIMATION_OVERRIDE_UNTIL));
-		return remaining;
-	}
-
-	public String describeYsmRenderOverride() {
-		if (!hasYsmRenderOverride()) {
-			return "none";
-		}
-		return "model=" + displayYsmOverride(YSM_MODEL_OVERRIDE, YSM_MODEL_OVERRIDE_UNTIL) +
-				", texture=" + displayYsmOverride(YSM_TEXTURE_OVERRIDE, YSM_TEXTURE_OVERRIDE_UNTIL) +
-				", animation=" + displayYsmOverride(YSM_ANIMATION_OVERRIDE, YSM_ANIMATION_OVERRIDE_UNTIL);
-	}
-
-	private boolean hasActiveYsmField(EntityDataAccessor<String> field, EntityDataAccessor<Integer> untilField) {
-		return !entityData.get(field).isBlank() && !isYsmFieldExpired(untilField);
-	}
-
-	private boolean isYsmFieldExpired(EntityDataAccessor<Integer> untilField) {
-		if (level().isClientSide()) {
-			return false;
-		}
-		int until = entityData.get(untilField);
-		return until > 0 && tickCount >= until;
-	}
-
-	private static String normalizeYsmOverride(String value) {
-		return value == null ? "" : value.trim();
-	}
-
-	private static String displayYsmOverride(String value) {
-		return value.isBlank() ? "(keep)" : value;
-	}
-
-	private String displayYsmOverride(EntityDataAccessor<String> field, EntityDataAccessor<Integer> untilField) {
-		String value = entityData.get(field);
-		if (value.isBlank()) {
-			return "(keep)";
-		}
-		int until = entityData.get(untilField);
-		if (level().isClientSide()) {
-			return until > 0 ? value + " (timed)" : value;
-		}
-		return until > 0 && tickCount < until ? value + " (" + (until - tickCount) + "t)" : value;
-	}
-
-	private int mergeYsmRemaining(int current, int until) {
-		if (level().isClientSide()) {
-			return current;
-		}
-		if (until <= tickCount) {
-			return current;
-		}
-		int remaining = until - tickCount;
-		return current <= 0 ? remaining : Math.min(current, remaining);
-	}
-
-	private static int changedMask(String model, String texture, String animation) {
-		int mask = 0;
-		if (!model.isBlank()) {
-			mask |= YSM_CLEAR_MODEL;
-		}
-		if (!texture.isBlank()) {
-			mask |= YSM_CLEAR_TEXTURE;
-		}
-		if (!animation.isBlank()) {
-			mask |= YSM_CLEAR_ANIMATION;
-		}
-		return mask;
-	}
-
-	private static int clearMask(String target, int changedMask) {
-		return switch (normalizeYsmOverride(target).toLowerCase(java.util.Locale.ROOT)) {
-			case "", "changed" -> changedMask;
-			case "model" -> YSM_CLEAR_MODEL;
-			case "texture" -> YSM_CLEAR_TEXTURE;
-			case "animation", "anim" -> YSM_CLEAR_ANIMATION;
-			case "model_texture", "model+texture", "render" -> YSM_CLEAR_MODEL | YSM_CLEAR_TEXTURE;
-			case "all" -> YSM_CLEAR_ALL;
-			default -> changedMask;
-		};
-	}
-
-	private void updateYsmFieldExpirations(int changedMask, int expireMask, int duration) {
-		int until = duration > 0 ? tickCount + duration : 0;
-		updateYsmFieldExpiration(YSM_CLEAR_MODEL, changedMask, expireMask, until, YSM_MODEL_OVERRIDE_UNTIL);
-		updateYsmFieldExpiration(YSM_CLEAR_TEXTURE, changedMask, expireMask, until, YSM_TEXTURE_OVERRIDE_UNTIL);
-		updateYsmFieldExpiration(YSM_CLEAR_ANIMATION, changedMask, expireMask, until, YSM_ANIMATION_OVERRIDE_UNTIL);
-		entityData.set(YSM_OVERRIDE_UNTIL, getMaxYsmOverrideUntil());
-	}
-
-	private void updateYsmFieldExpiration(int bit, int changedMask, int expireMask, int until, EntityDataAccessor<Integer> untilField) {
-		if ((changedMask & bit) != 0 || (expireMask & bit) != 0) {
-			entityData.set(untilField, (expireMask & bit) != 0 ? until : 0);
-		}
-	}
-
-	private int getMaxYsmOverrideUntil() {
-		return Math.max(entityData.get(YSM_MODEL_OVERRIDE_UNTIL),
-				Math.max(entityData.get(YSM_TEXTURE_OVERRIDE_UNTIL), entityData.get(YSM_ANIMATION_OVERRIDE_UNTIL)));
-	}
 
 	protected void registerGoals() {
 		super.registerGoals();
@@ -309,22 +63,6 @@ public class GeneralYoukaiEntity extends YoukaiEntity implements YsmRenderOverri
 	@Override
 	public void tick() {
 		super.tick();
-		if (!level().isClientSide()) {
-			expireYsmPresentation();
-			int expiredMask = 0;
-			if (isYsmFieldExpired(YSM_MODEL_OVERRIDE_UNTIL)) {
-				expiredMask |= YSM_CLEAR_MODEL;
-			}
-			if (isYsmFieldExpired(YSM_TEXTURE_OVERRIDE_UNTIL)) {
-				expiredMask |= YSM_CLEAR_TEXTURE;
-			}
-			if (isYsmFieldExpired(YSM_ANIMATION_OVERRIDE_UNTIL)) {
-				expiredMask |= YSM_CLEAR_ANIMATION;
-			}
-			if (expiredMask != 0) {
-				clearYsmRenderOverride(expiredMask);
-			}
-		}
 		if (level().isClientSide()) {
 			if (shouldShowSpellCircle()) {
 				if (tickAggressive < 20)

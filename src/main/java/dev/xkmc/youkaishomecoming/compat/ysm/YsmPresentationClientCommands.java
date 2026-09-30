@@ -147,7 +147,7 @@ final class YsmPresentationClientCommands {
 		if (kind == YsmCommandSuggestions.Kind.PARAMETER) for (var entity : targets) if (entity instanceof YsmRenderOverrideTarget target)
 			target.getYsmPresentation().parameters().keySet().forEach(name -> values.putIfAbsent(name, entity.getDisplayName()));
 		values.forEach((value, label) -> {
-			String escaped = StringArgumentType.escapeIfRequired(value);
+			String escaped = YsmCommandSuggestions.escapeIfRequired(value);
 			if (escaped.toLowerCase(java.util.Locale.ROOT).startsWith(builder.getRemainingLowerCase())) builder.suggest(escaped, label);
 		});
 		return builder.buildFuture();
@@ -217,7 +217,7 @@ final class YsmPresentationClientCommands {
 			String labels = catalog.wheel().stream().filter(entry -> entry.id().equals(clip) && entry.configGroup().isEmpty())
 					.map(YsmModelCatalog.WheelEntry::label).distinct().reduce((a, b) -> a + " / " + b).orElse("");
 			lines.add(suggest(Component.literal(clip + (labels.isEmpty() || labels.equals(clip) ? "" : " — " + labels)),
-					"/yhysm set " + entity.getUUID() + " animation " + StringArgumentType.escapeIfRequired(clip)));
+					"/yhysm set " + entity.getUUID() + " animation " + YsmCommandSuggestions.escapeIfRequired(clip)));
 		}
 		return lines;
 	}
@@ -228,7 +228,7 @@ final class YsmPresentationClientCommands {
 			MutableComponent line = Component.literal((entry.group().isEmpty() ? "" : entry.group() + " / ") + entry.id() + " — " + entry.label());
 			if (!entry.submenu().isEmpty()) line.append(Component.translatable("commands.youkaishomecoming.model.submenu", entry.submenu()));
 			if (!entry.configGroup().isEmpty()) line.append(Component.translatable("commands.youkaishomecoming.model.config_group", entry.configGroup()));
-			if (entry.clipAvailable()) suggest(line, "/yhysm set " + entity.getUUID() + " animation " + StringArgumentType.escapeIfRequired(entry.id()));
+			if (entry.clipAvailable()) suggest(line, "/yhysm set " + entity.getUUID() + " animation " + YsmCommandSuggestions.escapeIfRequired(entry.id()));
 			else line.append(Component.translatable("commands.youkaishomecoming.model.no_clip"));
 			lines.add(line);
 		}

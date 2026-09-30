@@ -336,6 +336,14 @@ public final class ModelPresentationTest {
 	private static void bindingAppearanceContracts() {
 		var appearance = YSMCompatConfig.RenderBinding.enabled("test/model", "default", Map.of("variable.roaming.face", 2f, "v.hat", 1f));
 		equal("binding aliases normalized", appearance.parameters().get("v.roaming.face"), 2f);
+		equal("quoted model id from chat copy-paste resolves", YSMCompatConfig.RenderBinding.enabled("\"test/model\"", "default").modelId(), "test/model");
+		equal("escaped quotes inside a quoted id resolve", YSMCompatConfig.RenderBinding.enabled("\"\\\"test/model\\\"\"", "default").modelId(), "\"test/model\"");
+		equal("plain model id untouched", appearance.modelId(), "test/model");
+		equal("model id canonicalizer strips quotes", YsmModelProfile.modelId("\"test/model\""), "test/model");
+		var quoted = YSMCompatConfig.RenderBinding.enabled("\"test/model\"", "default");
+		equal("quoted binding equals plain binding", quoted, YSMCompatConfig.RenderBinding.enabled("test/model", "default"));
+		var stored = YsmOverrideData.bindingToTag(YSMCompatConfig.RenderBinding.enabled("\"test/model\"", "default"));
+		equal("stored quoted model id is normalized", YsmOverrideData.bindingFromTag(stored).modelId(), "test/model");
 		reject("binding parameters immutable", () -> appearance.parameters().clear());
 		reject("invalid binding literal", () -> YSMCompatConfig.RenderBinding.enabled("test/model", "default", Map.of("v.face", Float.NaN)));
 		reject("binding expression is not a parameter", () -> YSMCompatConfig.RenderBinding.enabled("test/model", "default", Map.of("v.face=1", 1f)));

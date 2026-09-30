@@ -30,11 +30,16 @@ import dev.xkmc.youkaishomecoming.init.data.YHTagGen;
 import dev.xkmc.youkaishomecoming.init.registrate.YHDanmaku;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEntities;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationRuntime;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationState;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderOverrideTarget;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializer;
+import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -71,7 +76,7 @@ import java.util.Objects;
 
 @SerialClass
 public abstract class YoukaiEntity extends PathfinderMob
-		implements SpellCircleHolder, SpellRuntimeHost, EntityCachingUser {
+		implements SpellCircleHolder, SpellRuntimeHost, EntityCachingUser, YsmRenderOverrideTarget {
 
 	private static final int GROUND_HEIGHT = 5, ATTEMPT_ABOVE = 3;
 
@@ -84,6 +89,30 @@ public abstract class YoukaiEntity extends PathfinderMob
 	protected static final EntityDataAccessor<Integer> DATA_FLAGS_ID = YOUKAI_DATA.define(SyncedData.INT, 0, "youkai_flags");
 	private static final EntityDataAccessor<Integer> DATA_BEATEN_PHASE = YOUKAI_DATA.define(SyncedData.INT, 0, "beaten_phase");
 	private static final EntityDataAccessor<Integer> DATA_BEATEN_PHASE_START = YOUKAI_DATA.define(SyncedData.INT, 0, "beaten_phase_start");
+
+	// OYSM presentation is open to every youkai character: the target lives on the shared base,
+	// so any subclass (boss, maiden, fairy, Rumia) can bind a model. Animal entities do not
+	// extend YoukaiEntity, so they stay on their vanilla renderers by construction.
+	protected static final SyncedData SPELL_DATA = new SyncedData(YoukaiEntity::defineId, YOUKAI_DATA);
+
+	private static final EntityDataAccessor<String> SPELL_MODEL = SPELL_DATA.define(SyncedData.STRING, "", "modelId");
+	private static final EntityDataAccessor<String> YSM_MODEL_OVERRIDE = SPELL_DATA.define(SyncedData.STRING, "", "ysmModelOverride");
+	private static final EntityDataAccessor<String> YSM_TEXTURE_OVERRIDE = SPELL_DATA.define(SyncedData.STRING, "", "ysmTextureOverride");
+	private static final EntityDataAccessor<String> YSM_ANIMATION_OVERRIDE = SPELL_DATA.define(SyncedData.STRING, "", "ysmAnimationOverride");
+	private static final EntityDataAccessor<Integer> YSM_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmOverrideUntil");
+	private static final EntityDataAccessor<Integer> YSM_MODEL_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmModelOverrideUntil");
+	private static final EntityDataAccessor<Integer> YSM_TEXTURE_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmTextureOverrideUntil");
+	private static final EntityDataAccessor<Integer> YSM_ANIMATION_OVERRIDE_UNTIL = SPELL_DATA.define(SyncedData.INT, 0, "ysmAnimationOverrideUntil");
+	private static final EntityDataAccessor<CompoundTag> YSM_PRESENTATION = SPELL_DATA.define(
+			new SyncedData.Serializer<>(EntityDataSerializers.COMPOUND_TAG, CompoundTag::copy,
+					tag -> tag instanceof CompoundTag value ? value.copy() : new CompoundTag()), new CompoundTag(),
+			YsmPresentationState.ENTITY_TAG);
+	private static final EntityDataAccessor<CompoundTag> YSM_SIGNALS = SPELL_DATA.define(
+			new SyncedData.Serializer<>(EntityDataSerializers.COMPOUND_TAG, CompoundTag::copy,
+					tag -> tag instanceof CompoundTag value ? value.copy() : new CompoundTag()), new CompoundTag(), null);
+
+	private final YsmPresentationState.Cache ysmPresentationCache = new YsmPresentationState.Cache();
+	private final YsmPresentationSignals.Cache ysmSignalsCache = new YsmPresentationSignals.Cache();
 
 	public static final int BEATEN_NONE = 0;
 	public static final int BEATEN_DEFEAT = 1;
@@ -191,7 +220,7 @@ public abstract class YoukaiEntity extends PathfinderMob
 	// base
 
 	protected SyncedData data() {
-		return YOUKAI_DATA;
+		return SPELL_DATA;
 	}
 
 	protected void defineSynchedData() {
@@ -991,6 +1020,220 @@ public abstract class YoukaiEntity extends PathfinderMob
 	@Override
 	public UserCacheHolder entityCache() {
 		return cache;
+	}
+
+	public String getModelId() {
+		return entityData.get(SPELL_MODEL);
+	}
+
+	public void syncModel() {
+		String model = null;
+		if (spellCard != null) model = spellCard.getModelId();
+		if (model == null) model = "";
+		entityData.set(SPELL_MODEL, model);
+	}
+
+	@Override
+	public boolean doHurtTarget(Entity target) {
+		boolean hit = super.doHurtTarget(target);
+		if (hit) YsmPresentationRuntime.meleeHit(this);
+		return hit;
+	}
+
+	@Override
+	public long getYsmPresentationTime() {
+		return level().getGameTime();
+	}
+
+	@Override
+	public YsmPresentationState getYsmPresentation() {
+		return ysmPresentationCache.read(entityData.get(YSM_PRESENTATION));
+	}
+
+	@Override
+	public void setYsmPresentation(YsmPresentationState state) {
+		entityData.set(YSM_PRESENTATION, state.toTag());
+	}
+
+	@Override
+	public YsmPresentationSignals getYsmSignals() {
+		return ysmSignalsCache.read(entityData.get(YSM_SIGNALS));
+	}
+
+	@Override
+	public void setYsmSignals(YsmPresentationSignals signals) {
+		entityData.set(YSM_SIGNALS, signals.toTag());
+	}
+
+	public void setYsmRenderOverride(String modelId, String textureName, String animationHint, int duration, String clearTarget) {
+		String model = YsmRenderOverrideTarget.normalizeYsmOverride(modelId);
+		String texture = YsmRenderOverrideTarget.normalizeYsmOverride(textureName);
+		String animation = YsmRenderOverrideTarget.normalizeYsmOverride(animationHint);
+		if (!model.isBlank()) {
+			entityData.set(YSM_MODEL_OVERRIDE, model);
+		}
+		if (!texture.isBlank()) {
+			entityData.set(YSM_TEXTURE_OVERRIDE, texture);
+		}
+		if (!animation.isBlank()) {
+			entityData.set(YSM_ANIMATION_OVERRIDE, animation);
+		}
+		updateYsmFieldExpirations(changedMask(model, texture, animation),
+				clearMask(clearTarget, changedMask(model, texture, animation)), duration);
+	}
+
+	public void clearYsmRenderOverride() {
+		clearYsmRenderOverride("all");
+	}
+
+	public void clearYsmRenderOverride(String target) {
+		clearYsmRenderOverride(clearMask(target, YSM_CLEAR_ALL));
+	}
+
+	private void clearYsmRenderOverride(int mask) {
+		if ((mask & YSM_CLEAR_MODEL) != 0) {
+			entityData.set(YSM_MODEL_OVERRIDE, "");
+			entityData.set(YSM_MODEL_OVERRIDE_UNTIL, 0);
+		}
+		if ((mask & YSM_CLEAR_TEXTURE) != 0) {
+			entityData.set(YSM_TEXTURE_OVERRIDE, "");
+			entityData.set(YSM_TEXTURE_OVERRIDE_UNTIL, 0);
+		}
+		if ((mask & YSM_CLEAR_ANIMATION) != 0) {
+			entityData.set(YSM_ANIMATION_OVERRIDE, "");
+			entityData.set(YSM_ANIMATION_OVERRIDE_UNTIL, 0);
+		}
+		if (!hasYsmRenderOverride()) {
+			entityData.set(YSM_OVERRIDE_UNTIL, 0);
+		} else {
+			entityData.set(YSM_OVERRIDE_UNTIL, getMaxYsmOverrideUntil());
+		}
+	}
+
+	public boolean hasYsmRenderOverride() {
+		return hasActiveYsmField(YSM_MODEL_OVERRIDE, YSM_MODEL_OVERRIDE_UNTIL) ||
+				hasActiveYsmField(YSM_TEXTURE_OVERRIDE, YSM_TEXTURE_OVERRIDE_UNTIL) ||
+				hasActiveYsmField(YSM_ANIMATION_OVERRIDE, YSM_ANIMATION_OVERRIDE_UNTIL);
+	}
+
+	public String getYsmModelOverride() {
+		return hasActiveYsmField(YSM_MODEL_OVERRIDE, YSM_MODEL_OVERRIDE_UNTIL) ? entityData.get(YSM_MODEL_OVERRIDE) : "";
+	}
+
+	public String getYsmTextureOverride() {
+		return hasActiveYsmField(YSM_TEXTURE_OVERRIDE, YSM_TEXTURE_OVERRIDE_UNTIL) ? entityData.get(YSM_TEXTURE_OVERRIDE) : "";
+	}
+
+	public String getYsmAnimationOverride() {
+		return hasActiveYsmField(YSM_ANIMATION_OVERRIDE, YSM_ANIMATION_OVERRIDE_UNTIL) ? entityData.get(YSM_ANIMATION_OVERRIDE) : "";
+	}
+
+	public int getYsmOverrideTicksRemaining() {
+		int remaining = 0;
+		remaining = mergeYsmRemaining(remaining, entityData.get(YSM_MODEL_OVERRIDE_UNTIL));
+		remaining = mergeYsmRemaining(remaining, entityData.get(YSM_TEXTURE_OVERRIDE_UNTIL));
+		remaining = mergeYsmRemaining(remaining, entityData.get(YSM_ANIMATION_OVERRIDE_UNTIL));
+		return remaining;
+	}
+
+	public String describeYsmRenderOverride() {
+		if (!hasYsmRenderOverride()) {
+			return "none";
+		}
+		return "model=" + displayYsmOverride(YSM_MODEL_OVERRIDE, YSM_MODEL_OVERRIDE_UNTIL) +
+				", texture=" + displayYsmOverride(YSM_TEXTURE_OVERRIDE, YSM_TEXTURE_OVERRIDE_UNTIL) +
+				", animation=" + displayYsmOverride(YSM_ANIMATION_OVERRIDE, YSM_ANIMATION_OVERRIDE_UNTIL);
+	}
+
+	private boolean hasActiveYsmField(EntityDataAccessor<String> field, EntityDataAccessor<Integer> untilField) {
+		return !entityData.get(field).isBlank() && !isYsmFieldExpired(untilField);
+	}
+
+	private boolean isYsmFieldExpired(EntityDataAccessor<Integer> untilField) {
+		if (level().isClientSide()) {
+			return false;
+		}
+		int until = entityData.get(untilField);
+		return until > 0 && tickCount >= until;
+	}
+
+	private static String normalizeYsmOverride(String value) {
+		return YsmRenderOverrideTarget.normalizeYsmOverride(value);
+	}
+
+	private static String displayYsmOverride(String value) {
+		return value.isBlank() ? "(keep)" : value;
+	}
+
+	private String displayYsmOverride(EntityDataAccessor<String> field, EntityDataAccessor<Integer> untilField) {
+		String value = entityData.get(field);
+		if (value.isBlank()) {
+			return "(keep)";
+		}
+		int until = entityData.get(untilField);
+		if (level().isClientSide()) {
+			return until > 0 ? value + " (timed)" : value;
+		}
+		return until > 0 && tickCount < until ? value + " (" + (until - tickCount) + "t)" : value;
+	}
+
+	private int mergeYsmRemaining(int current, int until) {
+		if (level().isClientSide()) {
+			return current;
+		}
+		if (until <= tickCount) {
+			return current;
+		}
+		int remaining = until - tickCount;
+		return current <= 0 ? remaining : Math.min(current, remaining);
+	}
+
+	private static int changedMask(String model, String texture, String animation) {
+		return YsmRenderOverrideTarget.changedMask(model, texture, animation);
+	}
+
+	private static int clearMask(String target, int changedMask) {
+		return YsmRenderOverrideTarget.clearMask(target, changedMask);
+	}
+
+	private void updateYsmFieldExpirations(int changedMask, int expireMask, int duration) {
+		int until = duration > 0 ? tickCount + duration : 0;
+		updateYsmFieldExpiration(YSM_CLEAR_MODEL, changedMask, expireMask, until, YSM_MODEL_OVERRIDE_UNTIL);
+		updateYsmFieldExpiration(YSM_CLEAR_TEXTURE, changedMask, expireMask, until, YSM_TEXTURE_OVERRIDE_UNTIL);
+		updateYsmFieldExpiration(YSM_CLEAR_ANIMATION, changedMask, expireMask, until, YSM_ANIMATION_OVERRIDE_UNTIL);
+		entityData.set(YSM_OVERRIDE_UNTIL, getMaxYsmOverrideUntil());
+	}
+
+	private void updateYsmFieldExpiration(int bit, int changedMask, int expireMask, int until, EntityDataAccessor<Integer> untilField) {
+		if ((changedMask & bit) != 0 || (expireMask & bit) != 0) {
+			entityData.set(untilField, (expireMask & bit) != 0 ? until : 0);
+		}
+	}
+
+	private int getMaxYsmOverrideUntil() {
+		return Math.max(entityData.get(YSM_MODEL_OVERRIDE_UNTIL),
+				Math.max(entityData.get(YSM_TEXTURE_OVERRIDE_UNTIL), entityData.get(YSM_ANIMATION_OVERRIDE_UNTIL)));
+	}
+
+	@Override
+	public void tick() {
+		super.tick();
+		if (!level().isClientSide()) {
+			expireYsmPresentation();
+			int expiredMask = 0;
+			if (isYsmFieldExpired(YSM_MODEL_OVERRIDE_UNTIL)) {
+				expiredMask |= YSM_CLEAR_MODEL;
+			}
+			if (isYsmFieldExpired(YSM_TEXTURE_OVERRIDE_UNTIL)) {
+				expiredMask |= YSM_CLEAR_TEXTURE;
+			}
+			if (isYsmFieldExpired(YSM_ANIMATION_OVERRIDE_UNTIL)) {
+				expiredMask |= YSM_CLEAR_ANIMATION;
+			}
+			if (expiredMask != 0) {
+				clearYsmRenderOverride(expiredMask);
+			}
+		}
 	}
 
 }

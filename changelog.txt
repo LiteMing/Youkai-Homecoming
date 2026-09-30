@@ -1,3 +1,15 @@
+2.7.0+HCDRS 0.31.2
+- 修复 `/yhysm set` 指定模型时"指令无效"的问题：补全与聊天复制粘贴会带来带引号的模型 ID（旧补全用 `StringArgumentType.escapeIfRequired`，给含 `/` 或非 ASCII 的 ID 一律加双引号，而 Minecraft 的 TAB 补全按建议文本前缀匹配，导致必须先打一个引号才能用首字母筛选），客户端命令树的 `TokenArgument` 又不解引号，带引号的 ID 于是被当成新模型写入绑定，OYSM 查无此模型后渲染静默失败。
+- `TokenArgument.parse` 现在按 brigadier 可引用字符串语义解掉一层成对双引号并还原 `\"`，模型 ID、实体目标、绑定目标三类参数同时生效。
+- `YsmModelProfile.modelId()` 与 `YSMCompatConfig.RenderBinding` 归一化首尾引号，配置 JSON、存档数据与编辑器路径同样受益；已存的不带引号绑定行为不变。
+- 补全列表不再给无空白字符的 ID 加引号（如 `YH内置/remilia`、`v.roaming.face` 平铺显示，可直接用首字母筛选）；仅当值本身含空白时才加引号以保持单参数解析。
+- 倒地（prone）相位现在向 OYSM 传入 `sleep` 虚拟状态：`ctrl.sleep`、`v.is_sleep`、`q.is_sleeping` 与外部基础动画会选择 sleep/prone 片段，模型自含的身体旋转与表情神态得以生效；三相位仍保持 `STANDING`，不引入真实睡眠姿态。
+- OYSM 渲染委托对所有妖怪角色开放：`YsmRenderOverrideTarget` 从 `GeneralYoukaiEntity` 上移到 `YoukaiEntity` 基类，Rumia 等此前直接继承 `YoukaiEntity` 的角色现在同样支持 `/yhysm set ... model`、模型覆盖与表现状态采样；动物实体（七鳃鳗、金枪鱼、鹿、野猪、螃蟹）不继承 `YoukaiEntity`，仍走各自的原版渲染器。
+- `/yhysm set` 的 model/clear 不再要求目标是 YH 实体：`clear` 对有表现状态的实体仍清空显式动画与参数，对其他实体（如被选择器误命中的 TLM 椅子等任意 LivingEntity）改为移除其模型绑定，不再直接拒绝；委托渲染本身是实体无关的，`model` 路径本就未做类型限制。
+
+2.7.0+HCDRS 0.31.1
+- 擦弹（graze）不再要求处于弹幕战斗状态：移除了 `GrazeCapability.graze()` 中的 `canDanmakuCombat` 门槛，所有玩家靠近弹幕均可擦弹并累积计数。
+
 2.7.0+HCDRS 0.31.0
 - 新增原生 `YoukaiFlyCompanionGoal`：外部同行／冒险模式由模组层接管三维跟随、环绕定位、远距离追赶与跨位置补偿；有战斗目标时让位给攻击 AI。
 - 地面寻路新增结构障碍扫掠检测，绕开赛钱箱和开启的竖立活板门；YSM 自动表现新增 airborne 状态，跳跃与下落时交回 OYSM 原生姿态，避免自动 idle 预设冻结空中动作。

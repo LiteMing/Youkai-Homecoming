@@ -529,6 +529,15 @@ public class GrazeCapability extends PlayerCapabilityTemplate<GrazeCapability> {
 		return forcedDanmakuCombat || !sessions.isEmpty() || !playerOpponents.isEmpty();
 	}
 
+	/**
+	 * True only while a real youkai/PvP opponent session exists. Manual "forced" combat alone is
+	 * not a session: it is entered for free and must not be priced as an in-combat cast, or the
+	 * manual-mode upkeep would evict the player one tick after entry (bomb=0 with life left).
+	 */
+	public boolean hasActiveOpponentSession() {
+		return !sessions.isEmpty() || !playerOpponents.isEmpty();
+	}
+
 	public boolean isForcedDanmakuCombat() {
 		return forcedDanmakuCombat;
 	}

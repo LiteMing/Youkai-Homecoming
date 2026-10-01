@@ -122,9 +122,11 @@ public final class SpellItemCost {
 	}
 
 	/**
-	 * Entry itself is free: outside combat, a complete card qualifies regardless
-	 * of the XP price of casting it. Once combat is active, affordability uses
-	 * the normal Bomb quote. A Last Spell still obeys its readiness rules.
+	 * Entry itself is free: a complete card qualifies regardless of the price of casting it
+	 * until a real youkai/PvP opponent session exists. Then affordability uses the normal
+	 * Bomb quote. Manual "forced" combat alone is not an opponent session, so the manual-mode
+	 * upkeep that re-checks availability every tick keeps agreeing with the entry decision.
+	 * A Last Spell still obeys its readiness rules.
 	 */
 	public static boolean canAffordCombatEntry(ServerPlayer player, ItemStack stack) {
 		return canAfford(player, stack, true);
@@ -143,7 +145,13 @@ public final class SpellItemCost {
 					? cap.getLastSpellCooldownTicks() <= 0 : cap.canActivateLastSpell())
 					&& !dev.xkmc.youkaishomecoming.content.spell.item.SpellContainer.hasActiveSpellCard(player);
 		}
-		if (forCombatEntry && !YHStgApi.isInDanmakuSession(player)) return true;
+		// Forced manual combat is not an opponent session. Without this split the in-combat
+		// Bomb quote flips the answer one tick after entry, and the manual-mode upkeep
+		// ("do not strand a player after their last card ends") evicts the player.
+		if (forCombatEntry && !dev.xkmc.youkaishomecoming.content.capability.GrazeCapability.HOLDER.get(player)
+				.hasActiveOpponentSession()) {
+			return true;
+		}
 		boolean inCombat = YHStgApi.isInDanmakuSession(player);
 		SpellCostContext context = inCombat
 				? SpellCostContext.SPELL_CAST_STG : SpellCostContext.SPELL_CAST_NON_STG;

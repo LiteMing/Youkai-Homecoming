@@ -1,3 +1,7 @@
+2.7.0+HCDRS 0.31.3
+- HOTFIX 生存模式无法进入弹幕战：`YHStgApi.isInDanmakuSession` 把"手动强开的弹幕战"也算作会话，导致 `SpellItemCost.canAfford` 的免费进入分支在进入后一 tick 失效，改按战斗内 Bomb 价格报价；`GrazeCapability` 每 tick 的"别把没卡玩家困在战斗里"自保检查随即把玩家踢出（Bomb=0、Life 仍有剩时必现，创造因 instabuild 短路不受影响）。
+- 修复：`GrazeCapability.hasActiveOpponentSession()` 区分"真实对手会话"与"手动强制战斗"；`canAfford` 的免费分支改为按对手会话判定，进入与每 tick 自保判定一致，真正开打（有妖怪/PvP 会话）后才按 Bomb 价格校验。创造行为、Last Spell 规则、非战斗施放计价均不变。
+
 2.7.0+HCDRS 0.31.2
 - 修复 `/yhysm set` 指定模型时"指令无效"的问题：补全与聊天复制粘贴会带来带引号的模型 ID（旧补全用 `StringArgumentType.escapeIfRequired`，给含 `/` 或非 ASCII 的 ID 一律加双引号，而 Minecraft 的 TAB 补全按建议文本前缀匹配，导致必须先打一个引号才能用首字母筛选），客户端命令树的 `TokenArgument` 又不解引号，带引号的 ID 于是被当成新模型写入绑定，OYSM 查无此模型后渲染静默失败。
 - `TokenArgument.parse` 现在按 brigadier 可引用字符串语义解掉一层成对双引号并还原 `\"`，模型 ID、实体目标、绑定目标三类参数同时生效。

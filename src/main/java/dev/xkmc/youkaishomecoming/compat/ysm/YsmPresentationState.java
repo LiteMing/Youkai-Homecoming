@@ -32,11 +32,13 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 
 	public enum Source { COMMAND, SCRIPT, PREVIEW, EDITOR }
 
-	public record Animation(String clip, long startedAt, long expiresAt, Source source, String model) {
+	public record Animation(String clip, long startedAt, long expiresAt, Source source, String model, String owner) {
+		public Animation(String clip, long startedAt, long expiresAt, Source source, String model) { this(clip, startedAt, expiresAt, source, model, ""); }
 		public Animation(String clip, long startedAt, long expiresAt, Source source) { this(clip, startedAt, expiresAt, source, ""); }
 		public Animation {
 			clip = normalizeClip(clip);
 			model = model == null || model.isEmpty() ? "" : YsmModelProfile.modelId(model);
+			owner = owner == null || owner.isEmpty() ? "" : normalizeOwner(owner);
 			checkTime(startedAt, expiresAt);
 			Objects.requireNonNull(source);
 		}
@@ -48,10 +50,12 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 		public boolean matchesModel(String id) { return model.isEmpty() || model.equals(id); }
 	}
 
-	public record Parameter(float value, long startedAt, long expiresAt, Source source, String model) {
+	public record Parameter(float value, long startedAt, long expiresAt, Source source, String model, String owner) {
+		public Parameter(float value, long startedAt, long expiresAt, Source source, String model) { this(value, startedAt, expiresAt, source, model, ""); }
 		public Parameter(float value, long startedAt, long expiresAt, Source source) { this(value, startedAt, expiresAt, source, ""); }
 		public Parameter {
 			model = model == null || model.isEmpty() ? "" : YsmModelProfile.modelId(model);
+			owner = owner == null || owner.isEmpty() ? "" : normalizeOwner(owner);
 			if (!Float.isFinite(value) || Math.abs(value) > WIRE_MAX_PARAMETER_VALUE) throw new IllegalArgumentException("Model parameter exceeds the numeric wire bound");
 			checkTime(startedAt, expiresAt);
 			Objects.requireNonNull(source);
@@ -71,6 +75,12 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 			throw new IllegalArgumentException("Expected one animation clip name, not an animation hint or expression");
 		}
 		return value;
+	}
+
+	/** Caller-generated unique request ID. Empty IDs cannot claim legacy/unowned requests. */
+	public static String normalizeOwner(String owner) {
+		if (owner == null || !owner.matches("[A-Za-z0-9_:.\\-]{1,128}")) throw new IllegalArgumentException("Invalid presentation owner ID");
+		return owner;
 	}
 
 	/** Only numeric leaf variables are accepted; never execute user-supplied Molang. */
@@ -95,6 +105,10 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 
 	/** Atomic model-scoped preset overlay. Unmentioned parameters and a blank body are preserved. */
 	public YsmPresentationState applyPreset(String model, YsmModelProfile.Preset preset, long now, int ticks, Source source, int limit) {
+		return applyPreset(model, preset, now, ticks, source, limit, "");
+	}
+
+	public YsmPresentationState applyPreset(String model, YsmModelProfile.Preset preset, long now, int ticks, Source source, int limit, String owner) {
 		model = YsmModelProfile.modelId(model);
 		var current = expire(now);
 		var body = current.animation;
@@ -102,12 +116,21 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 		long end = deadline(now, ticks);
 		if (!preset.clip().isEmpty()) {
 			next = sequence == Long.MAX_VALUE ? 1 : sequence + 1;
-			body = new Animation(preset.clip(), now, end, source, model);
+			body = new Animation(preset.clip(), now, end, source, model, owner);
 		}
 		Map<String, Parameter> values = new LinkedHashMap<>(current.parameters);
-		for (var entry : preset.parameters().entrySet()) values.put(entry.getKey(), new Parameter(entry.getValue(), now, end, source, model));
+		for (var entry : preset.parameters().entrySet()) values.put(entry.getKey(), new Parameter(entry.getValue(), now, end, source, model, owner));
 		if (values.size() > limit) throw new IllegalArgumentException("Too many simultaneous model parameters");
 		return new YsmPresentationState(next, body, values);
+	}
+
+	/** Removes this request's remaining overlays; later replacements and other callers survive. */
+	public YsmPresentationState releaseOwned(String owner) {
+		normalizeOwner(owner);
+		Animation body = animation != null && animation.owner.equals(owner) ? null : animation;
+		Map<String, Parameter> values = new LinkedHashMap<>(parameters);
+		values.entrySet().removeIf(entry -> entry.getValue().owner.equals(owner));
+		return body == animation && values.size() == parameters.size() ? this : new YsmPresentationState(sequence, body, values);
 	}
 
 	public YsmPresentationState setParameter(String name, float value, long now, int duration, Source source, int limit) {
@@ -173,6 +196,7 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 			CompoundTag entry = timeTag(animation.startedAt, animation.expiresAt, animation.source);
 			entry.putString("clip", animation.clip);
 			entry.putString("model", animation.model);
+			if (!animation.owner.isEmpty()) entry.putString("owner", animation.owner);
 			tag.put("animation", entry);
 		}
 		ListTag entries = new ListTag();
@@ -181,6 +205,7 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 			entry.putString("name", name);
 			entry.putFloat("value", value.value);
 			entry.putString("model", value.model);
+			if (!value.owner.isEmpty()) entry.putString("owner", value.owner);
 			entries.add(entry);
 		});
 		tag.put("parameters", entries);
@@ -202,7 +227,7 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 		if (tag.contains("animation", Tag.TAG_COMPOUND)) {
 			CompoundTag entry = tag.getCompound("animation");
 			try {
-				animation = new Animation(entry.getString("clip"), entry.getLong("start"), entry.getLong("end"), Source.valueOf(entry.getString("source")), entry.getString("model"));
+				animation = new Animation(entry.getString("clip"), entry.getLong("start"), entry.getLong("end"), Source.valueOf(entry.getString("source")), entry.getString("model"), entry.getString("owner"));
 			} catch (IllegalArgumentException ignored) { }
 		}
 		Map<String, Parameter> parameters = new LinkedHashMap<>();
@@ -212,7 +237,7 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 			try {
 				if (!entry.contains("value", Tag.TAG_ANY_NUMERIC)) continue;
 				parameters.put(normalizeParameter(entry.getString("name")), new Parameter(entry.getFloat("value"),
-						entry.getLong("start"), entry.getLong("end"), Source.valueOf(entry.getString("source")), entry.getString("model")));
+						entry.getLong("start"), entry.getLong("end"), Source.valueOf(entry.getString("source")), entry.getString("model"), entry.getString("owner")));
 			} catch (IllegalArgumentException ignored) { }
 		}
 		return new YsmPresentationState(sequence, animation, parameters);

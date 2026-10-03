@@ -5,6 +5,7 @@ import org.jetbrains.annotations.Nullable;
 import net.minecraft.world.entity.Entity;
 
 import java.util.List;
+import com.google.gson.JsonObject;
 
 /**
  * Shared command/Java/KubeJS entry point. See docs-dev/yhmodel-script-api.md.
@@ -22,6 +23,9 @@ public final class YHModel {
 	public static int defaultDuration() {
 		return Math.min(YHModConfig.COMMON.modelPresentationDefaultTicks.get(), YHModConfig.COMMON.modelPresentationMaxTicks.get());
 	}
+
+	public static int ownedPresentationApiVersion() { return 1; }
+	public static int maxDuration() { return YHModConfig.COMMON.modelPresentationMaxTicks.get(); }
 
 	/** Plays one exact clip in LOOP mode. Repeating this call explicitly restarts that clip. */
 	public static void play(YsmRenderOverrideTarget target, String clip, int ticks) {
@@ -92,6 +96,47 @@ public final class YHModel {
 
 	public static void applyPreset(YsmRenderOverrideTarget target, String model, String id, int ticks) {
 		target.setYsmPresentation(presetRequest(target, model, id, ticks, YsmPresentationState.Source.SCRIPT));
+	}
+
+	/** -1 uses the registered duration; 0 persists until release. Use a unique owner per invocation. */
+	public static void applyPresetOwned(YsmRenderOverrideTarget target, String model, String id, int ticks, String owner) {
+		YsmPresentationState.normalizeOwner(owner);
+		var preset = preset(target, model, id);
+		validatePreset(preset);
+		if (ticks == -1) ticks = preset.ticks();
+		checkDuration(ticks);
+		target.setYsmPresentation(currentForMutation(target).applyPreset(model, preset, target.getYsmPresentationTime(), ticks,
+				YsmPresentationState.Source.SCRIPT, YHModConfig.COMMON.modelPresentationMaxParameters.get(), owner));
+	}
+
+	/** Does not restore overwritten requests or clear a later request, even if its value/time matches. */
+	public static void releaseOwned(YsmRenderOverrideTarget target, String owner) {
+		target.setYsmPresentation(currentForMutation(target).releaseOwned(owner));
+	}
+
+	/** Remaining owned overlays, not client rendering confirmation. 0=absent, -1=held. */
+	public static String ownedStatusJson(YsmRenderOverrideTarget target, String owner) {
+		YsmPresentationState.normalizeOwner(owner);
+		long now = target.getYsmPresentationTime();
+		var state = target.getYsmPresentation().expire(now);
+		JsonObject result = new JsonObject(), parameters = new JsonObject();
+		long remaining = 0;
+		String clip = "";
+		if (state.animation() != null && state.animation().owner().equals(owner)) {
+			clip = state.animation().clip();
+			remaining = YsmPresentationState.remaining(state.animation().expiresAt(), now);
+		}
+		for (var entry : state.parameters().entrySet()) {
+			if (!entry.getValue().owner().equals(owner)) continue;
+			parameters.addProperty(entry.getKey(), entry.getValue().value());
+			long value = YsmPresentationState.remaining(entry.getValue().expiresAt(), now);
+			remaining = remaining == -1 || value == -1 ? -1 : Math.max(remaining, value);
+		}
+		result.addProperty("active", !clip.isEmpty() || parameters.size() > 0);
+		result.addProperty("clip", clip);
+		result.addProperty("remaining_ticks", remaining);
+		result.add("parameters", parameters);
+		return result.toString();
 	}
 
 	static YsmPresentationState presetRequest(YsmRenderOverrideTarget target, String model, String id, int ticks, YsmPresentationState.Source source) {

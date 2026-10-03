@@ -1,5 +1,11 @@
 # YHModel — 模型表现接口（0.30.2）
 
+## 0.32.0 供应商职责迁移
+
+模型包加载、目录读取、数值租约、重播、时钟修复和原生渲染层改由 OYSM HCD 0.2.0
+公开 API 实现。YH 的脚本、预设与战斗信号契约保持；迁移边界与旧 custom 资源处理见
+[0.32.0 解耦说明](0.32.0-oysm-decoupling.md)。
+
 状态：控制接口、预设查询与应用已接入源码；不是实机验收声明，画面和联机验收尚未完成。
 第三种 YSM Editor、服务端共享预设和状态映射已接入。用户操作见 `docs/ysm-editor-user-checklist.md`；
 供应商边界及迁移官方 YSM 的说明见 `docs-dev/ysm-official-migration.md`。
@@ -43,6 +49,16 @@
 | `profileJson(target, model)` | 该模型共享定义的 format=1 JSON（不包含 revision）；未登记为合法空定义 |
 | `applyPreset(target, model, id)` | 原子应用模型限定的预设，使用其默认 ticks |
 | `applyPreset(target, model, id, ticks)` | 原子应用指定持续时间；0 保持，内部 -1 表示使用定义时长 |
+| `ownedPresentationApiVersion()` | 归属隔离表现接口版本，当前为 1 |
+| `maxDuration()` | 当前服务端配置允许的表现时长上限 |
+| `applyPresetOwned(target, model, id, ticks, owner)` | 与 applyPreset 同样的时长语义，每次调用由调用方生成唯一 owner；归属随实体 NBT 持久化 |
+| `releaseOwned(target, owner)` | 仅清除此请求仍拥有的身体与参数；后来的覆盖保留，不恢复已经被覆盖的旧请求 |
+| `ownedStatusJson(target, owner)` | JSON: active、clip、parameters、remaining_ticks；0 无覆盖、-1 保持、其余为剩余服务端 tick，不是客户端渲染 ACK |
+
+0.31.5 新增的归属隔离接口由 CreatureChat World Director 的 `cchat_yhysm_adapter.js` 消费。
+原有无 owner 调用保持原义。每次调用必须使用新 ID；不能按值或写入时刻认领表现，
+因为其他脚本可能在同一 tick 写入完全相同的值。引擎的节点退出、停止与重载只释放本次请求；
+实体暂时卸载时，消费者以实体持久化 journal 在重新载入后清理遗留请求。
 
 真实实体的预设查询和应用需要服务端线程；隔离假施法者通过目标接口读取已同步副本，供符卡节点本地试播。
 真实客户端实体仍拒绝写操作；`listModels` 使用当前服务器的全局目录。
@@ -202,9 +218,11 @@ radio 标签中的复杂表达式仅保留在指令诊断目录；普通 Editor 
 
 ## 兼容和验证边界
 
-本次没有修改 OYSM/TLM 源码、冻结外部渲染 API 或已有 KubeJS 事件。
-`ysm_render` 节点有意更换旧设计，信号包改用事件表；客户端与服务端必须同时更新到 0.28.0。
-内部适配基线是整合包中的 `openysm-forge-2.6.6.2-HCD-0.1.2.jar`，没有宣称支持官方 YSM 3.0。
+YH 0.32.0 对接 OYSM HCD 0.2.0 的公开资源、表现、弹射物与玩家提示 API；
+OYSM 负责模型加载、目录读取、动画时钟和跨帧数值恢复，YH 保留符卡状态与预设策略。
+`ExternalLivingRenderAPI` 既有签名和已有 KubeJS 事件保持兼容。
+`ysm_render` 节点在 0.28.0 更换旧设计并将信号包改用事件表；客户端与服务端须使用匹配版本。
+当前适配基线是 `openysm-forge-2.6.6.2-HCD-0.2.0.jar`，没有宣称支持官方 YSM 3.0。
 
 ```powershell
 .\gradlew.bat compileJava organizeLang --no-daemon --console=plain

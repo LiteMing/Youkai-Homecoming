@@ -23,7 +23,7 @@ import dev.xkmc.youkaishomecoming.compat.terrablender.Terrablender;
 import dev.xkmc.youkaishomecoming.compat.thirst.ThirstCompat;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMCompat;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMRegistries;
-import dev.xkmc.youkaishomecoming.compat.ysm.YsmModelPackInstaller;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmModelPackRegistration;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.fairy.FairySpellCards;
 import dev.xkmc.youkaishomecoming.content.capability.*;
 import dev.xkmc.youkaishomecoming.content.entity.misc.FairyIce;
@@ -180,6 +180,9 @@ public class YoukaisHomecoming {
 		YHModConfig.init();
 		TableItemManager.init();
 		FilterHolderSet.register();
+		// Register packaged YSM assets before OYSM builds its model catalog. The
+		// registration is optional and does not extract files into config/.
+		YsmModelPackRegistration.register();
 
 		AttackEventHandler.register(3943, new YHAttackListener());
 
@@ -273,7 +276,6 @@ public class YoukaisHomecoming {
 
 		});
 		FastMapInit.init();
-		YsmModelPackInstaller.install();
 	}
 
 	@SubscribeEvent(priority = EventPriority.HIGH)

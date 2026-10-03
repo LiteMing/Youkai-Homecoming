@@ -302,6 +302,9 @@ dependencies {
     if (openYsmCompatJar) {
         def openYsmCompatFile = file(openYsmCompatJar)
         if (openYsmCompatFile.exists()) {
+            // Compile against OYSM's stable public API. Runtime remains optional;
+            // client compat classes are only loaded when the mod is installed.
+            compileOnly files(openYsmCompatFile)
             runtimeOnly files(openYsmCompatFile)
             minecraftLibrary("com.github.TartaricAlkaline:ImageStream:-SNAPSHOT") {
                 transitive = false

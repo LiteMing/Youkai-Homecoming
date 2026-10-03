@@ -18,6 +18,7 @@ import dev.xkmc.youkaishomecoming.content.entity.youkai.GeneralYoukaiEntity;
 import dev.xkmc.youkaishomecoming.content.entity.youkai.YoukaiEntity;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import dev.xkmc.youkaishomecoming.init.registrate.YHEffects;
+import rip.ysm.api.client.ExternalLivingRenderAPI;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -46,9 +47,6 @@ import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -69,7 +67,7 @@ public class YSMClientCompat {
 	private static final ArgumentType<String> YSM_ID_ARGUMENT = new TokenArgument("Expected YSM id", List.of(MODEL_REMILIA, "namespace:path/model"));
 	private static final ArgumentType<String> ENTITY_TARGET_ARGUMENT = new TokenArgument("Expected entity target", List.of("@e[limit=1,sort=nearest]", "@a", "00000000-0000-0000-0000-000000000000"));
 	private static final ArgumentType<String> BINDING_TARGET_ARGUMENT = new TokenArgument("Expected entity type, UUID or selector", List.of("youkaishomecoming:remilia_scarlet", "@e[limit=1,sort=nearest]", "00000000-0000-0000-0000-000000000000"));
-	private static final boolean LOADED = ModList.get().isLoaded(MOD_ID);
+	private static final boolean LOADED = ModList.get().isLoaded(MOD_ID) && YsmOpenYsmSupport.available();
 	private static final Map<ResourceLocation, RenderBinding> TYPE_DEBUG_OVERRIDES = new LinkedHashMap<>();
 	private static final Map<UUID, RenderBinding> ENTITY_DEBUG_OVERRIDES = new LinkedHashMap<>();
 	private static long bindingRevision;
@@ -98,20 +96,7 @@ public class YSMClientCompat {
 	};
 	private static final SuggestionProvider<CommandSourceStack> BINDING_TARGET_SUGGESTIONS = YSMClientCompat::bindingTargetSuggestions;
 
-	private static Method renderMethod;
-	private static Method clearDebugMethod;
-	private static Method debugSnapshotMethod;
-	private static Method loadedModelIdsMethod;
-	private static Method modelTextureNamesMethod;
-	private static Method modelAnimationNamesMethod;
-	private static Method modelDefaultTextureNameMethod;
-	private static boolean unavailable;
-	private static boolean heldItemLayerUnavailable;
-	private static HeldItemLayerAccess heldItemLayerAccess;
 	private static int delegatedRenderDepth;
-	private static boolean textureListUnavailable;
-	private static boolean animationListUnavailable;
-	private static boolean defaultTextureUnavailable;
 	private static boolean debugOverlay;
 	private static UUID debugTarget;
 	private static final long CATALOG_CACHE_NANOS = 500_000_000L;
@@ -131,23 +116,14 @@ public class YSMClientCompat {
 		}
 		YsmClientPresentationBridge.renderOutcome(e, false);
 		RenderRequest request = resolveRenderRequest(e);
-		if (!LOADED || unavailable || request == null) {
-			return false;
-		}
-		Method method = getRenderMethod();
-		if (method == null) {
+		if (!LOADED || request == null) {
 			return false;
 		}
 		delegatedRenderDepth++;
 		try (var frame = YsmClientPresentationBridge.beforeRender(e, request.modelId(), request.presentation())) {
-			Object result = method.invoke(null, e, request.modelId(), request.textureName(), request.animationHint(), yaw, pTick, pose, buffer, light);
-			boolean rendered = result instanceof Boolean value && value;
+			boolean rendered = ExternalLivingRenderAPI.render(e, request.modelId(), request.textureName(), request.animationHint(), yaw, pTick, pose, buffer, light);
 			YsmClientPresentationBridge.renderOutcome(e, rendered);
 			return rendered;
-		} catch (IllegalAccessException | InvocationTargetException ex) {
-			unavailable = true;
-			YoukaisHomecoming.LOGGER.warn("Failed to delegate youkai rendering to Yes Steve Model", ex);
-			return false;
 		} finally {
 			delegatedRenderDepth--;
 		}
@@ -172,168 +148,15 @@ public class YSMClientCompat {
 		}
 	}
 
-	private static Method getRenderMethod() {
-		if (renderMethod != null) {
-			return renderMethod;
-		}
-		try {
-			renderMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
-					"render",
-					LivingEntity.class,
-					String.class,
-					String.class,
-					String.class,
-					float.class,
-					float.class,
-					PoseStack.class,
-					MultiBufferSource.class,
-					int.class
-			);
-			return renderMethod;
-		} catch (ClassNotFoundException | NoSuchMethodException ex) {
-			unavailable = true;
-			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living renderer API is unavailable", ex);
-			return null;
-		}
-	}
-
-	private static Method getClearDebugMethod() {
-		if (clearDebugMethod != null) {
-			return clearDebugMethod;
-		}
-		try {
-			clearDebugMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod("clearDebug");
-			return clearDebugMethod;
-		} catch (ClassNotFoundException | NoSuchMethodException ex) {
-			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living debug clear API is unavailable", ex);
-			return null;
-		}
-	}
-
-	private static Method getDebugSnapshotMethod() {
-		if (debugSnapshotMethod != null) {
-			return debugSnapshotMethod;
-		}
-		try {
-			debugSnapshotMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
-					"getDebugSnapshot",
-					LivingEntity.class
-			);
-			return debugSnapshotMethod;
-		} catch (ClassNotFoundException | NoSuchMethodException ex) {
-			YoukaisHomecoming.LOGGER.warn("Yes Steve Model external living debug snapshot API is unavailable", ex);
-			return null;
-		}
-	}
-
-	private static Method getLoadedModelIdsMethod() {
-		if (loadedModelIdsMethod != null) {
-			return loadedModelIdsMethod;
-		}
-		try {
-			loadedModelIdsMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod("getLoadedModelIds");
-			return loadedModelIdsMethod;
-		} catch (ClassNotFoundException | NoSuchMethodException ex) {
-			YoukaisHomecoming.LOGGER.warn("Yes Steve Model loaded model id API is unavailable", ex);
-			return null;
-		}
-	}
-
-	private static Method getModelTextureNamesMethod() {
-		if (textureListUnavailable) {
-			return null;
-		}
-		if (modelTextureNamesMethod != null) {
-			return modelTextureNamesMethod;
-		}
-		try {
-			modelTextureNamesMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
-					"getModelTextureNames",
-					String.class
-			);
-			return modelTextureNamesMethod;
-		} catch (ClassNotFoundException | NoSuchMethodException ex) {
-			textureListUnavailable = true;
-			YoukaisHomecoming.LOGGER.warn("Yes Steve Model texture list API is unavailable", ex);
-			return null;
-		}
-	}
-
-	private static Method getModelAnimationNamesMethod() {
-		if (animationListUnavailable) {
-			return null;
-		}
-		if (modelAnimationNamesMethod != null) {
-			return modelAnimationNamesMethod;
-		}
-		try {
-			modelAnimationNamesMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
-					"getModelAnimationNames",
-					String.class
-			);
-			return modelAnimationNamesMethod;
-		} catch (ClassNotFoundException | NoSuchMethodException ex) {
-			animationListUnavailable = true;
-			YoukaisHomecoming.LOGGER.warn("Yes Steve Model animation list API is unavailable", ex);
-			return null;
-		}
-	}
-
-	private static Method getModelDefaultTextureNameMethod() {
-		if (defaultTextureUnavailable) {
-			return null;
-		}
-		if (modelDefaultTextureNameMethod != null) {
-			return modelDefaultTextureNameMethod;
-		}
-		try {
-			modelDefaultTextureNameMethod = Class.forName("rip.ysm.api.client.ExternalLivingRenderAPI").getMethod(
-					"getModelDefaultTextureName",
-					String.class
-			);
-			return modelDefaultTextureNameMethod;
-		} catch (ClassNotFoundException | NoSuchMethodException ex) {
-			defaultTextureUnavailable = true;
-			YoukaisHomecoming.LOGGER.warn("Yes Steve Model default texture API is unavailable", ex);
-			return null;
-		}
-	}
-
 	private static void clearYsmDebug() {
-		if (!LOADED) {
-			return;
-		}
-		Method method = getClearDebugMethod();
-		if (method == null) {
-			return;
-		}
-		try {
-			method.invoke(null);
-		} catch (IllegalAccessException | InvocationTargetException ex) {
-			YoukaisHomecoming.LOGGER.warn("Failed to clear Yes Steve Model external living debug overlay", ex);
-		}
+		if (LOADED) ExternalLivingRenderAPI.clearDebug();
 	}
 
 	static Map<String, String> getYsmDebugSnapshot(LivingEntity entity) {
 		if (!LOADED) {
 			return Map.of("loaded", "false");
 		}
-		Method method = getDebugSnapshotMethod();
-		if (method == null) {
-			return Map.of("debugApi", "missing");
-		}
-		try {
-			Object result = method.invoke(null, entity);
-			if (result instanceof Map<?, ?> map) {
-				Map<String, String> copy = new LinkedHashMap<>();
-				map.forEach((key, value) -> copy.put(String.valueOf(key), String.valueOf(value)));
-				return copy;
-			}
-			return Map.of("debugApi", "invalid result");
-		} catch (IllegalAccessException | InvocationTargetException ex) {
-			YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model external living debug snapshot", ex);
-			return Map.of("debugApi", "error");
-		}
+		return ExternalLivingRenderAPI.getDebugSnapshot(entity);
 	}
 
 	public static List<String> loadedModelIds() {
@@ -350,25 +173,7 @@ public class YSMClientCompat {
 			loadedModelIdsCacheAt = now;
 			return result;
 		}
-		Method method = getLoadedModelIdsMethod();
-		if (method == null) {
-			loadedModelIdsCache = List.copyOf(result);
-			loadedModelIdsCacheAt = now;
-			return result;
-		}
-		try {
-			Object value = method.invoke(null);
-			if (value instanceof Iterable<?> iterable) {
-				for (Object entry : iterable) {
-					String id = String.valueOf(entry);
-					if (!id.isBlank() && !result.contains(id)) {
-						result.add(id);
-					}
-				}
-			}
-		} catch (IllegalAccessException | InvocationTargetException ex) {
-			YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model loaded model ids", ex);
-		}
+		for (String id : ExternalLivingRenderAPI.getLoadedModelIds()) if (!id.isBlank() && !result.contains(id)) result.add(id);
 		loadedModelIdsCache = List.copyOf(result);
 		loadedModelIdsCacheAt = now;
 		return result;
@@ -488,52 +293,6 @@ public class YSMClientCompat {
 		return YsmAnimationHints.normalize(animation, key -> YSMCompatConfig.expressionToken(modelId, key));
 	}
 
-	/**
-	 * Called from the optional OYSM renderer mixin while its model pose is still
-	 * active. The actual hand transform and item rendering stay in OYSM's native
-	 * layer; YH only supplies the external entity's current model and item state.
-	 */
-	public static void renderExternalHeldItems(Object animatable, PoseStack pose, MultiBufferSource buffer, int light) {
-		if (!LOADED || heldItemLayerUnavailable || animatable == null) {
-			return;
-		}
-		try {
-			HeldItemLayerAccess access = heldItemLayerAccess();
-			if (access == null || !access.externalAnimatable().isInstance(animatable)) {
-				return;
-			}
-			Object model = access.currentModel().invoke(animatable);
-			Object entityObject = access.entity().invoke(animatable);
-			if (!(model != null && entityObject instanceof LivingEntity entity)) {
-				return;
-			}
-			if (!entity.getMainHandItem().isEmpty() && access.hasBones(access.rightHandBones().invoke(model))) {
-				access.renderItem().invoke(access.layer(), model, entity, entity.getMainHandItem(),
-						net.minecraft.world.item.ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
-						net.minecraft.world.entity.HumanoidArm.RIGHT, pose, buffer, light);
-			}
-			if (!entity.getOffhandItem().isEmpty() && access.hasBones(access.leftHandBones().invoke(model))) {
-				access.renderItem().invoke(access.layer(), model, entity, entity.getOffhandItem(),
-						net.minecraft.world.item.ItemDisplayContext.THIRD_PERSON_LEFT_HAND,
-						net.minecraft.world.entity.HumanoidArm.LEFT, pose, buffer, light);
-			}
-		} catch (ReflectiveOperationException | RuntimeException ex) {
-			heldItemLayerUnavailable = true;
-			YoukaisHomecoming.LOGGER.warn("Failed to render external YSM held items; disabling the optional bridge", ex);
-		}
-	}
-
-	private static HeldItemLayerAccess heldItemLayerAccess() throws ReflectiveOperationException {
-		if (heldItemLayerAccess != null) {
-			return heldItemLayerAccess;
-		}
-		if (heldItemLayerUnavailable) {
-			return null;
-		}
-		heldItemLayerAccess = new HeldItemLayerAccess();
-		return heldItemLayerAccess;
-	}
-
 	private static List<String> splitAnimationHint(String animation) {
 		if (animation.isBlank()) {
 			return List.of();
@@ -569,16 +328,7 @@ public class YSMClientCompat {
 		if (!defaultTexture.isBlank()) {
 			result.add(defaultTexture);
 		}
-		if (LOADED) {
-			Method method = getModelTextureNamesMethod();
-			if (method != null) {
-				try {
-					addIterableUnique(result, method.invoke(null, modelId));
-				} catch (IllegalAccessException | InvocationTargetException ex) {
-					YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model texture ids for {}", modelId, ex);
-				}
-			}
-		}
+		if (LOADED) addAllUnique(result, ExternalLivingRenderAPI.getModelTextureNames(modelId));
 		if (!result.contains(TEXTURE_DEFAULT)) {
 			result.add(TEXTURE_DEFAULT);
 		}
@@ -605,16 +355,7 @@ public class YSMClientCompat {
 			animationNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
 			return result;
 		}
-		if (LOADED) {
-			Method method = getModelAnimationNamesMethod();
-			if (method != null) {
-				try {
-					addIterableUnique(result, method.invoke(null, modelId));
-				} catch (IllegalAccessException | InvocationTargetException ex) {
-					YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model animation ids for {}", modelId, ex);
-				}
-			}
-		}
+		if (LOADED) addAllUnique(result, ExternalLivingRenderAPI.getModelAnimationNames(modelId));
 		animationNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
 		return result;
 	}
@@ -631,35 +372,14 @@ public class YSMClientCompat {
 		if (cached != null && isCacheFresh(cached.loadedAt(), now)) {
 			return cached.value();
 		}
-		Method method = getModelDefaultTextureNameMethod();
-		if (method == null) {
-			return TEXTURE_DEFAULT;
-		}
-		try {
-			Object value = method.invoke(null, modelId);
-			String name = String.valueOf(value);
-			name = name.isBlank() || "null".equals(name) ? TEXTURE_DEFAULT : name;
-			defaultTextureCache.put(modelId, new CachedString(name, now));
-			return name;
-		} catch (IllegalAccessException | InvocationTargetException ex) {
-			YoukaisHomecoming.LOGGER.warn("Failed to read Yes Steve Model default texture for {}", modelId, ex);
-			return TEXTURE_DEFAULT;
-		}
+		String name = ExternalLivingRenderAPI.getModelDefaultTextureName(modelId);
+		name = name == null || name.isBlank() ? TEXTURE_DEFAULT : name;
+		defaultTextureCache.put(modelId, new CachedString(name, now));
+		return name;
 	}
 
 	private static boolean isCacheFresh(long loadedAt, long now) {
 		return loadedAt > 0 && now - loadedAt < CATALOG_CACHE_NANOS;
-	}
-
-	private static void addIterableUnique(List<String> result, Object value) {
-		if (value instanceof Iterable<?> iterable) {
-			for (Object entry : iterable) {
-				String id = String.valueOf(entry);
-				if (!id.isBlank() && !result.contains(id)) {
-					result.add(id);
-				}
-			}
-		}
 	}
 
 	private static void addAllUnique(List<String> result, Iterable<String> values) {
@@ -1383,44 +1103,6 @@ public class YSMClientCompat {
 		public Collection<String> getExamples() {
 			return examples;
 		}
-	}
-
-	private static final class HeldItemLayerAccess {
-		private static final String OYSM = "com.elfmcys.yesstevemodel.";
-		private final Class<?> externalAnimatable;
-		private final Method entity;
-		private final Method currentModel;
-		private final Method leftHandBones;
-		private final Method rightHandBones;
-		private final Object layer;
-		private final Method renderItem;
-
-		private HeldItemLayerAccess() throws ReflectiveOperationException {
-			externalAnimatable = Class.forName(OYSM + "client.entity.ExternalLivingEntity");
-			entity = externalAnimatable.getMethod("getEntity");
-			currentModel = externalAnimatable.getMethod("getCurrentModel");
-			Class<?> model = Class.forName(OYSM + "geckolib3.geo.animated.AnimatedGeoModel");
-			leftHandBones = model.getMethod("leftHandBones");
-			rightHandBones = model.getMethod("rightHandBones");
-			Class<?> layerClass = Class.forName(OYSM + "client.renderer.layer.CustomPlayerItemInHandLayer");
-			Constructor<?> constructor = layerClass.getConstructor(net.minecraft.client.renderer.ItemInHandRenderer.class);
-			layer = constructor.newInstance(Minecraft.getInstance().getEntityRenderDispatcher().getItemInHandRenderer());
-			renderItem = layerClass.getMethod("renderItem", model, LivingEntity.class,
-				 net.minecraft.world.item.ItemStack.class, net.minecraft.world.item.ItemDisplayContext.class,
-				 net.minecraft.world.entity.HumanoidArm.class, PoseStack.class, MultiBufferSource.class, int.class);
-		}
-
-		private boolean hasBones(Object value) {
-			return value instanceof Collection<?> collection && !collection.isEmpty();
-		}
-
-		private Class<?> externalAnimatable() { return externalAnimatable; }
-		private Method entity() { return entity; }
-		private Method currentModel() { return currentModel; }
-		private Method leftHandBones() { return leftHandBones; }
-		private Method rightHandBones() { return rightHandBones; }
-		private Object layer() { return layer; }
-		private Method renderItem() { return renderItem; }
 	}
 
 	private record BindingResolution(RenderBinding binding, String source) {

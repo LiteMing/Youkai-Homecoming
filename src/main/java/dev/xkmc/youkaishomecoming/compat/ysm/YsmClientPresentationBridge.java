@@ -1,334 +1,118 @@
 package dev.xkmc.youkaishomecoming.compat.ysm;
 
+import rip.ysm.api.client.ExternalLivingPresentationAPI;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.fml.common.Mod;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.ref.WeakReference;
-import java.lang.reflect.Method;
-import java.lang.reflect.Field;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.WeakHashMap;
 
-/**
- * Optional adapter for OpenYSM 2.6.6.2-HCD-0.1.2 internals. The frozen external render API is unchanged.
- * No external types appear in signatures. Each capability is probed once and fails independently.
- */
+/** YH presentation policy over OYSM's public external-model contract. */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, modid = YoukaisHomecoming.MODID)
 public final class YsmClientPresentationBridge {
 
-	private static final String OYSM = "com.elfmcys.yesstevemodel.";
-	private static final Map<Object, YsmModelCatalog> CATALOGS = new WeakHashMap<>();
+	private static final Map<String, CatalogSnapshot> CATALOGS = new LinkedHashMap<>();
 	private static final Map<LivingEntity, ClientState> ENTITIES = new WeakHashMap<>();
 	private static final Map<LivingEntity, ClockRepairStats> CLOCK_REPAIRS = new WeakHashMap<>();
-	private static CatalogAccess catalogs;
-	private static FormAccess forms;
-	private static RuntimeAccess runtime;
-	private static ParameterAccess parameters;
-	private static ReplayAccess replay;
-	private static AnimationClockAccess animationClocks;
-	private static String catalogFailure, formFailure, runtimeFailure, parameterFailure, replayFailure, animationClockFailure;
-	private static Field previewCache;
-	private static boolean previewCacheChecked;
-	private static FolderAccess folders;
-	private static boolean foldersChecked;
 
 	private YsmClientPresentationBridge() { }
 
-	/** Optional native pack labels; directory IDs still come from actual model IDs. */
 	public static Map<String, String> modelFolderNames() {
-		if (!YSMClientCompat.isLoaded()) return Map.of();
-		if (!foldersChecked) {
-			foldersChecked = true;
-			try { folders = new FolderAccess(); }
-			catch (ReflectiveOperationException | LinkageError ignored) { }
-		}
-		if (folders == null) return Map.of();
-		try {
-			var names = new LinkedHashMap<String, String>();
-			for (Object pack : stringMap(folders.packs.invoke(null)).values()) {
-				String name = string(folders.name.invoke(pack));
-				if (!name.isBlank()) names.put(string(folders.path.invoke(pack)).replace('\\', '/').replaceAll("/+$", ""), name);
-			}
-			return Map.copyOf(names);
-		} catch (ReflectiveOperationException | LinkageError | RuntimeException ignored) {
-			folders = null;
-			return Map.of();
-		}
+		return YSMClientCompat.isLoaded() ? ExternalLivingPresentationAPI.modelFolderNames() : Map.of();
 	}
 
 	public static YsmModelCatalog catalog(String model) {
 		if (!YSMClientCompat.isLoaded()) return YsmModelCatalog.unavailable(YsmModelCatalog.Status.NOT_INSTALLED, "yes_steve_model");
-		try {
-			CatalogAccess access = catalogAccess();
-			if (access == null) return YsmModelCatalog.unavailable(YsmModelCatalog.Status.API_UNAVAILABLE, catalogFailure);
-			if (!access.known(model)) return YsmModelCatalog.unavailable(YsmModelCatalog.Status.MODEL_MISSING, model);
-			Object assembly = access.assembly(model);
-			if (assembly == null) return YsmModelCatalog.unavailable(YsmModelCatalog.Status.MODEL_NOT_READY, model);
-			YsmModelCatalog cached = CATALOGS.get(assembly);
-			if (cached != null) return cached;
-			Object bundle = access.bundle.invoke(assembly);
-			List<String> clips = stringMap(access.animations.invoke(bundle)).keySet().stream().sorted().toList();
-			List<YsmModelCatalog.WheelEntry> wheel = new ArrayList<>();
-			List<YsmModelCatalog.Control> controls = new ArrayList<>();
-			String detail = "";
-			try {
-				FormAccess metadata = formAccess();
-				if (metadata == null) detail = formFailure;
-				else metadata.read(assembly, clips, wheel, controls);
-			} catch (ReflectiveOperationException | RuntimeException ex) {
-				detail = failure(ex);
-			}
-			YsmModelCatalog result = new YsmModelCatalog(YsmModelCatalog.Status.READY, detail, clips, wheel, controls);
-			CATALOGS.put(assembly, result);
-			return result;
-		} catch (ReflectiveOperationException | LinkageError ex) {
-			catalogFailure = failure(ex);
-			catalogs = null;
-			return YsmModelCatalog.unavailable(YsmModelCatalog.Status.API_UNAVAILABLE, catalogFailure);
+		if (model == null || model.isBlank()) return YsmModelCatalog.unavailable(YsmModelCatalog.Status.MODEL_MISSING, "");
+		ExternalLivingPresentationAPI.Catalog source = ExternalLivingPresentationAPI.catalog(model);
+		if (!ExternalLivingPresentationAPI.isAvailable(source)) {
+			CATALOGS.remove(model);
+			return YsmModelCatalog.unavailable(YsmModelCatalog.Status.MODEL_NOT_READY, model);
 		}
+		CatalogSnapshot cached = CATALOGS.get(model);
+		if (cached != null && cached.source == source) return cached.catalog;
+		List<YsmModelCatalog.WheelEntry> wheel = source.wheel().stream()
+				.map(entry -> new YsmModelCatalog.WheelEntry(entry.group(), entry.id(), entry.label(), entry.clipAvailable(), entry.configGroup(), entry.submenu())).toList();
+		List<YsmModelCatalog.Control> controls = source.controls().stream()
+				.map(control -> new YsmModelCatalog.Control(control.group(), control.groupLabel(), control.title(), control.description(),
+						control.type(), control.expression(), control.parameter(), control.min(), control.max(), control.step(),
+						control.choices().stream().map(choice -> new YsmModelCatalog.Choice(choice.label(), choice.expression(), choice.numericValue())).toList())).toList();
+		YsmModelCatalog result = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", source.animations(), wheel, controls);
+		CATALOGS.put(model, new CatalogSnapshot(source, result));
+		return result;
 	}
 
-	/**
-	 * Return the projectile entity slots actually exposed by one loaded YSM
-	 * model. The names are the entity ids used by YSM's {@code projectiles}
-	 * section (the vanilla namespace is shortened for editor readability).
-	 */
+	private record CatalogSnapshot(ExternalLivingPresentationAPI.Catalog source, YsmModelCatalog catalog) { }
+
 	public static List<String> projectileSlots(String model) {
 		if (!YSMClientCompat.isLoaded() || model == null || model.isBlank()) return List.of();
-		try {
-			CatalogAccess access = catalogAccess();
-			if (access == null || access.projectiles == null) return List.of();
-			Object assembly = access.assembly(model);
-			if (assembly == null) return List.of();
-			Object value = access.projectiles.invoke(assembly);
-			if (!(value instanceof Map<?, ?> map)) return List.of();
-			return map.keySet().stream()
-					.map(YsmClientPresentationBridge::projectileSlotName)
-					.filter(name -> !name.isBlank())
-					.distinct().sorted().toList();
-		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
-			return List.of();
-		}
+		return ExternalLivingPresentationAPI.catalog(model).projectileSlots();
 	}
 
-	private static String projectileSlotName(Object value) {
-		if (value instanceof net.minecraft.resources.ResourceLocation id) {
-			return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
-		}
-		String raw = String.valueOf(value);
-		if (raw.isBlank() || "null".equals(raw)) return "";
-		try {
-			net.minecraft.resources.ResourceLocation id = net.minecraft.resources.ResourceLocation.tryParse(raw);
-			return id == null ? raw : "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
-		} catch (RuntimeException ignored) {
-			return raw;
-		}
-	}
-
-	/** Called immediately before ExternalLivingRenderAPI.render. Parameter leases span the next async evaluation. */
+	/** OYSM owns parameter lifetime across draws and async evaluations. Close completes this draw's input snapshot. */
 	public static Frame beforeRender(LivingEntity entity, String model, YsmPresentationResolver.Resolved state) {
-		if (!(entity instanceof YsmRenderOverrideTarget target)) return Frame.EMPTY;
-		long now = target.getYsmPresentationTime();
-		ClientState client = ENTITIES.get(entity);
-		boolean preview = YsmClientProfiles.isPreview(entity);
-		if (state.body() == null && state.parameters().isEmpty()) {
-			if (client == null && !preview) {
-				repairAnimationClock(entity, null);
-				return Frame.EMPTY;
-			}
-		}
-		if (client == null) {
-			client = new ClientState();
-			ENTITIES.put(entity, client);
-		}
+		if (!YSMClientCompat.isLoaded()) return Frame.EMPTY;
+		if (!(entity instanceof YsmRenderOverrideTarget)) return Frame.EMPTY;
+		ClientState client = ENTITIES.computeIfAbsent(entity, ignored -> new ClientState());
 		client.rendered = null;
-		YsmParameterOverlay overlay = new YsmParameterOverlay();
-		boolean applyingParameters = client.parameterOverlay != null;
-		try {
-			RuntimeAccess access = runtimeAccess();
-			if (access == null) return Frame.EMPTY;
-			Object animatable = access.animatable(entity);
-			Object previousAnimatable = client.animatable.get();
-			if (previousAnimatable != null && previousAnimatable != animatable) access.await.invoke(previousAnimatable);
-			if (animatable != null) access.await.invoke(animatable);
-			closeParameterOverlay(client);
-			client.animatable = new WeakReference<>(animatable);
-			ClockRepair repair = repairAnimationClock(entity, animatable);
-			if (repair != null) {
-				client.invalidateController();
-				// The repair evicts the stale OYSM object. Let the renderer create a
-				// fresh ExternalLivingEntity on the next render call instead of
-				// submitting another async evaluation from the old chunk lifetime.
-				return Frame.EMPTY;
-			}
-			if (state.body() == null && state.parameters().isEmpty() && !preview) {
-				client.replayKey = "";
-				client.clipStatus = "";
-				client.suppressed = false;
-				client.applied = "";
-				client.skipped = "";
-				return Frame.EMPTY;
-			}
-			if (animatable == null || !Boolean.TRUE.equals(access.ready.invoke(animatable)) || !model.equals(access.modelId.invoke(animatable))) {
-				client.skipped = "model_not_ready";
-				return Frame.EMPTY;
-			}
-			CatalogAccess modelAccess = catalogAccess();
-			if (modelAccess == null) return Frame.EMPTY;
-			// A reload may replace the assembly before the renderer ticks the model. Never lease the old storage.
-			if (access.assembly.invoke(animatable) != modelAccess.assembly(model)) return Frame.EMPTY;
-			YsmModelCatalog catalog = catalog(model);
-			updatePlayback(client, state, entity, animatable, catalog);
-			client.applied = "";
-			client.skipped = "";
-			client.renderedModel = model;
-			client.rendered = state;
-			if (state.parameters().isEmpty()) {
-				client.parameterBases.clear();
-				return Frame.EMPTY;
-			}
-			applyingParameters = true;
-			ParameterAccess values = parameterAccess();
-			if (values == null) return Frame.EMPTY;
-			Object storage = values.storage.invoke(access.processor.invoke(animatable));
-			List<String> applied = new ArrayList<>();
-			List<String> skipped = new ArrayList<>();
-			Map<String, Object> bases = new LinkedHashMap<>();
-			for (var entry : state.parameters().entrySet()) {
-				String name = entry.getKey();
-				if (!catalog.accepts(name, entry.getValue())) {
-					skipped.add(name + " (outside_declared_options)");
-					continue;
-				}
-				YsmParameterOverlay.Slot slot = values.slot(storage, name);
-				if (slot != null) {
-					Object base = slot.get();
-					if (overlay.apply(slot, entry.getValue())) {
-						bases.put(name, base);
-						applied.add(name);
-						continue;
-					}
-				}
-				skipped.add(name + " (not_numeric_or_not_ready)");
-			}
-			client.applied = String.join(", ", applied);
-			client.skipped = String.join(", ", skipped);
-			if (!applied.isEmpty()) {
-				client.parameterOverlay = overlay;
-				client.parameterBases = bases;
-				overlay = null;
-			} else {
-				client.parameterBases.clear();
-			}
-			return Frame.EMPTY;
-		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
-			client.rendered = null;
-			if (applyingParameters) {
-				parameterFailure = failure(ex);
-				parameters = null;
-			} else {
-				runtimeFailure = failure(ex);
-				runtime = null;
-			}
-			try { overlay.close(); }
-			catch (ReflectiveOperationException ignored) { }
-			return Frame.EMPTY;
-		}
-	}
-
-	private static void closeParameterOverlay(ClientState client) throws ReflectiveOperationException {
-		YsmParameterOverlay active = client.parameterOverlay;
-		client.parameterOverlay = null;
+		client.renderedFrame = null;
+		client.renderSuccessful = false;
 		client.parameterBases.clear();
-		if (active != null) active.close();
-	}
-
-	private static void updatePlayback(ClientState client, YsmPresentationResolver.Resolved state, LivingEntity entity,
-			Object animatable, YsmModelCatalog catalog) {
-		var animation = state.body();
+		boolean preview = YsmClientProfiles.isPreview(entity);
+		boolean hasPresentation = state.body() != null || !state.parameters().isEmpty() || preview;
+		if (!hasPresentation) client.clearTransient();
 		boolean suppressed = YSMClientCompat.isBeatenProjection(entity) && !state.beaten();
-		if (animation == null || suppressed) {
-			client.replayKey = "";
-			client.clipStatus = suppressed ? "beaten_projection" : "";
-			client.suppressed = suppressed;
-			return;
+		client.suppressed = suppressed;
+		String clip = state.body() == null ? "" : state.body().clip();
+		String replayKey = state.body() == null ? "" : state.body().replayKey();
+		ExternalLivingPresentationAPI.Frame nativeFrame = ExternalLivingPresentationAPI.prepare(entity, model, clip, replayKey,
+				state.parameters(), suppressed);
+		if (nativeFrame.clockReset()) {
+			client.clipStatus = nativeFrame.status();
+			CLOCK_REPAIRS.computeIfAbsent(entity, ignored -> new ClockRepairStats()).record(nativeFrame.status());
+			return Frame.EMPTY;
 		}
-		client.clipStatus = catalog.status() != YsmModelCatalog.Status.READY ? "model_not_ready"
-				: catalog.animations().contains(animation.clip()) ? "loop" : "missing_clip: " + animation.clip();
-		try {
-			ReplayAccess access = replayAccess();
-			if (access == null) return;
-			Object controller = access.controller.invoke(access.animationData.invoke(animatable), "player.cap");
-			if (controller == null) return;
-			String replayKey = animation.replayKey();
-			if (client.controller.get() != controller || !client.replayKey.equals(replayKey) || client.suppressed) {
-				access.clear.invoke(controller);
-				client.controller = new WeakReference<>(controller);
-				client.replayKey = replayKey;
-			}
-			client.suppressed = false;
-		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
-			replayFailure = failure(ex);
-			replay = null;
+		if (!hasPresentation) return new Frame(nativeFrame);
+		if (!nativeFrame.ready()) {
+			client.clipStatus = nativeFrame.status();
+			client.skipped = nativeFrame.status();
+			return Frame.EMPTY;
 		}
+		client.clipStatus = nativeFrame.clipStatus();
+		client.applied = String.join(", ", nativeFrame.applied());
+		client.skipped = String.join(", ", nativeFrame.skipped());
+		client.parameterBases = new LinkedHashMap<>(nativeFrame.parameterBases());
+		client.renderedModel = model;
+		client.rendered = state;
+		client.renderedFrame = nativeFrame;
+		return new Frame(nativeFrame);
 	}
 
-	/** Returns the underlying numeric input hidden by the active cross-frame lease. */
 	@Nullable
-	public static Object parameterBaseValue(LivingEntity entity, String name) {
-		try {
-			String normalized = YsmPresentationState.normalizeParameter(name);
-			ClientState client = ENTITIES.get(entity);
-			if (client != null && client.parameterBases.containsKey(normalized)) return client.parameterBases.get(normalized);
-			RuntimeAccess access = runtimeAccess();
-			ParameterAccess values = parameterAccess();
-			if (access == null || values == null) return null;
-			Object animatable = access.animatable(entity);
-			if (animatable == null || !Boolean.TRUE.equals(access.ready.invoke(animatable))) return null;
-			access.await.invoke(animatable);
-			Object storage = values.storage.invoke(access.processor.invoke(animatable));
-			YsmParameterOverlay.Slot slot = values.slot(storage, normalized);
-			return slot == null ? null : slot.get();
-		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
-			return null;
-		}
+	public static Float parameterBaseValue(LivingEntity entity, String name) {
+		if (!YSMClientCompat.isLoaded()) return null;
+		ClientState client = ENTITIES.get(entity);
+		if (client != null && client.parameterBases.containsKey(name)) return client.parameterBases.get(name);
+		try { return ExternalLivingPresentationAPI.parameterBaseValue(entity, name); }
+		catch (IllegalArgumentException ignored) { return null; }
 	}
 
-	/** One async join for a whole form; read the preview's real inputs, including model-initialized defaults. */
 	@Nullable
 	public static Map<String, Float> previewInputs(LivingEntity entity, String model, List<String> names) {
 		if (!YsmClientProfiles.isPreview(entity) || !YSMClientCompat.isLoaded()) return null;
-		try {
-			RuntimeAccess access = runtimeAccess();
-			ParameterAccess values = parameterAccess();
-			CatalogAccess models = catalogAccess();
-			if (access == null || values == null || models == null) return null;
-			Object animatable = access.animatable(entity);
-			if (animatable == null) return null;
-			access.await.invoke(animatable);
-			if (!Boolean.TRUE.equals(access.ready.invoke(animatable)) || !model.equals(access.modelId.invoke(animatable))
-					|| access.assembly.invoke(animatable) != models.assembly(model)) return null;
-			Object storage = values.storage.invoke(access.processor.invoke(animatable));
-			var inputs = new LinkedHashMap<String, Float>();
-			for (String name : names) {
-				var slot = values.slot(storage, name);
-				Object value = slot == null ? null : slot.get();
-				if (value instanceof Number number && Float.isFinite(number.floatValue())) inputs.put(name, number.floatValue());
-			}
-			return inputs;
-		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
-			return null;
-		}
+		ClientState client = ENTITIES.get(entity);
+		try { return ExternalLivingPresentationAPI.previewInputs(entity, model, names,
+				client != null && client.renderSuccessful && model.equals(client.renderedModel) ? client.renderedFrame : null); }
+		catch (IllegalArgumentException ignored) { return null; }
 	}
 
 	public static YsmModelProfile.Preset capturePreview(LivingEntity entity, String model, String description, int ticks) {
@@ -349,23 +133,21 @@ public final class YsmClientPresentationBridge {
 		return YsmPresetCapture.capture(catalog, resolved, inputs, description, ticks);
 	}
 
-	/** A failed provider render must never authorize capture of the vanilla fallback as a YSM preset. */
 	static void renderOutcome(LivingEntity entity, boolean rendered) {
-		var client = ENTITIES.get(entity);
-		if (client != null) client.renderSuccessful = rendered;
+		ClientState state = ENTITIES.get(entity);
+		if (state != null) state.renderSuccessful = rendered;
 	}
 
 	public static Map<String, String> diagnostics(LivingEntity entity) {
-		Map<String, String> result = new LinkedHashMap<>();
 		if (!YSMClientCompat.isLoaded()) return Map.of("presentation", "not_installed");
-		result.put("presentation.runtime", runtimeAccess() != null ? "available" : String.valueOf(runtimeFailure));
-		result.put("presentation.parameters", parameterAccess() != null ? "numeric_async_lease" : String.valueOf(parameterFailure));
-		result.put("presentation.replay", replayAccess() != null ? "cap_reset" : String.valueOf(replayFailure));
-		result.put("presentation.clock", animationClockAccess() != null ? "rewind_guard" : String.valueOf(animationClockFailure));
+		Map<String, String> result = new LinkedHashMap<>();
+		result.put("presentation.runtime", "public_api");
+		result.put("presentation.parameters", "numeric_lease");
+		result.put("presentation.replay", "public_api");
+		result.put("presentation.clock", "public_api");
 		ClientState state = ENTITIES.get(entity);
 		if (state != null) {
 			result.put("presentation.clip", state.clipStatus);
-			result.put("presentation.suppressed", Boolean.toString(state.suppressed));
 			result.put("presentation.applied", state.applied);
 			result.put("presentation.skipped", state.skipped);
 		}
@@ -377,387 +159,72 @@ public final class YsmClientPresentationBridge {
 		return result;
 	}
 
-	@SubscribeEvent
+	@SubscribeEvent(priority = EventPriority.LOWEST)
 	public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
 		clearCaches();
 		YSMClientCompat.clearSessionState();
 	}
 
-	@SubscribeEvent
+	@SubscribeEvent(priority = EventPriority.LOWEST)
 	public static void unload(LevelEvent.Unload event) {
 		if (event.getLevel().isClientSide()) clearCaches();
 	}
 
 	private static void clearCaches() {
-		for (ClientState state : ENTITIES.values()) releaseParameters(state);
+		if (YSMClientCompat.isLoaded())
+			for (LivingEntity entity : ENTITIES.keySet()) ExternalLivingPresentationAPI.forget(entity);
 		ENTITIES.clear();
 		CLOCK_REPAIRS.clear();
 		CATALOGS.clear();
 	}
 
-	private static void releaseParameters(ClientState client) {
-		try {
-			Object animatable = client.animatable.get();
-			RuntimeAccess access = runtimeAccess();
-			if (animatable != null && access != null) access.await.invoke(animatable);
-			closeParameterOverlay(client);
-		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
-			parameterFailure = failure(ex);
-			parameters = null;
-		}
-	}
-
-	/** OYSM's cache value retains its key entity. Evict ONLY our marked preview on close/reset. */
 	public static void forgetPreview(LivingEntity entity) {
 		ClientState state = ENTITIES.remove(entity);
-		if (state != null) releaseParameters(state);
-		if (!YsmClientProfiles.isPreview(entity) || !YSMClientCompat.isLoaded()) return;
-		try {
-			RuntimeAccess access = runtimeAccess();
-			if (access == null) return;
-			if (!previewCacheChecked) {
-				previewCacheChecked = true;
-				Field field = Class.forName(OYSM + "client.renderer.ExternalLivingRenderer").getDeclaredField("cache");
-				if (Map.class.isAssignableFrom(field.getType()) && field.trySetAccessible()) previewCache = field;
-			}
-			if (previewCache == null) return;
-			Object renderer = access.renderer.invoke(null);
-			if (renderer == null) return;
-			Object animatable = access.cached.invoke(renderer, entity);
-			if (animatable != null) access.await.invoke(animatable);
-			if (previewCache.get(renderer) instanceof Map<?, ?> cache) cache.remove(entity);
-		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
-			previewCache = null; // Optional cleanup capability; never disable ordinary rendering.
-			previewCacheChecked = true;
-		}
+		if (YSMClientCompat.isLoaded()) ExternalLivingPresentationAPI.forget(entity);
+		if (state != null) state.clearTransient();
 	}
 
 	public static final class Frame implements AutoCloseable {
-		private static final Frame EMPTY = new Frame();
+		private static final Frame EMPTY = new Frame(null);
+		private final ExternalLivingPresentationAPI.Frame delegate;
 
-		private Frame() { }
+		private Frame(@Nullable ExternalLivingPresentationAPI.Frame delegate) { this.delegate = delegate; }
 
 		@Override
-		public void close() { }
+		public void close() {
+			if (delegate != null) delegate.close();
+		}
 	}
 
 	private static final class ClientState {
-		// Do not retain the animatable/controller strongly: it references the WeakHashMap's entity key.
-		private WeakReference<Object> animatable = new WeakReference<>(null);
-		private WeakReference<Object> controller = new WeakReference<>(null);
-		private YsmParameterOverlay parameterOverlay;
-		private Map<String, Object> parameterBases = new LinkedHashMap<>();
-		private String replayKey = "";
-		private boolean suppressed;
+		private Map<String, Float> parameterBases = new LinkedHashMap<>();
 		private String clipStatus = "", applied = "", skipped = "";
 		private String renderedModel = "";
 		private YsmPresentationResolver.Resolved rendered;
+		private ExternalLivingPresentationAPI.Frame renderedFrame;
+		private boolean suppressed;
 		private boolean renderSuccessful;
 
-		private void invalidateController() {
-			controller = new WeakReference<>(null);
-			replayKey = "";
+		private void clearTransient() {
+			parameterBases.clear();
+			clipStatus = "";
+			applied = "";
+			skipped = "";
+			rendered = null;
+			renderedFrame = null;
+			suppressed = false;
+			renderedModel = "";
+			renderSuccessful = false;
 		}
 	}
-
-	private static CatalogAccess catalogAccess() {
-		if (catalogs == null && catalogFailure == null) {
-			try { catalogs = new CatalogAccess(); }
-			catch (ReflectiveOperationException | LinkageError ex) { catalogFailure = failure(ex); }
-		}
-		return catalogs;
-	}
-
-	private static FormAccess formAccess() {
-		if (forms == null && formFailure == null) {
-			try { forms = new FormAccess(); }
-			catch (ReflectiveOperationException | LinkageError ex) { formFailure = failure(ex); }
-		}
-		return forms;
-	}
-
-	private static RuntimeAccess runtimeAccess() {
-		if (runtime == null && runtimeFailure == null) {
-			try { runtime = new RuntimeAccess(); }
-			catch (ReflectiveOperationException | LinkageError ex) { runtimeFailure = failure(ex); }
-		}
-		return runtime;
-	}
-
-	private static ParameterAccess parameterAccess() {
-		if (parameters == null && parameterFailure == null) {
-			try { parameters = new ParameterAccess(); }
-			catch (ReflectiveOperationException | LinkageError ex) { parameterFailure = failure(ex); }
-		}
-		return parameters;
-	}
-
-	private static ReplayAccess replayAccess() {
-		if (replay == null && replayFailure == null) {
-			try { replay = new ReplayAccess(); }
-			catch (ReflectiveOperationException | LinkageError ex) { replayFailure = failure(ex); }
-		}
-		return replay;
-	}
-
-	private static AnimationClockAccess animationClockAccess() {
-		if (animationClocks == null && animationClockFailure == null) {
-			try { animationClocks = new AnimationClockAccess(); }
-			catch (ReflectiveOperationException | LinkageError ex) { animationClockFailure = failure(ex); }
-		}
-		return animationClocks;
-	}
-
-	@Nullable
-	private static ClockRepair repairAnimationClock(LivingEntity entity, @Nullable Object cachedAnimatable) {
-		try {
-			RuntimeAccess runtimeAccess = runtimeAccess();
-			AnimationClockAccess clockAccess = animationClockAccess();
-			if (runtimeAccess == null || clockAccess == null) return null;
-			Object animatable = cachedAnimatable != null ? cachedAnimatable : runtimeAccess.animatable(entity);
-			if (animatable == null) return null;
-			float animationTick = clockAccess.lastTick(animatable);
-			if (!animationClockRewound(animationTick, entity.tickCount)) return null;
-			// The old async evaluation may still own controller state. Join only on the rare repair path.
-			runtimeAccess.await.invoke(animatable);
-			animationTick = clockAccess.lastTick(animatable);
-			if (!animationClockRewound(animationTick, entity.tickCount)) return null;
-			clockAccess.reset(animatable, entity.tickCount);
-			// A stale async worker can write the old clock back after this method
-			// returns. Remove the renderer cache entry so no future frame reuses it.
-			runtimeAccess.evict(entity);
-			ClockRepair repair = new ClockRepair(animationTick, entity.tickCount);
-			CLOCK_REPAIRS.computeIfAbsent(entity, ignored -> new ClockRepairStats()).record(repair);
-			return repair;
-		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
-			animationClockFailure = failure(ex);
-			animationClocks = null;
-			return null;
-		}
-	}
-
-	static boolean animationClockRewound(float animationTick, int entityTick) {
-		return Float.isFinite(animationTick) && animationTick > entityTick + 1.0f;
-	}
-
-	private static Method method(String type, String name, Class<?>... parameters) throws ReflectiveOperationException {
-		return Class.forName(OYSM + type).getMethod(name, parameters);
-	}
-
-	private static String failure(Throwable ex) {
-		Throwable cause = ex.getCause() == null ? ex : ex.getCause();
-		return cause.getClass().getSimpleName() + ": " + cause.getMessage();
-	}
-
-	private static Map<String, Object> stringMap(Object object) {
-		Map<String, Object> result = new LinkedHashMap<>();
-		if (object instanceof Map<?, ?> map) map.forEach((key, value) -> result.put(String.valueOf(key), value));
-		return result;
-	}
-
-	private static String string(Object value) { return value == null ? "" : value.toString(); }
-
-	private static final class CatalogAccess {
-		private final Method context;
-		private final Method knownModels;
-		private final Method bundle;
-		private final Method projectiles;
-		private final Method animations;
-		private CatalogAccess() throws ReflectiveOperationException {
-			context = method("client.ClientModelManager", "getModelContext", String.class);
-			knownModels = method("client.ClientModelManager", "getModelAssemblyMap");
-			bundle = method("client.model.ModelAssembly", "getAnimationBundle");
-			animations = method("client.model.PlayerModelBundle", "getMainAnimations");
-			Method projectileMethod;
-			try {
-				projectileMethod = method("client.model.ModelAssembly", "getProjectileModels");
-			} catch (ReflectiveOperationException | LinkageError ignored) {
-				// Older OYSM builds may expose living-model catalogs without projectile maps.
-				projectileMethod = null;
-			}
-			projectiles = projectileMethod;
-		}
-		private boolean known(String model) throws ReflectiveOperationException {
-			return knownModels.invoke(null) instanceof Map<?, ?> map && map.containsKey(model);
-		}
-		private Object assembly(String model) throws ReflectiveOperationException {
-			Object value = context.invoke(null, model);
-			return value instanceof Optional<?> optional ? optional.orElse(null) : null;
-		}
-	}
-
-	private static final class FolderAccess {
-		private final Method packs = method("client.ClientModelManager", "getModelPackMap");
-		private final Method path = method("resource.models.ModelPackData", "getPath");
-		private final Method name = method("resource.models.ModelPackData", "getName");
-		private FolderAccess() throws ReflectiveOperationException { }
-	}
-
-	private static final class FormAccess {
-		private final Method data = method("client.model.ModelAssembly", "getModelData");
-		private final Method properties = method("model.format.ServerModelInfo", "getModelProperties");
-		private final Method extra = method("resource.models.ModelProperties", "getExtraAnimation");
-		private final Method classify = method("resource.models.ModelProperties", "getExtraAnimationClassify");
-		private final Method buttons = method("resource.models.ModelProperties", "getExtraAnimationButtons");
-		private final Method configForms = method("client.gui.custom.ExtraAnimationButtons", "getConfigForms");
-		private final Method groupLabel = method("client.gui.custom.ExtraAnimationButtons", "getName");
-		private final Method title = method("client.gui.custom.AbstractConfig", "getTitle");
-		private final Method description = method("client.gui.custom.AbstractConfig", "getDescription");
-		private final Method type = method("client.gui.custom.AbstractConfig", "getType");
-		private final Method value = method("client.gui.custom.AbstractConfig", "getValue");
-		private final Method labels = method("client.gui.custom.configs.RadioConfig", "getLabels");
-		private final Method min = method("client.gui.custom.configs.RangeConfig", "getMin");
-		private final Method max = method("client.gui.custom.configs.RangeConfig", "getMax");
-		private final Method step = method("client.gui.custom.configs.RangeConfig", "getStep");
-		private FormAccess() throws ReflectiveOperationException { }
-
-		private void read(Object assembly, List<String> clips, List<YsmModelCatalog.WheelEntry> wheel,
-				List<YsmModelCatalog.Control> controls) throws ReflectiveOperationException {
-			Object props = properties.invoke(data.invoke(assembly));
-			Map<String, Object> groups = stringMap(buttons.invoke(props));
-			addWheel("", stringMap(extra.invoke(props)), groups, clips, wheel);
-			for (var group : stringMap(classify.invoke(props)).entrySet()) {
-				addWheel(group.getKey(), stringMap(group.getValue()), groups, clips, wheel);
-			}
-			for (var group : groups.entrySet()) {
-				Object entries = configForms.invoke(group.getValue());
-				if (!(entries instanceof Object[] array)) continue;
-				for (Object form : array) {
-					String formType = string(type.invoke(form));
-					String expression = string(value.invoke(form));
-					String parameter;
-					try { parameter = YsmPresentationState.normalizeParameter(expression); }
-					catch (IllegalArgumentException ex) { parameter = ""; }
-					List<YsmModelCatalog.Choice> choices = new ArrayList<>();
-					if (formType.equals("radio")) {
-						for (var label : stringMap(labels.invoke(form)).entrySet()) {
-							choices.add(YsmModelCatalog.choice(parameter, label.getKey(), string(label.getValue())));
-						}
-					}
-					boolean range = formType.equals("range");
-					controls.add(new YsmModelCatalog.Control(group.getKey(), string(groupLabel.invoke(group.getValue())), string(title.invoke(form)), string(description.invoke(form)),
-							formType, expression, parameter, range ? ((Number) min.invoke(form)).doubleValue() : 0,
-							range ? ((Number) max.invoke(form)).doubleValue() : 1, range ? ((Number) step.invoke(form)).doubleValue() : 1, choices));
-				}
-			}
-		}
-
-		private void addWheel(String group, Map<String, Object> entries, Map<String, Object> configs, List<String> clips,
-				List<YsmModelCatalog.WheelEntry> wheel) {
-			entries.forEach((id, label) -> wheel.add(YsmModelCatalog.wheelEntry(group, id, string(label), clips, configs)));
-		}
-	}
-
-	private static final class RuntimeAccess {
-		private final Method renderer = method("client.renderer.RendererManager", "getExternalLivingRenderer");
-		private final Method cached = method("client.renderer.ExternalLivingRenderer", "getCachedAnimatable", LivingEntity.class);
-		private final Field cache;
-		private final Method ready = method("client.entity.GeoEntity", "isModelReady");
-		private final Method modelId = method("client.entity.GeoEntity", "getModelId");
-		private final Method assembly = method("client.entity.GeoEntity", "getModelAssembly");
-		private final Method await = method("client.entity.GeoEntity", "awaitAsyncResult");
-		private final Method processor = method("geckolib3.core.AnimatableEntity", "getEvaluationContext");
-		private RuntimeAccess() throws ReflectiveOperationException {
-			cache = Class.forName(OYSM + "client.renderer.ExternalLivingRenderer").getDeclaredField("cache");
-			if (!cache.trySetAccessible()) throw new IllegalAccessException("external renderer cache is inaccessible");
-		}
-		private Object animatable(LivingEntity entity) throws ReflectiveOperationException {
-			Object instance = renderer.invoke(null);
-			return instance == null ? null : cached.invoke(instance, entity);
-		}
-		private void evict(LivingEntity entity) throws ReflectiveOperationException {
-			Object instance = renderer.invoke(null);
-			if (instance == null) return;
-			Object value = cache.get(instance);
-			if (value instanceof Map<?, ?> map) map.remove(entity);
-		}
-	}
-
-	private static final class AnimationClockAccess {
-		private final Field lastTick;
-		private final Method resetIfRewound;
-		private final Method clearControllers;
-
-		private AnimationClockAccess() throws ReflectiveOperationException {
-			Class<?> animatable = Class.forName(OYSM + "geckolib3.core.AnimatableEntity");
-			lastTick = animatable.getField("lastTick");
-			clearControllers = animatable.getMethod("clearAnimationControllers");
-			Method reset;
-			try {
-				reset = Class.forName(OYSM + "client.entity.ExternalLivingEntity")
-						.getMethod("resetAnimationClockIfEntityTickRewound");
-			} catch (NoSuchMethodException ignored) {
-				reset = null;
-			}
-			resetIfRewound = reset;
-		}
-
-		private float lastTick(Object animatable) throws ReflectiveOperationException {
-			return ((Number) lastTick.get(animatable)).floatValue();
-		}
-
-		private void reset(Object animatable, int entityTick) throws ReflectiveOperationException {
-			if (resetIfRewound != null) resetIfRewound.invoke(animatable);
-			// Also handles older OYSM builds and a stale animatable whose entity reference differs from the cache key.
-			if (animationClockRewound(lastTick(animatable), entityTick)) clearControllers.invoke(animatable);
-			// OYSM's reset path rebuilds the controllers but leaves lastTick at -1
-			// (or, with some builds, at the old chunk lifetime). Anchor it to the
-			// reloaded entity tick so the bridge does not re-enter this repair on
-			// every render frame and continuously clear the active controller.
-			lastTick.setFloat(animatable, entityTick);
-		}
-	}
-
-	private record ClockRepair(float animationTick, int entityTick) { }
 
 	private static final class ClockRepairStats {
 		private int count;
 		private String last = "";
 
-		private void record(ClockRepair repair) {
+		private void record(String value) {
 			count++;
-			last = Float.toString(repair.animationTick()) + " -> " + repair.entityTick();
+			last = value;
 		}
-	}
-
-	/** Package visibility permits an optional contract test against the installed OYSM jar without linking it. */
-	static final class ParameterAccess {
-		private final Method storage = method("geckolib3.core.processor.AnimationProcessor", "getPublicVariableStorage");
-		private final Method nameId = method("geckolib3.core.molang.util.StringPool", "computeIfAbsent", String.class);
-		private final Method get = method("geckolib3.core.molang.storage.VariableStorage", "getScoped", int.class);
-		private final Method set = method("geckolib3.core.molang.storage.VariableStorage", "setScoped", int.class, Object.class);
-		private final Method property = method("molang.runtime.Struct", "getProperty", int.class);
-		private final Method put = method("molang.runtime.Struct", "putProperty", int.class, Object.class);
-		private final int roaming = (Integer) nameId.invoke(null, "roaming");
-		private final Map<String, Integer> nameIds = new LinkedHashMap<>();
-		ParameterAccess() throws ReflectiveOperationException { }
-
-		@Nullable
-		YsmParameterOverlay.Slot slot(Object storage, String name) throws ReflectiveOperationException {
-			String normalized = YsmPresentationState.normalizeParameter(name);
-			boolean roam = normalized.startsWith("v.roaming.");
-			Integer cachedId = nameIds.get(normalized);
-			if (cachedId == null) {
-				cachedId = (Integer) nameId.invoke(null, normalized.substring(roam ? "v.roaming.".length() : "v.".length()));
-				if (nameIds.size() >= YsmPresentationState.WIRE_MAX_PARAMETERS) nameIds.remove(nameIds.keySet().iterator().next());
-				nameIds.put(normalized, cachedId);
-			}
-			int id = cachedId;
-			Object owner = roam ? get.invoke(storage, roaming) : storage;
-			if (owner == null) return null;
-			Method read = roam ? property : get;
-			Method write = roam ? put : set;
-			return new YsmParameterOverlay.Slot() {
-				@Override public Object get() throws ReflectiveOperationException { return read.invoke(owner, id); }
-				@Override public void set(Object value) throws ReflectiveOperationException { write.invoke(owner, id, value); }
-			};
-		}
-	}
-
-	private static final class ReplayAccess {
-		private final Method animationData = method("geckolib3.core.AnimatableEntity", "getAnimationData");
-		private final Method controller = method("geckolib3.core.manager.AnimationData", "getAnimationControllerByName", String.class);
-		private final Method clear = method("geckolib3.core.controller.PredicateBasedController", "clearAnimation");
-		private ReplayAccess() throws ReflectiveOperationException { }
 	}
 }

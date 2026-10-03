@@ -16,6 +16,7 @@ public final class ModelPresentationTest {
 
 	public static void main(String[] args) throws Exception {
 		stateContracts();
+		ownedPresetContracts();
 		serializationContracts();
 		profileContracts();
 		bindingAppearanceContracts();
@@ -27,17 +28,16 @@ public final class ModelPresentationTest {
 		captureContracts();
 		remiliaAuthoringContracts();
 		defaultBindingContracts();
-		overlayContracts();
-		animationClockContracts();
 		if (Boolean.getBoolean("yh.test.oysm")) installedOysmContracts();
 		else {
+			check("missing OYSM disables optional API integration", !YsmOpenYsmSupport.available());
 			try {
 				Class.forName("com.elfmcys.yesstevemodel.geckolib3.core.molang.storage.VariableStorage", false, ModelPresentationTest.class.getClassLoader());
 				throw new AssertionError("No-OYSM test accidentally includes an OYSM jar");
 			} catch (ClassNotFoundException expected) { passed++; }
 		}
 		System.out.println("ModelPresentationTest: " + passed + " contracts passed" +
-				(Boolean.getBoolean("yh.test.oysm") ? " (includes installed OYSM numeric-storage bridge)" : " (without OYSM)"));
+				(Boolean.getBoolean("yh.test.oysm") ? " (includes installed OYSM public API)" : " (without OYSM)"));
 	}
 
 	private static void stateContracts() {
@@ -153,6 +153,35 @@ public final class ModelPresentationTest {
 		check("float wire endpoints remain valid for decimal ranges", decimal.accepts(-0.3f) && decimal.accepts(0.3f));
 		equal("slider snaps to author step", decimal.sliderValue(0.61), 0.05f);
 		equal("slider clamps after quantization", decimal.sliderValue(5), 0.3f);
+	}
+
+	private static void ownedPresetContracts() {
+		var preset = new YsmModelProfile.Preset("test", "extra5", 20, Map.of("v.face", 1f, "v.mouth", 2f));
+		var base = YsmPresentationState.EMPTY.setParameter("v.other", 7, 100, 0, SOURCE, 8);
+		var owned = base.applyPreset("test/model", preset, 100, 0, SOURCE, 8, "cchat:request-one");
+		var released = owned.releaseOwned("cchat:request-one");
+		check("owned release clears body", released.animation() == null);
+		check("owned release clears preset parameters", !released.parameters().containsKey("v.face") && !released.parameters().containsKey("v.mouth"));
+		equal("owned release preserves unrelated request", released.parameters(), base.parameters());
+		check("release idempotent", released.releaseOwned("cchat:request-one") == released);
+		var overwritten = owned.applyPreset("test/model", preset, 100, 0, SOURCE, 8, "cchat:request-two");
+		equal("same tick/value body replacement survives old release", overwritten.releaseOwned("cchat:request-one"), overwritten);
+		var raw = owned.setParameter("v.face", 1, 100, 0, SOURCE, 8).play("extra5", 100, 0, SOURCE);
+		var rawReleased = raw.releaseOwned("cchat:request-one");
+		check("unowned identical body survives", rawReleased.animation() != null && rawReleased.animation().owner().isEmpty());
+		equal("unowned identical parameter survives", rawReleased.parameters().get("v.face").value(), 1f);
+		check("remaining owned parameter released", !rawReleased.parameters().containsKey("v.mouth"));
+		var restored = YsmPresentationState.fromTag(owned.toTag());
+		equal("owner survives entity NBT reload", restored, owned);
+		equal("zero-duration reloaded owned state releases", restored.releaseOwned("cchat:request-one"), released);
+		var face = owned.applyPreset("test/model", new YsmModelProfile.Preset("face", "", 10, Map.of("v.face", 4f)), 100, 10, SOURCE, 8, "cchat:face");
+		equal("face-only owned preset does not restart body", face.sequence(), owned.sequence());
+		equal("face-only owned release preserves body", face.releaseOwned("cchat:face").animation(), owned.animation());
+		check("finite owner expires at boundary", base.applyPreset("test/model", preset, 100, 20, SOURCE, 8, "cchat:finite").expire(120).animation() == null);
+		reject("empty owner cannot clear unowned values", () -> raw.releaseOwned(""));
+		reject("owner format bound", () -> raw.releaseOwned("bad owner"));
+		var legacy = base.toTag();
+		equal("legacy NBT still decodes", YsmPresentationState.fromTag(legacy), base);
 	}
 
 	private static void captureContracts() {
@@ -506,79 +535,27 @@ public final class ModelPresentationTest {
 				YsmPresentationResolver.resolve(profile.model(), profile, victory, empty, 240).body().clip(), "idle");
 	}
 
-	private static void overlayContracts() throws Exception {
-		Slot value = new Slot(7f);
-		try (var overlay = new YsmParameterOverlay()) {
-			check("numeric overlay applies", overlay.apply(value, 2));
-			equal("overlay input visible", value.value, 2f);
-		}
-		equal("original nonzero value restored", value.value, 7f);
-		try (var overlay = new YsmParameterOverlay()) {
-			overlay.apply(value, 2);
-			value.value = 9f;
-		}
-		equal("model's newer input survives cleanup", value.value, 9f);
-		Slot unset = new Slot(null);
-		try (var overlay = new YsmParameterOverlay()) { overlay.apply(unset, 1); }
-		check("absent input is restored as absent, not zero", unset.value == null);
-		Object struct = new Object();
-		Slot nonNumeric = new Slot(struct);
-		try (var overlay = new YsmParameterOverlay()) { check("struct cannot be overwritten", !overlay.apply(nonNumeric, 2)); }
-		check("struct preserved", nonNumeric.value == struct);
-		try (var outer = new YsmParameterOverlay()) {
-			outer.apply(value, 3);
-			try (var inner = new YsmParameterOverlay()) { inner.apply(value, 4); }
-			equal("nested overlay returns to current parent", value.value, 3f);
-		}
-		equal("nested cleanup returns to base", value.value, 9f);
-		var overlay = new YsmParameterOverlay();
-		overlay.apply(value, 4);
-		overlay.close();
-		overlay.close();
-		equal("cleanup idempotent", value.value, 9f);
-		Slot failsOnRestore = new Slot(10f);
-		var partial = new YsmParameterOverlay();
-		partial.apply(value, 2);
-		partial.apply(failsOnRestore, 2);
-		failsOnRestore.failWrites = true;
-		try { partial.close(); throw new AssertionError("Expected restore failure"); }
-		catch (ReflectiveOperationException expected) { passed++; }
-		equal("one restore failure does not block other restores", value.value, 9f);
-	}
-
 	private static void installedOysmContracts() throws Exception {
-		String base = "com.elfmcys.yesstevemodel.";
-		var storageClass = Class.forName(base + "geckolib3.core.molang.storage.VariableStorage");
-		equal("exact requested OYSM jar, not developer shadow jar", java.nio.file.Path.of(storageClass.getProtectionDomain().getCodeSource().getLocation().toURI()).toAbsolutePath().normalize(),
+		var loader = ModelPresentationTest.class.getClassLoader();
+		check("installed OYSM enables public API integration", YsmOpenYsmSupport.available());
+		Class<?> api = Class.forName("rip.ysm.api.client.ExternalLivingPresentationAPI", false, loader);
+		equal("exact requested OYSM API jar", java.nio.file.Path.of(api.getProtectionDomain().getCodeSource().getLocation().toURI()).toAbsolutePath().normalize(),
 				java.nio.file.Path.of(System.getProperty("yh.test.oysm.jar")).toAbsolutePath().normalize());
-		check("preview-cache cleanup field matches installed API", Map.class.isAssignableFrom(Class.forName(base + "client.renderer.ExternalLivingRenderer", false,
-				ModelPresentationTest.class.getClassLoader()).getDeclaredField("cache").getType()));
-		Class<?> animatableClass = Class.forName(base + "geckolib3.core.AnimatableEntity");
-		check("animation clock field matches installed API", animatableClass.getField("lastTick").getType() == float.class);
-		check("animation reset fallback matches installed API", animatableClass.getMethod("clearAnimationControllers").getReturnType() == void.class);
-		var pool = Class.forName(base + "geckolib3.core.molang.util.StringPool").getMethod("computeIfAbsent", String.class);
-		Object storage = storageClass.getConstructor().newInstance();
-		int roamingId = (Integer) pool.invoke(null, "roaming");
-		Class<?> mapClass = Class.forName("it.unimi.dsi.fastutil.ints.Int2FloatOpenHashMap");
-		Object roaming = Class.forName(base + "molang.runtime.Int2FloatOpenHashMapStruct").getConstructor(mapClass)
-				.newInstance(mapClass.getConstructor().newInstance());
-		storageClass.getMethod("setScoped", int.class, Object.class).invoke(storage, roamingId, roaming);
-		var access = new YsmClientPresentationBridge.ParameterAccess();
-		var mouth = access.slot(storage, "v.roaming.mouth");
-		var emoji = access.slot(storage, "v.ysmemoji");
-		check("actual OYSM slots found", mouth != null && emoji != null);
-		equal("native roaming default is an actual numeric zero", mouth.get(), 0f);
-		check("missing scoped value is not invented as zero", emoji.get() == null);
-		mouth.set(4f);
-		emoji.set(7f);
-		var lease = new YsmParameterOverlay();
-		lease.apply(mouth, 2);
-		lease.apply(emoji, 1);
-		equal("OYSM next async update sees roaming lease", mouth.get(), 2f);
-		equal("OYSM next async update sees scoped lease", emoji.get(), 1f);
-		lease.close();
-		equal("OYSM roaming restored", mouth.get(), 4f);
-		equal("OYSM scoped restored", emoji.get(), 7f);
+		Class<?> living = net.minecraft.world.entity.LivingEntity.class;
+		Class<?> frame = Class.forName("rip.ysm.api.client.ExternalLivingPresentationAPI$Frame", false, loader);
+		check("public preparation returns a render lease", api.getMethod("prepare", living, String.class, String.class, String.class,
+				Map.class, boolean.class).getReturnType() == frame);
+		check("public lease is closeable", AutoCloseable.class.isAssignableFrom(frame));
+		check("public lease reports original parameter values", frame.getMethod("parameterBases").getReturnType() == Map.class);
+		check("public preview input contract", api.getMethod("previewInputs", living, List.class).getReturnType() == Map.class);
+		check("public preview cleanup contract", api.getMethod("forget", living).getReturnType() == void.class);
+		check("public model pack registration", Class.forName("rip.ysm.api.ExternalModelPackAPI", false, loader)
+				.getMethod("registerDirectory", String.class, java.nio.file.Path.class, String.class).getReturnType() == void.class);
+		check("public projectile configuration", Class.forName("rip.ysm.api.client.ExternalProjectileRenderAPI", false, loader)
+				.getMethod("configure", net.minecraft.world.entity.projectile.Projectile.class, String.class, boolean.class).getReturnType() == boolean.class);
+		check("public player hints", Class.forName("rip.ysm.api.client.PlayerPresentationAPI", false, loader)
+				.getMethod("registerHintProvider", String.class, Class.forName("rip.ysm.api.client.PlayerPresentationAPI$HintProvider", false, loader))
+				.getReturnType() == void.class);
 	}
 
 	private static void automaticProfileContracts() {
@@ -608,24 +585,6 @@ public final class ModelPresentationTest {
 		check("missing standard clips are not invented",
 				YsmAutomaticProfile.merge("test/empty", null,
 						new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("custom"), List.of(), List.of())) == null);
-	}
-
-	private static void animationClockContracts() {
-		check("animation clock advances normally", !YsmClientPresentationBridge.animationClockRewound(2154.5f, 2154));
-		check("one-tick interpolation tolerance is retained", !YsmClientPresentationBridge.animationClockRewound(2155f, 2154));
-		check("animation clock ahead of reloaded entity is repaired", YsmClientPresentationBridge.animationClockRewound(33747.98f, 2154));
-		check("invalid animation clock is left to provider recovery", !YsmClientPresentationBridge.animationClockRewound(Float.NaN, 2154));
-	}
-
-	private static final class Slot implements YsmParameterOverlay.Slot {
-		private Object value;
-		private boolean failWrites;
-		private Slot(Object value) { this.value = value; }
-		@Override public Object get() { return value; }
-		@Override public void set(Object value) throws ReflectiveOperationException {
-			if (failWrites) throw new ReflectiveOperationException("simulated restore failure");
-			this.value = value;
-		}
 	}
 
 	private static void equal(String name, Object actual, Object expected) {

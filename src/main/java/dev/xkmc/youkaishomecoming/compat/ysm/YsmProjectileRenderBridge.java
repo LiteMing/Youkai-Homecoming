@@ -17,13 +17,13 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.joml.Quaternionf;
 
-import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import rip.ysm.api.client.ExternalProjectileRenderAPI;
 
 /**
  * Client-only adapter for OpenYSM's projectile renderer. YH danmaku are virtual
@@ -34,11 +34,6 @@ import java.util.UUID;
 public final class YsmProjectileRenderBridge {
 	private static final Map<UUID, Proxy> PROXIES = new HashMap<>();
 	private static final Set<String> WARNED = new HashSet<>();
-	private static Method rendererMethod;
-	private static Method capabilityGet;
-	private static Method capabilityUpdateModel;
-	private static Method capabilityTickModel;
-	private static boolean probed;
 	private static long frame;
 	private static Level level;
 	private static final Map<String, Integer> LASER_ORDINALS = new HashMap<>();
@@ -142,10 +137,8 @@ public final class YsmProjectileRenderBridge {
 								(float) axis.x, (float) axis.y, (float) axis.z));
 					}
 				}
-				Object result = rendererMethod.invoke(null, proxy.entity, 0f, partialTick, pose,
+				boolean consumed = ExternalProjectileRenderAPI.render(proxy.entity, 0f, partialTick, pose,
 						tint == 0xffffffff ? buffer : new TintingBufferSource(buffer, tint), light);
-				// OpenYSM returns true when its dispatcher wants vanilla fallback.
-				boolean consumed = result instanceof Boolean bool && !bool;
 				if (!consumed) {
 					warnOnce("model:" + danmaku.model() + ":" + slot,
 							"OpenYSM model '" + danmaku.model() + "' is not ready or does not provide projectile slot '"
@@ -155,7 +148,7 @@ public final class YsmProjectileRenderBridge {
 			} finally {
 				pose.popPose();
 			}
-		} catch (ReflectiveOperationException | RuntimeException | LinkageError ex) {
+		} catch (RuntimeException | LinkageError ex) {
 			warnOnce("render", "OpenYSM projectile rendering failed; using YH fallback: " + ex.getClass().getSimpleName());
 			return false;
 		}
@@ -171,7 +164,7 @@ public final class YsmProjectileRenderBridge {
 		return value instanceof Projectile projectile ? new Proxy(projectile, slot) : null;
 	}
 
-	private static void configure(Proxy proxy, Target danmaku) throws ReflectiveOperationException {
+	private static void configure(Proxy proxy, Target danmaku) {
 		Projectile entity = proxy.entity;
 		Entity source = danmaku.source();
 		entity.setPos(source.getX(), source.getY(), source.getZ());
@@ -193,16 +186,9 @@ public final class YsmProjectileRenderBridge {
 		entity.yRotO = -source.yRotO + danmaku.yawOffset();
 		entity.xRotO = -source.xRotO + danmaku.pitchOffset();
 		entity.tickCount = source.tickCount;
-		Object optional = capabilityGet.invoke(null, entity);
-		if (optional instanceof Optional<?> cap && cap.isPresent()) {
-			if (!danmaku.model().equals(proxy.model)) {
-				capabilityUpdateModel.invoke(cap.get(), danmaku.model());
-				proxy.model = danmaku.model();
-			}
-			if (capabilityTickModel != null && proxy.lastTick != source.tickCount) {
-				capabilityTickModel.invoke(cap.get());
-				proxy.lastTick = source.tickCount;
-			}
+		if (ExternalProjectileRenderAPI.configure(entity, danmaku.model(), proxy.lastTick != source.tickCount)) {
+			proxy.model = danmaku.model();
+			proxy.lastTick = source.tickCount;
 		} else {
 			warnOnce("capability", "OpenYSM did not attach a projectile capability; using YH fallback");
 		}
@@ -300,28 +286,7 @@ public final class YsmProjectileRenderBridge {
 		UUID id();
 	}
 
-	private static boolean probe() {
-		if (probed) return rendererMethod != null && capabilityGet != null && capabilityUpdateModel != null;
-		probed = true;
-		try {
-			Class<?> renderer = Class.forName("com.elfmcys.yesstevemodel.client.renderer.CustomProjectileRenderer");
-			rendererMethod = renderer.getMethod("renderProjectile", Projectile.class, float.class, float.class,
-				PoseStack.class, MultiBufferSource.class, int.class);
-			Class<?> capability = Class.forName("com.elfmcys.yesstevemodel.capability.ProjectileCapability");
-			capabilityGet = capability.getMethod("get", Projectile.class);
-			capabilityUpdateModel = capability.getMethod("updateModelId", String.class);
-			try {
-				capabilityTickModel = capability.getMethod("tickModel");
-			} catch (NoSuchMethodException ignored) {
-				// Older OpenYSM builds refresh the projectile model from updateModelId.
-				capabilityTickModel = null;
-			}
-			return true;
-		} catch (ReflectiveOperationException | LinkageError ex) {
-			warnOnce("api", "OpenYSM projectile API is unavailable; using YH fallback");
-			return false;
-		}
-	}
+	private static boolean probe() { return YSMClientCompat.isLoaded(); }
 
 	private static void warnOnce(String key, String message) {
 		if (WARNED.add(key)) {

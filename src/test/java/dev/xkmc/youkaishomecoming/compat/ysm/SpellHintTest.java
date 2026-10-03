@@ -43,8 +43,9 @@ public final class SpellHintTest {
 
 		if (args.length > 0) {
 			try (var loader = new URLClassLoader(new java.net.URL[]{Path.of(args[0]).toUri().toURL()}, SpellHintTest.class.getClassLoader())) {
-				new YsmPlayerHintBridge.Access(loader);
-				check("installed native player bridge signatures are available", true);
+				Class<?> api = Class.forName("rip.ysm.api.client.PlayerPresentationAPI", false, loader);
+				check("installed public player presentation API is available", api.getMethod("registerHintProvider", String.class,
+						Class.forName("rip.ysm.api.client.PlayerPresentationAPI$HintProvider", false, loader)) != null);
 				var predicate = Class.forName("com.elfmcys.yesstevemodel.client.animation.predicate.PlayerBaseAnimationPredicate", false, loader);
 				var event = Class.forName("com.elfmcys.yesstevemodel.geckolib3.core.event.predicate.AnimationEvent", false, loader);
 				var evaluator = Class.forName("com.elfmcys.yesstevemodel.molang.runtime.ExpressionEvaluator", false, loader);
@@ -52,7 +53,12 @@ public final class SpellHintTest {
 						.getReturnType().getName().equals("com.elfmcys.yesstevemodel.geckolib3.core.enums.PlayState"));
 			}
 		} else {
-			check("absent OpenYSM does not break the adapter", YsmPlayerHintBridge.playHint(new Object()) == null);
+			try {
+				Class.forName("rip.ysm.api.client.PlayerPresentationAPI", false, SpellHintTest.class.getClassLoader());
+				throw new AssertionError("No-OYSM test accidentally includes the public OYSM API");
+			} catch (ClassNotFoundException expected) {
+				check("absent OpenYSM does not break the adapter", true);
+			}
 		}
 		System.out.println("SpellHintTest: all " + checks + " checks passed");
 	}

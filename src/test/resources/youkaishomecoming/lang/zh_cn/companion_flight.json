@@ -1,0 +1,16 @@
+{
+  "config.youkaishomecoming.common.companion_flight": "伴飞移动",
+  "config.youkaishomecoming.common.companion_flight.tooltip": "原生伴飞 Goal 的默认运动配置；单实体脚本配置优先",
+  "config.youkaishomecoming.common.companion_flight.targetMode": "目标坐标模式",
+  "config.youkaishomecoming.common.companion_flight.targetMode.tooltip": "LEGACY 保持旧轨道；PLAYER_LOCAL 相对玩家方向；PLAYER_WORLD 世界轴偏移",
+  "config.youkaishomecoming.common.companion_flight.offsetX": "默认 X 偏移",
+  "config.youkaishomecoming.common.companion_flight.offsetY": "默认 Y 偏移",
+  "config.youkaishomecoming.common.companion_flight.offsetZ": "默认 Z 偏移",
+  "config.youkaishomecoming.common.companion_flight.maxSpeed": "平滑飞行速度上限",
+  "config.youkaishomecoming.common.companion_flight.maxSpeed.tooltip": "单位：格/刻；锁定目标位置模式不受此速度限制",
+  "config.youkaishomecoming.common.companion_flight.updateIntervalTicks": "目标采样间隔（刻）",
+  "config.youkaishomecoming.common.companion_flight.movementMode": "移动模式",
+  "config.youkaishomecoming.common.companion_flight.movementMode.tooltip": "STEER 平滑追赶；LOCK_TO_TARGET 直接定位到采样位置，拒绝未加载或碰撞的目标",
+  "config.youkaishomecoming.common.companion_flight.facingMode": "朝向模式",
+  "config.youkaishomecoming.common.companion_flight.facingMode.tooltip": "TRAVEL 沿移动方向；PLAYER_BODY 同步玩家身体；PLAYER_VIEW 同步玩家视线；KEEP 保持"
+}

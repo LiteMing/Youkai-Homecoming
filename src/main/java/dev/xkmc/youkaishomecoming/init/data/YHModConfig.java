@@ -3,6 +3,7 @@ package dev.xkmc.youkaishomecoming.init.data;
 import dev.xkmc.youkaishomecoming.content.spell.analysis.SpellAnalysisLimits;
 import dev.xkmc.youkaishomecoming.content.spell.definition.SpellTitleStyle.GradientDirection;
 import net.minecraftforge.common.ForgeConfigSpec;
+import dev.xkmc.youkaishomecoming.content.entity.goal.CompanionFlightMath.*;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
 import org.apache.commons.lang3.tuple.Pair;
@@ -300,6 +301,11 @@ public class YHModConfig {
 	}
 
 	public static class Common {
+        public final ForgeConfigSpec.EnumValue<TargetMode> companionTargetMode;
+        public final ForgeConfigSpec.DoubleValue companionOffsetX, companionOffsetY, companionOffsetZ, companionMaxSpeed;
+        public final ForgeConfigSpec.IntValue companionUpdateIntervalTicks;
+        public final ForgeConfigSpec.EnumValue<MovementMode> companionMovementMode;
+        public final ForgeConfigSpec.EnumValue<FacingMode> companionFacingMode;
 		public final ForgeConfigSpec.BooleanValue spellMarketEnabled;
 		public final ForgeConfigSpec.BooleanValue spellAiGenerationEnabled;
 		public final ForgeConfigSpec.ConfigValue<String> spellAiHeaderPrompt;
@@ -470,6 +476,20 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue youkaiAutoDodgeWallClearanceSafeDist;
 
 		Common(ForgeConfigSpec.Builder builder) {
+            builder.translation("config.youkaishomecoming.common.companion_flight").push("companion_flight");
+            companionTargetMode = builder.comment("Default target frame. Absolute targets require per-entity coordinates and dimension.")
+                    .translation("config.youkaishomecoming.common.companion_flight.targetMode")
+                    .defineEnum("targetMode", TargetMode.LEGACY, TargetMode.LEGACY, TargetMode.PLAYER_LOCAL, TargetMode.PLAYER_WORLD);
+            companionOffsetX = builder.translation("config.youkaishomecoming.common.companion_flight.offsetX").defineInRange("offsetX", 0.0, -128, 128);
+            companionOffsetY = builder.translation("config.youkaishomecoming.common.companion_flight.offsetY").defineInRange("offsetY", 1.6, -128, 128);
+            companionOffsetZ = builder.translation("config.youkaishomecoming.common.companion_flight.offsetZ").defineInRange("offsetZ", 0.0, -128, 128);
+            companionMaxSpeed = builder.comment("Maximum steering velocity in blocks per tick; position locking ignores this cap.")
+                    .translation("config.youkaishomecoming.common.companion_flight.maxSpeed").defineInRange("maxSpeed", 0.85, 0.01, 4.0);
+            companionUpdateIntervalTicks = builder.comment("Target position and facing sampling interval in server ticks.")
+                    .translation("config.youkaishomecoming.common.companion_flight.updateIntervalTicks").defineInRange("updateIntervalTicks", 1, 1, 200);
+            companionMovementMode = builder.translation("config.youkaishomecoming.common.companion_flight.movementMode").defineEnum("movementMode", MovementMode.STEER);
+            companionFacingMode = builder.translation("config.youkaishomecoming.common.companion_flight.facingMode").defineEnum("facingMode", FacingMode.TRAVEL);
+            builder.pop();
 			builder.translation("config.youkaishomecoming.common.spell_ai").push("spell_ai");
 			{
 				spellAiGenerationEnabled = builder.comment("Enable the editor AI spell generation button and server requests")

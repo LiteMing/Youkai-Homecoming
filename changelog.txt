@@ -1,3 +1,8 @@
+2.7.0+HCDRS 0.31.4
+- 原生伴飞 Goal 新增服务端配置 API：速度、玩家局部/世界轴偏移、绝对世界目标、采样间隔、朝向与平滑/锁定移动。默认保留旧轨道，绑定玩家无效时不自动切换其他玩家。
+- 配置按 owner 原子写入与释放，KubeJS 全局 YHCompanion 可选接入；端点检查碰撞、边界与已加载区块，不强制加载。战斗优先级与攻击输入不变。
+- 同步 CreatureChat World Director 伴飞节点 v4 消费者；构建和隔离契约通过，实机体验待验收。
+
 2.7.0+HCDRS 0.31.3
 - HOTFIX 生存模式无法进入弹幕战：`YHStgApi.isInDanmakuSession` 把"手动强开的弹幕战"也算作会话，导致 `SpellItemCost.canAfford` 的免费进入分支在进入后一 tick 失效，改按战斗内 Bomb 价格报价；`GrazeCapability` 每 tick 的"别把没卡玩家困在战斗里"自保检查随即把玩家踢出（Bomb=0、Life 仍有剩时必现，创造因 instabuild 短路不受影响）。
 - 修复：`GrazeCapability.hasActiveOpponentSession()` 区分"真实对手会话"与"手动强制战斗"；`canAfford` 的免费分支改为按对手会话判定，进入与每 tick 自保判定一致，真正开打（有妖怪/PvP 会话）后才按 Bomb 价格校验。创造行为、Last Spell 规则、非战斗施放计价均不变。

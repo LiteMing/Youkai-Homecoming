@@ -24,7 +24,7 @@ public final class YsmPresentationResolver {
 
 	public static Resolved resolve(String model, @Nullable YsmModelProfile profile, YsmPresentationSignals signals,
 			YsmPresentationState explicit, long now, Map<String, Float> bindingParameters) {
-		if (profile != null && !profile.model().equals(model)) profile = null;
+		if (profile != null && !YsmModelPaths.same(profile.model(), model)) profile = null;
 		Map<String, Float> parameters = new LinkedHashMap<>(bindingParameters);
 		Body body = null;
 		boolean combatExpressionRouted = false;

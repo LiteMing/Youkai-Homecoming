@@ -62,7 +62,7 @@ public class YSMClientCompat {
 	private static final double UUID_SUGGESTION_RANGE_SQR = 16 * 16;
 
 	private static final String MOD_ID = "yes_steve_model";
-	private static final String MODEL_REMILIA = "YH内置/remilia";
+	private static final String MODEL_REMILIA = "YH内置/remilia/main";
 	private static final String TEXTURE_DEFAULT = "default";
 	private static final ArgumentType<String> YSM_ID_ARGUMENT = new TokenArgument("Expected YSM id", List.of(MODEL_REMILIA, "namespace:path/model"));
 	private static final ArgumentType<String> ENTITY_TARGET_ARGUMENT = new TokenArgument("Expected entity target", List.of("@e[limit=1,sort=nearest]", "@a", "00000000-0000-0000-0000-000000000000"));
@@ -100,8 +100,6 @@ public class YSMClientCompat {
 	private static boolean debugOverlay;
 	private static UUID debugTarget;
 	private static final long CATALOG_CACHE_NANOS = 500_000_000L;
-	private static long loadedModelIdsCacheAt;
-	private static List<String> loadedModelIdsCache = List.of();
 	private static final Map<String, CachedList> textureNameCache = new LinkedHashMap<>();
 	private static final Map<String, CachedList> animationNameCache = new LinkedHashMap<>();
 	private static final Map<String, CachedString> defaultTextureCache = new LinkedHashMap<>();
@@ -160,23 +158,7 @@ public class YSMClientCompat {
 	}
 
 	public static List<String> loadedModelIds() {
-		long now = System.nanoTime();
-		if (isCacheFresh(loadedModelIdsCacheAt, now)) {
-			return new ArrayList<>(loadedModelIdsCache);
-		}
-		// Do not advertise the YH built-in model when OpenYSM is absent. Callers
-		// use this list for live editor/command choices and an unavailable ID would
-		// only create a guaranteed fallback path.
-		List<String> result = LOADED ? new ArrayList<>(List.of(MODEL_REMILIA)) : new ArrayList<>();
-		if (!LOADED) {
-			loadedModelIdsCache = List.copyOf(result);
-			loadedModelIdsCacheAt = now;
-			return result;
-		}
-		for (String id : ExternalLivingRenderAPI.getLoadedModelIds()) if (!id.isBlank() && !result.contains(id)) result.add(id);
-		loadedModelIdsCache = List.copyOf(result);
-		loadedModelIdsCacheAt = now;
-		return result;
+		return LOADED ? rip.ysm.api.client.ExternalModelRenderAPI.getLoadedModelReferences() : List.of();
 	}
 
 	static RenderBinding resolveBinding(LivingEntity e) {
@@ -355,7 +337,11 @@ public class YSMClientCompat {
 			animationNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
 			return result;
 		}
-		if (LOADED) addAllUnique(result, ExternalLivingRenderAPI.getModelAnimationNames(modelId));
+		if (LOADED) {
+			var reference = rip.ysm.api.client.ExternalModelRenderAPI.resolve(modelId).orElse(null);
+			if (reference != null && reference.kind() != rip.ysm.api.ModelReference.Kind.MAIN) result.clear();
+			addAllUnique(result, ExternalLivingRenderAPI.getModelAnimationNames(modelId));
+		}
 		animationNameCache.put(cacheKey, new CachedList(List.copyOf(result), now));
 		return result;
 	}
@@ -1116,8 +1102,6 @@ public class YSMClientCompat {
 		textureNameCache.clear();
 		animationNameCache.clear();
 		defaultTextureCache.clear();
-		loadedModelIdsCache = List.of();
-		loadedModelIdsCacheAt = 0;
 		debugTarget = null;
 		debugOverlay = false;
 	}

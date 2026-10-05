@@ -25,6 +25,7 @@ public final class YsmProfileStorageTest {
 		Path root = Files.createTempDirectory("yh-global-ysm-");
 		try {
 			globalAndExternalEdits(root.resolve("global.json"));
+			mainAliasMigration(root.resolve("main-alias.json"));
 			migration(root.resolve("migration"));
 			invalidMigration(root.resolve("invalid-migration"));
 			System.out.println("YsmProfileStorageTest: " + passed + " contracts passed");
@@ -33,6 +34,29 @@ public final class YsmProfileStorageTest {
 				for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
 			}
 		}
+	}
+
+	private static void mainAliasMigration(Path file) throws IOException {
+		var data = open(file);
+		var old = profile("test/remilia", "face", 1);
+		var saved = data.replace(old, 0, 256);
+		var alias = data.entry("test/remilia/main");
+		equal("main aliases retain the original revision", alias.revision(), saved.revision());
+		equal("main aliases retain existing presets", alias.profile().presets(), old.presets());
+		var next = data.replace(profile("test/remilia/main", "face", 2), alias.revision(), data.entries().size());
+		check("saving explicit main migrates instead of duplicating", !data.entries().containsKey("test/remilia") && data.entries().containsKey("test/remilia/main"));
+		equal("legacy lookups observe the new main profile", data.entry("test/remilia").revision(), next.revision());
+		reject("stale alias cannot overwrite the new main", () -> data.replace(old, saved.revision(), 256));
+		check("projectile preset stays independent", data.entry("test/remilia/trident").profile().presets().isEmpty());
+		var builtin = data.entry("YH内置/remilia/main");
+		data.replace(builtin.profile(), builtin.revision(), 256);
+		var reopened = open(file);
+		check("reload does not recreate a migrated built-in alias", !reopened.entries().containsKey("YH内置/remilia"));
+		writeLibrary(file, reopened.entry("YH内置/remilia/main").profile());
+		data.reload();
+		check("deleted alias keeps a shared tombstone revision", data.entry("test/remilia").revision() > next.revision());
+		reject("deleted alias cannot be recreated by a stale editor", () -> data.replace(old, next.revision(), 256));
+
 	}
 
 	private static YsmModelProfile profile(String model, String id, float value) {

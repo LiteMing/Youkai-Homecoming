@@ -39,7 +39,7 @@ final class YsmAutomaticProfile {
 		Cached cached = CACHE.get(model);
 		if (cached != null && Objects.equals(cached.explicit(), explicit) && cached.catalog().equals(catalog)) return cached.profile();
 		if (catalog.status() != YsmModelCatalog.Status.READY) return explicit;
-		if (explicit != null && !explicit.model().equals(model)) explicit = null;
+		if (explicit != null && !YsmModelPaths.same(explicit.model(), model)) explicit = null;
 		Map<String, YsmModelProfile.Preset> presets = new LinkedHashMap<>();
 		Map<Trigger, String> routes = new LinkedHashMap<>();
 		if (explicit != null) {

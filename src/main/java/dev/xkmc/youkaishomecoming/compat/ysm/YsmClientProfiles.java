@@ -21,8 +21,15 @@ public final class YsmClientProfiles {
 	private YsmClientProfiles() { }
 
 	public static YsmProfileData.Entry entry(String model) {
+		var entry = stored(model);
+		return entry == null ? new YsmProfileData.Entry(0, YsmModelProfile.empty(model))
+				: new YsmProfileData.Entry(entry.revision(), new YsmModelProfile(model, entry.profile().presets(), entry.profile().triggers()));
+	}
+
+	private static YsmProfileData.Entry stored(String model) {
 		var entry = PROFILES.get(model);
-		return entry == null ? new YsmProfileData.Entry(0, YsmModelProfile.empty(model)) : entry;
+		for (String alias : YsmModelPaths.mainAliases(model)) if (entry == null) entry = PROFILES.get(alias);
+		return entry;
 	}
 
 	public static void receive(YsmProfileSyncToClient packet) {
@@ -30,9 +37,11 @@ public final class YsmClientProfiles {
 		if (!packet.json.isEmpty()) {
 			try {
 				var profile = YsmModelProfile.fromJson(packet.json);
-				var previous = PROFILES.get(profile.model());
-				if (previous == null || previous.revision() <= packet.revision)
+				var previous = stored(profile.model());
+				if (previous == null || previous.revision() <= packet.revision) {
+					YsmModelPaths.mainAliases(profile.model()).forEach(PROFILES::remove);
 					PROFILES.put(profile.model(), new YsmProfileData.Entry(packet.revision, profile));
+				}
 			} catch (IllegalArgumentException ex) {
 				response(packet.requestId, false, ex.getMessage());
 				return;
@@ -65,14 +74,13 @@ public final class YsmClientProfiles {
 		var preview = PREVIEWS.get(entity);
 		var profile = preview == null ? null : preview.profile();
 		Map<String, Float> bindingParameters = Map.of();
-		if (preview != null && preview.profile().model().equals(model)) bindingParameters = preview.parameters();
+		if (preview != null && YsmModelPaths.same(preview.profile().model(), model)) bindingParameters = preview.parameters();
 		else if (preview == null) {
 			var binding = YSMClientCompat.resolveBinding(entity);
-			if (binding != null && binding.modelId().equals(model)) bindingParameters = binding.parameters();
+			if (binding != null && YsmModelPaths.same(binding.modelId(), model)) bindingParameters = binding.parameters();
 		}
 		if (profile == null) {
-			var entry = PROFILES.get(model);
-			profile = entry == null ? null : entry.profile();
+			profile = entry(model).profile();
 		}
 		if (!(entity instanceof YsmRenderOverrideTarget target))
 			return new YsmPresentationResolver.Resolved(null, Map.of(), false, false);

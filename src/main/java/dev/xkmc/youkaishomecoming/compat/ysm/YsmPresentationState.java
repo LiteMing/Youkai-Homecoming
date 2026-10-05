@@ -47,7 +47,7 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 			return isActive(startedAt, expiresAt, now);
 		}
 
-		public boolean matchesModel(String id) { return model.isEmpty() || model.equals(id); }
+		public boolean matchesModel(String id) { return model.isEmpty() || YsmModelPaths.same(model, id); }
 	}
 
 	public record Parameter(float value, long startedAt, long expiresAt, Source source, String model, String owner) {
@@ -65,7 +65,7 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 			return isActive(startedAt, expiresAt, now);
 		}
 
-		public boolean matchesModel(String id) { return model.isEmpty() || model.equals(id); }
+		public boolean matchesModel(String id) { return model.isEmpty() || YsmModelPaths.same(model, id); }
 	}
 
 	public static String normalizeClip(String clip) {

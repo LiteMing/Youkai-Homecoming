@@ -68,7 +68,13 @@ public final class YsmProfileData {
 	public Entry entry(String model) {
 		model = YsmModelProfile.modelId(model);
 		Entry entry = profiles.get(model);
-		return entry == null ? new Entry(revisions.getOrDefault(model, 0L), YsmModelProfile.empty(model)) : entry;
+		long revision = revisions.getOrDefault(model, 0L);
+		for (String alias : YsmModelPaths.mainAliases(model)) {
+			if (entry == null) entry = profiles.get(alias);
+			revision = Math.max(revision, revisions.getOrDefault(alias, 0L));
+		}
+		return entry == null ? new Entry(revision, YsmModelProfile.empty(model))
+				: new Entry(entry.revision(), new YsmModelProfile(model, entry.profile().presets(), entry.profile().triggers()));
 	}
 
 	public Map<String, Entry> entries() { return Map.copyOf(profiles); }
@@ -98,15 +104,17 @@ public final class YsmProfileData {
 		profile = completeBuiltInProfile(profile);
 		Entry current = entry(profile.model());
 		if (expectedRevision != current.revision()) throw new IllegalArgumentException("revision_conflict");
-		if (!profiles.containsKey(profile.model()) && profiles.size() >= Math.min(maxProfiles, MAX_PROFILES))
+		if (!profiles.containsKey(profile.model()) && YsmModelPaths.mainAliases(profile.model()).stream().noneMatch(profiles::containsKey) && profiles.size() >= Math.min(maxProfiles, MAX_PROFILES))
 			throw new IllegalArgumentException("Profile count limit reached");
 		checkSize(profile);
 		Entry next = new Entry(Math.addExact(current.revision(), 1), profile);
 		Map<String, YsmModelProfile> values = values();
+		YsmModelPaths.mainAliases(profile.model()).forEach(values::remove);
 		values.put(profile.model(), profile);
 		String json = encode(values);
 		// Check the actual file even if an external editor has not issued /yhysm preset reload yet.
 		write(json, diskJson);
+		YsmModelPaths.mainAliases(profile.model()).forEach(profiles::remove);
 		profiles.put(profile.model(), next);
 		revisions.put(profile.model(), next.revision());
 		diskJson = json;
@@ -143,18 +151,20 @@ public final class YsmProfileData {
 
 	private static Map<String, YsmModelProfile> completeBuiltInProfiles(Map<String, YsmModelProfile> values) {
 		Map<String, YsmModelProfile> completed = new LinkedHashMap<>(values);
-		YsmModelProfile profile = completed.get(BUILTIN_REMILIA);
+		String builtin = completed.containsKey(BUILTIN_REMILIA) && !completed.containsKey(BUILTIN_REMILIA + "/main")
+				? BUILTIN_REMILIA : BUILTIN_REMILIA + "/main";
+		YsmModelProfile profile = completed.get(builtin);
 		if (profile == null) {
 			if (completed.size() >= MAX_PROFILES) throw new IllegalArgumentException("Profile count limit reached");
-			profile = new YsmModelProfile(BUILTIN_REMILIA, Map.of(), Map.of());
+			profile = new YsmModelProfile(builtin, Map.of(), Map.of());
 		}
 		YsmModelProfile completedProfile = completeBuiltInProfile(profile);
-		if (!completedProfile.equals(profile)) completed.put(BUILTIN_REMILIA, completedProfile);
+		if (!completedProfile.equals(profile)) completed.put(builtin, completedProfile);
 		return completed;
 	}
 
 	private static YsmModelProfile completeBuiltInProfile(YsmModelProfile profile) {
-		if (!BUILTIN_REMILIA.equals(profile.model())) return profile;
+		if (!YsmModelPaths.same(BUILTIN_REMILIA, profile.model())) return profile;
 		Map<String, YsmModelProfile.Preset> presets = new LinkedHashMap<>(profile.presets());
 		Map<YsmModelProfile.Trigger, String> triggers = new LinkedHashMap<>(profile.triggers());
 		presets.putIfAbsent(BUILTIN_SIT, new YsmModelProfile.Preset("sit", BUILTIN_SIT, 0, Map.of()));

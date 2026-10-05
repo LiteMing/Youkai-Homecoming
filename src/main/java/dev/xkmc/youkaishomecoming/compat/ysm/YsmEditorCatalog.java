@@ -21,9 +21,21 @@ public final class YsmEditorCatalog {
 	public static List<String> modelIds() {
 		TreeSet<String> ids = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 		ids.addAll(YSMClientCompat.loadedModelIds());
-		ids.addAll(YSMCompatConfig.configuredModelIds());
-		ids.addAll(YsmClientProfiles.models());
+		for (String id : YSMCompatConfig.configuredModelIds()) ids.add(modelReference(id, null));
+		for (String id : YsmClientProfiles.models()) ids.add(modelReference(id, null));
 		return List.copyOf(ids);
+	}
+
+	/** Resolve old pack + slot fields for display; keep explicit paths intact. */
+	public static String modelReference(String model, String legacySlot) {
+		if (model == null || model.isBlank()) return "";
+		if (YSMClientCompat.isLoaded()) {
+			var resolved = rip.ysm.api.client.ExternalModelRenderAPI.resolve(model, legacySlot);
+			if (resolved.isPresent()) return resolved.get().path();
+		}
+		if (model.endsWith("/main") || model.endsWith("/arm")) return model;
+		// Unloaded profiles may already name a projectile entry. Preserve their opaque ID.
+		return model;
 	}
 
 	public static String parent(String path) {

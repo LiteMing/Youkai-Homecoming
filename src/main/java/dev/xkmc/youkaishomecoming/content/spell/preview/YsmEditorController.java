@@ -152,6 +152,7 @@ public final class YsmEditorController {
 	public void loadModel() {
 		if (waiting()) return;
 		attempt(() -> {
+			modelInput = YsmEditorCatalog.modelReference(modelInput, null);
 			var entry = YsmClientProfiles.entry(modelInput);
 			if (profile != null && !profile.model().equals(modelInput)) bindingParameters.clear();
 			profile = entry.profile();
@@ -206,8 +207,8 @@ public final class YsmEditorController {
 				}
 			}
 			if (binding != null && binding.enabled()) {
-				if (profileDirty() && !model().equals(binding.modelId())) throw new IllegalArgumentException("unsaved_model");
-				modelInput = binding.modelId(); texture = binding.textureName();
+				if (profileDirty() && !YsmModelPaths.same(model(), binding.modelId())) throw new IllegalArgumentException("unsaved_model");
+				modelInput = YsmEditorCatalog.modelReference(binding.modelId(), null); texture = binding.textureName();
 				if (!model().equals(modelInput)) loadModel();
 			}
 			bindingParameters.clear();
@@ -556,7 +557,7 @@ public final class YsmEditorController {
 		if (waiting()) return;
 		attempt(() -> {
 			var imported = YsmEditorDocument.fromJson(Minecraft.getInstance().keyboardHandler.getClipboard());
-			if (profile == null || !imported.profile().model().equals(model())) throw new IllegalArgumentException("Load the imported profile's model first");
+			if (profile == null || !YsmModelPaths.same(imported.profile().model(), model())) throw new IllegalArgumentException("Load the imported profile's model first");
 			adoptDocument(imported);
 			rawDraft = null; rawBaseline = null;
 			loadPresetFields(profile.presets().keySet().stream().findFirst().orElse(""));
@@ -588,7 +589,7 @@ public final class YsmEditorController {
 		attempt(() -> {
 			if (!Objects.equals(rawBaseline, rawBaseline())) throw new IllegalArgumentException("raw_draft_conflict");
 			var parsed = YsmEditorDocument.fromJson(rawDraft);
-			if (!parsed.profile().model().equals(model())) throw new IllegalArgumentException("Load the imported profile's model first");
+			if (!YsmModelPaths.same(parsed.profile().model(), model())) throw new IllegalArgumentException("Load the imported profile's model first");
 			adoptDocument(parsed);
 			rawDraft = null; rawBaseline = null;
 			loadPresetFields(profile.presets().containsKey(presetId) ? presetId : profile.presets().keySet().stream().findFirst().orElse(""));
@@ -614,7 +615,7 @@ public final class YsmEditorController {
 	public PreviewCardHolder preview() {
 		if (preview == null && Minecraft.getInstance().level != null) {
 			preview = new PreviewCardHolder(Minecraft.getInstance().level);
-			preview.setYsmProfiles(model -> profile != null && profile.model().equals(model) ? profile : YsmClientProfiles.entry(model).profile());
+			preview.setYsmProfiles(model -> profile != null && YsmModelPaths.same(profile.model(), model) ? profile : YsmClientProfiles.entry(model).profile());
 			preview.getFakeCaster().setInvisible(false);
 			preview.getFakeCaster().setPos(0, 0, 0);
 		}

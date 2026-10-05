@@ -117,6 +117,7 @@ public final class YSMCompatConfig {
 
 	private static List<String> expressionAnimations(String modelId, String expression) {
 		ModelRule rule = MODEL_RULES.get(modelId);
+		if (rule == null && modelId != null) rule = MODEL_RULES.get(YsmModelPaths.mainAlias(modelId));
 		if (rule != null) {
 			List<String> configured = rule.expressions().get(expression);
 			if (configured != null) {

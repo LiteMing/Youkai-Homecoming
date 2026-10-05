@@ -11,6 +11,7 @@ final class YsmOpenYsmSupport {
 	static boolean available(ClassLoader loader) {
 		try {
 			Class.forName("rip.ysm.api.ExternalModelPackAPI", false, loader);
+			Class.forName("rip.ysm.api.ModelReference", false, loader);
 			return true;
 		} catch (ClassNotFoundException | LinkageError ignored) {
 			return false;

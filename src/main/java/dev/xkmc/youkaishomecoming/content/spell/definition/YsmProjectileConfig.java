@@ -99,6 +99,12 @@ public record YsmProjectileConfig(
 				pitchOffset, yawOffset, tiltOffset);
 	}
 
+	/** The unified model path owns its entry; slot remains a reader for legacy definitions. */
+	public YsmProjectileConfig withReference(String value) {
+		return copy(value, "arrow", modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight, offsetUp,
+				pitchOffset, yawOffset, tiltOffset);
+	}
+
 	public YsmProjectileConfig withSlot(String value) {
 		return copy(model, value, modelScale, maxInstances, acknowledgeCost, offsetForward, offsetRight, offsetUp,
 				pitchOffset, yawOffset, tiltOffset);

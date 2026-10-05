@@ -61,6 +61,7 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 		if (page == 1) animations(catalog); else if (page == 2) wheel(catalog); else controls(catalog);
 	}
 	private void models() {
+		label(text("model_path_help"));
 		var models = new TreeSet<>(YsmEditorCatalog.modelIds());
 		folders("model_folder", modelFolder, models.stream().map(YsmEditorCatalog::parent).toList(),
 				YsmClientPresentationBridge.modelFolderNames(), folder -> { modelFolder = folder; modelQuery = ""; changed(); });

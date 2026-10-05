@@ -927,19 +927,9 @@ public class ActionEditorPanel {
 		YsmProjectileConfig config = action.ysmProjectile().get();
 		// The supplier is evaluated when the arrow is opened, so a resource-pack
 		// reload immediately changes the available model choices.
-		addYsmProjectileModelRow(config.model(), value ->
+		addYsmProjectileModelRow(YsmEditorCatalog.modelReference(config.model(), config.slot()), value ->
 				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
-					.map(current -> current.withModel(value))), false));
-		addDynamicStringOptionRow("Projectile Slot", config.slot(),
-				() -> {
-					String model = config.model();
-					if (SpellInitializationLinks.unwrap(currentAction) instanceof FireDanmakuAction latest) {
-						model = latest.ysmProjectile().map(YsmProjectileConfig::model).orElse(model);
-					}
-					return YsmClientPresentationBridge.projectileSlots(model);
-				}, value ->
-					notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
-						.map(current -> current.withSlot(value)))));
+					.map(current -> current.withReference(value))), false));
 		addFloatRow("Model Scale", config.modelScale(), value ->
 				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
 					.map(current -> current.withModelScale(value))), false));
@@ -993,18 +983,9 @@ public class ActionEditorPanel {
 			return;
 		}
 		YsmProjectileConfig config = action.ysmProjectile().get();
-		addYsmProjectileModelRow(config.model(), value ->
+		addYsmProjectileModelRow(YsmEditorCatalog.modelReference(config.model(), config.slot()), value ->
 				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
-						.map(current -> current.withModel(value))), false));
-		addDynamicStringOptionRow("Projectile Slot", config.slot(),
-				() -> {
-					String model = config.model();
-					if (SpellInitializationLinks.unwrap(currentAction) instanceof FireLaserAction latest) {
-						model = latest.ysmProjectile().map(YsmProjectileConfig::model).orElse(model);
-					}
-					return YsmClientPresentationBridge.projectileSlots(model);
-				}, value -> notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
-						.map(current -> current.withSlot(value)))));
+						.map(current -> current.withReference(value))), false));
 		addFloatRow("Model Scale", config.modelScale(), value ->
 				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
 						.map(current -> current.withModelScale(value))), false));
@@ -2422,7 +2403,7 @@ public class ActionEditorPanel {
 	}
 
 	private void addYsmModelRow(String current, Consumer<String> onChange) {
-		EditBox editBox = addSuggestStringRow(ysmLabel("action.model"), current,
+		EditBox editBox = addSuggestStringRow(ysmLabel("action.model"), YsmEditorCatalog.modelReference(current, null),
 				YsmEditorCatalog::modelIds, onChange);
 		folderCompletionTargets.add(editBox);
 		completionFolderFunctions.put(editBox, YsmEditorCatalog::parent);
@@ -2431,7 +2412,7 @@ public class ActionEditorPanel {
 
 	/** Model selector shared by projectile presentation rows. */
 	private void addYsmProjectileModelRow(String current, Consumer<String> onChange) {
-		EditBox editBox = addSuggestStringRow("Model ID", current,
+		EditBox editBox = addSuggestStringRow(ysmLabel("action.model"), YsmEditorCatalog.modelReference(current, null),
 				YsmEditorCatalog::modelIds, onChange);
 		folderCompletionTargets.add(editBox);
 		completionFolderFunctions.put(editBox, YsmEditorCatalog::parent);

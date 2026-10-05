@@ -4,35 +4,24 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.ItemDanmakuEntity;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.YHBaseLaserEntity;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.registries.ForgeRegistries;
 import org.joml.Quaternionf;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
-import rip.ysm.api.client.ExternalProjectileRenderAPI;
+import rip.ysm.api.client.ExternalModelRenderAPI;
+import rip.ysm.api.ModelReference;
 
-/**
- * Client-only adapter for OpenYSM's projectile renderer. YH danmaku are virtual
- * projectiles, so OpenYSM cannot receive them directly. The adapter keeps a
- * render-only projectile proxy per visible danmaku and never adds that proxy to
- * the level. All physical state remains in {@link ItemDanmakuEntity}.
- */
+/** Presentation transforms and budgets over OYSM's explicit-entry renderer. Physical state stays in YH. */
 public final class YsmProjectileRenderBridge {
-	private static final Map<UUID, Proxy> PROXIES = new HashMap<>();
+	private static final Map<Entity, Long> RENDERED = new java.util.IdentityHashMap<>();
 	private static final Set<String> WARNED = new HashSet<>();
 	private static long frame;
 	private static Level level;
@@ -42,7 +31,7 @@ public final class YsmProjectileRenderBridge {
 
 	public static void beginFrame(Level current) {
 		if (level != current) {
-			PROXIES.clear();
+			releaseModels();
 			level = current;
 		}
 		frame++;
@@ -50,12 +39,16 @@ public final class YsmProjectileRenderBridge {
 	}
 
 	public static void endFrame() {
-		PROXIES.entrySet().removeIf(entry -> entry.getValue().lastFrame < frame - 2);
+		RENDERED.entrySet().removeIf(entry -> {
+			if (entry.getValue() >= frame - 2) return false;
+			ExternalModelRenderAPI.forget(entry.getKey());
+			return true;
+		});
 	}
 
-	/** Drop render-only proxy entities when the client changes level or logs out. */
+	/** Release model instances when the client changes level or logs out. */
 	public static void clear() {
-		PROXIES.clear();
+		releaseModels();
 		level = null;
 		LASER_ORDINALS.clear();
 	}
@@ -112,18 +105,8 @@ public final class YsmProjectileRenderBridge {
 		}
 		if (!probe()) return false;
 		try {
-			Proxy proxy = PROXIES.get(danmaku.id());
-			if (proxy == null || !proxy.slot.equals(slot)) {
-				proxy = createProxy(slot);
-				if (proxy != null) PROXIES.put(danmaku.id(), proxy);
-			}
-			if (proxy == null || proxy.entity == null) {
-				warnOnce("slot:" + slot, "YSM projectile slot '" + slot
-						+ "' is not a registered Projectile entity; using YH fallback");
-				return false;
-			}
-			proxy.lastFrame = frame;
-			configure(proxy, danmaku);
+			Entity source = danmaku.source();
+			RENDERED.put(source, frame);
 			pose.pushPose();
 			try {
 				float scale = danmaku.baseScale() * danmaku.modelScale();
@@ -137,12 +120,18 @@ public final class YsmProjectileRenderBridge {
 								(float) axis.x, (float) axis.y, (float) axis.z));
 					}
 				}
-				boolean consumed = ExternalProjectileRenderAPI.render(proxy.entity, 0f, partialTick, pose,
+				var reference = ExternalModelRenderAPI.resolve(danmaku.model(), slot).orElse(null);
+				boolean projectile = reference != null && reference.kind() == ModelReference.Kind.PROJECTILE;
+				float yaw = Mth.lerp(partialTick, source.yRotO, source.getYRot());
+				float pitch = Mth.lerp(partialTick, source.xRotO, source.getXRot());
+				boolean consumed = ExternalModelRenderAPI.render(source, danmaku.model(), slot, null, null,
+						(projectile ? -yaw : yaw) + danmaku.yawOffset(),
+						(projectile ? -pitch : pitch) + danmaku.pitchOffset(), partialTick, pose,
 						tint == 0xffffffff ? buffer : new TintingBufferSource(buffer, tint), light);
 				if (!consumed) {
 					warnOnce("model:" + danmaku.model() + ":" + slot,
-							"OpenYSM model '" + danmaku.model() + "' is not ready or does not provide projectile slot '"
-									+ slot + "'; using YH fallback until available");
+							"OpenYSM model entry '" + danmaku.model() + "' is not ready (legacy slot '"
+									+ slot + "'); using YH fallback until available");
 				}
 				return consumed;
 			} finally {
@@ -154,50 +143,9 @@ public final class YsmProjectileRenderBridge {
 		}
 	}
 
-	private static Proxy createProxy(String slot) {
-		Level current = Minecraft.getInstance().level;
-		if (current == null) return null;
-		ResourceLocation typeId = projectileTypeId(slot);
-		EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(typeId);
-		if (type == null) return null;
-		Entity value = type.create(current);
-		return value instanceof Projectile projectile ? new Proxy(projectile, slot) : null;
-	}
-
-	private static void configure(Proxy proxy, Target danmaku) {
-		Projectile entity = proxy.entity;
-		Entity source = danmaku.source();
-		entity.setPos(source.getX(), source.getY(), source.getZ());
-		// Keep movement in sync as well as rotation. OpenYSM's projectile animation
-		// predicates read delta movement even though the dispatcher only uses yaw/pitch
-		// for the actual orientation.
-		entity.setDeltaMovement(source.getDeltaMovement());
-		entity.xOld = source.xOld;
-		entity.yOld = source.yOld;
-		entity.zOld = source.zOld;
-		// OpenYSM's projectile renderer applies the vanilla `yaw - 90` correction to
-		// models authored along +X. YH's local renderers use the opposite yaw and
-		// pitch signs, so copying either angle directly mirrors that axis (for
-		// example, +X or +Y is rendered toward the negative direction). Mirror
-		// both angles only in the render-only proxy; the YH entity and its physical
-		// trajectory remain untouched.
-		entity.setYRot(-source.getYRot() + danmaku.yawOffset());
-		entity.setXRot(-source.getXRot() + danmaku.pitchOffset());
-		entity.yRotO = -source.yRotO + danmaku.yawOffset();
-		entity.xRotO = -source.xRotO + danmaku.pitchOffset();
-		entity.tickCount = source.tickCount;
-		if (ExternalProjectileRenderAPI.configure(entity, danmaku.model(), proxy.lastTick != source.tickCount)) {
-			proxy.model = danmaku.model();
-			proxy.lastTick = source.tickCount;
-		} else {
-			warnOnce("capability", "OpenYSM did not attach a projectile capability; using YH fallback");
-		}
-	}
-
-	private static ResourceLocation projectileTypeId(String slot) {
-		if (slot == null || slot.isBlank()) return new ResourceLocation("minecraft", "arrow");
-		ResourceLocation parsed = ResourceLocation.tryParse(slot);
-		return parsed != null ? parsed : new ResourceLocation("minecraft", slot);
+	private static void releaseModels() {
+		if (probe()) RENDERED.keySet().forEach(ExternalModelRenderAPI::forget);
+		RENDERED.clear();
 	}
 
 	/**
@@ -240,7 +188,6 @@ public final class YsmProjectileRenderBridge {
 			@Override public float yawOffset() { return danmaku.ysmProjectileYawOffset(); }
 			@Override public float tiltOffset() { return danmaku.ysmProjectileTiltOffset(); }
 			@Override public Vec3 forward(float partialTick) { return danmaku.getViewVector(partialTick); }
-			@Override public UUID id() { return danmaku.getUUID(); }
 		};
 	}
 
@@ -264,7 +211,6 @@ public final class YsmProjectileRenderBridge {
 				float yaw = Mth.lerp(partialTick, laser.yRotO, laser.getYRot());
 				return Vec3.directionFromRotation(pitch, yaw);
 			}
-			@Override public UUID id() { return laser.getUUID(); }
 		};
 	}
 
@@ -283,7 +229,6 @@ public final class YsmProjectileRenderBridge {
 		float yawOffset();
 		float tiltOffset();
 		Vec3 forward(float partialTick);
-		UUID id();
 	}
 
 	private static boolean probe() { return YSMClientCompat.isLoaded(); }
@@ -291,18 +236,6 @@ public final class YsmProjectileRenderBridge {
 	private static void warnOnce(String key, String message) {
 		if (WARNED.add(key)) {
 			dev.xkmc.youkaishomecoming.init.YoukaisHomecoming.LOGGER.warn(message);
-		}
-	}
-
-	private static final class Proxy {
-		private final Projectile entity;
-		private final String slot;
-		private long lastFrame;
-		private int lastTick = Integer.MIN_VALUE;
-		private String model = "";
-		private Proxy(Projectile entity, String slot) {
-			this.entity = entity;
-			this.slot = slot;
 		}
 	}
 

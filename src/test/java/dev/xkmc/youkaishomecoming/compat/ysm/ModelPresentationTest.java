@@ -15,6 +15,7 @@ public final class ModelPresentationTest {
 	private static final YsmPresentationState.Source SOURCE = YsmPresentationState.Source.COMMAND;
 
 	public static void main(String[] args) throws Exception {
+		modelPathContracts();
 		stateContracts();
 		ownedPresetContracts();
 		serializationContracts();
@@ -38,6 +39,16 @@ public final class ModelPresentationTest {
 		}
 		System.out.println("ModelPresentationTest: " + passed + " contracts passed" +
 				(Boolean.getBoolean("yh.test.oysm") ? " (includes installed OYSM public API)" : " (without OYSM)"));
+	}
+
+	private static void modelPathContracts() {
+		check("legacy pack aliases only its main entry", YsmModelPaths.same("YH内置/remilia", "YH内置/remilia/main"));
+		check("main alias is symmetric", YsmModelPaths.same("YH内置/remilia/main", "YH内置/remilia"));
+		check("legacy IDs ending in main can use explicit main", YsmModelPaths.same("nested/main", "nested/main/main") && YsmModelPaths.same("nested/main/main", "nested/main"));
+		check("projectile does not inherit main presentation", !YsmModelPaths.same("YH内置/remilia/trident", "YH内置/remilia/main"));
+		var state = YsmPresentationState.EMPTY.applyPreset("YH内置/remilia", new YsmModelProfile.Preset("", "idle", 10, Map.of()), 0, 10, SOURCE, 4, "owner");
+		check("old owned clips follow explicit main", state.animation().matchesModel("YH内置/remilia/main"));
+		check("old owned clips do not follow projectile", !state.animation().matchesModel("YH内置/remilia/trident"));
 	}
 
 	private static void stateContracts() {
@@ -276,9 +287,9 @@ public final class ModelPresentationTest {
 			check("shipped YSM defaults resource exists", stream != null);
 			var root = com.google.gson.JsonParser.parseReader(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
 			var binding = root.getAsJsonObject("entities").getAsJsonObject("youkaishomecoming:remilia_scarlet");
-			equal("Remilia default entity mapping is resource-configured", binding.get("model").getAsString(), "YH内置/remilia");
+			equal("Remilia default entity mapping is resource-configured", binding.get("model").getAsString(), "YH内置/remilia/main");
 			equal("Remilia default texture is resource-configured", binding.get("texture").getAsString(), "default");
-			check("default resource also carries model expression rules", root.get("model").getAsString().equals("YH内置/remilia")
+			check("default resource also carries model expression rules", root.get("model").getAsString().equals("YH内置/remilia/main")
 					&& root.getAsJsonObject("expressions").getAsJsonArray("angry").size() > 0);
 		}
 	}
@@ -538,6 +549,9 @@ public final class ModelPresentationTest {
 	private static void installedOysmContracts() throws Exception {
 		var loader = ModelPresentationTest.class.getClassLoader();
 		check("installed OYSM enables public API integration", YsmOpenYsmSupport.available());
+		Class<?> entries = Class.forName("rip.ysm.api.client.ExternalModelRenderAPI", false, loader);
+		check("unified entry directory", entries.getMethod("getLoadedModelReferences").getReturnType() == List.class);
+		check("entry renderer accepts the real generic host", entries.getMethod("render", net.minecraft.world.entity.Entity.class, String.class, String.class, String.class, String.class, float.class, float.class, float.class, com.mojang.blaze3d.vertex.PoseStack.class, net.minecraft.client.renderer.MultiBufferSource.class, int.class).getReturnType() == boolean.class);
 		Class<?> api = Class.forName("rip.ysm.api.client.ExternalLivingPresentationAPI", false, loader);
 		equal("exact requested OYSM API jar", java.nio.file.Path.of(api.getProtectionDomain().getCodeSource().getLocation().toURI()).toAbsolutePath().normalize(),
 				java.nio.file.Path.of(System.getProperty("yh.test.oysm.jar")).toAbsolutePath().normalize());

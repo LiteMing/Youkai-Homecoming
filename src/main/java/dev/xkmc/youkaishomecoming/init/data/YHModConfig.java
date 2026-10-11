@@ -306,9 +306,6 @@ public class YHModConfig {
         public final ForgeConfigSpec.IntValue companionUpdateIntervalTicks;
         public final ForgeConfigSpec.EnumValue<MovementMode> companionMovementMode;
         public final ForgeConfigSpec.EnumValue<FacingMode> companionFacingMode;
-        public final ForgeConfigSpec.BooleanValue companionAutomaticSlots, companionLocalAvoidance;
-        public final ForgeConfigSpec.DoubleValue companionSlotSpacing, companionLookahead, companionDetourSpeed, companionTargetRetraction;
-        public final ForgeConfigSpec.IntValue companionDetourHoldTicks, companionTargetRecoveryTicks;
 		public final ForgeConfigSpec.BooleanValue spellMarketEnabled;
 		public final ForgeConfigSpec.BooleanValue spellAiGenerationEnabled;
 		public final ForgeConfigSpec.ConfigValue<String> spellAiHeaderPrompt;
@@ -492,16 +489,6 @@ public class YHModConfig {
                     .translation("config.youkaishomecoming.common.companion_flight.updateIntervalTicks").defineInRange("updateIntervalTicks", 1, 1, 200);
             companionMovementMode = builder.translation("config.youkaishomecoming.common.companion_flight.movementMode").defineEnum("movementMode", MovementMode.STEER);
             companionFacingMode = builder.translation("config.youkaishomecoming.common.companion_flight.facingMode").defineEnum("facingMode", FacingMode.TRAVEL);
-            companionAutomaticSlots = builder.comment("Stable per-player formation slots, only for LEGACY STEER. Explicit target frames and locking are unchanged.")
-                    .translation("config.youkaishomecoming.common.companion_flight.automaticSlots").define("automaticSlots", true);
-            companionSlotSpacing = builder.translation("config.youkaishomecoming.common.companion_flight.slotSpacing").defineInRange("slotSpacing", 2.4, 1.0, 8.0);
-            companionLocalAvoidance = builder.comment("Bounded local obstacle steering and target fallback, only for LEGACY STEER. At most two Goal collision probes per tick, including endpoints.")
-                    .translation("config.youkaishomecoming.common.companion_flight.localAvoidance").define("localAvoidance", true);
-            companionLookahead = builder.translation("config.youkaishomecoming.common.companion_flight.lookahead").defineInRange("lookahead", 1.5, 0.1, 4.0);
-            companionDetourSpeed = builder.translation("config.youkaishomecoming.common.companion_flight.detourSpeed").defineInRange("detourSpeed", 0.4, 0.01, 1.0);
-            companionDetourHoldTicks = builder.translation("config.youkaishomecoming.common.companion_flight.detourHoldTicks").defineInRange("detourHoldTicks", 4, 1, 20);
-            companionTargetRetraction = builder.translation("config.youkaishomecoming.common.companion_flight.targetRetraction").defineInRange("targetRetraction", 1.5, 0.1, 4.0);
-            companionTargetRecoveryTicks = builder.translation("config.youkaishomecoming.common.companion_flight.targetRecoveryTicks").defineInRange("targetRecoveryTicks", 20, 1, 200);
             builder.pop();
 			builder.translation("config.youkaishomecoming.common.spell_ai").push("spell_ai");
 			{

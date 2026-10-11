@@ -122,6 +122,16 @@ tasks.register('runPilotPredictTest', JavaExec) {
     dependsOn tasks.named('testClasses')
 }
 
+['Math', 'Settings', 'Avoidance'].each { suffix ->
+    tasks.register("runCompanionFlight${suffix}Test", JavaExec) {
+        group = 'verification'
+        description = "Run focused companion flight ${suffix.toLowerCase()} checks without launching Minecraft."
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = "gen.CompanionFlight${suffix}Test"
+        dependsOn tasks.named('compileTestJava')
+    }
+}
+
 tasks.register('runPilotThreatTest', JavaExec) {
     group = 'verification'
     description = 'Run Phase 1 Pilot threat/sweep self-tests (gen.PilotThreatTest).'

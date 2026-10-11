@@ -15,6 +15,10 @@ public final class CompanionFlightSettingsTest {
         YHModConfig.COMMON_SPEC.correct(config); YHModConfig.COMMON_SPEC.setConfig(config);
         var defaults = CompanionFlightSettings.parse("{}");
         check(defaults.targetMode() == TargetMode.LEGACY && defaults.maxSpeed() == .85 && defaults.updateIntervalTicks() == 1);
+        check(YHModConfig.COMMON.companionAutomaticSlots.get() && YHModConfig.COMMON.companionLocalAvoidance.get());
+        check(YHModConfig.COMMON.companionSlotSpacing.get() == 2.4 && YHModConfig.COMMON.companionLookahead.get() == 1.5);
+        check(YHModConfig.COMMON.companionDetourSpeed.get() == .4 && YHModConfig.COMMON.companionDetourHoldTicks.get() == 4);
+        check(YHModConfig.COMMON.companionTargetRetraction.get() == 1.5 && YHModConfig.COMMON.companionTargetRecoveryTicks.get() == 20);
         var lock = CompanionFlightSettings.parse("{\"target_mode\":\"PLAYER_LOCAL\",\"x\":0,\"y\":-10,\"z\":0,\"movement_mode\":\"LOCK_TO_TARGET\",\"facing_mode\":\"PLAYER_BODY\"}");
         check(lock.y() == -10 && lock.movementMode() == MovementMode.LOCK_TO_TARGET && lock.facingMode() == FacingMode.PLAYER_BODY);
         check(CompanionFlightSettings.parse(lock.json()).equals(lock));
@@ -28,6 +32,10 @@ public final class CompanionFlightSettingsTest {
                 "{\"x\":129}", "{\"y\":-129}", "{\"z\":1e1000}", "{\"target_mode\":\"ABSOLUTE\",\"x\":1,\"y\":64,\"z\":1}"}) reject(json);
         var absolute = CompanionFlightSettings.parse("{\"target_mode\":\"ABSOLUTE\",\"x\":5000,\"y\":64,\"z\":-5000,\"dimension\":\"minecraft:overworld\"}");
         check(absolute.x() == 5000 && absolute.targetMode() == TargetMode.ABSOLUTE);
+        check(!dailyFollow(absolute.targetMode(), absolute.movementMode()));
+        check(!dailyFollow(lock.targetMode(), lock.movementMode()));
+        var explicitZero = CompanionFlightSettings.parse("{\"target_mode\":\"PLAYER_LOCAL\",\"x\":0,\"y\":0,\"z\":0}");
+        check(!dailyFollow(explicitZero.targetMode(), explicitZero.movementMode()));
         System.out.println("CompanionFlightSettingsTest: " + checks + " checks passed");
     }
 }

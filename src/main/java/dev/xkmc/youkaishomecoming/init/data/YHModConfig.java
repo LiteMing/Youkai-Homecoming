@@ -305,7 +305,10 @@ public class YHModConfig {
         public final ForgeConfigSpec.DoubleValue companionOffsetX, companionOffsetY, companionOffsetZ, companionMaxSpeed;
         public final ForgeConfigSpec.IntValue companionUpdateIntervalTicks;
         public final ForgeConfigSpec.EnumValue<MovementMode> companionMovementMode;
-        public final ForgeConfigSpec.EnumValue<FacingMode> companionFacingMode;
+		public final ForgeConfigSpec.EnumValue<FacingMode> companionFacingMode;
+		public final ForgeConfigSpec.BooleanValue companionAutomaticSlots;
+		public final ForgeConfigSpec.DoubleValue companionSlotSpacing;
+		public final ForgeConfigSpec.IntValue companionPlannerSearchNodes, companionPlannerHorizon, companionPlannerReplanTicks;
 		public final ForgeConfigSpec.BooleanValue spellMarketEnabled;
 		public final ForgeConfigSpec.BooleanValue spellAiGenerationEnabled;
 		public final ForgeConfigSpec.ConfigValue<String> spellAiHeaderPrompt;
@@ -489,6 +492,15 @@ public class YHModConfig {
                     .translation("config.youkaishomecoming.common.companion_flight.updateIntervalTicks").defineInRange("updateIntervalTicks", 1, 1, 200);
             companionMovementMode = builder.translation("config.youkaishomecoming.common.companion_flight.movementMode").defineEnum("movementMode", MovementMode.STEER);
             companionFacingMode = builder.translation("config.youkaishomecoming.common.companion_flight.facingMode").defineEnum("facingMode", FacingMode.TRAVEL);
+			companionAutomaticSlots = builder.comment("Assign stable formation slots only for the default daily follow target.")
+					.define("automaticSlots", true);
+			companionSlotSpacing = builder.defineInRange("slotSpacing", 2.4, 1.0, 8.0);
+			companionPlannerSearchNodes = builder.comment("Maximum flying path nodes visited by a blocked daily companion route.")
+					.defineInRange("plannerSearchNodes", 96, 32, 512);
+			companionPlannerHorizon = builder.comment("Maximum local route horizon in blocks before the route is refreshed.")
+					.defineInRange("plannerHorizon", 12, 4, 32);
+			companionPlannerReplanTicks = builder.comment("Minimum ticks between blocked-route searches.")
+					.defineInRange("plannerReplanTicks", 10, 2, 40);
             builder.pop();
 			builder.translation("config.youkaishomecoming.common.spell_ai").push("spell_ai");
 			{

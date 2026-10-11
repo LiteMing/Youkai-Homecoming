@@ -5,12 +5,16 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.xkmc.youkaishomecoming.init.data.YHModConfig;
 import net.minecraft.nbt.CompoundTag;
+import java.util.Optional;
 import java.util.Set;
 import static dev.xkmc.youkaishomecoming.content.entity.goal.CompanionFlightMath.*;
 
 public record CompanionFlightSettings(TargetMode targetMode, double x, double y, double z,
         String dimension, double maxSpeed, int updateIntervalTicks, MovementMode movementMode, FacingMode facingMode) {
     public static final String NBT_KEY = "yh_companion_flight";
+    public static final String OWNER_KEY = "owner";
+    public static final String PLAYER_UUID_KEY = "player_uuid";
+    public static final String SETTINGS_KEY = "settings";
     private static final Gson GSON = new Gson();
     private static final Set<String> FIELDS = Set.of("target_mode", "x", "y", "z", "dimension", "max_speed",
             "update_interval_ticks", "movement_mode", "facing_mode");
@@ -63,9 +67,25 @@ public record CompanionFlightSettings(TargetMode targetMode, double x, double y,
         obj.addProperty("movement_mode", movementMode.name()); obj.addProperty("facing_mode", facingMode.name());
         return GSON.toJson(obj);
     }
-    public static CompanionFlightSettings read(CompoundTag data) {
-        if (!data.contains(NBT_KEY, 10)) return defaults();
-        try { return parse(data.getCompound(NBT_KEY).getString("settings")); }
-        catch (RuntimeException invalid) { return defaults(); }
+    /** Returns only an explicitly configured, valid YH binding. */
+    public static Optional<Configured> configured(CompoundTag data) {
+        if (!data.contains(NBT_KEY, 10)) return Optional.empty();
+        var binding = data.getCompound(NBT_KEY);
+        if (!binding.hasUUID(PLAYER_UUID_KEY) || !binding.contains(SETTINGS_KEY, 8)
+                || binding.getString(SETTINGS_KEY).isBlank()) return Optional.empty();
+        try {
+            String owner = binding.getString(OWNER_KEY);
+            if (owner.isBlank()) return Optional.empty();
+            return Optional.of(new Configured(owner, binding.getUUID(PLAYER_UUID_KEY),
+                    parse(binding.getString(SETTINGS_KEY))));
+        } catch (RuntimeException invalid) {
+            return Optional.empty();
+        }
+    }
+
+    public record Configured(String owner, java.util.UUID playerUuid, CompanionFlightSettings settings) {
+        public Configured {
+            if (owner == null || owner.isBlank() || playerUuid == null || settings == null) throw new IllegalArgumentException("Invalid companion binding");
+        }
     }
 }

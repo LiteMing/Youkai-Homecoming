@@ -28,6 +28,25 @@ public final class CompanionFlightMath {
         return changed || lastSample < 0 || tick - lastSample >= interval;
     }
 
+    public static boolean dailyFollow(TargetMode targetMode, MovementMode movementMode) {
+        return targetMode == TargetMode.LEGACY && movementMode == MovementMode.STEER;
+    }
+
+    public static Point slotTarget(Point player, float yaw, int slot, double spacing) {
+        if (slot == 0) return target(TargetMode.LEGACY, player, yaw, new Point(0, 0, 0));
+        double side = Math.sqrt(2) * 1.2;
+        return target(TargetMode.PLAYER_LOCAL, player, yaw,
+                new Point(slot % 2 == 0 ? -side : side, 1.6, side - (slot / 2) * spacing));
+    }
+
+    public static Point retract(Point target, Point player, double distance) {
+        double dx = target.x - player.x, dy = target.y - player.y, dz = target.z - player.z;
+        double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (length <= distance) return player;
+        double scale = (length - distance) / length;
+        return new Point(player.x + dx * scale, player.y + dy * scale, player.z + dz * scale);
+    }
+
     /** Preserve legacy acceleration while applying a strict magnitude limit. */
     public static Point steer(Point delta, Point velocity, double maxSpeed) {
         double distance = Math.sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);

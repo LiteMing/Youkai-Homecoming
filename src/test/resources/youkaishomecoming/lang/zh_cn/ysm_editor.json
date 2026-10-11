@@ -210,6 +210,8 @@
   "youkaishomecoming.ysm_editor.control_unsupported": "“%s”暂不支持直接调节。",
   "youkaishomecoming.ysm_editor.control_waiting": "正在等待模型参数……",
   "youkaishomecoming.ysm_editor.advanced_help": "这里包含模型的全部动画和原始数值参数。输入动作后先播放，保存仍以左侧预览为准。",
+  "youkaishomecoming.ysm_editor.raw_parameters": "原始变量",
+  "youkaishomecoming.ysm_editor.raw_parameters_help": "可选择模型中使用的变量，也可输入变量名和数值。部分变量会被动画自行重写；未初始化的值留空。",
   "youkaishomecoming.ysm_editor.capture_help": "保存当前动作与表情、外观参数。预设播放会从动作开头开始；预览的暂停位置和视角不保存。",
   "youkaishomecoming.ysm_editor.preview_face": "脸部视角",
   "youkaishomecoming.ysm_editor.preview_full": "全身视角",

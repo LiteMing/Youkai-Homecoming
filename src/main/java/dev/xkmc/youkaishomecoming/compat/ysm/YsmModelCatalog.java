@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 /** Read-only, provider-class-free catalog shared by command inspection and the YSM editor. */
 public record YsmModelCatalog(Status status, String detail, List<String> animations,
-		List<WheelEntry> wheel, List<Control> controls) {
+		List<WheelEntry> wheel, List<Control> controls, List<String> parameterNames) {
 
 	private static final Pattern ASSIGNMENT = Pattern.compile(
 			"((?:v|variable)\\.(?:roaming\\.)?[a-z_][a-z0-9_]*)\\s*=\\s*([-+]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][-+]?[0-9]+)?)\\s*;?",
@@ -20,6 +20,13 @@ public record YsmModelCatalog(Status status, String detail, List<String> animati
 		animations = List.copyOf(animations);
 		wheel = List.copyOf(wheel);
 		controls = List.copyOf(controls);
+		var names = new java.util.TreeSet<>(parameterNames);
+		for (var control : controls) if (!control.parameter().isEmpty()) names.add(control.parameter());
+		parameterNames = List.copyOf(names);
+	}
+
+	public YsmModelCatalog(Status status, String detail, List<String> animations, List<WheelEntry> wheel, List<Control> controls) {
+		this(status, detail, animations, wheel, controls, List.of());
 	}
 
 	public static YsmModelCatalog unavailable(Status status, String detail) {

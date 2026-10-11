@@ -36,6 +36,7 @@ abstract class YsmEditorPanel implements DockPanel {
 	private AbstractWidget keyboardFocused, dragging;
 	private Popup popup;
 	private long completionRequest;
+	private String rawParameterName = "", rawParameterValue = "";
 	private record Row(int top, int left, Component label, AbstractWidget widget) { }
 	protected record Option(String value, Component label, Component detail) {
 		public Option(String value, Component label) { this(value, label, Component.empty()); }
@@ -61,6 +62,42 @@ abstract class YsmEditorPanel implements DockPanel {
 	protected abstract void build();
 	protected void changed() { dirty = true; }
 	protected void toTop() { scroll = 0; dirty = true; closeOverlay(); }
+
+	/** Raw variable selection is independent of authored wheel forms. */
+	protected void rawParameters(boolean controlScope) {
+		label(YsmEditorController.text("raw_parameters_help"));
+		var parameters = controlScope ? editor.controlParameters() : editor.parameters();
+		editOptions("parameter", YsmEditorController.text("parameter_name"), rawParameterName, 128, value -> {
+			boolean wasEmpty = rawParameterName.isBlank(), wasIncluded = parameters.containsKey(rawParameterName);
+			rawParameterName = value;
+			if (wasEmpty != value.isBlank() || wasIncluded != parameters.containsKey(value)) changed();
+		}, localOptions(() -> {
+			var options = new LinkedHashMap<String, Option>();
+			for (var control : editor.catalog().controls()) if (!control.parameter().isEmpty())
+				options.putIfAbsent(control.parameter(), new Option(control.parameter(),
+						Component.literal(control.title().isBlank() ? control.parameter() : control.title()), Component.literal(control.parameter())));
+			for (String name : editor.catalog().parameterNames()) options.putIfAbsent(name, new Option(name, Component.literal(name)));
+			parameters.forEach((name, value) -> {
+				var known = options.get(name);
+				options.put(name, new Option(name, known == null ? Component.literal(name) : known.label(), Component.literal(name + " = " + value)));
+			});
+			return List.copyOf(options.values());
+		}), option -> {
+			rawParameterName = option.value();
+			Float value = parameters.get(rawParameterName);
+			if (value == null) value = editor.previewInputs().get(rawParameterName);
+			rawParameterValue = value == null ? "" : Float.toString(value);
+			changed();
+		});
+		edit("value", YsmEditorController.text("parameter_value"), rawParameterValue, 40, value -> rawParameterValue = value);
+		button(YsmEditorController.text("use_value"), () -> {
+			float value = Float.parseFloat(rawParameterValue);
+			if (controlScope) editor.controlParameter(rawParameterName, value); else editor.parameter(rawParameterName, value);
+		}, !rawParameterName.isBlank());
+		button(YsmEditorController.text(controlScope && !editor.presetControls() ? "remove_binding_parameter" : "restore_preview_parameter"),
+				() -> { if (controlScope) editor.removeControlParameter(rawParameterName); else editor.removeParameter(rawParameterName); },
+				parameters.containsKey(rawParameterName));
+	}
 
 	@Override public void setBounds(int x, int y, int w, int h) {
 		if (this.w != w) dirty = true;

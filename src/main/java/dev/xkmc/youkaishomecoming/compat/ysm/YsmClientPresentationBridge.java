@@ -46,7 +46,10 @@ public final class YsmClientPresentationBridge {
 				.map(control -> new YsmModelCatalog.Control(control.group(), control.groupLabel(), control.title(), control.description(),
 						control.type(), control.expression(), control.parameter(), control.min(), control.max(), control.step(),
 						control.choices().stream().map(choice -> new YsmModelCatalog.Choice(choice.label(), choice.expression(), choice.numericValue())).toList())).toList();
-		YsmModelCatalog result = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", source.animations(), wheel, controls);
+		List<String> parameterNames;
+		try { parameterNames = ExternalLivingPresentationAPI.parameterNames(model); }
+		catch (NoSuchMethodError ignored) { parameterNames = List.of(); } // OYSM 0.2.0–0.2.2 retain authored forms.
+		YsmModelCatalog result = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", source.animations(), wheel, controls, parameterNames);
 		CATALOGS.put(model, new CatalogSnapshot(source, result));
 		return result;
 	}

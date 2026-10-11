@@ -15,7 +15,7 @@ import static dev.xkmc.youkaishomecoming.content.spell.preview.YsmEditorControll
 public final class YsmPresetsDockPanel extends YsmEditorPanel {
 
 	private final Runnable openScenarios, openCatalog;
-	private String parameterName = "", parameterValue = "0", page = "wheel";
+	private String page = "wheel";
 	private String wheelGroup = "", wheelTitle = "", controlGroup = "", shownModel = "";
 	private final ArrayDeque<Menu> parents = new ArrayDeque<>();
 	private record Menu(String group, String title, int page) { }
@@ -140,7 +140,7 @@ public final class YsmPresetsDockPanel extends YsmEditorPanel {
 		var groups = new LinkedHashMap<String, Option>();
 		for (var control : catalog.controls()) groups.putIfAbsent(control.group(), new Option(control.group(),
 				Component.literal(control.groupLabel().isBlank() ? control.group() : control.groupLabel())));
-		if (groups.isEmpty()) { label(text("no_editable_parameters")); return; }
+		if (groups.isEmpty()) { rawParameters(false); return; }
 		if (!groups.containsKey(controlGroup)) controlGroup = groups.keySet().iterator().next();
 		select("native_group", text("control_group"), controlGroup, List.copyOf(groups.values()), value -> { controlGroup = value; changed(); });
 		label(text("native_live_help"));
@@ -162,18 +162,7 @@ public final class YsmPresetsDockPanel extends YsmEditorPanel {
 		edit("clip", text("clip"), editor.clip(), 128, editor::clip, () -> editor.catalog().animations());
 		button(text("preview_play"), editor::previewDraft, true);
 		label(text("parameter_count", editor.parameters().size()));
-		editOptions("parameter", text("parameter_name"), parameterName, 128, value -> {
-			boolean wasEmpty = parameterName.isBlank(), wasIncluded = editor.parameters().containsKey(parameterName);
-			parameterName = value;
-			if (wasEmpty != value.isBlank() || wasIncluded != editor.parameters().containsKey(value)) changed();
-		}, localOptions(this::parameterOptions), option -> {
-			parameterName = option.value();
-			parameterValue = Float.toString(editor.parameters().getOrDefault(parameterName, 0f));
-			changed();
-		});
-		edit("value", text("parameter_value"), parameterValue, 40, value -> parameterValue = value);
-		button(text("add_parameter"), () -> editor.parameter(parameterName, Float.parseFloat(parameterValue)), !parameterName.isBlank());
-		button(text("restore_preview_parameter"), () -> editor.removeParameter(parameterName), editor.parameters().containsKey(parameterName));
+		rawParameters(false);
 		button(text("catalog"), openCatalog, true);
 	}
 
@@ -190,15 +179,4 @@ public final class YsmPresetsDockPanel extends YsmEditorPanel {
 		return options;
 	}
 
-	private List<Option> parameterOptions() {
-		var options = new LinkedHashMap<String, Option>();
-		for (var control : editor.catalog().controls()) if (!control.parameter().isEmpty())
-			options.putIfAbsent(control.parameter(), new Option(control.parameter(),
-					Component.literal(control.title().isBlank() ? control.parameter() : control.title()), Component.literal(control.parameter())));
-		editor.parameters().forEach((name, value) -> {
-			var known = options.get(name);
-			options.put(name, new Option(name, known == null ? Component.literal(name) : known.label(), Component.literal(name + " = " + value)));
-		});
-		return List.copyOf(options.values());
-	}
 }

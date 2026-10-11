@@ -156,6 +156,12 @@ public final class ModelPresentationTest {
 		var catalog = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra5"), List.of(menu), List.of(radio));
 		check("known parameter validated", !catalog.accepts(variable, 3));
 		check("raw numeric variables remain usable", catalog.accepts("v.ysmemoji", 1));
+		var legacy = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra2"), List.of(), List.of(),
+				List.of("v.qh2", "v.qh", "v.jump", "v.random", "v.qh"));
+		equal("form-free variables remain selectable", legacy.parameterNames(), List.of("v.jump", "v.qh", "v.qh2", "v.random"));
+		check("raw directory does not fabricate native forms", legacy.controls().isEmpty());
+		check("raw directory does not invent ranges", legacy.accepts("v.qh", 1));
+		equal("older catalog callers retain authored parameters", catalog.parameterNames(), List.of(variable));
 		var child = YsmModelCatalog.wheelEntry("Actions", "extra5", "Smile", List.of("extra5"), Map.of());
 		var hierarchy = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra5"), List.of(menu, submenu, child), List.of(radio));
 		equal("root wheel never flattens author submenus", hierarchy.wheelEntries(""), List.of(menu, submenu));
@@ -562,6 +568,7 @@ public final class ModelPresentationTest {
 		check("public lease is closeable", AutoCloseable.class.isAssignableFrom(frame));
 		check("public lease reports original parameter values", frame.getMethod("parameterBases").getReturnType() == Map.class);
 		check("public preview input contract", api.getMethod("previewInputs", living, List.class).getReturnType() == Map.class);
+		check("public model variable directory", api.getMethod("parameterNames", String.class).getReturnType() == List.class);
 		check("public preview cleanup contract", api.getMethod("forget", living).getReturnType() == void.class);
 		check("public model pack registration", Class.forName("rip.ysm.api.ExternalModelPackAPI", false, loader)
 				.getMethod("registerDirectory", String.class, java.nio.file.Path.class, String.class).getReturnType() == void.class);

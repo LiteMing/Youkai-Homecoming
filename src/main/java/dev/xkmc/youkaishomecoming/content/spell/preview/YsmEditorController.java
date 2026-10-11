@@ -480,7 +480,7 @@ public final class YsmEditorController {
 		if (holder == null || profile == null) return Map.of();
 		var resolved = YsmClientProfiles.resolve(holder.getFakeCaster(), model());
 		var inputs = YsmClientPresentationBridge.previewInputs(holder.getFakeCaster(), model(),
-				catalog().controls().stream().filter(YsmModelCatalog.Control::editable).map(YsmModelCatalog.Control::parameter).distinct().toList());
+				catalog().parameterNames());
 		var values = new LinkedHashMap<String, Float>(inputs == null ? Map.of() : inputs);
 		values.putAll(resolved.parameters());
 		return values;

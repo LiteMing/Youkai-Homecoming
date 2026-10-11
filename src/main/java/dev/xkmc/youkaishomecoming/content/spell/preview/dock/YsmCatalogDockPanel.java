@@ -25,6 +25,7 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 	private List<String> previousModels = List.of();
 	private final Map<String, String> rangeInputs = new LinkedHashMap<>();
 	private PreviewCardHolder candidatePreview;
+	private boolean rawControls;
 	private String candidateModel = "";
 	public YsmCatalogDockPanel(YsmEditorController editor) { super(editor); }
 	@Override public String dockId() { return "ysm_catalog"; }
@@ -190,7 +191,10 @@ public final class YsmCatalogDockPanel extends YsmEditorPanel {
 				value -> { editor.presetControls(value.equals("preset")); rangeInputs.clear(); });
 		label(editor.presetControls() ? text("control_preset", editor.presetId()) : text("control_binding"));
 		var editable = catalog.controls().stream().filter(this::editable).toList();
-		if (editable.isEmpty()) { label(text("no_editable_parameters")); return; }
+		if (!editable.isEmpty()) choiceGrid("parameter_mode", List.of(new Option("forms", text("controls")),
+				new Option("raw", text("raw_parameters"))), rawControls ? "raw" : "forms", 2,
+				value -> { rawControls = value.equals("raw"); changed(); });
+		if (editable.isEmpty() || rawControls) { rawParameters(true); return; }
 		var groups = new LinkedHashMap<String, Option>();
 		groups.put("", new Option("", text("all_groups")));
 		for (var control : editable) if (!control.group().isEmpty())

@@ -2320,6 +2320,8 @@
   "youkaishomecoming.ysm_editor.control_unsupported": "“%s” does not support direct adjustment here.",
   "youkaishomecoming.ysm_editor.control_waiting": "Waiting for model inputs…",
   "youkaishomecoming.ysm_editor.advanced_help": "All animations and raw numeric inputs are available here. Play an entered animation first; saving captures the displayed preview.",
+  "youkaishomecoming.ysm_editor.raw_parameters": "Raw variables",
+  "youkaishomecoming.ysm_editor.raw_parameters_help": "Choose a variable used by the model, or enter a variable name and number. Animations may overwrite some variables; uninitialized values are left blank.",
   "youkaishomecoming.ysm_editor.capture_help": "Saves the current action, expression and appearance inputs. Playback starts at the beginning of the action; the paused frame and camera view are not saved.",
   "youkaishomecoming.ysm_editor.preview_face": "Face view",
   "youkaishomecoming.ysm_editor.preview_full": "Full body view",

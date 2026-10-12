@@ -1,3 +1,9 @@
+2.7.0+HCDRS 0.34.0
+- 通用模型 editor、preset 定义和语义绑定的保存/同步全部移交 OYSM HCD 0.4.0；删除 YH profile 数据层、网络包、旧 editor panels 和兼容导入路径。
+- YH 仅注册资源、定义参数与业务信号，读取 OYSM 分配的 ID 和最新绑定。模型资源移动到 models/ysm，模型入口必须完整指定 main/arm/projectile/vehicle。
+- /yhysm editor 打开 OYSM 原生界面。CreatureChat 脚本目录查询改用 ExternalPresetAPI.catalogJson，实体应用、owner 状态与释放仍走 YHModel。
+- 删除旧 Shooter 平铺字段读取；使用 spawn_shooter.ysm。原生模型参数/动画预览和联机行为仍需实机验收。
+
 2.7.0+HCDRS 0.32.0
 - 模型目录、外部生物表现准备、重播、动画时钟修复、数值覆盖与恢复改用 OYSM HCD 0.2.0 公开 API；移除供应商内部反射和手持物/玩家提示 mixin。
 - 蕾米莉亚由 YH JAR 直接注册到 OYSM 模型加载与同步管线，不再复制到 custom 目录；保留 YH内置/remilia ID，OYSM 不再重复分发该模型。旧 custom 模型仍有覆盖优先级。

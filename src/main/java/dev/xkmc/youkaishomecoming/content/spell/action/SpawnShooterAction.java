@@ -23,7 +23,7 @@ import java.util.Optional;
  *
  * <p>The initial YSM override is one shared {@link YsmRenderConfig}. It is the
  * same model/texture/animation-hint route used by spell-side YSM context hints;
- * the /yhysm editor remains the owner of profiles, presets and parameters.
+ * the OYSM editor owns model catalogs and presets.
  */
 public record SpawnShooterAction(
         int health,
@@ -71,22 +71,14 @@ public record SpawnShooterAction(
             MoverConfig.CODEC.optionalFieldOf("mover").forGetter(SpawnShooterAction::mover),
 			YsmRenderConfig.CODEC.optionalFieldOf("ysm").forGetter(ssa ->
 					ssa.ysm().enabled() ? Optional.of(ssa.ysm()) : Optional.empty()),
-			// Read the pre-0.29 flat fields, but never emit them from new saves.
-			Codec.STRING.optionalFieldOf("ysm_model", "").forGetter(ssa -> ""),
-			Codec.STRING.optionalFieldOf("ysm_texture", "").forGetter(ssa -> ""),
-			Codec.STRING.optionalFieldOf("ysm_animation", "").forGetter(ssa -> ""),
-			Codec.INT.optionalFieldOf("ysm_duration", 0).forGetter(ssa -> 0),
-			Codec.STRING.optionalFieldOf("ysm_clear_target", "changed").forGetter(ssa -> "changed"),
 			Codec.BOOL.optionalFieldOf("targetable", true).forGetter(SpawnShooterAction::targetable),
 			SpellAction.CODEC.listOf().fieldOf("body").forGetter(SpawnShooterAction::body),
 			Codec.BOOL.optionalFieldOf("random_axis", true).forGetter(SpawnShooterAction::randomAxis)
-	).apply(i, (base, circle, groupRotation, mover, nestedYsm, legacyModel, legacyTexture, legacyHint,
-			legacyDuration, legacyClearTarget, targetable, body, randomAxis) -> new SpawnShooterAction(
+	).apply(i, (base, circle, groupRotation, mover, nestedYsm, targetable, body, randomAxis) -> new SpawnShooterAction(
 			base.health, base.damage, base.lifetime, circle, base.origin,
 			base.count, base.speed, base.angleOffset, base.spread, base.elevation,
 			base.pattern, base.aimMode, base.outerCount, base.tiltAngle, groupRotation, mover,
-			nestedYsm.orElseGet(() -> new YsmRenderConfig(legacyModel, legacyTexture, legacyHint,
-					legacyDuration, legacyClearTarget)), targetable, body, randomAxis
+			nestedYsm.orElse(YsmRenderConfig.EMPTY), targetable, body, randomAxis
 	)));
 
     public SpawnShooterAction {
@@ -116,22 +108,6 @@ public record SpawnShooterAction(
                 YsmRenderConfig.EMPTY, true, body, true);
     }
 
-    /** Backwards-compatible Java constructor for callers that still pass the five legacy fields. */
-    public SpawnShooterAction(
-            int health, float damage, int lifetime, ResourceLocation circle, OriginConfig origin,
-            NumberProvider count, NumberProvider speed, NumberProvider angleOffset, NumberProvider spread,
-            NumberProvider elevation, PatternType pattern, AimMode aimMode, Optional<NumberProvider> outerCount,
-            Optional<NumberProvider> tiltAngle, Optional<GroupRotation> groupRotation, Optional<MoverConfig> mover,
-            String ysmModel, String ysmTexture, String ysmAnimation, int ysmDuration, String ysmClearTarget,
-            boolean targetable, List<SpellAction> body) {
-        this(health, damage, lifetime, circle, origin, count, speed, angleOffset, spread, elevation,
-                pattern, aimMode, outerCount, tiltAngle, groupRotation, mover,
-                new YsmRenderConfig(ysmModel, ysmTexture, ysmAnimation, ysmDuration, ysmClearTarget),
-                targetable, body, true);
-    }
-
-    /* Legacy accessors keep editor and external Java callers source-compatible while the
-     * serialized/configuration representation is now the shared YsmRenderConfig. */
     public String ysmModel() { return ysm.model(); }
     public String ysmTexture() { return ysm.texture(); }
     public String ysmAnimation() { return ysm.hint(); }

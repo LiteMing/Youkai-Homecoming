@@ -3,7 +3,7 @@ package dev.xkmc.youkaishomecoming.content.spell.preview;
 import com.mojang.serialization.JsonOps;
 import dev.xkmc.youkaishomecoming.content.entity.danmaku.HitBehavior;
 import dev.xkmc.youkaishomecoming.compat.ysm.YSMClientCompat;
-import dev.xkmc.youkaishomecoming.compat.ysm.YsmEditorCatalog;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmModelCatalogBridge;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmRenderConfig;
 import dev.xkmc.youkaishomecoming.content.spell.action.*;
@@ -912,10 +912,10 @@ public class ActionEditorPanel {
 			currentDepth++;
 			addButtonRow("+ Enable YSM Projectile", () -> {
 				String model = ysmPreviewModel.get();
-				if (model.isBlank()) model = YsmEditorCatalog.modelIds().stream().findFirst().orElse("");
+				if (model.isBlank()) model = YsmModelCatalogBridge.modelIds().stream().findFirst().orElse("");
 				String selectedModel = model;
 				notifyDanmaku(old -> old.withYsmProjectile(Optional.of(new YsmProjectileConfig(
-						YsmProjectileConfig.ModelSource.FIXED, selectedModel, "arrow", 1.0f, 8,
+						YsmProjectileConfig.ModelSource.FIXED, selectedModel, 1.0f, 8,
 						YsmProjectileConfig.Fallback.YH, false))));
 			});
 			currentDepth--;
@@ -927,7 +927,7 @@ public class ActionEditorPanel {
 		YsmProjectileConfig config = action.ysmProjectile().get();
 		// The supplier is evaluated when the arrow is opened, so a resource-pack
 		// reload immediately changes the available model choices.
-		addYsmProjectileModelRow(YsmEditorCatalog.modelReference(config.model(), config.slot()), value ->
+		addYsmProjectileModelRow(YsmModelCatalogBridge.modelReference(config.model()), value ->
 				notifyDanmaku(old -> old.withYsmProjectile(old.ysmProjectile()
 					.map(current -> current.withReference(value))), false));
 		addFloatRow("Model Scale", config.modelScale(), value ->
@@ -973,17 +973,17 @@ public class ActionEditorPanel {
 		if (action.ysmProjectile().isEmpty()) {
 			addButtonRow("+ Enable YSM Projectile", () -> {
 				String model = ysmPreviewModel.get();
-				if (model.isBlank()) model = YsmEditorCatalog.modelIds().stream().findFirst().orElse("");
+				if (model.isBlank()) model = YsmModelCatalogBridge.modelIds().stream().findFirst().orElse("");
 				String selectedModel = model;
 				notifyLaser(old -> old.withYsmProjectile(Optional.of(new YsmProjectileConfig(
-						YsmProjectileConfig.ModelSource.FIXED, selectedModel, "arrow", 1.0f, 8,
+						YsmProjectileConfig.ModelSource.FIXED, selectedModel, 1.0f, 8,
 						YsmProjectileConfig.Fallback.YH, false))));
 			});
 			currentDepth--;
 			return;
 		}
 		YsmProjectileConfig config = action.ysmProjectile().get();
-		addYsmProjectileModelRow(YsmEditorCatalog.modelReference(config.model(), config.slot()), value ->
+		addYsmProjectileModelRow(YsmModelCatalogBridge.modelReference(config.model()), value ->
 				notifyLaser(old -> old.withYsmProjectile(old.ysmProjectile()
 						.map(current -> current.withReference(value))), false));
 		addFloatRow("Model Scale", config.modelScale(), value ->
@@ -2390,7 +2390,7 @@ public class ActionEditorPanel {
 		String model = ysmHintCatalogModel;
 		if (model.isBlank()) {
 			model = ysmPreviewModel.get();
-			if (model.isBlank()) model = YsmEditorCatalog.modelIds().stream().findFirst().orElse("");
+			if (model.isBlank()) model = YsmModelCatalogBridge.modelIds().stream().findFirst().orElse("");
 			ysmHintCatalogModel = model;
 		}
 		addYsmModelRow(model, value -> ysmHintCatalogModel = value);
@@ -2403,19 +2403,19 @@ public class ActionEditorPanel {
 	}
 
 	private void addYsmModelRow(String current, Consumer<String> onChange) {
-		EditBox editBox = addSuggestStringRow(ysmLabel("action.model"), YsmEditorCatalog.modelReference(current, null),
-				YsmEditorCatalog::modelIds, onChange);
+		EditBox editBox = addSuggestStringRow(ysmLabel("action.model"), YsmModelCatalogBridge.modelReference(current),
+				YsmModelCatalogBridge::modelIds, onChange);
 		folderCompletionTargets.add(editBox);
-		completionFolderFunctions.put(editBox, YsmEditorCatalog::parent);
+		completionFolderFunctions.put(editBox, YsmModelCatalogBridge::parent);
 		completionLabelFunctions.put(editBox, Function.identity());
 	}
 
 	/** Model selector shared by projectile presentation rows. */
 	private void addYsmProjectileModelRow(String current, Consumer<String> onChange) {
-		EditBox editBox = addSuggestStringRow(ysmLabel("action.model"), YsmEditorCatalog.modelReference(current, null),
-				YsmEditorCatalog::modelIds, onChange);
+		EditBox editBox = addSuggestStringRow(ysmLabel("action.model"), YsmModelCatalogBridge.modelReference(current),
+				YsmModelCatalogBridge::modelIds, onChange);
 		folderCompletionTargets.add(editBox);
-		completionFolderFunctions.put(editBox, YsmEditorCatalog::parent);
+		completionFolderFunctions.put(editBox, YsmModelCatalogBridge::parent);
 		completionLabelFunctions.put(editBox, Function.identity());
 	}
 
@@ -2423,7 +2423,7 @@ public class ActionEditorPanel {
 		EditBox editBox = addSuggestStringRow(ysmLabel("action.hint"), current,
 				() -> ysmHintOptions(modelSupplier.get()), onChange);
 		folderCompletionTargets.add(editBox);
-		completionFolderFunctions.put(editBox, YsmEditorCatalog::animationGroup);
+		completionFolderFunctions.put(editBox, YsmModelCatalogBridge::animationGroup);
 		completionLabelFunctions.put(editBox, Function.identity());
 	}
 
@@ -2472,7 +2472,7 @@ public class ActionEditorPanel {
 				notifySimple(old -> ((ShowSpellCardAction) old).withRadius(v)));
 	}
 
-	private static String ysmLabel(String key) { return YsmEditorController.text(key).getString(); }
+	private static String ysmLabel(String key) { return key; }
 
 	private static String currentYsmModel(SpawnShooterAction action) {
 		return action.ysmModel().isBlank() ? "" : action.ysmModel();

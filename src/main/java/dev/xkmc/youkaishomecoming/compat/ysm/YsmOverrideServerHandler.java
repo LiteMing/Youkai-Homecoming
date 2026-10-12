@@ -45,7 +45,7 @@ public class YsmOverrideServerHandler {
 			return;
 		}
 		try {
-			YHModel.validatePreset(new YsmModelProfile.Preset("", "", 0, request.parameters));
+			YHModel.validatePreset(new YsmPresetBridge.Preset("request", request.modelId, "", "", 0, request.parameters));
 		} catch (IllegalArgumentException ex) {
 			reply(player, data, request, false, ex.getMessage());
 			return;

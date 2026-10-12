@@ -109,7 +109,7 @@ final class YsmPresentationClientCommands {
 			if (!model.isEmpty()) models.add(model);
 		}
 		if (models.isEmpty() || kind == YsmCommandSuggestions.Kind.MODEL) {
-			models.addAll(YsmEditorCatalog.modelIds());
+			models.addAll(YsmModelCatalogBridge.modelIds());
 		}
 		Map<String, Component> values = new TreeMap<>();
 		String parameter = YsmCommandSuggestions.argument(ctx, "parameter");
@@ -137,7 +137,7 @@ final class YsmPresentationClientCommands {
 					values.put(Double.toString(control.max()), Component.literal(control.title()));
 				}
 			}
-			for (var entry : YsmClientProfiles.entry(model).profile().presets().entrySet()) {
+			for (var entry : YsmPresetBridge.presets(model).entrySet()) {
 				var preset = entry.getValue();
 				if (kind == YsmCommandSuggestions.Kind.PRESET) values.put(entry.getKey(), Component.literal(preset.description()));
 				if (kind == YsmCommandSuggestions.Kind.CLIP && !preset.clip().isEmpty()) values.putIfAbsent(preset.clip(), Component.literal(preset.description()));

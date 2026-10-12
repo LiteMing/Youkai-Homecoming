@@ -5,6 +5,7 @@ import org.jetbrains.annotations.Nullable;
 import net.minecraft.world.entity.Entity;
 
 import java.util.List;
+import java.util.Map;
 import com.google.gson.JsonObject;
 
 /**
@@ -48,7 +49,7 @@ public final class YHModel {
 		target.setYsmPresentation(currentForMutation(target).clearParameters());
 	}
 
-	/** Clears only new presentation requests, not model/texture bindings or legacy ysm_render fields. */
+	/** Clears only presentation requests, not model/texture bindings or action-scoped overrides. */
 	public static void clear(YsmRenderOverrideTarget target) {
 		target.setYsmPresentation(currentForMutation(target).stop().clearParameters());
 	}
@@ -74,20 +75,17 @@ public final class YHModel {
 
 	/** The server's registered groups, not the client's native wheel/catalog. */
 	public static List<String> listPresets(YsmRenderOverrideTarget target, String model) {
-		return profile(target, model).presets().keySet().stream().sorted().toList();
+		return YsmPresetBridge.presets(model).keySet().stream().sorted().toList();
 	}
 
 	public static List<String> listModels(YsmRenderOverrideTarget target) {
 		currentForMutation(target);
-		if (!(target instanceof Entity entity) || entity.getServer() == null) throw new IllegalArgumentException("Shared preset queries require a server entity");
-		return YsmProfileData.get(entity.getServer()).entries().keySet().stream().sorted().toList();
+		return YSMClientCompat.loadedModelIds();
 	}
 
 	public static String describePreset(YsmRenderOverrideTarget target, String model, String id) {
 		return preset(target, model, id).description();
 	}
-
-	public static String profileJson(YsmRenderOverrideTarget target, String model) { return profile(target, model).toJson(); }
 
 	/** Uses the registered default duration. State-trigger mappings ignore this duration for persistent states. */
 	public static void applyPreset(YsmRenderOverrideTarget target, String model, String id) {
@@ -148,18 +146,13 @@ public final class YHModel {
 				source, YHModConfig.COMMON.modelPresentationMaxParameters.get());
 	}
 
-	private static YsmModelProfile profile(YsmRenderOverrideTarget target, String model) {
-		currentForMutation(target);
-		return target.ysmProfile(model);
-	}
-
-	private static YsmModelProfile.Preset preset(YsmRenderOverrideTarget target, String model, String id) {
-		var value = profile(target, model).presets().get(YsmModelProfile.presetId(id));
+	private static YsmPresetBridge.Preset preset(YsmRenderOverrideTarget target, String model, String id) {
+		var value = YsmPresetBridge.find(model, id);
 		if (value == null) throw new IllegalArgumentException("Unknown preset: " + id);
 		return value;
 	}
 
-	static void validatePreset(YsmModelProfile.Preset preset) {
+	static void validatePreset(YsmPresetBridge.Preset preset) {
 		checkDuration(preset.ticks());
 		if (preset.parameters().size() > YHModConfig.COMMON.modelPresentationMaxParameters.get()) throw new IllegalArgumentException("Too many preset parameters");
 		for (float value : preset.parameters().values())

@@ -37,8 +37,6 @@ public final class YsmPresentationCommands {
 
 	private static void registerCurrent(RegisterCommandsEvent event) {
 		event.getDispatcher().register(Commands.literal("yhysm").requires(source -> source.hasPermission(2))
-				.then(Commands.literal("debug")
-						.then(Commands.literal("reload").executes(YsmPresentationCommands::reloadPresets)))
 				.then(buildSetCommand()));
 	}
 
@@ -88,20 +86,6 @@ public final class YsmPresentationCommands {
 				uuids.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(",")));
 		YsmOverrideServerHandler.handle(player, request);
 		return uuids.size();
-	}
-
-	private static int reloadPresets(CommandContext<CommandSourceStack> ctx) {
-		try {
-			var server = ctx.getSource().getServer();
-			var data = YsmProfileData.get(server);
-			data.reload();
-			YsmProfileServerHandler.syncToAll(server);
-			ctx.getSource().sendSuccess(() -> Component.translatable("commands.youkaishomecoming.model.profiles_reloaded", data.entries().size()), true);
-			return 1;
-		} catch (IllegalArgumentException ex) {
-			ctx.getSource().sendFailure(Component.translatable("commands.youkaishomecoming.model.profiles_reload_failed", ex.getMessage()));
-			return 0;
-		}
 	}
 
 	private static int applyPreset(CommandContext<CommandSourceStack> ctx, int ticks) throws CommandSyntaxException {

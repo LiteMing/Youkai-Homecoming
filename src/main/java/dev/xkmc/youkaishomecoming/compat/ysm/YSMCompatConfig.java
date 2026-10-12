@@ -30,9 +30,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class YSMCompatConfig {
 
-	private static final String RESOURCE_DIR = "yhysm";
+	private static final String RESOURCE_DIR = "models/ysm";
 	private static final String DEFAULT_TEXTURE = "default";
-	private static final Path EXTERNAL_CONFIG = FMLPaths.CONFIGDIR.get().resolve(YoukaisHomecoming.MODID).resolve("ysm_defaults.json");
+	private static final Path EXTERNAL_CONFIG = FMLPaths.CONFIGDIR.get().resolve(YoukaisHomecoming.MODID).resolve("model_bindings.json");
 	private static final Gson JSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 	/** Native player predicates also read model rules from OpenYSM's animation worker. */
 	private static final Map<String, ModelRule> MODEL_RULES = new java.util.concurrent.ConcurrentHashMap<>();
@@ -117,7 +117,6 @@ public final class YSMCompatConfig {
 
 	private static List<String> expressionAnimations(String modelId, String expression) {
 		ModelRule rule = MODEL_RULES.get(modelId);
-		if (rule == null && modelId != null) rule = MODEL_RULES.get(YsmModelPaths.mainAlias(modelId));
 		if (rule != null) {
 			List<String> configured = rule.expressions().get(expression);
 			if (configured != null) {
@@ -140,12 +139,12 @@ public final class YSMCompatConfig {
 		if (!Files.isRegularFile(EXTERNAL_CONFIG)) return new JsonObject();
 		try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(EXTERNAL_CONFIG), StandardCharsets.UTF_8)) {
 			JsonElement parsed = JsonParser.parseReader(reader);
-			if (!parsed.isJsonObject()) throw new IllegalArgumentException("profile_storage: YSM defaults root must be an object");
+			if (!parsed.isJsonObject()) throw new IllegalArgumentException("model_bindings: root must be an object");
 			return parsed.getAsJsonObject();
 		} catch (IOException | RuntimeException ex) {
 			if (ex instanceof IllegalArgumentException illegal && illegal.getMessage() != null
-					&& illegal.getMessage().startsWith("profile_storage:")) throw illegal;
-			throw new IllegalArgumentException("profile_storage: Invalid YSM defaults JSON: " + ex.getMessage(), ex);
+					&& illegal.getMessage().startsWith("model_bindings:")) throw illegal;
+			throw new IllegalArgumentException("model_bindings: invalid JSON: " + ex.getMessage(), ex);
 		}
 	}
 
@@ -174,7 +173,7 @@ public final class YSMCompatConfig {
 				Files.move(temporary, EXTERNAL_CONFIG, StandardCopyOption.REPLACE_EXISTING);
 			}
 		} catch (IOException ex) {
-			throw new IllegalArgumentException("profile_storage: " + EXTERNAL_CONFIG + ": " + ex.getMessage(), ex);
+			throw new IllegalArgumentException("model_bindings: " + EXTERNAL_CONFIG + ": " + ex.getMessage(), ex);
 		} finally {
 			if (temporary != null) {
 				try { Files.deleteIfExists(temporary); }
@@ -297,9 +296,9 @@ public final class YSMCompatConfig {
 		// Single choke point: command text, config JSON and saved data may all carry a quoted
 		// id (chat copy-paste, StringArgumentType.escapeIfRequired). Normalize it here so the
 		// binding resolves to the real model instead of silently matching nothing.
-		modelId = YsmModelProfile.unquoteModelId(modelId);
+		modelId = YsmModelPaths.modelId(modelId);
 		// Binding appearance uses the same bounded numeric literals as presets, but never expires.
-		parameters = new YsmModelProfile.Preset("", "", 0, parameters).parameters();
+		parameters = new YsmPresetBridge.Preset("binding", modelId, "", "", 0, parameters).parameters();
 	}
 
 		public RenderBinding(String modelId, String textureName, boolean enabled) {

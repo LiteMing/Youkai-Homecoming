@@ -5,12 +5,21 @@ import net.minecraft.nbt.CompoundTag;
 import java.util.EnumMap;
 import java.util.Map;
 
-import static dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger;
-
 /** Server-authored edges and persistent state, independent of the model installed on an observer. */
 public record YsmPresentationSignals(Trigger state, long stateAt, long stateSequence,
 		CombatMode combatMode, long combatModeAt, long combatModeSequence,
 		boolean combat, Map<Trigger, Event> events) {
+
+	public enum Trigger {
+		IDLE, WALK, AIRBORNE, FLY, SIT, SWIM, NORMAL_COMBAT, STG_COMBAT, ENTER_COMBAT, SPELL_SWITCH, MELEE_ATTACK, HURT,
+		BOSS_VICTORY, DEFEAT, FALLING, PRONE;
+
+		public String id() { return name().toLowerCase(java.util.Locale.ROOT); }
+		public boolean event() { return this == ENTER_COMBAT || this == SPELL_SWITCH || this == MELEE_ATTACK || this == HURT || this == BOSS_VICTORY; }
+		public boolean combatCondition() { return this == NORMAL_COMBAT || this == STG_COMBAT; }
+		public boolean beaten() { return this == DEFEAT || this == FALLING || this == PRONE; }
+		public static Trigger parse(String id) { return valueOf(id.toUpperCase(java.util.Locale.ROOT)); }
+	}
 
 	public enum CombatMode {
 		NONE, NORMAL, STG;

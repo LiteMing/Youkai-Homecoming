@@ -6,7 +6,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 /**
  * A small, shared initial YSM override used by spell actions.
  *
- * <p>This is deliberately limited to the legacy override fields that the
+ * <p>This is deliberately limited to the action-scoped override fields that the
  * client renderer still consumes: model, texture and an animation hint. It
  * does not contain the newer YHModel presentation state (presets, parameters
  * or exact clips); those belong to the YSM editor and its shared profile.

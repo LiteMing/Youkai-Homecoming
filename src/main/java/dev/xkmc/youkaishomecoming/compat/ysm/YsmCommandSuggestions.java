@@ -44,18 +44,13 @@ public final class YsmCommandSuggestions {
 					if (kind == Kind.TARGETS) return EntityArgument.entities().listSuggestions(context, builder);
 					// A dedicated server can suggest shared definitions, but cannot inspect client assets.
 					if (source.getServer() == null) return Suggestions.empty();
-					var profiles = YsmProfileData.get(source.getServer()).entries();
 					String model = argument(context, "model"), parameter = argument(context, "parameter");
 					var values = new TreeSet<String>();
-					profiles.forEach((id, entry) -> {
-						if (kind == Kind.MODEL) values.add(id);
-						if (!model.isEmpty() && !model.equals(id)) return;
-						entry.profile().presets().forEach((name, preset) -> {
+					if (!model.isEmpty() && YsmPresetBridge.available()) YsmPresetBridge.presets(model).forEach((name, preset) -> {
 							if (kind == Kind.PRESET) values.add(name);
 							if (kind == Kind.CLIP && !preset.clip().isEmpty()) values.add(preset.clip());
 							if (kind == Kind.PARAMETER) values.addAll(preset.parameters().keySet());
 							if (kind == Kind.VALUE && preset.parameters().containsKey(parameter)) values.add(Float.toString(preset.parameters().get(parameter)));
-						});
 					});
 					return strings(values, builder);
 				});

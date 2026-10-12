@@ -15,7 +15,7 @@ public enum EditorMode {
 
 	SPELL("spell", "Spell", "Mode: Spell"),
 	MAGIC_CIRCLE("magic_circle", "Magic Circle", "Mode: Circle"),
-	YSM("ysm", "YSM", "Mode: YSM");
+	;
 
 	private final String key;
 	private final String displayName;

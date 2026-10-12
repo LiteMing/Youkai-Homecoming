@@ -1,238 +1,96 @@
-# YHModel — 模型表现接口（0.30.2）
+# YHModel 与 OYSM preset 契约（HCDRS 0.34.0）
 
-## 0.32.0 供应商职责迁移
+OYSM HCD 0.4.0 是模型目录、原生预览、参数/转盘控件、preset 定义、状态绑定、保存与同步的唯一所有者。
+YH 提供模型资产、业务信号和实体表现请求。YH 没有第二份 profile、预设库或通用 editor；
+`profileJson`、旧 profile 网络包和旧 JSON 导入路径已经删除。服务器查询命名预设需要安装 OYSM。
 
-模型包加载、目录读取、数值租约、重播、时钟修复和原生渲染层改由 OYSM HCD 0.2.0
-公开 API 实现。YH 的脚本、预设与战斗信号契约保持；迁移边界与旧 custom 资源处理见
-[0.32.0 解耦说明](0.32.0-oysm-decoupling.md)。
+## 查询和调用
 
-状态：控制接口、预设查询与应用已接入源码；不是实机验收声明，画面和联机验收尚未完成。
-第三种 YSM Editor、服务端共享预设和状态映射已接入。用户操作见 `docs/ysm-editor-user-checklist.md`；
-供应商边界及迁移官方 YSM 的说明见 `docs-dev/ysm-official-migration.md`。
-
-符卡动作节点提供 `show_spell_card`：在施法者身前短暂展示当前 `spellId` 对应的
-`DynamicSpellItem` 卡片。节点可选择 `hand=random|left|right`，默认随机从一只手出现；
-`offset_right`、`offset_up`、`offset_forward` 是相对所选手部原点的实体局部坐标偏移。
-`hold_ticks`、`throw_ticks`、`float_ticks` 分别控制手持、旋转抛出和漂浮淡出阶段，默认 10/8/22；
-旧节点的 `duration` 继续按 10:8:22 比例换算。服务端同步 spellId、手、偏移、各阶段时长与序号，
-客户端复用 `SpellCardItemRenderer`；不生成掉落物、不改装备，观察半径由节点参数控制。
-动作通过 runtime host 解析实际表现实体：玩家符卡使用 player proxy 驱动时仍绑定到真实玩家的手部原点，
-附着式 proxy 绑定到宿主，Boss 绑定到自身；不可见 proxy 本身不作为卡片位置来源。
-当前第一人称相机所附着实体的世界卡片会隐藏，第三人称和其他观察者仍正常渲染。
-
-## 公共契约登记
-
-- Java：`dev.xkmc.youkaishomecoming.compat.ysm.YHModel`。
-- KubeJS：同一个类注册为全局 `YHModel`，没有第二套实现或客户端执行权限。
-- 目标参数类型：`YsmRenderOverrideTarget`；实际世界消费者为 YH 妖怪和发射器。
-- 世界修改必须在服务端线程执行；客户端真实实体、已移除实体会拒绝修改。
-- `PreviewCardHolder` 与假实体已接通独立内存状态和模拟时钟；YSM Editor 本地试播不向真实世界写入。
-- 接口提交的是表现请求。专用服务器无须安装 OYSM，也无须读取客户端模型资产；
-  请求被接受不代表每个观察者都拥有相同模型、动画或控件。
-
-| 方法 | 含义 |
-|---|---|
-| `supports(target)` | 对象是否实现当前表现目标接口；不表示模型已绑定或客户端资源存在 |
-| `defaultDuration()` | 配置中的默认 tick 数，并受最大持续时间限制 |
-| `play(target, clip, ticks)` | 请求一个真实动画片段，当前仅 LOOP；重复调用会生成新的重播序号 |
-| `stop(target)` | 清除新动画请求，恢复日常表现／既有发射器提示，不清模型绑定或参数 |
-| `setParameter(target, name, value, ticks)` | 设置一个数值参数的临时覆盖 |
-| `clearParameter(target, name)` | 清除此参数的新覆盖 |
-| `clearParameters(target)` | 清除全部新参数覆盖，不停止动画 |
-| `clear(target)` | 停止新动画并清除新参数，不修改模型、纹理绑定或临时模型覆盖 |
-| `getAnimation(target)` | 当前请求的片段名；无请求为 `""`，不是客户端实际选中结果 |
-| `getAnimationTicksRemaining(target)` | `0` 无请求，`-1` 保持，其余为剩余 tick |
-| `getParameter(target, name)` | 当前请求的数值覆盖；无覆盖为 `null`，不是模型的基础值 |
-| `listModels(target)` | 列出当前服务器全局预设库的模型 ID；不等于客户端已安装模型目录 |
-| `listPresets(target, model)` | 列出该模型在服务端登记的稳定预设 ID，排序后的只读 Java List |
-| `describePreset(target, model, id)` | 已登记预设的说明；不存在则抛出 IllegalArgumentException |
-| `profileJson(target, model)` | 该模型共享定义的 format=1 JSON（不包含 revision）；未登记为合法空定义 |
-| `applyPreset(target, model, id)` | 原子应用模型限定的预设，使用其默认 ticks |
-| `applyPreset(target, model, id, ticks)` | 原子应用指定持续时间；0 保持，内部 -1 表示使用定义时长 |
-| `ownedPresentationApiVersion()` | 归属隔离表现接口版本，当前为 1 |
-| `maxDuration()` | 当前服务端配置允许的表现时长上限 |
-| `applyPresetOwned(target, model, id, ticks, owner)` | 与 applyPreset 同样的时长语义，每次调用由调用方生成唯一 owner；归属随实体 NBT 持久化 |
-| `releaseOwned(target, owner)` | 仅清除此请求仍拥有的身体与参数；后来的覆盖保留，不恢复已经被覆盖的旧请求 |
-| `ownedStatusJson(target, owner)` | JSON: active、clip、parameters、remaining_ticks；0 无覆盖、-1 保持、其余为剩余服务端 tick，不是客户端渲染 ACK |
-
-0.31.5 新增的归属隔离接口由 CreatureChat World Director 的 `cchat_yhysm_adapter.js` 消费。
-原有无 owner 调用保持原义。每次调用必须使用新 ID；不能按值或写入时刻认领表现，
-因为其他脚本可能在同一 tick 写入完全相同的值。引擎的节点退出、停止与重载只释放本次请求；
-实体暂时卸载时，消费者以实体持久化 journal 在重新载入后清理遗留请求。
-
-真实实体的预设查询和应用需要服务端线程；隔离假施法者通过目标接口读取已同步副本，供符卡节点本地试播。
-真实客户端实体仍拒绝写操作；`listModels` 使用当前服务器的全局目录。
-纯表情预设不重启现有身体动画；预设未提及的显式参数不清除。同名参数被新值取代。
-预设在目标当前模型 ID 不匹配时不渲染，但到期时钟继续走；它不会自动替实体绑定另一个模型。
-显式预设请求保留调用当时的值，后来编辑共享预设不会追溯改写已有请求；自动映射使用最新同步定义。
+KubeJS 使用 OYSM 的公开 registry 查询，使用 YHModel 修改 YH 实体。
+模型路径必须包含实际入口，例如 `TUMC/东方Project/「博丽灵梦」.ysm/main`、
+`touhou/reimu2.0.5.ysm/main`、`youkaishomecoming/remilia/trident`；不能省略入口。
 
 ```js
-if (YHModel.supports(entity)) {
-    const model = '实际模型ID'
-    if (YHModel.listPresets(entity, model).contains('happy')) {
-        YHModel.applyPreset(entity, model, 'happy', 100)
-    }
+const OysmPresets = Java.loadClass('rip.ysm.api.ExternalPresetAPI')
+const model = String(entity.currentYsmModel())
+const catalog = JSON.parse(String(OysmPresets.catalogJson(model)))
+// catalog: { model, revision, presets: [{ id, model, description, clip, ticks, parameters }], bindings }
+const preset = catalog.presets.find(value => value.id === requestedId)
+if (preset && YHModel.supports(entity)) {
+    YHModel.applyPreset(entity, model, preset.id)
 }
 ```
 
-`ticks=0` 表示随实体存档保持到显式清除；`/yhysm clear <targets>` 清除身体动作和全部参数，
-`/yhysm param clear <targets> [parameter]` 只清参数。有限时长以服务端 `Level.getGameTime()` 的
-绝对截止时间保存和同步，区块重载或重启世界不会重新计时；服务器关闭期间不消耗 tick。
-模型晚载入时只应用剩余有效期；动画帧相位目前仍从客户端控制器起播，**不承诺晚加入者逐帧相位锁定**。
-PLAY_ONCE、HOLD_ON_LAST_FRAME 尚未开放；不使用循环加计时冒充这两种语义。
+ID 是 OYSM 返回的完整 ID。YH 来源的定义由 OYSM 分配 `yhysm:<key>`；
+原生 editor 新建定义使用 `editor:<key>`。模型作用域和 preset namespace 是不同概念。
+业务模组只提供本地 key、数值、信号名和绑定，不能拼接公共 ID。
 
-## 符卡侧 YSM hint 节点
+| 方法 | 行为 |
+| --- | --- |
+| `supports(target)` | 是否实现 YH 表现目标接口 |
+| `listPresets(target, model)` | OYSM registry 中该入口的完整 ID 列表 |
+| `describePreset(target, model, id)` | OYSM 定义中的说明 |
+| `applyPreset(target, model, id[, ticks])` | 原子应用模型限定的动画和参数 |
+| `applyPresetOwned(target, model, id, ticks, owner)` | 按唯一请求归属应用 |
+| `releaseOwned(target, owner)` | 仅释放此请求仍持有的覆盖 |
+| `ownedStatusJson(target, owner)` | active、clip、parameters、remaining_ticks |
+| `ownedPresentationApiVersion()` | 当前归属隔离协议为 1 |
+| `defaultDuration()` / `maxDuration()` | 服务端配置中的默认时长 / 上限 |
+| `play(target, clip, ticks)` / `stop(target)` | 请求或停止精确动画；重复 play 重播 |
+| `setParameter(target, name, value, ticks)` | 请求数值覆盖 |
+| `clearParameter(target, name)` / `clearParameters(target)` | 清除单项 / 全部数值覆盖 |
+| `clear(target)` | 清动画和数值请求，保留实体模型绑定 |
+| `getAnimation(target)` / `getAnimationTicksRemaining(target)` | 当前动画请求 / 剩余时长 |
+| `getParameter(target, name)` | 当前数值请求；不是客户端模型默认值 |
 
-`/yhysm editor` 负责模型绑定、预设、原生片段和参数。符卡 Editor 不再重复暴露这些
-模型表现操作；`ysm_render` 节点保留为一个窄的上下文 hint 入口：
+修改真实实体必须在服务端线程运行。请求被接受不等于客户端资源存在或已成功渲染。
+`ticks=-1` 在 preset API 中使用定义时长；`0` 保持到释放；正值为服务端 tick。
+状态查询中 `-1` 是保持、`0` 是无覆盖。有限时长随实体 NBT 保存绝对游戏时钟，区块重载不重新计时。
+每次调用应生成唯一 owner；释放不能清掉同 tick、同值的后来请求，也不复活已经被覆盖的请求。
+纯参数 preset 保留当前动画；未提及的参数保留。模型作用域不匹配时不显示，到期时钟继续走。
 
-```json
-{"type": "ysm_render", "hint": "cast", "duration": 40}
-```
+## editor、绑定与命令
 
-`hint` 交给现有 YSM 客户端上下文映射（例如 `cast`、`charge` 或模型自定义的
-`special=...` token），不解析成预设或参数。`duration=0` 保持到下一次清除；空 hint
-会清除当前 legacy animation hint。模型、纹理、预设、精确片段和表情参数请在
-`/yhysm editor` 的场景／触发规则中配置。
+`/openysm editor` 可以在没有 YH 时打开 OYSM 原生 editor。
+`/yhysm editor` 是 YH 的公开打开入口，只调用 OYSM，不提供独立界面或降级 editor。
 
-Shooter 的初始表现配置与该 hint 共享同一个 `YsmRenderConfig` 覆盖对象。其 JSON
-位于 `spawn_shooter.ysm`，字段为 `model`、`texture`、`hint`、`duration` 和
-`clear_target`；旧的 `ysm_model` 等扁平字段仍可读取但不会由新 Editor 写出。
+OYSM editor 的模型页可选 main、arm、projectile、vehicle 入口；main 使用 OYSM 原生玩家预览、
+动画轮盘和 ModelSettingsScreen 参数控件。其余入口使用对应几何预览与原始数值输入。
+轮盘和参数操作只修改隔离预览，捕获后可保存为 preset；不会修改玩家外观或发送假实体操作到服务器。
 
-例子（服务端 KubeJS 回调中已取得 `entity`；变量名只适用于实际核对过的那份模型）：
+状态绑定页使用业务来源登记的信号名，将所选模型入口的 preset 绑定到该信号。
+绑定和 preset 都由 OYSM 保存到 `config/yes_steve_model/presets.json`，在线编辑需要 OP 2 或单人世界所有者权限。
+保存按服务端 revision 校验，成功后广播；新加入者接收同一快照。YH 每次解析表现时读取最新 OYSM 绑定。
 
-```js
-if (YHModel.supports(entity)) {
-    YHModel.play(entity, 'extra5', 100)
-    YHModel.setParameter(entity, 'v.roaming.mouth', 2, 100)
-    YHModel.setParameter(entity, 'v.roaming.saihong', 1, 100)
-}
-// 可分别清理身体动画和表情。
-YHModel.stop(entity)
-YHModel.clearParameter(entity, 'v.roaming.mouth')
-```
-
-## 参数与恢复边界
-
-- 只接受 `v.name`、`v.roaming.name`，也接受等价的 `variable.` 前缀；名称规范化为小写。
-  禁止表达式、函数调用、数组或任意深度路径，不提供通用 Molang eval。
-- 数值必须有限；数量、默认时长、最大时长和绝对值上限来自 `YHModConfig.COMMON.modelPresentation*`。
-- 客户端优先遵守模型声明的 checkbox / range / 可解析 radio 选项。不符合选项的请求保留为
-  服务端请求，但该客户端不应用，并在 `/yhysm debug` / `inspect` 显示跳过原因。
-  未声明的合法数值变量可以作为 raw 参数使用；这不保证模型实际消费它。
-- OYSM 会在实体 render 前异步求值；客户端把数值租约保留到下一次该实体异步求值完成，
-  再恢复原值并按最新服务端状态续接。清除不解释为写 `0`，通常在下一渲染帧可见。
-  模型在租约期间写入不同的新值时保留其写入。模型仍可在自己的计算过程中覆盖输入，
-  这不是强制拦截模型脚本的全变量沙盒，也不撤销动画本身的其他脚本副作用。
-- 新参数请求覆盖同名旧请求，旧截止时间没有独立定时任务，因此不会撤销较新的值。
-- 底层 raw 请求跟随实体当前有效模型；切换模型会重新验证新模型的控件约束。
-  `applyPreset` 的身体/参数带 model scope，不能把 raw 请求当成已有的逐模型适配规则。
-- 动画、参数相互独立；战败三相位的身体动画始终优先于手动动画。
-  状态映射按身体和逐参数分别合成：战败 > Boss 战胜 > 显式 > 受伤 > 近战命中 > 换卡 > 弹幕战开启 > 战斗条件 > 日常。
-  `stg_combat` 与 `normal_combat` 是和 idle/walk/fly 并行的条件，可分别映射到任意预设；它们不占用移动状态。
-  发射器等既有身体 hint 在显式请求之下、自动事件/日常之上；新符卡节点直接使用显式请求。
-  战败时未被战败预设同名覆盖的显式参数仍可应用；无战败映射继续既有模型无关回退链。
-- 客户端目录按已加载模型 assembly 的身份缓存，资源替换后重建；实体缓存不强持有外部 animatable。
-  断线清除本次会话的绑定和调试缓存。未安装 OYSM 时不安装其专用内置模型目录。
-
-## 手动命令
-
-服务端命令（OP 2；标准服务端选择器；不支持的实体会跳过，支持的目标先批量校验再修改）：
+实体的 UUID/type 模型与纹理绑定仍通过 `/yhysm set`、`/yhysm bind` 和 YH 的世界绑定契约设置；
+通用 preset editor 不拥有 YH 世界绑定数据。符卡场景/弹幕编辑仍由 YH spell editor 提供。
 
 ```text
+/yhysm preset list <model>
+/yhysm preset apply <targets> <model> <preset> [ticks]
 /yhysm anim play <targets> <clip> [ticks]
-/yhysm anim set <targets> <clip> [ticks]
 /yhysm anim stop <targets>
 /yhysm param set <targets> <parameter> <number> [ticks]
 /yhysm param clear <targets> [parameter]
 /yhysm clear <targets>
 /yhysm state <targets>
-/yhysm preset list <model>
-/yhysm preset apply <targets> <model> <preset> [ticks]
-/yhysm preset set <targets> <model> <preset> [ticks]
-```
-
-客户端只读目录（省略目标时使用指向／已选调试目标）：
-
-```text
 /yhysm inspect [entities]
-/yhysm anim list [entities] [page]
-/yhysm wheel [entities] [page]
-/yhysm param list [entities] [page]
-/yhysm param get <entities> <parameter>
+/yhysm debug
 ```
 
-列表中的蓝色条目只会**填入**命令，用户确认提交后仍由服务端权限与选择器校验。`anim set` 是 `anim play` 的同义写法，
-`preset set` 是 `preset apply` 的同义写法；两者都接受 UUID 或服务端实体选择器。
-客户端目标解析沿用旧 `/yhysm` 工具，支持可见 UUID、名称和 `@e` 的 type/sort/limit 等有限选项；
-它不是完整的服务端选择器解析器。跨范围／复杂筛选的修改应使用服务端命令。
-Editor 输入框的 Tab 补全复用真实目录。type 使用原生命令/注册表补全，UUID 候选按玩家距离排序并附类型和距离。
-原生查询的客户端选择器仍只支持上述有限子集。
-`anim play`、`param set/get/clear`、数值选项及 `preset list/apply` 都提供候选。
-候选优先来自可见目标的实际模型；不能在客户端解析目标时回退到本地目录/共享定义合集。
-`YsmCommandSuggestions` 把命名 provider 注册在服务端实际参数节点上，客户端注册只读目录回调。
-不能再只在客户端重复注册同名参数：Forge 合并时保留原参数节点，会丢失新补全回调。
-补全不执行修改；完整选择器与权限仍由服务端原命令检查。
+参数接受 `v.name`、`v.roaming.name` 与等价的 `variable.` 名称，必须是有限数值。
+客户端遵守模型声明的数值范围和 radio 选项；复杂 radio 表达式由原生控件执行，
+preset 持久化只捕获可表示的数值输入。请求最大时长、数量和幅度来自 YH 服务端配置。
+战败三相位的身体优先于显式请求，自动状态与战斗优先级继续由 YH 决定。
 
-`/yhysm editor` 打开第三模式。0.30.2 起，预设和触发规则保存在当前游戏／服务器实例的
-`config/youkaishomecoming/ysm_presets.json`，跨世界共用；联机客户端只接收服务器同步副本。
-`/yhysm reload`（OP 2，亦可写 `/yhysm preset reload`）重载该文件并向所有在线玩家发送完整快照，包含删除。
-玩家登录及编辑器读取／保存前也检查服务器 JSON；内容变化时先同步，再校验编辑器 revision。
-revision 是每次服务器会话内的逐模型并发标识，外部 JSON 不需要填写；删除也递增标识以拒绝旧草稿。
-旧世界 DAT 的迁移和外部编辑格式见 `docs/0.30.2-global-ysm-presets.md`。
-保存需要 OP 2，profile 保存按模型 revision 做冲突检查；显式本地试播不会发包。
-顶栏“保存全部”与 Ctrl+S 保存实际修改过的 profile 和 binding，与焦点标签页无关；
-两者都修改时先确认 profile，再发原绑定请求，两个请求分别校验 revision。
-绑定失败不回滚已保存的共享预设，UI 明确提示部分完成，重试只保存仍未确认的绑定。
-模型目录浏览不标记绑定修改；真实字段修改与 Raw JSON 导入的 binding 才参与普通保存。
-“更多 → 保存预设库”只保存 profile；“保存并绑定”仍可显式提交当前绑定。
-星号显示未保存的范围，成功回执只清除对应范围；结果始终显示在工作区底栏。
-默认表情/外观参数随所选 UUID/type 的模型和纹理绑定持久化；无须创建命名预设，且没有期限。
-参数合成时绑定默认值位于场景和显式请求之下，临时覆盖结束后恢复；更换为其他模型时不沿用旧模型参数。
-场景编辑仍写入原有命名预设；原生控件的“参数用途”可以明确切换这两种编辑范围。
-Raw JSON 在原 `format=1` profile 旁增加仅供 Editor 导入导出的可选 `binding` 对象：
-`scope`（uuid/type）、`target`、`model`、`texture`、`parameters`。共享 profile 包及
-`YHModel.profileJson` 仍只使用原 profile 格式，绑定继续使用 `YsmOverrideData` 和绑定请求。
-旧的纯 profile JSON 可以导入；未应用文本保留，与表单同时编辑时检查包含绑定的基线，拒绝静默覆盖。
-Raw JSON 是停靠标签页，复用符卡多行选区、剪贴板和撤销控件。单人暂停、联机不暂停。
+Shooter 初始配置只使用 `spawn_shooter.ysm`：model、texture、hint、duration、clear_target。
+旧的平铺字段已经删除。`ysm_render` 节点只提供 hint/duration，不充当 preset 编辑节点。
 
-本次内部绑定存档新增可选 parameters（旧存档缺省为空），绑定请求包新增数值参数表；
-YH 实体的 presentation 快照开始写实体 NBT，旧实体缺省为空；
-客户端与服务端须同时更新。没有更改 `YHModel`、KubeJS 事件或 OYSM 公开渲染签名。
+## 切换与验证
 
-真实片段目录不混入 `cast` / `angry` 等 legacy 语义提示。
-原生转盘的同一条目可以同时具有动画和配置组入口，子菜单也会单独标识。
-radio 标签中的复杂表达式仅保留在指令诊断目录；普通 Editor 隐藏不能直接操作的条目，不执行或猜测其含义。
-`param get` 展示帧间基础输入及 YH 请求；实际播放仍用 `/yhysm debug inspect` 核对。
+两端需要同时升级到 YH HCDRS 0.34.0 / OYSM HCD 0.4.0；新 preset/绑定包使用新的 OYSM 网络协议。
+旧 `config/youkaishomecoming/ysm_presets.json` 不再读取，运行时代码没有迁移或双恢复路径。
+部署时可显式一次性转换已有数据到 OYSM 文件并归档原文件；这不是模组运行时兼容入口。
 
-## 0.28.0 场景与符卡节点（历史说明）
-
-`enter_combat` 改为真实符卡第一次 tick 的进入边沿，不再把 `getTarget()!=null` 当作弹幕战开始。
-`spell_switch` 在已有弹幕战中开始另一张符卡时发出；普通 phase 与并行子图不发换卡事件。
-`melee_attack` 由妖怪成功的 `doHurtTarget` 发出。三个事件都使用有限时长预设，不反向改变战斗判定。
-
-0.29.0 将其中与 YSM Editor 重叠的模型、预设、精确片段、参数和清理操作移除；
-当前 `ysm_render` 的 hint 语义见上节。旧的 operation 形式不再作为当前 Codec 契约。
-符卡预览只有明确的本地模型选择或 model 节点生效后才委托渲染；法阵先渲染。
-正交、透视和截图共用同一入口；预览选择及请求只修改假实体。
-
-## 兼容和验证边界
-
-YH 0.32.0 对接 OYSM HCD 0.2.0 的公开资源、表现、弹射物与玩家提示 API；
-OYSM 负责模型加载、目录读取、动画时钟和跨帧数值恢复，YH 保留符卡状态与预设策略。
-`ExternalLivingRenderAPI` 既有签名和已有 KubeJS 事件保持兼容。
-`ysm_render` 节点在 0.28.0 更换旧设计并将信号包改用事件表；客户端与服务端须使用匹配版本。
-当前适配基线是 `openysm-forge-2.6.6.2-HCD-0.2.0.jar`，没有宣称支持官方 YSM 3.0。
-
-```powershell
-.\gradlew.bat compileJava organizeLang --no-daemon --console=plain
-```
-
-UI/动画开发以用户 checklist 的实机操作为准，不把大量自动测试加到每个提交前。
-现有 `runModelPresentationTest [-PoysmJar=...]` 只在相关状态/数值恢复契约确实需要核实时选用；
-它不启动游戏，不能证明模型渲染、异步更新、重播、多观察者或战败回归。
-
-历史：2026-09-05 旧开发包的独立专服 smoke 通过 20 项真实 KubeJS 断言：未安装 OYSM/TLM、实际 YH 实体、
-`YHModel` 全局绑定、命令／脚本请求互通、`listModels/listPresets/describePreset/profileJson`、
-默认时长与命令 `applyPreset`、清理、跨 tick 到期。测试共享定义由隔离测试夹具写入 SavedData；
-这不是新增了公开脚本保存 API，也不证明客户端网络保存或模型画面。
+构建与契约检查不能证明实机渲染。实机应核对原生控件隐藏物件、轮盘子菜单、捕获与保存、
+CChat 普通对话和 World Director 的应用/释放，以及战败和区块卸载恢复。

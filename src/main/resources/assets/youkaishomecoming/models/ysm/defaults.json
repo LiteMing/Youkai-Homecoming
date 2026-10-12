@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "youkaishomecoming:remilia_scarlet": {
+      "model": "youkaishomecoming/remilia/main",
+      "texture": "default"
+    }
+  },
+  "model": "youkaishomecoming/remilia/main",
+  "expressions": {
+    "angry": [
+      "angry",
+      "combat",
+      "extra10",
+      "attack",
+      "attacked",
+      "idle"
+    ]
+  },
+  "presets": {
+    "youkaishomecoming/remilia/main": [
+      { "id": "idle", "description": "Idle", "clip": "idle", "ticks": 0, "parameters": {} },
+      { "id": "walk", "description": "Walk", "clip": "walk", "ticks": 0, "parameters": {} },
+      { "id": "fly", "description": "Fly", "clip": "fly", "ticks": 0, "parameters": {} },
+      { "id": "sit", "description": "Sit", "clip": "sit", "ticks": 0, "parameters": {} },
+      { "id": "swim", "description": "Swim", "clip": "swim", "ticks": 0, "parameters": {} }
+    ]
+  },
+  "bindings": {
+    "youkaishomecoming/remilia/main": {
+      "idle": "idle",
+      "walk": "walk",
+      "fly": "fly",
+      "sit": "sit",
+      "swim": "swim"
+    }
+  }
+}

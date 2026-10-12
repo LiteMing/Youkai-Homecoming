@@ -431,8 +431,6 @@ public class YHModConfig {
 		public final ForgeConfigSpec.DoubleValue modelPresentationMaxParameterValue;
 		public final ForgeConfigSpec.DoubleValue modelPresentationWalkSpeed;
 		public final ForgeConfigSpec.IntValue spellCardPresentationTicks;
-		public final ForgeConfigSpec.IntValue modelPresentationMaxProfiles;
-		public final ForgeConfigSpec.IntValue modelPresentationMaxPresets;
 
 		public final ForgeConfigSpec.IntValue danmakuMaxResource;
 		public final ForgeConfigSpec.IntValue danmakuMaxPower;
@@ -933,12 +931,6 @@ public class YHModConfig {
 				spellCardPresentationTicks = builder.comment("Default duration of the floating spell-card presentation, in ticks.")
 						.translation("config.youkaishomecoming.common.model_presentation.spellCardPresentationTicks")
 						.defineInRange("spellCardPresentationTicks", 40, 1, 1200);
-				modelPresentationMaxProfiles = builder.comment("Maximum model profiles in the global game/server preset library.")
-						.translation("config.youkaishomecoming.common.model_presentation.maxProfiles")
-						.defineInRange("maxProfiles", 256, 1, 4096);
-				modelPresentationMaxPresets = builder.comment("Maximum named presets per model profile.")
-						.translation("config.youkaishomecoming.common.model_presentation.maxPresets")
-						.defineInRange("maxPresets", 64, 1, dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.MAX_PRESETS);
 			}
 			builder.pop();
 

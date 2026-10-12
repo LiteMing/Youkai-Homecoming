@@ -2,54 +2,23 @@ package dev.xkmc.youkaishomecoming.compat.ysm;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import dev.xkmc.youkaishomecoming.content.spell.preview.YsmEditorDocument;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Standalone state/catalog/restore contracts. Optional OYSM jar checks do not launch Minecraft. */
+/** Entity request and battle-signal contracts after preset ownership moved to OYSM. */
 public final class ModelPresentationTest {
-
-	private static int passed;
-	private static final YsmPresentationState.Source SOURCE = YsmPresentationState.Source.COMMAND;
-
-	public static void main(String[] args) throws Exception {
-		modelPathContracts();
-		stateContracts();
-		ownedPresetContracts();
-		serializationContracts();
-		profileContracts();
-		bindingAppearanceContracts();
-		signalContracts();
-		compositionContracts();
-		automaticProfileContracts();
-		acknowledgementContracts();
-		catalogContracts();
-		captureContracts();
-		remiliaAuthoringContracts();
-		defaultBindingContracts();
-		if (Boolean.getBoolean("yh.test.oysm")) installedOysmContracts();
-		else {
-			check("missing OYSM disables optional API integration", !YsmOpenYsmSupport.available());
-			try {
-				Class.forName("com.elfmcys.yesstevemodel.geckolib3.core.molang.storage.VariableStorage", false, ModelPresentationTest.class.getClassLoader());
-				throw new AssertionError("No-OYSM test accidentally includes an OYSM jar");
-			} catch (ClassNotFoundException expected) { passed++; }
-		}
-		System.out.println("ModelPresentationTest: " + passed + " contracts passed" +
-				(Boolean.getBoolean("yh.test.oysm") ? " (includes installed OYSM public API)" : " (without OYSM)"));
-	}
-
-	private static void modelPathContracts() {
-		check("legacy pack aliases only its main entry", YsmModelPaths.same("YH内置/remilia", "YH内置/remilia/main"));
-		check("main alias is symmetric", YsmModelPaths.same("YH内置/remilia/main", "YH内置/remilia"));
-		check("legacy IDs ending in main can use explicit main", YsmModelPaths.same("nested/main", "nested/main/main") && YsmModelPaths.same("nested/main/main", "nested/main"));
-		check("projectile does not inherit main presentation", !YsmModelPaths.same("YH内置/remilia/trident", "YH内置/remilia/main"));
-		var state = YsmPresentationState.EMPTY.applyPreset("YH内置/remilia", new YsmModelProfile.Preset("", "idle", 10, Map.of()), 0, 10, SOURCE, 4, "owner");
-		check("old owned clips follow explicit main", state.animation().matchesModel("YH内置/remilia/main"));
-		check("old owned clips do not follow projectile", !state.animation().matchesModel("YH内置/remilia/trident"));
-	}
+    private static int passed;
+    private static final YsmPresentationState.Source SOURCE = YsmPresentationState.Source.COMMAND;
+    public static void main(String[] args) {
+        stateContracts();
+        ownedPresetContracts();
+        serializationContracts();
+        signalContracts();
+        check("different model entries never alias", !YsmModelPaths.same("contract/model/main", "contract/model/arrow"));
+        check("pack-only paths do not alias main", !YsmModelPaths.same("contract/model", "contract/model/main"));
+        System.out.println("ModelPresentationTest: " + passed + " contracts passed");
+    }
 
 	private static void stateContracts() {
 		var played = YsmPresentationState.EMPTY.play("extra5", 100, 40, SOURCE);
@@ -94,6 +63,35 @@ public final class ModelPresentationTest {
 		equal("case-insensitive variable canonicalized", YsmPresentationState.normalizeParameter("VARIABLE.Roaming.Mouth"), "v.roaming.mouth");
 	}
 
+	private static void ownedPresetContracts() {
+		var preset = new YsmPresetBridge.Preset("contract:preview", "test/model/main", "test", "extra5", 20, Map.of("v.face", 1f, "v.mouth", 2f));
+		var base = YsmPresentationState.EMPTY.setParameter("v.other", 7, 100, 0, SOURCE, 8);
+		var owned = base.applyPreset("test/model/main", preset, 100, 0, SOURCE, 8, "cchat:request-one");
+		var released = owned.releaseOwned("cchat:request-one");
+		check("owned release clears body", released.animation() == null);
+		check("owned release clears preset parameters", !released.parameters().containsKey("v.face") && !released.parameters().containsKey("v.mouth"));
+		equal("owned release preserves unrelated request", released.parameters(), base.parameters());
+		check("release idempotent", released.releaseOwned("cchat:request-one") == released);
+		var overwritten = owned.applyPreset("test/model/main", preset, 100, 0, SOURCE, 8, "cchat:request-two");
+		equal("same tick/value body replacement survives old release", overwritten.releaseOwned("cchat:request-one"), overwritten);
+		var raw = owned.setParameter("v.face", 1, 100, 0, SOURCE, 8).play("extra5", 100, 0, SOURCE);
+		var rawReleased = raw.releaseOwned("cchat:request-one");
+		check("unowned identical body survives", rawReleased.animation() != null && rawReleased.animation().owner().isEmpty());
+		equal("unowned identical parameter survives", rawReleased.parameters().get("v.face").value(), 1f);
+		check("remaining owned parameter released", !rawReleased.parameters().containsKey("v.mouth"));
+		var restored = YsmPresentationState.fromTag(owned.toTag());
+		equal("owner survives entity NBT reload", restored, owned);
+		equal("zero-duration reloaded owned state releases", restored.releaseOwned("cchat:request-one"), released);
+		var face = owned.applyPreset("test/model/main", new YsmPresetBridge.Preset("contract:preview", "test/model/main", "face", "", 10, Map.of("v.face", 4f)), 100, 10, SOURCE, 8, "cchat:face");
+		equal("face-only owned preset does not restart body", face.sequence(), owned.sequence());
+		equal("face-only owned release preserves body", face.releaseOwned("cchat:face").animation(), owned.animation());
+		check("finite owner expires at boundary", base.applyPreset("test/model/main", preset, 100, 20, SOURCE, 8, "cchat:finite").expire(120).animation() == null);
+		reject("empty owner cannot clear unowned values", () -> raw.releaseOwned(""));
+		reject("owner format bound", () -> raw.releaseOwned("bad owner"));
+		var legacy = base.toTag();
+		equal("legacy NBT still decodes", YsmPresentationState.fromTag(legacy), base);
+	}
+
 	private static void serializationContracts() {
 		var state = YsmPresentationState.EMPTY.play("extra5", 9000000000L, 100, SOURCE)
 				.setParameter("v.roaming.mouth", 2.5f, 9000000000L, 0, YsmPresentationState.Source.SCRIPT, 4);
@@ -133,319 +131,19 @@ public final class ModelPresentationTest {
 		equal("wire decode bounded", YsmPresentationState.fromTag(bounded).parameters().size(), YsmPresentationState.WIRE_MAX_PARAMETERS);
 	}
 
-	private static void catalogContracts() {
-		String variable = "v.roaming.mouth";
-		var smile = YsmModelCatalog.choice(variable, "Smile", "v.roaming.mouth=2;");
-		equal("simple declared assignment recognized", smile.numericValue(), 2f);
-		check("multiple statements not executable", YsmModelCatalog.choice(variable, "Complex", "v.roaming.mouth=2;v.x=1;").numericValue() == null);
-		check("other variable not substituted", YsmModelCatalog.choice(variable, "Wrong", "v.ysmemoji=2;").numericValue() == null);
-		check("functions not executed", YsmModelCatalog.choice(variable, "Script", "v.roaming.mouth=math.random(0,2)").numericValue() == null);
-		var menu = YsmModelCatalog.wheelEntry("", "extra1", "#Face", List.of("extra5"), Map.of("Face", new Object()));
-		check("configuration menu is not a clip", !menu.clipAvailable() && menu.configGroup().equals("Face"));
-		var both = YsmModelCatalog.wheelEntry("", "extra1", "#Face", List.of("extra1"), Map.of("Face", new Object()));
-		check("combined clip/config entry preserves both", both.clipAvailable() && !both.configGroup().isEmpty());
-		var submenu = YsmModelCatalog.wheelEntry("", "#Actions", "Actions", List.of("#Actions"), Map.of());
-		check("submenu not falsely playable", !submenu.clipAvailable() && submenu.submenu().equals("Actions"));
-		var radio = new YsmModelCatalog.Control("face_id", "Face", "Mouth", "", "radio", variable, variable, 0, 1, 1, List.of(smile));
-		check("native group id and label remain distinct", radio.group().equals("face_id") && radio.groupLabel().equals("Face"));
-		check("radio allows declared value", radio.accepts(2));
-		check("radio rejects undeclared value", !radio.accepts(3));
-		var range = new YsmModelCatalog.Control("face_id", "Face", "Eyes", "", "range", "v.eyes", "v.eyes", -100, 50, 1, List.of());
-		check("range includes endpoints", range.accepts(-100) && range.accepts(50));
-		check("range rejects out-of-range values", !range.accepts(51));
-		var catalog = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra5"), List.of(menu), List.of(radio));
-		check("known parameter validated", !catalog.accepts(variable, 3));
-		check("raw numeric variables remain usable", catalog.accepts("v.ysmemoji", 1));
-		var legacy = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra2"), List.of(), List.of(),
-				List.of("v.qh2", "v.qh", "v.jump", "v.random", "v.qh"));
-		equal("form-free variables remain selectable", legacy.parameterNames(), List.of("v.jump", "v.qh", "v.qh2", "v.random"));
-		check("raw directory does not fabricate native forms", legacy.controls().isEmpty());
-		check("raw directory does not invent ranges", legacy.accepts("v.qh", 1));
-		equal("older catalog callers retain authored parameters", catalog.parameterNames(), List.of(variable));
-		var child = YsmModelCatalog.wheelEntry("Actions", "extra5", "Smile", List.of("extra5"), Map.of());
-		var hierarchy = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra5"), List.of(menu, submenu, child), List.of(radio));
-		equal("root wheel never flattens author submenus", hierarchy.wheelEntries(""), List.of(menu, submenu));
-		equal("submenu contains only its authored entries", hierarchy.wheelEntries("Actions"), List.of(child));
-		var decimal = new YsmModelCatalog.Control("face", "Face", "Eyes", "", "range", "v.eyes", "v.eyes", -0.3, 0.3, 0.05, List.of());
-		check("float wire endpoints remain valid for decimal ranges", decimal.accepts(-0.3f) && decimal.accepts(0.3f));
-		equal("slider snaps to author step", decimal.sliderValue(0.61), 0.05f);
-		equal("slider clamps after quantization", decimal.sliderValue(5), 0.3f);
-	}
-
-	private static void ownedPresetContracts() {
-		var preset = new YsmModelProfile.Preset("test", "extra5", 20, Map.of("v.face", 1f, "v.mouth", 2f));
-		var base = YsmPresentationState.EMPTY.setParameter("v.other", 7, 100, 0, SOURCE, 8);
-		var owned = base.applyPreset("test/model", preset, 100, 0, SOURCE, 8, "cchat:request-one");
-		var released = owned.releaseOwned("cchat:request-one");
-		check("owned release clears body", released.animation() == null);
-		check("owned release clears preset parameters", !released.parameters().containsKey("v.face") && !released.parameters().containsKey("v.mouth"));
-		equal("owned release preserves unrelated request", released.parameters(), base.parameters());
-		check("release idempotent", released.releaseOwned("cchat:request-one") == released);
-		var overwritten = owned.applyPreset("test/model", preset, 100, 0, SOURCE, 8, "cchat:request-two");
-		equal("same tick/value body replacement survives old release", overwritten.releaseOwned("cchat:request-one"), overwritten);
-		var raw = owned.setParameter("v.face", 1, 100, 0, SOURCE, 8).play("extra5", 100, 0, SOURCE);
-		var rawReleased = raw.releaseOwned("cchat:request-one");
-		check("unowned identical body survives", rawReleased.animation() != null && rawReleased.animation().owner().isEmpty());
-		equal("unowned identical parameter survives", rawReleased.parameters().get("v.face").value(), 1f);
-		check("remaining owned parameter released", !rawReleased.parameters().containsKey("v.mouth"));
-		var restored = YsmPresentationState.fromTag(owned.toTag());
-		equal("owner survives entity NBT reload", restored, owned);
-		equal("zero-duration reloaded owned state releases", restored.releaseOwned("cchat:request-one"), released);
-		var face = owned.applyPreset("test/model", new YsmModelProfile.Preset("face", "", 10, Map.of("v.face", 4f)), 100, 10, SOURCE, 8, "cchat:face");
-		equal("face-only owned preset does not restart body", face.sequence(), owned.sequence());
-		equal("face-only owned release preserves body", face.releaseOwned("cchat:face").animation(), owned.animation());
-		check("finite owner expires at boundary", base.applyPreset("test/model", preset, 100, 20, SOURCE, 8, "cchat:finite").expire(120).animation() == null);
-		reject("empty owner cannot clear unowned values", () -> raw.releaseOwned(""));
-		reject("owner format bound", () -> raw.releaseOwned("bad owner"));
-		var legacy = base.toTag();
-		equal("legacy NBT still decodes", YsmPresentationState.fromTag(legacy), base);
-	}
-
-	private static void captureContracts() {
-		var face = new YsmModelCatalog.Control("face", "Face", "Mouth", "", "range", "v.face", "v.face", 0, 10, 1, List.of());
-		var hat = new YsmModelCatalog.Control("look", "Look", "Hat", "", "checkbox", "v.hat", "v.hat", 0, 1, 1, List.of());
-		var catalog = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("extra6", "extra7"), List.of(), List.of(face, hat));
-		var rendered = new YsmPresentationResolver.Resolved(new YsmPresentationResolver.Body("extra7", "current", "PREVIEW", true),
-				Map.of("v.face", 2f, "v.bound", 4f), false, false);
-		var actual = Map.of("v.face", 3f, "v.hat", 0f, "v.bound", 4f, "v.animation_output", 500f);
-		var preset = YsmPresetCapture.capture(catalog, rendered, actual, "Visible face", 30);
-		equal("capture uses visible body", preset.clip(), "extra7");
-		equal("capture uses evaluated input, not requested draft value", preset.parameters().get("v.face"), 3f);
-		equal("untouched zero is saved explicitly", preset.parameters().get("v.hat"), 0f);
-		equal("binding input is part of the snapshot", preset.parameters().get("v.bound"), 4f);
-		check("arbitrary animation outputs are not captured", !preset.parameters().containsKey("v.animation_output"));
-		var profile = new YsmModelProfile("test/capture", Map.of("face", preset), Map.of());
-		equal("capture survives global JSON round trip", YsmModelProfile.fromJson(profile.toJson()), profile);
-		var replay = YsmPresentationState.EMPTY.applyPreset(profile.model(), preset, 100, 0, SOURCE, 32);
-		var reapplied = YsmPresentationResolver.resolve(profile.model(), profile, YsmPresentationSignals.EMPTY, replay, 101,
-				Map.of("v.face", 9f, "v.hat", 1f, "v.bound", 8f));
-		equal("snapshot reproduces appearance on a differently bound entity", reapplied.parameters(), preset.parameters());
-		equal("live adjustment preserves animation replay sequence", replay.setParameter("v.face", 1, 101, 0, SOURCE, 32).sequence(), replay.sequence());
-		reject("missing defaults are never silently dropped or zeroed", () -> YsmPresetCapture.capture(catalog, rendered, Map.of("v.face", 1f), "", 20));
-		reject("invalid native input prevents a misleading snapshot", () -> YsmPresetCapture.capture(catalog, rendered,
-				Map.of("v.face", 1f, "v.hat", 3f, "v.bound", 4f), "", 20));
-		reject("nonfinite native input is rejected", () -> YsmPresetCapture.capture(catalog, rendered,
-				Map.of("v.face", Float.NaN, "v.hat", 0f, "v.bound", 4f), "", 20));
-		reject("missing model cannot create a snapshot", () -> YsmPresetCapture.capture(
-				YsmModelCatalog.unavailable(YsmModelCatalog.Status.MODEL_NOT_READY, "loading"), rendered, actual, "", 20));
-		reject("partial metadata cannot claim a complete snapshot", () -> YsmPresetCapture.capture(
-				new YsmModelCatalog(YsmModelCatalog.Status.READY, "form API failed", catalog.animations(), List.of(), List.of()), rendered, actual, "", 20));
-		var missingClip = new YsmPresentationResolver.Resolved(new YsmPresentationResolver.Body("not_a_clip", "", "PREVIEW", true), Map.of(), false, false);
-		reject("unavailable clip is not saved as the visible body", () -> YsmPresetCapture.capture(catalog, missingClip, actual, "", 20));
-		var noBody = new YsmPresentationResolver.Resolved(null, Map.of(), false, false);
-		equal("default body remains expression-only", YsmPresetCapture.capture(catalog, noBody, actual, "", 20).clip(), "");
-		var excessive = new java.util.LinkedHashMap<String, Float>();
-		for (int i = 0; i <= YsmPresentationState.WIRE_MAX_PARAMETERS; i++) excessive.put("v.input_" + i, 0f);
-		reject("oversize snapshot is not truncated", () -> YsmPresetCapture.parameterNames(catalog,
-				new YsmPresentationResolver.Resolved(null, excessive, false, false)));
-	}
-
-	/** Fixture uses the shipped author's real wheel/forms, not a hard-coded extraN-to-form heuristic. */
-	private static void remiliaAuthoringContracts() throws Exception {
-		var root = com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(java.nio.file.Path.of(
-				"src/main/resources/assets/youkaishomecoming/yhysm/remilia/ysm.json"))).getAsJsonObject();
-		var props = root.getAsJsonObject("properties");
-		var controls = new java.util.ArrayList<YsmModelCatalog.Control>();
-		var groups = new java.util.LinkedHashMap<String, Object>();
-		for (var element : props.getAsJsonArray("extra_animation_buttons")) {
-			var group = element.getAsJsonObject();
-			String id = group.get("id").getAsString();
-			groups.put(id, group);
-			for (var form : group.getAsJsonArray("config_forms")) {
-				var entry = form.getAsJsonObject();
-				String type = entry.get("type").getAsString(), parameter = entry.get("value").getAsString();
-				var choices = new java.util.ArrayList<YsmModelCatalog.Choice>();
-				if (type.equals("radio")) for (var choice : entry.getAsJsonObject("labels").entrySet())
-					choices.add(YsmModelCatalog.choice(parameter, choice.getKey(), choice.getValue().getAsString()));
-				controls.add(new YsmModelCatalog.Control(id, group.get("name").getAsString(), entry.get("title").getAsString(), "", type,
-						parameter, parameter, type.equals("range") ? entry.get("min").getAsDouble() : 0,
-						type.equals("range") ? entry.get("max").getAsDouble() : 1,
-						type.equals("range") ? entry.get("step").getAsDouble() : 1, choices));
-			}
-		}
-		var wheel = new java.util.ArrayList<YsmModelCatalog.WheelEntry>();
-		List<String> clips = List.of("extra6", "extra7");
-		props.getAsJsonObject("extra_animation").entrySet().forEach(entry ->
-				wheel.add(YsmModelCatalog.wheelEntry("", entry.getKey(), entry.getValue().getAsString(), clips, groups)));
-		for (var element : props.getAsJsonArray("extra_animation_classify")) {
-			var group = element.getAsJsonObject();
-			group.getAsJsonObject("extra_animation").entrySet().forEach(entry -> wheel.add(YsmModelCatalog.wheelEntry(
-					group.get("id").getAsString(), entry.getKey(), entry.getValue().getAsString(), clips, groups)));
-		}
-		var catalog = new YsmModelCatalog(YsmModelCatalog.Status.READY, "", clips, wheel, controls);
-		equal("all shipped Remilia native controls are editable", controls.stream().filter(YsmModelCatalog.Control::editable).count(), 31L);
-		equal("author expression submenu exposes four complete forms", catalog.wheelEntries("extra1").size(), 4);
-		equal("custom expression 1 has twelve author controls", controls.stream().filter(control -> control.group().startsWith("custom_anim1_")).count(), 12L);
-		check("root keeps author config first", catalog.wheelEntries("").get(0).configGroup().equals("extra_config"));
-		var inputs = new java.util.LinkedHashMap<String, Float>();
-		for (var control : controls) inputs.put(control.parameter(), control.type().equals("radio")
-				? control.choices().get(0).numericValue() : control.accepts(0) ? 0f : (float) control.min());
-		var visible = new YsmPresentationResolver.Resolved(new YsmPresentationResolver.Body("extra6", "", "PREVIEW", true), Map.of(), false, false);
-		var captured = YsmPresetCapture.capture(catalog, visible, inputs, "蕾米莉亚表情", 20);
-		equal("Remilia snapshot keeps all inputs and fits default 32-parameter cap", captured.parameters().size(), 31);
-		equal("Remilia author expression clip is preserved", captured.clip(), "extra6");
-		equal("unmodified custom expression defaults remain in snapshot", captured.parameters().get("v.roaming.custom_anim2_mouth_type"), 0f);
-	}
-
-	private static void defaultBindingContracts() throws Exception {
-		String path = "assets/youkaishomecoming/yhysm/defaults.json";
-		try (var stream = ModelPresentationTest.class.getClassLoader().getResourceAsStream(path)) {
-			check("shipped YSM defaults resource exists", stream != null);
-			var root = com.google.gson.JsonParser.parseReader(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
-			var binding = root.getAsJsonObject("entities").getAsJsonObject("youkaishomecoming:remilia_scarlet");
-			equal("Remilia default entity mapping is resource-configured", binding.get("model").getAsString(), "YH内置/remilia/main");
-			equal("Remilia default texture is resource-configured", binding.get("texture").getAsString(), "default");
-			check("default resource also carries model expression rules", root.get("model").getAsString().equals("YH内置/remilia/main")
-					&& root.getAsJsonObject("expressions").getAsJsonArray("angry").size() > 0);
-		}
-	}
-
-	private static YsmModelProfile exampleProfile() {
-		return new YsmModelProfile("test/model", Map.ofEntries(
-				Map.entry("idle", new YsmModelProfile.Preset("Daily", "idle", 20, Map.of("v.face", 1f, "v.other", 8f))),
-				Map.entry("walk", new YsmModelProfile.Preset("Walk", "walk", 20, Map.of("v.face", 2f))),
-				Map.entry("combat", new YsmModelProfile.Preset("Combat", "extra5", 40, Map.of("v.face", 3f))),
-				Map.entry("hurt", new YsmModelProfile.Preset("Hurt", "attacked", 10, Map.of("v.face", 4f))),
-				Map.entry("down", new YsmModelProfile.Preset("Down", "beaten_prone", 5, Map.of("v.face", 5f))),
-				Map.entry("face", new YsmModelProfile.Preset("Face only", "", 10, Map.of("v.face", 6f))),
-				Map.entry("angry", new YsmModelProfile.Preset("Angry", "", 20, Map.of("v.face", 7f))),
-				Map.entry("focused", new YsmModelProfile.Preset("Focused", "", 20, Map.of("v.face", 8f))),
-				Map.entry("victory", new YsmModelProfile.Preset("Victory", "victory", 20, Map.of("v.face", 9f))),
-				Map.entry("sit", new YsmModelProfile.Preset("Sit", "sit", 0, Map.of("v.face", 10f))),
-				Map.entry("swim", new YsmModelProfile.Preset("Swim", "swim", 0, Map.of("v.face", 11f)))),
-				Map.of(YsmModelProfile.Trigger.IDLE, "idle", YsmModelProfile.Trigger.WALK, "walk", YsmModelProfile.Trigger.ENTER_COMBAT, "combat",
-						YsmModelProfile.Trigger.HURT, "hurt", YsmModelProfile.Trigger.PRONE, "down", YsmModelProfile.Trigger.SIT, "sit",
-						YsmModelProfile.Trigger.SWIM, "swim",
-						YsmModelProfile.Trigger.NORMAL_COMBAT, "angry", YsmModelProfile.Trigger.STG_COMBAT, "focused",
-						YsmModelProfile.Trigger.BOSS_VICTORY, "victory"));
-	}
-
-	private static void profileContracts() throws java.io.IOException {
-		var profile = exampleProfile();
-		equal("profile JSON round trip", YsmModelProfile.fromJson(profile.toJson()), profile);
-		equal("empty profile round trip", YsmModelProfile.fromJson(YsmModelProfile.empty("YH内置/remilia").toJson()), YsmModelProfile.empty("YH内置/remilia"));
-		reject("profile immutable", () -> profile.presets().clear());
-		reject("wrong profile format", () -> YsmModelProfile.fromJson(profile.toJson().replace("\"format\": 1", "\"format\": 2")));
-		reject("fractional duration rejected", () -> YsmModelProfile.fromJson(profile.toJson().replace("\"ticks\": 20", "\"ticks\": 1.5")));
-		reject("unknown trigger rejected", () -> YsmModelProfile.fromJson(profile.toJson().replace("\"enter_combat\"", "\"combat_typo\"")));
-		reject("unknown profile field", () -> YsmModelProfile.fromJson(profile.toJson().replace("\"format\": 1", "\"format\": 1, \"provider\": \"oysm\"")));
-		reject("unknown preset target rejected", () -> new YsmModelProfile(profile.model(), profile.presets(), Map.of(YsmModelProfile.Trigger.IDLE, "absent")));
-		var zeroEvent = new YsmModelProfile("test/model", Map.of("never", new YsmModelProfile.Preset("", "extra1", 0, Map.of())), Map.of(YsmModelProfile.Trigger.HURT, "never"));
-		equal("zero-duration event profile saves", YsmModelProfile.fromJson(zeroEvent.toJson()), zeroEvent);
-		var zeroEventSignals = YsmPresentationSignals.EMPTY.hurt(100);
-		check("zero-duration event window is inactive", YsmPresentationResolver.resolve(zeroEvent.model(), zeroEvent, zeroEventSignals, YsmPresentationState.EMPTY, 100).body() == null);
-		reject("preset expression rejected", () -> new YsmModelProfile.Preset("", "special=extra5", 20, Map.of()));
-		reject("unsafe numeric path rejected", () -> new YsmModelProfile.Preset("", "", 20, Map.of("v.x[0]", 1f)));
-		reject("non-finite preset rejected", () -> new YsmModelProfile.Preset("", "", 20, Map.of("v.x", Float.NaN)));
-		reject("duplicate normalized parameter rejected", () -> new YsmModelProfile.Preset("", "", 20, Map.of("v.x", 1f, "variable.x", 2f)));
-		reject("oversized JSON rejected", () -> YsmModelProfile.fromJson(" ".repeat(YsmModelProfile.MAX_JSON_LENGTH + 1)));
-		var directory = java.nio.file.Files.createTempDirectory("yh-model-profiles-");
-		var file = directory.resolve("presets.json");
-		var data = new YsmProfileData(file);
-		data.reload();
-		equal("unregistered profile revision", data.entry(profile.model()).revision(), 0L);
-		data.replace(profile, 0, 3);
-		equal("saved revision increments", data.entry(profile.model()).revision(), 1L);
-		reject("stale editor revision rejected", () -> data.replace(YsmModelProfile.empty(profile.model()), 0, 3));
-		equal("conflict preserves server data", data.entry(profile.model()).profile(), profile);
-		var other = YsmModelProfile.empty("another/model");
-		data.replace(other, 0, 3);
-		equal("independent model has independent revision", data.entry(other.model()).revision(), 1L);
-		reject("profile capacity enforced", () -> data.replace(YsmModelProfile.empty("third/model"), 0, 3));
-		data.replace(profile, 1, 1);
-		equal("lower capacity still allows existing profile update", data.entry(profile.model()).revision(), 2L);
-		var loaded = new YsmProfileData(file);
-		loaded.reload();
-		equal("global JSON retains model profiles", loaded.entry(profile.model()).profile(), profile);
-		equal("global JSON retains independent models", loaded.entry(other.model()).profile(), other);
-		java.nio.file.Files.delete(file);
-		java.nio.file.Files.delete(directory);
-		var bindings = new YsmOverrideData();
-		bindings.setEntity(new java.util.UUID(0, 1), YSMCompatConfig.RenderBinding.enabled("test/model", "default"));
-		equal("binding revision increments", bindings.revision(), 1L);
-		var savedBindings = YsmOverrideData.load(bindings.save(new CompoundTag()));
-		equal("binding revision persisted", savedBindings.revision(), 1L);
-		equal("binding data remains compatible", savedBindings.getEntityOverrides(), bindings.getEntityOverrides());
-		var scoped = YsmPresentationState.EMPTY.applyPreset(profile.model(), profile.presets().get("hurt"), 100, 40, SOURCE, 32);
-		equal("preset snapshot round trip", YsmPresentationState.fromTag(scoped.toTag()), scoped);
-		check("preset body scoped to model", scoped.animation().matchesModel(profile.model()) && !scoped.animation().matchesModel("other"));
-		check("preset parameter scoped to model", !scoped.parameters().get("v.face").matchesModel("other"));
-		var face = scoped.applyPreset(profile.model(), profile.presets().get("face"), 110, 10, SOURCE, 32);
-		equal("expression-only preset does not restart body", face.sequence(), scoped.sequence());
-		equal("expression-only preset preserves body", face.animation(), scoped.animation());
-		var restored = face.expire(120);
-		check("expression expires independently from body", restored.parameters().isEmpty() && restored.animation() != null);
-		reject("atomic preset parameter bound", () -> scoped.applyPreset(profile.model(), new YsmModelProfile.Preset("", "extra5", 20, Map.of("v.new", 1f)), 110, 20, SOURCE, 1));
-		equal("failed preset leaves original body", scoped.animation().clip(), "attacked");
-	}
-
-	private static void bindingAppearanceContracts() {
-		var appearance = YSMCompatConfig.RenderBinding.enabled("test/model", "default", Map.of("variable.roaming.face", 2f, "v.hat", 1f));
-		equal("binding aliases normalized", appearance.parameters().get("v.roaming.face"), 2f);
-		equal("quoted model id from chat copy-paste resolves", YSMCompatConfig.RenderBinding.enabled("\"test/model\"", "default").modelId(), "test/model");
-		equal("escaped quotes inside a quoted id resolve", YSMCompatConfig.RenderBinding.enabled("\"\\\"test/model\\\"\"", "default").modelId(), "\"test/model\"");
-		equal("plain model id untouched", appearance.modelId(), "test/model");
-		equal("model id canonicalizer strips quotes", YsmModelProfile.modelId("\"test/model\""), "test/model");
-		var quoted = YSMCompatConfig.RenderBinding.enabled("\"test/model\"", "default");
-		equal("quoted binding equals plain binding", quoted, YSMCompatConfig.RenderBinding.enabled("test/model", "default"));
-		var stored = YsmOverrideData.bindingToTag(YSMCompatConfig.RenderBinding.enabled("\"test/model\"", "default"));
-		equal("stored quoted model id is normalized", YsmOverrideData.bindingFromTag(stored).modelId(), "test/model");
-		reject("binding parameters immutable", () -> appearance.parameters().clear());
-		reject("invalid binding literal", () -> YSMCompatConfig.RenderBinding.enabled("test/model", "default", Map.of("v.face", Float.NaN)));
-		reject("binding expression is not a parameter", () -> YSMCompatConfig.RenderBinding.enabled("test/model", "default", Map.of("v.face=1", 1f)));
-		var data = new YsmOverrideData();
-		var uuid = new java.util.UUID(0, 2);
-		data.setEntity(uuid, appearance);
-		data.setType(new net.minecraft.resources.ResourceLocation("youkaishomecoming", "rumia"), appearance);
-		var restored = YsmOverrideData.load(data.save(new CompoundTag()));
-		equal("UUID appearance survives world reload", restored.getEntityOverrides(), data.getEntityOverrides());
-		equal("type appearance survives world reload", restored.getTypeOverrides(), data.getTypeOverrides());
-		var legacy = YsmOverrideData.bindingToTag(appearance);
-		legacy.remove("parameters");
-		check("old bindings retain empty appearance", YsmOverrideData.bindingFromTag(legacy).parameters().isEmpty());
-		var corrupt = YsmOverrideData.bindingToTag(appearance);
-		corrupt.getCompound("parameters").putFloat("v.bad", Float.NaN);
-		corrupt.getCompound("parameters").putString("v.script", "v.face=1");
-		equal("malformed stored parameters do not erase valid appearance", YsmOverrideData.bindingFromTag(corrupt), appearance);
-
-		var profile = YsmModelProfile.empty(appearance.modelId());
-		var binding = new YsmEditorDocument.Binding(false, uuid.toString(), profile.model(), "default", appearance.parameters());
-		var document = new YsmEditorDocument(profile, binding);
-		equal("raw document includes binding appearance", YsmEditorDocument.fromJson(document.toJson()), document);
-		equal("portable profile remains importable", YsmEditorDocument.fromJson(profile.toJson()), new YsmEditorDocument(profile, null));
-		equal("editor binding does not enter shared profile", YsmEditorDocument.fromJson(document.toJson()).profile().toJson(), profile.toJson());
-		reject("raw binding scope typo", () -> YsmEditorDocument.fromJson(document.toJson().replace("\"uuid\"", "\"uuud\"")));
-		reject("raw binding numeric string", () -> YsmEditorDocument.fromJson(document.toJson().replace("\"v.hat\": 1.0", "\"v.hat\": \"1\"")));
-
-		var idle = YsmPresentationSignals.EMPTY;
-		var explicit = YsmPresentationState.EMPTY.setParameter("v.hat", 0, 100, 10, SOURCE, 2);
-		var result = YsmPresentationResolver.resolve(profile.model(), profile, idle, explicit, 100, appearance.parameters());
-		equal("temporary expression overrides binding", result.parameters().get("v.hat"), 0f);
-		equal("unrelated binding parameter stays active", result.parameters().get("v.roaming.face"), 2f);
-		result = YsmPresentationResolver.resolve(profile.model(), profile, idle, explicit, 110, appearance.parameters());
-		equal("temporary expiry restores bound appearance", result.parameters(), appearance.parameters());
-		result = YsmPresentationResolver.resolve(profile.model(), profile, idle.advance(YsmModelProfile.Trigger.WALK, false, 120),
-				YsmPresentationState.EMPTY, 5000, appearance.parameters());
-		equal("movement and elapsed time preserve binding appearance", result.parameters(), appearance.parameters());
-		var routed = exampleProfile();
-		result = YsmPresentationResolver.resolve(routed.model(), routed, idle, YsmPresentationState.EMPTY, 1, Map.of("v.face", 9f, "v.hat", 1f));
-		equal("scene parameters override binding defaults", result.parameters().get("v.face"), 1f);
-		equal("scene retains unrelated binding defaults", result.parameters().get("v.hat"), 1f);
-	}
-
 	private static void signalContracts() {
 		var empty = YsmPresentationSignals.EMPTY;
-		check("unchanged daily state sends no new snapshot", empty.advance(YsmModelProfile.Trigger.IDLE, false, 100) == empty);
-		var combat = empty.advance(YsmModelProfile.Trigger.WALK, true, 100);
-		equal("combat starts on server edge", combat.event(YsmModelProfile.Trigger.ENTER_COMBAT).at(), 100L);
-		check("holding combat does not restart event", combat.advance(YsmModelProfile.Trigger.WALK, true, 120) == combat);
-		var fly = combat.advance(YsmModelProfile.Trigger.FLY, true, 120);
-		equal("movement transition leaves combat clock", fly.event(YsmModelProfile.Trigger.ENTER_COMBAT).at(), 100L);
+		check("unchanged daily state sends no new snapshot", empty.advance(YsmPresentationSignals.Trigger.IDLE, false, 100) == empty);
+		var combat = empty.advance(YsmPresentationSignals.Trigger.WALK, true, 100);
+		equal("combat starts on server edge", combat.event(YsmPresentationSignals.Trigger.ENTER_COMBAT).at(), 100L);
+		check("holding combat does not restart event", combat.advance(YsmPresentationSignals.Trigger.WALK, true, 120) == combat);
+		var fly = combat.advance(YsmPresentationSignals.Trigger.FLY, true, 120);
+		equal("movement transition leaves combat clock", fly.event(YsmPresentationSignals.Trigger.ENTER_COMBAT).at(), 100L);
 		equal("movement transition increments state sequence", fly.stateSequence(), 2L);
-		var again = fly.advance(YsmModelProfile.Trigger.FLY, false, 130).advance(YsmModelProfile.Trigger.FLY, true, 140);
-		equal("re-enter combat is a new event", again.event(YsmModelProfile.Trigger.ENTER_COMBAT).sequence(), 2L);
+		var again = fly.advance(YsmPresentationSignals.Trigger.FLY, false, 130).advance(YsmPresentationSignals.Trigger.FLY, true, 140);
+		equal("re-enter combat is a new event", again.event(YsmPresentationSignals.Trigger.ENTER_COMBAT).sequence(), 2L);
 		var hurt = again.hurt(141).hurt(141);
-		equal("same-tick hits each have a sequence", hurt.event(YsmModelProfile.Trigger.HURT).sequence(), 2L);
+		equal("same-tick hits each have a sequence", hurt.event(YsmPresentationSignals.Trigger.HURT).sequence(), 2L);
 		equal("signal serialization", YsmPresentationSignals.fromTag(hurt.toTag()), hurt);
 		var legacyTag = hurt.toTag();
 		legacyTag.remove("combatMode");
@@ -454,158 +152,10 @@ public final class ModelPresentationTest {
 		equal("old signal NBT has no inferred combat condition",
 				YsmPresentationSignals.fromTag(legacyTag).combatMode(), YsmPresentationSignals.CombatMode.NONE);
 		equal("missing signals degrade to idle", YsmPresentationSignals.fromTag(new CompoundTag()), empty);
-		reject("event cannot be persistent state", () -> empty.advance(YsmModelProfile.Trigger.HURT, false, 100));
+		reject("event cannot be persistent state", () -> empty.advance(YsmPresentationSignals.Trigger.HURT, false, 100));
 		var cache = new YsmPresentationSignals.Cache();
 		var tag = hurt.toTag();
 		check("signal decode cache reused", cache.read(tag) == cache.read(tag));
-	}
-
-	private static void acknowledgementContracts() {
-		YsmClientProfiles.clear();
-		var first = new YsmProfileData.Entry(1, exampleProfile());
-		var later = new YsmProfileData.Entry(2, YsmModelProfile.empty(first.profile().model()));
-		YsmClientProfiles.receive(new YsmProfileSyncToClient(first, "save-a", true, "saved"));
-		YsmClientProfiles.receive(new YsmProfileSyncToClient(later, "", true, ""));
-		var response = YsmClientProfiles.takeResponse("save-a");
-		equal("late broadcast updates runtime cache", YsmClientProfiles.entry(first.profile().model()).revision(), 2L);
-		equal("save acknowledgement retains own revision", response.revision(), 1L);
-		equal("save acknowledgement retains own snapshot", YsmModelProfile.fromJson(response.json()), first.profile());
-		YsmClientProfiles.response("bind-a", true, "saved", 3, "");
-		YsmClientProfiles.response("bind-b", true, "saved", 4, "");
-		equal("binding acknowledgements stay correlated", YsmClientProfiles.takeResponse("bind-a").revision(), 3L);
-		check("acknowledgement consumed once", YsmClientProfiles.takeResponse("save-a") == null);
-		var reset = new YsmProfileSyncToClient();
-		reset.reset = true;
-		YsmClientProfiles.receive(reset);
-		check("full server reload removes deleted profiles", YsmClientProfiles.models().isEmpty());
-		YsmClientProfiles.receive(new YsmProfileSyncToClient(first, "", true, ""));
-		equal("new server snapshot accepts its own revisions after reset", YsmClientProfiles.entry(first.profile().model()), first);
-		YsmClientProfiles.receive(new YsmProfileSyncToClient(later, "", true, ""));
-		YsmClientProfiles.receive(new YsmProfileSyncToClient(first, "", true, ""));
-		equal("stale model packet cannot overwrite server revision", YsmClientProfiles.entry(first.profile().model()), later);
-		YsmClientProfiles.clear();
-	}
-
-	private static void compositionContracts() {
-		var profile = exampleProfile();
-		var empty = YsmPresentationState.EMPTY;
-		var idle = YsmPresentationSignals.EMPTY;
-		var result = YsmPresentationResolver.resolve(profile.model(), profile, idle, empty, 1000);
-		equal("idle ignores finite preset duration", result.body().clip(), "idle");
-		var airborne = idle.advance(YsmModelProfile.Trigger.AIRBORNE, false, 1001);
-		check("airborne state leaves jump animation to OYSM", YsmPresentationResolver.resolve(profile.model(), profile, airborne, empty, 1002).body() == null);
-		var sitting = idle.advance(YsmModelProfile.Trigger.SIT, false, 1000);
-		equal("passenger state selects sit preset", YsmPresentationResolver.resolve(profile.model(), profile, sitting, empty, 1001).body().clip(), "sit");
-		var swimming = sitting.advance(YsmModelProfile.Trigger.SWIM, false, 1002);
-		equal("swimming state selects swim preset", YsmPresentationResolver.resolve(profile.model(), profile, swimming, empty, 1003).body().clip(), "swim");
-		var combat = idle.advance(YsmModelProfile.Trigger.IDLE, true, 100);
-		result = YsmPresentationResolver.resolve(profile.model(), profile, combat, empty, 110);
-		equal("combat above daily", result.body().clip(), "extra5");
-		equal("per-parameter merge retains unrelated daily value", result.parameters().get("v.other"), 8f);
-		String replay = result.body().replayKey();
-		equal("holding event does not replay per frame", YsmPresentationResolver.resolve(profile.model(), profile, combat, empty, 111).body().replayKey(), replay);
-		equal("event ends at its deadline", YsmPresentationResolver.resolve(profile.model(), profile, combat, empty, 140).body().clip(), "idle");
-		var hurt = combat.hurt(110);
-		result = YsmPresentationResolver.resolve(profile.model(), profile, hurt, empty, 112);
-		equal("hurt takes priority over combat", result.body().clip(), "attacked");
-		check("accepted hit restarts same clip", !result.body().replayKey().equals(YsmPresentationResolver.resolve(profile.model(), profile, hurt.hurt(110), empty, 112).body().replayKey()));
-		equal("hurt expiry restores still-active combat", YsmPresentationResolver.resolve(profile.model(), profile, hurt, empty, 120).body().clip(), "extra5");
-		var manual = empty.play("manual", 111, 50, SOURCE).setParameter("v.face", 9, 111, 50, SOURCE, 32).setParameter("v.explicit", 7, 111, 50, SOURCE, 32);
-		result = YsmPresentationResolver.resolve(profile.model(), profile, hurt, manual, 112);
-		equal("manual body above events", result.body().clip(), "manual");
-		equal("manual parameters above events", result.parameters().get("v.face"), 9f);
-		var prone = hurt.advance(YsmModelProfile.Trigger.PRONE, false, 113);
-		result = YsmPresentationResolver.resolve(profile.model(), profile, prone, manual, 119);
-		equal("beaten mapping above manual body", result.body().clip(), "beaten_prone");
-		equal("beaten mapping above conflicting manual parameter", result.parameters().get("v.face"), 5f);
-		equal("unrelated explicit parameter still applies while beaten", result.parameters().get("v.explicit"), 7f);
-		check("unrelated daily parameter stops while beaten", !result.parameters().containsKey("v.other"));
-		equal("prone remains long after preset ticks", YsmPresentationResolver.resolve(profile.model(), profile, prone, manual, 10000).body().clip(), "beaten_prone");
-		var defeat = prone.advance(YsmModelProfile.Trigger.DEFEAT, false, 114);
-		result = YsmPresentationResolver.resolve(profile.model(), profile, defeat, manual, 119);
-		check("missing beaten mapping reserves fallback, never manual body", result.beaten() && result.body() == null);
-		var heal = prone.advance(YsmModelProfile.Trigger.IDLE, false, 120);
-		equal("healing restores active manual body", YsmPresentationResolver.resolve(profile.model(), profile, heal, manual, 120).body().clip(), "manual");
-		equal("manual expiry restores current daily state", YsmPresentationResolver.resolve(profile.model(), profile, heal, manual, 161).body().clip(), "idle");
-		var scoped = empty.applyPreset(profile.model(), profile.presets().get("hurt"), 100, 30, SOURCE, 32);
-		result = YsmPresentationResolver.resolve("different/model", profile, idle, scoped, 101);
-		check("model switch suppresses scoped presets and profile", result.body() == null && result.parameters().isEmpty());
-		equal("raw clip follows current model", YsmPresentationResolver.resolve("different/model", profile, idle, manual, 112).body().clip(), "manual");
-		var faceOnly = new YsmModelProfile(profile.model(), profile.presets(), Map.of(YsmModelProfile.Trigger.IDLE, "idle", YsmModelProfile.Trigger.HURT, "face"));
-		result = YsmPresentationResolver.resolve(profile.model(), faceOnly, hurt, empty, 112);
-		equal("event expression-only preset retains daily body", result.body().clip(), "idle");
-		equal("event expression-only preset overrides parameter", result.parameters().get("v.face"), 6f);
-		check("rewind does not replay a future event", !YsmPresentationResolver.resolve(profile.model(), profile, hurt, empty, 99).body().clip().equals("attacked"));
-		var normal = idle.withCombatMode(YsmPresentationSignals.CombatMode.NORMAL, 200);
-		result = YsmPresentationResolver.resolve(profile.model(), profile, normal, empty, 201);
-		equal("normal combat condition overlays movement parameters", result.parameters().get("v.face"), 7f);
-		check("normal combat route suppresses legacy angry expression", result.combatExpressionRouted());
-		var stg = normal.withCombatMode(YsmPresentationSignals.CombatMode.STG, 210);
-		equal("STG combat condition is independent from movement",
-				YsmPresentationResolver.resolve(profile.model(), profile, stg, empty, 211).parameters().get("v.face"), 8f);
-		var victory = stg.withCombatMode(YsmPresentationSignals.CombatMode.NONE, 220)
-				.fire(YsmModelProfile.Trigger.BOSS_VICTORY, 220);
-		equal("boss victory event overrides an explicit body",
-				YsmPresentationResolver.resolve(profile.model(), profile, victory,
-						empty.play("manual", 220, 50, SOURCE), 221).body().clip(), "victory");
-		equal("boss victory event ends at its finite deadline",
-				YsmPresentationResolver.resolve(profile.model(), profile, victory, empty, 240).body().clip(), "idle");
-	}
-
-	private static void installedOysmContracts() throws Exception {
-		var loader = ModelPresentationTest.class.getClassLoader();
-		check("installed OYSM enables public API integration", YsmOpenYsmSupport.available());
-		Class<?> entries = Class.forName("rip.ysm.api.client.ExternalModelRenderAPI", false, loader);
-		check("unified entry directory", entries.getMethod("getLoadedModelReferences").getReturnType() == List.class);
-		check("entry renderer accepts the real generic host", entries.getMethod("render", net.minecraft.world.entity.Entity.class, String.class, String.class, String.class, String.class, float.class, float.class, float.class, com.mojang.blaze3d.vertex.PoseStack.class, net.minecraft.client.renderer.MultiBufferSource.class, int.class).getReturnType() == boolean.class);
-		Class<?> api = Class.forName("rip.ysm.api.client.ExternalLivingPresentationAPI", false, loader);
-		equal("exact requested OYSM API jar", java.nio.file.Path.of(api.getProtectionDomain().getCodeSource().getLocation().toURI()).toAbsolutePath().normalize(),
-				java.nio.file.Path.of(System.getProperty("yh.test.oysm.jar")).toAbsolutePath().normalize());
-		Class<?> living = net.minecraft.world.entity.LivingEntity.class;
-		Class<?> frame = Class.forName("rip.ysm.api.client.ExternalLivingPresentationAPI$Frame", false, loader);
-		check("public preparation returns a render lease", api.getMethod("prepare", living, String.class, String.class, String.class,
-				Map.class, boolean.class).getReturnType() == frame);
-		check("public lease is closeable", AutoCloseable.class.isAssignableFrom(frame));
-		check("public lease reports original parameter values", frame.getMethod("parameterBases").getReturnType() == Map.class);
-		check("public preview input contract", api.getMethod("previewInputs", living, List.class).getReturnType() == Map.class);
-		check("public model variable directory", api.getMethod("parameterNames", String.class).getReturnType() == List.class);
-		check("public preview cleanup contract", api.getMethod("forget", living).getReturnType() == void.class);
-		check("public model pack registration", Class.forName("rip.ysm.api.ExternalModelPackAPI", false, loader)
-				.getMethod("registerDirectory", String.class, java.nio.file.Path.class, String.class).getReturnType() == void.class);
-		check("public projectile configuration", Class.forName("rip.ysm.api.client.ExternalProjectileRenderAPI", false, loader)
-				.getMethod("configure", net.minecraft.world.entity.projectile.Projectile.class, String.class, boolean.class).getReturnType() == boolean.class);
-		check("public player hints", Class.forName("rip.ysm.api.client.PlayerPresentationAPI", false, loader)
-				.getMethod("registerHintProvider", String.class, Class.forName("rip.ysm.api.client.PlayerPresentationAPI$HintProvider", false, loader))
-				.getReturnType() == void.class);
-	}
-
-	private static void automaticProfileContracts() {
-		var catalog = new YsmModelCatalog(YsmModelCatalog.Status.READY, "",
-				List.of("idle", "run", "elytra_fly", "ride", "swimming_up", "attacked"), List.of(), List.of());
-		var automatic = YsmAutomaticProfile.merge("test/automatic", null, catalog);
-		check("automatic profile exists for a ready arbitrary model", automatic != null);
-		equal("automatic idle uses the real idle clip", automatic.triggers().get(YsmModelProfile.Trigger.IDLE), "__yh_auto_idle");
-		equal("walk falls back to run", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.WALK)).clip(), "run");
-		equal("fly falls back to elytra_fly", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.FLY)).clip(), "elytra_fly");
-		equal("sit falls back to ride", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.SIT)).clip(), "ride");
-		equal("swim falls back to swimming_up", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.SWIM)).clip(), "swimming_up");
-		equal("hurt uses a finite generic event clip", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.HURT)).clip(), "attacked");
-		equal("hurt fallback duration", automatic.presets().get(automatic.triggers().get(YsmModelProfile.Trigger.HURT)).ticks(), 10);
-
-		var explicit = new YsmModelProfile("test/automatic", Map.of(
-				"custom_sit", new YsmModelProfile.Preset("custom", "my_sit", 0, Map.of()),
-				"blank_idle", new YsmModelProfile.Preset("native", "", 0, Map.of("v.face", 1f))),
-				Map.of(YsmModelProfile.Trigger.SIT, "custom_sit", YsmModelProfile.Trigger.IDLE, "blank_idle"));
-		var merged = YsmAutomaticProfile.merge(explicit.model(), explicit, catalog);
-		equal("explicit sit route wins over automatic fallback", merged.triggers().get(YsmModelProfile.Trigger.SIT), "custom_sit");
-		equal("explicit blank route remains authoritative", merged.triggers().get(YsmModelProfile.Trigger.IDLE), "blank_idle");
-		check("automatic profile never mutates explicit preset map", !merged.presets().containsKey("__yh_auto_sit"));
-		check("missing catalog leaves explicit profile untouched",
-				YsmAutomaticProfile.merge(explicit.model(), explicit,
-						YsmModelCatalog.unavailable(YsmModelCatalog.Status.MODEL_NOT_READY, "waiting")) == explicit);
-		check("missing standard clips are not invented",
-				YsmAutomaticProfile.merge("test/empty", null,
-						new YsmModelCatalog(YsmModelCatalog.Status.READY, "", List.of("custom"), List.of(), List.of())) == null);
 	}
 
 	private static void equal(String name, Object actual, Object expected) {

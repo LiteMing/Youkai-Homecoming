@@ -43,7 +43,6 @@ public class YsmOverrideSyncToClient extends SerialPacketBase {
 		context.enqueueWork(() -> {
 			YSMClientCompat.applySyncedOverrides(typeOverrides, entityOverrides, message);
 			YSMClientCompat.setBindingRevision(revision);
-			YsmClientProfiles.response(requestId, success, message, revision, "");
 		});
 	}
 

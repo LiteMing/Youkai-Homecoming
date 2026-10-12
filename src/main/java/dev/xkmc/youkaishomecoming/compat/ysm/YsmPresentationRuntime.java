@@ -16,7 +16,7 @@ import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-import static dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger;
+import static dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals.Trigger;
 
 /** Samples authority; never changes combat, physics, pose, AI or damage. */
 @Mod.EventBusSubscriber(modid = YoukaisHomecoming.MODID)

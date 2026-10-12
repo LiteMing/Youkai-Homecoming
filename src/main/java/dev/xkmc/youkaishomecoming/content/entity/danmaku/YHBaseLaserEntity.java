@@ -67,8 +67,6 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 	@SerialClass.SerialField
 	private String ysmProjectileModel = "";
 	@SerialClass.SerialField
-	private String ysmProjectileSlot = "arrow";
-	@SerialClass.SerialField
 	private float ysmProjectileModelScale = 1;
 	@SerialClass.SerialField
 	private int ysmProjectileMaxInstances = 0;
@@ -231,7 +229,6 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		if (config == null || !config.enabled()) {
 			ysmProjectileEnabled = false;
 			ysmProjectileModel = "";
-			ysmProjectileSlot = "arrow";
 			ysmProjectileModelScale = 1;
 			ysmProjectileMaxInstances = 0;
 			ysmProjectileAcknowledgeCost = false;
@@ -246,7 +243,6 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 		}
 		ysmProjectileEnabled = true;
 		ysmProjectileModel = config.model();
-		ysmProjectileSlot = config.slot();
 		ysmProjectileModelScale = config.modelScale();
 		ysmProjectileMaxInstances = config.maxInstances();
 		ysmProjectileAcknowledgeCost = config.acknowledgeCost();
@@ -261,7 +257,6 @@ public class YHBaseLaserEntity extends BaseLaser implements IEntityAdditionalSpa
 
 	public boolean hasYsmProjectile() { return ysmProjectileEnabled && !ysmProjectileModel.isBlank() && ysmProjectileMaxInstances > 0; }
 	public String ysmProjectileModel() { return ysmProjectileModel; }
-	public String ysmProjectileSlot() { return ysmProjectileSlot; }
 	public float ysmProjectileModelScale() { return ysmProjectileModelScale; }
 	public int ysmProjectileMaxInstances() { return ysmProjectileMaxInstances; }
 	public boolean ysmProjectileAcknowledgeCost() { return ysmProjectileAcknowledgeCost; }

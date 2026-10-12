@@ -62,7 +62,7 @@ public class YSMClientCompat {
 	private static final double UUID_SUGGESTION_RANGE_SQR = 16 * 16;
 
 	private static final String MOD_ID = "yes_steve_model";
-	private static final String MODEL_REMILIA = "YH内置/remilia/main";
+	private static final String MODEL_REMILIA = "youkaishomecoming/remilia/main";
 	private static final String TEXTURE_DEFAULT = "default";
 	private static final ArgumentType<String> YSM_ID_ARGUMENT = new TokenArgument("Expected YSM id", List.of(MODEL_REMILIA, "namespace:path/model"));
 	private static final ArgumentType<String> ENTITY_TARGET_ARGUMENT = new TokenArgument("Expected entity target", List.of("@e[limit=1,sort=nearest]", "@a", "00000000-0000-0000-0000-000000000000"));
@@ -86,7 +86,7 @@ public class YSMClientCompat {
 	private static final int DEBUG_BG_A = 0xa0000000;
 	private static final int DEBUG_BG_B = 0x90000000;
 	private static final SuggestionProvider<CommandSourceStack> MODEL_SUGGESTIONS = (ctx, builder) ->
-			SharedSuggestionProvider.suggest(YsmEditorCatalog.modelIds(), builder);
+		SharedSuggestionProvider.suggest(YsmModelCatalogBridge.modelIds(), builder);
 	private static final SuggestionProvider<CommandSourceStack> TARGET_ENTITY_SUGGESTIONS = (ctx, builder) -> {
 		Entity pointed = getPointedEntity();
 		if (pointed != null) {
@@ -182,7 +182,7 @@ public class YSMClientCompat {
 		String textureName = !textureOverride.isBlank() ? textureOverride :
 				!modelOverride.isBlank() ? TEXTURE_DEFAULT :
 						binding == null ? TEXTURE_DEFAULT : binding.textureName();
-		var presentation = YsmClientProfiles.resolve(e, modelId);
+		var presentation = YsmClientPresentation.resolve(e, modelId);
 		return new RenderRequest(modelId, textureName, selectAnimation(e, modelId, presentation), presentation);
 	}
 
@@ -242,7 +242,7 @@ public class YSMClientCompat {
 		boolean angry = isAngryExpression(e);
 		String overrideHint = YsmSpellHintClient.animationOverride(e);
 		if (presentation.body() != null) {
-			// Exact native clip; declared absence falls back to the ordinary movement/legacy hints.
+			// Exact native clip; declared absence falls back to ordinary movement hints.
 			var catalog = YsmClientPresentationBridge.catalog(modelId);
 			if (catalog.status() != YsmModelCatalog.Status.READY || catalog.animations().contains(presentation.body().clip()))
 				overrideHint = "special=" + presentation.body().clip();
@@ -1096,7 +1096,7 @@ public class YSMClientCompat {
 
 	static void clearSessionState() {
 		bindingRevision = 0;
-		YsmClientProfiles.clear();
+		YsmClientPresentation.clear();
 		TYPE_DEBUG_OVERRIDES.clear();
 		ENTITY_DEBUG_OVERRIDES.clear();
 		textureNameCache.clear();

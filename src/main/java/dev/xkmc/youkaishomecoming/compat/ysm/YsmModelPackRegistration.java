@@ -11,7 +11,7 @@ import java.nio.file.Path;
 /** Registers YH's packaged model assets with OYSM without extracting them. */
 public final class YsmModelPackRegistration {
 
-	private static final String RESOURCE_DIR = "assets/youkaishomecoming/yhysm";
+	private static final String RESOURCE_DIR = "assets/youkaishomecoming/models/ysm";
 	private static boolean attempted;
 
 	private YsmModelPackRegistration() {
@@ -28,7 +28,7 @@ public final class YsmModelPackRegistration {
 			if (!Files.isDirectory(source)) return;
 			Class<?> api = Class.forName("rip.ysm.api.ExternalModelPackAPI", false, YsmModelPackRegistration.class.getClassLoader());
 			Method register = api.getMethod("registerDirectory", String.class, Path.class, String.class);
-			register.invoke(null, YoukaisHomecoming.MODID, source, "YH内置/");
+			register.invoke(null, YoukaisHomecoming.MODID, source, "youkaishomecoming/");
 			YoukaisHomecoming.LOGGER.info("Registered YH YSM model resources with OpenYSM: {}", source);
 		} catch (ClassNotFoundException | NoSuchMethodException ignored) {
 			// The resource registration contract is introduced with the decoupled

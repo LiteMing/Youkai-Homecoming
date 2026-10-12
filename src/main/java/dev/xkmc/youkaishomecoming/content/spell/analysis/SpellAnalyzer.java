@@ -870,7 +870,7 @@ public final class SpellAnalyzer {
 				throw rejected("ysm_projectile_unacknowledged", "YSM projectile rendering requires creator acknowledgement");
 			}
 			diagnostics.add(SpellDiagnostic.warning("ysm_projectile_cost", path(),
-					"YSM projectile path: model=" + config.model() + ", slot=" + config.slot()
+					"YSM projectile path: model=" + config.model()
 							+ ", max_instances=" + config.maxInstances() + ", fallback=yh(selected bullet)"));
 		});
 		long count;
@@ -919,7 +919,7 @@ public final class SpellAnalyzer {
 				throw rejected("ysm_projectile_unacknowledged", "YSM projectile rendering requires creator acknowledgement");
 			}
 			diagnostics.add(SpellDiagnostic.warning("ysm_projectile_cost", path(),
-					"YSM projectile path on laser: model=" + config.model() + ", slot=" + config.slot()
+					"YSM projectile path on laser: model=" + config.model()
 							+ ", max_instances=" + config.maxInstances() + ", fallback=yh laser"));
 		});
 		long contrib = mult;

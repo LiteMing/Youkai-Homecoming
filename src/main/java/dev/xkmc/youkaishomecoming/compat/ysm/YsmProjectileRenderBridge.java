@@ -58,7 +58,7 @@ public final class YsmProjectileRenderBridge {
 	 * max_instances cap works without a second entity scan.
 	 */
 	public static int nextLaserOrdinal(YHBaseLaserEntity laser) {
-		String key = laser.ysmProjectileModel() + "|" + laser.ysmProjectileSlot()
+		String key = laser.ysmProjectileModel()
 				+ "|" + laser.ysmProjectileMaxInstances();
 		int ordinal = LASER_ORDINALS.getOrDefault(key, 0);
 		LASER_ORDINALS.put(key, ordinal + 1);
@@ -96,9 +96,8 @@ public final class YsmProjectileRenderBridge {
 			warnOnce("not_installed", "YSM projectile presentation requested but OpenYSM is not installed; using YH fallback");
 			return false;
 		}
-		String slot = danmaku.slot();
 		if (visibleOrdinal >= danmaku.maxInstances()) {
-			warnOnce("limit:" + danmaku.model() + ":" + slot,
+			warnOnce("limit:" + danmaku.model(),
 					"YSM projectile instance limit reached for model '" + danmaku.model()
 							+ "'; using YH fallback for additional projectiles");
 			return false;
@@ -120,18 +119,17 @@ public final class YsmProjectileRenderBridge {
 								(float) axis.x, (float) axis.y, (float) axis.z));
 					}
 				}
-				var reference = ExternalModelRenderAPI.resolve(danmaku.model(), slot).orElse(null);
+				var reference = ExternalModelRenderAPI.resolve(danmaku.model()).orElse(null);
 				boolean projectile = reference != null && reference.kind() == ModelReference.Kind.PROJECTILE;
 				float yaw = Mth.lerp(partialTick, source.yRotO, source.getYRot());
 				float pitch = Mth.lerp(partialTick, source.xRotO, source.getXRot());
-				boolean consumed = ExternalModelRenderAPI.render(source, danmaku.model(), slot, null, null,
+				boolean consumed = ExternalModelRenderAPI.render(source, danmaku.model(), null, null,
 						(projectile ? -yaw : yaw) + danmaku.yawOffset(),
 						(projectile ? -pitch : pitch) + danmaku.pitchOffset(), partialTick, pose,
 						tint == 0xffffffff ? buffer : new TintingBufferSource(buffer, tint), light);
 				if (!consumed) {
-					warnOnce("model:" + danmaku.model() + ":" + slot,
-							"OpenYSM model entry '" + danmaku.model() + "' is not ready (legacy slot '"
-									+ slot + "'); using YH fallback until available");
+					warnOnce("model:" + danmaku.model(),
+							"OpenYSM model entry '" + danmaku.model() + "' is not ready; using YH fallback until available");
 				}
 				return consumed;
 			} finally {
@@ -177,7 +175,6 @@ public final class YsmProjectileRenderBridge {
 			@Override public Entity source() { return danmaku; }
 			@Override public boolean hasYsmProjectile() { return danmaku.hasYsmProjectile(); }
 			@Override public String model() { return danmaku.ysmProjectileModel(); }
-			@Override public String slot() { return danmaku.ysmProjectileSlot(); }
 			@Override public float modelScale() { return danmaku.ysmProjectileModelScale(); }
 			@Override public int maxInstances() { return danmaku.ysmProjectileMaxInstances(); }
 			@Override public float baseScale() { return danmaku.scale(); }
@@ -196,7 +193,6 @@ public final class YsmProjectileRenderBridge {
 			@Override public Entity source() { return laser; }
 			@Override public boolean hasYsmProjectile() { return laser.hasYsmProjectile(); }
 			@Override public String model() { return laser.ysmProjectileModel(); }
-			@Override public String slot() { return laser.ysmProjectileSlot(); }
 			@Override public float modelScale() { return laser.ysmProjectileModelScale(); }
 			@Override public int maxInstances() { return laser.ysmProjectileMaxInstances(); }
 			@Override public float baseScale() { return laser.ysmProjectileBaseScale(); }
@@ -218,7 +214,6 @@ public final class YsmProjectileRenderBridge {
 		Entity source();
 		boolean hasYsmProjectile();
 		String model();
-		String slot();
 		float modelScale();
 		int maxInstances();
 		float baseScale();

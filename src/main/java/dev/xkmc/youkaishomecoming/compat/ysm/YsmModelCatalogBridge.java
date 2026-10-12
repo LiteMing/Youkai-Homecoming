@@ -6,35 +6,24 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import java.util.List;
 import java.util.TreeSet;
 
-/**
- * Live catalog inputs shared by the YSM workspace and spell property editors.
- * The editor must see both models known to the external runtime and models with
- * a locally cached YH profile, just like the dedicated YSM catalog page does.
- */
+/** Narrow YH view of OYSM's loaded model-entry catalog. */
 @OnlyIn(Dist.CLIENT)
-public final class YsmEditorCatalog {
+public final class YsmModelCatalogBridge {
+	private YsmModelCatalogBridge() { }
 
-	private YsmEditorCatalog() {
-	}
-
-	/** Returns the same live model set used by the YSM catalog workspace. */
 	public static List<String> modelIds() {
 		TreeSet<String> ids = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 		ids.addAll(YSMClientCompat.loadedModelIds());
-		for (String id : YSMCompatConfig.configuredModelIds()) ids.add(modelReference(id, null));
-		for (String id : YsmClientProfiles.models()) ids.add(modelReference(id, null));
+		ids.addAll(YSMCompatConfig.configuredModelIds());
 		return List.copyOf(ids);
 	}
 
-	/** Resolve old pack + slot fields for display; keep explicit paths intact. */
-	public static String modelReference(String model, String legacySlot) {
+	public static String modelReference(String model) {
 		if (model == null || model.isBlank()) return "";
 		if (YSMClientCompat.isLoaded()) {
-			var resolved = rip.ysm.api.client.ExternalModelRenderAPI.resolve(model, legacySlot);
+			var resolved = rip.ysm.api.client.ExternalModelRenderAPI.resolve(model);
 			if (resolved.isPresent()) return resolved.get().path();
 		}
-		if (model.endsWith("/main") || model.endsWith("/arm")) return model;
-		// Unloaded profiles may already name a projectile entry. Preserve their opaque ID.
 		return model;
 	}
 
@@ -53,7 +42,6 @@ public final class YsmEditorCatalog {
 		return folder == null || folder.isEmpty() || path != null && path.startsWith(folder + "/");
 	}
 
-	/** Matches the YSM workspace's animation-folder grouping convention. */
 	public static String animationGroup(String clip) {
 		if (clip == null || clip.isEmpty()) return "";
 		String path = clip.replace('.', '/').replace('_', '/');
@@ -61,5 +49,4 @@ public final class YsmEditorCatalog {
 		String numberedFamily = clip.replaceFirst("[0-9]+$", "");
 		return numberedFamily.equals(clip) ? "" : numberedFamily;
 	}
-
 }

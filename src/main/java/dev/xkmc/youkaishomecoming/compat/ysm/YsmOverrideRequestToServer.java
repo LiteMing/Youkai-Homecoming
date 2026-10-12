@@ -24,10 +24,10 @@ public class YsmOverrideRequestToServer extends SerialPacketBase {
 	/** Comma-joined entity UUIDs for entity-level actions. */
 	@SerialClass.SerialField
 	public String uuidList = "";
-	/** -1 preserves legacy command semantics. Editor saves must compare the synchronized revision. */
+	/** -1 preserves command semantics. Editor saves must compare the synchronized revision. */
 	@SerialClass.SerialField public long expectedRevision = -1;
 	@SerialClass.SerialField public String requestId = "";
-	/** Numeric appearance defaults for the selected UUID/type; empty on legacy commands. */
+	/** Numeric appearance defaults for the selected UUID/type. */
 	@SerialClass.SerialField public java.util.Map<String, Float> parameters = new java.util.LinkedHashMap<>();
 
 	@Deprecated

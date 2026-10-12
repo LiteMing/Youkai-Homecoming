@@ -630,7 +630,7 @@ Text, title, and command strings support `{spell_id}`, `{caster_name}`, and
 - `repeat`: `count`, optional `index_variable` default `i`, `body`. Child actions can read `{"type":"variable","key":"i"}`.
 - `delay`: `delay_ticks`, `body`.
 - `burst`: `waves`, optional `interval`, optional `wave_variable`, `body`.
-- `spawn_shooter`: creates independent shooter emitters through the same pattern emitter model used by danmaku actions. Required fields: `count`, `speed`, `body`. Optional fields: `health` default `40`, `damage` default `4`, `lifetime` default `100`, `circle`, `origin`, `angle_offset`, `spread` default `360`, `elevation`, `pattern` default `ring`, `aim_mode` default `target`, `outer_count`, `tilt_angle`, `group_rotation`, `mover`, `ysm_model`, `ysm_texture`, `ysm_animation`, `ysm_duration`, `ysm_clear_target`. `count`, `speed`, `angle_offset`, `spread`, `elevation`, `outer_count`, and `tilt_angle` are NumberProvider fields; `health`, `lifetime`, and `ysm_duration` are plain integers. Do not use old `velocity_x`, `velocity_y`, or `velocity_z`; that legacy path has been removed. Use `count`/`speed`/`pattern`/`aim_mode` for initial shooter velocity and `mover` for custom shooter motion.
+- `spawn_shooter`: creates independent shooter emitters through the same pattern emitter model used by danmaku actions. Required fields: `count`, `speed`, `body`. Optional fields: `health` default `40`, `damage` default `4`, `lifetime` default `100`, `circle`, `origin`, `angle_offset`, `spread` default `360`, `elevation`, `pattern` default `ring`, `aim_mode` default `target`, `outer_count`, `tilt_angle`, `group_rotation`, `mover`, nested `ysm`, `targetable`, and `random_axis`. The nested `ysm` object contains `model`, `texture`, `hint`, `duration`, and `clear_target`. `count`, `speed`, `angle_offset`, `spread`, `elevation`, `outer_count`, and `tilt_angle` are NumberProvider fields; `health` and `lifetime` are plain integers. Use `count`/`speed`/`pattern`/`aim_mode` for initial shooter velocity and `mover` for custom shooter motion.
 - `clear_screen`: no fields besides `type`.
 - `erase_enemy_danmaku`: optional `radius`, `sessions_only`.
 - `set_variable`: `key`, `value` (NumberProvider, accepts expression strings).
@@ -836,10 +836,9 @@ this is optional appearance, not a way to define new bullet enums or physical be
 play_sound also accepts plain source (a Minecraft sound category), origin
 (caster/target/action/hit), radius, and attenuation. These are not NumberProviders.
 
-spawn_shooter also supports the current nested `ysm` presentation object, plain
-`targetable` and `random_axis` booleans, and a `base_scale` NumberProvider. Legacy
-`ysm_model`/`ysm_texture`/`ysm_animation`/`ysm_duration`/`ysm_clear_target` remain
-readable; preserve a current editor export's nested presentation when modifying it.
+spawn_shooter also supports the nested `ysm` presentation object, plain
+`targetable` and `random_axis` booleans, and a `base_scale` NumberProvider. New and
+edited JSON must use the nested presentation object; the removed flat YSM fields are invalid.
 
 # Construction examples
 

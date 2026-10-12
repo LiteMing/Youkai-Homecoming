@@ -52,12 +52,6 @@ public interface YsmRenderOverrideTarget {
 		return "";
 	}
 
-	default YsmModelProfile ysmProfile(String model) {
-		if (this instanceof net.minecraft.world.entity.Entity entity && entity.getServer() != null)
-			return YsmProfileData.get(entity.getServer()).entry(model).profile();
-		throw new IllegalArgumentException("Shared preset queries require a server entity or isolated preview");
-	}
-
 	default boolean canMutateYsmPresentation() {
 		return this instanceof net.minecraft.world.entity.Entity entity && !entity.level().isClientSide()
 				&& entity.getServer() != null && entity.getServer().isSameThread();

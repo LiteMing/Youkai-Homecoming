@@ -37,7 +37,7 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 		public Animation(String clip, long startedAt, long expiresAt, Source source) { this(clip, startedAt, expiresAt, source, ""); }
 		public Animation {
 			clip = normalizeClip(clip);
-			model = model == null || model.isEmpty() ? "" : YsmModelProfile.modelId(model);
+			model = model == null || model.isEmpty() ? "" : YsmModelPaths.modelId(model);
 			owner = owner == null || owner.isEmpty() ? "" : normalizeOwner(owner);
 			checkTime(startedAt, expiresAt);
 			Objects.requireNonNull(source);
@@ -54,7 +54,7 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 		public Parameter(float value, long startedAt, long expiresAt, Source source, String model) { this(value, startedAt, expiresAt, source, model, ""); }
 		public Parameter(float value, long startedAt, long expiresAt, Source source) { this(value, startedAt, expiresAt, source, ""); }
 		public Parameter {
-			model = model == null || model.isEmpty() ? "" : YsmModelProfile.modelId(model);
+			model = model == null || model.isEmpty() ? "" : YsmModelPaths.modelId(model);
 			owner = owner == null || owner.isEmpty() ? "" : normalizeOwner(owner);
 			if (!Float.isFinite(value) || Math.abs(value) > WIRE_MAX_PARAMETER_VALUE) throw new IllegalArgumentException("Model parameter exceeds the numeric wire bound");
 			checkTime(startedAt, expiresAt);
@@ -104,12 +104,12 @@ public record YsmPresentationState(long sequence, @Nullable Animation animation,
 	}
 
 	/** Atomic model-scoped preset overlay. Unmentioned parameters and a blank body are preserved. */
-	public YsmPresentationState applyPreset(String model, YsmModelProfile.Preset preset, long now, int ticks, Source source, int limit) {
+	public YsmPresentationState applyPreset(String model, YsmPresetBridge.Preset preset, long now, int ticks, Source source, int limit) {
 		return applyPreset(model, preset, now, ticks, source, limit, "");
 	}
 
-	public YsmPresentationState applyPreset(String model, YsmModelProfile.Preset preset, long now, int ticks, Source source, int limit, String owner) {
-		model = YsmModelProfile.modelId(model);
+	public YsmPresentationState applyPreset(String model, YsmPresetBridge.Preset preset, long now, int ticks, Source source, int limit, String owner) {
+		model = YsmModelPaths.modelId(model);
 		var current = expire(now);
 		var body = current.animation;
 		long next = sequence;

@@ -255,7 +255,7 @@ public class ClientDanmakuCache {
 					float wz = (float) (Mth.lerp(pTick, danmaku.zOld, danmaku.getZ()) - camz);
 					int renderColor = cachedRenderer.color(danmaku, pTick);
 					if (danmaku.hasYsmProjectile()) {
-						String key = danmaku.ysmProjectileModel() + "|" + danmaku.ysmProjectileSlot()
+						String key = danmaku.ysmProjectileModel()
 								+ "|" + danmaku.ysmProjectileMaxInstances();
 						int ordinal = ysmInstances.getOrDefault(key, 0);
 						ysmInstances.put(key, ordinal + 1);

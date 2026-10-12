@@ -70,7 +70,7 @@ public final class YsmClientPresentationBridge {
 		client.renderedFrame = null;
 		client.renderSuccessful = false;
 		client.parameterBases.clear();
-		boolean preview = YsmClientProfiles.isPreview(entity);
+		boolean preview = YsmClientPresentation.isPreview(entity);
 		boolean hasPresentation = state.body() != null || !state.parameters().isEmpty() || preview;
 		if (!hasPresentation) client.clearTransient();
 		boolean suppressed = YSMClientCompat.isBeatenProjection(entity) && !state.beaten();
@@ -111,29 +111,11 @@ public final class YsmClientPresentationBridge {
 
 	@Nullable
 	public static Map<String, Float> previewInputs(LivingEntity entity, String model, List<String> names) {
-		if (!YsmClientProfiles.isPreview(entity) || !YSMClientCompat.isLoaded()) return null;
+		if (!YsmClientPresentation.isPreview(entity) || !YSMClientCompat.isLoaded()) return null;
 		ClientState client = ENTITIES.get(entity);
 		try { return ExternalLivingPresentationAPI.previewInputs(entity, model, names,
 				client != null && client.renderSuccessful && model.equals(client.renderedModel) ? client.renderedFrame : null); }
 		catch (IllegalArgumentException ignored) { return null; }
-	}
-
-	public static YsmModelProfile.Preset capturePreview(LivingEntity entity, String model, String description, int ticks) {
-		if (!YsmClientProfiles.isPreview(entity)) throw new IllegalArgumentException("preview_capture_unavailable");
-		var catalog = catalog(model);
-		if (catalog.status() != YsmModelCatalog.Status.READY) throw new IllegalArgumentException("preview_capture_unavailable");
-		var resolved = YsmClientProfiles.resolve(entity, model);
-		ClientState client = ENTITIES.get(entity);
-		if (client == null || !client.renderSuccessful || !model.equals(client.renderedModel) || !resolved.equals(client.rendered))
-			throw new IllegalArgumentException("preview_capture_wait");
-		if (client.suppressed || !client.skipped.isEmpty()) throw new IllegalArgumentException("preview_capture_unapplied");
-		if (resolved.body() == null && entity instanceof YsmRenderOverrideTarget target
-				&& (target.getYsmSignals().state() != YsmModelProfile.Trigger.IDLE
-				|| target.getYsmSignals().combatMode() != YsmPresentationSignals.CombatMode.NONE))
-			throw new IllegalArgumentException("preview_capture_state");
-		var inputs = previewInputs(entity, model, YsmPresetCapture.parameterNames(catalog, resolved));
-		if (inputs == null) throw new IllegalArgumentException("preview_capture_wait");
-		return YsmPresetCapture.capture(catalog, resolved, inputs, description, ticks);
 	}
 
 	static void renderOutcome(LivingEntity entity, boolean rendered) {

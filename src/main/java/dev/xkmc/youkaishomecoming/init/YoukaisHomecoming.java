@@ -24,6 +24,7 @@ import dev.xkmc.youkaishomecoming.compat.thirst.ThirstCompat;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMCompat;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.TLMRegistries;
 import dev.xkmc.youkaishomecoming.compat.ysm.YsmModelPackRegistration;
+import dev.xkmc.youkaishomecoming.compat.ysm.YsmPresetRegistration;
 import dev.xkmc.youkaishomecoming.compat.touhoulittlemaid.fairy.FairySpellCards;
 import dev.xkmc.youkaishomecoming.content.capability.*;
 import dev.xkmc.youkaishomecoming.content.entity.misc.FairyIce;
@@ -123,8 +124,6 @@ public class YoukaisHomecoming {
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.exposure.DanmakuPhotoToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmOverrideSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT),
-			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmProfileRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
-			e -> e.create(dev.xkmc.youkaishomecoming.compat.ysm.YsmProfileSyncToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationQuoteRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationQuoteToClient.class, NetworkDirection.PLAY_TO_CLIENT),
 			e -> e.create(dev.xkmc.youkaishomecoming.content.spell.certification.network.CertificationStartRequestToServer.class, NetworkDirection.PLAY_TO_SERVER),
@@ -183,6 +182,7 @@ public class YoukaisHomecoming {
 		// Register packaged YSM assets before OYSM builds its model catalog. The
 		// registration is optional and does not extract files into config/.
 		YsmModelPackRegistration.register();
+		YsmPresetRegistration.register();
 
 		AttackEventHandler.register(3943, new YHAttackListener());
 

@@ -77,7 +77,6 @@ public class VirtualSpellScene {
 		this.runtime = new SpellRuntime(definition);
 		bindRuntime(this.runtime);
 		this.holder = new PreviewCardHolder(level);
-		this.holder.setYsmProfiles(model -> dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.entry(model).profile());
 		this.holder.setTargetDistance(targetDistance);
 		this.holder.setRuntimeSupplier(() -> this.runtime);
 		if (Minecraft.getInstance().player != null) {
@@ -94,7 +93,7 @@ public class VirtualSpellScene {
 
 	public void releaseYsmPreview() {
 		dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentationBridge.forgetPreview(holder.getFakeCaster());
-		dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.forgetPreview(holder.getFakeCaster());
+		dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentation.forgetPreview(holder.getFakeCaster());
 	}
 
 	public void tick() {

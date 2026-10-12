@@ -779,7 +779,7 @@ public class OrthographicViewport {
 				}
 				if (cachedDanmakuRenderer != null) {
 					if (danmaku.tickCount > 0 && danmaku.hasYsmProjectile()) {
-						String key = danmaku.ysmProjectileModel() + "|" + danmaku.ysmProjectileSlot()
+						String key = danmaku.ysmProjectileModel()
 								+ "|" + danmaku.ysmProjectileMaxInstances();
 						int ordinal = ysmInstances.getOrDefault(key, 0);
 						ysmInstances.put(key, ordinal + 1);
@@ -923,7 +923,7 @@ public class OrthographicViewport {
 				}
 				if (cachedDanmakuRendererP != null) {
 					if (danmaku.tickCount > 0 && danmaku.hasYsmProjectile()) {
-						String key = danmaku.ysmProjectileModel() + "|" + danmaku.ysmProjectileSlot()
+						String key = danmaku.ysmProjectileModel()
 								+ "|" + danmaku.ysmProjectileMaxInstances();
 						int ordinal = ysmInstancesP.getOrDefault(key, 0);
 						ysmInstancesP.put(key, ordinal + 1);
@@ -983,7 +983,7 @@ public class OrthographicViewport {
 		// Only an explicitly selected preview binding or a model action enables the model.
 		String model = scene.getHolder().getYsmModelOverride();
 		if (!model.isBlank()) {
-			dev.xkmc.youkaishomecoming.compat.ysm.YsmClientProfiles.preview(caster, scene.getHolder().ysmProfile(model));
+			dev.xkmc.youkaishomecoming.compat.ysm.YsmClientPresentation.preview(caster, java.util.Map.of());
 			boolean invisible = caster.isInvisible();
 			caster.setInvisible(false);
 			try {

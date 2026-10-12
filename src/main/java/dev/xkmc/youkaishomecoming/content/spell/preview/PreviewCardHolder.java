@@ -104,8 +104,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 	private final java.util.IdentityHashMap<SpellAction, Integer> previewActionIds = new java.util.IdentityHashMap<>();
 	private String ysmModelOverride = "";
 	private String previewModel = "", previewTexture = "default";
-	private java.util.function.Function<String, dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile> ysmProfiles =
-			dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile::empty;
 	private YsmPresentationState ysmPresentation = YsmPresentationState.EMPTY;
 	private YsmPresentationSignals ysmSignals = YsmPresentationSignals.EMPTY;
 	private String ysmTextureOverride = "";
@@ -958,13 +956,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		previewTexture = texture == null || texture.isBlank() ? "default" : texture;
 	}
 
-	public void setYsmProfiles(java.util.function.Function<String, dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile> profiles) {
-		ysmProfiles = profiles;
-	}
-
-	@Override
-	public dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile ysmProfile(String model) { return ysmProfiles.apply(model); }
-
 	@Override
 	public void setYsmPresentation(YsmPresentationState state) {
 		ysmPresentation = state;
@@ -986,10 +977,10 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		fakeCaster.tickCount++;
 		ysmPresentation = ysmPresentation.expire(getYsmPresentationTime());
 		var state = ysmSignals.state();
-		boolean walking = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.WALK;
-		boolean flying = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FLY;
-		boolean sitting = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.SIT;
-		boolean swimming = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.SWIM;
+		boolean walking = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals.Trigger.WALK;
+		boolean flying = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals.Trigger.FLY;
+		boolean sitting = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals.Trigger.SIT;
+		boolean swimming = state == dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals.Trigger.SWIM;
 		if (sitting && !fakeCaster.isPassenger()) {
 			// Keep the invisible vehicle at the existing preview origin; mounting must not move the model up.
 			fakeVehicle.setPos(fakeCaster.position());
@@ -998,7 +989,7 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		else if (!sitting && fakeCaster.isPassenger()) fakeCaster.stopRiding();
 		fakeCaster.setSwimming(swimming);
 		fakeCaster.setPose(swimming ? Pose.SWIMMING : Pose.STANDING);
-		fakeCaster.setOnGround(!flying && !swimming && state != dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile.Trigger.FALLING);
+		fakeCaster.setOnGround(!flying && !swimming && state != dev.xkmc.youkaishomecoming.compat.ysm.YsmPresentationSignals.Trigger.FALLING);
 		fakeCaster.setNoGravity(flying);
 		// The native movement controller and Molang read more than the YH trigger:
 		// provide real movement inputs on this isolated entity, without ticking AI/world physics.
@@ -1303,7 +1294,6 @@ public class PreviewCardHolder implements CardHolder, YsmRenderOverrideTarget {
 		@Override public YsmPresentationSignals getYsmSignals() { return holder.getYsmSignals(); }
 		@Override public void setYsmSignals(YsmPresentationSignals signals) { holder.setYsmSignals(signals); }
 		@Override public boolean canMutateYsmPresentation() { return true; }
-		@Override public dev.xkmc.youkaishomecoming.compat.ysm.YsmModelProfile ysmProfile(String model) { return holder.ysmProfile(model); }
 
 		@Override
 		public Vec3 center() {

@@ -1,6 +1,5 @@
 package dev.xkmc.youkaishomecoming.compat.ysm;
 
-import dev.xkmc.youkaishomecoming.content.spell.preview.SpellPreviewScreen;
 import dev.xkmc.youkaishomecoming.init.YoukaisHomecoming;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.Commands;
@@ -19,6 +18,8 @@ public final class YsmEditorClientCommands {
 	@SubscribeEvent public static void tick(TickEvent.ClientTickEvent event) {
 		if (event.phase != TickEvent.Phase.END || !openPending) return;
 		openPending = false;
-		if (Minecraft.getInstance().level != null) Minecraft.getInstance().setScreen(SpellPreviewScreen.createYsmEditor());
+		if (Minecraft.getInstance().level != null && !YsmOpenYsmSupport.openEditor("")) {
+			Minecraft.getInstance().player.sendSystemMessage(net.minecraft.network.chat.Component.literal("OpenYSM editor is not available."));
+		}
 	}
 }
